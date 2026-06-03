@@ -2,7 +2,7 @@ import { Router } from 'express'
 import type { Request, Response, NextFunction } from 'express'
 import type { ConversationEventChannel, EventSubscriber, StreamingEvent } from '@airo/ai-transport'
 import { createSSEWriter, computeRecoveryPlan, parseAgentCommand, stringPayloadLength } from '@airo/ai-transport'
-import { grantSessionManager, resolveBmsSubscriptionId } from '@airo/ai-grants'
+import { grantSessionManager, resolveBmsSubscriptionId, allowSessionOverage } from '@airo/ai-grants'
 import { EventStreamRegistry } from './EventStreamRegistry.js'
 import { MessageExecutionService } from './MessageExecutionService.js'
 import { safeFormatSSEEvent } from './sse-event-formatter.js'
@@ -568,6 +568,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           subscriptionId: effectiveSubscriptionId,
           bmsBudgetId: agentContext?.bmsBudgetId,
           appId,
+          allowOverage: allowSessionOverage(effectiveSubscriptionId),
         },
         { getClient: getBudgetServiceClient, logger },
       )

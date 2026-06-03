@@ -135,6 +135,63 @@ describe('performBudgetPreCheck', () => {
         responseBody: expect.stringContaining('budget-1'),
       })
     })
+
+    it('logs budget.precheck.no_capacity warn when allowOverage is false', async () => {
+      mockBudgetClient.createSession.mockRejectedValue(
+        new BudgetNoCapacityError('Budget Service no capacity: POST /api/v1/sessions', '{"code":"NO_BUDGET_CAPACITY"}')
+      )
+
+      await expect(
+        performBudgetPreCheck(
+          { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', subscriptionId: 'sub-1', appId: 'app-1' },
+          deps,
+        ),
+      ).rejects.toThrow(BudgetExceededError)
+
+      expect(mockLogger.warn).toHaveBeenCalledWith('budget.precheck.no_capacity', expect.objectContaining({ budgetId: 'budget-1' }))
+      expect(mockLogger.error).not.toHaveBeenCalledWith('budget.precheck.overage_bypass_failed', expect.anything())
+    })
+
+    it('throws BudgetExceededError even when allowOverage is true (zero budget_items case)', async () => {
+      mockBudgetClient.createSession.mockRejectedValue(
+        new BudgetNoCapacityError('Budget Service no capacity: POST /api/v1/sessions', '{"code":"NO_BUDGET_CAPACITY"}')
+      )
+
+      await expect(
+        performBudgetPreCheck(
+          { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', allowOverage: true },
+          deps,
+        ),
+      ).rejects.toThrow(BudgetExceededError)
+    })
+
+    it('logs budget.precheck.overage_bypass_failed error when allowOverage is true', async () => {
+      mockBudgetClient.createSession.mockRejectedValue(
+        new BudgetNoCapacityError('Budget Service no capacity: POST /api/v1/sessions', '{"code":"NO_BUDGET_CAPACITY"}')
+      )
+
+      await expect(
+        performBudgetPreCheck(
+          {
+            budgetServiceEnabled: true,
+            bmsBudgetId: 'budget-1',
+            subscriptionId: 'airo-builder:care-agent',
+            appId: 'app-1',
+            allowOverage: true,
+          },
+          deps,
+        ),
+      ).rejects.toThrow(BudgetExceededError)
+
+      expect(mockLogger.error).toHaveBeenCalledWith('budget.precheck.overage_bypass_failed', {
+        appId: 'app-1',
+        subscriptionId: 'airo-builder:care-agent',
+        budgetId: 'budget-1',
+        reason: 'allowOverage=true but BMS returned 402 — budget likely has no budget_items',
+        bmsResponse: '{"code":"NO_BUDGET_CAPACITY"}',
+      })
+      expect(mockLogger.warn).not.toHaveBeenCalledWith('budget.precheck.no_capacity', expect.anything())
+    })
   })
 
   describe('when budget is not found (404 from BMS)', () => {
@@ -190,7 +247,7 @@ describe('performBudgetPreCheck', () => {
         deps,
       )
 
-      expect(mockBudgetClient.createSession).toHaveBeenCalledWith('budget-1')
+      expect(mockBudgetClient.createSession).toHaveBeenCalledWith('budget-1', { allowOverage: undefined })
     })
 
     it('logs session start with all context', async () => {
@@ -209,7 +266,89 @@ describe('performBudgetPreCheck', () => {
         subscriptionId: 'sub-1',
         budgetId: 'budget-1',
         sessionId: 'sess-123',
+        allowOverage: false,
       })
+    })
+  })
+
+  describe('when allowOverage is true', () => {
+    it('logs budget.session.overage_allowed before creating the session', async () => {
+      await performBudgetPreCheck(
+        {
+          budgetServiceEnabled: true,
+          bmsBudgetId: 'budget-1',
+          subscriptionId: 'airo-builder:care-agent',
+          appId: 'app-1',
+          allowOverage: true,
+        },
+        deps,
+      )
+
+      const infoCalls = mockLogger.info.mock.calls
+      const overageLogIndex = infoCalls.findIndex(([event]) => event === 'budget.session.overage_allowed')
+      const startedLogIndex = infoCalls.findIndex(([event]) => event === 'budget.session.started')
+
+      expect(overageLogIndex).toBeGreaterThanOrEqual(0)
+      expect(infoCalls[overageLogIndex]![1]).toEqual({
+        appId: 'app-1',
+        subscriptionId: 'airo-builder:care-agent',
+        budgetId: 'budget-1',
+        reason: 'allowOverage=true — session will open even if budget is exhausted',
+      })
+      // overage log must appear before session.started
+      expect(overageLogIndex).toBeLessThan(startedLogIndex)
+    })
+
+    it('passes allowOverage: true to createSession', async () => {
+      await performBudgetPreCheck(
+        {
+          budgetServiceEnabled: true,
+          bmsBudgetId: 'budget-1',
+          subscriptionId: 'airo-builder:care-agent',
+          appId: 'app-1',
+          allowOverage: true,
+        },
+        deps,
+      )
+
+      expect(mockBudgetClient.createSession).toHaveBeenCalledWith('budget-1', { allowOverage: true })
+    })
+
+    it('logs budget.session.started with allowOverage: true', async () => {
+      await performBudgetPreCheck(
+        {
+          budgetServiceEnabled: true,
+          bmsBudgetId: 'budget-1',
+          subscriptionId: 'airo-builder:care-agent',
+          appId: 'app-1',
+          allowOverage: true,
+        },
+        deps,
+      )
+
+      expect(mockLogger.info).toHaveBeenCalledWith('budget.session.started', {
+        appId: 'app-1',
+        subscriptionId: 'airo-builder:care-agent',
+        budgetId: 'budget-1',
+        sessionId: 'sess-123',
+        allowOverage: true,
+      })
+    })
+
+    it('does not log budget.session.overage_allowed when allowOverage is false', async () => {
+      await performBudgetPreCheck(
+        {
+          budgetServiceEnabled: true,
+          bmsBudgetId: 'budget-1',
+          subscriptionId: 'sub-1',
+          appId: 'app-1',
+          allowOverage: false,
+        },
+        deps,
+      )
+
+      const overageLog = mockLogger.info.mock.calls.find(([event]) => event === 'budget.session.overage_allowed')
+      expect(overageLog).toBeUndefined()
     })
   })
 

@@ -236,6 +236,28 @@ describe('BudgetServiceClient', () => {
         expect((err as BudgetNoCapacityError).responseBody).toContain('NO_BUDGET_CAPACITY')
       }
     })
+
+    it('does not include allowOverage in request body when option is absent', async () => {
+      const fetchMock = mockFetchWithText(true, 200, '{"sessionId":"sess-abc"}')
+      const client = clientWith(fetchMock)
+
+      await client.createSession('b-1')
+
+      const [, init] = (fetchMock as ReturnType<typeof vi.fn>).mock.calls[0]!
+      const sentBody = JSON.parse(init.body)
+      expect(sentBody.allowOverage).toBeUndefined()
+    })
+
+    it('serializes allowOverage flag in request body when option is true', async () => {
+      const fetchMock = mockFetchWithText(true, 200, '{"sessionId":"sess-abc"}')
+      const client = clientWith(fetchMock)
+
+      await client.createSession('b-1', { allowOverage: true })
+
+      const [, init] = (fetchMock as ReturnType<typeof vi.fn>).mock.calls[0]!
+      const sentBody = JSON.parse(init.body)
+      expect(sentBody.allowOverage).toBe(true)
+    })
   })
 
   // ── getSession ──

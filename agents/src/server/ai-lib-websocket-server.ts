@@ -17,7 +17,7 @@ import {
   type HistoryProvider,
   type PersistedMessage,
 } from '@airo/ai-transport'
-import { grantSessionManager, type GrantContextPayload, BudgetOverride, resolveBmsSubscriptionId } from '@airo/ai-grants'
+import { grantSessionManager, type GrantContextPayload, BudgetOverride, resolveBmsSubscriptionId, allowSessionOverage } from '@airo/ai-grants'
 import { getBudgetServiceClient } from '../services/budget-service-instance.js'
 import { maybeEmitDebugTurnStats } from './debug-stats-emit.js'
 import { createGrantBudgetRecoveryCallback } from './grant-budget-recovery-callback.js'
@@ -1493,20 +1493,35 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Budget Service pre-execution check + session creation
         // Read budget flags from JWT (socket handshake auth), not client context.
         // contextProvider enriches metadata later, but pre-check runs before that.
-        const preCheckSocket = getSocket(socketId)
-        const preCheckAgentContext = preCheckSocket?.handshake?.auth?.agentContext
+        // Read budgetServiceEnabled from JWT agentContext, not context metadata —
+        // context metadata isn't populated until contextProvider runs (after onMessageStart).
+        // Employee/test sessions flow through BMS with 100% GoDaddy attribution (isBmsOverride).
+        const socket = getSocket(socketId)
+        const agentContext = socket?.handshake?.auth?.agentContext
+        const isEmployeeSession = isEmployeeAuthType(agentContext?.authType)
+        const useTestBudget = agentContext?.useTestBudget === true
+        const budgetServiceEnabled = agentContext?.budgetServiceEnabled === true
+        const effectiveSubscriptionId = resolveBmsSubscriptionId(
+          isEmployeeSession,
+          useTestBudget,
+          agentContext?.subscriptionId as string | undefined,
+        )
+        if (effectiveSubscriptionId) {
+          effectiveSubscriptionIds.set(socketId, effectiveSubscriptionId)
+        }
 
         // Cache agentContext for the duration of this turn so contextProvider/contextExtractor
         // can read JWT fields even if the socket disconnects mid-execution.
-        if (preCheckAgentContext) {
-          cachedAgentContexts.set(socketId, preCheckAgentContext)
+        if (agentContext) {
+          cachedAgentContexts.set(socketId, agentContext)
         }
         const budgetResult = await performBudgetPreCheck(
           {
-            budgetServiceEnabled: preCheckAgentContext?.budgetServiceEnabled,
-            subscriptionId: preCheckAgentContext?.subscriptionId as string | undefined,
-            bmsBudgetId: preCheckAgentContext?.bmsBudgetId as string | undefined,
+            budgetServiceEnabled: agentContext?.budgetServiceEnabled,
+            subscriptionId: effectiveSubscriptionId,
+            bmsBudgetId: agentContext?.bmsBudgetId as string | undefined,
             appId: siteId,
+            allowOverage: allowSessionOverage(effectiveSubscriptionId),
           },
           { getClient: getBudgetServiceClient, logger },
         )
@@ -1567,26 +1582,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Get Switchboard flags from JWT context (takes precedence over env var)
         // - enableAssessmentAgent: Run classification and log results (for monitoring)
         // - enableAssessmentOverride: Actually apply budget override (requires enableAssessmentAgent, grants mode only)
-        const socket = getSocket(socketId)
-        const agentContext = socket?.handshake?.auth?.agentContext
         const enableAssessmentAgent = agentContext?.enableAssessmentAgent
         const enableAssessmentOverride = agentContext?.enableAssessmentOverride
         const assessmentClassifier = agentContext?.assessmentClassifier
-        // Read budgetServiceEnabled from JWT agentContext, not context metadata
-        // Context metadata isn't populated until contextProvider runs (after onMessageStart)
-        // Employee/test sessions flow through BMS with 100% GoDaddy attribution (isBmsOverride)
-        const isEmployeeSession = isEmployeeAuthType(agentContext?.authType)
-        const useTestBudget = agentContext?.useTestBudget === true
-        const budgetServiceEnabled = agentContext?.budgetServiceEnabled === true
-
-        const effectiveSubscriptionId = resolveBmsSubscriptionId(
-          isEmployeeSession,
-          useTestBudget,
-          agentContext?.subscriptionId as string | undefined,
-        )
-        if (effectiveSubscriptionId) {
-          effectiveSubscriptionIds.set(socketId, effectiveSubscriptionId)
-        }
 
         logger.info('assessment.feature_flag', {
           appId: siteId,

@@ -5,7 +5,7 @@ export { GrantType, GrantFinalState } from '@airo/shared/grants'
 // Grant Manager (from @airo/shared)
 export { GrantManager, GrantUnusableReason } from '@airo/shared/grants'
 
-export { BudgetOverride, isBudgetOverride, isBmsOverride, resolveBmsSubscriptionId } from './budget-override.js'
+export { BudgetOverride, isBudgetOverride, isBmsOverride, resolveBmsSubscriptionId, allowSessionOverage } from './budget-override.js'
 export type { BmsOverride } from './budget-override.js'
 
 // Session Manager (ai-grants specific — heavy deps on logger, AsyncLocalStorage)

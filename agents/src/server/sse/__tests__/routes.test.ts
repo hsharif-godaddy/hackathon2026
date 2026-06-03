@@ -1481,6 +1481,63 @@ describe('SSE routes', () => {
       )
     })
 
+    it('calls performBudgetPreCheck with allowOverage: true for useTestBudget sessions', async () => {
+      const mockExec = { execute: vi.fn(), stop: vi.fn(), subscribeStream: vi.fn(), hasActiveStream: vi.fn().mockReturnValue(false) }
+      ;(deps as any).executionService = mockExec
+      ;(deps.authenticate as any).mockImplementation(function (req: any, _res: any, next: any) {
+        req.agentContext = {
+          siteId: req.params.appId ?? 'abcdefghij',
+          budgetServiceEnabled: true,
+          bmsBudgetId: 'budget-123',
+          subscriptionId: 'sub-456',
+          useTestBudget: true,
+        }
+        next()
+      })
+      app = express()
+      app.use(express.json())
+      app.use('/api/conversations', createSSERoutes(deps as any))
+
+      mockBudgetPreCheck.mockResolvedValueOnce(null)
+
+      await request(app)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'hi' })
+
+      expect(mockBudgetPreCheck).toHaveBeenCalledWith(
+        expect.objectContaining({ allowOverage: true }),
+        expect.any(Object),
+      )
+    })
+
+    it('calls performBudgetPreCheck with allowOverage: false for regular customer sessions', async () => {
+      const mockExec = { execute: vi.fn(), stop: vi.fn(), subscribeStream: vi.fn(), hasActiveStream: vi.fn().mockReturnValue(false) }
+      ;(deps as any).executionService = mockExec
+      ;(deps.authenticate as any).mockImplementation(function (req: any, _res: any, next: any) {
+        req.agentContext = {
+          siteId: req.params.appId ?? 'abcdefghij',
+          budgetServiceEnabled: true,
+          bmsBudgetId: 'budget-123',
+          subscriptionId: 'sub-456',
+        }
+        next()
+      })
+      app = express()
+      app.use(express.json())
+      app.use('/api/conversations', createSSERoutes(deps as any))
+
+      mockBudgetPreCheck.mockResolvedValueOnce(null)
+
+      await request(app)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'hi' })
+
+      expect(mockBudgetPreCheck).toHaveBeenCalledWith(
+        expect.objectContaining({ allowOverage: false }),
+        expect.any(Object),
+      )
+    })
+
     it('forwards non-budget errors through asyncHandler to the Express error handler (500)', async () => {
       const errorApp = express()
       errorApp.use(express.json())

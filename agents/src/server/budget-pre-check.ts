@@ -34,9 +34,19 @@ export interface BudgetPreCheckResult {
  * Returns null when budgetServiceEnabled is false/absent (caller should skip).
  * Throws BudgetExceededError if no credits available (402 from BMS).
  * Throws BudgetServiceUnavailableError on transient failures (fail-closed).
+ *
+ * When allowOverage is true, the 402 capacity gate is bypassed — the session opens
+ * regardless of credit balance. Only pass this for sessions where 100% GoDaddy
+ * attribution is already guaranteed (e.g. care-agent, test-account sessions).
  */
 export async function performBudgetPreCheck(
-  metadata: { budgetServiceEnabled?: boolean; subscriptionId?: string; bmsBudgetId?: string; appId?: string },
+  metadata: {
+    budgetServiceEnabled?: boolean
+    subscriptionId?: string
+    bmsBudgetId?: string
+    appId?: string
+    allowOverage?: boolean
+  },
   deps: BudgetPreCheckDeps,
 ): Promise<BudgetPreCheckResult | null> {
   if (metadata.budgetServiceEnabled !== true) return null
@@ -61,8 +71,6 @@ export async function performBudgetPreCheck(
     return null
   }
 
-  // subscriptionId is optional - used for override detection at report time
-  // Log warning if missing on BMS-enabled session to help diagnose configuration issues
   const subscriptionId = metadata.subscriptionId
   if (!subscriptionId) {
     deps.logger.warn('budget.precheck.subscriptionId_missing', {
@@ -77,21 +85,40 @@ export async function performBudgetPreCheck(
     throw new BudgetServiceUnavailableError('Budget Service client not configured (missing BUDGET_SERVICE_URL)')
   }
 
-  // Create BMS session - the endpoint validates budget capacity and returns 402
-  // NO_BUDGET_CAPACITY if no credits are available (fail-closed).
+  if (metadata.allowOverage) {
+    deps.logger.info('budget.session.overage_allowed', {
+      appId: metadata.appId,
+      subscriptionId,
+      budgetId,
+      reason: 'allowOverage=true — session will open even if budget is exhausted',
+    })
+  }
+
   let session: { sessionId: string }
   try {
-    session = await budgetClient.createSession(budgetId)
+    session = await budgetClient.createSession(budgetId, { allowOverage: metadata.allowOverage })
   } catch (err) {
-    // Convert 402 NO_BUDGET_CAPACITY to BudgetExceededError for consistent client handling.
-    // Log the original error to preserve BMS response details for debugging.
     if (err instanceof BudgetNoCapacityError) {
-      deps.logger.warn('budget.precheck.no_capacity', {
-        budgetId,
-        appId: metadata.appId,
-        subscriptionId: metadata.subscriptionId,
-        bmsResponse: err.responseBody,
-      })
+      // When allowOverage was true, a 402 means the budget has zero budget_items —
+      // the capacity gate is always enforced for item-less budgets regardless of the flag.
+      // Log as a distinct error so "bypass requested but denied" is queryable separately
+      // from a normal customer out-of-credits event.
+      if (metadata.allowOverage) {
+        deps.logger.error('budget.precheck.overage_bypass_failed', {
+          appId: metadata.appId,
+          subscriptionId: metadata.subscriptionId,
+          budgetId,
+          reason: 'allowOverage=true but BMS returned 402 — budget likely has no budget_items',
+          bmsResponse: err.responseBody,
+        })
+      } else {
+        deps.logger.warn('budget.precheck.no_capacity', {
+          budgetId,
+          appId: metadata.appId,
+          subscriptionId: metadata.subscriptionId,
+          bmsResponse: err.responseBody,
+        })
+      }
       throw BudgetExceededError.fromBudgetCheck(budgetId)
     }
     // Log 404 BudgetNotFoundError before re-throwing for fail-closed behavior.
@@ -114,6 +141,7 @@ export async function performBudgetPreCheck(
     subscriptionId,
     budgetId,
     sessionId: session.sessionId,
+    allowOverage: metadata.allowOverage ?? false,
   })
 
   return {

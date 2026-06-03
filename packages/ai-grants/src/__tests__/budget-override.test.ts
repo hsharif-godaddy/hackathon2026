@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import { BudgetOverride, isBudgetOverride, isBmsOverride, resolveBmsSubscriptionId } from '../budget-override.js'
+import { BudgetOverride, isBudgetOverride, isBmsOverride, resolveBmsSubscriptionId, allowSessionOverage } from '../budget-override.js'
 
 describe('isBudgetOverride', function tests() {
   it('should return true for care agent override', function careAgent() {
@@ -89,5 +89,36 @@ describe('resolveBmsSubscriptionId', function tests() {
   it('should return the actual subscriptionId for regular sessions', function regularSession() {
     expect(resolveBmsSubscriptionId(false, false, 'customer-sub')).toBe('customer-sub')
     expect(resolveBmsSubscriptionId(false, false, undefined)).toBeUndefined()
+  })
+})
+
+describe('allowSessionOverage', function tests() {
+  it('should return true for CareAgent', function careAgent() {
+    expect(allowSessionOverage(BudgetOverride.CareAgent)).toBe(true)
+    expect(allowSessionOverage('airo-builder:care-agent')).toBe(true)
+  })
+
+  it('should return true for TestAccounts', function testAccounts() {
+    expect(allowSessionOverage(BudgetOverride.TestAccounts)).toBe(true)
+    expect(allowSessionOverage('airo-builder:test-accounts')).toBe(true)
+  })
+
+  it('should return false for non-BMS BudgetOverride values', function nonBmsOverrides() {
+    const bmsOverrides = new Set([BudgetOverride.CareAgent, BudgetOverride.TestAccounts])
+    const nonBmsOverrides = Object.values(BudgetOverride).filter(v => !bmsOverrides.has(v))
+    expect(nonBmsOverrides.length).toBeGreaterThan(0)
+    for (const value of nonBmsOverrides) {
+      expect(allowSessionOverage(value)).toBe(false)
+    }
+  })
+
+  it('should return false for regular subscription IDs', function regularSubscription() {
+    expect(allowSessionOverage('sub-12345')).toBe(false)
+    expect(allowSessionOverage('customer-subscription-uuid')).toBe(false)
+  })
+
+  it('should return false for null or undefined', function nullish() {
+    expect(allowSessionOverage(null)).toBe(false)
+    expect(allowSessionOverage(undefined)).toBe(false)
   })
 })

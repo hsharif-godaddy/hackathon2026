@@ -73,7 +73,7 @@ describe('performBudgetPreCheck', () => {
 
     expect(result).toEqual({ budgetId: 'budget-1', sessionId: 'sess-abc' })
     // createSession is called (it validates capacity internally and returns 402 if none)
-    expect(client.createSession).toHaveBeenCalledWith('budget-1')
+    expect(client.createSession).toHaveBeenCalledWith('budget-1', { allowOverage: undefined })
     expect(deps.logger.info).toHaveBeenCalledWith('budget.session.started', expect.objectContaining({
       subscriptionId: 'sub-1',
       budgetId: 'budget-1',
@@ -112,7 +112,7 @@ describe('performBudgetPreCheck', () => {
     expect(result).not.toBeNull()
     expect(result?.budgetId).toBe('customer-budget')
     expect(result?.sessionId).toBe('sess-abc')
-    expect(client.createSession).toHaveBeenCalledWith('customer-budget')
+    expect(client.createSession).toHaveBeenCalledWith('customer-budget', { allowOverage: undefined })
   })
 
   it('proceeds without subscriptionId (logs warning)', async () => {

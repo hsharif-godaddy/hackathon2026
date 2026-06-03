@@ -73,3 +73,15 @@ export function resolveBmsSubscriptionId(
   }
   return subscriptionId
 }
+
+/**
+ * Check if a session should be allowed to open even when the budget has no remaining
+ * credits. When true, the BMS capacity gate is bypassed at session creation; uncovered
+ * spend is captured at close via the report-side allowOverage flag.
+ *
+ * Currently matches BMS override sessions (CareAgent, TestAccounts). Extend this set
+ * as new override cases are added — independently of isBmsOverride().
+ */
+export function allowSessionOverage(subscriptionId: string | null | undefined): boolean {
+  return isBmsOverride(subscriptionId)
+}

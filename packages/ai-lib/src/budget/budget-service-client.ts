@@ -208,10 +208,12 @@ export class BudgetServiceClient {
     )
   }
 
-  async createSession(budgetId: string): Promise<CreateSessionResponse> {
+  async createSession(budgetId: string, options?: { allowOverage?: boolean }): Promise<CreateSessionResponse> {
+    const body: Record<string, unknown> = { budgetId }
+    if (options?.allowOverage) body.allowOverage = true
     return this.requestAndValidate(
       'POST', `/api/v1/sessions`,
-      CreateSessionResponseSchema, 'CreateSessionResponse', { budgetId }, this.getBudgetTimeoutMs
+      CreateSessionResponseSchema, 'CreateSessionResponse', body, this.getBudgetTimeoutMs
     )
   }
 
