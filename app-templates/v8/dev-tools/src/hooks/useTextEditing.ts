@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { safePostMessage, isOriginAllowed } from "../utils/postMessage";
+import { type BusTextUpdatePayload, send } from "../utils/eventBus";
 import {
   generatePreciseSelector,
   extractDevContext,
@@ -169,7 +170,7 @@ export function useTextEditing(isEditModeActive: boolean) {
         return;
       }
 
-      const payload: Record<string, unknown> = {
+      const payload: BusTextUpdatePayload = {
         selector,
         preciseSelector,
         oldText: originalText,
@@ -188,7 +189,7 @@ export function useTextEditing(isEditModeActive: boolean) {
         if (structured.rootAttributes) payload.newAttributes = structured.rootAttributes;
       }
 
-      safePostMessage(window.parent, {
+      send({
         type: "TEXT_UPDATED",
         data: payload,
       });
@@ -292,7 +293,7 @@ export function useTextEditing(isEditModeActive: boolean) {
 
       beginSave(parent, parentOriginalText);
 
-      safePostMessage(window.parent, {
+      send({
         type: "TEXT_UPDATED",
         data: {
           selector,

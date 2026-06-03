@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { safePostMessage, isOriginAllowed } from "../utils/postMessage";
+import { isOriginAllowed } from "../utils/postMessage";
+import { send } from "../utils/eventBus";
 
 interface UseSpeechBridgeReturn {
   /** True when the parent app reports the browser supports speech recognition. */
@@ -57,14 +58,14 @@ export function useSpeechBridge(): UseSpeechBridgeReturn {
     // mounts on hover, after IFRAME_READY usually fires). Ask the parent to
     // re-broadcast so the support flag arrives on first hover.
     if (window.parent !== window) {
-      safePostMessage(window.parent, { type: "SPEECH_QUERY_SUPPORT" });
+      send({ type: "SPEECH_QUERY_SUPPORT" });
     }
     return () => { window.removeEventListener("message", handleMessage); };
   }, []);
 
   const toggle = useCallback(function toggleListening() {
     if (window.parent === window) return;
-    safePostMessage(window.parent, { type: isListening ? "SPEECH_STOP" : "SPEECH_START" });
+    send({ type: isListening ? "SPEECH_STOP" : "SPEECH_START" });
   }, [isListening]);
 
   // Stop parent recognition on every unmount path. Ref so the cleanup reads
@@ -74,7 +75,7 @@ export function useSpeechBridge(): UseSpeechBridgeReturn {
   useEffect(function stopListeningOnUnmount() {
     return () => {
       if (isListeningRef.current && window.parent !== window) {
-        safePostMessage(window.parent, { type: "SPEECH_STOP" });
+        send({ type: "SPEECH_STOP" });
       }
     };
   }, []);

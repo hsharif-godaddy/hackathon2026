@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { safePostMessage } from "../utils/postMessage";
+import { type BusAiEditContextPayload, send } from "../utils/eventBus";
 import { generatePreciseSelector, extractDevContext, getElementClassName } from "../utils/element-helpers";
 import { isTouchDevice } from "../utils/device";
 import {
@@ -100,7 +100,7 @@ export default function ElementHoverBar({
     [openMenu],
   );
   // Context built when Sparkles is clicked — sent only when Quick Edit is submitted
-  const pendingContextRef = useRef<Record<string, unknown> | null>(null);
+  const pendingContextRef = useRef<BusAiEditContextPayload | null>(null);
   // Capture the element reference when toolbar opens so actions use the correct element
   // even if hover moves away (e.g., mouse enters toolbar, causing parent to track a new hover)
   const toolbarElementRef = useRef<HTMLElement | null>(null);
@@ -318,11 +318,11 @@ export default function ElementHoverBar({
     trackEventBus.click("devtools.toolbar.replace_image");
     const { imageUrl, isMediaSlot, slotPath } = hovered;
     if (isMediaSlot && slotPath) {
-      safePostMessage(window.parent, { type: "OPEN_MEDIA_SLOT_DIALOG", slotName: slotPath });
+      send({ type: "OPEN_MEDIA_SLOT_DIALOG", slotName: slotPath });
     } else {
       const devContext = extractDevContext(el);
       const imgEl = el.tagName.toLowerCase() === "img" ? (el as HTMLImageElement) : null;
-      safePostMessage(window.parent, {
+      send({
         type: "AUTO_IMPORT_MEDIA_SLOT",
         imageUrl,
         devContext,
@@ -340,11 +340,11 @@ export default function ElementHoverBar({
     trackEventBus.click("devtools.toolbar.modify_image");
     const { imageUrl, isMediaSlot, slotPath } = hovered;
     if (isMediaSlot && slotPath) {
-      safePostMessage(window.parent, { type: "OPEN_IMAGE_EDITOR", slotName: slotPath });
+      send({ type: "OPEN_IMAGE_EDITOR", slotName: slotPath });
     } else {
       const devContext = extractDevContext(el);
       const imgEl = el.tagName.toLowerCase() === "img" ? (el as HTMLImageElement) : null;
-      safePostMessage(window.parent, {
+      send({
         type: "AUTO_IMPORT_MEDIA_SLOT",
         imageUrl,
         devContext,
@@ -357,12 +357,12 @@ export default function ElementHoverBar({
   }, []);
 
   // Build the EDIT_WITH_AI payload for the toolbar's captured element
-  const buildContextData = useCallback((selectionNumber?: number): Record<string, unknown> => {
+  const buildContextData = useCallback((selectionNumber?: number): BusAiEditContextPayload | null => {
     const el = toolbarElementRef.current;
     const hovered = toolbarHoveredElementRef.current;
     if (!el || !hovered) {
       console.error("[ElementHoverBar] buildContextData called but no element captured");
-      return {};
+      return null;
     }
 
     const elRect = el.getBoundingClientRect();
@@ -370,7 +370,7 @@ export default function ElementHoverBar({
     const preciseSelector = generatePreciseSelector(el);
     const isImg = hovered.type === "image";
 
-    const data: Record<string, unknown> = {
+    const data: BusAiEditContextPayload = {
       elementInfo: {
         tagName: el.tagName.toLowerCase(),
         className: getElementClassName(el),
@@ -412,13 +412,13 @@ export default function ElementHoverBar({
       addNumberedOverlay(el, num, () => {
         trackEventBus.click("devtools.toolbar.multi_select_remove");
         removeNumberedOverlay(num);
-        safePostMessage(window.parent, { type: "REMOVE_SELECTION_FROM_PREVIEW", data: { number: num } });
+        send({ type: "REMOVE_SELECTION_FROM_PREVIEW", data: { number: num } });
       });
     } else {
       showSelectionOverlay(el);
     }
     const contextData = buildContextData(selectionNumber);
-    safePostMessage(window.parent, { type: "EDIT_WITH_AI", data: contextData });
+    if (contextData) send({ type: "EDIT_WITH_AI", data: contextData });
     setToolbarMode(false);
   }, [isMultiSelectActive, buildContextData]);
 
@@ -435,10 +435,10 @@ export default function ElementHoverBar({
   const handleQuickEditSubmit = useCallback((prompt: string) => {
     trackEventBus.click("devtools.toolbar.quick_edit_submit");
     if (pendingContextRef.current) {
-      safePostMessage(window.parent, { type: "EDIT_WITH_AI", data: pendingContextRef.current });
+      send({ type: "EDIT_WITH_AI", data: pendingContextRef.current });
       pendingContextRef.current = null;
     }
-    safePostMessage(window.parent, { type: "QUICK_EDIT_SEND", data: { prompt } });
+    send({ type: "QUICK_EDIT_SEND", data: { prompt } });
     setQuickEditMode(false);
   }, []);
 

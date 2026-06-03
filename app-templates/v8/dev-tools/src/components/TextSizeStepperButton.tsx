@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ALargeSmall, Minus, Plus } from "lucide-react";
 import { HoverBarButton } from "./HoverBar";
 import { t } from "../utils/translations";
-import { safePostMessage } from "../utils/postMessage";
 import { addStyleEditListener, StyleMessageEventType } from "../utils/elementStyleListeners";
 import { extractDevContext, generatePreciseSelector, getElementClassName } from "../utils/element-helpers";
 import {
@@ -10,7 +9,7 @@ import {
   nearestSizeClass,
   type SizeClass,
 } from "../utils/text-size";
-import { trackEventBus } from "../utils/eventBus";
+import { send, trackEventBus } from "../utils/eventBus";
 
 interface TextSizeStepperButtonProps {
   selectedElement: HTMLElement | null;
@@ -121,7 +120,7 @@ export default function TextSizeStepperButton({ selectedElement, isOpen, onOpenC
       const devContext = extractDevContext(selectedElement);
       const preciseSelector = generatePreciseSelector(selectedElement);
 
-      safePostMessage(window.parent, {
+      send({
         type: StyleMessageEventType.UPDATED,
         data: {
           commitId,

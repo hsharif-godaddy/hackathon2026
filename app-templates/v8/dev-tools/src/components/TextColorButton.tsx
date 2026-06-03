@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HoverBarButton } from "./HoverBar";
 import { t } from "../utils/translations";
-import { safePostMessage } from "../utils/postMessage";
 import { addStyleEditListener, StyleMessageEventType } from "../utils/elementStyleListeners";
 import { extractDevContext, generatePreciseSelector, getElementClassName } from "../utils/element-helpers";
 import { extractThemeColors } from "../utils/text-editing-helpers";
 import { rgbToHex, normalizeHex } from "../utils/color";
-import { trackEventBus } from "../utils/eventBus";
+import { send, trackEventBus } from "../utils/eventBus";
 import ColorPicker from "./ColorPicker";
 
 const DEFAULT_COLOR = "#000000";
@@ -128,7 +127,7 @@ export default function TextColorButton({ selectedElement, isOpen, onOpenChange 
         { computed, tag: selectedElement.tagName.toLowerCase() },
       );
     }
-  
+
     return DEFAULT_COLOR;
   }, [selectedElement, isOpen]);
 
@@ -186,7 +185,7 @@ export default function TextColorButton({ selectedElement, isOpen, onOpenChange 
     const devContext = extractDevContext(selectedElement);
     const preciseSelector = generatePreciseSelector(selectedElement);
 
-    safePostMessage(window.parent, {
+    send({
       type: StyleMessageEventType.UPDATED,
       data: {
         commitId,

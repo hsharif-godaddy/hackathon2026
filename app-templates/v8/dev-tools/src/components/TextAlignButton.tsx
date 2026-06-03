@@ -3,10 +3,9 @@ import { AlignCenter, AlignJustify, AlignLeft, AlignRight } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HoverBarButton } from "./HoverBar";
 import { t } from "../utils/translations";
-import { safePostMessage } from "../utils/postMessage";
 import { addStyleEditListener, StyleMessageEventType } from "../utils/elementStyleListeners";
 import { extractDevContext, generatePreciseSelector, getElementClassName } from "../utils/element-helpers";
-import { trackEventBus } from "../utils/eventBus";
+import { send, trackEventBus } from "../utils/eventBus";
 
 enum TextAlign {
   Left = "left",
@@ -42,7 +41,7 @@ function getTextAlign(selectedElement?: HTMLElement | null): TextAlign | null {
   if (selectedElement?.classList.contains("text-left")) {
     return TextAlign.Left;
   }
-  
+
   return null;
 }
 
@@ -79,11 +78,11 @@ export default function TextAlignButton({ selectedElement, isOpen, onOpenChange 
       const originalClassName = selectedElement.className;
       // Optimistic DOM update: remove any existing alignment class, then add the new one.
       Object.values(TextAlign).forEach((align => selectedElement.classList.remove(`text-${align}`)))
-      
+
       if (newTextAlign) {
         selectedElement.classList.add(`text-${newTextAlign}`);
       }
-  
+
       forceRender((n: number) => n + 1);
       onOpenChange(false);
 
@@ -97,7 +96,7 @@ export default function TextAlignButton({ selectedElement, isOpen, onOpenChange 
       const devContext = extractDevContext(selectedElement);
       const preciseSelector = generatePreciseSelector(selectedElement);
 
-      safePostMessage(window.parent, {
+      send({
         type: StyleMessageEventType.UPDATED,
         data: {
           commitId,

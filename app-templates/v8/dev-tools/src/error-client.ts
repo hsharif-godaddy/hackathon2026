@@ -1,4 +1,4 @@
-import { safePostMessage } from './utils/postMessage';
+import { type BusEventType, type BusMessage, send } from './utils/eventBus';
 import { advanceCycleId, getCurrentCycleId } from './cycle-state';
 
 /**
@@ -7,11 +7,11 @@ import { advanceCycleId, getCurrentCycleId } from './cycle-state';
  * picked up by any listeners installed on this same window and could
  * cause spurious state transitions.
  */
-function postToParent(message: unknown): void {
+function postToParent<K extends BusEventType>(message: BusMessage<K>): void {
   if (window.parent === window) {
     return;
   }
-  safePostMessage(window.parent, message);
+  send(message);
 }
 
 /**

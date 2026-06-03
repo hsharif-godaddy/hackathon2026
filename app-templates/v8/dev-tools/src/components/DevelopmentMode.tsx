@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { safePostMessage, isOriginAllowed } from '../utils/postMessage'
+import { send } from '../utils/eventBus'
 import { captureAndResizeScreenshot, captureViewportScreenshot } from '../utils/screenshot'
 import { useEditMode } from "../hooks/useEditMode";
 import ElementHoverBar from "./ElementHoverBar";
@@ -1040,7 +1041,7 @@ export default function DevelopmentMode() {
 
           // Send cached response back to parent (near-instant response)
           if (window.parent !== window) {
-            safePostMessage(window.parent, {
+            send({
               type: 'VISUAL_CONTEXT_RESPONSE',
               context: cachedContext
             })
@@ -1049,7 +1050,7 @@ export default function DevelopmentMode() {
           // Capture and resize screenshot
           captureAndResizeScreenshot().then(screenshot => {
             if (screenshot && window.parent !== window) {
-              safePostMessage(window.parent, {
+              send({
                 type: 'SCREENSHOT_RESPONSE',
                 screenshot: screenshot
               })
@@ -1060,7 +1061,7 @@ export default function DevelopmentMode() {
         } else if (event.data && event.data.type === 'REQUEST_VIEWPORT_SCREENSHOT') {
           captureViewportScreenshot().then(screenshot => {
             if (screenshot && window.parent !== window) {
-              safePostMessage(window.parent, {
+              send({
                 type: 'VIEWPORT_SCREENSHOT_RESPONSE',
                 screenshot: screenshot
               })
@@ -1099,7 +1100,7 @@ export default function DevelopmentMode() {
 
         // Send error response only for visual context requests (not font/theme preview errors)
         if (window.parent !== window && event.data?.type === 'REQUEST_VISUAL_CONTEXT') {
-          safePostMessage(window.parent, {
+          send({
             type: 'VISUAL_CONTEXT_RESPONSE',
             context: {
               page: '/',

@@ -1,6 +1,7 @@
 import React, { Component, ReactNode } from 'react';
 import { injectDevToolsStyles } from './utils/injectDevToolsStyles';
-import { isOriginAllowed, safePostMessage } from './utils/postMessage';
+import { isOriginAllowed } from './utils/postMessage';
+import { send } from './utils/eventBus';
 import type { RuntimeErrorData } from './types';
 import MessageOverlay from './components/MessageOverlay';
 import Button from './components/Button';
@@ -161,7 +162,7 @@ export default class AiroErrorBoundary extends Component<Props, State> {
     window.addEventListener('message', this.agentProcessingMessageHandler);
 
     try {
-      safePostMessage(window.parent, { type: 'request-processing-state' });
+      send({ type: 'request-processing-state' });
     } catch (requestErr) {
       // Parent unreachable — the sync timeout below will unblock the overlay.
       // Log so cross-origin misconfigurations (wrong VITE_PARENT_ORIGIN →
@@ -360,7 +361,7 @@ export default class AiroErrorBoundary extends Component<Props, State> {
       // and drop it — which is exactly what we want: by then, whatever
       // the user was looking at is no longer what's rendering.
       const errorData = this.buildErrorData(error, errorInfo);
-      safePostMessage(window.parent, {
+      send({
         type: errorOrigin === 'platform' ? 'error-platform-report' : 'error-fix-request',
         errorData,
       });
@@ -429,7 +430,7 @@ export default class AiroErrorBoundary extends Component<Props, State> {
     const errorData = this.buildErrorData(error, errorInfo);
 
     try {
-      safePostMessage(window.parent, {
+      send({
         type: 'error-fix-user-requested',
         errorData,
       });

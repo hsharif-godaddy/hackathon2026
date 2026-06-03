@@ -2,11 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { Bold } from "lucide-react";
 import { HoverBarButton } from "./HoverBar";
 import { t } from "../utils/translations";
-import { safePostMessage } from "../utils/postMessage";
 import { addStyleEditListener, StyleMessageEventType } from "../utils/elementStyleListeners";
 import { extractDevContext, generatePreciseSelector, getElementClassName } from "../utils/element-helpers";
 import { ensureBoldFontLoaded } from "../utils/text-editing-helpers";
-import { trackEventBus } from "../utils/eventBus";
+import { send, trackEventBus } from "../utils/eventBus";
 
 interface BoldButtonProps {
   selectedElement: HTMLElement | null;
@@ -45,7 +44,7 @@ export default function BoldButton({ selectedElement }: BoldButtonProps) {
     const devContext = extractDevContext(selectedElement);
     const preciseSelector = generatePreciseSelector(selectedElement);
 
-    safePostMessage(window.parent, {
+    send({
       type: StyleMessageEventType.UPDATED,
       data: {
         commitId,

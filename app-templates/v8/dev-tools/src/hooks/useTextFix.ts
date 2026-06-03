@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { safePostMessage } from "../utils/postMessage";
+import { send } from "../utils/eventBus";
 import { extractDevContext, generatePreciseSelector } from "../utils/element-helpers";
 import { mergeOriginalClasses } from "../utils/text-editing-helpers";
 import { htmlToJsxStructured } from "../utils/html-to-jsx";
@@ -129,7 +129,7 @@ export function useTextFix(): UseTextFixResult {
     // Field name is `oldText` for backward-compat with the route/agent
     // contract — its semantics widened from "plain text" to "inner HTML"
     // (the agent prompt was updated accordingly).
-    safePostMessage(window.parent, {
+    send({
       type: "TEXT_FIX_REQUESTED",
       data: { requestId, oldText: oldHtml },
     });
@@ -162,7 +162,7 @@ export function useTextFix(): UseTextFixResult {
 
     // Telemetry: notify parent so the BFF can log acceptance rate. Sent
     // before TEXT_UPDATED so the event lands even if the AST commit fails.
-    safePostMessage(window.parent, {
+    send({
       type: "TEXT_FIX_ACCEPTED",
       data: {
         oldLength: oldHtml.length,
@@ -170,7 +170,7 @@ export function useTextFix(): UseTextFixResult {
       },
     });
 
-    safePostMessage(window.parent, {
+    send({
       type: "TEXT_UPDATED",
       data: {
         selector: preciseSelector,
@@ -187,7 +187,7 @@ export function useTextFix(): UseTextFixResult {
 
   const reject = useCallback(() => {
     if (state.status === "preview") {
-      safePostMessage(window.parent, {
+      send({
         type: "TEXT_FIX_REJECTED",
         data: {
           oldLength: state.oldHtml.length,

@@ -13,6 +13,7 @@ import { logger } from '@/lib/request-context';
 import {
   _resetForTests,
   dispatch,
+  off,
   on,
   registerTrackEventBus,
   TRACK_EVENT_TYPE,
@@ -65,6 +66,26 @@ describe('eventBus dispatch primitive', () => {
     on('DUP', () => {});
     on('DUP', () => {});
     expect(logger.warn).toHaveBeenCalledWith('eventBus.duplicate-registration', { type: 'DUP' });
+  });
+
+  it('off removes a registered handler so dispatch returns false', () => {
+    const handler = vi.fn();
+    on('OFF_ME', handler);
+    expect(dispatch({ type: 'OFF_ME' })).toBe(true);
+    off('OFF_ME');
+    expect(dispatch({ type: 'OFF_ME' })).toBe(false);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('off on an unregistered type is a no-op', () => {
+    expect(() => off('NEVER_REGISTERED')).not.toThrow();
+  });
+
+  it('register → off → register does not warn about duplicates', () => {
+    on('CYCLE', () => {});
+    off('CYCLE');
+    on('CYCLE', () => {});
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });
 

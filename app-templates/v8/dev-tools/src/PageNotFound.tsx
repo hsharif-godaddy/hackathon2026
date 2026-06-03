@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { injectDevToolsStyles } from './utils/injectDevToolsStyles';
-import { isOriginAllowed, safePostMessage } from './utils/postMessage';
+import { isOriginAllowed } from './utils/postMessage';
+import { send } from './utils/eventBus';
 import MessageOverlay from './components/MessageOverlay';
 import Button from './components/Button';
 
@@ -23,7 +24,7 @@ function builderEntryUrl(
 
 const sendBuildPageRequest = (path: string) => {
   try {
-    safePostMessage(window.parent, {
+    send({
       type: 'build-page-request',
       pathToBuild: path
     });
@@ -63,7 +64,7 @@ export default function PageNotFound() {
       }
     }
     window.addEventListener('message', handleMessage);
-    safePostMessage(window.parent, { type: 'request-processing-state' });
+    send({ type: 'request-processing-state' });
     return () => window.removeEventListener('message', handleMessage);
   }, [isEmbeddedInBuilder]);
 

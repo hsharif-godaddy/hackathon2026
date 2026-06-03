@@ -12,11 +12,14 @@ beforeEach(() => {
 });
 
 describe('eventBus send', () => {
-  it('forwards an arbitrary typed message to window.parent via safePostMessage', () => {
-    send({ type: 'CUSTOM_EVENT', data: { foo: 1 } });
+  it('forwards a typed bus message to window.parent via safePostMessage', () => {
+    send({
+      type: 'TEXT_FIX_REQUESTED',
+      data: { requestId: 'req-1', oldText: '<p>old</p>' },
+    });
     expect(safePostMessage).toHaveBeenCalledWith(window.parent, {
-      type: 'CUSTOM_EVENT',
-      data: { foo: 1 },
+      type: 'TEXT_FIX_REQUESTED',
+      data: { requestId: 'req-1', oldText: '<p>old</p>' },
     });
   });
 });

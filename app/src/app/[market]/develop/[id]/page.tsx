@@ -20,18 +20,19 @@ import ResizableDivider from '@/app/[market]/develop/components/ResizableDivider
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
 import { PostBuildEditNudge } from '@/app/[market]/develop/components/tour/PostBuildEditNudge'
 import { ChatTab, IframeMessageType, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
-import { extractNewPageRoute, handlePreviewRefresh, navigatePreviewToRoute, requestPreviewScreenshot, useAppIdFromParams } from '@/app/[market]/develop/components/utils'
+import { handlePreviewRefresh, useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { clearExpiredWidgetStates } from '@/app/[market]/develop/components/widgets'
 import { sendPendingAutoSendMessage } from '@/app/[market]/develop/hooks/sendPendingAutoSendMessage'
 import { useAgentWorkFeedbackTrigger } from '@/app/[market]/develop/hooks/useAgentWorkFeedbackTrigger'
 import { useAppGenerationFeedbackTrigger } from '@/app/[market]/develop/hooks/useAppGenerationFeedbackTrigger'
 import { useChatPaneLoadingState } from '@/app/[market]/develop/hooks/useChatPaneLoadingState'
+import { useDevToolsBusBindings } from '@/app/[market]/develop/hooks/useDevToolsBusBindings'
 import { useDevToolsSpeechBridge } from '@/app/[market]/develop/hooks/useDevToolsSpeechBridge'
 import { useEvalSnapshotCapture } from '@/app/[market]/develop/hooks/useEvalSnapshotCapture'
 import { useInitialBuildRevealSignals } from '@/app/[market]/develop/hooks/useInitialBuildRevealSignals'
 import { deriveIsAwaitingStream, useInitialization } from '@/app/[market]/develop/hooks/useInitialization'
 import { usePublishSnapshotCapture } from '@/app/[market]/develop/hooks/usePublishSnapshotCapture'
-import { broadcast as broadcastProcessingState, handle as handleProcessingState } from '@/app/[market]/develop/utils/iframeProcessingState'
+import { broadcast as broadcastProcessingState } from '@/app/[market]/develop/utils/iframeProcessingState'
 import { mutatesFiles } from '@/app/[market]/develop/utils/mutatesFiles'
 import { ProtectedRoute } from '@/components/auth'
 import ErrorBoundary from '@/components/ErrorBoundary'
@@ -96,7 +97,7 @@ import {
 } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
 import type { RuntimeErrorData } from '@/types/runtime-error'
-import { dispatch as dispatchBusEvent, registerTrackEventBus } from '@/utils/eventBus'
+import { registerTrackEventBus } from '@/utils/eventBus'
 import { logAiroHQEvent, logClickEvent, logImpressionEvent, setInstrumentationAppId } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
@@ -1056,391 +1057,30 @@ function DevelopPageContent() {
     return () => window.removeEventListener('eval-snapshot-trigger', handler)
   }, [triggerEvalSnapshot])
 
-  // Listen for messages from preview iframe
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      // Handle messages from iframe or from same window (for websocket events)
-      const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
-      const isFromIframe = iframe && event.source === iframe.contentWindow
-      const isFromSameWindow = event.source === window
-
-      if (!isFromIframe && !isFromSameWindow) return
-
-      if (dispatchBusEvent(event.data)) return
-
-      switch (event.data.type) {
-        case 'TEXT_UPDATED':
-          logger.info('develop-page.text-updated-from-iframe', { appId })
-          sendTextUpdate(event.data.data)
-          break
-        case 'TEXT_FIX_REQUESTED':
-          logger.info('develop-page.text-fix-requested-from-iframe', { appId })
-          sendTextFix(event.data.data)
-          break
-        case 'TEXT_FIX_ACCEPTED':
-          logger.info('develop-page.text-fix.accepted', {
-            appId,
-            oldLength: event.data.data?.oldLength,
-            newLength: event.data.data?.newLength,
-          })
-          break
-        case 'TEXT_FIX_REJECTED':
-          logger.info('develop-page.text-fix.rejected', {
-            appId,
-            oldLength: event.data.data?.oldLength,
-            newLength: event.data.data?.newLength,
-          })
-          break
-        case 'STYLE_UPDATED':
-          logger.info('develop-page.style-updated-from-iframe', { appId })
-          sendStyleUpdate(event.data.data)
-          break
-        case 'EDIT_WITH_AI':
-          if (useDevelopPageStore.getState().isMultiSelectEnabled && event.data.data?.selectionNumber != null) {
-            // Multi-select: iframe assigned the number, use it
-            addAiEditContext({ ...event.data.data, number: event.data.data.selectionNumber })
-          } else {
-            setAiEditContext(event.data.data)
-          }
-          useDevelopPageStore.getState().setActiveChatTab(ChatTab.CHAT)
-          logger.info('develop-page.ai-edit-requested', { appId })
-          break
-        case 'REMOVE_SELECTION_FROM_PREVIEW':
-          if (event.data.data?.number != null) {
-            useStreamingConversationStore.getState().removeAiEditContext(event.data.data.number)
-          }
-          break
-        case 'CLEAR_AI_EDIT_CONTEXT':
-          setAiEditContext(null)
-          break
-        case 'SELECTIONS_CLEARED_BY_NAVIGATION':
-          setAiEditContext(null)
-          useStreamingConversationStore.getState().clearAiEditContexts()
-          break
-        case 'QUICK_EDIT_SEND': {
-          const { prompt, selectionNumber } = event.data.data ?? {}
-          if (prompt) {
-            const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
-            let aiEditContext
-            if (selectionNumber != null) {
-              // Multi-select quick edit: send only this element's context, then clean it up
-              const store = useStreamingConversationStore.getState()
-              aiEditContext = store.aiEditContexts.find((c) => c.number === selectionNumber) ?? null
-              store.removeAiEditContext(selectionNumber)
-              if (iframe) postMessageToIframe(iframe, { type: 'REMOVE_SELECTION', data: { number: selectionNumber } })
-            } else {
-              aiEditContext = useStreamingConversationStore.getState().aiEditContext
-              setAiEditContext(null)
-              if (iframe) postMessageToIframe(iframe, { type: 'CLEAR_SELECTION' })
-            }
-            void ws.actions.send({ content: prompt, aiEditContext })
-            logger.info('develop-page.quick-edit-sent', { appId })
-          }
-          break
-        }
-        case 'REPLACE_IMAGE': {
-          const replaceImageContext = {
-            ...event.data.data,
-            isImageReplacement: true
-          }
-
-          logger.info('develop-page.image-replace-requested', {
-            appId,
-            imageType: event.data.data?.imageInfo?.type
-          })
-
-          // Set context and open the image manager modal
-          setAiEditContext(replaceImageContext)
-          setIsAssetManagerOpen(true)
-          break
-        }
-        case 'SCROLL_POSITION_UPDATE': {
-          // Handle real-time scroll position updates from iframe and store for restoration
-          const newScrollPos = {
-            x: event.data.scrollX || 0,
-            y: event.data.scrollY || 0
-          }
-          lastIframeState.current.scrollPosition = newScrollPos
-          break
-        }
-        case 'VISUAL_CONTEXT_RESPONSE':
-          // Handle visual context response which includes scroll position
-          if (event.data.context && event.data.context.scroll_position) {
-            lastIframeState.current.scrollPosition = event.data.context.scroll_position
-            lastIframeState.current.url = event.data.context.page
-          }
-          break
-        case 'URL_CHANGE':
-          // Handle URL changes in iframe (navigation)
-          lastIframeState.current.url = event.data.url
-          break
-        case 'MESSAGE_COMPLETE': {
-          // Capture message data now so the microtask uses a stable snapshot
-          // rather than reading store state that could shift before it runs.
-          const { messages: completedMessages } = useStreamingConversationStore.getState()
-          const completedMessage = completedMessages[completedMessages.length - 1]
-          const toolCallsAtCompletion = completedMessage?.role === 'assistant'
-            ? (completedMessage.toolCalls ?? [])
-            : []
-
-          scheduleMicrotask(() => {
-            const newPageRoute = toolCallsAtCompletion.length
-              ? extractNewPageRoute(toolCallsAtCompletion)
-              : null
-
-            if (newPageRoute) {
-              logger.info('develop-page.preview.navigate-to-new-page', { appId, route: newPageRoute })
-              lastIframeState.current.url = newPageRoute
-              lastIframeState.current.scrollPosition = { x: 0, y: 0 }
-              requestPreviewScreenshot()
-              navigatePreviewToRoute(newPageRoute)
-            } else {
-              handlePreviewRefresh({ lastIframeState })
-            }
-          })
-          break
-        }
-        case 'error-fix-request': {
-          // Auto-sent by AiroErrorBoundary on every caught error. Purely
-          // informational: we forward the payload to the agents' runtime-
-          // error buffer so the post-stream validator can pick it up on
-          // the next turn. The overlay itself is owned by the iframe.
-          if (!event.data.errorData) break
-          const errorData = event.data.errorData as RuntimeErrorData
-          logger.info('develop-page.error-fix-request', {
-            appId,
-            errorName: errorData.name,
-            errorMessage: errorData.message,
-            hasStack: !!errorData.stack,
-            hasComponentStack: !!errorData.componentStack,
-            cycleId: errorData.cycleId
-          })
-          // Fire-and-forget: a dropped POST just means the next turn won't
-          // auto-continue on this error; the user can still click "Ask
-          // Airo to Fix" on the iframe overlay.
-          void (async () => {
-            try {
-              const url = await buildDynamicApiUrl('runtime-errors', appId)
-              await agentFetch(url, {
-                method: 'POST',
-                siteId: appId,
-                body: JSON.stringify(errorData)
-              })
-            } catch (err) {
-              logger.warn('develop-page.runtime-error.forward.failed', {
-                appId,
-                error: err instanceof Error ? err.message : String(err)
-              })
-            }
-          })()
-          break
-        }
-        case 'error-platform-report': {
-          // Sent by AiroErrorBoundary when an error originated inside
-          // dev-tools platform code (top stack frame in /dev-tools/src|dist/).
-          // The overlay is suppressed iframe-side for these because the
-          // agent can't edit platform files. We log for Loki visibility
-          // but do NOT forward to the runtime-error buffer — otherwise
-          // the post-stream validator would hand the agent an error it
-          // cannot fix, wasting turns.
-          const raw = event.data.errorData as Partial<RuntimeErrorData> | undefined
-          if (!raw || typeof raw.message !== 'string' || typeof raw.name !== 'string') {
-            // Don't log the raw payload — it comes from the iframe and
-            // can carry large stack strings or PII-bearing error
-            // messages. Log a safe summary so regressions in the
-            // sender are still diagnosable.
-            logger.warn('develop-page.error-platform-report.malformed', {
-              appId,
-              receivedType: typeof raw,
-              receivedKeys: raw && typeof raw === 'object' ? Object.keys(raw as object).join(',') : undefined
-            })
-            break
-          }
-          logger.warn('develop-page.error-platform-report', {
-            appId,
-            errorName: raw.name,
-            errorMessage: raw.message,
-            hasStack: !!raw.stack,
-            hasComponentStack: !!raw.componentStack,
-            cycleId: raw.cycleId
-          })
-          break
-        }
-        case 'runtime-errors-cycle': {
-          // Auto-sent by the iframe's dev-tools client on every Vite HMR
-          // boundary and on module init. Announces that the preview has
-          // entered a new render generation; forward it to the server
-          // so the runtime-error buffer can evict entries from the
-          // superseded generation. This is the core defense against
-          // the "mid-turn transient error becomes a ghost" class of
-          // bug — see `agents/src/services/runtime-error-buffer.ts`.
-          const rawCycleId = (event.data as { cycleId?: unknown }).cycleId
-          if (typeof rawCycleId !== 'number' || !Number.isFinite(rawCycleId)) break
-          const cycleId = rawCycleId
-          void (async () => {
-            try {
-              const url = await buildDynamicApiUrl('runtime-errors/cycle', appId)
-              await agentFetch(url, {
-                method: 'POST',
-                siteId: appId,
-                body: JSON.stringify({ cycleId })
-              })
-            } catch (err) {
-              // Fire-and-forget: a dropped cycle POST means the buffer
-              // may briefly retain entries from a prior render. The
-              // next successful cycle POST (on the next HMR) evicts
-              // them.
-              logger.warn('develop-page.runtime-errors-cycle.forward.failed', {
-                appId,
-                cycleId,
-                error: err instanceof Error ? err.message : String(err)
-              })
-            }
-          })()
-          break
-        }
-        case 'error-fix-user-requested': {
-          if (!event.data.errorData) break
-          // The iframe overlay hides its button while the agent is
-          // processing, but a slow `AGENT_PROCESSING_STATE` broadcast
-          // could let a stray click through. Drop it rather than kicking
-          // off a concurrent chat send that would collide with the
-          // in-flight stream.
-          if (isProcessingRef.current) {
-            logger.info('develop-page.error-fix-user-requested.skipped-processing', { appId })
-            break
-          }
-          const errorData = event.data.errorData as RuntimeErrorData
-          logger.info('develop-page.error-fix-user-requested', {
-            appId,
-            errorName: errorData.name,
-            errorMessage: errorData.message,
-          })
-          sendUserRequestedFix(errorData)
-          break
-        }
-        case 'request-processing-state':
-          handleProcessingState('request-processing-state', iframe, isProcessingRef.current)
-          break
-        case 'build-page-request':
-          if (isProcessingRef.current) {
-            logger.info('develop-page.build-page-request.skipped-processing', { appId })
-            handleProcessingState('build-page-request', iframe, true)
-            break
-          }
-          if (event.data.pathToBuild) {
-            logger.info('develop-page.build-page-request', {
-              appId,
-              pathToBuild: event.data.pathToBuild
-            })
-            const messageContent = `The page at path ${event.data.pathToBuild} doesn't exist yet, please build it with appropriate content.`;
-            setInputValue(messageContent);
-            scheduleMicrotask(() => {
-              void ws.actions.send({
-                content: messageContent,
-                aiEditContext: null
-              })
-            })
-          }
-          break
-        case 'build-error-fix-request':
-          if (isProcessingRef.current) {
-            logger.info('develop-page.build-error-fix-request.skipped-processing', { appId })
-            break
-          }
-          // Handle build error fix requests from the publish alert
-          if (event.data.errorMessage && event.data.errorDetails) {
-            logger.info('develop-page.build-error-fix-request', {
-              appId,
-              errorMessage: event.data.errorMessage,
-              hasDetails: !!event.data.errorDetails,
-              exitCode: event.data.exitCode,
-            })
-
-            const messageContent = 'Please analyze and fix this publish failure.';
-            setInputValue(messageContent);
-            // Pass build error data directly via customContext (same pattern as runtime error handler)
-            scheduleMicrotask(() => {
-              void ws.actions.send({
-                content: messageContent,
-                aiEditContext: null,
-                isActionRequest: false,
-                customContext: {
-                  type: 'build_error',
-                  data: {
-                    error: event.data.errorMessage,
-                    details: event.data.errorDetails,
-                    exitCode: event.data.exitCode
-                  },
-                  persistence: 'ephemeral',
-                  source: 'publish-failure'
-                }
-              })
-            })
-          }
-          break
-        case 'SCREENSHOT_RESPONSE':
-          // Handle screenshot response from iframe
-          if (event.data.screenshot) {
-            handleScreenshotUpload(event.data.screenshot)
-          }
-          break
-        case 'VIEWPORT_SCREENSHOT_RESPONSE':
-          if (pendingPublishSnapshotRef.current) {
-            // PreviewPane handles the publish path; reset boolean via microtask
-            // so this handler's guard fires before the reset settles.
-            void Promise.resolve().then(() => { pendingPublishSnapshotRef.current = false })
-          } else if (event.data.screenshot) {
-            handleEvalViewportScreenshot(event.data.screenshot)
-          }
-          break
-        case 'OPEN_MEDIA_SLOT_DIALOG':
-          // Navigate the Media tab panel to the requested slot
-          if (event.data.slotName && appId) {
-            useMediaSlotDialogStore.getState().navigateToSlot(event.data.slotName)
-            const develop = useDevelopPageStore.getState()
-            develop.setActiveChatTab(ChatTab.MEDIAS)
-            if (develop.isMobile) {
-              develop.handleMobileModeChange(MobileMode.TOOLS)
-            }
-          }
-          break
-        case 'OPEN_IMAGE_EDITOR':
-          // Navigate the Media tab panel to the requested slot and open image editor
-          if (event.data.slotName && appId) {
-            useMediaSlotDialogStore.getState().navigateToSlot(event.data.slotName, { openEditor: true })
-            const develop = useDevelopPageStore.getState()
-            develop.setActiveChatTab(ChatTab.MEDIAS)
-            if (develop.isMobile) {
-              develop.handleMobileModeChange(MobileMode.TOOLS)
-            }
-          }
-          break
-        case 'IFRAME_READY':
-          sendEditModeMessage(isEditModeEnabled)
-          speechBridge.handleIframeReady()
-          break
-        case 'SPEECH_QUERY_SUPPORT':
-          speechBridge.broadcastSupport()
-          break
-        case 'SPEECH_START':
-          speechBridge.handleStart()
-          break
-        case 'SPEECH_STOP':
-          speechBridge.handleStop()
-          break
-        case 'AUTO_IMPORT_MEDIA_SLOT': {
-          const { imageUrl, devContext, imageAlt, imageType, openEditor } = event.data
-          if (!imageUrl || !appId) break
-          void handleAutoImportMediaSlot(imageUrl, devContext, imageAlt, imageType, openEditor)
-          break
-        }
-      }
-    }
-
-    window.addEventListener('message', handleMessage)
-    return () => window.removeEventListener('message', handleMessage)
-  }, [sendTextUpdate, sendTextFix, sendStyleUpdate, setAiEditContext, addAiEditContext, ws.actions.send, setInputValue, handleScreenshotUpload, handleEvalViewportScreenshot, setIsAssetManagerOpen, appId, scheduleMicrotask, sendEditModeMessage, isEditModeEnabled, handleAutoImportMediaSlot, sendUserRequestedFix, speechBridge])
+  // Listen for messages from preview iframe — all cross-iframe message
+  // types route through the typed eventBus inside this hook.
+  useDevToolsBusBindings({
+    appId,
+    isProcessingRef,
+    pendingPublishSnapshotRef,
+    lastIframeState,
+    sendTextUpdate,
+    sendTextFix,
+    sendStyleUpdate,
+    sendUserRequestedFix,
+    sendEditModeMessage,
+    isEditModeEnabled,
+    setAiEditContext,
+    addAiEditContext,
+    setIsAssetManagerOpen,
+    setInputValue,
+    scheduleMicrotask,
+    handleScreenshotUpload,
+    handleEvalViewportScreenshot,
+    handleAutoImportMediaSlot,
+    speechBridge,
+    wsSend: ws.actions.send,
+  })
   // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {

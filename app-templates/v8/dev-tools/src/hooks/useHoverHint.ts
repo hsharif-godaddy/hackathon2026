@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { safePostMessage, isOriginAllowed } from "../utils/postMessage";
+import { isOriginAllowed } from "../utils/postMessage";
+import { send } from "../utils/eventBus";
 import {
 	showSelectionOverlay,
 	clearSelectionOverlay,
@@ -53,7 +54,7 @@ export function useHoverHint(
 			clearSelectionOverlay();
 			selectedEl = null;
 			if (hadSelection && !isMultiSelectActive) {
-				safePostMessage(window.parent, { type: "CLEAR_AI_EDIT_CONTEXT" });
+				send({ type: "CLEAR_AI_EDIT_CONTEXT" });
 			}
 		};
 
@@ -140,7 +141,7 @@ export function useHoverHint(
 			clearSelection();
 			clearAllNumberedOverlays();
 			multiSelectElements.clear();
-			safePostMessage(window.parent, { type: "SELECTIONS_CLEARED_BY_NAVIGATION" });
+			send({ type: "SELECTIONS_CLEARED_BY_NAVIGATION" });
 		};
 		const origPushState = history.pushState.bind(history);
 		const origReplaceState = history.replaceState.bind(history);

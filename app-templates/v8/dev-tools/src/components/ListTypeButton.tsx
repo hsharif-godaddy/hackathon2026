@@ -3,10 +3,9 @@ import { List, ListOrdered } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HoverBarButton } from "./HoverBar";
 import { t } from "../utils/translations";
-import { safePostMessage } from "../utils/postMessage";
 import { addStyleEditListener, StyleMessageEventType } from "../utils/elementStyleListeners";
 import { extractDevContext, generatePreciseSelector, getElementClassName } from "../utils/element-helpers";
-import { trackEventBus } from "../utils/eventBus";
+import { send, trackEventBus } from "../utils/eventBus";
 
 enum ListType {
   DISC = "disc",
@@ -74,7 +73,7 @@ export default function ListTypeButton({ selectedElement, isOpen, onOpenChange }
       const devContext = extractDevContext(selectedElement);
       const preciseSelector = generatePreciseSelector(selectedElement);
 
-      safePostMessage(window.parent, {
+      send({
         type: StyleMessageEventType.UPDATED,
         data: {
           commitId,
