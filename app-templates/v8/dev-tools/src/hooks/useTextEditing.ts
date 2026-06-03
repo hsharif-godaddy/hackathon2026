@@ -164,8 +164,10 @@ export function useTextEditing(isEditModeActive: boolean) {
 
         cleanupOverlay();
         const overlay = createFixedOverlay(element);
-        overlay.textContent = newText;
-        overlayRef.current = overlay;
+        if (overlay) {
+          overlay.textContent = newText;
+          overlayRef.current = overlay;
+        }
         commitCleanup();
         return;
       }
@@ -222,13 +224,15 @@ export function useTextEditing(isEditModeActive: boolean) {
           : null;
         const source = parsed?.body.firstElementChild as HTMLElement | null;
         const overlay = createFixedOverlay(element);
-        if (source) {
-          safeSetInnerHtml(overlay, normalizeHtml(source.innerHTML));
-          mergeRootAttrsOntoOverlay(overlay, source);
-        } else {
-          overlay.textContent = newText;
+        if (overlay) {
+          if (source) {
+            safeSetInnerHtml(overlay, normalizeHtml(source.innerHTML));
+            mergeRootAttrsOntoOverlay(overlay, source);
+          } else {
+            overlay.textContent = newText;
+          }
+          overlayRef.current = overlay;
         }
-        overlayRef.current = overlay;
         commitCleanup();
       }
     },
@@ -309,9 +313,11 @@ export function useTextEditing(isEditModeActive: boolean) {
 
       cleanupOverlay();
       const overlay = createFixedOverlay(parent);
-      safeSetInnerHtml(overlay, parentInnerHtml);
-      overlayRef.current = overlay;
-      parent.style.visibility = "hidden";
+      if (overlay) {
+        safeSetInnerHtml(overlay, parentInnerHtml);
+        overlayRef.current = overlay;
+        parent.style.visibility = "hidden";
+      }
 
       commitCleanup();
     },

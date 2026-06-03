@@ -474,14 +474,17 @@ export function getComputedStyleMap(element: HTMLElement): Record<string, string
 
 // ── Overlay ──
 
-export function createFixedOverlay(source: HTMLElement): HTMLElement {
+export function createFixedOverlay(source: HTMLElement): HTMLElement | null {
   const overlay = source.cloneNode(false) as HTMLElement;
-  positionOverlay(overlay, source);
+  if (!positionOverlay(overlay, source)) return null;
   document.body.appendChild(overlay);
   return overlay;
 }
 
-function positionOverlay(overlay: HTMLElement, target: HTMLElement): void {
+function positionOverlay(overlay: HTMLElement, target: HTMLElement): boolean {
+  // A detached target returns an all-zero rect, which would park the overlay
+  // at the page origin. Bail out instead so the caller can skip overlaying.
+  if (!target.isConnected) return false;
   const rect = target.getBoundingClientRect();
   overlay.style.position = "absolute";
   overlay.style.top = (rect.top + window.scrollY) + "px";
@@ -494,6 +497,7 @@ function positionOverlay(overlay: HTMLElement, target: HTMLElement): void {
   overlay.style.textAlign = window.getComputedStyle(target).textAlign;
   overlay.setAttribute("data-dev-tools", "true");
   overlay.setAttribute("data-airo-overlay", "true");
+  return true;
 }
 
 /**

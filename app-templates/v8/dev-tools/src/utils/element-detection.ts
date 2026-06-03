@@ -167,12 +167,15 @@ export function isContentElement(element: HTMLElement): boolean {
   return isSmall || (hasFewChildren && hasDirectText);
 }
 
-/** Check if an element is inside the dev-tools overlay */
+/** Check whether dev-tools should ignore this element. Covers dev-tools chrome
+ *  itself plus any runtime UI that opts out via `data-airo-non-editable` (e.g.
+ *  the cookie consent banner, which is consent-state UI, not authored content). */
 export function isDevToolsElement(element: HTMLElement): boolean {
   return (
     !!element.closest("#dev-mode-overlay") ||
     !!element.closest("[data-dev-tools]") ||
     !!element.closest("[data-airo-dev-tools]") ||
+    !!element.closest("[data-airo-non-editable]") ||
     !!element.closest(".edit-mode-hover-bar") ||
     !!element.closest("[id^='ai-select-overlay']")
   );
