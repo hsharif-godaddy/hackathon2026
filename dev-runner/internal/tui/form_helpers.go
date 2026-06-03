@@ -68,7 +68,7 @@ func (m *Model) applyInlineForm(f *huh.Form) *huh.Form {
 // from the WindowSizeMsg handler so open modals/inline forms rewrap with the
 // new terminal width.
 func (m *Model) resizeForms() {
-	for _, f := range []*huh.Form{m.envForm, m.fixSelectorForm} {
+	for _, f := range []*huh.Form{m.envForm, m.fixSelectorForm, m.cleanPickerForm} {
 		m.applyInlineForm(f)
 	}
 	for _, f := range []*huh.Form{m.devSettingsForm, m.quitConfirmForm, m.settingsForm, m.e2ePickerForm, m.probePickerForm, m.probeCustomRunForm, m.probeEnvEditForm} {
@@ -115,6 +115,8 @@ func (m *Model) forwardToActiveForm(msg tea.Msg) tea.Cmd {
 		return m.updateEnvForm(msg)
 	case m.fixSelectorForm != nil:
 		return m.updateFixSelector(msg)
+	case m.cleanPickerForm != nil:
+		return m.updateCleanPicker(msg)
 	case m.e2ePickerForm != nil:
 		return m.updateE2EPicker(msg)
 	case m.probePickerForm != nil:

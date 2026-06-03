@@ -20,6 +20,7 @@ const (
 	ActionClearErrors
 	ActionRunE2E
 	ActionStopE2E
+	ActionCleanRestart
 	ActionExit
 )
 
@@ -47,6 +48,7 @@ func buildSettingsItems(cfg *config.Config) []SettingsItem {
 	items = append(items,
 		SettingsItem{Label: "Clear All Logs", Action: ActionClearLogs},
 		SettingsItem{Label: "Clear Error Alerts", Action: ActionClearErrors},
+		SettingsItem{Label: "Clean + Restart...", Action: ActionCleanRestart},
 		SettingsItem{Label: "Run E2E Tests...", Action: ActionRunE2E},
 		SettingsItem{Label: "Exit", Action: ActionExit},
 	)

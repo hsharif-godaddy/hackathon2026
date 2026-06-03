@@ -126,6 +126,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case spinner.TickMsg:
 		if m.phase == PhasePreflightChecking || m.phase == PhasePreflightFixing || m.phase == PhasePreflightVerifying ||
+			m.phase == PhasePreflightCleaning ||
 			m.e2ePickerStep == E2EPickerStepLoading || m.probeDiscoveryLoading {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
@@ -168,6 +169,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			hookCmd, hookDone := startHookRun(ctx, m.projectRoot, m.config.Hooks.PreStart)
 			m.hookDone = hookDone
 			cmds = append(cmds, hookCmd)
+		}
+
+	case cleanPickerOpenMsg:
+		// Init() emits this when starting in PhasePreflightCleanPicker.
+		// Mutations on the picker form must happen here, where m is mutable.
+		if m.phase == PhasePreflightCleanPicker {
+			cmds = append(cmds, m.initCleanPicker())
+		}
+
+	case cleanDoneMsg:
+		m.cleanRunning = false
+		m.cleanOutput = msg.Output
+		m.cleanErr = msg.Err
+		// On error, stay on PhasePreflightCleaning so the user sees the
+		// failure (renderCleaning surfaces it). The cleaning-phase key
+		// handler advances on Enter or quits on q. Auto-advancing here
+		// would silently move past a failed/partial clean and then the
+		// failure would be invisible — preflight checks tooling/env, not
+		// delete success, so a permission-denied RemoveAll or non-zero
+		// `make clean` would never resurface.
+		if msg.Err == nil {
+			cmds = append(cmds, m.advancePastClean())
 		}
 
 	case preflightFixDoneMsg:
@@ -430,7 +453,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseWheelMsg:
-		if m.phase >= PhasePreflightChecking && m.phase <= PhasePreflightVerifying {
+		if m.phase >= PhasePreflightChecking && m.phase <= PhasePreflightCleaning {
 			switch msg.Button {
 			case tea.MouseWheelUp:
 				m.preflightAutoFollow = false
@@ -506,7 +529,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// Keep preflight viewport in sync with current phase content
-	if m.phase >= PhasePreflightChecking && m.phase <= PhasePreflightVerifying {
+	if m.phase >= PhasePreflightChecking && m.phase <= PhasePreflightCleaning {
 		m.refreshPreflightViewport()
 	}
 
@@ -567,6 +590,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.preflightExpandPassing = !m.preflightExpandPassing
 			m.refreshPreflightViewport()
 			return nil
+		case key.Matches(msg, m.preflightKeys.Clean):
+			m.cleanPickerReturnPhase = PhasePreflightDashboard
+			m.phase = PhasePreflightCleanPicker
+			return m.initCleanPicker()
 		case key.Matches(msg, m.preflightKeys.Quit):
 			m.quitting = true
 			return tea.Quit
@@ -580,6 +607,45 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return tea.Quit
 		}
 		return m.updateFixSelector(msg)
+	}
+
+	if m.phase == PhasePreflightCleaning {
+		// While cleaning is in flight, swallow keys so the user can't
+		// abandon mid-removal. Once cleaning finishes with an error,
+		// renderCleaning shows the failure and waits for the user:
+		// Enter usually advances into preflight, q quits.
+		if m.cleanRunning {
+			return nil
+		}
+		switch {
+		case key.Matches(msg, m.preflightKeys.Quit):
+			m.quitting = true
+			return tea.Quit
+		case msg.String() == "enter":
+			// `dev-runner clean` (interactive, cleanOnly): user is done,
+			// quit. No dev session to advance to either way.
+			if m.cleanOnly {
+				m.quitting = true
+				return tea.Quit
+			}
+			// All other origins (dashboard, --clean / --clean-all
+			// startup, settings → "Clean + Restart") advance through
+			// preflight on Enter regardless of clean success. From
+			// settings the picker confirm already stopped the running
+			// processes, so there's no healthy environment left to
+			// preserve — advancePastClean re-runs preflight + hooks
+			// + restart.
+			return m.advancePastClean()
+		}
+		return nil
+	}
+
+	if m.phase == PhasePreflightCleanPicker {
+		if key.Matches(msg, m.preflightKeys.Quit) {
+			m.quitting = true
+			return tea.Quit
+		}
+		return m.updateCleanPicker(msg)
 	}
 
 	if m.phase == PhasePreflightEnvForm {
@@ -849,6 +915,15 @@ func (m *Model) executeSettingsAction(idx int) tea.Cmd {
 	case ActionStopE2E:
 		return m.stopE2ERun()
 
+	case ActionCleanRestart:
+		// Open the clean picker; the post-clean transition is determined
+		// by cleanPickerReturnPhase (PhaseRunning → stop processes, re-run
+		// hooks, restart). Cancel in the picker returns here without
+		// touching processes — they keep running.
+		m.cleanPickerReturnPhase = PhaseRunning
+		m.phase = PhasePreflightCleanPicker
+		return m.initCleanPicker()
+
 	case ActionExit:
 		m.quitting = true
 		return m.shutdownCmd()
@@ -988,6 +1063,10 @@ func (m *Model) refreshPreflightViewport() {
 		content = m.renderPreflightFixing()
 	case PhasePreflightVerifying:
 		content = m.renderPreflightVerifying()
+	case PhasePreflightCleanPicker:
+		content = m.renderCleanPicker()
+	case PhasePreflightCleaning:
+		content = m.renderCleaning()
 	}
 
 	savedOffset := m.preflightViewport.YOffset()

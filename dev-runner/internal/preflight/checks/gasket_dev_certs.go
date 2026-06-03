@@ -29,11 +29,12 @@ func (c *GasketDevCertsCheck) Run(_ context.Context, projectRoot string) preflig
 	for _, f := range requiredFiles {
 		if _, err := os.Stat(filepath.Join(certsDir, f)); err != nil {
 			return preflight.CheckResult{
-				Status:      preflight.StatusFail,
-				Name:        c.Name(),
-				Category:    c.Category(),
-				Message:     "Gasket dev certs not found -- run pnpm install: " + err.Error(),
-				InstallHint: "pnpm install",
+				Status:       preflight.StatusFail,
+				Name:         c.Name(),
+				Category:     c.Category(),
+				FixAvailable: true,
+				Message:      "Gasket dev certs not found: " + err.Error(),
+				InstallHint:  "Run the fixer to reinstall dependencies (pnpm install)",
 			}
 		}
 	}

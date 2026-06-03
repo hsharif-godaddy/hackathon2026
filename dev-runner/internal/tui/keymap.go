@@ -85,6 +85,7 @@ type PreflightDashboardKeyMap struct {
 	Fix    key.Binding
 	Skip   key.Binding
 	Expand key.Binding
+	Clean  key.Binding
 	Quit   key.Binding
 }
 
@@ -93,12 +94,13 @@ func NewPreflightDashboardKeyMap() PreflightDashboardKeyMap {
 		Fix:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("Enter", "fix")),
 		Skip:   key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "skip")),
 		Expand: key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "toggle passing")),
+		Clean:  key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "clean")),
 		Quit:   key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 	}
 }
 
 func (k PreflightDashboardKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Fix, k.Skip, k.Expand, k.Quit}
+	return []key.Binding{k.Fix, k.Skip, k.Expand, k.Clean, k.Quit}
 }
 
 func (k PreflightDashboardKeyMap) FullHelp() [][]key.Binding {

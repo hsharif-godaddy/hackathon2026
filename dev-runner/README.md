@@ -32,6 +32,33 @@ pnpm run dev
 cd dev-runner && make run
 ```
 
+### Cleaning generated state
+
+dev-runner can remove generated files, build artifacts, and caches it has accumulated. Same picker, five entry points (three CLI + two in-TUI):
+
+```bash
+pnpm run clean             # Interactive: opens the picker, then quits (no dev session)
+pnpm run dev --clean       # Opens the picker before preflight; on confirm continues into preflight + dev
+pnpm run dev --clean-all   # Skips the picker, removes every group, then continues into preflight + dev
+```
+
+Plus two in-TUI shortcuts: press `c` on the preflight dashboard, or open the settings menu with `s` and choose **"Clean + Restart..."** (works from the running phase, stops processes, runs the picker, re-runs preflight + hooks, restarts).
+
+Scripts/CI can still use the non-interactive CLI: `dev-runner clean --all`, `--build`, `--runtime`, `--env`, `--node-modules`, `--yes` / `-y`. Any flag opts out of the TUI; with no flags and no TTY, dev-runner falls back to the legacy `[y/N]` prompt with the legacy default scope (build + runtime + env).
+
+**Groups:**
+
+| Group              | Default in picker | Includes                                                                                       |
+| ------------------ | ----------------- | ---------------------------------------------------------------------------------------------- |
+| Build artifacts    | ✓ on              | Go service `dist/`, JS package `dist/`, `app/.next`, `.turbo/`, `*.tsbuildinfo`, Playwright artifacts, etc. |
+| Runtime data       | off               | `local-control-plane.db*`, `.dev-bms/` (preflight seed marker)                                 |
+| Env files & certs  | off               | `agents/.env*`, `app/.env*`, `image-search-service/certs/*`, `local-control-plane/.env`, etc.  |
+| node_modules       | ✓ on              | Every `node_modules/` under the project root (slow — needs `pnpm install` after)               |
+
+**CLI flags for `dev-runner clean`:** `--all`, `--build`, `--runtime`, `--env`, `--node-modules`, `--yes` / `-y`. With no group flag the legacy scope (build + runtime + env) is used.
+
+> **Note:** A `Workspace Build` preflight check guards against missing workspace `dist/` directories. Discovery is dynamic: walks `workspace:` deps from `app/` and `agents/` and keeps packages that have a `build` script and resolve consumers into `dist/`. If any are missing, the dashboard offers a fix that runs `pnpm exec turbo run build --filter=<each-closure-pkg>` — scoped to exactly that closure rather than full `pnpm build`, so the apps' production builds aren't pulled in. Turbo caches per package; repeat builds cache-hit in ~5s, cold build after `--clean-all` is ~30-60s. Normal startups skip the build entirely.
+
 ## Preflight Checks
 
 On startup, dev-runner runs a comprehensive set of preflight checks before launching processes. These validate that all required tools, environment configuration, and services are ready.
@@ -49,10 +76,10 @@ On startup, dev-runner runs a comprehensive set of preflight checks before launc
 3. **Fix Selection** — Inline checkbox list to choose which items to auto-fix (all selected by default)
 4. **Env Form** — Inline form to collect env configuration (GoCode auth method, API key, base URL, app auth type, AWS profile) when .env files need generation. `GoCode Auth: s2s` enables IAM JWT via AWS SSO (see GETTING_STARTED.md).
 5. **Fixing** — Runs selected fixers sequentially, re-verifies fixed items
-6. **Hooks** — Pre-start hooks (install, build)
+6. **Hooks** — Pre-start hooks (`direnv allow`, then `pnpm install`). Workspace-package builds are no longer a hook — they're an on-demand preflight fixer (see `Workspace Build` check)
 7. **Running** — Process manager with tabbed views
 
-**Dashboard keys:** `Enter` to select fixes, `s` to skip (warnings only), `q` to quit.
+**Dashboard keys:** `Enter` to select fixes, `s` to skip (warnings only), `c` to open the clean picker, `q` to quit.
 
 **Fix selector keys:** `space` to toggle, `a` to select all, `n` to deselect all, `enter` to confirm, `esc` to cancel.
 

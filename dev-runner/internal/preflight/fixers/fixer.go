@@ -7,11 +7,40 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 )
+
+// EnsurePnpmInstall runs `pnpm install` when node_modules is absent. Preflight
+// fixers run before the preStart `pnpm install` hook, so on a fresh clone the
+// store (and workspace-local binaries like turbo or playwright) won't exist
+// yet; fixers that shell out to those binaries call this first. A later
+// redundant install by the preStart hook is cheap (pnpm no-ops when the store
+// is current).
+//
+// Stat errors other than NotExist (permission denied, transient filesystem
+// failures) surface to the caller — silently treating them as "installed"
+// would leave downstream fixers blaming a missing binary on the wrong cause.
+func EnsurePnpmInstall(ctx context.Context, projectRoot string) error {
+	_, err := os.Stat(filepath.Join(projectRoot, "node_modules"))
+	if err == nil {
+		return nil
+	}
+	if !os.IsNotExist(err) {
+		return fmt.Errorf("stat node_modules: %w", err)
+	}
+	out, err := RunCommand(ctx, projectRoot, "pnpm", "install")
+	if err != nil {
+		if out != "" {
+			return fmt.Errorf("pnpm install: %w\n%s", err, out)
+		}
+		return fmt.Errorf("pnpm install: %w", err)
+	}
+	return nil
+}
 
 // RunCommand executes a command with explicit args and returns its combined output.
 // Callers must only pass trusted, hardcoded command names — never user input.

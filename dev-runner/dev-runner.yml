@@ -38,6 +38,21 @@ processes:
 
 hooks:
   preStart:
+    # DirenvCheck preflight is the actual gate for direnv state — it
+    # blocks `pnpm run dev` if direnv isn't installed or `.envrc` is
+    # blocked, since neither has an auto-fixer. By the time this hook
+    # runs, preflight has already passed: the binary exists and either
+    # the .envrc is already allowed, or the allow-state is unknown but
+    # benign.
+    #
+    # This hook re-asserts the trust on every dev start: cheap and
+    # idempotent on already-allowed `.envrc`, and clears any stale
+    # ".envrc has changed since last allow" state introduced by the
+    # post-clean-and-restart flow (settings → Clean + Restart) without
+    # making the user drop to a shell to re-allow.
+    - name: Authorize direnv
+      command: direnv allow
+      dir: .
     - name: Install dependencies
       command: pnpm install
       dir: .

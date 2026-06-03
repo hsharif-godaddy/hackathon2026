@@ -51,7 +51,8 @@ func (m Model) View() tea.View {
 		switch m.phase {
 		case PhasePreflightChecking, PhasePreflightDashboard,
 			PhasePreflightSelectFixes, PhasePreflightEnvForm,
-			PhasePreflightFixing, PhasePreflightVerifying:
+			PhasePreflightFixing, PhasePreflightVerifying,
+			PhasePreflightCleanPicker, PhasePreflightCleaning:
 			sections = append(sections, m.preflightViewport.View())
 		case PhaseHooks:
 			sections = append(sections, m.renderHookView())

@@ -17,6 +17,7 @@ import (
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/airo-ai-builder/dev-runner/internal/clean"
 	"github.com/airo-ai-builder/dev-runner/internal/config"
 	"github.com/airo-ai-builder/dev-runner/internal/e2e"
 	"github.com/airo-ai-builder/dev-runner/internal/hooks"
@@ -79,6 +80,8 @@ const (
 	PhasePreflightEnvForm
 	PhasePreflightFixing
 	PhasePreflightVerifying
+	PhasePreflightCleanPicker
+	PhasePreflightCleaning
 	PhaseHooks
 	PhaseRunning
 )
@@ -97,6 +100,18 @@ type preflightVerifyDoneMsg struct {
 }
 
 type preflightAutoAdvanceMsg struct{}
+
+// cleanDoneMsg is emitted once the goroutine running clean.RunWithStreams
+// returns. Output is the captured stdout+stderr for display.
+type cleanDoneMsg struct {
+	Output string
+	Err    error
+}
+
+// cleanPickerOpenMsg requests that the clean picker form be opened. Init()
+// emits this when starting in PhasePreflightCleanPicker so picker setup runs
+// inside Update where mutations on the model land.
+type cleanPickerOpenMsg struct{}
 
 // --- Model ---
 
@@ -165,6 +180,22 @@ type Model struct {
 	fixSelectorForm  *huh.Form
 	fixSelectorValue *[]int // indices into fixSelectorItems
 
+	// Clean picker / cleaning state. The return phase remembers where to go
+	// when the picker is aborted: dashboard if we got here via 'c', or the
+	// initial preflight check if we were launched with --clean.
+	//
+	// cleanOnly is set when dev-runner is invoked as `clean` standalone
+	// (interactive `pnpm run clean`): the post-clean transition is
+	// tea.Quit instead of advancing into preflight, and picker cancel
+	// also quits — there's no dev session to return to.
+	cleanPickerForm        *huh.Form
+	cleanPickerValue       *[]int // indices into the four clean groups
+	cleanPickerReturnPhase Phase
+	cleanRunning           bool
+	cleanOutput            string
+	cleanErr               error
+	cleanOnly              bool
+
 	// Inline env form state (huh-based)
 	envForm        *huh.Form
 	envFormBuilder *envFormBuilder
@@ -230,7 +261,16 @@ type Model struct {
 }
 
 // NewModel creates the initial model.
-func NewModel(cfg *config.Config, projectRoot string) Model {
+//
+//   - openCleanPicker (--clean): opens the picker before preflight.
+//   - cleanAllAtStartup (--clean-all): skips the picker and runs an All()
+//     clean through the TUI's cleaning phase (so the output isn't wiped
+//     by the alt-screen).
+//   - cleanOnly (`dev-runner clean`, interactive): opens the picker; on
+//     completion the program quits instead of advancing into preflight.
+//     Used by `pnpm run clean` so users get the same picker UI as the
+//     dev-time flows without launching a dev session.
+func NewModel(cfg *config.Config, projectRoot string, openCleanPicker, cleanAllAtStartup, cleanOnly bool) Model {
 	mgr := process.NewManager(cfg.Processes, projectRoot)
 
 	panes := make([]Pane, len(cfg.Processes))
@@ -266,44 +306,95 @@ func NewModel(cfg *config.Config, projectRoot string) Model {
 	probeMenu := newProbeMenu(probeRunner.ProbeDir, discoveryCache, 24)
 
 	return Model{
-		config:              cfg,
-		projectRoot:         projectRoot,
-		manager:             mgr,
-		panes:               panes,
-		activeTab:           0,
-		lastErrorCount:      make([]int, len(cfg.Processes)),
-		healthGeneration:    make([]int, len(cfg.Processes)),
-		mouseEnabled:        true,
-		bellAllowed:         true,
-		hookAutoFollow:      true,
-		hookViewport:        newSoftWrapViewport(80, 24),
-		help:                h,
-		spinner:             s,
-		fixProgress:         prog,
-		keys:                NewRunningKeyMap(),
-		searchKeys:          NewSearchKeyMap(),
-		preflightKeys:       NewPreflightDashboardKeyMap(),
-		searchInput:         ti,
-		settingsItems:       items,
-		phase:               PhasePreflightChecking,
-		preflightRunner:     buildPreflightRunner(projectRoot),
-		preflightViewport:   newSoftWrapViewport(80, 24),
-		preflightAutoFollow: true,
-		devSettingsPreset:   "free-trial",
-		controlPlaneBaseURL: controlPlaneBaseURL(cfg),
-		authType:            controlPlaneAuthType(projectRoot),
-		e2eRunner:           e2eRunner,
-		e2ePane:             e2ePane,
-		probeRunner:         probeRunner,
-		probePane:           probePane,
-		probeMenu:           probeMenu,
-		discoveryCache:      discoveryCache,
-		probeViewViewport:   newSoftWrapViewport(80, 24),
+		config:                 cfg,
+		projectRoot:            projectRoot,
+		manager:                mgr,
+		panes:                  panes,
+		activeTab:              0,
+		lastErrorCount:         make([]int, len(cfg.Processes)),
+		healthGeneration:       make([]int, len(cfg.Processes)),
+		mouseEnabled:           true,
+		bellAllowed:            true,
+		hookAutoFollow:         true,
+		hookViewport:           newSoftWrapViewport(80, 24),
+		help:                   h,
+		spinner:                s,
+		fixProgress:            prog,
+		keys:                   NewRunningKeyMap(),
+		searchKeys:             NewSearchKeyMap(),
+		preflightKeys:          NewPreflightDashboardKeyMap(),
+		searchInput:            ti,
+		settingsItems:          items,
+		phase:                  initialPhase(openCleanPicker, cleanAllAtStartup, cleanOnly),
+		cleanPickerReturnPhase: cleanPickerReturnFromStart(openCleanPicker, cleanAllAtStartup),
+		cleanRunning:           cleanAllAtStartup,
+		cleanOnly:              cleanOnly,
+		preflightRunner:        buildPreflightRunner(projectRoot),
+		preflightViewport:      newSoftWrapViewport(80, 24),
+		preflightAutoFollow:    true,
+		devSettingsPreset:      "free-trial",
+		controlPlaneBaseURL:    controlPlaneBaseURL(cfg),
+		authType:               controlPlaneAuthType(projectRoot),
+		e2eRunner:              e2eRunner,
+		e2ePane:                e2ePane,
+		probeRunner:            probeRunner,
+		probePane:              probePane,
+		probeMenu:              probeMenu,
+		discoveryCache:         discoveryCache,
+		probeViewViewport:      newSoftWrapViewport(80, 24),
 	}
 }
 
-// Init starts the TUI: run preflight checks first, then hooks, then processes.
+// initialPhase chooses the starting phase based on the dev-startup flags.
+// --clean-all jumps straight into cleaning; --clean and `clean` (cleanOnly)
+// open the picker first; otherwise we begin with preflight checks.
+func initialPhase(openCleanPicker, cleanAllAtStartup, cleanOnly bool) Phase {
+	switch {
+	case cleanAllAtStartup:
+		return PhasePreflightCleaning
+	case openCleanPicker || cleanOnly:
+		return PhasePreflightCleanPicker
+	}
+	return PhasePreflightChecking
+}
+
+// cleanPickerReturnFromStart returns the phase the clean flow should fall
+// back to after cleaning (or after a picker cancel). From --clean or
+// --clean-all we want to proceed with the initial preflight check; from
+// the dashboard 'c' key the route is set just before opening (so the
+// zero value here is a don't-care).
+func cleanPickerReturnFromStart(openCleanPicker, cleanAllAtStartup bool) Phase {
+	if openCleanPicker || cleanAllAtStartup {
+		return PhasePreflightChecking
+	}
+	return PhasePreflightDashboard
+}
+
+// CleanErr returns the error from the most recent clean operation, or
+// nil if no clean has run or it succeeded. Exposed so cleanOnly callers
+// (e.g. `dev-runner clean`) can propagate the failure into their
+// process exit code; the on-screen `✗ Clean failed: …` is informative
+// but not enough on its own — the flag-driven `clean.Run` path exits 1
+// on the same failure, so the interactive path needs to match.
+func (m Model) CleanErr() error { return m.cleanErr }
+
+// Init starts the TUI: typically run preflight checks first, then hooks,
+// then processes. With --clean we open the clean picker first; with
+// --clean-all we kick off an All() clean immediately, both routing the
+// post-clean transition through advancePastClean → preflight.
 func (m Model) Init() tea.Cmd {
+	if m.phase == PhasePreflightCleanPicker {
+		return tea.Batch(
+			m.tickCmd(),
+			m.spinner.Tick,
+			func() tea.Msg { return cleanPickerOpenMsg{} },
+		)
+	}
+	if m.phase == PhasePreflightCleaning {
+		// --clean-all startup: no running processes to stop, so the
+		// "stop first" arg is false.
+		return tea.Batch(m.tickCmd(), m.spinner.Tick, m.runClean(clean.All(), false))
+	}
 	runner := m.preflightRunner
 	projectRoot := m.projectRoot
 	return tea.Batch(
@@ -376,7 +467,8 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 					{Check: &checks.EvalProbeEnvCheck{}, Fixer: &fixers.EvalProbeEnvFixer{}},
 					{Check: &checks.EvalProbePlaywrightCheck{}, Fixer: &fixers.EvalProbePlaywrightFixer{}},
 					{Check: &checks.AWSSSOCheck{}, Fixer: &fixers.AWSSSOFixer{}},
-					{Check: &checks.GasketDevCertsCheck{}},
+					{Check: &checks.GasketDevCertsCheck{}, Fixer: &fixers.GasketDevCertsFixer{}},
+					{Check: &checks.WorkspaceBuildCheck{}, Fixer: &fixers.WorkspaceBuildFixer{}},
 					{Check: &checks.S2SCertsCheck{}, Fixer: &fixers.S2SCertsFixer{}},
 					{Check: &checks.AiroAppBuilderOAuthCheck{}, Fixer: &fixers.AiroAppBuilderOAuthFixer{}},
 					{Check: &checks.CommerceOAuthCheck{}, Fixer: &fixers.CommerceOAuthFixer{}},
