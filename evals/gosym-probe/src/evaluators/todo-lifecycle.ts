@@ -152,7 +152,18 @@ const CHECKLIST_SECTIONS: ChecklistSection[] = [
       { id: 'A1', question: 'Was todoList create_list called in this trace?', flagIf: 'No' },
       { id: 'A2', question: 'How many items did create_list put in the list?', flagIf: '0 or unknown' },
       { id: 'A3', question: 'How many distinct item IDs were passed to mark_done across all turns?', flagIf: 'Never — this is informational' },
-      { id: 'A4', question: 'Do the mark_done item IDs cover every item from create_list?', flagIf: 'No, Partial, or None' },
+      {
+        id: 'A4',
+        question:
+          'Do mark_done IDs cover every item from create_list (include add_items; exclude delete_items)? '
+          + 'PASS if: Yes; OR uncovered items were deferred (never mark_done/mark_undone/update_items; '
+          + 'no turn text showing work on that item) AND the user request was scoped to a subset of '
+          + 'the plan (e.g. homepage-only); OR uncovered items were never worked on (plan completion '
+          + 'is out of scope for A4). Answer: Yes, Deferred OK, or No.',
+        flagIf:
+          'any item that was worked on (mark_done/mark_undone/update_items on that ID, or explicit '
+          + 'work in trace) was never mark_done',
+      },
       { id: 'A5', question: 'Was mark_done ever called at all in this trace?', flagIf: 'No' },
     ],
   },

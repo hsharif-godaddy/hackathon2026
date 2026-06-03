@@ -25,7 +25,9 @@ export function buildWithExplicitNameScenario(
         assertion: 'positive',
       },
       {
-        description: 'All todoList items are marked complete in the database',
+        description:
+          'Every todoList item the agent worked on is marked complete; ' +
+          'deferred pending items are OK on this scoped homepage build',
         assertion: 'positive',
       },
     ],
