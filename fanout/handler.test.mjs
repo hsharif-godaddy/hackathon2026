@@ -15,7 +15,6 @@ let getCaseImpl = async () => null;
 let getCaseByExternalIdImpl = async () => null;
 let postNoteImpl = async () => {};
 let resolveCaseAsyncImpl = async () => null;
-let invokeInvestigatorImpl = async () => {};
 let postSlackMessageImpl = async () => {};
 let findIssueByFeedbackIdImpl = async () => null;
 let createIssueImpl = async () => ({ key: 'AABSP-1', id: '10000' });
@@ -23,19 +22,30 @@ let createIssueImpl = async () => ({ key: 'AABSP-1', id: '10000' });
 // `calls` is a stable object — beforeEach mutates `.length = 0` on each
 // array rather than reassigning `calls`, so the closures captured by the
 // `mock.module` named exports continue to write to the same arrays.
+//
+// Note: the investigator was removed from the fanout Lambda (hard-off), so
+// there is no `invoke` mock or counter here anymore.
 const calls = {
   postCase: [],
   getCase: [],
   getCaseByExternalId: [],
   postNote: [],
   resolveCase: [],
-  invoke: [],
   stateRead: [],
   stateWrite: [],
   slack: [],
   jiraFind: [],
   jiraCreate: [],
 };
+
+// Switchboard-stamped config that re-enables Jira tickets for ALL categories.
+// Default (no stamp) is issue/support OFF, feedback ON (rating < 7), so tests
+// exercising the issue/support Jira-create mechanics opt in via this value.
+const ENABLE_ALL_JIRA = JSON.stringify({
+  issue: true,
+  support: true,
+  feedback: { enabled: true, maxRating: 7 },
+});
 
 mock.module('@aws-sdk/client-s3', {
   namedExports: {
@@ -106,15 +116,6 @@ mock.module('./slack.mjs', {
   },
 });
 
-mock.module('./invoke-investigator.mjs', {
-  namedExports: {
-    invokeInvestigator: async (...args) => {
-      calls.invoke.push(args[0]);
-      return invokeInvestigatorImpl(...args);
-    },
-  },
-});
-
 mock.module('./jira-client.mjs', {
   namedExports: {
     findIssueByFeedbackId: async (...args) => {
@@ -128,10 +129,10 @@ mock.module('./jira-client.mjs', {
   },
 });
 
-// jira-mapping.mjs is a pure function with its own dedicated test file.
-// We don't mock it here — the handler test exercises the real builder so
-// regressions in label/summary shape would show up in the createIssue
-// payload assertions below.
+// jira-mapping.mjs and jira-eligibility.mjs are pure functions with their own
+// dedicated test files. We don't mock them here — the handler test exercises
+// the real builder + eligibility gate so regressions in label/summary shape or
+// eligibility semantics would show up in the createIssue payload assertions.
 
 const { handler } = await import('./handler.mjs');
 
@@ -157,6 +158,9 @@ const FEEDBACK_ROW = {
   // is ON so the bulk of fanout tests exercise the full flow; the
   // dedicated `fanout_via_lambda !== true` tests below override this.
   fanout_via_lambda: true,
+  // No `jira_eligibility_config` → Lambda applies its default: issue/support
+  // OFF, feedback ON (rating < 7). Tests needing issue/support Jira tickets
+  // stamp ENABLE_ALL_JIRA explicitly.
 };
 
 const S3_EVENT = {
@@ -199,7 +203,6 @@ beforeEach(() => {
   postNoteImpl = async () => {};
   resolveCaseAsyncImpl = async () => null;
   postSlackMessageImpl = async () => {};
-  invokeInvestigatorImpl = async () => {};
   findIssueByFeedbackIdImpl = async () => null;
   createIssueImpl = async () => ({ key: 'AABSP-1', id: '10000' });
 
@@ -214,12 +217,10 @@ beforeEach(() => {
   process.env.CRM_KEY_SECRET_ARN = '/Katana/Secrets/airobuilde/app/pre-test/AIRO_CLIENT_KEY';
   process.env.AIRO_SSO_ENDPOINT = 'https://sso.example.com/v1/secure/api/token';
   process.env.SLACK_WEBHOOK_SECRET_ARN = 'arn:aws:secretsmanager:us-west-2:111:secret:airo-fanout-slack-webhook';
-  process.env.INVESTIGATE_LAMBDA_FN = 'airo-investigator';
-  process.env.DEBUG_CONSOLE_BASE_URL = 'https://console.example.com';
   process.env.SALESFORCE_LIGHTNING_BASE = 'https://godaddy2.lightning.force.com';
 });
 
-await test('fresh path: opens case, writes state, posts Slack + kickoff note + invoke investigator', async () => {
+await test('fresh path (issue): opens case, writes state, posts Slack; NO kickoff note, NO Jira by default', async () => {
   // First readState (upfront dedup check) returns null; second readState
   // (post-postCase re-read for etag) returns the freshly-written lock so
   // the handler can perform the IfMatch crmCaseId update.
@@ -242,14 +243,16 @@ await test('fresh path: opens case, writes state, posts Slack + kickoff note + i
   await handler(S3_EVENT);
 
   // Implementation does TWO state reads on fresh path: upfront dedup check + post-postCase
-  // re-read for etag before writing crmCaseId. This deviates from the plan's stated `=== 1`
-  // assertion; the implementation logic is the spec, so we assert 2.
+  // re-read for etag before writing crmCaseId.
   assert.equal(calls.stateRead.length, 2);
   assert.equal(calls.stateWrite.length, 2);
   assert.equal(calls.postCase.length, 1);
   assert.equal(calls.slack.length, 1);
-  assert.equal(calls.postNote.length, 1);
-  assert.equal(calls.invoke.length, 1);
+  // Kickoff note removed with the investigator — no CRM note posted on fresh path.
+  assert.equal(calls.postNote.length, 0);
+  // issue category Jira is OFF by default → no find/create.
+  assert.equal(calls.jiraFind.length, 0);
+  assert.equal(calls.jiraCreate.length, 0);
   assert.equal(calls.postCase[0].body.externalSystemId, 'airo-cust-1-app-1-sub-1');
   // Contact fields — CMAPI requires contactPhone OR contactEmail (422 if both null).
   // Pin these so a regression (re-nulling) breaks CI before reaching prod.
@@ -267,17 +270,13 @@ await test('fresh path: opens case, writes state, posts Slack + kickoff note + i
     description: 'broken thing',
     followUp: true,
   });
-  // Triage-link enrichment: Slack call should carry the CRM case URL
-  // and Jira issue key so triagers can deep-link straight from the
-  // Slack message. CRM URL pattern is the Salesforce Lightning case
-  // page; Jira URL is the AABSP issue browse link. Investigation URL
-  // is intentionally not in enrichment (investigator posts its own
-  // deep-link as a CRM note + kickoff note carries it).
+  // Triage-link enrichment: CRM case link present (issue opens a case); Jira
+  // link absent because issue Jira is OFF by default.
   assert.ok(calls.slack[0].enrichment);
   assert.match(calls.slack[0].enrichment.crmCaseUrl, /\/lightning\/r\/Case\/.+\/view$/);
   assert.equal(calls.slack[0].enrichment.caseNumber, '00012345');
-  assert.equal(calls.slack[0].enrichment.jiraKey, 'AABSP-1');
-  assert.match(calls.slack[0].enrichment.jiraUrl, /\/browse\/AABSP-1$/);
+  assert.equal(calls.slack[0].enrichment.jiraKey, undefined);
+  assert.equal(calls.slack[0].enrichment.jiraUrl, undefined);
   // Sync path: no resolver poll, but one getCase call to fetch caseNumber
   // (POST response never includes caseNumber on either sync or async path).
   assert.equal(calls.resolveCase.length, 0);
@@ -330,9 +329,9 @@ await test('fresh path: async-mode postCase → resolver polls and materializes 
 });
 
 await test('fresh path: async-mode resolver miss → Slack still posts with no Case link, no crash', async () => {
-  // Resolver polls all 4 attempts and returns null (SF persistence took
-  // longer than ~3.5s budget). buildEnrichment should omit crmCaseUrl /
-  // caseNumber so buildTriageLinks renders only the Jira link; the rest
+  // Resolver polls all attempts and returns null (SF persistence took longer
+  // than the budget). With issue Jira OFF by default and no CRM link, the
+  // enrichment collapses to null — buildEnrichment returns null and the rest
   // of the Slack message remains intact (no thrown error).
   postCaseImpl = async () => ({
     caseId: null,
@@ -362,11 +361,10 @@ await test('fresh path: async-mode resolver miss → Slack still posts with no C
   assert.equal(calls.resolveCase.length, 1);
   // Slack still fired even with resolver miss
   assert.equal(calls.slack.length, 1);
-  // CRM enrichment fields absent → buildTriageLinks renders no Case link.
-  // Jira link still present from successful Jira mock.
+  // No CRM link (resolver miss) and no Jira link (issue default OFF).
   assert.equal(calls.slack[0].enrichment?.crmCaseUrl, undefined);
   assert.equal(calls.slack[0].enrichment?.caseNumber, undefined);
-  assert.equal(calls.slack[0].enrichment?.jiraKey, 'AABSP-1');
+  assert.equal(calls.slack[0].enrichment?.jiraKey, undefined);
 });
 
 await test('fresh path: sync-mode getCase failure leaves caseNumber null but Slack still posts with link', async () => {
@@ -403,7 +401,6 @@ await test('fresh path: sync-mode getCase failure leaves caseNumber null but Sla
 
   assert.equal(calls.getCase.length, 1, 'sync path attempted to fetch caseNumber');
   assert.equal(calls.slack.length, 1, 'Slack post not blocked by getCase failure');
-  assert.equal(calls.invoke.length, 1, 'investigator still invoked');
   // Salesforce link rendered (caseRecordId came from postCase), but no
   // caseNumber → buildTriageLinks renders plain `Case` not `Case #...`.
   assert.match(calls.slack[0].enrichment.crmCaseUrl, /\/lightning\/r\/Case\/500U900000TP4kYIAT\/view$/);
@@ -437,39 +434,14 @@ await test('fresh path: support category routes Slack with category=support and 
 
   assert.equal(calls.postCase.length, 1);
   assert.equal(calls.slack.length, 1);
-  assert.equal(calls.invoke.length, 1);
   assert.equal(calls.slack[0].category, 'support');
   assert.deepEqual(calls.slack[0].formData, {
     topics: ['Domain or DNS'],
     description: 'help with my domain',
     followUp: true,
   });
-  // Investigator payload mirrors the parquet category — pin it so a
-  // regression that drops the field doesn't go unnoticed.
-  assert.equal(calls.invoke[0].payload.category, 'support');
-});
-
-await test('fresh path: issue category passes category=issue to investigator', async () => {
-  let readCount = 0;
-  readStateImpl = async () => {
-    readCount += 1;
-    if (readCount === 1) return null;
-    return {
-      state: {
-        schemaVersion: 1,
-        submissionId: 'sub-1',
-        crmCaseId: null,
-        startedAt: Date.now(),
-        lastUpdatedAt: Date.now(),
-      },
-      etag: '"e-fresh"',
-    };
-  };
-  // Default fixture is already feedback_category: 'issue'.
-  await handler(S3_EVENT);
-
-  assert.equal(calls.invoke.length, 1);
-  assert.equal(calls.invoke[0].payload.category, 'issue');
+  // support Jira is OFF by default.
+  assert.equal(calls.jiraCreate.length, 0);
 });
 
 await test('exits cleanly when row.fanout_via_lambda === false (BFF/UI owns delivery)', async () => {
@@ -478,7 +450,6 @@ await test('exits cleanly when row.fanout_via_lambda === false (BFF/UI owns deli
   assert.equal(calls.stateRead.length, 0);
   assert.equal(calls.postCase.length, 0);
   assert.equal(calls.slack.length, 0);
-  assert.equal(calls.invoke.length, 0);
 });
 
 await test('exits cleanly when row.fanout_via_lambda is null/missing (legacy or failed flag lookup)', async () => {
@@ -490,7 +461,6 @@ await test('exits cleanly when row.fanout_via_lambda is null/missing (legacy or 
   assert.equal(calls.stateRead.length, 0);
   assert.equal(calls.postCase.length, 0);
   assert.equal(calls.slack.length, 0);
-  assert.equal(calls.invoke.length, 0);
 });
 
 await test('runs full flow when row.fanout_via_lambda === true', async () => {
@@ -517,10 +487,9 @@ await test('runs full flow when row.fanout_via_lambda === true', async () => {
 
   assert.equal(calls.postCase.length, 1);
   assert.equal(calls.slack.length, 1);
-  assert.equal(calls.invoke.length, 1);
 });
 
-await test('dedup hit within 60min: posts duplicate note + Slack + Jira; skips new CRM case + investigator', async () => {
+await test('dedup hit within 60min: posts duplicate note + Slack + Jira; skips new CRM case', async () => {
   const now = Date.now();
   readStateImpl = async () => ({
     state: {
@@ -533,39 +502,60 @@ await test('dedup hit within 60min: posts duplicate note + Slack + Jira; skips n
     etag: '"e1"',
   });
   getCaseImpl = async () => ({ caseRecordId: '500U900000TP4kYIAT', status: 'Open' });
-  // Jira: spam-click has unique feedback_id so search returns no match → create runs
+  // Jira: spam-click has unique feedback_id so search returns no match → create runs.
   findIssueByFeedbackIdImpl = async () => null;
+  // Enable issue-category Jira so the dedup-path Jira create is exercised.
+  parseFeedbackParquetImpl = async () => ({ ...FEEDBACK_ROW, jira_eligibility_config: ENABLE_ALL_JIRA });
 
   await handler(S3_EVENT);
 
   assert.equal(calls.getCase.length, 1);
   assert.equal(calls.postNote.length, 1, 'one duplicate note posted to existing case');
   assert.equal(calls.postCase.length, 0, 'no new CRM case opened on dedup hit');
-  assert.equal(calls.invoke.length, 0, 'investigator NOT invoked on dedup hit');
   assert.equal(calls.slack.length, 1, 'Slack still pings on dedup hit');
   assert.equal(calls.jiraCreate.length, 1, 'Jira ticket still created on dedup hit (eligibility-gated)');
   // Dedup-path Slack must carry the same triage-link enrichment as fresh
   // path: existing CRM case (reused) + new Jira ticket (one per click).
-  // CRM caseId comes from `existing.state.crmCaseId`, jiraKey from the
-  // freshly-created issue. A regression that drops either source would
-  // silently produce a Slack message missing the deep-links, defeating
-  // the whole point of the enrichment.
   assert.ok(calls.slack[0].enrichment, 'dedup Slack call has enrichment');
   assert.match(calls.slack[0].enrichment.crmCaseUrl, /\/lightning\/r\/Case\/.+\/view$/);
   // The dedup mock omits `caseNumber` from the live case object, so the
   // enrichment must NOT carry caseNumber — Slack falls back to plain `Case`.
-  // Asserts the fallback path explicitly so a regression that always sets
-  // caseNumber from `liveCase` would be caught.
   assert.equal(calls.slack[0].enrichment.caseNumber, undefined);
   assert.equal(calls.slack[0].enrichment.jiraKey, 'AABSP-1');
   assert.match(calls.slack[0].enrichment.jiraUrl, /\/browse\/AABSP-1$/);
-  // Dedup-path Jira create must carry the same s3Ref custom field as
-  // fresh path — pins the threading symmetry. A regression that drops
-  // s3Ref from handleDedupHit would silently lose traceability on every
-  // dedup-window duplicate ticket.
+  // Dedup-path Jira create must carry the same s3Ref custom field as fresh path.
   const dedupBody = calls.jiraCreate[0].body;
   const dedupS3Ref = dedupBody.fields.customfield_36259;
   assert.ok(typeof dedupS3Ref === 'string' && dedupS3Ref.startsWith('s3://'));
+});
+
+await test('dedup hit: eligibility comes from the NEW row config, not existing state (issue + no config → no Jira)', async () => {
+  // Pins "new-row's jira_eligibility_config decides eligibility" so a future
+  // refactor can't quietly read config off existing.state. Existing dedup
+  // state present; NEW row is issue category with NO config → default OFF →
+  // resolveJiraKey short-circuits before any Jira call. Duplicate note +
+  // Slack still fire (those aren't eligibility-gated).
+  const now = Date.now();
+  readStateImpl = async () => ({
+    state: {
+      schemaVersion: 1,
+      submissionId: 'old',
+      crmCaseId: '500U900000TP4kYIAT',
+      startedAt: now - 30 * 60 * 1000,
+      lastUpdatedAt: now - 30 * 60 * 1000,
+    },
+    etag: '"e1"',
+  });
+  getCaseImpl = async () => ({ caseRecordId: '500U900000TP4kYIAT', status: 'Open' });
+  // Default FEEDBACK_ROW: issue category, no jira_eligibility_config.
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.jiraFind.length, 0, 'no Jira find — issue default OFF on dedup path');
+  assert.equal(calls.jiraCreate.length, 0, 'no Jira create — eligibility from new row, not existing state');
+  assert.equal(calls.postNote.length, 1, 'duplicate note still posted');
+  assert.equal(calls.slack.length, 1, 'Slack still pings');
+  assert.equal(calls.postCase.length, 0, 'no new CRM case on dedup hit');
 });
 
 await test('stale state (case closed): falls through to fresh path', async () => {
@@ -586,7 +576,6 @@ await test('stale state (case closed): falls through to fresh path', async () =>
 
   assert.equal(calls.postCase.length, 1);
   assert.equal(calls.slack.length, 1);
-  assert.equal(calls.invoke.length, 1);
 });
 
 await test('expired window (>60min): treats as fresh, overwrites state', async () => {
@@ -605,7 +594,6 @@ await test('expired window (>60min): treats as fresh, overwrites state', async (
   await handler(S3_EVENT);
 
   assert.equal(calls.postCase.length, 1);
-  assert.equal(calls.invoke.length, 1);
 });
 
 // ---- Jira fanout tests ----
@@ -629,8 +617,9 @@ function freshReadStateImpl() {
   };
 }
 
-await test('jira: issue category → findIssueByFeedbackId then createIssue (Bug)', async () => {
+await test('jira: issue category with config enabled → findIssueByFeedbackId then createIssue (Bug)', async () => {
   readStateImpl = freshReadStateImpl();
+  parseFeedbackParquetImpl = async () => ({ ...FEEDBACK_ROW, jira_eligibility_config: ENABLE_ALL_JIRA });
 
   await handler(S3_EVENT);
 
@@ -645,12 +634,26 @@ await test('jira: issue category → findIssueByFeedbackId then createIssue (Bug
   assert.equal(calls.jiraCreate[0].body.fields.project.key, 'AABSP');
 });
 
-await test('jira: support category → createIssue called (SOS Support)', async () => {
+await test('jira: issue category WITHOUT config → no Jira ticket (default OFF)', async () => {
+  readStateImpl = freshReadStateImpl();
+  // Default FEEDBACK_ROW: issue category, no jira_eligibility_config.
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.jiraFind.length, 0, 'issue Jira find skipped by default');
+  assert.equal(calls.jiraCreate.length, 0, 'issue Jira create skipped by default');
+  // CRM + Slack still run for issue category.
+  assert.equal(calls.postCase.length, 1);
+  assert.equal(calls.slack.length, 1);
+});
+
+await test('jira: support category with config enabled → createIssue called (SOS Support)', async () => {
   readStateImpl = freshReadStateImpl();
   parseFeedbackParquetImpl = async () => ({
     ...FEEDBACK_ROW,
     feedback_category: 'support',
     feedback_text: 'help with my domain',
+    jira_eligibility_config: ENABLE_ALL_JIRA,
   });
 
   await handler(S3_EVENT);
@@ -660,7 +663,21 @@ await test('jira: support category → createIssue called (SOS Support)', async 
   assert.equal(calls.jiraCreate[0].body.fields.issuetype.name, 'SOS Support');
 });
 
-await test('jira: feedback rating=3 → Prod Feedback ticket with feedback-id label + Rating custom field', async () => {
+await test('jira: support category WITHOUT config → no Jira ticket (default OFF)', async () => {
+  readStateImpl = freshReadStateImpl();
+  parseFeedbackParquetImpl = async () => ({
+    ...FEEDBACK_ROW,
+    feedback_category: 'support',
+    feedback_text: 'help with my domain',
+  });
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.jiraFind.length, 0);
+  assert.equal(calls.jiraCreate.length, 0);
+});
+
+await test('jira: feedback rating=3 → Prod Feedback ticket with Feedback ID + Rating custom field (default ON)', async () => {
   readStateImpl = freshReadStateImpl();
   parseFeedbackParquetImpl = async () => ({
     ...FEEDBACK_ROW,
@@ -681,7 +698,8 @@ await test('jira: feedback rating=3 → Prod Feedback ticket with feedback-id la
 
 await test('jira: createIssue body carries S3 Object Reference custom field built from event bucket+key', async () => {
   readStateImpl = freshReadStateImpl();
-  parseFeedbackParquetImpl = async () => ({ ...FEEDBACK_ROW });
+  // feedback rating 2 → Jira ON by default; exercises s3Ref threading.
+  parseFeedbackParquetImpl = async () => ({ ...FEEDBACK_ROW, feedback_category: 'feedback', rating: 2 });
 
   await handler(S3_EVENT);
 
@@ -692,7 +710,7 @@ await test('jira: createIssue body carries S3 Object Reference custom field buil
   assert.ok(s3Ref.includes(S3_EVENT.Records[0].s3.object.key));
 });
 
-await test('downstream: feedback rating=7 → eligibility skip for Jira AND investigator AND CRM (Slack still runs)', async () => {
+await test('downstream: feedback rating=7 → Jira skip (boundary) AND CRM skip (Slack still runs)', async () => {
   readStateImpl = freshReadStateImpl();
   parseFeedbackParquetImpl = async () => ({
     ...FEEDBACK_ROW,
@@ -704,15 +722,13 @@ await test('downstream: feedback rating=7 → eligibility skip for Jira AND inve
 
   assert.equal(calls.jiraFind.length, 0);
   assert.equal(calls.jiraCreate.length, 0);
-  // Investigator shares same gate as Jira — happy NPS (top score) = no investigation
-  assert.equal(calls.invoke.length, 0);
   // CRM never opens cases for feedback category (NPS surveys ≠ issues)
   assert.equal(calls.postCase.length, 0, 'NPS feedback never opens CRM case');
   // Slack always runs regardless of category/rating (mirrors all signals)
   assert.equal(calls.slack.length, 1);
 });
 
-await test('downstream: feedback rating=5 → Jira + investigator run (mid-NPS now eligible), CRM still skipped', async () => {
+await test('downstream: feedback rating=5 → Jira runs (mid-NPS), CRM still skipped', async () => {
   readStateImpl = freshReadStateImpl();
   parseFeedbackParquetImpl = async () => ({
     ...FEEDBACK_ROW,
@@ -723,12 +739,11 @@ await test('downstream: feedback rating=5 → Jira + investigator run (mid-NPS n
   await handler(S3_EVENT);
 
   assert.equal(calls.jiraCreate.length, 1);
-  assert.equal(calls.invoke.length, 1);
   assert.equal(calls.postCase.length, 0, 'feedback rating=5 still does not open CRM case');
   assert.equal(calls.slack.length, 1);
 });
 
-await test('downstream: feedback rating=6 → Jira + investigator run (boundary, just below threshold)', async () => {
+await test('downstream: feedback rating=6 → Jira runs (boundary, just below threshold)', async () => {
   readStateImpl = freshReadStateImpl();
   parseFeedbackParquetImpl = async () => ({
     ...FEEDBACK_ROW,
@@ -739,11 +754,10 @@ await test('downstream: feedback rating=6 → Jira + investigator run (boundary,
   await handler(S3_EVENT);
 
   assert.equal(calls.jiraCreate.length, 1);
-  assert.equal(calls.invoke.length, 1);
   assert.equal(calls.postCase.length, 0, 'feedback rating=6 still does not open CRM case');
 });
 
-await test('downstream: feedback rating=null → eligibility skip for Jira AND investigator AND CRM', async () => {
+await test('downstream: feedback rating=null → Jira skip AND CRM skip', async () => {
   readStateImpl = freshReadStateImpl();
   parseFeedbackParquetImpl = async () => ({
     ...FEEDBACK_ROW,
@@ -755,7 +769,6 @@ await test('downstream: feedback rating=null → eligibility skip for Jira AND i
 
   assert.equal(calls.jiraFind.length, 0);
   assert.equal(calls.jiraCreate.length, 0);
-  assert.equal(calls.invoke.length, 0);
   assert.equal(calls.postCase.length, 0, 'NPS feedback never opens CRM case');
   assert.equal(calls.slack.length, 1);
 });
@@ -790,7 +803,7 @@ await test('crm: real customer (longer shopperId) on issue category → CRM open
   assert.equal(calls.postCase.length, 1, 'real customer should open CRM case');
 });
 
-await test('crm: feedback rating=2 (low NPS) → Jira + investigator run, CRM still SKIPPED (NPS never opens cases)', async () => {
+await test('crm: feedback rating=2 (low NPS) → Jira runs, CRM still SKIPPED (NPS never opens cases)', async () => {
   readStateImpl = freshReadStateImpl();
   parseFeedbackParquetImpl = async () => ({
     ...FEEDBACK_ROW,
@@ -800,9 +813,8 @@ await test('crm: feedback rating=2 (low NPS) → Jira + investigator run, CRM st
 
   await handler(S3_EVENT);
 
-  // Jira + investigator fire on rating < 7 (eligibility gate)
+  // Jira fires on rating < 7 (eligibility gate, default ON for feedback)
   assert.equal(calls.jiraCreate.length, 1);
-  assert.equal(calls.invoke.length, 1);
   // CRM does NOT — feedback category never opens a case regardless of rating
   assert.equal(calls.postCase.length, 0, 'feedback rating<7 still does not open CRM case');
   // Slack runs
@@ -812,6 +824,7 @@ await test('crm: feedback rating=2 (low NPS) → Jira + investigator run, CRM st
 await test('jira: existing issue → findIssueByFeedbackId returns key, createIssue skipped', async () => {
   readStateImpl = freshReadStateImpl();
   findIssueByFeedbackIdImpl = async () => 'AABSP-99';
+  parseFeedbackParquetImpl = async () => ({ ...FEEDBACK_ROW, jira_eligibility_config: ENABLE_ALL_JIRA });
 
   await handler(S3_EVENT);
 
@@ -819,16 +832,16 @@ await test('jira: existing issue → findIssueByFeedbackId returns key, createIs
   assert.equal(calls.jiraCreate.length, 0);
 });
 
-await test('jira: createIssue throws → handler still completes; CRM/Slack/invoke unaffected', async () => {
+await test('jira: createIssue throws → handler still completes; CRM/Slack unaffected', async () => {
   readStateImpl = freshReadStateImpl();
   createIssueImpl = async () => { throw new Error('jira 500'); };
+  parseFeedbackParquetImpl = async () => ({ ...FEEDBACK_ROW, jira_eligibility_config: ENABLE_ALL_JIRA });
 
   await handler(S3_EVENT);
 
   // Prior fanouts ran fully.
   assert.equal(calls.postCase.length, 1);
   assert.equal(calls.slack.length, 1);
-  assert.equal(calls.invoke.length, 1);
   // Jira attempted but failed.
   assert.equal(calls.jiraFind.length, 1);
   assert.equal(calls.jiraCreate.length, 1);
@@ -837,18 +850,21 @@ await test('jira: createIssue throws → handler still completes; CRM/Slack/invo
 await test('jira: findIssueByFeedbackId throws → handler still completes; createIssue not attempted', async () => {
   readStateImpl = freshReadStateImpl();
   findIssueByFeedbackIdImpl = async () => { throw new Error('jira 401'); };
+  parseFeedbackParquetImpl = async () => ({ ...FEEDBACK_ROW, jira_eligibility_config: ENABLE_ALL_JIRA });
 
   await handler(S3_EVENT);
 
   assert.equal(calls.postCase.length, 1);
   assert.equal(calls.slack.length, 1);
-  assert.equal(calls.invoke.length, 1);
   assert.equal(calls.jiraFind.length, 1);
   assert.equal(calls.jiraCreate.length, 0);
 });
 
 await test('jira: missing JIRA_CLOUD_ID env → degraded path skips find/create, Slack still posts', async () => {
   readStateImpl = freshReadStateImpl();
+  // Enable issue Jira so the handler reaches the JIRA_CLOUD_ID presence check
+  // (issue is OFF by default on this branch and would short-circuit earlier).
+  parseFeedbackParquetImpl = async () => ({ ...FEEDBACK_ROW, jira_eligibility_config: ENABLE_ALL_JIRA });
   const saved = process.env.JIRA_CLOUD_ID;
   delete process.env.JIRA_CLOUD_ID;
 
@@ -861,29 +877,23 @@ await test('jira: missing JIRA_CLOUD_ID env → degraded path skips find/create,
   // Misconfig short-circuits before any Jira call — no find, no create.
   assert.equal(calls.jiraFind.length, 0, 'find skipped when JIRA_CLOUD_ID unset');
   assert.equal(calls.jiraCreate.length, 0, 'create skipped when JIRA_CLOUD_ID unset');
-  // Slack/CRM/investigator continue uninterrupted.
+  // Slack/CRM continue uninterrupted.
   assert.equal(calls.slack.length, 1, 'Slack still pings on Jira misconfig');
   assert.equal(calls.postCase.length, 1, 'CRM still opens case on Jira misconfig');
-  assert.equal(calls.invoke.length, 1, 'investigator still invoked on Jira misconfig');
 });
 
-await test('crm: postCase throws (CMAPI 422 / 5xx) → handler still completes; Slack/invoke/Jira run with caseId=null', async () => {
+await test('crm: postCase throws (CMAPI 422 / 5xx) → handler still completes; Slack/Jira run with caseId=null', async () => {
   readStateImpl = freshReadStateImpl();
   postCaseImpl = async () => { throw new Error('CMAPI POST 422: missing contact info'); };
+  parseFeedbackParquetImpl = async () => ({ ...FEEDBACK_ROW, jira_eligibility_config: ENABLE_ALL_JIRA });
 
-  // Should not throw — bulkhead pattern matches Slack/Jira/investigator.
+  // Should not throw — bulkhead pattern matches Slack/Jira.
   await handler(S3_EVENT);
 
   assert.equal(calls.postCase.length, 1, 'postCase attempted once');
   assert.equal(calls.slack.length, 1, 'Slack still pings');
-  assert.equal(calls.invoke.length, 1, 'investigator still invoked');
   assert.equal(calls.jiraFind.length, 1, 'Jira still attempted');
-  // Investigator payload has no crmCaseId (no case was created).
-  const invokePayload = calls.invoke[0].payload;
-  assert.equal(invokePayload.crmCaseId, undefined);
-  assert.equal(invokePayload.crmCaseNumber, undefined);
-  // Kickoff note skipped because caseId is null.
-  // postNote was NOT called (no kickoff post when caseId null).
+  // No kickoff note (removed with the investigator), and none expected with caseId null.
   assert.equal(calls.postNote.length, 0);
 });
 
@@ -911,9 +921,8 @@ await test('crm: pre-POST guard hit → reuses existing case, skips postCase, re
     'https://godaddy2.lightning.force.com/lightning/r/Case/500U900000TeAPvIAN/view',
   );
   assert.equal(calls.slack[0].enrichment?.caseNumber, '00114462');
-  // Kickoff note still posted to the reused case
-  assert.equal(calls.postNote.length, 1);
-  assert.equal(calls.postNote[0].caseRecordId, '500U900000TeAPvIAN');
+  // Kickoff note removed with the investigator → no CRM note on the reused case.
+  assert.equal(calls.postNote.length, 0);
 });
 
 await test('crm: pre-POST guard error → logged, falls through to postCase as normal', async () => {

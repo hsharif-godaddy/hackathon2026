@@ -3,7 +3,7 @@
 # Lambda container image for Airo Builder feedback fan-out runner.
 #
 # Triggered by S3 ObjectCreated events on the feedback parquet bucket. Reads
-# the parquet row, fans out to Slack/CRM/investigator, and persists per-app
+# the parquet row, fans out to Slack/CRM/Jira, and persists per-app
 # state to S3. No long-lived secrets live in the image — CRM cert + Slack
 # webhook + Switchboard token are read from Secrets Manager at invoke time.
 #
@@ -26,7 +26,7 @@ COPY package.json ./
 # does not need an .npmrc bind-mount for Artifactory auth.
 RUN npm install --omit=dev --no-audit --no-fund
 COPY handler.mjs cert-loader.mjs crm-client.mjs crm-token.mjs \
-     invoke-investigator.mjs jira-client.mjs jira-mapping.mjs logger.mjs \
+     jira-client.mjs jira-mapping.mjs jira-eligibility.mjs logger.mjs \
      parquet-reader.mjs secret-cache.mjs slack.mjs slack-builders.mjs \
      slack-format.mjs state.mjs ./
 

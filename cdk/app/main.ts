@@ -129,29 +129,25 @@ async function main() {
   // once validated). The Lambda runs the airo-log-investigate skill on
   // demand; the bucket stores per-investigation state + reports.
   // Requires LambdaBaseEcrStack deployed + docker-mirror-lambda-base.yml run.
-  let investigatorStack: AiroInvestigatorStack | undefined;
   if (config.envName === 'dev' || config.envName === 'prod') {
-    investigatorStack = new AiroInvestigatorStack(app, 'AiroInvestigatorStack', { env });
+    new AiroInvestigatorStack(app, 'AiroInvestigatorStack', { env });
   }
 
   // Feedback Fanout Lambda — subscribes to FeedbackS3Stack's bucket, fans out
-  // submissions to Slack + CMAPI + invoke investigator. Gated on flag-disabled
-  // env var until cutover (see fanout/README.md). Same env gate as its deps
-  // (FeedbackS3Stack + AiroInvestigatorStack are dev/prod only).
-  if ((config.envName === 'dev' || config.envName === 'prod') && feedbackS3Stack && investigatorStack) {
+  // submissions to Slack + CMAPI + AABSP Jira. Gated on flag-disabled env var
+  // until cutover (see fanout/README.md). Same env gate as FeedbackS3Stack
+  // (dev/prod only).
+  if ((config.envName === 'dev' || config.envName === 'prod') && feedbackS3Stack) {
     const fanoutStack = new FeedbackFanoutStack(app, 'FeedbackFanoutStack', {
       env,
       feedbackBucketArn: feedbackS3Stack.feedbackBucket.bucketArn,
       feedbackBucketName: feedbackS3Stack.feedbackBucket.bucketName,
-      investigatorFunctionArn: investigatorStack.investigatorFn.functionArn,
-      investigatorFunctionName: investigatorStack.investigatorFn.functionName,
       crmCertSecretArn: config.crmCertSecretArn,
       crmKeySecretArn: config.crmKeySecretArn,
       crmBaseUrl: config.crmApiBase,
       ssoUrl: config.ssoEndpoint,
     });
     fanoutStack.addDependency(feedbackS3Stack);
-    fanoutStack.addDependency(investigatorStack);
   }
 
   // KMS key for encrypting the transactional events Kinesis stream.

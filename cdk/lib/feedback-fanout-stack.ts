@@ -29,8 +29,6 @@ import config from './config';
 interface FeedbackFanoutStackProps extends GDStackProps {
   feedbackBucketArn: string;
   feedbackBucketName: string;
-  investigatorFunctionArn: string;
-  investigatorFunctionName: string;
   /**
    * Katana-managed ASM secret PATH (not full ARN) for the airo client cert.
    * Used as the SecretId at runtime; IAM is granted with the wildcard ARN
@@ -50,7 +48,7 @@ interface FeedbackFanoutStackProps extends GDStackProps {
  *  - Lambda container image (airo-fanout-<env>) inside the GoDaddy VPC,
  *    invoked DIRECTLY by the BFF (`/api/feedback/s3-store` route)
  *    immediately after the parquet write. Reads the parquet row and fans
- *    out to Slack + CRM (CMAPI) + Jira (AABSP) + investigator Lambda.
+ *    out to Slack + CRM (CMAPI) + Jira (AABSP).
  *    There is NO S3 → Lambda trigger: GD's permissions boundary
  *    `GD-AWS-SSG-PB-DEFAULT` denies `s3:PutBucketNotification`, which
  *    CDK's BucketNotificationsHandler (and the EventBridge enable path)
@@ -73,8 +71,6 @@ interface FeedbackFanoutStackProps extends GDStackProps {
  *  - The feedback bucket from FeedbackS3Stack (passed as ARN+name strings
  *    and re-imported via `fromBucketAttributes` to avoid a cross-stack
  *    dependency cycle).
- *  - The investigator Lambda from AiroInvestigatorStack (ARN passed via
- *    props; narrow `lambda:InvokeFunction` grant only).
  *  - Katana-managed CRM cert + key secrets (CRM_CERT_SECRET_ARN /
  *    CRM_KEY_SECRET_ARN); IAM granted via wildcard ARN to tolerate ASM's
  *    random suffix.
@@ -219,7 +215,7 @@ export class FeedbackFanoutStack extends GDStack {
     // ---- Lambda (container image built from ../../fanout) ----
     this.fanoutFunction = new lambda.DockerImageFunction(this, `FanoutFunction${SUFFIX_PASCAL}`, {
       functionName: `airo-fanout-${config.envName}${SUFFIX_KEBAB}`,
-      description: 'Fans out feedback parquet writes to Slack, CRM, and the investigator Lambda',
+      description: 'Fans out feedback parquet writes to Slack, CRM, and AABSP Jira',
       // `assetName` is required by GDStagingStack (AppScopedStagingSynthesizer)
       // so gd-safeguard can route the image to a per-app ECR repo. Without it
       // CDK fails with "Assets synthesized with AppScopedStagingSynthesizer
@@ -243,7 +239,7 @@ export class FeedbackFanoutStack extends GDStack {
       memorySize: 512,
       timeout: cdk.Duration.seconds(60),
       // Cap concurrent fanout to protect downstream services (Slack, CRM,
-      // investigator Lambda) from a parquet-writer storm.
+      // Jira) from a parquet-writer storm.
       reservedConcurrentExecutions: 50,
       // Disable AWS Lambda async-invocation auto-retry. Default is 2 retries
       // which compounds non-idempotent side effects: each retry re-runs the
@@ -265,18 +261,11 @@ export class FeedbackFanoutStack extends GDStack {
       securityGroups: [lambdaSecurityGroup],
       environment: {
         FEEDBACK_BUCKET: feedbackBucket.bucketName,
-        // Pass the function name (not ARN) — invoke-investigator.mjs uses
-        // the InvokeCommand FunctionName field which accepts a name and
-        // looks up the ARN at invoke time.
-        INVESTIGATE_LAMBDA_FN: props.investigatorFunctionName,
         SLACK_WEBHOOK_SECRET_ARN: slackWebhookSecret.secretArn,
         CRM_CERT_SECRET_ARN: props.crmCertSecretArn,
         CRM_KEY_SECRET_ARN: props.crmKeySecretArn,
         CRM_BASE_URL: props.crmBaseUrl,
         AIRO_SSO_ENDPOINT: props.ssoUrl,
-        DEBUG_CONSOLE_BASE_URL: config.envName === 'prod'
-          ? 'https://console.airo-builder.godaddy.com'
-          : 'https://console.airo-builder.test-godaddy.com',
         // ---- Jira (AABSP) ----
         // Lambda's jira-client.mjs reads `{clientId, clientSecret}` from this
         // secret and mints an NSA OAuth 2.0 client_credentials bearer, then
@@ -386,13 +375,6 @@ export class FeedbackFanoutStack extends GDStack {
           'kms:ViaService': `secretsmanager.${cdk.Aws.REGION}.amazonaws.com`,
         },
       },
-    }));
-
-    // Async invoke of the investigator Lambda — narrow to the specific ARN.
-    this.fanoutFunction.addToRolePolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['lambda:InvokeFunction'],
-      resources: [props.investigatorFunctionArn],
     }));
 
     // ---- BFF invoke grant ----

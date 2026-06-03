@@ -11,9 +11,10 @@ import { S3Client } from '@aws-sdk/client-s3';
 
 const require = createRequire(import.meta.url);
 
-const { mockEncodeFeedbackParquet, mockCheckSwitchboardFlag, mockFetchCustomerProfile, mockGetToken } = vi.hoisted(() => ({
+const { mockEncodeFeedbackParquet, mockCheckSwitchboardFlag, mockCheckSwitchboardObject, mockFetchCustomerProfile, mockGetToken } = vi.hoisted(() => ({
   mockEncodeFeedbackParquet: vi.fn(),
   mockCheckSwitchboardFlag: vi.fn(),
+  mockCheckSwitchboardObject: vi.fn(),
   mockFetchCustomerProfile: vi.fn(),
   mockGetToken: vi.fn(),
 }));
@@ -88,6 +89,7 @@ vi.mock('@/lib/customer-auth', () => ({
 
 vi.mock('@/lib/switchboard/server', () => ({
   checkSwitchboardFlag: mockCheckSwitchboardFlag,
+  checkSwitchboardObject: mockCheckSwitchboardObject,
 }));
 
 function createRequest(body: Record<string, unknown>): NextRequest {
@@ -117,6 +119,10 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
     // Default: flag OFF — preserves today's parquet column shape for legacy
     // assertions. Cutover-specific tests override per-call.
     mockCheckSwitchboardFlag.mockResolvedValue(false);
+    // Default: no Jira-eligibility config object — Lambda applies its built-in
+    // default (issue/support OFF, feedback ON rating<7). Jira-specific tests
+    // override per-call.
+    mockCheckSwitchboardObject.mockResolvedValue(null);
     // Default: profile fetch succeeds with realistic values
     mockGetToken.mockResolvedValue('sso-token');
     mockFetchCustomerProfile.mockResolvedValue({
@@ -657,6 +663,62 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'feedback.store.s3.fanout_flag_lookup_failed',
         expect.objectContaining({ flag: 'appbuilder-fanout-via-lambda', error: 'boom' }),
+      );
+    });
+  });
+
+  describe('POST - jira_eligibility_config Switchboard value', function jiraEligibilityTests() {
+    it('should stamp the JSON setting as a canonical string into the parquet row', async function valuePresent() {
+      // Switchboard json-typed setting is surfaced as an object by the gasket
+      // plugin; the BFF re-serializes it to a canonical string for the column.
+      const cfg = { issue: true, support: false, feedback: { enabled: true, maxRating: 5 } };
+      mockCheckSwitchboardObject.mockResolvedValueOnce(cfg);
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+
+      await POST(createRequest({ app_id: 'app-123', feedback_text: 'test', consent_flag: null, rating: null }));
+
+      expect(mockCheckSwitchboardObject).toHaveBeenCalledWith('appbuilder-fanout-jira-eligibility', expect.anything());
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      // Round-trip (parse + deepEqual) rather than raw string equality so the
+      // contract isn't coupled to JSON.stringify key-insertion order.
+      expect(JSON.parse(record.jira_eligibility_config as string)).toEqual(cfg);
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'feedback.store.s3.jira_eligibility_flag',
+        expect.objectContaining({ flag: 'appbuilder-fanout-jira-eligibility', present: true }),
+      );
+    });
+
+    it('should stamp null when the Switchboard setting is absent/non-object (Lambda uses its default)', async function valueAbsent() {
+      mockCheckSwitchboardObject.mockResolvedValueOnce(null);
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+
+      await POST(createRequest({ app_id: 'app-123', feedback_text: 'test', consent_flag: null, rating: null }));
+
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.jira_eligibility_config == null).toBe(true);
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'feedback.store.s3.jira_eligibility_flag',
+        expect.objectContaining({ flag: 'appbuilder-fanout-jira-eligibility', present: false }),
+      );
+    });
+
+    it('should soft-default to null + warn when the lookup throws (submission still succeeds)', async function valueLookupFailure() {
+      // A Switchboard outage must not fail the submission — the Lambda falls
+      // back to its built-in default eligibility when the column is null.
+      mockCheckSwitchboardObject.mockRejectedValueOnce(new Error('sb-down'));
+      mockS3Send.mockResolvedValueOnce({});
+      const { POST } = await import('./route');
+
+      const response = await POST(createRequest({ app_id: 'app-123', feedback_text: 'test', consent_flag: null, rating: null }));
+      expect(response.status).toBe(200);
+
+      const record = await readParquetRow(mockS3Send.mock.calls[0][0].Body);
+      expect(record.jira_eligibility_config == null).toBe(true);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'feedback.store.s3.jira_eligibility_lookup_failed',
+        expect.objectContaining({ flag: 'appbuilder-fanout-jira-eligibility', error: 'sb-down' }),
       );
     });
   });

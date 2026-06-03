@@ -3,10 +3,10 @@ import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { parseFeedbackParquet } from './parquet-reader.mjs';
 import { readState, writeStateConditional } from './state.mjs';
 import { postCase, getCase, getCaseByExternalId, postNote, resolveCaseAsync } from './crm-client.mjs';
-import { invokeInvestigator } from './invoke-investigator.mjs';
 import { postSlackMessage } from './slack.mjs';
 import { findIssueByFeedbackId, createIssue } from './jira-client.mjs';
 import { buildJiraIssueBody, parseTopics } from './jira-mapping.mjs';
+import { shouldCreateJiraTicket } from './jira-eligibility.mjs';
 import { log } from './logger.mjs';
 
 const REGION = process.env.AWS_REGION ?? 'us-west-2';
@@ -115,23 +115,10 @@ function buildExternalSystemId(customerId, appId, submissionId) {
   return `airo-${customerId}-${appId ?? 'na'}-${submissionId}`;
 }
 
-function buildInvestigateUrl(customerId, appId) {
-  const base = process.env.DEBUG_CONSOLE_BASE_URL;
-  if (!base) return null;
-  const ctx = Buffer.from(JSON.stringify({ c: customerId, a: appId, t: 'investigate' }), 'utf-8').toString('base64url');
-  return `${base.replace(/\/$/, '')}/?ctx=${ctx}`;
-}
-
-function newInvestigationId() {
-  const ts = new Date().toISOString().slice(0, 10);
-  const r = Math.random().toString(36).slice(2, 10);
-  return `inv-${ts}-${r}`;
-}
-
 function crmConfig() {
   // crm-token.mjs reads CRM_CERT_SECRET_ARN / CRM_KEY_SECRET_ARN /
-  // AIRO_SSO_ENDPOINT from process.env directly (matches investigator
-  // pattern's mTLS via Node `https`). Only crmBaseUrl is plumbed here.
+  // AIRO_SSO_ENDPOINT from process.env directly (mTLS via Node `https`).
+  // Only crmBaseUrl is plumbed here.
   return {
     crmBaseUrl: process.env.CRM_BASE_URL,
   };
@@ -178,11 +165,11 @@ async function handleDedupHit({ existing, row, customerId, appId, submissionId, 
   }
 
   // Jira runs BEFORE Slack so the duplicate-Slack message can include the
-  // newly created AABSP ticket as a triage link. Eligibility-gated; each
-  // spam-click has a unique submissionId so the find-by-label search won't
-  // match a prior click — each eligible click creates its own ticket.
-  // Investigator stays off on dedup path — only NEW CRM case creation +
-  // investigator are suppressed; Slack/Jira still surface every submission.
+  // newly created AABSP ticket as a triage link. Eligibility-gated
+  // (shouldCreateJiraTicket); each spam-click has a unique submissionId so
+  // the find-by-Feedback-ID search won't match a prior click — each eligible
+  // click creates its own ticket. Only NEW CRM case creation is suppressed on
+  // the dedup path; Slack/Jira still surface every submission.
   const jiraKey = await resolveJiraKey({ row, submissionId, logPrefix: 'fanout.dedup.jira', s3Ref });
 
   // Slack always runs on dedup hit (mirrors fresh path) — every submission
@@ -256,13 +243,13 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
   }
 
   // CRM postCase — warn-not-throw, matches the bulkhead pattern used by
-  // every other downstream in this Lambda (Slack, kickoff note,
-  // investigator, Jira). A 4xx data error (e.g. CMAPI 422 "Missing Contact
-  // Information" when Profile API can't supply email/phone) won't be fixed
-  // by replay, so failing the whole handler → DLQ would just lose the
-  // other fanouts that are perfectly capable of running. A 5xx transient
-  // failure could be retried via AWS Lambda async, but that re-runs the
-  // ENTIRE handler — duplicating Slack/Jira/investigator on each retry.
+  // every other downstream in this Lambda (Slack, Jira). A 4xx data error
+  // (e.g. CMAPI 422 "Missing Contact Information" when Profile API can't
+  // supply email/phone) won't be fixed by replay, so failing the whole
+  // handler → DLQ would just lose the other fanouts that are perfectly
+  // capable of running. A 5xx transient failure could be retried via AWS
+  // Lambda async, but that re-runs the ENTIRE handler — duplicating
+  // Slack/Jira on each retry.
   // Both failure modes are better served by: log + continue, leave
   // caseId=null in state.json, let next submission within the dedup
   // window fall through to a fresh CRM attempt. Parquet is the source of
@@ -362,9 +349,9 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
     });
   }
 
-  // Persist crmCaseId IMMEDIATELY after CRM resolution, before Slack/Jira/
-  // investigator run. Tightens the dedup race window: if the handler errors
-  // mid-flight (Slack 5xx, Jira 401, investigator invoke fail) AWS will not
+  // Persist crmCaseId IMMEDIATELY after CRM resolution, before Slack/Jira
+  // run. Tightens the dedup race window: if the handler errors mid-flight
+  // (Slack 5xx, Jira 401, state-write race) AWS will not
   // retry under retryAttempts=0, but a manual DLQ replay or a spam-click
   // submission within DEDUP_WINDOW_MS will see the persisted caseId and
   // dedup-hit instead of opening a duplicate case.
@@ -388,19 +375,16 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
   // FEEDBACK_ID_CUSTOM_FIELD_ID); each spam-click within the dedup window
   // is a unique submissionId so each click → unique Feedback ID →
   // distinct ticket. Wrapped warn-not-throw inside `resolveJiraKey` so a
-  // Jira outage doesn't block Slack/investigator.
+  // Jira outage doesn't block Slack.
   const jiraKey = await resolveJiraKey({ row, submissionId, logPrefix: 'fanout.jira', s3Ref });
-
-  const investigateUrl = buildInvestigateUrl(customerId, appId);
-  const investigationId = newInvestigationId();
 
   // Slack delivery: builds the same Block Kit shape the UI used to build
   // (verbatim port in slack-builders.mjs / slack-format.mjs). Webhook URL
   // comes from a CDK-owned Secrets Manager secret; while unset the
-  // helper silently skips. Now enriched with triage links: CRM case in
-  // Salesforce Lightning, AABSP Jira issue, and AI investigation page.
-  // Each link rendered only when corresponding entity exists. Triagers
-  // can click straight from Slack to the right system.
+  // helper silently skips. Enriched with triage links: CRM case in
+  // Salesforce Lightning and the AABSP Jira issue. Each link rendered only
+  // when the corresponding entity exists. Triagers can click straight from
+  // Slack to the right system.
   try {
     await postSlackMessage({
       category: row.feedback_category,
@@ -413,69 +397,7 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
     log('warn', 'fanout.slack.failed', { error: err.message });
   }
 
-  if (caseId && investigateUrl) {
-    // Wording matches the legacy BFF (`/api/feedback/submit`) verbatim so
-    // support tooling that triages on this exact prefix continues to work.
-    try {
-      await postNote({
-        ...crmConfig(),
-        caseRecordId: caseId,
-        note: `AI investigation kicked off for this case (investigationId: ${investigationId}). Track progress: ${investigateUrl}`,
-      });
-    } catch (err) {
-      log('warn', 'fanout.kickoff.note_failed', { error: err.message });
-    }
-  }
-
-  // Investigator — same eligibility gate as Jira: issue + support always,
-  // NPS feedback only when rating < 7. Skips happy NPS submissions
-  // (rating >= 7) where there's no problem to investigate.
-  if (shouldFanoutDownstream(row)) {
-    try {
-      // Payload shape mirrors the legacy BFF
-      // (`app/src/lib/investigate/invoke.ts:InvestigatorInvokePayload`)
-      // verbatim so the investigator Lambda's input contract is unchanged.
-      // The S3 key bundle (stateKey/historyPrefix/resultKey/tracePrefix/
-      // eventsPrefix) tells the investigator where to write its state.json,
-      // history snapshots, terminal result.md, and per-step trace events
-      // inside the investigations bucket — without these the Lambda errors
-      // out on first state write.
-      const safeCustomerId = encodeURIComponent(customerId);
-      const safeAppId = encodeURIComponent(appId);
-      const activeBase = `active/${safeCustomerId}/${safeAppId}`;
-      await invokeInvestigator({
-        functionName: process.env.INVESTIGATE_LAMBDA_FN,
-        payload: {
-          investigationId,
-          appId,
-          customerId,
-          feedback: row.feedback_text ?? '',
-          fullstoryUrl: row.full_story_url ?? null,
-          timeWindow: null,
-          stateKey: `${activeBase}/state.json`,
-          resultKey: `${activeBase}/result.md`,
-          historyPrefix: `history/${safeCustomerId}/${safeAppId}/`,
-          tracePrefix: `${activeBase}/`,
-          eventsPrefix: `events/${safeCustomerId}/${safeAppId}/`,
-          source: 'feedback',
-          category: row.feedback_category,
-          ...(row.rating != null ? { rating: row.rating } : {}),
-          topics: parseTopics(row.feedback_topic_list),
-          ...(row.feedback_category === 'feedback' && row.consent_flag != null
-            ? { customerConsent: row.consent_flag === true }
-            : {}),
-          ...(caseId ? { crmCaseId: caseId } : {}),
-          ...(caseNumber ? { crmCaseNumber: caseNumber } : {}),
-        },
-      });
-    } catch (err) {
-      log('warn', 'fanout.invoke.failed', { error: err.message });
-    }
-  } else {
-    log('info', 'fanout.invoke.skipped', { reason: 'category/rating not eligible', category: row.feedback_category, rating: row.rating ?? null });
-  }
-
-  log('info', 'fanout.fresh.done', { customerId, appId, caseId, caseNumber, jiraKey, investigationId });
+  log('info', 'fanout.fresh.done', { customerId, appId, caseId, caseNumber, jiraKey });
 }
 
 /**
@@ -506,7 +428,7 @@ function isJiraAuthError(err) {
 }
 
 async function resolveJiraKey({ row, submissionId, logPrefix, s3Ref }) {
-  if (!shouldFanoutDownstream(row)) return null;
+  if (!shouldCreateJiraTicket(row)) return null;
 
   // NSA OAuth calls go through the api.atlassian.com gateway with the cloudId
   // in the path (NOT the tenant site URL — see jira-client.mjs). Build that
@@ -515,7 +437,7 @@ async function resolveJiraKey({ row, submissionId, logPrefix, s3Ref }) {
   // path: a missing cloudId would otherwise produce a fetch error like
   // "fetch failed: https://api.atlassian.com/ex/jira/undefined/..." which is
   // opaque to triagers staring at CloudWatch. Surface the misconfig as a
-  // distinct log line and bail to `null` so Slack/CRM/investigator continue.
+  // distinct log line and bail to `null` so Slack/CRM continue.
   const cloudId = process.env.JIRA_CLOUD_ID;
   if (!cloudId) {
     log('warn', `${logPrefix}.config_missing`, { reason: 'JIRA_CLOUD_ID not set', feedbackId: submissionId });
@@ -535,7 +457,7 @@ async function resolveJiraKey({ row, submissionId, logPrefix, s3Ref }) {
       feedbackId: submissionId,
     });
   } catch (err) {
-    log('warn', `${logPrefix}.find_failed`, { error: err.message, authError: isJiraAuthError(err), feedbackId: submissionId });
+    log('warn', `${logPrefix}.find_failed`, { errorName: err.name, error: err.message, authError: isJiraAuthError(err), feedbackId: submissionId });
     return null;
   }
   if (existing) {
@@ -548,7 +470,7 @@ async function resolveJiraKey({ row, submissionId, logPrefix, s3Ref }) {
     log('info', `${logPrefix}.created`, { issueKey: issue.key, feedbackId: submissionId });
     return issue.key ?? null;
   } catch (err) {
-    log('warn', `${logPrefix}.create_failed`, { error: err.message, authError: isJiraAuthError(err), feedbackId: submissionId });
+    log('warn', `${logPrefix}.create_failed`, { errorName: err.name, error: err.message, authError: isJiraAuthError(err), feedbackId: submissionId });
     return null;
   }
 }
@@ -561,13 +483,6 @@ async function resolveJiraKey({ row, submissionId, logPrefix, s3Ref }) {
  * base URL comes from `SALESFORCE_LIGHTNING_BASE` (set by CDK per env);
  * when unset, the CRM link is omitted entirely and the Slack message
  * still renders the rest of its contents.
- *
- * Note: investigation URL is intentionally NOT included — the
- * investigator already posts its own CRM case note with the deep link
- * (see `maybeAddCrmCaseNote` in `investigator/handler.mjs`), and the
- * kickoff note in handleFreshPath also surfaces it. Adding it to Slack
- * would be a third copy of the same link without a Slack-specific
- * triage value-add.
  */
 function buildEnrichment({ caseRecordId, caseNumber, jiraKey }) {
   const sfBase = process.env.SALESFORCE_LIGHTNING_BASE;
@@ -601,22 +516,6 @@ function buildEnrichment({ caseRecordId, caseNumber, jiraKey }) {
 }
 
 /**
- * Eligibility for downstream fanout (AABSP Jira ticket + investigator).
- *   - issue:    always
- *   - support:  always
- *   - feedback: only if rating != null && rating < 7
- *
- * Slack always runs (separate gating) because Slack mirrors all signals.
- * CRM gating lives in its own block (issue + support only).
- */
-function shouldFanoutDownstream(row) {
-  const cat = row.feedback_category;
-  if (cat === 'issue' || cat === 'support') return true;
-  if (cat === 'feedback' && row.rating != null && row.rating < 7) return true;
-  return false;
-}
-
-/**
  * Eligibility for opening a NEW CRM case.
  *   - issue:    always (real customers)
  *   - support:  always (real customers)
@@ -634,10 +533,10 @@ function shouldFanoutDownstream(row) {
  * defense-in-depth gate. Slack still runs for internal users (matches UI
  * legacy: Slack always pings); CRM is the only blocked downstream here.
  *
- * Distinct from `shouldFanoutDownstream` (which gates investigator + Jira)
- * because NPS rating < 7 still warrants AI investigation + Jira triage,
- * but should not flood the support queue with cases — survey ratings
- * aren't issues.
+ * Distinct from `shouldCreateJiraTicket` (jira-eligibility.mjs, which gates
+ * the AABSP Jira ticket): a customer may be eligible for a Jira triage ticket
+ * yet still not open a CRM case (e.g. feedback category never opens cases),
+ * so the two gates are intentionally separate.
  */
 function shouldOpenCrmCase(row) {
   if (typeof row.shopper_id === 'string' && row.shopper_id.length === 3) {

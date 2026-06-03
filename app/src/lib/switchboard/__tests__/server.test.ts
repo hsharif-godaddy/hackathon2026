@@ -18,7 +18,7 @@ vi.mock('../../../../gasket', () => ({
 }));
 
 import { logger } from '@/lib/request-context';
-import { checkSwitchboardFlag, checkSwitchboardValue } from '@/lib/switchboard/server';
+import { checkSwitchboardFlag, checkSwitchboardObject, checkSwitchboardValue } from '@/lib/switchboard/server';
 
 const req = { headers: new Headers() };
 
@@ -61,6 +61,70 @@ describe('switchboard server', () => {
       );
     });
 
+  });
+
+  describe('checkSwitchboardObject', () => {
+    it('returns the object value from the tree', async function returnsObjectFromSetting() {
+      const cfg = { issue: false, feedback: { enabled: true, maxRating: 7 } };
+      getSwitchboardConfig.mockResolvedValue({ 'some-flag': cfg });
+
+      await expect(checkSwitchboardObject('some-flag', req)).resolves.toEqual(cfg);
+      expect(getSwitchboardConfig).toHaveBeenCalledWith(req);
+    });
+
+    it('returns null when the key is missing', async function returnsNullWhenMissing() {
+      getSwitchboardConfig.mockResolvedValue({});
+      await expect(checkSwitchboardObject('x', req)).resolves.toBeNull();
+    });
+
+    it('returns null for non-object values (string / boolean / number / array)', async function returnsNullWhenWrongType() {
+      getSwitchboardConfig.mockResolvedValue({ x: 'str' });
+      await expect(checkSwitchboardObject('x', req)).resolves.toBeNull();
+      getSwitchboardConfig.mockResolvedValue({ x: true });
+      await expect(checkSwitchboardObject('x', req)).resolves.toBeNull();
+      getSwitchboardConfig.mockResolvedValue({ x: 7 });
+      await expect(checkSwitchboardObject('x', req)).resolves.toBeNull();
+      getSwitchboardConfig.mockResolvedValue({ x: [1, 2] });
+      await expect(checkSwitchboardObject('x', req)).resolves.toBeNull();
+    });
+
+    it('warns on present-but-wrong-type (misconfig discoverability), with actualType', async function warnsOnTypeMismatch() {
+      getSwitchboardConfig.mockResolvedValue({ x: 'str' });
+      await checkSwitchboardObject('x', req);
+      expect(logger.warn).toHaveBeenCalledWith(
+        'switchboard.server.object-type-mismatch',
+        expect.objectContaining({ featureName: 'x', actualType: 'string' }),
+      );
+      vi.clearAllMocks();
+      getSwitchboardConfig.mockResolvedValue({ x: [1, 2] });
+      await checkSwitchboardObject('x', req);
+      expect(logger.warn).toHaveBeenCalledWith(
+        'switchboard.server.object-type-mismatch',
+        expect.objectContaining({ featureName: 'x', actualType: 'array' }),
+      );
+    });
+
+    it('does NOT warn when the setting is absent (expected default path)', async function quietWhenAbsent() {
+      getSwitchboardConfig.mockResolvedValue({});
+      await checkSwitchboardObject('x', req);
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('throws and logs when the tree lookup fails', async function throwsOnError() {
+      getSwitchboardConfig.mockRejectedValue(new Error('boom'));
+      await expect(checkSwitchboardObject('x', req)).rejects.toThrow('boom');
+      expect(logger.error).toHaveBeenCalledWith(
+        'switchboard.server.lookup-error',
+        expect.objectContaining({ featureName: 'x', error: 'boom' }),
+      );
+    });
+
+    it('throws when the plugin returns no tree', async function throwsOnNullTree() {
+      getSwitchboardConfig.mockResolvedValue(null);
+      await expect(checkSwitchboardObject('x', req)).rejects.toThrow(
+        'gasket-plugin-switchboard returned no tree',
+      );
+    });
   });
 
   describe('checkSwitchboardFlag', () => {

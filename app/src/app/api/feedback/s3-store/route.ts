@@ -26,7 +26,7 @@ import type { FeedbackStorePayload } from '@/components/feedback/types';
 import { airoCertTokenService, fetchCustomerProfile } from '@/lib/crm';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
-import { checkSwitchboardFlag } from '@/lib/switchboard/server';
+import { checkSwitchboardFlag, checkSwitchboardObject } from '@/lib/switchboard/server';
 import { encodeFeedbackParquet } from './feedback-to-parquet';
 import type { FeedbackS3Record } from './types';
 
@@ -38,6 +38,17 @@ import type { FeedbackS3Record } from './types';
  * only the NPS path writes parquet today.
  */
 const FANOUT_VIA_LAMBDA_FLAG = 'appbuilder-fanout-via-lambda';
+
+/**
+ * Switchboard JSON-typed value gating which categories/ratings the fanout
+ * Lambda opens an AABSP Jira ticket for. Resolved at submit time as an object
+ * and stamped (re-serialized to a canonical JSON string) into the parquet row
+ * column `jira_eligibility_config`; the Lambda parses it and applies its
+ * built-in default (issue/support OFF, feedback ON, strict `rating < 7`) when
+ * the value is absent or malformed. Object shape:
+ *   {"issue":bool,"support":bool,"feedback":{"enabled":bool,"maxRating":number}}
+ */
+const JIRA_ELIGIBILITY_FLAG = 'appbuilder-fanout-jira-eligibility';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -288,20 +299,46 @@ export const POST = withCustomerAuth(async (
   // a system failure stamps `null` and the Lambda treats anything other than
   // strict `true` as no-op, so the BFF/UI legacy path remains the source of
   // truth. We log both success and failure so ops can verify rollout in Loki.
-  let fanoutViaLambda: boolean | null;
-  try {
-    fanoutViaLambda = await checkSwitchboardFlag(FANOUT_VIA_LAMBDA_FLAG, request);
-    logger.info('feedback.store.s3.fanout_flag', {
-      flag: FANOUT_VIA_LAMBDA_FLAG,
-      value: fanoutViaLambda,
-    });
-  } catch (err) {
-    fanoutViaLambda = null;
-    logger.warn('feedback.store.s3.fanout_flag_lookup_failed', {
-      flag: FANOUT_VIA_LAMBDA_FLAG,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
+  const fanoutViaLambda: boolean | null = await (async () => {
+    try {
+      const value = await checkSwitchboardFlag(FANOUT_VIA_LAMBDA_FLAG, request);
+      logger.info('feedback.store.s3.fanout_flag', { flag: FANOUT_VIA_LAMBDA_FLAG, value });
+      return value;
+    } catch (err) {
+      logger.warn('feedback.store.s3.fanout_flag_lookup_failed', {
+        flag: FANOUT_VIA_LAMBDA_FLAG,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  })();
+
+  // Resolve the Jira-ticket eligibility config from the JSON-typed Switchboard
+  // setting (the gasket plugin surfaces it as an already-parsed object). We
+  // re-serialize to a canonical JSON string for the parquet column, which the
+  // fanout Lambda parses and reconciles against its built-in default
+  // (issue/support OFF, feedback ON, strict rating < 7). `checkSwitchboardObject`
+  // returns null when the flag is absent or not an object → stamp null and the
+  // Lambda applies its default. Soft-default to null on any lookup failure so a
+  // Switchboard outage falls back to the Lambda baseline rather than failing
+  // the submission.
+  const jiraEligibilityConfig: string | null = await (async () => {
+    try {
+      const value = await checkSwitchboardObject(JIRA_ELIGIBILITY_FLAG, request);
+      const serialized = value ? JSON.stringify(value) : null;
+      logger.info('feedback.store.s3.jira_eligibility_flag', {
+        flag: JIRA_ELIGIBILITY_FLAG,
+        present: serialized != null,
+      });
+      return serialized;
+    } catch (err) {
+      logger.warn('feedback.store.s3.jira_eligibility_lookup_failed', {
+        flag: JIRA_ELIGIBILITY_FLAG,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  })();
 
   // Best-effort customer profile fetch — populates the legacy CRM case shape
   // (firstName/lastName/email/phone, not raw IDs). Profile API failure must
@@ -364,6 +401,7 @@ export const POST = withCustomerAuth(async (
     customer_email: profileEmail,
     customer_phone: profilePhone,
     fanout_via_lambda: fanoutViaLambda,
+    jira_eligibility_config: jiraEligibilityConfig,
   };
 
   let parquetBody: Buffer;

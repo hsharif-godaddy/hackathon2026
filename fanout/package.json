@@ -1,6 +1,6 @@
 {
   "name": "@airo/fanout-lambda",
-  "description": "S3-event-triggered Lambda that fans out feedback submissions to Slack, CRM, and the investigator Lambda",
+  "description": "S3-event-triggered Lambda that fans out feedback submissions to Slack, CRM, and AABSP Jira",
   "version": "0.1.0",
   "private": true,
   "type": "module",

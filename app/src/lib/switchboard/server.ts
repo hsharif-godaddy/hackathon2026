@@ -61,6 +61,35 @@ export async function checkSwitchboardValue(
 }
 
 /**
+ * Fetch a JSON-object-valued feature flag (Switchboard "json" single-value
+ * type). The gasket-plugin tree surfaces a json-typed setting as an
+ * already-parsed object, so this returns it directly. Returns `null` when the
+ * flag is absent or is not a plain object (boolean / string / number / array
+ * all yield `null`). Throws when the underlying tree lookup fails — callers
+ * that want a soft default should wrap in try/catch.
+ */
+export async function checkSwitchboardObject(
+  featureName: string,
+  req: SwitchboardRequest,
+): Promise<Record<string, unknown> | null> {
+  const value = await lookup(featureName, req);
+  if (value != null && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  // Present but wrong type (operator created the setting as String / Number /
+  // Boolean / JSON-array instead of a JSON object). Without this, a misconfig
+  // is indistinguishable from "setting absent" and can persist silently. Absent
+  // (undefined / null) is the expected default path and stays quiet.
+  if (value != null) {
+    logger.warn('switchboard.server.object-type-mismatch', {
+      featureName,
+      actualType: Array.isArray(value) ? 'array' : typeof value,
+    });
+  }
+  return null;
+}
+
+/**
  * Fetch a boolean feature flag. Returns `false` when absent or of a different
  * type. Throws when the underlying tree lookup fails - callers that want a
  * soft default should wrap in try/catch.
