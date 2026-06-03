@@ -240,6 +240,138 @@ describe('AtlasCrawlerAdapter', () => {
       await expect(promise).rejects.toMatchObject({ code: 'import_failed' });
     });
 
+    it('invokes onHomepageReady callback when poll returns homepage_ready', async () => {
+      const homeResult = createMockCrawlResult({
+        pages: [createMockPage({ url: 'https://example.com/', path: '/' })],
+      });
+      const fullResult = createMockCrawlResult();
+
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-hp', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'homepage_ready' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => homeResult });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => fullResult });
+
+      const onHomepageReady = vi.fn().mockResolvedValue(undefined);
+      const output = await adapter.crawlSite('https://example.com', {}, { onHomepageReady });
+
+      expect(onHomepageReady).toHaveBeenCalledTimes(1);
+      const homeOutput = onHomepageReady.mock.calls[0][0];
+      expect(homeOutput.pages).toHaveLength(1);
+      expect(homeOutput.pages[0]?.url).toBe('https://example.com/');
+      expect(output.pages).toHaveLength(3);
+    });
+
+    it('does not invoke callback when no callbacks provided (backward compat)', async () => {
+      const mockResult = createMockCrawlResult();
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-no-cb', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockResult });
+
+      const output = await adapter.crawlSite('https://example.com');
+      expect(output.pages).toHaveLength(3);
+    });
+
+    it('gracefully degrades when /home fetch fails — skips callback, continues to completed', async () => {
+      const fullResult = createMockCrawlResult();
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-home-fail', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'homepage_ready' }) });
+      fetchMock.mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'Internal error' });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => fullResult });
+
+      const onHomepageReady = vi.fn();
+      const output = await adapter.crawlSite('https://example.com', {}, { onHomepageReady });
+
+      expect(onHomepageReady).not.toHaveBeenCalled();
+      expect(output.pages).toHaveLength(3);
+    });
+
+    it('preserves screenshot on final results when /home fetch fails after homepage_ready', async () => {
+      const fullResult = createMockCrawlResult({
+        pages: [createMockPage({ url: 'https://example.com/', path: '/' })],
+        screenshots: [{ path: 'screenshots/job-ss/homepage.png', url: 'https://s3.example.com/shot.png', format: 'png', size: 1000, viewport: { width: 1440, height: 900 } }],
+      });
+
+      // Start → homepage_ready → /home 500 → completed → /results → screenshot fetch
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-ss', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'homepage_ready' }) });
+      fetchMock.mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'boom' });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => fullResult });
+      const pngBytes = Buffer.from('fake-screenshot-png');
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        arrayBuffer: async () => pngBytes.buffer,
+        headers: new Map([['content-type', 'image/png']]) as any,
+      });
+
+      const onHomepageReady = vi.fn();
+      const output = await adapter.crawlSite('https://example.com', {}, { onHomepageReady });
+
+      expect(onHomepageReady).not.toHaveBeenCalled();
+      expect(output.homepageScreenshotBase64).toContain('data:image/png;base64,');
+    });
+
+    it('invokes homepage callback at most once even if poll sees homepage_ready twice', async () => {
+      const homeResult = createMockCrawlResult({
+        pages: [createMockPage({ url: 'https://example.com/', path: '/' })],
+      });
+      const fullResult = createMockCrawlResult();
+
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-twice', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'homepage_ready' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => homeResult });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'homepage_ready' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => fullResult });
+
+      const onHomepageReady = vi.fn().mockResolvedValue(undefined);
+      await adapter.crawlSite('https://example.com', {}, { onHomepageReady });
+
+      expect(onHomepageReady).toHaveBeenCalledTimes(1);
+    });
+
+    it('propagates callback errors (does not swallow pipeline failures)', async () => {
+      const homeResult = createMockCrawlResult({
+        pages: [createMockPage({ url: 'https://example.com/', path: '/' })],
+      });
+
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-cb-err', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'homepage_ready' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => homeResult });
+
+      const onHomepageReady = vi.fn().mockRejectedValue(new Error('SiteAnalyzer crashed'));
+
+      await expect(adapter.crawlSite('https://example.com', {}, { onHomepageReady }))
+        .rejects.toThrow('SiteAnalyzer crashed');
+    });
+
+    it('fetches screenshot on final result when homepage_ready never fires (callback provided but unused)', async () => {
+      const mockResult = createMockCrawlResult({
+        pages: [createMockPage({ url: 'https://example.com/', path: '/' })],
+        screenshots: [{ path: 'screenshots/job-skip/homepage.png', url: 'https://s3.example.com/screenshot.png', format: 'png', size: 1000, viewport: { width: 1440, height: 900 } }],
+      });
+
+      // Goes straight to completed — no homepage_ready
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-no-hp', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockResult });
+      // Screenshot fetch
+      const pngBytes = Buffer.from('fake-png');
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        arrayBuffer: async () => pngBytes.buffer,
+        headers: new Map([['content-type', 'image/png']]) as any,
+      });
+
+      const onHomepageReady = vi.fn();
+      const output = await adapter.crawlSite('https://example.com', {}, { onHomepageReady });
+
+      expect(onHomepageReady).not.toHaveBeenCalled();
+      expect(output.homepageScreenshotBase64).toContain('data:image/png;base64,');
+    });
+
     it('propagates page metadata from Atlas pages to PageScrapeResult', async () => {
       const mockResult = createMockCrawlResult({
         pages: [

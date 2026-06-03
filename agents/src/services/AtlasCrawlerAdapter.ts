@@ -51,6 +51,10 @@ interface AtlasCrawlOptions {
   timeout?: number;
 }
 
+export interface CrawlCallbacks {
+  onHomepageReady?: (homeOutput: AtlasCrawlOutput) => Promise<void>;
+}
+
 export function mapAtlasForms(atlasForms: AtlasExtractedForm[] | undefined): FormHint[] {
   if (!atlasForms || atlasForms.length === 0) return [];
   return atlasForms.map(form => {
@@ -163,7 +167,7 @@ export class AtlasCrawlerAdapter {
     return parsed.data;
   }
 
-  async crawlSite(sourceUrl: string, options: AtlasCrawlOptions = {}): Promise<AtlasCrawlOutput> {
+  async crawlSite(sourceUrl: string, options: AtlasCrawlOptions = {}, callbacks?: CrawlCallbacks): Promise<AtlasCrawlOutput> {
     const maxPages = options.maxPages ?? MAX_PAGES_DEFAULT;
     const startTime = Date.now();
 
@@ -200,7 +204,7 @@ export class AtlasCrawlerAdapter {
       respectRobotsTxt: true,
     });
 
-    await this.pollUntilComplete(jobId);
+    const homepageCallbackFired = await this.pollUntilComplete(jobId, options.rootPath ?? '/', callbacks);
 
     const result = await this.fetchResults(jobId);
 
@@ -215,6 +219,11 @@ export class AtlasCrawlerAdapter {
     });
 
     const rootPath = options.rootPath ?? '/';
+    const skipScreenshot = homepageCallbackFired;
+    return this.mapCrawlResult(result, rootPath, skipScreenshot);
+  }
+
+  private async mapCrawlResult(result: AtlasCrawlResult, rootPath: string, skipScreenshot = false): Promise<AtlasCrawlOutput> {
     const sitemapData = this.mapToSitemapData(result, rootPath);
     const pages = this.mapToPageScrapeResults(result);
     const assets = this.mapToExtractedAssets(result);
@@ -223,15 +232,19 @@ export class AtlasCrawlerAdapter {
     const footerNavigation = this.mapFooterNavigation(result);
     const contact = this.mapContact(result);
     const atlasReportedScreenshot = !!result.screenshots?.[0]?.url;
-    const screenshotResult = await this.fetchHomepageScreenshot(result);
-    const homepageScreenshotBase64 = screenshotResult.data;
-    const homepageScreenshotFailureReason = screenshotResult.failureReason;
 
-    // Attach screenshot to homepage page so persistScrapedPages writes it to disk
-    if (homepageScreenshotBase64) {
-      const homepagePage = pages.find(p => isRebuildHomepage(p.url, rootPath));
-      if (homepagePage) {
-        homepagePage.screenshotBase64 = homepageScreenshotBase64;
+    let homepageScreenshotBase64: string | undefined;
+    let homepageScreenshotFailureReason: string | undefined;
+    if (!skipScreenshot) {
+      const screenshotResult = await this.fetchHomepageScreenshot(result);
+      homepageScreenshotBase64 = screenshotResult.data;
+      homepageScreenshotFailureReason = screenshotResult.failureReason;
+
+      if (homepageScreenshotBase64) {
+        const homepagePage = pages.find(p => isRebuildHomepage(p.url, rootPath));
+        if (homepagePage) {
+          homepagePage.screenshotBase64 = homepageScreenshotBase64;
+        }
       }
     }
 
@@ -277,12 +290,14 @@ export class AtlasCrawlerAdapter {
     return data.jobId;
   }
 
-  private async pollUntilComplete(jobId: string): Promise<void> {
+  private async pollUntilComplete(jobId: string, rootPath: string, callbacks?: CrawlCallbacks): Promise<boolean> {
     const startTime = Date.now();
     let pollCount = 0;
     let consecutiveAuthFailures = 0;
     let consecutiveTransportFailures = 0;
     let lastTransportError: string | null = null;
+    let homepageHandlerAttempted = false;
+    let homepageCallbackFired = false;
 
     while (Date.now() - startTime < POLL_MAX_TIMEOUT_MS) {
       // Sleep at end-of-iteration so the first poll is immediate; this trims
@@ -354,7 +369,31 @@ export class AtlasCrawlerAdapter {
           pollCount,
           elapsedMs: Date.now() - startTime,
         });
-        return;
+        return homepageCallbackFired;
+      }
+
+      if (job.status === 'homepage_ready' && !homepageHandlerAttempted && callbacks?.onHomepageReady) {
+        homepageHandlerAttempted = true;
+        let homeOutput: AtlasCrawlOutput;
+        try {
+          const homeResult = await this.fetchHomeResults(jobId);
+          homeOutput = await this.mapCrawlResult(homeResult, rootPath);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.warn('atlas-crawler-adapter.homepage-ready-fetch-failed', {
+            jobId,
+            error: message,
+          });
+          continue;
+        }
+        logger.info('atlas-crawler-adapter.homepage-ready-callback-start', { jobId, pollCount });
+        await callbacks.onHomepageReady(homeOutput);
+        homepageCallbackFired = true;
+        logger.info('atlas-crawler-adapter.homepage-ready-callback-complete', {
+          jobId,
+          pollCount,
+          elapsedMs: Date.now() - startTime,
+        });
       }
 
       if (job.status === 'failed') {
@@ -376,30 +415,29 @@ export class AtlasCrawlerAdapter {
   }
 
   private async fetchResults(jobId: string): Promise<AtlasCrawlResult> {
+    return this.fetchJobEndpoint(jobId, 'results');
+  }
+
+  private async fetchHomeResults(jobId: string): Promise<AtlasCrawlResult> {
+    return this.fetchJobEndpoint(jobId, 'home');
+  }
+
+  private async fetchJobEndpoint(jobId: string, endpoint: 'results' | 'home'): Promise<AtlasCrawlResult> {
     const auth = await this.getAuthHeader();
-    const response = await fetch(`${this.baseUrl}/jobs/${jobId}/results`, {
+    const response = await fetch(`${this.baseUrl}/jobs/${jobId}/${endpoint}`, {
       headers: { 'Authorization': auth },
       signal: AbortSignal.timeout(RESULTS_TIMEOUT_MS),
     });
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'unknown error');
-      throw new Error(`Atlas API fetch results failed (${String(response.status)}): ${errorText}`);
+      throw new Error(`Atlas API fetch ${endpoint} failed (${String(response.status)}): ${errorText}`);
     }
 
-    // Validate baseUrl/pages/assets/structure shape — these are accessed
-    // unconditionally downstream. Other top-level fields (state, visual,
-    // navigation, contact, images, screenshots) are validated where they're
-    // consumed via the existing static type. The cast bridges the schema's
-    // unknown[] arrays to AtlasCrawlResult's typed arrays — safe because the
-    // mappers validate per-element shape (e.g., page.url, asset.type) at the
-    // point of use.
-    const validated = await this.parseAtlasJson(response, AtlasCrawlResultSchema, 'results');
+    const validated = await this.parseAtlasJson(response, AtlasCrawlResultSchema, endpoint);
     const result = validated as unknown as AtlasCrawlResult;
 
-    // Don't log the screenshots array itself — Atlas returns presigned S3 URLs
-    // whose query string is effectively a credential.
-    logger.info('atlas-crawler-adapter.results-raw', {
+    logger.info(`atlas-crawler-adapter.${endpoint}-raw`, {
       jobId,
       hasScreenshots: !!result.screenshots,
       screenshotsCount: result.screenshots?.length ?? 0,

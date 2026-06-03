@@ -25,13 +25,37 @@ import {
 } from '../../types/rebuild.js';
 import { isRebuildHomepage, normalizeRebuildPageKey, rebuildUrlToSlug } from '../../utils/rebuild-utils.js';
 import { AssetProcessingService } from '../AssetProcessingService.js';
-import { AtlasCrawlerAdapter } from '../AtlasCrawlerAdapter.js';
+import { AtlasCrawlerAdapter, type AtlasCrawlOutput } from '../AtlasCrawlerAdapter.js';
 import { SitemapDiscoveryService, type SitemapDiscoveryResult } from '../SitemapDiscoveryService.js';
 
 const logger = Logger.create({ component: 'rebuild-orchestration-service' });
 
 /** Default page cap. Atlas + legacy both honor it. */
 export const MAX_PAGES_TO_SCRAPE = 20;
+
+/** Statuses where the user has progressed past style-question selection. The
+ *  homepage-first callback must never regress these back to 'style_questions'
+ *  (e.g. a submitStylePreferences that lands mid-analyze → 'building'). */
+const USER_ADVANCED_STATUSES: ReadonlySet<RebuildWorkflowState['status']> = new Set([
+  'building',
+  'review',
+  'complete',
+  'error',
+]);
+
+/**
+ * Return a copy of the sitemap with every non-homepage entry marked
+ * `scraped: false`. Used when the inner-page batch fails to persist so the
+ * selector doesn't advertise pages whose JSON never made it to disk.
+ */
+function withInnerPagesUnscraped(sitemap: SitemapData, rootPath: string): SitemapData {
+  return {
+    ...sitemap,
+    pages: sitemap.pages.map(p =>
+      isRebuildHomepage(p.url, rootPath) ? p : { ...p, scraped: false },
+    ),
+  };
+}
 
 function readRebuildScrapeBatchDelayMs(): number {
   const raw = process.env.REBUILD_SCRAPE_BATCH_DELAY_MS;
@@ -363,13 +387,80 @@ export class ScrapePipeline {
       logger.info('rebuild-orchestration.atlas-start', { appId, sourceUrl, rootPath: state.rootPath });
 
       const adapter = new AtlasCrawlerAdapter();
+      let homepageProcessed = false;
+
+      const onHomepageReady = async (homeOutput: AtlasCrawlOutput): Promise<void> => {
+        const homePage = homeOutput.pages.find(p => p.success && (p.sanitizedContent || p.html) && isRebuildHomepage(p.url, state.rootPath));
+        if (!homePage) {
+          logger.warn('rebuild-orchestration.homepage-ready-no-homepage', { appId, pageUrls: homeOutput.pages.map(p => p.url) });
+          return;
+        }
+
+        state.scrapingProgress.total = homeOutput.sitemapData.totalPages || 1;
+        state.scrapingProgress.completed = 1;
+        state.status = 'analyzing';
+        await this.deps.saveState(state);
+
+        await this.deps.persistScrapedPages(appId, [homePage], state.rootPath, homeOutput.navigation);
+        // Defensive: Atlas /home runs phase-1 discovery, so it may return the
+        // full sitemap — but only the homepage's JSON is on disk right now.
+        // Narrow to the homepage so the selector can't advertise inner pages
+        // before they're persisted in the post-crawl pass.
+        const homepageOnlyPages = homeOutput.sitemapData.pages.filter(p =>
+          isRebuildHomepage(p.url, state.rootPath),
+        );
+        await this.deps.saveSitemap({
+          ...homeOutput.sitemapData,
+          pages: homepageOnlyPages,
+          totalPages: homepageOnlyPages.length,
+        });
+
+        const analyzer = new SiteAnalyzerAgent();
+        await analyzer.initialize();
+        const screenshotForAnalysis = homeOutput.homepageScreenshotBase64 || homePage.screenshotBase64;
+        if (homeOutput.atlasReportedScreenshot && !screenshotForAnalysis) {
+          logger.warn('rebuild-orchestration.atlas-screenshot-missing', {
+            appId,
+            homepageUrl: homePage.url,
+            failureReason: homeOutput.homepageScreenshotFailureReason,
+          });
+        }
+        const homepageContent = homePage.sanitizedContent || homePage.html || '';
+        const aiMetadata = await analyzer.analyze(homepageContent, screenshotForAnalysis);
+        await analyzer.cleanup();
+
+        const finalMetadata = this.mergeSiteMetadata(aiMetadata, sourceUrl, homeOutput);
+        await this.deps.saveMetadata(finalMetadata);
+
+        await this.processHomepageAssets(appId, homePage, homeOutput);
+
+        // Re-read state before the final write. `analyze` above is the slow part
+        // (~10-15s), and a user submitStylePreferences can land during it, moving
+        // status to 'building'. Writing the captured closure `state` here would
+        // clobber that transition and drop their preferences. Only advance to
+        // 'style_questions' if the user hasn't already moved past it.
+        const freshState = await this.deps.getStatus(appId);
+        freshState.scrapingProgress.completed = 1;
+        if (!USER_ADVANCED_STATUSES.has(freshState.status)) {
+          freshState.status = 'style_questions';
+        }
+        freshState.updatedAt = new Date().toISOString();
+        await this.deps.saveState(freshState);
+
+        homepageProcessed = true;
+        logger.info('rebuild-orchestration.homepage-ready-processed', {
+          appId,
+          durationMs: Date.now() - rebuildPipelineStartedAt,
+        });
+      };
+
       const crawlOutput = await adapter.crawlSite(sourceUrl, {
         maxPages: MAX_PAGES_TO_SCRAPE,
         rootPath: state.rootPath,
-      });
+      }, { onHomepageReady });
 
-      // Sitemap and page-content lists must agree on rootPath, otherwise the
-      // rebuild page selector lists URLs whose JSON content was never written.
+      // --- Post-crawl: handle full results ---
+
       const inRootPath = (url: string): boolean => {
         if (state.rootPath === '/') return true;
         try {
@@ -388,7 +479,7 @@ export class ScrapePipeline {
       const filteredPages = crawlOutput.pages.filter(p => inRootPath(p.url));
       const successfulPages = filteredPages.filter(p => p.success && (p.sanitizedContent || p.html));
 
-      if (successfulPages.length === 0) {
+      if (successfulPages.length === 0 && !homepageProcessed) {
         throw createRebuildError('Failed to scrape any pages from the source website', {
           code: 'import_failed',
           userMessage: WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE,
@@ -396,101 +487,179 @@ export class ScrapePipeline {
         });
       }
 
-      state.scrapingProgress.total = successfulPages.length;
-      state.scrapingProgress.completed = successfulPages.length;
-      state.status = 'analyzing';
-      await this.deps.saveState(state);
-      await this.deps.saveSitemap(filteredSitemapData);
+      if (!homepageProcessed) {
+        // Fallback: homepage_ready never fired — run the full sequential path
+        state.scrapingProgress.total = successfulPages.length;
+        state.scrapingProgress.completed = successfulPages.length;
+        state.updatedAt = new Date().toISOString();
+        state.status = 'analyzing';
+        await this.deps.saveState(state);
 
-      logger.info('rebuild-orchestration.atlas-pages-scraped', {
-        appId,
-        totalPages: successfulPages.length,
-        blogPagesExcluded: crawlOutput.sitemapData.pages.length - nonBlogPages.length,
-      });
-
-      await this.deps.persistScrapedPages(appId, successfulPages, state.rootPath, crawlOutput.navigation);
-
-      const homePage = successfulPages.find(p => isRebuildHomepage(p.url, state.rootPath));
-      if (!homePage || (!homePage.sanitizedContent && !homePage.html)) {
-        logger.error('rebuild-orchestration.atlas-homepage-not-found', {
+        logger.info('rebuild-orchestration.atlas-pages-scraped', {
           appId,
-          rootPath: state.rootPath,
-          successfulUrls: successfulPages.map(p => p.url),
-          allPageUrls: crawlOutput.pages.map(p => ({ url: p.url, hasContent: !!p.sanitizedContent, hasHtml: !!p.html })),
+          totalPages: successfulPages.length,
+          blogPagesExcluded: crawlOutput.sitemapData.pages.length - nonBlogPages.length,
         });
-        throw createRebuildError('Homepage could not be analyzed from scraped pages', {
-          code: 'import_failed',
-          userMessage: WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE,
-          isUserFacingError: true,
-        });
-      }
 
-      const analyzer = new SiteAnalyzerAgent();
-      await analyzer.initialize();
+        await this.deps.persistScrapedPages(appId, successfulPages, state.rootPath, crawlOutput.navigation);
 
-      const screenshotForAnalysis = crawlOutput.homepageScreenshotBase64 || homePage.screenshotBase64;
-      if (crawlOutput.atlasReportedScreenshot && !screenshotForAnalysis) {
-        // Atlas told us it had a homepage screenshot but the fetch failed (timeout, 4xx,
-        // size cap). SiteAnalyzer and PagePromptAgent will run text-only — surface this
-        // here so the regression is visible in Loki rather than as silently lower quality.
-        // failureReason is propagated from the adapter so a single Loki query splits
-        // timeouts from 4xx from cap rejections.
-        logger.warn('rebuild-orchestration.atlas-screenshot-missing', {
-          appId,
-          homepageUrl: homePage.url,
-          failureReason: crawlOutput.homepageScreenshotFailureReason,
-        });
-      }
-      const homepageContent = homePage.sanitizedContent || homePage.html || '';
+        // Advertise pages in the sitemap only after their JSON is on disk, so
+        // the selector never lists a page whose file doesn't exist yet.
+        await this.deps.saveSitemap(filteredSitemapData);
 
-      const aiMetadata = await analyzer.analyze(homepageContent, screenshotForAnalysis);
-      await analyzer.cleanup();
-
-      // Merge: atlas design tokens + atlas-extracted contact/footerNav override AI guesses
-      const finalMetadata: SiteMetadata = {
-        ...aiMetadata,
-        sourceUrl,
-        siteType: aiMetadata.siteType,
-        colorPalette: crawlOutput.designTokenMetadata.colorPalette || aiMetadata.colorPalette,
-        typography: crawlOutput.designTokenMetadata.typography || aiMetadata.typography,
-        ...(crawlOutput.contact ? { contact: crawlOutput.contact } : {}),
-        ...(crawlOutput.footerNavigation.length > 0 ? { footerNavigation: crawlOutput.footerNavigation } : {}),
-      };
-
-      await this.deps.saveMetadata(finalMetadata);
-
-      const assetService = new AssetProcessingService(this.deps.appPath);
-      const { assetMap, homeAssets, otherAssets } = bucketAssetsForProcessing(crawlOutput.assets, homePage.url);
-
-      if (homeAssets.length > 0) {
-        const manifest = await assetService.process(homeAssets, assetMap, { merge: false });
-        try {
-          await assetService.analyzePageAssets(homePage.url, manifest);
-        } catch (error) {
-          logger.warn('rebuild-orchestration.atlas-home-assets-analysis-failed', {
+        const homePage = successfulPages.find(p => isRebuildHomepage(p.url, state.rootPath));
+        if (!homePage || (!homePage.sanitizedContent && !homePage.html)) {
+          logger.error('rebuild-orchestration.atlas-homepage-not-found', {
             appId,
-            error: error instanceof Error ? error.message : String(error),
+            rootPath: state.rootPath,
+            successfulUrls: successfulPages.map(p => p.url),
+            allPageUrls: crawlOutput.pages.map(p => ({ url: p.url, hasContent: !!p.sanitizedContent, hasHtml: !!p.html })),
+          });
+          throw createRebuildError('Homepage could not be analyzed from scraped pages', {
+            code: 'import_failed',
+            userMessage: WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE,
+            isUserFacingError: true,
           });
         }
-      }
 
-      if (otherAssets.length > 0) {
-        await assetService.process(otherAssets, assetMap, { merge: true });
-      }
+        const analyzer = new SiteAnalyzerAgent();
+        await analyzer.initialize();
+        const screenshotForAnalysis = crawlOutput.homepageScreenshotBase64 || homePage.screenshotBase64;
+        if (crawlOutput.atlasReportedScreenshot && !screenshotForAnalysis) {
+          logger.warn('rebuild-orchestration.atlas-screenshot-missing', {
+            appId,
+            homepageUrl: homePage.url,
+            failureReason: crawlOutput.homepageScreenshotFailureReason,
+          });
+        }
+        const homepageContent = homePage.sanitizedContent || homePage.html || '';
+        const aiMetadata = await analyzer.analyze(homepageContent, screenshotForAnalysis);
+        await analyzer.cleanup();
 
-      state.status = 'style_questions';
-      state.updatedAt = new Date().toISOString();
-      await this.deps.saveState(state);
+        const finalMetadata = this.mergeSiteMetadata(aiMetadata, sourceUrl, crawlOutput);
+        await this.deps.saveMetadata(finalMetadata);
+
+        await this.processHomepageAssets(appId, homePage, crawlOutput);
+
+        const assetService = new AssetProcessingService(this.deps.appPath);
+        const { assetMap, otherAssets } = bucketAssetsForProcessing(crawlOutput.assets, homePage.url);
+        if (otherAssets.length > 0) {
+          await assetService.process(otherAssets, assetMap, { merge: true });
+        }
+
+        state.status = 'style_questions';
+        state.updatedAt = new Date().toISOString();
+        await this.deps.saveState(state);
+      } else {
+        // Homepage already processed — persist inner pages and their assets.
+        const innerPages = successfulPages.filter(p => !isRebuildHomepage(p.url, state.rootPath));
+        const innerPagesPersisted = await this.tryPersistInnerPages(
+          appId, innerPages, state.rootPath, crawlOutput.navigation,
+        );
+
+        // Advertise inner pages in the sitemap only after their JSON is on disk.
+        // The homepage was already persisted + saved (homepage-only) in the
+        // callback; this widens the sitemap to the full page list. If the inner
+        // batch failed to persist, don't claim those pages are scraped — the
+        // selector would otherwise offer a build that throws on the missing file.
+        await this.deps.saveSitemap(
+          innerPagesPersisted
+            ? filteredSitemapData
+            : withInnerPagesUnscraped(filteredSitemapData, state.rootPath),
+        );
+
+        const homePage = successfulPages.find(p => isRebuildHomepage(p.url, state.rootPath));
+        const assetService = new AssetProcessingService(this.deps.appPath);
+        const { assetMap, otherAssets } = bucketAssetsForProcessing(crawlOutput.assets, homePage?.url ?? '');
+        if (otherAssets.length > 0) {
+          try {
+            await assetService.process(otherAssets, assetMap, { merge: true });
+          } catch (error) {
+            logger.error('rebuild-orchestration.inner-assets-process-failed', {
+              appId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
+        // Count only pages actually on disk: the homepage (persisted in the
+        // callback) plus the inner batch if it succeeded. A swallowed inner
+        // failure must not inflate progress to "all done".
+        const completedPages = innerPagesPersisted
+          ? successfulPages.length
+          : successfulPages.length - innerPages.length;
+
+        // Re-read state immediately before write to pick up any user-side
+        // transitions (e.g., submitStylePreferences → 'building') that landed
+        // while inner-page work was in flight.
+        const freshState = await this.deps.getStatus(appId);
+        freshState.scrapingProgress.total = successfulPages.length;
+        freshState.scrapingProgress.completed = completedPages;
+        freshState.updatedAt = new Date().toISOString();
+        await this.deps.saveState(freshState);
+      }
 
       logger.info('rebuild-orchestration.atlas-complete', {
         appId,
         pagesScraped: successfulPages.length,
         assetsFound: crawlOutput.assets.length,
+        homepageProcessedEarly: homepageProcessed,
         hasDesignTokens: Object.keys(crawlOutput.designTokenMetadata).length > 0,
         rebuildPipelineDurationMs: Date.now() - rebuildPipelineStartedAt,
       });
     } catch (error) {
       await this.recordError(appId, error, 'rebuild-orchestration.atlas-error');
+    }
+  }
+
+  /**
+   * Persist the inner-page batch, returning whether it succeeded. Failures are
+   * logged and swallowed (the homepage is already built, so the rebuild can
+   * proceed) but the boolean lets callers stop claiming the pages are scraped.
+   */
+  private async tryPersistInnerPages(
+    appId: string,
+    innerPages: PageScrapeResult[],
+    rootPath: string,
+    navigation: NavigationItem[],
+  ): Promise<boolean> {
+    if (innerPages.length === 0) return true;
+    try {
+      await this.deps.persistScrapedPages(appId, innerPages, rootPath, navigation);
+      return true;
+    } catch (error) {
+      logger.error('rebuild-orchestration.inner-pages-persist-failed', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }
+
+  private mergeSiteMetadata(aiMetadata: SiteMetadata, sourceUrl: string, output: AtlasCrawlOutput): SiteMetadata {
+    return {
+      ...aiMetadata,
+      sourceUrl,
+      colorPalette: output.designTokenMetadata.colorPalette || aiMetadata.colorPalette,
+      typography: output.designTokenMetadata.typography || aiMetadata.typography,
+      ...(output.contact ? { contact: output.contact } : {}),
+      ...(output.footerNavigation.length > 0 ? { footerNavigation: output.footerNavigation } : {}),
+    };
+  }
+
+  private async processHomepageAssets(appId: string, homePage: PageScrapeResult, output: AtlasCrawlOutput): Promise<void> {
+    const assetService = new AssetProcessingService(this.deps.appPath);
+    const { assetMap, homeAssets } = bucketAssetsForProcessing(output.assets, homePage.url);
+    if (homeAssets.length > 0) {
+      const manifest = await assetService.process(homeAssets, assetMap, { merge: false });
+      try {
+        await assetService.analyzePageAssets(homePage.url, manifest);
+      } catch (error) {
+        logger.warn('rebuild-orchestration.atlas-home-assets-analysis-failed', {
+          appId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   }
 
