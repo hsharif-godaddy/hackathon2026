@@ -51,7 +51,7 @@ The BFF is Next.js App Router API routes at `src/app/api/`. It does NOT just pro
 
 ### Slack feedback (Block Kit)
 
-Format in `src/lib/slack-webhook.ts` + `src/components/feedback/slackBuilders.ts`. Route `POST /api/slack-webhook/feedback` posts via server-only `SLACK_FEEDBACK_WEBHOOK_URL` (Katana secret on `airo build / website`). Without the env set, the route echoes block JSON back to the browser console for pasting into [Slack Block Kit Builder](https://app.slack.com/block-kit-builder) — strip the top-level `"text"` field for preview there.
+Block Kit format lives in `src/lib/slack-webhook.ts` + `src/components/feedback/slackBuilders.ts`. **Slack delivery for feedback is owned by the fanout Lambda** (`airo-fanout-<env>`), triggered by the parquet write — the UI no longer posts to Slack directly (the legacy `POST /api/slack-webhook/feedback` route was removed once `appbuilder-fanout-via-lambda` reached 100%). The shared builders are still used client-side by `logDevFeedbackBlockMessage` to echo the Block Kit payload to the local-dev console for pasting into [Slack Block Kit Builder](https://app.slack.com/block-kit-builder) — strip the top-level `"text"` field for preview there.
 
 ### Tiered Auth Levels
 
@@ -88,7 +88,7 @@ Local dev inherits the Switchboard Reader dev grant when `AWS_PROFILE=airobuild-
 | Flag | Default | Purpose | Env |
 | ---- | ------- | ------- | --- |
 | `appbuilder-crm-case-create` | `false` | Gates direct CRM case creation from the feedback form (legacy path, superseded by `appbuilder-fanout-via-lambda`) | dev, test, prod |
-| `appbuilder-fanout-via-lambda` | `false` | Gates the per-submission fanout Lambda (`airo-fanout-<env>`) for issue/support/feedback. When ON, the BFF only writes parquet to S3 and async-invokes the Lambda, which owns Slack + CRM (issue/support) + AiroInvestigator (issue/support, feedback rating<5) + AABSP Jira (issue/support, feedback rating<5). When OFF, the legacy UI path runs (Slack + companion-hub + `/api/crm/case`). Must be registered in dev, test, and prod Switchboard before flipping on. | dev, test, prod |
+| `appbuilder-fanout-via-lambda` | `false` | Gates the per-submission fanout Lambda (`airo-fanout-<env>`) for issue/support/feedback. The BFF writes parquet to S3 and async-invokes the Lambda, which owns Slack + CRM (issue/support) + AiroInvestigator (issue/support, feedback rating<7) + AABSP Jira (issue/support, feedback rating<7). **Now a server-side kill switch only** — at 100% the UI legacy fallback was removed, so the UI always writes the parquet (+ companion hub) and never fans out directly; the BFF (`s3-store` route) reads this flag to stamp the `fanout_via_lambda` parquet column and the Lambda no-ops when it is not strictly `true`. **The companion-hub write is flag-independent** — the UI calls it on every submission because the hub API requires the authenticated browser session the Lambda lacks; the Lambda never writes companion hub. Must be registered in dev, test, and prod Switchboard. | dev, test, prod |
 
 **Setting up a flag for local development:**
 

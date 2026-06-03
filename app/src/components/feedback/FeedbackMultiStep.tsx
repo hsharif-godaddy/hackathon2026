@@ -6,7 +6,6 @@ import text from '@ux/text';
 import { useExperimentsLine } from '@/components/feedback/experimentsLine';
 import { getFeedbackModalPortal } from '@/components/feedback/feedbackModalPortal';
 import { useAuthContext } from '@/components/providers/AuthProvider';
-import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
@@ -20,7 +19,7 @@ import { CategorySelectStep } from './steps/CategorySelectStep';
 import { GetSupportStep } from './steps/GetSupportStep';
 import { ReportIssueStep } from './steps/ReportIssueStep';
 import { ShareFeedbackStep } from './steps/ShareFeedbackStep';
-import { fetchDiagnosticContext, logDevFeedbackBlockMessage, openCrmCaseForIssue, saveToCompanionHub, sendFeedbackToSlack, storeToS3 } from './submitFeedback';
+import { fetchDiagnosticContext, logDevFeedbackBlockMessage, saveToCompanionHub, storeToS3 } from './submitFeedback';
 import type {
   DiagnosticContext,
   FeedbackCategory,
@@ -145,11 +144,6 @@ export function FeedbackMultiStep(props: FeedbackProps) {
   const isInternalUser = shopperId?.length === 3;
 
   const experimentsLine = useExperimentsLine();
-  const isCrmCaseEnabled = useSwitchboard('appbuilder-crm-case-create') === true;
-  // When ON, the fanout Lambda owns Slack + CRM + investigator (and Jira) end-to-end
-  // from the parquet write — UI just calls storeToS3 and short-circuits the BFF flow.
-  // When OFF (default, or SSR `undefined`), the existing legacy/3946 flow runs.
-  const fanoutViaLambda = useSwitchboard('appbuilder-fanout-via-lambda') === true;
   const isMobile = useDevelopPageStore((state) => state.isMobile);
   const portalElem = getFeedbackModalPortal();
 
@@ -184,38 +178,17 @@ export function FeedbackMultiStep(props: FeedbackProps) {
 
   const handleSupportSubmit = useCallback(async (data: SupportFormData) => {
     let outcome: 'success' | 'failed' = 'failed';
+    // Tracks whether the companion-hub write succeeded so partial failures
+    // (hub down, fanout/Slack fine) surface in telemetry instead of being
+    // masked by an overall `outcome: 'success'`.
+    let companionHubOk = false;
     try {
       const ctx = await fetchDiagnosticContext(currentAppId, getSite, isInternalUser, isImpersonating, shopperId, experimentsLine, customerId);
 
-      if (fanoutViaLambda) {
-        // Switchboard-flag ON: the fanout Lambda owns Slack + CRM + investigator
-        // for support submissions — keyed off the `fanout_via_lambda=true`
-        // field the BFF stamps into the parquet. The UI must NOT also call
-        // /api/crm/case + /api/slack-webhook/feedback here, or recipients
-        // get duplicate messages / cases during cutover.
-        logDevFeedbackBlockMessage(buildSupportRequestBlocks(data, origin, ctx));
-        const storeResult = await storeToS3(buildFanoutPayload(
-          'support',
-          { feedbackText: data.description, consent: data.followUp, rating: null, topics: data.topics },
-          currentAppId, getSite, ctx, origin,
-        ));
-        // When fanout-via-lambda is ON, the BFF call is the entire fanout —
-        // a 4xx/5xx means NOTHING fanned out (no Slack, no CRM, no Jira, no
-        // investigator). Surface that to the user as a failure rather than
-        // showing a misleading "success" toast.
-        if (!storeResult.ok) {
-          logger.error('feedback.support.submit.fanout_failed', { appId: currentAppId, status: storeResult.status });
-          return false;
-        }
-        logger.info('feedback.support.submit.fanout_via_lambda', { appId: currentAppId });
-        outcome = 'success';
-        logger.info('feedback.support.submit.success', { appId: currentAppId });
-        return true;
-      }
-
-      const blockMessage = buildSupportRequestBlocks(data, origin, ctx);
-
-      // Save to companion hub under support PK
+      // The fanout Lambda owns Slack/CRM/Jira/investigator but does NOT write
+      // companion hub — the hub API requires the authenticated browser session
+      // (cookie + XSRF) only the client holds, so the UI owns this write. Save
+      // under support PK.
       try {
         const customerId = (userInfo?.customerId as string) ?? '';
         const apiData: Record<string, any> = {
@@ -225,6 +198,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
           'follow-up-consent': data.followUp,
         };
         await saveToCompanionHub(SUPPORT_FEEDBACK_ID, apiData, customerId);
+        companionHubOk = true;
       } catch (err) {
         logger.warn('feedback.companion_hub.save_failed', {
           feedbackId: SUPPORT_FEEDBACK_ID,
@@ -232,39 +206,25 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         });
       }
 
-      // CRM case creation via legacy /api/crm/case route. followUp is dropped
-      // from the CRM call (CMAPI spec rejected it).
-      // Attach .catch at creation time. supportFanoutPromise starts executing
-      // synchronously; if sendFeedbackToSlack below throws, control jumps
-      // to outer catch and `await ...catch(() => null)` is never reached,
-      // leaving a rejecting Promise with no handler (UnhandledPromiseRejection).
-      const supportFanoutPromise = (!isInternalUser && isCrmCaseEnabled
-        ? openCrmCaseForIssue({
-            description: data.description,
-            appId: currentAppId,
-          }).then((r) => ({
-            success: true as const,
-            caseId: r.caseId ?? null,
-            caseNumber: r.caseNumber ?? null,
-            investigationId: null,
-          }))
-        : Promise.resolve(null)
-      ).catch(() => null);
-
-      await sendFeedbackToSlack(blockMessage, currentAppId);
-      outcome = 'success';
-      // Durable Loki record for Grafana runbooks — shipAnalyticsLog is a best-effort
-      // client-side queue (ClientLogBuffer) that drops events under degraded conditions.
-      logger.info('feedback.support.submit.success', { appId: currentAppId });
-
-      const supportFanoutResult = await supportFanoutPromise;
-      if (supportFanoutResult?.caseId) {
-        logger.info('feedback.crm.case.created', {
-          appId: currentAppId,
-          caseId: supportFanoutResult.caseId,
-        });
+      // The fanout Lambda (triggered by the parquet write) owns Slack + CRM +
+      // Jira + investigator end-to-end. The UI only writes the parquet (and
+      // companion hub above); it must NOT call Slack/CRM directly or recipients
+      // get duplicate messages / cases.
+      logDevFeedbackBlockMessage(buildSupportRequestBlocks(data, origin, ctx));
+      const storeResult = await storeToS3(buildFanoutPayload(
+        'support',
+        { feedbackText: data.description, consent: data.followUp, rating: null, topics: data.topics },
+        currentAppId, getSite, ctx, origin,
+      ));
+      // The BFF call IS the entire fanout — a 4xx/5xx means NOTHING fanned out
+      // (no Slack, no CRM, no Jira, no investigator). Surface that to the user
+      // as a failure rather than showing a misleading "success" toast.
+      if (!storeResult.ok) {
+        logger.error('feedback.support.submit.fanout_failed', { appId: currentAppId, status: storeResult.status });
+        return false;
       }
-
+      outcome = 'success';
+      logger.info('feedback.support.submit.success', { appId: currentAppId });
       return true;
     } catch (err) {
       logger.error('feedback.support.submit.failed', {
@@ -280,38 +240,22 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         appId: currentAppId ?? '',
         origin: origin ?? '',
         outcome,
+        companionHubOk,
       });
     }
-  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, isCrmCaseEnabled, origin, userInfo, fanoutViaLambda]);
+  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, origin, userInfo]);
 
   const handleIssueSubmit = useCallback(async (data: IssueFormData) => {
     let outcome: 'success' | 'failed' = 'failed';
+    // Tracks whether the companion-hub write succeeded so partial failures
+    // (hub down, fanout/Slack fine) surface in telemetry instead of being
+    // masked by an overall `outcome: 'success'`.
+    let companionHubOk = false;
     try {
       const ctx = await fetchDiagnosticContext(currentAppId, getSite, isInternalUser, isImpersonating, shopperId, experimentsLine, customerId);
 
-      if (fanoutViaLambda) {
-        // Switchboard-flag ON: the fanout Lambda owns Slack + CRM + investigator
-        // for issue submissions. UI just writes the parquet; Lambda fans out.
-        logDevFeedbackBlockMessage(buildBugReportBlocks(data, origin, ctx));
-        const storeResult = await storeToS3(buildFanoutPayload(
-          'issue',
-          { feedbackText: data.description, consent: data.followUp, rating: null, topics: data.topics },
-          currentAppId, getSite, ctx, origin,
-        ));
-        // Flag-ON: BFF call IS the fanout. Treat any failure as user-visible.
-        if (!storeResult.ok) {
-          logger.error('feedback.issue.submit.fanout_failed', { appId: currentAppId, status: storeResult.status });
-          return false;
-        }
-        logger.info('feedback.issue.submit.fanout_via_lambda', { appId: currentAppId });
-        outcome = 'success';
-        logger.info('feedback.issue.submit.success', { appId: currentAppId });
-        return true;
-      }
-
-      const blockMessage = buildBugReportBlocks(data, origin, ctx);
-
-      // Save to companion hub under bug report PK
+      // The fanout Lambda owns Slack/CRM/Jira/investigator but does NOT write
+      // companion hub, so the UI owns this write. Save under bug report PK.
       try {
         const customerId = (userInfo?.customerId as string) ?? '';
         const apiData: Record<string, any> = {
@@ -321,6 +265,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
           'follow-up-consent': data.followUp,
         };
         await saveToCompanionHub(BUG_REPORT_FEEDBACK_ID, apiData, customerId);
+        companionHubOk = true;
       } catch (err) {
         logger.warn('feedback.companion_hub.save_failed', {
           feedbackId: BUG_REPORT_FEEDBACK_ID,
@@ -328,36 +273,21 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         });
       }
 
-      // CRM case creation via legacy /api/crm/case route. Internal TLA
-      // accounts are excluded client-side (the route also 403s them
-      // defensively). followUp is not in the CRM payload (CMAPI spec
-      // rejected it).
-      // Attach .catch at creation time — see support handler above for rationale.
-      const fanoutPromise = (!isInternalUser && isCrmCaseEnabled
-        ? openCrmCaseForIssue({
-            description: data.description,
-            appId: currentAppId,
-          }).then((r) => ({
-            success: true as const,
-            caseId: r.caseId ?? null,
-            caseNumber: r.caseNumber ?? null,
-            investigationId: null,
-          }))
-        : Promise.resolve(null)
-      ).catch(() => null);
-
-      await sendFeedbackToSlack(blockMessage, currentAppId);
+      // The fanout Lambda owns Slack + CRM + Jira + investigator end-to-end
+      // from the parquet write. UI just writes the parquet; Lambda fans out.
+      logDevFeedbackBlockMessage(buildBugReportBlocks(data, origin, ctx));
+      const storeResult = await storeToS3(buildFanoutPayload(
+        'issue',
+        { feedbackText: data.description, consent: data.followUp, rating: null, topics: data.topics },
+        currentAppId, getSite, ctx, origin,
+      ));
+      // BFF call IS the fanout. Treat any failure as user-visible.
+      if (!storeResult.ok) {
+        logger.error('feedback.issue.submit.fanout_failed', { appId: currentAppId, status: storeResult.status });
+        return false;
+      }
       outcome = 'success';
       logger.info('feedback.issue.submit.success', { appId: currentAppId });
-
-      const fanoutResult = await fanoutPromise;
-      if (fanoutResult?.caseId) {
-        logger.info('feedback.crm.case.created', {
-          appId: currentAppId,
-          caseId: fanoutResult.caseId,
-        });
-      }
-
       return true;
     } catch (err) {
       logger.error('feedback.issue.submit.failed', {
@@ -370,39 +300,24 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         appId: currentAppId ?? '',
         origin: origin ?? '',
         outcome,
+        companionHubOk,
       });
     }
-  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, isCrmCaseEnabled, onSubmitSuccess, origin, userInfo, fanoutViaLambda]);
+  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, onSubmitSuccess, origin, userInfo]);
 
   const handleFeedbackSubmit = useCallback(async (data: ShareFeedbackFormData) => {
     let outcome: 'success' | 'failed' = 'failed';
+    // Tracks whether the companion-hub write succeeded so partial failures
+    // (hub down, fanout/Slack fine) surface in telemetry instead of being
+    // masked by an overall `outcome: 'success'`.
+    let companionHubOk = false;
     try {
       const ctx = await fetchDiagnosticContext(currentAppId, getSite, isInternalUser, isImpersonating, shopperId, experimentsLine, customerId);
 
-      if (fanoutViaLambda) {
-        // Switchboard-flag ON: the fanout Lambda owns Slack + companion-hub + CRM
-        // + investigator end-to-end from the parquet write. UI must NOT also
-        // call Slack/companionHub here, or recipients get duplicates.
-        logDevFeedbackBlockMessage(buildFeedbackBlocks(data, origin, ctx));
-        const storeResult = await storeToS3(buildFanoutPayload(
-          'feedback',
-          { feedbackText: data.comment ?? null, consent: data.customerConsent, rating: data.rating ?? null, topics: data.topics },
-          currentAppId, getSite, ctx, origin,
-        ));
-        // Flag-ON: BFF call IS the fanout. Treat any failure as user-visible.
-        if (!storeResult.ok) {
-          logger.error('feedback.share.submit.fanout_failed', { feedbackId, appId: currentAppId, status: storeResult.status });
-          return false;
-        }
-        logger.info('feedback.share.submit.fanout_via_lambda', { feedbackId, appId: currentAppId });
-        outcome = 'success';
-        logger.info('feedback.share.submit.success', { feedbackId, appId: currentAppId });
-        return true;
-      }
-
-      const blockMessage = buildFeedbackBlocks(data, origin, ctx);
-
-      // Save to companion hub API (production only, backward compat with existing PK)
+      // Save to companion hub API (production only, backward compat with
+      // existing PK). The fanout Lambda owns Slack/CRM/Jira/investigator but
+      // does NOT write companion hub (the hub API requires the authenticated
+      // browser session only the client holds), so the UI owns this write.
       try {
         const customerId = (userInfo?.customerId as string) ?? '';
         const apiData: Record<string, any> = {};
@@ -418,6 +333,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         apiData['customer-consent'] = data.customerConsent;
 
         await saveToCompanionHub(feedbackId, apiData, customerId);
+        companionHubOk = true;
       } catch (err) {
         logger.warn('feedback.companion_hub.save_failed', {
           feedbackId,
@@ -425,21 +341,22 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         });
       }
 
-      await sendFeedbackToSlack(blockMessage, currentAppId);
-      outcome = 'success';
-      logger.info('feedback.share.submit.success', { feedbackId, appId: currentAppId });
-
-      // Flag-OFF legacy NPS path: parquet write is enrichment-only (lake
-      // analytics) and Slack/companion-hub already ran above. Fire-and-
-      // forget — `void` makes intent explicit. storeToS3 catches network
-      // and HTTP errors internally and logs them, so floating this Promise
-      // doesn't hide failures from observability.
-      void storeToS3(buildFanoutPayload(
+      // The fanout Lambda owns Slack + CRM + Jira + investigator end-to-end
+      // from the parquet write. UI must NOT call Slack here, or recipients get
+      // duplicates. Companion hub is written above — the Lambda does NOT write it.
+      logDevFeedbackBlockMessage(buildFeedbackBlocks(data, origin, ctx));
+      const storeResult = await storeToS3(buildFanoutPayload(
         'feedback',
         { feedbackText: data.comment ?? null, consent: data.customerConsent, rating: data.rating ?? null, topics: data.topics },
         currentAppId, getSite, ctx, origin,
       ));
-
+      // BFF call IS the fanout. Treat any failure as user-visible.
+      if (!storeResult.ok) {
+        logger.error('feedback.share.submit.fanout_failed', { feedbackId, appId: currentAppId, status: storeResult.status });
+        return false;
+      }
+      outcome = 'success';
+      logger.info('feedback.share.submit.success', { feedbackId, appId: currentAppId });
       return true;
     } catch (err) {
       logger.error('feedback.share.submit.failed', {
@@ -462,6 +379,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         feedbackId,
         origin: origin ?? '',
         outcome,
+        companionHubOk,
         // Omit rating entirely when absent — encoding null as 0 corrupts any
         // AVG(rating) or COUNT WHERE rating > 0 aggregation in ESSP, because
         // internal/impersonating users never see the rating widget.
@@ -469,7 +387,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
         ratingBucket,
       });
     }
-  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, origin, feedbackId, userInfo, fanoutViaLambda]);
+  }, [currentAppId, experimentsLine, getSite, isInternalUser, isImpersonating, origin, feedbackId, userInfo]);
 
   // CRM skip / impersonation sessions cannot submit any feedback.
   // Mirror the legacy Feedback.tsx contract: show a read-only message and no form.

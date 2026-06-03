@@ -7,9 +7,9 @@ import type { DiagnosticContext, FeedbackStorePayload } from './types';
 import { getBaseUrl, getFullStorySessionUrl } from './utils';
 
 /**
- * Dev-only console preview of a feedback Slack message. Used by both:
- *   - the legacy webhook path (server echoes blockMessage when SLACK_FEEDBACK_WEBHOOK_URL is unset)
- *   - the Lambda-fanout path (FEEDBACK_BUCKET unset → server short-circuits, client echoes locally)
+ * Dev-only console preview of a feedback Slack message. On the Lambda-fanout
+ * path the BFF short-circuits when FEEDBACK_BUCKET is unset, so the client
+ * echoes the Block Kit payload locally for pasting into the Block Kit Builder.
  * No-op outside local dev so it never leaks in test/prod.
  */
 export function logDevFeedbackBlockMessage(blockMessage: SlackBlockMessage | undefined | null): void {
@@ -125,43 +125,9 @@ export async function fetchDiagnosticContext(
 }
 
 /**
- * @deprecated since fanout-lambda migration — Slack delivery is now driven
- * by the fanout Lambda triggered by the parquet write in `storeToS3`. The
- * BFF route `/api/slack-webhook/feedback` is kept intact for any other
- * callers but the submit path no longer calls it. Remove this helper once
- * no consumers remain.
- */
-export async function sendFeedbackToSlack(
-  blockMessage: SlackBlockMessage,
-  currentAppId: string | null,
-): Promise<void> {
-  const response = await fetch('/api/slack-webhook/feedback', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      blockMessage,
-      appId: currentAppId,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Slack webhook failed: ${response.status}`);
-  }
-
-  if (isLocalDev()) {
-    try {
-      const result = await response.json();
-      logDevFeedbackBlockMessage(result.blockMessage);
-    } catch {
-      // JSON parse failure is non-fatal in dev — Slack delivery already succeeded.
-    }
-  }
-}
-
-/**
- * Result of a `storeToS3` call. Caller decides whether to surface the
- * outcome (flag-ON Lambda-fanout path: we DEPEND on this succeeding) or
- * fire-and-forget (flag-OFF legacy path: parquet write is enrichment only).
+ * Result of a `storeToS3` call. The parquet write is the entire fanout
+ * trigger, so callers MUST await it and treat `ok: false` as a submission
+ * failure (surface a failure toast).
  */
 export interface StoreToS3Result {
   ok: boolean;
@@ -175,12 +141,12 @@ export interface StoreToS3Result {
  * caught and logged as `network_error`; the Promise still resolves with
  * `ok: false` so callers can show the user a failure toast.
  *
- * Critical: when `appbuilder-fanout-via-lambda` is ON, the entire fanout
- * (Slack/CRM/Jira/investigator) hinges on this call succeeding. Callers in
- * that path MUST `await` the result and treat `ok: false` as submission
- * failure. The previous fire-and-forget shape (returning `void`
- * synchronously) silently swallowed BFF 4xx/5xx errors, leaving the
- * customer with a "success" toast even when no fanout happened.
+ * Critical: the entire fanout (Slack/CRM/Jira/investigator) hinges on this
+ * call succeeding — the Lambda is triggered by the parquet write. Callers
+ * MUST `await` the result and treat `ok: false` as submission failure. The
+ * previous fire-and-forget shape (returning `void` synchronously) silently
+ * swallowed BFF 4xx/5xx errors, leaving the customer with a "success" toast
+ * even when no fanout happened.
  */
 export async function storeToS3(payload: FeedbackStorePayload): Promise<StoreToS3Result> {
   let response: Response;
@@ -210,26 +176,6 @@ export async function storeToS3(payload: FeedbackStorePayload): Promise<StoreToS
   }
 
   return { ok: true, status: response.status };
-}
-
-export interface CrmCaseClientInput {
-  description: string;
-  appId: string | null;
-}
-
-export async function openCrmCaseForIssue(
-  input: CrmCaseClientInput,
-): Promise<{ caseId?: string; caseNumber?: string }> {
-  if (isLocalDev()) return {};
-  const res = await fetch('/api/crm/case', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  if (!res.ok) {
-    throw new Error(`CRM case creation failed: ${res.status}`);
-  }
-  return res.json();
 }
 
 export async function saveToCompanionHub(

@@ -188,9 +188,9 @@ function parsePublishUrl(raw: unknown, appPublishFlag: boolean | null): string |
   return t;
 }
 
-// Default auth (no { level: 3 }): same UX contract as POST /api/slack-webhook/feedback —
-// optional fire-and-forget from a long-lived tab; level 3 HBI would prompt re-auth without
-// changing the fact that a valid customer JWT is still required.
+// Default auth (no { level: 3 }): feedback is an optional submit from a
+// long-lived tab; level 3 HBI would prompt re-auth without changing the fact
+// that a valid customer JWT is still required.
 export const POST = withCustomerAuth(async (
   request: NextRequest,
   authContext: CustomerAuthContext,

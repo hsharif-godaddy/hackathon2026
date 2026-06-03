@@ -97,13 +97,12 @@ vi.mock('@/hooks/useGasketData', () => ({
   useGasketData: () => mockUseGasketData(),
 }));
 
-// Per-flag mock: keep `airo-builder-feedback-multistep` ON (so the
-// FeedbackMultiStep component renders) and the legacy CRM-case create
-// flag ON (so the legacy `openCrmCaseForIssue` path the assertions in
-// this file expect is actually exercised), but force the fanout-via-lambda
-// flag OFF so the legacy Slack/companion-hub branch is exercised.
+// Keep `airo-builder-feedback-multistep` ON so the FeedbackMultiStep component
+// renders. The feedback flow no longer reads any other Switchboard flag (the
+// fanout-via-lambda gate moved server-side at 100% cutover), so a blanket true
+// is sufficient; the switchboard-gate test overrides this to false.
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(function (flag: string) { return flag !== 'appbuilder-fanout-via-lambda'; }),
+  useSwitchboard: vi.fn(function () { return true; }),
 }));
 
 vi.mock('react-intl', async (importOriginal) => {
@@ -211,10 +210,9 @@ vi.mock('./submitFeedback', () => ({
     isInternalUser: false,
     isImpersonating: false,
   }); }),
-  sendFeedbackToSlack: vi.fn(function () { return Promise.resolve(); }),
   saveToCompanionHub: vi.fn(function () { return Promise.resolve(); }),
   storeToS3: vi.fn(),
-  openCrmCaseForIssue: vi.fn(function () { return Promise.resolve({}); }),
+  logDevFeedbackBlockMessage: vi.fn(),
 }));
 
 vi.mock('./slackBuilders', () => ({
@@ -232,7 +230,7 @@ import { renderWithProviders } from '@/tests/test-utils';
 import { isLocalDev } from '@/utils/is-local-dev';
 import { Feedback } from './Feedback';
 import { buildBugReportBlocks, buildFeedbackBlocks, buildSupportRequestBlocks } from './slackBuilders';
-import { fetchDiagnosticContext, openCrmCaseForIssue, saveToCompanionHub, sendFeedbackToSlack, storeToS3 } from './submitFeedback';
+import { fetchDiagnosticContext, saveToCompanionHub, storeToS3 } from './submitFeedback';
 import { getAppIdFromUrl } from './utils';
 
 const defaultProps = {
@@ -271,6 +269,12 @@ describe('Feedback', function feedbackTests() {
     // vi.clearAllMocks() clears call history but NOT mock implementations — explicitly
     // reset isLocalDev so a production-path test does not leak into following tests.
     vi.mocked(isLocalDev).mockReturnValue(true);
+    // storeToS3 is the fanout trigger (parquet write). Default it to success so
+    // submit handlers reach `outcome: 'success'`; failure tests override with
+    // mockResolvedValueOnce({ ok: false }). mockReset first to drop any leftover
+    // once-queued value from a prior test.
+    vi.mocked(storeToS3).mockReset();
+    vi.mocked(storeToS3).mockResolvedValue({ ok: true, status: 200 });
     mockUseGasketData.mockReturnValue({
       switchboard: {
         [EXPERIMENT_IDS.recommendedPlan]: { cohortId: 'control' },
@@ -470,7 +474,6 @@ describe('Feedback', function feedbackTests() {
       });
 
       expect(fetchDiagnosticContext).not.toHaveBeenCalled();
-      expect(sendFeedbackToSlack).not.toHaveBeenCalled();
       expect(saveToCompanionHub).not.toHaveBeenCalled();
       expect(storeToS3).not.toHaveBeenCalled();
     });
@@ -517,7 +520,6 @@ describe('Feedback', function feedbackTests() {
       });
 
       expect(fetchDiagnosticContext).not.toHaveBeenCalled();
-      expect(sendFeedbackToSlack).not.toHaveBeenCalled();
       expect(saveToCompanionHub).not.toHaveBeenCalled();
       expect(storeToS3).not.toHaveBeenCalled();
     });
@@ -546,7 +548,8 @@ describe('Feedback', function feedbackTests() {
         expect(screen.getByText('builder_feedback_support_description_error')).toBeInTheDocument();
       });
 
-      expect(sendFeedbackToSlack).not.toHaveBeenCalled();
+      // Validation blocks the submit → no parquet/fanout write.
+      expect(storeToS3).not.toHaveBeenCalled();
     });
 
     it('should successfully submit a support request', async function supportSuccess() {
@@ -570,39 +573,12 @@ describe('Feedback', function feedbackTests() {
           undefined,
           expect.objectContaining({ isInternalUser: false }),
         );
+        // UI owns the companion-hub write + the parquet write; the fanout
+        // Lambda (triggered by the parquet) owns Slack + CRM.
         expect(saveToCompanionHub).toHaveBeenCalled();
-        expect(openCrmCaseForIssue).toHaveBeenCalled();
-        expect(sendFeedbackToSlack).toHaveBeenCalled();
-        expect(storeToS3).not.toHaveBeenCalled();
+        expect(storeToS3).toHaveBeenCalled();
         expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.support.submitSuccess');
       });
-    });
-
-    // Same isolation contract as the issue flow — a CRM failure must not
-    // block Slack delivery or downgrade the support submit outcome.
-    it('should still submit to Slack and report success when CRM case creation fails for support', async function supportCrmFailureIsolated() {
-      vi.mocked(openCrmCaseForIssue).mockRejectedValueOnce(new Error('CRM case creation failed: 502'));
-      mockAuth('basic');
-      renderWithProviders(<Feedback {...defaultProps} />);
-      await navigateToSupport();
-
-      fireEvent.click(screen.getByText('builder_feedback_support_topic_domain'));
-      fireEvent.change(
-        screen.getByPlaceholderText('builder_feedback_support_description_placeholder'),
-        { target: { value: 'My domain is not resolving' } },
-      );
-
-      fireEvent.click(screen.getByText('builder_feedback_support_submit'));
-
-      await waitFor(() => {
-        expect(openCrmCaseForIssue).toHaveBeenCalled();
-        expect(sendFeedbackToSlack).toHaveBeenCalled();
-        expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.support.submitSuccess');
-      });
-      expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
-        'feedback.support.submit',
-        expect.objectContaining({ outcome: 'success' }),
-      );
     });
   });
 
@@ -629,7 +605,8 @@ describe('Feedback', function feedbackTests() {
         expect(screen.getByText('builder_feedback_issue_description_error')).toBeInTheDocument();
       });
 
-      expect(sendFeedbackToSlack).not.toHaveBeenCalled();
+      // Validation blocks the submit → no parquet/fanout write.
+      expect(storeToS3).not.toHaveBeenCalled();
     });
 
     it('should successfully submit a bug report', async function issueSuccess() {
@@ -657,40 +634,11 @@ describe('Feedback', function feedbackTests() {
           undefined,
           expect.objectContaining({ isInternalUser: false }),
         );
+        // UI owns the companion-hub + parquet writes; the Lambda owns Slack + CRM.
         expect(saveToCompanionHub).toHaveBeenCalled();
-        expect(sendFeedbackToSlack).toHaveBeenCalled();
-        expect(storeToS3).not.toHaveBeenCalled();
+        expect(storeToS3).toHaveBeenCalled();
         expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.issue.submitSuccess');
       });
-    });
-
-    // CRM case creation is best-effort — profile fetch, SSO mint, and CRM POST
-    // all run server-side, and any of them can fail without affecting the user.
-    // This test pins the contract: a 5xx (or any throw) from /api/crm/case must
-    // not block Slack delivery or downgrade the success outcome.
-    it('should still submit to Slack and report success when CRM case creation fails', async function issueCrmFailureIsolated() {
-      vi.mocked(openCrmCaseForIssue).mockRejectedValueOnce(new Error('CRM case creation failed: 502'));
-      mockAuth('basic');
-      renderWithProviders(<Feedback {...defaultProps} />);
-      await navigateToIssue();
-
-      fireEvent.click(screen.getByText('builder_feedback_issue_topic_ai'));
-      fireEvent.change(
-        screen.getByPlaceholderText('builder_feedback_issue_description_placeholder'),
-        { target: { value: 'The assistant stopped responding' } },
-      );
-
-      fireEvent.click(screen.getByText('builder_feedback_issue_submit'));
-
-      await waitFor(() => {
-        expect(openCrmCaseForIssue).toHaveBeenCalled();
-        expect(sendFeedbackToSlack).toHaveBeenCalled();
-        expect(mockLogImpressionEvent).toHaveBeenCalledWith('feedback.issue.submitSuccess');
-      });
-      expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
-        'feedback.issue.submit',
-        expect.objectContaining({ outcome: 'success' }),
-      );
     });
   });
 
@@ -716,7 +664,8 @@ describe('Feedback', function feedbackTests() {
         expect(screen.getByText('builder_feedback_share_rating_error')).toBeInTheDocument();
       });
 
-      expect(sendFeedbackToSlack).not.toHaveBeenCalled();
+      // Validation blocks the submit → no parquet/fanout write.
+      expect(storeToS3).not.toHaveBeenCalled();
     });
 
     it('should successfully submit feedback with rating', async function feedbackSuccess() {
@@ -740,7 +689,7 @@ describe('Feedback', function feedbackTests() {
           expect.objectContaining({ isInternalUser: false }),
         );
         expect(saveToCompanionHub).toHaveBeenCalled();
-        expect(sendFeedbackToSlack).toHaveBeenCalled();
+        expect(storeToS3).toHaveBeenCalled();
         expect(storeToS3).toHaveBeenCalledWith(expect.objectContaining({
           app_id: null,
           rating: 5,
@@ -778,7 +727,7 @@ describe('Feedback', function feedbackTests() {
       fireEvent.click(screen.getByText('builder_feedback_share_submit'));
 
       await waitFor(() => {
-        expect(sendFeedbackToSlack).toHaveBeenCalled();
+        expect(storeToS3).toHaveBeenCalled();
       });
 
       expect(mockLogClickEvent).toHaveBeenCalledWith(
@@ -800,7 +749,7 @@ describe('Feedback', function feedbackTests() {
       fireEvent.click(screen.getByText('builder_feedback_share_submit'));
 
       await waitFor(() => {
-        expect(sendFeedbackToSlack).toHaveBeenCalled();
+        expect(storeToS3).toHaveBeenCalled();
       });
 
       expect(mockLogClickEvent).toHaveBeenCalledWith(
@@ -822,7 +771,7 @@ describe('Feedback', function feedbackTests() {
       fireEvent.click(screen.getByText('builder_feedback_share_submit'));
 
       await waitFor(() => {
-        expect(sendFeedbackToSlack).toHaveBeenCalled();
+        expect(storeToS3).toHaveBeenCalled();
       });
 
       expect(mockLogClickEvent).toHaveBeenCalledWith(
@@ -855,7 +804,7 @@ describe('Feedback', function feedbackTests() {
           undefined,
           expect.objectContaining({ isInternalUser: false }),
         );
-        expect(sendFeedbackToSlack).toHaveBeenCalled();
+        expect(storeToS3).toHaveBeenCalled();
         expect(storeToS3).toHaveBeenCalledWith(expect.objectContaining({
           rating: null,
           consent_flag: expect.any(Boolean),
@@ -1014,7 +963,7 @@ describe('Feedback', function feedbackTests() {
 
   describe('submit failure handling', function failureTests() {
     it('should show error message when submission fails', async function submitFailureShowsError() {
-      vi.mocked(sendFeedbackToSlack).mockRejectedValueOnce(new Error('Slack webhook failed: 500'));
+      vi.mocked(storeToS3).mockResolvedValueOnce({ ok: false, status: 500 });
       mockAuth('basic');
       renderWithProviders(<Feedback {...defaultProps} />);
 
@@ -1057,7 +1006,7 @@ describe('Feedback', function feedbackTests() {
     });
 
     it('should not show success state when issue submission fails', async function issueFailure() {
-      vi.mocked(sendFeedbackToSlack).mockRejectedValueOnce(new Error('Slack webhook failed: 500'));
+      vi.mocked(storeToS3).mockResolvedValueOnce({ ok: false, status: 500 });
       mockAuth('basic');
       renderWithProviders(<Feedback {...defaultProps} />);
 
@@ -1095,7 +1044,7 @@ describe('Feedback', function feedbackTests() {
     });
 
     it('should still fire telemetry when share feedback submission fails', async function shareFailureTelemetry() {
-      vi.mocked(sendFeedbackToSlack).mockRejectedValueOnce(new Error('Slack webhook failed: 500'));
+      vi.mocked(storeToS3).mockResolvedValueOnce({ ok: false, status: 500 });
       mockAuth('basic');
       renderWithProviders(<Feedback {...defaultProps} />);
 
@@ -1122,10 +1071,10 @@ describe('Feedback', function feedbackTests() {
         'feedback.share.submit',
         expect.objectContaining({ outcome: 'failed', rating: 3, ratingBucket: 'displeased' }),
       );
-      // storeToS3 lives inside the try block after sendFeedbackToSlack — a failure
-      // must NOT reach it. Guards against a future refactor hoisting storeToS3 into
-      // the finally block, which would silently create duplicate S3 records on retry.
-      expect(storeToS3).not.toHaveBeenCalled();
+      // storeToS3 IS the fanout under flag-100% — a failed parquet write
+      // (ok:false) is what drives the failure outcome here, so it must have
+      // been called.
+      expect(storeToS3).toHaveBeenCalled();
     });
   });
 
@@ -1209,6 +1158,120 @@ describe('Feedback', function feedbackTests() {
       expect(screen.getByText('builder_feedback_impersonation_message')).toBeInTheDocument();
       expect(screen.queryByText('builder_feedback_share_comment_label')).toBeNull();
       expect(screen.queryByText('builder_feedback_issue_topics_label')).toBeNull();
+    });
+  });
+
+  // Regression guard for the companion-hub write. The fanout Lambda owns
+  // Slack/CRM/Jira/investigator but does NOT write companion hub (the hub API
+  // needs the authenticated browser session only the client holds). When the
+  // Lambda extraction shipped, the UI early-returned after storeToS3 and
+  // stopped writing companion hub entirely. These tests pin the contract: the
+  // UI STILL writes companion hub AND the parquet on every submission, and the
+  // hub write is decoupled from fanout success in both directions.
+  describe('companion hub write (fanout-only flow)', function companionHubWrite() {
+    it('writes companion hub with the per-handler payload shape for NPS feedback', async function fanoutFeedback() {
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} initialStep="feedback" />);
+      await waitFor(() => {
+        expect(screen.getByText('builder_feedback_share_submit')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('5'));
+      fireEvent.click(screen.getByText('builder_feedback_share_submit'));
+
+      await waitFor(() => {
+        expect(saveToCompanionHub).toHaveBeenCalled();
+        expect(storeToS3).toHaveBeenCalled();
+      });
+
+      // Pin the per-handler companion-hub payload shape: the rating maps
+      // through RATING_TO_API_VALUE, the consent key is present, and the
+      // submission feedbackId + customerId are passed through unchanged.
+      expect(saveToCompanionHub).toHaveBeenCalledWith(
+        defaultProps.feedbackId,
+        expect.objectContaining({
+          // RATING_TO_API_VALUE[5] === '5' (see FeedbackMultiStep mapping).
+          'rate-overal-experience': '5',
+          'customer-consent': expect.any(Boolean),
+        }),
+        'cust-123',
+      );
+    });
+
+    it('comment maps to the legacy improvemets-free-text key', async function fanoutFeedbackCommentKey() {
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} initialStep="feedback" />);
+      await waitFor(() => {
+        expect(screen.getByText('builder_feedback_share_submit')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('5'));
+      fireEvent.change(
+        screen.getByPlaceholderText('builder_feedback_share_comment_placeholder'),
+        { target: { value: 'make undo faster' } },
+      );
+      fireEvent.click(screen.getByText('builder_feedback_share_submit'));
+
+      await waitFor(() => {
+        expect(saveToCompanionHub).toHaveBeenCalled();
+      });
+      // The intentional DB typo key must survive hoisting.
+      expect(saveToCompanionHub).toHaveBeenCalledWith(
+        defaultProps.feedbackId,
+        expect.objectContaining({ 'improvemets-free-text': 'make undo faster' }),
+        'cust-123',
+      );
+    });
+
+    // Load-bearing: the hub write must NOT be coupled to fanout success. If a
+    // future refactor moves it back below/inside the fanout branch, this fails.
+    it('still writes companion hub and reports failure when the fanout (storeToS3) fails', async function hubSurvivesFanoutFailure() {
+      vi.mocked(storeToS3).mockResolvedValueOnce({ ok: false, status: 500 });
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} initialStep="feedback" />);
+      await waitFor(() => {
+        expect(screen.getByText('builder_feedback_share_submit')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('5'));
+      fireEvent.click(screen.getByText('builder_feedback_share_submit'));
+
+      await waitFor(() => {
+        // Hub write ran (it is above the fanout branch) even though fanout fails.
+        expect(saveToCompanionHub).toHaveBeenCalled();
+        expect(storeToS3).toHaveBeenCalled();
+      });
+      // Fanout failure → user-visible failure, NOT a misleading success.
+      expect(mockLogImpressionEvent).not.toHaveBeenCalledWith('feedback.share.submitSuccess');
+      expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+        'feedback.share.submit',
+        expect.objectContaining({ outcome: 'failed', companionHubOk: true }),
+      );
+    });
+
+    // Load-bearing: a hub failure must NOT block the fanout. The hub call is
+    // try/catch warn-not-throw, so storeToS3 still runs and the submit succeeds.
+    it('still fires the fanout and reports success when the companion-hub write fails', async function hubFailureDoesNotBlockFanout() {
+      vi.mocked(saveToCompanionHub).mockRejectedValueOnce(new Error('companion hub 500'));
+      mockAuth('basic');
+      renderWithProviders(<Feedback {...defaultProps} initialStep="feedback" />);
+      await waitFor(() => {
+        expect(screen.getByText('builder_feedback_share_submit')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('5'));
+      fireEvent.click(screen.getByText('builder_feedback_share_submit'));
+
+      await waitFor(() => {
+        expect(saveToCompanionHub).toHaveBeenCalled();
+        // Fanout still fired despite the hub throwing.
+        expect(storeToS3).toHaveBeenCalled();
+      });
+      // Submit still succeeds, but the partial hub failure is visible in telemetry.
+      expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
+        'feedback.share.submit',
+        expect.objectContaining({ outcome: 'success', companionHubOk: false }),
+      );
     });
   });
 });
