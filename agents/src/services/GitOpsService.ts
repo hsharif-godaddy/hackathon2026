@@ -9,7 +9,6 @@ import { AppRepository } from '../database/repositories/AppRepository.js';
 import { ImportJobRepository } from '../database/repositories/ImportJobRepository.js';
 import { ImportJobStatus, type ImportJob } from '../types/import.js';
 import { GitTool } from '../tools/git-tool.js';
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { isDevSupervisorNotFound } from './DevSupervisorClient.js';
 import { createForWorkspace } from '../workspace/index.js';
 import { isSupportedProjectInContainer, SUPPORTED_BUILD_TOOLS, type PackageJsonDeps } from '../server/middleware/git-import-validation.js';
@@ -156,9 +155,10 @@ export class GitOpsService {
         return { success: false, error: 'App not found', errorCode: 'APP_NOT_FOUND' };
       }
 
-      // Get dev-supervisor for the app
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor || !devSupervisor.isAvailable()) {
+      // Confirm a workspace client can be bound for the app. Reachability
+      // surfaces as a typed error on the first call in the background job.
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
         return {
           success: false,
           error: 'App container is not available',
@@ -333,9 +333,10 @@ export class GitOpsService {
         return { success: false, error: 'App not found', errorCode: 'APP_NOT_FOUND' };
       }
 
-      // Get dev-supervisor for the app
-      const devSupervisor = DevSupervisorClientFactory.createForApp(appId);
-      if (!devSupervisor || !devSupervisor.isAvailable()) {
+      // Confirm a workspace client can be bound for the app. Reachability
+      // surfaces as a typed error on the first call in the background job.
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
         return {
           success: false,
           error: 'App container is not available',

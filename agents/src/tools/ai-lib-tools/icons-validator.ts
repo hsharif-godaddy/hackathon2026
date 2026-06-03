@@ -1,10 +1,7 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
-import { validateLucideIcons, IconsValidatorOptions } from '../icons-validator.js'
-import { AppRepository } from '../../database/repositories/AppRepository.js'
-
-// Initialize tool instances
-const appRepo = new AppRepository()
+import { validateLucideIcons } from '../icons-validator.js'
+import { createForWorkspace } from '../../workspace/index.js'
 
 /**
  * Icons Validator Tool for AI-Lib
@@ -22,19 +19,15 @@ export const iconsValidatorAITool: Tool = createTool(
       throw new Error('App ID is required for content validation')
     }
 
-    const app = appRepo.findById(appId)
-    if (!app) {
-      throw new Error(`App '${appId}' not found`)
+    const workspace = createForWorkspace(appId, 'preview')
+    if (!workspace) {
+      throw new Error(`Workspace for app '${appId}' is not available`)
     }
 
     const files = input.files || []
     const fixSuggestions = input.fixSuggestions !== false
 
-    const result = await validateLucideIcons(app.path, files)
-
-    if (!result) {
-      throw new Error('Icons validation failed to execute')
-    }
+    const result = await validateLucideIcons(workspace.files, files)
 
     let responseMessage = ''
 

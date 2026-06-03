@@ -36,7 +36,6 @@ import {
   RuntimeErrorService,
   type RuntimeErrorResult
 } from '../services/runtime-error-service.js';
-import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
 import { GitUtils } from '../utils/git.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { createForWorkspace } from '../workspace/index.js';
@@ -913,14 +912,19 @@ export function buildSharedPostStreamValidator(logger: PhaseLogger): {
       // isn't reachable we return a benign failure and the phase falls
       // through to its existing continuation logic.
       restartPreview: async (appId, signal) => {
-        const ds = DevSupervisorClientFactory.createForApp(appId)
-        if (!ds) {
+        const workspace = createForWorkspace(appId, 'preview')
+        if (!workspace) {
           return { success: false, error: 'DevSupervisor not available' }
         }
         if (signal.aborted) {
           return { success: false, error: 'aborted' }
         }
-        return ds.restartProcess({ graceful: true })
+        try {
+          await workspace.runtime.restart({ graceful: true })
+          return { success: true }
+        } catch (err) {
+          return { success: false, error: err instanceof Error ? err.message : String(err) }
+        }
       },
       healthCheckPreview: async (appId: string): Promise<boolean> => {
         const app = appRepo.findById(appId)

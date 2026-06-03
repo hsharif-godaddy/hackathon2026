@@ -26,12 +26,6 @@ vi.mock('../../tools/git-tool.js', () => ({
   }; }),
 }));
 
-vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
-  DevSupervisorClientFactory: {
-    createForApp: vi.fn(),
-  },
-}));
-
 vi.mock('../../server/middleware/git-import-validation.js', () => ({
   isSupportedProjectInContainer: vi.fn(),
   SUPPORTED_BUILD_TOOLS: [{ name: 'vite' }, { name: 'nodejs' }],
@@ -88,11 +82,15 @@ vi.mock('../../logging/index.js', () => ({
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { ImportJobRepository } from '../../database/repositories/ImportJobRepository.js';
 import { GitTool } from '../../tools/git-tool.js';
-import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { isSupportedProjectInContainer } from '../../server/middleware/git-import-validation.js';
 import { appRestartService } from '../AppRestartService.js';
 import { projectSourceDetectionService } from '../ProjectSourceDetectionService.js';
 import { createForWorkspace } from '../../workspace/index.js';
+
+// Minimal bindable workspace stub: a no-op tasks handle plus a package.json
+// read that returns `{}`, enough for the availability guard and background job.
+const stubWorkspace = () =>
+  ({ tasks: {}, files: { view: vi.fn().mockResolvedValue({ content: '{}' }) } }) as any;
 
 describe('GitOpsService', () => {
   let service: GitOpsService;
@@ -109,9 +107,6 @@ describe('GitOpsService', () => {
   };
   let mockGitTool: {
     executeGitOperation: Mock;
-  };
-  let mockDevSupervisor: {
-    isAvailable: Mock;
   };
 
   const testAppId = 'test-app-123';
@@ -140,15 +135,10 @@ describe('GitOpsService', () => {
       executeGitOperation: vi.fn(),
     };
 
-    mockDevSupervisor = {
-      isAvailable: vi.fn().mockReturnValue(true),
-    };
-
     // Setup constructor mocks
     vi.mocked(AppRepository).mockImplementation(function () { return mockAppRepo as any; });
     vi.mocked(ImportJobRepository).mockImplementation(function () { return mockImportJobRepo as any; });
     vi.mocked(GitTool).mockImplementation(function () { return mockGitTool as any; });
-    vi.mocked(DevSupervisorClientFactory.createForApp).mockReturnValue(mockDevSupervisor as any);
 
     // Default: app exists
     mockAppRepo.findById.mockReturnValue({ id: testAppId, path: testAppPath });
@@ -167,12 +157,7 @@ describe('GitOpsService', () => {
     vi.mocked(isSupportedProjectInContainer).mockResolvedValue({ supported: true, matchedTool: 'vite' });
 
     // Default: workspace is available with stubbed package.json read
-    vi.mocked(createForWorkspace).mockReturnValue({
-      tasks: {},
-      files: {
-        view: vi.fn().mockResolvedValue({ content: '{}' }),
-      },
-    } as any);
+    vi.mocked(createForWorkspace).mockReturnValue(stubWorkspace());
 
     service = new GitOpsService();
   });
@@ -194,7 +179,8 @@ describe('GitOpsService', () => {
     });
 
     it('should return error when container is not available', async () => {
-      mockDevSupervisor.isAvailable.mockReturnValue(false);
+      // No bindable workspace client → the upfront availability guard fires.
+      vi.mocked(createForWorkspace).mockReturnValue(null as any);
 
       const result = await service.startPull({ appId: testAppId });
 
@@ -789,8 +775,11 @@ describe('GitOpsService', () => {
 
   describe('workspace-null handling in background execution', () => {
     it('should mark pull job as failed when workspace becomes null', async () => {
-      // Workspace returns null after job is created (container went away)
-      vi.mocked(createForWorkspace).mockReturnValue(null as any);
+      // Upfront guard binds a client, then the workspace goes away before the
+      // background job re-binds (container vanished mid-flight).
+      vi.mocked(createForWorkspace)
+        .mockReturnValueOnce(stubWorkspace())
+        .mockReturnValue(null as any);
 
       await service.startPull({
         appId: testAppId,
@@ -809,7 +798,9 @@ describe('GitOpsService', () => {
     });
 
     it('should mark push job as failed when workspace becomes null', async () => {
-      vi.mocked(createForWorkspace).mockReturnValue(null as any);
+      vi.mocked(createForWorkspace)
+        .mockReturnValueOnce(stubWorkspace())
+        .mockReturnValue(null as any);
 
       await service.startPush({
         appId: testAppId,

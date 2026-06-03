@@ -509,7 +509,8 @@ describe('publishing skill publish-tools', () => {
       expect(out).toContain('healthy')
       expect(out).toContain('running')
       expect(out).toContain('PID 42')
-      expect(out).toContain('1h')
+      // uptime '1h' is reshaped to a startedAt timestamp by the deployments adapter.
+      expect(out).toContain('started')
     })
 
     it('includes publishedUrl when available via getSiteData', async () => {
@@ -557,7 +558,7 @@ describe('publishing skill publish-tools', () => {
         process: { state: 'stopped', pid: 0, uptime: '' },
       })
 
-      await runStatusTool(
+      const out = await runStatusTool(
         { lines: 50, includeLogs: false },
         { experimental_context: { metadata: { appId: 'x' } } }
       )
@@ -566,6 +567,10 @@ describe('publishing skill publish-tools', () => {
         lines: 50,
         includeLogs: false,
       })
+      // False branches of the process-line guards: pid 0 and empty uptime
+      // (→ no startedAt) must omit the PID and started segments.
+      expect(out).not.toContain('PID')
+      expect(out).not.toContain('started')
     })
 
     it('includes stderr and stdout log sections when present', async () => {

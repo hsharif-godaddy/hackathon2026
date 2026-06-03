@@ -5,7 +5,7 @@ import { AppRepository } from '../../../database/repositories/AppRepository.js';
 import { logger } from '../../../logging/index.js';
 import { customerIdFromContext } from '../../../memory/interfaces/scope.js';
 import { getActionService } from '../../../server/agent-runtime.js';
-import { DevSupervisorClientFactory } from '../../../utils/dev-supervisor-client-factory.js';
+import { createForWorkspace } from '../../../workspace/index.js';
 import { validateDomainName } from '../../../utils/domain-validation.js';
 import { MemoryTool } from '../../../tools/memory-tool.js';
 import { executePublish } from '../../../tools/publish-client-tool.js';
@@ -319,8 +319,8 @@ export const statusTool: SkillToolDefinition = {
       throw new Error('App ID required');
     }
 
-    const publishSupervisor = DevSupervisorClientFactory.createForPublishSupervisor(appId);
-    if (!publishSupervisor) {
+    const workspace = createForWorkspace(appId, 'publish');
+    if (!workspace) {
       return 'Publish supervisor unavailable — app may not be published yet, or publish task is not running. Try publishing first.';
     }
 
@@ -336,7 +336,7 @@ export const statusTool: SkillToolDefinition = {
 
     const [siteDataSettled, statusSettled] = await Promise.allSettled([
       siteDataPromise,
-      publishSupervisor.getPublishStatus({ lines: input.lines ?? 200, includeLogs: input.includeLogs ?? true }),
+      workspace.deployments.status({ logLines: input.lines ?? 200, includeLogs: input.includeLogs ?? true }),
     ]);
 
     let publishedUrl: string | undefined;
@@ -363,8 +363,8 @@ export const statusTool: SkillToolDefinition = {
     message += `Health: ${status.health.status}`;
     if (status.health.message) message += ` — ${status.health.message}`;
     message += `\nProcess: ${status.process.state}`;
-    if (status.process.pid > 0) message += `, PID ${status.process.pid}`;
-    if (status.process.uptime) message += `, up ${status.process.uptime}`;
+    if (status.process.pid && status.process.pid > 0) message += `, PID ${status.process.pid}`;
+    if (status.process.startedAt) message += `, started ${status.process.startedAt.toISOString()}`;
     message += '\n';
 
     if (status.warnings?.length) {

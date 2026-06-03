@@ -6,14 +6,26 @@
  * Scans multiple files and provides detailed validation results.
  */
 
-import { promises as fs } from 'fs';
-import { join, extname } from 'path';
+import type { WorkspaceFiles, StatEntryFound } from '../workspace/files.js';
+import { isDevSupervisorNotFound } from '../services/DevSupervisorClient.js';
 import { LUCIDE_ICONS } from '../utils/lucide-icons-map.js';
 
 export interface IconsValidatorOptions {
   files: string[];
   fixSuggestions: boolean;
 }
+
+/**
+ * Directory names pruned during the recursive scan. Matched as slash-free
+ * excludeGlobs, so the dev-supervisor walker skips these subtrees at any depth.
+ */
+const SCAN_SKIP_DIRS = ['node_modules', '.git', 'dist', 'build', '.next', 'coverage', 'tmp'];
+
+/** Extensions scanned in recursive mode, expressed as basename includeGlobs. */
+const SCAN_INCLUDE_GLOBS = ['*.tsx', '*.ts', '*.jsx', '*.js'];
+
+/** Max concurrent per-file `view` calls when reading scanned files. */
+const FILE_READ_CONCURRENCY = 10;
 
 export interface ValidationError {
   file: string;
@@ -68,156 +80,153 @@ function extractLucideIcons(code: string): Array<{icon: string, line: number}> {
 }
 
 /**
- * Scan directory for files to validate
+ * Resolve the set of workspace-relative files to validate.
+ *
+ * - With explicit `specificFiles`, each path is stat'd in one batch and only
+ *   existing regular files are kept (missing paths and directories drop out).
+ * - Otherwise the workspace is walked via `tree`, restricted to source-file
+ *   extensions with the standard build/vendor directories pruned server-side.
+ *
+ * Paths are returned workspace-rooted, ready to hand straight to `view`.
+ * `truncated` is true when the recursive walk hit the supervisor's entry cap,
+ * so callers can warn that the scan covered only a subset of files. The
+ * explicit-files branch is never truncated (`stat` returns every path asked).
  */
-async function scanForFiles(appPath: string, specificFiles: string[] = []): Promise<string[]> {
+async function scanForFiles(
+  files: WorkspaceFiles,
+  specificFiles: string[] = [],
+): Promise<{ paths: string[]; truncated: boolean }> {
   if (specificFiles.length > 0) {
-    // Return specific files, ensuring they exist and are relative to appPath
-    const files: string[] = [];
-    for (const file of specificFiles) {
-      const fullPath = join(appPath, file);
-      try {
-        await fs.access(fullPath);
-        files.push(file);
-      } catch {
-        // File doesn't exist, skip it
-      }
-    }
-    return files;
+    const { entries } = await files.stat({ paths: specificFiles });
+    return {
+      paths: entries
+        .filter((e): e is StatEntryFound => !('error' in e) && e.kind === 'file')
+        .map((e) => e.path),
+      truncated: false,
+    };
   }
 
-  // Recursively scan for React/TS files
-  const files: string[] = [];
-  
-  async function scanDir(dir: string, relativePath: string = ''): Promise<void> {
-    try {
-      const entries = await fs.readdir(dir, { withFileTypes: true });
-      
-      for (const entry of entries) {
-        const fullPath = join(dir, entry.name);
-        const relPath = relativePath ? join(relativePath, entry.name) : entry.name;
-        
-        // Skip common directories that shouldn't contain source files
-        if (entry.isDirectory()) {
-          const skipDirs = ['node_modules', '.git', 'dist', 'build', '.next', 'coverage', 'tmp'];
-          if (!skipDirs.includes(entry.name)) {
-            await scanDir(fullPath, relPath);
-          }
-        } else if (entry.isFile()) {
-          // Only scan relevant file types
-          const ext = extname(entry.name);
-          if (['.tsx', '.ts', '.jsx', '.js'].includes(ext)) {
-            files.push(relPath);
-          }
-        }
-      }
-    } catch (error) {
-      // Skip directories we can't read
-    }
-  }
-  
-  await scanDir(appPath);
-  return files;
+  const { entries, truncated } = await files.tree({
+    recursive: true,
+    kindFilter: 'file',
+    includeGlobs: SCAN_INCLUDE_GLOBS,
+    excludeGlobs: SCAN_SKIP_DIRS,
+  });
+  return { paths: entries.map((e) => e.path), truncated };
+}
+
+interface FileValidation {
+  errors: ValidationError[];
+  warnings: ValidationWarning[];
+  fixSuggestions: string[];
 }
 
 /**
- * Validate lucide-react icon imports across multiple files
+ * Validate the lucide-react imports in a single file.
+ *
+ * Reads the file via `view`. A `not_found` (the file vanished between scan and
+ * read) is downgraded to a warning; any other failure — including transport
+ * errors talking to dev-supervisor — propagates so it is not silently masked.
  */
-export async function validateLucideIcons(appPath: string, specificFiles: string[] = []): Promise<IconsValidationResult> {
+async function validateFile(files: WorkspaceFiles, file: string): Promise<FileValidation> {
+  const result: FileValidation = { errors: [], warnings: [], fixSuggestions: [] };
+
+  let code: string;
+  try {
+    ({ content: code } = await files.view({ path: file }));
+  } catch (err) {
+    if (isDevSupervisorNotFound(err)) {
+      result.warnings.push({ file, message: 'Could not read file: not found' });
+      return result;
+    }
+    throw err;
+  }
+
+  for (const { icon, line } of extractLucideIcons(code)) {
+    if (LUCIDE_ICONS.has(icon)) {
+      continue;
+    }
+    const similar = getSimilarIcons(icon);
+    const suggestion =
+      similar.length > 0
+        ? `Consider using: ${similar.slice(0, 3).join(', ')}`
+        : 'Check available lucide-react icons';
+
+    result.errors.push({
+      file,
+      message: `Invalid lucide-react icon "${icon}" - ${suggestion}`,
+      line,
+      icon,
+    });
+
+    if (similar.length > 0) {
+      result.fixSuggestions.push(
+        `Replace "${icon}" in ${file}:${line} with one of: ${similar.slice(0, 3).join(', ')}`,
+      );
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Validate lucide-react icon imports across the workspace.
+ *
+ * All filesystem access goes through the supplied {@link WorkspaceFiles} client
+ * (dev-supervisor) — never the host filesystem. Transport failures propagate;
+ * only a per-file `not_found` is downgraded to a warning.
+ */
+export async function validateLucideIcons(
+  files: WorkspaceFiles,
+  specificFiles: string[] = [],
+): Promise<IconsValidationResult> {
+  const { paths: scannedFiles, truncated } = await scanForFiles(files, specificFiles);
+
+  if (scannedFiles.length === 0) {
+    return {
+      valid: true,
+      scannedFiles: [],
+      errors: [],
+      warnings: [{ file: 'project', message: 'No React/TypeScript files found to scan' }],
+      fixSuggestions: [],
+    };
+  }
+
   const errors: ValidationError[] = [];
   const warnings: ValidationWarning[] = [];
   const fixSuggestions: string[] = [];
-  let scannedFiles: string[] = [];
 
-  try {
-    // Find files to scan
-    scannedFiles = await scanForFiles(appPath, specificFiles);
-    
-    if (scannedFiles.length === 0) {
-      warnings.push({
-        file: 'project',
-        message: 'No React/TypeScript files found to scan'
-      });
-      return {
-        valid: true,
-        scannedFiles: [],
-        errors: [],
-        warnings,
-        fixSuggestions: []
-      };
-    }
-
-    // Process each file
-    for (const file of scannedFiles) {
-      try {
-        const fullPath = join(appPath, file);
-        const code = await fs.readFile(fullPath, 'utf-8');
-        
-        // Extract icons from this file
-        const importedIcons = extractLucideIcons(code);
-        
-        if (importedIcons.length === 0) {
-          continue; // No icons in this file, skip
-        }
-
-        // Validate each imported icon
-        for (const { icon, line } of importedIcons) {
-          if (!LUCIDE_ICONS.has(icon)) {
-            // Invalid icon found
-            const similar = getSimilarIcons(icon);
-            const suggestion = similar.length > 0 
-              ? `Consider using: ${similar.slice(0, 3).join(', ')}`
-              : 'Check available lucide-react icons';
-            
-            errors.push({
-              file,
-              message: `Invalid lucide-react icon "${icon}" - ${suggestion}`,
-              line,
-              icon
-            });
-
-            // Add to fix suggestions
-            if (similar.length > 0) {
-              fixSuggestions.push(`Replace "${icon}" in ${file}:${line} with one of: ${similar.slice(0, 3).join(', ')}`);
-            }
-          }
-        }
-
-      } catch (fileError) {
-        warnings.push({
-          file,
-          message: `Could not read file: ${fileError instanceof Error ? fileError.message : 'Unknown error'}`
-        });
-      }
-    }
-
-    // Add general suggestions if there are errors
-    if (errors.length > 0) {
-      fixSuggestions.push(`Total available lucide-react icons: ${LUCIDE_ICONS.size}`);
-      fixSuggestions.push('Visit https://lucide.dev/icons/ to browse all available icons');
-    }
-
-    return {
-      valid: errors.length === 0,
-      scannedFiles,
-      errors,
-      warnings,
-      fixSuggestions
-    };
-
-  } catch (error) {
-    // Return error as validation failure
-    return {
-      valid: false,
-      scannedFiles: [],
-      errors: [{
-        file: 'validation',
-        message: `Validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-      }],
-      warnings: [],
-      fixSuggestions: []
-    };
+  // A truncated walk means we validated only a subset of source files; surface
+  // it so a partial scan is not mistaken for a clean, complete pass.
+  if (truncated) {
+    warnings.push({
+      file: 'project',
+      message: 'File scan truncated at the workspace limit; not all files were validated',
+    });
   }
+
+  for (let i = 0; i < scannedFiles.length; i += FILE_READ_CONCURRENCY) {
+    const batch = scannedFiles.slice(i, i + FILE_READ_CONCURRENCY);
+    const batchResults = await Promise.all(batch.map((file) => validateFile(files, file)));
+    for (const r of batchResults) {
+      errors.push(...r.errors);
+      warnings.push(...r.warnings);
+      fixSuggestions.push(...r.fixSuggestions);
+    }
+  }
+
+  if (errors.length > 0) {
+    fixSuggestions.push(`Total available lucide-react icons: ${LUCIDE_ICONS.size}`);
+    fixSuggestions.push('Visit https://lucide.dev/icons/ to browse all available icons');
+  }
+
+  return {
+    valid: errors.length === 0,
+    scannedFiles,
+    errors,
+    warnings,
+    fixSuggestions,
+  };
 }
 
 /**
