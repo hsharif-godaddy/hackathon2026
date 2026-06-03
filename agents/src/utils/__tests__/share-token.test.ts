@@ -11,7 +11,7 @@ import { resolveAppBaseUrl } from '../share-token.js'
 
 const mockFindByAppId = vi.mocked(shareTokenRepository.findByAppId)
 
-const PREVIEW_URL = 'https://abc1234567.preview.c40.airoapp.ai'
+const PREVIEW_URL = 'https://abc1234567.preview.c40.airoapp.ai/'
 const APP_ID = 'abc1234567'
 const TOKEN = 'testtoken1234'
 
@@ -71,5 +71,23 @@ describe('resolveAppBaseUrl', function resolveTests() {
 
     expect(resolveAppBaseUrl(PREVIEW_URL, APP_ID))
       .toBe(`${PREVIEW_URL}?airoShareToken=activetoken12`)
+  })
+
+  it('prepends https:// when previewUrl has no protocol', function noProtocol() {
+    mockFindByAppId.mockReturnValue([makeToken()])
+
+    const result = resolveAppBaseUrl('abc1234567.preview.c40.airoapp.ai/', APP_ID)
+    expect(result).toContain('https://')
+    expect(result).toContain(`airoShareToken=${TOKEN}`)
+  })
+
+  it('replaces an existing airoShareToken instead of duplicating it', function dedup() {
+    const staleUrl = `${PREVIEW_URL}?airoShareToken=oldtoken`
+    mockFindByAppId.mockReturnValue([makeToken({ token: 'newtoken' })])
+
+    const result = resolveAppBaseUrl(staleUrl, APP_ID)
+    expect(result).toContain('airoShareToken=newtoken')
+    expect(result).not.toContain('oldtoken')
+    expect((result.match(/airoShareToken/g) ?? []).length).toBe(1)
   })
 })

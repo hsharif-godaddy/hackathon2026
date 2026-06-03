@@ -12,9 +12,11 @@ export function resolveAppBaseUrl(previewUrl: string, appId: string): string {
     const activeToken = shareTokenRepository
       .findByAppId(appId, 'user')
       .find(t => t.expiresAt > now)
-    return activeToken
-      ? `${previewUrl}?airoShareToken=${activeToken.token}`
-      : previewUrl
+    if (!activeToken) return previewUrl
+    const normalized = /^https?:\/\//i.test(previewUrl) ? previewUrl : `https://${previewUrl}`
+    const parsed = new URL(normalized)
+    parsed.searchParams.set('airoShareToken', activeToken.token)
+    return parsed.toString()
   } catch {
     return previewUrl
   }
