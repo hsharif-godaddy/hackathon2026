@@ -15,6 +15,7 @@ import (
 	"github.com/airo-ai-builder/release-manager/internal/lock"
 	"github.com/airo-ai-builder/release-manager/internal/logger"
 	"github.com/airo-ai-builder/release-manager/internal/pipeline"
+	"github.com/airo-ai-builder/release-manager/internal/render"
 	"github.com/airo-ai-builder/release-manager/internal/slack"
 )
 
@@ -189,15 +190,7 @@ func deleteReleaseCmd(p *pipeline.Pipeline, parent context.Context, tag string) 
 // removes blankLine zero-width characters, and appends a Slack thread link
 // when permalink is non-empty.
 func buildReleaseBody(slackText, permalink string) string {
-	if i := strings.Index(slackText, "\n"); i >= 0 {
-		slackText = strings.TrimLeft(slackText[i+1:], "\n")
-	}
-	slackText = slackEmojiToUnicode(slackText)
-	slackText = strings.ReplaceAll(slackText, blankLine, "")
-	if permalink != "" {
-		slackText += fmt.Sprintf("\n\n---\n[Slack thread](%s)", permalink)
-	}
-	return slackText
+	return render.ReleaseBody(slackText, permalink)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

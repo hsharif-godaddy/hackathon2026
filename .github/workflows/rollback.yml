@@ -1,0 +1,91 @@
+name: Release Rollback
+
+# Manual rollback of a prod release, driven by the Go release-manager binary in
+# headless mode. The binary auto-discovers the previous-good artifact ID + image
+# tags from prod run history (FetchRollbackSnapshot) and dispatches the rollback
+# stages; any of the four values can be overridden via the inputs below when the
+# most recent successful run IS the bad one.
+
+on:
+  workflow_dispatch:
+    inputs:
+      previous_artifact_id:
+        description: 'Override the auto-discovered artifact ID (blank = auto-discover)'
+        required: false
+        type: string
+        default: ''
+      previous_agent_image_tag:
+        description: 'Override the auto-discovered agent image tag (blank = auto-discover)'
+        required: false
+        type: string
+        default: ''
+      previous_preview_image_tag:
+        description: 'Override the auto-discovered preview image tag (blank = auto-discover)'
+        required: false
+        type: string
+        default: ''
+      previous_publish_image_tag:
+        description: 'Override the auto-discovered publish image tag (blank = auto-discover)'
+        required: false
+        type: string
+        default: ''
+      reason:
+        description: 'Why we are rolling back (free text — recorded in the run summary)'
+        required: false
+        type: string
+        default: 'No reason given'
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  # MUST match release.yml — a rollback and a forward release are mutually
+  # exclusive (repo-wide string-equality lock).
+  group: airo-release-main
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    # Self-hosted: parity with the release pipeline (binary shells gh + posts
+    # Slack; rollback has no health-check curl but stays on the same pool).
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version: '1.26'
+          cache-dependency-path: release-manager/go.sum
+      - name: Record reason
+        env:
+          REASON: ${{ inputs.reason }}
+        run: |
+          {
+            echo "## Rollback"
+            echo
+            echo "- Triggered by: \`${{ github.actor }}\`"
+            echo "- Reason: $REASON"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Build release-manager
+        working-directory: release-manager
+        run: go build -o "$RUNNER_TEMP/release-manager" ./cmd/release-manager/
+      - name: Run rollback
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PIONEER_INFRA_TOKEN: ${{ secrets.PIONEER_INFRA_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          ARTIFACT_ID: ${{ inputs.previous_artifact_id }}
+          AGENT_TAG: ${{ inputs.previous_agent_image_tag }}
+          PREVIEW_TAG: ${{ inputs.previous_preview_image_tag }}
+          PUBLISH_TAG: ${{ inputs.previous_publish_image_tag }}
+        run: |
+          "$RUNNER_TEMP/release-manager" run --headless --mode rollback \
+            --branch main \
+            --rollback-artifact-id "$ARTIFACT_ID" \
+            --rollback-agent-tag "$AGENT_TAG" \
+            --rollback-preview-tag "$PREVIEW_TAG" \
+            --rollback-publish-tag "$PUBLISH_TAG"

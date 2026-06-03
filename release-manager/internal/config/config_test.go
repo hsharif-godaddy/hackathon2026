@@ -641,6 +641,39 @@ func TestDeployWorkflows(t *testing.T) {
 	}
 }
 
+func TestActiveRunWorkflows(t *testing.T) {
+	cfg := &Config{
+		Pipeline: PipelineConfig{
+			Environments: map[string]*EnvironmentConfig{
+				"test": {Stages: []Stage{
+					{ID: "deploy", Name: "Deploy", Repo: "org/app", Workflow: "deploy.yml"},
+				}},
+			},
+		},
+		OrchestratorWorkflows: []OrchestratorWorkflow{
+			{Repo: "gdcorp-partners/airo-app-builder", Workflow: "release.yml"},
+			{Repo: "org/app", Workflow: "deploy.yml"}, // also a stage → must dedupe
+			{Repo: "", Workflow: "skip.yml"},          // empty repo → skipped
+		},
+	}
+
+	wfs := cfg.ActiveRunWorkflows()
+	counts := map[string]int{}
+	for _, w := range wfs {
+		counts[w.Repo+"/"+w.Workflow]++
+	}
+
+	if counts["gdcorp-partners/airo-app-builder/release.yml"] != 1 {
+		t.Errorf("orchestrator release.yml count = %d, want 1", counts["gdcorp-partners/airo-app-builder/release.yml"])
+	}
+	if counts["org/app/deploy.yml"] != 1 {
+		t.Errorf("deploy.yml count = %d, want 1 (deduped against stage)", counts["org/app/deploy.yml"])
+	}
+	if counts["/skip.yml"] != 0 {
+		t.Error("orchestrator entry with empty repo should be skipped")
+	}
+}
+
 func ptr(value bool) *bool {
 	return &value
 }
@@ -670,6 +703,27 @@ func TestDeployWorkflowsActualConfig(t *testing.T) {
 	}
 	if !hasPromoteFilter {
 		t.Error("docker-promote.yml should have active_run_filter 'airo-builder'")
+	}
+}
+
+// TestActiveRunWorkflowsActualConfig guards the coordination safety property:
+// the real config must register BOTH GHA orchestrator workflows so a manual TUI
+// release is blocked while either a forward release or a rollback is running.
+// If someone drops an orchestrator entry, this fails.
+func TestActiveRunWorkflowsActualConfig(t *testing.T) {
+	cfg, err := Load("../../release-manager.yml")
+	if err != nil {
+		t.Skipf("skipping actual config test: %v", err)
+	}
+
+	got := map[string]bool{}
+	for _, w := range cfg.ActiveRunWorkflows() {
+		got[w.Workflow] = true
+	}
+	for _, want := range []string{"release.yml", "rollback.yml"} {
+		if !got[want] {
+			t.Errorf("ActiveRunWorkflows() must include orchestrator %q (TUI↔GHA collision guard)", want)
+		}
 	}
 }
 

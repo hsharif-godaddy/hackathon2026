@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/airo-ai-builder/release-manager/internal/pipeline"
+	"github.com/airo-ai-builder/release-manager/internal/render"
 )
 
 func (m Model) View() tea.View {
@@ -299,7 +300,7 @@ func (m Model) renderStage(sb *strings.Builder, sr *pipeline.StageRun) {
 	))
 
 	if dur := sr.Duration(); dur > 0 {
-		sb.WriteString(" " + m.theme.StageDurationStyle.Render(formatDuration(dur)))
+		sb.WriteString(" " + m.theme.StageDurationStyle.Render(render.FormatDuration(dur)))
 	}
 
 	if sr.State == pipeline.StateRunning && sr.StatusText != "" {
@@ -337,7 +338,7 @@ func (m Model) renderStage(sb *strings.Builder, sr *pipeline.StageRun) {
 
 	for _, mr := range sr.MatrixRuns {
 		mrStyledSymbol := m.styledStateSymbol(mr.State)
-		mrLabel := formatMatrixInputs(mr.Inputs)
+		mrLabel := render.FormatMatrixInputs(mr.Inputs)
 		if mr.State == pipeline.StateRunning && mr.StatusText != "" {
 			mrLabel += " " + m.theme.MutedStyle.Render(mr.StatusText)
 		}
@@ -367,233 +368,61 @@ func (m Model) renderRollbackSummary(sb *strings.Builder) {
 	sb.WriteString(fmt.Sprintf("    Publish image:   %s\n", m.theme.SnapshotValueStyle.Render(snap.PublishImageTag)))
 }
 
-func formatDuration(d time.Duration) string {
-	secs := d.Seconds()
-	if secs < 60 {
-		return fmt.Sprintf("(%.0fs)", secs)
-	}
-	return fmt.Sprintf("(%dm%02ds)", int(secs)/60, int(secs)%60)
-}
-
 func (m Model) elapsed() string {
-	if m.startTime.IsZero() {
-		return "0s"
-	}
-	d := time.Since(m.startTime).Truncate(time.Second)
-	if d < time.Minute {
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	}
-	return fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
+	return render.FormatElapsed(m.elapsedDur())
 }
 
-// Slack's markdown_text renderer strips leading ASCII spaces and collapses
-// consecutive blank lines. These Unicode characters work around that:
-// - nbsp preserves indentation (non-breaking space, not stripped)
-// - blankLine forces a visible blank line (zero-width space, not collapsed)
+// elapsedDur returns the wall-clock duration since the run started (0 before
+// it has). Feeds both the terminal "elapsed" string and the shared Slack
+// renderer.
+func (m Model) elapsedDur() time.Duration {
+	if m.startTime.IsZero() {
+		return 0
+	}
+	return time.Since(m.startTime)
+}
+
+// nbsp / nbspx2 / blankLine alias the canonical constants in internal/render
+// so this package (and its existing tests) keep referring to them by the short
+// names while the values live in one place (the shared Slack renderer).
 const (
-	nbsp      = "\u00A0\u00A0"
-	nbspx2    = "\u00A0\u00A0\u00A0\u00A0"
-	blankLine = "\u200B"
+	nbsp      = render.Nbsp
+	nbspx2    = render.Nbspx2
+	blankLine = render.BlankLine
 )
 
-// slackMessage builds a Slack status message using standard markdown format
-// (for use with the markdown_text API field, which allows up to 12,000 chars).
+// slackMessage builds the Slack status message. The format lives in
+// internal/render (shared with the headless runner); this is a thin adapter
+// projecting the TUI Model into a render.State.
 func (m Model) slackMessage(finished bool) string {
-	var sb strings.Builder
-
-	header := ":rocket: **" + m.operator + "** is deploying `" + m.branch + "`"
-	if commit := m.pipeline.Values()["commit"]; commit != "" && commit != m.branch {
-		short := commit
-		if len(short) > 7 {
-			short = short[:7]
-		}
-		header += " (`" + short + "`)"
-	}
-	if m.dryRun {
-		header += " (DRY RUN)"
-	}
-	sb.WriteString(header + "\n")
-
-	if len(m.releaseNotes) > 0 || m.releaseNotesURL != "" {
-		if len(m.releaseNotes) > 0 {
-			sb.WriteString(fmt.Sprintf("\n%s\n**Release Notes** (%d PRs)", blankLine, len(m.releaseNotes)))
-			if m.releaseNotesURL != "" {
-				sb.WriteString(fmt.Sprintf(" — [Full diff](%s)", m.releaseNotesURL))
-			}
-			sb.WriteString("\n")
-			for _, n := range m.releaseNotes {
-				line := fmt.Sprintf("• #%d %s", n.Number, n.Title)
-				if n.Author != "" {
-					line += " — @" + n.Author
-				}
-				sb.WriteString(line + "\n")
-			}
-		} else if m.releaseNotesURL != "" {
-			sb.WriteString(fmt.Sprintf("\n%s\n[Full diff](%s)\n", blankLine, m.releaseNotesURL))
-		}
-	}
-
-	stages := m.pipeline.Stages()
-	currentEnv := ""
-	for _, sr := range stages {
-		if sr.Env == "rollback" {
-			continue
-		}
-		if sr.Env != currentEnv {
-			currentEnv = sr.Env
-			sb.WriteString(fmt.Sprintf("\n%s\n**%s**\n", blankLine, strings.ToUpper(currentEnv)))
-			m.renderSlackDeployValues(&sb, currentEnv, stages)
-		}
-		m.renderSlackStage(&sb, sr)
-	}
-
-	rollbackStages := false
-	for _, sr := range stages {
-		if sr.Env == "rollback" {
-			if !rollbackStages {
-				sb.WriteString(fmt.Sprintf("\n%s\n**ROLLBACK**\n", blankLine))
-				m.renderSlackSnapshotValues(&sb)
-				rollbackStages = true
-			}
-			m.renderSlackStage(&sb, sr)
-		}
-	}
-
-	if finished && m.phase == phaseAborted {
-		sb.WriteString(fmt.Sprintf("\n%s\n:no_entry: **%s** (%s)", blankLine, m.statusMessage, m.elapsed()))
-	} else if finished {
-		sb.WriteString(fmt.Sprintf("\n%s\n:checkered_flag: **Complete** (%s)", blankLine, m.elapsed()))
-		if m.releaseTag != "" {
-			sb.WriteString(fmt.Sprintf("\n\n:label: [%s](%s)", m.releaseTag, m.releaseURL))
-		}
-	} else {
-		sb.WriteString(fmt.Sprintf("\n%s\n:spinner_: *In progress...*", blankLine))
-	}
-
-	return sb.String()
+	return render.Message(render.State{
+		Operator:        m.operator,
+		Branch:          m.branch,
+		Commit:          m.pipeline.Values()["commit"],
+		DryRun:          m.dryRun,
+		Finished:        finished,
+		Aborted:         m.phase == phaseAborted,
+		ReleaseNotes:    m.releaseNotes,
+		ReleaseNotesURL: m.releaseNotesURL,
+		Stages:          m.pipeline.Stages(),
+		EnvOrder:        m.envOrder,
+		Snapshot:        m.pipeline.Snapshot,
+		StatusMessage:   m.statusMessage,
+		ReleaseTag:      m.releaseTag,
+		ReleaseURL:      m.releaseURL,
+		Elapsed:         m.elapsedDur(),
+	})
 }
 
-func (m Model) renderSlackStage(sb *strings.Builder, sr *pipeline.StageRun) {
-	emoji := slackEmoji(sr.State)
-	line := fmt.Sprintf("%s%s %s", nbsp, emoji, sr.Stage.Name)
-
-	if dur := sr.Duration(); dur > 0 && sr.State != pipeline.StateRunning {
-		line += " " + formatDuration(dur)
-	}
-
-	if sr.RunURL != "" && !strings.HasPrefix(sr.RunURL, "[DRY RUN]") {
-		line += fmt.Sprintf(" — [View Run](%s)", sr.RunURL)
-	}
-
-	if sr.Error != "" {
-		line += " — " + sr.Error
-	}
-
-	sb.WriteString(line + "\n")
-
-	for _, mr := range sr.MatrixRuns {
-		mrLine := fmt.Sprintf("%s%s %s", nbspx2, slackEmoji(mr.State), formatMatrixInputs(mr.Inputs))
-		if mr.RunURL != "" && !strings.HasPrefix(mr.RunURL, "[DRY RUN]") {
-			mrLine += fmt.Sprintf(" — [View Run](%s)", mr.RunURL)
-		}
-		if mr.Error != "" {
-			mrLine += " — " + mr.Error
-		}
-		sb.WriteString(mrLine + "\n")
-	}
-}
-
-// renderSlackDeployValues shows artifact/image values for environments after
-// the first. The first env (test) produces these values; subsequent envs
-// (prod) consume them. Values are collected from all non-rollback stage
-// outputs regardless of env, since the build stage in test is the only
-// stage expected to produce image tags. If multiple stages emit the same
-// output key, the last stage in pipeline order wins deterministically.
+// renderSlackDeployValues is retained as a thin wrapper (existing tests call it
+// directly) delegating to the shared implementation in internal/render.
 func (m Model) renderSlackDeployValues(sb *strings.Builder, env string, stages []*pipeline.StageRun) {
-	if len(m.envOrder) > 0 && env == m.envOrder[0] {
-		return
-	}
-	var artifact, agent, preview, publish string
-	for _, sr := range stages {
-		if sr.Env == "rollback" {
-			continue
-		}
-		for k, v := range sr.Outputs {
-			switch k {
-			case "artifact_id":
-				artifact = v
-			case "agent_image_tag":
-				agent = v
-			case "preview_image_tag":
-				preview = v
-			case "publish_image_tag":
-				publish = v
-			}
-		}
-	}
-	if artifact != "" {
-		sb.WriteString(nbsp + "artifact: `" + artifact + "`\n")
-	}
-	if agent != "" || preview != "" || publish != "" {
-		sb.WriteString(nbsp + "agent: `" + agent + "` preview: `" + preview + "` publish: `" + publish + "`\n")
-	}
+	render.WriteDeployValues(sb, env, stages, m.envOrder)
 }
 
-func (m Model) renderSlackSnapshotValues(sb *strings.Builder) {
-	snap := m.pipeline.Snapshot
-	if snap.ArtifactID != "" {
-		sb.WriteString(nbsp + "artifact: `" + snap.ArtifactID + "`\n")
-	}
-	if snap.AgentImageTag != "" || snap.PreviewImageTag != "" || snap.PublishImageTag != "" {
-		sb.WriteString(nbsp + "agent: `" + snap.AgentImageTag + "` preview: `" + snap.PreviewImageTag + "` publish: `" + snap.PublishImageTag + "`\n")
-	}
-}
-
-func slackEmoji(state pipeline.StageState) string {
-	switch state {
-	case pipeline.StateRunning, pipeline.StateParsingOutputs:
-		return ":large_blue_circle:"
-	case pipeline.StateSuccess:
-		return ":white_check_mark:"
-	case pipeline.StateFailed:
-		return ":x:"
-	case pipeline.StateSkipped:
-		return ":fast_forward:"
-	default:
-		return ":white_circle:"
-	}
-}
-
-// slackEmojiToUnicode replaces Slack emoji codes with Unicode characters
-// for contexts that don't render Slack codes natively (e.g. GitHub releases).
+// slackEmojiToUnicode is retained as a thin wrapper (used by update.go for the
+// GitHub release body, and asserted by existing tests) delegating to the
+// shared implementation in internal/render.
 func slackEmojiToUnicode(text string) string {
-	replacements := []struct{ code, unicode string }{
-		{":white_check_mark:", "\u2705"},
-		{":x:", "\u274C"},
-		{":rocket:", "\U0001F680"},
-		{":checkered_flag:", "\U0001F3C1"},
-		{":large_blue_circle:", "\U0001F535"},
-		{":white_circle:", "\u26AA"},
-		{":no_entry:", "\u26D4"},
-		{":fast_forward:", "\u23E9"},
-		{":label:", "\U0001F3F7\uFE0F"},
-		{":spinner_:", ""},
-	}
-	for _, r := range replacements {
-		text = strings.ReplaceAll(text, r.code, r.unicode)
-	}
-	return text
-}
-
-func formatMatrixInputs(inputs map[string]string) string {
-	keys := make([]string, 0, len(inputs))
-	for k := range inputs {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	parts := make([]string, 0, len(keys))
-	for _, k := range keys {
-		parts = append(parts, fmt.Sprintf("%s=%s", k, inputs[k]))
-	}
-	return strings.Join(parts, " ")
+	return render.EmojiToUnicode(text)
 }

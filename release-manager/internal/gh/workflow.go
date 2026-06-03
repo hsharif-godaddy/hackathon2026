@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"sort"
@@ -76,7 +77,46 @@ type Runner interface {
 }
 
 // LiveRunner executes real gh CLI commands.
-type LiveRunner struct{}
+type LiveRunner struct {
+	// TokenForRepo, if set, returns the GH_TOKEN to use for gh commands
+	// scoped to the given repo. Returning "" means "use ambient gh auth"
+	// (the default — preserves the interactive TUI's behavior, which relies
+	// on `gh auth login` credentials). Headless/CI callers set this to route
+	// a dedicated cross-org token (e.g. PIONEER_INFRA_TOKEN for
+	// gdcorp-commerce/pioneer-infra) while letting same-org repos fall back
+	// to the ambient default token. A nil func ⇒ always ambient.
+	TokenForRepo func(repo string) string
+}
+
+// tokenFor resolves the token for a repo, treating a nil TokenForRepo as
+// "ambient auth" so the zero-value LiveRunner behaves exactly as before.
+func (r *LiveRunner) tokenFor(repo string) string {
+	if r.TokenForRepo == nil {
+		return ""
+	}
+	return r.TokenForRepo(repo)
+}
+
+// executeRepo runs a gh command scoped to repo, injecting the routed token
+// (if any) as GH_TOKEN for that single invocation.
+func (r *LiveRunner) executeRepo(ctx context.Context, repo string, args ...string) (string, error) {
+	return executeWithToken(ctx, r.tokenFor(repo), args...)
+}
+
+// RepoTokenRouter builds a TokenForRepo func that maps a repository's owner
+// (the part before "/") to a token. Owners absent from the map — or mapped to
+// "" — resolve to "" (ambient gh auth). Example:
+//
+//	gh.RepoTokenRouter(map[string]string{"gdcorp-commerce": pioneerToken})
+//
+// routes pioneer-infra dispatches through pioneerToken while every other repo
+// uses the runner's ambient GH_TOKEN.
+func RepoTokenRouter(ownerTokens map[string]string) func(repo string) string {
+	return func(repo string) string {
+		owner, _, _ := strings.Cut(repo, "/")
+		return ownerTokens[owner]
+	}
+}
 
 func (r *LiveRunner) Trigger(ctx context.Context, repo, workflow, ref string, inputs map[string]string) (string, error) {
 	args := []string{"workflow", "run", workflow, "--repo", repo}
@@ -87,7 +127,7 @@ func (r *LiveRunner) Trigger(ctx context.Context, repo, workflow, ref string, in
 		args = append(args, "--field", k+"="+v)
 	}
 
-	output, err := execute(ctx, args...)
+	output, err := r.executeRepo(ctx, repo, args...)
 	if err != nil {
 		return "", fmt.Errorf("triggering %s in %s: %w", workflow, repo, err)
 	}
@@ -96,7 +136,7 @@ func (r *LiveRunner) Trigger(ctx context.Context, repo, workflow, ref string, in
 }
 
 func (r *LiveRunner) Status(ctx context.Context, repo string, runID int64) (*RunStatus, error) {
-	output, err := execute(ctx, "run", "view", fmt.Sprintf("%d", runID),
+	output, err := r.executeRepo(ctx, repo, "run", "view", fmt.Sprintf("%d", runID),
 		"--repo", repo, "--json", "databaseId,status,conclusion,displayTitle,url,jobs")
 	if err != nil {
 		return nil, fmt.Errorf("getting run status %d: %w", runID, err)
@@ -110,7 +150,7 @@ func (r *LiveRunner) Status(ctx context.Context, repo string, runID int64) (*Run
 }
 
 func (r *LiveRunner) Logs(ctx context.Context, repo string, runID int64) (string, error) {
-	output, err := execute(ctx, "run", "view", fmt.Sprintf("%d", runID), "--repo", repo, "--log")
+	output, err := r.executeRepo(ctx, repo, "run", "view", fmt.Sprintf("%d", runID), "--repo", repo, "--log")
 	if err != nil {
 		return "", fmt.Errorf("fetching logs for run %d: %w", runID, err)
 	}
@@ -128,7 +168,7 @@ func (r *LiveRunner) ListRuns(ctx context.Context, repo, workflow, status string
 		args = append(args, "--status", status)
 	}
 
-	output, err := execute(ctx, args...)
+	output, err := r.executeRepo(ctx, repo, args...)
 	if err != nil {
 		return nil, fmt.Errorf("listing runs for %s: %w", workflow, err)
 	}
@@ -141,7 +181,7 @@ func (r *LiveRunner) ListRuns(ctx context.Context, repo, workflow, status string
 }
 
 func (r *LiveRunner) Compare(ctx context.Context, repo, base, head string) (*CompareResult, error) {
-	output, err := execute(ctx, "api", fmt.Sprintf("repos/%s/compare/%s...%s", repo, base, head))
+	output, err := r.executeRepo(ctx, repo, "api", fmt.Sprintf("repos/%s/compare/%s...%s", repo, base, head))
 	if err != nil {
 		return nil, fmt.Errorf("comparing %s...%s in %s: %w", base, head, repo, err)
 	}
@@ -180,7 +220,7 @@ func (r *LiveRunner) AuthStatus(ctx context.Context) error {
 }
 
 func (r *LiveRunner) CheckRepoAccess(ctx context.Context, repo string) error {
-	output, err := execute(ctx, "api", fmt.Sprintf("repos/%s", repo), "--jq", ".permissions.push")
+	output, err := r.executeRepo(ctx, repo, "api", fmt.Sprintf("repos/%s", repo), "--jq", ".permissions.push")
 	if err != nil {
 		return fmt.Errorf("no access to %s: %w", repo, err)
 	}
@@ -195,7 +235,7 @@ func verifyPush(output, repo string) error {
 }
 
 func (r *LiveRunner) ListReleases(ctx context.Context, repo string, limit int) ([]ReleaseEntry, error) {
-	output, err := execute(ctx, "release", "list",
+	output, err := r.executeRepo(ctx, repo, "release", "list",
 		"--repo", repo,
 		"--json", "tagName",
 		"-L", fmt.Sprintf("%d", limit),
@@ -219,7 +259,7 @@ func (r *LiveRunner) CreateRelease(ctx context.Context, repo, tag, target, title
 		"--notes", body,
 	}
 
-	output, err := execute(ctx, args...)
+	output, err := r.executeRepo(ctx, repo, args...)
 	if err != nil {
 		return "", fmt.Errorf("creating release %s in %s: %w", tag, repo, err)
 	}
@@ -230,7 +270,7 @@ func (r *LiveRunner) CreateRelease(ctx context.Context, repo, tag, target, title
 // compensate when an operator chooses rollback after the release was already
 // cut at "Complete" time.
 func (r *LiveRunner) DeleteRelease(ctx context.Context, repo, tag string) error {
-	_, err := execute(ctx, "release", "delete", tag,
+	_, err := r.executeRepo(ctx, repo, "release", "delete", tag,
 		"--repo", repo,
 		"--yes",
 		"--cleanup-tag",
@@ -242,20 +282,40 @@ func (r *LiveRunner) DeleteRelease(ctx context.Context, repo, tag string) error 
 }
 
 func (r *LiveRunner) ResolveCommit(ctx context.Context, repo, ref string) (string, error) {
-	output, err := execute(ctx, "api", fmt.Sprintf("repos/%s/commits/%s", repo, ref), "--jq", ".sha")
+	output, err := r.executeRepo(ctx, repo, "api", fmt.Sprintf("repos/%s/commits/%s", repo, ref), "--jq", ".sha")
 	if err != nil {
 		return "", fmt.Errorf("resolving commit %s in %s: %w", ref, repo, err)
 	}
 	return strings.TrimSpace(output), nil
 }
 
+// execute runs gh with the process's ambient environment (no token override).
 func execute(ctx context.Context, args ...string) (string, error) {
+	return executeWithToken(ctx, "", args...)
+}
+
+// executeWithToken runs gh, optionally overriding GH_TOKEN for this one
+// invocation. token=="" leaves the ambient environment untouched (identical to
+// the previous behavior). The token is passed via the environment, never via
+// argv, so it cannot leak into the args echoed in error messages or into `ps`.
+func executeWithToken(ctx context.Context, token string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "gh", args...)
+	cmd.Env = commandEnv(os.Environ(), token)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(out), fmt.Errorf("gh %s: %w\n%s", strings.Join(args, " "), err, string(out))
 	}
 	return string(out), nil
+}
+
+// commandEnv returns base unchanged when token is empty, otherwise base with a
+// GH_TOKEN=<token> entry appended (later entries win in exec, so this
+// overrides any ambient GH_TOKEN). Pure + table-tested.
+func commandEnv(base []string, token string) []string {
+	if token == "" {
+		return base
+	}
+	return append(append([]string(nil), base...), "GH_TOKEN="+token)
 }
 
 var runURLPattern = regexp.MustCompile(`https://github\.com/[^/]+/[^/]+/actions/runs/\d+`)

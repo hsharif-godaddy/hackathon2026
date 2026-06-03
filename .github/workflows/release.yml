@@ -1,0 +1,263 @@
+name: Release Pipeline
+
+# Drives a full airo-app-builder release by invoking the Go `release-manager`
+# binary in headless mode — the SAME binary an operator runs interactively as
+# the TUI, so the logic (stage ordering, dispatch+wait, output parsing, Slack
+# render, release notes) lives in one place instead of duplicated bash.
+#
+# The release is split into two headless invocations with GitHub's approval
+# Environment gate between them, so the oncall can approve in the browser, close
+# the tab, and the prod phase still runs unattended:
+#
+#   preflight → test-phase → approve-prod (release-prod-approval) → prod-phase
+#                  │ (uploads state.json artifact)                    │
+#   slack-failure ◄──────────────────────────────────────────────────┘ (backstop)
+#
+# Manual dispatch supports dry_run=true: stages print "[DRY RUN] would
+# trigger …" and the prod gate is skipped so the whole flow exercises end to
+# end without real dispatches or Slack posts.
+
+on:
+  schedule:
+    - cron: '0 0,6,12,18 * * 1-5' # 00/06/12/18 UTC, Mon–Fri
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to release from'
+        default: 'main'
+        type: string
+      dry_run:
+        description: 'Skip real dispatches + Slack; skip the prod gate so the flow runs end to end'
+        default: false
+        type: boolean
+
+permissions:
+  contents: write # gh release create
+  actions: write # gh workflow run (this repo)
+
+concurrency:
+  # Singleton lock shared with rollback.yml — a release, a manual dispatch, and
+  # a rollback are mutually exclusive. Overlapping cron ticks queue.
+  group: airo-release-main
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # PREFLIGHT — resolve the commit; skip cleanly if nothing new since last release
+  # ---------------------------------------------------------------------------
+  preflight:
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      branch: ${{ steps.resolve.outputs.branch }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ inputs.branch || 'main' }}
+        run: |
+          git fetch origin "$BRANCH" --depth=1
+          SHA=$(git rev-parse "origin/$BRANCH")
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "commit=$SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Preflight"
+            echo "- Branch: \`$BRANCH\`"
+            echo "- Commit: \`${SHA:0:7}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT: ${{ steps.resolve.outputs.commit }}
+        run: |
+          set -euo pipefail
+          LATEST_STDERR=$(mktemp)
+          set +e
+          LATEST=$(gh release view --json tagName -q .tagName 2>"$LATEST_STDERR")
+          GH_EXIT=$?
+          set -e
+          if [ $GH_EXIT -ne 0 ]; then
+            if grep -qE 'release not found|HTTP 404' "$LATEST_STDERR"; then
+              echo "No previous release — proceeding."
+              echo "should_release=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "ERROR: gh release view failed: $(cat "$LATEST_STDERR")" >&2
+            exit 1
+          fi
+          COUNT=$(gh api "repos/$GITHUB_REPOSITORY/compare/$LATEST...$COMMIT" --jq '.commits | length')
+          if [ "$COUNT" -gt 0 ]; then
+            echo "$COUNT commits since $LATEST — proceeding."
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No new commits since $LATEST — skipping."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # TEST PHASE — one headless invocation: release notes + deploy + validate.
+  # Self-hosted because the health-check stages curl airo-builder.test-godaddy.com
+  # (WAF-gated) from the runner process.
+  # ---------------------------------------------------------------------------
+  test-phase:
+    needs: preflight
+    if: needs.preflight.outputs.should_release == 'true'
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    outputs:
+      # 'true' when the binary already flipped the Slack thread to FAILED, so
+      # the slack-failure backstop can skip a duplicate post. Empty otherwise
+      # (incl. a hard failure where the binary never ran).
+      notified: ${{ steps.run.outputs.notified }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version: '1.26'
+          cache-dependency-path: release-manager/go.sum
+      - name: Build release-manager
+        working-directory: release-manager
+        run: go build -o "$RUNNER_TEMP/release-manager" ./cmd/release-manager/
+      - name: Run test phase
+        id: run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PIONEER_INFRA_TOKEN: ${{ secrets.PIONEER_INFRA_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          BRANCH: ${{ needs.preflight.outputs.branch }}
+          DRY_RUN: ${{ inputs.dry_run == true }}
+        run: |
+          DRY=""
+          [ "$DRY_RUN" = "true" ] && DRY="--dry-run"
+          "$RUNNER_TEMP/release-manager" run --headless --mode test \
+            --branch "$BRANCH" \
+            --state-file "$RUNNER_TEMP/state.json" \
+            $DRY
+      - name: Upload phase state
+        # Always upload — the prod phase imports it even in dry-run (the test
+        # phase writes state.json regardless of dry-run).
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-phase-state
+          path: ${{ runner.temp }}/state.json
+          retention-days: 5
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # APPROVAL GATE — pauses until a release-prod-approval reviewer approves. The
+  # test-phase process has already exited, so "close the browser, release
+  # continues" holds. Skipped in dry-run so the flow runs straight through.
+  # ---------------------------------------------------------------------------
+  approve-prod:
+    needs: [preflight, test-phase]
+    # Runs (and pauses for a reviewer) on schedule, manual dispatch, AND push —
+    # the push smoke test must stop here before prod. Only a workflow_dispatch
+    # dry_run skips the gate.
+    if: needs.preflight.outputs.should_release == 'true' && inputs.dry_run != true
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    environment: release-prod-approval
+    steps:
+      - run: |
+          {
+            echo "## Approve prod deployment"
+            echo
+            echo "Review the **test-phase** job summary (per-stage results) and the"
+            echo "Slack release thread, then approve to start the prod phase."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # PROD PHASE — one headless invocation: imports test state, promotes prod,
+  # cuts the GitHub release, finalizes the Slack message.
+  # ---------------------------------------------------------------------------
+  prod-phase:
+    needs: [preflight, test-phase, approve-prod]
+    # Runs when test-phase succeeded AND either the gate was approved OR it was
+    # skipped *because* this is a dry-run (never on a failure-skip).
+    if: |
+      always() &&
+      needs.preflight.outputs.should_release == 'true' &&
+      needs.test-phase.result == 'success' &&
+      (needs.approve-prod.result == 'success' ||
+       (needs.approve-prod.result == 'skipped' && inputs.dry_run == true))
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    outputs:
+      notified: ${{ steps.run.outputs.notified }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version: '1.26'
+          cache-dependency-path: release-manager/go.sum
+      - name: Build release-manager
+        working-directory: release-manager
+        run: go build -o "$RUNNER_TEMP/release-manager" ./cmd/release-manager/
+      - name: Download phase state
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-phase-state
+          path: ${{ runner.temp }}
+      - name: Run prod phase
+        id: run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PIONEER_INFRA_TOKEN: ${{ secrets.PIONEER_INFRA_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          BRANCH: ${{ needs.preflight.outputs.branch }}
+          DRY_RUN: ${{ inputs.dry_run == true }}
+        run: |
+          DRY=""
+          [ "$DRY_RUN" = "true" ] && DRY="--dry-run"
+          "$RUNNER_TEMP/release-manager" run --headless --mode prod \
+            --branch "$BRANCH" \
+            --state-file "$RUNNER_TEMP/state.json" \
+            $DRY
+
+  # ---------------------------------------------------------------------------
+  # FAILURE BACKSTOP — the binary already flips the Slack thread to FAILED on a
+  # stage error; this only fires on a HARD failure (job killed/cancelled before
+  # the binary could post). Skipped in dry-run. Best-effort: never blocks.
+  # ---------------------------------------------------------------------------
+  slack-failure:
+    needs: [preflight, test-phase, approve-prod, prod-phase]
+    # Only when NEITHER phase already posted FAILED to the thread (their
+    # `notified` output is unset) — otherwise the binary's in-place FAILED
+    # update already covered it and a second post would be a duplicate.
+    if: |
+      failure() &&
+      needs.preflight.outputs.should_release == 'true' &&
+      inputs.dry_run != true &&
+      needs.test-phase.outputs.notified != 'true' &&
+      needs.prod-phase.outputs.notified != 'true'
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: Post failure backstop to Slack
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          [ -z "${SLACK_BOT_TOKEN:-}" ] && { echo "::warning::Slack token unset; skipping backstop"; exit 0; }
+          TEXT=":x: Release pipeline failed — [view run]($RUN_URL)"
+          PAYLOAD=$(jq -nc --arg c "$SLACK_CHANNEL_ID" --arg m "$TEXT" '{channel:$c, markdown_text:$m}')
+          curl -sS -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            --data "$PAYLOAD" >/dev/null || echo "::warning::backstop Slack post failed"

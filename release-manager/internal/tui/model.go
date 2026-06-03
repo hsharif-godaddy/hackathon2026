@@ -144,7 +144,7 @@ func NewModel(cfg *config.Config, runner gh.Runner, dryRun bool, branch string, 
 		preflight = append(preflight, preflightCheck{Name: "aws CLI installed", Required: true})
 		preflight = append(preflight, preflightCheck{Name: "aws CLI authenticated", Required: true})
 	}
-	preflight = append(preflight, preflightCheck{Name: "No active deploy workflows", Required: true})
+	preflight = append(preflight, preflightCheck{Name: "No active deploy/release workflows", Required: true})
 	if cfg.Lock.SSMParameter != "" {
 		preflight = append(preflight, preflightCheck{Name: "Deploy lock available", Required: !forceLock})
 	}
@@ -208,7 +208,7 @@ func (m Model) Init() tea.Cmd {
 		nextIdx++
 	}
 
-	cmds = append(cmds, checkActiveRuns(m.runner, m.ctx, m.config.DeployWorkflows(), nextIdx))
+	cmds = append(cmds, checkActiveRuns(m.runner, m.ctx, m.config.ActiveRunWorkflows(), nextIdx, m.forceLock))
 	nextIdx++
 
 	if m.config.Lock.SSMParameter != "" {
@@ -321,7 +321,19 @@ func checkAWSAuth(ctx context.Context, profile string, idx int) tea.Cmd {
 	}
 }
 
-func checkActiveRuns(runner gh.Runner, ctx context.Context, workflows []config.DeployWorkflow, idx int) tea.Cmd {
+// activeRunStatuses are the gh run statuses that count as "still running" for
+// collision detection. Beyond in_progress/queued, this includes waiting — the
+// status of a GHA release paused at the approve-prod environment gate — plus
+// requested/pending, so a release awaiting approval is still detected.
+var activeRunStatuses = map[string]bool{
+	"in_progress": true,
+	"queued":      true,
+	"waiting":     true,
+	"requested":   true,
+	"pending":     true,
+}
+
+func checkActiveRuns(runner gh.Runner, ctx context.Context, workflows []config.DeployWorkflow, idx int, forceLock bool) tea.Cmd {
 	return func() tea.Msg {
 		var conflicts []string
 		for _, wf := range workflows {
@@ -330,7 +342,7 @@ func checkActiveRuns(runner gh.Runner, ctx context.Context, workflows []config.D
 				continue
 			}
 			for _, r := range runs {
-				if r.Status != "in_progress" && r.Status != "queued" {
+				if !activeRunStatuses[r.Status] {
 					continue
 				}
 				if wf.ActiveRunFilter != "" && !strings.Contains(r.Name, wf.ActiveRunFilter) {
@@ -340,7 +352,14 @@ func checkActiveRuns(runner gh.Runner, ctx context.Context, workflows []config.D
 			}
 		}
 		if len(conflicts) > 0 {
-			return preflightResultMsg{idx: idx, passed: false, err: fmt.Sprintf("active workflows:\n    %s", strings.Join(conflicts, "\n    "))}
+			msg := fmt.Sprintf("active workflows:\n    %s", strings.Join(conflicts, "\n    "))
+			// --force-lock is the break-glass override for the concurrency
+			// guards: downgrade to a warning (mirrors checkDeployLock) so an
+			// operator can proceed deliberately despite an in-flight release.
+			if forceLock {
+				return preflightResultMsg{idx: idx, passed: true, err: msg}
+			}
+			return preflightResultMsg{idx: idx, passed: false, err: msg}
 		}
 		return preflightResultMsg{idx: idx, passed: true}
 	}

@@ -10,6 +10,22 @@ release:
   repo: gdcorp-partners/airo-app-builder
   enabled: true
 
+# Workflows that are NOT pipeline stages but whose in-flight runs must still
+# block a manual TUI release. The headless GHA release pipeline (release.yml)
+# holds no SSM lock, so the TUI's active-run preflight scans for it here and
+# refuses to start if a GHA release is running (incl. one paused at the
+# approve-prod gate, which shows as run status "waiting"). Empty filter = any
+# active release run matches. Override with --force-lock for break-glass.
+orchestrator_workflows:
+  - repo: gdcorp-partners/airo-app-builder
+    workflow: release.yml
+  # rollback.yml has short windows (startup before the first dispatch, between
+  # rollback-app finishing and rollback-images dispatching, and teardown) where
+  # it is in_progress but none of its dispatched stages are — register it so a
+  # manual release started in one of those windows is still blocked.
+  - repo: gdcorp-partners/airo-app-builder
+    workflow: rollback.yml
+
 pipeline:
   environments:
     test:

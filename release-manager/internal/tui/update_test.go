@@ -1465,7 +1465,8 @@ func flushBatch(t *testing.T, cmd tea.Cmd) {
 // capturingRunner is a minimal gh.Runner used by rollback-delete tests. Most
 // methods are no-ops; deleteFn captures the DeleteRelease call.
 type capturingRunner struct {
-	deleteFn func(ctx context.Context, repo, tag string) error
+	deleteFn   func(ctx context.Context, repo, tag string) error
+	listRunsFn func(ctx context.Context, repo, workflow, status string, limit int) ([]gh.RunListEntry, error)
 }
 
 func (r *capturingRunner) Trigger(_ context.Context, _, _, _ string, _ map[string]string) (string, error) {
@@ -1477,7 +1478,10 @@ func (r *capturingRunner) Status(_ context.Context, _ string, _ int64) (*gh.RunS
 func (r *capturingRunner) Logs(_ context.Context, _ string, _ int64) (string, error) {
 	return "", nil
 }
-func (r *capturingRunner) ListRuns(_ context.Context, _, _, _ string, _ int) ([]gh.RunListEntry, error) {
+func (r *capturingRunner) ListRuns(ctx context.Context, repo, workflow, status string, limit int) ([]gh.RunListEntry, error) {
+	if r.listRunsFn != nil {
+		return r.listRunsFn(ctx, repo, workflow, status, limit)
+	}
 	return nil, nil
 }
 func (r *capturingRunner) Compare(_ context.Context, _, _, _ string) (*gh.CompareResult, error) {

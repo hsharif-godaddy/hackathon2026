@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -42,6 +43,46 @@ func New(token, channelID string) *Notifier {
 		client:    &http.Client{Timeout: 10 * time.Second},
 		baseURL:   "https://slack.com/api",
 	}
+}
+
+// CredentialsFromEnv reads Slack credentials from the SLACK_BOT_TOKEN and
+// SLACK_CHANNEL_ID environment variables. It returns ok=false when either is
+// unset, so callers can fall back to FetchCredentials (AWS Secrets Manager).
+// This is the path the headless/CI runner uses: GitHub Actions exports the two
+// repo secrets as env vars, avoiding any AWS dependency on the runner.
+func CredentialsFromEnv() (creds Credentials, ok bool) {
+	token := os.Getenv("SLACK_BOT_TOKEN")
+	channelID := os.Getenv("SLACK_CHANNEL_ID")
+	if token == "" || channelID == "" {
+		return Credentials{}, false
+	}
+	return Credentials{Token: token, ChannelID: channelID}, true
+}
+
+// SeedTS sets the message timestamp so the next Update edits an existing
+// message instead of posting a new one. Used to thread a single Slack message
+// across two separate headless process invocations (the test phase posts and
+// emits its ts; the prod phase seeds it back before updating). No-op on a nil
+// Notifier (Slack disabled).
+func (n *Notifier) SeedTS(ts string) {
+	if n == nil {
+		return
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.ts = ts
+}
+
+// TS returns the timestamp of the posted message (empty if nothing has been
+// posted yet, or on a nil Notifier). The test phase prints this so the prod
+// phase can SeedTS it back.
+func (n *Notifier) TS() string {
+	if n == nil {
+		return ""
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.ts
 }
 
 // FetchCredentials retrieves Slack bot credentials from AWS Secrets Manager.

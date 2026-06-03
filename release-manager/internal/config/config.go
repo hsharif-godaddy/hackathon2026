@@ -15,6 +15,19 @@ type Config struct {
 	Slack    SlackConfig    `yaml:"slack"`
 	Lock     LockConfig     `yaml:"lock"`
 	Release  ReleaseConfig  `yaml:"release"`
+	// OrchestratorWorkflows are GHA workflows that are NOT pipeline stages but
+	// whose in-flight runs must still block a manual TUI release — namely the
+	// headless GHA release pipeline (release.yml). The TUI's active-run preflight
+	// scans these in addition to the stage-derived deploy workflows.
+	OrchestratorWorkflows []OrchestratorWorkflow `yaml:"orchestrator_workflows"`
+}
+
+// OrchestratorWorkflow is a repo+workflow whose active runs block a manual
+// release (the YAML-tagged config counterpart of DeployWorkflow).
+type OrchestratorWorkflow struct {
+	Repo            string `yaml:"repo"`
+	Workflow        string `yaml:"workflow"`
+	ActiveRunFilter string `yaml:"active_run_filter"`
 }
 
 type SlackConfig struct {
@@ -298,6 +311,37 @@ func (c *Config) DeployWorkflows() []DeployWorkflow {
 	}
 	for _, s := range c.Pipeline.Rollback.Steps {
 		add(s)
+	}
+
+	return result
+}
+
+// ActiveRunWorkflows returns the workflows whose in-flight runs should block a
+// manual release: the stage-derived deploy workflows (DeployWorkflows) plus the
+// configured orchestrator workflow(s) (the GHA release pipeline). Deduplicated
+// by repo+workflow, so an orchestrator that also appears as a stage isn't
+// listed twice.
+func (c *Config) ActiveRunWorkflows() []DeployWorkflow {
+	result := c.DeployWorkflows()
+
+	type key struct{ repo, workflow string }
+	seen := make(map[key]bool, len(result))
+	for _, w := range result {
+		seen[key{w.Repo, w.Workflow}] = true
+	}
+
+	for _, o := range c.OrchestratorWorkflows {
+		if o.Repo == "" || o.Workflow == "" {
+			continue
+		}
+		k := key{o.Repo, o.Workflow}
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		// Identical fields, so a direct conversion is cleaner than a struct
+		// literal (and satisfies staticcheck S1016).
+		result = append(result, DeployWorkflow(o))
 	}
 
 	return result
