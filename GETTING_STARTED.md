@@ -32,7 +32,11 @@ Preflight covers:
 - Environment: `/etc/hosts`, AWS SSO session, all `.env` files, JWT keys, Gasket dev certs, S2S certs, Commerce OAuth, Getty proxy, KnowB, Design RAG
 - Services: free ports, MySQL container
 
-Defaults to **S2S auth** for GoCode — uses your AWS SSO credentials, no personal API key required. `GOCODE_USE_S2S_AUTH` is set at `.env`-generation time, not at runtime. If your dev SSO role isn't registered with GoCode ([registration guide](https://godaddy-corp.atlassian.net/wiki/spaces/BI/pages/3903691501)), requests fail at runtime — delete `agents/.env` and rerun `pnpm run dev` to re-run the env form and select `api-key`.
+Defaults to **S2S auth** for GoCode — uses your AWS SSO credentials, no personal API key required. `GOCODE_USE_S2S_AUTH` is set at `.env`-generation time, not at runtime. Just follow `pnpm run dev`: preflight creates the `airobuild-dev-private-sso` AWS SSO profile and logs you in (background: [AWS IAM Identity Center guide](https://tdl.int.gdcorp.tools/docs/products/developer-tools/cloud-platforms/aws/iam-identity-center/identity-center-setup#set-up-aws-iam-identity-center-credentials)).
+
+> **Already use AWS SSO?** The `airo-sso` session that preflight creates shares the same start URL as the standard Non-PCI session, so if you already have one (e.g. `sso-non-pci`) you can avoid a second `aws sso login` by pointing the `airobuild-dev-private-sso` profile at it (set `sso_session = sso-non-pci`).
+
+If you can't use S2S auth, delete `agents/.env` and rerun `pnpm run dev` to re-run the env form and select `api-key` instead.
 
 To regenerate an env file, delete it and rerun `pnpm run dev`. To switch GoCode auth mode, delete `agents/.env`.
 
