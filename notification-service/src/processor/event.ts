@@ -11,7 +11,7 @@ import { logger } from '../logger.js';
  */
 interface ResolverContext {
   customerId: string;
-  appId: string;
+  appId?: string;
 }
 
 type Resolver = (ctx: ResolverContext) => Promise<string | null>;
@@ -22,6 +22,10 @@ type Resolver = (ctx: ResolverContext) => Promise<string | null>;
  */
 const RESOLVERS: Record<string, Resolver> = {
   app_name: async ({ appId }) => {
+    if (!appId) {
+      logger.error('processor.resolver.app_name.no_appId');
+      return null;
+    }
     const app = await getApp(appId);
     const name = app.name || null;
     if (name === null) logger.error('processor.resolver.app_name.missing', { appId });
@@ -29,6 +33,10 @@ const RESOLVERS: Record<string, Resolver> = {
   },
 
   recipient_email: async ({ customerId, appId }) => {
+    if (!appId) {
+      logger.error('processor.resolver.recipient_email.no_appId', { customerId });
+      return null;
+    }
     const transfer = await getTransferMetadata(appId, customerId);
     if (transfer.sourceCustomerId === customerId) {
       // Initiate event — recipient is the transfer target.
@@ -62,6 +70,10 @@ const RESOLVERS: Record<string, Resolver> = {
   },
 
   transfer_code: async ({ customerId, appId }) => {
+    if (!appId) {
+      logger.error('processor.resolver.transfer_code.no_appId', { customerId });
+      return null;
+    }
     const transfer = await getTransferMetadata(appId, customerId);
     const token = transfer.transferToken ?? null;
     if (token === null) logger.error('processor.resolver.transfer_code.missing', { customerId, appId });
@@ -69,6 +81,10 @@ const RESOLVERS: Record<string, Resolver> = {
   },
 
   app_domain_connections: async ({ appId }) => {
+    if (!appId) {
+      logger.error('processor.resolver.app_domain_connections.no_appId');
+      return null;
+    }
     const app = await getApp(appId);
     return app.customDomain ?? '';
   },
@@ -143,6 +159,11 @@ async function resolveTargetCustomerId(
 ): Promise<string | null> {
   if (!templateConfig.target || templateConfig.target === 'event_customer') {
     return ctx.customerId;
+  }
+
+  if (!ctx.appId) {
+    logger.error('processor.target.no_appId', { customerId: ctx.customerId, target: templateConfig.target });
+    return null;
   }
 
   if (templateConfig.target === 'transfer_target') {

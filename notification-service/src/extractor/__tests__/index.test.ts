@@ -47,10 +47,10 @@ describe('notification-service', () => {
       expect(extract(payload)).toBeNull();
     });
 
-    it('returns null when appId is missing', () => {
+    it('extracts event without appId when appId is missing', () => {
       const payload = structuredClone(VALID);
       delete (payload.detail.event.data.traffic.customProperties as Record<string, unknown>).appId;
-      expect(extract(payload)).toBeNull();
+      expect(extract(payload)).toEqual({ eid: 'app.published', customerId: 'cust-1', appId: undefined });
     });
   });
 });

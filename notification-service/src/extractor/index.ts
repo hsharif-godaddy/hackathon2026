@@ -3,7 +3,7 @@ import { logger } from '../logger.js';
 export interface ExtractedEvent {
   eid: string;
   customerId: string;
-  appId: string;
+  appId?: string;
 }
 
 /**
@@ -42,11 +42,11 @@ export function extract(raw: unknown): ExtractedEvent | null {
     logger.warn('extractor.extract.missing_customerId', { eid, customerIdValue: customerId });
     return null;
   }
-  if (!appId || typeof appId !== 'string') {
-    logger.warn('extractor.extract.missing_appId', { eid, appIdValue: appId });
-    return null;
+  const resolvedAppId = typeof appId === 'string' ? appId : undefined;
+  if (!resolvedAppId) {
+    logger.info('extractor.extract.missing_appId', { eid });
   }
 
-  logger.info('extractor.extract.success', { eid, customerId, appId });
-  return { eid, customerId, appId };
+  logger.info('extractor.extract.success', { eid, customerId, appId: resolvedAppId });
+  return { eid, customerId, appId: resolvedAppId };
 }
