@@ -24,6 +24,7 @@ import (
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/config"
 	schemamigrate "github.com/gdcorp-partners/airo-app-builder/budget-service/internal/migrate"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/observability"
+	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/seclog"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/store"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/worker"
 	"github.com/joho/godotenv"
@@ -50,6 +51,17 @@ func run() error {
 	setupLogger(cfg.LogLevel)
 	if dotenvErr != nil {
 		slog.Debug("budget_service.dotenv", "message", "no .env file or read error", "error", dotenvErr)
+	}
+
+	seclog.Configure(seclog.Config{
+		ServiceName:  cfg.OTelServiceName,
+		AWSAccountID: cfg.AWSAccountID,
+	})
+	if cfg.AWSAccountID == "" && cfg.OTelEnvironment != "local" {
+		slog.Warn("seclog.aws_account_id.missing",
+			"env", cfg.OTelEnvironment,
+			"impact", "security events will omit cloud.account.id; SIEM cannot attribute to AWS account",
+		)
 	}
 
 	otelClient := initOTel(&cfg)
@@ -323,7 +335,27 @@ func bootstrapLogLevel() string {
 	return s
 }
 
+// setupLogger installs the application-wide JSON logger. The handler renames
+// slog's default `time` and `msg` keys to `@timestamp` and `message` to match
+// Katana Fluent Bit's expectations — that's a deployment convention, not a
+// security-logging concern, so it lives here rather than in internal/seclog.
+// Routing seclog through slog.Default() (single writer, single mutex) avoids
+// the multi-handler interleave hazard on stdout when events approach PIPE_BUF.
 func setupLogger(level string) {
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: config.SlogLevel(level)})
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: config.SlogLevel(level),
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if len(groups) > 0 {
+				return a
+			}
+			switch a.Key {
+			case slog.TimeKey:
+				return slog.Attr{Key: "@timestamp", Value: a.Value}
+			case slog.MessageKey:
+				return slog.Attr{Key: "message", Value: a.Value}
+			}
+			return a
+		},
+	})
 	slog.SetDefault(slog.New(handler))
 }

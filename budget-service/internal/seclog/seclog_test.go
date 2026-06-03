@@ -1,0 +1,593 @@
+package seclog
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+// katanaTestHandler builds a JSON handler with the same key renames the
+// production logger applies in cmd/server/main.go's setupLogger. Tests use it
+// to verify the end-to-end SIEM contract (`@timestamp`, `message`) without
+// depending on application wiring.
+func katanaTestHandler(w *bytes.Buffer) slog.Handler {
+	return katanaHandlerWithLevel(w, slog.LevelInfo)
+}
+
+// katanaHandlerWithLevel mirrors setupLogger's handler at an explicit level so
+// regression tests can pin the LOG_LEVEL=warn / LOG_LEVEL=error contract: every
+// seclog event reaches stdout regardless of the operator's log-level tuning.
+func katanaHandlerWithLevel(w *bytes.Buffer, level slog.Level) slog.Handler {
+	return slog.NewJSONHandler(w, &slog.HandlerOptions{
+		Level: level,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if len(groups) > 0 {
+				return a
+			}
+			switch a.Key {
+			case slog.TimeKey:
+				return slog.Attr{Key: "@timestamp", Value: a.Value}
+			case slog.MessageKey:
+				return slog.Attr{Key: "message", Value: a.Value}
+			}
+			return a
+		},
+	})
+}
+
+// captureLog redirects slog.Default() to a buffer for the duration of the
+// test and returns a parser for the most recent JSON line.
+func captureLog(t *testing.T) (parse func() map[string]any) {
+	t.Helper()
+	var buf bytes.Buffer
+	restore := setLoggerForTest(slog.New(katanaTestHandler(&buf)))
+	t.Cleanup(restore)
+
+	return func() map[string]any {
+		line := strings.TrimSpace(buf.String())
+		if line == "" {
+			t.Fatalf("no log output captured")
+		}
+		var got map[string]any
+		if err := json.Unmarshal([]byte(line), &got); err != nil {
+			t.Fatalf("invalid JSON output %q: %v", line, err)
+		}
+		return got
+	}
+}
+
+func newTestRequest() *http.Request {
+	req := httptest.NewRequest(http.MethodGet, "https://budget.example.com/api/v1/budgets/abc?x=1", nil)
+	req.RemoteAddr = "10.0.0.5:54321"
+	req.Header.Set("User-Agent", "test-client/1.0")
+	return req
+}
+
+// nestedString walks a nested map[string]any using dot-path and returns the
+// terminal value as a string. Returns "" when any segment is missing.
+func nestedString(m map[string]any, path string) string {
+	keys := strings.Split(path, ".")
+	cur := any(m)
+	for _, k := range keys {
+		obj, ok := cur.(map[string]any)
+		if !ok {
+			return ""
+		}
+		cur = obj[k]
+	}
+	if s, ok := cur.(string); ok {
+		return s
+	}
+	return ""
+}
+
+// nestedFloat returns a numeric value at path; 0 when missing or non-numeric.
+func nestedFloat(m map[string]any, path string) float64 {
+	keys := strings.Split(path, ".")
+	cur := any(m)
+	for _, k := range keys {
+		obj, ok := cur.(map[string]any)
+		if !ok {
+			return 0
+		}
+		cur = obj[k]
+	}
+	if f, ok := cur.(float64); ok {
+		return f
+	}
+	return 0
+}
+
+func TestAuthFailure_EmitsRequiredKatanaFields(t *testing.T) {
+	parse := captureLog(t)
+	r := newTestRequest()
+
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+
+	got := parse()
+
+	if _, ok := got["@timestamp"].(string); !ok {
+		t.Errorf("missing @timestamp string field; got %v", got["@timestamp"])
+	}
+	if _, ok := got["message"].(string); !ok {
+		t.Errorf("missing message string field; got %v", got["message"])
+	}
+	tags, ok := got["tags"].([]any)
+	if !ok || len(tags) != 2 || tags[0] != "security" || tags[1] != "application" {
+		t.Errorf("expected tags=[security application], got %v", got["tags"])
+	}
+}
+
+func TestAuthFailure_EventECSShape(t *testing.T) {
+	parse := captureLog(t)
+	r := newTestRequest()
+
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized, Err: errors.New("token expired")})
+
+	got := parse()
+
+	if v := nestedString(got, "event.kind"); v != "event" {
+		t.Errorf("event.kind=%q want event", v)
+	}
+	if v := nestedString(got, "event.category"); v != "authentication" {
+		t.Errorf("event.category=%q want authentication", v)
+	}
+	if v := nestedString(got, "event.outcome"); v != "failure" {
+		t.Errorf("event.outcome=%q want failure", v)
+	}
+	if v := nestedString(got, "event.type"); v != "denied" {
+		t.Errorf("event.type=%q want denied", v)
+	}
+	if v := nestedString(got, "event.action"); v != "auth.validate" {
+		t.Errorf("event.action=%q want auth.validate", v)
+	}
+	if v := nestedString(got, "event.reason"); v != "INVALID_TOKEN" {
+		t.Errorf("event.reason=%q want INVALID_TOKEN", v)
+	}
+	if v := nestedFloat(got, "http.response.status_code"); v != 401 {
+		t.Errorf("http.response.status_code=%v want 401", v)
+	}
+	if v := nestedString(got, "error.message"); v != "token expired" {
+		t.Errorf("error.message=%q want 'token expired'", v)
+	}
+}
+
+func TestAuthFailure_RequestFieldsExtracted(t *testing.T) {
+	parse := captureLog(t)
+	r := newTestRequest()
+
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+
+	got := parse()
+
+	if v := nestedString(got, "client.ip"); v != "10.0.0.5" {
+		t.Errorf("client.ip=%q want 10.0.0.5", v)
+	}
+	if v := nestedString(got, "client.address"); v != "10.0.0.5" {
+		t.Errorf("client.address=%q want 10.0.0.5", v)
+	}
+	if v := nestedString(got, "http.request.method"); v != http.MethodGet {
+		t.Errorf("http.request.method=%q want GET", v)
+	}
+	if v := nestedString(got, "url.path"); v != "/api/v1/budgets/abc" {
+		t.Errorf("url.path=%q want /api/v1/budgets/abc", v)
+	}
+	if v := nestedString(got, "url.original"); v != "/api/v1/budgets/abc?x=1" {
+		t.Errorf("url.original=%q want /api/v1/budgets/abc?x=1", v)
+	}
+	if v := nestedString(got, "user_agent.original"); v != "test-client/1.0" {
+		t.Errorf("user_agent.original=%q want test-client/1.0", v)
+	}
+}
+
+func TestAuthSuccess_OutcomeSuccessAndUser(t *testing.T) {
+	parse := captureLog(t)
+	r := newTestRequest()
+
+	AuthSuccess(r, Event{User: "arn:aws:iam::123:role/airo-budget"})
+
+	got := parse()
+
+	if v := nestedString(got, "event.outcome"); v != "success" {
+		t.Errorf("event.outcome=%q want success", v)
+	}
+	if v := nestedString(got, "event.type"); v != "allowed" {
+		t.Errorf("event.type=%q want allowed", v)
+	}
+	if v := nestedString(got, "event.category"); v != "authentication" {
+		t.Errorf("event.category=%q want authentication", v)
+	}
+	if v := nestedString(got, "user.name"); v != "arn:aws:iam::123:role/airo-budget" {
+		t.Errorf("user.name=%q want arn:aws:iam::123:role/airo-budget", v)
+	}
+	// Success events do not carry an HTTP status — the protected handler hasn't run.
+	httpField, _ := got["http"].(map[string]any)
+	if _, ok := httpField["response"]; ok {
+		t.Errorf("success event must not include http.response; got %v", got["http"])
+	}
+}
+
+func TestAuthzFailure_CategoryIAMAndUserDenied(t *testing.T) {
+	parse := captureLog(t)
+	r := newTestRequest()
+
+	AuthzFailure(r, Event{
+		Reason: "IAM_ROLE_DENIED",
+		Status: http.StatusForbidden,
+		User:   "arn:aws:iam::123:role/some-role",
+	})
+
+	got := parse()
+
+	if v := nestedString(got, "event.category"); v != "iam" {
+		t.Errorf("event.category=%q want iam", v)
+	}
+	if v := nestedString(got, "event.outcome"); v != "failure" {
+		t.Errorf("event.outcome=%q want failure", v)
+	}
+	if v := nestedString(got, "event.type"); v != "denied" {
+		t.Errorf("event.type=%q want denied", v)
+	}
+	if v := nestedString(got, "event.reason"); v != "IAM_ROLE_DENIED" {
+		t.Errorf("event.reason=%q want IAM_ROLE_DENIED", v)
+	}
+	if v := nestedString(got, "user.name"); v != "arn:aws:iam::123:role/some-role" {
+		t.Errorf("user.name=%q want the denied identity", v)
+	}
+	if v := nestedFloat(got, "http.response.status_code"); v != 403 {
+		t.Errorf("http.response.status_code=%v want 403", v)
+	}
+}
+
+func TestServiceAndHostFields(t *testing.T) {
+	parse := captureLog(t)
+	r := newTestRequest()
+
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+
+	got := parse()
+
+	if v := nestedString(got, "service.name"); v == "" {
+		t.Errorf("service.name missing; got %v", got["service"])
+	}
+	if v := nestedString(got, "host.name"); v == "" {
+		t.Errorf("host.name missing; got %v", got["host"])
+	}
+}
+
+func TestServiceName_FromKatanaAppEnvFallback(t *testing.T) {
+	t.Setenv("KATANA_APP", "budget-service-prod")
+	// Reset config so the package falls back to env defaults (no Configure call).
+	restore := setLoggerForTest(nil)
+	t.Cleanup(restore)
+
+	parse := captureLog(t)
+	r := newTestRequest()
+
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+
+	got := parse()
+	if v := nestedString(got, "service.name"); v != "budget-service-prod" {
+		t.Errorf("service.name=%q want budget-service-prod", v)
+	}
+}
+
+func TestConfigure_OverridesServiceName(t *testing.T) {
+	t.Setenv("KATANA_APP", "budget-service-prod") // ignored when Configure provides one
+	restore := setLoggerForTest(nil)
+	t.Cleanup(restore)
+	Configure(Config{ServiceName: "explicit-name"})
+
+	parse := captureLog(t)
+	r := newTestRequest()
+
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+
+	got := parse()
+	if v := nestedString(got, "service.name"); v != "explicit-name" {
+		t.Errorf("service.name=%q want explicit-name (Configure wins over env)", v)
+	}
+}
+
+func TestCloudAccountID_OmittedWhenNotConfigured(t *testing.T) {
+	restore := setLoggerForTest(nil)
+	t.Cleanup(restore)
+	Configure(Config{ServiceName: "test-svc"}) // no AWSAccountID
+
+	parse := captureLog(t)
+	r := newTestRequest()
+
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+
+	got := parse()
+	if _, ok := got["cloud"]; ok {
+		t.Errorf("cloud should be omitted when AWSAccountID not configured; got %v", got["cloud"])
+	}
+}
+
+func TestCloudAccountID_PopulatedFromConfigure(t *testing.T) {
+	restore := setLoggerForTest(nil)
+	t.Cleanup(restore)
+	Configure(Config{ServiceName: "test-svc", AWSAccountID: "123456789012"})
+
+	parse := captureLog(t)
+	r := newTestRequest()
+
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+
+	got := parse()
+	if v := nestedString(got, "cloud.account.id"); v != "123456789012" {
+		t.Errorf("cloud.account.id=%q want 123456789012", v)
+	}
+}
+
+func TestLabels_EmittedAsLabelsObject(t *testing.T) {
+	parse := captureLog(t)
+	r := newTestRequest()
+
+	AuthFailure(r, Event{
+		Reason: "UNAUTHORIZED_TOKEN_TYPE",
+		Status: http.StatusUnauthorized,
+		Labels: []slog.Attr{
+			slog.String("token_type", "jomax"),
+			slog.String("expected", "awsiam or cert"),
+		},
+	})
+
+	got := parse()
+	labels, ok := got["labels"].(map[string]any)
+	if !ok {
+		t.Fatalf("labels not an object; got %v", got["labels"])
+	}
+	if labels["token_type"] != "jomax" {
+		t.Errorf("labels.token_type=%v want jomax", labels["token_type"])
+	}
+	if labels["expected"] != "awsiam or cert" {
+		t.Errorf("labels.expected=%v want 'awsiam or cert'", labels["expected"])
+	}
+}
+
+func TestTimestamp_IsRFC3339Nano(t *testing.T) {
+	parse := captureLog(t)
+	r := newTestRequest()
+
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+
+	got := parse()
+	ts, ok := got["@timestamp"].(string)
+	if !ok {
+		t.Fatalf("@timestamp not a string: %v", got["@timestamp"])
+	}
+	if _, err := time.Parse(time.RFC3339Nano, ts); err != nil {
+		if _, err2 := time.Parse(time.RFC3339, ts); err2 != nil {
+			t.Errorf("@timestamp not RFC3339(.Nano): %s", ts)
+		}
+	}
+}
+
+// AWS ALB in default (append) mode preserves any inbound XFF and appends the
+// real client IP at the right. The leftmost entry is therefore client-supplied
+// and untrustworthy; the rightmost is the only entry attributable to the ALB.
+// These tests pin the rightmost-wins rule so a regression that returns to the
+// leftmost would fail loudly.
+func TestClientIP_TakesRightmostXFF(t *testing.T) {
+	parse := captureLog(t)
+	r := httptest.NewRequest(http.MethodGet, "/test", nil)
+	r.RemoteAddr = "10.0.0.5:12345"
+	r.Header.Set("X-Forwarded-For", "203.0.113.1, 198.51.100.7")
+
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+
+	got := parse()
+	if v := nestedString(got, "client.ip"); v != "198.51.100.7" {
+		t.Errorf("client.ip=%q want 198.51.100.7 (rightmost XFF, ALB-attributed)", v)
+	}
+}
+
+func TestClientIP_RejectsAttackerSpoofedLeftmostXFF(t *testing.T) {
+	parse := captureLog(t)
+	r := httptest.NewRequest(http.MethodGet, "/test", nil)
+	r.RemoteAddr = "10.0.0.5:12345"
+	// Attacker supplies fake leftmost; ALB appends real client IP at the right.
+	r.Header.Set("X-Forwarded-For", "1.2.3.4, 198.51.100.7")
+
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+
+	got := parse()
+	if v := nestedString(got, "client.ip"); v == "1.2.3.4" {
+		t.Errorf("client.ip=%q must not be the attacker-supplied leftmost entry", v)
+	}
+	if v := nestedString(got, "client.ip"); v != "198.51.100.7" {
+		t.Errorf("client.ip=%q want 198.51.100.7 (rightmost ALB-trusted)", v)
+	}
+}
+
+func TestClientIP_SingleEntryXFF(t *testing.T) {
+	parse := captureLog(t)
+	r := httptest.NewRequest(http.MethodGet, "/test", nil)
+	r.RemoteAddr = "10.0.0.5:12345"
+	r.Header.Set("X-Forwarded-For", "  203.0.113.1  ")
+
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+
+	got := parse()
+	if v := nestedString(got, "client.ip"); v != "203.0.113.1" {
+		t.Errorf("client.ip=%q want 203.0.113.1 (single-entry XFF, trimmed)", v)
+	}
+}
+
+func TestClientIP_FallsBackToRemoteAddr(t *testing.T) {
+	parse := captureLog(t)
+	r := httptest.NewRequest(http.MethodGet, "/test", nil)
+	r.RemoteAddr = "10.0.0.5:12345"
+
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+
+	got := parse()
+	if v := nestedString(got, "client.ip"); v != "10.0.0.5" {
+		t.Errorf("client.ip=%q want 10.0.0.5 (RemoteAddr stripped of port)", v)
+	}
+}
+
+func TestClientIP_IPv6RemoteAddr(t *testing.T) {
+	parse := captureLog(t)
+	r := httptest.NewRequest(http.MethodGet, "/test", nil)
+	r.RemoteAddr = "[2001:db8::1]:54321"
+
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+
+	got := parse()
+	if v := nestedString(got, "client.ip"); v != "2001:db8::1" {
+		t.Errorf("client.ip=%q want 2001:db8::1 (IPv6 RemoteAddr stripped of port)", v)
+	}
+}
+
+func TestClientIP_RemoteAddrWithoutPort(t *testing.T) {
+	parse := captureLog(t)
+	r := httptest.NewRequest(http.MethodGet, "/test", nil)
+	r.RemoteAddr = "10.0.0.5"
+
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+
+	got := parse()
+	if v := nestedString(got, "client.ip"); v != "10.0.0.5" {
+		t.Errorf("client.ip=%q want 10.0.0.5 (RemoteAddr without port preserved)", v)
+	}
+}
+
+func TestClientIP_EmptyXFFFallsBack(t *testing.T) {
+	parse := captureLog(t)
+	r := httptest.NewRequest(http.MethodGet, "/test", nil)
+	r.RemoteAddr = "10.0.0.5:12345"
+	r.Header.Set("X-Forwarded-For", "")
+
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+
+	got := parse()
+	if v := nestedString(got, "client.ip"); v != "10.0.0.5" {
+		t.Errorf("client.ip=%q want 10.0.0.5 (empty XFF must not short-circuit fallback)", v)
+	}
+}
+
+// Regression tests for the SIEM contract: every seclog event must reach the
+// writer regardless of the application's LOG_LEVEL filter. The collapse to
+// slog.Default() in iteration 1 subjected AuthSuccess (slog.LevelInfo) to the
+// app filter; a level-bypass shim restores the "always emit" contract.
+
+func TestAuthSuccess_EmitsAtAppLogLevelWarn(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(katanaHandlerWithLevel(&buf, slog.LevelWarn)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	r := newTestRequest()
+	AuthSuccess(r, Event{User: "arn:aws:iam::123:role/airo-budget"})
+
+	if strings.TrimSpace(buf.String()) == "" {
+		t.Fatalf("AuthSuccess must reach stdout at LOG_LEVEL=warn; SIEM contract requires every security event to flow regardless of operator log tuning")
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &got); err != nil {
+		t.Fatalf("invalid JSON output %q: %v", buf.String(), err)
+	}
+	if v := nestedString(got, "event.outcome"); v != "success" {
+		t.Errorf("event.outcome=%q want success", v)
+	}
+}
+
+func TestAuthSuccess_EmitsAtAppLogLevelError(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(katanaHandlerWithLevel(&buf, slog.LevelError)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	r := newTestRequest()
+	AuthSuccess(r, Event{User: "arn:aws:iam::123:role/airo-budget"})
+
+	if strings.TrimSpace(buf.String()) == "" {
+		t.Fatalf("AuthSuccess must reach stdout at LOG_LEVEL=error; SIEM contract requires every security event to flow regardless of operator log tuning")
+	}
+}
+
+func TestAuthFailure_EmitsAtAppLogLevelError(t *testing.T) {
+	// AuthFailure is LevelWarn; LOG_LEVEL=error would normally filter it.
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(katanaHandlerWithLevel(&buf, slog.LevelError)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	r := newTestRequest()
+	AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+
+	if strings.TrimSpace(buf.String()) == "" {
+		t.Fatalf("AuthFailure must reach stdout at LOG_LEVEL=error; SIEM contract requires every security event to flow")
+	}
+}
+
+// Pins the cfgMu contract under -race so a future struct-extension regression
+// (e.g. an inner field that holds a non-immutable reference) fails the race
+// detector instead of corrupting state silently. Concurrent emit() readers
+// against a Configure() writer is the realistic shape — Configure can be
+// re-called at runtime to update identity fields.
+func TestConcurrent_ConfigureAndEmit_NoRace(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(katanaTestHandler(&buf)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	restore := setLoggerForTest(nil)
+	t.Cleanup(restore)
+
+	const writers = 4
+	const readers = 16
+	const iterations = 50
+
+	var wg sync.WaitGroup
+
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				Configure(Config{
+					ServiceName:  "svc-" + string(rune('A'+id)),
+					AWSAccountID: "12345678901" + string(rune('0'+(j%10))),
+				})
+			}
+		}(i)
+	}
+
+	for i := 0; i < readers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r := newTestRequest()
+			for j := 0; j < iterations; j++ {
+				AuthFailure(r, Event{Reason: "INVALID_TOKEN", Status: http.StatusUnauthorized})
+				AuthSuccess(r, Event{User: "x"})
+			}
+		}()
+	}
+
+	wg.Wait()
+}
+
+func TestErrorOmittedWhenNil(t *testing.T) {
+	parse := captureLog(t)
+	r := newTestRequest()
+
+	AuthFailure(r, Event{Reason: "MISSING_AUTHORIZATION", Status: http.StatusUnauthorized}) // no Err
+
+	got := parse()
+	if _, ok := got["error"]; ok {
+		t.Errorf("error should be omitted when Err is nil; got %v", got["error"])
+	}
+}

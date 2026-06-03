@@ -1,8 +1,11 @@
 package auth
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -1095,5 +1098,312 @@ func TestMiddleware_AuthenticateAWSIAMService_MissingAuthHeader(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "MISSING_AUTHORIZATION") {
 		t.Fatalf("body=%s", rec.Body.String())
+	}
+}
+
+// Exercises the real Middleware happy path for IAM tokens: matching ARN and
+// claims stored in context. The seclog.AuthSuccess emit is asserted separately
+// in TestMiddleware_AuthSuccess_EmitsSeclogEvent (non-parallel).
+func TestMiddleware_AuthenticateAWSIAMService_IAMSuccess(t *testing.T) {
+	t.Parallel()
+
+	claims := gdauth.NewTokenClaims(map[string]any{
+		"typ": string(gdauth.AuthTypeAWSIAM),
+		"jti": "prod-iam-success",
+	})
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123456789012:role/stub"},
+		allowedCerts: []string{"unused.example.com"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    &stubProdGDAuth{claims: claims},
+	}
+
+	var seenClaims *gdauth.TokenClaims
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenClaims = GetClaims(r)
+		w.WriteHeader(http.StatusOK)
+	})
+	h := m.AuthenticateAWSIAMService(next)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if seenClaims == nil {
+		t.Fatal("expected claims propagated to next handler")
+	}
+	if seenClaims.GetType() != string(gdauth.AuthTypeAWSIAM) {
+		t.Fatalf("want IAM claims type, got %q", seenClaims.GetType())
+	}
+}
+
+// Exercises the real Middleware happy path for cert tokens: matching CN and
+// claims propagated. The seclog.AuthSuccess emit is asserted separately in
+// TestMiddleware_AuthSuccess_EmitsSeclogEvent (non-parallel).
+func TestMiddleware_AuthenticateAWSIAMService_CertSuccess(t *testing.T) {
+	t.Parallel()
+
+	claims := gdauth.NewTokenClaims(map[string]any{
+		"typ": string(gdauth.AuthTypeCERT),
+		"jti": "prod-cert-success",
+	})
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::999:role/unused"},
+		allowedCerts: []string{"stub-cn.example.com"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    &stubProdGDAuth{claims: claims},
+	}
+
+	var seenClaims *gdauth.TokenClaims
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenClaims = GetClaims(r)
+		w.WriteHeader(http.StatusOK)
+	})
+	h := m.AuthenticateAWSIAMService(next)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
+	req.Header.Set("Authorization", "sso-jwt token")
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if seenClaims == nil {
+		t.Fatal("expected claims propagated to next handler")
+	}
+	if seenClaims.GetType() != string(gdauth.AuthTypeCERT) {
+		t.Fatalf("want CERT claims type, got %q", seenClaims.GetType())
+	}
+}
+
+// findSeclogLine walks captured slog output and returns the parsed JSON line
+// tagged as a security event. Multiple log lines may be emitted in one request
+// (regular slog calls + seclog); we want only the seclog one. Returns nil if
+// no security event was emitted.
+func findSeclogLine(t *testing.T, buf *bytes.Buffer) map[string]any {
+	t.Helper()
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var got map[string]any
+		if err := json.Unmarshal([]byte(line), &got); err != nil {
+			continue
+		}
+		tags, ok := got["tags"].([]any)
+		if !ok || len(tags) == 0 || tags[0] != "security" {
+			continue
+		}
+		return got
+	}
+	return nil
+}
+
+// nestedString walks nested map[string]any using dot-path. "" when missing.
+func nestedString(m map[string]any, path string) string {
+	keys := strings.Split(path, ".")
+	cur := any(m)
+	for _, k := range keys {
+		obj, ok := cur.(map[string]any)
+		if !ok {
+			return ""
+		}
+		cur = obj[k]
+	}
+	if s, ok := cur.(string); ok {
+		return s
+	}
+	return ""
+}
+
+// Asserts that a successful authentication actually emits a seclog event with
+// event.outcome=success. Captures slog.Default() output for the duration of
+// the test (non-parallel — slog.Default is process-global).
+func TestMiddleware_AuthSuccess_EmitsSeclogEvent(t *testing.T) {
+	cases := []struct {
+		name       string
+		typ        string
+		authHeader string
+		wantUser   string
+	}{
+		{
+			name:       "IAM",
+			typ:        string(gdauth.AuthTypeAWSIAM),
+			authHeader: "Bearer token",
+			wantUser:   "arn:aws:iam::123456789012:role/stub", // matches stubProdGDAuth.GetAwsIamArn
+		},
+		{
+			name:       "Cert",
+			typ:        string(gdauth.AuthTypeCERT),
+			authHeader: "sso-jwt token",
+			wantUser:   "stub-cn.example.com", // matches stubProdGDAuth.GetCommonName
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+			t.Cleanup(func() { slog.SetDefault(prev) })
+
+			claims := gdauth.NewTokenClaims(map[string]any{
+				"typ": tc.typ,
+				"jti": "seclog-emit-" + tc.name,
+			})
+			m := &Middleware{
+				authType:     "jwt",
+				allowedRoles: []string{"arn:aws:iam::123456789012:role/stub"},
+				allowedCerts: []string{"stub-cn.example.com"},
+				client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+				validator:    &stubProdGDAuth{claims: claims},
+			}
+
+			h := m.AuthenticateAWSIAMService(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
+			req.Header.Set("Authorization", tc.authHeader)
+			h.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+			}
+
+			got := findSeclogLine(t, &buf)
+			if got == nil {
+				t.Fatalf("no seclog event captured; output=%q", buf.String())
+			}
+			if v := nestedString(got, "event.outcome"); v != "success" {
+				t.Errorf("event.outcome=%q want success", v)
+			}
+			if v := nestedString(got, "event.category"); v != "authentication" {
+				t.Errorf("event.category=%q want authentication", v)
+			}
+			if v := nestedString(got, "event.reason"); v != "AUTH_SUCCESS" {
+				t.Errorf("event.reason=%q want AUTH_SUCCESS", v)
+			}
+			if v := nestedString(got, "user.name"); v != tc.wantUser {
+				t.Errorf("user.name=%q want %q", v, tc.wantUser)
+			}
+		})
+	}
+}
+
+// resolveUserForToken's default leg is unreachable through the normal flow
+// (the caller gates on awsiam | cert), but tested directly here so a future
+// refactor that relaxes the gate fails closed loudly instead of silently
+// allowing requests through with an empty principal.
+func TestMiddleware_ResolveUserForToken_UnexpectedTokenTypeFailsClosed(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
+	claims := gdauth.NewTokenClaims(map[string]any{"typ": "shopper"}) // not awsiam, not cert
+
+	user, handled := m.resolveUserForToken(rec, req, &stubProdGDAuth{claims: claims}, claims, "shopper")
+
+	if !handled {
+		t.Fatalf("default leg must return handled=true to fail closed; got handled=false user=%q", user)
+	}
+	if user != "" {
+		t.Errorf("user=%q want empty when failing closed", user)
+	}
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status=%d want 500 (internal error, not silent 200)", rec.Code)
+	}
+
+	got := findSeclogLine(t, &buf)
+	if got == nil {
+		t.Fatalf("default leg must emit a seclog event; output=%q", buf.String())
+	}
+	if v := nestedString(got, "event.reason"); v != "UNEXPECTED_TOKEN_TYPE_PATH" {
+		t.Errorf("event.reason=%q want UNEXPECTED_TOKEN_TYPE_PATH", v)
+	}
+	if v := nestedString(got, "event.outcome"); v != "failure" {
+		t.Errorf("event.outcome=%q want failure", v)
+	}
+}
+
+// AUTH_MISCONFIGURED has two distinct branches (`cause=client_nil` vs
+// `cause=gdauth_nil`) — the only signal SIEM has to distinguish them. Without
+// these asserts, swapping the labels by accident would not be caught.
+func TestMiddleware_AuthMisconfigured_EmitsCauseLabel(t *testing.T) {
+	cases := []struct {
+		name      string
+		mw        *Middleware
+		wantCause string
+	}{
+		{
+			name: "client_nil",
+			mw: &Middleware{
+				authType:     "jwt",
+				allowedRoles: []string{"arn:aws:iam::123:role/x"},
+				allowedCerts: []string{"cn.example"},
+				client:       nil,
+			},
+			wantCause: "client_nil",
+		},
+		{
+			name: "gdauth_nil",
+			mw: &Middleware{
+				authType:     "jwt",
+				allowedRoles: []string{"arn:aws:iam::123:role/x"},
+				allowedCerts: []string{"cn.example"},
+				client:       &Client{SSOHost: "https://sso.test.godaddy.com", GDAuth: nil},
+				validator:    nil,
+			},
+			wantCause: "gdauth_nil",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+			t.Cleanup(func() { slog.SetDefault(prev) })
+
+			h := tc.mw.AuthenticateAWSIAMService(dummyHandler())
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
+			req.Header.Set("Authorization", "Bearer token")
+			h.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+			}
+
+			got := findSeclogLine(t, &buf)
+			if got == nil {
+				t.Fatalf("no seclog event captured; output=%q", buf.String())
+			}
+			if v := nestedString(got, "event.reason"); v != "AUTH_MISCONFIGURED" {
+				t.Errorf("event.reason=%q want AUTH_MISCONFIGURED", v)
+			}
+			labels, ok := got["labels"].(map[string]any)
+			if !ok {
+				t.Fatalf("labels missing or not an object; got %v", got["labels"])
+			}
+			if cause, _ := labels["cause"].(string); cause != tc.wantCause {
+				t.Errorf("labels.cause=%v want %q", labels["cause"], tc.wantCause)
+			}
+		})
 	}
 }

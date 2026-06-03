@@ -43,6 +43,7 @@ All runtime configuration is environment-driven. The server loads `.env` from th
 |----------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `LOG_LEVEL`          | `info`  | slog level for the process: `debug` / `info` / `warn` / `error` (includes auth middleware noise when `debug`). Configured before config load so early failures still emit JSON. |
 | `LOG_REQUEST_BODIES` | `false` | Log sanitized request bodies for POST/PATCH in `http.request.complete` (64 KiB rune cap)                                                                             |
+| `AWS_ACCOUNT_ID`     | —       | Populates ECS `cloud.account.id` on `internal/seclog` security events for SIEM attribution. Katana does **not** auto-populate this — set explicitly per environment. Unset in deployed envs (`GD_ENV != "local"`) emits a startup warning; events still flow but without account attribution. |
 
 See [Observability](observability.md#logs) for the structured event names emitted by handlers and middleware.
 

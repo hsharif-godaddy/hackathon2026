@@ -64,6 +64,12 @@ type Config struct {
 	OTelServiceVersion string
 	OTelEnvironment    string
 	OTelCloudPlatform  string
+
+	// AWSAccountID populates ECS cloud.account.id on security events emitted by
+	// internal/seclog. Sourced from the AWS_ACCOUNT_ID env var, which the team
+	// must set explicitly in their Katana environment configuration — Katana
+	// does not auto-populate it. Empty value omits cloud.account from the event.
+	AWSAccountID string
 }
 
 // Load reads env and checks LOCAL_AUTH_DISABLE / SSO_HOST / TLS pair consistency.
@@ -95,6 +101,8 @@ func Load() (Config, error) {
 		OTelServiceVersion: getEnv("KATANA_ARTIFACT_VERSION", "0.0.0"),
 		OTelEnvironment:    getEnv("GD_ENV", "local"),
 		OTelCloudPlatform:  getEnv("OTEL_CLOUD_PLATFORM", "aws_ecs"),
+
+		AWSAccountID: strings.TrimSpace(os.Getenv("AWS_ACCOUNT_ID")),
 	}
 	var err error
 	if cfg.AuthAllowedRoles, err = parseJSONStringSlice("AUTH_ALLOWED_ROLES"); err != nil {

@@ -1,4 +1,13 @@
 // Package auth provides HTTP middleware for GoDaddy authentication using gd-auth-lib.
+//
+// SIEM hygiene note: gd-auth-lib's `ParseToken`, `GetAwsIamArn`, and
+// `GetCommonName` errors are forwarded into seclog events as `error.message`.
+// Audited at gd-auth-lib v0.11.0: TokenValidationError and FFIError formats
+// are static (`"token validation error: <static-msg> (code: <int>)"` and
+// `"FFI error: <int>"`), with no token bytes / kid / claim values echoed.
+// Re-audit if go.mod bumps gd-auth-lib; if a new version starts echoing
+// input into error strings, drop seclog.Event.Err for the INVALID_TOKEN /
+// *_EXTRACT_FAILED paths and rely on Reason alone.
 package auth
 
 import (
@@ -8,6 +17,7 @@ import (
 	"strings"
 
 	gdauth "github.com/gdcorp-identity/gd-auth-lib/go/gd_auth_lib"
+	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/seclog"
 )
 
 // contextKey is used for context values to avoid collisions.
@@ -108,14 +118,22 @@ func (m *Middleware) AuthenticateAWSIAMService(next http.Handler) http.Handler {
 	// Reject if no client (SSO host) or no token validator (real GDAuth or test stub).
 	if m.client == nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			slog.Error("auth.validate.client_nil", "method", r.Method, "path", r.URL.Path)
+			seclog.AuthFailure(r, seclog.Event{
+				Reason: "AUTH_MISCONFIGURED",
+				Status: http.StatusUnauthorized,
+				Labels: []slog.Attr{slog.String("cause", "client_nil")},
+			})
 			writeAuthError(w, http.StatusUnauthorized, "AUTH_MISCONFIGURED", "auth misconfigured")
 		})
 	}
 	g := m.gdAuth()
 	if g == nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			slog.Error("auth.validate.gdauth_nil", "method", r.Method, "path", r.URL.Path)
+			seclog.AuthFailure(r, seclog.Event{
+				Reason: "AUTH_MISCONFIGURED",
+				Status: http.StatusUnauthorized,
+				Labels: []slog.Attr{slog.String("cause", "gdauth_nil")},
+			})
 			writeAuthError(w, http.StatusUnauthorized, "AUTH_MISCONFIGURED", "auth misconfigured")
 		})
 	}
@@ -123,6 +141,10 @@ func (m *Middleware) AuthenticateAWSIAMService(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := extractToken(r)
 		if token == "" {
+			seclog.AuthFailure(r, seclog.Event{
+				Reason: "MISSING_AUTHORIZATION",
+				Status: http.StatusUnauthorized,
+			})
 			writeAuthError(w, http.StatusUnauthorized, "MISSING_AUTHORIZATION", "missing authorization token")
 			return
 		}
@@ -144,16 +166,30 @@ func (m *Middleware) AuthenticateAWSIAMService(next http.Handler) http.Handler {
 
 		claims, err := g.ParseToken(token, authOptions)
 		if err != nil {
-			slog.Warn("auth.validate.failed", "error", err)
+			seclog.AuthFailure(r, seclog.Event{
+				Reason: "INVALID_TOKEN",
+				Status: http.StatusUnauthorized,
+				Err:    err,
+			})
 			writeAuthError(w, http.StatusUnauthorized, "INVALID_TOKEN", "invalid token")
 			return
 		}
 
-		// Verify the token type is one of the allowed types: awsiam, cert
-		// Cert2S tokens have typ=cert but auth=cert2s, which is already covered by Auths config
+		// Verify the token type is one of the allowed types: awsiam, cert.
+		// Cert2S tokens have typ=cert but auth=cert2s, which is already covered by Auths config.
+		// The token validates — only its type is rejected for this route — so this is
+		// authorization, not authentication. Routing as AuthzFailure (event.category=iam)
+		// matches SIEM allowlist-violation rules.
 		tokenType := claims.GetType()
 		if tokenType != string(gdauth.AuthTypeAWSIAM) && tokenType != string(gdauth.AuthTypeCERT) {
-			slog.Warn("auth.validate.wrong_type", "tokenType", tokenType, "expected", "awsiam or cert")
+			seclog.AuthzFailure(r, seclog.Event{
+				Reason: "UNAUTHORIZED_TOKEN_TYPE",
+				Status: http.StatusUnauthorized,
+				Labels: []slog.Attr{
+					slog.String("token_type", tokenType),
+					slog.String("expected", "awsiam or cert"),
+				},
+			})
 			writeAuthError(w, http.StatusUnauthorized, "UNAUTHORIZED_TOKEN_TYPE", "unauthorized token type")
 			return
 		}
@@ -161,48 +197,113 @@ func (m *Middleware) AuthenticateAWSIAMService(next http.Handler) http.Handler {
 		// Fail closed when authType is "jwt": config.Load already requires non-empty
 		// allowlists, but defending here avoids any future regression where the slice
 		// is empty in JWT mode (security review follow-up).
-		if tokenType == string(gdauth.AuthTypeAWSIAM) {
-			if len(m.allowedRoles) == 0 {
-				slog.Error("auth.validate.role_allowlist_empty", "method", r.Method, "path", r.URL.Path)
-				writeAuthError(w, http.StatusForbidden, "IAM_ALLOWLIST_NOT_CONFIGURED", "forbidden: IAM role allowlist not configured")
-				return
-			}
-			arn, err := g.GetAwsIamArn(claims)
-			if err != nil {
-				slog.Warn("auth.validate.arn_extraction_failed", "error", err, "method", r.Method, "path", r.URL.Path)
-				writeAuthError(w, http.StatusForbidden, "IAM_ROLE_EXTRACT_FAILED", "forbidden: unable to extract IAM role")
-				return
-			}
-			if !matchesAllowlist(arn, m.allowedRoles) {
-				slog.Warn("auth.validate.role_denied", "arn", arn, "method", r.Method, "path", r.URL.Path)
-				writeAuthError(w, http.StatusForbidden, "IAM_ROLE_DENIED", "forbidden: IAM role not in allowlist")
-				return
-			}
+		resolvedUser, handled := m.resolveUserForToken(w, r, g, claims, tokenType)
+		if handled {
+			return
 		}
 
-		if tokenType == string(gdauth.AuthTypeCERT) {
-			if len(m.allowedCerts) == 0 {
-				slog.Error("auth.validate.cert_allowlist_empty", "method", r.Method, "path", r.URL.Path)
-				writeAuthError(w, http.StatusForbidden, "CERT_ALLOWLIST_NOT_CONFIGURED", "forbidden: cert allowlist not configured")
-				return
-			}
-			cn, err := g.GetCommonName(claims)
-			if err != nil {
-				slog.Warn("auth.validate.cn_extraction_failed", "error", err, "method", r.Method, "path", r.URL.Path)
-				writeAuthError(w, http.StatusForbidden, "CERT_CN_EXTRACT_FAILED", "forbidden: unable to extract cert CommonName")
-				return
-			}
-			if !matchesAllowlist(cn, m.allowedCerts) {
-				slog.Warn("auth.validate.cert_denied", "commonName", cn, "method", r.Method, "path", r.URL.Path)
-				writeAuthError(w, http.StatusForbidden, "CERT_CN_DENIED", "forbidden: cert CommonName not in allowlist")
-				return
-			}
-		}
+		seclog.AuthSuccess(r, seclog.Event{
+			Reason: "AUTH_SUCCESS",
+			User:   resolvedUser,
+			Labels: []slog.Attr{slog.String("token_type", tokenType)},
+		})
 
 		// Store claims in context for downstream handlers
 		ctx := context.WithValue(r.Context(), ClaimsKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// resolveUserForToken extracts the principal identity from claims and verifies
+// it matches the configured allowlist for the given token type. On any failure
+// it writes the seclog event AND the HTTP error response, then returns
+// handled=true; the caller must return without further work. On success it
+// returns the resolved principal (IAM ARN or cert CN) and handled=false.
+func (m *Middleware) resolveUserForToken(
+	w http.ResponseWriter, r *http.Request, g gdAuthValidator, claims *gdauth.TokenClaims, tokenType string,
+) (user string, handled bool) {
+	tokenLabel := slog.String("token_type", tokenType)
+
+	switch tokenType {
+	case string(gdauth.AuthTypeAWSIAM):
+		if len(m.allowedRoles) == 0 {
+			seclog.AuthzFailure(r, seclog.Event{
+				Reason: "IAM_ALLOWLIST_NOT_CONFIGURED",
+				Status: http.StatusForbidden,
+				Labels: []slog.Attr{tokenLabel},
+			})
+			writeAuthError(w, http.StatusForbidden, "IAM_ALLOWLIST_NOT_CONFIGURED", "forbidden: IAM role allowlist not configured")
+			return "", true
+		}
+		arn, err := g.GetAwsIamArn(claims)
+		if err != nil {
+			seclog.AuthzFailure(r, seclog.Event{
+				Reason: "IAM_ROLE_EXTRACT_FAILED",
+				Status: http.StatusForbidden,
+				Err:    err,
+				Labels: []slog.Attr{tokenLabel},
+			})
+			writeAuthError(w, http.StatusForbidden, "IAM_ROLE_EXTRACT_FAILED", "forbidden: unable to extract IAM role")
+			return "", true
+		}
+		if !matchesAllowlist(arn, m.allowedRoles) {
+			seclog.AuthzFailure(r, seclog.Event{
+				Reason: "IAM_ROLE_DENIED",
+				Status: http.StatusForbidden,
+				User:   arn,
+				Labels: []slog.Attr{tokenLabel},
+			})
+			writeAuthError(w, http.StatusForbidden, "IAM_ROLE_DENIED", "forbidden: IAM role not in allowlist")
+			return "", true
+		}
+		return arn, false
+
+	case string(gdauth.AuthTypeCERT):
+		if len(m.allowedCerts) == 0 {
+			seclog.AuthzFailure(r, seclog.Event{
+				Reason: "CERT_ALLOWLIST_NOT_CONFIGURED",
+				Status: http.StatusForbidden,
+				Labels: []slog.Attr{tokenLabel},
+			})
+			writeAuthError(w, http.StatusForbidden, "CERT_ALLOWLIST_NOT_CONFIGURED", "forbidden: cert allowlist not configured")
+			return "", true
+		}
+		cn, err := g.GetCommonName(claims)
+		if err != nil {
+			seclog.AuthzFailure(r, seclog.Event{
+				Reason: "CERT_CN_EXTRACT_FAILED",
+				Status: http.StatusForbidden,
+				Err:    err,
+				Labels: []slog.Attr{tokenLabel},
+			})
+			writeAuthError(w, http.StatusForbidden, "CERT_CN_EXTRACT_FAILED", "forbidden: unable to extract cert CommonName")
+			return "", true
+		}
+		if !matchesAllowlist(cn, m.allowedCerts) {
+			seclog.AuthzFailure(r, seclog.Event{
+				Reason: "CERT_CN_DENIED",
+				Status: http.StatusForbidden,
+				User:   cn,
+				Labels: []slog.Attr{tokenLabel},
+			})
+			writeAuthError(w, http.StatusForbidden, "CERT_CN_DENIED", "forbidden: cert CommonName not in allowlist")
+			return "", true
+		}
+		return cn, false
+	}
+
+	// Caller has already verified tokenType is one of the cases above. This
+	// default leg should be unreachable today, but if a future refactor
+	// relaxes the tokenType gate at AuthenticateAWSIAMService, we fail closed
+	// loudly rather than silently allowing the request through with an empty
+	// principal.
+	seclog.AuthFailure(r, seclog.Event{
+		Reason: "UNEXPECTED_TOKEN_TYPE_PATH",
+		Status: http.StatusInternalServerError,
+		Labels: []slog.Attr{slog.String("token_type", tokenType)},
+	})
+	writeAuthError(w, http.StatusInternalServerError, "UNEXPECTED_TOKEN_TYPE_PATH", "internal error: unexpected token type")
+	return "", true
 }
 
 // matchesAllowlist matches value against patterns: exact string equality, or prefix match when the
