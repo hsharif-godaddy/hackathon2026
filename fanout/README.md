@@ -237,27 +237,32 @@ The labels column stays clean (`AAB-App` only).
 
 | Var                            | Source                              | Notes                                              |
 | ------------------------------ | ----------------------------------- | -------------------------------------------------- |
-| `JIRA_API_TOKEN_SECRET_ARN`    | CDK-owned Secrets Manager secret    | JSON `{email, apiToken}`                           |
-| `JIRA_BASE_URL`                | `config.jiraBaseUrl`                | Tenant site URL (e.g. `https://godaddy-corp.atlassian.net`) |
+| `JIRA_OAUTH_SECRET_ARN`        | CDK-owned Secrets Manager secret    | JSON `{clientId, clientSecret}` (NSA OAuth, from CyberArk) |
+| `JIRA_BASE_URL`                | `config.jiraBaseUrl`                | Tenant site URL — Slack `/browse/<key>` links only (not API) |
+| `JIRA_CLOUD_ID`                | `config.jiraCloudId`                | Atlassian cloud ID — API gateway path `…/ex/jira/<cloudId>/…` |
 | `JIRA_PROJECT_KEY`             | `config.jiraProjectKey`             | `AABSP`                                            |
 
 ### Setup (per env, post-deploy)
 
-1. CDK deploys `JiraApiTokenSecret` with REPLACE_ME placeholders and
+1. CDK deploys `JiraOauthSecret` with REPLACE_ME placeholders and
    `RemovalPolicy.RETAIN`. The secret's name is
-   `<env>-airo-fanout-jira-api-token`.
-2. Mint an API token in the service account's Atlassian profile
-   (`https://id.atlassian.com/manage-profile/security/api-tokens`)
-   and record the SA's email address.
+   `<env>-airo-fanout-jira-oauth`.
+2. Request an Atlassian Native Service Account (NSA) with OAuth 2.0
+   client_credentials via the Atlassian Request Portal — scope
+   profile B (`read:jira-work` + `write:jira-work`). The `clientId` +
+   `clientSecret` are delivered via CyberArk. See
+   https://godaddy-corp.atlassian.net/wiki/spaces/ATLSNADMIN/pages/4294607021
 3. Ops opens the Secrets Manager console for the secret and replaces
-   `email` and `apiToken` with the provisioned values.
+   `clientId` and `clientSecret` with the CyberArk values.
 4. While placeholders remain, every Jira step logs
    `fanout.jira.find_failed` (or `fanout.jira.create_failed` if a
    prior find succeeded but the create call hits the 401) with the
    Atlassian response and skips — Slack/CRM/investigator continue
    running normally.
-5. Rotate the API token roughly every 30 days: mint a new one,
-   update the secret, then revoke the old token.
+5. No scheduled rotation: NSA OAuth credentials have no fixed expiry
+   and are rotated by Atlassian admins for-cause only (scope change,
+   ownership change, suspected compromise). Short-lived 60-min access
+   tokens are minted automatically per the client_credentials grant.
 
 ### Customization
 

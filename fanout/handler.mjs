@@ -492,19 +492,36 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
  * fresh, `fanout.dedup.jira` for dedup) so log queries keep working
  * unchanged from before this helper existed.
  */
+// Distinguish a permanent auth failure (401 revoked creds / 403 missing scope)
+// from a transient Atlassian outage in the bulkhead logs below. jira-client
+// already retries a 401 once with a fresh token, so a 401/403 that still
+// surfaces here is actionable — `authError: true` lets oncall tell "page ops
+// to fix the NSA credential" from "wait out an Atlassian blip".
+//
+// Anchored on jira-client's constructed `jira <op> <status>:` prefix rather
+// than a loose digit match, so a 5xx whose response BODY happens to echo "401"
+// — or a pre-fetch validation throw — is not mislabelled as an auth failure.
+function isJiraAuthError(err) {
+  return /^jira (?:search|create|oauth) (?:401|403)\b/.test(err?.message ?? '');
+}
+
 async function resolveJiraKey({ row, submissionId, logPrefix, s3Ref }) {
   if (!shouldFanoutDownstream(row)) return null;
 
+  // NSA OAuth calls go through the api.atlassian.com gateway with the cloudId
+  // in the path (NOT the tenant site URL — see jira-client.mjs). Build that
+  // base from JIRA_CLOUD_ID here so jira-client stays a pure REST client.
   // Explicit env-presence check matches the JIRA_PROJECT_KEY regex-rejection
-  // path: a missing JIRA_BASE_URL would otherwise produce a fetch error
-  // like "fetch failed: undefined/rest/api/3/..." which is opaque to
-  // triagers staring at CloudWatch. Surface the misconfig as a distinct
-  // log line and bail to `null` so Slack/CRM/investigator continue.
-  const baseUrl = process.env.JIRA_BASE_URL;
-  if (!baseUrl) {
-    log('warn', `${logPrefix}.config_missing`, { reason: 'JIRA_BASE_URL not set', feedbackId: submissionId });
+  // path: a missing cloudId would otherwise produce a fetch error like
+  // "fetch failed: https://api.atlassian.com/ex/jira/undefined/..." which is
+  // opaque to triagers staring at CloudWatch. Surface the misconfig as a
+  // distinct log line and bail to `null` so Slack/CRM/investigator continue.
+  const cloudId = process.env.JIRA_CLOUD_ID;
+  if (!cloudId) {
+    log('warn', `${logPrefix}.config_missing`, { reason: 'JIRA_CLOUD_ID not set', feedbackId: submissionId });
     return null;
   }
+  const baseUrl = `https://api.atlassian.com/ex/jira/${cloudId}`;
 
   // Split find vs create error handling so a Jira outage and an
   // operator-side failure (project archived, required field added,
@@ -518,7 +535,7 @@ async function resolveJiraKey({ row, submissionId, logPrefix, s3Ref }) {
       feedbackId: submissionId,
     });
   } catch (err) {
-    log('warn', `${logPrefix}.find_failed`, { error: err.message, feedbackId: submissionId });
+    log('warn', `${logPrefix}.find_failed`, { error: err.message, authError: isJiraAuthError(err), feedbackId: submissionId });
     return null;
   }
   if (existing) {
@@ -531,7 +548,7 @@ async function resolveJiraKey({ row, submissionId, logPrefix, s3Ref }) {
     log('info', `${logPrefix}.created`, { issueKey: issue.key, feedbackId: submissionId });
     return issue.key ?? null;
   } catch (err) {
-    log('warn', `${logPrefix}.create_failed`, { error: err.message, feedbackId: submissionId });
+    log('warn', `${logPrefix}.create_failed`, { error: err.message, authError: isJiraAuthError(err), feedbackId: submissionId });
     return null;
   }
 }

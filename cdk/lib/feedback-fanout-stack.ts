@@ -55,7 +55,7 @@ interface FeedbackFanoutStackProps extends GDStackProps {
  *    `GD-AWS-SSG-PB-DEFAULT` denies `s3:PutBucketNotification`, which
  *    CDK's BucketNotificationsHandler (and the EventBridge enable path)
  *    both call. BFF lambda.invoke is the supported pattern.
- *  - CDK-owned Slack webhook + Jira API token Secrets Manager secrets,
+ *  - CDK-owned Slack webhook + Jira OAuth Secrets Manager secrets,
  *    populated post-deploy by ops via the AWS Console (REPLACE_ME
  *    placeholders are preserved by `generateStringKey: 'initialValue'`
  *    so the Lambda's runtime sentinel-check actually fires).
@@ -151,29 +151,28 @@ export class FeedbackFanoutStack extends GDStack {
       removalPolicy: config.envName === 'dev' ? cdk.RemovalPolicy.DESTROY : cdk.RemovalPolicy.RETAIN,
     });
 
-    // ---- Jira API token secret (CDK-owned, ops fills via console) ----
+    // ---- Jira OAuth secret (CDK-owned, ops fills via console) ----
     // Same RETAIN-with-REPLACE_ME-template pattern as the Slack webhook secret
-    // above. Holds a service-account email + Atlassian API token (Basic
-    // auth); Atlassian OAuth 3LO does not support a clean
-    // client_credentials grant, so a long-lived API token is the supported
-    // non-interactive path. The Lambda's jira-client.mjs base64-encodes
-    // `<email>:<apiToken>` and attaches it as `Authorization: Basic ...`.
-    // Atlassian rotates API tokens annually but recommends manual
-    // rotation every ~30 days for service accounts.
+    // above. Holds an Atlassian Native Service Account (NSA) OAuth 2.0
+    // client_credentials pair `{clientId, clientSecret}`, sourced from CyberArk.
+    // The Lambda's jira-client.mjs POSTs these to auth.atlassian.com to mint a
+    // short-lived (60-min) Bearer token and calls the api.atlassian.com gateway.
+    // NSA credentials have no fixed expiry — Atlassian admins rotate for-cause
+    // only — so there is no scheduled-rotation requirement here.
     // Same `generateStringKey: 'initialValue'` trap as the Slack secret above.
-    // If `generateStringKey` matched `apiToken`, CDK would replace the
+    // If `generateStringKey` matched `clientSecret`, CDK would replace the
     // REPLACE_ME placeholder with a random ~32-char string on first deploy,
-    // and `fanout/jira-client.mjs` would then send a Basic-auth header built
-    // from a random token to Atlassian — producing 401s on every Jira call
-    // until ops manually overwrites the secret value. Using a key NOT in the
-    // template preserves both `email` and `apiToken` as REPLACE_ME so the
+    // and `fanout/jira-client.mjs` would then attempt a client_credentials mint
+    // with a random secret — producing 401s on every Jira call until ops
+    // manually overwrites the secret value. Using a key NOT in the template
+    // preserves both `clientId` and `clientSecret` as REPLACE_ME so the
     // skip-on-placeholder paths in the Lambda actually work.
-    const jiraApiTokenSecret: secretsmanager.Secret = new secretsmanager.Secret(this, `JiraApiTokenSecret${SUFFIX_PASCAL}`, {
-      secretName: `${config.envName}-airo-fanout-jira-api-token${SUFFIX_KEBAB}`,
-      description: 'Atlassian service-account email + API token for AABSP fanout Lambda Basic auth. Populated manually post-deploy.',
+    const jiraOauthSecret: secretsmanager.Secret = new secretsmanager.Secret(this, `JiraOauthSecret${SUFFIX_PASCAL}`, {
+      secretName: `${config.envName}-airo-fanout-jira-oauth${SUFFIX_KEBAB}`,
+      description: 'Atlassian Native Service Account OAuth 2.0 client_credentials (clientId + clientSecret) for AABSP fanout Lambda. Sourced from CyberArk, populated manually post-deploy.',
       generateSecretString: {
         generateStringKey: 'initialValue',
-        secretStringTemplate: JSON.stringify({ email: 'REPLACE_ME', apiToken: 'REPLACE_ME' }),
+        secretStringTemplate: JSON.stringify({ clientId: 'REPLACE_ME', clientSecret: 'REPLACE_ME' }),
         excludeCharacters: '"@/\\',
       },
       removalPolicy: config.envName === 'dev' ? cdk.RemovalPolicy.DESTROY : cdk.RemovalPolicy.RETAIN,
@@ -279,10 +278,13 @@ export class FeedbackFanoutStack extends GDStack {
           ? 'https://console.airo-builder.godaddy.com'
           : 'https://console.airo-builder.test-godaddy.com',
         // ---- Jira (AABSP) ----
-        // Lambda's jira-client.mjs reads `{email, apiToken}` from this
-        // secret and base64-encodes for Basic auth on the tenant site URL.
-        JIRA_API_TOKEN_SECRET_ARN: jiraApiTokenSecret.secretArn,
+        // Lambda's jira-client.mjs reads `{clientId, clientSecret}` from this
+        // secret and mints an NSA OAuth 2.0 client_credentials bearer, then
+        // calls the api.atlassian.com gateway (JIRA_CLOUD_ID in the path).
+        // JIRA_BASE_URL (tenant) is used only for Slack /browse/<key> links.
+        JIRA_OAUTH_SECRET_ARN: jiraOauthSecret.secretArn,
         JIRA_BASE_URL: config.jiraBaseUrl,
+        JIRA_CLOUD_ID: config.jiraCloudId,
         JIRA_PROJECT_KEY: config.jiraProjectKey,
         // Salesforce Lightning base URL for building deep-links to CRM
         // cases in the Slack message. Lambda renders
@@ -361,10 +363,10 @@ export class FeedbackFanoutStack extends GDStack {
     // controls its full ARN deterministically).
     slackWebhookSecret.grantRead(this.fanoutFunction);
 
-    // Jira API token secret read — same narrow-grant pattern as Slack above.
-    jiraApiTokenSecret.grantRead(this.fanoutFunction);
+    // Jira OAuth secret read — same narrow-grant pattern as Slack above.
+    jiraOauthSecret.grantRead(this.fanoutFunction);
 
-    // CDK-owned secrets (slackWebhookSecret + jiraApiTokenSecret) are
+    // CDK-owned secrets (slackWebhookSecret + jiraOauthSecret) are
     // encrypted with the AWS-managed `aws/secretsmanager` KMS key. CDK's
     // `secret.grantRead()` only attaches kms:Decrypt when the secret has an
     // explicit customer-managed `encryptionKey`, which is undefined for

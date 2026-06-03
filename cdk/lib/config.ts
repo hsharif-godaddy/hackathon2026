@@ -147,11 +147,19 @@ interface Config {
   /** Full URL for the GoDaddy SSO token endpoint (used by investigator to mint JWTs). */
   ssoEndpoint: string;
   /**
-   * Base URL for AABSP Jira REST API. Same Atlassian tenant for all envs.
-   * Used by the fanout Lambda's jira-client.mjs as the host for /rest/api/3
-   * paths under Basic auth (svcgtig6n4xcohrre@godaddy.com + API token).
+   * Atlassian tenant base URL. Same tenant for all envs. Used by the fanout
+   * Lambda only to build human-facing `/browse/<key>` deep-links in the Slack
+   * message — NOT for API calls (those go through the api.atlassian.com
+   * gateway built from jiraCloudId; see jiraCloudId and jira-client.mjs).
    */
   jiraBaseUrl: string;
+  /**
+   * Atlassian cloud ID for the tenant. The fanout Lambda's jira-client.mjs
+   * calls the REST API via the NSA OAuth gateway URL
+   * `https://api.atlassian.com/ex/jira/<cloudId>/rest/api/3/...`. Same tenant
+   * (godaddy-corp) for all envs.
+   */
+  jiraCloudId: string;
   /**
    * Jira project key the fanout Lambda creates issues under. AABSP =
    * "AAB Support Plane" (Suresh Gupta). Issues land here for triage.
@@ -303,6 +311,7 @@ const devConfig: Config = {
   ],
   eventsEmrBatchRoleArns: [],
   jiraBaseUrl: 'https://godaddy-corp.atlassian.net',
+  jiraCloudId: '1f012970-03f4-4025-b750-cbaa332d8a3b',
   jiraProjectKey: 'AABSP',
   // Dev/test CRM (CMAPI) creates cases against the same Salesforce prod
   // Lightning instance the support team uses today; verified from
@@ -408,6 +417,7 @@ const testConfig: Config = {
   // jiraProjectKey, and salesforceLightningBase are required to satisfy the
   // type contract.
   jiraBaseUrl: 'https://godaddy-corp.atlassian.net',
+  jiraCloudId: '1f012970-03f4-4025-b750-cbaa332d8a3b',
   jiraProjectKey: 'AABSP',
   salesforceLightningBase: 'https://godaddy2.lightning.force.com',
   budgetServiceLakeExport: {
@@ -520,6 +530,7 @@ const prodConfig: Config = {
     'arn:aws:iam::664289052486:role/dpaas-custom-enterprise-batch-EMRInstanceRole',
   ],
   jiraBaseUrl: 'https://godaddy-corp.atlassian.net',
+  jiraCloudId: '1f012970-03f4-4025-b750-cbaa332d8a3b',
   jiraProjectKey: 'AABSP',
   salesforceLightningBase: 'https://godaddy2.lightning.force.com',
   budgetServiceLakeExport: {

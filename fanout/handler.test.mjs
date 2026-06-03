@@ -203,8 +203,9 @@ beforeEach(() => {
   findIssueByFeedbackIdImpl = async () => null;
   createIssueImpl = async () => ({ key: 'AABSP-1', id: '10000' });
 
-  process.env.JIRA_API_TOKEN_SECRET_ARN = 'arn:aws:secretsmanager:us-west-2:111:secret:airo-fanout-jira-api-token';
+  process.env.JIRA_OAUTH_SECRET_ARN = 'arn:aws:secretsmanager:us-west-2:111:secret:airo-fanout-jira-oauth';
   process.env.JIRA_BASE_URL = 'https://godaddy-corp.atlassian.net';
+  process.env.JIRA_CLOUD_ID = '1f012970-03f4-4025-b750-cbaa332d8a3b';
   process.env.JIRA_PROJECT_KEY = 'AABSP';
 
   process.env.FEEDBACK_BUCKET = 'airo-builder-feedback-test';
@@ -634,11 +635,12 @@ await test('jira: issue category → findIssueByFeedbackId then createIssue (Bug
   await handler(S3_EVENT);
 
   assert.equal(calls.jiraFind.length, 1);
-  assert.equal(calls.jiraFind[0].baseUrl, 'https://godaddy-corp.atlassian.net');
+  // API calls go through the NSA OAuth gateway (cloudId in path), not the tenant URL.
+  assert.equal(calls.jiraFind[0].baseUrl, 'https://api.atlassian.com/ex/jira/1f012970-03f4-4025-b750-cbaa332d8a3b');
   assert.equal(calls.jiraFind[0].projectKey, 'AABSP');
   assert.equal(calls.jiraFind[0].feedbackId, 'sub-1');
   assert.equal(calls.jiraCreate.length, 1);
-  assert.equal(calls.jiraCreate[0].baseUrl, 'https://godaddy-corp.atlassian.net');
+  assert.equal(calls.jiraCreate[0].baseUrl, 'https://api.atlassian.com/ex/jira/1f012970-03f4-4025-b750-cbaa332d8a3b');
   assert.equal(calls.jiraCreate[0].body.fields.issuetype.name, 'Bug');
   assert.equal(calls.jiraCreate[0].body.fields.project.key, 'AABSP');
 });
@@ -845,20 +847,20 @@ await test('jira: findIssueByFeedbackId throws → handler still completes; crea
   assert.equal(calls.jiraCreate.length, 0);
 });
 
-await test('jira: missing JIRA_BASE_URL env → degraded path skips find/create, Slack still posts', async () => {
+await test('jira: missing JIRA_CLOUD_ID env → degraded path skips find/create, Slack still posts', async () => {
   readStateImpl = freshReadStateImpl();
-  const saved = process.env.JIRA_BASE_URL;
-  delete process.env.JIRA_BASE_URL;
+  const saved = process.env.JIRA_CLOUD_ID;
+  delete process.env.JIRA_CLOUD_ID;
 
   try {
     await handler(S3_EVENT);
   } finally {
-    process.env.JIRA_BASE_URL = saved;
+    process.env.JIRA_CLOUD_ID = saved;
   }
 
   // Misconfig short-circuits before any Jira call — no find, no create.
-  assert.equal(calls.jiraFind.length, 0, 'find skipped when JIRA_BASE_URL unset');
-  assert.equal(calls.jiraCreate.length, 0, 'create skipped when JIRA_BASE_URL unset');
+  assert.equal(calls.jiraFind.length, 0, 'find skipped when JIRA_CLOUD_ID unset');
+  assert.equal(calls.jiraCreate.length, 0, 'create skipped when JIRA_CLOUD_ID unset');
   // Slack/CRM/investigator continue uninterrupted.
   assert.equal(calls.slack.length, 1, 'Slack still pings on Jira misconfig');
   assert.equal(calls.postCase.length, 1, 'CRM still opens case on Jira misconfig');

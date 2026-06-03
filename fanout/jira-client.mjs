@@ -8,58 +8,158 @@ import { getSecretString } from './secret-cache.mjs';
 const TIMEOUT_MS = 15_000;
 
 /**
- * Atlassian Cloud REST client. Uses Basic auth with a service-account
- * email + API token (Atlassian OAuth 3LO does not support a clean
- * client_credentials grant; a long-lived API token is the supported
- * non-interactive path).
+ * Atlassian Cloud REST client. Authenticates as an Atlassian Native Service
+ * Account (NSA) using the OAuth 2.0 client_credentials grant (2LO) — GoDaddy's
+ * standard for programmatic Jira access. See:
+ *   https://godaddy-corp.atlassian.net/wiki/spaces/ATLSNADMIN/pages/4294607021
+ *   https://support.atlassian.com/user-management/docs/create-oauth-2-0-credential-for-service-accounts/
  *
- * URL pattern is the tenant site URL directly (NOT the
- * api.atlassian.com gateway, which expects OAuth bearers):
- *   https://<site>.atlassian.net/rest/api/3/...
+ * Flow:
+ *   1. POST clientId+clientSecret to https://auth.atlassian.com/oauth/token
+ *      (grant_type=client_credentials, form-encoded) → 60-min Bearer token.
+ *   2. Call the gateway URL with the cloudId in the path (NOT the tenant site
+ *      URL — NSA bearers are rejected by <site>.atlassian.net):
+ *        https://api.atlassian.com/ex/jira/<cloudId>/rest/api/3/...
+ *      The caller passes that gateway base as `baseUrl`.
  *
- * Secret JSON shape: {"email": "<sa-email>", "apiToken": "<token>"}.
- * Cached in-process to avoid hitting Secrets Manager every invocation.
+ * Secret JSON shape: {"clientId": "<id>", "clientSecret": "<secret>"}.
+ * Sourced from CyberArk, stored in AWS Secrets Manager. Cached in-process.
+ *
+ * Scopes required (GoDaddy "Profile B"): read:jira-work (search/read),
+ * write:jira-work (create). No user fields are set on issues, so
+ * read:jira-user is not required.
  */
 
 const PLACEHOLDER_VALUE = 'REPLACE_ME';
+const TOKEN_URL = process.env.JIRA_OAUTH_TOKEN_URL ?? 'https://auth.atlassian.com/oauth/token';
 
-// 5-minute TTL on the in-process Basic auth string. Without this, a warm
-// Lambda container holds the FIRST cachedAuth value for the lifetime of
-// the container (hours/days). When ops rotates the Jira API token in
-// Secrets Manager, the cold-start case picks up the new token but every
-// warm container keeps sending the old Basic header to Atlassian → 401
-// for the rest of that container's life. With a 5-min TTL, warm
-// containers re-fetch from `getSecretString` (itself 5-min cached) so a
-// rotated secret propagates within ~5-10 min instead of never. Matches
-// the secret-cache.mjs TTL so we don't double-cache stale.
-const AUTH_TTL_MS = 5 * 60 * 1000;
+// Refresh the access token this far before its advertised expiry so an
+// in-flight request never races the 60-min boundary mid-RTT. 1 min is ample
+// headroom for a 60-min token (the CRM cert-token service uses a larger 5-min
+// margin for its ~1h tokens; this client adds a 401 re-mint retry below as a
+// second line of defense, so it doesn't need as wide a pre-expiry margin).
+const EXPIRY_MARGIN_MS = 60 * 1000;
 
-let cachedAuth = null;
-let cachedAt = 0;
+let cachedToken = null;
+let cachedExpiresAt = 0;
+// In-flight mint shared across concurrent callers so a burst of submissions
+// in one warm container doesn't stampede auth.atlassian.com. Mirrors the
+// inflight-dedup pattern in app/src/lib/crm/airo-cert-token.ts.
+let inflightMint = null;
 
-async function getBasicAuth() {
-  if (cachedAuth && Date.now() - cachedAt < AUTH_TTL_MS) return cachedAuth;
-  const raw = await getSecretString(process.env.JIRA_API_TOKEN_SECRET_ARN);
-  const { email, apiToken } = JSON.parse(raw);
-  if (!email || !apiToken) {
-    throw new Error('jira secret missing email or apiToken');
+async function mintAccessToken() {
+  const raw = await getSecretString(process.env.JIRA_OAUTH_SECRET_ARN);
+  // Guard the parse so a non-JSON secret value (ops pasting a raw token, a
+  // trailing comma) throws a purpose-built message instead of a bare
+  // SyntaxError that gives no hint it was the Jira OAuth secret.
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('jira secret is not valid JSON — expected {clientId, clientSecret}');
   }
-  // Throwing a sentinel error instead of attempting Basic auth lets the
-  // bulkhead in `handler.mjs` log a clear `fanout.jira.failed` with a
-  // distinct message — a real 401 from Atlassian would be far more
-  // confusing to triage than "Jira secret not yet populated by ops".
-  if (email === PLACEHOLDER_VALUE || apiToken === PLACEHOLDER_VALUE) {
+  const { clientId, clientSecret } = parsed;
+  if (!clientId || !clientSecret) {
+    throw new Error('jira secret missing clientId or clientSecret');
+  }
+  // Throwing a sentinel error instead of attempting the mint lets the
+  // bulkhead in `handler.mjs` log a clear `fanout.jira.find_failed` (find runs
+  // before create in resolveJiraKey) with a distinct message — a real 401 from
+  // auth.atlassian.com would be far more confusing to triage than "Jira secret
+  // not yet populated by ops".
+  if (clientId === PLACEHOLDER_VALUE || clientSecret === PLACEHOLDER_VALUE) {
     throw new Error('jira secret still has REPLACE_ME placeholder — ops needs to fill secret value');
   }
-  cachedAuth = 'Basic ' + Buffer.from(`${email}:${apiToken}`).toString('base64');
-  cachedAt = Date.now();
-  return cachedAuth;
+
+  const res = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    // Scopes are bound to the credential at creation time, so the token
+    // request carries no `scope` param (per Atlassian's NSA docs).
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: clientId,
+      client_secret: clientSecret,
+    }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+
+  if (!res.ok) {
+    // Body may echo the client_id but never the secret; safe to surface for
+    // triage and it never reaches Atlassian-bound logs (handler logs err.message
+    // under create_failed/find_failed only).
+    throw new Error(`jira oauth ${res.status}: ${await res.text()}`);
+  }
+
+  const data = await res.json();
+  if (!data.access_token) {
+    throw new Error('jira oauth response missing access_token');
+  }
+  // Trust the server-provided lifetime (typically 3600s); default to 60 min
+  // if absent so a malformed response still yields a usable short TTL rather
+  // than caching forever.
+  const expiresInMs = (typeof data.expires_in === 'number' ? data.expires_in : 3600) * 1000;
+  cachedToken = data.access_token;
+  cachedExpiresAt = Date.now() + expiresInMs;
+  return cachedToken;
 }
 
-/** Test hook — clears the in-process Basic auth cache (TTL + value). */
+async function getAccessToken() {
+  if (cachedToken && cachedExpiresAt - Date.now() > EXPIRY_MARGIN_MS) {
+    return cachedToken;
+  }
+  if (inflightMint) return inflightMint;
+  inflightMint = mintAccessToken().finally(() => {
+    inflightMint = null;
+  });
+  return inflightMint;
+}
+
+/**
+ * Clears the in-process access-token cache (value + expiry + in-flight mint).
+ * Used both as a test hook AND in production by `jiraFetch` on a 401, to force
+ * a fresh mint when the cached bearer has been revoked mid-lifetime — not
+ * test-only, do not remove.
+ */
 export function _resetAuthCache() {
-  cachedAuth = null;
-  cachedAt = 0;
+  cachedToken = null;
+  cachedExpiresAt = 0;
+  inflightMint = null;
+}
+
+/**
+ * Authenticated fetch against the Jira gateway with a single 401 re-mint
+ * retry. Injects a fresh Bearer + per-attempt timeout signal.
+ *
+ * A 401 on a warm container most likely means the cached bearer was
+ * force-revoked mid-lifetime (an admin revoking the NSA credential for-cause;
+ * note that rotating the CyberArk clientSecret does NOT invalidate
+ * already-issued bearers). Without this retry, every warm-container invocation
+ * would keep sending the dead token and 401 until `cachedExpiresAt` lapses
+ * (up to ~59 min). Clearing the cache and re-minting once lets the container
+ * self-heal immediately.
+ *
+ * 403 is deliberately NOT retried: it signals insufficient scope/permissions,
+ * which a re-mint with the same credential cannot fix — retrying would just
+ * double the latency before the caller's bulkhead logs the failure.
+ */
+async function jiraFetch(url, { method = 'GET', headers = {}, body } = {}) {
+  const attempt = async () => {
+    const token = await getAccessToken();
+    return fetch(url, {
+      method,
+      headers: { ...headers, Authorization: `Bearer ${token}` },
+      body,
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  };
+  const res = await attempt();
+  if (res.status !== 401) return res;
+  _resetAuthCache();
+  return attempt();
 }
 
 /**
@@ -91,7 +191,6 @@ export async function findIssueByFeedbackId({ baseUrl, projectKey, feedbackId })
   if (!FEEDBACK_ID_PATTERN.test(feedbackId)) {
     throw new Error(`jira feedbackId rejected: "${feedbackId}" must match ${FEEDBACK_ID_PATTERN}`);
   }
-  const auth = await getBasicAuth();
   const jql = encodeURIComponent(`project = "${projectKey}" AND cf[${FEEDBACK_ID_CUSTOM_FIELD_ID}] = "${feedbackId}"`);
   // Atlassian REST v3 endpoint is `/rest/api/3/search/jql` — the older
   // `/rest/api/3/search` was REMOVED (returns 410 with "The requested API
@@ -99,13 +198,7 @@ export async function findIssueByFeedbackId({ baseUrl, projectKey, feedbackId })
   // per Atlassian changelog CHANGE-2046).
   const url = `${baseUrl}/rest/api/3/search/jql?jql=${jql}&fields=summary&maxResults=1`;
 
-  const res = await fetch(url, {
-    headers: {
-      Authorization: auth,
-      Accept: 'application/json',
-    },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
+  const res = await jiraFetch(url, { headers: { Accept: 'application/json' } });
 
   if (!res.ok) {
     throw new Error(`jira search ${res.status}: ${await res.text()}`);
@@ -124,18 +217,15 @@ export async function findIssueByFeedbackId({ baseUrl, projectKey, feedbackId })
  * @returns {Promise<{id: string, key: string, self: string}>}
  */
 export async function createIssue({ baseUrl, body }) {
-  const auth = await getBasicAuth();
   const url = `${baseUrl}/rest/api/3/issue`;
 
-  const res = await fetch(url, {
+  const res = await jiraFetch(url, {
     method: 'POST',
     headers: {
-      Authorization: auth,
       Accept: 'application/json',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
 
   if (!res.ok) {
