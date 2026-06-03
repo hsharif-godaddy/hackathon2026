@@ -10,6 +10,16 @@ import {
 
 const GAP = 8;
 
+const DEV_TOOLS_ROOT_ID = "airo-dev-tools-injected";
+
+// Portal into the dev-tools root, not document.body. The dev-tools root has
+// z-index 2147483647 (max), so a body-level bubble at 10001 always loses; only
+// inside the root does its 10001 stack above the HoverBar's 10000.
+function getTooltipPortalTarget(): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  return document.getElementById(DEV_TOOLS_ROOT_ID) ?? document.body;
+}
+
 injectTooltipStyles();
 
 export interface TooltipProps {
@@ -159,7 +169,8 @@ export function Tooltip({
     setExiting(false);
   };
 
-  const bubble = bubbleVisible && coords && (
+  const portalTarget = bubbleVisible ? getTooltipPortalTarget() : null;
+  const bubble = bubbleVisible && coords && portalTarget && (
     <div
       className="airo-tooltip-bubble"
       data-exiting={exiting || undefined}
@@ -182,7 +193,7 @@ export function Tooltip({
       onPointerDown={handlePointerDown}
     >
       {children}
-      {bubble && createPortal(bubble, document.body)}
+      {bubble && portalTarget && createPortal(bubble, portalTarget)}
     </div>
   );
 }

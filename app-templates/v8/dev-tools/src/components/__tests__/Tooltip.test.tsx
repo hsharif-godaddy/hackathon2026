@@ -85,4 +85,32 @@ describe("Tooltip", function tooltipTests() {
 
     expect(document.body.querySelector(".airo-tooltip-bubble")).toBeNull();
   });
+
+  it("portals bubble into the dev-tools root when present", function portalIntoDevToolsRoot() {
+    const devToolsRoot = document.createElement("div");
+    devToolsRoot.id = "airo-dev-tools-injected";
+    document.body.appendChild(devToolsRoot);
+
+    try {
+      render(
+        createElement(
+          Tooltip,
+          { content: "Decrease text size" },
+          createElement("button", { type: "button" }, "−"),
+        ),
+      );
+
+      fireEvent.mouseEnter(document.querySelector(".airo-tooltip-root")!);
+      vi.runAllTimers();
+
+      // Bubble must live inside the dev-tools root so its z-index can stack
+      // above the HoverBar (10000) without competing with the root's max
+      // z-index from outside.
+      const bubble = devToolsRoot.querySelector(".airo-tooltip-bubble");
+      expect(bubble).not.toBeNull();
+      expect(bubble?.parentElement).toBe(devToolsRoot);
+    } finally {
+      devToolsRoot.remove();
+    }
+  });
 });
