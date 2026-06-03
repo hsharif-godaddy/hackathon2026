@@ -25,6 +25,12 @@ import { defineConfig } from 'tsup';
  * Because the tsc pass writes additional sibling `.d.ts` files into the
  * same `dist/` tree, `clean` is `false` here; `build:clean` wipes
  * `dist/` once up front so neither pass stomps the other's output.
+ *
+ * `*.figma.tsx` files are deliberately NOT in the `entry` map: they are
+ * Figma Code Connect mappings consumed only by the `@figma/code-connect`
+ * CLI (configured in `figma.config.json`), never bundled or published.
+ * They are also excluded from `tsconfig.json` / `tsconfig.build.json` and
+ * ESLint, since `@figma/code-connect` is intentionally not a dependency.
  */
 export default defineConfig({
   entry: {

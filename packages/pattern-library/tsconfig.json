@@ -21,5 +21,5 @@
     "types": ["vitest/globals", "@testing-library/jest-dom"]
   },
   "include": ["src/**/*", "vitest-setup.ts"],
-  "exclude": ["dist", "node_modules", "coverage"]
+  "exclude": ["dist", "node_modules", "coverage", "src/**/*.figma.tsx"]
 }

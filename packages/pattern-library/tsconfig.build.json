@@ -9,5 +9,11 @@
     "types": ["node"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["**/__tests__/**", "**/*.test.*", "**/*.stories.*", "**/__stubs__/**"]
+  "exclude": [
+    "**/__tests__/**",
+    "**/*.test.*",
+    "**/*.stories.*",
+    "**/*.figma.tsx",
+    "**/__stubs__/**"
+  ]
 }
