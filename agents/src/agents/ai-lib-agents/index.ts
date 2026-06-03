@@ -229,7 +229,7 @@ export async function createUnifiedAgentFactory(options?: {
     handoff: marketingHandoffTool
   }
   // Stop execution after handoff tool is called
-  marketingConfig.stopAfterTools = ['handoff', 'seoAnalysis', ...skillStopAfterTools]
+  marketingConfig.stopAfterTools = ['handoff', 'seoAnalysis', ...skillStopAfterTools, 'suggestedResponse', 'askQuestion', 'campaignPlanPropose']
 
   // For initial agent variants tied to profiles with develop flags, update the handoff
   // to target the develop variant instead of the default 'develop' agent.

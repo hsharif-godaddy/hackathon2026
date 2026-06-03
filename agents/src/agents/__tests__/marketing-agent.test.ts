@@ -52,13 +52,14 @@ describe('marketing-agent', function marketingAgentTests() {
 
       expect(config.tools).toHaveProperty('seoAnalysis');
       expect(config.tools).toHaveProperty('readFile');
-      expect(config.tools).toHaveProperty('str_replace_based_edit_tool');
-      expect(config.tools).toHaveProperty('todoList');
       expect(config.tools).toHaveProperty('directoryListing');
       expect(config.tools).toHaveProperty('grepSearch');
       expect(config.tools).toHaveProperty('media');
       expect(config.tools).toHaveProperty('suggestedResponse');
+      expect(config.tools).toHaveProperty('askQuestion');
       expect(config.tools).toHaveProperty('skill');
+      expect(config.tools).toHaveProperty('campaignPlanCreate');
+      expect(config.tools).toHaveProperty('campaignPlanPropose');
     });
 
     it('should configure handoff to develop agent', async function handoffs() {
@@ -259,11 +260,11 @@ describe('marketing-agent', function marketingAgentTests() {
   });
 
   describe('#tools', function toolsTests() {
-    it('should have exactly 9 tools configured', async function toolCount() {
+    it('should have exactly 10 tools configured', async function toolCount() {
       const config = await createMarketingAgent();
       const toolNames = Object.keys(config.tools);
 
-      expect(toolNames).toHaveLength(9);
+      expect(toolNames).toHaveLength(10);
     });
 
     it('should include seoAnalysis tool', async function seoTool() {
@@ -288,12 +289,10 @@ describe('marketing-agent', function marketingAgentTests() {
       expect(config.tools).not.toHaveProperty('serverStatus');
     });
 
-    it('should include file reading but limited editing', async function fileTools() {
+    it('should include file reading tools', async function fileTools() {
       const config = await createMarketingAgent();
 
-      // Should be able to read files and create reports
       expect(config.tools).toHaveProperty('readFile');
-      expect(config.tools).toHaveProperty('str_replace_based_edit_tool');
       expect(config.tools).toHaveProperty('directoryListing');
       expect(config.tools).toHaveProperty('grepSearch');
     });

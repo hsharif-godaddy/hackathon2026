@@ -637,6 +637,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 agentsAppContext.metadata.useAtlasCrawler = true
               }
 
+              if (agentContext?.marketingCampaignsEnabled) {
+                agentsAppContext.metadata.marketingCampaignsEnabled = true
+              }
+
               // Resolve app base URL once for tools like httpCheck.
               // Appends the active share token so the dev-supervisor proxy
               // allows requests without requiring a browser cookie.

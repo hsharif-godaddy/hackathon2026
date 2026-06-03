@@ -184,7 +184,7 @@ import compression from 'compression';
 import { createServer } from 'http';
 
 import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware, validateProductAccess } from './middleware/index.js';
-import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, securityReportRouter, secretsScanRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, diagnoseRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, brandDataRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, inboxBrandIdRouter } from './routes/index.js';
+import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, securityReportRouter, secretsScanRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, diagnoseRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, brandDataRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, inboxBrandIdRouter, campaignsRouter } from './routes/index.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
 import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
 import { initAgentRuntime, getEventChannel, getAgentFactory, getMessageLifecycleDeps, getGitHookService } from './agent-runtime.js';
@@ -455,6 +455,7 @@ protectedRouter.use('/', inboxBrandIdRouter);
 protectedRouter.use('/apps', rebuildRouter);
 protectedRouter.use('/apps', nextActionsRouter);
 protectedRouter.use('/', feedbackRouter);
+protectedRouter.use('/campaigns', campaignsRouter);
 protectedRouter.use('/api/conversations', createSSERoutes({
   registry: sseRegistry,
   authenticate: (_req, _res, next) => next(), // Auth handled by protectedRouter middleware

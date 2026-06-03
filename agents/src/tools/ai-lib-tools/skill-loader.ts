@@ -49,6 +49,13 @@ export const skillAITool: Tool = createTool(
 
     // Load action - load instructions AND activate skill tools
     if (input.action === 'load') {
+      if (input.skill === 'marketing-campaigns' && !context?.metadata?.marketingCampaignsEnabled) {
+        return {
+          success: false,
+          error: "Marketing campaigns feature is not enabled for this account. Tell the user this feature isn't available yet and do NOT attempt to create a campaign manually. Stop here.",
+        };
+      }
+
       const result = await skillLoader.loadSkill({ skill: input.skill });
 
       if (!result.success) {
