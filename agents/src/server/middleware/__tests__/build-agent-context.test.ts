@@ -43,6 +43,7 @@ describe('buildAgentContext', function suite() {
       bmsBudgetId: undefined,
       enableAssessmentAgent: true,
       enableAssessmentOverride: false,
+      assessmentClassifier: undefined,
       product: 'PaaSNodeJS',
       modelOverride: 'claude-sonnet-4-5',
       modelSelectorEnabled: true,
@@ -50,6 +51,7 @@ describe('buildAgentContext', function suite() {
       agentProfileSelectorEnabled: true,
       useAtlasCrawler: true,
       debugStatsEnabled: false,
+      marketingCampaignsEnabled: false,
       exp: 1700000000,
       iat: 1699999000,
     });

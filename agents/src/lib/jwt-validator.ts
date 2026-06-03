@@ -55,6 +55,7 @@ export interface JWTClaims {
   costAttributionDryRun?: boolean;
   useAtlasCrawler?: boolean;
   debugStatsEnabled?: boolean;
+  marketingCampaignsEnabled?: boolean;
 }
 
 export interface ValidationResult {

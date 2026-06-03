@@ -64,6 +64,7 @@ interface FeatureConfig {
     connectingCalendars: boolean
     onlineConferencing: boolean
     stripe: boolean
+    marketingCampaigns: boolean
   }
 
   // Widget/Feature enablement configuration
@@ -242,6 +243,7 @@ function parseEnvironmentFeatures(): FeatureConfig {
       connectingCalendars: process.env.ENABLE_CONNECTING_CALENDARS !== 'false',
       onlineConferencing: process.env.ENABLE_ONLINE_CONFERENCING !== 'false',
       stripe: true,
+      marketingCampaigns: process.env.ENABLE_MARKETING_CAMPAIGNS === 'true',
     },
 
     // Widget/Feature enablement configuration

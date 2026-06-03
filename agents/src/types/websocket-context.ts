@@ -15,6 +15,7 @@ export interface AgentsAppContext extends BaseAgentsAppContext {
     clientActionService?: IClientActionService
     budgetServiceEnabled?: boolean
     subscriptionId?: string
+    marketingCampaignsEnabled?: boolean
   }
 }
 
