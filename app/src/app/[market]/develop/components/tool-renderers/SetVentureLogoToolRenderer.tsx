@@ -55,8 +55,8 @@ export default function SetVentureLogoToolRenderer({
 
     void (async () => {
       const targets: Array<{ key: 'horizontal' | 'square'; url: string }> = [
-        { key: 'horizontal', url: urls.horizontalUrl },
         { key: 'square', url: urls.squareUrl },
+        { key: 'horizontal', url: urls.horizontalUrl },
       ]
 
       const data = await Promise.all(

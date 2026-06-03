@@ -151,8 +151,8 @@ describe('SetVentureLogoToolRenderer', () => {
         action: 'add-to-library',
         sender: 'airo-hq',
         data: [
-          { key: 'horizontal', dataUrl: 'data:image/png;base64,https://cdn/h.png' },
           { key: 'square', dataUrl: 'data:image/png;base64,https://cdn/s.png' },
+          { key: 'horizontal', dataUrl: 'data:image/png;base64,https://cdn/h.png' },
         ],
       },
       'https://dashboard.godaddy.com',
@@ -276,8 +276,8 @@ describe('SetVentureLogoToolRenderer', () => {
         action: 'add-to-library',
         sender: 'airo-hq',
         data: [
-          { key: 'horizontal', dataUrl: 'data:image/png;base64,https://cdn/h.png' },
           null,
+          { key: 'horizontal', dataUrl: 'data:image/png;base64,https://cdn/h.png' },
         ],
       },
       'https://dashboard.godaddy.com',
