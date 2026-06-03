@@ -50,9 +50,7 @@ async function fetch_(path: string, retried = false): Promise<Response> {
 export async function getCustomer(customerId: string): Promise<CustomerDetails> {
   logger.info('pie.getCustomer.start', { customerId });
   const res = await fetch_(`/api/pie/v1/proxy/customers/${encodeURIComponent(customerId)}`);
-  const rawBody = await res.text();
-  logger.info('pie.getCustomer.raw_response', { customerId, status: res.status, body: rawBody });
-  const customer = JSON.parse(rawBody) as CustomerDetails;
+  const customer = await res.json() as CustomerDetails;
   logger.info('pie.getCustomer.done', {
     customerId,
     shopperId: customer.shopperId,
