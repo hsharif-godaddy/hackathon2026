@@ -212,9 +212,8 @@ func (c *Client) UpdateSecrets(ctx context.Context, appID string, ops []SecretOp
 	// anonymous admin-token traffic. airo-go's proxy sets the same two when it
 	// forwards customer secret writes (mhp-core/backends/airo-go/internal/
 	// infrastructure/mgmt_client/hosting_client.go). NOT setting X-On-Behalf-Of:
-	// hosting interprets that as customer-initiated proxy traffic and would
-	// flip on IsCustomerProxy=true, blocking modifications to systemManaged
-	// secrets — these writes are pure s2s with all SystemManaged: true.
+	// hosting interprets that as customer-initiated proxy traffic and flips on
+	// IsCustomerProxy=true; we want these treated as direct s2s writes.
 	req.Header.Set("X-Source-Service", "stripe-service")
 	req.Header.Set("X-Request-ID", newRequestID())
 	if err := c.auth.ApplyAuth(ctx, req); err != nil {

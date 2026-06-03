@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -151,18 +152,41 @@ func (c *Client) do(
 	}
 	defer resp.Body.Close()
 
+	// Capture Stripe's request ID for log correlation. Stripe ships it
+	// under both `Request-Id` (legacy) and `Stripe-Request-Id`; the
+	// legacy header is what their dashboard surfaces and what their
+	// support docs reference. Include in every log line below so an
+	// oncall reading our logs can grep for the same value in Stripe's
+	// dashboard or paste it directly into a support ticket.
+	stripeReqID := resp.Header.Get("Request-Id")
+	if stripeReqID == "" {
+		stripeReqID = resp.Header.Get("Stripe-Request-Id")
+	}
+
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		// Read the entire body — callers need to JSON-decode it. The
 		// errorBodyLimit bound is intentionally not applied here; success
 		// responses are not adversarial input.
 		respBody, readErr := io.ReadAll(resp.Body)
 		if readErr != nil {
-			return nil, fmt.Errorf("stripeapi %s %s: read response body: %w", method, path, readErr)
+			return nil, fmt.Errorf("stripeapi %s %s: read response body: %w (stripeRequestId=%s)", method, path, readErr, stripeReqID)
 		}
+		slog.Debug("stripeapi.response.success",
+			"method", method, "path", path,
+			"status", resp.StatusCode,
+			"bodyBytes", len(respBody),
+			"stripeRequestId", stripeReqID,
+		)
 		return respBody, nil
 	}
 
 	stripeErr := parseStripeError(resp.StatusCode, resp.Body)
+	slog.Error("stripeapi.response.error",
+		"method", method, "path", path,
+		"status", resp.StatusCode,
+		"stripeRequestId", stripeReqID,
+		"error", stripeErr,
+	)
 	// Drain the rest of the body so net/http can return the connection
 	// to the pool. parseStripeError reads only errorBodyLimit+1 bytes;
 	// without this drain, HTTP/1.1 keep-alive breaks on every 4xx/5xx —
@@ -198,7 +222,14 @@ func parseStripeError(status int, body io.Reader) error {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if jsonErr := json.Unmarshal(rb, &envelope); jsonErr == nil && envelope.Error.Type != "" {
+	// Populate the structured envelope when ANY of type / code / message is
+	// non-empty. The earlier "Type != ''" gate dropped envelopes that ship
+	// only {code, message} (observed from v2 iam endpoints — e.g. 403
+	// account_invalid carries no top-level type). Without this, dashboards
+	// filtering by stripe.code see empty strings while the full body sits
+	// only in the Raw preview.
+	if jsonErr := json.Unmarshal(rb, &envelope); jsonErr == nil &&
+		(envelope.Error.Type != "" || envelope.Error.Code != "" || envelope.Error.Message != "") {
 		return &StripeError{
 			HTTPStatus: status,
 			Type:       envelope.Error.Type,

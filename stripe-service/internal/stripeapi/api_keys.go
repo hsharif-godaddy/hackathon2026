@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 )
 
@@ -56,19 +57,105 @@ type PEMKey struct {
 
 // CreateAPIKeyResponse covers all three response shapes:
 //
-//   - For type=publishable_key, PublishableKey is the plaintext
+//   - For type=publishable_key, PublishableKey.Value is the plaintext
 //     pk_live_* and SecretKey/MCPKey are nil.
 //   - For type=secret_key, SecretKey.EncryptedSecret.Ciphertext holds
 //     the JWE compact serialization for the sk_live_*.
 //   - For type=mcp_key, MCPKey.EncryptedSecret.Ciphertext holds the JWE
 //     for the ek_live_*.
 type CreateAPIKeyResponse struct {
-	ID             string          `json:"id"`
-	Type           APIKeyType      `json:"type"`
-	Name           string          `json:"name,omitempty"`
-	PublishableKey string          `json:"publishable_key,omitempty"`
-	SecretKey      *EncryptedField `json:"secret_key,omitempty"`
-	MCPKey         *EncryptedField `json:"mcp_key,omitempty"`
+	ID             string              `json:"id"`
+	Type           APIKeyType          `json:"type"`
+	Name           string              `json:"name,omitempty"`
+	PublishableKey PublishableKeyValue `json:"publishable_key,omitempty"`
+	SecretKey      *EncryptedField     `json:"secret_key,omitempty"`
+	MCPKey         *EncryptedField     `json:"mcp_key,omitempty"`
+}
+
+// PublishableKeyValue holds the plaintext publishable key from Stripe's
+// apiKeys.create response. The wire shape varies across Stripe's preview
+// API versions:
+//
+//   - Bare string: `"publishable_key": "pk_live_..."`. Matches plan
+//     §4.2.1's documented design and the original test fixture.
+//   - Wrapped object: `"publishable_key": {"key": "pk_live_..."}` (or a
+//     similar inner field). Observed in live mode against API version
+//     2026-03-25.dahlia (2026-05-28).
+//
+// Custom UnmarshalJSON accepts both shapes so a future schema rotation
+// doesn't break us. Unknown shapes return an error that includes a
+// (truncated) hex-safe view of the raw bytes — that's the diagnostic
+// breadcrumb for adding a new field name to the lookup table.
+type PublishableKeyValue struct {
+	Value string
+}
+
+// publishableKeyInnerFields lists the inner field names we'll try when
+// the response shape is an object. Order matters only for shape-overlap
+// edge cases — Stripe shouldn't emit a wrapper with multiple of these
+// populated, but if it does, the first match wins.
+//
+// Observed shapes (Stripe API version 2026-03-25.dahlia, live mode,
+// 2026-05-28): `{"token": "pk_live_..."}`. Earlier versions are
+// documented as bare strings (plan §4.2.1) — both are accepted.
+var publishableKeyInnerFields = []string{"token", "key", "value", "publishable_key", "plaintext"}
+
+// UnmarshalJSON parses either a JSON string or a single-key object
+// wrapping the plaintext key. See PublishableKeyValue for the rationale.
+//
+// On success, emits a debug log naming the matched shape ("bare_string"
+// or "object[<fieldname>]"). Useful as an early-warning signal for
+// future schema rotations — if the matched shape changes between
+// deploys, the log diff surfaces it before any other symptom does.
+func (p *PublishableKeyValue) UnmarshalJSON(data []byte) error {
+	// Empty / null → leave Value as zero. The validation in CreateAPIKey
+	// catches a missing field per response Type, not here.
+	if len(data) == 0 || string(data) == "null" {
+		return nil
+	}
+	// Try bare string shape (plan §4.2.1's documented form).
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		p.Value = s
+		slog.Debug("stripeapi.publishable_key.shape_detected", "shape", "bare_string")
+		return nil
+	}
+	// Try object shape with one of the known inner field names.
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return fmt.Errorf("publishable_key: not a string or object (raw: %s): %w", truncateForLog(data), err)
+	}
+	for _, field := range publishableKeyInnerFields {
+		raw, ok := obj[field]
+		if !ok {
+			continue
+		}
+		var inner string
+		if err := json.Unmarshal(raw, &inner); err != nil {
+			continue
+		}
+		if inner != "" {
+			p.Value = inner
+			slog.Debug("stripeapi.publishable_key.shape_detected", "shape", "object", "field", field)
+			return nil
+		}
+	}
+	return fmt.Errorf(
+		"publishable_key: object has no known plaintext field (tried %v); raw=%s",
+		publishableKeyInnerFields, truncateForLog(data),
+	)
+}
+
+// truncateForLog clips a JSON byte slice for inclusion in error messages
+// without leaking unbounded payload to logs. Pulls the first 200 bytes,
+// appends an ellipsis when truncated. Hex-safe by virtue of the source
+// being JSON; control chars are rare and the truncation is short.
+func truncateForLog(data []byte) string {
+	const maxLen = 200
+	if len(data) <= maxLen {
+		return string(data)
+	}
+	return string(data[:maxLen]) + "...(truncated)"
 }
 
 // EncryptedField wraps the JWE for the secret-bearing response shapes.
@@ -132,6 +219,16 @@ func (c *Client) CreateAPIKey(
 
 	var out CreateAPIKeyResponse
 	if err := json.Unmarshal(rawResp, &out); err != nil {
+		// On decode failure, log the raw bytes (truncated) so the next
+		// schema rotation is diagnosable from one log line. Stripe
+		// responses contain JWE ciphertext or plaintext-publishable-key
+		// fragments — neither leaks plaintext secret keys (those are
+		// JWE-encrypted in the response), so logging is safe.
+		slog.Error("stripeapi.create_api_key.decode_failed",
+			"type", req.Type,
+			"rawBody", truncateForLog(rawResp),
+			"error", err,
+		)
 		return nil, fmt.Errorf("stripeapi CreateAPIKey: decode response: %w", err)
 	}
 	// Defensive: a 2xx that decodes to an all-zero (or wrong-shaped)
@@ -142,7 +239,7 @@ func (c *Client) CreateAPIKey(
 	// boundary instead of three calls deep.
 	switch out.Type {
 	case APIKeyTypePublishable:
-		if out.PublishableKey == "" {
+		if out.PublishableKey.Value == "" {
 			return nil, fmt.Errorf("stripeapi CreateAPIKey: response missing publishable_key for type=publishable_key")
 		}
 	case APIKeyTypeSecret:

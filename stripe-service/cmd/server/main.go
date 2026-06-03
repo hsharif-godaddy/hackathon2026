@@ -21,6 +21,8 @@ import (
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/awsclients"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/config"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/hosting"
+	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/jwedecrypt"
+	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/kmspubkey"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/store"
 	stripeclient "github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/stripe"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/stripeapi"
@@ -164,6 +166,29 @@ func main() {
 		slog.Error("stripe_service.shutdown.failed", "error", err)
 		os.Exit(1)
 	}
+
+	// httpSrv.Shutdown drains in-flight HTTP requests but NOT goroutines those
+	// handlers spawned. The webhook handler launches LiveKeysInFlight
+	// goroutines on context.Background() to decouple Stripe-ACK latency from
+	// the {KMS GetPublicKey, 3× apiKeys.create, 2× KMS Decrypt, hosting
+	// UpdateSecrets} chain — without this Wait() a SIGTERM during deploy can
+	// truncate that chain mid-call, leaving claim_status=live + live_account_id
+	// committed in DDB while the alloc env still holds *_test_* values. The
+	// dedup row blocks redelivery, so recovery falls to the manual path.
+	// We bound the wait on shutdownCtx so a stuck mint doesn't block the
+	// process from exiting beyond the configured shutdown budget.
+	drained := make(chan struct{})
+	go func() {
+		srv.LiveKeysInFlight.Wait()
+		close(drained)
+	}()
+	select {
+	case <-drained:
+		slog.Info("stripe_service.live_keys.drained")
+	case <-shutdownCtx.Done():
+		slog.Warn("stripe_service.live_keys.drain_timeout", "timeout", cfg.ShutdownTimeout)
+	}
+
 	slog.Info("stripe_service.stopped")
 }
 
@@ -209,27 +234,89 @@ func buildStripeClient(cfg config.Config, clients *awsclients.Clients, resources
 		return nil, nil, fmt.Errorf("unsupported StripeClient value %q", cfg.StripeClient)
 	}
 
-	rawKey, err := clients.GetSecretValue(context.Background(), resources.PlatformKeySecret)
+	// Test-mode platform key — required in every env. Drives the
+	// claimableSandboxes.create call (Stripe preview API exists only in test
+	// mode; live keys 404 against this endpoint). Hard fail on missing /
+	// unparseable: sandbox creation is the entry point for every merchant.
+	testAPIKey, err := loadPlatformKey(clients, resources.PlatformKeyTestSecret)
 	if err != nil {
-		return nil, nil, fmt.Errorf("load platform key from %s: %w", resources.PlatformKeySecret, err)
+		return nil, nil, err
 	}
-	apiKey, err := stripeclient.ParsePlatformKey(rawKey)
-	if err != nil {
-		return nil, nil, fmt.Errorf("parse platform key from %s: %w", resources.PlatformKeySecret, err)
-	}
-	sapi, err := stripeapi.New(stripeapi.Config{
-		APIKey:        apiKey,
+	testSAPI, err := stripeapi.New(stripeapi.Config{
+		APIKey:        testAPIKey,
 		BaseURL:       cfg.StripeAPIBaseURL,
 		StripeVersion: cfg.StripeAPIVersion,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("construct stripeapi client: %w", err)
+		return nil, nil, fmt.Errorf("construct test-mode stripeapi client: %w", err)
 	}
-	real, err := stripeclient.NewRealClient(sapi)
+
+	// Live-mode platform key — optional in non-prod envs. Drives the
+	// apiKeys.create call against a claimed live merchant account. If the
+	// secret is missing or still holds the CDK placeholder, log + proceed
+	// with nil; MintLiveAPIKeys returns a clear error if invoked. Lets
+	// dev/test envs that haven't populated the live key yet still boot
+	// and exercise the sandbox-creation half of the flow.
+	var liveSAPI *stripeapi.Client
+	liveAPIKey, liveErr := loadPlatformKey(clients, resources.PlatformKeyLiveSecret)
+	switch {
+	case liveErr == nil:
+		liveSAPI, err = stripeapi.New(stripeapi.Config{
+			APIKey:        liveAPIKey,
+			BaseURL:       cfg.StripeAPIBaseURL,
+			StripeVersion: cfg.StripeAPIVersion,
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("construct live-mode stripeapi client: %w", err)
+		}
+	default:
+		// Treat any failure (NotFound, placeholder, parse error) as
+		// "live-key flow not enabled in this env" rather than a fatal.
+		// MintLiveAPIKeys will surface a clear error on first call.
+		slog.Warn("stripe_service.platform_key.live.unavailable",
+			"secret", resources.PlatformKeyLiveSecret,
+			"reason", liveErr.Error(),
+			"effect", "live-key minting disabled until secret is populated; sandbox creation still works")
+	}
+
+	// kmspubkey.Cache + jwedecrypt.Decrypter together implement Stripe's
+	// Managed API Keys protocol on the receiving side: pubkey ships outbound
+	// on apiKeys.create requests so Stripe can wrap the CEK; the decrypter
+	// then unwraps the CEK via KMS and AES-256-GCM-decrypts the content.
+	// Both are lazy — no AWS calls happen here, only at first use.
+	pemCache, err := kmspubkey.New(clients.KMS(), resources.ManagedKeysAlias)
+	if err != nil {
+		return nil, nil, fmt.Errorf("construct kmspubkey cache for %s: %w", resources.ManagedKeysAlias, err)
+	}
+	decrypter, err := jwedecrypt.New(clients.KMS(), resources.ManagedKeysAlias)
+	if err != nil {
+		return nil, nil, fmt.Errorf("construct jwedecrypt decrypter for %s: %w", resources.ManagedKeysAlias, err)
+	}
+
+	real, err := stripeclient.NewRealClient(testSAPI, liveSAPI, pemCache, decrypter)
 	if err != nil {
 		return nil, nil, fmt.Errorf("construct real stripe client: %w", err)
 	}
-	return real, sapi, nil
+	// EventFetcher uses the test-mode client: webhook events for the sandbox
+	// lifecycle (claimable_sandbox.*) live in test mode, where this client
+	// is authorized.
+	return real, testSAPI, nil
+}
+
+// loadPlatformKey fetches a secret from Secrets Manager and validates it as a
+// raw or JSON-wrapped Stripe platform key. Returns a wrapped error suitable
+// for either fatal-on-startup (test key, always required) or warn-and-skip
+// (live key, optional in non-prod envs) handling at the call site.
+func loadPlatformKey(clients *awsclients.Clients, secretName string) (string, error) {
+	raw, err := clients.GetSecretValue(context.Background(), secretName)
+	if err != nil {
+		return "", fmt.Errorf("load platform key from %s: %w", secretName, err)
+	}
+	apiKey, err := stripeclient.ParsePlatformKey(raw)
+	if err != nil {
+		return "", fmt.Errorf("parse platform key from %s: %w", secretName, err)
+	}
+	return apiKey, nil
 }
 
 // buildHostingClient constructs the outbound hosting.Client from cfg.Hosting.

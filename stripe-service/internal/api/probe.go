@@ -67,8 +67,11 @@ func (s *Server) getProbe(w http.ResponseWriter, r *http.Request) {
 		{"dynamodb.events", func(ctx context.Context) (string, error) {
 			return "", s.Prober.DescribeTable(ctx, names.EventsTable)
 		}},
-		{"secretsmanager.platform", func(ctx context.Context) (string, error) {
-			return "", s.Prober.DescribeSecret(ctx, names.PlatformKeySecret)
+		{"secretsmanager.platform_test", func(ctx context.Context) (string, error) {
+			return "", s.Prober.DescribeSecret(ctx, names.PlatformKeyTestSecret)
+		}},
+		{"secretsmanager.platform_live", func(ctx context.Context) (string, error) {
+			return "", s.Prober.DescribeSecret(ctx, names.PlatformKeyLiveSecret)
 		}},
 		{"secretsmanager.webhook", func(ctx context.Context) (string, error) {
 			return "", s.Prober.DescribeSecret(ctx, names.WebhookSigningSecret)

@@ -3,19 +3,34 @@ package stripe
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/stripeapi"
 )
 
-// fakeCreator records its inputs and returns canned outputs.
+// fakeCreator records its inputs and returns canned outputs. Stubs both
+// stripeAPIClient methods (CreateClaimableSandbox + CreateAPIKey) so the
+// same fake can be reused across sandbox tests and live-key tests; tests
+// that don't exercise CreateAPIKey just leave its fields at zero.
 type fakeCreator struct {
+	// Sandbox-side fields.
 	out *stripeapi.CreateClaimableSandboxResponse
 	err error
 
 	callCount   int
 	lastIdemKey string
 	lastReq     stripeapi.CreateClaimableSandboxRequest
+
+	// API-key-side fields (separate so a sandbox-only test doesn't accidentally
+	// trip on a stale apiKeyOut/apiKeyErr from a previous test).
+	apiKeyOut       *stripeapi.CreateAPIKeyResponse
+	apiKeyErr       error
+	apiKeyCalls     int
+	apiKeyLastIdem  string
+	apiKeyLastCtx   string
+	apiKeyLastReq   stripeapi.CreateAPIKeyRequest
+	apiKeyResponses map[stripeapi.APIKeyType]*stripeapi.CreateAPIKeyResponse // optional per-type override
 }
 
 func (f *fakeCreator) CreateClaimableSandbox(
@@ -32,8 +47,27 @@ func (f *fakeCreator) CreateClaimableSandbox(
 	return f.out, nil
 }
 
+func (f *fakeCreator) CreateAPIKey(
+	_ context.Context,
+	idempotencyKey string,
+	stripeContext string,
+	req stripeapi.CreateAPIKeyRequest,
+) (*stripeapi.CreateAPIKeyResponse, error) {
+	f.apiKeyCalls++
+	f.apiKeyLastIdem = idempotencyKey
+	f.apiKeyLastCtx = stripeContext
+	f.apiKeyLastReq = req
+	if f.apiKeyErr != nil {
+		return nil, f.apiKeyErr
+	}
+	if perType, ok := f.apiKeyResponses[req.Type]; ok && perType != nil {
+		return perType, nil
+	}
+	return f.apiKeyOut, nil
+}
+
 func TestNewRealClient_RejectsNil(t *testing.T) {
-	if _, err := NewRealClient(nil); err == nil {
+	if _, err := NewRealClient(nil, nil, nil, nil); err == nil {
 		t.Errorf("want error for nil creator, got nil")
 	}
 }
@@ -51,7 +85,7 @@ func TestRealClient_CreateClaimableSandbox_TranslatesInput(t *testing.T) {
 			},
 		},
 	}
-	rc, err := NewRealClient(fc)
+	rc, err := NewRealClient(fc, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("NewRealClient: %v", err)
 	}
@@ -122,7 +156,7 @@ func TestRealClient_CreateClaimableSandbox_NormalizesEmailInIdempotencyKey(t *te
 			fc := &fakeCreator{
 				out: &stripeapi.CreateClaimableSandboxResponse{ID: "clmsbx_X"},
 			}
-			rc, err := NewRealClient(fc)
+			rc, err := NewRealClient(fc, nil, nil, nil)
 			if err != nil {
 				t.Fatalf("NewRealClient: %v", err)
 			}
@@ -153,7 +187,7 @@ func TestRealClient_CreateClaimableSandbox_TranslatesOutput(t *testing.T) {
 			},
 		},
 	}
-	rc, _ := NewRealClient(fc)
+	rc, _ := NewRealClient(fc, nil, nil, nil)
 
 	sb, err := rc.CreateClaimableSandbox(context.Background(), CreateSandboxInput{AppID: "app-1"})
 	if err != nil {
@@ -189,7 +223,7 @@ func TestRealClient_CreateClaimableSandbox_PropagatesStripeError(t *testing.T) {
 		Message:    "claimable_sandboxes is not enabled for this account",
 	}
 	fc := &fakeCreator{err: stripeErr}
-	rc, _ := NewRealClient(fc)
+	rc, _ := NewRealClient(fc, nil, nil, nil)
 
 	_, err := rc.CreateClaimableSandbox(context.Background(), CreateSandboxInput{AppID: "app-1"})
 	if err == nil {
@@ -208,10 +242,238 @@ func TestRealClient_CreateClaimableSandbox_PropagatesStripeError(t *testing.T) {
 func TestRealClient_CreateClaimableSandbox_PropagatesGenericError(t *testing.T) {
 	transportErr := errors.New("dial tcp: i/o timeout")
 	fc := &fakeCreator{err: transportErr}
-	rc, _ := NewRealClient(fc)
+	rc, _ := NewRealClient(fc, nil, nil, nil)
 
 	_, err := rc.CreateClaimableSandbox(context.Background(), CreateSandboxInput{AppID: "app-1"})
 	if !errors.Is(err, transportErr) {
 		t.Errorf("want errors.Is(transportErr), got %v", err)
+	}
+}
+
+// --- MintLiveAPIKeys ---
+
+// fakePEMFetcher implements pemFetcher for tests.
+type fakePEMFetcher struct {
+	pem string
+	err error
+}
+
+func (f *fakePEMFetcher) PEM(_ context.Context) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.pem, nil
+}
+
+// fakeJWEDecrypter implements jweDecrypter for tests. Maps the input JWE
+// string to a fixed plaintext so tests can set up "decrypt this ciphertext
+// → that key" mappings.
+type fakeJWEDecrypter struct {
+	mapping map[string][]byte
+	err     error
+}
+
+func (f *fakeJWEDecrypter) Decrypt(_ context.Context, jwe string) ([]byte, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	if pt, ok := f.mapping[jwe]; ok {
+		return pt, nil
+	}
+	return nil, fmt.Errorf("fakeJWEDecrypter: no mapping for %q", jwe)
+}
+
+func TestRealClient_MintLiveAPIKeys_HappyPath(t *testing.T) {
+	// Two distinct fakes — one for the test-mode platform client (innerTest,
+	// used by CreateClaimableSandbox) and one for the live-mode platform
+	// client (innerLive, used by MintLiveAPIKeys). The mint path MUST NOT
+	// route any apiKeys.create call to innerTest: doing so would mint live
+	// keys against the test platform account (sk_test_* against
+	// apiKeys.create returns 401 in live mode, sk_live_* against
+	// claimableSandboxes.create is mode-rejected). This test pins the
+	// routing invariant — see fcTest.apiKeyCalls assertion below.
+	fcLive := &fakeCreator{
+		apiKeyResponses: map[stripeapi.APIKeyType]*stripeapi.CreateAPIKeyResponse{
+			stripeapi.APIKeyTypeSecret: {
+				Type: stripeapi.APIKeyTypeSecret,
+				SecretKey: &stripeapi.EncryptedField{
+					EncryptedSecret: stripeapi.EncryptedSecret{Ciphertext: "JWE_SECRET"},
+				},
+			},
+			stripeapi.APIKeyTypePublishable: {
+				Type:           stripeapi.APIKeyTypePublishable,
+				PublishableKey: stripeapi.PublishableKeyValue{Value: "pk_live_merchant_abc"},
+			},
+			stripeapi.APIKeyTypeMCP: {
+				Type: stripeapi.APIKeyTypeMCP,
+				MCPKey: &stripeapi.EncryptedField{
+					EncryptedSecret: stripeapi.EncryptedSecret{Ciphertext: "JWE_MCP"},
+				},
+			},
+		},
+	}
+	fcTest := &fakeCreator{}
+	pem := &fakePEMFetcher{pem: "-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----"}
+	dec := &fakeJWEDecrypter{mapping: map[string][]byte{
+		"JWE_SECRET": []byte("sk_live_merchant_abc"),
+		"JWE_MCP":    []byte("ek_live_merchant_abc"),
+	}}
+	rc, err := NewRealClient(fcTest, fcLive, pem, dec)
+	if err != nil {
+		t.Fatalf("NewRealClient: %v", err)
+	}
+
+	keys, err := rc.MintLiveAPIKeys(context.Background(), MintLiveAPIKeysInput{
+		OwnerAccount:   "acct_103UBD2K7Tp1dUfp",
+		IdempotencyKey: "evt_test_xyz",
+	})
+	if err != nil {
+		t.Fatalf("MintLiveAPIKeys: %v", err)
+	}
+
+	if got, want := keys.SecretKey, "sk_live_merchant_abc"; got != want {
+		t.Errorf("SecretKey: want %q, got %q", want, got)
+	}
+	if got, want := keys.PublishableKey, "pk_live_merchant_abc"; got != want {
+		t.Errorf("PublishableKey: want %q, got %q", want, got)
+	}
+	// MCP key is intentionally empty: Stripe's v2.iam.api_keys doesn't yet
+	// accept type=mcp_key in live mode (plan §9 Q9). The mint skips the
+	// call and returns "" so the caller can omit the MCP op when pushing
+	// to hosting; the existing ek_test_* placed at sandbox creation
+	// stays in the alloc env. When Stripe enables mcp_key, restore the
+	// call in MintLiveAPIKeys and update this test to expect ek_live_*.
+	if got := keys.MCPKey; got != "" {
+		t.Errorf("MCPKey: want empty (mcp_key step is skipped per plan §9 Q9), got %q", got)
+	}
+
+	// Pin: stripeContext is the merchant account, NOT the sandbox account.
+	// The orchestrator must pass OwnerAccount through unmodified — passing
+	// anything else would mint keys against the wrong account.
+	if got, want := fcLive.apiKeyLastCtx, "acct_103UBD2K7Tp1dUfp"; got != want {
+		t.Errorf("apiKeyLastCtx: want %q, got %q", want, got)
+	}
+	// Routing invariant: the mint path uses innerLive only. Two
+	// apiKeys.create calls land on the live client (secret + publishable;
+	// mcp skipped per plan §9 Q9), and zero land on the test client.
+	if got, want := fcLive.apiKeyCalls, 2; got != want {
+		t.Errorf("fcLive.apiKeyCalls: want 2 (secret+publishable on innerLive), got %d", got)
+	}
+	if got := fcTest.apiKeyCalls; got != 0 {
+		t.Errorf("fcTest.apiKeyCalls: want 0 (mint path must NOT route to innerTest), got %d", got)
+	}
+	if got := fcTest.callCount; got != 0 {
+		t.Errorf("fcTest.callCount: want 0 (mint path must NOT touch innerTest), got %d", got)
+	}
+}
+
+func TestRealClient_MintLiveAPIKeys_RejectsEmptyOwnerAccount(t *testing.T) {
+	rc, _ := NewRealClient(&fakeCreator{}, &fakeCreator{}, &fakePEMFetcher{pem: "x"}, &fakeJWEDecrypter{})
+	_, err := rc.MintLiveAPIKeys(context.Background(), MintLiveAPIKeysInput{
+		IdempotencyKey: "evt_x",
+	})
+	if err == nil {
+		t.Errorf("want error for empty OwnerAccount, got nil")
+	}
+}
+
+func TestRealClient_MintLiveAPIKeys_RejectsEmptyIdempotencyKey(t *testing.T) {
+	rc, _ := NewRealClient(&fakeCreator{}, &fakeCreator{}, &fakePEMFetcher{pem: "x"}, &fakeJWEDecrypter{})
+	_, err := rc.MintLiveAPIKeys(context.Background(), MintLiveAPIKeysInput{
+		OwnerAccount: "acct_x",
+	})
+	if err == nil {
+		t.Errorf("want error for empty IdempotencyKey, got nil")
+	}
+}
+
+func TestRealClient_MintLiveAPIKeys_NilLiveClient_ReturnsError(t *testing.T) {
+	// innerLive=nil is permitted at construction (the live platform key may
+	// not be populated yet in dev/test envs) but MUST NOT panic when the
+	// live-key path is taken — return a clear error so operators know
+	// which secret is missing.
+	rc, _ := NewRealClient(&fakeCreator{}, nil, &fakePEMFetcher{pem: "x"}, &fakeJWEDecrypter{})
+	_, err := rc.MintLiveAPIKeys(context.Background(), MintLiveAPIKeysInput{
+		OwnerAccount: "acct_x", IdempotencyKey: "evt_x",
+	})
+	if err == nil {
+		t.Errorf("want error for nil live client, got nil")
+	}
+}
+
+func TestRealClient_MintLiveAPIKeys_NilPEMFetcher_ReturnsError(t *testing.T) {
+	// pem=nil is permitted at construction (sandbox-only deployments) but
+	// MUST NOT panic when the live-key path is taken — return a clear
+	// error instead.
+	rc, _ := NewRealClient(&fakeCreator{}, &fakeCreator{}, nil, &fakeJWEDecrypter{})
+	_, err := rc.MintLiveAPIKeys(context.Background(), MintLiveAPIKeysInput{
+		OwnerAccount: "acct_x", IdempotencyKey: "evt_x",
+	})
+	if err == nil {
+		t.Errorf("want error for nil pem fetcher, got nil")
+	}
+}
+
+func TestRealClient_MintLiveAPIKeys_NilJWEDecrypter_ReturnsError(t *testing.T) {
+	rc, _ := NewRealClient(&fakeCreator{}, &fakeCreator{}, &fakePEMFetcher{pem: "x"}, nil)
+	_, err := rc.MintLiveAPIKeys(context.Background(), MintLiveAPIKeysInput{
+		OwnerAccount: "acct_x", IdempotencyKey: "evt_x",
+	})
+	if err == nil {
+		t.Errorf("want error for nil jwe decrypter, got nil")
+	}
+}
+
+func TestRealClient_MintLiveAPIKeys_PropagatesAPIError(t *testing.T) {
+	stripeErr := &stripeapi.StripeError{HTTPStatus: 403, Code: "permission_denied"}
+	fcLive := &fakeCreator{apiKeyErr: stripeErr}
+	fcTest := &fakeCreator{}
+	rc, _ := NewRealClient(fcTest, fcLive, &fakePEMFetcher{pem: "x"}, &fakeJWEDecrypter{})
+
+	_, err := rc.MintLiveAPIKeys(context.Background(), MintLiveAPIKeysInput{
+		OwnerAccount: "acct_x", IdempotencyKey: "evt_x",
+	})
+	if !errors.Is(err, stripeErr) {
+		t.Errorf("want errors.Is(stripeErr), got %v", err)
+	}
+	// Even on the error path, the routing invariant holds: the failed
+	// call must have hit innerLive, not innerTest.
+	if got := fcTest.apiKeyCalls; got != 0 {
+		t.Errorf("fcTest.apiKeyCalls: want 0 on mint-error path, got %d", got)
+	}
+	if got := fcLive.apiKeyCalls; got != 1 {
+		t.Errorf("fcLive.apiKeyCalls: want 1 (short-circuited at first failure), got %d", got)
+	}
+}
+
+// TestRealClient_CreateClaimableSandbox_RoutesToInnerTest is the inverse of
+// the MintLiveAPIKeys routing assertion: the sandbox path must use innerTest
+// (the sk_test_* platform client) and never touch innerLive. A swap would
+// mint a sandbox against the live platform key, which Stripe rejects in live
+// mode.
+func TestRealClient_CreateClaimableSandbox_RoutesToInnerTest(t *testing.T) {
+	fcTest := &fakeCreator{
+		out: &stripeapi.CreateClaimableSandboxResponse{ID: "clmsbx_X"},
+	}
+	fcLive := &fakeCreator{}
+	rc, err := NewRealClient(fcTest, fcLive, nil, nil)
+	if err != nil {
+		t.Fatalf("NewRealClient: %v", err)
+	}
+
+	if _, err := rc.CreateClaimableSandbox(context.Background(), CreateSandboxInput{
+		AppID: "app-1", Email: "founder@example.com", Country: "US",
+	}); err != nil {
+		t.Fatalf("CreateClaimableSandbox: %v", err)
+	}
+
+	if got := fcTest.callCount; got != 1 {
+		t.Errorf("fcTest.callCount: want 1 (sandbox lands on innerTest), got %d", got)
+	}
+	if got := fcLive.callCount; got != 0 {
+		t.Errorf("fcLive.callCount: want 0 (sandbox path must NOT touch innerLive), got %d", got)
+	}
+	if got := fcLive.apiKeyCalls; got != 0 {
+		t.Errorf("fcLive.apiKeyCalls: want 0 on sandbox path, got %d", got)
 	}
 }

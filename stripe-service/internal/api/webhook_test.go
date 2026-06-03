@@ -14,7 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/hosting"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/store"
+	stripeclient "github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/stripe"
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/webhook"
 )
 
@@ -753,5 +755,410 @@ func TestWebhook_OwnerAccountUpdated_UsesRelatedObjectIDAndDataOwnerDetails(t *t
 	}
 	if got.LiveAccountID != "acct_live_merchant_v2" {
 		t.Errorf("LiveAccountID: want acct_live_merchant_v2 (from data.owner_details.account), got %q", got.LiveAccountID)
+	}
+}
+
+// TestWebhook_OwnerAccountUpdated_ChangesAfterPath_RealPayload pins the
+// changes.after.owner_details.account field path against the literal
+// payload shape Stripe ships in test mode after the merchant completes the
+// Airo Stripe App install. Captured from a real `stripe listen
+// --forward-thin-to ...` delivery (eventId trimmed for brevity); this is
+// what the integration plan and the hosting recommendations doc both
+// reference as the live-key trigger event.
+//
+// data is empty ({}); the relevant state lives under changes.after.
+// owner_details.account being non-null with status:"live" and
+// app_install_status:"installed" is the exact combination that should
+// advance the sandbox to ClaimStatusLive.
+func TestWebhook_OwnerAccountUpdated_ChangesAfterPath_RealPayload(t *testing.T) {
+	srv, _ := newWebhookServer()
+	sandboxes := srv.Sandboxes.(*fakeStore)
+	now := time.Now().UTC()
+	sandboxes.Put(context.Background(), store.Sandbox{
+		SandboxID:   "clmsbx_test_realpayload",
+		AppID:       "app-real",
+		AccountID:   "acct_1TZyvNLIR8HSN9vc",
+		ClaimStatus: store.ClaimStatusClaimed,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+	sandboxes.puts = nil
+
+	// Verbatim shape from Stripe's GET /v2/core/events/{id} for a v2
+	// claimable_sandbox.updated event after install completion.
+	fetcher := srv.EventFetcher.(*fakeEventFetcher)
+	fetcher.responses["evt_v2_changes_after"] = []byte(`{
+		"id": "evt_v2_changes_after",
+		"object": "v2.core.event",
+		"changes": {
+			"before": {
+				"owner_details": {"account": null, "app_install_status": "pending_install"},
+				"sandbox_details": {"account": "acct_1TZyvNLIR8HSN9vc", "api_keys": null},
+				"status": "claimed"
+			},
+			"after": {
+				"owner_details": {"account": "acct_103UBD2K7Tp1dUfp", "app_install_status": "installed"},
+				"sandbox_details": {"account": "acct_1TZyvNLIR8HSN9vc", "api_keys": null},
+				"status": "live"
+			}
+		},
+		"data": {},
+		"related_object": {
+			"id": "clmsbx_test_realpayload",
+			"type": "v2.core.claimable_sandbox"
+		},
+		"type": "v2.core.claimable_sandbox.updated",
+		"livemode": false
+	}`)
+
+	h := NewRouter(srv)
+	body := []byte(`{"id":"evt_v2_changes_after","type":"v2.core.claimable_sandbox.updated"}`)
+	req := signedRequest(t, whTestSecret, body)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d (body=%q)", rec.Code, rec.Body.String())
+	}
+	if len(sandboxes.updates) != 1 {
+		t.Fatalf("UpdateClaimStatus calls: want 1, got %d", len(sandboxes.updates))
+	}
+	got := sandboxes.updates[0]
+	if got.SandboxID != "clmsbx_test_realpayload" {
+		t.Errorf("SandboxID: want clmsbx_test_realpayload, got %q", got.SandboxID)
+	}
+	if got.ClaimStatus != store.ClaimStatusLive {
+		t.Errorf("ClaimStatus: want live, got %q", got.ClaimStatus)
+	}
+	if got.LiveAccountID != "acct_103UBD2K7Tp1dUfp" {
+		t.Errorf("LiveAccountID: want acct_103UBD2K7Tp1dUfp (changes.after.owner_details.account), got %q", got.LiveAccountID)
+	}
+}
+
+// TestWebhook_OwnerAccountUpdated_ChangesAfter_PendingInstall_StaysAtClaimed
+// pins the inverse: a .updated event for the claim-only transition (status:
+// claimed, app_install_status: pending_install) carries owner_details.account
+// = null and MUST NOT advance the sandbox to live. This is the FIRST
+// .updated event Stripe fires (alongside the .claimed event); we should
+// see the claim handler advance to claimed and this handler short-circuit
+// with missing_owner_account, NOT advance to live with a null account.
+func TestWebhook_OwnerAccountUpdated_ChangesAfter_PendingInstall_StaysAtClaimed(t *testing.T) {
+	srv, _ := newWebhookServer()
+	sandboxes := srv.Sandboxes.(*fakeStore)
+	now := time.Now().UTC()
+	sandboxes.Put(context.Background(), store.Sandbox{
+		SandboxID:   "clmsbx_test_pending",
+		AppID:       "app-pending",
+		AccountID:   "acct_test_xyz",
+		ClaimStatus: store.ClaimStatusClaimed,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+	sandboxes.puts = nil
+
+	fetcher := srv.EventFetcher.(*fakeEventFetcher)
+	fetcher.responses["evt_v2_pending_install"] = []byte(`{
+		"id": "evt_v2_pending_install",
+		"object": "v2.core.event",
+		"changes": {
+			"before": {"owner_details": null, "status": "unclaimed"},
+			"after": {
+				"owner_details": {"account": null, "app_install_status": "pending_install"},
+				"status": "claimed"
+			}
+		},
+		"data": {},
+		"related_object": {"id": "clmsbx_test_pending", "type": "v2.core.claimable_sandbox"},
+		"type": "v2.core.claimable_sandbox.updated"
+	}`)
+
+	h := NewRouter(srv)
+	body := []byte(`{"id":"evt_v2_pending_install","type":"v2.core.claimable_sandbox.updated"}`)
+	req := signedRequest(t, whTestSecret, body)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d", rec.Code)
+	}
+	// Critical assertion: NO update to claim_status. The handler should have
+	// short-circuited at the missing_owner_account branch — null account in
+	// changes.after.owner_details is a legitimate "not yet" signal, not an
+	// advance-to-live trigger.
+	if len(sandboxes.updates) != 0 {
+		t.Errorf("UpdateClaimStatus calls: want 0 (pending_install must not advance to live), got %d (updates=%+v)",
+			len(sandboxes.updates), sandboxes.updates)
+	}
+}
+
+// TestWebhook_OwnerAccountUpdated_UnexpectedStatusWithAccount pins the
+// defensive guard at webhook.go:466 (status guard before UpdateClaimStatus).
+// If a .updated event ever ships with owner_details.account populated AND
+// changes.after.status != "live" (e.g., a corrected re-install or a future
+// schema variant), advancing claim_status=live would burn the dedup row
+// irrecoverably. The guard logs the anomaly, dumps the raw payload, and
+// returns without committing.
+func TestWebhook_OwnerAccountUpdated_UnexpectedStatusWithAccount(t *testing.T) {
+	srv, _ := newWebhookServer()
+	sandboxes := srv.Sandboxes.(*fakeStore)
+	now := time.Now().UTC()
+	sandboxes.Put(context.Background(), store.Sandbox{
+		SandboxID:   "clmsbx_test_anomaly",
+		AppID:       "app-anomaly",
+		AccountID:   "acct_sandbox_xyz",
+		ClaimStatus: store.ClaimStatusClaimed,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+	sandboxes.puts = nil
+
+	stripe := srv.Stripe.(*fakeStripe)
+	pusher := srv.Secrets.(*fakeSecretsPusher)
+
+	// Anomalous combination: account is populated (would normally trigger
+	// the live-key flow), but afterStatus is "claimed", not "live".
+	fetcher := srv.EventFetcher.(*fakeEventFetcher)
+	fetcher.responses["evt_test_anomaly"] = []byte(`{
+		"id": "evt_test_anomaly",
+		"object": "v2.core.event",
+		"changes": {
+			"before": {"owner_details": null, "status": "unclaimed"},
+			"after": {
+				"owner_details": {"account": "acct_103UBD2K7Tp1dUfp", "app_install_status": "installed"},
+				"status": "claimed"
+			}
+		},
+		"data": {},
+		"related_object": {"id": "clmsbx_test_anomaly", "type": "v2.core.claimable_sandbox"},
+		"type": "v2.core.claimable_sandbox.updated"
+	}`)
+
+	h := NewRouter(srv)
+	body := []byte(`{"id":"evt_test_anomaly","type":"v2.core.claimable_sandbox.updated"}`)
+	req := signedRequest(t, whTestSecret, body)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d (body=%q)", rec.Code, rec.Body.String())
+	}
+	// Goroutine must NOT have been spawned — wait briefly to confirm.
+	srv.LiveKeysInFlight.Wait()
+
+	// 1. NO UpdateClaimStatus call — claim_status preserved at `claimed`.
+	if len(sandboxes.updates) != 0 {
+		t.Errorf("UpdateClaimStatus calls: want 0 (anomalous status must not advance), got %d (updates=%+v)",
+			len(sandboxes.updates), sandboxes.updates)
+	}
+	// 2. Mint never invoked — provisionLiveKeys is gated behind UpdateClaimStatus.
+	if stripe.mintCalls != 0 {
+		t.Errorf("MintLiveAPIKeys calls: want 0, got %d", stripe.mintCalls)
+	}
+	// 3. Hosting push never invoked.
+	if pusher.calls != 0 {
+		t.Errorf("UpdateSecrets calls: want 0, got %d", pusher.calls)
+	}
+}
+
+// TestWebhook_OwnerAccountUpdated_LiveKeysProvisioning_HappyPath pins the
+// end-to-end go-live flow: when the install-completion .updated event
+// arrives with owner_details.account populated, the handler MUST:
+//  1. Advance the sandbox to claim_status=live with the merchant's account
+//  2. Look up appID from the sandbox row via GetBySandboxID
+//  3. Mint live keys via Stripe.MintLiveAPIKeys (idempotency key = event_id)
+//  4. Push 3 ops to hosting (MCP protected, sk×publish, pk×publish — preview
+//     ops are deliberately not touched)
+func TestWebhook_OwnerAccountUpdated_LiveKeysProvisioning_HappyPath(t *testing.T) {
+	srv, _ := newWebhookServer()
+	sandboxes := srv.Sandboxes.(*fakeStore)
+	now := time.Now().UTC()
+	// Pre-existing sandbox row at claimed status — webhook handler will
+	// flip it to live + then invoke live-key provisioning.
+	sandboxes.Put(context.Background(), store.Sandbox{
+		SandboxID:   "clmsbx_test_livekeys",
+		AppID:       "app-livekeys",
+		AccountID:   "acct_sandbox_xyz",
+		ClaimStatus: store.ClaimStatusClaimed,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+	sandboxes.puts = nil
+
+	stripe := srv.Stripe.(*fakeStripe)
+	stripe.mintOut = stripeclient.LiveAPIKeys{
+		SecretKey:      "sk_live_merchant_xyz",
+		PublishableKey: "pk_live_merchant_xyz",
+		MCPKey:         "ek_live_merchant_xyz",
+	}
+	pusher := srv.Secrets.(*fakeSecretsPusher)
+
+	fetcher := srv.EventFetcher.(*fakeEventFetcher)
+	fetcher.responses["evt_test_livekeys"] = []byte(`{
+		"id": "evt_test_livekeys",
+		"object": "v2.core.event",
+		"changes": {
+			"before": {
+				"owner_details": {"account": null, "app_install_status": "pending_install"},
+				"status": "claimed"
+			},
+			"after": {
+				"owner_details": {"account": "acct_103UBD2K7Tp1dUfp", "app_install_status": "installed"},
+				"status": "live"
+			}
+		},
+		"data": {},
+		"related_object": {"id": "clmsbx_test_livekeys", "type": "v2.core.claimable_sandbox"},
+		"type": "v2.core.claimable_sandbox.updated"
+	}`)
+
+	h := NewRouter(srv)
+	body := []byte(`{"id":"evt_test_livekeys","type":"v2.core.claimable_sandbox.updated"}`)
+	req := signedRequest(t, whTestSecret, body)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d (body=%q)", rec.Code, rec.Body.String())
+	}
+	// provisionLiveKeys runs in a goroutine after the 200 ACK — wait for it
+	// to finish before asserting on its side effects.
+	srv.LiveKeysInFlight.Wait()
+
+	// 1. claim_status advanced to live with the merchant's account ID.
+	if len(sandboxes.updates) != 1 {
+		t.Fatalf("UpdateClaimStatus calls: want 1, got %d", len(sandboxes.updates))
+	}
+	if got, want := sandboxes.updates[0].LiveAccountID, "acct_103UBD2K7Tp1dUfp"; got != want {
+		t.Errorf("LiveAccountID: want %q, got %q", want, got)
+	}
+
+	// 2. MintLiveAPIKeys was called once with the right merchant account
+	//    + idempotency key.
+	if got, want := stripe.mintCalls, 1; got != want {
+		t.Errorf("MintLiveAPIKeys calls: want 1, got %d", got)
+	}
+	if got, want := stripe.mintLastInput.OwnerAccount, "acct_103UBD2K7Tp1dUfp"; got != want {
+		t.Errorf("MintLiveAPIKeys.OwnerAccount: want %q, got %q", want, got)
+	}
+	if got, want := stripe.mintLastInput.IdempotencyKey, "evt_test_livekeys"; got != want {
+		t.Errorf("MintLiveAPIKeys.IdempotencyKey: want %q (event_id), got %q", want, got)
+	}
+
+	// 3. UpdateSecrets called once with the live-key 3-op payload.
+	if got, want := pusher.calls, 1; got != want {
+		t.Fatalf("UpdateSecrets calls: want 1, got %d", got)
+	}
+	if got, want := pusher.lastApp, "app-livekeys"; got != want {
+		t.Errorf("UpdateSecrets.appID: want %q (from sandbox row, not the merchant acct), got %q", want, got)
+	}
+	if got, want := len(pusher.lastOps), 5; got != want {
+		t.Fatalf("ops count: want 5 (MCP + sk x {preview,publish} + pk x {preview,publish}), got %d", got)
+	}
+
+	// Pin the exact shape. Preview-variant ops MUST be present so the
+	// BFF's preview->publish secrets sync (triggered on every "Publish app"
+	// click) doesn't clobber publish's sk_live_* with a stale sk_test_*
+	// from preview. See buildLiveSecretsOps for the full rationale.
+	type key struct{ name, variant string }
+	wantValues := map[key]string{
+		{"STRIPE_MCP_KEY", ""}:                "ek_live_merchant_xyz",
+		{"STRIPE_SECRET_KEY", "preview"}:      "sk_live_merchant_xyz",
+		{"STRIPE_SECRET_KEY", "publish"}:      "sk_live_merchant_xyz",
+		{"STRIPE_PUBLISHABLE_KEY", "preview"}: "pk_live_merchant_xyz",
+		{"STRIPE_PUBLISHABLE_KEY", "publish"}: "pk_live_merchant_xyz",
+	}
+	gotByKey := map[key]hosting.SecretOp{}
+	for _, op := range pusher.lastOps {
+		v := ""
+		if len(op.Secret.Variants) == 1 {
+			v = op.Secret.Variants[0]
+		}
+		gotByKey[key{op.Secret.Name, v}] = op
+	}
+	for k, wantVal := range wantValues {
+		op, ok := gotByKey[k]
+		if !ok {
+			t.Errorf("missing op for %+v", k)
+			continue
+		}
+		if op.Secret.Value != wantVal {
+			t.Errorf("op %+v value: want %q, got %q", k, wantVal, op.Secret.Value)
+		}
+	}
+	// MCP must be protected; sk/pk must NOT be.
+	mcp := gotByKey[key{"STRIPE_MCP_KEY", ""}]
+	if mcp.Secret.Protected == nil || !*mcp.Secret.Protected {
+		t.Errorf("MCP op must set protected:true; got %+v", mcp.Secret.Protected)
+	}
+	for _, k := range []key{
+		{"STRIPE_SECRET_KEY", "preview"},
+		{"STRIPE_SECRET_KEY", "publish"},
+		{"STRIPE_PUBLISHABLE_KEY", "preview"},
+		{"STRIPE_PUBLISHABLE_KEY", "publish"},
+	} {
+		op := gotByKey[k]
+		if op.Secret.Protected != nil && *op.Secret.Protected {
+			t.Errorf("op %+v should not be protected", k)
+		}
+	}
+}
+
+// TestWebhook_OwnerAccountUpdated_LiveKeys_MintFailureDoesNotRollback pins
+// the failure-mode contract: if MintLiveAPIKeys returns an error, the
+// claim_status=live + liveAccountId update is NOT rolled back. The dedup
+// row blocks any retry of this webhook, so rolling back would leave us
+// permanently stuck. Recovery is a separate manual / scheduled-job
+// operation that re-mints from the persisted liveAccountId.
+func TestWebhook_OwnerAccountUpdated_LiveKeys_MintFailureDoesNotRollback(t *testing.T) {
+	srv, _ := newWebhookServer()
+	sandboxes := srv.Sandboxes.(*fakeStore)
+	now := time.Now().UTC()
+	sandboxes.Put(context.Background(), store.Sandbox{
+		SandboxID:   "clmsbx_test_mint_fail",
+		AppID:       "app-mint-fail",
+		ClaimStatus: store.ClaimStatusClaimed,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+	sandboxes.puts = nil
+
+	stripe := srv.Stripe.(*fakeStripe)
+	stripe.mintErr = errors.New("stripe api: 503 service_unavailable")
+	pusher := srv.Secrets.(*fakeSecretsPusher)
+
+	fetcher := srv.EventFetcher.(*fakeEventFetcher)
+	fetcher.responses["evt_mint_fail"] = []byte(`{
+		"id": "evt_mint_fail",
+		"changes": {"after": {"owner_details": {"account": "acct_merchant"}, "status": "live"}},
+		"data": {},
+		"related_object": {"id": "clmsbx_test_mint_fail", "type": "v2.core.claimable_sandbox"},
+		"type": "v2.core.claimable_sandbox.updated"
+	}`)
+
+	h := NewRouter(srv)
+	body := []byte(`{"id":"evt_mint_fail","type":"v2.core.claimable_sandbox.updated"}`)
+	req := signedRequest(t, whTestSecret, body)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	// Stripe must still get a 200 — Stripe's retry policy would re-deliver
+	// the webhook on non-2xx and the dedup row would skip dispatch entirely,
+	// leaving the live-key push permanently un-attempted with no signal.
+	// 200 + an error log is the right shape: alerting on the
+	// `live_keys.mint_failed` log triggers manual recovery.
+	if rec.Code != http.StatusOK {
+		t.Errorf("status: want 200 (live-key failure must not bubble to non-2xx), got %d", rec.Code)
+	}
+	// provisionLiveKeys runs async — wait for the failure path to finish
+	// before asserting it didn't trigger an UpdateSecrets call.
+	srv.LiveKeysInFlight.Wait()
+
+	// claim_status advance ran (and was NOT rolled back).
+	if len(sandboxes.updates) != 1 {
+		t.Errorf("claim_status update calls: want 1 (NOT rolled back on mint failure), got %d", len(sandboxes.updates))
+	}
+	// No push attempted because mint failed.
+	if pusher.calls != 0 {
+		t.Errorf("UpdateSecrets calls: want 0 on mint failure, got %d", pusher.calls)
 	}
 }

@@ -249,11 +249,12 @@ func TestResourceNames(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := Config{Environment: tt.env}.ResourceNames()
 			want := ResourceNames{
-				SandboxesTable:       tt.envPart + "-airo-stripe-sandboxes",
-				EventsTable:          tt.envPart + "-airo-stripe-events",
-				PlatformKeySecret:    tt.envPart + "-airo-stripe-platform-key",
-				WebhookSigningSecret: tt.envPart + "-airo-stripe-webhook-signing",
-				ManagedKeysAlias:     "alias/" + tt.envPart + "-airo-stripe-managed-keys",
+				SandboxesTable:        tt.envPart + "-airo-stripe-sandboxes",
+				EventsTable:           tt.envPart + "-airo-stripe-events",
+				PlatformKeyTestSecret: tt.envPart + "-airo-stripe-platform-key-test",
+				PlatformKeyLiveSecret: tt.envPart + "-airo-stripe-platform-key-live",
+				WebhookSigningSecret:  tt.envPart + "-airo-stripe-webhook-signing",
+				ManagedKeysAlias:      "alias/" + tt.envPart + "-airo-stripe-managed-keys",
 			}
 			if got != want {
 				t.Errorf("ResourceNames:\n  got  %+v\n  want %+v", got, want)

@@ -98,11 +98,87 @@ func TestCreateAPIKey_PublishableKeyOmitsPublicKey(t *testing.T) {
 	if strings.Contains(string(got.Body), `"public_key"`) {
 		t.Errorf("publishable request should not contain public_key; got %q", string(got.Body))
 	}
-	if resp.PublishableKey != "pk_live_abc" {
-		t.Errorf("PublishableKey: want pk_live_abc, got %q", resp.PublishableKey)
+	if resp.PublishableKey.Value != "pk_live_abc" {
+		t.Errorf("PublishableKey: want pk_live_abc, got %q", resp.PublishableKey.Value)
 	}
 	if resp.SecretKey != nil {
 		t.Errorf("SecretKey: want nil for publishable_key response, got %+v", resp.SecretKey)
+	}
+}
+
+func TestCreateAPIKey_PublishableKey_AcceptsWrappedObjectShape(t *testing.T) {
+	// Stripe's preview API (observed against API version 2026-03-25.dahlia
+	// in live mode on 2026-05-28) returns publishable_key as a single-key
+	// wrapper object rather than a bare string. Pin acceptance of the
+	// wrapped shape so the JSON unmarshal succeeds end-to-end.
+	var got recordedRequest
+	c, _ := newFakeServer(t, &got, http.StatusOK,
+		`{"id":"ak_pub","type":"publishable_key","publishable_key":{"key":"pk_live_wrapped_xyz"}}`)
+
+	resp, err := c.CreateAPIKey(
+		context.Background(),
+		"k",
+		"acct_x",
+		CreateAPIKeyRequest{Type: APIKeyTypePublishable},
+	)
+	if err != nil {
+		t.Fatalf("CreateAPIKey: %v", err)
+	}
+	if resp.PublishableKey.Value != "pk_live_wrapped_xyz" {
+		t.Errorf("PublishableKey.Value: want pk_live_wrapped_xyz, got %q", resp.PublishableKey.Value)
+	}
+}
+
+func TestPublishableKeyValue_UnmarshalJSON_BareString(t *testing.T) {
+	var p PublishableKeyValue
+	if err := p.UnmarshalJSON([]byte(`"pk_live_abc"`)); err != nil {
+		t.Fatalf("unmarshal bare string: %v", err)
+	}
+	if p.Value != "pk_live_abc" {
+		t.Errorf("Value: want pk_live_abc, got %q", p.Value)
+	}
+}
+
+func TestPublishableKeyValue_UnmarshalJSON_WrappedObject(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		// "token" is the actual shape Stripe ships in live mode against
+		// API version 2026-03-25.dahlia (observed 2026-05-28). Pin
+		// first so a future regression on the lookup order shows up
+		// in this test before it shows up in production.
+		{"token field (live mode shape)", `{"token":"pk_live_real"}`, "pk_live_real"},
+		{"key field", `{"key":"pk_live_a"}`, "pk_live_a"},
+		{"value field", `{"value":"pk_live_b"}`, "pk_live_b"},
+		{"publishable_key field", `{"publishable_key":"pk_live_c"}`, "pk_live_c"},
+		{"plaintext field", `{"plaintext":"pk_live_d"}`, "pk_live_d"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var p PublishableKeyValue
+			if err := p.UnmarshalJSON([]byte(tc.in)); err != nil {
+				t.Fatalf("unmarshal %q: %v", tc.in, err)
+			}
+			if p.Value != tc.want {
+				t.Errorf("Value: want %q, got %q", tc.want, p.Value)
+			}
+		})
+	}
+}
+
+func TestPublishableKeyValue_UnmarshalJSON_UnknownShapeReturnsErrorWithRaw(t *testing.T) {
+	// Critical for diagnosability: when Stripe rotates the schema again,
+	// the error must include the raw bytes so an oncall can grep for the
+	// new field name without reproducing the failure.
+	var p PublishableKeyValue
+	err := p.UnmarshalJSON([]byte(`{"unexpected_field":"pk_live_xyz"}`))
+	if err == nil {
+		t.Fatalf("want error for unknown object shape, got nil")
+	}
+	if !strings.Contains(err.Error(), "unexpected_field") {
+		t.Errorf("error must include raw bytes for diagnosability; got %q", err.Error())
 	}
 }
 

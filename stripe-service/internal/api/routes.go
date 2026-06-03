@@ -3,6 +3,7 @@ package api
 
 import (
 	"net/http"
+	"sync"
 
 	"github.com/gorilla/mux"
 
@@ -38,6 +39,11 @@ type Server struct {
 	// /v2/core/events/{id}. Nil when STRIPE_CLIENT=fake — dispatch handlers
 	// log a warning and return early when it is nil.
 	EventFetcher eventFetcher
+	// LiveKeysInFlight tracks goroutines launched to mint+push live keys after
+	// the webhook handler ACKs Stripe. Tests Wait() on it to deterministically
+	// observe the side effects without racing; production can Wait() during
+	// graceful shutdown so an in-flight mint isn't truncated mid-call.
+	LiveKeysInFlight sync.WaitGroup
 }
 
 // NewRouter returns the top-level http.Handler. /health and /v1/_probe are

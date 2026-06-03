@@ -53,6 +53,12 @@ var _ Prober = (*Clients)(nil)
 // invariant that New() enforces and keeps Client construction funneled there.
 func (c *Clients) DynamoDB() *dynamodb.Client { return c.dynamodb }
 
+// KMS returns the underlying KMS client for packages that need to call
+// GetPublicKey (kmspubkey) or Decrypt (jwedecrypt). Same accessor pattern as
+// DynamoDB() — keeps construction funneled through New() so callers can't
+// bypass the non-nil invariant by literal-constructing a Clients{}.
+func (c *Clients) KMS() *kms.Client { return c.kms }
+
 func (c *Clients) DescribeTable(ctx context.Context, name string) error {
 	_, err := c.dynamodb.DescribeTable(ctx, &dynamodb.DescribeTableInput{TableName: &name})
 	return err

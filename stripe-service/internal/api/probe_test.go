@@ -77,8 +77,8 @@ func TestProbeAllOK(t *testing.T) {
 	if resp.Status != "ok" {
 		t.Errorf("Status: want ok, got %q", resp.Status)
 	}
-	if len(resp.Checks) != 5 {
-		t.Fatalf("Checks: want 5, got %d", len(resp.Checks))
+	if len(resp.Checks) != 6 {
+		t.Fatalf("Checks: want 6 (sandboxes, events, platform_test, platform_live, webhook, kms), got %d", len(resp.Checks))
 	}
 	for _, c := range resp.Checks {
 		if !c.OK {
@@ -124,8 +124,8 @@ func TestProbeOneTableFailsProdMasksError(t *testing.T) {
 	if events.Error != "probe failed" {
 		t.Errorf("dynamodb.events.Error (prod): want %q, got %q", "probe failed", events.Error)
 	}
-	if okCount != 4 {
-		t.Errorf("expected 4 other checks to succeed, got %d", okCount)
+	if okCount != 5 {
+		t.Errorf("expected 5 other checks to succeed, got %d", okCount)
 	}
 
 	// In prod, raw AWS error text must not leak to the HTTP response.
@@ -159,7 +159,7 @@ func TestProbeAllFail(t *testing.T) {
 	boom := errors.New("boom")
 	s := newTestServer(&fakeProber{
 		tableErr:  map[string]error{names.SandboxesTable: boom, names.EventsTable: boom},
-		secretErr: map[string]error{names.PlatformKeySecret: boom, names.WebhookSigningSecret: boom},
+		secretErr: map[string]error{names.PlatformKeyTestSecret: boom, names.PlatformKeyLiveSecret: boom, names.WebhookSigningSecret: boom},
 		keyErr:    map[string]error{names.ManagedKeysAlias: boom},
 	})
 	rr := httptest.NewRecorder()
@@ -187,7 +187,7 @@ func TestProbeResourceNamesPassedThrough(t *testing.T) {
 	if got, want := prober.describeTableCalls, []string{names.SandboxesTable, names.EventsTable}; !slicesEqual(got, want) {
 		t.Errorf("DescribeTable calls: want %v, got %v", want, got)
 	}
-	if got, want := prober.describeSecretCalls, []string{names.PlatformKeySecret, names.WebhookSigningSecret}; !slicesEqual(got, want) {
+	if got, want := prober.describeSecretCalls, []string{names.PlatformKeyTestSecret, names.PlatformKeyLiveSecret, names.WebhookSigningSecret}; !slicesEqual(got, want) {
 		t.Errorf("DescribeSecret calls: want %v, got %v", want, got)
 	}
 	if got, want := prober.describeKeyCalls, []string{names.ManagedKeysAlias}; !slicesEqual(got, want) {

@@ -28,6 +28,11 @@ type sandboxStore interface {
 	Put(ctx context.Context, s store.Sandbox) error
 	QueryByAppID(ctx context.Context, appID string) ([]store.Sandbox, error)
 	UpdateClaimStatus(ctx context.Context, sandboxID string, status store.ClaimStatus, liveAccountID string) error
+	// GetBySandboxID is used by the owner-account-updated webhook handler to
+	// resolve appID from sandboxID. The webhook envelope only carries the
+	// sandbox ID; live-key provisioning needs appID to know which app's
+	// alloc env to push the keys to via hosting.
+	GetBySandboxID(ctx context.Context, sandboxID string) (store.Sandbox, error)
 }
 
 // secretsPusher is the subset of hosting.Client used by postSandboxes.
@@ -70,33 +75,90 @@ func buildSecretsOps(secretKey, publishableKey, mcpKey string) []hosting.SecretO
 			Name:          "STRIPE_MCP_KEY",
 			Value:         mcpKey,
 			Protected:     boolPtr(true),
-			SystemManaged: true,
+			SystemManaged: false,
 		}},
 		{Type: hosting.SecretOpUpsert, Secret: hosting.SecretPayload{
 			Name:          "STRIPE_SECRET_KEY",
 			Value:         secretKey,
 			Variants:      []string{"preview"},
-			SystemManaged: true,
+			SystemManaged: false,
 		}},
 		{Type: hosting.SecretOpUpsert, Secret: hosting.SecretPayload{
 			Name:          "STRIPE_SECRET_KEY",
 			Value:         secretKey,
 			Variants:      []string{"publish"},
-			SystemManaged: true,
+			SystemManaged: false,
 		}},
 		{Type: hosting.SecretOpUpsert, Secret: hosting.SecretPayload{
 			Name:          "STRIPE_PUBLISHABLE_KEY",
 			Value:         publishableKey,
 			Variants:      []string{"preview"},
-			SystemManaged: true,
+			SystemManaged: false,
 		}},
 		{Type: hosting.SecretOpUpsert, Secret: hosting.SecretPayload{
 			Name:          "STRIPE_PUBLISHABLE_KEY",
 			Value:         publishableKey,
 			Variants:      []string{"publish"},
-			SystemManaged: true,
+			SystemManaged: false,
 		}},
 	}
+}
+
+// buildLiveSecretsOps constructs the bulk-secrets payload pushed at go-live.
+// Up to 5 ops:
+//   - STRIPE_MCP_KEY (protected, no variants) — skipped when liveMCPKey is
+//     empty (Stripe's v2.iam.api_keys doesn't accept type=mcp_key in live
+//     mode yet; plan §9 Q9). When skipped, the ek_test_* placed at sandbox
+//     creation stays in hosting.
+//   - STRIPE_SECRET_KEY × {preview, publish}: sk_live_*
+//   - STRIPE_PUBLISHABLE_KEY × {preview, publish}: pk_live_*
+//
+// Both preview and publish get the same live values. Reason: the BFF
+// preview→publish secrets sync (fires on every "Publish app" click) only
+// filters SystemManaged:true entries. Stripe keys are SystemManaged:false
+// (required for the customer-app's #airo/secrets resolver), so any
+// preview/publish drift would be auto-synced — clobbering publish's
+// sk_live_* with preview's value on the next publish.
+func buildLiveSecretsOps(liveSecretKey, livePublishableKey, liveMCPKey string) []hosting.SecretOp {
+	ops := make([]hosting.SecretOp, 0, 5)
+	if liveMCPKey != "" {
+		ops = append(ops, hosting.SecretOp{
+			Type: hosting.SecretOpUpsert,
+			Secret: hosting.SecretPayload{
+				Name:          "STRIPE_MCP_KEY",
+				Value:         liveMCPKey,
+				Protected:     boolPtr(true),
+				SystemManaged: false,
+			},
+		})
+	}
+	ops = append(ops,
+		hosting.SecretOp{Type: hosting.SecretOpUpsert, Secret: hosting.SecretPayload{
+			Name:          "STRIPE_SECRET_KEY",
+			Value:         liveSecretKey,
+			Variants:      []string{"preview"},
+			SystemManaged: false,
+		}},
+		hosting.SecretOp{Type: hosting.SecretOpUpsert, Secret: hosting.SecretPayload{
+			Name:          "STRIPE_SECRET_KEY",
+			Value:         liveSecretKey,
+			Variants:      []string{"publish"},
+			SystemManaged: false,
+		}},
+		hosting.SecretOp{Type: hosting.SecretOpUpsert, Secret: hosting.SecretPayload{
+			Name:          "STRIPE_PUBLISHABLE_KEY",
+			Value:         livePublishableKey,
+			Variants:      []string{"preview"},
+			SystemManaged: false,
+		}},
+		hosting.SecretOp{Type: hosting.SecretOpUpsert, Secret: hosting.SecretPayload{
+			Name:          "STRIPE_PUBLISHABLE_KEY",
+			Value:         livePublishableKey,
+			Variants:      []string{"publish"},
+			SystemManaged: false,
+		}},
+	)
+	return ops
 }
 
 type createSandboxRequest struct {

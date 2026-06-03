@@ -537,6 +537,52 @@ func TestParseStripeError_PreservesReadErrorInRaw(t *testing.T) {
 	}
 }
 
+// TestParseStripeError_TypelessEnvelope pins parsing of error envelopes
+// that ship only {code, message} with no top-level type. Observed from
+// v2/iam/api_keys 403 responses (account_invalid). The earlier parser
+// gated structured-field extraction on Type != "", so these envelopes
+// fell through to the raw-only path and dashboards filtering on
+// stripe.code saw empty strings.
+//
+// Real payload from a failed go-live test:
+//
+//	{
+//	  "error": {
+//	    "message": "The provided key 'sk_test_***' does not have access to account 'acct_*'",
+//	    "doc_url": "https://stripe.com/docs/error-codes/account-invalid",
+//	    "code": "account_invalid"
+//	  }
+//	}
+func TestParseStripeError_TypelessEnvelope(t *testing.T) {
+	body := strings.NewReader(`{
+		"error": {
+			"message": "The provided key 'sk_test_***' does not have access to account 'acct_103UBD'.",
+			"doc_url": "https://stripe.com/docs/error-codes/account-invalid",
+			"code": "account_invalid"
+		}
+	}`)
+
+	err := parseStripeError(403, body)
+	var se *StripeError
+	if !errors.As(err, &se) {
+		t.Fatalf("want *StripeError, got %v", err)
+	}
+	if se.HTTPStatus != 403 {
+		t.Errorf("HTTPStatus: want 403, got %d", se.HTTPStatus)
+	}
+	if se.Code != "account_invalid" {
+		t.Errorf("Code: want %q (typeless envelope MUST extract code); got %q", "account_invalid", se.Code)
+	}
+	if !strings.Contains(se.Message, "does not have access") {
+		t.Errorf("Message: want non-empty (typeless envelope MUST extract message); got %q", se.Message)
+	}
+	// Type stays empty (it was missing from the envelope) — but we
+	// preserved it as such rather than discarding code/message.
+	if se.Type != "" {
+		t.Errorf("Type: want empty (envelope had no type); got %q", se.Type)
+	}
+}
+
 // flakyReader returns prefix bytes once, then surfaces err. Used to
 // exercise the io.ReadAll-error path inside parseStripeError.
 type flakyReader struct {

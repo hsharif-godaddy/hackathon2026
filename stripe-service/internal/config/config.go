@@ -98,12 +98,20 @@ type HostingConfig struct {
 // ResourceNames holds the fully-qualified AWS resource names for this env,
 // mirroring what AiroStripeServiceStack provisions. Kept out of handlers so
 // the naming convention has one source of truth.
+//
+// Two platform-key secrets exist because Stripe's preview APIs are mode-scoped:
+// claimableSandboxes.create exists only in test mode (sandboxes are test-only
+// constructs); apiKeys.create runs against a live merchant account using the
+// platform's live key. Both operations occur in the same merchant lifecycle,
+// so every env that handles real merchants needs both keys loaded — see
+// STRIPE_INTEGRATION_PLAN.md §4.2.1 + §6.4.
 type ResourceNames struct {
-	SandboxesTable       string
-	EventsTable          string
-	PlatformKeySecret    string
-	WebhookSigningSecret string
-	ManagedKeysAlias     string
+	SandboxesTable        string
+	EventsTable           string
+	PlatformKeyTestSecret string // sk_test_<platform> for claimableSandboxes.create
+	PlatformKeyLiveSecret string // sk_live_<platform> for apiKeys.create on live merchant accounts
+	WebhookSigningSecret  string
+	ManagedKeysAlias      string
 }
 
 // ResourceNames returns the AWS resource names for this env. Environment=local
@@ -114,11 +122,12 @@ func (c Config) ResourceNames() ResourceNames {
 		env = string(EnvDev)
 	}
 	return ResourceNames{
-		SandboxesTable:       env + "-airo-stripe-sandboxes",
-		EventsTable:          env + "-airo-stripe-events",
-		PlatformKeySecret:    env + "-airo-stripe-platform-key",
-		WebhookSigningSecret: env + "-airo-stripe-webhook-signing",
-		ManagedKeysAlias:     "alias/" + env + "-airo-stripe-managed-keys",
+		SandboxesTable:        env + "-airo-stripe-sandboxes",
+		EventsTable:           env + "-airo-stripe-events",
+		PlatformKeyTestSecret: env + "-airo-stripe-platform-key-test",
+		PlatformKeyLiveSecret: env + "-airo-stripe-platform-key-live",
+		WebhookSigningSecret:  env + "-airo-stripe-webhook-signing",
+		ManagedKeysAlias:      "alias/" + env + "-airo-stripe-managed-keys",
 	}
 }
 
