@@ -10,7 +10,9 @@ import (
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
 )
 
-const defaultGoCodeBaseURL = "https://caas-gocode-prod.caas-prod.prod.onkatana.net"
+// S2S (sso-jwt) GoCode dev endpoint; /v1 is required because the OpenAI
+// client appends /chat/completions.
+const defaultGoCodeBaseURL = "https://api.gocode.caas.dev-gdcorp.tools/v1"
 
 type evalProbeValues struct {
 	useS2S     bool
@@ -38,8 +40,11 @@ func (f *EvalProbeEnvFixer) Fix(_ context.Context, projectRoot string) error {
 GD_ENV=local.dev
 OPENAI_BASE_URL="%s"
 `, values.baseURL)
-		if !values.useS2S {
-			content += fmt.Sprintf(`PROBE_OPENAI_API_KEY="%s"
+		if values.useS2S {
+			content += "GOCODE_USE_S2S_AUTH=true\n"
+		} else {
+			content += fmt.Sprintf(`GOCODE_USE_S2S_AUTH=false
+PROBE_OPENAI_API_KEY="%s"
 `, values.apiKey)
 		}
 		content += fmt.Sprintf(`
@@ -56,10 +61,16 @@ OPENAI_MODEL=claude-sonnet-4-6
 		return err
 	}
 	if values.useS2S {
+		if err := upsertEnvVarUnquoted(envPath, "GOCODE_USE_S2S_AUTH", "true"); err != nil {
+			return err
+		}
 		if err := removeEnvVar(envPath, "PROBE_OPENAI_API_KEY"); err != nil {
 			return err
 		}
 	} else {
+		if err := upsertEnvVarUnquoted(envPath, "GOCODE_USE_S2S_AUTH", "false"); err != nil {
+			return err
+		}
 		if err := upsertEnvVar(envPath, "PROBE_OPENAI_API_KEY", values.apiKey); err != nil {
 			return err
 		}

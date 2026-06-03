@@ -48,20 +48,29 @@ From `evals/gosym-probe/`, copy the example env file and fill in the GoCode cred
 cp .env.example .env
 ```
 
-Edit `.env`:
+The example already enables S2S auth, so the defaults work as-is. For
+reference, the relevant `.env` values are:
 
 ```dotenv
-# GoCode (OpenAI-compatible endpoint)
-OPENAI_BASE_URL=https://caas-gocode-prod.caas-prod.prod.onkatana.net/v1
-PROBE_OPENAI_API_KEY=<your-gocode-api-key>
+# GoCode (OpenAI-compatible endpoint), S2S sso-jwt gateway for dev.
+# The /v1 suffix is required (the OpenAI client appends /chat/completions).
+OPENAI_BASE_URL=https://api.gocode.caas.dev-gdcorp.tools/v1
+
+# Authenticate via IAM S2S JWT using your AWS SSO session (step 1) instead
+# of a static GoCode key. PROBE_OPENAI_API_KEY is not needed in this mode.
+GOCODE_USE_S2S_AUTH=true
+AWS_PROFILE=airobuild-dev-private-sso
+
 OPENAI_MODEL=claude-sonnet-4-6
 
 # Environment selector
 GD_ENV=local.dev
 ```
 
-The GoCode API key is a static bearer token — ask a teammate or retrieve it
-from the team's shared secrets store.
+Auth uses the IAM S2S JWT minted from your `airobuild-dev-private-sso` SSO
+session (step 1) — no static GoCode key required. If you have a stale
+`AWS_PROFILE` exported in your shell, unset it or it will shadow this value
+(`tsx --env-file` does not override already-set environment variables).
 
 ---
 

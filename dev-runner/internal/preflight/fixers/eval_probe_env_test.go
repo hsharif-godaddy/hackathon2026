@@ -24,6 +24,7 @@ OPENAI_API_KEY=sk-stale
 	assertEq(t, env, "OPENAI_BASE_URL", "https://custom-gocode.example")
 	assertEq(t, env, "AWS_PROFILE", "custom-dev-profile")
 	assertEq(t, env, "OPENAI_MODEL", "claude-sonnet-4-6")
+	assertEq(t, env, "GOCODE_USE_S2S_AUTH", "true")
 	assertAbsent(t, env, "OPENAI_API_KEY")
 }
 
@@ -43,6 +44,7 @@ OPENAI_API_KEY=sk-live
 	assertEq(t, env, "GD_ENV", "local.dev")
 	assertEq(t, env, "OPENAI_BASE_URL", "https://custom-gocode.example")
 	assertEq(t, env, "PROBE_OPENAI_API_KEY", "sk-live")
+	assertEq(t, env, "GOCODE_USE_S2S_AUTH", "false")
 	assertAbsent(t, env, "OPENAI_API_KEY")
 	assertEq(t, env, "AWS_PROFILE", "custom-dev-profile")
 	assertEq(t, env, "OPENAI_MODEL", "claude-sonnet-4-6")
@@ -94,6 +96,7 @@ MAX_CONCURRENCY=5
 	assertEq(t, env, "AWS_PROFILE", "s2s-profile")
 	assertEq(t, env, "OPENAI_MODEL", "claude-sonnet-4-6")
 	assertEq(t, env, "MAX_CONCURRENCY", "5")
+	assertEq(t, env, "GOCODE_USE_S2S_AUTH", "true")
 	assertAbsent(t, env, "PROBE_OPENAI_API_KEY")
 	assertAbsent(t, env, "OPENAI_API_KEY")
 }
@@ -126,6 +129,7 @@ MAX_CONCURRENCY=3
 
 	env := readEnvMap(t, filepath.Join(root, "evals/gosym-probe/.env"))
 	assertEq(t, env, "PROBE_OPENAI_API_KEY", "sk-agents-key")
+	assertEq(t, env, "GOCODE_USE_S2S_AUTH", "false")
 	assertAbsent(t, env, "OPENAI_API_KEY")
 	assertEq(t, env, "OPENAI_BASE_URL", "https://api-key-base.example")
 	assertEq(t, env, "GD_ENV", "local.dev")
