@@ -79,6 +79,7 @@ import { getAgentConfig } from '../services/features.js'
 import { runWithModelOverride, getActiveModelOverride } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../profiles/index.js'
 import { createAgentRouter } from './agent-router.js'
+import { getPersistedAgentIdForApp } from './persisted-agent.js'
 import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { getModelOverride } from '../utils/model-selection.js'
 import {
@@ -476,6 +477,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
     const wsAgentRouter = createAgentRouter({
       hasMessagesForApp: (appId) => messageStore.hasMessagesForApp(workspaceScopeFromAppId(appId)),
       getTemplateIds,
+      // Durable fallback so a browser reload mid-`initial` (new socket id → cold
+      // session) doesn't get wrongly promoted to `develop`.
+      getPersistedAgentForApp: (appId) => getPersistedAgentIdForApp(lifecycleStore, appId),
     })
 
     // Create token-based conversation history provider using the message store

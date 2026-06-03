@@ -206,6 +206,7 @@ import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js';
 import { ConversationContextManager } from '../services/ConversationContextManager.js';
 import { getTemplateIds } from '../agents/template-registry.js';
 import { createAgentRouter } from './agent-router.js';
+import { getPersistedAgentIdForApp } from './persisted-agent.js';
 import { getModelOverride } from '../utils/model-selection.js';
 import { getActiveModelOverride } from '@airo/ai-lib';
 import { closeDatabase, getDatabase } from '../database/index.js';
@@ -235,6 +236,10 @@ const { validator: ssePostStreamValidator, resetRetries: sseResetPostStreamRetri
 const resolveAgent = createAgentRouter({
   hasMessagesForApp: (appId) => getMessageStore().hasMessagesForApp(workspaceScopeFromAppId(appId)),
   getTemplateIds,
+  // Durable per-conversation agent fallback (transport parity with the WS router).
+  // SSE has no in-memory session, so this is what keeps a conversation in its
+  // persisted phase instead of defaulting to `develop` once messages exist.
+  getPersistedAgentForApp: (appId) => getPersistedAgentIdForApp(getConversationLifecycleStore(), appId),
 })
 
 function getOrCreateSSEExecutionService(): MessageExecutionService | null {

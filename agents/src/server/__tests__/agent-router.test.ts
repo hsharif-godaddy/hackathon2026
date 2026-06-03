@@ -272,6 +272,152 @@ describe('agent-router', function agentRouterTests() {
       })
       expect(id).toBe('develop-skillonly')
     })
+
+    it('clears the session and ignores the stale agent when the session is bound to a different app', async function sessionAppChanged() {
+      // Session still holds 'develop' for a previous app; the message targets a new app.
+      const stateManager = {
+        getCurrentAgent: vi.fn().mockReturnValue('develop'),
+        getSessionMetadata: vi.fn().mockReturnValue({ appId: 'old_app' }),
+        switchAgent: vi.fn().mockResolvedValue(undefined),
+        setSessionMetadata: vi.fn(),
+        clearSession: vi.fn(),
+      }
+
+      // Default resolveAgent: hasMessagesForApp=false, no persisted agent → brand-new app path.
+      const id = await resolveAgent({ appId, session: { sessionId: 'sock-1', stateManager } })
+
+      expect(stateManager.clearSession).toHaveBeenCalledWith('sock-1')
+      // The stale 'develop' must not leak through; the new app routes fresh to 'initial'.
+      expect(id).toBe('initial')
+    })
+  })
+
+  describe('persisted agent fallback (browser reload / SSE — cold session)', function persistedAgentFallback() {
+    const appId = 'app_persisted_1'
+
+    function coldSession() {
+      // New socket id after reload: no current agent stored.
+      const stateManager = {
+        getCurrentAgent: vi.fn().mockReturnValue(undefined),
+        getSessionMetadata: vi.fn().mockReturnValue(undefined),
+        switchAgent: vi.fn().mockResolvedValue(undefined),
+        setSessionMetadata: vi.fn(),
+      }
+      return { sessionId: 'sock-new', stateManager }
+    }
+
+    it('returns persisted initial even when the app already has messages (the reload bug)', async function persistedInitialBeatsHasMessages() {
+      // hasMessagesForApp=true would have wrongly promoted to develop pre-fix.
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => true,
+        getTemplateIds: () => [],
+        getPersistedAgentForApp: async () => 'initial',
+      })
+
+      const id = await resolve({ appId })
+      expect(id).toBe('initial')
+    })
+
+    it('preserves the persisted initial variant verbatim (no re-resolution)', async function persistedInitialVariant() {
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => true,
+        getTemplateIds: () => [],
+        getPersistedAgentForApp: async () => 'initial-v3-exp',
+      })
+
+      const id = await resolve({ appId, agentContext: { agentProfile: 'exp' } })
+      expect(id).toBe('initial-v3-exp')
+    })
+
+    it('reroutes persisted develop to develop-<profile> when profile has develop.* flags', async function persistedDevelopVariant() {
+      resolveProfileSpy.mockReturnValue(profile({
+        name: 'expdev',
+        properties: { 'develop.promptOptimization': true },
+      }))
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => true,
+        getTemplateIds: () => [],
+        getPersistedAgentForApp: async () => 'develop',
+      })
+
+      const id = await resolve({ appId, agentContext: { agentProfile: 'expdev' } })
+      expect(id).toBe('develop-expdev')
+    })
+
+    it('returns persisted develop verbatim when no profile flags apply', async function persistedDevelopPlain() {
+      resolveProfileSpy.mockReturnValue(null)
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => true,
+        getTemplateIds: () => [],
+        getPersistedAgentForApp: async () => 'develop',
+      })
+
+      const id = await resolve({ appId })
+      expect(id).toBe('develop')
+    })
+
+    it('falls through to hasMessagesForApp when there is no persisted agent (brand-new app)', async function noPersistedFallsThrough() {
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => false,
+        getTemplateIds: () => [],
+        getPersistedAgentForApp: async () => undefined,
+      })
+
+      const id = await resolve({ appId: 'app_brand_new' })
+      expect(id).toBe('initial')
+    })
+
+    it('does not abort the turn when the persisted-agent store read throws (falls through to heuristic)', async function persistedReadThrowsFallsThrough() {
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => false,
+        getTemplateIds: () => [],
+        getPersistedAgentForApp: async () => { throw new Error('sqlite locked') },
+      })
+
+      const id = await resolve({ appId })
+      expect(id).toBe('initial')
+      expect(warnSpy).toHaveBeenCalledWith(
+        'agent_router.persisted_agent_check_failed',
+        expect.objectContaining({ appId }),
+      )
+      warnSpy.mockRestore()
+    })
+
+    it('rehydrates the cold session with the raw persisted id', async function rehydratesSession() {
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => true,
+        getTemplateIds: () => [],
+        getPersistedAgentForApp: async () => 'initial',
+      })
+      const session = coldSession()
+
+      const id = await resolve({ appId, session })
+      expect(id).toBe('initial')
+      expect(session.stateManager.switchAgent).toHaveBeenCalledWith('sock-new', 'initial')
+      // setSessionMetadata runs in the switchAgent .then() — flush the microtask.
+      await Promise.resolve()
+      expect(session.stateManager.setSessionMetadata).toHaveBeenCalledWith('sock-new', expect.objectContaining({ appId }))
+    })
+
+    it('does not consult the persisted fallback when the session already has a matching agent', async function warmSessionSkipsFallback() {
+      const getPersistedAgentForApp = vi.fn(async () => 'develop')
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => true,
+        getTemplateIds: () => [],
+        getPersistedAgentForApp,
+      })
+      const stateManager = {
+        getCurrentAgent: vi.fn().mockReturnValue('initial'),
+        getSessionMetadata: vi.fn().mockReturnValue({ appId }),
+        switchAgent: vi.fn().mockResolvedValue(undefined),
+        setSessionMetadata: vi.fn(),
+      }
+
+      const id = await resolve({ appId, session: { sessionId: 'sock-warm', stateManager } })
+      expect(id).toBe('initial')
+      expect(getPersistedAgentForApp).not.toHaveBeenCalled()
+    })
   })
 
   it('routes to develop-<profile> for existing app when profile has skill.* flags', async function existingAppSkillFlags() {

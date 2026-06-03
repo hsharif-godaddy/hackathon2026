@@ -20,6 +20,16 @@ function isNamedVariantVersion(promptVersion: string | null | undefined): prompt
 interface AgentRouterDeps {
   hasMessagesForApp: (appId: string) => boolean | Promise<boolean>
   getTemplateIds: () => string[]
+  /**
+   * Durable per-app fallback for the active agent, read from the persisted
+   * conversation record (`conversations.agentId`). Consulted only when there is
+   * no in-memory session agent — i.e. after a browser reload (new socket id) or
+   * on the SSE transport (no session at all). Without this, a reload mid-`initial`
+   * loses the ephemeral session and the `hasMessagesForApp` heuristic wrongly
+   * promotes the conversation to `develop`. Returns undefined for brand-new apps
+   * with no conversation yet.
+   */
+  getPersistedAgentForApp?: (appId: string) => Promise<string | undefined>
 }
 
 export interface AgentStateManager {
@@ -50,39 +60,80 @@ export function createAgentRouter(deps: AgentRouterDeps) {
 
     if (agentId) return agentId
 
+    // If the active agent is 'develop' and a profile carries develop/skill flags,
+    // reroute to the profile-specific variant (develop-<profile>). Otherwise the
+    // agent id passes through unchanged. Shared by the session, persisted-fallback,
+    // and has-messages paths so they resolve variants identically.
+    function resolveDevelopVariant(agent: string): string {
+      if (agent !== 'develop') return agent
+      const profile = resolveProfile({
+        agentProfileSelectorEnabled: !!agentContext?.agentProfileSelectorEnabled,
+        perProjectProfile: agentProfile,
+        jwtAgentProfile: agentContext?.agentProfile,
+      })
+      if (profile) {
+        const hasDevelopFlags = Object.keys(profile.properties).some(k =>
+          k.startsWith('develop.') || k.startsWith('skill.')
+        )
+        if (hasDevelopFlags) {
+          logger.debug('agent_router.develop_variant', { appId, profileName: profile.name })
+          return `develop-${profile.name}`
+        }
+      }
+      return agent
+    }
+
+    // Fire-and-forget: warm the ephemeral session so subsequent messages on this
+    // socket resolve from session state without re-reading the DB. Stores the raw
+    // agent id (matching normal handoff semantics); the develop variant is
+    // re-resolved per read. A failure here is self-correcting — the next message
+    // simply re-reads from the DB — so it logs at warn, not error.
+    function rehydrateSession(s: SessionContext, agentToStore: string, errorEvent: string): void {
+      s.stateManager.switchAgent(s.sessionId, agentToStore).then(() => {
+        s.stateManager.setSessionMetadata?.(s.sessionId, { appId, templateId })
+      }).catch(error => {
+        logger.warn(errorEvent, { sessionId: s.sessionId, appId, agentId: agentToStore, ...errorFields(error) })
+      })
+    }
+
     if (session) {
       const { sessionId, stateManager } = session
       const currentAgent = stateManager.getCurrentAgent(sessionId)
       const sessionAppId = stateManager.getSessionMetadata?.(sessionId)?.appId as string | undefined
 
       if (currentAgent && sessionAppId === appId) {
-        // If session says 'develop' but a profile has develop/skill flags, reroute to the variant.
-        // This handles the handoff case: initial agent hands off to 'develop', but the
+        // Handoff case: initial agent hands off to 'develop', but the
         // profile-specific variant should be used instead.
-        if (currentAgent === 'develop') {
-          const profile = resolveProfile({
-            agentProfileSelectorEnabled: !!agentContext?.agentProfileSelectorEnabled,
-            perProjectProfile: agentProfile,
-            jwtAgentProfile: agentContext?.agentProfile,
-          })
-          if (profile) {
-            const hasDevelopFlags = Object.keys(profile.properties).some(k =>
-              k.startsWith('develop.') || k.startsWith('skill.')
-            )
-            if (hasDevelopFlags) {
-              logger.debug('agent_router.session_develop_variant', { sessionId, appId, profileName: profile.name })
-              return `develop-${profile.name}`
-            }
-          }
+        const resolved = resolveDevelopVariant(currentAgent)
+        if (resolved === currentAgent) {
+          logger.debug('agent_router.session_agent', { sessionId, appId, currentAgent })
         }
-        logger.debug('agent_router.session_agent', { sessionId, appId, currentAgent })
-        return currentAgent
+        return resolved
       }
 
       if (currentAgent && sessionAppId && sessionAppId !== appId) {
         logger.info('agent_router.app_changed', { sessionId, oldAppId: sessionAppId, newAppId: appId, oldAgent: currentAgent })
         stateManager.clearSession?.(sessionId)
       }
+    }
+
+    // No in-memory session agent (browser reload → new socket id, or SSE which has
+    // no session). Fall back to the durable per-conversation agent so we don't lose
+    // the 'initial' phase across reconnects. Brand-new apps (no conversation yet)
+    // return undefined here and fall through to the hasMessagesForApp heuristic.
+    let persistedAgent: string | undefined
+    try {
+      persistedAgent = await deps.getPersistedAgentForApp?.(appId)
+    } catch (err) {
+      // Store read failure must not abort the turn — same contract as the
+      // hasMessagesForApp block below; fall through to the heuristic.
+      logger.warn('agent_router.persisted_agent_check_failed', { appId, ...errorFields(err) })
+    }
+    if (persistedAgent) {
+      const resolved = resolveDevelopVariant(persistedAgent)
+      if (session) rehydrateSession(session, persistedAgent, 'agent_router.session_rehydrate_error')
+      logger.info('agent_router.persisted_agent', { appId, agentId: resolved })
+      return resolved
     }
 
     let hasMessages = true
@@ -144,40 +195,14 @@ export function createAgentRouter(deps: AgentRouterDeps) {
         }
       }
 
-      if (session) {
-        const { sessionId, stateManager } = session
-        stateManager.switchAgent(sessionId, resolvedAgentId).then(() => {
-          stateManager.setSessionMetadata?.(sessionId, { appId, templateId })
-        }).catch(error => {
-          logger.error('agent_router.session_state_error', {
-            sessionId,
-            appId,
-            resolvedAgentId,
-            ...errorFields(error),
-          })
-        })
-      }
+      if (session) rehydrateSession(session, resolvedAgentId, 'agent_router.session_state_error')
 
       logger.info('agent_router.initial_selected', { appId, agentId: resolvedAgentId, templateId: validTemplate || null })
       return resolvedAgentId
     }
 
-    // Check if profile routes to a develop variant (develop-{profileName})
-    const profile = resolveProfile({
-      agentProfileSelectorEnabled: !!agentContext?.agentProfileSelectorEnabled,
-      perProjectProfile: agentProfile,
-      jwtAgentProfile: agentContext?.agentProfile,
-    })
-    if (profile) {
-      const hasDevelopFlags = Object.keys(profile.properties).some(k =>
-        k.startsWith('develop.') || k.startsWith('skill.')
-      )
-      if (hasDevelopFlags) {
-        logger.debug('agent_router.develop_variant', { appId, profileName: profile.name })
-        return `develop-${profile.name}`
-      }
-    }
-
-    return 'develop'
+    // Existing app with messages but no persisted/session agent: default to
+    // 'develop', rerouting to the profile variant when applicable.
+    return resolveDevelopVariant('develop')
   }
 }
