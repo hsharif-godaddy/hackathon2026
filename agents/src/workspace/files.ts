@@ -21,7 +21,30 @@ export interface TreeOptions {
   path?: string;
   recursive?: boolean;
   maxDepth?: number;
+  /**
+   * Restrict emitted entries to one kind. Filtering happens server-side
+   * before the entry cap. Directory descent is independent of the filter, so
+   * both `'directory'` and `'file'` still walk into subdirectories to surface
+   * nested matches.
+   */
+  kindFilter?: 'file' | 'directory';
+  /**
+   * Globs anchored by a slash-presence rule (as ripgrep `--glob` / minimatch
+   * `matchBase` do — not full `.gitignore` semantics; no `!` negation or
+   * trailing-slash dir-only). A pattern **without** a slash matches the
+   * basename at any depth (`*.log`, `node_modules`); a pattern **with** a
+   * slash is anchored to the workspace root and matched against the full path
+   * (`src/legacy/**`). A leading globstar segment makes a slash pattern match
+   * at any depth.
+   */
   includeGlobs?: string[];
+  /**
+   * Same slash-presence anchoring as {@link TreeOptions.includeGlobs}. A
+   * matched **directory is pruned** — not descended into — which covers both
+   * a slash-free name (`node_modules`) and a subtree pattern (`build/**`, since
+   * `**` matches zero segments so the directory itself matches). Excluding
+   * either skips the whole subtree rather than walking it.
+   */
   excludeGlobs?: string[];
 }
 

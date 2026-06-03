@@ -21,6 +21,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/bmatcuk/doublestar/v4"
+
 	"github.com/airo-ai-builder/dev-supervisor/internal/validation"
 )
 
@@ -125,9 +127,14 @@ type rgText struct {
 // --- Request/Response types ---
 
 type wsFilesTreeRequest struct {
-	Path         string   `json:"path,omitempty"`
-	Recursive    bool     `json:"recursive,omitempty"`
-	MaxDepth     int      `json:"maxDepth,omitempty"`
+	Path      string `json:"path,omitempty"`
+	Recursive bool   `json:"recursive,omitempty"`
+	MaxDepth  int    `json:"maxDepth,omitempty"`
+	// KindFilter, when set to "file" or "directory", drops non-matching
+	// entries before they count against the entry cap. Subdirectory descent is
+	// unaffected, so `kindFilter: "directory"` still walks into directories to
+	// surface nested ones. Empty = no filter.
+	KindFilter   string   `json:"kindFilter,omitempty"`
 	IncludeGlobs []string `json:"includeGlobs,omitempty"`
 	ExcludeGlobs []string `json:"excludeGlobs,omitempty"`
 }
@@ -287,6 +294,12 @@ func (s *Server) handleWorkspaceFilesTree(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if req.KindFilter != "" && req.KindFilter != wsFilesKindFile && req.KindFilter != wsFilesKindDirectory {
+		s.sendError(w, http.StatusBadRequest, "validation_failed",
+			fmt.Sprintf("kindFilter must be %q or %q", wsFilesKindFile, wsFilesKindDirectory))
+		return
+	}
+
 	maxEntries := wsFilesDefaultMaxEntries
 	maxDepth := wsFilesMaxMaxDepth
 	if req.MaxDepth > 0 && req.MaxDepth <= wsFilesMaxMaxDepth {
@@ -357,14 +370,21 @@ func (s *Server) wsFilesTreeFlat(
 
 	result := make([]wsFilesTreeEntry, 0, len(rawEntries))
 	for _, e := range rawEntries {
-		if !wsFilesMatchesGlobs(e.Name(), req.IncludeGlobs, req.ExcludeGlobs) {
+		relPath := wsFilesJoinPath(pathPrefix, e.Name())
+		if len(req.ExcludeGlobs) > 0 && wsFilesGlobMatchAny(relPath, req.ExcludeGlobs) {
+			continue
+		}
+		if len(req.IncludeGlobs) > 0 && !wsFilesGlobMatchAny(relPath, req.IncludeGlobs) {
 			continue
 		}
 		info, infoErr := e.Info()
 		if infoErr != nil {
 			continue
 		}
-		result = append(result, wsFilesBuildEntry(wsFilesJoinPath(pathPrefix, e.Name()), info))
+		if !wsFilesKindMatches(req.KindFilter, info.IsDir()) {
+			continue
+		}
+		result = append(result, wsFilesBuildEntry(relPath, info))
 		if len(result) >= maxEntries {
 			return result, true, nil
 		}
@@ -403,7 +423,15 @@ func (s *Server) wsFilesTreeRecursive(
 
 		var subdirs []walkItem
 		for _, e := range rawEntries {
-			if !wsFilesMatchesGlobs(e.Name(), req.IncludeGlobs, req.ExcludeGlobs) {
+			relPath := e.Name()
+			if item.relDir != "" {
+				relPath = item.relDir + "/" + e.Name()
+			}
+
+			// excludeGlobs prune: a matched entry is neither emitted nor
+			// (for directories) descended into, so excluding a subtree avoids
+			// walking it at all.
+			if len(req.ExcludeGlobs) > 0 && wsFilesGlobMatchAny(relPath, req.ExcludeGlobs) {
 				continue
 			}
 
@@ -412,14 +440,16 @@ func (s *Server) wsFilesTreeRecursive(
 				continue
 			}
 
-			relPath := e.Name()
-			if item.relDir != "" {
-				relPath = item.relDir + "/" + e.Name()
-			}
-
-			result = append(result, wsFilesBuildEntry(relPath, info))
-			if len(result) >= maxEntries {
-				return result, true, nil
+			// includeGlobs and kindFilter filter emission only — descent is
+			// independent so a non-matching directory (e.g. `src` under
+			// includeGlobs `src/**`, or any directory under kindFilter
+			// "directory") is still walked to reach its matching descendants.
+			if wsFilesKindMatches(req.KindFilter, info.IsDir()) &&
+				(len(req.IncludeGlobs) == 0 || wsFilesGlobMatchAny(relPath, req.IncludeGlobs)) {
+				result = append(result, wsFilesBuildEntry(relPath, info))
+				if len(result) >= maxEntries {
+					return result, true, nil
+				}
 			}
 
 			if info.IsDir() && item.depth < maxDepth {
@@ -471,35 +501,64 @@ func wsFilesBuildEntry(path string, info fs.FileInfo) wsFilesTreeEntry {
 
 func validateGlobs(includeGlobs []string, excludeGlobs []string) error {
 	for _, p := range includeGlobs {
-		if _, err := filepath.Match(p, ""); err != nil {
-			return fmt.Errorf("invalid includeGlobs pattern %q: %w", p, err)
+		if !doublestar.ValidatePattern(p) {
+			return fmt.Errorf("invalid includeGlobs pattern %q", p)
 		}
 	}
 	for _, p := range excludeGlobs {
-		if _, err := filepath.Match(p, ""); err != nil {
-			return fmt.Errorf("invalid excludeGlobs pattern %q: %w", p, err)
+		if !doublestar.ValidatePattern(p) {
+			return fmt.Errorf("invalid excludeGlobs pattern %q", p)
 		}
 	}
 	return nil
 }
 
-func wsFilesMatchesGlobs(name string, includeGlobs []string, excludeGlobs []string) bool {
-	if len(excludeGlobs) > 0 {
-		for _, p := range excludeGlobs {
-			if matched, _ := filepath.Match(p, name); matched {
-				return false
-			}
+// wsFilesGlobMatchAny reports whether the workspace-rooted, forward-slash
+// `relPath` matches any pattern. Anchoring follows a single slash-presence
+// rule (the same one ripgrep --glob and minimatch's matchBase apply) — NOT
+// full .gitignore semantics: there is no `!` negation and no trailing-slash
+// dir-only matching.
+//
+//   - a pattern WITHOUT a slash is matched against the basename, so it applies
+//     at ANY depth (`node_modules`, `*.log`);
+//   - a pattern WITH a slash is anchored to the workspace root and matched
+//     against the full path via doublestar, so `src/legacy/**` scopes to a
+//     subtree and `**/foo` matches `foo` at any depth. Because doublestar's
+//     `**` also matches zero segments, `build/**` matches `build` itself, so
+//     an excluded directory is pruned, not just its descendants.
+//
+// The slash-free case is a superset of the pre-path-aware behavior (basename
+// filepath.Match), so existing bare-name callers keep working unchanged.
+// Patterns are pre-validated by validateGlobs, so the match error is ignored.
+func wsFilesGlobMatchAny(relPath string, globs []string) bool {
+	base := relPath
+	if i := strings.LastIndex(relPath, "/"); i >= 0 {
+		base = relPath[i+1:]
+	}
+	for _, p := range globs {
+		target := relPath
+		if !strings.Contains(p, "/") {
+			target = base
+		}
+		if matched, _ := doublestar.Match(p, target); matched {
+			return true
 		}
 	}
-	if len(includeGlobs) > 0 {
-		for _, p := range includeGlobs {
-			if matched, _ := filepath.Match(p, name); matched {
-				return true
-			}
-		}
-		return false
+	return false
+}
+
+// wsFilesKindMatches reports whether an entry of the given kind passes the
+// optional kindFilter. An empty filter (or an unexpected value, already
+// rejected at the handler) matches everything.
+func wsFilesKindMatches(kindFilter string, isDir bool) bool {
+	switch kindFilter {
+	case wsFilesKindDirectory:
+		return isDir
+	case wsFilesKindFile:
+		return !isDir
+	default:
+		return true
 	}
-	return true
 }
 
 func (s *Server) handleWorkspaceFilesView(w http.ResponseWriter, r *http.Request) {

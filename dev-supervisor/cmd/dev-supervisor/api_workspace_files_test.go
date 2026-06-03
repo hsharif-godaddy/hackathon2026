@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -633,38 +634,282 @@ func TestWorkspaceFilesTree_PathsAreWorkspaceRooted_Recursive(t *testing.T) {
 	})
 }
 
-// Globs match against the bare entry name (wsFilesMatchesGlobs(e.Name(), ...)),
-// independent of the workspace-rooted path prefix. Pin that the prefix change
-// did not shift glob matching onto the full path.
-func TestWorkspaceFilesTree_GlobsMatchBareNamesAfterPrefix(t *testing.T) {
-	server, dir := newTestServerWithDir(t)
-	if err := os.MkdirAll(filepath.Join(dir, "src", "components"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "src", "index.ts"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "src", "components", "Foo.tsx"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
+// Globs are gitignore-style (AIROBUILD-2022 E2): a slash-free pattern matches
+// the basename at ANY depth (`*.tsx`, `node_modules`), while a pattern with a
+// slash is anchored to the workspace root (`src/components/**`, `**/foo`).
+// excludeGlobs prune directory descent; includeGlobs filter emitted entries
+// without blocking descent.
+func TestWorkspaceFilesTree_PathAwareGlobs(t *testing.T) {
+	newTree := func(t *testing.T) (*Server, string) {
+		t.Helper()
+		server, dir := newTestServerWithDir(t)
+		if err := os.MkdirAll(filepath.Join(dir, "src", "components"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "src", "index.ts"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "src", "components", "Foo.tsx"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return server, dir
 	}
 
-	w := postJSON(t, server.handleWorkspaceFilesTree, map[string]any{
-		"path":         "src",
-		"recursive":    true,
-		"excludeGlobs": []string{"*.tsx"},
+	exec := func(t *testing.T, server *Server, req map[string]any) []string {
+		t.Helper()
+		w := postJSON(t, server.handleWorkspaceFilesTree, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp wsFilesTreeResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatal(err)
+		}
+		return pathsOf(resp.Entries)
+	}
+
+	t.Run("slash-free *.tsx matches the basename at any depth (gitignore-style)", func(t *testing.T) {
+		server, _ := newTree(t)
+		paths := exec(t, server, map[string]any{"path": "src", "recursive": true, "excludeGlobs": []string{"*.tsx"}})
+		mustContain(t, paths, "src/index.ts")
+		if slices.Contains(paths, "src/components/Foo.tsx") {
+			t.Errorf("expected slash-free *.tsx to drop the nested .tsx by basename, got %v", paths)
+		}
 	})
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+
+	t.Run("slash-free dir name prunes that directory at any depth", func(t *testing.T) {
+		server, _ := newTree(t)
+		paths := exec(t, server, map[string]any{"path": ".", "recursive": true, "excludeGlobs": []string{"components"}})
+		mustContain(t, paths, "src")
+		mustContain(t, paths, "src/index.ts")
+		for _, p := range paths {
+			if p == "src/components" || p == "src/components/Foo.tsx" {
+				t.Errorf("expected slash-free `components` to prune subtree, saw %q in %v", p, paths)
+			}
+		}
+	})
+
+	t.Run("**/*.tsx (anchored) excludes a nested file at any depth", func(t *testing.T) {
+		server, _ := newTree(t)
+		paths := exec(t, server, map[string]any{"path": "src", "recursive": true, "excludeGlobs": []string{"**/*.tsx"}})
+		mustContain(t, paths, "src/index.ts")
+		if slices.Contains(paths, "src/components/Foo.tsx") {
+			t.Errorf("expected **/*.tsx to drop src/components/Foo.tsx, got %v", paths)
+		}
+	})
+
+	t.Run("**/components prunes the directory and its subtree", func(t *testing.T) {
+		server, _ := newTree(t)
+		paths := exec(
+			t,
+			server,
+			map[string]any{"path": ".", "recursive": true, "excludeGlobs": []string{"**/components"}},
+		)
+		mustContain(t, paths, "src")
+		mustContain(t, paths, "src/index.ts")
+		for _, p := range paths {
+			if p == "src/components" || p == "src/components/Foo.tsx" {
+				t.Errorf("expected **/components to prune subtree, but saw %q in %v", p, paths)
+			}
+		}
+	})
+
+	t.Run("subtree-scoped exclude dir/** prunes the directory AND its subtree", func(t *testing.T) {
+		// doublestar's `**` matches zero segments, so `src/components/**`
+		// matches `src/components` itself — the directory is pruned, not just
+		// its descendants. Pin this (a doublestar bump that dropped
+		// zero-segment matching would regress pruning to descendants-only).
+		server, _ := newTree(t)
+		paths := exec(
+			t,
+			server,
+			map[string]any{"path": ".", "recursive": true, "excludeGlobs": []string{"src/components/**"}},
+		)
+		mustContain(t, paths, "src/index.ts")
+		for _, p := range paths {
+			if p == "src/components" || p == "src/components/Foo.tsx" {
+				t.Errorf("expected src/components/** to prune the dir and its subtree, saw %q in %v", p, paths)
+			}
+		}
+	})
+
+	t.Run("excludeGlobs win over includeGlobs (exclude-first precedence)", func(t *testing.T) {
+		// A file matching both include and exclude must be dropped. A flipped
+		// include-first precedence would wrongly emit Foo.tsx.
+		server, _ := newTree(t)
+		paths := exec(t, server, map[string]any{
+			"path": ".", "recursive": true,
+			"includeGlobs": []string{"**/*.tsx", "**/*.ts"},
+			"excludeGlobs": []string{"**/Foo.tsx"},
+		})
+		mustContain(t, paths, "src/index.ts")
+		if slices.Contains(paths, "src/components/Foo.tsx") {
+			t.Errorf("exclude **/Foo.tsx must win over include **/*.tsx, got %v", paths)
+		}
+	})
+
+	t.Run("maxDepth bounds descent independently of glob emission", func(t *testing.T) {
+		// Foo.tsx is at depth 2 from root. With includeGlobs **/*.tsx:
+		//   maxDepth 1 cannot descend far enough to reach it;
+		//   maxDepth 2 can. Pins the descent-vs-emission boundary.
+		server, _ := newTree(t)
+		shallow := exec(t, server, map[string]any{
+			"path": ".", "recursive": true, "maxDepth": 1, "includeGlobs": []string{"**/*.tsx"},
+		})
+		if slices.Contains(shallow, "src/components/Foo.tsx") {
+			t.Errorf("maxDepth=1 should not reach depth-2 Foo.tsx, got %v", shallow)
+		}
+		deep := exec(t, server, map[string]any{
+			"path": ".", "recursive": true, "maxDepth": 2, "includeGlobs": []string{"**/*.tsx"},
+		})
+		mustContain(t, deep, "src/components/Foo.tsx")
+	})
+
+	t.Run("includeGlobs filter emission but do not block descent", func(t *testing.T) {
+		server, _ := newTree(t)
+		// From root: src and src/components dirs do NOT match **/*.tsx, yet the
+		// walk must still descend through them to reach the matching file.
+		paths := exec(t, server, map[string]any{"path": ".", "recursive": true, "includeGlobs": []string{"**/*.tsx"}})
+		mustContain(t, paths, "src/components/Foo.tsx")
+		for _, p := range paths {
+			if p == "src" || p == "src/components" || p == "src/index.ts" {
+				t.Errorf("includeGlobs **/*.tsx should emit only matching files, got %q in %v", p, paths)
+			}
+		}
+	})
+
+	t.Run("path-scoped include src/** matches the scoped subtree", func(t *testing.T) {
+		server, _ := newTree(t)
+		paths := exec(t, server, map[string]any{"path": ".", "recursive": true, "includeGlobs": []string{"src/**"}})
+		mustContain(t, paths, "src/index.ts")
+		mustContain(t, paths, "src/components")
+		mustContain(t, paths, "src/components/Foo.tsx")
+	})
+}
+
+// kindFilter (AIROBUILD-2022 E1) drops non-matching entries before they count
+// against the entry cap, while still descending into directories so nested
+// matches are reachable.
+func TestWorkspaceFilesTree_KindFilter(t *testing.T) {
+	newTree := func(t *testing.T) *Server {
+		t.Helper()
+		server, dir := newTestServerWithDir(t)
+		if err := os.MkdirAll(filepath.Join(dir, "src", "components"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "src", "index.ts"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "src", "components", "Foo.tsx"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return server
 	}
-	var resp wsFilesTreeResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatal(err)
+
+	exec := func(t *testing.T, server *Server, req map[string]any) []string {
+		t.Helper()
+		w := postJSON(t, server.handleWorkspaceFilesTree, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp wsFilesTreeResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatal(err)
+		}
+		return pathsOf(resp.Entries)
 	}
-	paths := pathsOf(resp.Entries)
-	mustContain(t, paths, "src/index.ts")
-	if slices.Contains(paths, "src/components/Foo.tsx") {
-		t.Errorf("expected *.tsx exclude to drop src/components/Foo.tsx, got %v", paths)
-	}
+
+	t.Run("directory: emits only directories but still descends", func(t *testing.T) {
+		server := newTree(t)
+		paths := exec(t, server, map[string]any{"path": ".", "recursive": true, "kindFilter": "directory"})
+		mustContain(t, paths, "src")
+		mustContain(t, paths, "src/components") // reached only by descending into src
+		for _, p := range paths {
+			if p == "src/index.ts" || p == "src/components/Foo.tsx" {
+				t.Errorf("kindFilter=directory should drop files, saw %q in %v", p, paths)
+			}
+		}
+	})
+
+	t.Run("file: emits only files at any depth", func(t *testing.T) {
+		server := newTree(t)
+		paths := exec(t, server, map[string]any{"path": ".", "recursive": true, "kindFilter": "file"})
+		mustContain(t, paths, "src/index.ts")
+		mustContain(t, paths, "src/components/Foo.tsx")
+		for _, p := range paths {
+			if p == "src" || p == "src/components" {
+				t.Errorf("kindFilter=file should drop directories, saw %q in %v", p, paths)
+			}
+		}
+	})
+
+	t.Run("flat listing honors kindFilter", func(t *testing.T) {
+		server := newTree(t)
+		paths := exec(t, server, map[string]any{"path": "src", "kindFilter": "directory"})
+		mustContain(t, paths, "src/components")
+		if slices.Contains(paths, "src/index.ts") {
+			t.Errorf("flat kindFilter=directory should drop src/index.ts, got %v", paths)
+		}
+	})
+
+	t.Run("invalid kindFilter is rejected", func(t *testing.T) {
+		server := newTree(t)
+		w := postJSON(t, server.handleWorkspaceFilesTree, map[string]any{"path": ".", "kindFilter": "symlink"})
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 for bad kindFilter, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	// Pins the headline E1 contract: filtered-out entries are dropped BEFORE
+	// they count against maxEntries. The fixture has more files than the cap
+	// plus a few directories named to sort AFTER the files, so without the
+	// filter the cap is fully consumed by files (truncated, dirs never
+	// reached); with kindFilter="directory" the files never count, so all
+	// directories survive and the result is not truncated. An append-then-
+	// filter regression would truncate on files and return zero dirs here.
+	t.Run("kindFilter drops entries before the maxEntries cap", func(t *testing.T) {
+		server, dir := newTestServerWithDir(t)
+		for i := range wsFilesDefaultMaxEntries + 1 {
+			if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("f%05d.ts", i)), []byte("x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		wantDirs := []string{"zdir0", "zdir1", "zdir2"}
+		for _, d := range wantDirs {
+			if err := os.Mkdir(filepath.Join(dir, d), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		fetch := func(req map[string]any) wsFilesTreeResponse {
+			w := postJSON(t, server.handleWorkspaceFilesTree, req)
+			if w.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+			}
+			var resp wsFilesTreeResponse
+			if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+				t.Fatal(err)
+			}
+			return resp
+		}
+
+		filtered := fetch(map[string]any{"path": ".", "kindFilter": "directory"})
+		if filtered.Truncated {
+			t.Errorf("kindFilter=directory should not truncate: %d dirs fit under the %d cap once files are dropped",
+				len(wantDirs), wsFilesDefaultMaxEntries)
+		}
+		gotDirs := pathsOf(filtered.Entries)
+		for _, d := range wantDirs {
+			mustContain(t, gotDirs, d)
+		}
+
+		// Same fixture, no filter: the cap is consumed by files and truncates.
+		unfiltered := fetch(map[string]any{"path": "."})
+		if !unfiltered.Truncated {
+			t.Errorf("expected truncation without kindFilter: %d files exceed the %d cap",
+				wsFilesDefaultMaxEntries+1, wsFilesDefaultMaxEntries)
+		}
+	})
 }
 
 func pathsOf(entries []wsFilesTreeEntry) []string {

@@ -196,6 +196,9 @@ export class DirectoryListingTool {
       ...(targetPath && { path: targetPath }),
       recursive: maxDepth !== 0,
       ...(Number.isFinite(maxDepth) && maxDepth > 0 && { maxDepth }),
+      // Drop files server-side so they never count against the entry cap;
+      // directories are still descended into to surface nested ones.
+      ...(directoriesOnly && { kindFilter: 'directory' as const }),
       ...(allIgnorePatterns.length > 0 && { excludeGlobs: allIgnorePatterns }),
     };
 
@@ -246,7 +249,7 @@ export class DirectoryListingTool {
 
       const isDirectory = e.kind === 'directory';
 
-      if (directoriesOnly && !isDirectory) continue;
+      // `directoriesOnly` is enforced server-side via kindFilter (see treeOpts).
       if (pattern && !this.matchesPattern(entryName, pattern)) continue;
       if (search && !entryName.toLowerCase().includes(search.toLowerCase())) continue;
 

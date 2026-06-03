@@ -139,17 +139,24 @@ describe('DirectoryListingTool', () => {
       expect(result.entries.map((e) => e.path)).toEqual(['README.md', '.eslintrc']);
     });
 
-    it('filters to directories when directoriesOnly is true', async () => {
-      const files = makeFiles(async () =>
-        makeTreeResult([
-          { path: 'README.md', kind: 'file', size: 100, modifiedAt: '2026-06-01T00:00:00Z' },
-          { path: 'src', kind: 'directory', size: 0, modifiedAt: '2026-06-01T00:00:00Z' },
-        ]),
-      );
+    it('delegates directoriesOnly to the server via kindFilter', async () => {
+      // directoriesOnly is enforced server-side (kindFilter: 'directory'), so
+      // the tool no longer filters files client-side. The mock honors the
+      // filter the way dev-supervisor does, and we assert the tool sent it.
+      const impl = vi.fn(async (opts?: TreeOptions) => {
+        const all = [
+          { path: 'README.md', kind: 'file' as const, size: 100, modifiedAt: '2026-06-01T00:00:00Z' },
+          { path: 'src', kind: 'directory' as const, size: 0, modifiedAt: '2026-06-01T00:00:00Z' },
+        ];
+        const entries = opts?.kindFilter ? all.filter((e) => e.kind === opts.kindFilter) : all;
+        return makeTreeResult(entries);
+      });
+      const files = makeFiles(impl);
 
       const tool = new DirectoryListingTool(files);
       const result = await tool.listDirectory({ directoriesOnly: true });
 
+      expect(impl).toHaveBeenCalledWith(expect.objectContaining({ kindFilter: 'directory' }));
       expect(result.entries.map((e) => e.path)).toEqual(['src']);
       expect(result.fileCount).toBe(0);
       expect(result.directoryCount).toBe(1);
