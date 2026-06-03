@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 
-import type { GasketConfigDefinition } from '@gasket/core';
+import type { GasketConfigDefinition, Plugin } from '@gasket/core';
 import { makeGasket } from '@gasket/core';
 import pluginCommand from '@gasket/plugin-command';
 import pluginData from '@gasket/plugin-data';
@@ -18,12 +18,23 @@ import pluginOtel from '@godaddy/gasket-plugin-otel';
 import pluginSecurity from '@godaddy/gasket-plugin-security';
 import pluginSelfCerts from '@godaddy/gasket-plugin-self-certs';
 import pluginSwitchboard from '@godaddy/gasket-plugin-switchboard';
+import type { TrafficOptions } from '@godaddy/gasket-plugin-traffic';
 import pluginTraffic from '@godaddy/gasket-plugin-traffic';
 import pluginUxp from '@godaddy/gasket-plugin-uxp';
 import pluginVisitor from '@godaddy/gasket-plugin-visitor';
 import pluginCds from '@venture/gasket-plugin-cds';
 
 import gasketData from './gasket-data.js';
+
+/** Extends GA session on interaction (clicks) for SPA/chat flows — merged into existing _gaDataLayer via trafficDataLayer (see getTrafficData in @godaddy/gasket-plugin-traffic). */
+const pluginTrafficSessionRefresh: Plugin = {
+  name: 'airo-traffic-session-refresh',
+  hooks: {
+    trafficDataLayer(_gasket, _context) {
+      return { 'tcc.sessionRefreshOnInteraction': true } as TrafficOptions;
+    },
+  },
+};
 
 // Check if we should enable JWT authentication
 const authType = process.env.AUTH_TYPE?.toLowerCase() || 'jwt';
@@ -226,6 +237,7 @@ export default makeGasket({
     pluginWinston,
     pluginSecurity,
     pluginTraffic,
+    pluginTrafficSessionRefresh,
     pluginVisitor, // Must come before auth plugin to populate visitor.hostname
     // Only include auth plugin when using JWT authentication
     ...(isJWTMode ? [pluginAuth] : []),
