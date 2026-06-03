@@ -1,7 +1,7 @@
 /**
  * Inbox Skill Tools
  *
- * Tools for connecting an Airo Inbox (Reamaze) chat widget to the site.
+ * Tools for connecting an Inbox chat widget to the site.
  * The account ID is persisted in memory under `integrations.inbox.brandId`.
  *
  *   discover_account       — find or auto-create the account for this app
@@ -66,7 +66,7 @@ export const hooks: SkillHooks = {
 };
 
 // ============================================================================
-// discover_account — find or auto-create the Conversations account for this app
+// discover_account — find or auto-create the Inbox account for this app
 // ============================================================================
 
 export const discoverAccountTool: SkillToolDefinition = {
@@ -335,7 +335,7 @@ export const setupWidgetTool: SkillToolDefinition = {
 export const updateWidgetConfigTool: SkillToolDefinition = {
   name: 'update_widget_config',
   description:
-    'Update widget settings: syncs to the Inbox backend and writes the config file. ' +
+    'Update widget settings: syncs to the backend and writes the config file. ' +
     'Requires inbox__setup_widget to have run first. Omit a field to leave it unchanged.',
   parameters: z.object({
     color: z

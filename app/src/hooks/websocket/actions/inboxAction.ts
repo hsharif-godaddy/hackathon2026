@@ -1,8 +1,8 @@
 /**
- * Conversations Action Executor
+ * Inbox Action Executor
  *
- * Called by the Conversations skill in agents to make authed calls to Reamaze.
- * The browser forwards the request to our BFF route (/api/conversations) with
+ * Called by the Inbox skill in agents to make authed calls to Reamaze.
+ * The browser forwards the request to our BFF route (/api/inbox) with
  * credentials: 'include' so auth_idp rides along; the BFF validates + forwards
  * to Reamaze as the authenticated user. Modeled on attachDomainAction.ts.
  *
@@ -14,15 +14,15 @@ import { appFetch, AuthDismissedError } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import type { ClientActionExecutor } from './types';
 
-interface ConversationsParams {
+interface InboxParams {
   operation: 'list_accounts' | 'activate_account' | 'list_embeddables' | 'create_embeddable' | 'update_embeddable';
   brandId?: string;
   embeddableId?: number;
   body?: unknown;
 }
 
-export const conversationsAction: ClientActionExecutor = async (params) => {
-  const { operation, brandId, embeddableId, body } = params as unknown as ConversationsParams;
+export const inboxAction: ClientActionExecutor = async (params) => {
+  const { operation, brandId, embeddableId, body } = params as unknown as InboxParams;
 
   if (!operation || typeof operation !== 'string') {
     throw new Error('operation is required and must be a string');
@@ -32,10 +32,10 @@ export const conversationsAction: ClientActionExecutor = async (params) => {
   }
 
   try {
-    logger.info('conversations-action.begin', { operation, brandId });
+    logger.info('inbox-action.begin', { operation, brandId });
 
     const response = await appFetch(
-      '/api/conversations',
+      '/api/inbox',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -46,25 +46,25 @@ export const conversationsAction: ClientActionExecutor = async (params) => {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
-      logger.error('conversations-action.http-error', {
+      logger.error('inbox-action.http-error', {
         operation,
         brandId,
         status: response.status,
         errorText: errorText.substring(0, 500),
       });
-      throw new Error(`Conversations proxy failed: ${response.status} ${errorText.substring(0, 200)}`);
+      throw new Error(`Inbox proxy failed: ${response.status} ${errorText.substring(0, 200)}`);
     }
 
     const result = (await response.json()) as { status: number; data: unknown };
 
     if (result.status >= 400) {
-      logger.error('conversations-action.upstream-error', {
+      logger.error('inbox-action.upstream-error', {
         operation,
         brandId,
         upstreamStatus: result.status,
       });
     } else {
-      logger.info('conversations-action.success', {
+      logger.info('inbox-action.success', {
         operation,
         brandId,
         upstreamStatus: result.status,
@@ -74,10 +74,10 @@ export const conversationsAction: ClientActionExecutor = async (params) => {
     return result;
   } catch (error) {
     if (error instanceof AuthDismissedError) {
-      logger.warn('conversations-action.auth-dismissed', { operation, brandId });
+      logger.warn('inbox-action.auth-dismissed', { operation, brandId });
       throw error;
     }
-    logger.error('conversations-action.unexpected-error', {
+    logger.error('inbox-action.unexpected-error', {
       operation,
       brandId,
       error: error instanceof Error ? error.message : String(error),

@@ -1,8 +1,8 @@
 /**
- * POST /api/conversations
+ * POST /api/inbox
  *
- * BFF proxy for the Conversations (Reamaze) skill. Agents fires this via a
- * client-action (conversationsAction.ts) so the call originates in the user's
+ * BFF proxy for the Inbox (Reamaze) skill. Agents fires this via a
+ * client-action (inboxAction.ts) so the call originates in the user's
  * browser, carrying auth_idp. We then forward the validated JWT as
  * `Authorization: sso-jwt <jwt>` to Reamaze, which treats it as an idp-type
  * token — Reamaze authorizes based on the user's customer_id against the
@@ -28,15 +28,15 @@ import { ApiErrorCode } from '@/utils/api-errors';
 
 export const dynamic = 'force-dynamic';
 
-type ConversationsOperation =
+type InboxOperation =
   | 'list_accounts'
   | 'activate_account'
   | 'list_embeddables'
   | 'create_embeddable'
   | 'update_embeddable';
 
-interface ConversationsRequest {
-  operation: ConversationsOperation;
+interface InboxRequest {
+  operation: InboxOperation;
   brandId?: string;
   embeddableId?: number;
   body?: unknown;
@@ -52,7 +52,7 @@ function getReamazeHost(): string {
 const REAMAZE_HOST = getReamazeHost();
 const REAMAZE_BFF_HOST = `api.${REAMAZE_HOST}`;
 
-function resolveRequest(req: ConversationsRequest): { method: 'GET' | 'POST' | 'PUT'; path: string } | { error: string } {
+function resolveRequest(req: InboxRequest): { method: 'GET' | 'POST' | 'PUT'; path: string } | { error: string } {
   switch (req.operation) {
     case 'list_accounts':
       return { method: 'GET', path: '/accounts' };
@@ -72,7 +72,7 @@ function resolveRequest(req: ConversationsRequest): { method: 'GET' | 'POST' | '
   }
 }
 
-const ACCOUNT_LEVEL_OPERATIONS: ConversationsOperation[] = ['list_accounts', 'activate_account'];
+const ACCOUNT_LEVEL_OPERATIONS: InboxOperation[] = ['list_accounts', 'activate_account'];
 
 export const POST = withCustomerAuth(async (
   request: NextRequest,
@@ -85,7 +85,7 @@ export const POST = withCustomerAuth(async (
     );
   }
 
-  const body = await request.json().catch(() => null) as ConversationsRequest | null;
+  const body = await request.json().catch(() => null) as InboxRequest | null;
   if (!body) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
@@ -113,7 +113,7 @@ export const POST = withCustomerAuth(async (
   }
   const hasBody = resolved.method !== 'GET' && body.body !== undefined;
 
-  logger.info('conversations.bff.proxy.start', {
+  logger.info('inbox.bff.proxy.start', {
     operation: body.operation,
     brandId: body.brandId,
     method: resolved.method,
@@ -130,7 +130,7 @@ export const POST = withCustomerAuth(async (
     ...(hasBody && { body: JSON.stringify(body.body) }),
   }).catch((err: unknown) => {
     const e = err instanceof Error ? err : new Error(String(err));
-    logger.error('conversations.bff.proxy.exception', {
+    logger.error('inbox.bff.proxy.exception', {
       operation: body.operation,
       brandId: body.brandId,
       url,
@@ -152,7 +152,7 @@ export const POST = withCustomerAuth(async (
     try {
       data = JSON.parse(rawText);
     } catch {
-      logger.warn('conversations.bff.proxy.non-json', {
+      logger.warn('inbox.bff.proxy.non-json', {
         operation: body.operation,
         brandId: body.brandId,
         status: upstream.status,
@@ -164,7 +164,7 @@ export const POST = withCustomerAuth(async (
   }
 
   if (!upstream.ok) {
-    logger.warn('conversations.bff.proxy.error', {
+    logger.warn('inbox.bff.proxy.error', {
       operation: body.operation,
       brandId: body.brandId,
       status: upstream.status,
@@ -172,7 +172,7 @@ export const POST = withCustomerAuth(async (
       upstreamBody: data ? JSON.stringify(data).slice(0, 1000) : null,
     });
   } else {
-    logger.info('conversations.bff.proxy.success', {
+    logger.info('inbox.bff.proxy.success', {
       operation: body.operation,
       brandId: body.brandId,
       status: upstream.status,

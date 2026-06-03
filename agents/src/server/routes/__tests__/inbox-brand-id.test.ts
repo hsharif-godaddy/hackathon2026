@@ -18,9 +18,9 @@ vi.mock('../../../memory/adapters/index.js', () => ({
 vi.mock('../../middleware/app-ownership.js');
 
 // Import route AFTER mocks are set up
-const { default: conversationBrandIdRouter } = await import('../conversation-brand-id.js');
+const { default: inboxBrandIdRouter } = await import('../inbox-brand-id.js');
 
-describe('GET /apps/:id/conversation-brand-id', () => {
+describe('GET /apps/:id/inbox-brand-id', () => {
   let app: Express;
 
   beforeEach(() => {
@@ -43,7 +43,7 @@ describe('GET /apps/:id/conversation-brand-id', () => {
       next();
     });
 
-    app.use(conversationBrandIdRouter);
+    app.use(inboxBrandIdRouter);
   });
 
   it('should return brand ID from memory', async () => {
@@ -56,7 +56,7 @@ describe('GET /apps/:id/conversation-brand-id', () => {
     });
 
     const response = await request(app)
-      .get('/apps/test-app-id/conversation-brand-id')
+      .get('/apps/test-app-id/inbox-brand-id')
       .expect(200);
 
     expect(response.body).toEqual({ brandId: mockBrandId });
@@ -76,7 +76,7 @@ describe('GET /apps/:id/conversation-brand-id', () => {
     });
 
     const response = await request(app)
-      .get('/apps/test-app-id/conversation-brand-id')
+      .get('/apps/test-app-id/inbox-brand-id')
       .expect(200);
 
     expect(response.body).toEqual({ brandId: null });
@@ -89,7 +89,7 @@ describe('GET /apps/:id/conversation-brand-id', () => {
     });
 
     const response = await request(app)
-      .get('/apps/test-app-id/conversation-brand-id')
+      .get('/apps/test-app-id/inbox-brand-id')
       .expect(500);
 
     expect(response.body).toMatchObject({
@@ -106,7 +106,7 @@ describe('GET /apps/:id/conversation-brand-id', () => {
     });
 
     const response = await request(app)
-      .get('/apps/test-app-id/conversation-brand-id')
+      .get('/apps/test-app-id/inbox-brand-id')
       .expect(200);
 
     expect(response.body).toEqual({ brandId: null });

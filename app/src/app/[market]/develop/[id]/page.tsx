@@ -48,11 +48,11 @@ import { useAppDetails } from '@/hooks/useAppDetails'
 import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useChatTransport } from '@/hooks/useChatTransport'
-import { useConversationsBrandId } from '@/hooks/useConversationsBrandId'
 import { useCreditsDeeplinkWithStore } from '@/hooks/useCreditsDeeplinkWithStore'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useHivemind } from '@/hooks/useHivemind'
 import { useImageReadiness } from '@/hooks/useImageReadiness'
+import { useInboxBrandId } from '@/hooks/useInboxBrandId'
 import { usePaywallDeeplinkWithStore } from '@/hooks/usePaywallDeeplinkWithStore'
 import { usePostBuildEditNudge } from '@/hooks/usePostBuildEditNudge'
 import { prefetchSubscription } from '@/hooks/useSubscription'
@@ -235,13 +235,13 @@ function DevelopPageContent() {
     }
   }, [hibernation.resumeComplete, appId, archiveRestore.archiveRestoreComplete]);
 
-  // Fetch conversations brand ID early and sync to store
-  const { brandId, isLoading: isLoadingBrandId, error: brandIdError } = useConversationsBrandId(appId)
-  const setConversationsBrandId = useDevelopPageStore((state) => state.setConversationsBrandId)
+  // Fetch inbox brand ID early and sync to store
+  const { brandId, isLoading: isLoadingBrandId, error: brandIdError } = useInboxBrandId(appId)
+  const setInboxBrandId = useDevelopPageStore((state) => state.setInboxBrandId)
 
   useEffect(() => {
-    setConversationsBrandId(brandId)
-  }, [brandId, isLoadingBrandId, brandIdError, setConversationsBrandId])
+    setInboxBrandId(brandId)
+  }, [brandId, isLoadingBrandId, brandIdError, setInboxBrandId])
 
   // Eval snapshot capture - captures screenshot on first build completion
   const { triggerEvalSnapshot, handleEvalViewportScreenshot } = useEvalSnapshotCapture({ appId })

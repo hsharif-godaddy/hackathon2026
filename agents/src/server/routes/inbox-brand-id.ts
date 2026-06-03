@@ -1,7 +1,7 @@
 /**
- * Conversation Brand ID Route
+ * Inbox Brand ID Route
  *
- * Fetches the linked conversation brand ID from the memory table.
+ * Fetches the linked inbox brand ID from the memory table.
  * Data is stored in Memory by the inbox skill after linking an account.
  */
 
@@ -12,7 +12,7 @@ import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 
-interface ConversationBrandData {
+interface InboxBrandData {
   brandId: string | null;
 }
 
@@ -20,10 +20,10 @@ const router: Router = Router();
 const memory = getKvMemoryStore();
 
 /**
- * GET /apps/:id/conversation-brand-id
- * Fetches linked conversation brand ID from memory table.
+ * GET /apps/:id/inbox-brand-id
+ * Fetches linked inbox brand ID from memory table.
  */
-router.get('/apps/:id/conversation-brand-id', validateAppOwnership, async (req: Request, res: Response): Promise<void> => {
+router.get('/apps/:id/inbox-brand-id', validateAppOwnership, async (req: Request, res: Response): Promise<void> => {
   const { id: appId } = req.params;
   const contextLogger = log.forApp(appId!);
 
@@ -35,7 +35,7 @@ router.get('/apps/:id/conversation-brand-id', validateAppOwnership, async (req: 
     const brandIdResult = await memory.get(scope, 'integrations.inbox.brandId');
 
     if (!brandIdResult.success) {
-      contextLogger.warn('conversationBrandId.route.memoryRead.failed', {
+      contextLogger.warn('inboxBrandId.route.memoryRead.failed', {
         appId,
         key: 'integrations.inbox.brandId',
         error: brandIdResult.error
@@ -48,7 +48,7 @@ router.get('/apps/:id/conversation-brand-id', validateAppOwnership, async (req: 
     }
 
     if (!brandIdResult.exists) {
-      contextLogger.info('conversationBrandId.route.notFound', { appId });
+      contextLogger.info('inboxBrandId.route.notFound', { appId });
       res.json({ brandId: null });
       return;
     }
@@ -56,7 +56,7 @@ router.get('/apps/:id/conversation-brand-id', validateAppOwnership, async (req: 
     // Validate the data structure - should be a string
     const brandId = brandIdResult.value;
     if (typeof brandId !== 'string') {
-      contextLogger.warn('conversationBrandId.route.invalidData', {
+      contextLogger.warn('inboxBrandId.route.invalidData', {
         appId,
         dataType: typeof brandId
       });
@@ -64,7 +64,7 @@ router.get('/apps/:id/conversation-brand-id', validateAppOwnership, async (req: 
       return;
     }
 
-    contextLogger.info('conversationBrandId.route.success', {
+    contextLogger.info('inboxBrandId.route.success', {
       appId,
       brandId
     });
@@ -72,7 +72,7 @@ router.get('/apps/:id/conversation-brand-id', validateAppOwnership, async (req: 
     res.json({ brandId });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    contextLogger.error('conversationBrandId.route.error', {
+    contextLogger.error('inboxBrandId.route.error', {
       appId,
       error: errorMessage,
     });

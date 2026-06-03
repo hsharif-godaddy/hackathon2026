@@ -139,7 +139,7 @@ describe('reamaze client', () => {
       await listEmbeddables(mockClient, 'app-1', 'a1b2c3d4-0000-4000-8000-000000000001');
 
       expect(mockExecuteAction).toHaveBeenCalledWith({
-        action: 'conversationsCall',
+        action: 'inboxCall',
         params: { operation: 'list_embeddables', brandId: 'a1b2c3d4-0000-4000-8000-000000000001' },
         timeoutMs: 30_000,
       });

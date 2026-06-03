@@ -1,8 +1,8 @@
 /**
- * Reamaze (Conversations) client — dispatches via ClientActionService.
+ * Reamaze (Inbox) client — dispatches via ClientActionService.
  *
  * Architecture:
- *   agent tool → ClientActionService (socket) → browser → /api/conversations
+ *   agent tool → ClientActionService (socket) → browser → /api/inbox
  *   BFF route → Reamaze with user's auth_idp as `Authorization: sso-jwt <jwt>`
  *
  * No HTTP fetch happens here. No token machinery. No env vars. The agent
@@ -16,12 +16,12 @@
 import type { IClientActionService } from '../../../services/ClientActionService.js';
 import { Logger } from '../../../logging/index.js';
 
-const logger = Logger.create({ component: 'conversations.reamaze' });
+const logger = Logger.create({ component: 'inbox.reamaze' });
 
-// Must match CLIENT_ACTIONS.CONVERSATIONS_CALL in
+// Must match CLIENT_ACTIONS.INBOX_CALL in
 // app/src/hooks/websocket/actions/constants.ts — keep in sync manually.
 // If this ever moves to @airo/shared, import from there on both sides.
-const CLIENT_ACTION_NAME = 'conversationsCall';
+const CLIENT_ACTION_NAME = 'inboxCall';
 
 // ----------------------------------------------------------------------------
 // Types
@@ -75,7 +75,7 @@ export interface UpdateEmbeddableInput {
 // Client-action dispatch
 // ----------------------------------------------------------------------------
 
-// Must match ConversationsOperation in app/src/app/api/conversations/route.ts — keep in sync manually.
+// Must match InboxOperation in app/src/app/api/inbox/route.ts — keep in sync manually.
 type Operation = 'list_accounts' | 'activate_account' | 'list_embeddables' | 'create_embeddable' | 'update_embeddable';
 
 interface DispatchParams {
@@ -97,7 +97,7 @@ async function dispatch<T>(
   args: DispatchParams,
 ): Promise<ReamazeResult<T>> {
   const logCtx = { appId: args.appId, ...(args.brandId && { brandId: args.brandId }) };
-  logger.info(`conversations.reamaze.${args.operation}.start`, logCtx);
+  logger.info(`inbox.reamaze.${args.operation}.start`, logCtx);
 
   let clientResult: Awaited<ReturnType<IClientActionService['executeAction']>>;
   try {
@@ -113,7 +113,7 @@ async function dispatch<T>(
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error(`conversations.reamaze.${args.operation}.dispatch_failed`, {
+    logger.error(`inbox.reamaze.${args.operation}.dispatch_failed`, {
       ...logCtx,
       error: message,
     });
@@ -124,10 +124,10 @@ async function dispatch<T>(
     return { success: false, error: clientResult.error || 'client action failed' };
   }
 
-  // `result` is whatever conversationsAction returned — shape: { status, data }
+  // `result` is whatever inboxAction returned — shape: { status, data }
   const bff = clientResult.result as BffResponse | undefined;
   if (!bff || typeof bff.status !== 'number') {
-    logger.warn(`conversations.reamaze.${args.operation}.unexpected_shape`, {
+    logger.warn(`inbox.reamaze.${args.operation}.unexpected_shape`, {
       ...logCtx,
       result: JSON.stringify(bff)?.slice(0, 200),
     });
@@ -138,7 +138,7 @@ async function dispatch<T>(
     const errData = bff.data as { message?: string; error?: string; errors?: string[] } | undefined;
     const errorText =
       errData?.message ?? errData?.error ?? errData?.errors?.join('; ') ?? `HTTP ${bff.status}`;
-    logger.warn(`conversations.reamaze.${args.operation}.error`, {
+    logger.warn(`inbox.reamaze.${args.operation}.error`, {
       ...logCtx,
       status: bff.status,
       error: errorText,
@@ -146,7 +146,7 @@ async function dispatch<T>(
     return { success: false, error: errorText, status: bff.status };
   }
 
-  logger.info(`conversations.reamaze.${args.operation}.success`, logCtx);
+  logger.info(`inbox.reamaze.${args.operation}.success`, logCtx);
   return { success: true, data: bff.data as T };
 }
 

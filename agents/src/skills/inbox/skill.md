@@ -1,7 +1,7 @@
 ---
 name: inbox
 description: Install the Airo Inbox chat/messaging widget on the site.
-whenToUse: User wants a chat widget, live chat, customer messaging, contact widget, or support chat on their site. Phrases like "add chat", "live chat", "customer support widget", "Inbox", "Conversations", "chat with customers", "messaging widget".
+whenToUse: User wants a chat widget, live chat, customer messaging, contact widget, or support chat on their site. Phrases like "add chat", "live chat", "customer support widget", "Inbox", "chat with customers", "messaging widget".
 enablementId: inbox
 intents:
   - chat widget/live chat/customer messaging/support chat/contact widget/chat bubble/inbox
@@ -15,14 +15,14 @@ Installs the Airo Inbox chat widget on the site.
 
 - **`src/lib/inboxChat.config.json` drives rendering.** The CDN script reads `window._support` to determine what to show. `InboxChatWidget.tsx` merges config into `window._support` from the JSON file.
 - **Tools own the config file.** The `setup_widget` and `update_widget_config` tools read, merge, and write `src/lib/inboxChat.config.json` directly. The agent never edits the config file manually.
-- **The backend is kept in sync.** The tools update the Reamaze embeddable so that widget settings stay consistent when the user edits the widget from other surfaces (e.g. the Conversations dashboard).
-- **Account** — the Conversations tenant for this site. Discovered via `inbox__discover_account` and selected via `inbox__select_account`.
+- **The backend is kept in sync.** The tools update the embeddable on the backend so that widget settings stay consistent when the user edits the widget from other surfaces.
+- **Account** — the Airo Inbox tenant for this site. Discovered via `inbox__discover_account` and selected via `inbox__select_account`.
 - **Embeddable** — the backend widget config. Holds position, colors, icon. We use the first (default) one per account, or create one if none exist.
-- **Auth** — tools dispatch calls via `ClientActionService` through the browser to `/api/conversations` (BFF). The BFF validates the user's `auth_idp` cookie and forwards the request. The authenticated builder user is the identity.
+- **Auth** — tools dispatch calls via `ClientActionService` through the browser to `/api/inbox` (BFF). The BFF validates the user's `auth_idp` cookie and forwards the request. The authenticated builder user is the identity.
 
 ## Step 0: Discover Account
 
-Before setting up the widget, ensure a Conversations account is configured:
+Before setting up the widget, ensure an Airo Inbox account is configured:
 
 ```typescript
 inbox__discover_account({});
@@ -31,7 +31,7 @@ inbox__discover_account({});
 Outcomes:
 - **`alreadyConfigured: true`** — account is already linked, proceed to Step 1.
 - **`accountCreated: true`** — a new account was provisioned automatically, proceed to Step 1.
-- **`noAccounts: true`** — user has no Conversations accounts and no entitlements available. Inform them they need a Conversations subscription.
+- **`noAccounts: true`** — user has no Airo Inbox accounts and no entitlements available. Inform them they need an Airo Inbox subscription.
 - **`error`** — display the error to the user.
 
 No user interaction is needed at this step — the tool resolves the account automatically.
@@ -103,7 +103,7 @@ To change widget settings after initial setup, call the tool:
 inbox__update_widget_config({ color: '#1e40af', position: 'bottom-right', labelText: 'Ask us a question!' });
 ```
 
-The tool syncs to the Conversations backend and writes the config file — no manual file editing needed. Omit a field to leave it unchanged.
+The tool syncs to the backend and writes the config file — no manual file editing needed. Omit a field to leave it unchanged.
 
 ---
 
@@ -115,5 +115,5 @@ The tool syncs to the Conversations backend and writes the config file — no ma
 - **Skipping `discover_account`.** Always call `discover_account` before `setup_widget` — it ensures the account is configured.
 - **Using `select_account` unnecessarily.** The normal flow uses `discover_account` which handles creation automatically. Only use `select_account` for manual overrides (e.g., linking a specific existing account).
 - **Mounting inside `<Routes>`.** The widget must be at the app root so the script loads on every page.
-- **Removing the cookie consent check.** The Conversations script sets third-party cookies and must not load until the visitor opts in.
+- **Removing the cookie consent check.** The Airo Inbox script sets third-party cookies and must not load until the visitor opts in.
 - **Writing widget visual settings to memory.** Don't — the backend is the source of truth. The only things we store are the pointer IDs.

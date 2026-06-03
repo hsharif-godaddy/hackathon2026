@@ -22,11 +22,11 @@ vi.stubEnv('ENVIRONMENT_NAME', 'development');
 
 const { POST } = await import('./route');
 
-describe('POST /api/conversations', () => {
+describe('POST /api/inbox', () => {
   const createAuthContext = (jwt?: string) => ({ jwt });
 
   function makeRequest(body: unknown, host = 'local.gasket.dev-godaddy.com:8443'): NextRequest {
-    return new NextRequest('http://localhost/api/conversations', {
+    return new NextRequest('http://localhost/api/inbox', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', host },
       body: JSON.stringify(body),
@@ -59,7 +59,7 @@ describe('POST /api/conversations', () => {
 
   describe('validation', () => {
     it('returns 400 for invalid JSON body', async () => {
-      const request = new NextRequest('http://localhost/api/conversations', {
+      const request = new NextRequest('http://localhost/api/inbox', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', host: 'localhost' },
         body: 'not-json{{{',

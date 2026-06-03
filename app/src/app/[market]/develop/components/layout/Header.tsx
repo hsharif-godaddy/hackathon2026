@@ -70,7 +70,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
   const { launchSupportChat } = useSupportChat();
 
-  const conversationsBrandId = useDevelopPageStore((state) => state.conversationsBrandId)
+  const inboxBrandId = useDevelopPageStore((state) => state.inboxBrandId)
   const chatPaneWidth = useDevelopPageStore((state) => state.chatPaneWidth)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
   const viewMode = useDevelopPageStore((state) => state.viewMode)
@@ -197,7 +197,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                     disabled={isVersionHistoryOpen}
                   />
                 )}
-                {isInboxEnabled && conversationsBrandId && (
+                {isInboxEnabled && inboxBrandId && (
                   <ButtonGroup.Item
                     value={ViewMode.INBOX}
                     icon={<ConversationsIcon className="size-2.5" />}

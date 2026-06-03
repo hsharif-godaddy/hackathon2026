@@ -15,8 +15,8 @@ import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestN
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
 import DomainBar from '@/app/[market]/develop/components/layout/DomainBar'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
-import ConversationsIframe from '@/app/[market]/develop/components/preview/ConversationsIframe'
 import { getDevicePreset } from '@/app/[market]/develop/components/preview/devicePresets'
+import InboxIframe from '@/app/[market]/develop/components/preview/InboxIframe'
 import PreviewCode from '@/app/[market]/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/[market]/develop/components/preview/PreviewError'
 import PreviewLoadingState from '@/app/[market]/develop/components/preview/PreviewLoadingState'
@@ -172,7 +172,7 @@ export default function PreviewPane({
   const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
   const mobileMode = useDevelopPageStore((state) => state.mobileMode)
   const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange)
-  const conversationsBrandId = useDevelopPageStore((state) => state.conversationsBrandId)
+  const inboxBrandId = useDevelopPageStore((state) => state.inboxBrandId)
   // Get device dimensions from preset
   const selectedDevice = getDevicePreset(selectedDeviceId)
   const isFullSize = previewViewMode === PreviewViewMode.DESKTOP || selectedDeviceId === 'full'
@@ -1017,11 +1017,11 @@ export default function PreviewPane({
     )
   }
 
-  if (isInboxEnabled && conversationsBrandId && viewMode === ViewMode.INBOX) {
+  if (isInboxEnabled && inboxBrandId && viewMode === ViewMode.INBOX) {
     return (
       <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
         <div className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor">
-          <ConversationsIframe brandId={conversationsBrandId} />
+          <InboxIframe brandId={inboxBrandId} />
         </div>
       </div>
     )

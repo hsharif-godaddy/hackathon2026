@@ -18,9 +18,9 @@ vi.mock('@/lib/request-context', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-const { conversationsAction } = await import('./conversationsAction');
+const { inboxAction } = await import('./inboxAction');
 
-describe('conversationsAction', () => {
+describe('inboxAction', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -31,13 +31,13 @@ describe('conversationsAction', () => {
 
   describe('parameter validation', () => {
     it('throws when operation is missing', async () => {
-      await expect(conversationsAction({} as any)).rejects.toThrow(
+      await expect(inboxAction({} as any)).rejects.toThrow(
         'operation is required and must be a string',
       );
     });
 
     it('throws when operation is not a string', async () => {
-      await expect(conversationsAction({ operation: 123 } as any)).rejects.toThrow(
+      await expect(inboxAction({ operation: 123 } as any)).rejects.toThrow(
         'operation is required and must be a string',
       );
     });
@@ -48,7 +48,7 @@ describe('conversationsAction', () => {
         json: () => Promise.resolve({ status: 200, data: {} }),
       });
       await expect(
-        conversationsAction({ operation: 'list_accounts' } as any),
+        inboxAction({ operation: 'list_accounts' } as any),
       ).resolves.toBeDefined();
     });
 
@@ -58,19 +58,19 @@ describe('conversationsAction', () => {
         json: () => Promise.resolve({ status: 200, data: {} }),
       });
       await expect(
-        conversationsAction({ operation: 'activate_account', body: {} } as any),
+        inboxAction({ operation: 'activate_account', body: {} } as any),
       ).resolves.toBeDefined();
     });
 
     it('throws when update_embeddable is missing embeddableId', async () => {
       await expect(
-        conversationsAction({ operation: 'update_embeddable', brandId: 'x' } as any),
+        inboxAction({ operation: 'update_embeddable', brandId: 'x' } as any),
       ).rejects.toThrow('embeddableId (number) is required for update_embeddable');
     });
 
     it('throws when update_embeddable has non-numeric embeddableId', async () => {
       await expect(
-        conversationsAction({ operation: 'update_embeddable', brandId: 'x', embeddableId: '42' } as any),
+        inboxAction({ operation: 'update_embeddable', brandId: 'x', embeddableId: '42' } as any),
       ).rejects.toThrow('embeddableId (number) is required for update_embeddable');
     });
   });
@@ -86,7 +86,7 @@ describe('conversationsAction', () => {
         json: () => Promise.resolve({ status: 200, data: { embeddables: [] } }),
       });
 
-      await conversationsAction({
+      await inboxAction({
         operation: 'list_embeddables',
         brandId: 'acme',
         embeddableId: 5,
@@ -94,7 +94,7 @@ describe('conversationsAction', () => {
       } as any);
 
       expect(mockAppFetch).toHaveBeenCalledWith(
-        '/api/conversations',
+        '/api/inbox',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -116,7 +116,7 @@ describe('conversationsAction', () => {
         json: () => Promise.resolve(payload),
       });
 
-      const result = await conversationsAction({
+      const result = await inboxAction({
         operation: 'list_embeddables',
         brandId: 'acme',
       } as any);
@@ -132,13 +132,13 @@ describe('conversationsAction', () => {
         json: () => Promise.resolve(payload),
       });
 
-      const result = await conversationsAction({
+      const result = await inboxAction({
         operation: 'list_embeddables',
         brandId: 'acme',
       } as any);
 
       expect(result).toEqual(payload);
-      expect(logger.error).toHaveBeenCalledWith('conversations-action.upstream-error', expect.objectContaining({
+      expect(logger.error).toHaveBeenCalledWith('inbox-action.upstream-error', expect.objectContaining({
         operation: 'list_embeddables',
         upstreamStatus: 503,
       }));
@@ -158,15 +158,15 @@ describe('conversationsAction', () => {
       });
 
       await expect(
-        conversationsAction({ operation: 'list_embeddables', brandId: 'acme' } as any),
-      ).rejects.toThrow('Conversations proxy failed: 403 Forbidden: insufficient permissions');
+        inboxAction({ operation: 'list_embeddables', brandId: 'acme' } as any),
+      ).rejects.toThrow('Inbox proxy failed: 403 Forbidden: insufficient permissions');
     });
 
     it('re-throws AuthDismissedError', async () => {
       mockAppFetch.mockRejectedValue(new MockAuthDismissedError());
 
       await expect(
-        conversationsAction({ operation: 'list_accounts' } as any),
+        inboxAction({ operation: 'list_accounts' } as any),
       ).rejects.toThrow('Authentication dismissed');
     });
 
@@ -174,7 +174,7 @@ describe('conversationsAction', () => {
       mockAppFetch.mockRejectedValue(new Error('Network failure'));
 
       await expect(
-        conversationsAction({ operation: 'list_accounts' } as any),
+        inboxAction({ operation: 'list_accounts' } as any),
       ).rejects.toThrow('Network failure');
     });
   });

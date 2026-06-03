@@ -58,9 +58,9 @@ vi.mock('@/app/[market]/develop/components/settings/DomainPanel', () => ({
   default: () => <div data-testid="domain-panel">Domain Panel</div>,
 }));
 
-vi.mock('@/app/[market]/develop/components/preview/ConversationsIframe', () => ({
+vi.mock('@/app/[market]/develop/components/preview/InboxIframe', () => ({
   default: ({ brandId }: { brandId: string }) => (
-    <div data-testid="conversations-iframe">Conversations: {brandId}</div>
+    <div data-testid="inbox-iframe">Inbox: {brandId}</div>
   ),
 }));
 
@@ -828,12 +828,12 @@ describe('PreviewPane', () => {
   });
 
   describe('INBOX view accessibility during preview server issues', () => {
-    const mockConversationsBrandId = 'test-brand-123';
+    const mockInboxBrandId = 'test-brand-123';
 
     it('should render INBOX when resumeFailed and viewMode is INBOX', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
-      (mockDevelopPageStore as any).conversationsBrandId = mockConversationsBrandId;
+      (mockDevelopPageStore as any).inboxBrandId = mockInboxBrandId;
       // resumeFailed prop causes early-return guards to trigger, but INBOX should bypass them
       mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null }; });
 
@@ -845,13 +845,13 @@ describe('PreviewPane', () => {
       );
 
       expect(screen.queryByTestId('preview-error')).not.toBeInTheDocument();
-      expect(screen.getByTestId('conversations-iframe')).toBeInTheDocument();
+      expect(screen.getByTestId('inbox-iframe')).toBeInTheDocument();
     });
 
     it('should render INBOX when isHibernated and viewMode is INBOX', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
-      (mockDevelopPageStore as any).conversationsBrandId = mockConversationsBrandId;
+      (mockDevelopPageStore as any).inboxBrandId = mockInboxBrandId;
       mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null }; });
 
       renderWithProviders(
@@ -862,13 +862,13 @@ describe('PreviewPane', () => {
       );
 
       expect(screen.queryByText('builder_preview_resuming_message')).not.toBeInTheDocument();
-      expect(screen.getByTestId('conversations-iframe')).toBeInTheDocument();
+      expect(screen.getByTestId('inbox-iframe')).toBeInTheDocument();
     });
 
     it('should render INBOX when isResuming and viewMode is INBOX', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
-      (mockDevelopPageStore as any).conversationsBrandId = mockConversationsBrandId;
+      (mockDevelopPageStore as any).inboxBrandId = mockInboxBrandId;
       mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null }; });
 
       renderWithProviders(
@@ -879,13 +879,13 @@ describe('PreviewPane', () => {
       );
 
       expect(screen.queryByText('builder_preview_resuming_message')).not.toBeInTheDocument();
-      expect(screen.getByTestId('conversations-iframe')).toBeInTheDocument();
+      expect(screen.getByTestId('inbox-iframe')).toBeInTheDocument();
     });
 
     it('should render INBOX when imageReloadFailed and viewMode is INBOX', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
-      (mockDevelopPageStore as any).conversationsBrandId = mockConversationsBrandId;
+      (mockDevelopPageStore as any).inboxBrandId = mockInboxBrandId;
 
       renderWithProviders(
         <PreviewPane
@@ -895,13 +895,13 @@ describe('PreviewPane', () => {
       );
 
       expect(screen.queryByTestId('preview-error')).not.toBeInTheDocument();
-      expect(screen.getByTestId('conversations-iframe')).toBeInTheDocument();
+      expect(screen.getByTestId('inbox-iframe')).toBeInTheDocument();
     });
 
     it('should render INBOX when isImageReloading and viewMode is INBOX', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
-      (mockDevelopPageStore as any).conversationsBrandId = mockConversationsBrandId;
+      (mockDevelopPageStore as any).inboxBrandId = mockInboxBrandId;
 
       renderWithProviders(
         <PreviewPane
@@ -911,7 +911,7 @@ describe('PreviewPane', () => {
       );
 
       expect(screen.queryByText('builder_preview_image_reloading_message')).not.toBeInTheDocument();
-      expect(screen.getByTestId('conversations-iframe')).toBeInTheDocument();
+      expect(screen.getByTestId('inbox-iframe')).toBeInTheDocument();
     });
 
     it('should show error when resumeFailed and viewMode is PREVIEW (not INBOX)', () => {

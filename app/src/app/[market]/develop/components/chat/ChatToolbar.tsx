@@ -55,7 +55,7 @@ export default function ChatToolbar({
   const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange);
   const isMobileInlineEditActive = useDevelopPageStore((state) => state.isMobileInlineEditActive);
   const toggleMobileInlineEdit = useDevelopPageStore((state) => state.toggleMobileInlineEdit);
-  const conversationsBrandId = useDevelopPageStore((state) => state.conversationsBrandId)
+  const inboxBrandId = useDevelopPageStore((state) => state.inboxBrandId)
 
   // Use optimistic tab for UI selection state, fall back to URL-based state
   const displayActiveTab = optimisticActiveTab ?? activeChatTab
@@ -231,7 +231,7 @@ export default function ChatToolbar({
                 icon={<CodeIcon className="size-2.5" />}
                 label={t('builder_chat_toolbar_button_code')}
               />
-              {isInboxEnabled && conversationsBrandId && (
+              {isInboxEnabled && inboxBrandId && (
                 <ButtonGroup.Item
                   value={ViewMode.INBOX}
                   icon={<ConversationsIcon className="size-2.5" />}
