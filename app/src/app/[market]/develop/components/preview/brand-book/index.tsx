@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import text from '@ux/text';
 
+import { getSlotImageUrl } from '@/app/[market]/develop/components/media/MediaSlotDetail';
 import { useBrandData } from '@/hooks/useBrandData';
 import { useMediaManifest } from '@/hooks/useMediaManifest';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { useServerPollingStore } from '@/stores/useServerPollingStore';
 import { logImpressionEvent } from '@/utils/instrumentation';
 import styles from './brand-book.module.css';
 import { useBrandIntentOverrides, useBrandStyle, useGoogleFonts, useIsBrandGenerating } from './hooks';
@@ -21,6 +23,8 @@ import {
 } from './sections';
 import { Footer } from './shared-components';
 import type { BrandBookViewProps } from './types';
+
+const LOGO_SLOT_NAMES = ['logo/primary', 'logo/horizontal', 'logo/vertical'] as const;
 
 export default function BrandBookView({ appId }: BrandBookViewProps) {
   // Wait for develop-page hydration before hitting the agent — calling /brand-data
@@ -45,6 +49,10 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
 
   // Read media manifest to get logo slot URLs (single source of truth for logo images)
   const { manifest, isLoading: isManifestLoading, error: manifestError } = useMediaManifest({ appId });
+
+  // Preview server origin for resolving relative agent-container paths (uploads, slot proxy).
+  // Uploaded logos land at /airo-assets/uploads/<file> which only resolves through the preview origin.
+  const previewBaseUrl = useServerPollingStore((state) => state.getServerState(appId))?.url || null;
 
   // True once any brand tool has started in the current stream
   const isGenerating = useIsBrandGenerating();
@@ -101,12 +109,12 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
       return undefined;
     }
 
-    const primarySlot = manifest?.['logo/primary'];
-    const horizontalSlot = manifest?.['logo/horizontal'];
-    const verticalSlot = manifest?.['logo/vertical'];
-
-    return primarySlot?.currentUrl || horizontalSlot?.currentUrl || verticalSlot?.currentUrl || undefined;
-  }, [previewLogoUrl, isManifestLoading, manifestError, manifest, appId]);
+    for (const slotName of LOGO_SLOT_NAMES) {
+      const slot = manifest?.[slotName];
+      if (slot?.currentUrl) return getSlotImageUrl(slotName, slot.currentUrl, previewBaseUrl);
+    }
+    return undefined;
+  }, [previewLogoUrl, isManifestLoading, manifestError, manifest, previewBaseUrl, appId]);
 
   // Solid-variant logo for the brand book light panel (falls back to transparent if no solid mapping exists)
   const primarySolidLogoUrl = useMemo(() => {
@@ -116,15 +124,16 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
 
     if (manifestError && !manifest) return undefined;
 
-    const slots = [manifest?.['logo/primary'], manifest?.['logo/horizontal'], manifest?.['logo/vertical']];
-    for (const slot of slots) {
+    for (const slotName of LOGO_SLOT_NAMES) {
+      const slot = manifest?.[slotName];
       const transparentUrl = slot?.currentUrl;
       if (!transparentUrl) continue;
-      return slot?.solidUrlMap?.[transparentUrl] || transparentUrl;
+      const url = slot?.solidUrlMap?.[transparentUrl] || transparentUrl;
+      return getSlotImageUrl(slotName, url, previewBaseUrl);
     }
 
     return undefined;
-  }, [previewSolidUrl, previewLogoUrl, isManifestLoading, manifestError, manifest]);
+  }, [previewSolidUrl, previewLogoUrl, isManifestLoading, manifestError, manifest, previewBaseUrl]);
 
   const reversedLogoUrl = useMemo(() => {
     if (previewReversedUrl) return previewReversedUrl;
@@ -138,15 +147,16 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
       return undefined;
     }
 
-    const slots = [manifest?.['logo/primary'], manifest?.['logo/horizontal'], manifest?.['logo/vertical']];
-    for (const slot of slots) {
+    for (const slotName of LOGO_SLOT_NAMES) {
+      const slot = manifest?.[slotName];
       const transparentUrl = slot?.currentUrl;
       if (!transparentUrl) continue;
-      return slot?.reversedSolidUrlMap?.[transparentUrl] || slot?.reversedUrlMap?.[transparentUrl] || transparentUrl;
+      const url = slot?.reversedSolidUrlMap?.[transparentUrl] || slot?.reversedUrlMap?.[transparentUrl] || transparentUrl;
+      return getSlotImageUrl(slotName, url, previewBaseUrl);
     }
 
     return undefined;
-  }, [previewReversedUrl, previewLogoUrl, isManifestLoading, manifestError, manifest, appId]);
+  }, [previewReversedUrl, previewLogoUrl, isManifestLoading, manifestError, manifest, previewBaseUrl, appId]);
 
   const primaryMockupUrl = useMemo(() => {
     if (previewMockupUrl) return previewMockupUrl;
@@ -157,15 +167,17 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
       return undefined;
     }
 
-    const slots = [manifest?.['logo/primary'], manifest?.['logo/horizontal'], manifest?.['logo/vertical']];
-    for (const slot of slots) {
+    for (const slotName of LOGO_SLOT_NAMES) {
+      const slot = manifest?.[slotName];
       const transparentUrl = slot?.currentUrl;
       if (!transparentUrl) continue;
-      return slot?.landscapeMockupUrlMap?.[transparentUrl] || slot?.mockupUrlMap?.[transparentUrl];
+      const url = slot?.landscapeMockupUrlMap?.[transparentUrl] || slot?.mockupUrlMap?.[transparentUrl];
+      if (!url) continue;
+      return getSlotImageUrl(slotName, url, previewBaseUrl);
     }
 
     return undefined;
-  }, [previewMockupUrl, isManifestLoading, manifestError, manifest, appId]);
+  }, [previewMockupUrl, isManifestLoading, manifestError, manifest, previewBaseUrl, appId]);
 
   // Fire book_view impression once all brand data sections are populated
   useEffect(() => {
