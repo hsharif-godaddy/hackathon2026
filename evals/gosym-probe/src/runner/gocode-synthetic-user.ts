@@ -92,10 +92,9 @@ export class GocodeSyntheticUser implements SyntheticUserAgent {
       `${turn.role.toUpperCase()}: ${turn.content}`,
     ];
     for (const tc of turn.toolCalls) {
-      if (tc.output !== undefined) {
-        lines.push(
-          `[tool: ${tc.name}] ${JSON.stringify(tc.output)}`,
-        );
+      const detail = tc.output !== undefined ? tc.output : tc.input;
+      if (detail !== undefined) {
+        lines.push(`[tool: ${tc.name}] ${JSON.stringify(detail)}`);
       } else {
         lines.push(`[tool: ${tc.name}]`);
       }

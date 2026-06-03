@@ -12,6 +12,10 @@ import {
 } from './complex-prompt-latency.js';
 import { brandLogoScenario } from './brand-logo.js';
 import {
+  handoffVoiceHandbackScenario,
+  handoffVoiceSeoCheckScenario,
+} from './handoff-voice/index.js';
+import {
   symptomBlankPageScenario,
   symptomChangesNotShowingScenario,
   symptomModuleNotFoundScenario,
@@ -42,6 +46,8 @@ export function createAllScenarios(
     multiTurnPublishFlowScenario(gocode, ctrlPlane),
     complexPromptLatencyScenario(gocode, ctrlPlane),
     brandLogoScenario(gocode, ctrlPlane),
+    handoffVoiceSeoCheckScenario(gocode, ctrlPlane),
+    handoffVoiceHandbackScenario(gocode, ctrlPlane),
     ...buildAiroBaselineScenarios(gocode, ctrlPlane),
   ];
 }
