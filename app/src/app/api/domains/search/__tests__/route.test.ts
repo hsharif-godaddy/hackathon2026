@@ -6,8 +6,11 @@ import '@testing-library/jest-dom';
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockCheckSwitchboardFlag } = vi.hoisted(() => ({
+const { mockCheckSwitchboardFlag, customerCounter } = vi.hoisted(() => ({
   mockCheckSwitchboardFlag: vi.fn(),
+  // Each test uses a unique customerId so the route's per-customer
+  // in-memory rate limiter (30 req/min) does not fail later tests.
+  customerCounter: { value: 0 },
 }));
 
 import { POST } from '../route';
@@ -25,7 +28,7 @@ vi.mock('@site/domain-services', () => ({
 vi.mock('@/lib/customer-auth', () => ({
   withCustomerAuth: (handler: any) => {
     return (request: NextRequest) => handler(request, {
-      user: { customerId: 'test-customer-123' },
+      user: { customerId: `test-customer-${++customerCounter.value}` },
       isAuthenticated: true,
     });
   },
@@ -409,6 +412,64 @@ describe('POST /api/domains/search', () => {
     });
   });
 
+  describe('long query ordering', () => {
+    const exactDomain = {
+      Fqdn: 'sandbaggersteakhouse.com',
+      NameWithoutExtension: 'sandbaggersteakhouse',
+      Tld: 'com',
+      AvailabilityStatus: 1000,
+      ProductId: 1,
+    };
+    const spinDomain = { Fqdn: 'sandbagger.com', NameWithoutExtension: 'sandbagger', Extension: 'com', ProductId: 2 };
+
+    beforeEach(() => {
+      mockFindExact.mockResolvedValue({ ExactMatchDomain: exactDomain, Products: [] });
+      mockFindSpins.mockResolvedValue({ RecommendedDomains: [spinDomain], Products: [] });
+    });
+
+    it('places exact match first for short queries (≤20 chars)', async () => {
+      const response = await POST(createRequest({ query: 'mybrand' }));
+      const data = await response.json();
+      expect(data.domains[0].fqdn).toBe('sandbaggersteakhouse.com');
+    });
+
+    it('places spins before exact match for long queries (>20 chars)', async () => {
+      const response = await POST(createRequest({ query: 'sandbagger steakhouse lounge' }));
+      const data = await response.json();
+      expect(data.domains[0].fqdn).toBe('sandbagger.com');
+      const exactIndex = data.domains.findIndex((d: any) => d.fqdn === 'sandbaggersteakhouse.com');
+      expect(exactIndex).toBeGreaterThan(0);
+    });
+
+    it('reserves the last cap slot for exact match when spins fill maxResults on a long query', async () => {
+      // 3 spins + maxResults=3 → without fix, exact match is silently dropped
+      mockFindSpins.mockResolvedValue({
+        RecommendedDomains: [
+          { Fqdn: 'sandbagger.net', Extension: 'net', ProductId: 2 },
+          { Fqdn: 'sandbagger.io', Extension: 'io', ProductId: 3 },
+          { Fqdn: 'sandbagger.co', Extension: 'co', ProductId: 4 },
+        ],
+        Products: [],
+      });
+      const response = await POST(createRequest({ query: 'sandbagger steakhouse lounge', maxResults: 3 }));
+      const data = await response.json();
+      const fqdns: string[] = data.domains.map((d: any) => d.fqdn);
+      expect(fqdns).toContain('sandbaggersteakhouse.com');
+      expect(data.domains).toHaveLength(3);
+    });
+
+    it('deduplicates when spin fqdn matches exact match fqdn in long query', async () => {
+      mockFindSpins.mockResolvedValue({
+        RecommendedDomains: [{ ...exactDomain, AvailabilityStatus: undefined, AvailabilityCode: 1000, Extension: 'com' }],
+        Products: [],
+      });
+      const response = await POST(createRequest({ query: 'sandbagger steakhouse lounge' }));
+      const data = await response.json();
+      const fqdns: string[] = data.domains.map((d: any) => d.fqdn);
+      expect(fqdns.filter((f: string) => f === 'sandbaggersteakhouse.com')).toHaveLength(1);
+    });
+  });
+
   describe('error handling', () => {
     it('should return 502 when both searches fail', async () => {
       mockFindExact.mockRejectedValue(new Error('Exact failed'));
@@ -519,6 +580,272 @@ describe('POST /api/domains/search', () => {
           extraParams: { pagesize: 8 },
         })
       );
+    });
+  });
+
+  describe('multi-word brandable seed for findSpins', () => {
+    beforeEach(() => {
+      mockFindExact.mockResolvedValue(null);
+      mockFindSpins.mockResolvedValue({ RecommendedDomains: [], Products: [] });
+    });
+
+    it('condenses a 3-word business name to first two words for spins, but keeps full sanitized query for findExact', async () => {
+      await POST(createRequest({ query: 'Sandbagger Steakhouse Lounge', seedPrompt: 'Sandbagger Steakhouse Lounge' }));
+
+      expect(mockFindExact).toHaveBeenCalledWith(
+        expect.objectContaining({ query: 'sandbaggersteakhouselounge' })
+      );
+      expect(mockFindSpins).toHaveBeenCalledWith(
+        expect.objectContaining({ query: 'sandbaggersteakhouse' })
+      );
+    });
+
+    it('uses the full sanitized query for both APIs when input is a single word', async () => {
+      await POST(createRequest({ query: 'restaurantwebsite', seedPrompt: 'restaurantwebsite' }));
+
+      expect(mockFindExact).toHaveBeenCalledWith(
+        expect.objectContaining({ query: 'restaurantwebsite' })
+      );
+      expect(mockFindSpins).toHaveBeenCalledWith(
+        expect.objectContaining({ query: 'restaurantwebsite' })
+      );
+    });
+
+    it('joins two-word names without spaces for spins', async () => {
+      await POST(createRequest({ query: 'My Coffee', seedPrompt: 'My Coffee' }));
+
+      expect(mockFindExact).toHaveBeenCalledWith(
+        expect.objectContaining({ query: 'mycoffee' })
+      );
+      expect(mockFindSpins).toHaveBeenCalledWith(
+        expect.objectContaining({ query: 'mycoffee' })
+      );
+    });
+
+    it('takes only the first two words when input has many words (falls back when seed < 3 chars)', async () => {
+      await POST(createRequest({ query: 'A B C D E', seedPrompt: 'A B C D E' }));
+
+      expect(mockFindExact).toHaveBeenCalledWith(
+        expect.objectContaining({ query: 'abcde' })
+      );
+      // "A" + "B" → "ab" → length 2 < MIN_SEED_LENGTH (3) → falls back to sanitizedQuery
+      expect(mockFindSpins).toHaveBeenCalledWith(
+        expect.objectContaining({ query: 'abcde' })
+      );
+    });
+
+    it('caps the spins seed at 24 characters', async () => {
+      // Two long words: each 20 chars → 40 char seed → must be capped to 24
+      const longWord = 'a'.repeat(20);
+      const longerWord = 'b'.repeat(20);
+
+      await POST(createRequest({ query: `${longWord} ${longerWord}`, seedPrompt: `${longWord} ${longerWord}` }));
+
+      const spinsArgs = mockFindSpins.mock.calls[0][0];
+      expect(spinsArgs.query.length).toBeLessThanOrEqual(24);
+      expect(spinsArgs.query).toBe(('a'.repeat(20) + 'bbbb'));
+    });
+
+    it('strips non-alphanumeric characters from the spins seed', async () => {
+      await POST(createRequest({ query: "Joe's Pizza Place", seedPrompt: "Joe's Pizza Place" }));
+
+      // findExact gets sanitizedQuery — apostrophe stripped by the existing sanitizer.
+      expect(mockFindExact).toHaveBeenCalledWith(
+        expect.objectContaining({ query: 'joespizzaplace' })
+      );
+      // findSpins seed: first two words "Joe's" + "Pizza" → joespizza
+      expect(mockFindSpins).toHaveBeenCalledWith(
+        expect.objectContaining({ query: 'joespizza' })
+      );
+    });
+
+    it('falls back to sanitizedQuery when the first two words sanitize to empty', async () => {
+      // First two words ("!!!" "###") strip to empty, so spins seed should fall back.
+      await POST(createRequest({ query: '!!! ### realbrand', seedPrompt: '!!! ### realbrand' }));
+
+      const spinsArgs = mockFindSpins.mock.calls[0][0];
+      // Whatever the sanitized query is, spins must match findExact (no separate seed).
+      const exactArgs = mockFindExact.mock.calls[0][0];
+      expect(spinsArgs.query).toBe(exactArgs.query);
+      expect(spinsArgs.query.length).toBeGreaterThan(0);
+    });
+
+    it('handles extra whitespace between words', async () => {
+      await POST(createRequest({ query: '  Sandbagger    Steakhouse   Lounge  ', seedPrompt: 'Sandbagger Steakhouse Lounge' }));
+
+      expect(mockFindSpins).toHaveBeenCalledWith(
+        expect.objectContaining({ query: 'sandbaggersteakhouse' })
+      );
+    });
+
+    it('does NOT apply buildSpinsQuery when seedPrompt is absent (non-seed-aware caller)', async () => {
+      await POST(createRequest({ query: 'Sandbagger Steakhouse Lounge' }));
+
+      // Without seedPrompt, the route uses sanitizedQuery directly for findSpins
+      expect(mockFindSpins).toHaveBeenCalledWith(
+        expect.objectContaining({ query: 'sandbaggersteakhouselounge' })
+      );
+    });
+  });
+
+  describe('seeded fan-out via body.seeds', () => {
+    beforeEach(() => {
+      mockFindExact.mockResolvedValue(null);
+      mockFindSpins.mockResolvedValue({ RecommendedDomains: [], Products: [] });
+    });
+
+    it('fans out one findSpins call per seed when seeds[] is provided', async () => {
+      await POST(createRequest({
+        query: 'My coffee shop',
+        seeds: ['coffeeplace', 'morningbean', 'sipandgo', 'roastedhq'],
+        maxResults: 12,
+      }));
+
+      expect(mockFindSpins).toHaveBeenCalledTimes(4);
+      const queries = mockFindSpins.mock.calls.map(c => c[0].query).sort();
+      expect(queries).toEqual(['coffeeplace', 'morningbean', 'roastedhq', 'sipandgo']);
+    });
+
+    it('passes the full maxResults to each seed call', async () => {
+      await POST(createRequest({
+        query: 'My coffee shop',
+        seeds: ['aaa', 'bbb', 'ccc', 'ddd'],
+        maxResults: 12,
+      }));
+
+      for (const call of mockFindSpins.mock.calls) {
+        expect(call[0].extraParams.pagesize).toBe(12);
+      }
+    });
+
+    it('still passes the full maxResults even when maxResults < seeds count', async () => {
+      await POST(createRequest({
+        query: 'My coffee shop',
+        seeds: ['aaa', 'bbb', 'ccc', 'ddd'],
+        maxResults: 2,
+      }));
+      for (const call of mockFindSpins.mock.calls) {
+        expect(call[0].extraParams.pagesize).toBe(2);
+      }
+    });
+
+    it('findExact still receives the full sanitized query (not a seed)', async () => {
+      await POST(createRequest({
+        query: 'My coffee shop',
+        seeds: ['coffeeplace', 'morningbean'],
+      }));
+
+      expect(mockFindExact).toHaveBeenCalledWith(
+        expect.objectContaining({ query: 'mycoffeeshop' })
+      );
+    });
+
+    it('drops malformed seeds (non-string, too long, non-alphanumeric, too short)', async () => {
+      await POST(createRequest({
+        query: 'My coffee shop',
+        seeds: [
+          'goodseed',
+          123 as never,
+          'a'.repeat(50),
+          '!!!',
+          'ab', // < 3 chars after sanitize
+        ],
+      }));
+
+      const queries = mockFindSpins.mock.calls.map(c => c[0].query);
+      expect(queries).toContain('goodseed');
+      expect(queries).toContain('a'.repeat(24));
+      expect(queries).not.toContain('!!!');
+      expect(queries).not.toContain(123);
+      expect(queries).not.toContain('ab');
+    });
+
+    it('caps seeds at first 4 when more than 4 provided', async () => {
+      await POST(createRequest({
+        query: 'My coffee shop',
+        seeds: ['seed1', 'seed2', 'seed3', 'seed4', 'seed5', 'seed6'],
+      }));
+
+      expect(mockFindSpins).toHaveBeenCalledTimes(4);
+    });
+
+    it('falls back to buildSpinsQuery path when seeds is empty', async () => {
+      await POST(createRequest({
+        query: 'Sandbagger Steakhouse Lounge',
+        seedPrompt: 'Sandbagger Steakhouse Lounge',
+        seeds: [],
+      }));
+
+      expect(mockFindSpins).toHaveBeenCalledTimes(1);
+      expect(mockFindSpins).toHaveBeenCalledWith(
+        expect.objectContaining({ query: 'sandbaggersteakhouse' })
+      );
+    });
+
+    it('falls back to buildSpinsQuery path when all seeds are malformed or too short', async () => {
+      await POST(createRequest({
+        query: 'Sandbagger Steakhouse Lounge',
+        seedPrompt: 'Sandbagger Steakhouse Lounge',
+        seeds: ['!!!', 123 as never, '@@', 'ab'],
+      }));
+
+      expect(mockFindSpins).toHaveBeenCalledTimes(1);
+      expect(mockFindSpins).toHaveBeenCalledWith(
+        expect.objectContaining({ query: 'sandbaggersteakhouse' })
+      );
+    });
+
+    it('falls back to buildSpinsQuery path when seeds is not an array', async () => {
+      await POST(createRequest({
+        query: 'Sandbagger Steakhouse Lounge',
+        seedPrompt: 'Sandbagger Steakhouse Lounge',
+        seeds: 'not-an-array' as never,
+      }));
+
+      expect(mockFindSpins).toHaveBeenCalledTimes(1);
+    });
+
+    it('aggregates and dedupes domains from multiple findSpins responses', async () => {
+      let callIndex = 0;
+      mockFindSpins.mockImplementation(async () => {
+        callIndex++;
+        if (callIndex === 1) return { RecommendedDomains: [{ Fqdn: 'foo.com', ProductId: 1 }], Products: [] };
+        if (callIndex === 2) return { RecommendedDomains: [{ Fqdn: 'foo.com', ProductId: 1 }, { Fqdn: 'bar.com', ProductId: 2 }], Products: [] };
+        return { RecommendedDomains: [{ Fqdn: 'baz.com', ProductId: 3 }], Products: [] };
+      });
+
+      const response = await POST(createRequest({
+        query: 'My coffee shop',
+        seeds: ['seed1', 'seed2', 'seed3'],
+      }));
+      const data = await response.json();
+
+      expect(data.domains.map((d: any) => d.fqdn).sort()).toEqual(['bar.com', 'baz.com', 'foo.com']);
+    });
+
+    it('interleaves seed results so a tight maxResults cap includes domains from every seed', async () => {
+      // Each seed returns 3 results. With maxResults=3 and flat-concat, seed1 fills
+      // all 3 slots and seed2/seed3 contribute nothing. Interleaving fixes this.
+      mockFindSpins.mockImplementation(async ({ query }: { query: string }) => ({
+        RecommendedDomains: [
+          { Fqdn: `${query}-a.com`, ProductId: 1 },
+          { Fqdn: `${query}-b.com`, ProductId: 1 },
+          { Fqdn: `${query}-c.com`, ProductId: 1 },
+        ],
+        Products: [],
+      }));
+
+      const response = await POST(createRequest({
+        query: 'My coffee shop',
+        seeds: ['seed1', 'seed2', 'seed3'],
+        maxResults: 3,
+      }));
+      const data = await response.json();
+      const fqdns: string[] = data.domains.map((d: any) => d.fqdn);
+
+      expect(fqdns).toContain('seed1-a.com');
+      expect(fqdns).toContain('seed2-a.com');
+      expect(fqdns).toContain('seed3-a.com');
     });
   });
 });

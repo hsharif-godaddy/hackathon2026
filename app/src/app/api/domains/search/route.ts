@@ -60,6 +60,66 @@ function getDomainServicesEnv(): 'dev' | 'test' | 'prod' {
   return process.env.NODE_ENV === 'development' ? 'dev' : 'prod';
 }
 
+const MAX_SEEDS = 4;
+const MAX_SEED_LENGTH = 24;
+const MIN_SEED_LENGTH = 3;
+// Queries longer than this are multi-word concatenations
+// Spins are surfaced first so brandable alternatives appear before the ungainly exact match.
+const LONG_QUERY_THRESHOLD = 20;
+
+/**
+ * Round-robin interleave N arrays so that each source gets equal representation
+ * before the downstream maxResults cap is applied. Without this, a flat concat
+ * would let the first seed consume all available slots when results-per-seed ≥ cap.
+ */
+function interleaveArrays(groups: any[][]): any[] {
+  const result: any[] = [];
+  const maxLen = Math.max(0, ...groups.map(g => g.length));
+  for (let i = 0; i < maxLen; i++) {
+    for (const group of groups) {
+      if (i < group.length) result.push(group[i]);
+    }
+  }
+  return result;
+}
+
+/**
+ * Validate and sanitize a seeds[] array from the request body.
+ * Returns at most 4 alphanumeric-only seeds, each 3–24 chars.
+ * Threshold matches the agent service's parseSeeds floor so a future
+ * caller passing too-short tokens cannot fan out to useless findSpins calls.
+ */
+function validateSeeds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'string') continue;
+    const cleaned = item.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, MAX_SEED_LENGTH);
+    if (cleaned.length >= MIN_SEED_LENGTH) out.push(cleaned);
+    if (out.length === MAX_SEEDS) break;
+  }
+  return out;
+}
+
+/**
+ * Condense a multi-word business name into a short brandable seed for findSpins.
+ * findSpins generates good variations from short inputs but degrades badly with
+ * long concatenated strings (e.g. "Sandbagger Steakhouse Lounge" sanitizes to
+ * "sandbaggersteakhouselounge" and the API returns SandbaggerSteakhouseLounge.com
+ * as the exact-looking suggestion). Take the first two words from the original
+ * (pre-sanitize) input, sanitize, cap at 24 chars. Fall back to sanitizedQuery
+ * if the seed is empty so single-word inputs and edge cases still work.
+ */
+function buildSpinsQuery(original: string, sanitized: string): string {
+  const words: string[] = original.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 1) return sanitized;
+  const seed: string = words.slice(0, 2).join('')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .slice(0, 24);
+  return seed.length >= MIN_SEED_LENGTH ? seed : sanitized;
+}
+
 function getDomainServices(market: string): DomainServices {
   const env = getDomainServicesEnv();
 
@@ -153,36 +213,87 @@ export const POST = withCustomerAuth(async (
     const market = (clientMarket && LOCALE_RE.test(clientMarket)) ? clientMarket : await detectTranslationLocale();
     const domainServices = getDomainServices(market);
 
+    const validSeeds = validateSeeds(body.seeds);
+    const useFanout = validSeeds.length > 0;
+    const seedAwareCaller = typeof body.seedPrompt === 'string' && body.seedPrompt.trim().length > 0;
+    const spinsQuery: string = seedAwareCaller ? buildSpinsQuery(query, sanitizedQuery) : sanitizedQuery;
+
     logger.info('domains.search.start', {
       query: sanitizedQuery,
+      spinsQuery,
+      seedsCount: validSeeds.length,
+      seedsUsed: useFanout ? 'llm' : 'fallback',
       maxResults,
       market,
       isc: isc ?? null,
       customerId: authContext.user?.customerId,
     });
 
-    // Use Promise.allSettled to ensure both requests complete even if one fails
-    const results = await Promise.allSettled([
-      domainServices.findExact({
-        query: sanitizedQuery,
-        ...(isc ? { extraParams: { isc } } : {}),
-      }),
-      domainServices.findSpins({
-        query: sanitizedQuery,
-        extraParams: { pagesize: maxResults, ...(isc ? { isc } : {}) },
-      }),
-    ]);
+    const exactPromise = domainServices.findExact({
+      query: sanitizedQuery,
+      ...(isc ? { extraParams: { isc } } : {}),
+    });
 
+    // Each seed gets the full maxResults; downstream dedup-by-FQDN trims overlap.
+    // Per-seed pagesize trades a few extra GoDaddy result rows for predictable
+    // post-dedup output ≥ maxResults (vs floor(maxResults/N) which floors to as
+    // few as 1 result per seed for the real callers using maxResults=5 or 6).
+    const fanoutQueries = useFanout ? validSeeds : [spinsQuery];
+    if (useFanout) {
+      logger.info('domains.search.fanout.begin', {
+        seedsCount: validSeeds.length,
+        pagesizePerSeed: maxResults,
+      });
+    }
+    const spinsPromises = fanoutQueries.map(q =>
+      domainServices.findSpins({
+        query: q,
+        extraParams: { pagesize: maxResults, ...(isc ? { isc } : {}) },
+      })
+    );
+
+    const results = await Promise.allSettled([exactPromise, ...spinsPromises]);
 
     const exactData = results[0].status === 'fulfilled' ? results[0].value : null;
-    const spinsData = results[1].status === 'fulfilled' ? results[1].value : null;
+    const spinsResults = results.slice(1);
+    const fulfilledSpins = spinsResults
+      .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+      .map(r => r.value);
+    const rejectedSpins = spinsResults.filter(r => r.status === 'rejected');
 
     if (results[0].status === 'rejected') {
-      logger.warn('domains.search.exact-error', { error: results[0].reason?.message || 'Unknown error' });
+      logger.warn('domains.search.exact-error', {
+        error: (results[0] as PromiseRejectedResult).reason?.message || 'Unknown error',
+        reason: (results[0] as PromiseRejectedResult).reason?.name || 'unknown',
+        customerId: authContext.user?.customerId,
+      });
     }
-    if (results[1].status === 'rejected') {
-      logger.warn('domains.search.spins-error', { error: results[1].reason?.message || 'Unknown error' });
-    }
+    spinsResults.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        logger.warn('domains.search.spins-error', {
+          error: r.reason?.message || 'Unknown error',
+          reason: r.reason?.name || 'unknown',
+          seed: fanoutQueries[i],
+          customerId: authContext.user?.customerId,
+        });
+      }
+    });
+
+    logger.info('domains.search.fanout.summary', {
+      seedsCount: validSeeds.length,
+      fulfilled: fulfilledSpins.length,
+      rejected: rejectedSpins.length,
+    });
+
+    // Interleave per-seed results so every seed gets representation before the
+    // maxResults cap is applied (flatMap would let seed 1 fill all slots).
+    const spinsData = fulfilledSpins.length > 0
+      ? {
+          RecommendedDomains: interleaveArrays(fulfilledSpins.map(d => d?.RecommendedDomains || [])),
+          Domains: interleaveArrays(fulfilledSpins.map(d => d?.Domains || [])),
+          Products: fulfilledSpins.flatMap(d => d?.Products || []),
+        }
+      : null;
 
     if (!exactData && !spinsData) {
       logger.error('domains.search.api-error', {
@@ -222,21 +333,32 @@ export const POST = withCustomerAuth(async (
     const domains: any[] = [];
     const products = new Map<number, any>();
 
-    // Process exact match - AvailabilityStatus 1000 = available (API uses AvailabilityStatus not AvailabilityCode)
+    // For long queries the sanitized string is an unwieldy concatenation (e.g.
+    // "sandbaggersteakhouse2"). Show brandable spin suggestions first so the user
+    // sees useful alternatives before the exact match that mirrors their full input.
     const exactAvailStatus = exactData?.ExactMatchDomain?.AvailabilityStatus;
-    if (exactAvailStatus === 1000) {
-      const exact = exactData.ExactMatchDomain;
-      domains.push({
-        fqdn: exact.Fqdn,
-        sld: exact.NameWithoutExtension || exact.Sld,
-        tld: exact.Tld || exact.Extension,
-        availabilityCode: exactAvailStatus,
-        productId: exact.ProductId,
-        isPremium: exact.IsPremiumTier || exact.IsPremium || false,
-        isExactMatch: true,
-        priceDisplay: exact.PriceDisplay,
-        _raw: exact,
-      });
+    const isLongQuery = sanitizedQuery.length > LONG_QUERY_THRESHOLD;
+
+    const exactDomain = exactAvailStatus === 1000
+      ? (() => {
+          const exact = exactData.ExactMatchDomain;
+          return {
+            fqdn: exact.Fqdn,
+            sld: exact.NameWithoutExtension || exact.Sld,
+            tld: exact.Tld || exact.Extension,
+            availabilityCode: exactAvailStatus,
+            productId: exact.ProductId,
+            isPremium: exact.IsPremiumTier || exact.IsPremium || false,
+            isExactMatch: true,
+            priceDisplay: exact.PriceDisplay,
+            _raw: exact,
+          };
+        })()
+      : null;
+
+    // Short queries: exact match first (current behaviour)
+    if (!isLongQuery && exactDomain) {
+      domains.push(exactDomain);
     }
 
     // Process products from exact match
@@ -261,7 +383,7 @@ export const POST = withCustomerAuth(async (
     // Process spins (alternative suggestions)
     // RecommendedDomains are implicitly available - the API only returns available domains
     // Check both RecommendedDomains and Domains fields (API may use either)
-    const spinDomains = spinsData?.RecommendedDomains || spinsData?.Domains || [];
+    const spinDomains = [...(spinsData?.RecommendedDomains || []), ...(spinsData?.Domains || [])];
     for (const spin of spinDomains) {
       // Avoid duplicates
       if (!domains.some(d => d.fqdn === spin.Fqdn)) {
@@ -277,6 +399,11 @@ export const POST = withCustomerAuth(async (
           _raw: spin,
         });
       }
+    }
+
+    // Long queries: exact match appended after spins (if not already present via dedup)
+    if (isLongQuery && exactDomain && !domains.some(d => d.fqdn === exactDomain.fqdn)) {
+      domains.push(exactDomain);
     }
 
     // Process products from spins
@@ -300,17 +427,30 @@ export const POST = withCustomerAuth(async (
       }
     }
 
-    // Convert products Map to array for JSON serialization
-    const productsArray = Array.from(products.values());
+    // Cap output to maxResults so fan-out doesn't exceed caller expectations.
+    // For long queries the exact match is appended last; if spins fill all slots it
+    // would be silently dropped. Reserve the final slot for it in that case.
+    const exactDroppedByLongQueryCap =
+      isLongQuery &&
+      exactDomain !== null &&
+      !domains.slice(0, maxResults).some((d: any) => d.fqdn === exactDomain.fqdn);
+    const cappedDomains = exactDroppedByLongQueryCap
+      ? [...domains.slice(0, maxResults - 1), exactDomain]
+      : domains.slice(0, maxResults);
+
+    // Only include products referenced by the capped domain set
+    const referencedProductIds = new Set(cappedDomains.map(d => d.productId).filter(Boolean));
+    const productsArray = Array.from(products.values()).filter(p => referencedProductIds.has(p.productId));
 
     logger.info('domains.search.success', {
       query: sanitizedQuery,
-      domainsFound: domains.length,
+      domainsFound: cappedDomains.length,
+      totalBeforeCap: domains.length,
       productsFound: productsArray.length,
     });
 
     return NextResponse.json({
-      domains,
+      domains: cappedDomains,
       products: productsArray,
     });
   } catch (error) {

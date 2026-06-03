@@ -174,6 +174,7 @@ export default function DomainPurchaseWidget({
     error: searchError,
   } = useDomainSearch({
     query: searchQuery,
+    siteId: appId,
     maxResults: 6,
     enabled: searchQuery.length >= 2,
     ...(activeIsc ? { isc: activeIsc } : {}),

@@ -45,11 +45,14 @@ export default function DomainBar() {
   // Search for a suggested domain from site record name, falling back to app name.
   // Request up to 5 results so the API can return good alternatives
   // even when the exact match (e.g. yourbrand.com) is unavailable.
-  const domainQuery = toDomainQuery(site?.name?.trim() || appName?.trim() || '');
+  const rawName = site?.name?.trim() || appName?.trim() || '';
+  const domainQuery = toDomainQuery(rawName);
   const { data: suggestedDomainData, isError: isDomainSearchError } = useDomainSearch({
     query: domainQuery,
+    seedPrompt: rawName,
+    siteId: appId,
     maxResults: 5,
-    enabled: isAiroSubdomainCheck && isPublished && domainQuery.length > 2,
+    enabled: !!appId && isAiroSubdomainCheck && isPublished && domainQuery.length > 2,
   });
   const suggestedDomain = isDomainSearchError ? null : (suggestedDomainData?.domains?.[0]?.fqdn ?? null);
 

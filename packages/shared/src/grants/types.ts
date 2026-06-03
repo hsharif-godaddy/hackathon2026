@@ -24,6 +24,7 @@ export enum LlmCallSource {
   ToolColorScheme = 'tool:color-scheme',
   ToolVideoPrompt = 'tool:video-prompt',
   ServiceNameSuggestion = 'service:name-suggestion',
+  ServiceDomainSeedSuggestion = 'service:domain-seed-suggestion',
   ServiceSummarization = 'service:summarization',
   ServiceEmbeddings = 'service:embeddings',
   AgentAssessment = 'agent:assessment',

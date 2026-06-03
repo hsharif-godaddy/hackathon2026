@@ -131,6 +131,25 @@ describe('DomainBar', () => {
     expect(bar).toBeInTheDocument();
   });
 
+  it('should pass appId as siteId to useDomainSearch (required for LLM seed pre-call)', () => {
+    renderWithProviders(<DomainBar />);
+
+    expect(useDomainSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ siteId: 'app-123' })
+    );
+  });
+
+  it('should disable search when appId is unavailable', () => {
+    vi.mocked(useAppIdFromParams).mockReturnValue(undefined);
+
+    renderWithProviders(<DomainBar />);
+
+    const lastCall = vi.mocked(useDomainSearch).mock.calls.at(-1)?.[0];
+    expect(lastCall).toBeDefined();
+    expect(lastCall?.siteId).toBeUndefined();
+    expect(lastCall?.enabled).toBe(false);
+  });
+
   it('should normalize diacritics to ASCII in domain query', () => {
     mockDevelopStore.site = {
       name: 'Manoirs Lotbinière',
@@ -272,7 +291,7 @@ describe('DomainBar', () => {
     expect(container.querySelector('.bg-ai')).toBeInTheDocument();
     expect(useDomainSearch).toHaveBeenCalledWith(
       expect.objectContaining({
-        enabled: true,
+        enabled: false,
         query: 'testapp',
       }),
     );

@@ -32,6 +32,7 @@ import { mediaManifestService } from '../../services/MediaManifestService.js';
 
 import { ServerManagementTool } from '../../tools/server-management-tool.js';
 import { getNameSuggestionService } from '../../services/name-suggestion.js';
+import { getDomainSeedSuggestionService } from '../../services/domain-seed-suggestion.js';
 import { Logger, log } from '../../logging/index.js';
 import { BYPASS_SITE_IDS } from '../../services/features.js';
 import { searchCode } from '../../utils/code-search.js';
@@ -1249,6 +1250,54 @@ router.post('/suggest-name', async (req: Request, res: Response) => {
       error: 'Failed to generate name suggestion',
       details: error instanceof Error ? error.message : 'Unknown error'
     });
+  }
+});
+
+/**
+ * POST /apps/suggest-domain-seeds - Generate up to 4 brandable domain seeds for a business description
+ */
+router.post('/suggest-domain-seeds', async (req: Request, res: Response) => {
+  try {
+    const rawPrompt: unknown = req.body.prompt;
+
+    if (!rawPrompt || typeof rawPrompt !== 'string' || rawPrompt.trim().length === 0) {
+      return res.status(400).json({ error: 'Prompt is required and must be a non-empty string' });
+    }
+
+    // Strip /agent command using shared parseAgentCommand (matches /suggest-name)
+    const parsedAgentCommand = parseAgentCommand(rawPrompt);
+    const stripped: string = (parsedAgentCommand.hasCommand && parsedAgentCommand.hasBody)
+      ? parsedAgentCommand.strippedContent
+      : rawPrompt;
+
+    const trimmedPrompt = stripped.trim();
+
+    if (trimmedPrompt.length === 0) {
+      return res.status(400).json({ error: 'Prompt is required and must be a non-empty string' });
+    }
+
+    logger.info('route.apps.domain-seeds.begin', {
+      promptLength: trimmedPrompt.length,
+      promptPreview: trimmedPrompt.substring(0, 100),
+    });
+
+    const service = getDomainSeedSuggestionService();
+    // Intentionally no executionContext — LLM cost is platform-borne, not customer-attributed.
+    const seeds = await service.suggestDomainSeeds(trimmedPrompt);
+
+    if (seeds === null) {
+      logger.error('route.apps.domain-seeds.error', { reason: 'service-returned-null' });
+      return res.status(500).json({ error: 'Failed to generate domain seed suggestions' });
+    }
+
+    logger.info('route.apps.domain-seeds.success', { seedsCount: seeds.length });
+
+    return res.json({ seeds });
+  } catch (error) {
+    // Log full error server-side; do not return error.message in the body
+    // since Vercel AI SDK errors can occasionally embed provider URLs.
+    log.error(logger, 'route.apps.domain-seeds.error', error as Error, {});
+    return res.status(500).json({ error: 'Failed to generate domain seed suggestions' });
   }
 });
 
