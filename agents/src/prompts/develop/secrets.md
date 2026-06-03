@@ -20,9 +20,11 @@ export function GET() {
 
 ## Use `requestSecrets` Tool
 
-**Call immediately** when users mention secrets, API keys, or want to integrate services (Stripe, OpenAI, Google Maps, Twilio, AWS, etc.).
+**Call immediately** when users mention secrets, API keys, or want to integrate services (OpenAI, Google Maps, Twilio, AWS, etc.).
 
 Never mention .env files or explain alternatives. The form handles interaction.
+
+**Exception:** Stripe is skill-driven. The `stripe` and `stripe-v2` skills each manage their own key flow — follow whichever skill is active. The `stripe-v2` skill provisions Stripe keys automatically via `stripe-v2__setup` and forbids `requestSecrets` for any Stripe key; the legacy `stripe` skill calls `requestSecrets` per its own Step 3. Do not call `requestSecrets` for Stripe keys ahead of the active skill's instructions.
 
 ```typescript
 requestSecrets({
