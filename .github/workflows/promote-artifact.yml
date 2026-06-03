@@ -4,38 +4,38 @@ on:
   workflow_dispatch:
     inputs:
       component:
-        description: "Component to promote"
+        description: 'Component to promote'
         required: true
-        default: "app"
+        default: 'app'
         type: choice
         options:
-          - "app"
-          - "blog"
-          - "budget-service"
-          - "debug-console"
-          - "image-search-service"
-          - "knowledge-service"
+          - 'app'
+          - 'blog'
+          - 'budget-service'
+          - 'debug-console'
+          - 'image-search-service'
+          - 'knowledge-service'
       environment:
-        description: "Environment to promote to"
+        description: 'Environment to promote to'
         required: true
-        default: "test"
+        default: 'test'
         type: choice
         options:
-          - "dev-private"
-          - "pre-test"
-          - "test"
-          - "prod"
+          - 'dev-private'
+          - 'pre-test'
+          - 'test'
+          - 'prod'
       artifact_id:
-        description: "Artifact ID to promote (numeric only, from Katana UI)"
+        description: 'Artifact ID to promote (numeric only, from Katana UI)'
         required: true
         type: string
       skip_e2e:
-        description: "Skip E2E tests (used by release manager which triggers E2E separately)"
+        description: 'Skip E2E tests (used by release manager which triggers E2E separately)'
         required: false
         type: boolean
         default: false
 
-run-name: "[${{ inputs.component }}] Promoting ${{ inputs.artifact_id }} to ${{ inputs.environment }} | actor: ${{ github.actor }}"
+run-name: '[${{ inputs.component }}] Promoting ${{ inputs.artifact_id }} to ${{ inputs.environment }} | actor: ${{ github.actor }}'
 
 permissions:
   id-token: write # Required for Katana auth
@@ -43,7 +43,7 @@ permissions:
 
 jobs:
   promote:
-    name: "[${{ inputs.component }}] Promoting ${{ inputs.artifact_id }} to ${{ inputs.environment }}"
+    name: '[${{ inputs.component }}] Promoting ${{ inputs.artifact_id }} to ${{ inputs.environment }}'
     runs-on:
       labels:
         - airo-cicd-runners
@@ -188,13 +188,13 @@ jobs:
     with:
       result: ${{ needs.promote.result }}
       environment: ${{ inputs.environment }}
-      title: "Promotion"
+      title: 'Promotion'
       message: |
         *Component:* ${{ inputs.component }}
         *Environment:* ${{ inputs.environment }}
         *Artifact ID:* ${{ inputs.artifact_id }}
         *Actor:* ${{ github.actor }}
-      footer: "airo-app-builder"
+      footer: 'airo-app-builder'
 
   trigger-e2e:
     name: Trigger E2E Tests

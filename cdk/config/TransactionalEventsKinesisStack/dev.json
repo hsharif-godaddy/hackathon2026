@@ -9,6 +9,9 @@
       "arn:aws:iam::924341083046:role/eventbus-custom-eventbus-cross-account",
       "arn:aws:iam::334617369240:role/eventbus-custom-eventbus-cross-account",
       "arn:aws:iam::207848954651:role/eventbus-custom-eventbus-cross-account"
+    ],
+    "consumerRoleArns": [
+      "arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment1146GlobalEcsTaskRoleFB5E5A4F"
     ]
   }
 }

@@ -9,7 +9,7 @@ on:
   # Manual deployment
   workflow_dispatch:
 
-run-name: '[NOTIFICATION SERVICE - dev-private] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}'
+run-name: '[NOTIFICATION SERVICE - test] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}'
 
 permissions:
   id-token: write # required for artifactory token login
@@ -17,14 +17,14 @@ permissions:
 
 jobs:
   continuous-integration:
-    name: '[NOTIFICATION SERVICE - dev-private] branch: ${{ github.ref_name }}'
+    name: '[NOTIFICATION SERVICE - test] branch: ${{ github.ref_name }}'
     runs-on:
       labels:
         - airo-cicd-runners
         - self-hosted
 
     env:
-      DEPLOY_TO_ENV: dev-private
+      DEPLOY_TO_ENV: test
 
     steps:
       - name: Checkout Codebase
@@ -86,8 +86,6 @@ jobs:
           tags: ${{ steps.katana-app.outputs.app }}:${{ github.sha }}
           secret-files: |
             npmrc=/tmp/.npmrc-secret
-          cache-from: type=registry,ref=694282668781.dkr.ecr.us-west-2.amazonaws.com/airo-builder/notification-service:cache
-          cache-to: type=registry,ref=694282668781.dkr.ecr.us-west-2.amazonaws.com/airo-builder/notification-service:cache,mode=max
           build-args: |
             NODE_ENV=production
 

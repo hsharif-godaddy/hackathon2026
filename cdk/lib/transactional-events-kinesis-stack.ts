@@ -31,6 +31,11 @@ interface KinesisConfig {
      * prod: 380414489361 (prod cell)
      */
     producerRoleArns: string[];
+    /**
+     * Consumer role ARNs granted read access to the stream (ListShards, GetRecords, etc.).
+     * Add the Katana ECS task role for any service consuming from this stream.
+     */
+    consumerRoleArns: string[];
   };
 }
 
@@ -64,6 +69,14 @@ function validate(raw: unknown): KinesisConfig {
   }
   if (!ca['producerRoleArns'].every((arn: unknown) => typeof arn === 'string')) {
     throw new Error('Config crossAccount.producerRoleArns must be an array of strings');
+  }
+  if (ca['consumerRoleArns'] !== undefined) {
+    if (!Array.isArray(ca['consumerRoleArns'])) {
+      throw new Error('Config crossAccount.consumerRoleArns must be an array');
+    }
+    if (!ca['consumerRoleArns'].every((arn: unknown) => typeof arn === 'string')) {
+      throw new Error('Config crossAccount.consumerRoleArns must be an array of strings');
+    }
   }
   return raw as KinesisConfig;
 }
@@ -100,6 +113,24 @@ export class TransactionalEventsKinesisStack extends GDStack {
             'kinesis:PutRecords',
           ],
           principals: kinesisConfig.crossAccount.producerRoleArns.map(arn => new iam.ArnPrincipal(arn)),
+          effect: iam.Effect.ALLOW,
+          resources: [this.kinesisStream.streamArn],
+        })
+      );
+    }
+
+    const consumerRoleArns = kinesisConfig.crossAccount.consumerRoleArns ?? [];
+    if (consumerRoleArns.length > 0) {
+      this.kinesisStream.addToResourcePolicy(
+        new iam.PolicyStatement({
+          actions: [
+            'kinesis:DescribeStream',
+            'kinesis:DescribeStreamSummary',
+            'kinesis:GetRecords',
+            'kinesis:GetShardIterator',
+            'kinesis:ListShards',
+          ],
+          principals: consumerRoleArns.map(arn => new iam.ArnPrincipal(arn)),
           effect: iam.Effect.ALLOW,
           resources: [this.kinesisStream.streamArn],
         })
@@ -153,6 +184,13 @@ export class TransactionalEventsKinesisStack extends GDStack {
       new CfnOutput(this, 'ProducerRoles', {
         value: kinesisConfig.crossAccount.producerRoleArns.join(','),
         description: 'Cross-account producer role ARNs with write access',
+      });
+    }
+
+    if (consumerRoleArns.length > 0) {
+      new CfnOutput(this, 'ConsumerRoles', {
+        value: consumerRoleArns.join(','),
+        description: 'Consumer role ARNs with read access',
       });
     }
   }
