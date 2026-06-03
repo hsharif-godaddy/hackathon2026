@@ -152,7 +152,7 @@ export class AILibContextManager {
         const workspaceAppId = context.metadata?.appId as string | undefined
         const workspaceForApp = workspaceAppId ? createForWorkspace(workspaceAppId, 'preview') : null
 
-        const [kitMetaExists, classification] = workspaceForApp
+        const [kitMetaExists, combinedClassification, legacyClassification] = workspaceForApp
             ? await Promise.all([
                 // stat() returns per-path inline errors — not_found does not throw,
                 // so a missing UI kit just yields entry.error = 'not_found'. Any
@@ -162,11 +162,14 @@ export class AILibContextManager {
                         const entry = s.entries[0]
                         return !!entry && entry.error === undefined && entry.kind === 'file'
                     }),
-                // view() is right here — we use the parsed content below.
+                // Combined multi-file classification (preferred) plus the legacy
+                // single-file fallback for already-deployed apps. Parsed below.
+                workspaceForApp.files.view({ path: 'docs/.upload-classifications.json', limit: 65536 })
+                    .catch(swallowNotFound<ViewResult | null>(null)),
                 workspaceForApp.files.view({ path: 'docs/.upload-classification.json', limit: 65536 })
                     .catch(swallowNotFound<ViewResult | null>(null)),
             ])
-            : [false, null]
+            : [false, null, null]
 
         if (kitMetaExists) {
             conversationContextMessages.push({
@@ -188,23 +191,34 @@ export class AILibContextManager {
             })
         }
 
-        if (classification) {
-            try {
-                const parsed = JSON.parse(classification.content)
-                const fileName = parsed.fileName || 'unknown'
-                const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(fileName)
-                const filePath = isImage ? `src/assets/${fileName}` : `docs/${fileName}`
-                conversationContextMessages.push({
-                    role: 'user',
-                    content: `## Upload Classification\n\n\`\`\`json\n${classification.content}\n\`\`\`\n\nFile location: \`${filePath}\``,
-                    insertionOrder: 'after_history'
-                })
-            } catch (err: unknown) {
-                logger.warn('context.upload-classification.parse-failed', {
-                    appId: workspaceAppId,
-                    error: err instanceof Error ? err.message : String(err),
-                })
+        // Prefer the combined multi-file classification ({ files: [...] }); fall
+        // back to the legacy single-object file written by already-deployed apps.
+        const classificationEntries: Array<Record<string, unknown>> = []
+        try {
+            if (combinedClassification) {
+                const parsed = JSON.parse(combinedClassification.content)
+                if (Array.isArray(parsed?.files)) {
+                    classificationEntries.push(...parsed.files)
+                }
+            } else if (legacyClassification) {
+                classificationEntries.push(JSON.parse(legacyClassification.content))
             }
+        } catch (err: unknown) {
+            logger.warn('context.upload-classification.parse-failed', {
+                appId: workspaceAppId,
+                error: err instanceof Error ? err.message : String(err),
+            })
+        }
+
+        for (const entry of classificationEntries) {
+            const fileName = (entry.fileName as string) || 'unknown'
+            const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(fileName)
+            const filePath = isImage ? `src/assets/${fileName}` : `docs/${fileName}`
+            conversationContextMessages.push({
+                role: 'user',
+                content: `## Upload Classification\n\n\`\`\`json\n${JSON.stringify(entry, null, 2)}\n\`\`\`\n\nFile location: \`${filePath}\``,
+                insertionOrder: 'after_history'
+            })
         }
 
         const memorySummary = await this.loadConversationSummary(context)

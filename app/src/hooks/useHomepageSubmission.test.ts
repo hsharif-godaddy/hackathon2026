@@ -30,7 +30,7 @@ vi.mock('@/lib/quick-create', () => ({
   fetchQuickCreate: (...args: unknown[]) => mockFetchQuickCreate(...args),
   buildDevelopUrl: () => '/develop/app-1',
   setQuickCreateSessionFlags: vi.fn(),
-  storeUploadedFile: vi.fn(),
+  storeUploadedFiles: vi.fn(),
   extractApiError: (e: unknown) => e,
 }))
 vi.mock('next/navigation', () => ({

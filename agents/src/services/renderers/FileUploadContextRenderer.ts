@@ -130,11 +130,16 @@ async function classifyText(content: string, fileName: string, userPrompt: strin
   }
 }
 
-function persistClassification(appPath: string, classification: UploadClassification, fileName: string): void {
+function persistClassifications(
+  appPath: string,
+  entries: Array<UploadClassification & { fileName: string }>,
+): void {
   try {
-    const classificationPath = join(appPath, 'docs', '.upload-classification.json')
+    // appPath is server-controlled (workspace path); filename is a static literal — no user input in the join.
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    const classificationPath = join(appPath, 'docs', '.upload-classifications.json')
     mkdirSync(dirname(classificationPath), { recursive: true })
-    writeFileSync(classificationPath, JSON.stringify({ ...classification, fileName }, null, 2), 'utf-8')
+    writeFileSync(classificationPath, JSON.stringify({ files: entries }, null, 2), 'utf-8')
   } catch (err) {
     logger.warn('context.renderer.file_upload.persist_classification_failed', {
       error: err instanceof Error ? err.message : String(err),
@@ -156,10 +161,21 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
       conversationId?: string
     }
   ): Promise<RenderedContext | null> {
-    const data = attachment.data as { name?: string; isDesignMd?: boolean; isImage?: boolean } | undefined
-    if (!data?.name) {
-      return null
-    }
+    const rawData = attachment.data as
+      | { name?: string; isDesignMd?: boolean; isImage?: boolean }
+      | { files?: Array<{ name: string; isDesignMd?: boolean; isImage?: boolean }> }
+      | undefined
+
+    if (!rawData) return null
+
+    const files: Array<{ name: string; isDesignMd?: boolean; isImage?: boolean }> =
+      'files' in rawData && Array.isArray(rawData.files)
+        ? rawData.files
+        : 'name' in rawData && rawData.name
+          ? [{ name: rawData.name, isDesignMd: (rawData as { isDesignMd?: boolean }).isDesignMd, isImage: (rawData as { isImage?: boolean }).isImage }]
+          : []
+
+    if (files.length === 0) return null
 
     const appId = context?.appId
     const app = appId ? appRepo.findById(appId) : null
@@ -169,19 +185,58 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
       return null
     }
 
-    const fileName = data.name
-    const ext = fileName.substring(fileName.lastIndexOf('.')).toLowerCase()
-    const isImage = data.isImage || IMAGE_EXTENSIONS.includes(ext)
-
     const workspace = createForWorkspace(appId!, 'preview')
     if (!workspace) {
       logger.warn('context.renderer.file_upload.workspace_unavailable', { appId })
       return {
-        content: `File "${fileName}" was uploaded but workspace is unavailable.`,
+        content: files.map(f => `File "${f.name}" was uploaded but workspace is unavailable.`).join('\n'),
         role: 'user',
         insertionOrder: 'after_history',
       }
     }
+
+    const sections: string[] = []
+    const assetImages: string[] = []
+    const classifications: Array<UploadClassification & { fileName: string }> = []
+
+    for (const file of files) {
+      const result = await this.renderSingleFile(file, userPrompt, appId!, workspace)
+      if (result) {
+        sections.push(result.content)
+        if (result.assetImages) {
+          assetImages.push(...result.assetImages)
+        }
+        if (result.classification) {
+          classifications.push({ ...result.classification, fileName: file.name })
+        }
+      }
+    }
+
+    if (sections.length === 0) return null
+
+    // Persist every file's classification together so follow-up turns can
+    // re-inject all of them — not just the last file processed in the loop.
+    if (classifications.length > 0) {
+      persistClassifications(appPath, classifications)
+    }
+
+    return {
+      content: sections.join('\n\n---\n\n'),
+      role: 'user',
+      insertionOrder: 'after_history',
+      ...(assetImages.length > 0 && { assetImages }),
+    }
+  }
+
+  private async renderSingleFile(
+    file: { name: string; isDesignMd?: boolean; isImage?: boolean },
+    userPrompt: string,
+    appId: string,
+    workspace: NonNullable<ReturnType<typeof createForWorkspace>>,
+  ): Promise<{ content: string; assetImages?: string[]; classification?: UploadClassification } | null> {
+    const fileName = file.name
+    const ext = fileName.substring(fileName.lastIndexOf('.')).toLowerCase()
+    const isImage = file.isImage || IMAGE_EXTENSIONS.includes(ext)
 
     if (isImage) {
       let buffer: Buffer
@@ -196,8 +251,6 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
         })
         return {
           content: `Image file "${fileName}" was uploaded but not found on disk.`,
-          role: 'user',
-          insertionOrder: 'after_history',
         }
       }
 
@@ -214,8 +267,6 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
           `Image uploaded to: \`src/assets/${fileName}\``,
         ]
 
-        persistClassification(appPath, result.classification, fileName)
-
         logger.info('context.renderer.file_upload.image_classified', {
           appId, fileName, classification: result.classification.classification,
           variant: result.classification.variant,
@@ -223,9 +274,8 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
 
         return {
           content: sections.join('\n'),
-          role: 'user',
-          insertionOrder: 'after_history',
           assetImages: [result.dataUrl],
+          classification: result.classification,
         }
       }
 
@@ -237,8 +287,6 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
 
         return {
           content: `Image uploaded to: \`src/assets/${fileName}\`. Classification unavailable.`,
-          role: 'user',
-          insertionOrder: 'after_history',
           assetImages: [dataUrl],
         }
       } catch (err) {
@@ -247,8 +295,6 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
         })
         return {
           content: `Image uploaded to: \`src/assets/${fileName}\`. Classification and vision unavailable.`,
-          role: 'user',
-          insertionOrder: 'after_history',
         }
       }
     }
@@ -266,8 +312,6 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
       })
       return {
         content: `File "${fileName}" was uploaded but not found on disk at \`docs/${fileName}\`.`,
-        role: 'user',
-        insertionOrder: 'after_history',
       }
     }
     const classification = await classifyText(content, fileName, userPrompt)
@@ -287,8 +331,6 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
         content,
       ]
 
-      persistClassification(appPath, classification, fileName)
-
       logger.info('context.renderer.file_upload.text_classified', {
         appId, fileName, classification: classification.classification,
         variant: classification.variant, size: content.length,
@@ -296,16 +338,13 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
 
       return {
         content: sections.join('\n'),
-        role: 'user',
-        insertionOrder: 'after_history',
+        classification,
       }
     }
 
     // Fallback — provide content without classification
     return {
       content: `# Uploaded File: \`docs/${fileName}\`\n\n${content}`,
-      role: 'user',
-      insertionOrder: 'after_history',
     }
   }
 

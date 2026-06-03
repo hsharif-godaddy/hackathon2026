@@ -136,4 +136,103 @@ describe('FileUploadContextRenderer', () => {
 
     expect(result?.content).toContain('unavailable')
   })
+
+  describe('multi-file format', () => {
+    it('handles data.files array with multiple text files', async () => {
+      mockView
+        .mockResolvedValueOnce({ content: '# Brief\nPortfolio site.', lines: 2, size: 25, truncated: false })
+        .mockResolvedValueOnce({ content: 'Brand colors: blue, green.', lines: 1, size: 26, truncated: false })
+
+      const result = await renderer.render(
+        {
+          type: 'file_upload',
+          data: {
+            files: [
+              { name: 'brief.md', isDesignMd: false, isImage: false },
+              { name: 'brand.txt', isDesignMd: false, isImage: false },
+            ],
+          },
+        },
+        'build a site',
+        { appId: 'abc123', appPath: '/app' },
+      )
+
+      expect(mockView).toHaveBeenCalledTimes(2)
+      expect(result).not.toBeNull()
+      expect(result?.content).toContain('brief.md')
+      expect(result?.content).toContain('brand.txt')
+    })
+
+    it('handles data.files array with mixed image and text', async () => {
+      const pngData = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+      mockDownload.mockResolvedValueOnce({ data: pngData, contentType: 'image/png' })
+      mockView.mockResolvedValueOnce({ content: '# Notes', lines: 1, size: 7, truncated: false })
+
+      const result = await renderer.render(
+        {
+          type: 'file_upload',
+          data: {
+            files: [
+              { name: 'logo.png', isDesignMd: false, isImage: true },
+              { name: 'notes.md', isDesignMd: false, isImage: false },
+            ],
+          },
+        },
+        'build with this logo',
+        { appId: 'abc123', appPath: '/app' },
+      )
+
+      expect(mockDownload).toHaveBeenCalledWith({ path: 'src/assets/logo.png' })
+      expect(mockView).toHaveBeenCalledWith({ path: 'docs/notes.md', limit: 10000 })
+      expect(result).not.toBeNull()
+      expect(result?.content).toContain('logo.png')
+      expect(result?.content).toContain('notes.md')
+    })
+
+    it('falls back to legacy data.name format', async () => {
+      mockView.mockResolvedValueOnce({ content: '# Old format', lines: 1, size: 12, truncated: false })
+
+      const result = await renderer.render(
+        { type: 'file_upload', data: { name: 'legacy.md', isImage: false } },
+        'build a site',
+        { appId: 'abc123', appPath: '/app' },
+      )
+
+      expect(mockView).toHaveBeenCalledWith({ path: 'docs/legacy.md', limit: 10000 })
+      expect(result?.content).toContain('legacy.md')
+    })
+
+    it('returns null when data.files is empty array', async () => {
+      const result = await renderer.render(
+        { type: 'file_upload', data: { files: [] } },
+        'build a site',
+        { appId: 'abc123', appPath: '/app' },
+      )
+
+      expect(result).toBeNull()
+    })
+
+    it('skips individual files that fail and includes successes', async () => {
+      mockView
+        .mockRejectedValueOnce(new Error('not found'))
+        .mockResolvedValueOnce({ content: '# Good file', lines: 1, size: 11, truncated: false })
+
+      const result = await renderer.render(
+        {
+          type: 'file_upload',
+          data: {
+            files: [
+              { name: 'missing.md', isDesignMd: false, isImage: false },
+              { name: 'good.md', isDesignMd: false, isImage: false },
+            ],
+          },
+        },
+        'build a site',
+        { appId: 'abc123', appPath: '/app' },
+      )
+
+      expect(result).not.toBeNull()
+      expect(result?.content).toContain('good.md')
+    })
+  })
 })

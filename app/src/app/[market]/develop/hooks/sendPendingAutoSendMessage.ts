@@ -1,5 +1,5 @@
 import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
-import { retrieveAndUploadFile } from '@/lib/quick-create'
+import { retrieveAndUploadFiles, type StoredFileEntry } from '@/lib/quick-create'
 import { logger } from '@/lib/request-context'
 
 export interface SendPendingAutoSendMessageOptions {
@@ -7,37 +7,34 @@ export interface SendPendingAutoSendMessageOptions {
   appId: string
   jobId?: string | null
   templateId: string | null
-  uploadedFile?: { name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean } | null
+  uploadedFiles?: Array<{ name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean }> | null
   send: (options: SendMessageOptions) => Promise<void>
   setInputValue: (value: string) => void
   markInitialPromptSent: () => void
   markFirstFileEditSeen: () => void
   onSettled: () => void
+  onUploadsFailed?: (fileNames: string[]) => void
 }
 
-/**
- * Drives the auto-send try/catch/finally for the initial prompt on the develop
- * page. Extracted so the catch (input-restore) and finally (lock-release)
- * branches can be unit-tested without mounting the full page.
- *
- * Behavior contract:
- * - On `send` rejection: logs `develop-page.auto-send.failed` and restores the
- *   prompt to the chat input so the user can retry.
- * - On both success and failure paths: clears caller-owned refs via
- *   `onSettled()` and releases the `isAwaitingStream` lock by calling
- *   `markInitialPromptSent()`.
- * - Both `onSettled()` and `markInitialPromptSent()` are individually wrapped
- *   in try/catch so a throw in either does not prevent the other from running
- *   (refs must always clear; the lock must always release). `markInitialPromptSent`
- *   synchronously touches `sessionStorage` and can throw a `SecurityError` in
- *   privacy-restricted contexts (Safari ITP, sandboxed iframes, restrictive
- *   `cookieBehavior`). `onSettled` today only assigns to refs, but the contract
- *   does not guarantee infallibility — defensive wrapping prevents a future
- *   throw there from permanently locking `isAwaitingStream = true`.
- * - When `markInitialPromptSent()` throws after a `send` rejection, the
- *   `finally-failed` log includes the original send error as `originalError`
- *   so a Loki/Grafana diagnosis can correlate the two failures.
- */
+function computeTemplateId(
+  uploaded: StoredFileEntry[],
+  fallbackTemplateId: string | null,
+): string | undefined {
+  if (uploaded.length === 0) return fallbackTemplateId ?? undefined
+  if (uploaded.some(f => f.isUiKit)) return 'ui-kit-import'
+  if (uploaded.some(f => f.isAppImport)) return 'zip-import'
+  if (uploaded.some(f => f.isZip)) return 'zip-import'
+  if (uploaded.some(f => !f.isDesignMd)) return 'file-upload'
+  return fallbackTemplateId ?? undefined
+}
+
+function computeContextType(uploaded: StoredFileEntry[]): string {
+  if (uploaded.some(f => f.isUiKit)) return 'ui_kit_upload'
+  if (uploaded.some(f => f.isAppImport)) return 'app_import_upload'
+  if (uploaded.some(f => f.isZip)) return 'zip_upload'
+  return 'file_upload'
+}
+
 export async function sendPendingAutoSendMessage(
   opts: SendPendingAutoSendMessageOptions,
 ): Promise<void> {
@@ -46,30 +43,26 @@ export async function sendPendingAutoSendMessage(
     appId,
     jobId,
     templateId,
-    uploadedFile,
+    uploadedFiles,
     send,
     setInputValue,
     markInitialPromptSent,
     markFirstFileEditSeen,
     onSettled,
+    onUploadsFailed,
   } = opts
-
-  const effectiveTemplateId = uploadedFile?.isUiKit
-    ? 'ui-kit-import'
-    : (uploadedFile?.isAppImport || uploadedFile?.isZip)
-      ? 'zip-import'
-      : uploadedFile
-        ? 'file-upload'
-        : (templateId ?? undefined)
 
   let outerError: unknown = null
   try {
-    // Upload file to agent via HTTP (all file types use the same path)
-    let fileUploaded = false
-    if (uploadedFile) {
+    let uploaded: StoredFileEntry[] = []
+    let failed: string[] = []
+    if (uploadedFiles && uploadedFiles.length > 0) {
+      const expectedFileNames = uploadedFiles.map(f => f.name)
       try {
-        fileUploaded = await retrieveAndUploadFile(appId, jobId)
-        if (fileUploaded && uploadedFile.isAppImport) {
+        const result = await retrieveAndUploadFiles(appId, jobId, expectedFileNames)
+        uploaded = result.uploaded
+        failed = result.failed
+        if (uploaded.some(f => f.isAppImport)) {
           markFirstFileEditSeen()
         }
       } catch (uploadError) {
@@ -77,30 +70,46 @@ export async function sendPendingAutoSendMessage(
           error: uploadError instanceof Error ? uploadError.message : JSON.stringify(uploadError),
           appId,
         })
+        // Surface the failure to the user rather than sending silently with no
+        // attached context — every expected file is considered failed.
+        failed = expectedFileNames
       }
-      if (!fileUploaded && uploadedFile.isAppImport) {
+      if (uploaded.length === 0 && uploadedFiles.some(f => f.isAppImport)) {
         markFirstFileEditSeen()
+      }
+      // Files were attached this turn but nothing came back as uploaded or
+      // failed — the binaries weren't found in IndexedDB (record missing / key
+      // mismatch). Surface it instead of silently sending with no context.
+      if (uploaded.length === 0 && failed.length === 0) {
+        failed = expectedFileNames
+      }
+      if (failed.length > 0) {
+        onUploadsFailed?.(failed)
       }
     }
 
-    const contextType = uploadedFile?.isUiKit
-      ? 'ui_kit_upload'
-      : uploadedFile?.isAppImport
-        ? 'app_import_upload'
-        : uploadedFile?.isZip
-          ? 'zip_upload'
-          : 'file_upload'
+    const effectiveTemplateId = computeTemplateId(uploaded, templateId)
+    const contextType = computeContextType(uploaded)
 
     await send({
       content: messageToSend,
       aiEditContext: null,
-      templateId: fileUploaded ? effectiveTemplateId : (templateId ?? undefined),
-      ...(fileUploaded && {
-        uploadedFileName: uploadedFile!.name,
+      templateId: effectiveTemplateId,
+      ...(uploaded.length > 0 && {
+        uploadedFileName: uploaded[0].fileName,
         customContext: {
           type: contextType,
           persistence: 'save',
-          data: { uploaded: true, name: uploadedFile!.name, isDesignMd: uploadedFile!.isDesignMd, isZip: uploadedFile!.isZip, isUiKit: uploadedFile!.isUiKit, isAppImport: uploadedFile!.isAppImport, isImage: uploadedFile!.isImage },
+          data: {
+            files: uploaded.map(f => ({
+              name: f.fileName,
+              isDesignMd: f.isDesignMd,
+              isZip: f.isZip,
+              isUiKit: f.isUiKit,
+              isAppImport: f.isAppImport,
+              isImage: f.isImage,
+            })),
+          },
         },
       }),
     })

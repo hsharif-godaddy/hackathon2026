@@ -45,8 +45,8 @@ export interface HeroSectionProps {
   onTemplateChange?: (template: string) => void
   headingText?: string
   subheadingText?: string
-  uploadedFile?: UploadedDesignFile | null
-  onFileChange?: (file: UploadedDesignFile | null) => void
+  uploadedFiles?: UploadedDesignFile[]
+  onFilesChange?: (files: UploadedDesignFile[]) => void
 }
 
 export interface HeroSectionRef {

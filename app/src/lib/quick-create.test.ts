@@ -14,7 +14,7 @@ vi.mock('./itc', () => ({
 }))
 
 import { getItcOverride } from './itc'
-import { buildDevelopUrl, extractApiError, fetchQuickCreate, setQuickCreateSessionFlags } from './quick-create'
+import { buildDevelopUrl, extractApiError, fetchQuickCreate, getStoredUploadedFiles, setQuickCreateSessionFlags } from './quick-create'
 
 const mockAppFetch = appFetch as Mock
 const mockGetItcOverride = getItcOverride as Mock
@@ -175,6 +175,55 @@ describe('setQuickCreateSessionFlags', () => {
     setQuickCreateSessionFlags('site-1', 'test')
 
     expect(sessionStorage.getItem('initial-template-site-1')).toBeNull()
+  })
+})
+
+describe('setQuickCreateSessionFlags (multi-file)', () => {
+  beforeEach(() => sessionStorage.clear())
+
+  it('stores file array under plural key excluding zipRaw', () => {
+    const files = [
+      { name: 'a.txt', content: 'hi', isDesignMd: false, zipRaw: new ArrayBuffer(10) },
+      { name: 'b.png', content: '', isDesignMd: false, isImage: true, zipRaw: new ArrayBuffer(20) },
+    ]
+    setQuickCreateSessionFlags('site-1', 'build me a site', undefined, files)
+    const stored = JSON.parse(sessionStorage.getItem('initial-upload-files-site-1')!)
+    expect(stored).toHaveLength(2)
+    expect(stored[0]).toEqual({ name: 'a.txt', content: 'hi', isDesignMd: false })
+    expect(stored[1]).toEqual({ name: 'b.png', content: '', isDesignMd: false, isImage: true })
+    expect(stored[0].zipRaw).toBeUndefined()
+  })
+
+  it('does not write key when files array is empty', () => {
+    setQuickCreateSessionFlags('site-1', 'prompt', undefined, [])
+    expect(sessionStorage.getItem('initial-upload-files-site-1')).toBeNull()
+  })
+})
+
+describe('getStoredUploadedFiles', () => {
+  beforeEach(() => sessionStorage.clear())
+
+  it('reads new plural key', () => {
+    sessionStorage.setItem('initial-upload-files-job-1', JSON.stringify([
+      { name: 'a.txt', content: '', isDesignMd: true },
+    ]))
+    const result = getStoredUploadedFiles('job-1', 'app-1')
+    expect(result).toHaveLength(1)
+    expect(result[0].isDesignMd).toBe(true)
+  })
+
+  it('falls back to legacy singular key', () => {
+    sessionStorage.setItem('initial-upload-file-app-1', JSON.stringify(
+      { name: 'old.txt', content: 'legacy', isDesignMd: false },
+    ))
+    const result = getStoredUploadedFiles('job-x', 'app-1')
+    expect(result).toHaveLength(1)
+    expect(result[0].name).toBe('old.txt')
+  })
+
+  it('returns empty array when no keys exist', () => {
+    const result = getStoredUploadedFiles('nope', 'nada')
+    expect(result).toEqual([])
   })
 })
 

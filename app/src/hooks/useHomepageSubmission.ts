@@ -17,7 +17,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { validateDomainName } from '@/lib/domain-validation'
 import { getErrorMessage } from '@/lib/errors'
 import { shipAnalyticsLog } from '@/lib/logging'
-import { buildDevelopUrl, extractApiError, fetchQuickCreate, type QuickCreateResponse, setQuickCreateSessionFlags, storeUploadedFile } from '@/lib/quick-create'
+import { buildDevelopUrl, extractApiError, fetchQuickCreate, type QuickCreateResponse, setQuickCreateSessionFlags, storeUploadedFiles } from '@/lib/quick-create'
 import { logger } from '@/lib/request-context'
 import { validateAndClampPrompt } from '@/lib/waf-validation'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -46,7 +46,7 @@ export function useHomepageSubmission() {
     router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
   }, [pathname, router, searchParams])
   const isTemplateSelectorEnabled = useSwitchboard('appbuilder-template-selector')
-  const [uploadedFile, setUploadedFile] = useState<UploadedDesignFile | null>(null)
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedDesignFile[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -351,10 +351,21 @@ export function useHomepageSubmission() {
       const siteData: QuickCreateResponse = await createSiteResponse.json()
       logger.info('page.site.quick-create.success', { message: 'Site record created instantly', siteId: siteData.id, type: siteData.type })
 
-      setQuickCreateSessionFlags(siteData.id, promptToUse, selectedTemplate, uploadedFile)
+      setQuickCreateSessionFlags(siteData.id, promptToUse, selectedTemplate, uploadedFiles)
 
-      if (uploadedFile?.zipRaw) {
-        await storeUploadedFile(siteData.id, uploadedFile.zipRaw, uploadedFile.name)
+      const filesToStore = uploadedFiles
+        .filter(f => f.zipRaw)
+        .map(f => ({
+          raw: f.zipRaw!,
+          fileName: f.name,
+          isDesignMd: f.isDesignMd,
+          isZip: f.isZip,
+          isUiKit: f.isUiKit,
+          isAppImport: f.isAppImport,
+          isImage: f.isImage,
+        }))
+      if (filesToStore.length > 0) {
+        await storeUploadedFiles(siteData.id, filesToStore)
       }
 
       const redirectUrl = buildDevelopUrl(siteData.id, siteData.type)
@@ -406,7 +417,7 @@ export function useHomepageSubmission() {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [authIsLoading, isAuthenticated, isLoading, isNewUser, isRedirecting, logAnalytics, markHomepageEngaged, router, savePromptForRetry, selectedTemplate, signIn, t, uploadedFile])
+  }, [authIsLoading, isAuthenticated, isLoading, isNewUser, isRedirecting, logAnalytics, markHomepageEngaged, router, savePromptForRetry, selectedTemplate, signIn, t, uploadedFiles])
 
   useEffect(() => {
     if (!isAuthenticated || authIsLoading || subscriptionsLoading) return
@@ -471,8 +482,8 @@ export function useHomepageSubmission() {
     setSelectedTemplate,
     isLogoMode,
     isTemplateSelectorEnabled,
-    uploadedFile,
-    setUploadedFile,
+    uploadedFiles,
+    setUploadedFiles,
     isLoading,
     error,
     setHeroError,

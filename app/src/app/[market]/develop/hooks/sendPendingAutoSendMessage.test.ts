@@ -15,9 +15,9 @@ vi.mock('@/lib/request-context', () => ({
   },
 }))
 
-const mockRetrieveAndUploadFile = vi.fn().mockResolvedValue(true)
+const mockRetrieveAndUploadFiles = vi.fn().mockResolvedValue({ uploaded: [], failed: [] })
 vi.mock('@/lib/quick-create', () => ({
-  retrieveAndUploadFile: (...args: unknown[]) => mockRetrieveAndUploadFile(...args),
+  retrieveAndUploadFiles: (...args: unknown[]) => mockRetrieveAndUploadFiles(...args),
 }))
 
 const APP_ID = 'app-123'
@@ -30,8 +30,9 @@ interface BuildOptionsOverrides {
   markInitialPromptSent?: ReturnType<typeof vi.fn>
   markFirstFileEditSeen?: ReturnType<typeof vi.fn>
   onSettled?: ReturnType<typeof vi.fn>
+  onUploadsFailed?: ReturnType<typeof vi.fn>
   templateId?: string | null
-  uploadedFile?: { name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean } | null
+  uploadedFiles?: Array<{ name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean }> | null
 }
 
 function buildOptions(overrides: BuildOptionsOverrides = {}) {
@@ -39,12 +40,13 @@ function buildOptions(overrides: BuildOptionsOverrides = {}) {
     messageToSend: MESSAGE,
     appId: APP_ID,
     templateId: 'templateId' in overrides ? overrides.templateId ?? null : TEMPLATE_ID,
-    uploadedFile: overrides.uploadedFile ?? null,
+    uploadedFiles: overrides.uploadedFiles ?? null,
     send: overrides.send ?? vi.fn().mockResolvedValue(undefined),
     setInputValue: overrides.setInputValue ?? vi.fn(),
     markInitialPromptSent: overrides.markInitialPromptSent ?? vi.fn(),
     markFirstFileEditSeen: overrides.markFirstFileEditSeen ?? vi.fn(),
     onSettled: overrides.onSettled ?? vi.fn(),
+    onUploadsFailed: overrides.onUploadsFailed ?? vi.fn(),
   }
 }
 
@@ -230,12 +232,15 @@ describe('sendPendingAutoSendMessage', () => {
 
   it('calls markFirstFileEditSeen after successful app-import upload to dismiss overlay immediately', async () => {
     const markFirstFileEditSeen = vi.fn()
-    mockRetrieveAndUploadFile.mockResolvedValue(true)
+    mockRetrieveAndUploadFiles.mockResolvedValue({
+      uploaded: [{ fileName: 'app.zip', raw: new ArrayBuffer(1), isDesignMd: false, isZip: true, isAppImport: true }],
+      failed: [],
+    })
 
     await sendPendingAutoSendMessage(
       buildOptions({
         markFirstFileEditSeen,
-        uploadedFile: { name: 'app.zip', content: '', isDesignMd: false, isZip: true, isAppImport: true },
+        uploadedFiles: [{ name: 'app.zip', content: '', isDesignMd: false, isZip: true, isAppImport: true }],
       }),
     )
 
@@ -244,12 +249,15 @@ describe('sendPendingAutoSendMessage', () => {
 
   it('does not call markFirstFileEditSeen for non-app-import uploads', async () => {
     const markFirstFileEditSeen = vi.fn()
-    mockRetrieveAndUploadFile.mockResolvedValue(true)
+    mockRetrieveAndUploadFiles.mockResolvedValue({
+      uploaded: [{ fileName: 'styles.zip', raw: new ArrayBuffer(1), isDesignMd: false, isZip: true }],
+      failed: [],
+    })
 
     await sendPendingAutoSendMessage(
       buildOptions({
         markFirstFileEditSeen,
-        uploadedFile: { name: 'styles.zip', content: '', isDesignMd: false, isZip: true },
+        uploadedFiles: [{ name: 'styles.zip', content: '', isDesignMd: false, isZip: true }],
       }),
     )
 
@@ -258,15 +266,97 @@ describe('sendPendingAutoSendMessage', () => {
 
   it('calls markFirstFileEditSeen even when app-import upload fails (dismisses overlay)', async () => {
     const markFirstFileEditSeen = vi.fn()
-    mockRetrieveAndUploadFile.mockResolvedValue(false)
+    mockRetrieveAndUploadFiles.mockResolvedValue({ uploaded: [], failed: ['app.zip'] })
 
     await sendPendingAutoSendMessage(
       buildOptions({
         markFirstFileEditSeen,
-        uploadedFile: { name: 'app.zip', content: '', isDesignMd: false, isZip: true, isAppImport: true },
+        uploadedFiles: [{ name: 'app.zip', content: '', isDesignMd: false, isZip: true, isAppImport: true }],
       }),
     )
 
     expect(markFirstFileEditSeen).toHaveBeenCalledOnce()
+  })
+
+  it('calls onUploadsFailed when some files fail to upload', async () => {
+    const onUploadsFailed = vi.fn()
+    mockRetrieveAndUploadFiles.mockResolvedValue({
+      uploaded: [{ fileName: 'ok.txt', raw: new ArrayBuffer(1), isDesignMd: false }],
+      failed: ['bad.png'],
+    })
+
+    await sendPendingAutoSendMessage(
+      buildOptions({
+        onUploadsFailed,
+        uploadedFiles: [
+          { name: 'ok.txt', content: 'hi', isDesignMd: false },
+          { name: 'bad.png', content: '', isDesignMd: false, isImage: true },
+        ],
+      }),
+    )
+
+    expect(onUploadsFailed).toHaveBeenCalledWith(['bad.png'])
+  })
+
+  it('does not include customContext when all uploads fail', async () => {
+    const send = vi.fn().mockResolvedValue(undefined)
+    mockRetrieveAndUploadFiles.mockResolvedValue({ uploaded: [], failed: ['file.png'] })
+
+    await sendPendingAutoSendMessage(
+      buildOptions({
+        send,
+        uploadedFiles: [{ name: 'file.png', content: '', isDesignMd: false, isImage: true }],
+      }),
+    )
+
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({
+      templateId: TEMPLATE_ID,
+    }))
+    expect(send).toHaveBeenCalledWith(expect.not.objectContaining({
+      customContext: expect.anything(),
+    }))
+  })
+
+  it('notifies onUploadsFailed with all expected files when retrieveAndUploadFiles throws', async () => {
+    const onUploadsFailed = vi.fn()
+    const send = vi.fn().mockResolvedValue(undefined)
+    mockRetrieveAndUploadFiles.mockRejectedValueOnce(new Error('IDB exploded'))
+
+    await sendPendingAutoSendMessage(
+      buildOptions({
+        send,
+        onUploadsFailed,
+        uploadedFiles: [
+          { name: 'a.txt', content: 'hi', isDesignMd: false },
+          { name: 'b.png', content: '', isDesignMd: false, isImage: true },
+        ],
+      }),
+    )
+
+    // The catch must surface every expected file rather than sending silently.
+    expect(onUploadsFailed).toHaveBeenCalledWith(['a.txt', 'b.png'])
+    // And the prompt still sends, but without attached file context.
+    expect(send).toHaveBeenCalledWith(expect.not.objectContaining({
+      customContext: expect.anything(),
+    }))
+  })
+
+  it('notifies onUploadsFailed when files were attached but none were found (empty uploaded + empty failed)', async () => {
+    const onUploadsFailed = vi.fn()
+    // Binaries missing from IndexedDB: resolves with nothing uploaded AND
+    // nothing flagged failed — must not be a silent no-op.
+    mockRetrieveAndUploadFiles.mockResolvedValueOnce({ uploaded: [], failed: [] })
+
+    await sendPendingAutoSendMessage(
+      buildOptions({
+        onUploadsFailed,
+        uploadedFiles: [
+          { name: 'a.txt', content: 'hi', isDesignMd: false },
+          { name: 'b.png', content: '', isDesignMd: false, isImage: true },
+        ],
+      }),
+    )
+
+    expect(onUploadsFailed).toHaveBeenCalledWith(['a.txt', 'b.png'])
   })
 })

@@ -51,8 +51,8 @@ export function setQuickCreateSessionFlags(
   siteId: string,
   prompt: string,
   templateId?: string,
-  uploadedFile?: { name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; zipFiles?: Array<{ path: string; content: string }> } | null,
-) {
+  uploadedFiles?: Array<{ name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean; zipRaw?: ArrayBuffer }>,
+): void {
   sessionStorage.setItem(`name-registration-pending-${siteId}`, 'true')
   sessionStorage.setItem(`initial-prompt-pending-${siteId}`, 'true')
   sessionStorage.setItem(`in-creation-flow-${siteId}`, 'true')
@@ -60,11 +60,28 @@ export function setQuickCreateSessionFlags(
   if (templateId && templateId !== 'default') {
     sessionStorage.setItem(`initial-template-${siteId}`, templateId)
   }
-  if (uploadedFile) {
-    // Don't serialize zipRaw (ArrayBuffer) — it's uploaded separately
-    const { zipRaw: _, ...serializable } = uploadedFile as Record<string, unknown>
-    sessionStorage.setItem(`initial-upload-file-${siteId}`, JSON.stringify(serializable))
+  if (uploadedFiles && uploadedFiles.length > 0) {
+    const serializable = uploadedFiles.map(({ zipRaw: _, ...rest }) => rest)
+    sessionStorage.setItem(`initial-upload-files-${siteId}`, JSON.stringify(serializable))
   }
+}
+
+export function getStoredUploadedFiles(
+  initialJobId: string | null | undefined,
+  appId: string | null | undefined,
+): Array<{ name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean }> {
+  const keysToTry = [initialJobId, appId].filter(Boolean) as string[]
+  for (const key of keysToTry) {
+    const pluralRaw = sessionStorage.getItem(`initial-upload-files-${key}`)
+    if (pluralRaw) {
+      try { return JSON.parse(pluralRaw) } catch { /* fall through */ }
+    }
+    const singularRaw = sessionStorage.getItem(`initial-upload-file-${key}`)
+    if (singularRaw) {
+      try { return [JSON.parse(singularRaw)] } catch { /* fall through */ }
+    }
+  }
+  return []
 }
 
 const UPLOAD_DB_NAME = 'airo-file-uploads'
@@ -79,51 +96,87 @@ function openUploadDb(): Promise<IDBDatabase> {
   })
 }
 
-export async function storeUploadedFile(siteId: string, raw: ArrayBuffer, fileName: string): Promise<void> {
+export interface StoredFileEntry {
+  raw: ArrayBuffer
+  fileName: string
+  isDesignMd: boolean
+  isZip?: boolean
+  isUiKit?: boolean
+  isAppImport?: boolean
+  isImage?: boolean
+}
+
+export async function storeUploadedFiles(siteId: string, files: StoredFileEntry[]): Promise<void> {
+  if (files.length === 0) return
   const db = await openUploadDb()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(UPLOAD_STORE, 'readwrite')
-    tx.objectStore(UPLOAD_STORE).put({ raw, fileName }, siteId)
+    tx.objectStore(UPLOAD_STORE).put({ files }, siteId)
     tx.oncomplete = () => { db.close(); resolve() }
     tx.onerror = () => { db.close(); reject(tx.error) }
   })
 }
 
-export async function retrieveAndUploadFile(siteId: string, jobId?: string | null): Promise<boolean> {
+function sortByUploadPriority(files: StoredFileEntry[]): StoredFileEntry[] {
+  const priority = (f: StoredFileEntry): number => {
+    if (f.isUiKit) return 0
+    if (f.isAppImport) return 1
+    if (f.isZip) return 2
+    if (f.isImage) return 3
+    return 4
+  }
+  return [...files].sort((a, b) => priority(a) - priority(b))
+}
+
+export async function retrieveAndUploadFiles(
+  siteId: string,
+  jobId?: string | null,
+  expectedFileNames: string[] = [],
+): Promise<{ uploaded: StoredFileEntry[]; failed: string[] }> {
   let db: IDBDatabase
   try {
     db = await openUploadDb()
   } catch {
-    return false
+    // DB unavailable — report the expected files as failed so the caller can
+    // notify the user instead of silently sending the prompt with no context.
+    return { uploaded: [], failed: expectedFileNames }
   }
 
   try {
     const keysToTry = [jobId, siteId].filter(Boolean) as string[]
-    let data: { raw: ArrayBuffer; fileName: string } | undefined
+    let entries: StoredFileEntry[] = []
     let matchedKey: string | undefined
 
     for (const key of keysToTry) {
-      const result = await new Promise<{ raw: ArrayBuffer; fileName: string } | undefined>((resolve, reject) => {
+      const result = await new Promise<unknown>((resolve, reject) => {
         const tx = db.transaction(UPLOAD_STORE, 'readonly')
         const req = tx.objectStore(UPLOAD_STORE).get(key)
         req.onsuccess = () => resolve(req.result)
         req.onerror = () => reject(req.error)
       })
       if (result) {
-        data = result
+        if ((result as { files?: unknown }).files) {
+          entries = (result as { files: StoredFileEntry[] }).files
+        } else if ((result as { raw?: unknown }).raw) {
+          const legacy = result as { raw: ArrayBuffer; fileName: string }
+          entries = [{ raw: legacy.raw, fileName: legacy.fileName, isDesignMd: false }]
+        }
         matchedKey = key
         break
       }
     }
 
-    if (!data || !matchedKey) {
-      return false
+    if (entries.length === 0 || !matchedKey) {
+      return { uploaded: [], failed: [] }
     }
 
     const { agentFetch } = await import('@/lib/agent-fetch')
     const { buildDynamicApiUrl } = await import('@/config/dynamic-api')
 
-    const ext = data.fileName.substring(data.fileName.lastIndexOf('.')).toLowerCase()
+    const sorted = sortByUploadPriority(entries)
+    const uploaded: StoredFileEntry[] = []
+    const failed: string[] = []
+
     const mimeMap: Record<string, string> = {
       '.zip': 'application/zip',
       '.png': 'image/png',
@@ -133,33 +186,63 @@ export async function retrieveAndUploadFile(siteId: string, jobId?: string | nul
       '.svg': 'image/svg+xml',
       '.webp': 'image/webp',
     }
-    const mimeType = mimeMap[ext] || 'text/plain'
-    const maxAttempts = 3
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        const url = await buildDynamicApiUrl('file-upload', siteId)
-        const formData = new FormData()
-        formData.append('file', new Blob([data.raw], { type: mimeType }), data.fileName)
-        const res = await agentFetch(url, { method: 'POST', body: formData, siteId })
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ error: 'Upload failed' }))
-          throw new Error(err.error || 'Failed to upload file')
-        }
 
-        // Delete from IndexedDB only after successful upload
-        await new Promise<void>((resolve) => {
-          const tx = db.transaction(UPLOAD_STORE, 'readwrite')
-          tx.objectStore(UPLOAD_STORE).delete(matchedKey!)
-          tx.oncomplete = () => resolve()
-          tx.onerror = () => resolve()
-        })
-        return true
-      } catch (err) {
-        if (attempt === maxAttempts) throw err
-        await new Promise(r => setTimeout(r, 2000 * attempt))
+    async function uploadOne(entry: StoredFileEntry): Promise<boolean> {
+      const ext = entry.fileName.substring(entry.fileName.lastIndexOf('.')).toLowerCase()
+      const mimeType = mimeMap[ext] || 'text/plain'
+      const maxAttempts = 3
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const url = await buildDynamicApiUrl('file-upload', siteId)
+          const formData = new FormData()
+          formData.append('file', new Blob([entry.raw], { type: mimeType }), entry.fileName)
+          const res = await agentFetch(url, { method: 'POST', body: formData, siteId })
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: 'Upload failed' }))
+            throw new Error(err.error || 'Failed to upload file')
+          }
+          return true
+        } catch (err) {
+          if (attempt === maxAttempts) return false
+          await new Promise(r => setTimeout(r, 2000 * attempt))
+        }
+      }
+      return false
+    }
+
+    const zips = sorted.filter(f => f.isZip || f.isUiKit || f.isAppImport)
+    const rest = sorted.filter(f => !f.isZip && !f.isUiKit && !f.isAppImport)
+
+    for (const entry of zips) {
+      if (await uploadOne(entry)) {
+        uploaded.push(entry)
+      } else {
+        failed.push(entry.fileName)
       }
     }
-    return false
+
+    await Promise.allSettled(rest.map(async (entry) => {
+      if (await uploadOne(entry)) {
+        uploaded.push(entry)
+      } else {
+        failed.push(entry.fileName)
+      }
+    }))
+
+    // Only clear the IndexedDB record once every file uploaded successfully.
+    // On partial or total failure, leave it in place so a later
+    // retrieveAndUploadFiles call can retry — the serialized sessionStorage
+    // record strips zipRaw, so IDB is the only source of the binary content.
+    if (failed.length === 0) {
+      await new Promise<void>((resolve) => {
+        const tx = db.transaction(UPLOAD_STORE, 'readwrite')
+        tx.objectStore(UPLOAD_STORE).delete(matchedKey!)
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => resolve()
+      })
+    }
+
+    return { uploaded, failed }
   } finally {
     db.close()
   }

@@ -1173,7 +1173,7 @@ function DevelopPageContent() {
         appId,
         jobId: init.initialJobId,
         templateId: init.ui.templateId ?? null,
-        uploadedFile: init.ui.uploadedFile ?? null,
+        uploadedFiles: init.ui.uploadedFiles ?? null,
         send: ws.actions.send,
         setInputValue,
         markInitialPromptSent: init.actions.markInitialPromptSent,

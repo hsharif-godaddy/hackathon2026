@@ -1,10 +1,10 @@
 import clsx from 'clsx'
-import { forwardRef, useImperativeHandle, useState } from 'react'
+import { forwardRef, useImperativeHandle } from 'react'
 import { FormattedMessage } from 'react-intl'
 import Box from '@ux/box'
 import { text } from '@ux/text'
 
-import DesignFileUpload, { DesignFileUploadCard } from '@/app/[market]/components/DesignFileUpload'
+import DesignFileUpload, { DesignFileUploadCard, DesignFileUploadSkeleton } from '@/app/[market]/components/DesignFileUpload'
 import TemplateSelector from '@/app/[market]/components/TemplateSelector'
 import type { HeroSectionProps, HeroSectionRef } from '@/app/[market]/components/types'
 import { AnimatedDisclaimer } from '@/components/home/AnimatedDisclaimer'
@@ -17,6 +17,7 @@ import { SubmitInitialPrompt } from '@/components/home/SubmitInitialPrompt'
 import { HOMEPAGE_ENGAGEMENT_COHORT_IDS } from '@/experiments/homepage-engagement-variations/cohort-ids'
 import ExamplesSection from '@/experiments/homepage-engagement-variations/hero_content_improvement/HeroExamples'
 import { useAnimatedPlaceholder } from '@/hooks/home/useAnimatedPlaceholder'
+import { useFileUploadState } from '@/hooks/home/useFileUploadState'
 import { useHeroPromptState } from '@/hooks/home/useHeroPromptState'
 import { useTextareaAutoResize } from '@/hooks/home/useTextareaAutoResize'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
@@ -34,8 +35,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   onTemplateChange,
   headingText,
   subheadingText,
-  uploadedFile,
-  onFileChange,
+  uploadedFiles,
+  onFilesChange,
 }, ref) => {
   useImpression('homepage.firstprompt.view', { customProperties: { variant: HOMEPAGE_ENGAGEMENT_COHORT_IDS.BUILD_FOR_FREE } })
   const { isBelowSmBreakpoint, isMdBreakpoint } = useBreakpoints()
@@ -63,7 +64,12 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
   const promptTextareaRef = useTextareaAutoResize({ displayText })
   const animatedPlaceholder = useAnimatedPlaceholder({ isFocused, displayText })
-  const [fileUploadError, setFileUploadError] = useState<string | null>(null)
+  const {
+    fileUploadError, setFileUploadError,
+    isPickerProcessing, setIsPickerProcessing,
+    processingFiles, setProcessingFiles,
+    isProcessing, isFileDragOver, uploadedFilesRef, dragProps,
+  } = useFileUploadState({ uploadedFiles, onFilesChange, isLoading })
 
   useImperativeHandle(ref, () => ({
     typeText,
@@ -71,7 +77,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   }), [typeText])
 
   return (
-    <Box className="flex flex-col gap-2 md:gap-3 px-2 sm:px-3 lg:px-4 pt-12 min-h-[calc(100vh-3rem)] items-center justify-center">
+    <Box className="flex flex-col gap-2 md:gap-3 px-2 sm:px-3 lg:px-4 pt-12 min-h-[calc(100vh-3rem)] items-center justify-center" {...dragProps}>
       <text.h1
         as='heading'
         size={isBelowSmBreakpoint ? 2 : isMdBreakpoint ? 3 : 4}
@@ -106,7 +112,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
         <Box gap={isMdBreakpoint ? 'md' : 'lg'}>
           <div
             className={clsx('relative transition-all duration-300 ease-out glowing-input', {
-              'glowing-input--disabled': isLoading
+              'glowing-input--disabled': isLoading,
+              'ring-2 ring-intents-ux-action-borderColor bg-intents-ux-action-backgroundColor/5': isFileDragOver,
             })}
             onMouseEnter={onPromptBoxMouseEnter}
             onMouseLeave={onPromptBoxMouseLeave}
@@ -116,12 +123,18 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               elevation="float"
               gap={isBelowSmBreakpoint ? 'sm' : 'md'}
             >
-              {uploadedFile && onFileChange && (
-                <DesignFileUploadCard
-                  uploadedFile={uploadedFile}
-                  onRemove={() => onFileChange(null)}
-                  disabled={isLoading}
-                />
+              {((uploadedFiles ?? []).length > 0 || processingFiles.length > 0) && onFilesChange && (
+                <div aria-live="polite" className="flex flex-wrap gap-2">
+                  {(uploadedFiles ?? []).map((file, idx) => (
+                    <DesignFileUploadCard
+                      key={`${file.name}-${file.zipRaw?.byteLength ?? 0}`}
+                      uploadedFile={file}
+                      onRemove={() => onFilesChange((uploadedFiles ?? []).filter((_, i) => i !== idx))}
+                      disabled={isLoading}
+                    />
+                  ))}
+                  <DesignFileUploadSkeleton fileNames={processingFiles} />
+                </div>
               )}
 
               <textarea
@@ -143,11 +156,14 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 <PromptInputErrors bytesRemaining={bytesRemaining} isOverLimit={isOverLimit} fileUploadError={fileUploadError} />
 
                 <Box orientation="horizontal" gap="sm">
-                  {onFileChange && (
+                  {onFilesChange && (
                     <DesignFileUpload
-                      uploadedFile={uploadedFile ?? null}
-                      onFileChange={onFileChange}
+                      currentFilesRef={uploadedFilesRef}
+                      onFilesChange={onFilesChange}
                       onError={setFileUploadError}
+                      isProcessing={isProcessing}
+                      onProcessingChange={setIsPickerProcessing}
+                      onProcessingFilesChange={setProcessingFiles}
                       disabled={isLoading}
                     />
                   )}

@@ -52,8 +52,8 @@ export function HeroContentImprovementHomePage({ serverFeatures }: HomeContentPr
             error={hp.error}
             setError={hp.setHeroError}
             onExampleClick={hp.handleExampleClick}
-            uploadedFile={hp.uploadedFile}
-            onFileChange={hp.setUploadedFile}
+            uploadedFiles={hp.uploadedFiles}
+            onFilesChange={hp.setUploadedFiles}
             onTemplateChange={hp.setSelectedTemplate}
             {...(hp.isTemplateSelectorEnabled && {
               selectedTemplate: hp.selectedTemplate,
