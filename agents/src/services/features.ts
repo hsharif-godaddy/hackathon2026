@@ -352,6 +352,7 @@ export const profileGatedSkills: Set<string> = new Set([
   'complianceDocs',
   'inbox',
   'stripe-v2',
+  'ssrMigration',
 ]);
 
 /**

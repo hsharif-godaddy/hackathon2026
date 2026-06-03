@@ -71,6 +71,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 const RED = '\x1b[31m';
 const YELLOW = '\x1b[33m';
@@ -521,12 +522,90 @@ function checkUntrackedTemplateFiles(changes, manifest) {
   return false;
 }
 
+/**
+ * SSR skill template files that must stay byte-for-byte identical to
+ * their v8 template counterparts. The skill installs these into customer
+ * apps; drift means migrated apps get different code than what the base
+ * template ships.
+ */
+export const SSR_SKILL_TEMPLATE_PAIRS = [
+  {
+    skillPath: 'agents/src/skills/ssr-migration/templates/server/entry.ts',
+    v8Path: 'app-templates/v8/src/server/entry.ts',
+  },
+  {
+    skillPath: 'agents/src/skills/ssr-migration/templates/entry-server.tsx',
+    v8Path: 'app-templates/v8/src/entry-server.tsx',
+  },
+  {
+    skillPath: 'agents/src/skills/ssr-migration/templates/components/CookieBanner.tsx',
+    v8Path: 'app-templates/v8/src/components/CookieBanner.tsx',
+  },
+  {
+    skillPath: 'agents/src/skills/ssr-migration/templates/components/CookieBannerErrorBoundary.tsx',
+    v8Path: 'app-templates/v8/src/components/CookieBannerErrorBoundary.tsx',
+  },
+  {
+    skillPath: 'agents/src/skills/ssr-migration/templates/lib/seo-routes.ts',
+    v8Path: 'app-templates/v8/src/lib/seo-routes.ts',
+  },
+  {
+    skillPath: 'agents/src/skills/ssr-migration/templates/components/Spinner.tsx',
+    v8Path: 'app-templates/v8/src/components/Spinner.tsx',
+  },
+];
+
+export function checkSsrSkillTemplateSync(changes, readers = {}) {
+  const { readStaged: rs = readStaged, readHead: rh = readHead } = readers;
+  const stagedPaths = new Set(changes.map((c) => c.path));
+  const failures = [];
+
+  for (const pair of SSR_SKILL_TEMPLATE_PAIRS) {
+    const skillStaged = stagedPaths.has(pair.skillPath);
+    const v8Staged = stagedPaths.has(pair.v8Path);
+    if (!skillStaged && !v8Staged) continue;
+
+    const skillContent = skillStaged ? rs(pair.skillPath) : rh(pair.skillPath);
+    const v8Content = v8Staged ? rs(pair.v8Path) : rh(pair.v8Path);
+
+    if (skillContent === null || v8Content === null) continue;
+    if (skillContent !== v8Content) failures.push(pair);
+  }
+
+  if (failures.length === 0) return true;
+
+  console.error(`${RED}${BOLD}[template-sync] SSR skill templates out of sync with v8 template${RESET}`);
+  for (const f of failures) {
+    console.error(`  - ${f.skillPath}`);
+    console.error(`    ↕ ${f.v8Path}`);
+  }
+  console.error('');
+  console.error(`${BOLD}Why this is blocked:${RESET}`);
+  console.error('  The SSR skill installs these files into customer apps during migration.');
+  console.error('  If they differ from the v8 base template, migrated apps get different');
+  console.error('  code than apps created from scratch — silent divergence that breaks');
+  console.error('  sync-template-files.js hash matching down the line.');
+  console.error('');
+  console.error(`${BOLD}Fix:${RESET}`);
+  console.error('  Update the skill template to match the v8 template (or vice versa)');
+  console.error('  so both sides are identical before committing.');
+  return false;
+}
+
 function main() {
   const changes = getStagedChanges();
   if (changes === null) return 0; // git unavailable; warning already logged
 
-  const relevant = changes.some((c) => isInTemplate(c.path) || (c.oldPath && isInTemplate(c.oldPath)));
+  const ssrSkillPaths = new Set(SSR_SKILL_TEMPLATE_PAIRS.flatMap((p) => [p.skillPath, p.v8Path]));
+  const relevant = changes.some(
+    (c) => isInTemplate(c.path) || (c.oldPath && isInTemplate(c.oldPath)) || ssrSkillPaths.has(c.path)
+  );
   if (!relevant) return 0;
+
+  const ssrSkillOk = checkSsrSkillTemplateSync(changes);
+
+  const v8Relevant = changes.some((c) => isInTemplate(c.path) || (c.oldPath && isInTemplate(c.oldPath)));
+  if (!v8Relevant) return ssrSkillOk ? 0 : 1;
 
   const manifest = loadManifest();
   if (manifest === null) return 1;
@@ -535,12 +614,13 @@ function main() {
   const untrackedOk = checkUntrackedTemplateFiles(changes, manifest);
   const hashOk = checkHashDrift(changes, manifest);
 
-  return rsyncManagedOk && untrackedOk && hashOk ? 0 : 1;
+  return rsyncManagedOk && untrackedOk && hashOk && ssrSkillOk ? 0 : 1;
 }
 
-try {
-  process.exit(main());
-} catch (err) {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  try {
+    process.exit(main());
+  } catch (err) {
   // Final safety net for any non-128 git error that propagates out of
   // gitShow (or any other unexpected throw). Without this the developer
   // sees a raw Node stack trace with no [template-sync] context, making
@@ -559,4 +639,5 @@ try {
   }
   console.error('  Commit blocked. Check git availability and repo integrity.');
   process.exit(1);
+  }
 }
