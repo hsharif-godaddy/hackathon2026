@@ -38,6 +38,34 @@ import { skillToolManager } from '../../../tools/skill-tool-manager.js';
 
 const STRIPE_PROVISIONING_RETRY_SECONDS = 30;
 
+// The setup tool's overall execution timeout (build-skill-tools wraps execute in
+// a Promise.race against this). It covers BOTH createSandbox and the best-effort
+// MCP reload, so the reload must yield enough headroom that returning the
+// claimUrl never races the timeout — see MCP_RELOAD_BUDGET_MARGIN_MS.
+const SETUP_TIMEOUT_MS = 30000;
+
+// Headroom reserved inside SETUP_TIMEOUT_MS for the synchronous return path. The
+// reload skips any attempt that would push past (start + SETUP_TIMEOUT_MS - this),
+// so a slow provisioning call can never make the reload trip the tool timeout and
+// discard an already-created sandbox's claimUrl.
+const MCP_RELOAD_BUDGET_MARGIN_MS = 2000;
+
+// Matches the directory name (and `enablementId` in skill.md) — buildAllSkillTools
+// derives the `stripe-v2__` tool prefix from the same source. Used to register
+// the dynamically-loaded MCP tools under the right skill.
+const SKILL_NAME = 'stripe-v2';
+
+// stripe-service accepts the secrets write (including STRIPE_MCP_KEY) before
+// `createSandbox` returns, but hosting delivers it into the alloc config.json
+// asynchronously — so the key readStripeMcpKey() looks for may not be present
+// the instant setup returns. Retry a few times with backoff so the tools get
+// registered before the turn ends (they become callable on the agent's NEXT
+// turn — see reloadMcpToolsAfterSetup), rather than forcing the user into a
+// new conversation. Total worst-case wait ~5s; the reload bails on any attempt
+// that wouldn't fit the remaining setup-timeout budget (see
+// MCP_RELOAD_BUDGET_MARGIN_MS) so it never starves the claimUrl return.
+const MCP_RELOAD_DELAYS_MS = [0, 2000, 3000];
+
 type ToolContext = {
   metadata?: {
     appId?: string;
@@ -46,6 +74,73 @@ type ToolContext = {
 
 function getAppIdFromContext(context?: ToolContext): string | undefined {
   return context?.metadata?.appId;
+}
+
+/**
+ * Best-effort: load the Stripe MCP tools for this app and register them so they
+ * become callable on the agent's NEXT turn — without a fresh conversation or
+ * process restart. Called after a successful `stripe-v2__setup` (which pushes
+ * STRIPE_MCP_KEY into the alloc).
+ *
+ * NOT same-turn: the agent run snapshots its executable tool map in
+ * `prepareCall` (packages/ai-lib agent-factory) before this runs, and
+ * `prepareStep` only filters that snapshot — so definitions registered here
+ * are picked up at the next turn's `prepareCall`, not the current one. The
+ * win is "no new conversation needed", not "usable this instant".
+ *
+ * Retries with backoff because the key is delivered to config.json
+ * asynchronously after provisioning (see MCP_RELOAD_DELAYS_MS). Never throws:
+ * if the key hasn't propagated within the retry window, the tools load on the
+ * next onLoad — which fires on skill *activation*, so for a continuously-active
+ * skill that's the next time it's re-activated (worst case a new conversation).
+ * The skill prose keeps the user moving in the meantime. Returns whether the
+ * tools were registered.
+ *
+ * `deadlineMs` bounds the retries inside the caller's setup-timeout budget: any
+ * attempt that wouldn't fit is skipped so the reload can't trip the tool timeout
+ * and discard the sandbox's claimUrl (see SETUP_TIMEOUT_MS).
+ */
+async function reloadMcpToolsAfterSetup(appId: string, deadlineMs: number): Promise<boolean> {
+  let sawError = false;
+  for (const [attempt, delayMs] of MCP_RELOAD_DELAYS_MS.entries()) {
+    if (Date.now() + delayMs > deadlineMs) {
+      // Provisioning ate the budget; stop rather than risk the timeout race
+      // discarding the already-created sandbox. Tools load on the next onLoad.
+      logger.info('skill.stripe_v2.setup.mcp_reload_budget_exhausted', { appId, attempt });
+      return false;
+    }
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    try {
+      const mcpTools = await loadStripeMcpTools(appId);
+      if (Object.keys(mcpTools).length > 0) {
+        skillToolManager.registerDynamicTools(SKILL_NAME, mcpTools);
+        logger.info('skill.stripe_v2.setup.mcp_tools_registered', {
+          appId,
+          attempt,
+          toolCount: Object.keys(mcpTools).length,
+        });
+        return true;
+      }
+    } catch (err) {
+      // loadStripeMcpTools already swallows MCP-client failures and returns {};
+      // this catch only guards an unexpected throw so it never fails setup.
+      sawError = true;
+      logger.warn('skill.stripe_v2.setup.mcp_reload_failed', {
+        appId,
+        attempt,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  // reason distinguishes the benign race (key still propagating to config.json)
+  // from a swallowed load failure, so this terminal line is self-diagnosing.
+  logger.info('skill.stripe_v2.setup.mcp_tools_not_ready', {
+    appId,
+    reason: sawError ? 'mcp_load_error' : 'key_not_propagated',
+  });
+  return false;
 }
 
 /**
@@ -122,9 +217,10 @@ export const setupTool: SkillToolDefinition = {
   }),
   config: {
     requiresApp: true,
-    timeout: 30000,
+    timeout: SETUP_TIMEOUT_MS,
   },
   async execute(input: SetupInput, context?: ToolContext) {
+    const startedAtMs = Date.now();
     const appId = getAppIdFromContext(context);
     if (!appId) {
       return { error: 'App ID is required. Pass context.metadata.appId.' };
@@ -138,11 +234,25 @@ export const setupTool: SkillToolDefinition = {
         country: input.country,
       });
       logger.info('skill.stripe_v2.setup.success', { appId, sandboxId: sandbox.sandboxId });
+
+      // Provisioning just pushed STRIPE_MCP_KEY into the alloc. Register the
+      // Stripe MCP catalog tools (create_product, list_products, …) so they're
+      // callable on the agent's NEXT turn — no new conversation needed. Not
+      // same-turn: the executable tool map for this turn was snapshotted before
+      // setup ran (see reloadMcpToolsAfterSetup). Best-effort.
+      const mcpToolsReadyNextTurn = await reloadMcpToolsAfterSetup(
+        appId,
+        startedAtMs + SETUP_TIMEOUT_MS - MCP_RELOAD_BUDGET_MARGIN_MS,
+      );
+
       return {
         success: true,
         sandboxId: sandbox.sandboxId,
         accountId: sandbox.accountId,
         claimUrl: sandbox.claimUrl,
+        // Named to signal next-turn availability so the model doesn't attempt a
+        // same-turn MCP call (which would silently no-op against the snapshot).
+        mcpToolsReadyNextTurn,
       };
     } catch (err) {
       if (isProvisioningUnavailable(err)) {

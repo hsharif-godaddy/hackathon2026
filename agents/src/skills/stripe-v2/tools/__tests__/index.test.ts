@@ -61,7 +61,10 @@ const { setupTool, statusTool, hooks } = await import('../index.js');
 
 describe('stripe-v2 skill tools', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    // resetAllMocks (not clearAllMocks) so a persistent mockResolvedValue set in
+    // one test can't leak its implementation into a later test that forgot to
+    // stub the MCP loader — which would otherwise hit real backoff timers.
+    vi.resetAllMocks();
   });
 
   describe('setupTool', () => {
@@ -70,6 +73,11 @@ describe('stripe-v2 skill tools', () => {
         sandboxId: 'cbsbx_fake_X',
         accountId: 'acct_fake_X',
         claimUrl: 'https://dashboard.stripe.com/fake-claim/cbsbx_fake_X',
+      });
+      // Key already propagated → MCP tools load on the first (zero-delay)
+      // attempt, so this test doesn't hit the backoff timers.
+      mockLoadStripeMcpTools.mockResolvedValue({
+        products_create: { description: 'create a product', execute: vi.fn() },
       });
 
       const result = await setupTool.execute(
@@ -87,7 +95,192 @@ describe('stripe-v2 skill tools', () => {
         sandboxId: 'cbsbx_fake_X',
         accountId: 'acct_fake_X',
         claimUrl: 'https://dashboard.stripe.com/fake-claim/cbsbx_fake_X',
+        mcpToolsReadyNextTurn: true,
       });
+    });
+
+    it('loads + registers the Stripe MCP tools after provisioning (available next turn)', async () => {
+      const fakeTool = { description: 'create a product', execute: vi.fn() };
+      mockCreateSandbox.mockResolvedValueOnce({
+        sandboxId: 'cbsbx_fake_X',
+        accountId: 'acct_fake_X',
+        claimUrl: 'https://dashboard.stripe.com/fake-claim/cbsbx_fake_X',
+      });
+      mockLoadStripeMcpTools.mockResolvedValueOnce({ products_create: fakeTool });
+
+      const result = await setupTool.execute(
+        { email: 'a@b.c', country: 'US' },
+        { metadata: { appId: 'app-1' } },
+      );
+
+      // The key has propagated, so the first attempt picks the tools up and
+      // registers them under the skill — callable on the agent's next turn
+      // without a new conversation.
+      expect(mockLoadStripeMcpTools).toHaveBeenCalledWith('app-1');
+      expect(mockRegisterDynamicTools).toHaveBeenCalledWith('stripe-v2', {
+        products_create: fakeTool,
+      });
+      expect(result).toMatchObject({ success: true, mcpToolsReadyNextTurn: true });
+    });
+
+    it('retries with backoff and registers on a later attempt when the key propagates late', async () => {
+      vi.useFakeTimers();
+      try {
+        const fakeTool = { description: 'create a product', execute: vi.fn() };
+        mockCreateSandbox.mockResolvedValueOnce({
+          sandboxId: 'cbsbx_fake_X',
+          accountId: 'acct_fake_X',
+          claimUrl: 'https://dashboard.stripe.com/fake-claim/cbsbx_fake_X',
+        });
+        // Empty on attempt 0 (key not propagated yet), tools on attempt 1.
+        mockLoadStripeMcpTools.mockResolvedValueOnce({});
+        mockLoadStripeMcpTools.mockResolvedValueOnce({ products_create: fakeTool });
+
+        const pending = setupTool.execute(
+          { email: 'a@b.c', country: 'US' },
+          { metadata: { appId: 'app-1' } },
+        );
+
+        // Attempt 0 (0ms) runs immediately; the 2nd attempt must wait the 2000ms
+        // backoff — proving the delays are real, not a no-op loop.
+        await vi.advanceTimersByTimeAsync(0);
+        expect(mockLoadStripeMcpTools).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(1999);
+        expect(mockLoadStripeMcpTools).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(mockLoadStripeMcpTools).toHaveBeenCalledTimes(2);
+
+        const result = await pending;
+        // Registered on attempt 1; the loop stops early (no 3rd attempt).
+        expect(mockLoadStripeMcpTools).toHaveBeenCalledTimes(2);
+        expect(mockRegisterDynamicTools).toHaveBeenCalledWith('stripe-v2', {
+          products_create: fakeTool,
+        });
+        expect(mockLoggerInfo).toHaveBeenCalledWith(
+          'skill.stripe_v2.setup.mcp_tools_registered',
+          expect.objectContaining({ appId: 'app-1', attempt: 1 }),
+        );
+        expect(result).toMatchObject({ success: true, mcpToolsReadyNextTurn: true });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('swallows a loadStripeMcpTools rejection and continues to the next attempt', async () => {
+      vi.useFakeTimers();
+      try {
+        const fakeTool = { description: 'create a product', execute: vi.fn() };
+        mockCreateSandbox.mockResolvedValueOnce({
+          sandboxId: 'cbsbx_fake_X',
+          accountId: 'acct_fake_X',
+          claimUrl: 'https://dashboard.stripe.com/fake-claim/cbsbx_fake_X',
+        });
+        // Attempt 0 throws (guards the unexpected-throw path), attempt 1 resolves.
+        mockLoadStripeMcpTools.mockRejectedValueOnce(new Error('mcp connect blip'));
+        mockLoadStripeMcpTools.mockResolvedValueOnce({ products_create: fakeTool });
+
+        const pending = setupTool.execute(
+          { email: 'a@b.c', country: 'US' },
+          { metadata: { appId: 'app-1' } },
+        );
+        await vi.runAllTimersAsync();
+        const result = await pending;
+
+        // The throw was swallowed (WARN), the loop continued, and attempt 1 won.
+        expect(mockLoggerWarn).toHaveBeenCalledWith(
+          'skill.stripe_v2.setup.mcp_reload_failed',
+          expect.objectContaining({ appId: 'app-1', attempt: 0 }),
+        );
+        expect(mockRegisterDynamicTools).toHaveBeenCalledWith('stripe-v2', {
+          products_create: fakeTool,
+        });
+        expect(result).toMatchObject({ success: true, mcpToolsReadyNextTurn: true });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('returns mcpToolsReadyNextTurn:false (and never throws) when the key never propagates, with backoff between attempts', async () => {
+      vi.useFakeTimers();
+      try {
+        mockCreateSandbox.mockResolvedValueOnce({
+          sandboxId: 'cbsbx_fake_X',
+          accountId: 'acct_fake_X',
+          claimUrl: 'https://dashboard.stripe.com/fake-claim/cbsbx_fake_X',
+        });
+        // Key absent on every attempt → loadStripeMcpTools returns {}.
+        mockLoadStripeMcpTools.mockResolvedValue({});
+
+        const pending = setupTool.execute(
+          { email: 'a@b.c', country: 'US' },
+          { metadata: { appId: 'app-1' } },
+        );
+
+        // Pin the backoff: no 2nd load until the 2000ms delay elapses.
+        await vi.advanceTimersByTimeAsync(0);
+        expect(mockLoadStripeMcpTools).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(1999);
+        expect(mockLoadStripeMcpTools).toHaveBeenCalledTimes(1);
+        await vi.runAllTimersAsync();
+        const result = await pending;
+
+        // All retry attempts exhausted, no tools registered, setup still succeeds.
+        expect(mockLoadStripeMcpTools).toHaveBeenCalledTimes(3);
+        expect(mockRegisterDynamicTools).not.toHaveBeenCalled();
+        // Terminal line is self-diagnosing: benign race vs swallowed error.
+        expect(mockLoggerInfo).toHaveBeenCalledWith(
+          'skill.stripe_v2.setup.mcp_tools_not_ready',
+          expect.objectContaining({ appId: 'app-1', reason: 'key_not_propagated' }),
+        );
+        expect(result).toMatchObject({ success: true, mcpToolsReadyNextTurn: false });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('skips the reload (and still returns claimUrl) when slow provisioning ate the timeout budget', async () => {
+      vi.useFakeTimers();
+      try {
+        // Provisioning takes 29s — past the reload deadline (30s timeout − 2s
+        // margin = 28s). The reload must bail before its first attempt so the
+        // setup timeout race can't fire and discard the already-created sandbox.
+        mockCreateSandbox.mockImplementationOnce(
+          () =>
+            new Promise((resolve) =>
+              setTimeout(
+                () =>
+                  resolve({
+                    sandboxId: 'cbsbx_fake_X',
+                    accountId: 'acct_fake_X',
+                    claimUrl: 'https://dashboard.stripe.com/fake-claim/cbsbx_fake_X',
+                  }),
+                29000,
+              ),
+            ),
+        );
+
+        const pending = setupTool.execute(
+          { email: 'a@b.c', country: 'US' },
+          { metadata: { appId: 'app-1' } },
+        );
+        await vi.advanceTimersByTimeAsync(29000);
+        const result = await pending;
+
+        // No reload attempt was made, but the claimUrl is preserved.
+        expect(mockLoadStripeMcpTools).not.toHaveBeenCalled();
+        expect(mockRegisterDynamicTools).not.toHaveBeenCalled();
+        expect(mockLoggerInfo).toHaveBeenCalledWith(
+          'skill.stripe_v2.setup.mcp_reload_budget_exhausted',
+          expect.objectContaining({ appId: 'app-1', attempt: 0 }),
+        );
+        expect(result).toMatchObject({
+          success: true,
+          claimUrl: 'https://dashboard.stripe.com/fake-claim/cbsbx_fake_X',
+          mcpToolsReadyNextTurn: false,
+        });
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('returns a graceful-degrade shape on STRIPE_CREATE_FAILED and logs at WARN (not ERROR)', async () => {
