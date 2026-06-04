@@ -110,3 +110,37 @@ cases:
     expectedSkill: null
     tags: [negative]
     rationale: Layout bug fix — no logo intent
+
+  # --- Additional positive cases ---
+
+  - id: favicon-from-logo
+    prompt: "Generate a favicon based on my brand"
+    expectedSkill: media-logo
+    tags: [positive, hard]
+    rationale: Favicon from brand identity is logo territory — brand mark at small size
+
+  - id: wordmark
+    prompt: "Create a wordmark for my company name"
+    expectedSkill: media-logo
+    tags: [positive, hard]
+    rationale: Wordmark is a type of logo — text-based brand identity
+
+  # --- Additional negative cases ---
+
+  - id: banner-not-logo
+    prompt: "Create a banner image for the top of the page"
+    expectedSkill: media-image
+    tags: [negative]
+    rationale: Banner image is media-image territory, not logo
+
+  - id: generate-video-not-logo
+    prompt: "Make a short intro video for the site"
+    expectedSkill: media-video
+    tags: [negative]
+    rationale: Video generation is media-video, not media-logo
+
+  - id: logo-mention-no-gen
+    prompt: "Move the logo to the center of the header"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Repositioning an existing logo is a CSS task, not logo generation

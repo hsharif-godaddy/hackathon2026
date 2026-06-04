@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { SkillLoaderTool, buildSkillsPromptSection } from '../skill-loader-tool.js';
+import { SkillLoaderTool, buildSkillsPromptSection, escapeXml } from '../skill-loader-tool.js';
 
 // Mock the terminal and dev supervisor dependencies.
 // We capture every command issued so tests can assert on the exact
@@ -697,44 +697,126 @@ intents:
   });
 
   describe('#buildSkillsPromptSection', function buildSectionTests() {
-    it('should format skills with whenToUse', function formatsWithWhen() {
+    it('should combine description and whenToUse into single description', function formatsWithWhen() {
       const section = buildSkillsPromptSection([
         { name: 'blog', description: 'Install blog system', whenToUse: 'User wants a blog.' },
         { name: 'auth', description: 'Add authentication' },
       ]);
 
       expect(section).toContain('## Available Skills');
-      expect(section).toContain('- **blog**: Install blog system *When to use:* User wants a blog.');
-      expect(section).toContain('- **auth**: Add authentication');
-      // No "When to use" for auth since it has no whenToUse
-      expect(section).not.toContain('**auth**: Add authentication *When to use:*');
+      expect(section).toContain('<available_skills>');
+      expect(section).toContain('<skill name="blog">');
+      expect(section).toContain('<description>Install blog system Use this when: User wants a blog.</description>');
+      expect(section).toContain('<skill name="auth">');
+      expect(section).toContain('<description>Add authentication</description>');
+      expect(section).not.toContain('<when_to_use>');
     });
 
-    it('should build the quick intent map from skill frontmatter intents', function intentMapFromFrontmatter() {
+    it('should build intent map in instructions without duplicating in description', function intentsInMap() {
       const section = buildSkillsPromptSection([
         { name: 'commerce', description: 'Commerce', intents: ['online store/sell products', 'set up store'] },
         { name: 'authentication', description: 'Auth', intents: ['login/signup'] },
         { name: 'no-intents', description: 'Not in map' },
       ]);
 
-      expect(section).toContain('Quick intent map');
+      expect(section).toContain('<skill name="commerce">');
+      expect(section).toContain('<description>Commerce</description>');
+      expect(section).toContain('<skill name="authentication">');
+      expect(section).toContain('<description>Auth</description>');
+      expect(section).toContain('<description>Not in map</description>');
+      expect(section).not.toContain('Intents:');
+      expect(section).toContain('Quick intent map:');
       expect(section).toContain('online store/sell products → commerce');
       expect(section).toContain('set up store → commerce');
       expect(section).toContain('login/signup → authentication');
-      // Skills without intents do not appear in the map
       expect(section).not.toContain('→ no-intents');
-      // Entries are joined with " | "
-      expect(section).toMatch(/→ commerce \| set up store → commerce \| login\/signup → authentication/);
     });
 
-    it('should omit the quick intent map line entirely when no skill defines intents', function noIntentMap() {
+    it('should render plain description and omit intent_map when no intents', function noExtras() {
       const section = buildSkillsPromptSection([
         { name: 'plain', description: 'No intents here' },
       ]);
 
-      expect(section).not.toContain('Quick intent map');
-      // The skill list itself still renders
-      expect(section).toContain('- **plain**: No intents here');
+      expect(section).not.toContain('<intents>');
+      expect(section).not.toContain('<when_to_use>');
+      expect(section).not.toContain('Quick intent map:');
+      expect(section).toContain('<skill name="plain">');
+      expect(section).toContain('<description>No intents here</description>');
+    });
+
+    it('should produce valid structure with empty skills array', function emptySkills() {
+      const section = buildSkillsPromptSection([]);
+
+      expect(section).toContain('## Available Skills');
+      expect(section).toContain('<available_skills>');
+      expect(section).toContain('</available_skills>');
+      expect(section).toContain('IMPORTANT');
+      expect(section).toContain('CONFIDENTIALITY');
+      expect(section).not.toContain('Quick intent map:');
+      expect(section).not.toContain('</skill>');
+    });
+
+    it('should handle skill with both whenToUse and intents without duplication', function bothFields() {
+      const section = buildSkillsPromptSection([
+        {
+          name: 'commerce',
+          description: 'E-commerce integration',
+          whenToUse: 'User wants to sell products online.',
+          intents: ['online store', 'sell products'],
+        },
+      ]);
+
+      expect(section).toContain('<description>E-commerce integration Use this when: User wants to sell products online.</description>');
+      expect(section).not.toContain('Intents:');
+      expect(section).toContain('**Quick intent map:** online store → commerce | sell products → commerce');
+    });
+
+    it('should include confidentiality block in output', function confidentiality() {
+      const section = buildSkillsPromptSection([
+        { name: 'test', description: 'Test skill' },
+      ]);
+
+      expect(section).toContain('CONFIDENTIALITY');
+      expect(section).toContain('internal implementation details');
+      expect(section).toContain('never mention skill names');
+    });
+
+    it('should place intent map before XML block with pipe separators', function intentMapStructure() {
+      const section = buildSkillsPromptSection([
+        { name: 'a', description: 'Skill A', intents: ['phrase-one'] },
+        { name: 'b', description: 'Skill B', intents: ['phrase-two', 'phrase-three'] },
+      ]);
+
+      expect(section).toContain('**Quick intent map:** phrase-one → a | phrase-two → b | phrase-three → b');
+      const xmlStart = section.indexOf('<available_skills>');
+      const mapPos = section.indexOf('Quick intent map:');
+      expect(mapPos).toBeLessThan(xmlStart);
+    });
+
+    it('should escape XML special characters in skill metadata', function escapesXml() {
+      const section = buildSkillsPromptSection([
+        {
+          name: 'q&a',
+          description: 'Handles Q&A with <custom> tags',
+          whenToUse: 'User asks "questions" or uses </description> injection',
+        },
+        {
+          name: 'multiline',
+          description: 'Line one\nLine two\r\nLine three',
+        },
+      ]);
+
+      expect(section).toContain('<skill name="q&amp;a">');
+      expect(section).toContain('Handles Q&amp;A with &lt;custom&gt; tags');
+      expect(section).toContain('User asks &quot;questions&quot; or uses &lt;/description&gt; injection');
+      expect(section).not.toContain('</description> injection</description>');
+      expect(section).toContain('Line one Line two Line three');
+
+      const descMatches = section.match(/<description>[^<]*<\/description>/g);
+      expect(descMatches).not.toBeNull();
+      for (const match of descMatches!) {
+        expect(match).not.toContain('\n');
+      }
     });
 
     it('should preserve representative phrases from real on-disk skills', async function realSkillsGuardrail() {
@@ -775,11 +857,7 @@ intents:
         expect(section).toContain(phrase);
       }
 
-      // Each routed skill must appear after a → followed by a terminator
-      // ( |, space, or end-of-line). Without the terminator, "→ commerce"
-      // would match "→ commerce-storefront", and "→ seo" would match
-      // "→ seo-audit". Skill order in the rendered map is filesystem-
-      // dependent so any of " | ", trailing space, or end-of-line is valid.
+      // Each routed skill must have its own <skill name="..."> tag
       const routedSkills = [
         'commerce', 'commerce-storefront', 'commerce-one-time-payment',
         'authentication', 'online-appointments', 'blog',
@@ -788,8 +866,25 @@ intents:
         'seo',
       ];
       for (const skill of routedSkills) {
-        const escaped = skill.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-        expect(section).toMatch(new RegExp(`→ ${escaped}( \\||\\n|$)`));
+        expect(section).toContain(`<skill name="${skill}">`);
+      }
+
+      // The intent map must contain → entries for every routed skill
+      expect(section).toContain('Quick intent map:');
+      for (const skill of routedSkills) {
+        expect(section).toContain(`→ ${skill}`);
+      }
+
+      // Every skill with a description must have a non-empty <description>
+      for (const s of result.skills!.filter(sk => sk.description)) {
+        expect(section).toContain(`<skill name="${s.name}">`);
+        expect(section).not.toMatch(new RegExp(`<skill name="${s.name}">\\s*<description></description>`));
+      }
+
+      // Skills with whenToUse must have escaped version merged into <description>
+      const skillsWithWhenToUse = result.skills!.filter(s => s.whenToUse);
+      for (const s of skillsWithWhenToUse) {
+        expect(section).toContain(escapeXml(s.whenToUse!));
       }
     });
 

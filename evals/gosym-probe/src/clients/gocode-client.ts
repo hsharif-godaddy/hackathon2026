@@ -103,7 +103,21 @@ export class GocodeClient implements IGocodeClient {
         role: m.role,
         content: sanitize(m.content),
       })) as OpenAI.ChatCompletionMessageParam[],
-    };
+      metadata: {
+        guardrails: {
+          'unicode-security': {
+            extra_body: {
+              mode: this.config.unicodeSecurityMode ?? 'disabled',
+            },
+          },
+          'pii-detection': {
+            extra_body: {
+              detect_pii: this.config.piiDetection ?? false,
+            },
+          },
+        },
+      },
+    } as unknown as OpenAI.ChatCompletionCreateParamsNonStreaming;
     const response = options?.signal
       ? await this.client.chat.completions.create(body, { signal: options.signal })
       : await this.client.chat.completions.create(body);

@@ -26,6 +26,8 @@ export interface Config {
     useS2S?: boolean;
     model: string;
     visionModel?: string;
+    unicodeSecurityMode?: string;
+    piiDetection?: boolean;
   };
   eval: {
     defaultTrials: number;

@@ -1,0 +1,245 @@
+metadata:
+  name: Skill Loader - Authentication
+  version: 1.0.0
+
+# Authentication skill routing rules (from skill.md frontmatter):
+#
+# authentication — BetterAuth (Email/Password, OAuth, or both).
+#   Trigger phrases: "add login", "user accounts", "sign up page",
+#   "authentication", "password protection", "password protect this site",
+#   "password protect a page", "require login", "restrict access",
+#   "lock down", "admin access", "members only", "private page", "secure this page".
+#   Intents: login/signup/user accounts/members-only/restrict access/admin
+#
+# Important disambiguation:
+#   - commerce skill handles checkout auth (GoDaddy Commerce sessions)
+#   - connecting-calendars handles OAuth for calendar providers
+#   - online-conferencing handles OAuth for video providers
+#   - authentication should load for generic user auth, access control, accounts
+
+cases:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Positive: authentication — explicit auth requests
+  # ──────────────────────────────────────────────────────────────────────────
+
+  - id: add-login-explicit
+    prompt: 'Add login to my website'
+    expectedSkill: authentication
+    tags: [positive]
+    rationale: '"add login" is a direct whenToUse trigger phrase'
+
+  - id: signup-page
+    prompt: 'I need a sign up page for new users'
+    expectedSkill: authentication
+    tags: [positive]
+    rationale: '"sign up page" is a direct whenToUse trigger phrase'
+
+  - id: user-accounts
+    prompt: 'Add user accounts to my app'
+    expectedSkill: authentication
+    tags: [positive]
+    rationale: '"user accounts" is a direct intent/whenToUse trigger phrase'
+
+  - id: authentication-explicit
+    prompt: 'Set up authentication for my application'
+    expectedSkill: authentication
+    tags: [positive]
+    rationale: '"authentication" is a direct trigger keyword'
+
+  - id: password-protection
+    prompt: 'I want to password protect my site'
+    expectedSkill: authentication
+    tags: [positive]
+    rationale: '"password protect this site" is a direct whenToUse phrase'
+
+  - id: require-login
+    prompt: 'Require login before users can access the dashboard'
+    expectedSkill: authentication
+    tags: [positive]
+    rationale: '"require login" is a direct whenToUse trigger phrase'
+
+  - id: restrict-access
+    prompt: 'Restrict access to the admin section'
+    expectedSkill: authentication
+    tags: [positive]
+    rationale: '"restrict access" is a direct whenToUse trigger phrase'
+
+  - id: members-only
+    prompt: 'Make a members only section on my site'
+    expectedSkill: authentication
+    tags: [positive]
+    rationale: '"members only" is a direct whenToUse/intent trigger phrase'
+
+  - id: admin-access
+    prompt: 'Add admin access so only I can edit the content'
+    expectedSkill: authentication
+    tags: [positive]
+    rationale: '"admin access" is a direct whenToUse trigger phrase'
+
+  - id: private-page
+    prompt: 'Make the reports page private — only logged-in users should see it'
+    expectedSkill: authentication
+    tags: [positive]
+    rationale: '"private page" combined with "logged-in" — authentication intent'
+
+  - id: secure-page
+    prompt: 'Secure this page so only certain people can view it'
+    expectedSkill: authentication
+    tags: [positive]
+    rationale: '"secure this page" is a direct whenToUse trigger phrase'
+
+  - id: lock-down
+    prompt: 'Lock down the settings page to admin users only'
+    expectedSkill: authentication
+    tags: [positive]
+    rationale: '"lock down" is a direct whenToUse trigger phrase'
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Positive: harder cases (implicit auth, no explicit keywords)
+  # ──────────────────────────────────────────────────────────────────────────
+
+  - id: only-admins-see
+    prompt: 'Only admins should be able to see the analytics dashboard'
+    expectedSkill: authentication
+    tags: [positive, hard]
+    rationale: Role-based access implies auth without using "login" or "authentication"
+
+  - id: personal-account
+    prompt: 'Each customer should have their own personal account'
+    expectedSkill: authentication
+    tags: [positive, hard]
+    rationale: Personal accounts imply user auth without explicit trigger words
+
+  - id: remember-me
+    prompt: 'Add a remember me checkbox so users stay logged in'
+    expectedSkill: authentication
+    tags: [positive, hard]
+    rationale: Session persistence feature implies existing auth or need to add it
+
+  - id: oauth-login
+    prompt: 'Let users sign in with Google or Facebook'
+    expectedSkill: authentication
+    tags: [positive, hard]
+    rationale: OAuth social login — auth intent without using "authentication" keyword
+
+  - id: protected-routes
+    prompt: 'Some pages should only be visible to registered users'
+    expectedSkill: authentication
+    tags: [positive, hard]
+    rationale: Protected routes imply access control without using "login" or "restrict"
+
+  - id: user-roles
+    prompt: 'I want different user roles — regular users and moderators'
+    expectedSkill: authentication
+    tags: [positive, hard]
+    rationale: User roles require authentication/authorization system
+
+  - id: logout-button
+    prompt: 'Add a logout button to the header'
+    expectedSkill: authentication
+    tags: [positive, hard]
+    rationale: Logout implies auth system exists or needs to be added
+
+  - id: email-password-signin
+    prompt: 'Users should be able to sign in with their email and password'
+    expectedSkill: authentication
+    tags: [positive, hard]
+    rationale: Email/password sign-in is authentication without the literal word
+
+  - id: paywall
+    prompt: 'Put the premium content behind a paywall — users need to log in first'
+    expectedSkill: authentication
+    tags: [positive, hard]
+    rationale: Paywall with login requirement implies authentication
+
+  - id: hidden-from-public
+    prompt: 'The client portal should be hidden from the public'
+    expectedSkill: authentication
+    tags: [positive, hard]
+    rationale: Hidden from public implies access restriction without saying "restrict" or "login"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Negative: cross-skill — should load a different skill, not authentication
+  # ──────────────────────────────────────────────────────────────────────────
+
+  - id: sell-products-commerce
+    prompt: 'I want to sell products online'
+    expectedSkill: commerce
+    tags: [negative]
+    rationale: Selling products is commerce, not auth — even though commerce has accounts
+
+  - id: calendar-oauth
+    prompt: 'Connect my Google Calendar so appointments sync automatically'
+    expectedSkill: connecting-calendars
+    tags: [negative]
+    rationale: Calendar OAuth integration is connecting-calendars, not authentication
+
+  - id: store-user-data
+    prompt: 'Store user submissions in a database'
+    expectedSkill: database
+    tags: [negative]
+    rationale: Storing data is database skill even though it mentions "user"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Negative: no skill should load — unrelated or ambiguous requests
+  # ──────────────────────────────────────────────────────────────────────────
+
+  - id: contact-form
+    prompt: 'Add a contact form to the homepage'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Contact form is UI code — no authentication needed
+
+  - id: fix-mobile-nav
+    prompt: 'Fix the mobile navigation menu'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Navigation fix — no auth intent
+
+  - id: add-hero
+    prompt: 'Add a hero section with a call to action'
+    expectedSkill: null
+    tags: [negative]
+    rationale: UI component — no authentication intent
+
+  - id: change-font
+    prompt: 'Change the font to something more modern'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Typography change — no auth intent
+
+  - id: security-headers
+    prompt: 'Add security headers to prevent XSS attacks'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: '"security" mentioned but this is HTTP headers, not user authentication'
+
+  - id: form-validation
+    prompt: 'Validate the email field in the signup form'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Form validation is UI code — the form exists but no auth system is requested
+
+  - id: user-mention-no-auth
+    prompt: 'Show a different greeting message for returning users'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Users mentioned but greeting can use cookies/localStorage, not full auth
+
+  - id: terms-acceptance
+    prompt: 'Add a checkbox where users accept terms before submitting'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Terms checkbox is UI, not authentication — "users" is incidental
+
+  - id: password-strength
+    prompt: 'Show password strength indicator on the form'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: '"password" mentioned but this is a UI feature, not adding an auth system'
+
+  - id: captcha-form
+    prompt: 'Add a CAPTCHA to prevent bots from submitting the form'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: CAPTCHA is anti-spam, not user authentication — tricky because both are "security"

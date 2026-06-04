@@ -1,0 +1,213 @@
+metadata:
+  name: Skill Loader - Database
+  version: 1.0.0
+
+# Database skill routing rules (from skill.md frontmatter):
+#
+# database — MySQL + Drizzle ORM for data persistence.
+#            Trigger phrases: "save data", "database", "store information",
+#            "persist", "tables", "queries", "CRUD operations".
+#            Intents: save data/database/CRUD/persist records
+#
+# Important disambiguation:
+#   - commerce skill handles product catalogs, not database
+#   - blog skill handles blog posts (even though they're "stored")
+#   - online-appointments handles booking records
+#   - database should only load for generic data persistence needs
+
+cases:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Positive: database — explicit data persistence requests
+  # ──────────────────────────────────────────────────────────────────────────
+
+  - id: add-database-explicit
+    prompt: 'Add a database to my app'
+    expectedSkill: database
+    tags: [positive]
+    rationale: '"database" is a direct trigger keyword in the intents'
+
+  - id: store-data-explicit
+    prompt: 'I need to store data in my app'
+    expectedSkill: database
+    tags: [positive]
+    rationale: '"store data" maps directly to the "save data" intent phrase'
+
+  - id: crud-operations
+    prompt: 'I need CRUD operations for managing customer records'
+    expectedSkill: database
+    tags: [positive]
+    rationale: CRUD is an explicit trigger phrase in the skill intents
+
+  - id: persist-records
+    prompt: 'I want to persist user submissions from the contact form'
+    expectedSkill: database
+    tags: [positive]
+    rationale: '"persist" is a direct whenToUse trigger phrase'
+
+  - id: create-tables
+    prompt: 'Create database tables for my inventory system'
+    expectedSkill: database
+    tags: [positive]
+    rationale: '"tables" is a whenToUse trigger phrase combined with "database"'
+
+  - id: save-form-data
+    prompt: 'Save form submissions to a database so I can review them later'
+    expectedSkill: database
+    tags: [positive]
+    rationale: Save + database — two trigger phrases combined
+
+  - id: query-data
+    prompt: 'I want to query data and show results on a dashboard'
+    expectedSkill: database
+    tags: [positive]
+    rationale: '"queries" is a whenToUse trigger phrase'
+
+  - id: mysql-setup
+    prompt: 'Set up MySQL for my application'
+    expectedSkill: database
+    tags: [positive]
+    rationale: MySQL is the specific DB technology used by this skill
+
+  - id: drizzle-orm
+    prompt: 'Add Drizzle ORM to my project for data management'
+    expectedSkill: database
+    tags: [positive]
+    rationale: Drizzle is the specific ORM this skill installs
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Positive: harder cases (implicit data needs, no explicit DB keywords)
+  # ──────────────────────────────────────────────────────────────────────────
+
+  - id: track-orders
+    prompt: 'I need to keep track of customer orders'
+    expectedSkill: database
+    tags: [positive, hard]
+    rationale: Tracking orders implies persistent storage without saying "database"
+
+  - id: user-profiles
+    prompt: 'Users should be able to create profiles with their preferences'
+    expectedSkill: database
+    tags: [positive, hard]
+    rationale: User profiles imply persistent data storage — no "database" or "persist" keyword
+
+  - id: save-settings
+    prompt: 'Let users save their settings so they persist between sessions'
+    expectedSkill: database
+    tags: [positive, hard]
+    rationale: '"persist between sessions" implies server-side storage, not localStorage'
+
+  - id: data-driven-features
+    prompt: 'Build a data-driven leaderboard that shows top performers'
+    expectedSkill: database
+    tags: [positive, hard]
+    rationale: '"data-driven" is a whenToUse phrase; leaderboard needs persistent storage'
+
+  - id: store-reviews
+    prompt: 'Customers should be able to leave reviews and ratings'
+    expectedSkill: database
+    tags: [positive, hard]
+    rationale: Reviews/ratings need persistence without explicitly mentioning storage
+
+  - id: admin-manage-records
+    prompt: 'I want an admin panel where I can manage all the records'
+    expectedSkill: database
+    tags: [positive, hard]
+    rationale: Managing records implies CRUD on persistent data
+
+  - id: waitlist-signup
+    prompt: 'Add a waitlist — store emails of people who sign up'
+    expectedSkill: database
+    tags: [positive, hard]
+    rationale: Storing email signups needs database; no explicit DB keyword
+
+  - id: inventory-system
+    prompt: 'Build an inventory management system to track stock levels'
+    expectedSkill: database
+    tags: [positive, hard]
+    rationale: Inventory tracking requires persistent data without saying "database"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Negative: cross-skill — should load a different skill, not database
+  # ──────────────────────────────────────────────────────────────────────────
+
+  - id: product-catalog-commerce
+    prompt: 'Add a product catalog with pricing to my store'
+    expectedSkill: commerce
+    tags: [negative]
+    rationale: Product catalog is commerce territory even though it involves data
+
+  - id: blog-posts
+    prompt: 'I want to add blog posts to my site'
+    expectedSkill: blog
+    tags: [negative]
+    rationale: Blog content is handled by the blog skill, not raw database
+
+  - id: booking-appointments
+    prompt: 'Let customers book appointments'
+    expectedSkill: online-appointments
+    tags: [negative]
+    rationale: Appointment booking is handled by online-appointments skill
+
+  - id: user-login
+    prompt: 'Add user login to my app'
+    expectedSkill: authentication
+    tags: [negative]
+    rationale: User login is authentication skill territory, not database
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Negative: no skill should load — unrelated or ambiguous requests
+  # ──────────────────────────────────────────────────────────────────────────
+
+  - id: display-static-data
+    prompt: 'Display a list of team members on the about page'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Static display data can be hardcoded — no persistence needed
+
+  - id: fix-layout
+    prompt: 'Fix the grid layout on the products page'
+    expectedSkill: null
+    tags: [negative]
+    rationale: CSS/layout fix — no data storage intent
+
+  - id: add-animations
+    prompt: 'Add smooth scroll animations to the homepage'
+    expectedSkill: null
+    tags: [negative]
+    rationale: UI animations — no database intent
+
+  - id: change-colors
+    prompt: 'Change the color scheme to dark mode'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Styling change — no data persistence needed
+
+  - id: data-mention-no-intent
+    prompt: 'The data in the pricing table looks wrong — the numbers are off'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: '"data" mentioned but intent is fixing displayed content, not adding persistence'
+
+  - id: spreadsheet-mention
+    prompt: 'I have my data in a spreadsheet, can you display it in a nice table?'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Displaying imported data as HTML table — not a database feature request
+
+  - id: localstorage-state
+    prompt: 'Remember the user dark mode preference using localStorage'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: localStorage is client-side, not server-side persistence — no skill needed
+
+  - id: api-fetch
+    prompt: 'Fetch data from an external API and display it'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Fetching from external API is code, not adding a database to the app
+
+  - id: json-file
+    prompt: 'Store the FAQ content in a JSON file'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: JSON file is static content, not a database

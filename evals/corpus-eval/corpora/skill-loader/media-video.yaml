@@ -92,3 +92,37 @@ cases:
     expectedSkill: null
     tags: [negative]
     rationale: Adding a background video without generate/create intent uses stock search via media tool
+
+  # --- Additional positive cases ---
+
+  - id: animated-background
+    prompt: "Generate an animated background of flowing water for the landing page"
+    expectedSkill: media-video
+    tags: [positive]
+    rationale: Generated animated background is AI video territory
+
+  - id: product-reveal-video
+    prompt: "Create a dramatic product reveal video with particles and light effects"
+    expectedSkill: media-video
+    tags: [positive, hard]
+    rationale: Creating a dramatic video with effects implies AI generation
+
+  # --- Additional negative cases ---
+
+  - id: gif-from-existing
+    prompt: "Convert the hero image to an animated GIF"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Converting existing assets is a code/tool task, not AI video generation
+
+  - id: video-testimonial
+    prompt: "Add a video testimonial section where I can embed customer videos"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Embedding customer-provided videos is code structure, not generation
+
+  - id: autoplay-video
+    prompt: "Make the background video autoplay and loop"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Configuring video playback behavior is a code task, not generation

@@ -125,3 +125,43 @@ cases:
     expectedSkill: null
     tags: [negative, hard]
     rationale: Consistency request is about re-searching stock with similar style/filters, not AI generation
+
+  # --- Additional positive cases: illustration/artwork variants ---
+
+  - id: custom-illustration
+    prompt: "Create a custom illustration of a rocket ship for the pricing page"
+    expectedSkill: media-image
+    tags: [positive]
+    rationale: Custom illustration is AI image generation — not stock, not logo
+
+  - id: generate-pattern
+    prompt: "Generate an abstract geometric pattern for the background"
+    expectedSkill: media-image
+    tags: [positive]
+    rationale: Generating a pattern is AI image creation
+
+  - id: ai-infographic-visual
+    prompt: "Design a visual showing our process steps — something custom, not clipart"
+    expectedSkill: media-image
+    tags: [positive, hard]
+    rationale: Custom visual rejecting clipart implies AI generation
+
+  # --- Additional negative cases: favicon/icon/upload disambiguation ---
+
+  - id: favicon
+    prompt: "Add a favicon to my site"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Favicon can be derived from existing logo or is a code task — not image generation
+
+  - id: upload-image
+    prompt: "Let users upload their own profile image"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Image upload is a code feature, not AI image generation
+
+  - id: optimize-images
+    prompt: "Optimize all images on the site for faster loading"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Image optimization is a build/code task, not AI generation
