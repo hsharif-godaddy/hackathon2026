@@ -2,7 +2,11 @@ import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
-import { DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/[market]/develop/components/preview/devicePresets'
+import {
+  DEFAULT_DESKTOP_DEVICE,
+  DEFAULT_MOBILE_DEVICE,
+  DEFAULT_TABLET_DEVICE,
+} from '@/app/[market]/develop/components/preview/devicePresets'
 import { ChatTab, IframeMessageType, MobileMode, PreviewViewMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
 import type { FeedbackCategory } from '@/components/feedback/types'
 import { getSwitchboardFlag } from '@/hooks/useSwitchboard'
@@ -442,7 +446,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     viewMode: ViewMode.EDIT,
     mobileMode: MobileMode.TOOLS,
     previewViewMode: PreviewViewMode.DESKTOP,
-    selectedDeviceId: 'full',
+    selectedDeviceId: DEFAULT_DESKTOP_DEVICE,
     isEditModeEnabled: true,
     isMultiSelectEnabled: false,
     expandedPlan: false,
@@ -524,7 +528,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       state.previewViewMode = mode
       // Set default device when switching modes
       if (mode === PreviewViewMode.DESKTOP) {
-        state.selectedDeviceId = 'full'
+        state.selectedDeviceId = DEFAULT_DESKTOP_DEVICE
       } else if (mode === PreviewViewMode.TABLET) {
         state.selectedDeviceId = DEFAULT_TABLET_DEVICE
       } else if (mode === PreviewViewMode.MOBILE) {

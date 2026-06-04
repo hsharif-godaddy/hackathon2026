@@ -16,6 +16,12 @@ export interface DevicePreset {
 /**
  * Common device presets organized by category
  */
+export const CANONICAL_BREAKPOINTS: DevicePreset[] = [
+  { id: 'desktop', name: 'Desktop', width: 0, height: 0, category: PreviewViewMode.DESKTOP },
+  { id: 'mobile', name: 'Mobile', width: 390, height: 844, category: PreviewViewMode.MOBILE },
+  { id: 'tablet', name: 'Tablet', width: 768, height: 1024, category: PreviewViewMode.TABLET },
+]
+
 export const DEVICE_PRESETS: DevicePreset[] = [
   // Full size (responsive)
   { id: 'full', name: 'Full size', width: 0, height: 0, category: PreviewViewMode.DESKTOP },
@@ -46,26 +52,70 @@ export const DEVICE_PRESETS: DevicePreset[] = [
   { id: 'galaxy-tab-s9', name: 'Galaxy Tab S9', width: 800, height: 1280, category: PreviewViewMode.TABLET },
 ]
 
+export const CANONICAL_DEVICE_IDS = {
+  [PreviewViewMode.DESKTOP]: 'desktop',
+  [PreviewViewMode.MOBILE]: 'mobile',
+  [PreviewViewMode.TABLET]: 'tablet',
+} as const satisfies Record<PreviewViewMode, string>
+
 /**
  * Get device preset by ID
  */
 export function getDevicePreset(id: string): DevicePreset | undefined {
-  return DEVICE_PRESETS.find(preset => preset.id === id)
+  return CANONICAL_BREAKPOINTS.find((preset) => preset.id === id)
+    ?? DEVICE_PRESETS.find((preset) => preset.id === id)
 }
 
 /**
- * Get all devices by category
+ * Get all devices by category (canonical breakpoint first, then detailed presets)
  */
 export function getDevicesByCategory(category: DevicePreset['category']): DevicePreset[] {
-  return DEVICE_PRESETS.filter(preset => preset.category === category)
+  const canonical = CANONICAL_BREAKPOINTS.find((preset) => preset.category === category)
+  const detailed = DEVICE_PRESETS.filter((preset) => preset.category === category)
+  return canonical ? [canonical, ...detailed] : detailed
 }
+
+export function isCanonicalDevice(id: string): boolean {
+  return CANONICAL_BREAKPOINTS.some((preset) => preset.id === id)
+}
+
+export function getCanonicalDeviceId(category: PreviewViewMode): string {
+  return CANONICAL_DEVICE_IDS[category]
+}
+
+/**
+ * Map legacy or detailed device ids to the canonical breakpoint for their category.
+ */
+export function resolveCanonicalDeviceId(id: string): string {
+  if (isCanonicalDevice(id)) {
+    return id
+  }
+  if (id === 'full') {
+    return getCanonicalDeviceId(PreviewViewMode.DESKTOP)
+  }
+  const preset = DEVICE_PRESETS.find((device) => device.id === id)
+  if (!preset) {
+    return getCanonicalDeviceId(PreviewViewMode.DESKTOP)
+  }
+  return getCanonicalDeviceId(preset.category)
+}
+
+export function isFullWidthDevice(id: string): boolean {
+  const preset = getDevicePreset(id)
+  return preset?.width === 0 && preset?.height === 0
+}
+
+/**
+ * Default device for desktop preview
+ */
+export const DEFAULT_DESKTOP_DEVICE = CANONICAL_DEVICE_IDS[PreviewViewMode.DESKTOP]
 
 /**
  * Default device for mobile preview
  */
-export const DEFAULT_MOBILE_DEVICE = 'iphone-17-pro'
+export const DEFAULT_MOBILE_DEVICE = CANONICAL_DEVICE_IDS[PreviewViewMode.MOBILE]
 
 /**
  * Default device for tablet preview
  */
-export const DEFAULT_TABLET_DEVICE = 'ipad'
+export const DEFAULT_TABLET_DEVICE = CANONICAL_DEVICE_IDS[PreviewViewMode.TABLET]

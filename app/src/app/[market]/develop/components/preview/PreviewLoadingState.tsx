@@ -2,7 +2,7 @@
 
 import clsx from 'clsx'
 
-import { getDevicePreset } from '@/app/[market]/develop/components/preview/devicePresets'
+import { getDevicePreset, isFullWidthDevice } from '@/app/[market]/develop/components/preview/devicePresets'
 import Tips from '@/app/[market]/develop/components/tips/Tips'
 import { PreviewViewMode } from '@/app/[market]/develop/components/types'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -21,7 +21,7 @@ export default function PreviewLoadingState({ message, description, isMobile = f
   const selectedDeviceId = useDevelopPageStore((state) => state.selectedDeviceId)
 
   const selectedDevice = getDevicePreset(selectedDeviceId)
-  const isFullSize = previewViewMode === PreviewViewMode.DESKTOP || selectedDeviceId === 'full'
+  const isFullSize = previewViewMode === PreviewViewMode.DESKTOP || isFullWidthDevice(selectedDeviceId)
 
   const deviceWidth = selectedDevice?.width || 0
   const deviceHeight = selectedDevice?.height || 0

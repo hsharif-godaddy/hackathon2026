@@ -15,7 +15,7 @@ import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestN
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
 import DomainBar from '@/app/[market]/develop/components/layout/DomainBar'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
-import { getDevicePreset } from '@/app/[market]/develop/components/preview/devicePresets'
+import { getDevicePreset, isFullWidthDevice } from '@/app/[market]/develop/components/preview/devicePresets'
 import InboxIframe from '@/app/[market]/develop/components/preview/InboxIframe'
 import PreviewCode from '@/app/[market]/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/[market]/develop/components/preview/PreviewError'
@@ -182,7 +182,7 @@ export default function PreviewPane({
   const inboxAccountId = useDevelopPageStore((state) => state.inboxAccountId)
   // Get device dimensions from preset
   const selectedDevice = getDevicePreset(selectedDeviceId)
-  const isFullSize = previewViewMode === PreviewViewMode.DESKTOP || selectedDeviceId === 'full'
+  const isFullSize = previewViewMode === PreviewViewMode.DESKTOP || isFullWidthDevice(selectedDeviceId)
   const deviceWidth = selectedDevice?.width || 0
   const deviceHeight = selectedDevice?.height || 0
 

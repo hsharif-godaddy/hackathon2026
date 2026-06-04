@@ -219,14 +219,21 @@ test.describe('E2E - Critical Path', () => {
       await deviceSelectorTrigger.click({ force: true });
       const devicePopover = page.locator('[data-slot="popover-content"][data-state="open"]');
       await devicePopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
-      await devicePopover.getByRole('button', { name: /iphone se/i }).click({ force: true });
+      await expect(devicePopover.getByRole('button')).toHaveCount(3);
+      await devicePopover.getByRole('button', { name: /mobile|builder_analytics_mobile/i }).click({ force: true });
       await expect(page.getByTestId('preview-iframe')).toBeVisible();
       console.log('  Mobile view works');
 
       await deviceSelectorTrigger.click({ force: true });
       await devicePopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+      await devicePopover.getByRole('button', { name: /tablet|builder_analytics_tablet/i }).click({ force: true });
+      await expect(page.getByTestId('preview-iframe')).toBeVisible();
+      console.log('  Tablet view works');
+
+      await deviceSelectorTrigger.click({ force: true });
+      await devicePopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
       await devicePopover
-        .getByRole('button', { name: /full size|builder_device_full_size/i })
+        .getByRole('button', { name: /desktop.*laptop|builder_analytics_desktop_laptop/i })
         .click({ force: true });
       await expect(page.getByTestId('preview-iframe')).toBeVisible();
       console.log('  Desktop view restored');

@@ -190,16 +190,24 @@ test.describe('Develop Page', () => {
     await deviceSelectorTrigger.click({ force: true });
     const deviceSelectorPopover = page.locator('[data-slot="popover-content"][data-state="open"]');
     await deviceSelectorPopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
-    await deviceSelectorPopover.getByRole('button', { name: /iphone se/i }).click({ force: true });
+    await expect(deviceSelectorPopover.getByRole('button')).toHaveCount(3);
+    await deviceSelectorPopover.getByRole('button', { name: /mobile|builder_analytics_mobile/i }).click({ force: true });
     await expect(page.getByTestId('preview-iframe')).toBeVisible();
     await expect(page.getByTestId('airo-header')).toBeVisible();
     console.log('  ✓ Mobile view works, header persists');
+
+    // Test device selector - tablet view
+    await deviceSelectorTrigger.click({ force: true });
+    await deviceSelectorPopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+    await deviceSelectorPopover.getByRole('button', { name: /tablet|builder_analytics_tablet/i }).click({ force: true });
+    await expect(page.getByTestId('preview-iframe')).toBeVisible();
+    console.log('  ✓ Tablet view works');
 
     // Test device selector - back to desktop
     await deviceSelectorTrigger.click({ force: true });
     await deviceSelectorPopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
     await deviceSelectorPopover
-      .getByRole('button', { name: /full size|builder_device_full_size/i })
+      .getByRole('button', { name: /desktop.*laptop|builder_analytics_desktop_laptop/i })
       .click({ force: true });
     await expect(page.getByTestId('preview-iframe')).toBeVisible();
     console.log('  ✓ Desktop view restored');
