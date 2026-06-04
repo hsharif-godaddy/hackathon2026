@@ -136,18 +136,49 @@ describe('AssetProcessingService - analyzePageAssets filtering', () => {
       expect(pageAssets.find(a => a.url === 'https://example.com/orphan.jpg')).toBeUndefined();
     });
 
-    it('should handle URL variations (with and without trailing slash)', () => {
-      const manifest = createMockManifest();
-      
-      const withSlash = manifest.assets.filter(asset => 
-        asset.sourcePages && asset.sourcePages.includes('https://example.com/')
-      );
-      const withoutSlash = manifest.assets.filter(asset => 
-        asset.sourcePages && asset.sourcePages.includes('https://example.com')
-      );
+  });
 
-      // These should be different because exact matching is used
-      expect(withSlash.length).not.toBe(withoutSlash.length);
+  // These exercise the REAL analyzePageAssets so the suite catches regressions
+  // in the production filter (the inline-filter tests above can't). Assets carry
+  // a `description` so the method skips the AI-analysis + manifest-save path.
+  describe('analyzePageAssets URL normalization', () => {
+    const makeService = (): AssetProcessingService =>
+      new AssetProcessingService(path.join(os.tmpdir(), 'asset-processing-test'));
+
+    const describedManifest = (sourcePages: string[]): AssetManifest => ({
+      assets: [
+        {
+          url: 'https://example.com/hero.jpg',
+          localPath: '.source-site/assets/images/hero.jpg',
+          type: 'image',
+          description: 'hero image',
+          sourcePages
+        }
+      ],
+      totalAssets: 1,
+      byType: { image: 1, font: 0, icon: 0, other: 0 },
+      generatedAt: new Date().toISOString()
+    });
+
+    it('matches a page asset when the manifest URL omits the trailing slash but the query includes one', async () => {
+      const service = makeService();
+      const manifest = describedManifest(['https://example.com']); // no trailing slash
+      const { pageAssets } = await service.analyzePageAssets('https://example.com/', manifest);
+      expect(pageAssets.map(a => a.url)).toEqual(['https://example.com/hero.jpg']);
+    });
+
+    it('matches a page asset when the manifest URL has a trailing slash but the query omits one', async () => {
+      const service = makeService();
+      const manifest = describedManifest(['https://example.com/about/']);
+      const { pageAssets } = await service.analyzePageAssets('https://example.com/about', manifest);
+      expect(pageAssets.map(a => a.url)).toEqual(['https://example.com/hero.jpg']);
+    });
+
+    it('does not match assets from a different page', async () => {
+      const service = makeService();
+      const manifest = describedManifest(['https://example.com/contact']);
+      const { pageAssets } = await service.analyzePageAssets('https://example.com/about', manifest);
+      expect(pageAssets).toHaveLength(0);
     });
   });
 

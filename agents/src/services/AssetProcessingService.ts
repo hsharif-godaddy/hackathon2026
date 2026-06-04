@@ -9,6 +9,7 @@ import { Logger } from '../logging/index.js';
 import { createAgentTelemetryLogger } from '../utils/agent-logger.js';
 import { normalizeAssetPath } from '../utils/asset-paths.js';
 import { getPersistentPublicDir } from '../utils/persistent-assets.js';
+import { normalizeRebuildPageKey } from '../utils/rebuild-utils.js';
 import type { AssetInfo, AssetManifest, ImagePlacement } from '../types/rebuild.js';
 
 interface AssetRow {
@@ -942,8 +943,12 @@ Respond ONLY with valid JSON in this exact format:
         }))
       });
 
+      // Normalize both sides with the same helper the scrape-pipeline uses to
+      // bucket assets, so a trailing-slash/query skew between pageContent.url
+      // and Atlas's recorded sourcePages doesn't silently drop a page's images.
+      const normalizedPageKey = normalizeRebuildPageKey(pageUrl);
       const pageAssets = assetManifest.assets.filter(asset =>
-        asset.sourcePages && asset.sourcePages.includes(pageUrl)
+        asset.sourcePages?.some(sp => normalizeRebuildPageKey(sp) === normalizedPageKey)
       );
 
       logger.info('asset-processing.page-assets-filtered', {
