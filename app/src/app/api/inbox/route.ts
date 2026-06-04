@@ -1,21 +1,21 @@
 /**
  * POST /api/inbox
  *
- * BFF proxy for the Inbox (Reamaze) skill. Agents fires this via a
- * client-action (inboxAction.ts) so the call originates in the user's
- * browser, carrying auth_idp. We then forward the validated JWT as
- * `Authorization: sso-jwt <jwt>` to Reamaze, which treats it as an idp-type
- * token — Reamaze authorizes based on the user's customer_id against the
- * target brand. No cert / service identity involved.
+ * BFF proxy for Reamaze operations including Inbox skill actions and Pusher auth.
+ * Agents fires this via client-action (inboxAction.ts), and usePusher hook calls
+ * it for Pusher authentication. Browser carries auth_idp; we forward the validated
+ * JWT as `Authorization: sso-jwt <jwt>` to Reamaze, which treats it as an idp-type
+ * token — Reamaze authorizes based on the user's customer_id against the target brand.
+ * No cert / service identity involved.
  *
  * Request body:
- *   { operation: 'list_accounts' | 'activate_account' | 'list_embeddables' | 'create_embeddable' | 'update_embeddable',
- *     brandId?: string,        // required for brand-scoped operations (embeddables)
+ *   { operation: 'list_accounts' | 'activate_account' | 'list_embeddables' | 'create_embeddable' | 'update_embeddable' | 'pusher_auth',
+ *     brandId?: string,        // required for brand-scoped operations (embeddables, pusher_auth)
  *     embeddableId?: number,   // required for update_embeddable
- *     body?: unknown,          // required for create/update operations
+ *     body?: unknown,          // required for create/update operations and pusher_auth ({ socket_id, channel_name })
  *   }
  *
- * Auth: level 3 (modifies external billing-linked state in Reamaze).
+ * Auth: level 1 (default). Reamaze authorizes based on customer_id.
  *
  * Response: the Reamaze JSON response plus { status } for the agent to inspect.
  */
@@ -33,7 +33,8 @@ type InboxOperation =
   | 'activate_account'
   | 'list_embeddables'
   | 'create_embeddable'
-  | 'update_embeddable';
+  | 'update_embeddable'
+  | 'pusher_auth';
 
 interface InboxRequest {
   operation: InboxOperation;
@@ -67,6 +68,8 @@ function resolveRequest(req: InboxRequest): { method: 'GET' | 'POST' | 'PUT'; pa
         return { error: 'embeddableId (number) is required for update_embeddable' };
       }
       return { method: 'PUT', path: `/embeddables/${req.embeddableId}` };
+    case 'pusher_auth':
+      return { method: 'POST', path: '/pusher_authentication/auth' };
     default:
       return { error: `Unknown operation: ${(req as { operation: string }).operation}` };
   }
@@ -181,4 +184,4 @@ export const POST = withCustomerAuth(async (
 
   // Return upstream status + body verbatim so the agent tool can branch on it
   return NextResponse.json({ status: upstream.status, data }, { status: 200 });
-}, { level: 3 });
+});

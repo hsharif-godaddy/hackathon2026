@@ -91,6 +91,7 @@ catalog:
   openai: ^6.37.0
   parquetjs: ^0.11.2
   prettier: 3.8.3
+  pusher-js: ^8.5.0
   qrcode.react: ^4.2.0
   react: ^19.2.6
   react-device-detect: ^2.2.3

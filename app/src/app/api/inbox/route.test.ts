@@ -48,8 +48,8 @@ describe('POST /api/inbox', () => {
       expect(response.status).toBe(401);
     });
 
-    it('uses withCustomerAuth with level 3', () => {
-      expect(capturedAuthOpts).toEqual({ level: 3 });
+    it('uses withCustomerAuth with default level (1)', () => {
+      expect(capturedAuthOpts).toBeUndefined();
     });
   });
 

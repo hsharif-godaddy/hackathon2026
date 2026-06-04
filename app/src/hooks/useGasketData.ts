@@ -63,6 +63,24 @@ declare module '@gasket/data' {
      * ```
      */
     switchboard?: SwitchboardData;
+    /**
+     * Pusher real-time messaging configuration
+     *
+     * Populated from gasket.ts configuration.
+     * Contains Pusher API key and cluster for client-side connections.
+     *
+     * @example
+     * ```tsx
+     * const { pusher } = useGasketData();
+     * const client = new Pusher(pusher?.apiKey, {
+     *   cluster: pusher?.cluster
+     * });
+     * ```
+     */
+    pusher?: {
+      apiKey: string;
+      cluster: string;
+    };
   }
 }
 

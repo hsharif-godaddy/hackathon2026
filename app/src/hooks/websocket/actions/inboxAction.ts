@@ -41,7 +41,6 @@ export const inboxAction: ClientActionExecutor = async (params) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ operation, brandId, embeddableId, body }),
       },
-      { authLevel: 3 },
     );
 
     if (!response.ok) {

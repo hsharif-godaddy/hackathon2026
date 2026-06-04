@@ -168,6 +168,7 @@
     "parquetjs": "catalog:",
     "path-browserify": "^1.0.1",
     "prop-types": "^15.8.1",
+    "pusher-js": "catalog:",
     "qrcode.react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

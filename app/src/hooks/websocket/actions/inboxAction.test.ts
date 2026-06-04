@@ -80,7 +80,7 @@ describe('inboxAction', () => {
   // --------------------------------------------------------------------------
 
   describe('successful call', () => {
-    it('calls appFetch with correct URL, method, body, and authLevel', async () => {
+    it('calls appFetch with correct URL, method, and body', async () => {
       mockAppFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ status: 200, data: { embeddables: [] } }),
@@ -105,7 +105,6 @@ describe('inboxAction', () => {
             body: { foo: 'bar' },
           }),
         },
-        { authLevel: 3 },
       );
     });
 

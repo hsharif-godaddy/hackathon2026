@@ -26,6 +26,13 @@ import pluginCds from '@venture/gasket-plugin-cds';
 
 import gasketData from './gasket-data.js';
 
+// Pusher configuration for real-time events (reamaze integration)
+// Lives here instead of gasket-data.js so it survives build regeneration
+const pusherConfig = {
+  apiKey: '4ad5621db51f93f2100f',
+  cluster: 'mt1',
+};
+
 /** Extends GA session on interaction (clicks) for SPA/chat flows — merged into existing _gaDataLayer via trafficDataLayer (see getTrafficData in @godaddy/gasket-plugin-traffic). */
 const pluginTrafficSessionRefresh: Plugin = {
   name: 'airo-traffic-session-refresh',
@@ -443,5 +450,11 @@ export default makeGasket({
   // Base domain for airoapp.ai URLs — overridden per environment above
   airoAppDomain: 'test-airoapp.ai',
   supportUrl: 'https://www.godaddy.com/help/contact-us',
-  data: gasketData,
+  data: {
+    ...gasketData,
+    public: {
+      ...gasketData.public,
+      pusher: pusherConfig,
+    },
+  },
 } as GasketConfigDefinition);
