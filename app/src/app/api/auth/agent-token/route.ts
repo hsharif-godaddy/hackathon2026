@@ -460,26 +460,26 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         const mgmtClient = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt || '' });
         const subscription = await mgmtClient.getSubscription(subscriptionId, { includeAttributes: true });
 
-        const migrationResult = checkBmsMigration(subscription, bmsMigrationFlags);
+        const bmsResult = checkBmsMigration(subscription, bmsMigrationFlags);
 
-        if (migrationResult.useBms) {
-          bmsBudgetId = migrationResult.bmsBudgetId;
+        if (bmsResult.useBms) {
+          bmsBudgetId = bmsResult.bmsBudgetId;
           budgetServiceEnabled = true; // Enable BMS mode in JWT for agents service
-          logger.info('agent-token.bms-migration-enabled', {
+          logger.info('agent-token.bms-enabled', {
             siteId: body.siteId,
             customerId: user.customerId,
             subscriptionId,
             bmsBudgetId,
-            bmsMigrationPath: migrationResult.path,
             migrationDate: getMigrationDate(subscription),
+            reason: bmsResult.path,
           });
         } else {
           budgetServiceEnabled = false;
-          logger.info('agent-token.bms-migration-not-ready', {
+          logger.info('agent-token.bms-disabled', {
             siteId: body.siteId,
             customerId: user.customerId,
             subscriptionId,
-            reason: migrationResult.reason,
+            reason: bmsResult.reason,
           });
         }
       } catch (err) {
