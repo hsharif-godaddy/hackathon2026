@@ -16,7 +16,10 @@ import DomainItem from '@/app/[market]/develop/components/settings/components/Do
 import ExternalDomainInput from '@/app/[market]/develop/components/settings/components/ExternalDomainInput';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { DomainConflictModal } from '@/app/[market]/develop/components/widgets/DomainConflictModal';
-import { DomainDisconnectConfirmationModal } from '@/app/[market]/develop/components/widgets/DomainDisconnectConfirmationModal';
+import {
+  DomainDisconnectConfirmationModal,
+  DomainDisconnectSuccessAlert,
+} from '@/app/[market]/develop/components/widgets/DomainDisconnectConfirmationModal';
 import DomainPurchaseWidget from '@/app/[market]/develop/components/widgets/DomainPurchaseWidget';
 import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
@@ -113,6 +116,7 @@ export default function DomainAttachWidget({
   // Disconnect is gated behind a modal that warns about broken links, stale SEO
   // settings, and the lack of automatic redirects from the old domain.
   const [disconnectTarget, setDisconnectTarget] = useState<string | null>(null);
+  const [disconnectSuccessMessage, setDisconnectSuccessMessage] = useState<string | null>(null);
 
   const site = useSiteStore((state) => appId ? state.getSite(appId) : null);
 
@@ -459,6 +463,10 @@ export default function DomainAttachWidget({
         appId,
         domainName
       });
+
+      setDisconnectSuccessMessage(
+        t('builder_domain_disconnect_success', {}, 'Domain has been disconnected')
+      );
 
       if (appId && domainName) {
         clearDkimOnboardRecord(appId, domainName);
@@ -988,6 +996,11 @@ export default function DomainAttachWidget({
         onClose={handleCancelDisconnect}
         onConfirm={handleConfirmDisconnect}
         isDisconnecting={modifyDomainsMutation.isPending}
+      />
+
+      <DomainDisconnectSuccessAlert
+        message={disconnectSuccessMessage}
+        onDismiss={() => setDisconnectSuccessMessage(null)}
       />
     </Box>
   )

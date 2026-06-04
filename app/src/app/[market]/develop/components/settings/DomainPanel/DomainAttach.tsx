@@ -12,7 +12,10 @@ import SettingsSection from "@/app/[market]/develop/components/settings/Settings
 import { Status } from "@/app/[market]/develop/components/types";
 import { useAppIdFromParams } from "@/app/[market]/develop/components/utils";
 import { DomainConflictModal } from '@/app/[market]/develop/components/widgets/DomainConflictModal';
-import { DomainDisconnectConfirmationModal } from '@/app/[market]/develop/components/widgets/DomainDisconnectConfirmationModal';
+import {
+  DomainDisconnectConfirmationModal,
+  DomainDisconnectSuccessAlert,
+} from '@/app/[market]/develop/components/widgets/DomainDisconnectConfirmationModal';
 import type { AppDetailsResponse } from '@/hooks/useAppDetails';
 import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
@@ -88,6 +91,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   const [showAddConfirmation, setShowAddConfirmation] = useState(false);
   const [conflictData, setConflictData] = useState<DomainMutationDetails['conflictDetails'] | null>(null);
   const [disconnectTarget, setDisconnectTarget] = useState<string | null>(null);
+  const [disconnectSuccessMessage, setDisconnectSuccessMessage] = useState<string | null>(null);
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const domainStatusRef = useRef<Map<string, string>>(new Map());
   const trackedAppIdRef = useRef<string | null>(null);
@@ -453,6 +457,10 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         appId: currentAppId,
         domainName
       });
+
+      setDisconnectSuccessMessage(
+        t('builder_domain_disconnect_success', {}, 'Domain has been disconnected')
+      );
 
       // Clear the DKIM onboard record so re-attaching the domain triggers
       // a fresh onboard call.
@@ -893,6 +901,11 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         onClose={handleCancelDisconnect}
         onConfirm={handleConfirmDisconnect}
         isDisconnecting={modifyDomainsMutation.isPending}
+      />
+
+      <DomainDisconnectSuccessAlert
+        message={disconnectSuccessMessage}
+        onDismiss={() => setDisconnectSuccessMessage(null)}
       />
     </SettingsSection>
   );
