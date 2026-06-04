@@ -4,21 +4,57 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ALLOWED_OVERRIDE_MODELS } from '../../constants.js';
 import type { AuthenticatedRequest } from '../../middleware/jwt-auth.js';
 
-const { getModelInfo, isModelSupported, validateModelEnvironment } = vi.hoisted(function createAiLibMocks() {
-  return {
-    getModelInfo: vi.fn(),
-    isModelSupported: vi.fn(),
-    validateModelEnvironment: vi.fn(),
-  };
-});
+const { getCanonicalModelKey, getModelInfo, isModelSupported, validateModelEnvironment } = vi.hoisted(
+  function createAiLibMocks() {
+    // Mirrors the alias subset of the real ALIASES table that appears in
+    // ALLOWED_OVERRIDE_MODELS, so dedup-by-canonical-key behaves faithfully.
+    const ALIAS_TO_CANONICAL: Record<string, string> = {
+      'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5',
+      'claude-haiku-4-5-20251001': 'claude-haiku-4-5',
+      sonnet: 'claude-sonnet-4-6',
+      haiku: 'claude-haiku-4-5',
+    };
+    return {
+      getCanonicalModelKey: vi.fn(function canonical(name: string) {
+        const lower = name.trim().toLowerCase();
+        return ALIAS_TO_CANONICAL[lower] ?? lower;
+      }),
+      getModelInfo: vi.fn(),
+      isModelSupported: vi.fn(),
+      validateModelEnvironment: vi.fn(),
+    };
+  }
+);
 
 vi.mock('@airo/ai-lib', function mockAiLib() {
   return {
+    getCanonicalModelKey,
     getModelInfo,
     isModelSupported,
     validateModelEnvironment,
   };
 });
+
+/**
+ * Recomputes the canonical-key dedup the route performs, so expectations stay
+ * decoupled from the exact allowlist contents while remaining faithful.
+ */
+function expectedSurvivors(): string[] {
+  const seen = new Set<string>();
+  return [...ALLOWED_OVERRIDE_MODELS].filter((name) => {
+    const lower = name.trim().toLowerCase();
+    const key =
+      ({
+        'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5',
+        'claude-haiku-4-5-20251001': 'claude-haiku-4-5',
+        sonnet: 'claude-sonnet-4-6',
+        haiku: 'claude-haiku-4-5',
+      } as Record<string, string>)[lower] ?? lower;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 import modelsRouter from '../models.js';
 
@@ -112,9 +148,10 @@ describe('@airo/agents', function packageTests() {
       expect(res.getStatus()).toBe(200);
       const body = res.getBody() as { models: { shortName: string }[] };
       expect(body.models).toBeInstanceOf(Array);
-      expect(body.models).toHaveLength(ALLOWED_OVERRIDE_MODELS.size);
+      const survivors = expectedSurvivors();
+      expect(body.models).toHaveLength(survivors.length);
       expect(body.models.map((m) => m.shortName).sort()).toEqual(
-        [...ALLOWED_OVERRIDE_MODELS].map((n) => `short-${n}`).sort()
+        survivors.map((n) => `short-${n}`).sort()
       );
     });
 
@@ -163,7 +200,10 @@ describe('@airo/agents', function packageTests() {
       const body = res.getBody() as { models: { shortName: string }[] };
       expect(body.models.some((m) => m.shortName === 'sonnet')).toBe(false);
       expect(body.models.some((m) => m.shortName === 'haiku')).toBe(false);
-      expect(body.models).toHaveLength(ALLOWED_OVERRIDE_MODELS.size - 2);
+      // The `sonnet`/`haiku` aliases collapse into their canonical models
+      // (claude-sonnet-4-6 / claude-haiku-4-5) rather than being dropped by a
+      // dedicated filter, so the surviving count is the deduped allowlist.
+      expect(body.models).toHaveLength(expectedSurvivors().length);
     });
 
     it('only includes models for which isModelSupported returns true', function filtersUnsupported() {
@@ -195,7 +235,7 @@ describe('@airo/agents', function packageTests() {
       expect(body.models[0].shortName).toBe('claude-sonnet-4-6');
     });
 
-    it('deduplicates models that resolve to the same fullName', function deduplicates() {
+    it('deduplicates aliases that resolve to the same canonical model', function deduplicates() {
       vi.mocked(isModelSupported).mockImplementation(function supported() {
         return true;
       });
@@ -203,10 +243,9 @@ describe('@airo/agents', function packageTests() {
         return true;
       });
       vi.mocked(getModelInfo).mockImplementation(function info(name: string) {
-        const resolved = name === 'claude-sonnet-4-5' ? 'claude-sonnet-4-5-20250929' : name;
         return {
-          shortName: resolved,
-          fullName: resolved,
+          shortName: name,
+          fullName: name,
           provider: 'anthropic' as const,
           isSupported: true,
           usingProxy: false,
@@ -220,10 +259,54 @@ describe('@airo/agents', function packageTests() {
 
       handler(req, res as Response);
 
-      const body = res.getBody() as { models: { fullName: string }[] };
-      const fullNames = body.models.map((m) => m.fullName);
-      const uniqueFullNames = [...new Set(fullNames)];
-      expect(fullNames).toEqual(uniqueFullNames);
+      const body = res.getBody() as { models: { shortName: string }[] };
+      const shortNames = body.models.map((m) => m.shortName);
+
+      // claude-sonnet-4-5 and its date-pinned alias claude-sonnet-4-5-20250929
+      // share a canonical key, so only the first (the friendly name) survives.
+      expect(shortNames).toContain('claude-sonnet-4-5');
+      expect(shortNames).not.toContain('claude-sonnet-4-5-20250929');
+      // No canonical key appears twice.
+      const canonicalKeys = shortNames.map((n) => getCanonicalModelKey(n));
+      expect(canonicalKeys).toEqual([...new Set(canonicalKeys)]);
+    });
+
+    it('keeps Kimi variants with the same fullName but different shortNames', function keepsKimiVariants() {
+      vi.mocked(isModelSupported).mockImplementation(function supported() {
+        return true;
+      });
+      vi.mocked(validateModelEnvironment).mockImplementation(function envValid() {
+        return true;
+      });
+      vi.mocked(getModelInfo).mockImplementation(function info(name: string) {
+        if (name === 'azure/Kimi-K2.6' || name === 'azure/Kimi-K2.6-thinking') {
+          return {
+            shortName: name,
+            fullName: 'azure/Kimi-K2.6',
+            provider: 'openai' as const,
+            isSupported: true,
+            usingProxy: false,
+          };
+        }
+        return {
+          shortName: name,
+          fullName: name,
+          provider: 'anthropic' as const,
+          isSupported: true,
+          usingProxy: false,
+        };
+      });
+
+      const req = {
+        agentContext: { modelSelectorEnabled: true },
+      } as AuthenticatedRequest;
+      const res = createMockRes();
+
+      handler(req, res as Response);
+
+      const body = res.getBody() as { models: { shortName: string }[] };
+      expect(body.models.some((m) => m.shortName === 'azure/Kimi-K2.6')).toBe(true);
+      expect(body.models.some((m) => m.shortName === 'azure/Kimi-K2.6-thinking')).toBe(true);
     });
 
     it('excludes models whose provider environment is not configured', function filtersUnavailableProviders() {

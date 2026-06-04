@@ -235,6 +235,55 @@ describe('model provider defaults middleware', () => {
     })
   })
 
+  it('applies model defaults for azure Kimi thinking variant', async () => {
+    const transformed = await transformAll('azure/Kimi-K2.6-thinking', {
+      providerOptions: {},
+    })
+
+    expect(transformed.temperature).toBe(1.0)
+    expect(transformed.providerOptions).toEqual({
+      litellm: {
+        extra_body: {
+          reasoning_effort: 'low',
+        },
+        metadata: {
+          guardrails: {
+            'unicode-security': {
+              extra_body: {
+                mode: 'disabled',
+              },
+            },
+          },
+        },
+      },
+    })
+  })
+
+  it('replaces request temperature with model default for azure Kimi thinking variant', async () => {
+    const transformed = await transformAll('azure/Kimi-K2.6-thinking', {
+      temperature: 0.3,
+      providerOptions: {},
+    })
+
+    expect(transformed.temperature).toBe(1.0)
+    expect(transformed.providerOptions).toEqual({
+      litellm: {
+        extra_body: {
+          reasoning_effort: 'low',
+        },
+        metadata: {
+          guardrails: {
+            'unicode-security': {
+              extra_body: {
+                mode: 'disabled',
+              },
+            },
+          },
+        },
+      },
+    })
+  })
+
   it('keeps temperature for Claude models', async () => {
     const transformed = await transformAll('sonnet', {
       temperature: 0.3,

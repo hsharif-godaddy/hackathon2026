@@ -87,7 +87,7 @@ export default function ModelSelector() {
           <option value="">{t('builder_settings_model_override_default', undefined, 'Default')}</option>
           {models.map((model) => (
             <option key={model.shortName} value={model.shortName}>
-              {model.fullName} ({model.provider})
+              {model.shortName} ({model.provider})
             </option>
           ))}
         </Select>

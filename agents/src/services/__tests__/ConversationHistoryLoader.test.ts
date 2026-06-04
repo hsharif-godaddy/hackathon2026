@@ -1031,6 +1031,44 @@ describe('ConversationHistoryLoader', () => {
     });
   });
 
+  describe('formatMessagesForAISDK - reasoning content exclusion', () => {
+    it('does not emit reasoning parts when rebuilding persisted conversation history', () => {
+      const llmMessages: LLMMessage[] = [
+        { role: 'user', content: 'Do something' },
+        {
+          role: 'assistant',
+          content: 'I will read the file.',
+          tool_calls: [{
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'readFile', arguments: '{"path":"a.txt"}' }
+          }]
+        },
+        {
+          role: 'tool',
+          content: 'file contents',
+          tool_call_id: 'call_1',
+          name: 'readFile'
+        },
+        { role: 'assistant', content: 'Done.' }
+      ];
+
+      const result = loader.formatMessagesForAISDK(
+        llmMessages,
+        'test-app',
+        'test-agent',
+        'azure/Kimi-K2.6-thinking',
+      );
+
+      for (const message of result) {
+        if (message.role !== 'assistant' || !Array.isArray(message.content)) {
+          continue;
+        }
+        expect(message.content.every((part) => part.type !== 'reasoning')).toBe(true);
+      }
+    });
+  });
+
   describe('summary pinning via loadMessagesWithTokenLimitByConversationId', () => {
     const summary1 = {
       id: 'sum-1',

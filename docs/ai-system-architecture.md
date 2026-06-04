@@ -301,7 +301,7 @@ Short names map to canonical model IDs via `packages/ai-lib/src/utils/model-norm
 
 **Environment variable:** `AI_MODEL_OVERRIDE` forces a specific model (dev/testing only).
 
-**Server-side allowlist** (`agents/src/server/constants.ts`, `ALLOWED_OVERRIDE_MODELS`): `claude-opus-4-7`, `claude-opus-4-6`, `claude-sonnet-4-6`, `azure/claude-sonnet-4-6`, `claude-sonnet-4-5`, `claude-sonnet-4-5-20250929`, `claude-haiku-4-5`, `sonnet`, `haiku`. Invalid values fall back to default.
+**Server-side allowlist** (`agents/src/server/constants.ts`, `ALLOWED_OVERRIDE_MODELS`): `claude-opus-4-7`, `claude-opus-4-6`, `claude-sonnet-4-6`, `azure/claude-sonnet-4-6`, `claude-sonnet-4-5`, `claude-sonnet-4-5-20250929`, `claude-haiku-4-5`, `azure/Kimi-K2.6`, `azure/Kimi-K2.6-thinking`, `sonnet`, `haiku`. The `azure/Kimi-K2.6` variants are dev/test-only right now. Invalid values fall back to default.
 
 See [model-override.md](model-override.md) for the ops runbook.
 

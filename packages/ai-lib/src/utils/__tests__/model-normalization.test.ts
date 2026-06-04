@@ -8,6 +8,7 @@ import {
   getAvailableModels,
   isModelSupported,
   getFullModelName,
+  getCanonicalModelKey,
   getNormalizedModelName,
   getModelProvider,
   getModelInfo,
@@ -82,6 +83,17 @@ describe('model-normalization', () => {
       })
     })
 
+    it('should normalize azure Kimi thinking variant to the OpenAI-compatible provider', () => {
+      const result = normalizeModelName('azure/Kimi-K2.6-thinking')
+      expect(result).toEqual({
+        normalizedName: 'azure/kimi-k2.6',
+        fullModelId: 'azure/Kimi-K2.6',
+        provider: 'openai',
+        isSupported: true,
+        originalName: 'azure/Kimi-K2.6-thinking'
+      })
+    })
+
     it('should trim whitespace for processing but preserve original', () => {
       const result = normalizeModelName('  claude-sonnet-4-6  ')
       expect(result.normalizedName).toBe('claude-sonnet-4-6')
@@ -118,6 +130,7 @@ describe('model-normalization', () => {
       expect(isModelSupported('gpt-4o')).toBe(true)
       expect(isModelSupported('claude-sonnet-4-6')).toBe(true)
       expect(isModelSupported('azure/Kimi-K2.6')).toBe(true)
+      expect(isModelSupported('azure/Kimi-K2.6-thinking')).toBe(true)
     })
 
     it('should return true for supported aliases', () => {
@@ -143,6 +156,7 @@ describe('model-normalization', () => {
       expect(getFullModelName('gpt4o')).toBe('gpt-4o')
       expect(getFullModelName('gpt-4o')).toBe('gpt-4o')
       expect(getFullModelName('azure/Kimi-K2.6')).toBe('azure/Kimi-K2.6')
+      expect(getFullModelName('azure/Kimi-K2.6-thinking')).toBe('azure/Kimi-K2.6')
     })
 
     it('should return Anthropic name by default for Claude models', () => {
@@ -161,6 +175,33 @@ describe('model-normalization', () => {
     it('should return same name for already normalized models', () => {
       expect(getNormalizedModelName('gpt-4o')).toBe('gpt-4o')
       expect(getNormalizedModelName('claude-sonnet-4-6')).toBe('claude-sonnet-4-6')
+    })
+  })
+
+  describe('getCanonicalModelKey', () => {
+    it('resolves aliases to the canonical model key', () => {
+      expect(getCanonicalModelKey('claude-sonnet-4-5-20250929')).toBe('claude-sonnet-4-5')
+      expect(getCanonicalModelKey('sonnet')).toBe('claude-sonnet-4-6')
+      expect(getCanonicalModelKey('haiku')).toBe('claude-haiku-4-5')
+    })
+
+    it('lowercases and trims unknown / canonical names', () => {
+      expect(getCanonicalModelKey('  Azure/Kimi-K2.6  ')).toBe('azure/kimi-k2.6')
+      expect(getCanonicalModelKey('claude-sonnet-4-6')).toBe('claude-sonnet-4-6')
+    })
+
+    it('keeps Kimi base and thinking variants distinct (unlike normalizedName and fullName)', () => {
+      // The two variants share both normalizedName (`azure/kimi-k2.6`) and
+      // upstream id (`azure/Kimi-K2.6`), so only the MODELS-map key keeps them apart.
+      expect(getCanonicalModelKey('azure/Kimi-K2.6')).toBe('azure/kimi-k2.6')
+      expect(getCanonicalModelKey('azure/Kimi-K2.6-thinking')).toBe('azure/kimi-k2.6-thinking')
+    })
+
+    it('keeps azure and non-azure sonnet-4-6 distinct (unlike normalizedName)', () => {
+      // Both share the normalizedName field `claude-sonnet-4-6`, but they are
+      // separate model definitions and must not collapse during dedup.
+      expect(getCanonicalModelKey('claude-sonnet-4-6')).toBe('claude-sonnet-4-6')
+      expect(getCanonicalModelKey('azure/claude-sonnet-4-6')).toBe('azure/claude-sonnet-4-6')
     })
   })
 
@@ -203,6 +244,7 @@ describe('model-normalization', () => {
       expect(mappings['gpt4o']).toBe('gpt-4o')
       expect(mappings['sonnet']).toBe('claude-sonnet-4-6')
       expect(mappings['azure/kimi-k2.6']).toBe('azure/Kimi-K2.6')
+      expect(mappings['azure/kimi-k2.6-thinking']).toBe('azure/Kimi-K2.6')
     })
 
     it('should map Claude models to Anthropic provider', () => {
@@ -304,6 +346,25 @@ describe('model-normalization', () => {
       })
     })
 
+    it('sets reasoning effort low for azure Kimi thinking variant', () => {
+      expect(getDefaultProviderOptions('azure/Kimi-K2.6-thinking')).toEqual({
+        litellm: {
+          extra_body: {
+            reasoning_effort: 'low'
+          },
+          metadata: {
+            guardrails: {
+              'unicode-security': {
+                extra_body: {
+                  mode: 'disabled'
+                }
+              }
+            }
+          }
+        }
+      })
+    })
+
     it('returns effort low for claude-opus-4-7', () => {
       expect(getDefaultProviderOptions('claude-opus-4-7')).toEqual({
         anthropic: { effort: 'low' }
@@ -348,6 +409,28 @@ describe('model-normalization', () => {
       })
     })
 
+    it('returns temperature 1.0 with reasoning effort low for azure Kimi thinking variant', () => {
+      expect(getDefaultModelSettings('azure/Kimi-K2.6-thinking')).toEqual({
+        temperature: 1.0,
+        providerOptions: {
+          litellm: {
+            extra_body: {
+              reasoning_effort: 'low'
+            },
+            metadata: {
+              guardrails: {
+                'unicode-security': {
+                  extra_body: {
+                    mode: 'disabled'
+                  }
+                }
+              }
+            }
+          }
+        }
+      })
+    })
+
     it('returns provider options without temperature for Claude models', () => {
       expect(getDefaultModelSettings('sonnet')).toEqual({
         providerOptions: {
@@ -364,6 +447,10 @@ describe('model-normalization', () => {
   describe('shouldStripTemperature', () => {
     it('returns true for azure Kimi', () => {
       expect(shouldStripTemperature('azure/Kimi-K2.6')).toBe(true)
+    })
+
+    it('returns true for azure Kimi thinking variant', () => {
+      expect(shouldStripTemperature('azure/Kimi-K2.6-thinking')).toBe(true)
     })
 
     it('returns true for claude-opus-4-7', () => {

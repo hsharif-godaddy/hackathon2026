@@ -170,5 +170,17 @@ describe('develop-agent', function developAgentTests() {
 
         expect(mockPromptBuilders[1].files.some((path: string) => path.endsWith('kimi-behavior.md'))).toBe(true);
       });
+
+    it('should include Kimi behavior guidance for Kimi thinking variant',
+      async function kimiThinkingBehavior() {
+        mockGetAgentModelWithName.mockResolvedValueOnce({
+          model: { generate: vi.fn(), streamGenerate: vi.fn() },
+          modelName: 'azure/Kimi-K2.6-thinking'
+        });
+
+        await createDevelopAgent();
+
+        expect(mockPromptBuilders[0].files.some((path: string) => path.endsWith('kimi-behavior.md'))).toBe(true);
+      });
   });
 });

@@ -10,14 +10,16 @@ Emergency procedure to switch the AI model across all Airo Builder sessions when
 
 ## Valid Model Names
 
-| Name                      | Description                                              |
-| ------------------------- | -------------------------------------------------------- |
-| `claude-sonnet-4-6`       | Claude Sonnet 4.6                                        |
-| `azure/claude-sonnet-4-6` | Claude Sonnet 4.6 via Azure — dev/test only right now    |
-| `claude-opus-4-7`         | Claude Opus 4.7 — **expensive** ($5/$25 per MTok in/out) |
-| `claude-opus-4-6`         | Claude Opus 4.6 — **expensive** ($5/$25 per MTok in/out) |
-| `claude-sonnet-4-5`       | Claude Sonnet 4.5                                        |
-| `claude-haiku-4-5`        | Claude Haiku 4.5                                         |
+| Name                       | Description                                              |
+| -------------------------- | ------------------------------------------------------- |
+| `claude-sonnet-4-6`        | Claude Sonnet 4.6                                       |
+| `azure/claude-sonnet-4-6`  | Claude Sonnet 4.6 via Azure                            |
+| `claude-opus-4-7`          | Claude Opus 4.7 — **expensive** ($5/$25 per MTok in/out)|
+| `claude-opus-4-6`          | Claude Opus 4.6 — **expensive** ($5/$25 per MTok in/out)|
+| `claude-sonnet-4-5`        | Claude Sonnet 4.5                                       |
+| `claude-haiku-4-5`         | Claude Haiku 4.5                                        |
+| `azure/Kimi-K2.6`          | Kimi K2.6 via Azure — dev/test only right now          |
+| `azure/Kimi-K2.6-thinking` | Kimi K2.6 (reasoning) via Azure — dev/test only right now|
 
 Valid models can also be found in the model selection dropdown on dev/test or TLA accounts (Settings > Model Override).
 

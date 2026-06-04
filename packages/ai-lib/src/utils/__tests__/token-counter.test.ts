@@ -266,6 +266,7 @@ describe('token-counter', () => {
 
     it('should return correct provider for azure Kimi', () => {
       expect(getModelProvider('azure/Kimi-K2.6')).toBe('openai')
+      expect(getModelProvider('azure/Kimi-K2.6-thinking')).toBe('openai')
     })
 
     it('should handle unsupported models', () => {

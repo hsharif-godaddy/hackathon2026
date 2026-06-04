@@ -47,6 +47,7 @@ export * from './utils/embeddings.js'
 export * from './utils/tool-llm-helper.js'
 export * from './utils/prompt-caching.js'
 export {
+  getCanonicalModelKey,
   getDefaultProviderOptions,
   mergeProviderOptions,
   normalizeModelName,

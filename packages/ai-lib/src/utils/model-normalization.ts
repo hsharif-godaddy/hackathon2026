@@ -121,6 +121,28 @@ const MODELS: Record<string, ModelDefinition> = {
       },
     },
   },
+  'azure/kimi-k2.6-thinking': {
+    normalizedName: 'azure/kimi-k2.6',
+    openai: 'azure/Kimi-K2.6',
+    stripTemperature: true,
+    temperature: 1.0,
+    providerOptions: {
+      litellm: {
+        extra_body: {
+          reasoning_effort: 'low',
+        },
+        metadata: {
+          guardrails: {
+            'unicode-security': {
+              extra_body: {
+                mode: 'disabled',
+              },
+            },
+          },
+        },
+      },
+    },
+  },
 
   // Claude Models (available on multiple providers)
   'claude-opus-4-7': {
@@ -292,6 +314,24 @@ export function getFullModelName(shortName: string): string {
 export function getNormalizedModelName(modelName: string): string {
   const info = normalizeModelName(modelName)
   return info.normalizedName
+}
+
+/**
+ * Resolve a model name to its canonical key — the `MODELS` map key it indexes,
+ * obtained by trimming, lowercasing, and following the alias table. Names with
+ * no `MODELS`/`ALIASES` entry resolve to their own normalized string.
+ *
+ * This is the right key for deduplicating the override allowlist: known aliases
+ * of the same configured model collapse to one key (e.g. `sonnet` and
+ * `claude-sonnet-4-6`), while distinct `MODELS` entries stay distinct even when
+ * they share a `normalizedName` and/or an upstream id — e.g. `azure/claude-sonnet-4-6`
+ * vs `claude-sonnet-4-6` (same `normalizedName`), or `azure/kimi-k2.6` vs
+ * `azure/kimi-k2.6-thinking` (same `normalizedName` AND same upstream id). In those
+ * cases `getNormalizedModelName` or `fullName` would wrongly merge them.
+ */
+export function getCanonicalModelKey(modelName: string): string {
+  const lower = modelName.trim().toLowerCase()
+  return ALIASES[lower] || lower
 }
 
 /**

@@ -22,6 +22,8 @@ vi.mock('@/lib/agent-fetch', () => ({
     JSON.stringify({
       models: [
         { shortName: 'claude-opus-4-6', fullName: 'Claude Opus 4.6', provider: 'anthropic', isSupported: true },
+        { shortName: 'azure/Kimi-K2.6', fullName: 'azure/Kimi-K2.6', provider: 'openai', isSupported: true },
+        { shortName: 'azure/Kimi-K2.6-thinking', fullName: 'azure/Kimi-K2.6', provider: 'openai', isSupported: true },
       ],
     }),
     { status: 200, headers: { 'content-type': 'application/json' } }
@@ -100,7 +102,7 @@ describe('ModelSelector', () => {
       });
     });
 
-    it('should include the Opus model option when loaded', async function opusOption() {
+    it('labels options by shortName so same-fullName variants stay distinct', async function shortNameLabels() {
       const { useAuthContext } = await import('@/components/providers/AuthProvider');
       vi.mocked(useAuthContext).mockReturnValue({
         authState: { authType: 'e2s' },
@@ -109,9 +111,13 @@ describe('ModelSelector', () => {
       renderWithProviders(<ModelSelector />);
 
       await waitFor(() => {
-        const option = screen.getByRole('option', { name: /Claude Opus 4\.6/i });
-        expect(option).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: /claude-opus-4-6/i })).toBeInTheDocument();
       });
+
+      // The two Kimi variants share a fullName (azure/Kimi-K2.6); labeling by
+      // shortName is what keeps them distinguishable in the dropdown.
+      expect(screen.getByRole('option', { name: /^azure\/Kimi-K2\.6 \(/i })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: /azure\/Kimi-K2\.6-thinking/i })).toBeInTheDocument();
     });
   });
 });
