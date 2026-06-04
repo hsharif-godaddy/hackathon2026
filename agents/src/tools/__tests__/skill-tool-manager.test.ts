@@ -335,4 +335,29 @@ describe('SkillToolManager', () => {
       expect(Object.keys(manager.getAllTools())).toHaveLength(before);
     });
   });
+
+  describe('getSkillNameForTool', () => {
+    it('returns the parent skill for a static skill tool registered at initialize', () => {
+      // The shared fixture initializes the manager with skill 'blog' and
+      // tools createPost, listPosts (see test fixtures above).
+      expect(manager.getSkillNameForTool('blog__createPost')).toBe('blog');
+      expect(manager.getSkillNameForTool('blog__listPosts')).toBe('blog');
+    });
+
+    it('returns the parent skill for a dynamically registered tool', () => {
+      manager.registerDynamicTools('blog', {
+        products_create: { description: 'create', execute: vi.fn() },
+      });
+      expect(manager.getSkillNameForTool('blog__products_create')).toBe('blog');
+    });
+
+    it('returns undefined for a non-skill tool', () => {
+      expect(manager.getSkillNameForTool('websiteRebuild')).toBeUndefined();
+      expect(manager.getSkillNameForTool('file-edit')).toBeUndefined();
+    });
+
+    it('returns undefined for an unregistered prefixed-shaped name', () => {
+      expect(manager.getSkillNameForTool('unknownSkill__unknownTool')).toBeUndefined();
+    });
+  });
 });

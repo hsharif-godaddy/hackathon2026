@@ -51,6 +51,7 @@ import {
 } from './shared/completionSideEffects'
 import { mapToolCall, mapToolResult, mapToolStart } from './shared/toolMappers'
 import { handleToolCallSideEffects, handleToolResultSideEffects } from './shared/toolSideEffects'
+import { handleToolStartSideEffects } from './shared/toolStartSideEffects'
 import { buildValidationToolCallFromEvent } from './shared/validationToolCallBuilder'
 import { handleVideoNotification } from './shared/videoNotification'
 import { useBudgetUpdate } from './useBudgetUpdate'
@@ -427,7 +428,10 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 bufferTextChunk(event.content ?? '')
               } else if (type === 'tool_start') {
                 const tool = (event.data as any)?.tool ?? (event.data as any)?.data?.tool
-                if (tool) bufferStoreUpdate(() => store.addToolStartSegment(mapToolStart(tool)))
+                if (tool) {
+                  bufferStoreUpdate(() => store.addToolStartSegment(mapToolStart(tool)))
+                  handleToolStartSideEffects(tool)
+                }
               } else if (type === 'tool_input_delta') {
                 const data = event.data as any
                 const toolId = data?.toolId ?? data?.data?.toolId
@@ -448,7 +452,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 const tool = (event.data as any)?.tool ?? (event.data as any)?.data?.tool
                 if (tool) {
                   flushStoreUpdateBufferImmediate()
-                  trackToolResult(tool.name)
+                  trackToolResult(tool)
                   bufferStoreUpdate(() => store.addToolResultSegment(mapToolResult(tool)))
                   handleToolResultSideEffects(tool, store.currentAppId).catch(err => {
                     logger.warn('sse.tool_result.side_effects_failed', {

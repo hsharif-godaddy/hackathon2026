@@ -197,6 +197,7 @@ import { buildSharedPostStreamValidator } from './post-stream-validator.js';
 import { AgentsMessagePersistence } from './conversation-persistence.js';
 import { AILibContextManager } from '../agents/ai-lib-agents/context-manager.js';
 import { hasUnbuiltRebuildPages } from '../tools/ai-lib-tools/rebuild-page-selector.js';
+import { resolveSkillToolMetadata } from '../tools/skill-tool-manager.js';
 import { getBackgroundSummarizer } from '../services/summarization/index.js';
 import {
   getConversationLifecycleStore,
@@ -304,6 +305,7 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
     postStreamValidator: ssePostStreamValidator,
     resetPostStreamRetries: sseResetPostStreamRetries,
     lifecycle: getMessageLifecycleDeps(),
+    resolveToolMetadata: resolveSkillToolMetadata,
   })
   sseRegistry.setListener(sseExecutionService)
   return sseExecutionService

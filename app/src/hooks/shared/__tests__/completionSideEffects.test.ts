@@ -4,7 +4,20 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { postInitialBuildEvent } from "../completionSideEffects";
+import { postInitialBuildEvent, trackToolResult } from "../completionSideEffects";
+
+const { mockLogImpressionEvent, mockSendToolImpressionEvent } = vi.hoisted(() => ({
+  mockLogImpressionEvent: vi.fn(() => vi.fn()),
+  mockSendToolImpressionEvent: vi.fn(),
+}));
+
+vi.mock("@/utils/instrumentation", () => ({
+  logImpressionEvent: mockLogImpressionEvent,
+}));
+
+vi.mock("@/hooks/websocket/useWebSocketHelpers", () => ({
+  sendToolImpressionEvent: mockSendToolImpressionEvent,
+}));
 
 const { mockAppFetch, mockLogger, mockSafeGetItem, mockSafeSetItem } = vi.hoisted(() => ({
   mockAppFetch: vi.fn(),
@@ -172,6 +185,70 @@ describe("completionSideEffects", () => {
 
         vi.unstubAllGlobals();
       });
+    });
+  });
+
+  describe("trackToolResult", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("fires develop.tool.skill for a skill load with action + skill name", () => {
+      trackToolResult({ name: "skill", input: { action: "load", skill: "blog" } });
+
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith("develop.tool.skill", {
+        action: "load",
+        skillName: "blog",
+      });
+      expect(mockSendToolImpressionEvent).not.toHaveBeenCalled();
+    });
+
+    it("still fires develop.tool.skill for a list action (count preserved), with the action prop", () => {
+      trackToolResult({ name: "skill", input: { action: "list" } });
+
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith("develop.tool.skill", { action: "list" });
+    });
+
+    it("still fires develop.tool.skill for an install action, enriched with action + skill name", () => {
+      trackToolResult({ name: "skill", input: { action: "install", skill: "blog" } });
+
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith("develop.tool.skill", {
+        action: "install",
+        skillName: "blog",
+      });
+    });
+
+    it("fires develop.tool.skill even when input is absent (count preserved)", () => {
+      trackToolResult({ name: "skill" });
+
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith("develop.tool.skill", {});
+    });
+
+    it("fires develop.tool.skill_tool AND the legacy per-name impression for a per-skill tool", () => {
+      trackToolResult({ name: "commerce__commerce_store_list", skillName: "commerce" });
+
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith("develop.tool.skill_tool", {
+        skillName: "commerce",
+        toolName: "commerce_store_list",
+      });
+      // Migration shim: legacy per-name impression still emitted for back-compat.
+      expect(mockSendToolImpressionEvent).toHaveBeenCalledWith("commerce__commerce_store_list");
+    });
+
+    it("falls back to the raw name when the prefix does not match the skillName", () => {
+      trackToolResult({ name: "unprefixed", skillName: "commerce" });
+
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith("develop.tool.skill_tool", {
+        skillName: "commerce",
+        toolName: "unprefixed",
+      });
+    });
+
+    it("fires the generic per-name impression for a normal tool", () => {
+      trackToolResult({ name: "readfile" });
+
+      expect(mockSendToolImpressionEvent).toHaveBeenCalledWith("readfile");
+      expect(mockLogImpressionEvent).not.toHaveBeenCalled();
     });
   });
 });

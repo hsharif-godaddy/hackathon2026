@@ -11,6 +11,7 @@
  */
 
 import type { Tool } from 'ai';
+import type { ResolveToolMetadata } from '@airo/ai-transport';
 import { logger } from '../logging/index.js';
 import { ConversationSkillState, buildAllSkillTools, buildSkillToolName, type SkillToolRegistry, type SkillHooks, type SkillHookContext } from '@airo/ai-skills';
 import { join } from 'path';
@@ -90,6 +91,12 @@ export class SkillToolManager {
   // owns its own file.
   private persistChainByAppId = new Map<string, Promise<void>>();
 
+  // Reverse map: prefixed tool name -> owning skill name. Lets transports
+  // enrich tool_start frames with the parent skill without parsing the
+  // `{skillName}__{toolName}` shape on the wire. Populated on initialize()
+  // and on registerDynamicTools(); read by getSkillNameForTool().
+  private toolToSkill = new Map<string, string>();
+
   constructor() {
     // Get skills directory relative to this file
     const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -118,6 +125,15 @@ export class SkillToolManager {
     try {
       this.toolRegistry = await buildAllSkillTools(this.skillsDir);
       this.initialized = true;
+
+      // Populate the reverse map from the static skill→tools mapping built by
+      // buildAllSkillTools. Dynamic tools added later via registerDynamicTools
+      // append to this same map.
+      for (const [skillName, toolNames] of this.toolRegistry.skillToTools) {
+        for (const rawName of toolNames) {
+          this.toolToSkill.set(buildSkillToolName(skillName, rawName), skillName);
+        }
+      }
 
       const skillCount = this.toolRegistry.skillToTools.size;
       const toolCount = Object.keys(this.toolRegistry.tools).length;
@@ -212,6 +228,7 @@ export class SkillToolManager {
     for (const [rawName, toolDef] of entries) {
       rawNames.push(rawName);
       const prefixed = buildSkillToolName(skillName, rawName);
+      this.toolToSkill.set(prefixed, skillName);
       // Wrap execute to log MCP tool execution lifecycle events with skill/tool
       // name context. agent-factory's wrapToolsWithHooks also wraps these tools
       // at the outer layer; this inner wrapper adds the structured skillName /
@@ -271,6 +288,16 @@ export class SkillToolManager {
       return [];
     }
     return Object.keys(this.toolRegistry.tools);
+  }
+
+  /**
+   * Reverse lookup: given a prefixed tool name (`{skillName}__{toolName}`),
+   * return the owning skill name, or undefined if the tool is not a skill
+   * tool. Used by transports to enrich tool_start frames with `skillName`
+   * metadata so the client does not parse the wire-name shape itself.
+   */
+  getSkillNameForTool(prefixedName: string): string | undefined {
+    return this.toolToSkill.get(prefixedName);
   }
 
   /**
@@ -715,3 +742,14 @@ export class SkillToolManager {
 
 // Export singleton instance
 export const skillToolManager = new SkillToolManager();
+
+/**
+ * Shared resolver injected into both transports (WS config + SSE deps) so the
+ * `skillName` enrichment of tool_result/tool_error frames has a single source.
+ * Maps a prefixed `{skill}__{tool}` name to its owning skill; non-skill tools
+ * resolve to undefined (no-op merge).
+ */
+export const resolveSkillToolMetadata: ResolveToolMetadata = (toolName: string) => {
+  const skillName = skillToolManager.getSkillNameForTool(toolName);
+  return skillName ? { skillName } : undefined;
+};

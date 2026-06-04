@@ -126,6 +126,10 @@ export type { ChunkTimeoutDeps } from './chunk-timeout-guard.js'
 export { decideChunkTimeoutFinalization } from './chunk-timeout-finalization.js'
 export type { ChunkTimeoutOutcome } from './chunk-timeout-finalization.js'
 
+// Tool-frame metadata resolution (shared by WS + SSE transports)
+export { toolMetadataFields } from './tool-metadata.js'
+export type { ResolveToolMetadata, ToolMetadataLogger } from './tool-metadata.js'
+
 // Skill output redaction (shared by WS + SSE transports before emitting tool-result)
 export { redactSkillOutput } from './redact-skill-output.js'
 

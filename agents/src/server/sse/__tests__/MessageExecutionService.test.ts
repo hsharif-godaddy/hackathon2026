@@ -39,6 +39,7 @@ vi.mock('@godaddy/agent-otel-sdk', async () => {
 })
 
 import { MessageExecutionService } from '../MessageExecutionService.js'
+import { skillToolManager, resolveSkillToolMetadata } from '../../../tools/skill-tool-manager.js'
 import { BudgetServiceConflictError } from '@airo/ai-lib/budget'
 import { BudgetExceededError } from '@airo/ai-common'
 import { APICallError, RetryError } from 'ai'
@@ -148,6 +149,9 @@ function createMockDeps(parts: any[] = []) {
       setSelectedTodoList: vi.fn(),
     },
     onAgentChanged: vi.fn().mockResolvedValue(undefined),
+    // Mirror the production wiring (app.ts): inject the shared resolver so the
+    // SSE seam exercises the same skillName-enrichment path as the WS transport.
+    resolveToolMetadata: resolveSkillToolMetadata,
   }
 }
 
@@ -407,6 +411,106 @@ describe('MessageExecutionService', () => {
           })
         })
       )
+    })
+
+    describe('skillName metadata on terminal tool frames', () => {
+      let skillNameSpy: ReturnType<typeof vi.spyOn>
+
+      beforeEach(() => {
+        // Resolve a single per-skill MCP tool to its parent skill and
+        // everything else to undefined — mirrors the real
+        // SkillToolManager.getSkillNameForTool reverse lookup. This is the
+        // SSE-path mirror of the WS `resolveToolMetadata` hook.
+        skillNameSpy = vi
+          .spyOn(skillToolManager, 'getSkillNameForTool')
+          .mockImplementation((name: string) =>
+            name === 'commerce__commerce_store_list' ? 'commerce' : undefined,
+          )
+      })
+
+      afterEach(() => {
+        skillNameSpy.mockRestore()
+      })
+
+      it('attaches skillName to tool_result for a per-skill MCP tool', async () => {
+        deps = createMockDeps([
+          { type: 'tool-result', id: 'tid1', toolName: 'commerce__commerce_store_list', input: {}, output: 'ok' },
+        ])
+        service = new MessageExecutionService(deps as any)
+
+        await service.execute(DEFAULT_PARAMS)
+
+        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({
+            type: 'tool_result',
+            data: expect.objectContaining({
+              tool: expect.objectContaining({
+                name: 'commerce__commerce_store_list',
+                skillName: 'commerce',
+              }),
+            }),
+          })
+        )
+      })
+
+      it('attaches skillName to tool_error for a per-skill MCP tool', async () => {
+        deps = createMockDeps([
+          { type: 'tool-error', id: 'tid1', toolName: 'commerce__commerce_store_list', error: new Error('boom') },
+        ])
+        service = new MessageExecutionService(deps as any)
+
+        await service.execute(DEFAULT_PARAMS)
+
+        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({
+            type: 'tool_result',
+            data: expect.objectContaining({
+              tool: expect.objectContaining({
+                is_error: true,
+                error: 'boom',
+                skillName: 'commerce',
+              }),
+            }),
+          })
+        )
+      })
+
+      it('omits skillName for a non-skill tool', async () => {
+        deps = createMockDeps([
+          { type: 'tool-result', id: 'tid1', toolName: 'editFile', input: {}, output: 'ok' },
+        ])
+        service = new MessageExecutionService(deps as any)
+
+        await service.execute(DEFAULT_PARAMS)
+
+        const resultCall = deps.eventChannel.publish.mock.calls.find(
+          (c: any[]) => c[1]?.type === 'tool_result',
+        )
+        expect(resultCall).toBeDefined()
+        expect(resultCall![1].data.tool).not.toHaveProperty('skillName')
+      })
+
+      it('still publishes tool_result when the resolver throws (additive enrichment must not derail the turn)', async () => {
+        deps = createMockDeps([
+          { type: 'tool-result', id: 'tid1', toolName: 'commerce__commerce_store_list', input: {}, output: 'ok' },
+        ])
+        // A misbehaving resolver must not abort the terminal frame.
+        deps.resolveToolMetadata = () => {
+          throw new Error('resolver boom')
+        }
+        service = new MessageExecutionService(deps as any)
+
+        await service.execute(DEFAULT_PARAMS)
+
+        const resultCall = deps.eventChannel.publish.mock.calls.find(
+          (c: any[]) => c[1]?.type === 'tool_result',
+        )
+        expect(resultCall).toBeDefined()
+        expect(resultCall![1].data.tool.name).toBe('commerce__commerce_store_list')
+        expect(resultCall![1].data.tool).not.toHaveProperty('skillName')
+      })
     })
 
     it('logs tool.input.parse_failure when parsedInput is a string (invalid JSON)', async () => {

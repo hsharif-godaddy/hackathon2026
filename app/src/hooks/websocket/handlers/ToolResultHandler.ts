@@ -17,7 +17,7 @@ export class ToolResultHandler implements MessageHandler {
     if (data.data?.tool) {
       context.actions.flushToolDeltaBufferImmediate()
       const tool = data.data.tool as any
-      trackToolResult(tool.name)
+      trackToolResult(tool)
       context.actions.addToolResultSegment(mapToolResult(tool))
       await handleToolResultSideEffects(tool, context.currentAppId)
     }

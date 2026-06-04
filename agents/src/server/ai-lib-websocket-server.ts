@@ -65,6 +65,7 @@ import {
   finalizeConnectThenAuthSessionReady,
 } from './connect-then-auth-session.js'
 import { ConversationContextManager } from '../services/ConversationContextManager.js'
+import { skillToolManager, resolveSkillToolMetadata } from '../tools/skill-tool-manager.js'
 
 import {
   getConversationLifecycleStore,
@@ -80,7 +81,6 @@ import { runWithModelOverride, getActiveModelOverride } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../profiles/index.js'
 import { createAgentRouter } from './agent-router.js'
 import { getPersistedAgentIdForApp } from './persisted-agent.js'
-import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { getModelOverride } from '../utils/model-selection.js'
 import {
   guardAllowedOverrideModel,
@@ -1050,6 +1050,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
       // State manager for agent handoffs
       stateManager: agentFactory.stateManager,
+
+      // Surface skillName on tool_result / tool_error frames for per-skill MCP
+      // tools so the client can attribute tool calls to their parent skill
+      // without parsing the `{skillName}__{toolName}` wire convention. Shared
+      // with the SSE transport via resolveSkillToolMetadata.
+      resolveToolMetadata: resolveSkillToolMetadata,
 
       // Built-in message persistence
       messagePersistence,

@@ -15,6 +15,7 @@ import {
   turnEndedWithStopAfterTool,
   withBudgetRecovery,
   redactSkillOutput,
+  toolMetadataFields,
   trackTurnSnapshotEvent,
   runPreflightTools,
   analyzeStreamError,
@@ -28,7 +29,7 @@ import {
   recordTokenUsageObservability,
   TOOL_VALIDATION_ERROR_TYPE,
 } from '@airo/ai-transport'
-import type { ResponseMetadata } from '@airo/ai-transport'
+import type { ResponseMetadata, ResolveToolMetadata } from '@airo/ai-transport'
 import { BudgetExceededError, classifyError } from '@airo/ai-common'
 import { grantSessionManager } from '@airo/ai-grants'
 import { createGrantBudgetRecoveryCallback } from '../grant-budget-recovery-callback.js'
@@ -125,6 +126,11 @@ interface ExecutionDeps {
   resetPostStreamRetries?: (sessionKey: string) => void
   /** Shared lifecycle deps for git-hook + assessment orchestration. Skipped when absent. */
   lifecycle?: MessageLifecycleDeps
+  /**
+   * Resolves transport-level metadata (skillName) for tool_result/tool_error
+   * frames. Shared with the WS transport; see `resolveSkillToolMetadata`.
+   */
+  resolveToolMetadata?: ResolveToolMetadata
 }
 
 /**
@@ -871,7 +877,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           ? sdkInput
           : (typeof toolCall?.input === 'string' ? {} : toolCall?.input)
         const output = redactSkillOutput(toolName, result)
-        const eventData = { ...baseEventData, step: processor.currentStep, toolName, tool: { id: toolCallId, name: toolName, input, output } }
+        // Surface skillName on per-skill MCP tools so the client can attribute
+        // the tool call to its skill without parsing the wire-name shape.
+        // Shared with the WS transport via resolveToolMetadata + toolMetadataFields.
+        const eventData = { ...baseEventData, step: processor.currentStep, toolName, tool: { id: toolCallId, name: toolName, input, output, ...toolMetadataFields(toolName, this.deps.resolveToolMetadata, logger) } }
         const snapshot = trackTurnSnapshotEvent(turnSnapshot, 'tool_result', `${toolName} completed`, eventData)
         publish({
           conversationId, type: 'tool_result',
@@ -893,7 +902,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           ...baseEventData,
           step: processor.currentStep,
           toolName,
-          tool: { id: toolCallId, name: toolName, input, output: {}, error: error.message, is_error: true },
+          tool: { id: toolCallId, name: toolName, input, output: {}, error: error.message, is_error: true, ...toolMetadataFields(toolName, this.deps.resolveToolMetadata, logger) },
         }
         const snapshot = trackTurnSnapshotEvent(turnSnapshot, 'tool_result', `${toolName} failed: ${error.message}`, eventData)
         publish({

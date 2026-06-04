@@ -18,6 +18,7 @@ import { stringPayloadLength } from './payload-length.js'
 import { StreamPartProcessor } from './stream-part-processor.js'
 import { awaitResponseMetadata } from './response-metadata-capture.js'
 import { redactSkillOutput } from './redact-skill-output.js'
+import { toolMetadataFields, type ResolveToolMetadata } from './tool-metadata.js'
 import { getCurrentTraceIds } from './otel-trace-ids.js'
 import type { AgentsCollection } from '@airo/ai-lib'
 import type { HandoffStateManager } from '@airo/ai-lib'
@@ -395,6 +396,21 @@ export interface WebSocketConfig {
    * Pauses during tool execution.
    */
   chunkTimeoutMs?: number
+
+  /**
+   * Optional resolver for transport-level metadata to attach to tool_result
+   * and tool_error frames. Called once per terminal tool frame with the tool's
+   * registered name; the returned fields are merged into the published `tool`
+   * object on the wire. Used by the agents service to surface `skillName` for
+   * per-skill MCP tools without making the client parse the
+   * `{skillName}__{toolName}` naming convention itself. Returning undefined
+   * (or omitting the hook) is a no-op.
+   *
+   * Not applied to tool_start frames: their `input` is still empty (it streams
+   * in via tool_input_delta), and the only client consumer reads `skillName`
+   * off tool_result.
+   */
+  resolveToolMetadata?: ResolveToolMetadata
 }
 
 /**
@@ -1595,7 +1611,8 @@ export class WebSocketServer {
               id: toolCallId,
               name: toolName,
               input,
-              output: toolOutput
+              output: toolOutput,
+              ...toolMetadataFields(toolName, this.config.resolveToolMetadata, this.logger)
             },
             agentId: agentName
           }
@@ -1623,7 +1640,8 @@ export class WebSocketServer {
               input,
               output: {},
               error: errorMessage,
-              is_error: true
+              is_error: true,
+              ...toolMetadataFields(toolName, this.config.resolveToolMetadata, this.logger)
             },
             agentId: agentName
           }

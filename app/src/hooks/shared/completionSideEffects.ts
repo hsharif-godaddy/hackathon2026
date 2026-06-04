@@ -263,6 +263,46 @@ export function trackStepStart(): void {
   sendToolImpressionEvent('start')
 }
 
-export function trackToolResult(toolName: string): void {
-  sendToolImpressionEvent(toolName)
+/**
+ * Fire the per-tool-call impression on tool_result. All variants live under
+ * the `develop.tool.*` namespace so "all tool calls" stays a single query.
+ *
+ * Both skill cases are kept backward-compatible (additive) with the
+ * pre-existing `develop.tool.*` emissions:
+ *  - The wrapper `skill` tool keeps firing `develop.tool.skill.impression` for
+ *    every action (preserving the existing count); we only add `action` and
+ *    `skillName` properties.
+ *  - Per-skill MCP tools gain a bounded, collapsed `develop.tool.skill_tool`
+ *    impression but ALSO keep emitting the legacy per-name impression during a
+ *    migration window so existing `develop.tool.{skill}__{tool}.impression`
+ *    dashboards keep working.
+ */
+export function trackToolResult(tool: {
+  name: string
+  input?: { action?: string; skill?: string }
+  skillName?: string
+}): void {
+  // Wrapper `skill` tool: fires for every action (list/load/install) exactly as
+  // before — same EID, same cadence — now enriched with action + skillName so
+  // the data is filterable. `tool_result` carries the parsed input.
+  if (tool.name === 'skill') {
+    const props: Record<string, string> = {}
+    if (typeof tool.input?.action === 'string') props.action = tool.input.action
+    if (typeof tool.input?.skill === 'string') props.skillName = tool.input.skill
+    logImpressionEvent('develop.tool.skill', props)()
+    return
+  }
+  // Per-skill MCP tool: emit the bounded collapsed event (skillName attached
+  // server-side; recover the un-prefixed tool name by stripping `{skill}__`)…
+  if (tool.skillName) {
+    const prefix = `${tool.skillName}__`
+    const toolName = tool.name.startsWith(prefix) ? tool.name.slice(prefix.length) : tool.name
+    logImpressionEvent('develop.tool.skill_tool', { skillName: tool.skillName, toolName })()
+    // …and keep the legacy per-name impression so existing dashboards keep
+    // working. Migration shim — remove once consumers move to skill_tool.
+    sendToolImpressionEvent(tool.name)
+    return
+  }
+  // Normal tool: unchanged per-name impression.
+  sendToolImpressionEvent(tool.name)
 }
