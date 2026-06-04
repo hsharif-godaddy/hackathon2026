@@ -1,18 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../../../../logging/index.js', () => ({
+vi.mock('../../logging/index.js', () => ({
   Logger: { create: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }));
 
 const mockExecuteAction = vi.fn();
 const mockClient = { executeAction: mockExecuteAction } as any;
 
-const { listEmbeddables, createEmbeddable, updateEmbeddable } =
-  await import('../reamaze.js');
-const { listAccounts, activateAccount } =
-  await import('../../../_shared/reamaze-client.js');
+const { listEmbeddables, createEmbeddable, updateEmbeddable, listAccounts, activateAccount } =
+  await import('../inbox-client.js');
 
-describe('reamaze client', () => {
+describe('inbox-client', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

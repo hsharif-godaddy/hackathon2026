@@ -24,13 +24,14 @@ import { MemoryRepository } from '../../../database/repositories/MemoryRepositor
 import { SkillLoaderTool } from '../../../tools/skill-loader-tool.js';
 import { getActionService } from '../../../server/agent-runtime.js';
 import type { IClientActionService } from '../../../services/ClientActionService.js';
-import { listAccounts, activateAccount } from '../../_shared/reamaze-client.js';
 import {
+  listAccounts,
+  activateAccount,
   listEmbeddables,
   createEmbeddable,
   updateEmbeddable,
   type UpdateEmbeddableInput,
-} from './reamaze.js';
+} from '../../../services/inbox-client.js';
 import { readWidgetConfig, writeWidgetConfig } from './widget-config.js';
 
 const logger = Logger.create({ component: 'inbox.skill' });

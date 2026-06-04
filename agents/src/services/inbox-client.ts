@@ -1,5 +1,5 @@
 /**
- * Shared Reamaze client — dispatches via ClientActionService.
+ * Shared inbox client — dispatches via ClientActionService.
  *
  * Architecture:
  *   agent tool → ClientActionService (socket) → browser → /api/inbox
@@ -9,13 +9,13 @@
  * delegates to the browser so Reamaze sees the user's session (typ: "idp"
  * token) and authorizes based on customer_id → brand ownership.
  *
- * Reused across skills that need Reamaze account provisioning.
+ * Reused across skills that need Inbox (Reamaze) account provisioning.
  */
 
-import type { IClientActionService } from '../../services/ClientActionService.js';
-import { Logger } from '../../logging/index.js';
+import type { IClientActionService } from './ClientActionService.js';
+import { Logger } from '../logging/index.js';
 
-const logger = Logger.create({ component: 'reamaze.client' });
+const logger = Logger.create({ component: 'inbox.client' });
 
 // Must match CLIENT_ACTIONS.INBOX_CALL in
 // app/src/hooks/websocket/actions/constants.ts — keep in sync manually.
@@ -25,7 +25,7 @@ const CLIENT_ACTION_NAME = 'inboxCall';
 // Types
 // ----------------------------------------------------------------------------
 
-export type ReamazeResult<T> =
+export type InboxResult<T> =
   | { success: true; data: T }
   | { success: false; error: string; status?: number };
 
@@ -77,9 +77,9 @@ interface BffResponse {
 export async function dispatch<T>(
   client: IClientActionService,
   args: DispatchParams,
-): Promise<ReamazeResult<T>> {
+): Promise<InboxResult<T>> {
   const logCtx = { appId: args.appId, ...(args.brandId && { brandId: args.brandId }) };
-  logger.info(`reamaze.client.${args.operation}.start`, logCtx);
+  logger.info(`inbox.client.${args.operation}.start`, logCtx);
 
   let clientResult: Awaited<ReturnType<IClientActionService['executeAction']>>;
   try {
@@ -95,7 +95,7 @@ export async function dispatch<T>(
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    logger.error(`reamaze.client.${args.operation}.dispatch_failed`, {
+    logger.error(`inbox.client.${args.operation}.dispatch_failed`, {
       ...logCtx,
       error: message,
     });
@@ -108,7 +108,7 @@ export async function dispatch<T>(
 
   const bff = clientResult.result as BffResponse | undefined;
   if (!bff || typeof bff.status !== 'number') {
-    logger.warn(`reamaze.client.${args.operation}.unexpected_shape`, {
+    logger.warn(`inbox.client.${args.operation}.unexpected_shape`, {
       ...logCtx,
       result: JSON.stringify(bff)?.slice(0, 200),
     });
@@ -119,7 +119,7 @@ export async function dispatch<T>(
     const errData = bff.data as { message?: string; error?: string; errors?: string[] } | undefined;
     const errorText =
       errData?.message ?? errData?.error ?? errData?.errors?.join('; ') ?? `HTTP ${bff.status}`;
-    logger.warn(`reamaze.client.${args.operation}.error`, {
+    logger.warn(`inbox.client.${args.operation}.error`, {
       ...logCtx,
       status: bff.status,
       error: errorText,
@@ -127,7 +127,7 @@ export async function dispatch<T>(
     return { success: false, error: errorText, status: bff.status };
   }
 
-  logger.info(`reamaze.client.${args.operation}.success`, logCtx);
+  logger.info(`inbox.client.${args.operation}.success`, logCtx);
   return { success: true, data: bff.data as T };
 }
 
@@ -138,7 +138,7 @@ export async function dispatch<T>(
 export async function listAccounts(
   client: IClientActionService,
   appId: string,
-): Promise<ReamazeResult<ListAccountsResponse>> {
+): Promise<InboxResult<ListAccountsResponse>> {
   const result = await dispatch<ListAccountsResponse>(client, {
     operation: 'list_accounts',
     appId,
@@ -158,7 +158,7 @@ export async function activateAccount(
   appId: string,
   entitlementId?: string,
   appName?: string,
-): Promise<ReamazeResult<Account>> {
+): Promise<InboxResult<Account>> {
   return dispatch<Account>(client, {
     operation: 'activate_account',
     appId,
@@ -170,3 +170,87 @@ export async function activateAccount(
   });
 }
 
+// ----------------------------------------------------------------------------
+// Embeddable types
+// ----------------------------------------------------------------------------
+
+export interface Embeddable {
+  id: number;
+  title?: string;
+  [key: string]: unknown;
+}
+
+/** Fields we support sending to PUT /embeddables/{id}. Snake-cased per controller. */
+export interface UpdateEmbeddableInput {
+  title?: string;
+  shoutbox_position?: string;
+  shoutbox_bg?: string;
+  shoutbox_icon?: string;
+  shoutbox_label?: string;
+  styles?: {
+    button_bg_color?: string;
+    header_bg_color?: string;
+    button_font_color?: string;
+    header_font_color?: string;
+  };
+}
+
+// ----------------------------------------------------------------------------
+// Embeddable operations (brand-scoped)
+// ----------------------------------------------------------------------------
+
+export async function listEmbeddables(
+  client: IClientActionService,
+  appId: string,
+  brandId: string,
+): Promise<InboxResult<Embeddable[]>> {
+  const result = await dispatch<{ embeddables?: Embeddable[] }>(client, {
+    operation: 'list_embeddables',
+    appId,
+    brandId,
+  });
+  if (!result.success) return result;
+  return { success: true, data: result.data.embeddables ?? [] };
+}
+
+export async function createEmbeddable(
+  client: IClientActionService,
+  appId: string,
+  brandId: string,
+  input: UpdateEmbeddableInput,
+): Promise<InboxResult<Embeddable>> {
+  const result = await dispatch<{ embeddable?: Embeddable } & Embeddable>(client, {
+    operation: 'create_embeddable',
+    appId,
+    brandId,
+    body: { embeddable: input },
+  });
+  if (!result.success) return result;
+  const embeddable = result.data.embeddable ?? (result.data as Embeddable);
+  if (typeof embeddable?.id !== 'number') {
+    return { success: false, error: 'Inbox response missing embeddable.id' };
+  }
+  return { success: true, data: embeddable };
+}
+
+export async function updateEmbeddable(
+  client: IClientActionService,
+  appId: string,
+  brandId: string,
+  embeddableId: number,
+  input: UpdateEmbeddableInput,
+): Promise<InboxResult<Embeddable>> {
+  const result = await dispatch<{ embeddable?: Embeddable } & Embeddable>(client, {
+    operation: 'update_embeddable',
+    appId,
+    brandId,
+    embeddableId,
+    body: { embeddable: input },
+  });
+  if (!result.success) return result;
+  const embeddable = result.data.embeddable ?? (result.data as Embeddable);
+  if (typeof embeddable?.id !== 'number') {
+    return { success: false, error: 'Inbox response missing embeddable.id' };
+  }
+  return { success: true, data: embeddable };
+}
