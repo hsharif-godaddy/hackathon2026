@@ -201,7 +201,13 @@ func (h *mediaSlotHandler) serveSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine which URL to serve: ?src= parameter, ?variant= parameter, or currentUrl
+	// Determine which URL to serve: ?src= parameter or currentUrl.
+	//
+	// Logos always serve the transparent currentUrl on a website: the solid
+	// variant has an opaque background that produces a visible blob/border when
+	// placed on a page. The ?variant=solid query param is intentionally NOT
+	// honored here — solidUrlMap is retained on the slot only so display
+	// surfaces (brand book, logo widget) can render the solid CDN URL directly.
 	targetURL := slot.CurrentURL
 	if srcParam := r.URL.Query().Get("src"); srcParam != "" {
 		// Validate that the requested URL is associated with this slot
@@ -213,11 +219,6 @@ func (h *mediaSlotHandler) serveSlot(w http.ResponseWriter, r *http.Request) {
 		}
 		targetURL = srcParam
 		slog.Debug(h.mediaType+"_slot.using_src_param", "slot", slotPath, "src", srcParam)
-	} else if variant := r.URL.Query().Get("variant"); variant == "solid" && slot.MediaType == "logo" && len(slot.SolidURLMap) > 0 {
-		if solidURL, ok := slot.SolidURLMap[slot.CurrentURL]; ok {
-			targetURL = solidURL
-		}
-		slog.Debug(h.mediaType+"_slot.using_variant", "slot", slotPath, "variant", variant)
 	}
 
 	// Handle local uploads (serve directly instead of redirecting)

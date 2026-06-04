@@ -693,6 +693,10 @@ func TestHandleImageSlot_VariantSolid_LogoSlot(t *testing.T) {
 	cache := httpproxy.NewManifestCache(manifestPath)
 	handler := httpproxy.NewImageSlotHandler(cache, []string{filepath.Join(tmpDir, "public", "media")})
 
+	// ?variant=solid is intentionally NOT honored: logos always serve the
+	// transparent currentUrl on a website, even when a solidUrlMap is present.
+	// (solidUrlMap is retained on the slot only for display surfaces that read
+	// the CDN URL directly.)
 	req := httptest.NewRequest(http.MethodGet, "/airo-assets/images/logo/primary?variant=solid", nil)
 	rec := httptest.NewRecorder()
 
@@ -702,8 +706,17 @@ func TestHandleImageSlot_VariantSolid_LogoSlot(t *testing.T) {
 		t.Errorf("expected 302, got: %d", rec.Code)
 	}
 	location := rec.Header().Get("Location")
-	if location != "https://isteam.wsimg.com/genai-assistant/s1.png" {
-		t.Errorf("expected solid URL redirect, got: %s", location)
+	if location != "https://isteam.wsimg.com/genai-assistant/t1.png" {
+		t.Errorf("expected transparent currentUrl (variant=solid ignored), got: %s", location)
+	}
+
+	// ?variant=solid must be a no-op: it should redirect to exactly the same
+	// place a request with no query param does.
+	plainReq := httptest.NewRequest(http.MethodGet, "/airo-assets/images/logo/primary", nil)
+	plainRec := httptest.NewRecorder()
+	handler.ServeHTTP(plainRec, plainReq)
+	if plainLoc := plainRec.Header().Get("Location"); plainLoc != location {
+		t.Errorf("?variant=solid redirect (%s) differs from no-param redirect (%s)", location, plainLoc)
 	}
 }
 

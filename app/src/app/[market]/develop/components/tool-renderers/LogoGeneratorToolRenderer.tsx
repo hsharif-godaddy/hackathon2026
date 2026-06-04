@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import MediaModal from '@/app/[market]/develop/components/tool-renderers/MediaModal'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
-import { getLogoDisplayUrl, type LogoData } from '@/app/[market]/develop/components/widgets/logo-utils'
+import { extractLogosFromToolResult, getLogoDisplayUrl, type LogoData } from '@/app/[market]/develop/components/widgets/logo-utils'
 import LogoGridWidget from '@/app/[market]/develop/components/widgets/LogoGridWidget'
 import { logger } from '@/lib/request-context'
 import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
@@ -58,35 +58,9 @@ export default function LogoGeneratorToolRenderer({
         resultObj = result
       }
 
-      if (resultObj) {
-        // Handle structuredContent from REST API / MCP response
-        if (resultObj.structuredContent?.logos) {
-          logos.push(...resultObj.structuredContent.logos)
-        }
-        // Handle direct logos array
-        else if (resultObj.logos && Array.isArray(resultObj.logos)) {
-          logos.push(...resultObj.logos)
-        }
-        // Handle content array with resources (MCP format)
-        else if (resultObj.content && Array.isArray(resultObj.content)) {
-          // Extract URLs from resource items
-          const resourceItems = resultObj.content.filter(
-            (item: any) => item.type === 'resource' && item.resource?.uri
-          )
-          resourceItems.forEach((item: any, index: number) => {
-            logos.push({
-              id: `logo-${index + 1}`,
-              url: item.resource.uri
-            })
-          })
-          // Also check structuredContent if available
-          if (resultObj.structuredContent?.logos) {
-            // Replace with richer data if available
-            logos.length = 0
-            logos.push(...resultObj.structuredContent.logos)
-          }
-        }
-      }
+      // Normalize across all tool-result shapes (new nested logo, legacy array,
+      // direct logos, MCP content) in one tested place.
+      logos.push(...extractLogosFromToolResult(resultObj))
     } catch (e) {
       logger.error('tool.logo_generator.parse.failed', {
         error: e instanceof Error ? e.message : String(e),

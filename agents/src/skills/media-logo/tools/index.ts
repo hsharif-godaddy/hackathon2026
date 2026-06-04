@@ -338,10 +338,10 @@ function buildResultText(args: {
   const slotNote = slotEntries.length === 0
     ? 'No slot URLs saved.'
     : slotEntries.length === 1
-      ? `Slot URL: ${slotEntries[0]![1]} (use \`?variant=solid\` for a solid background).`
+      ? `Slot URL: ${slotEntries[0]![1]} (transparent).`
       : 'Slot URLs: ' +
         slotEntries.map(([l, u]) => `${l}: ${u}`).join(', ') +
-        '. Use the orientation matching the placement; append `?variant=solid` for solid backgrounds.';
+        '. Use the orientation matching the placement.';
 
   const failureNote = args.failedLayouts.length > 0
     ? ` Slot save failed for: ${args.failedLayouts.join(', ')} — ${args.failedLayouts.length > 1 ? 'those layouts' : 'that layout'} will not appear in the Brand Book until retried. Tell the user and offer to retry.`
