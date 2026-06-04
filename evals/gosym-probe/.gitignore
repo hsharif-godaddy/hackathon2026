@@ -1,7 +1,8 @@
 node_modules/
 dist/
 .env
-runs/
+runs/*
+!runs/20260529050825_4eca9fa9-4a16-4075-b193-8fefc013907d/
 .DS_Store
 .claude/settings.local.json
 .claude/worktrees/
