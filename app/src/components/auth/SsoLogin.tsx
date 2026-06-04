@@ -8,8 +8,9 @@ import Spinner from '@ux/spinner';
 
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useBreakpoints } from '@/hooks/useBreakpoints';
-import { SsoExpirationCode } from '@/lib/features';
 import { logger } from '@/lib/request-context';
+import { isReturningUser } from '@/lib/returningUser';
+import { getSsoPageToLoad } from '@/lib/ssoPageRoute';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { getRootDomain } from '@/utils/getRootDomain';
@@ -336,10 +337,7 @@ export default function SsoLogin() {
     return null;
   }
 
-  // Route to the correct SSO page based on auth failure type:
-  // HBI = 2FA challenge page (not password re-entry)
-  // LOGIN and VAT both route to /login, which is the correct default
-  const pageToLoad = authReason === SsoExpirationCode.HBI ? '/hbi' : '/login';
+  const pageToLoad = getSsoPageToLoad(authReason, isReturningUser());
 
   logger.info('sso-login.auth-reason', {
     message: `SSO routing to ${pageToLoad}`,

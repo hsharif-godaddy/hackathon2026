@@ -7,6 +7,7 @@ import { withGasketData } from '@gasket/nextjs/layout';
 import { makeLayout } from '@godaddy/gasket-next/layout';
 
 import GlobalSsoLogin from "@/components/auth/GlobalSsoLogin";
+import ReturningUserCookieSync from "@/components/auth/ReturningUserCookieSync";
 import SsoDebugTools from "@/components/auth/SsoDebugTools";
 import AuthProvider from "@/components/providers/AuthProvider";
 import FullStoryProvider from "@/components/providers/FullStoryProvider";
@@ -199,6 +200,7 @@ async function MarketLayout({
                   {children}
                 </main>
                 <GlobalSsoLogin key="market-global-sso-login" />
+                <ReturningUserCookieSync key="market-returning-user-cookie-sync" />
                 <SsoDebugTools key="market-sso-debug-tools" />
               </SubscriptionCacheProvider>
             </AuthProvider>

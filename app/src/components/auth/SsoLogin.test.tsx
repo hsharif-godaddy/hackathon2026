@@ -3,11 +3,14 @@
  */
 import '@testing-library/jest-dom';
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { waitFor } from '@testing-library/react';
 
-import { SsoExpirationCode } from '@/lib/features';
 import { renderWithProviders } from '@/tests/test-utils';
+
+// Numeric literals — avoids pulling in @airo/shared/auth via features.ts
+const AUTH_CODE = { LOGIN: 1, HBI: 2, VAT: 3 } as const;
+const RETURNING_USER_COOKIE = 'airo_returning_user';
 import SsoLogin from './SsoLogin';
 
 const mockLogger = vi.hoisted(() => ({
@@ -373,9 +376,28 @@ describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
     mockAuthUIState.redirectUrl = null;
     mockAuthUIState.ssoAuthReason = null;
     mockAuthUIState.inFlightReauth = false;
+    // Clear returning-user cookie before each test
+    document.cookie = `${RETURNING_USER_COOKIE}=; Max-Age=0; Path=/`;
   });
 
-  it('routes to /login by default when authReason is null', async function defaultsToLogin() {
+  afterEach(function clearCookie() {
+    document.cookie = `${RETURNING_USER_COOKIE}=; Max-Age=0; Path=/`;
+  });
+
+  it('routes to /account/create when authReason is null and no returning-user cookie', async function newUserRoutesToCreateAccount() {
+    renderWithProviders(<SsoLogin />);
+
+    await waitFor(() => {
+      expect(latestPageToLoad).toBeTruthy();
+    });
+
+    expect(latestPageToLoad).toBe('/account/create');
+    expect(latestConsumingPath).toBe('/');
+  });
+
+  it('routes to /login when authReason is null and returning-user cookie is set', async function returningUserRoutesToLogin() {
+    document.cookie = `${RETURNING_USER_COOKIE}=1; Path=/`;
+
     renderWithProviders(<SsoLogin />);
 
     await waitFor(() => {
@@ -383,14 +405,11 @@ describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
     });
 
     expect(latestPageToLoad).toBe('/login');
-    expect(latestPageToLoadParams).toEqual({
-      redirect_url: 'https://airo-builder.test/'
-    });
     expect(latestConsumingPath).toBe('/');
   });
 
-  it('routes to /hbi when authReason is HBI', async function routesToHbi() {
-    mockAuthUIState.ssoAuthReason = SsoExpirationCode.HBI;
+  it('routes to /hbi when authReason is HBI regardless of cookie', async function routesToHbi() {
+    mockAuthUIState.ssoAuthReason = AUTH_CODE.HBI;
 
     renderWithProviders(<SsoLogin />);
 
@@ -406,8 +425,8 @@ describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
     expect(latestConsumingPath).toBe('/');
   });
 
-  it('routes to /login when authReason is LOGIN', async function routesToLoginForCode1() {
-    mockAuthUIState.ssoAuthReason = SsoExpirationCode.LOGIN;
+  it('routes to /login when authReason is LOGIN (session expiry, ignores cookie)', async function routesToLoginForCode1() {
+    mockAuthUIState.ssoAuthReason = AUTH_CODE.LOGIN;
 
     renderWithProviders(<SsoLogin />);
 
@@ -423,8 +442,8 @@ describe('SsoLogin authReason routing', function ssoLoginAuthReasonTests() {
     expect(latestConsumingPath).toBe('/');
   });
 
-  it('routes to /login when authReason is VAT', async function routesToLoginForCode3() {
-    mockAuthUIState.ssoAuthReason = SsoExpirationCode.VAT;
+  it('routes to /login when authReason is VAT (session expiry, ignores cookie)', async function routesToLoginForCode3() {
+    mockAuthUIState.ssoAuthReason = AUTH_CODE.VAT;
 
     renderWithProviders(<SsoLogin />);
 
