@@ -21,7 +21,8 @@ export default function DevelopmentMode() {
     frozenElementRef.current = hoveredElement
   }
 
-  const effectiveElement = quickEditActive ? frozenElementRef.current : hoveredElement
+  // Freeze guards hover drift during quick-edit; click-driven changes (toolbarMode=true) always pierce through.
+  const effectiveElement = (quickEditActive && !toolbarMode) ? frozenElementRef.current : hoveredElement
 
   // Visual context capture for AI assistance
   useEffect(() => {
