@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { performBudgetPreCheck, type BudgetPreCheckDeps } from '../budget-pre-check.js'
 import { BudgetExceededError } from '@airo/ai-common'
-import { BudgetServiceUnavailableError, BudgetNoCapacityError, BudgetNotFoundError } from '@airo/ai-lib/budget'
+import { BudgetServiceError, BudgetServiceUnavailableError, BudgetServiceTimeoutError, BudgetNoCapacityError, BudgetNotFoundError } from '@airo/ai-lib/budget'
 
 describe('performBudgetPreCheck', () => {
   const mockLogger = {
@@ -92,18 +92,25 @@ describe('performBudgetPreCheck', () => {
   })
 
   describe('when budget service client is not configured', () => {
-    it('throws BudgetServiceUnavailableError', async () => {
+    it('returns null and logs fail_open (fail-open for availability)', async () => {
       const noBudgetClientDeps: BudgetPreCheckDeps = {
         getClient: () => null,
         logger: mockLogger as any,
       }
 
-      await expect(
-        performBudgetPreCheck(
-          { budgetServiceEnabled: true, bmsBudgetId: 'budget-1' },
-          noBudgetClientDeps,
-        ),
-      ).rejects.toThrow(BudgetServiceUnavailableError)
+      const result = await performBudgetPreCheck(
+        { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', subscriptionId: 'sub-1', appId: 'app-1' },
+        noBudgetClientDeps,
+      )
+
+      expect(result).toBeNull()
+      expect(mockLogger.error).toHaveBeenCalledWith('budget.precheck.fail_open', {
+        appId: 'app-1',
+        budgetId: 'budget-1',
+        subscriptionId: 'sub-1',
+        reason: 'bms_client_not_configured',
+        error: 'Budget Service client not configured (missing BUDGET_SERVICE_URL)',
+      })
     })
   })
 
@@ -295,7 +302,6 @@ describe('performBudgetPreCheck', () => {
         budgetId: 'budget-1',
         reason: 'allowOverage=true — session will open even if budget is exhausted',
       })
-      // overage log must appear before session.started
       expect(overageLogIndex).toBeLessThan(startedLogIndex)
     })
 
@@ -352,17 +358,101 @@ describe('performBudgetPreCheck', () => {
     })
   })
 
-  describe('error propagation', () => {
-    it('propagates non-capacity errors from createSession', async () => {
-      const serviceError = new BudgetServiceUnavailableError('Budget Service unreachable')
-      mockBudgetClient.createSession.mockRejectedValue(serviceError)
+  describe('fail-open on transient errors', () => {
+    it('retries once then returns null when BMS is unreachable', async () => {
+      mockBudgetClient.createSession.mockRejectedValue(
+        new BudgetServiceUnavailableError('Budget Service unreachable'),
+      )
+
+      const result = await performBudgetPreCheck(
+        { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', subscriptionId: 'sub-1', appId: 'app-1' },
+        deps,
+      )
+
+      expect(result).toBeNull()
+      expect(mockBudgetClient.createSession).toHaveBeenCalledTimes(2)
+      expect(mockLogger.warn).toHaveBeenCalledWith('budget.precheck.retry', expect.objectContaining({
+        appId: 'app-1',
+        budgetId: 'budget-1',
+        subscriptionId: 'sub-1',
+        attempt: 1,
+        maxAttempts: 2,
+        reason: 'bms_unreachable',
+      }))
+      expect(mockLogger.error).toHaveBeenCalledWith('budget.precheck.fail_open', {
+        appId: 'app-1',
+        budgetId: 'budget-1',
+        subscriptionId: 'sub-1',
+        attempts: 2,
+        reason: 'bms_unreachable',
+        error: 'Budget Service unreachable',
+      })
+    })
+
+    it('retries once then returns null when BMS times out', async () => {
+      mockBudgetClient.createSession.mockRejectedValue(
+        new BudgetServiceTimeoutError('Budget Service timeout: POST /api/v1/sessions'),
+      )
+
+      const result = await performBudgetPreCheck(
+        { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', subscriptionId: 'sub-1', appId: 'app-1' },
+        deps,
+      )
+
+      expect(result).toBeNull()
+      expect(mockBudgetClient.createSession).toHaveBeenCalledTimes(2)
+      expect(mockLogger.error).toHaveBeenCalledWith('budget.precheck.fail_open', {
+        appId: 'app-1',
+        budgetId: 'budget-1',
+        subscriptionId: 'sub-1',
+        attempts: 2,
+        reason: 'bms_timeout',
+        error: 'Budget Service timeout: POST /api/v1/sessions',
+      })
+    })
+
+    it('succeeds on retry if second attempt works', async () => {
+      mockBudgetClient.createSession
+        .mockRejectedValueOnce(new BudgetServiceUnavailableError('BMS down'))
+        .mockResolvedValueOnce({ sessionId: 'sess-retry' })
+
+      const result = await performBudgetPreCheck(
+        { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', subscriptionId: 'sub-1', appId: 'app-1' },
+        deps,
+      )
+
+      expect(result).toEqual({ budgetId: 'budget-1', sessionId: 'sess-retry' })
+      expect(mockBudgetClient.createSession).toHaveBeenCalledTimes(2)
+      expect(mockLogger.warn).toHaveBeenCalledWith('budget.precheck.retry', expect.objectContaining({
+        attempt: 1,
+      }))
+    })
+
+    it('still throws non-transient BudgetServiceError without retry', async () => {
+      const unknownError = new BudgetServiceError('Budget Service error: POST /api/v1/sessions', 500, '{"code":"INTERNAL"}')
+      mockBudgetClient.createSession.mockRejectedValue(unknownError)
 
       await expect(
         performBudgetPreCheck(
           { budgetServiceEnabled: true, bmsBudgetId: 'budget-1' },
           deps,
         ),
-      ).rejects.toThrow(BudgetServiceUnavailableError)
+      ).rejects.toThrow(BudgetServiceError)
+      expect(mockBudgetClient.createSession).toHaveBeenCalledTimes(1)
+    })
+
+    it('throws non-transient error on retry even after transient error on first attempt', async () => {
+      mockBudgetClient.createSession
+        .mockRejectedValueOnce(new BudgetServiceUnavailableError('BMS down'))
+        .mockRejectedValueOnce(new BudgetServiceError('Budget Service auth failed', 401, '{"code":"UNAUTHORIZED"}'))
+
+      await expect(
+        performBudgetPreCheck(
+          { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', subscriptionId: 'sub-1', appId: 'app-1' },
+          deps,
+        ),
+      ).rejects.toThrow(BudgetServiceError)
+      expect(mockBudgetClient.createSession).toHaveBeenCalledTimes(2)
     })
   })
 })

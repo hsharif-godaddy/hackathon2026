@@ -12,6 +12,12 @@ import { LlmCallSource } from '@airo/shared/grants'
 const SUBSCRIPTION_ID_PREFIX = 'airo-build:sid:'
 
 /**
+ * Prefix for degraded BMS mode (session creation failed, fail-open).
+ * GoCode uses this to identify requests during BMS outages for retroactive cost attribution.
+ */
+const DEGRADED_SUBSCRIPTION_ID_PREFIX = 'airo-builder:degraded:'
+
+/**
  * APM agent type (loose typing to avoid strict dependency)
  */
 type APMAgent = {
@@ -128,7 +134,8 @@ export function buildLitellmMetadataFromContext(
   // BMS session fields for GoCode cost reporting (x-gocode-budget-* headers)
   // Only present when budget service is enabled and session was created
   const hasBudgetFields = !!(metadata.budgetServiceEnabled && metadata.bmsBudgetId && metadata.budgetSessionId)
-  if (hasBudgetFields) tags.push(`budgetId:${metadata.bmsBudgetId}`)
+  // Push budgetId tag even in degraded mode (no session) for retroactive cost attribution
+  if (metadata.budgetServiceEnabled && metadata.bmsBudgetId) tags.push(`budgetId:${metadata.bmsBudgetId}`)
   const budgetFields: Pick<LitellmMetadata, 'budgetId' | 'budgetSessionId'> = hasBudgetFields
     ? { budgetId: metadata.bmsBudgetId!, budgetSessionId: metadata.budgetSessionId! }
     : {}
@@ -164,17 +171,30 @@ export function buildLitellmMetadataFromContext(
   // BMS handles cost tracking via x-gocode-budget-* headers sent to GoCode
   // The user field is still needed for GoCode cost attribution but grants are not consulted
   if (metadata.budgetServiceEnabled) {
-    // Use subscriptionId for user identification (preferred) or customerId as fallback
-    const userId = subscriptionId
-      ? (subscriptionId.startsWith(SUBSCRIPTION_ID_PREFIX) ? subscriptionId : `${SUBSCRIPTION_ID_PREFIX}${subscriptionId}`)
-      : customerId
+    // Use subscriptionId for user identification (preferred) or customerId as fallback.
+    // When BMS session creation failed (fail-open), use degraded prefix so GoCode
+    // can identify requests that occurred during a BMS outage for retroactive cost attribution.
+    const degraded = !hasBudgetFields
+    const prefix = degraded ? DEGRADED_SUBSCRIPTION_ID_PREFIX : SUBSCRIPTION_ID_PREFIX
+    let userId: string | undefined
+    if (subscriptionId) {
+      // Strip any existing prefix to get the raw subscription ID, then apply the correct prefix
+      const rawSubscriptionId = subscriptionId.startsWith(SUBSCRIPTION_ID_PREFIX)
+        ? subscriptionId.slice(SUBSCRIPTION_ID_PREFIX.length)
+        : subscriptionId.startsWith(DEGRADED_SUBSCRIPTION_ID_PREFIX)
+          ? subscriptionId.slice(DEGRADED_SUBSCRIPTION_ID_PREFIX.length)
+          : subscriptionId
+      userId = `${prefix}${rawSubscriptionId}`
+    } else {
+      userId = customerId
+    }
 
     if (!userId) {
       logger.error('grants.build_metadata.bms_no_user_identifier', { appId, socketId })
       return null
     }
 
-    apm?.setLabel?.('litellm.user_type', 'bms_subscription')
+    apm?.setLabel?.('litellm.user_type', degraded ? 'bms_degraded' : 'bms_subscription')
     logger.debug('grants.build_metadata.bms_mode', {
       appId,
       socketId,
@@ -183,6 +203,7 @@ export function buildLitellmMetadataFromContext(
       tags,
       source: options?.source ?? LlmCallSource.UserChat,
       hasBudgetSession: hasBudgetFields,
+      degraded,
     })
 
     return { user: userId, tags, budgetServiceEnabled: true, ...budgetFields, ...traceFields }

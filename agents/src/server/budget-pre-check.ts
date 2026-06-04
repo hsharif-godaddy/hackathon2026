@@ -6,18 +6,27 @@
  * NO_BUDGET_CAPACITY if the customer has insufficient credits. This eliminates
  * the need for a separate getBudget call before session creation.
  *
+ * Fail-open on transient errors: when BMS is unreachable or times out, returns null
+ * so the customer can continue using the product. Cost is retroactively attributable
+ * via litellm_metadata (subscriptionId in user field, appId and bmsBudgetId in tags) sent to GoCode.
+ *
+ * When allowOverage is true, the 402 capacity gate is bypassed — the session opens
+ * regardless of credit balance. Only pass this for sessions where 100% GoDaddy
+ * attribution is already guaranteed (e.g. care-agent, test-account sessions).
+ *
  * @throws {BudgetExceededError} When createSession returns 402 (no credits available)
  * @throws {BudgetNotFoundError} When budget does not exist in BMS (404)
- * @throws {BudgetServiceUnavailableError} When budget client is not configured or BMS is unreachable
- * @throws {BudgetServiceTimeoutError} When createSession times out
  * @throws {BudgetServiceAuthError} When S2S auth fails (401/403)
- * @throws {BudgetServiceError} For other BMS errors (4xx/5xx)
+ * @throws {BudgetServiceError} For non-transient BMS errors (4xx/5xx excluding 402/404/timeout/unavailable)
  */
 
 import type { BudgetServiceClient } from '@airo/ai-lib/budget'
-import { BudgetServiceUnavailableError, BudgetNoCapacityError, BudgetNotFoundError } from '@airo/ai-lib/budget'
+import { BudgetServiceUnavailableError, BudgetServiceTimeoutError, BudgetNoCapacityError, BudgetNotFoundError } from '@airo/ai-lib/budget'
 import { BudgetExceededError } from '@airo/ai-common'
 import type { LoggerLike } from '@airo/ai-common'
+
+const MAX_ATTEMPTS = 2
+const RETRY_DELAY_MS = 200
 
 export interface BudgetPreCheckDeps {
   getClient: () => BudgetServiceClient | null
@@ -31,13 +40,8 @@ export interface BudgetPreCheckResult {
 
 /**
  * Create a BMS session, which validates budget capacity.
- * Returns null when budgetServiceEnabled is false/absent (caller should skip).
+ * Returns null when budgetServiceEnabled is false/absent, or on transient BMS failures (fail-open).
  * Throws BudgetExceededError if no credits available (402 from BMS).
- * Throws BudgetServiceUnavailableError on transient failures (fail-closed).
- *
- * When allowOverage is true, the 402 capacity gate is bypassed — the session opens
- * regardless of credit balance. Only pass this for sessions where 100% GoDaddy
- * attribution is already guaranteed (e.g. care-agent, test-account sessions).
  */
 export async function performBudgetPreCheck(
   metadata: {
@@ -82,7 +86,14 @@ export async function performBudgetPreCheck(
 
   const budgetClient = deps.getClient()
   if (!budgetClient) {
-    throw new BudgetServiceUnavailableError('Budget Service client not configured (missing BUDGET_SERVICE_URL)')
+    deps.logger.error('budget.precheck.fail_open', {
+      appId: metadata.appId,
+      budgetId,
+      subscriptionId,
+      reason: 'bms_client_not_configured',
+      error: 'Budget Service client not configured (missing BUDGET_SERVICE_URL)',
+    })
+    return null
   }
 
   if (metadata.allowOverage) {
@@ -94,58 +105,92 @@ export async function performBudgetPreCheck(
     })
   }
 
-  let session: { sessionId: string }
-  try {
-    session = await budgetClient.createSession(budgetId, { allowOverage: metadata.allowOverage })
-  } catch (err) {
-    if (err instanceof BudgetNoCapacityError) {
-      // When allowOverage was true, a 402 means the budget has zero budget_items —
-      // the capacity gate is always enforced for item-less budgets regardless of the flag.
-      // Log as a distinct error so "bypass requested but denied" is queryable separately
-      // from a normal customer out-of-credits event.
-      if (metadata.allowOverage) {
-        deps.logger.error('budget.precheck.overage_bypass_failed', {
-          appId: metadata.appId,
-          subscriptionId: metadata.subscriptionId,
-          budgetId,
-          reason: 'allowOverage=true but BMS returned 402 — budget likely has no budget_items',
-          bmsResponse: err.responseBody,
-        })
-      } else {
-        deps.logger.warn('budget.precheck.no_capacity', {
-          budgetId,
-          appId: metadata.appId,
-          subscriptionId: metadata.subscriptionId,
-          bmsResponse: err.responseBody,
-        })
-      }
-      throw BudgetExceededError.fromBudgetCheck(budgetId)
-    }
-    // Log 404 BudgetNotFoundError before re-throwing for fail-closed behavior.
-    // This indicates a configuration issue (budget deleted or never created).
-    if (err instanceof BudgetNotFoundError) {
-      deps.logger.error('budget.precheck.budget_not_found', {
+  // Create BMS session - the endpoint validates budget capacity and returns 402
+  // NO_BUDGET_CAPACITY if no credits are available (fail-closed).
+  // Retries once on transient errors before failing open.
+  let lastTransientError: Error | undefined
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const session = await budgetClient.createSession(budgetId, { allowOverage: metadata.allowOverage })
+
+      deps.logger.info('budget.session.started', {
         appId: metadata.appId,
+        subscriptionId,
         budgetId,
-        subscriptionId: metadata.subscriptionId,
-        reason: 'Budget does not exist in BMS',
-        error: err.message,
-        responseBody: err.responseBody,
+        sessionId: session.sessionId,
+        allowOverage: metadata.allowOverage ?? false,
       })
+
+      return {
+        budgetId,
+        sessionId: session.sessionId,
+      }
+    } catch (err) {
+      // Non-transient errors: throw immediately, no retry.
+      if (err instanceof BudgetNoCapacityError) {
+        if (metadata.allowOverage) {
+          deps.logger.error('budget.precheck.overage_bypass_failed', {
+            appId: metadata.appId,
+            subscriptionId: metadata.subscriptionId,
+            budgetId,
+            reason: 'allowOverage=true but BMS returned 402 — budget likely has no budget_items',
+            bmsResponse: err.responseBody,
+          })
+        } else {
+          deps.logger.warn('budget.precheck.no_capacity', {
+            budgetId,
+            appId: metadata.appId,
+            subscriptionId: metadata.subscriptionId,
+            bmsResponse: err.responseBody,
+          })
+        }
+        throw BudgetExceededError.fromBudgetCheck(budgetId)
+      }
+      if (err instanceof BudgetNotFoundError) {
+        deps.logger.error('budget.precheck.budget_not_found', {
+          appId: metadata.appId,
+          budgetId,
+          subscriptionId: metadata.subscriptionId,
+          reason: 'Budget does not exist in BMS',
+          error: err.message,
+          responseBody: err.responseBody,
+        })
+        throw err
+      }
+
+      // Transient errors: retry once, then fail-open.
+      if (err instanceof BudgetServiceUnavailableError || err instanceof BudgetServiceTimeoutError) {
+        lastTransientError = err
+        if (attempt < MAX_ATTEMPTS) {
+          deps.logger.warn('budget.precheck.retry', {
+            appId: metadata.appId,
+            budgetId,
+            subscriptionId: metadata.subscriptionId,
+            attempt,
+            maxAttempts: MAX_ATTEMPTS,
+            reason: err instanceof BudgetServiceTimeoutError ? 'bms_timeout' : 'bms_unreachable',
+            error: err instanceof Error ? err.message : String(err),
+          })
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS + Math.random() * 100))
+          continue
+        }
+        break
+      }
+
+      // Non-transient error — propagate immediately regardless of prior transient attempt.
+      throw err
     }
-    throw err
   }
 
-  deps.logger.info('budget.session.started', {
+  // All attempts exhausted with transient errors — fail-open.
+  deps.logger.error('budget.precheck.fail_open', {
     appId: metadata.appId,
-    subscriptionId,
     budgetId,
-    sessionId: session.sessionId,
-    allowOverage: metadata.allowOverage ?? false,
+    subscriptionId: metadata.subscriptionId,
+    attempts: MAX_ATTEMPTS,
+    reason: lastTransientError instanceof BudgetServiceTimeoutError ? 'bms_timeout' : 'bms_unreachable',
+    error: lastTransientError?.message,
   })
-
-  return {
-    budgetId,
-    sessionId: session.sessionId,
-  }
+  return null
 }

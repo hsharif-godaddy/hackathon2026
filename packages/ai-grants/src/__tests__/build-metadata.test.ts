@@ -820,12 +820,28 @@ describe('build-metadata', function tests() {
           appId: 'app-1',
           subscriptionId: 'airo-build:sid:already-prefixed',
           budgetServiceEnabled: true,
+          bmsBudgetId: 'budget-uuid-1',
+          budgetSessionId: 'session-uuid-1',
         },
       }
 
       const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
 
       expect(result?.user).toBe('airo-build:sid:already-prefixed')
+    })
+
+    it('uses degraded prefix when BMS enabled but no budget session (fail-open)', function bmsDegradedPrefix() {
+      const context = {
+        metadata: {
+          appId: 'app-1',
+          subscriptionId: 'sub-degraded-123',
+          budgetServiceEnabled: true,
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
+
+      expect(result?.user).toBe('airo-builder:degraded:sub-degraded-123')
     })
 
     it('falls back to customerId when no subscriptionId in BMS mode', function bmsFallbackCustomerId() {
@@ -872,8 +888,8 @@ describe('build-metadata', function tests() {
 
       const result = buildLitellmMetadataFromContext(context, { source: LlmCallSource.UserChat })
 
-      // Should use subscriptionId, not grant's llmBudgetUserId
-      expect(result?.user).toBe('airo-build:sid:sub-bms')
+      // Should use subscriptionId (degraded prefix since no budgetSessionId), not grant's llmBudgetUserId
+      expect(result?.user).toBe('airo-builder:degraded:sub-bms')
     })
 
     it('does not prefix BudgetOverride sessions in BMS mode', function bmsOverrideNotPrefixed() {

@@ -138,33 +138,36 @@ describe('performBudgetPreCheck', () => {
     expect(result).toBeNull()
   })
 
-  it('throws BudgetServiceUnavailableError when client not configured', async () => {
-    await expect(performBudgetPreCheck(
+  it('returns null when client not configured (fail-open for availability)', async () => {
+    const result = await performBudgetPreCheck(
       { budgetServiceEnabled: true, subscriptionId: 'sub-1', bmsBudgetId: 'budget-1' },
       makeDeps({ getClient: () => null }),
-    )).rejects.toThrow(BudgetServiceUnavailableError)
+    )
+    expect(result).toBeNull()
   })
 
-  it('propagates BudgetServiceUnavailableError from createSession', async () => {
+  it('returns null on BudgetServiceUnavailableError from createSession (fail-open)', async () => {
     const client = mockClient({
       createSession: vi.fn().mockRejectedValue(new BudgetServiceUnavailableError('BMS down')),
     })
 
-    await expect(performBudgetPreCheck(
+    const result = await performBudgetPreCheck(
       { budgetServiceEnabled: true, subscriptionId: 'sub-1', bmsBudgetId: 'budget-1' },
       makeDeps({ getClient: () => client }),
-    )).rejects.toThrow(BudgetServiceUnavailableError)
+    )
+    expect(result).toBeNull()
   })
 
-  it('propagates BudgetServiceTimeoutError from createSession', async () => {
+  it('returns null on BudgetServiceTimeoutError from createSession (fail-open)', async () => {
     const client = mockClient({
       createSession: vi.fn().mockRejectedValue(new BudgetServiceTimeoutError('session timed out')),
     })
 
-    await expect(performBudgetPreCheck(
+    const result = await performBudgetPreCheck(
       { budgetServiceEnabled: true, subscriptionId: 'sub-1', bmsBudgetId: 'budget-1' },
       makeDeps({ getClient: () => client }),
-    )).rejects.toThrow(BudgetServiceTimeoutError)
+    )
+    expect(result).toBeNull()
   })
 
   // Note: override detection (CareAgent, TestAccounts) happens at report time
