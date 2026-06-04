@@ -20,7 +20,6 @@ import { shipAnalyticsLog } from '@/lib/logging'
 import { buildDevelopUrl, extractApiError, fetchQuickCreate, type QuickCreateResponse, setQuickCreateSessionFlags, storeUploadedFiles } from '@/lib/quick-create'
 import { logger } from '@/lib/request-context'
 import { validateAndClampPrompt } from '@/lib/waf-validation'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 
 type SubmitSource = 'example' | 'text'
@@ -475,6 +474,17 @@ export function useHomepageSubmission() {
     }
   }
 
+  const handleFilesChange = useCallback((files: UploadedDesignFile[]) => {
+    setUploadedFiles(files)
+    const filePrefill = t('builder_design_file_upload_prompt_prefill', undefined, 'Use this attachment to create a ')
+
+    if (files.length > 0) {
+      setPromptText(prev => prev || filePrefill)
+    } else {
+      setPromptText(prev => prev === filePrefill ? '' : prev)
+    }
+  }, [t])
+
   return {
     promptText,
     setPromptText,
@@ -483,7 +493,7 @@ export function useHomepageSubmission() {
     isLogoMode,
     isTemplateSelectorEnabled,
     uploadedFiles,
-    setUploadedFiles,
+    setUploadedFiles: handleFilesChange,
     isLoading,
     error,
     setHeroError,

@@ -60,15 +60,6 @@ vi.mock('@/hooks/useAuthGateTracking', () => ({ useAuthGateTracking: () => undef
 vi.mock('@/hooks/useHomepageBounceTracking', () => ({
   useHomepageBounceTracking: () => ({ markEngaged: vi.fn() }),
 }))
-vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({
-      showUpgradeModal: false,
-      upgradeModalSource: null,
-      upgradeModalItc: null,
-      closeUpgradeModal: vi.fn(),
-    }),
-}))
 
 describe('useHomepageSubmission', () => {
   beforeEach(() => {
@@ -78,6 +69,72 @@ describe('useHomepageSubmission', () => {
     mockFetchQuickCreate.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ id: 'site-1', type: 'standard' }),
+    })
+  })
+
+  describe('setUploadedFiles (handleFilesChange)', () => {
+    const mockFile = { name: 'design.fig', content: 'abc', isDesignMd: false }
+    const PREFILL = 'builder_design_file_upload_prompt_prefill'
+
+    it('sets the files when files are provided', () => {
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      act(() => { result.current.setUploadedFiles([mockFile]) })
+
+      expect(result.current.uploadedFiles).toEqual([mockFile])
+    })
+
+    it('populates promptText with prefill when prompt is empty', () => {
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      act(() => { result.current.setUploadedFiles([mockFile]) })
+
+      expect(result.current.promptText).toBe(PREFILL)
+    })
+
+    it('does not overwrite promptText when prompt already has content', () => {
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      act(() => { result.current.setPromptText('my custom prompt') })
+      act(() => { result.current.setUploadedFiles([mockFile]) })
+
+      expect(result.current.promptText).toBe('my custom prompt')
+    })
+
+    it('clears the files when an empty array is provided', () => {
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      act(() => { result.current.setUploadedFiles([mockFile]) })
+      act(() => { result.current.setUploadedFiles([]) })
+
+      expect(result.current.uploadedFiles).toEqual([])
+    })
+
+    it('clears promptText when all files are removed and prompt is the prefill', () => {
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      act(() => { result.current.setUploadedFiles([mockFile]) })
+      act(() => { result.current.setUploadedFiles([]) })
+
+      expect(result.current.promptText).toBe('')
+    })
+
+    it('preserves promptText when all files are removed and user has custom text', () => {
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      act(() => { result.current.setPromptText('my custom prompt') })
+      act(() => { result.current.setUploadedFiles([mockFile]) })
+      act(() => { result.current.setUploadedFiles([]) })
+
+      expect(result.current.promptText).toBe('my custom prompt')
+    })
+
+    it('preserves promptText when files are empty and prompt is empty', () => {
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      act(() => { result.current.setUploadedFiles([]) })
+
+      expect(result.current.promptText).toBe('')
     })
   })
 
@@ -107,7 +164,7 @@ describe('useHomepageSubmission', () => {
     })
 
     it('does not fire while subscriptions are loading', async () => {
-      mockUseSubscription.mockReturnValue({ subscriptions: [], isLoading: true, error: null })
+      mockUseSubscription.mockReturnValue({ subscriptions: [], isLoading: true, isError: false })
 
       const { result } = renderHook(() => useHomepageSubmission())
 
