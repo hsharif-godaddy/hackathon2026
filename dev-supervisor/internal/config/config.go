@@ -154,24 +154,20 @@ func LoadConfig() *Config {
 	// Add system paths to excluded paths when proxy mode is enabled
 	// These endpoints must be unauthenticated for various reasons
 	if config.ProxyEnabled {
-		// System paths that must be unauthenticated:
-		//   /airo/health, /airo/canary_checks - deployment health checks
-		//   /airo/storage-access               - Storage Access bootstrap; loads
-		//       precisely when no usable preview credential is present (Safari ITP
-		//       blocking the cross-site cookie). Exposes no app content and
-		//       redirects to an authenticated app path on success.
-		//   /airo-assets/                      - <img>/<video> tags can't send auth headers
-		//   /assets/                           - persistent assets from the CephFS mount
-		for _, systemPath := range []string{
-			"/airo/health",
-			"/airo/canary_checks",
-			"/airo/storage-access",
-			"/airo-assets/",
-			"/assets/",
-		} {
-			if !slices.Contains(config.JWTExcludedPaths, systemPath) {
-				config.JWTExcludedPaths = append(config.JWTExcludedPaths, systemPath)
-			}
+		// Health check endpoints - used for deployment health checks
+		if !slices.Contains(config.JWTExcludedPaths, "/airo/health") {
+			config.JWTExcludedPaths = append(config.JWTExcludedPaths, "/airo/health")
+		}
+		if !slices.Contains(config.JWTExcludedPaths, "/airo/canary_checks") {
+			config.JWTExcludedPaths = append(config.JWTExcludedPaths, "/airo/canary_checks")
+		}
+		// Media asset endpoints - must be unauthenticated because <img>/<video> tags cannot send Authorization headers
+		if !slices.Contains(config.JWTExcludedPaths, "/airo-assets/") {
+			config.JWTExcludedPaths = append(config.JWTExcludedPaths, "/airo-assets/")
+		}
+		// Persistent assets served from CephFS mount
+		if !slices.Contains(config.JWTExcludedPaths, "/assets/") {
+			config.JWTExcludedPaths = append(config.JWTExcludedPaths, "/assets/")
 		}
 	}
 

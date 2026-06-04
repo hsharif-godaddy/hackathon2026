@@ -101,43 +101,6 @@ export function restoreIframeState(
   }
 }
 
-/**
- * Compare two preview URLs for route equality while ignoring the bootstrap
- * `airoShareToken` query param. The iframe `src` carries that param (the BFF
- * appends it in /api/servers/[id] so the cross-site preview authenticates via
- * the URL instead of a third-party cookie that Safari ITP drops), but the
- * customer app reports its own URL — which may not include the token. A raw
- * `search` comparison would then spuriously differ and silently skip
- * post-refresh scroll restoration, so strip the token from both sides first.
- */
-function isSamePreviewRoute(a: URL, b: URL): boolean {
-  const searchWithoutShareToken = (u: URL): string => {
-    const params = new URLSearchParams(u.search)
-    params.delete('airoShareToken')
-    return params.toString()
-  }
-  return a.pathname === b.pathname && searchWithoutShareToken(a) === searchWithoutShareToken(b)
-}
-
-/**
- * Build the dev-supervisor Storage Access bootstrap URL for a preview origin.
- * When Safari ITP blocks the cross-site preview cookie, the embedded app's
- * sub-resources are 307'd and it never loads. Pointing the iframe at this page
- * lets the user grant cookie access via `document.requestStorageAccess()` (a
- * one-tap gesture *inside* the iframe — the only context the API accepts),
- * after which it redirects back to `previewUrl` with the cookie now usable.
- * The original path+query (including airoShareToken) is passed as a
- * SAME-ORIGIN relative `redirect` so the bootstrap returns to exactly where
- * the iframe was headed.
- */
-function buildStorageAccessUrl(previewUrl: string): string {
-  const u = new URL(previewUrl)
-  const redirectPath = `${u.pathname}${u.search}`
-  const bootstrap = new URL('/airo/storage-access', u.origin)
-  bootstrap.searchParams.set('redirect', redirectPath)
-  return bootstrap.toString()
-}
-
 export interface PublishSnapshotRequestDetail {
   appId: string
   deploymentId: string | undefined
@@ -494,9 +457,8 @@ export default function PreviewPane({
         const currentUrl = new URL(iframeRef.current.src)
         const savedUrl = pendingStateRestore.url ? new URL(pendingStateRestore.url) : null
 
-        // Only restore if URLs match (same pathname and search params,
-        // ignoring the bootstrap airoShareToken on the iframe src).
-        if (savedUrl && isSamePreviewRoute(currentUrl, savedUrl)) {
+        // Only restore if URLs match (same pathname and search params)
+        if (savedUrl && currentUrl.pathname === savedUrl.pathname && currentUrl.search === savedUrl.search) {
           // Set waiting state and start fallback timer
           setIsWaitingForIframeReady(true)
 
@@ -528,7 +490,7 @@ export default function PreviewPane({
       const currentUrl = new URL(iframeRef.current.src)
       const savedUrl = pendingStateRestore.url ? new URL(pendingStateRestore.url) : null
 
-      if (!savedUrl || !isSamePreviewRoute(currentUrl, savedUrl)) {
+      if (!savedUrl || currentUrl.pathname !== savedUrl.pathname || currentUrl.search !== savedUrl.search) {
         logger.debug('preview-pane.state-restore.abort', { message: 'URL mismatch during restoration, aborting' })
         setPendingStateRestore(null)
         setIsWaitingForIframeReady(false)
@@ -1180,15 +1142,6 @@ export default function PreviewPane({
   // Success state - show the preview
   if (previewUrl && serverState?.isReady) {
     const isPreviewSurfaceVisible = viewMode !== ViewMode.CODE && viewMode !== ViewMode.BRAND
-    // If the iframe never signalled IFRAME_READY after the bootstrap retries
-    // were exhausted, the app's sub-resources are almost certainly being 307'd
-    // because Safari ITP blocked the cross-site preview cookie. Point the
-    // iframe at the Storage Access bootstrap so the user can grant cookie
-    // access (one tap); on grant it redirects back to previewUrl with the
-    // cookie usable. The happy path (iframe readied) never enters this mode.
-    const storageAccessFallback =
-      !iframeBootstrapped && bootstrapRetryCount >= MAX_IFRAME_BOOTSTRAP_RETRIES
-    const iframeSrc = storageAccessFallback ? buildStorageAccessUrl(previewUrl) : previewUrl
     const showEditingChip = Boolean(
       !isMobile &&
       isPreviewEnhancedOverlaysEnabled &&
@@ -1247,11 +1200,11 @@ export default function PreviewPane({
                         ref={iframeRef}
                         id="preview-iframe"
                         data-testid="preview-iframe"
-                        src={iframeSrc}
+                        src={previewUrl}
                         className="w-full h-full border rounded-lg md:rounded-b-none"
                         onError={handleIframeError}
                         onLoad={handleIframeLoad}
-                        sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation allow-storage-access-by-user-activation"
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"
                         title={t('builder_preview_preview_for', { appId })}
                         aria-hidden={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || showBuildingOverlay ? 'true' : undefined}
                         tabIndex={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || showBuildingOverlay ? -1 : undefined}
