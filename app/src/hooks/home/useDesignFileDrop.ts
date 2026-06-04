@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react'
 import { MAX_FILES, MAX_TOTAL_BYTES, processDesignFiles } from '@/app/[market]/components/design-file-processing'
 import type { UploadedDesignFile } from '@/app/[market]/components/types'
 import { useTranslations } from '@/hooks/useTranslations'
+import { logActionEvent, logImpressionEvent } from '@/utils/instrumentation'
 
 interface UseDesignFileDropOptions {
   currentFilesRef: React.RefObject<UploadedDesignFile[]>
@@ -51,8 +52,11 @@ export function useDesignFileDrop({
     dragCounterRef.current += 1
     if (dragCounterRef.current === 1) {
       setIsFileDragOver(true)
+      if (!disabled) {
+        logActionEvent({ eid: 'homepage.prompt.attach', action: 'drag' })()
+      }
     }
-  }, [])
+  }, [disabled])
 
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -93,6 +97,7 @@ export function useDesignFileDrop({
         if (processed.length > 0) {
           const updated = [...(currentFilesRef.current ?? []), ...processed]
           onFilesChange(updated)
+          logImpressionEvent('homepage.prompt.fileAttached', { fileCount: processed.length, source: 'drop' })()
         }
         if (errors.length > 0) {
           onError(errors[0])

@@ -20,6 +20,21 @@ vi.mock('@/app/[market]/components/design-file-processing', async (importOrigina
   }
 })
 
+const { mockLogActionEvent, mockActionThunk, mockLogImpressionEvent, mockImpressionThunk } = vi.hoisted(() => {
+  const mockActionThunk = vi.fn()
+  const mockImpressionThunk = vi.fn()
+  return {
+    mockActionThunk,
+    mockImpressionThunk,
+    mockLogActionEvent: vi.fn(() => mockActionThunk),
+    mockLogImpressionEvent: vi.fn(() => mockImpressionThunk),
+  }
+})
+vi.mock('@/utils/instrumentation', () => ({
+  logActionEvent: mockLogActionEvent,
+  logImpressionEvent: mockLogImpressionEvent,
+}))
+
 function createDragEvent(type: string, hasFiles = true): React.DragEvent<HTMLDivElement> {
   return {
     type,
@@ -131,6 +146,49 @@ describe('useDesignFileDrop', () => {
 
     expect(onFilesChange).not.toHaveBeenCalled()
     expect(onError).toHaveBeenCalledWith('File too large')
+  })
+
+  it('logs a drag action EID once when a file drag enters', () => {
+    const { result } = renderDrop()
+    act(() => { result.current.dragProps.onDragEnter(createDragEvent('dragenter')) })
+    act(() => { result.current.dragProps.onDragEnter(createDragEvent('dragenter')) })
+
+    expect(mockLogActionEvent).toHaveBeenCalledTimes(1)
+    expect(mockLogActionEvent).toHaveBeenCalledWith({ eid: 'homepage.prompt.attach', action: 'drag' })
+    expect(mockActionThunk).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not log a drag action EID for non-file drags', () => {
+    const { result } = renderDrop()
+    act(() => { result.current.dragProps.onDragEnter(createDragEvent('dragenter', false)) })
+    expect(mockLogActionEvent).not.toHaveBeenCalled()
+  })
+
+  it('does not log a drag action EID when disabled, but still shows the drag highlight', () => {
+    const { result } = renderDrop(true)
+    act(() => { result.current.dragProps.onDragEnter(createDragEvent('dragenter')) })
+    expect(result.current.isFileDragOver).toBe(true)
+    expect(mockLogActionEvent).not.toHaveBeenCalled()
+  })
+
+  it('logs a fileAttached impression EID on successful drop', async () => {
+    const newFile: UploadedDesignFile = { name: 'new.txt', content: 'hello', isDesignMd: false }
+    mockProcessDesignFiles.mockResolvedValueOnce({ processed: [newFile], errors: [] })
+
+    const { result } = renderDrop()
+    await act(async () => { result.current.dragProps.onDrop(createDragEvent('drop')) })
+
+    expect(mockLogImpressionEvent).toHaveBeenCalledWith('homepage.prompt.fileAttached', { fileCount: 1, source: 'drop' })
+    expect(mockImpressionThunk).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not log a fileAttached impression EID when nothing is processed', async () => {
+    mockProcessDesignFiles.mockResolvedValueOnce({ processed: [], errors: ['File too large'] })
+
+    const { result } = renderDrop()
+    await act(async () => { result.current.dragProps.onDrop(createDragEvent('drop')) })
+
+    expect(mockLogImpressionEvent).not.toHaveBeenCalled()
   })
 
   it('decrements drag counter on dragLeave even when browser clears dataTransfer types', () => {

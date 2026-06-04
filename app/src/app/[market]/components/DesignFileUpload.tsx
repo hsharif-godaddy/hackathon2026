@@ -13,6 +13,7 @@ import { text } from '@ux/text'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
 import { MAX_FILES, MAX_TOTAL_BYTES } from './design-file-processing'
 import type { UploadedDesignFile } from './types'
 
@@ -69,6 +70,7 @@ export default function DesignFileUpload({ currentFilesRef, onFilesChange, onErr
       )
       if (processed.length > 0) {
         onFilesChange([...(currentFilesRef.current ?? []), ...processed])
+        logImpressionEvent('homepage.prompt.fileAttached', { fileCount: processed.length, source: 'picker' })()
       }
       if (errors.length > 0) {
         onError?.(errors[0])
@@ -95,6 +97,7 @@ export default function DesignFileUpload({ currentFilesRef, onFilesChange, onErr
       />
       <Button
         onClick={() => inputRef.current?.click()}
+        data-eid={generateClickEID('homepage.prompt.attach')}
         size={isBelowSmBreakpoint ? 'sm' : 'md'}
         data-partial="componentAiro"
         icon={<AttachmentIcon />}
