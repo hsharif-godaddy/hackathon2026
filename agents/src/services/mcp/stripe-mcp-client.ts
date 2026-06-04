@@ -24,6 +24,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { env } from 'node:process';
 import { createMCPClient } from '@ai-sdk/mcp';
 import type { Tool } from 'ai';
 import { logger } from '../../logging/index.js';
@@ -55,12 +56,32 @@ const cachedToolsByKey = new Map<string, Promise<Record<string, Tool>>>();
  * one local agent process serves N apps.
  *
  * Mirrors the prod-vs-local config split in mysql-utils.ts:loadCredentialsFromApp.
+ *
+ * NOTE: Unlike other alloc-config consumers (DATABASE, CAPABILITIES, etc.),
+ * STRIPE_MCP_KEY is written by stripe-service *after* agent startup — it
+ * arrives when the merchant provisions their Stripe sandbox mid-conversation.
+ * getNomadAllocConfig() permanently memoizes its first successful read, so it
+ * would return the startup snapshot (no key) forever. We bypass the memoized
+ * helper and read the file fresh on every call so retries in
+ * reloadMcpToolsAfterSetup and onLoad actually pick up the key once it lands.
  */
 function readStripeMcpKey(appId?: string): string | null {
-  const allocConfig = getNomadAllocConfig();
-  if (allocConfig) {
-    const v = allocConfig.STRIPE_MCP_KEY?.VALUE;
-    return typeof v === 'string' && v ? v : null;
+  if (env.NOMAD_ALLOC_DIR) {
+    // Production (Nomad): read fresh on every call — STRIPE_MCP_KEY arrives
+    // after process start, so the memoized getNomadAllocConfig() would return
+    // a stale snapshot that never contains the key.
+    const allocConfigPath = join(env.NOMAD_ALLOC_DIR, 'config.json');
+    if (!existsSync(allocConfigPath)) {
+      return null;
+    }
+    try {
+      const raw = readFileSync(allocConfigPath, 'utf-8');
+      const config = JSON.parse(raw) as Record<string, { VALUE?: unknown }>;
+      const v = config.STRIPE_MCP_KEY?.VALUE;
+      return typeof v === 'string' && v ? v : null;
+    } catch {
+      return null;
+    }
   }
 
   if (!appId) {
