@@ -486,7 +486,7 @@ export async function loginIfNeeded(page: Page, timeout: number = SSO_TIMEOUT): 
 
   // Verify the popover actually opened before reading its contents. A
   // `force: true` click bypasses the actionability check, so if an overlay
-  // covers the trigger (the `My Apps` popover is the known case on the
+  // covers the trigger (the `Projects` popover is the known case on the
   // homepage) the click fires at covered coordinates and the user menu
   // never opens. Previously the code then just observed "Sign Out not
   // visible" and incorrectly treated an authenticated user as unauthenticated,
@@ -499,7 +499,7 @@ export async function loginIfNeeded(page: Page, timeout: number = SSO_TIMEOUT): 
   } catch {
     throw new Error(
       'loginIfNeeded: user-menu popover did not open after click — likely covered by another overlay. ' +
-      'Call `dismissOverlays(page)` (or close `My Apps` explicitly) before `loginIfNeeded(page)`.',
+      'Call `dismissOverlays(page)` (or close `Projects` explicitly) before `loginIfNeeded(page)`.',
     );
   }
 

@@ -265,18 +265,18 @@ test.describe('Publish Flow', () => {
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
     await dismissOverlays(page);
 
-    // "My Apps" popover auto-opens for authenticated users with existing apps.
+    // "Projects" popover auto-opens for authenticated users with existing apps.
     // The button renders immediately but aria-expanded becomes true only after
     // the app-list API responds. Wait for the *expanded* state specifically.
-    const myAppsExpanded = page.getByRole('button', { name: 'My Apps', expanded: true });
-    const didExpand = await myAppsExpanded
+    const projectsExpanded = page.getByRole('button', { name: 'Projects', expanded: true });
+    const didExpand = await projectsExpanded
       .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
       .then(() => true)
       .catch(() => false);
     if (didExpand) {
-      await myAppsExpanded.click();
+      await projectsExpanded.click();
       await page.waitForTimeout(300);
-      console.log('  ✓ Collapsed My Apps popover');
+      console.log('  ✓ Collapsed Projects popover');
     }
 
     await promptInput.fill(

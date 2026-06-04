@@ -149,7 +149,7 @@ function SitesPageContent() {
         <div className="mb-4 flex items-center justify-between" data-testid="apps-page-title">
           <div className="flex flex-col">
             <div className='flex flex-row gap-2 justify-start items-center'>
-              <text.h2 as="title" size={3} text={t('builder_user_menu_all_projects')} />
+              <text.h2 as="title" size={3} text={t('builder_common_projects')} />
               <div>
                   {totalSites > 0 && (
                     <Tag emphasis="info">

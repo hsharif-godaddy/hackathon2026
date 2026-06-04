@@ -77,7 +77,7 @@ export default function AppSelector({ location }: { location?: string }) {
   // Get current site from URL params
   const currentSiteId = params?.id as string;
   const currentSite = currentSiteId ? sites.find(site => site.id === currentSiteId) : null;
-  const displayTitle = currentSite?.name || t('builder_common_my_apps');
+  const displayTitle = currentSite?.name || t('builder_common_projects');
 
   // Sort sites by updated_at (most recent first)
   const sortedSites = [...sites].sort((a, b) => {
@@ -103,7 +103,7 @@ export default function AppSelector({ location }: { location?: string }) {
         className="hover:cursor-pointer"
         data-eid={generateClickEID(`${location}.apps_menu.trigger`)}
         onClick={() => (sites.length < 1 || isLoading) ? router.push('/apps') : null}
-        aria-label={isMobile ? t('builder_common_my_apps') : undefined}
+        aria-label={isMobile ? t('builder_common_projects') : undefined}
       >
         <Box orientation="horizontal" gap="sm">
           { isMobile ? (

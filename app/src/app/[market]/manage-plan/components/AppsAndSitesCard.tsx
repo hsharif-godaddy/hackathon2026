@@ -433,7 +433,7 @@ export default function AppsAndSitesCard({
             design="inline"
             size="sm"
             onClick={() => router.push('/apps')}
-            text={t('builder_manageplan_my_apps')}
+            text={t('builder_common_projects')}
           />
         </div>
         {planName && publishLimit !== null && publishLimit > 0 && (
@@ -493,7 +493,7 @@ export default function AppsAndSitesCard({
               data-partial='componentAiro'
               size="sm"
               onClick={() => router.push('/apps')}
-              text={t('builder_manageplan_my_apps')}
+              text={t('builder_common_projects')}
             />
           </div>
         </div>

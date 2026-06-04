@@ -135,7 +135,7 @@ describe('UserMenu', function userMenuTests() {
       await user.click(screen.getByLabelText('builder_user_menu_label'));
 
       await waitFor(function checkItems() {
-        expect(screen.getByText('builder_user_menu_all_projects')).toBeInTheDocument();
+        expect(screen.getByText('builder_common_projects')).toBeInTheDocument();
         expect(screen.getByText('builder_user_menu_my_products')).toBeInTheDocument();
         expect(screen.getByText('builder_user_menu_refer_friend')).toBeInTheDocument();
         expect(screen.getByText('builder_user_menu_join_discord')).toBeInTheDocument();
@@ -155,10 +155,10 @@ describe('UserMenu', function userMenuTests() {
 
         await user.click(screen.getByLabelText('builder_user_menu_label'));
         await waitFor(function checkAllProjects() {
-          expect(screen.getByText('builder_user_menu_all_projects')).toBeInTheDocument();
+          expect(screen.getByText('builder_common_projects')).toBeInTheDocument();
         });
 
-        await user.click(screen.getByText('builder_user_menu_all_projects'));
+        await user.click(screen.getByText('builder_common_projects'));
 
         expect(mockLogClickEvent).toHaveBeenCalledWith('develop.user_menu.all_projects', { appId: 'test-app-123' });
         expect(mockOpen).toHaveBeenCalledWith('/apps', '_blank', 'noopener,noreferrer');
@@ -176,10 +176,10 @@ describe('UserMenu', function userMenuTests() {
 
         await user.click(screen.getByLabelText('builder_user_menu_label'));
         await waitFor(function checkAllProjects() {
-          expect(screen.getByText('builder_user_menu_all_projects')).toBeInTheDocument();
+          expect(screen.getByText('builder_common_projects')).toBeInTheDocument();
         });
 
-        await user.click(screen.getByText('builder_user_menu_all_projects'));
+        await user.click(screen.getByText('builder_common_projects'));
 
         expect(mockPush).toHaveBeenCalledWith('/apps');
         expect(mockOpen).not.toHaveBeenCalled();
@@ -232,7 +232,7 @@ describe('UserMenu', function userMenuTests() {
         expect(screen.getByText('builder_common_signin')).toBeInTheDocument();
       });
 
-      expect(screen.queryByText('builder_user_menu_all_projects')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_common_projects')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_user_menu_my_products')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_user_menu_give_feedback')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_user_menu_sign_out')).not.toBeInTheDocument();

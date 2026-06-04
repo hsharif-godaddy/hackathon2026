@@ -68,13 +68,13 @@ describe('AppSelector', () => {
   it('should render when authenticated', () => {
     renderWithProviders(<AppSelector />);
 
-    expect(screen.getByText('builder_common_my_apps')).toBeInTheDocument();
+    expect(screen.getByText('builder_common_projects')).toBeInTheDocument();
   });
 
-  it('should display "builder_common_my_apps" when no current site', () => {
+  it('should display "builder_common_projects" when no current site', () => {
     renderWithProviders(<AppSelector />);
 
-    expect(screen.getByText('builder_common_my_apps')).toBeInTheDocument();
+    expect(screen.getByText('builder_common_projects')).toBeInTheDocument();
   });
 
   it('should display current site name when site is selected', () => {
@@ -99,7 +99,7 @@ describe('AppSelector', () => {
 
     const { user } = renderWithProviders(<AppSelector />);
 
-    const trigger = screen.getByText('builder_common_my_apps');
+    const trigger = screen.getByText('builder_common_projects');
     await user.click(trigger);
 
     expect(mockRouter.push).toHaveBeenCalledWith('/apps');
@@ -126,7 +126,7 @@ describe('AppSelector', () => {
     const { user } = renderWithProviders(<AppSelector />);
 
     // Click trigger to open popover
-    const trigger = screen.getByText('builder_common_my_apps');
+    const trigger = screen.getByText('builder_common_projects');
     await user.click(trigger);
 
     const runningApp = await screen.findByText('Running App');
@@ -153,7 +153,7 @@ describe('AppSelector', () => {
 
     const { user } = renderWithProviders(<AppSelector />);
 
-    const trigger = screen.getByText('builder_common_my_apps');
+    const trigger = screen.getByText('builder_common_projects');
     await user.click(trigger);
 
     const newerApp = await screen.findByText('Newer App');
@@ -171,7 +171,7 @@ describe('AppSelector', () => {
 
     const { user } = renderWithProviders(<AppSelector />);
 
-    const trigger = screen.getByText('builder_common_my_apps');
+    const trigger = screen.getByText('builder_common_projects');
     await user.click(trigger);
 
     await screen.findByText('App 0');
@@ -196,7 +196,7 @@ describe('AppSelector', () => {
 
     const { user } = renderWithProviders(<AppSelector location="develop" />);
 
-    const trigger = screen.getByText('builder_common_my_apps');
+    const trigger = screen.getByText('builder_common_projects');
     await user.click(trigger);
 
     const newItem = await screen.findByTestId('app-item-new');
@@ -236,7 +236,7 @@ describe('AppSelector', () => {
 
     const { user } = renderWithProviders(<AppSelector />);
 
-    const trigger = screen.getByText('builder_common_my_apps');
+    const trigger = screen.getByText('builder_common_projects');
     await user.click(trigger);
 
     const seeAll = await screen.findByTestId('app-item-see-all');
@@ -257,7 +257,7 @@ describe('AppSelector', () => {
 
     renderWithProviders(<AppSelector />);
 
-    expect(screen.getByText('builder_common_my_apps')).toBeInTheDocument();
+    expect(screen.getByText('builder_common_projects')).toBeInTheDocument();
   });
 
   it('should render chevron icon when sites exist and not mobile', () => {
@@ -283,7 +283,7 @@ describe('AppSelector', () => {
 
     const { container } = renderWithProviders(<AppSelector />);
 
-    const trigger = screen.getByText('builder_common_my_apps');
+    const trigger = screen.getByText('builder_common_projects');
     trigger.click();
 
     expect(container.querySelector('[data-testid="app-item"]')).not.toBeInTheDocument();

@@ -180,21 +180,21 @@ export async function dismissOverlays(page: Page): Promise<void> {
     await page.keyboard.press('Escape');
   }
 
-  // "My Apps" popover auto-opens on the authenticated homepage when the
+  // "Projects" popover auto-opens on the authenticated homepage when the
   // user has existing apps. It overlays the prompt area and blocks
   // submission. Only the homepage renders this button, so skip the
   // SHORT_TIMEOUT wait entirely on every other page (develop, apps, etc.)
   // — the wait was burning 2s on every call from a non-homepage test.
   const pathname = new URL(page.url()).pathname;
   if (pathname === '/' || pathname === '') {
-    const myAppsBtn = page.getByRole('button', { name: 'My Apps' });
-    const myAppsVisible = await myAppsBtn
+    const projectsBtn = page.getByRole('button', { name: 'Projects' });
+    const projectsVisible = await projectsBtn
       .waitFor({ state: 'visible', timeout: SHORT_TIMEOUT })
       .then(() => true)
       .catch(() => false);
-    if (myAppsVisible && (await myAppsBtn.getAttribute('aria-expanded').catch(() => null)) === 'true') {
-      await myAppsBtn.click();
-      console.log('  ✓ Collapsed My Apps popover');
+    if (projectsVisible && (await projectsBtn.getAttribute('aria-expanded').catch(() => null)) === 'true') {
+      await projectsBtn.click();
+      console.log('  ✓ Collapsed Projects popover');
     }
   }
 }

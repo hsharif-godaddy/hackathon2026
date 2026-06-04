@@ -25,7 +25,7 @@ vi.mock('@/hooks/useTranslations', () => ({
     const translations: Record<string, string> = {
       'builder_manageplan_apps_title': 'Apps and Sites',
       'builder_manageplan_apps_published_count': values?.count !== undefined ? `${values.count} published` : '0 published',
-      'builder_manageplan_my_apps': 'My Apps',
+      'builder_common_projects': 'Projects',
       'builder_manageplan_apps_empty': "You haven't created any apps yet.",
       'builder_manageplan_apps_published': 'Published',
       'builder_manageplan_apps_unpublish': 'Unpublish',
@@ -209,10 +209,10 @@ describe('AppsAndSitesCard', function appsAndSitesCardTests() {
     it('should render My Apps button and navigate on click', function renderMyAppsButton() {
       renderWithProviders(<AppsAndSitesCard sites={[createMockSite()]} />);
 
-      const myAppsButton = screen.getByRole('button', { name: 'My Apps' });
-      expect(myAppsButton).toBeInTheDocument();
+      const projectsButton = screen.getByRole('button', { name: 'Projects' });
+      expect(projectsButton).toBeInTheDocument();
 
-      fireEvent.click(myAppsButton);
+      fireEvent.click(projectsButton);
       expect(mockPush).toHaveBeenCalledWith('/apps');
     });
 

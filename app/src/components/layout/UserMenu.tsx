@@ -157,7 +157,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
 
     return [
       [
-        { key: 'all-projects', onClick: handleAllProjects, eid: `${location}.user_menu.all_projects`, icon: <AppsIcon className="size-2" />, text: t('builder_user_menu_all_projects') },
+        { key: 'all-projects', onClick: handleAllProjects, eid: `${location}.user_menu.all_projects`, icon: <AppsIcon className="size-2" />, text: t('builder_common_projects') },
       ],
       [
         showManagePlan ? { key: 'manage-plan', onClick: handleManagePlan, eid: `${location}.user_menu.manage_plan`, icon: <MapIcon className="size-2" />, text: t('builder_user_menu_manage_plan') } : null,
