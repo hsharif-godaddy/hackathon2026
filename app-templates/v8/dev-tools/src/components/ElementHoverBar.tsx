@@ -575,7 +575,6 @@ export default function ElementHoverBar({
         onClick={handleReference}
         title={t("devtools_reference_title", "Add as reference")}
         icon={<Bookmark width={15} height={15} />}
-        label={t("devtools_reference", "Reference")}
       />
       {elementIsClickable && (
         <HoverBarButton
