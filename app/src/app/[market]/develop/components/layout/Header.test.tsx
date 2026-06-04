@@ -75,8 +75,8 @@ vi.mock('@/components/layout/AppPublish', () => ({
   default: () => <div data-testid="app-publish">AppPublish</div>,
 }));
 
-vi.mock('@/app/[market]/develop/components/layout/DomainMenu', () => ({
-  default: () => <div data-testid="domain-menu">DomainMenu</div>,
+vi.mock('@/app/[market]/develop/components/layout/ShareLink', () => ({
+  default: () => <div data-testid="share-link-button">ShareLink</div>,
 }));
 
 vi.mock('@/contexts/WebSocketContext', () => ({

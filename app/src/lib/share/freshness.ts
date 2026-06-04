@@ -4,7 +4,7 @@
  *
  *   - `app/src/lib/share/inject-preview-token.ts` (iframe / Visit Preview /
  *     Slack feedback Preview button — the URL-injection helper)
- *   - `app/src/app/api/apps/[id]/share/route.ts` GET handler (DomainMenu
+ *   - `app/src/app/api/apps/[id]/share/route.ts` GET handler (ShareLink
  *     popover — the share-list endpoint that backs `useShareTokens`)
  *
  * Centralizing the constant + predicate prevents the two surfaces from

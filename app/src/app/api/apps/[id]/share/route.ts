@@ -162,7 +162,7 @@ export const GET = withCustomerAuth(async (
     }
 
     // Auto-rotate when the freshest active token is past the freshness
-    // window. The DomainMenu's "Share Preview" popover uses the FIRST
+    // window. The ShareLink's "Share Link" popover uses the FIRST
     // active token from this response (agents orders by `created_at DESC`,
     // so freshest first), then the user copies that URL. Without this
     // step, a 6-day-old token still gets handed out — the recipient gets

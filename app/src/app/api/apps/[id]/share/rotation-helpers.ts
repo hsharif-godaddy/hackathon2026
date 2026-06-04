@@ -177,7 +177,7 @@ export async function rotateShareTokenForList(
 // 60s is short enough to feel "fresh" (next legitimate stale check still
 // fires) but long enough to collapse same-event bursts from the UI layer
 // (Strict Mode double-fire, multiple useShareTokens callers on one page,
-// quick navigation in/out of DomainMenu).
+// quick navigation in/out of ShareLink).
 //
 // Limitations: per-process only. With multiple Katana BFF workers, each
 // worker has its own Map — N workers can still race to N mints. The

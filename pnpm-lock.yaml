@@ -153,6 +153,9 @@ catalogs:
     parquetjs:
       specifier: ^0.11.2
       version: 0.11.2
+    qrcode.react:
+      specifier: ^4.2.0
+      version: 4.2.0
     react-filerobot-image-editor:
       specifier: 5.0.0-beta.156
       version: 5.0.0-beta.156
@@ -782,6 +785,9 @@ importers:
       '@ux/disrupt':
         specifier: 2500.11.1
         version: 2500.11.1(@types/react@19.2.14)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/field-frame':
+        specifier: 'catalog:'
+        version: 2500.11.3(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/flyout':
         specifier: 2500.11.1
         version: 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -848,6 +854,9 @@ importers:
       '@ux/text':
         specifier: 2500.9.0
         version: 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@ux/text-entry':
+        specifier: 'catalog:'
+        version: 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@ux/text-input':
         specifier: 2500.11.1
         version: 2500.11.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -959,6 +968,9 @@ importers:
       prop-types:
         specifier: ^15.8.1
         version: 15.8.1
+      qrcode.react:
+        specifier: 'catalog:'
+        version: 4.2.0(react@19.1.0)
       react:
         specifier: 19.1.0
         version: 19.1.0
@@ -11923,6 +11935,11 @@ packages:
       You or someone you depend on is using Q, the JavaScript Promise library that gave JavaScript developers strong feelings about promises. They can almost certainly migrate to the native JavaScript promise now. Thank you literally everyone for joining me in this bet against the odds. Be excellent to each other.
 
       (For a CapTP with native promises, see @endo/eventual-send and @endo/captp)
+
+  qrcode.react@4.2.0:
+    resolution: {integrity: sha512-QpgqWi8rD9DsS9EP3z7BT+5lY5SFhsqGjpgW5DY/i3mK4M9DTBNz3ErMi8BWYEfI3L0d8GIbGmcdFAS1uIRGjA==}
+    peerDependencies:
+      react: 19.1.0
 
   qrcode@1.5.4:
     resolution: {integrity: sha512-1ca71Zgiu6ORjHqFBDpnSMTR2ReToX4l1Au1VFLyVeBTFavzQnv5JxMFr3ukHVKpSrSA2MCk0lNJSykjUfz7Zg==}
@@ -26345,6 +26362,10 @@ snapshots:
   pvutils@1.1.5: {}
 
   q@1.5.1: {}
+
+  qrcode.react@4.2.0(react@19.1.0):
+    dependencies:
+      react: 19.1.0
 
   qrcode@1.5.4:
     dependencies:

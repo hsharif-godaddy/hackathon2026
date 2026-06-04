@@ -189,7 +189,7 @@ describe('GET /api/apps/[id]/share', () => {
   });
 
   describe('auto-rotation when freshest active token is stale', () => {
-    // DomainMenu's "Share Preview" popover (useShareTokens hook) reads the
+    // ShareLink's "Share Link" popover (useShareTokens hook) reads the
     // FIRST active token from this response and shows it as the canonical
     // share link. Without auto-rotation, a 6-day-old token still gets
     // handed out — the recipient gets a link with ~24h of validity. These

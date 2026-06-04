@@ -20,7 +20,7 @@ import Tag from '@ux/tag';
 
 import { ButtonGroup } from '@/app/[market]/develop/components/ButtonGroup';
 import IconButton from '@/app/[market]/develop/components/IconButton';
-import DomainMenu from '@/app/[market]/develop/components/layout/DomainMenu';
+import ShareLink from '@/app/[market]/develop/components/layout/ShareLink';
 import DeviceSelector from '@/app/[market]/develop/components/preview/DeviceSelector'
 import { MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
@@ -223,8 +223,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
               <span className="hidden lg:block">
                 <DeviceSelector disabled={viewMode === ViewMode.CODE} />
               </span>
-
-              <DomainMenu />
+              <ShareLink />
 
               {isHelpButtonEnabled && (
                 <IconButton

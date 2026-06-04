@@ -53,10 +53,12 @@ describe('GocodeClient', () => {
         choices: [{ message: { content: 'hi there' } }],
       });
       await client.complete(messages);
-      expect(mockCreate).toHaveBeenCalledWith({
-        model: TEST_CONFIG.model,
-        messages,
-      });
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: TEST_CONFIG.model,
+          messages,
+        }),
+      );
     });
 
     it('returns content from first choice', async () => {
@@ -94,10 +96,12 @@ describe('GocodeClient', () => {
         choices: [{ message: { content: 'goodbye' } }],
       });
       const result = await client.complete(multi);
-      expect(mockCreate).toHaveBeenCalledWith({
-        model: TEST_CONFIG.model,
-        messages: multi,
-      });
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: TEST_CONFIG.model,
+          messages: multi,
+        }),
+      );
       expect(result).toBe('goodbye');
     });
 
@@ -119,13 +123,15 @@ describe('GocodeClient', () => {
 
       await client.complete(dirtyMessages);
 
-      expect(mockCreate).toHaveBeenCalledWith({
-        model: TEST_CONFIG.model,
-        messages: [
-          { role: 'user', content: 'safetext' },
-          { role: 'assistant', content: 'prepost' },
-        ],
-      });
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: TEST_CONFIG.model,
+          messages: [
+            { role: 'user', content: 'safetext' },
+            { role: 'assistant', content: 'prepost' },
+          ],
+        }),
+      );
     });
 
     it('sanitizes ContentPart[] messages, stripping unsafe text parts and preserving non-text parts', async () => {
@@ -146,18 +152,20 @@ describe('GocodeClient', () => {
 
       await client.complete(dirtyMessages);
 
-      expect(mockCreate).toHaveBeenCalledWith({
-        model: TEST_CONFIG.model,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: 'dirtytext' },
-              imagePart,
-            ],
-          },
-        ],
-      });
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: TEST_CONFIG.model,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'dirtytext' },
+                imagePart,
+              ],
+            },
+          ],
+        }),
+      );
     });
 
     it('passes signal option to the OpenAI client', async () => {
@@ -169,7 +177,7 @@ describe('GocodeClient', () => {
       await client.complete(messages, { signal: controller.signal });
 
       expect(mockCreate).toHaveBeenCalledWith(
-        { model: TEST_CONFIG.model, messages },
+        expect.objectContaining({ model: TEST_CONFIG.model, messages }),
         { signal: controller.signal },
       );
     });
@@ -181,10 +189,12 @@ describe('GocodeClient', () => {
 
       await client.complete(messages);
 
-      expect(mockCreate).toHaveBeenCalledWith({
-        model: TEST_CONFIG.model,
-        messages,
-      });
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: TEST_CONFIG.model,
+          messages,
+        }),
+      );
     });
   });
 

@@ -92,12 +92,8 @@ vi.mock('@/components/providers/AuthProvider', () => ({
   }),
 }));
 
-// Stub DomainMenu so we can assert placement without rendering its full
-// popover + hooks.
-vi.mock('@/app/[market]/develop/components/layout/DomainMenu', () => ({
-  default: () => (
-    <div data-testid="domain-menu">DomainMenu</div>
-  ),
+vi.mock('@/app/[market]/develop/components/layout/ShareLink', () => ({
+  default: () => <div data-testid="share-link-button">ShareLink</div>,
 }));
 
 describe('ChatToolbar', () => {
@@ -159,35 +155,31 @@ describe('ChatToolbar', () => {
     expect(screen.getByLabelText('builder_chat_toolbar_button_view')).toBeInTheDocument();
   });
 
-  describe('DomainMenu placement', () => {
-    it('renders DomainMenu in mobile TOOLS mode (next to AppPublish)', () => {
+  describe('ShareLink placement', () => {
+    it('renders ShareLink in mobile TOOLS mode', () => {
       mockDevelopStore.isMobile = true;
       mockDevelopStore.mobileMode = MobileMode.TOOLS;
 
       renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-      const domainMenus = screen.getAllByTestId('domain-menu');
-      expect(domainMenus.length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByTestId('share-link-button').length).toBeGreaterThanOrEqual(1);
     });
 
-    it('renders DomainMenu in mobile PREVIEW mode (next to AppPublish)', () => {
+    it('renders ShareLink in mobile PREVIEW mode', () => {
       mockDevelopStore.isMobile = true;
       mockDevelopStore.mobileMode = MobileMode.PREVIEW;
 
       renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-      const domainMenus = screen.getAllByTestId('domain-menu');
-      expect(domainMenus.length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByTestId('share-link-button').length).toBeGreaterThanOrEqual(1);
     });
 
-    it('does NOT render DomainMenu on desktop (Header.tsx owns it there)', () => {
+    it('does NOT render ShareLink on desktop (Header.tsx owns it there)', () => {
       mockDevelopStore.isMobile = false;
 
       renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-      // The desktop tools-mode block has the chat tabs + SettingsMenu but no
-      // DomainMenu/Publish — those live in the desktop Header.
-      expect(screen.queryAllByTestId('domain-menu')).toHaveLength(0);
+      expect(screen.queryAllByTestId('share-link-button')).toHaveLength(0);
     });
   });
 
