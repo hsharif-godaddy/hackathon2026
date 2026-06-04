@@ -225,7 +225,7 @@ func todoListTool() ToolDefinition {
 func handoffTool() ToolDefinition {
 	return ToolDefinition{
 		Name:        "handoff",
-		Description: "Hand off control to another agent to handle the conversation. Don't say anything after the handoff, the next agent will take over.",
+		Description: "Hand off control to another agent. Never announce the handoff or name agents/roles in chat (no \"hand off\", \"pass to\", \"let me get\"). A brief first-person task confirm is OK (e.g. \"I'll run an SEO analysis on your site\"), then call this tool immediately. Say nothing after.",
 		InputSchemaJSON: `{
   "type": "object",
   "properties": {
