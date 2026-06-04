@@ -3,6 +3,8 @@ import { destroyAllClients, getClient, startClient } from '@switchboard/client';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 
+export type GuardName = 'first_app' | 'first_published_app' | 'no_published_app';
+
 export interface TemplateConfig {
   templateNamespaceKey: string;
   templateTypeKey: string;
@@ -16,7 +18,8 @@ export interface TemplateConfig {
    */
   target?: 'event_customer' | 'transfer_target' | 'transfer_source';
   /**
-   * Optional guard that must pass before the email is sent.
+   * Optional guard(s) that must ALL pass before the email is sent.
+   * Accepts a single guard name or an array; all guards must pass (AND logic).
    * - 'first_published_app': only send if this is the customer's first published app
    *   (published app count == 1 at time of event).
    * - 'no_published_app': only send if the customer has no published apps yet
@@ -24,7 +27,7 @@ export interface TemplateConfig {
    * - 'first_app': only send if the customer has at most 1 app total (published or not).
    *   Used to welcome new users on their first app creation.
    */
-  guard?: 'first_app' | 'first_published_app' | 'no_published_app';
+  guard?: GuardName | GuardName[];
 }
 
 type TemplateMappingEntry = TemplateConfig | TemplateConfig[];

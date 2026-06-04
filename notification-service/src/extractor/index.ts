@@ -43,9 +43,6 @@ export function extract(raw: unknown): ExtractedEvent | null {
     return null;
   }
   const resolvedAppId = typeof appId === 'string' ? appId : undefined;
-  if (!resolvedAppId) {
-    logger.info('extractor.extract.missing_appId', { eid });
-  }
 
   logger.info('extractor.extract.success', { eid, customerId, appId: resolvedAppId });
   return { eid, customerId, appId: resolvedAppId };

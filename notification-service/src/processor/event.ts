@@ -287,18 +287,23 @@ export async function processEvent(raw: unknown): Promise<'sent' | 'skipped'> {
 
     try {
       if (templateConfig.guard) {
-        const passed = await evaluateGuard(templateConfig.guard, ctx);
-        if (!passed) {
-          logger.info('processor.event.template_skipped', {
-            reason: 'guard_failed',
-            guard: templateConfig.guard,
-            eid,
-            customerId,
-            appId,
-            templateTypeKey,
-          });
-          continue;
+        const guards = Array.isArray(templateConfig.guard) ? templateConfig.guard : [templateConfig.guard];
+        let guardFailed = false;
+        for (const guard of guards) {
+          if (!await evaluateGuard(guard, ctx)) {
+            logger.info('processor.event.template_skipped', {
+              reason: 'guard_failed',
+              guard,
+              eid,
+              customerId,
+              appId,
+              templateTypeKey,
+            });
+            guardFailed = true;
+            break;
+          }
         }
+        if (guardFailed) continue;
       }
 
       const resolvedValues = await resolveSubstitutions(templateConfig.substitutionValues ?? {}, ctx);

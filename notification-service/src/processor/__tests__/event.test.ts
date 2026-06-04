@@ -141,6 +141,30 @@ describe('notification-service', () => {
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
+    it('sends when all guards in an array pass', async () => {
+      mockGetAppCount.mockResolvedValue(1);
+      mockGetPublishedAppCount.mockResolvedValue(0);
+      mockGetTemplateConfig.mockReturnValue([{ ...TEMPLATE, guard: ['first_app', 'no_published_app'] }]);
+      expect(await processEvent({})).toBe('sent');
+      expect(mockSendMessage).toHaveBeenCalledOnce();
+    });
+
+    it('skips when the first guard in an array fails', async () => {
+      mockGetAppCount.mockResolvedValue(5);
+      mockGetPublishedAppCount.mockResolvedValue(0);
+      mockGetTemplateConfig.mockReturnValue([{ ...TEMPLATE, guard: ['first_app', 'no_published_app'] }]);
+      expect(await processEvent({})).toBe('skipped');
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('skips when the second guard in an array fails', async () => {
+      mockGetAppCount.mockResolvedValue(1);
+      mockGetPublishedAppCount.mockResolvedValue(2);
+      mockGetTemplateConfig.mockReturnValue([{ ...TEMPLATE, guard: ['first_app', 'no_published_app'] }]);
+      expect(await processEvent({})).toBe('skipped');
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
     it('sends when first_app guard passes and appId is absent (homepage event)', async () => {
       mockExtract.mockReturnValue({ eid: 'appbuilder.homepage.redirect.develop.impression', customerId: 'cust-1' });
       mockGetAppCount.mockResolvedValue(1);
