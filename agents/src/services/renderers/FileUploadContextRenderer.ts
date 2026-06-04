@@ -1,12 +1,10 @@
-import { mkdirSync, writeFileSync } from 'fs'
-import { dirname, join } from 'path'
 import { getModel } from '@airo/ai-lib'
 import { generateText } from 'ai'
 import type { ContextAttachment, ContextAttachmentRenderer, RenderedContext } from '@airo/shared/context-attachment'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { logger } from '../../logging/index.js'
 import { resizeForVision } from '../../utils/image-resize.js'
-import { createForWorkspace } from '../../workspace/index.js'
+import { createForWorkspace, type WorkspaceClient } from '../../workspace/index.js'
 
 const appRepo = new AppRepository()
 
@@ -130,16 +128,16 @@ async function classifyText(content: string, fileName: string, userPrompt: strin
   }
 }
 
-function persistClassifications(
-  appPath: string,
+async function persistClassifications(
+  workspace: WorkspaceClient,
   entries: Array<UploadClassification & { fileName: string }>,
-): void {
+): Promise<void> {
   try {
-    // appPath is server-controlled (workspace path); filename is a static literal — no user input in the join.
-    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-    const classificationPath = join(appPath, 'docs', '.upload-classifications.json')
-    mkdirSync(dirname(classificationPath), { recursive: true })
-    writeFileSync(classificationPath, JSON.stringify({ files: entries }, null, 2), 'utf-8')
+    await workspace.files.write({
+      path: 'docs/.upload-classifications.json',
+      content: JSON.stringify({ files: entries }, null, 2),
+      encoding: 'utf-8',
+    })
   } catch (err) {
     logger.warn('context.renderer.file_upload.persist_classification_failed', {
       error: err instanceof Error ? err.message : String(err),
@@ -217,7 +215,7 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
     // Persist every file's classification together so follow-up turns can
     // re-inject all of them — not just the last file processed in the loop.
     if (classifications.length > 0) {
-      persistClassifications(appPath, classifications)
+      await persistClassifications(workspace, classifications)
     }
 
     return {

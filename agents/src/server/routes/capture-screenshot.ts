@@ -1,15 +1,13 @@
 import { Router, Request, Response, IRouter } from 'express';
-import { mkdir, writeFile } from 'fs/promises';
 import { isIP } from 'net';
-import { resolve, sep } from 'path';
 
-import { AppRepository } from '../../database/index.js';
+import { AppRepository, type App } from '../../database/index.js';
 import { GitUtils } from '../../utils/git.js';
 import { WebsiteScraperDriver } from '../../tools/ai-lib-tools/drivers/website-scraper-driver.js';
 import { log } from '../../logging/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
-import { resolveScreenshotDir } from './screenshot-paths.js';
+import { getScreenshotStore } from './screenshot-store.js';
 
 const router: IRouter = Router();
 const appRepo = new AppRepository();
@@ -188,9 +186,8 @@ router.post('/:id/capture-screenshot', async (req: Request, res: Response) => {
 
     // Fire-and-forget: capture + save to disk
     recentCaptures.set(id, { url, commitHash, requestedAt: Date.now(), inFlight: true, lastSucceeded: false });
-    const appPath = app.path;
     const captureUrl = url;
-    captureAndSave({ id, url: captureUrl, width, height, appPath, contextLogger })
+    captureAndSave({ id, app, url: captureUrl, width, height, contextLogger })
       .catch(err => log.error(contextLogger, 'route.apps.capture-screenshot.unhandled-error',
         err instanceof Error ? err : new Error(String(err)), { appId: id, url: captureUrl }))
       .finally(() => {
@@ -215,17 +212,17 @@ router.post('/:id/capture-screenshot', async (req: Request, res: Response) => {
  */
 async function captureAndSave({
   id,
+  app,
   url,
   width,
   height,
-  appPath,
   contextLogger,
 }: {
   id: string;
+  app: App;
   url: string;
   width: number;
   height: number;
-  appPath: string;
   contextLogger: ReturnType<typeof log.forApp>;
 }): Promise<void> {
   const scraper = new WebsiteScraperDriver();
@@ -274,23 +271,15 @@ async function captureAndSave({
     return;
   }
 
-  const screenshotDir = resolveScreenshotDir(appPath);
-  const screenshotPath = resolve(screenshotDir, `${id}-screenshot.png`);
-  if (!screenshotPath.startsWith(resolve(screenshotDir) + sep)) {
-    log.error(contextLogger, 'route.apps.capture-screenshot.path-traversal', new Error('Screenshot path outside allowed directory'), { appId: id, screenshotDir });
-    return;
-  }
-
+  const store = getScreenshotStore(app);
   try {
-    await mkdir(screenshotDir, { recursive: true });
-    await writeFile(screenshotPath, result.buffer);
-  } catch (diskError) {
-    const err = diskError instanceof Error ? diskError : new Error(String(diskError));
-    log.error(contextLogger, 'route.apps.capture-screenshot.disk-write-error', err, {
+    await store.write(id, result.buffer);
+  } catch (writeError) {
+    const err = writeError instanceof Error ? writeError : new Error(String(writeError));
+    log.error(contextLogger, 'route.apps.capture-screenshot.write-error', err, {
       appId: id,
-      screenshotDir,
       url,
-      errnoCode: (diskError as NodeJS.ErrnoException).code ?? 'unknown',
+      code: (writeError as NodeJS.ErrnoException).code,
     });
     return;
   }

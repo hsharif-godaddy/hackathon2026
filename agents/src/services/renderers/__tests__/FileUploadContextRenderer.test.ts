@@ -38,12 +38,14 @@ describe('FileUploadContextRenderer', () => {
   let renderer: FileUploadContextRenderer
   const mockView = vi.fn()
   const mockDownload = vi.fn()
+  const mockWrite = vi.fn()
 
   beforeEach(() => {
     vi.clearAllMocks()
     renderer = new FileUploadContextRenderer()
+    mockWrite.mockResolvedValue({ bytesWritten: 0 })
     ;(createForWorkspace as ReturnType<typeof vi.fn>).mockReturnValue({
-      files: { view: mockView, download: mockDownload },
+      files: { view: mockView, download: mockDownload, write: mockWrite },
     })
   })
 

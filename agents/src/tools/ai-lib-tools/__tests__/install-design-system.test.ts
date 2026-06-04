@@ -9,6 +9,8 @@ const ENTRY = {
   tarballHash: 'sha256-abcdef0123456789abcd',
 }
 
+const mockWorkspace = { workspaceId: 'a', variant: 'preview', files: { upload: vi.fn() } }
+
 describe('installDesignSystem tool', () => {
   beforeEach(() => { vi.resetModules() })
 
@@ -20,8 +22,8 @@ describe('installDesignSystem tool', () => {
     vi.doMock('../../../services/design-system/install.js', () => ({
       installDesignSystem: vi.fn(),
     }))
-    vi.doMock('../../../database/repositories/AppRepository.js', () => ({
-      AppRepository: class { findById() { return { id: 'a', path: '/tmp/app' } } },
+    vi.doMock('../../../workspace/index.js', () => ({
+      createForWorkspace: vi.fn().mockReturnValue(mockWorkspace),
     }))
     const { installDesignSystemAITool } = await import('../install-design-system.js')
     const out = await installDesignSystemAITool.execute({ slug: 'unknown' }, { experimental_context: { metadata: { appId: 'a' } } } as any) as string
@@ -37,14 +39,14 @@ describe('installDesignSystem tool', () => {
     vi.doMock('../../../services/design-system/install.js', () => ({
       installDesignSystem: installSpy,
     }))
-    vi.doMock('../../../database/repositories/AppRepository.js', () => ({
-      AppRepository: class { findById() { return { id: 'a', path: '/tmp/app' } } },
+    vi.doMock('../../../workspace/index.js', () => ({
+      createForWorkspace: vi.fn().mockReturnValue(mockWorkspace),
     }))
 
     const { installDesignSystemAITool } = await import('../install-design-system.js')
     const out = await installDesignSystemAITool.execute({ slug: 'modern-bento' }, { experimental_context: { metadata: { appId: 'a' } } } as any) as string
 
-    expect(installSpy).toHaveBeenCalledWith(expect.objectContaining({ appPath: '/tmp/app' }))
+    expect(installSpy).toHaveBeenCalledWith(expect.objectContaining({ workspace: mockWorkspace }))
     expect(out).toContain('modern-bento')
     expect(out).toContain('loadUiKit')
   })
@@ -55,12 +57,26 @@ describe('installDesignSystem tool', () => {
       resolveDesignSystemBaseUrl: () => 'http://x/brand-kits',
     }))
     vi.doMock('../../../services/design-system/install.js', () => ({ installDesignSystem: vi.fn() }))
-    vi.doMock('../../../database/repositories/AppRepository.js', () => ({
-      AppRepository: class { findById() { return null } },
+    vi.doMock('../../../workspace/index.js', () => ({
+      createForWorkspace: vi.fn().mockReturnValue(null),
     }))
     const { installDesignSystemAITool } = await import('../install-design-system.js')
     const out = await installDesignSystemAITool.execute({ slug: 'x' }, {} as any) as string
     expect(out).toMatch(/app id/i)
+  })
+
+  it('returns error when workspace is unavailable', async () => {
+    vi.doMock('../../../services/design-system/catalog.js', () => ({
+      fetchDesignSystemCatalog: vi.fn(),
+      resolveDesignSystemBaseUrl: () => 'http://x/brand-kits',
+    }))
+    vi.doMock('../../../services/design-system/install.js', () => ({ installDesignSystem: vi.fn() }))
+    vi.doMock('../../../workspace/index.js', () => ({
+      createForWorkspace: vi.fn().mockReturnValue(null),
+    }))
+    const { installDesignSystemAITool } = await import('../install-design-system.js')
+    const out = await installDesignSystemAITool.execute({ slug: 'x' }, { experimental_context: { metadata: { appId: 'a' } } } as any) as string
+    expect(out).toMatch(/workspace unavailable/i)
   })
 
   it('returns formatted error when installDesignSystem throws', async () => {
@@ -71,8 +87,8 @@ describe('installDesignSystem tool', () => {
     vi.doMock('../../../services/design-system/install.js', () => ({
       installDesignSystem: vi.fn().mockRejectedValue(new Error('design-system hash mismatch for modern-bento')),
     }))
-    vi.doMock('../../../database/repositories/AppRepository.js', () => ({
-      AppRepository: class { findById() { return { id: 'a', path: '/tmp/app' } } },
+    vi.doMock('../../../workspace/index.js', () => ({
+      createForWorkspace: vi.fn().mockReturnValue(mockWorkspace),
     }))
     const { installDesignSystemAITool } = await import('../install-design-system.js')
     const out = await installDesignSystemAITool.execute({ slug: 'modern-bento' }, { experimental_context: { metadata: { appId: 'a' } } } as any) as string
@@ -87,8 +103,8 @@ describe('installDesignSystem tool', () => {
       resolveDesignSystemBaseUrl: () => 'http://x/brand-kits',
     }))
     vi.doMock('../../../services/design-system/install.js', () => ({ installDesignSystem: vi.fn() }))
-    vi.doMock('../../../database/repositories/AppRepository.js', () => ({
-      AppRepository: class { findById() { return { id: 'a', path: '/tmp/app' } } },
+    vi.doMock('../../../workspace/index.js', () => ({
+      createForWorkspace: vi.fn().mockReturnValue(mockWorkspace),
     }))
     const { installDesignSystemAITool } = await import('../install-design-system.js')
     const out = await installDesignSystemAITool.execute({ slug: 'modern-bento' }, { experimental_context: { metadata: { appId: 'a' } } } as any) as string

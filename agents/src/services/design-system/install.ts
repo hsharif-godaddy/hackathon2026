@@ -1,14 +1,17 @@
-import { mkdirSync, writeFileSync, rmSync, readdirSync, cpSync, existsSync } from 'fs'
+import { mkdirSync, writeFileSync, rmSync, readdirSync, cpSync, existsSync, readFileSync } from 'fs'
 import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
-import { join, normalize, resolve, basename } from 'path'
+import { join, normalize, resolve, basename, relative } from 'path'
 import { createHash } from 'crypto'
 import { x as extractTar } from 'tar'
 import { logger } from '../../logging/index.js'
+import type { WorkspaceClient } from '../../workspace/index.js'
 import type { DesignSystemCatalogEntry } from './types.js'
 
+const UPLOAD_CONCURRENCY = 8
+
 export interface InstallDesignSystemInput {
-  appPath: string
+  workspace: WorkspaceClient
   entry: DesignSystemCatalogEntry
   baseUrl: string
 }
@@ -31,21 +34,41 @@ function isAppleDouble(entryPath: string): boolean {
   return basename(entryPath).startsWith('._')
 }
 
-function countFiles(dir: string): number {
-  let count = 0
-  if (!existsSync(dir)) return 0
+/** Recursively collect all file paths under a directory (relative to root). */
+function collectFiles(dir: string, root: string = dir): string[] {
+  const results: string[] = []
+  if (!existsSync(dir)) return results
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const fullPath: string = join(dir, entry.name)
     if (entry.isDirectory()) {
-      count += countFiles(join(dir, entry.name))
+      results.push(...collectFiles(fullPath, root))
     } else {
-      count++
+      results.push(relative(root, fullPath))
     }
   }
-  return count
+  return results
+}
+
+/** Run async work over items with bounded parallelism. */
+async function withConcurrency<T>(
+  items: readonly T[],
+  cap: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  const queue: T[] = [...items]
+  await Promise.all(
+    Array.from({ length: Math.min(cap, queue.length) }, async () => {
+      while (queue.length > 0) {
+        const item: T | undefined = queue.shift()
+        if (item === undefined) break
+        await worker(item)
+      }
+    }),
+  )
 }
 
 export async function installDesignSystem(input: InstallDesignSystemInput): Promise<InstallDesignSystemResult> {
-  const { appPath, entry, baseUrl } = input
+  const { workspace, entry, baseUrl } = input
   const url = `${baseUrl.replace(/\/$/, '')}/${entry.tarball}`
   const response = await fetch(url)
   if (!response.ok) throw new Error(`design-system download ${response.status}`)
@@ -65,7 +88,6 @@ export async function installDesignSystem(input: InstallDesignSystemInput): Prom
   mkdirSync(assembledDir, { recursive: true })
   writeFileSync(tarPath, buf)
 
-  const target = join(appPath, 'docs', 'ui-kit')
   const assembledResolved = resolve(assembledDir)
 
   try {
@@ -108,13 +130,18 @@ export async function installDesignSystem(input: InstallDesignSystemInput): Prom
       cpSync(src, dest, { recursive: true })
     }
 
-    // Atomic swap: only write to target after assembly succeeds
-    mkdirSync(target, { recursive: true })
-    cpSync(assembledDir, target, { recursive: true })
+    // Upload assembled files to workspace via dev-supervisor.
+    // Note: unlike the old atomic cpSync, per-file upload means a mid-way failure
+    // leaves docs/ui-kit/ partially written. The tool surfaces the error so the
+    // agent won't call loadUiKit, and a retry overwrites existing files.
+    const filePaths = collectFiles(assembledDir)
+    await withConcurrency(filePaths, UPLOAD_CONCURRENCY, async (relPath) => {
+      const data = readFileSync(join(assembledDir, relPath))
+      await workspace.files.upload({ path: `docs/ui-kit/${relPath}`, data })
+    })
+
+    return { slug: entry.slug, written: filePaths.length }
   } finally {
     rmSync(stage, { recursive: true, force: true })
   }
-
-  const written = countFiles(target)
-  return { slug: entry.slug, written }
 }

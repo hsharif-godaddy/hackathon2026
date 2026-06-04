@@ -1,11 +1,9 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
-import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { fetchDesignSystemCatalog, resolveDesignSystemBaseUrl } from '../../services/design-system/catalog.js'
 import { installDesignSystem } from '../../services/design-system/install.js'
 import { logger } from '../../logging/index.js'
-
-const appRepo = new AppRepository()
+import { createForWorkspace } from '../../workspace/index.js'
 
 export const installDesignSystemAITool: Tool = createTool(
   'Download and install a design system by slug. Extracts to docs/ui-kit/ in the app workspace. After this returns, call loadUiKit to read the design system content and begin building.',
@@ -17,15 +15,15 @@ export const installDesignSystemAITool: Tool = createTool(
     if (!appId) return 'Error: App ID required'
 
     try {
-      const app = appRepo.findById(appId)
-      if (!app) return `Error: App '${appId}' not found`
+      const workspace = createForWorkspace(appId, 'preview')
+      if (!workspace) return `Error: workspace unavailable for app '${appId}'`
 
       const catalog = await fetchDesignSystemCatalog()
       const entry = catalog.kits.find(k => k.slug === input.slug)
       if (!entry) return `Error: design system '${input.slug}' not found in catalog.`
 
       const result = await installDesignSystem({
-        appPath: app.path,
+        workspace,
         entry,
         baseUrl: resolveDesignSystemBaseUrl(),
       })
