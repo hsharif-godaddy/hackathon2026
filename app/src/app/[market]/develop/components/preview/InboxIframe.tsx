@@ -5,12 +5,12 @@ import { getRootDomain } from '@/utils/getRootDomain';
 
 interface InboxIframeProps {
   brandId: string;
-  accountId?: string;
+  accountId: string;
 }
 
 export default function InboxIframe({ brandId, accountId }: InboxIframeProps) {
   const rootDomain = getRootDomain() || 'godaddy.com';
-  const inboxUrl = `https://www.conversations.${rootDomain}/conversations/${brandId}?renderMode=iframe`;
+  const inboxUrl = `https://conversations.${rootDomain}/conversations/${brandId}?renderMode=iframe`;
 
   // Initialize Pusher connection for real-time updates (state unused for now)
   usePusher({ accountId });

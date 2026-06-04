@@ -37,4 +37,4 @@ export { default as rebuildRouter } from './rebuild.js';
 export { default as nextActionsRouter } from './next-actions.js';
 export { default as feedbackRouter } from './feedback.js';
 export { captureScreenshotRouter } from './capture-screenshot.js';
-export { default as inboxBrandIdRouter } from './inbox-brand-id.js';
+export { default as inboxAccountRouter } from './inbox-account.js';

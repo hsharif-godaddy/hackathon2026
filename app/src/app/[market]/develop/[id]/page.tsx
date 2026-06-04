@@ -51,7 +51,7 @@ import { useCreditsDeeplinkWithStore } from '@/hooks/useCreditsDeeplinkWithStore
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useHivemind } from '@/hooks/useHivemind'
 import { useImageReadiness } from '@/hooks/useImageReadiness'
-import { useInboxBrandId } from '@/hooks/useInboxBrandId'
+import { useInboxAccount } from '@/hooks/useInboxAccount'
 import { usePaywallDeeplinkWithStore } from '@/hooks/usePaywallDeeplinkWithStore'
 import { prefetchSubscription } from '@/hooks/useSubscription'
 import { useIsRenewalPolling } from '@/hooks/useSubscriptionRenewal'
@@ -233,13 +233,15 @@ function DevelopPageContent() {
     }
   }, [hibernation.resumeComplete, appId, archiveRestore.archiveRestoreComplete]);
 
-  // Fetch inbox brand ID early and sync to store
-  const { brandId, isLoading: isLoadingBrandId, error: brandIdError } = useInboxBrandId(appId)
+  // Fetch inbox account data early and sync to store
+  const { brandId, accountId, isLoading: isLoadingAccount, error: accountError } = useInboxAccount(appId)
   const setInboxBrandId = useDevelopPageStore((state) => state.setInboxBrandId)
+  const setInboxAccountId = useDevelopPageStore((state) => state.setInboxAccountId)
 
   useEffect(() => {
     setInboxBrandId(brandId)
-  }, [brandId, isLoadingBrandId, brandIdError, setInboxBrandId])
+    setInboxAccountId(accountId)
+  }, [brandId, accountId, isLoadingAccount, accountError, setInboxBrandId, setInboxAccountId])
 
   // Eval snapshot capture - captures screenshot on first build completion
   const { triggerEvalSnapshot, handleEvalViewportScreenshot } = useEvalSnapshotCapture({ appId })

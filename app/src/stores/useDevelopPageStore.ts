@@ -209,7 +209,8 @@ interface DevelopPageStore {
   selectedModel: string | null
   selectedProfile: string | null
 
-  // Inbox brand ID
+  // Inbox account data
+  inboxAccountId: string | null
   inboxBrandId: string | null
 
   // Version history UI
@@ -312,6 +313,7 @@ interface DevelopPageStore {
   setHasUnsavedChanges: (hasChanges: boolean) => void
   setSelectedModel: (model: string | null) => void
   setSelectedProfile: (profile: string | null) => void
+  setInboxAccountId: (accountId: string | null) => void
   setInboxBrandId: (brandId: string | null) => void
   setIsMobile: (isMobile: boolean) => void
   setIsVersionHistoryOpen: (open: boolean) => void
@@ -454,6 +456,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     hasUnsavedChanges: false,
     selectedModel: null,
     selectedProfile: null,
+    inboxAccountId: null,
     inboxBrandId: null,
     isVersionHistoryOpen: false,
 
@@ -537,6 +540,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setHasUnsavedChanges: (hasChanges) => set((state) => { state.hasUnsavedChanges = hasChanges }),
     setSelectedModel: (model) => set((state) => { state.selectedModel = model }),
     setSelectedProfile: (profile) => set((state) => { state.selectedProfile = profile }),
+    setInboxAccountId: (accountId) => set((state) => { state.inboxAccountId = accountId }),
     setInboxBrandId: (brandId) => set((state) => { state.inboxBrandId = brandId }),
     setIsMobile: (isMobile) => {
       const { isMobile: wasMobile, viewMode } = get()

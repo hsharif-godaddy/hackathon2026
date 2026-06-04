@@ -861,11 +861,13 @@ describe('PreviewPane', () => {
 
   describe('INBOX view accessibility during preview server issues', () => {
     const mockInboxBrandId = 'test-brand-123';
+    const mockInboxAccountId = 'test-account-123';
 
     it('should render INBOX when resumeFailed and viewMode is INBOX', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
       (mockDevelopPageStore as any).inboxBrandId = mockInboxBrandId;
+      (mockDevelopPageStore as any).inboxAccountId = mockInboxAccountId;
       // resumeFailed prop causes early-return guards to trigger, but INBOX should bypass them
       mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null }; });
 
@@ -884,6 +886,7 @@ describe('PreviewPane', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
       (mockDevelopPageStore as any).inboxBrandId = mockInboxBrandId;
+      (mockDevelopPageStore as any).inboxAccountId = mockInboxAccountId;
       mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null }; });
 
       renderWithProviders(
@@ -901,6 +904,7 @@ describe('PreviewPane', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
       (mockDevelopPageStore as any).inboxBrandId = mockInboxBrandId;
+      (mockDevelopPageStore as any).inboxAccountId = mockInboxAccountId;
       mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null }; });
 
       renderWithProviders(
@@ -918,6 +922,7 @@ describe('PreviewPane', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
       (mockDevelopPageStore as any).inboxBrandId = mockInboxBrandId;
+      (mockDevelopPageStore as any).inboxAccountId = mockInboxAccountId;
 
       renderWithProviders(
         <PreviewPane
@@ -934,6 +939,7 @@ describe('PreviewPane', () => {
       mockSwitchboardResults['app-builder-inbox-button'] = true;
       mockDevelopPageStore.viewMode = ViewMode.INBOX;
       (mockDevelopPageStore as any).inboxBrandId = mockInboxBrandId;
+      (mockDevelopPageStore as any).inboxAccountId = mockInboxAccountId;
 
       renderWithProviders(
         <PreviewPane

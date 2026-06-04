@@ -93,13 +93,63 @@ describe('inbox skill tools', () => {
       expect(result.error).toContain('App ID required');
     });
 
-    it('returns alreadyConfigured when brand exists in memory', async () => {
-      mockMemoryGet.mockResolvedValue({ exists: true, value: 'a1b2c3d4-0000-4000-8000-000000000001' });
+    it('returns alreadyConfigured when both brand and account exist in memory', async () => {
+      mockMemoryGet.mockImplementation(function (_appId: string, key: string) {
+        if (key === 'integrations.inbox.accountId') {
+          return Promise.resolve({ exists: true, value: 'https://account.reamaze.io' });
+        }
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'a1b2c3d4-0000-4000-8000-000000000001' });
+        }
+        return Promise.resolve({ exists: false });
+      });
 
       const result = await discoverAccountTool.execute({}, context);
 
       expect(result.alreadyConfigured).toBe(true);
       expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
+      // Should not call listAccounts when both are cached
+      expect(mockListAccounts).not.toHaveBeenCalled();
+    });
+
+    it('backfills accountId from linkedToThisApp when only brand exists in memory', async () => {
+      // Legacy state: brandId exists but accountId is missing
+      mockMemoryGet.mockImplementation(function (_appId: string, key: string) {
+        if (key === 'integrations.inbox.accountId') {
+          return Promise.resolve({ exists: false });
+        }
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'a1b2c3d4-0000-4000-8000-000000000001' });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockListAccounts.mockResolvedValue({
+        success: true,
+        data: {
+          accounts: [
+            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000001', accountUrl: 'https://account.reamaze.io', name: 'My Account', ventureId: 'v1', aabAppId: 'app-123' },
+          ],
+          unlinkedEntitlements: [],
+        },
+      });
+
+      const result = await discoverAccountTool.execute({}, context);
+
+      // Should discover via linkedToThisApp rather than auto-creating
+      expect(result.alreadyConfigured).toBe(true);
+      expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
+      expect(mockActivateAccount).not.toHaveBeenCalled();
+      // Should backfill accountId to memory
+      expect(mockMemorySet).toHaveBeenCalledWith(
+        'app-123',
+        'integrations.inbox.accountId',
+        'https://account.reamaze.io',
+      );
+      expect(mockMemorySet).toHaveBeenCalledWith(
+        'app-123',
+        'integrations.inbox.brandId',
+        'a1b2c3d4-0000-4000-8000-000000000001',
+      );
     });
 
     it('returns error when no client action service is available', async () => {
@@ -117,8 +167,8 @@ describe('inbox skill tools', () => {
         success: true,
         data: {
           accounts: [
-            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000001', name: 'My Account', ventureId: 'v1', aabAppId: 'app-123' },
-            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000002', name: 'Other', ventureId: 'v2', aabAppId: 'other-app' },
+            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000001', accountUrl: 'https://account1.reamaze.io', name: 'My Account', ventureId: 'v1', aabAppId: 'app-123' },
+            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000002', accountUrl: 'https://account2.reamaze.io', name: 'Other', ventureId: 'v2', aabAppId: 'other-app' },
           ],
           unlinkedEntitlements: [],
         },
@@ -128,6 +178,11 @@ describe('inbox skill tools', () => {
 
       expect(result.alreadyConfigured).toBe(true);
       expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
+      expect(mockMemorySet).toHaveBeenCalledWith(
+        'app-123',
+        'integrations.inbox.accountId',
+        'https://account1.reamaze.io',
+      );
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
         'integrations.inbox.brandId',
@@ -141,7 +196,7 @@ describe('inbox skill tools', () => {
         success: true,
         data: {
           accounts: [
-            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000002', name: 'Other', ventureId: 'v2', aabAppId: 'other-app' },
+            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000002', accountUrl: 'https://account2.reamaze.io', name: 'Other', ventureId: 'v2', aabAppId: 'other-app' },
           ],
           unlinkedEntitlements: [
             { entitlementId: 'ent-1', name: 'Basic Plan', plan: 'basic', createdAt: '2025-01-01' },
@@ -150,7 +205,7 @@ describe('inbox skill tools', () => {
       });
       mockActivateAccount.mockResolvedValue({
         success: true,
-        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', ventureId: 'v3', aabAppId: 'app-123' },
+        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', accountUrl: 'https://account3.reamaze.io', ventureId: 'v3', aabAppId: 'app-123' },
       });
 
       const result = await discoverAccountTool.execute({}, context);
@@ -158,6 +213,11 @@ describe('inbox skill tools', () => {
       expect(result.accountCreated).toBe(true);
       expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000003');
       expect(mockActivateAccount).toHaveBeenCalledWith(mockClient, 'app-123', 'ent-1', 'My App');
+      expect(mockMemorySet).toHaveBeenCalledWith(
+        'app-123',
+        'integrations.inbox.accountId',
+        'https://account3.reamaze.io',
+      );
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
         'integrations.inbox.brandId',
@@ -189,8 +249,8 @@ describe('inbox skill tools', () => {
         success: true,
         data: {
           accounts: [
-            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000004', name: 'Free Account', ventureId: 'v1', aabAppId: null },
-            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000005', name: 'Linked', ventureId: 'v2', aabAppId: 'other-app' },
+            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000004', accountUrl: 'https://account4.reamaze.io', name: 'Free Account', ventureId: 'v1', aabAppId: null },
+            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000005', accountUrl: 'https://account5.reamaze.io', name: 'Linked', ventureId: 'v2', aabAppId: 'other-app' },
           ],
           unlinkedEntitlements: [
             { entitlementId: 'ent-1', name: 'Basic Plan', plan: 'basic', createdAt: '2025-01-01' },
@@ -199,7 +259,7 @@ describe('inbox skill tools', () => {
       });
       mockActivateAccount.mockResolvedValue({
         success: true,
-        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', ventureId: 'v3', aabAppId: 'app-123' },
+        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', accountUrl: 'https://account3.reamaze.io', ventureId: 'v3', aabAppId: 'app-123' },
       });
 
       const result = await discoverAccountTool.execute({}, context);
@@ -228,6 +288,44 @@ describe('inbox skill tools', () => {
 
       expect(result.error).toContain('Timeout');
     });
+
+    it('returns error when linkedToThisApp account is missing accountUrl', async () => {
+      mockMemoryGet.mockResolvedValue({ exists: false });
+      mockListAccounts.mockResolvedValue({
+        success: true,
+        data: {
+          accounts: [
+            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000001', accountUrl: undefined, name: 'My Account', ventureId: 'v1', aabAppId: 'app-123' } as any,
+          ],
+          unlinkedEntitlements: [],
+        },
+      });
+
+      const result = await discoverAccountTool.execute({}, context);
+
+      expect(result.error).toContain('missing required fields');
+    });
+
+    it('returns error when activateAccount response is missing accountUrl', async () => {
+      mockMemoryGet.mockResolvedValue({ exists: false });
+      mockListAccounts.mockResolvedValue({
+        success: true,
+        data: {
+          accounts: [],
+          unlinkedEntitlements: [
+            { entitlementId: 'ent-1', name: 'Basic Plan', plan: 'basic', createdAt: '2025-01-01' },
+          ],
+        },
+      });
+      mockActivateAccount.mockResolvedValue({
+        success: true,
+        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', accountUrl: undefined, ventureId: 'v3', aabAppId: 'app-123' } as any,
+      });
+
+      const result = await discoverAccountTool.execute({}, context);
+
+      expect(result.error).toContain('missing required fields');
+    });
   });
 
   // --------------------------------------------------------------------------
@@ -245,6 +343,11 @@ describe('inbox skill tools', () => {
       expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
+        'integrations.inbox.accountId',
+        'a1b2c3d4-0000-4000-8000-000000000001',
+      );
+      expect(mockMemorySet).toHaveBeenCalledWith(
+        'app-123',
         'integrations.inbox.brandId',
         'a1b2c3d4-0000-4000-8000-000000000001',
       );
@@ -253,7 +356,7 @@ describe('inbox skill tools', () => {
     it('activates account for create_new without entitlementId', async () => {
       mockActivateAccount.mockResolvedValue({
         success: true,
-        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', ventureId: 'v1', aabAppId: 'app-123' },
+        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', accountUrl: 'https://account3.reamaze.io', ventureId: 'v1', aabAppId: 'app-123' },
       });
 
       const result = await selectAccountTool.execute(
@@ -264,12 +367,17 @@ describe('inbox skill tools', () => {
       expect(result.success).toBe(true);
       expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000003');
       expect(mockActivateAccount).toHaveBeenCalledWith(expect.anything(), 'app-123', undefined, 'My App');
+      expect(mockMemorySet).toHaveBeenCalledWith(
+        'app-123',
+        'integrations.inbox.accountId',
+        'https://account3.reamaze.io',
+      );
     });
 
     it('activates account for create_new with entitlementId', async () => {
       mockActivateAccount.mockResolvedValue({
         success: true,
-        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', ventureId: 'v1', aabAppId: 'app-123' },
+        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', accountUrl: 'https://account3.reamaze.io', ventureId: 'v1', aabAppId: 'app-123' },
       });
 
       const result = await selectAccountTool.execute(
@@ -280,6 +388,11 @@ describe('inbox skill tools', () => {
       expect(result.success).toBe(true);
       expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000003');
       expect(result.activated).toBe(true);
+      expect(mockMemorySet).toHaveBeenCalledWith(
+        'app-123',
+        'integrations.inbox.accountId',
+        'https://account3.reamaze.io',
+      );
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
         'integrations.inbox.brandId',
@@ -310,6 +423,20 @@ describe('inbox skill tools', () => {
       );
 
       expect(result.error).toContain('ClientActionService not available');
+    });
+
+    it('returns error when activateAccount response is missing accountUrl in select_account', async () => {
+      mockActivateAccount.mockResolvedValue({
+        success: true,
+        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', accountUrl: undefined, ventureId: 'v1', aabAppId: 'app-123' } as any,
+      });
+
+      const result = await selectAccountTool.execute(
+        { accountUrl: 'create_new', entitlementId: 'ent-1' },
+        context,
+      );
+
+      expect(result.error).toContain('missing required fields');
     });
   });
 

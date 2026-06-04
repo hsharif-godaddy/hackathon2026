@@ -31,6 +31,7 @@ export type InboxResult<T> =
 
 export interface Account {
   name: string;
+  accountUrl: string;
   brandUrl: string;
   ventureId: string;
   aabAppId: string | null;

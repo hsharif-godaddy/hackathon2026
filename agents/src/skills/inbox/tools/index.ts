@@ -38,6 +38,7 @@ const logger = Logger.create({ component: 'inbox.skill' });
 const memoryRepo = new MemoryRepository();
 
 // Memory keys — per-app pointers to Reamaze resources.
+const MEM_ACCOUNT_ID = 'integrations.inbox.accountId';
 const MEM_BRAND_ID = 'integrations.inbox.brandId';
 const MEM_EMBEDDABLE_ID = 'integrations.inbox.embeddableId';
 
@@ -85,8 +86,9 @@ export const discoverAccountTool: SkillToolDefinition = {
     const appId = getAppId(context);
     if (!appId) return { error: 'App ID required. Pass context.metadata.appId.' };
 
+    const existingAccount = await memoryRepo.get(appId, MEM_ACCOUNT_ID);
     const existingBrand = await memoryRepo.get(appId, MEM_BRAND_ID);
-    if (existingBrand.exists) {
+    if (existingBrand.exists && existingAccount.exists) {
       return { alreadyConfigured: true, accountId: existingBrand.value as string };
     }
 
@@ -105,8 +107,12 @@ export const discoverAccountTool: SkillToolDefinition = {
     // If an account is already linked to THIS app, use it directly.
     const linkedToThisApp = accounts.find((a) => a.aabAppId === appId);
     if (linkedToThisApp) {
+      if (!linkedToThisApp.accountUrl || !linkedToThisApp.brandUrl) {
+        return { error: 'Account response missing required fields (accountUrl or brandUrl)' };
+      }
+      await memoryRepo.set(appId, MEM_ACCOUNT_ID, linkedToThisApp.accountUrl);
       await memoryRepo.set(appId, MEM_BRAND_ID, linkedToThisApp.brandUrl);
-      logger.info('inbox.skill.discover_account.found_linked', { appId, brandUrl: linkedToThisApp.brandUrl });
+      logger.info('inbox.skill.discover_account.found_linked', { appId, accountUrl: linkedToThisApp.accountUrl, brandUrl: linkedToThisApp.brandUrl });
       return { alreadyConfigured: true, accountId: linkedToThisApp.brandUrl };
     }
 
@@ -119,9 +125,14 @@ export const discoverAccountTool: SkillToolDefinition = {
         return { error: `Failed to create account: ${activateResult.error}` };
       }
 
+      const accountUrl = activateResult.data.accountUrl;
       const brandUrl = activateResult.data.brandUrl;
+      if (!accountUrl || !brandUrl) {
+        return { error: 'Account activation response missing required fields (accountUrl or brandUrl)' };
+      }
+      await memoryRepo.set(appId, MEM_ACCOUNT_ID, accountUrl);
       await memoryRepo.set(appId, MEM_BRAND_ID, brandUrl);
-      logger.info('inbox.skill.discover_account.auto_created', { appId, brandUrl });
+      logger.info('inbox.skill.discover_account.auto_created', { appId, accountUrl, brandUrl });
       return { accountCreated: true, accountId: brandUrl };
     }
 
@@ -165,12 +176,18 @@ export const selectAccountTool: SkillToolDefinition = {
         return { error: `Failed to activate account: ${result.error}` };
       }
 
+      const accountUrl = result.data.accountUrl;
       const brandUrl = result.data.brandUrl;
+      if (!accountUrl || !brandUrl) {
+        return { error: 'Account activation response missing required fields (accountUrl or brandUrl)' };
+      }
+      await memoryRepo.set(appId, MEM_ACCOUNT_ID, accountUrl);
       await memoryRepo.set(appId, MEM_BRAND_ID, brandUrl);
-      logger.info('inbox.skill.select_account.activated', { appId, accountId: brandUrl });
+      logger.info('inbox.skill.select_account.activated', { appId, accountUrl, accountId: brandUrl });
       return { success: true, accountId: brandUrl, activated: true };
     }
 
+    await memoryRepo.set(appId, MEM_ACCOUNT_ID, input.accountUrl);
     await memoryRepo.set(appId, MEM_BRAND_ID, input.accountUrl);
     logger.info('inbox.skill.select_account.linked', { appId, accountId: input.accountUrl });
 
