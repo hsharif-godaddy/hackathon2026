@@ -570,11 +570,7 @@ describe('AskQuestionToolRenderer', () => {
     expect(msg.match(/Decide for me/g)?.length).toBe(2)
   })
 
-  it('skipping a step records blank — empty message when every step is skipped', () => {
-    // The skip button no longer doubles as "Decide for me" — users who want
-    // the enhancer to fill in a field click the decide chip instead. Skip
-    // means "I have no answer", so the assembled message drops empty
-    // entries.
+  it('skipping every step sends a canonical continue message', () => {
     const result = makeResult([
       {
         question: 'Vibe?',
@@ -603,10 +599,33 @@ describe('AskQuestionToolRenderer', () => {
     fireEvent.click(skip2)
 
     expect(mockSendUserMessage).toHaveBeenCalledTimes(1)
-    const [msg] = mockSendUserMessage.mock.calls[0]
+    const [msg, options] = mockSendUserMessage.mock.calls[0]
     expect(msg).not.toMatch(/__decide__/)
     expect(msg).not.toMatch(/Decide for me/)
-    expect(msg).toBe('')
+    expect(msg).toBe('builder_tools_askquestion_skip_continue')
+    expect(options).toEqual({ isActionRequest: true })
+  })
+
+  it('skipping a single-step askQuestion sends the canonical continue message', () => {
+    const result = makeResult([
+      makeQuestion('Do you like the design?', [
+        { text: 'Yes, build the next page' },
+        { text: 'Change the color scheme' },
+      ]),
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /^Skip$/i }))
+
+    expect(mockSendUserMessage).toHaveBeenCalledWith(
+      'builder_tools_askquestion_skip_continue',
+      { isActionRequest: true },
+    )
   })
 
   it('digit press on focused Other input does not trigger a ChoiceList pick', async () => {

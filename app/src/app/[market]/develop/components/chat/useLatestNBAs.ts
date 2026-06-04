@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import type { ToolCall } from '@/stores/useStreamingConversationStore'
+import type { ChatMessage, ToolCall } from '@/stores/useStreamingConversationStore'
 import { useActiveStream, useMessages } from '@/stores/useStreamingConversationStore'
 
 interface Suggestion {
@@ -93,6 +93,43 @@ function extractAskQuestion(toolCall: ToolCall): LatestNBAData | null {
   }
 }
 
+function findLastAssistantIndex(messages: ChatMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'assistant') return i
+  }
+  return -1
+}
+
+function hasActionResponseAfter(messages: ChatMessage[], assistantIndex: number): boolean {
+  if (assistantIndex < 0) return false
+  return messages.slice(assistantIndex + 1).some(
+    msg => msg.role === 'user' && msg.metadata?.isActionRequest === true
+  )
+}
+
+function extractLatestNBAFromToolCalls(toolCalls: ToolCall[]): LatestNBAData | null {
+  for (let i = toolCalls.length - 1; i >= 0; i--) {
+    const nba = extractNBAFromToolCall(toolCalls[i])
+    if (nba) return nba
+  }
+  return null
+}
+
+function extractLatestNBAFromMessages(messages: ChatMessage[]): LatestNBAData | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.role === 'assistant' && msg.toolCalls) {
+      const nba = extractLatestNBAFromToolCalls(msg.toolCalls)
+      if (nba) {
+        if (hasActionResponseAfter(messages, i)) return null
+        return nba
+      }
+      break
+    }
+  }
+  return null
+}
+
 /**
  * Hook that extracts the latest NBA (suggested response) data from conversation messages.
  * Returns null when no NBA data is available.
@@ -107,27 +144,15 @@ export function useLatestNBAs(): LatestNBAData | null {
       return null
     }
 
+    const lastAssistantIndex = findLastAssistantIndex(messages)
+    const nbaConsumed = hasActionResponseAfter(messages, lastAssistantIndex)
+
     // Check the completed active stream first (most recent)
     if (activeStream?.isComplete && activeStream.toolCalls) {
-      for (let i = activeStream.toolCalls.length - 1; i >= 0; i--) {
-        const nba = extractNBAFromToolCall(activeStream.toolCalls[i])
-        if (nba) return nba
-      }
+      const nba = extractLatestNBAFromToolCalls(activeStream.toolCalls)
+      if (nba) return nbaConsumed ? null : nba
     }
 
-    // Fall back to the last assistant message in the persisted messages
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i]
-      if (msg.role === 'assistant' && msg.toolCalls) {
-        for (let j = msg.toolCalls.length - 1; j >= 0; j--) {
-          const nba = extractNBAFromToolCall(msg.toolCalls[j])
-          if (nba) return nba
-        }
-        // Only check the last assistant message
-        break
-      }
-    }
-
-    return null
+    return extractLatestNBAFromMessages(messages)
   }, [messages, activeStream])
 }

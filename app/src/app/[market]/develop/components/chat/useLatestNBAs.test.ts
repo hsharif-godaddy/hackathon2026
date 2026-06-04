@@ -50,13 +50,21 @@ function makeAssistantMessage(toolCalls: ToolCall[]): ChatMessage {
   }
 }
 
-function makeUserMessage(): ChatMessage {
+function makeUserMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
     id: 'msg-user',
     role: 'user',
     content: 'hello',
     timestamp: new Date(),
+    ...overrides,
   }
+}
+
+function makeActionUserMessage(content = 'Red'): ChatMessage {
+  return makeUserMessage({
+    content,
+    metadata: { isActionRequest: true },
+  })
 }
 
 function makeActiveStream(
@@ -185,6 +193,33 @@ describe('useLatestNBAs', () => {
 
       const { result } = renderHook(() => useLatestNBAs())
       expect(result.current?.question).toBe('Assistant Q')
+    })
+
+    it('returns null when the user already answered via an action request', () => {
+      mockMessages = [
+        makeAssistantMessage([makeSuggestedResponseToolCall({
+          widgetData: { question: 'Assistant Q', suggestions: [{ text: 'Go' }] },
+        })]),
+        makeActionUserMessage('Go'),
+      ]
+
+      const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current).toBeNull()
+    })
+
+    it('returns null from a completed active stream when an action response followed', () => {
+      mockActiveStream = makeActiveStream(true, [makeSuggestedResponseToolCall({
+        widgetData: { question: 'Stream Q', suggestions: [{ text: 'Go' }] },
+      })])
+      mockMessages = [
+        makeAssistantMessage([makeSuggestedResponseToolCall({
+          widgetData: { question: 'Stream Q', suggestions: [{ text: 'Go' }] },
+        })]),
+        makeActionUserMessage('Go'),
+      ]
+
+      const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current).toBeNull()
     })
 
     it('only checks the last assistant message, not earlier ones', () => {
@@ -476,6 +511,17 @@ describe('useLatestNBAs', () => {
 
       const { result } = renderHook(() => useLatestNBAs())
       expect(result.current?.allowOther).toBe(false)
+    })
+
+    it('returns null after askQuestion when user submits an action response', () => {
+      const tc = makeAskQuestionToolCall()
+      mockMessages = [
+        makeAssistantMessage([tc]),
+        makeActionUserMessage('Continue with my plan'),
+      ]
+
+      const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current).toBeNull()
     })
   })
 })
