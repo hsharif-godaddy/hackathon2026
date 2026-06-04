@@ -6,7 +6,6 @@ import ContentIcon from '@ux/icon/content';
 import ClipboardIcon from '@ux/icon/copy';
 import DatabaseIcon from '@ux/icon/database';
 import LockedIcon from '@ux/icon/locked';
-import MegaphoneIcon from '@ux/icon/megaphone';
 import RevertIcon from '@ux/icon/revert';
 import SettingsIcon from '@ux/icon/settings';
 import SocialIcon from '@ux/icon/social';
@@ -47,7 +46,6 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const secrets = useSwitchboard('appbuilder-settings-secrets');
   const social = useSwitchboard('appbuilder-settings-social');
   const marketing = useSwitchboard('appbuilder-settings-marketing');
-  const campaigns = useSwitchboard('appbuilder-marketing-campaigns');
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   // Show on mobile (no header tab there), or on desktop when the tab flag is off or unresolved —
   // fail open so users aren't locked out while Switchboard loads or if the flag is missing.
@@ -111,12 +109,6 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       id: SettingsSection.MARKETING,
       label: t('builder_settings_nav_marketing'),
       icon: <CalendarIcon />,
-      disabled: false,
-    }] : []),
-    ...(campaigns ? [{
-      id: SettingsSection.CAMPAIGNS,
-      label: 'Campaigns',
-      icon: <MegaphoneIcon />,
       disabled: false,
     }] : []),
     {

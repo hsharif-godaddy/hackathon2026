@@ -49,14 +49,13 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
   const baseTools = {
     seoAnalysis: allAILibTools.seoAnalysis,
     readFile: allAILibTools.readFile,
+    str_replace_based_edit_tool: allAILibTools.str_replace_based_edit_tool,
+    todoList: allAILibTools.todoList,
     directoryListing: allAILibTools.directoryListing,
     grepSearch: allAILibTools.grepSearch,
     suggestedResponse: allAILibTools.suggestedResponse,
-    askQuestion: allAILibTools.askQuestion,
     skill: allAILibTools.skill,
     media: allAILibTools.media,
-    campaignPlanCreate: allAILibTools.campaignPlanCreate,
-    campaignPlanPropose: allAILibTools.campaignPlanPropose,
   }
 
   const socialTools = isSocialEnabled ? {

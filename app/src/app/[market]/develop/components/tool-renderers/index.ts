@@ -8,8 +8,6 @@
  */
 
 import AskQuestionToolRenderer from './AskQuestionToolRenderer'
-import CampaignPlanProposeToolRenderer from './CampaignPlanProposeToolRenderer'
-import CampaignPlanToolRenderer from './CampaignPlanToolRenderer'
 import ColorSchemeToolRenderer from './ColorSchemeToolRenderer'
 import CommerceMcpToolRenderer from './CommerceMcpToolRenderer'
 import CssColorToolRenderer from './CssColorToolRenderer'
@@ -65,9 +63,6 @@ export type ToolRendererProps = DefaultToolRendererProps
  */
 export const toolRendererRegistry = {
   askQuestion: AskQuestionToolRenderer,
-  campaignPlanCreate: CampaignPlanToolRenderer,
-  campaignPlanPropose: CampaignPlanProposeToolRenderer,
-  campaignCreate: CampaignPlanToolRenderer,
   colorScheme: ColorSchemeToolRenderer,
   // Commerce MCP skill tools. Keep legacy global names for historical chat messages.
   commerce__search_tools: CommerceMcpToolRenderer,
@@ -164,7 +159,6 @@ export function getToolRenderer(toolName: string) {
  */
 export {
   AskQuestionToolRenderer,
-  CampaignPlanToolRenderer,
   ColorSchemeToolRenderer,
   CommerceMcpToolRenderer,
   CssColorToolRenderer,

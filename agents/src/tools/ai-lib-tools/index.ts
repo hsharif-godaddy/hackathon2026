@@ -37,8 +37,6 @@ export { socialRead } from './social-read.js';
 export { googleReviews } from './google-reviews.js';
 export { socialPostCreateAITool } from './social-post-create.js';
 export { socialPostPublish } from './social-post-publish.js';
-export { campaignCreateTool } from './campaign-create.js';
-export { campaignPlanCreateTool } from './campaign-plan-create.js';
 export { colorSchemeAITool } from './color-scheme.js';
 export { fontThemeAITool } from './font-theme.js';
 
@@ -91,9 +89,6 @@ import { socialRead } from './social-read.js';
 import { googleReviews } from './google-reviews.js';
 import { socialPostCreateAITool } from './social-post-create.js';
 import { socialPostPublish } from './social-post-publish.js';
-import { campaignCreateTool } from './campaign-create.js';
-import { campaignPlanCreateTool } from './campaign-plan-create.js';
-import { campaignPlanProposeTool } from './campaign-plan-propose.js';
 import { colorSchemeAITool } from './color-scheme.js';
 import { fontThemeAITool } from './font-theme.js';
 import { skillAITool } from './skill-loader.js';
@@ -149,9 +144,6 @@ export const allAILibTools: Record<string, Tool> = {
   googleReviews: googleReviews,
   socialPostCreate: socialPostCreateAITool,
   socialPostPublish: socialPostPublish,
-  campaignCreate: campaignCreateTool,
-  campaignPlanCreate: campaignPlanCreateTool,
-  campaignPlanPropose: campaignPlanProposeTool,
   skill: skillAITool,
   websiteScraper: websiteScraperAITool,
   qaAnalyze: qaAnalyzeAITool,
