@@ -1,8 +1,7 @@
 ---
 name: stripe
-description: Add Stripe payment integration for one-time purchases and subscriptions.
-whenToUse: User explicitly mentions Stripe for payments. Phrases like "add Stripe", "Stripe checkout", "Stripe payments", "Stripe subscription". Only use this skill when the user specifically asks for Stripe — for general e-commerce requests backed by GoDaddy Commerce, load the `commerce` skill (plus `commerce-storefront` or `commerce-one-time-payment` UI skills when UI is needed) instead.
-enablementId: stripe
+description: Add Stripe payment integration for one-time purchases and subscriptions. When platform provisioning is enabled for the shopper, Airo provisions a Stripe sandbox automatically; otherwise the user supplies their own Stripe keys.
+whenToUse: User explicitly mentions Stripe for payments. Phrases like "add Stripe", "Stripe checkout", "Stripe payments", "Stripe subscription". Only use this skill when the user specifically asks for Stripe — for general e-commerce backed by GoDaddy Commerce, load the `commerce` skill instead.
 dependencies:
   - stripe@^20.2.0
 skill-deps:
@@ -16,25 +15,42 @@ intents:
 
 # Stripe Payment Integration
 
-## ⚠️ ABSOLUTE RULES
+## 🔀 First: which flow are you in?
+
+**Call `stripe__setup` without arguments first — its response tells you which flow to use:**
+
+- **Returns `sandboxId` → Auto-provisioned flow.** Keys are auto-provisioned into the app; **never** call `requestSecrets` for any `STRIPE_*` key. MCP catalog tools (`stripe__create_product`, `stripe__list_products`, etc.) are available for product setup.
+- **Returns `{ autoProvisionedFlow: true, needsInputs: true }` → Auto-provisioned, but needs inputs.** Ask the user for their email and country (e.g. "US"), then call `stripe__setup(email, country)` again.
+- **Returns `{ autoProvisioningUnavailable: true }` → Manual key flow.** Platform provisioning is not enabled for this shopper. Collect their Stripe keys via `requestSecrets` — no email or country needed.
+
+Both flows install the **same** checkout templates; only key acquisition (Step 1) and product registration (Step 4) differ.
+
+## ⚠️ ABSOLUTE RULES (both flows)
 
 1. **NEVER print/log API keys**
-2. **ALWAYS add View Details button** - Every card MUST have it
-3. **ALWAYS add Detail Modal** - Required for all apps
-4. **ALWAYS add Cart** - Required for all apps (uses /cart page)
+2. **NEVER call the Stripe API directly with `STRIPE_SECRET_KEY`** from the agent — no `terminalCommand`, no `node -e`, no curl. That key is for the customer app's runtime only, not for agent-initiated operations.
+3. **NEVER probe endpoints or narrate HTTP status codes to the user.** Do not run ad-hoc checks against the app's API routes (`/api/stripe/*`) and do not report raw results like "401 is expected since it requires auth context" or "the endpoint is responding." Describe state in user terms — "Your checkout flow is ready to test" — never protocol details.
+4. **ALWAYS add View Details button** — every product card MUST have it
+5. **ALWAYS add Detail Modal** — required for all apps
+6. **ALWAYS add Cart** — required for all apps (uses `/cart` page)
+
+## ⚠️ ABSOLUTE RULES (Auto-provisioned flow only — when `stripe__setup` returned `sandboxId`)
+
+7. **NEVER call `requestSecrets` for any `STRIPE_*` key** — keys are already in the env, pushed by `stripe__setup`. Calling `requestSecrets` here is always wrong.
+8. **Use `stripe__*` MCP tools for all agent-initiated Stripe writes** (create_product, create_price, etc.) — never terminal scripts.
 
 ---
 
 ## Pre-Check: Existing Commerce?
 
-**🔴Always check If GoDaddy Commerce already integrated, ASK:**
+**🔴 If the app already has GoDaddy Commerce integrated, ASK:**
 
 > "This app already has GoDaddy Commerce. Do you want to:
 >
 > 1. **Replace with Stripe** → I'll remove GoDaddy Commerce routes and use Stripe
 > 2. **Cancel** → Keep GoDaddy Commerce only"
 
-**⚠️ Mandatory STOP - Wait for response**
+**⚠️ Mandatory STOP — wait for response.**
 
 ---
 
@@ -47,9 +63,61 @@ intents:
 
 ---
 
-**⚠️ FOLLOW STEPS IN EXACT ORDER - Do not skip or reorder steps**
+**⚠️ FOLLOW STEPS IN EXACT ORDER — do not skip or reorder steps.**
 
-## Step 1: Install Templates
+## Step 1: Get Stripe keys into the app
+
+### Auto-provisioned branch (`stripe__setup` returned `sandboxId`)
+
+```typescript
+// Step 1a: call without inputs to determine flow
+const probe = await stripe__setup({});
+// If probe.autoProvisionedFlow + probe.needsInputs → ask user for email/country, then:
+const sandbox = await stripe__setup({ email, country });
+```
+
+- If the user already provided email and country in their message, pass them directly — skip the probe call.
+- `stripe__setup` is server-side idempotent on `appId`: re-calling returns the same sandbox + same `claimUrl`. Safe to retry if the user lost the URL.
+
+**The sandbox is immediately usable for testing.** Test-mode keys power the full Stripe API surface — Hosted Checkout, Embedded Checkout, Elements, products/prices, subscriptions — in test mode. End-to-end purchase flows work against Stripe's test card numbers (e.g. `4242 4242 4242 4242`) without the user touching the claim URL.
+
+**The `claimUrl` is for going live, not for unlocking testing.** It opens Stripe's hosted claim flow where the user takes ownership and can later convert to live (real-money) mode. Save-for-later breadcrumb.
+
+**Do NOT sequence the next step as "claim first, then I'll integrate."** That mischaracterizes Stripe's flow. Treat the sandbox as ready; treat the claim URL as a bookmark for later.
+
+Sample framing for the chat reply after `stripe__setup` succeeds:
+
+> Your Stripe sandbox is ready. You can build and test payment flows with Stripe's test cards (e.g. `4242 4242 4242 4242`) right now.
+> Save this URL for when you're ready to take real payments — you'll claim the sandbox here: \<claimUrl>
+> Setting up the checkout pages now.
+
+**🛑 At this point the runtime keys are already in the env.** `stripe__setup` pushes `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, and `STRIPE_MCP_KEY` into the alloc env via hosting before it returns. **Do NOT** call `requestSecrets` for any Stripe key. Proceed directly to Step 2 (install templates).
+
+### Graceful degradation
+
+If `stripe__setup` returns `{stripeProvisioningUnavailable: true}` with a `message`, the upstream Stripe API is unavailable — usually because the platform Stripe API isn't enabled for this project yet. Tell the user the literal `message`. **Do not** retry within the same conversation; suggest they try again later.
+
+### Manual key branch (`stripe__setup` returned `autoProvisioningUnavailable: true`)
+
+Collect the user's own Stripe keys — this is the only flow where `requestSecrets` for Stripe keys is correct:
+
+```typescript
+requestSecrets({
+  title: 'Stripe API Keys',
+  description: 'Get your keys from dashboard.stripe.com/apikeys. Use test keys (sk_test_, pk_test_) for now.',
+  secrets: [
+    { name: 'STRIPE_SECRET_KEY', required: true },
+    { name: 'STRIPE_PUBLISHABLE_KEY', required: true },
+  ],
+  mode: 'add',
+});
+```
+
+**🛑 MANDATORY STOP — wait for the user to confirm they saved the keys**, then continue to Step 2. Everything after Step 1 is identical to the Auto-provisioned branch — the checkout templates read `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` from the env regardless of how they got there.
+
+---
+
+## Step 2: Install Templates
 
 ```typescript
 const result = await skill({ action: 'install', skill: 'stripe' });
@@ -57,30 +125,26 @@ const result = await skill({ action: 'install', skill: 'stripe' });
 
 **Installs:**
 
-- API routes, Products.tsx, cart.tsx, success/cancel pages, cart-context.tsx
+- API routes: `server/api/stripe/create-checkout-session/POST.ts`, `server/api/stripe/session/[sessionId]/GET.ts`
+- Pages: `pages/Products.tsx`, `pages/cart.tsx`, `pages/checkout/success.tsx`, `pages/checkout/cancel.tsx`
+- Contexts: `contexts/cart-context.tsx`, `contexts/use-cart.ts`
+- Library: `lib/stripe/format.ts` (browser-safe) + `lib/stripe/stripe.ts` (server SDK helper, legacy flow)
+- Manual key scripts: `scripts/stripe-register-products.ts`, `scripts/stripe-list-products.ts` — used only in the Manual key flow (Step 4); harmless/unused in Auto-provisioned mode.
 - **i18n dependencies** (automatic via skill-deps)
 
-**Result will include:**
+**⚠️ Templates use `t('stripe.*')` — you MUST add translations in Step 3.**
 
-```json
-{
-  "success": true,
-  "filesInstalled": 15,
-  "skillDependenciesInstalled": ["i18n"]
-}
-```
-
-**⚠️ Templates use `t('stripe.*')` - you MUST add translations in Step 2!**
+Templates read `STRIPE_SECRET_KEY` (server-only) and `STRIPE_PUBLISHABLE_KEY` (client) from the alloc env via `getSecret`. Those values are present from Step 1 — auto-provisioned or supplied by the user via `requestSecrets` (Legacy).
 
 ---
 
-## Step 2: Add i18n Translations (MANDATORY)
+## Step 3: Add i18n Translations (MANDATORY)
 
 **Stripe templates use `t('stripe.*')` for all UI text.**
 
 ### Configure i18n (Already Installed)
 
-**i18n was installed in Step 1** (check `skillDependenciesInstalled: ["i18n"]`).
+**i18n was installed in Step 2** (check `skillDependenciesInstalled: ["i18n"]`).
 
 Files created:
 
@@ -119,8 +183,6 @@ Files created:
      - Uncomment/add to resources: `en: { translation: en },` (match your language)
 
 #### Stripe Namespace Keys (43 total):
-
-Add the `stripe` namespace with these keys to locale file(s):
 
 ```json
 {
@@ -173,120 +235,81 @@ Add the `stripe` namespace with these keys to locale file(s):
 }
 ```
 
-**Above is English** - translate all values to match each locale file's language.
-
-#### Examples:
-
-**Example A** (existing locales - app already has `en.json`, `es.json`):
-
-```bash
-# Add stripe namespace to BOTH files:
-src/locales/en.json  # Add with English translations
-src/locales/es.json  # Add with Spanish translations
-```
-
-**Example B** (no existing locales - new i18n setup, detected Japanese app):
-
-```bash
-# Create ONE file only:
-src/locales/ja.json  # Add with Japanese translations
-```
+**Above is English** — translate all values to match each locale file's language.
 
 ---
 
-## Step 3: Request Keys
+## Step 4: Populate Products
 
-```typescript
-requestSecrets({
-  title: 'Stripe API Key',
-  description: 'Get your Secret Key from dashboard.stripe.com/apikeys',
-  secrets: [{ name: 'STRIPE_SECRET_KEY', required: true }],
-  mode: 'add',
-});
-```
+**Both flows end the same way: edit the embedded `PRODUCTS` array in `src/pages/Products.tsx`.** Only *how you obtain* each product's `priceId` differs:
 
-**⚠️ MANDATORY STOP - Wait for user to confirm they saved secrets**
+- **Auto-provisioned:** use the MCP tools (`stripe__create_product` / `stripe__create_price` / `stripe__list_products`) — Option 1/2 below.
+- **Manual key (no MCP tools):** register via the bundled scripts instead — see "Manual key: register via scripts" at the end of this step — then paste the returned `priceId`s into `PRODUCTS` exactly as below.
 
-## Step 4: Product Source (ASK USER)
+When the sandbox is provisioned and the agent has `STRIPE_MCP_KEY` in its environment, Stripe MCP tools auto-load: `stripe__create_product`, `stripe__create_price`, `stripe__list_products`, etc. Check your active tool list — if those tools are present, use them directly for all Stripe writes.
 
-**🛑 MANDATORY - Ask this question in chat. Do NOT skip:**
+**🛑 MANDATORY — ask the user how to set up products:**
 
 > "How should I set up products?
 >
-> 1. **Register app products** → I'll register your existing products with Stripe
-> 2. **Use Stripe products** → Skip registration, use products already in your Stripe dashboard"
+> 1. **Register new products** → I'll create products and prices in your Stripe sandbox.
+> 2. **Use existing Stripe products** → I'll list what's already in your sandbox."
 
-**🛑 MANDATORY STOP - Wait for answer. Do NOT skip:**
+**🛑 Mandatory STOP — wait for answer.**
 
-### Option 1: Register Products
+### Option 1: Register new products
 
-**🔴 Register ONE product at a time via terminal:**
+For each product the user names, call `stripe__create_product` then `stripe__create_price`. For subscriptions, set `recurring: { interval: 'month' }` (or `'year'`, etc.) on the price.
 
-```bash
-cd /app && npx tsx src/scripts/stripe-register-products.ts '{"name":"Product Name","description":"...","price":29.99,"currency":"usd"}'
+**🚨 PRICE FORMAT:** prices use the smallest currency unit (cents for USD, yen as integer for JPY, etc.). MCP tool inputs document the expected shape — follow them. The customer-app's `formatPrice` helper handles display conversion.
+
+**✅ RECOMMENDED: Skip images in Stripe registration.** Keep the app's existing product images (any URL — local, relative, data URL). Use Stripe only for checkout via `priceId`.
+
+After each successful create, **edit `src/pages/Products.tsx`** and append to the embedded `PRODUCTS` array. **Match the `Product` interface declared at the top of the file exactly** — the runtime accesses `product.images[0]` and `product.amount`, so wrong field names will break the page even with loose typing:
+
+```tsx
+const PRODUCTS: Product[] = [
+  // ... existing entries ...
+  {
+    id: 'prod_xxx',                                    // Stripe product ID returned by stripe__create_product
+    priceId: 'price_xxx',                              // Stripe price ID returned by stripe__create_price
+    name: 'Pro Plan',
+    description: 'Full access to all features',         // string | null
+    images: ['/images/pro.png'],                        // string[] — array, even if empty: []
+    amount: 2999,                                       // smallest currency unit (cents for USD)
+    currency: 'usd',
+    recurring: { interval: 'month', intervalCount: 1 }, // {...} | null — null for one-time payment
+  },
+];
 ```
 
-**For subscriptions, add recurring:**
+Field-name pitfalls: it's `id` (not omitted), `images` (array, not `image`), `amount` (not `price`), and `recurring` requires both `interval` and `intervalCount` (or the whole field set to `null`). Do **not** add a runtime fetch from Stripe — products are read from the embedded constant for static-export compatibility and to avoid a Stripe round-trip on first paint.
 
-```bash
-cd /app && npx tsx src/scripts/stripe-register-products.ts '{"name":"Monthly Plan","price":9.99,"currency":"usd","recurring":{"interval":"month"}}'
-```
-
-**Required fields:** name, price, currency (same as app)
-**Optional:** description, recurring (for subscriptions)
-
-**✅ RECOMMENDED: Skip images in Stripe registration.** Keep app's existing product images - they work with any URL (local, relative, data URLs). Only use Stripe for checkout via `priceId`.
-
-**🚨 PRICE FORMAT: Send actual price as displayed to customer (script handles conversion)**
-
-- $8.99 → `8.99` ✅ | ¥2,980 → `2980` ✅ | ₹298.00 → `298` ✅
-- ❌ NOT `899` for $8.99
-
-**Each call returns JSON:**
-
-```json
-{
-  "product": {
-    "priceId": "price_xxx",
-    "price": 2999, // ← Use this (in cents)
-    "currency": "usd"
-  }
-}
-```
-
-**🔴 IMPORTANT: Run terminal for EACH product separately. Collect priceIds from each response.**
-
-**Show progress after EACH registration:**
+**Show progress after each registration:**
 
 ```
 ✅ Registered: Starter Plan
-
 ✅ Registered: Pro Plan
-
 ✅ Registered: Enterprise
 ```
 
-**🚫 DO NOT show priceIds to user** - they're technical and meaningless to them.
+**🚫 Do NOT show priceIds to the user** — they're internal and meaningless to merchants.
 
-**Save priceIds internally for checkout buttons.**
+### Option 2: Use existing products
 
-### Option 2: Use Stripe Products
+Call the list-shape MCP tool (e.g. `stripe__list_products` — verify the exact name in your tool list). Map each returned product to the `Product` interface declared at the top of `pages/Products.tsx` and embed it into the `PRODUCTS` array — same field names as Option 1 (`id`, `priceId`, `name`, `description`, `images: string[]`, `amount` (smallest currency unit), `currency`, `recurring: { interval, intervalCount } | null`). Use the price value Stripe returns, not any user-typed value.
 
-**🔴 Run the list script via terminal:**
+### Manual key: register via scripts (`stripe__*` MCP tools absent)
+
+When provisioning isn't enabled there are no MCP tools. Register products with the bundled script — **one product per invocation**:
 
 ```bash
-cd /app && npx tsx src/scripts/stripe-list-products.ts
+cd /app && npx tsx src/scripts/stripe-register-products.ts '{"name":"Pro Plan","description":"...","price":29.99,"currency":"usd"}'
+# subscriptions: add recurring
+cd /app && npx tsx src/scripts/stripe-register-products.ts '{"name":"Monthly","price":9.99,"currency":"usd","recurring":{"interval":"month"}}'
 ```
 
-**Returns JSON with products:**
-
-```json
-{
-  "products": [{ "priceId": "price_xxx", "price": 2999, "currency": "usd" }]
-}
-```
-
-**Use returned `price` values (in cents), NOT input values.** Embed in product arrays.
+**🚨 PRICE FORMAT for the script:** pass the price **as displayed** (`29.99`, not `2999`) — the script converts to the smallest unit. Each call returns `{ product: { priceId, price, currency } }` where `price` is in the smallest unit. To list what's already in the account, run `npx tsx src/scripts/stripe-list-products.ts`. Then edit `src/pages/Products.tsx` and append to `PRODUCTS` using the **same `Product` interface as Option 1** (`id`, `priceId`, `images: string[]`, `amount` = the returned smallest-unit `price`, `currency`, `recurring`).
 
 ---
 
@@ -294,7 +317,7 @@ cd /app && npx tsx src/scripts/stripe-list-products.ts
 
 ### Option A: NO existing page → Use Products.tsx
 
-Already has View Details, Modal, Cart button linking to /cart. Set:
+The installed `Products.tsx` already includes View Details, Detail Modal, and a cart-aware Buy/Subscribe button. Set:
 
 ```tsx
 const ENABLE_CART = true;
@@ -316,15 +339,15 @@ Add routes:
 1. DO NOT replace existing product data
 2. DO NOT change/create product cards
 3. Use products embedded in code (not runtime API fetch)
-4. **DO NOT create new cart if one exists** → Enhance existing cart with Stripe checkout
-5. **DO NOT create new checkout if one exists** → Add Stripe to existing checkout button
-6. ONLY ADD: priceId, Stripe checkout calls, View Details, modal
+4. **DO NOT create new cart if one exists** → enhance existing cart with Stripe checkout
+5. **DO NOT create new checkout if one exists** → wire Stripe to the existing checkout button
+6. ONLY ADD: priceId, Stripe checkout calls, View Details button, Detail Modal
 
 **⚠️ BEFORE adding cart/checkout, CHECK if app already has:**
 
-- Cart icon/button → Wire it to link to `/cart` page
-- "Checkout" button → Add Stripe checkout call to existing button
-- Cart page → Enhance it, don't create duplicate
+- Cart icon/button → wire it to link to `/cart`
+- "Checkout" button → add Stripe checkout call to the existing button
+- Cart page → enhance it, don't create a duplicate
 
 **Add routes:**
 
@@ -337,15 +360,8 @@ Add routes:
 **Map priceId to existing products (keep app's images):**
 
 ```tsx
-// App's images stay as-is (local, relative, any URL) - only add priceId for checkout
 const products = existingProducts.map((p) => ({ ...p, priceId: stripePriceIds[p.name] }));
 ```
-
----
-
-### Option B: HAS existing product page → ENHANCE IT
-
-**⚠️ YOU MUST ADD ALL OF THESE. DO NOT SKIP ANY:**
 
 #### B1. Add State (REQUIRED)
 
@@ -381,7 +397,7 @@ const handleCheckout = async (priceId: string) => {
 </button>
 ```
 
-**⚠️ Style to match existing buttons. Keep responsive - must NOT overflow the card.**
+**⚠️ Style to match existing buttons. Keep responsive — must NOT overflow the card.**
 
 **🔴 VERIFY: Search for "View Details" in the file. If not found, you missed it!**
 
@@ -393,7 +409,7 @@ const handleCheckout = async (priceId: string) => {
 
 #### B5. Add Detail Modal (at end of component)
 
-**Import `formatPrice`:** Use `@/lib/stripe/format` (NOT `stripe.ts` - breaks browser)
+**Import `formatPrice` from `@/lib/stripe/format` only.** Do NOT import from `@/lib/stripe/stripe` — that path pulls Node deps into the browser bundle.
 
 ```tsx
 import { formatPrice } from '@/lib/stripe/format';
@@ -408,12 +424,12 @@ import { formatPrice } from '@/lib/stripe/format';
           <h2 className="text-2xl font-bold">{selectedProduct.name}</h2>
           <button onClick={() => setIsDialogOpen(false)}>✕</button>
         </div>
-        {selectedProduct.image && (
-          <img src={selectedProduct.image} className="w-full h-48 object-cover rounded-lg mb-4" />
+        {selectedProduct.images[0] && (
+          <img src={selectedProduct.images[0]} className="w-full h-48 object-cover rounded-lg mb-4" />
         )}
         <p className="text-gray-600 mb-4">{selectedProduct.description}</p>
         <p className="text-3xl font-bold mb-6">
-          {formatPrice(selectedProduct.price, selectedProduct.currency)}
+          {formatPrice(selectedProduct.amount, selectedProduct.currency)}
         </p>
         <button
           onClick={() => {
@@ -434,19 +450,19 @@ import { formatPrice } from '@/lib/stripe/format';
 
 **⚠️ FIRST: Check if app already has cart functionality!**
 
-**If YES - Full cart exists:**
+**If YES — full cart exists:**
 
-- Find existing checkout button → Add Stripe checkout call
+- Find existing checkout button → add Stripe checkout call
 - Keep existing UI, don't create duplicates
 - **STILL ADD** success/cancel routes
 
-**If PARTIAL - Cart icon exists but no cart page:**
+**If PARTIAL — cart icon exists but no cart page:**
 
 - Keep existing cart icon, wire it to `<Link to="/cart">`
 - Use installed `cart.tsx` page
 - Wrap app with `<CartProvider>`
 
-**If NO - No cart at all:**
+**If NO — no cart at all:**
 
 - Use installed `cart-context.tsx` for state
 - Wrap app with `<CartProvider>`
@@ -458,7 +474,7 @@ import { formatPrice } from '@/lib/stripe/format';
 
 **Error if wrong:** `"useCart must be used within a CartProvider"`
 
-**🔴 MANDATORY: Add CartProvider to App.tsx FIRST, before using useCart() anywhere.**
+**🔴 MANDATORY: add CartProvider to App.tsx FIRST, before using `useCart()` anywhere.**
 
 ```tsx
 // App.tsx - MUST BE DONE FIRST
@@ -478,7 +494,6 @@ function App() {
 **Only AFTER CartProvider is in App.tsx:**
 
 ```tsx
-// In header/pages - use the hook
 import { useCart } from './contexts/cart-context';
 const { cartCount, addToCart } = useCart();
 ```
@@ -518,10 +533,25 @@ const { cartCount } = useCart();
 - [ ] Subscribe/Buy Now button on cards
 - [ ] CartProvider wrapping app in App.tsx
 - [ ] Add to Cart button on cards
-- [ ] Cart icon in header (links to /cart)
+- [ ] Cart icon in header (links to `/cart`)
 
 ---
 
 ## Testing
 
-**Tell user:** "Open preview in new tab. Test card: 4242 4242 4242 4242"
+**Tell user:** "Open preview in a new tab. Test card: `4242 4242 4242 4242`."
+
+---
+
+## Reference: when MCP tools are absent
+
+If only `stripe__setup` and `stripe__status` show in your tool list (no create/list/etc.):
+
+1. If sandbox isn't provisioned yet, call `stripe__setup` first.
+2. If it is and MCP tools are still missing, tell the user the Stripe MCP tools aren't available in this session and ask them to start a new conversation. The agent process picks up `STRIPE_MCP_KEY` on restart and `onLoad` will re-fetch the tools.
+3. **Do NOT** attempt to create products, prices, or any Stripe objects via terminal commands, `node -e` scripts, or curl. Wait for the user.
+
+## Reference: status and idempotency
+
+- **`stripe__setup`** — idempotent on `appId`. Re-running returns the same sandbox + claim URL. Safe if the user lost the URL.
+- **`stripe__status`** — read-only. Returns `{hasStripe: false}` when no sandbox, or `{hasStripe: true, sandboxId, claimStatus, liveAccountId?}`. `claimStatus` advances `provisioned` → `claimed` → `live`.

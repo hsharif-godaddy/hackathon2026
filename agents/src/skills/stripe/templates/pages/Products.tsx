@@ -4,10 +4,11 @@
  * Displays products with Stripe checkout integration.
  *
  * IMPORTANT: Products are EMBEDDED below, not fetched from API.
- * To update products:
- *   1. Run: npx tsx src/scripts/stripe-list-products.ts
- *   2. Copy the returned products array into PRODUCTS below
- *   3. Or manually add products with priceId from Stripe Dashboard
+ * To update products: use Stripe MCP tools (e.g. `stripe-v2__list_products`,
+ * `stripe-v2__create_product`, `stripe-v2__create_price`) and paste the
+ * returned values into PRODUCTS below. Match the Product interface exactly
+ * — `id`, `priceId`, `images: string[]`, `amount` (smallest currency unit),
+ * `currency`, and `recurring: {interval, intervalCount} | null`.
  *
  * Features:
  * - Product cards with "Add to Cart" and "Buy Now" buttons
@@ -44,7 +45,7 @@ interface Product {
  * EMBEDDED PRODUCTS
  *
  * Replace this array with your actual products from Stripe.
- * Get product data by running: npx tsx src/scripts/stripe-list-products.ts
+ * Get product data via Stripe MCP tools (e.g. `stripe-v2__list_products`).
  *
  * Required fields:
  * - id: Stripe product ID (prod_xxx)
@@ -65,14 +66,19 @@ interface Product {
  * }
  */
 const PRODUCTS: Product[] = [
-  // TODO: Replace with your actual products from Stripe
-  // Run: npx tsx src/scripts/stripe-list-products.ts
-  // Then paste the products array here
+  // TODO: Replace with your actual products from Stripe.
+  // Get product data via Stripe MCP tools (e.g. stripe-v2__list_products),
+  // then paste the products array here matching the Product interface above.
 ];
 
 export default function Products() {
   const { t } = useTranslation();
-  const [error, setError] = useState<string | null>(null);
+  // Per-action error state — never replace the whole grid with one error.
+  // addError surfaces near the product whose Add-to-Cart failed; checkoutError
+  // surfaces near the product whose Buy-Now failed. A failure on one row
+  // must not affect any other row's render.
+  const [addError, setAddError] = useState<{ productId: string; message: string } | null>(null);
+  const [checkoutError, setCheckoutError] = useState<{ productId: string; message: string } | null>(null);
   const [checkingOut, setCheckingOut] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -85,6 +91,8 @@ export default function Products() {
   const loading = false;
 
   const handleAddToCart = (product: Product) => {
+    setAddError(null);
+    setCheckoutError(null);
     const result = addToCartContext({
       id: product.id,
       name: product.name,
@@ -95,18 +103,20 @@ export default function Products() {
     });
 
     if (!result.success) {
-      setError(result.error || 'Failed to add item to cart');
+      setAddError({ productId: product.id, message: result.error || 'Failed to add item to cart' });
     }
   };
 
-  const handleCheckout = async (priceId: string) => {
-    setCheckingOut(priceId);
+  const handleCheckout = async (product: Product) => {
+    setAddError(null);
+    setCheckoutError(null);
+    setCheckingOut(product.priceId);
 
     try {
       const response = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priceId }),
+        body: JSON.stringify({ priceId: product.priceId }),
       });
 
       const data = await response.json();
@@ -114,11 +124,12 @@ export default function Products() {
       if (data.success && data.url) {
         window.location.href = data.url;
       } else {
-        setError(data.error || 'Failed to create checkout session');
+        setCheckoutError({ productId: product.id, message: data.error || 'Failed to create checkout session' });
         setCheckingOut(null);
       }
-    } catch {
-      setError('Failed to create checkout session');
+    } catch (e) {
+      console.error('checkout failed', e);
+      setCheckoutError({ productId: product.id, message: 'Failed to create checkout session' });
       setCheckingOut(null);
     }
   };
@@ -130,17 +141,6 @@ export default function Products() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="bg-red-50 text-red-600 p-4 rounded-lg">
-          <p className="font-medium">{t('stripe.error_loading_products')}</p>
-          <p className="text-sm">{error}</p>
-        </div>
       </div>
     );
   }
@@ -270,7 +270,7 @@ export default function Products() {
                           {t('stripe.btn_add_to_cart')}
                         </button>
                         <button
-                          onClick={() => handleCheckout(product.priceId)}
+                          onClick={() => handleCheckout(product)}
                           disabled={checkingOut === product.priceId}
                           className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
                             checkingOut === product.priceId
@@ -311,7 +311,7 @@ export default function Products() {
                     ) : (
                       // Fallback: Show only "Subscribe" / "Buy Now"
                       <button
-                        onClick={() => handleCheckout(product.priceId)}
+                        onClick={() => handleCheckout(product)}
                         disabled={checkingOut === product.priceId}
                         className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
                           checkingOut === product.priceId
@@ -350,6 +350,14 @@ export default function Products() {
                       </button>
                     )}
                   </div>
+
+                  {/* Per-product inline errors. Never replaces the grid. */}
+                  {addError?.productId === product.id && (
+                    <p className="mt-2 text-sm text-red-600" role="alert">{addError.message}</p>
+                  )}
+                  {checkoutError?.productId === product.id && (
+                    <p className="mt-2 text-sm text-red-600" role="alert">{checkoutError.message}</p>
+                  )}
                 </div>
               </div>
             ))}
@@ -420,7 +428,7 @@ export default function Products() {
               <button
                 onClick={() => {
                   closeDialog();
-                  handleCheckout(selectedProduct.priceId);
+                  handleCheckout(selectedProduct);
                 }}
                 disabled={checkingOut === selectedProduct.priceId}
                 className={`w-full py-4 px-6 rounded-lg font-medium text-lg transition-colors ${

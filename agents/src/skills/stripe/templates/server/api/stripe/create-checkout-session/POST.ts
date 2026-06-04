@@ -17,7 +17,7 @@ import { getSecret } from '#airo/secrets';
 function getStripe(): Stripe {
   const secretKey = getSecret('STRIPE_SECRET_KEY');
   if (!secretKey || typeof secretKey !== 'string') {
-    throw new Error('STRIPE_SECRET_KEY not configured. Please add it via the secrets panel.');
+    throw new Error('STRIPE_SECRET_KEY not provisioned. Re-run Stripe setup or contact support.');
   }
   return new Stripe(secretKey);
 }
@@ -110,22 +110,23 @@ export default async function handler(req: Request, res: Response) {
       mode,
     });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    // Log the real error server-side for debugging; never echo internal detail
+    // (missing-key messages, Stripe account state) back to the shopper, who
+    // sees this string rendered as the checkout error.
+    console.error('create-checkout-session failed:', error);
 
-    // Handle specific Stripe errors
     if (error instanceof Stripe.errors.StripeError) {
       res.status(error.statusCode || 500).json({
         success: false,
-        error: error.message,
+        error: 'Unable to start checkout. Please try again or contact support.',
         code: error.code,
-        type: error.type,
       });
       return;
     }
 
     res.status(500).json({
       success: false,
-      error: errorMessage,
+      error: 'Unable to start checkout. Please try again or contact support.',
     });
   }
 }

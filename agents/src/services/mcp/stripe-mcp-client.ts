@@ -18,7 +18,7 @@
  *     cleared on error so the next skill activation can retry.
  *
  * Tool naming: this module returns tools keyed by their RAW MCP names (e.g.
- * "products_create"). The skill-tool-manager applies the `stripe-v2__` prefix
+ * "products_create"). The skill-tool-manager applies the `stripe__` prefix
  * via buildSkillToolName when registerDynamicTools is called.
  */
 

@@ -15,13 +15,27 @@ const ZERO_DECIMAL_CURRENCIES = new Set([
 ]);
 
 /**
+ * Three-decimal currencies that need division by 1000 (not 100)
+ * @see https://docs.stripe.com/currencies#three-decimal
+ */
+const THREE_DECIMAL_CURRENCIES = new Set([
+  'bhd', 'jod', 'kwd', 'omr', 'tnd'
+]);
+
+function getCurrencyDivisor(currencyLower: string): number {
+  if (ZERO_DECIMAL_CURRENCIES.has(currencyLower)) return 1;
+  if (THREE_DECIMAL_CURRENCIES.has(currencyLower)) return 1000;
+  return 100;
+}
+
+/**
  * Format price for display
- * @param amount - Amount in smallest currency unit (cents for USD, yen for JPY)
+ * @param amount - Amount in smallest currency unit (cents for USD, yen for JPY, fils-equivalent for KWD)
  * @param currency - Currency code (default: 'usd')
  */
 export function formatPrice(amount: number, currency: string = 'usd'): string {
   const currencyLower = currency.toLowerCase();
-  const divisor = ZERO_DECIMAL_CURRENCIES.has(currencyLower) ? 1 : 100;
+  const divisor = getCurrencyDivisor(currencyLower);
 
   return new Intl.NumberFormat(undefined, {
     style: 'currency',

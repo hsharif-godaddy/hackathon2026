@@ -11,7 +11,7 @@
  * Example:
  *   const { cart, addToCart, removeFromCart, cartCount } = useCart();
  */
-import { createContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 
 export interface CartItem {
   id: string;
@@ -63,7 +63,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('stripe-cart', JSON.stringify(cart));
   }, [cart]);
 
-  const addToCart = (item: AddToCartInput): AddToCartResult => {
+  // All mutators are wrapped in useCallback so consumers can safely
+  // depend on them in useEffect deps without triggering re-render loops.
+  // Specifically: success.tsx calls clearCart() inside an effect with
+  // clearCart in the deps; without useCallback, every clearCart() —
+  // which calls setCart([]) — re-renders CartProvider, publishes a new
+  // clearCart reference through context, the consumer's deps differ,
+  // the effect re-runs, fetches the Stripe session again, calls
+  // clearCart() again. Infinite paid-API-call loop. useCallback gives
+  // each mutator a stable identity tied to its actual dependencies.
+
+  const addToCart = useCallback((item: AddToCartInput): AddToCartResult => {
     // Normalize id to string (handles both number and string inputs)
     const normalizedId = String(item.id);
 
@@ -85,42 +95,40 @@ export function CartProvider({ children }: { children: ReactNode }) {
     });
 
     return { success: true };
-  };
+  }, [cart]);
 
-  const removeFromCart = (id: string) => {
+  const removeFromCart = useCallback((id: string) => {
     setCart((prev) => prev.filter((i) => i.id !== id));
-  };
+  }, []);
 
-  const updateQuantity = (id: string, quantity: number) => {
+  const updateQuantity = useCallback((id: string, quantity: number) => {
+    // Inline the empty-quantity removal rather than calling removeFromCart,
+    // so this callback's identity doesn't depend on removeFromCart's.
     if (quantity <= 0) {
-      removeFromCart(id);
+      setCart((prev) => prev.filter((i) => i.id !== id));
       return;
     }
     setCart((prev) => prev.map((i) => (i.id === id ? { ...i, quantity } : i)));
-  };
+  }, []);
 
-  const clearCart = () => {
+  const clearCart = useCallback(() => {
     setCart([]);
     localStorage.removeItem('stripe-cart');
-  };
+  }, []);
 
   const cartTotal = cart.reduce((total, item) => total + item.price * item.quantity, 0);
   const cartCount = cart.reduce((count, item) => count + item.quantity, 0);
 
-  return (
-    <CartContext.Provider
-      value={{
-        cart,
-        addToCart,
-        removeFromCart,
-        updateQuantity,
-        clearCart,
-        cartTotal,
-        cartCount,
-      }}
-    >
-      {children}
-    </CartContext.Provider>
+  // Memoize the context value so the object identity is stable when
+  // none of its members changed. Without this, every CartProvider
+  // re-render publishes a fresh `value={{...}}` literal, forcing every
+  // consumer to re-render — and silently breaking any consumer that
+  // depends on individual context fields in useEffect deps.
+  const value = useMemo<CartContextType>(
+    () => ({ cart, addToCart, removeFromCart, updateQuantity, clearCart, cartTotal, cartCount }),
+    [cart, addToCart, removeFromCart, updateQuantity, clearCart, cartTotal, cartCount],
   );
+
+  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
 

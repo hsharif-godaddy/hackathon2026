@@ -411,61 +411,31 @@ describe("features", () => {
     });
   });
 
-  // Pin: legacy `stripe` is always available (static enabledSkills); new
-  // `stripe-v2` is profile-gated so it appears only for shoppers whose
-  // `appbuilder-agent-profile` switchboard rule maps them to a profile that
-  // sets `skill.stripe-v2.enabled: true`. Both can be visible simultaneously
-  // for experimental shoppers — the LLM picks between them via whenToUse.
-  describe("stripe / stripe-v2 enablement", () => {
-    it("legacy stripe is always enabled (static config)", async () => {
+  // Pin: the `stripe` skill is always available (static enabledSkills). It is
+  // NOT gated at the skill level — its v2 platform-managed tools (setup/status
+  // + MCP) are gated at invocation by the `skill.stripe-v2.enabled` profile
+  // flag, read in the skill's onLoad hook (agents/src/skills/stripe/tools/index.ts),
+  // not here. Everyone else gets the legacy key-paste flow within the same skill.
+  describe("stripe enablement", () => {
+    it("stripe is always enabled (static config)", async () => {
       const { skills } = await import("../features.js");
       expect(skills.isEnabled("stripe")).toBe(true);
     });
 
-    it("stripe-v2 is disabled with no active profile", async () => {
+    it("stripe-v2 is no longer a gated skill (folded into stripe; tools gated in onLoad)", async () => {
       const { skills } = await import("../features.js");
+      // The separate stripe-v2 skill was removed. Its tools are now registered
+      // dynamically by the stripe skill's onLoad based on the profile flag, so
+      // stripe-v2 is neither a known enablement nor profile-gated here.
+      expect(skills.isProfileGated("stripe-v2")).toBe(false);
       expect(skills.isEnabled("stripe-v2")).toBe(false);
     });
 
-    it("stripe-v2 is enabled when active profile sets skill.stripe-v2.enabled=true", async () => {
-      const { skills } = await import("../features.js");
-      const { runWithProfile } = await import("../../profiles/profile-context.js");
-
-      const experimentalProfile: ProfileData = {
-        name: "experimental",
-        description: "Internal QA — enables new skills for testing",
-        properties: { "skill.stripe-v2.enabled": true },
-      };
-
-      const result = runWithProfile(experimentalProfile, () => skills.isEnabled("stripe-v2"));
-      expect(result).toBe(true);
-    });
-
-    it("stripe-v2 stays disabled when active profile lacks the flag", async () => {
-      const { skills } = await import("../features.js");
-      const { runWithProfile } = await import("../../profiles/profile-context.js");
-
-      const otherProfile: ProfileData = {
-        name: "prompt-enhancer",
-        description: "QA profile for prompt experiments — not stripe",
-        properties: { "develop.promptOptimization": true },
-      };
-
-      const result = runWithProfile(otherProfile, () => skills.isEnabled("stripe-v2"));
-      expect(result).toBe(false);
-    });
-
-    it("stripe-v2 is registered as profile-gated", async () => {
-      const { skills } = await import("../features.js");
-      expect(skills.isProfileGated("stripe-v2")).toBe(true);
-    });
-
-    // Pin: experimental.json must keep `skill.stripe-v2.enabled: true` for
-    // the targeted-shopper rollout to actually fire. The other tests in this
-    // suite hand-build profile literals, so a silent revert of
-    // `agents/src/profiles/experimental.json:12` would not fail any of them.
-    // This test imports the real JSON and locks the contract.
-    it("experimental profile actually enables stripe-v2 (regression pin)", async () => {
+    // Pin: experimental.json must keep `skill.stripe-v2.enabled: true` so the
+    // stripe skill's onLoad registers the v2 platform tools for QA shoppers.
+    // The flag key retains the `stripe-v2` name for switchboard/profile
+    // continuity even though the skill is now `stripe`.
+    it("experimental profile keeps skill.stripe-v2.enabled=true (regression pin)", async () => {
       const experimental = (await import("../../profiles/experimental.json", { with: { type: "json" } })).default;
       expect(experimental.properties["skill.stripe-v2.enabled"]).toBe(true);
     });

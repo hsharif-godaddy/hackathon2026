@@ -15,7 +15,7 @@ import { getSecret } from '#airo/secrets';
 function getStripe(): Stripe {
   const secretKey = getSecret('STRIPE_SECRET_KEY');
   if (!secretKey || typeof secretKey !== 'string') {
-    throw new Error('STRIPE_SECRET_KEY not configured.');
+    throw new Error('STRIPE_SECRET_KEY not provisioned. Re-run Stripe setup or contact support.');
   }
   return new Stripe(secretKey);
 }
@@ -64,8 +64,11 @@ export default async function handler(req: Request, res: Response) {
       },
     });
   } catch (error) {
+    // Log the real error server-side; return only generic, non-sensitive
+    // strings to the client (never echo Stripe's verbatim message).
+    console.error('get-session failed:', error);
+
     if (error instanceof Stripe.errors.StripeError) {
-      // Don't expose detailed error for invalid sessions (security)
       if (error.code === 'resource_missing') {
         res.status(404).json({
           success: false,
@@ -76,7 +79,7 @@ export default async function handler(req: Request, res: Response) {
 
       res.status(error.statusCode || 500).json({
         success: false,
-        error: error.message,
+        error: 'Failed to retrieve session',
       });
       return;
     }

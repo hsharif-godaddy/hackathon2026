@@ -193,7 +193,7 @@ export class SkillToolManager {
    *
    * `rawTools` keys are UN-prefixed tool names (e.g. "products_create"). This
    * method applies buildSkillToolName(skillName, rawName) to produce the
-   * prefixed registry key ("stripe-v2__products_create") and records the
+   * prefixed registry key ("stripe__products_create") and records the
    * un-prefixed name in skillToTools so getActiveToolNames() returns the right
    * prefixed names via the existing ConversationSkillState path.
    *

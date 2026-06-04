@@ -39,13 +39,16 @@ export default function CartPage() {
       const data = await response.json();
 
       if (data.success && data.url) {
-        clearCart();
+        // Cart is cleared on the verified-success page, NOT here.
+        // If we cleared before redirect and the user cancels at Stripe,
+        // /checkout/cancel would lie about "your cart items are still saved".
         window.location.href = data.url;
       } else {
         setError(data.error || 'Failed to create checkout session');
         setCheckingOut(false);
       }
-    } catch {
+    } catch (e) {
+      console.error('checkout failed', e);
       setError('Failed to create checkout session');
       setCheckingOut(false);
     }

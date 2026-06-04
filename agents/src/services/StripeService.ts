@@ -50,7 +50,7 @@ export interface StatusResponse {
  * GET /v1/status, which resolves to `null`). `code` mirrors stripe-service's
  * error envelope (`{"code":"X","error":"Y"}`); callers pattern-match on it
  * — e.g. `STRIPE_CREATE_FAILED` is the post-swap "preview not enabled"
- * surface that the future stripe-v2 skill maps to a "still being
+ * surface that the stripe skill maps to a "still being
  * provisioned" message.
  */
 export class StripeServiceError extends Error {

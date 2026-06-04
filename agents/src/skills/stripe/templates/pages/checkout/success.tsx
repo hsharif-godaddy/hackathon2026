@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams, Link } from 'react-router-dom';
+import { useCart } from '@/contexts/use-cart';
 import { formatPrice } from '@/lib/stripe/format';
 
 interface SessionDetails {
@@ -30,6 +31,7 @@ export default function CheckoutSuccess() {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('session_id');
+  const { clearCart } = useCart();
   const [details, setDetails] = useState<SessionDetails | null>(null);
   const [verification, setVerification] = useState<VerificationState>('verifying');
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -73,6 +75,11 @@ export default function CheckoutSuccess() {
         const isPaid = session.paymentStatus === 'paid';
 
         if (isComplete && isPaid) {
+          // Clear the cart now — only after a verified successful payment.
+          // We deliberately do NOT clear the cart at the cart-page redirect:
+          // if the user cancels at Stripe and lands on /checkout/cancel,
+          // the cart should still be there.
+          clearCart();
           setVerification('verified');
         } else if (session.paymentStatus === 'unpaid') {
           setVerification('failed');
@@ -94,7 +101,7 @@ export default function CheckoutSuccess() {
         setVerification('failed');
         setErrorMessage('Unable to verify payment. Please contact support if you were charged.');
       });
-  }, [sessionId]);
+  }, [sessionId, clearCart]);
 
   // VERIFYING STATE - Show loading spinner
   if (verification === 'verifying') {

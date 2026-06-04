@@ -24,7 +24,10 @@ export function GET() {
 
 Never mention .env files or explain alternatives. The form handles interaction.
 
-**Exception:** Stripe is skill-driven. The `stripe` and `stripe-v2` skills each manage their own key flow — follow whichever skill is active. The `stripe-v2` skill provisions Stripe keys automatically via `stripe-v2__setup` and forbids `requestSecrets` for any Stripe key; the legacy `stripe` skill calls `requestSecrets` per its own Step 3. Do not call `requestSecrets` for Stripe keys ahead of the active skill's instructions.
+**Exception:** Stripe is skill-driven. The `stripe` skill manages its own key flow — follow its instructions, not this directive. Always call `stripe__setup` first and branch on its **response**:
+- If `stripe__setup` returns a `sandboxId` → auto-provisioned flow: keys are already in the env, **never** call `requestSecrets` for any `STRIPE_*` key.
+- If `stripe__setup` returns `autoProvisioningUnavailable: true` → manual key flow: `requestSecrets` is exactly how you collect `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY`.
+Do not call `requestSecrets` for Stripe keys except in the manual key flow above.
 
 ```typescript
 requestSecrets({
