@@ -333,6 +333,19 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     }
     if (modifyDomainsMutation.error) {
       if (modifyDomainsMutation.error instanceof DomainMutationError) {
+        const { domainSpecificError } = modifyDomainsMutation.error.details;
+        if (domainSpecificError) {
+          // If the error domain is rendered in a DomainItem row, it's already displayed
+          // there — don't duplicate it in the text input. This covers both disconnect
+          // errors and connect-via-menu errors on existing customer domains.
+          const renderedDomains = new Set([
+            ...domains.map((d) => normalizeFqdn(d.domain || d.name || '')).filter(Boolean),
+            ...siteDomains.map((d) => normalizeFqdn(d.fqdn)).filter(Boolean),
+          ]);
+          if (Object.keys(domainSpecificError).some((fqdn) => renderedDomains.has(fqdn))) {
+            return undefined;
+          }
+        }
         return translateDomainApiError(
           modifyDomainsMutation.error.details.nestedCode ?? modifyDomainsMutation.error.details.code,
           t,
