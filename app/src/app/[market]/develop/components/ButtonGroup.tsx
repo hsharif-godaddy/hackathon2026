@@ -7,7 +7,6 @@ import {
   forwardRef,
   useCallback,
   useContext,
-  useEffect,
   useId,
   useMemo,
   useRef,
@@ -22,11 +21,6 @@ interface ButtonGroupContextValue {
   onChange?: (value: string) => void;
   groupId: string;
   role: ButtonGroupRole;
-  registerActiveWidth: (id: string, width: number) => void;
-  registerInactiveWidth: (id: string, width: number) => void;
-  unregisterWidths: (id: string) => void;
-  maxActiveWidth: number;
-  maxInactiveWidth: number;
 }
 
 const ButtonGroupContext = createContext<ButtonGroupContextValue | null>(null);
@@ -55,68 +49,10 @@ interface ButtonGroupProps {
 
 function ButtonGroupRoot({ value, onChange, children, className, role = 'radiogroup', 'data-eid': dataEid }: ButtonGroupProps) {
   const groupId = useId();
-  const widthsRef = useRef<Map<string, { active: number; inactive: number }>>(new Map());
-  const [maxActiveWidth, setMaxActiveWidth] = useState(0);
-  const [maxInactiveWidth, setMaxInactiveWidth] = useState(0);
-
-  const recomputeMax = useCallback(function recompute() {
-    let nextActive = 0;
-    let nextInactive = 0;
-    widthsRef.current.forEach(function pick({ active, inactive }) {
-      if (active > nextActive) nextActive = active;
-      if (inactive > nextInactive) nextInactive = inactive;
-    });
-    setMaxActiveWidth(function update(prev) {
-      return prev === nextActive ? prev : nextActive;
-    });
-    setMaxInactiveWidth(function update(prev) {
-      return prev === nextInactive ? prev : nextInactive;
-    });
-  }, []);
-
-  const registerActiveWidth = useCallback(function register(id: string, width: number) {
-    const existing = widthsRef.current.get(id);
-    if (existing?.active === width) return;
-    widthsRef.current.set(id, { active: width, inactive: existing?.inactive ?? 0 });
-    recomputeMax();
-  }, [recomputeMax]);
-
-  const registerInactiveWidth = useCallback(function register(id: string, width: number) {
-    const existing = widthsRef.current.get(id);
-    if (existing?.inactive === width) return;
-    widthsRef.current.set(id, { active: existing?.active ?? 0, inactive: width });
-    recomputeMax();
-  }, [recomputeMax]);
-
-  const unregisterWidths = useCallback(function unregister(id: string) {
-    if (!widthsRef.current.has(id)) return;
-    widthsRef.current.delete(id);
-    recomputeMax();
-  }, [recomputeMax]);
 
   const contextValue = useMemo(
-    () => ({
-      value,
-      onChange,
-      groupId,
-      role,
-      registerActiveWidth,
-      registerInactiveWidth,
-      unregisterWidths,
-      maxActiveWidth,
-      maxInactiveWidth,
-    }),
-    [
-      value,
-      onChange,
-      groupId,
-      role,
-      registerActiveWidth,
-      registerInactiveWidth,
-      unregisterWidths,
-      maxActiveWidth,
-      maxInactiveWidth,
-    ]
+    () => ({ value, onChange, groupId, role }),
+    [value, onChange, groupId, role]
   );
 
   return (
@@ -135,7 +71,7 @@ function ButtonGroupRoot({ value, onChange, children, className, role = 'radiogr
   );
 }
 
-interface ButtonGroupItemProps extends Omit<HTMLMotionProps<'button'>, 'onClick' | 'ref' | 'animate' | 'transition' | 'initial' | 'exit'> {
+interface ButtonGroupItemProps extends Omit<HTMLMotionProps<'button'>, 'onClick' | 'ref' | 'layout' | 'transition' | 'initial' | 'exit'> {
   value?: string;
   icon?: React.ReactNode;
   label?: string;
@@ -167,10 +103,6 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
   const [isFocused, setIsFocused] = useState(false);
   const showTooltip = isHovered || isFocused;
   const internalRef = useRef<HTMLButtonElement>(null);
-  const activeMeasureRef = useRef<HTMLSpanElement>(null);
-  const inactiveMeasureRef = useRef<HTMLSpanElement>(null);
-  const internalId = useId();
-  const registrationId = value ?? internalId;
 
   const setRefs = useCallback((element: HTMLButtonElement | null) => {
     internalRef.current = element;
@@ -183,39 +115,6 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
 
   const isControlled = context?.value !== undefined && context?.onChange !== undefined;
   const isActive = isControlled && value !== undefined && context!.value === value;
-  const isSelectable = value !== undefined;
-
-  const registerActiveWidth = context?.registerActiveWidth;
-  const registerInactiveWidth = context?.registerInactiveWidth;
-  const unregisterWidths = context?.unregisterWidths;
-
-  useEffect(function measureWidths() {
-    if (!isSelectable || !label || !registerActiveWidth || !registerInactiveWidth || !unregisterWidths) return;
-    const activeElement = activeMeasureRef.current;
-    const inactiveElement = inactiveMeasureRef.current;
-    if (!activeElement || !inactiveElement) return;
-
-    const reportActive = function reportActive() {
-      registerActiveWidth(registrationId, activeElement.offsetWidth);
-    };
-    const reportInactive = function reportInactive() {
-      registerInactiveWidth(registrationId, inactiveElement.offsetWidth);
-    };
-
-    reportActive();
-    reportInactive();
-
-    const activeObserver = new ResizeObserver(reportActive);
-    const inactiveObserver = new ResizeObserver(reportInactive);
-    activeObserver.observe(activeElement);
-    inactiveObserver.observe(inactiveElement);
-
-    return function cleanup() {
-      activeObserver.disconnect();
-      inactiveObserver.disconnect();
-      unregisterWidths(registrationId);
-    };
-  }, [isSelectable, label, registerActiveWidth, registerInactiveWidth, unregisterWidths, registrationId, showLabelAlways]);
 
   const handleClick = () => {
     if (disabled) return;
@@ -238,10 +137,6 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
     </Tooltip>
   );
 
-  const targetWidth = isActive
-    ? (context?.maxActiveWidth || 'auto')
-    : (context?.maxInactiveWidth || 'auto');
-
   return (
     <motion.button
       type="button"
@@ -256,7 +151,7 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
       onMouseLeave={() => setIsHovered(false)}
       onFocus={() => setIsFocused(true)}
       onBlur={() => setIsFocused(false)}
-      animate={{ width: targetWidth }}
+      layout
       transition={SPRING_TRANSITION}
       {...rest}
       className={clsx(
@@ -270,28 +165,6 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
         extraClassName
       )}
     >
-      {label && isSelectable && registerActiveWidth && registerInactiveWidth && (
-        <>
-          <span
-            ref={activeMeasureRef}
-            aria-hidden
-            className="pointer-events-none invisible absolute left-0 top-0 flex items-center p-1 whitespace-nowrap"
-          >
-            {icon && <span className="flex items-center size-2.5">{icon}</span>}
-            <span className={clsx('text-sm font-medium', icon && 'ml-1')}>{label}</span>
-          </span>
-          <span
-            ref={inactiveMeasureRef}
-            aria-hidden
-            className="pointer-events-none invisible absolute left-0 top-0 flex items-center p-1 whitespace-nowrap"
-          >
-            {icon && <span className="flex items-center size-2.5">{icon}</span>}
-            {showLabelAlways ? (
-              <span className={clsx('text-sm font-medium', icon && 'ml-1')}>{label}</span>
-            ) : null}
-          </span>
-        </>
-      )}
       {icon && <span className="flex items-center size-2.5">{icon}</span>}
       {label && showLabelAlways ? (
         <span className={clsx('text-sm font-medium whitespace-nowrap', icon && 'ml-1')}>{label}</span>

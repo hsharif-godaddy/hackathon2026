@@ -121,8 +121,7 @@ describe('ButtonGroup', () => {
     const buttons = screen.getAllByRole('radio');
     expect(buttons[0]).toHaveAttribute('aria-checked', 'true');
     expect(buttons[1]).toHaveAttribute('aria-checked', 'false');
-    // The active button renders the label inside the animated span; the inactive one
-    // only renders it in the hidden measurement ghost. Both still expose it via aria-label.
+    // Both buttons expose their label via aria-label regardless of visual state.
     expect(buttons[0]).toHaveAttribute('aria-label', 'Option 1');
     expect(buttons[1]).toHaveAttribute('aria-label', 'Option 2');
   });

@@ -221,14 +221,32 @@ describe('DevelopHeader', () => {
     expect(editButton).toBeDisabled();
   });
 
-  it('should disable device selector when in code mode', () => {
+  it('should not render device selector or refresh button when in code mode', () => {
     mockDevelopStore.viewMode = ViewMode.CODE;
 
     renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
 
-    expect(screen.getByRole('button', { name: 'builder_preview_button_device' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'builder_preview_button_device' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('header-refresh-button')).not.toBeInTheDocument();
   });
 
+  it('should not render device selector or refresh button when in brand mode', () => {
+    mockDevelopStore.viewMode = ViewMode.BRAND;
+
+    renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: 'builder_preview_button_device' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('header-refresh-button')).not.toBeInTheDocument();
+  });
+
+  it('should render device selector and refresh button in edit mode', () => {
+    mockDevelopStore.viewMode = ViewMode.EDIT;
+
+    renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'builder_preview_button_device' })).toBeInTheDocument();
+    expect(screen.getByTestId('header-refresh-button')).toBeInTheDocument();
+  });
 
   it('should call toggleChatPaneCollapse when collapse button is clicked', async () => {
     const { user } = renderWithProviders(<DevelopHeader />);
