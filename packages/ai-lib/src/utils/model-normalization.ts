@@ -145,6 +145,16 @@ const MODELS: Record<string, ModelDefinition> = {
   },
 
   // Claude Models (available on multiple providers)
+  'claude-opus-4-8': {
+    normalizedName: 'claude-opus-4-8',
+    anthropic: 'claude-opus-4-8',
+    stripTemperature: true,
+    providerOptions: {
+      anthropic: {
+        effort: 'high',
+      },
+    },
+  },
   'claude-opus-4-7': {
     normalizedName: 'claude-opus-4-7',
     anthropic: 'claude-opus-4-7',

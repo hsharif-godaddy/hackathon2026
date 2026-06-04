@@ -402,6 +402,7 @@ describe('model-pricing', () => {
       anthropicModels.forEach(model => {
         if (model.name.includes('claude-sonnet-4') ||
             model.name.includes('claude-haiku-4-5') ||
+            model.name.includes('claude-opus-4-8') ||
             model.name.includes('claude-opus-4-7') ||
             model.name.includes('claude-opus-4-6')) {
           expect(model.supportsCaching).toBe(true)

@@ -133,6 +133,13 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   },
 
   // Anthropic Models (via Anthropic API)
+  'claude-opus-4-8': {
+    inputCostPer1K: 0.005,
+    outputCostPer1K: 0.025,
+    cachedInputReadCostPer1K: 0.0005,
+    cachedInputWriteCostPer1K: 0.00625,
+    currency: 'USD'
+  },
   'claude-opus-4-7': {
     inputCostPer1K: 0.005,
     outputCostPer1K: 0.025,

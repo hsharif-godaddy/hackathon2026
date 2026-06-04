@@ -303,6 +303,18 @@ describe('model provider defaults middleware', () => {
     expect(middleware).not.toHaveProperty('transformParams')
   })
 
+  it('strips temperature from requests for claude-opus-4-8', async () => {
+    const { __test__ } = await import('../unified-provider.js')
+    const [stripTemp] = __test__.getModelMiddleware('claude-opus-4-8')
+    const transformed = await stripTemp.transformParams?.({
+      params: { temperature: 0.7, providerOptions: {} } as any,
+      type: 'generate',
+      model: { modelId: 'claude-opus-4-8' } as any,
+    })
+
+    expect(transformed).not.toHaveProperty('temperature')
+  })
+
   it('strips temperature from requests for claude-opus-4-7', async () => {
     const { __test__ } = await import('../unified-provider.js')
     const [stripTemp] = __test__.getModelMiddleware('claude-opus-4-7')

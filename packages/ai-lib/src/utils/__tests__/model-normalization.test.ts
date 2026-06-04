@@ -365,6 +365,12 @@ describe('model-normalization', () => {
       })
     })
 
+    it('returns effort high for claude-opus-4-8', () => {
+      expect(getDefaultProviderOptions('claude-opus-4-8')).toEqual({
+        anthropic: { effort: 'high' }
+      })
+    })
+
     it('returns effort low for claude-opus-4-7', () => {
       expect(getDefaultProviderOptions('claude-opus-4-7')).toEqual({
         anthropic: { effort: 'low' }
@@ -451,6 +457,10 @@ describe('model-normalization', () => {
 
     it('returns true for azure Kimi thinking variant', () => {
       expect(shouldStripTemperature('azure/Kimi-K2.6-thinking')).toBe(true)
+    })
+
+    it('returns true for claude-opus-4-8', () => {
+      expect(shouldStripTemperature('claude-opus-4-8')).toBe(true)
     })
 
     it('returns true for claude-opus-4-7', () => {

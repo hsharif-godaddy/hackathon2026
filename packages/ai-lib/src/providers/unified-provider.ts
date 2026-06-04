@@ -47,6 +47,7 @@ import { grantSessionManager } from '@airo/ai-grants'
  * Maps short names to their OpenAI proxy model identifiers
  */
 const CLAUDE_PROXY_MODELS = {
+  'claude-opus-4-8': 'claude-opus-4-8',
   'claude-opus-4-7': 'claude-opus-4-7',
   'claude-opus-4-6': 'claude-opus-4-6',
   'claude-sonnet-4-6': 'claude-sonnet-4-6',

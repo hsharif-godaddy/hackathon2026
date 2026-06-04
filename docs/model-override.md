@@ -14,6 +14,7 @@ Emergency procedure to switch the AI model across all Airo Builder sessions when
 | -------------------------- | ------------------------------------------------------- |
 | `claude-sonnet-4-6`        | Claude Sonnet 4.6                                       |
 | `azure/claude-sonnet-4-6`  | Claude Sonnet 4.6 via Azure                            |
+| `claude-opus-4-8`          | Claude Opus 4.8 (high reasoning effort) — **expensive** ($5/$25 per MTok in/out)|
 | `claude-opus-4-7`          | Claude Opus 4.7 — **expensive** ($5/$25 per MTok in/out)|
 | `claude-opus-4-6`          | Claude Opus 4.6 — **expensive** ($5/$25 per MTok in/out)|
 | `claude-sonnet-4-5`        | Claude Sonnet 4.5                                       |
