@@ -24,6 +24,7 @@ Airo platform-managed Stripe flow. `stripe-v2__setup` provisions a dedicated Str
 4. **ALWAYS add Detail Modal** — required for all apps
 5. **ALWAYS add Cart** — required for all apps (uses `/cart` page)
 6. **NEVER call the Stripe API directly with `STRIPE_SECRET_KEY`** from the agent (no `terminalCommand`, no `node -e`, no curl). Use `stripe-v2__*` MCP tools. The secret key is for the customer app's runtime only.
+7. **NEVER probe endpoints or narrate HTTP status codes to the user.** Do not run ad-hoc checks against the app's API routes (`/api/stripe/*`) and do not report raw results like "401 is expected since it requires auth context" or "the endpoint is responding." That is developer diagnostics, not a user update. Describe state in user terms — "Your checkout flow is ready to test" — never protocol details.
 
 ---
 
@@ -500,11 +501,14 @@ const { cartCount } = useCart();
 
 ## Reference: when MCP tools are absent
 
-If only `stripe-v2__setup` and `stripe-v2__status` show in your tool list (no create/list/etc.):
+If only `stripe-v2__setup` and `stripe-v2__status` show in your tool list (no `create_product` / `list_products` / etc.) — common right after the first `stripe-v2__setup`, while the catalog tools are still connecting:
 
-1. If sandbox isn't provisioned yet, call `stripe-v2__setup` first.
-2. If it is and MCP tools are still missing, tell the user the Stripe MCP tools aren't available in this session and ask them to start a new conversation. The agent process picks up `STRIPE_MCP_KEY` on restart and `onLoad` will re-fetch the tools.
-3. **Do NOT** attempt to create products, prices, or any Stripe objects via terminal commands, `node -e` scripts, or curl. Wait for the user.
+1. If the sandbox isn't provisioned yet, call `stripe-v2__setup` first.
+2. **Keep the conversation moving — never dead-end the user.** Still ask what they'd like to sell (name + price, one-time vs subscription) and remember the answer, so you can create everything the moment the product tools connect. Frame it positively:
+   > "Your store is wired up. Tell me the products you'd like to sell (name + price) and I'll add them to your catalog, then we'll test a real checkout with card `4242 4242 4242 4242`."
+   Do NOT tell the user the tools "aren't available in this session" or that the integration is broken — the store and checkout already work; only the catalog-management tools are still connecting.
+3. If the product tools still haven't appeared after provisioning, reassure the user their store is live and that you have the products they named noted. The catalog tools register automatically once they finish connecting — when they appear, add the noted products right away without making the user ask again. Do not tell the user to restart, refresh, or start a new conversation; there is no such action for them to take. Stay warm and concrete — never surface protocol or HTTP details.
+4. **Do NOT** create products, prices, or any Stripe objects via terminal commands, `node -e` scripts, or curl. Use the `stripe-v2__*` tools only, once they appear.
 
 ## Reference: status and idempotency
 
