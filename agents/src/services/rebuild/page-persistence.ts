@@ -159,7 +159,14 @@ export class PagePersistenceService {
           const pagePath = path.join(this.sourceSiteDir, 'pages', `${slug}.json`);
           const data = JSON.parse(await readFile(pagePath, 'utf-8')) as PageContent;
           return [slug, data] as const;
-        } catch {
+        } catch (err) {
+          // DIAGNOSTIC (AIROBUILD-2104): this read failure was previously
+          // swallowed. A sitemap-scraped slug whose JSON can't be read here
+          // vanishes from `pages`, so buildPage later throws "Page not found".
+          logger.warn('rebuild-orchestration.source-page-load-failed', {
+            slug,
+            error: err instanceof Error ? err.message : String(err),
+          });
           return null;
         }
       }),
@@ -170,6 +177,17 @@ export class PagePersistenceService {
       if (entry) {
         pages[entry[0]] = entry[1];
       }
+    }
+
+    // DIAGNOSTIC (AIROBUILD-2104): reconcile what the sitemap claims is scraped
+    // against what actually loaded, so a slug-mismatch / load gap is visible.
+    const missing = scrapedSlugs.filter(s => !(s in pages));
+    if (missing.length > 0) {
+      logger.warn('rebuild-orchestration.source-pages-missing-on-load', {
+        scrapedSlugs,
+        loadedSlugs: Object.keys(pages),
+        missing,
+      });
     }
 
     return { metadata, sitemap, pages, assets };

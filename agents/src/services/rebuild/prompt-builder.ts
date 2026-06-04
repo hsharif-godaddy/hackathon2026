@@ -62,8 +62,40 @@ export class RebuildPromptBuilder {
 
     const pageContent = sourceSiteData.pages[pageSlug];
     if (!pageContent) {
+      // DIAGNOSTIC (AIROBUILD-2104): distinguish slug-mismatch / load-failure
+      // (sitemap says scraped but JSON absent from pages) from a never-crawled
+      // page. The selector only offers scraped:true pages, so reaching here with
+      // scraped:true is the "invented content" path — the tool throws and the
+      // develop agent falls back to fabricating.
+      const sitemapEntry = sourceSiteData.sitemap.pages.find(p => p.slug === pageSlug);
+      logger.error('rebuild-orchestration.build-page.source-missing', {
+        appId,
+        pageSlug,
+        availablePageKeys: Object.keys(sourceSiteData.pages),
+        sitemapEntry: sitemapEntry
+          ? { slug: sitemapEntry.slug, url: sitemapEntry.url, scraped: sitemapEntry.scraped }
+          : null,
+        sitemapSlugs: sourceSiteData.sitemap.pages.map(p => ({ slug: p.slug, scraped: p.scraped })),
+      });
       throw new Error(`Page not found: ${pageSlug}`);
     }
+
+    // DIAGNOSTIC (AIROBUILD-2104): catch the "present but empty" mode — if the
+    // source content is blank, the prompt agent has nothing to ground on and
+    // invents, even though no error is thrown.
+    const contentLength = pageContent.content?.length ?? 0;
+    const sanitizedContentLength = pageContent.sanitizedContent?.length ?? 0;
+    // Fully-empty source is the "present but blank" fabrication mode — the agent
+    // has nothing to ground on and invents. Surface it at warn, not info.
+    const emptySource = contentLength === 0 && sanitizedContentLength === 0;
+    logger[emptySource ? 'warn' : 'info']('rebuild-orchestration.build-page.source-loaded', {
+      appId,
+      pageSlug,
+      url: pageContent.url,
+      contentLength,
+      sanitizedContentLength,
+      ...(emptySource ? { emptySource: true } : {}),
+    });
 
     // First page (homepage) gets full setup instructions; later pages skip
     // project setup, colors, fonts, header/footer.
