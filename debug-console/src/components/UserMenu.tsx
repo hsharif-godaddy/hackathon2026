@@ -15,13 +15,14 @@ export default function UserMenu() {
         <span
             title={alias}
             style={{
-                padding: '0.375rem 0.75rem',
-                borderRadius: '4px',
+                height: '40px',
+                padding: '0 0.9375rem',
+                borderRadius: '5px',
                 border: '1px solid #d1d5db',
                 backgroundColor: 'white',
                 color: '#111827',
                 fontWeight: 600,
-                fontSize: '0.813rem',
+                fontSize: '1.016rem',
                 fontFamily: 'monospace',
                 display: 'inline-flex',
                 alignItems: 'center',

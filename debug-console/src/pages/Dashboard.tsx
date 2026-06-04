@@ -19,6 +19,7 @@ import TrafficPanel from "@/components/TrafficPanel";
 import InvestigatePanel from "@/components/InvestigatePanel";
 import FeedbacksPanel from "@/components/FeedbacksPanel";
 import UserMenu from "@/components/UserMenu";
+import NavMenu from "@/components/NavMenu";
 const TIME_RANGES = [
   { label: "Last 1 hour", value: "1h" },
   { label: "Last 6 hours", value: "6h" },
@@ -826,68 +827,7 @@ export default function Dashboard() {
               marginLeft: "auto",
             }}
           >
-            <a
-              href="/analytics"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: "inline-block",
-                padding: "0.375rem 0.875rem",
-                backgroundColor: "#3b82f6",
-                color: "white",
-                borderRadius: "4px",
-                textDecoration: "none",
-                fontSize: "0.813rem",
-                fontWeight: 600,
-              }}
-            >
-              Analytics
-            </a>
-            <a
-              href="/risq"
-              style={{
-                display: "inline-block",
-                padding: "0.375rem 0.875rem",
-                backgroundColor: "#7c3aed",
-                color: "white",
-                borderRadius: "4px",
-                textDecoration: "none",
-                fontSize: "0.813rem",
-                fontWeight: 600,
-              }}
-            >
-              RISQ
-            </a>
-            <a
-              href="/e2e-run-dashboard"
-              style={{
-                display: "inline-block",
-                padding: "0.375rem 0.875rem",
-                backgroundColor: "#6366f1",
-                color: "white",
-                borderRadius: "4px",
-                textDecoration: "none",
-                fontSize: "0.813rem",
-                fontWeight: 600,
-              }}
-            >
-              E2E Runs
-            </a>
-            <a
-              href="/image-search"
-              style={{
-                display: "inline-block",
-                padding: "0.375rem 0.875rem",
-                backgroundColor: "#6b7280",
-                color: "white",
-                borderRadius: "4px",
-                textDecoration: "none",
-                fontSize: "0.813rem",
-                fontWeight: 600,
-              }}
-            >
-              Images
-            </a>
+            <NavMenu />
             <UserMenu />
           </div>
         </header>
