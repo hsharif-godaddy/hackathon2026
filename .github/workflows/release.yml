@@ -227,21 +227,74 @@ jobs:
             $DRY
 
   # ---------------------------------------------------------------------------
+  # GATE DECLINED — a reviewer REJECTED the prod gate (approve-prod = failure).
+  # Edits the SAME Slack message in place to a terminal "rejected by @user"
+  # (with their comment, read from the approvals API) instead of leaving it
+  # stuck on "Awaiting prod approval" plus a separate failure post. Emits
+  # notified=true so the backstop below stays quiet. (A hard run-cancellation
+  # cancels this job too, so it only covers an explicit reject — a cancel
+  # leaves the message as-is and the backstop is the safety net.)
+  # ---------------------------------------------------------------------------
+  gate-declined:
+    needs: [preflight, test-phase, approve-prod]
+    if: |
+      always() &&
+      needs.preflight.outputs.should_release == 'true' &&
+      inputs.dry_run != true &&
+      needs.test-phase.result == 'success' &&
+      needs.approve-prod.result == 'failure'
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    outputs:
+      notified: ${{ steps.run.outputs.notified }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version: '1.26'
+          cache-dependency-path: release-manager/go.sum
+      - name: Build release-manager
+        working-directory: release-manager
+        run: go build -o "$RUNNER_TEMP/release-manager" ./cmd/release-manager/
+      - name: Download phase state
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-phase-state
+          path: ${{ runner.temp }}
+      - name: Finalize declined release in Slack
+        id: run
+        # GH_TOKEN reads the approvals API (who rejected); SLACK_* edit the
+        # existing message. GITHUB_RUN_ID / GITHUB_REPOSITORY are auto-injected.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          BRANCH: ${{ needs.preflight.outputs.branch }}
+        run: |
+          "$RUNNER_TEMP/release-manager" run --headless --mode abort \
+            --branch "$BRANCH" \
+            --state-file "$RUNNER_TEMP/state.json"
+
+  # ---------------------------------------------------------------------------
   # FAILURE BACKSTOP — the binary already flips the Slack thread to FAILED on a
-  # stage error; this only fires on a HARD failure (job killed/cancelled before
-  # the binary could post). Skipped in dry-run. Best-effort: never blocks.
+  # stage error (and gate-declined does so on a reject); this only fires on a
+  # HARD failure (job killed/cancelled before any of them could post). Skipped
+  # in dry-run. Best-effort: never blocks.
   # ---------------------------------------------------------------------------
   slack-failure:
-    needs: [preflight, test-phase, approve-prod, prod-phase]
-    # Only when NEITHER phase already posted FAILED to the thread (their
-    # `notified` output is unset) — otherwise the binary's in-place FAILED
-    # update already covered it and a second post would be a duplicate.
+    needs: [preflight, test-phase, approve-prod, prod-phase, gate-declined]
+    # Only when NONE of the phases already posted a terminal update to the
+    # thread (their `notified` output is unset) — otherwise the in-place update
+    # already covered it and a second post would be a duplicate.
     if: |
       failure() &&
       needs.preflight.outputs.should_release == 'true' &&
       inputs.dry_run != true &&
       needs.test-phase.outputs.notified != 'true' &&
-      needs.prod-phase.outputs.notified != 'true'
+      needs.prod-phase.outputs.notified != 'true' &&
+      needs.gate-declined.outputs.notified != 'true'
     runs-on:
       labels:
         - airo-cicd-runners

@@ -122,10 +122,11 @@ func fileExists(path string) bool {
 func runHeadless(args []string) int {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	headlessFlag := fs.Bool("headless", false, "run without the TUI (required)")
-	mode := fs.String("mode", "", "phase to run: test | prod | rollback")
+	mode := fs.String("mode", "", "phase to run: test | prod | rollback | abort")
 	branch := fs.String("branch", "main", "branch to release from")
 	dryRun := fs.Bool("dry-run", false, "skip real workflow dispatches (read-only)")
-	stateFile := fs.String("state-file", "", "phase state file: the test phase writes it, the prod phase reads it")
+	stateFile := fs.String("state-file", "", "phase state file: the test phase writes it, the prod/abort phases read it")
+	reason := fs.String("reason", "", "abort: terminal status line to post (e.g. the supersede janitor's reason); empty ⇒ derive from approval history")
 	slackTS := fs.String("slack-ts", "", "existing Slack message ts to update in place (optional; prod normally reads it from --state-file)")
 	operator := fs.String("operator", "", "name shown in the Slack header (default: $GITHUB_ACTOR, else 'scheduler')")
 	baseCommit := fs.String("base-commit", "", "override the release-notes base commit")
@@ -142,9 +143,9 @@ func runHeadless(args []string) int {
 		return 2
 	}
 	switch headless.Mode(*mode) {
-	case headless.ModeTest, headless.ModeProd, headless.ModeRollback:
+	case headless.ModeTest, headless.ModeProd, headless.ModeRollback, headless.ModeAbort:
 	default:
-		fmt.Fprintf(os.Stderr, "Error: --mode must be test|prod|rollback (got %q)\n", *mode)
+		fmt.Fprintf(os.Stderr, "Error: --mode must be test|prod|rollback|abort (got %q)\n", *mode)
 		return 2
 	}
 
@@ -210,7 +211,12 @@ func runHeadless(args []string) int {
 		DryRun:     *dryRun,
 		Operator:   op,
 		StateFile:  *stateFile,
+		Reason:     strings.TrimSpace(*reason),
 		BaseCommit: strings.TrimSpace(*baseCommit),
+		// abort is a best-effort finalizer (edit the Slack message after a gate
+		// decline); a gh auth hiccup must not stop it from posting — it degrades
+		// to "Release canceled" on its own when the approvals API is unreadable.
+		SkipPreflight: headless.Mode(*mode) == headless.ModeAbort,
 		Overrides: pipeline.SnapshotOverrides{
 			ArtifactID:      strings.TrimSpace(*rbArtifact),
 			AgentImageTag:   strings.TrimSpace(*rbAgent),

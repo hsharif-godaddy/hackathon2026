@@ -31,6 +31,14 @@ All release logic — stage ordering/parallelism, dispatch + wait, log-output pa
 4. Reviewers are configured in **Settings → Environments → `release-prod-approval`** (isolated from the `prod` Environment, so direct `promote-artifact.yml` runs are not gated).
 5. After prod is cut, the **`prod-phase`** job summary prints the **prod** Manual Checklist (post-deploy verification on the live site).
 
+**The gate decision is attributed in the same Slack message.** There's no separate post — the single release message is edited in place:
+
+- **Approve** → once prod resumes, the footer credits you: `✅ Approved by @you · Deploying to prod…`, then `🏁 Complete (…) · approved by @you`.
+- **Reject** → the `gate-declined` job edits the message to `⛔ Release rejected by @you — <your comment>` (the reviewer's rejection comment is pulled from the run's approval history). The `slack-failure` backstop is suppressed in this case, so you won't see a duplicate "Release pipeline failed" post.
+- **Hard-cancel** (someone hits *Cancel workflow run* instead of *Reject*) cancels every job — including the finalizer — and GitHub exposes no API for who clicked it, so that case can't be attributed. The message is left as-is and the generic backstop post is the safety net. Prefer **Reject** at the gate over cancelling the run.
+
+**Don't-approve ⇒ auto-superseded.** A release left sitting at the gate would otherwise hold the `airo-release-main` lock for up to 30 days, stalling the cadence. The **`release-supersede.yml`** janitor runs on the same cron and, in its own concurrency group (so it can act while the lock is held), cancels any `release.yml` run still in `waiting` at the gate (older than `min_age_minutes`, default 30) and edits its Slack message to `⛔ Superseded — no approval before the next scheduled release`. Cancelling frees the lock, so the next scheduled release — already queued behind it — starts. It only targets `waiting` runs, so it never aborts an active deploy or a rollback. To pause this (e.g. to hold a release at the gate over a weekend), disable the **Release Supersede** workflow in the Actions tab.
+
 **Blocking vs advisory.** The validate stages — **E2E, Regression, Health Check** (plus **Simulation Evaluation** in the test phase) — are *advisory* in both phases: a failure shows ❌ in Slack + the approval summary, each stage runs to completion independently (a failure in one no longer cancels its siblings), and the failure does not hard-stop the phase. What "advisory" buys you differs by phase:
 
 - **Test phase:** a failed validate stage still lets the pipeline **pause at the gate** for you to judge (a flaky e2e/sim-eval shouldn't hard-fail a release).

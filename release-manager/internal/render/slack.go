@@ -46,15 +46,19 @@ type State struct {
 	// channel gets a clear ping that a human needs to act.
 	AwaitingApproval bool
 	RunURL           string // orchestrator run URL, linked from the approval CTA
-	ReleaseNotes     []pipeline.ReleaseNote
-	ReleaseNotesURL  string
-	Stages           []*pipeline.StageRun
-	EnvOrder         []string
-	Snapshot         pipeline.RollbackSnapshot
-	StatusMessage    string
-	ReleaseTag       string
-	ReleaseURL       string
-	Elapsed          time.Duration
+	// ApprovedBy is the reviewer login who approved the prod gate. Set once the
+	// prod phase resumes, so the message credits the approver ("approved by @x")
+	// through the prod deploy and on Complete. Empty when unknown or dry-run.
+	ApprovedBy      string
+	ReleaseNotes    []pipeline.ReleaseNote
+	ReleaseNotesURL string
+	Stages          []*pipeline.StageRun
+	EnvOrder        []string
+	Snapshot        pipeline.RollbackSnapshot
+	StatusMessage   string
+	ReleaseTag      string
+	ReleaseURL      string
+	Elapsed         time.Duration
 }
 
 // Message builds the Slack status message in standard markdown (for the
@@ -123,6 +127,9 @@ func Message(s State) string {
 		sb.WriteString(fmt.Sprintf("\n%s\n:no_entry: **%s** (%s)", BlankLine, s.StatusMessage, FormatElapsed(s.Elapsed)))
 	} else if s.Finished {
 		sb.WriteString(fmt.Sprintf("\n%s\n:checkered_flag: **Complete** (%s)", BlankLine, FormatElapsed(s.Elapsed)))
+		if s.ApprovedBy != "" {
+			sb.WriteString(" · approved by @" + s.ApprovedBy)
+		}
 		if s.ReleaseTag != "" {
 			sb.WriteString(fmt.Sprintf("\n\n:label: [%s](%s)", s.ReleaseTag, s.ReleaseURL))
 		}
@@ -132,6 +139,10 @@ func Message(s State) string {
 			footer += " — [Review & approve](" + s.RunURL + ")"
 		}
 		sb.WriteString(fmt.Sprintf("\n%s\n%s", BlankLine, footer))
+	} else if s.ApprovedBy != "" {
+		// Prod phase, post-approval: credit the approver beside the spinner so
+		// the gate decision stays visible while prod deploys.
+		sb.WriteString(fmt.Sprintf("\n%s\n:white_check_mark: Approved by @%s · :spinner_: *Deploying to prod...*", BlankLine, s.ApprovedBy))
 	} else {
 		sb.WriteString(fmt.Sprintf("\n%s\n:spinner_: *In progress...*", BlankLine))
 	}

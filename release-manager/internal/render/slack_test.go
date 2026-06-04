@@ -197,3 +197,48 @@ func TestMessageInProgressAndAborted(t *testing.T) {
 		t.Errorf("aborted message missing no_entry line: %q", aborted)
 	}
 }
+
+func TestMessageApprovedBy(t *testing.T) {
+	base := State{Operator: "alice", Branch: "main", ApprovedBy: "hdewan-godaddy"}
+
+	// Prod in progress, post-approval: credit the approver beside the spinner.
+	inProgress := Message(base)
+	if !strings.Contains(inProgress, "Approved by @hdewan-godaddy") {
+		t.Errorf("in-progress prod message missing approver credit: %q", inProgress)
+	}
+	if !strings.Contains(inProgress, "Deploying to prod") {
+		t.Errorf("in-progress prod message missing deploy spinner: %q", inProgress)
+	}
+
+	// Complete: the approver is credited on the Complete line.
+	base.Finished = true
+	done := Message(base)
+	if !strings.Contains(done, ":checkered_flag: **Complete**") {
+		t.Errorf("complete message missing Complete line: %q", done)
+	}
+	if !strings.Contains(done, "approved by @hdewan-godaddy") {
+		t.Errorf("complete message missing approver credit: %q", done)
+	}
+
+	// No approver ⇒ the generic spinner, no stray "approved by".
+	plain := Message(State{Operator: "alice", Branch: "main"})
+	if strings.Contains(plain, "approved by") || !strings.Contains(plain, ":spinner_: *In progress...*") {
+		t.Errorf("no-approver message should show the generic spinner: %q", plain)
+	}
+}
+
+func TestMessageRejectedAttribution(t *testing.T) {
+	// The abort path renders via the aborted footer with the attribution as the
+	// status message — exercise that the reviewer + comment survive rendering.
+	s := State{
+		Operator:      "scheduler",
+		Branch:        "main",
+		Finished:      true,
+		Aborted:       true,
+		StatusMessage: "Release rejected by @matkinson-godaddy — e2e tests are failing",
+	}
+	out := Message(s)
+	if !strings.Contains(out, ":no_entry: **Release rejected by @matkinson-godaddy — e2e tests are failing**") {
+		t.Errorf("rejected message missing attributed no_entry line: %q", out)
+	}
+}

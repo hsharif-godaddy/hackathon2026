@@ -16,8 +16,16 @@ import (
 
 // fakeRunner makes every dispatched stage resolve to a single run whose
 // conclusion is configurable. Enough to exercise orchestrate without real gh.
+// It also implements gh.Approver so the gate-attribution paths are testable;
+// an empty approvals slice models "no decision recorded".
 type fakeRunner struct {
 	conclusion string // "success" | "failure"
+	approvals  []gh.Approval
+}
+
+// RunApprovals satisfies gh.Approver — returns the canned approval history.
+func (f *fakeRunner) RunApprovals(ctx context.Context, repo string, runID int64) ([]gh.Approval, error) {
+	return f.approvals, nil
 }
 
 func (f *fakeRunner) Trigger(ctx context.Context, repo, workflow, ref string, inputs map[string]string) (string, error) {
@@ -65,6 +73,7 @@ func testConfig() *config.Config {
 func newRun(runner gh.Runner) *run {
 	return &run{
 		p:        pipeline.New(testConfig(), runner, false, "main", nil),
+		runner:   runner,
 		operator: "alice",
 		branch:   "main",
 		start:    time.Now(),
@@ -208,6 +217,99 @@ func TestPhaseStateJSON(t *testing.T) {
 	}
 	if back.Operator != "x" {
 		t.Errorf("operator round-trip = %q", back.Operator)
+	}
+}
+
+// withRunEnv sets the GHA run identifiers gateDecision reads, restored on
+// cleanup so other tests aren't affected.
+func withRunEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("GITHUB_REPOSITORY", "gdcorp-partners/airo-app-builder")
+	t.Setenv("GITHUB_RUN_ID", "123")
+}
+
+func TestDeclineMessageRejected(t *testing.T) {
+	withRunEnv(t)
+	r := newRun(&fakeRunner{approvals: []gh.Approval{
+		{State: "approved", User: "earlier", Environments: []string{"release-prod-approval"}},
+		{State: "rejected", User: "matkinson-godaddy", Comment: "e2e tests are failing", Environments: []string{"release-prod-approval"}},
+	}})
+	r.repo, r.runID = "gdcorp-partners/airo-app-builder", 123
+
+	got := r.declineMessage(context.Background())
+	want := "Release rejected by @matkinson-godaddy — e2e tests are failing"
+	if got != want {
+		t.Errorf("declineMessage = %q, want %q", got, want)
+	}
+}
+
+func TestDeclineMessageNoComment(t *testing.T) {
+	r := newRun(&fakeRunner{approvals: []gh.Approval{
+		{State: "rejected", User: "bob", Environments: []string{"release-prod-approval"}},
+	}})
+	r.repo, r.runID = "o/r", 123
+	if got := r.declineMessage(context.Background()); got != "Release rejected by @bob" {
+		t.Errorf("declineMessage = %q, want %q", got, "Release rejected by @bob")
+	}
+}
+
+func TestDeclineMessageCanceled(t *testing.T) {
+	// No approval recorded (hard cancel) ⇒ plain "Release canceled".
+	r := newRun(&fakeRunner{})
+	r.repo, r.runID = "o/r", 123
+	if got := r.declineMessage(context.Background()); got != "Release canceled" {
+		t.Errorf("declineMessage = %q, want %q", got, "Release canceled")
+	}
+}
+
+func TestGateApprover(t *testing.T) {
+	r := newRun(&fakeRunner{approvals: []gh.Approval{
+		{State: "approved", User: "hdewan-godaddy", Environments: []string{"release-prod-approval"}},
+	}})
+	r.repo, r.runID = "o/r", 123
+	if got := r.gateApprover(context.Background()); got != "hdewan-godaddy" {
+		t.Errorf("gateApprover = %q, want %q", got, "hdewan-godaddy")
+	}
+}
+
+func TestGateDecisionDryRunSkips(t *testing.T) {
+	// Dry-run must not hit the approvals API even when a decision exists.
+	r := newRun(&fakeRunner{approvals: []gh.Approval{
+		{State: "rejected", User: "bob", Environments: []string{"release-prod-approval"}},
+	}})
+	r.repo, r.runID = "o/r", 123
+	r.dryRun = true
+	if got := r.declineMessage(context.Background()); got != "Release canceled" {
+		t.Errorf("dry-run declineMessage = %q, want %q (no API attribution)", got, "Release canceled")
+	}
+}
+
+func TestGateDecisionWrongEnvIgnored(t *testing.T) {
+	// A review for a different environment must not be attributed to the gate.
+	r := newRun(&fakeRunner{approvals: []gh.Approval{
+		{State: "rejected", User: "bob", Environments: []string{"some-other-env"}},
+	}})
+	r.repo, r.runID = "o/r", 123
+	if got := r.declineMessage(context.Background()); got != "Release canceled" {
+		t.Errorf("declineMessage = %q, want %q (wrong env ignored)", got, "Release canceled")
+	}
+}
+
+func TestAbortMessageReasonOverride(t *testing.T) {
+	// A review exists, but an explicit reason (the supersede janitor's) wins
+	// and the approval history is not consulted.
+	r := newRun(&fakeRunner{approvals: []gh.Approval{
+		{State: "rejected", User: "bob", Environments: []string{"release-prod-approval"}},
+	}})
+	r.repo, r.runID = "o/r", 123
+
+	const reason = "Superseded — no approval before the next scheduled release"
+	if got := r.abortMessage(context.Background(), reason); got != reason {
+		t.Errorf("abortMessage(reason) = %q, want the reason verbatim", got)
+	}
+	// Blank/whitespace reason falls back to the approval-derived decline message.
+	if got := r.abortMessage(context.Background(), "  "); got != "Release rejected by @bob" {
+		t.Errorf("abortMessage(blank) = %q, want derived decline message", got)
 	}
 }
 

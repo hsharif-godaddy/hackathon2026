@@ -59,6 +59,24 @@ type ReleaseEntry struct {
 	TagName string `json:"tagName"`
 }
 
+// Approval is one entry in a workflow run's environment review history
+// (GET /repos/{owner}/{repo}/actions/runs/{run_id}/approvals): who approved or
+// rejected a deployment to a gated environment, and any comment they left.
+type Approval struct {
+	State        string   // "approved" | "rejected"
+	User         string   // reviewer login
+	Comment      string   // optional reviewer comment
+	Environments []string // environment names this review covers
+}
+
+// Approver is the OPTIONAL capability of reading a run's approval history. Only
+// LiveRunner implements it; callers type-assert (`r.(gh.Approver)`) so the
+// test/pipeline/tui fakes don't have to grow a method they never exercise. A
+// runner that doesn't implement it simply yields no attribution.
+type Approver interface {
+	RunApprovals(ctx context.Context, repo string, runID int64) ([]Approval, error)
+}
+
 // Runner defines the interface for executing gh CLI commands.
 // The real implementation calls gh, while dry-run provides read-only behavior.
 type Runner interface {
@@ -249,6 +267,51 @@ func (r *LiveRunner) ListReleases(ctx context.Context, repo string, limit int) (
 		return nil, fmt.Errorf("parsing release list: %w", err)
 	}
 	return entries, nil
+}
+
+// RunApprovals returns the environment review history for a workflow run — used
+// to attribute who approved or rejected the prod gate. Routed through the
+// repo's token like every other call.
+func (r *LiveRunner) RunApprovals(ctx context.Context, repo string, runID int64) ([]Approval, error) {
+	output, err := r.executeRepo(ctx, repo, "api",
+		fmt.Sprintf("/repos/%s/actions/runs/%d/approvals", repo, runID),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("fetching approvals for %s run %d: %w", repo, runID, err)
+	}
+	return parseApprovals([]byte(output))
+}
+
+// parseApprovals maps the GitHub approvals API JSON to []Approval. Split out
+// from RunApprovals so the mapping is unit-testable without shelling out to gh.
+func parseApprovals(data []byte) ([]Approval, error) {
+	var raw []struct {
+		State   string `json:"state"`
+		Comment string `json:"comment"`
+		User    struct {
+			Login string `json:"login"`
+		} `json:"user"`
+		Environments []struct {
+			Name string `json:"name"`
+		} `json:"environments"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("parsing approvals: %w", err)
+	}
+	approvals := make([]Approval, 0, len(raw))
+	for _, a := range raw {
+		envs := make([]string, 0, len(a.Environments))
+		for _, e := range a.Environments {
+			envs = append(envs, e.Name)
+		}
+		approvals = append(approvals, Approval{
+			State:        a.State,
+			User:         a.User.Login,
+			Comment:      a.Comment,
+			Environments: envs,
+		})
+	}
+	return approvals, nil
 }
 
 func (r *LiveRunner) CreateRelease(ctx context.Context, repo, tag, target, title, body string) (string, error) {

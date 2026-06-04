@@ -1,0 +1,115 @@
+name: Release Supersede
+
+# Clears a release left UN-APPROVED at the prod gate so the next scheduled
+# release isn't blocked behind it. A run paused at `release-prod-approval` keeps
+# the `airo-release-main` lock for up to 30 days; without this, a forgotten
+# approval stalls the whole cadence.
+#
+# Runs on the SAME cron as release.yml but in its OWN concurrency group, so it
+# can act WHILE a release holds airo-release-main. It only touches runs in
+# `waiting` status (paused at the gate) — never an actively-deploying release
+# (`in_progress`) or a rollback (a different workflow). For each stale run it
+# cancels the run (which frees the lock so the pending next release starts) and
+# then finalizes that run's single Slack message in place to "Superseded".
+#
+# Asymmetry note: a hard "Cancel workflow run" can't be superseded this way
+# (it cancels this janitor too); this targets the explicit gate-wait case.
+
+on:
+  schedule:
+    - cron: '0 0,6,12,18 * * 1-5' # same ticks as release.yml
+  workflow_dispatch:
+    inputs:
+      min_age_minutes:
+        description: 'Only supersede waiting runs older than this many minutes (guards a freshly-dispatched run)'
+        default: '30'
+        type: string
+
+permissions:
+  actions: write # gh run cancel / list / download
+  contents: read # checkout
+
+concurrency:
+  # Deliberately NOT airo-release-main — the janitor must run while a release
+  # holds that lock. Its own singleton just prevents overlapping janitor ticks.
+  group: airo-release-supersede
+  cancel-in-progress: false
+
+jobs:
+  supersede:
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version: '1.26'
+          cache-dependency-path: release-manager/go.sum
+      - name: Build release-manager
+        working-directory: release-manager
+        run: go build -o "$RUNNER_TEMP/release-manager" ./cmd/release-manager/
+      - name: Supersede stale gate-stuck releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          MIN_AGE_MINUTES: ${{ inputs.min_age_minutes || '30' }}
+        run: |
+          set -uo pipefail
+
+          # Runs paused at the prod gate report status "waiting". Active deploys
+          # are "in_progress"; rollbacks are a different workflow — filtering on
+          # status == waiting excludes both, so we never abort a live deploy.
+          mapfile -t RUNS < <(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow release.yml \
+            -L 30 \
+            --json databaseId,status,createdAt \
+            --jq '.[] | select(.status == "waiting") | "\(.databaseId) \(.createdAt)"')
+
+          if [ "${#RUNS[@]}" -eq 0 ]; then
+            echo "No release runs waiting at the gate — nothing to supersede."
+            exit 0
+          fi
+
+          NOW=$(date -u +%s)
+          MIN_AGE_SECONDS=$(( MIN_AGE_MINUTES * 60 ))
+
+          for entry in "${RUNS[@]}"; do
+            RUN_ID="${entry%% *}"
+            CREATED="${entry#* }"
+            CREATED_TS=$(date -u -d "$CREATED" +%s 2>/dev/null || echo 0)
+            if [ "$CREATED_TS" -eq 0 ]; then
+              echo "::warning::could not parse createdAt=$CREATED for run $RUN_ID; skipping"
+              continue
+            fi
+            AGE=$(( NOW - CREATED_TS ))
+            if [ "$AGE" -lt "$MIN_AGE_SECONDS" ]; then
+              echo "Run $RUN_ID is only ${AGE}s old (< ${MIN_AGE_SECONDS}s) — leaving it for now."
+              continue
+            fi
+
+            echo "Superseding gate-stuck run $RUN_ID (waiting ${AGE}s)…"
+
+            # Cancel FIRST — freeing airo-release-main is the critical action, so
+            # a later Slack hiccup never leaves the lock held.
+            gh run cancel "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+              || echo "::warning::could not cancel run $RUN_ID (it may resolve on its own)"
+
+            # Then finalize THAT run's Slack message in place (best-effort):
+            # download ITS phase-state artifact (holds the message ts) and edit
+            # it via --mode abort. Reason bypasses the approval lookup.
+            STATE_DIR="$RUNNER_TEMP/superseded-$RUN_ID"
+            mkdir -p "$STATE_DIR"
+            if gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+                 -n release-phase-state -D "$STATE_DIR" 2>/dev/null; then
+              "$RUNNER_TEMP/release-manager" run --headless --mode abort \
+                --state-file "$STATE_DIR/state.json" \
+                --reason "Superseded — no approval before the next scheduled release" \
+                || echo "::warning::Slack finalize failed for run $RUN_ID"
+            else
+              echo "::warning::no state artifact for run $RUN_ID (expired?); cancelled without a Slack update"
+            fi
+          done

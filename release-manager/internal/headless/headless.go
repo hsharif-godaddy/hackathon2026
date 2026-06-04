@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,6 +42,7 @@ const (
 	ModeTest     Mode = "test"     // preflight + release notes + run the test environment
 	ModeProd     Mode = "prod"     // import test state + run prod + cut the GitHub release
 	ModeRollback Mode = "rollback" // discover previous-good + run the rollback group
+	ModeAbort    Mode = "abort"    // import test state + finalize a gate-declined release in place
 )
 
 // Options configures a headless run. Populated from CLI flags + env in main.
@@ -48,7 +51,12 @@ type Options struct {
 	Branch    string
 	DryRun    bool
 	Operator  string
-	StateFile string // ModeTest writes it; ModeProd reads it.
+	StateFile string // ModeTest writes it; ModeProd/ModeAbort read it.
+
+	// Reason (ModeAbort only) overrides the terminal status line. The supersede
+	// janitor passes an explicit reason; when empty the message is derived from
+	// the run's approval history (a gate reject vs. a cancel).
+	Reason string
 
 	// Rollback overrides (ModeRollback): any non-empty field wins over the
 	// auto-discovered snapshot value.
@@ -72,16 +80,20 @@ type phaseState struct {
 // run carries the per-invocation state needed to render the Slack message.
 type run struct {
 	p               *pipeline.Pipeline
+	runner          gh.Runner       // for the optional gh.Approver capability (gate attribution)
 	notifier        *slack.Notifier // nil ⇒ Slack disabled (e.g. dry-run)
 	operator        string
 	branch          string
 	dryRun          bool
 	runURL          string // this orchestrator run's URL (for the approval CTA)
+	repo            string // GITHUB_REPOSITORY, for the approvals API
+	runID           int64  // GITHUB_RUN_ID, for the approvals API
 	releaseNotes    []pipeline.ReleaseNote
 	releaseNotesURL string
 	start           time.Time
 	releaseTag      string
 	releaseURL      string
+	approvedBy      string // reviewer login who approved the prod gate ("" if unknown)
 }
 
 // githubRunURL builds the current GHA run's URL from the standard runner env
@@ -94,6 +106,12 @@ func githubRunURL() string {
 	return fmt.Sprintf("%s/%s/actions/runs/%s", server, repo, id)
 }
 
+// githubRunID parses GITHUB_RUN_ID; 0 when unset/non-numeric (not under Actions).
+func githubRunID() int64 {
+	id, _ := strconv.ParseInt(os.Getenv("GITHUB_RUN_ID"), 10, 64)
+	return id
+}
+
 // Run executes one phase of a release. It returns a non-zero-worthy error when a
 // stage fails; callers (main) translate that into a process exit code. A failed
 // stage is terminal — the operator re-runs the phase from the Actions UI (no
@@ -101,11 +119,14 @@ func githubRunURL() string {
 func Run(ctx context.Context, cfg *config.Config, runner gh.Runner, notifier *slack.Notifier, opts Options) error {
 	r := &run{
 		p:        pipeline.New(cfg, runner, opts.DryRun, opts.Branch, nil),
+		runner:   runner,
 		notifier: notifier,
 		operator: opts.Operator,
 		branch:   opts.Branch,
 		dryRun:   opts.DryRun,
 		runURL:   githubRunURL(),
+		repo:     os.Getenv("GITHUB_REPOSITORY"),
+		runID:    githubRunID(),
 		start:    time.Now(),
 	}
 	r.p.Overrides = opts.Overrides
@@ -124,8 +145,10 @@ func Run(ctx context.Context, cfg *config.Config, runner gh.Runner, notifier *sl
 		return r.runProd(ctx, opts)
 	case ModeRollback:
 		return r.runRollback(ctx, opts)
+	case ModeAbort:
+		return r.runAbort(ctx, opts)
 	default:
-		return fmt.Errorf("unknown mode %q (want test|prod|rollback)", opts.Mode)
+		return fmt.Errorf("unknown mode %q (want test|prod|rollback|abort)", opts.Mode)
 	}
 }
 
@@ -191,6 +214,9 @@ func (r *run) runProd(ctx context.Context, opts Options) error {
 	if r.notifier != nil && st.SlackTS != "" {
 		r.notifier.SeedTS(st.SlackTS) // edit the existing message in place
 	}
+	// Credit the reviewer who approved the gate, surfaced through the prod
+	// deploy and on Complete. Best-effort: "" when the API can't be read.
+	r.approvedBy = r.gateApprover(ctx)
 
 	if err := r.p.BuildStages("prod"); err != nil {
 		return err
@@ -208,6 +234,121 @@ func (r *run) runProd(ctx context.Context, opts Options) error {
 	r.update(ctx, true)  // Complete + release link
 	r.writeProdSummary() // post-deploy manual checklist on the prod job summary
 	return nil
+}
+
+// runAbort finalizes a release that did NOT proceed past the prod gate, editing
+// the SINGLE existing message in place to a terminal state — so the channel
+// sees one updated message, not a stuck "Awaiting approval" plus a separate
+// post. Two callers:
+//   - the gate-declined job (reject): no Reason ⇒ message derived from the
+//     approval history ("rejected by @user — comment").
+//   - the supersede janitor: passes Reason ("Superseded …") for a release left
+//     un-approved past the next scheduled run; it operates on the STUCK run's
+//     state artifact, so the seeded ts edits THAT run's message.
+//
+// It returns nil on success: the job's own conclusion should be green (it did
+// its job — annotating Slack); the run's overall outcome is decided elsewhere.
+func (r *run) runAbort(ctx context.Context, opts Options) error {
+	st, err := readState(opts.StateFile)
+	if err != nil {
+		return fmt.Errorf("reading phase state: %w", err)
+	}
+	if err := r.p.ImportState(st.Pipeline); err != nil {
+		return fmt.Errorf("importing pipeline state: %w", err)
+	}
+	r.releaseNotes, r.releaseNotesURL = st.ReleaseNotes, st.ReleaseNotesURL
+	r.operator, r.branch = st.Operator, st.Branch
+	if st.StartUnix > 0 {
+		r.start = time.Unix(st.StartUnix, 0)
+	}
+	if r.notifier == nil || st.SlackTS == "" {
+		// Nothing to finalize (Slack disabled, or the run never posted a
+		// message). Don't create a stray new message — just exit.
+		logger.Log("headless: abort: no existing Slack message to finalize; skipping")
+		return nil
+	}
+	r.notifier.SeedTS(st.SlackTS)                 // edit the existing message in place
+	r.fail(ctx, r.abortMessage(ctx, opts.Reason)) // terminal aborted footer + notified=true
+	return nil
+}
+
+// abortMessage is the terminal status line for an aborted release: an explicit
+// reason when provided (the supersede janitor passes one), otherwise derived
+// from the approval history.
+func (r *run) abortMessage(ctx context.Context, reason string) string {
+	if m := strings.TrimSpace(reason); m != "" {
+		return m
+	}
+	return r.declineMessage(ctx)
+}
+
+// declineMessage describes why the release stopped at the gate, attributing the
+// reviewer when the approvals API records a rejection (with their comment when
+// present). A hard run-cancellation leaves no approval record — and cancels
+// this job too — so the fallback is a plain "Release canceled".
+func (r *run) declineMessage(ctx context.Context) string {
+	if dec, ok := r.gateDecision(ctx, "rejected"); ok {
+		msg := "Release rejected by @" + dec.User
+		if c := strings.TrimSpace(dec.Comment); c != "" {
+			msg += " — " + c
+		}
+		return msg
+	}
+	return "Release canceled"
+}
+
+// gateApprover returns the login of the reviewer who approved the prod gate,
+// or "" when unknown (dry-run, no API access, or no approval recorded).
+func (r *run) gateApprover(ctx context.Context) string {
+	if dec, ok := r.gateDecision(ctx, "approved"); ok {
+		return dec.User
+	}
+	return ""
+}
+
+// gateProdEnv is the GHA Environment whose required-reviewers gate prod.
+const gateProdEnv = "release-prod-approval"
+
+// gateDecision returns the most recent prod-gate review whose state matches
+// want ("approved"|"rejected"), read via the optional gh.Approver capability.
+// ok=false when: dry-run; the runner can't fetch approvals (a fake); the run
+// env vars are absent; the API errors; or no matching review exists — every
+// caller degrades gracefully (no attribution) rather than failing the release.
+func (r *run) gateDecision(ctx context.Context, want string) (gh.Approval, bool) {
+	if r.dryRun {
+		return gh.Approval{}, false
+	}
+	approver, ok := r.runner.(gh.Approver)
+	if !ok || r.repo == "" || r.runID == 0 {
+		return gh.Approval{}, false
+	}
+	approvals, err := approver.RunApprovals(ctx, r.repo, r.runID)
+	if err != nil {
+		logger.Log("headless.warn: could not read gate approvals: %v", err)
+		return gh.Approval{}, false
+	}
+	var match gh.Approval
+	var found bool
+	for _, a := range approvals { // chronological — the last matching review wins
+		if a.State == want && envMatch(a.Environments, gateProdEnv) {
+			match, found = a, true
+		}
+	}
+	return match, found
+}
+
+// envMatch reports whether the review covers env. An empty list (older API
+// payloads) is treated as a match — the gate has a single environment.
+func envMatch(envs []string, env string) bool {
+	if len(envs) == 0 {
+		return true
+	}
+	for _, e := range envs {
+		if e == env {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *run) runRollback(ctx context.Context, opts Options) error {
@@ -329,6 +470,7 @@ func (r *run) state(finished, aborted bool) render.State {
 		Snapshot:        r.p.Snapshot,
 		ReleaseTag:      r.releaseTag,
 		ReleaseURL:      r.releaseURL,
+		ApprovedBy:      r.approvedBy,
 		Elapsed:         time.Since(r.start),
 	}
 }
