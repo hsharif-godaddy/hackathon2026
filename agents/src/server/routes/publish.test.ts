@@ -10,6 +10,10 @@ import express from 'express';
 import type { Express } from 'express';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 
+vi.mock('@airo/shared/publish', () => ({
+  PublishErrorCode: { TokenStale: 'TOKEN_STALE' },
+}));
+
 // Mock dependencies BEFORE imports
 const mockFindById = vi.fn();
 
@@ -127,7 +131,7 @@ describe('Publish Route Authorization', () => {
 
       expect(response.body).toEqual({
         error: 'Publish not allowed',
-        details: 'Airo Plus subscription required to publish apps'
+        details: 'Publishing requires a paid Airo Builder plan'
       });
       expect(mockFindById).not.toHaveBeenCalled();
     });
@@ -424,6 +428,132 @@ describe('Publish Route Authorization', () => {
 
       expect(response.body.preflight).toEqual(preflight);
       expect(response.body.error).toMatch(/start command/i);
+    });
+  });
+
+  describe('Token Freshness (iat recency check)', () => {
+    it('should reject publish with stale token (iat > 30s old)', async () => {
+      app = express();
+      app.use(express.json());
+      app.use((req, res, next) => {
+        (req as AuthenticatedRequest).agentContext = {
+          siteId: 'test-site',
+          canDownload: false,
+          canPublish: true,
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000) - 60, // 60 seconds old
+        };
+        next();
+      });
+      app.use('/', publishRouter);
+
+      const response = await request(app)
+        .post('/apps/test-app-id/publish')
+        .send({})
+        .expect(401);
+
+      expect(response.body.code).toBe('TOKEN_STALE');
+      expect(response.body.error).toBe('Token too old for publish');
+    });
+
+    it('should accept publish with fresh token (iat < 30s old)', async () => {
+      app = express();
+      app.use(express.json());
+      app.use((req, res, next) => {
+        (req as AuthenticatedRequest).agentContext = {
+          siteId: 'test-site',
+          canDownload: false,
+          canPublish: true,
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000) - 5, // 5 seconds old
+        };
+        next();
+      });
+      app.use('/', publishRouter);
+
+      mockFindById.mockReturnValue(null);
+
+      const response = await request(app)
+        .post('/apps/test-app-id/publish')
+        .send({})
+        .expect(404); // Past token check, hits app-not-found
+
+      expect(response.body.error).toBe('App not found');
+    });
+
+    it('should reject publish when iat is missing (undefined)', async () => {
+      app = express();
+      app.use(express.json());
+      app.use((req, res, next) => {
+        (req as AuthenticatedRequest).agentContext = {
+          siteId: 'test-site',
+          canDownload: false,
+          canPublish: true,
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          // iat is intentionally omitted
+        } as any;
+        next();
+      });
+      app.use('/', publishRouter);
+
+      const response = await request(app)
+        .post('/apps/test-app-id/publish')
+        .send({})
+        .expect(401);
+
+      expect(response.body.code).toBe('TOKEN_STALE');
+      expect(response.body.error).toBe('Token missing iat');
+    });
+
+    it('should accept publish when iat is exactly 30s old (boundary)', async () => {
+      app = express();
+      app.use(express.json());
+      app.use((req, res, next) => {
+        (req as AuthenticatedRequest).agentContext = {
+          siteId: 'test-site',
+          canDownload: false,
+          canPublish: true,
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000) - 30, // exactly 30 seconds — not > 30
+        };
+        next();
+      });
+      app.use('/', publishRouter);
+
+      mockFindById.mockReturnValue(null);
+
+      const response = await request(app)
+        .post('/apps/test-app-id/publish')
+        .send({})
+        .expect(404); // Past token check, hits app-not-found
+
+      expect(response.body.error).toBe('App not found');
+    });
+
+    it('should skip iat check for PaaS requests', async () => {
+      app = express();
+      app.use(express.json());
+      app.use((req, res, next) => {
+        (req as AuthenticatedRequest).agentContext = {
+          siteId: 'test-site',
+          canDownload: false,
+          canPublish: true,
+          product: 'PaaSNodeJS',
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000) - 300, // 5 minutes old — would fail for AAB
+        };
+        next();
+      });
+      app.use('/', publishRouter);
+
+      mockFindById.mockReturnValue(null);
+
+      const response = await request(app)
+        .post('/apps/test-app-id/publish')
+        .send({})
+        .expect(404); // Past token check, hits app-not-found
+
+      expect(response.body.error).toBe('App not found');
     });
   });
 });

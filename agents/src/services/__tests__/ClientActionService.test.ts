@@ -291,6 +291,51 @@ describe('ClientActionService', () => {
     })
   })
 
+  describe('requiresUpgrade/reason passthrough', () => {
+    it('should pass through requiresUpgrade and reason on failure', async () => {
+      const request = { action: 'publish', params: { appId: 'app-123' } }
+
+      const promise = service.executeAction(request)
+
+      const requestId = mockSocket.emit.mock.calls[0][1].data.requestId
+      const handler = mockSocket.on.mock.calls.find((call: any) => call[0] === 'client_action_result')?.[1]
+      handler({
+        requestId,
+        success: false,
+        error: 'Upgrade required',
+        requiresUpgrade: true,
+        reason: 'no_subscription',
+      })
+
+      const result = await promise
+
+      expect(result.success).toBe(false)
+      expect(result.requiresUpgrade).toBe(true)
+      expect(result.reason).toBe('no_subscription')
+      expect(result.error).toBe('Upgrade required')
+    })
+
+    it('should not include requiresUpgrade/reason when not provided', async () => {
+      const request = { action: 'publish', params: { appId: 'app-123' } }
+
+      const promise = service.executeAction(request)
+
+      const requestId = mockSocket.emit.mock.calls[0][1].data.requestId
+      const handler = mockSocket.on.mock.calls.find((call: any) => call[0] === 'client_action_result')?.[1]
+      handler({
+        requestId,
+        success: false,
+        error: 'Some other error',
+      })
+
+      const result = await promise
+
+      expect(result.success).toBe(false)
+      expect(result.requiresUpgrade).toBeUndefined()
+      expect(result.reason).toBeUndefined()
+    })
+  })
+
   describe('handleClientActionResult', () => {
     it('should ignore results for unknown requestIds', async () => {
       const request = { action: 'test', params: {} }

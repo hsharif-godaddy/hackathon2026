@@ -49,6 +49,14 @@ vi.mock('../../../../utils/dev-supervisor-client-factory.js', () => ({
   },
 }))
 
+vi.mock('@airo/shared/publish', () => ({
+  PublishDenialReason: {
+    NoSubscription: 'no_subscription',
+    PublishLimitReached: 'publish_limit_reached',
+  },
+}))
+
+import { PublishDenialReason } from '@airo/shared/publish'
 import { publishTool, statusTool } from '../index.js'
 import { AppRepository } from '../../../../database/repositories/AppRepository.js'
 import { getActionService } from '../../../../server/agent-runtime.js'
@@ -94,8 +102,15 @@ describe('publishing skill publish-tools', () => {
       vi.mocked(getActionService).mockReturnValue(mockClientActionService as any)
     })
 
-    describe('publish eligibility pre-validation', () => {
-      it('should return upgrade message when canPublish is false', async () => {
+    describe('publish delegation (no billing pre-check)', () => {
+      it('should delegate to frontend even when canPublish is false', async () => {
+        vi.mocked(executePublish).mockResolvedValue({
+          success: false,
+          requiresUpgrade: true,
+          reason: PublishDenialReason.NoSubscription,
+          error: 'Upgrade required',
+        } as any)
+
         const context = {
           metadata: {
             appId: 'test-app-id',
@@ -106,17 +121,22 @@ describe('publishing skill publish-tools', () => {
 
         const result = await runPublishTool({}, { experimental_context: context })
 
+        expect(executePublish).toHaveBeenCalled()
         expect(result).toMatchObject({
           success: false,
           requiresUpgrade: true,
           publishStarted: false,
         })
-        expect(result.message).toContain('Upgrade to publish')
-        expect(result.message).toContain('Do not call publishing__status')
-        expect(executePublish).not.toHaveBeenCalled()
       })
 
-      it('should return upgrade message when permissions are undefined', async () => {
+      it('should delegate to frontend when permissions are undefined', async () => {
+        vi.mocked(executePublish).mockResolvedValue({
+          success: false,
+          requiresUpgrade: true,
+          reason: PublishDenialReason.NoSubscription,
+          error: 'Upgrade required',
+        } as any)
+
         const context = {
           metadata: {
             appId: 'test-app-id',
@@ -126,20 +146,53 @@ describe('publishing skill publish-tools', () => {
 
         const result = await runPublishTool({}, { experimental_context: context })
 
+        expect(executePublish).toHaveBeenCalled()
         expect(result).toMatchObject({
           success: false,
           requiresUpgrade: true,
-          publishStarted: false,
         })
-        expect(result.message).toContain('Upgrade to publish')
+      })
+
+      it('should throw when no socket is available (broken context)', async () => {
+        const context = {
+          metadata: { appId: 'test-app-id' },
+        }
+
+        await expect(runPublishTool({}, { experimental_context: context })).rejects.toThrow(
+          'Socket ID not available in context'
+        )
         expect(executePublish).not.toHaveBeenCalled()
       })
 
-      it('should check permission before socket/service lookups', async () => {
+      it('should return connectivity error when client action service is unavailable', async () => {
+        vi.mocked(getActionService).mockReturnValue(null as any)
+
         const context = {
-          metadata: {
-            appId: 'test-app-id',
-          },
+          metadata: { appId: 'test-app-id' },
+          socketId: 'test-socket-id',
+        }
+
+        const result = await runPublishTool({}, { experimental_context: context })
+
+        expect(result).toMatchObject({
+          success: false,
+          publishStarted: false,
+        })
+        expect(result.message).toContain('no client connection')
+        expect(executePublish).not.toHaveBeenCalled()
+      })
+
+      it('should handle publish_limit_reached reason from frontend', async () => {
+        vi.mocked(executePublish).mockResolvedValue({
+          success: false,
+          requiresUpgrade: true,
+          reason: PublishDenialReason.PublishLimitReached,
+          error: 'Publish limit reached',
+        } as any)
+
+        const context = {
+          metadata: { appId: 'app-1', permissions: { canPublish: true } },
+          socketId: 'sock-1',
         }
 
         const result = await runPublishTool({}, { experimental_context: context })
@@ -147,8 +200,9 @@ describe('publishing skill publish-tools', () => {
         expect(result).toMatchObject({
           success: false,
           requiresUpgrade: true,
+          publishStarted: false,
         })
-        expect(executePublish).not.toHaveBeenCalled()
+        expect(result.message).toContain('publish limit')
       })
 
       it('should proceed to executePublish when canPublish is true', async () => {
@@ -196,7 +250,7 @@ describe('publishing skill publish-tools', () => {
         )
       })
 
-      it('throws when executePublish returns success: false', async () => {
+      it('throws when executePublish returns success: false without requiresUpgrade', async () => {
         vi.mocked(executePublish).mockResolvedValue({
           success: false,
           error: 'Build failed',

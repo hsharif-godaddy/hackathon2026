@@ -22,6 +22,8 @@ export interface ClientActionResult {
   errorDetails?: string
   logs?: Array<{ message: string; source?: string; timestamp?: string }>
   exitCode?: number
+  requiresUpgrade?: boolean
+  reason?: string
 }
 
 /**
@@ -91,12 +93,14 @@ export class ClientActionService implements IClientActionService {
     errorDetails?: string
     logs?: Array<{ message: string; source?: string; timestamp?: string }>
     exitCode?: number
+    requiresUpgrade?: boolean
+    reason?: string
   }): void {
-    const { requestId, success, result, error, errorDetails, logs, exitCode } = data
+    const { requestId, success, result, error, errorDetails, logs, exitCode, requiresUpgrade, reason } = data
 
     const actionResult: ClientActionResult = success
       ? { success: true, result }
-      : { success: false, error: error || 'Unknown error', errorDetails, logs, exitCode }
+      : { success: false, error: error || 'Unknown error', errorDetails, logs, exitCode, requiresUpgrade, reason }
 
     const resolved = this.registry.resolveAction(requestId, actionResult)
     if (!resolved) {
@@ -108,8 +112,12 @@ export class ClientActionService implements IClientActionService {
       logger.info('client-action.success', { requestId, conversationId: this.conversationId })
     } else {
       logger.error('client-action.error', {
-        requestId, conversationId: this.conversationId,
-        error, hasErrorDetails: !!errorDetails, hasLogs: !!logs, exitCode,
+        requestId,
+        conversationId: this.conversationId,
+        error,
+        hasErrorDetails: !!errorDetails,
+        hasLogs: !!logs,
+        exitCode,
       })
     }
   }

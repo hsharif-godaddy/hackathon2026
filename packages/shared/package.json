@@ -58,6 +58,10 @@
     "./app-structure": {
       "types": "./dist/app-structure/index.d.ts",
       "import": "./dist/app-structure/index.js"
+    },
+    "./publish": {
+      "types": "./dist/publish/index.d.ts",
+      "import": "./dist/publish/index.js"
     }
   },
   "typesVersions": {
@@ -97,6 +101,9 @@
       ],
       "app-structure": [
         "dist/app-structure/index.d.ts"
+      ],
+      "publish": [
+        "dist/publish/index.d.ts"
       ]
     }
   },

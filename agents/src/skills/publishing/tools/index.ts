@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { SkillToolDefinition } from '@airo/ai-skills';
+import { PublishDenialReason } from '@airo/shared/publish';
 import { AppRepository } from '../../../database/repositories/AppRepository.js';
 import { logger } from '../../../logging/index.js';
 import { customerIdFromContext } from '../../../memory/interfaces/scope.js';
@@ -27,9 +28,10 @@ function hasCustomDomain(domains?: SiteDomain[]): boolean {
 export const publishTool: SkillToolDefinition = {
   name: 'publish',
   description: `Publish to production. Only on explicit user request—never after edits/commits/without being asked. ` +
+    `Always call this tool when user asks to publish — eligibility is checked automatically. ` +
     `Success: no custom domain + domain attach → suggestedResponse "Add custom domain"; else other steps. publishing__status optional (user asks for prod health/logs). ` +
     `Build/publish failure: do NOT call publishing__status—error already has logs; status shows live container (previous deploy), not failed build. ` +
-    `Errors: service unavailable → no retry; subscription → upgrade, no retry; session ended → stop. ExitCode → fix code, retry once.`,
+    `Errors: service unavailable → no retry; requiresUpgrade → tell user upgrade options shown, they can retry after upgrading; session ended → stop. ExitCode → fix code, retry once.`,
 
   parameters: z.object({
     commitHash: z
@@ -44,18 +46,6 @@ export const publishTool: SkillToolDefinition = {
       throw new Error('App ID is required for publishing');
     }
 
-    const permissions = (context?.metadata as any)?.permissions ?? {};
-    const canPublish = permissions.canPublish ?? false;
-    if (!canPublish) {
-      logger.warn('skill.publishing.publish.permission-denied', { appId, reason: 'missing canPublish permission' });
-      return {
-        success: false,
-        message: 'Upgrade to publish. Do not call publishing__status — no publish started.',
-        requiresUpgrade: true,
-        publishStarted: false,
-      };
-    }
-
     const socketId = (context as any)?.socketId;
     if (!socketId || typeof socketId !== 'string') {
       throw new Error('Socket ID not available in context - tool must be called via WebSocket');
@@ -63,7 +53,12 @@ export const publishTool: SkillToolDefinition = {
 
     const clientActionService = getActionService(socketId);
     if (!clientActionService) {
-      throw new Error('Client action service unavailable — cannot publish');
+      logger.warn('skill.publishing.publish.no-client-service', { appId });
+      return {
+        success: false,
+        message: 'Cannot publish right now — no client connection. Please use the publish button in the UI.',
+        publishStarted: false,
+      };
     }
 
     const publishOptions: { appId: string; commitHash?: string } = { appId };
@@ -73,6 +68,20 @@ export const publishTool: SkillToolDefinition = {
     const result = await executePublish(publishOptions, clientActionService);
 
     if (!result.success) {
+      if (result.requiresUpgrade) {
+        const reason = result.reason || PublishDenialReason.NoSubscription;
+        logger.info('skill.publishing.publish.requires-upgrade', { appId, reason });
+        const message = reason === PublishDenialReason.PublishLimitReached
+          ? 'You\'ve reached your publish limit. Upgrade your plan or unpublish an existing app to continue. The upgrade options have been shown.'
+          : 'A paid subscription is required to publish. The upgrade options have been shown to the user.';
+        return {
+          success: false,
+          message,
+          requiresUpgrade: true,
+          publishStarted: false,
+        };
+      }
+
       let errorMessage = `Publish failed: ${result.error || 'Unknown error'}`;
 
       if (result.errorDetails) {

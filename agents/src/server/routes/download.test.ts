@@ -205,7 +205,7 @@ describe('Download Route Authorization', () => {
 
       expect(response.body).toEqual({
         error: 'Download not allowed',
-        details: 'Airo Plus subscription required to download app files'
+        details: 'Downloading requires a paid Airo Builder plan'
       });
       expect(mockFindById).not.toHaveBeenCalled();
     });

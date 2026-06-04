@@ -33,7 +33,7 @@ describe('log-sources', () => {
         expect(config?.backendType).toBe('loki');
         expect(config?.lokiEndpoint).toBe('https://loki.test');
         expect(config?.lokiApiKey).toBe('loki-key');
-        expect(config?.lokiLabels).toEqual({ job: 'airo-agents', env: 'dev' });
+        expect(config?.lokiLabels).toEqual({ service_name: 'airo-agents', env: 'dev' });
         expect(config?.environment).toBe('dev');
       });
 
@@ -51,7 +51,7 @@ describe('log-sources', () => {
 
         const config = getLogSourceConfig('airo-agents');
 
-        expect(config?.lokiLabels).toEqual({ job: 'airo-agents', env: 'prod' });
+        expect(config?.lokiLabels).toEqual({ service_name: 'airo-agents', env: 'prod' });
         expect(config?.environment).toBe('prod');
       });
 
@@ -61,7 +61,7 @@ describe('log-sources', () => {
         const config = getLogSourceConfig('airo-preview');
 
         expect(config?.backendType).toBe('loki');
-        expect(config?.lokiLabels).toEqual({ job: 'airo-preview-application', env: 'prod' });
+        expect(config?.lokiLabels).toEqual({ service_name: 'airo-preview-application', env: 'prod' });
         expect(config?.fieldMapping.appIdField).toBe('app_id');
       });
 
@@ -71,7 +71,7 @@ describe('log-sources', () => {
         const config = getLogSourceConfig('airo-publish');
 
         expect(config?.backendType).toBe('loki');
-        expect(config?.lokiLabels).toEqual({ job: 'airo-publish-application', env: 'prod' });
+        expect(config?.lokiLabels).toEqual({ service_name: 'airo-publish-application', env: 'prod' });
         expect(config?.fieldMapping.appIdField).toBe('app_id');
       });
 
@@ -152,7 +152,7 @@ describe('log-sources', () => {
   });
 
   describe('getAllLogSources', () => {
-    it('returns 5 sources with correct backend types', () => {
+    it('returns 8 sources with correct backend types', () => {
       process.env.ENVIRONMENT_NAME = 'prod';
       process.env.AIRO_BUILDER_ES_ENDPOINT = 'https://airo.endpoint';
       process.env.AIRO_BUILDER_ES_API_KEY = 'airo-key';
@@ -161,19 +161,28 @@ describe('log-sources', () => {
 
       const sources = getAllLogSources();
 
-      expect(sources).toHaveLength(5);
+      expect(sources).toHaveLength(8);
 
       const byId = Object.fromEntries(sources.map(s => [s.id, s]));
 
       expect(byId['airo-agents'].backendType).toBe('loki');
-      expect(byId['airo-agents'].lokiLabels).toEqual({ job: 'airo-agents', env: 'prod' });
+      expect(byId['airo-agents'].lokiLabels).toEqual({ service_name: 'airo-agents', env: 'prod' });
 
       expect(byId['airo-preview'].backendType).toBe('loki');
-      expect(byId['airo-preview'].lokiLabels).toEqual({ job: 'airo-preview-application', env: 'prod' });
+      expect(byId['airo-preview'].lokiLabels).toEqual({ service_name: 'airo-preview-application', env: 'prod' });
       expect(byId['airo-preview'].fieldMapping.appIdField).toBe('app_id');
 
       expect(byId['airo-publish'].backendType).toBe('loki');
-      expect(byId['airo-publish'].lokiLabels).toEqual({ job: 'airo-publish-application', env: 'prod' });
+      expect(byId['airo-publish'].lokiLabels).toEqual({ service_name: 'airo-publish-application', env: 'prod' });
+
+      expect(byId['airo-pre-start'].backendType).toBe('loki');
+      expect(byId['airo-pre-start'].lokiLabels).toEqual({ service_name: 'airo-pre-start', env: 'prod' });
+
+      expect(byId['airo-db-init'].backendType).toBe('loki');
+      expect(byId['airo-db-init'].lokiLabels).toEqual({ service_name: 'airo-db-init', env: 'prod' });
+
+      expect(byId['airo-secrets-worker'].backendType).toBe('loki');
+      expect(byId['airo-secrets-worker'].lokiLabels).toEqual({ service_name: 'airo-secrets-worker', env: 'prod' });
 
       expect(byId['airo-app'].backendType).toBe('elasticsearch');
       expect(byId['airo-app'].index).toBe('logs-*');
@@ -194,6 +203,9 @@ describe('log-sources', () => {
       expect(byId['airo-agents'].lokiLabels?.env).toBe('dev');
       expect(byId['airo-preview'].lokiLabels?.env).toBe('dev');
       expect(byId['airo-publish'].lokiLabels?.env).toBe('dev');
+      expect(byId['airo-pre-start'].lokiLabels?.env).toBe('dev');
+      expect(byId['airo-db-init'].lokiLabels?.env).toBe('dev');
+      expect(byId['airo-secrets-worker'].lokiLabels?.env).toBe('dev');
       expect(byId['control_plane'].index).toBe('pagely-mgmt-worker-hosting-activity-dev,pagely-mgmt-worker-airo-activity-dev');
     });
 

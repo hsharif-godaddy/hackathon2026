@@ -23,6 +23,8 @@ export interface PublishResult {
   errorDetails?: string
   logs?: Array<{ message: string; source?: string; timestamp?: string }>
   exitCode?: number
+  requiresUpgrade?: boolean
+  reason?: string
 }
 
 /**
@@ -50,9 +52,11 @@ export async function executePublish(
     })
 
     if (!clientResult.success) {
+      const requiresUpgrade = clientResult.requiresUpgrade === true
       logger.error('publish-client.failed', {
         appId,
         error: clientResult.error,
+        requiresUpgrade,
         hasErrorDetails: !!clientResult.errorDetails,
         hasLogs: !!clientResult.logs,
         exitCode: clientResult.exitCode,
@@ -63,6 +67,8 @@ export async function executePublish(
         errorDetails: clientResult.errorDetails,
         logs: clientResult.logs,
         exitCode: clientResult.exitCode,
+        requiresUpgrade,
+        reason: clientResult.reason,
       }
     }
 

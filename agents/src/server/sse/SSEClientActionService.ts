@@ -60,12 +60,14 @@ export class SSEClientActionService implements IClientActionService {
     errorDetails?: string
     logs?: Array<{ message: string; source?: string; timestamp?: string }>
     exitCode?: number
+    requiresUpgrade?: boolean
+    reason?: string
   }): boolean {
-    const { requestId, success, result, error, errorDetails, logs, exitCode } = data
+    const { requestId, success, result, error, errorDetails, logs, exitCode, requiresUpgrade, reason } = data
 
     const actionResult: ClientActionResult = success
       ? { success: true, result }
-      : { success: false, error: error || 'Unknown error', errorDetails, logs, exitCode }
+      : { success: false, error: error || 'Unknown error', errorDetails, logs, exitCode, requiresUpgrade, reason }
 
     const resolved = this.registry.resolveAction(requestId, actionResult)
     if (!resolved) {

@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 
+import { PublishErrorCode } from '@airo/shared/publish';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { createForWorkspace } from '../../workspace/index.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
@@ -90,17 +91,28 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
     }
 
     const contextLogger = log.forApp(id);
-
-    // Check publish permission from JWT claims
     const authReq = req as AuthenticatedRequest;
-    if (!authReq.agentContext?.canPublish) {
-      contextLogger.error('route.publish.forbidden', {
-        reason: 'missing_canPublish_permission',
-      });
-      return res.status(403).json({
-        error: 'Publish not allowed',
-        details: 'Airo Plus subscription required to publish apps'
-      });
+
+    // Enforce token freshness for AAB before trusting claims (PaaS tokens may be longer-lived)
+    if (authReq.agentContext?.product !== 'PaaSNodeJS') {
+      const iat = authReq.agentContext?.iat;
+      if (iat == null) {
+        contextLogger.warn('route.publish.token-missing-iat', {});
+        return res.status(401).json({
+          error: 'Token missing iat',
+          details: 'Publish requires a token with an issued-at claim. Please retry.',
+          code: PublishErrorCode.TokenStale,
+        });
+      }
+      const tokenAge = Math.floor(Date.now() / 1000) - iat;
+      if (tokenAge > 30) {
+        contextLogger.warn('route.publish.token-stale', { tokenAge, iat });
+        return res.status(401).json({
+          error: 'Token too old for publish',
+          details: 'Publish requires a recently issued token. Please retry.',
+          code: PublishErrorCode.TokenStale,
+        });
+      }
     }
 
     // Get app from database

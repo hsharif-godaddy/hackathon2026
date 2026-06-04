@@ -5,6 +5,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { PublishDenialReason, PublishUpgradeRequiredError } from '@airo/shared/publish'
 
 import { createMockMessageContext } from './testUtils'
 import { clientActionExecutors } from '../../actions'
@@ -280,6 +281,84 @@ describe('ClientActionHandler', () => {
         success: false,
         error: 'Publish failed',
       })
+    })
+
+    it('should emit requiresUpgrade and reason when executor throws PublishUpgradeRequiredError', async () => {
+      const mockExecutor = vi.fn().mockRejectedValue(
+        new PublishUpgradeRequiredError(PublishDenialReason.NoSubscription)
+      )
+      vi.mocked(clientActionExecutors).publish = mockExecutor
+
+      const context = createMockMessageContext()
+      const data: WebSocketMessage = {
+        type: 'client_action',
+        content: 'test',
+        data: {
+          action: 'publish',
+          params: { appId: 'app-123' },
+          requestId: 'req-upgrade',
+        },
+      }
+
+      await handler.handle(data, context)
+
+      expect(context.socket.emit).toHaveBeenCalledWith('client_action_result', {
+        requestId: 'req-upgrade',
+        success: false,
+        error: 'Publishing requires a paid Airo Builder plan. Upgrade to continue and make your app live.',
+        requiresUpgrade: true,
+        reason: 'no_subscription',
+      })
+    })
+
+    it('should emit requiresUpgrade with publish_limit_reached reason', async () => {
+      const mockExecutor = vi.fn().mockRejectedValue(
+        new PublishUpgradeRequiredError(PublishDenialReason.PublishLimitReached, 'Publish limit reached')
+      )
+      vi.mocked(clientActionExecutors).publish = mockExecutor
+
+      const context = createMockMessageContext()
+      const data: WebSocketMessage = {
+        type: 'client_action',
+        content: 'test',
+        data: {
+          action: 'publish',
+          params: { appId: 'app-123' },
+          requestId: 'req-limit',
+        },
+      }
+
+      await handler.handle(data, context)
+
+      expect(context.socket.emit).toHaveBeenCalledWith('client_action_result', {
+        requestId: 'req-limit',
+        success: false,
+        error: 'Publish limit reached',
+        requiresUpgrade: true,
+        reason: 'publish_limit_reached',
+      })
+    })
+
+    it('should NOT include requiresUpgrade for regular errors', async () => {
+      const mockExecutor = vi.fn().mockRejectedValue(new Error('Network failure'))
+      vi.mocked(clientActionExecutors).publish = mockExecutor
+
+      const context = createMockMessageContext()
+      const data: WebSocketMessage = {
+        type: 'client_action',
+        content: 'test',
+        data: {
+          action: 'publish',
+          params: { appId: 'app-123' },
+          requestId: 'req-regular',
+        },
+      }
+
+      await handler.handle(data, context)
+
+      const emitted = (context.socket.emit as any).mock.calls[0][1]
+      expect(emitted.requiresUpgrade).toBeUndefined()
+      expect(emitted.reason).toBeUndefined()
     })
 
     it('should handle non-Error exceptions', async () => {

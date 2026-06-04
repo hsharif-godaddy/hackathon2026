@@ -5,6 +5,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { PublishErrorCode } from '@airo/shared/publish'
 
 import { SiteStatus } from '@/lib/control-plane/types'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
@@ -660,6 +661,68 @@ describe('publishAction', () => {
         deploymentStatus: DeploymentStatus.DEPLOYED,
         deploymentMessage: 'Deploying...',
       })
+    })
+
+    it('should retry once with fresh token on 401 TOKEN_STALE', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      // First call returns TOKEN_STALE, retry succeeds
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: async () => ({ code: PublishErrorCode.TokenStale, error: 'Token too old' }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ commitHash: 'abc123' }),
+        } as Response)
+
+      await publishAction(params, context)
+
+      // Should have called regenerateToken twice: once before initial call, once for retry
+      expect(regenerateToken).toHaveBeenCalledTimes(2)
+      expect(regenerateToken).toHaveBeenLastCalledWith({ siteId: 'app-123', force: true })
+      // Two fetch calls to the publish endpoint
+      expect(global.fetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('should NOT retry on 401 without TOKEN_STALE code', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      vi.mocked(global.fetch).mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: async () => ({ error: 'Unauthorized', code: 'SOME_OTHER_CODE' }),
+      } as Response)
+
+      await expect(publishAction(params, context)).rejects.toThrow('Unauthorized')
+
+      // Should NOT have retried — only the initial regenerateToken call
+      expect(regenerateToken).toHaveBeenCalledTimes(1)
+      expect(global.fetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('should use retry response body for error when retry also fails', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      // First call: TOKEN_STALE, second call: different error
+      vi.mocked(global.fetch)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: async () => ({ code: PublishErrorCode.TokenStale, error: 'Token too old' }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          json: async () => ({ error: 'Server exploded' }),
+        } as Response)
+
+      await expect(publishAction(params, context)).rejects.toThrow('Server exploded')
     })
 
     it('should handle API error response', async () => {

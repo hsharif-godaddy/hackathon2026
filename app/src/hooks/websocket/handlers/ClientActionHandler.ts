@@ -5,6 +5,8 @@
  * Executes client-side actions that require browser context or user authentication.
  */
 
+import { PublishUpgradeRequiredError } from '@airo/shared/publish'
+
 import { logger } from '@/lib/request-context'
 import type { DataHandlerContext, MessageHandler, WebSocketMessage } from './types'
 import { clientActionExecutors } from '../actions'
@@ -85,6 +87,25 @@ export class ClientActionHandler implements MessageHandler {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
 
+      // Typed upgrade error from publish paywall
+      if (error instanceof PublishUpgradeRequiredError) {
+        logger.error('websocket.client-action.error', {
+          appId: context.currentAppId,
+          action,
+          requestId,
+          error: errorMessage,
+          requiresUpgrade: true,
+        })
+
+        await this.sendResult(context, requestId, {
+          success: false,
+          error: errorMessage,
+          requiresUpgrade: true,
+          reason: error.reason,
+        })
+        return
+      }
+
       // Extract additional error metadata if available
       const errorDetails = (error as any)?.errorDetails
       const logs = (error as any)?.logs
@@ -120,6 +141,8 @@ export class ClientActionHandler implements MessageHandler {
       errorDetails?: string
       logs?: Array<{ message: string; source?: string; timestamp?: string }>
       exitCode?: number
+      requiresUpgrade?: boolean
+      reason?: string
     }
   ): Promise<void> {
     context.socket.emit('client_action_result', {

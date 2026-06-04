@@ -20,11 +20,11 @@ export type Permission = 'canPublish' | 'canDownload';
 const PERMISSION_ERRORS: Record<Permission, { error: string; details: string }> = {
   canPublish: {
     error: 'Publish not allowed',
-    details: 'Airo Plus subscription required to publish apps'
+    details: 'Publishing requires a paid Airo Builder plan'
   },
   canDownload: {
     error: 'Download not allowed',
-    details: 'Airo Plus subscription required to download app files'
+    details: 'Downloading requires a paid Airo Builder plan'
   }
 };
 
