@@ -250,6 +250,44 @@ export interface SocialPost {
   updatedAt: Date;
 }
 
+/**
+ * Route type for dynamic content routes
+ */
+export type RouteType = 'blog' | 'landing_page';
+
+/**
+ * Generic route configuration
+ * Stores dynamic routes for various content types (blog, landing pages, etc.)
+ */
+export interface Route {
+  id: string;
+  appId: string;
+  routeType: RouteType; // 'blog', 'landing_page'
+  pathPrefix: string; // "blog", "news", "articles", "landing", etc.
+  isDefault: boolean; // For canonical URL generation within route type
+  createdAt: Date;
+}
+
+/**
+ * Blog post
+ * Stores blog posts with markdown content
+ */
+export interface BlogPost {
+  id: string;
+  appId: string;
+  campaignId: string | null;
+  slug: string;
+  title: string;
+  summary: string | null;
+  contentMarkdown: string; // Markdown content
+  featuredImage: string | null;
+  tags: string[] | null; // Array of tag strings (parsed from JSON storage)
+  published: boolean;
+  publishedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // ==================================================================================
 // Database Schema Management Functions
 // ==================================================================================
@@ -630,6 +668,53 @@ function createSocialPostsTable(db: Database): void {
 }
 
 /**
+ * Create dynamic routes table (replaces blog_routes)
+ * Supports multiple content types: blog, landing pages
+ */
+function createRoutesTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS routes (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      route_type TEXT NOT NULL CHECK(route_type IN ('blog', 'landing_page')),
+      path_prefix TEXT NOT NULL,
+      is_default INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE,
+      UNIQUE(app_id, route_type, path_prefix)
+    )
+  `);
+}
+
+/**
+ * Create blog posts table
+ */
+function createBlogPostsTable(db: Database): void {
+  // Blog posts table
+  // TODO: Add FK constraint for campaign_id when campaigns table is implemented
+  //       FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS blog_posts (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      campaign_id TEXT,
+      slug TEXT NOT NULL,
+      title TEXT NOT NULL,
+      summary TEXT,
+      content_markdown TEXT NOT NULL,
+      featured_image TEXT,
+      tags TEXT,
+      published INTEGER DEFAULT 0,
+      published_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE,
+      UNIQUE(app_id, slug)
+    )
+  `);
+}
+
+/**
  * Create all database indexes for efficient queries
  */
 function createIndexes(db: Database): void {
@@ -780,6 +865,32 @@ function createIndexes(db: Database): void {
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_social_posts_campaign_id ON social_posts(campaign_id)
+  `);
+
+  // Routes table indexes (generic for all route types)
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_routes_app_id ON routes(app_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_routes_app_type ON routes(app_id, route_type)
+  `);
+
+  // Blog posts table indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_blog_posts_app_id ON blog_posts(app_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_blog_posts_slug ON blog_posts(app_id, slug)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_blog_posts_published ON blog_posts(app_id, published, published_at DESC)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_blog_posts_campaign_id ON blog_posts(campaign_id)
   `);
 
   // Share tokens table indexes
@@ -1339,6 +1450,10 @@ function applyMigrations(db: Database): void {
 
   // Create social_posts table if it doesn't exist
   createSocialPostsTable(db);
+
+  // Create routes and blog posts tables if they don't exist
+  createRoutesTable(db);
+  createBlogPostsTable(db);
 
   // Add subscription_id column if it doesn't exist (for existing databases)
   try {
