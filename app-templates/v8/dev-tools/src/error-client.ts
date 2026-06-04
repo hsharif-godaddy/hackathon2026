@@ -1,5 +1,7 @@
-import { type BusEventType, type BusMessage, send } from './utils/eventBus';
 import { advanceCycleId, getCurrentCycleId } from './cycle-state';
+import { type BusEventType, type BusMessage, send } from './utils/eventBus';
+import { injectDevToolsStyles } from './utils/injectDevToolsStyles';
+import { isOriginAllowed } from './utils/postMessage';
 
 /**
  * postMessage helper that short-circuits when the preview is loaded
@@ -68,6 +70,35 @@ interface ForwardedErrorData {
   cycleId: number;
 }
 
+type ParsedViteError = ReturnType<typeof parseViteError>;
+
+/**
+ * Build the parent-bound payload for a parsed Vite error. Shared by the
+ * automatic runtime-error buffer POST (`error-fix-request`) and the
+ * user-initiated fix (`error-fix-user-requested`) so both describe the
+ * error identically.
+ *
+ * Prefer the underlying error's name (TypeError, ReferenceError, etc.)
+ * when available — `vite:initial-error` wraps a genuine runtime throw
+ * from the entry module, and the agent fixes it better when it sees the
+ * real class. Fall back to `CompileError` only for true Vite compile
+ * failures (err.name missing).
+ */
+function buildForwardedError(parsed: ParsedViteError): ForwardedErrorData {
+  const { message, file, frame, name, stack } = parsed;
+  const composedStack = [file && `  at ${file}`, frame && `\n${frame}`]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    message,
+    name: name ?? 'CompileError',
+    stack: stack ?? (composedStack || undefined),
+    url: file,
+    timestamp: Date.now(),
+    cycleId: getCurrentCycleId(),
+  };
+}
+
 /**
  * Forward a Vite compile/initial error to the parent builder so it can
  * post the payload to the agents' authenticated runtime-error buffer for
@@ -90,64 +121,335 @@ function notifyParentOfError(errorData: ForwardedErrorData): void {
   }
 }
 
-function sendCompileErrorToParent(data: any) {
+function sendCompileErrorToParent(parsed: ParsedViteError) {
   try {
-    const parsed = parseViteError(data);
-    const { message, file, frame, name: parsedName, stack: parsedStack } = parsed;
-    // Prefer the underlying error's name (TypeError, ReferenceError, etc.)
-    // when available — `vite:initial-error` wraps a genuine runtime throw
-    // from the entry module, and the agent fixes it better when it sees
-    // the real class. Fall back to `CompileError` only for true Vite
-    // compile failures (err.name missing).
-    const name = parsedName ?? 'CompileError';
-    const composedStack = [file && `  at ${file}`, frame && `\n${frame}`]
-      .filter(Boolean)
-      .join('\n');
-    const errorData: ForwardedErrorData = {
-      message,
-      name,
-      stack: parsedStack ?? (composedStack || undefined),
-      url: file,
-      timestamp: Date.now(),
-      cycleId: getCurrentCycleId()
-    };
-
-    notifyParentOfError(errorData);
+    notifyParentOfError(buildForwardedError(parsed));
   } catch (err) {
     console.error('Failed to send message to parent from error-client:', err);
   }
 }
 
+// Mirrors AiroErrorBoundary.PROCESSING_STATE_SYNC_TIMEOUT_MS so compile and
+// runtime error overlays behave identically: show a quiet placeholder until
+// the parent reports whether the agent is actively fixing, then either keep
+// the placeholder (processing) or upgrade to the actionable overlay (idle).
+const PROCESSING_STATE_SYNC_TIMEOUT_MS = 500;
+
+const isStandalonePreview = () => window.parent === window;
+
 let overlayElement: HTMLDivElement | null = null;
 // True once an HMR error has been sent — suppresses the generic dynamic-import error
 // that fires moments later from index.html's import().catch().
 let hasDetailedError = false;
+// The compile error currently on screen (null when the preview is healthy).
+let currentError: ParsedViteError | null = null;
+// Parent agent state, learned via `AGENT_PROCESSING_STATE`. While the agent is
+// fixing we keep the quiet placeholder instead of flashing a scary error card;
+// compile errors fire transiently mid-edit as the agent rewrites a file.
+let isAgentProcessing = false;
+let hasProcessingSync = false;
+let isFixRequested = false;
+let copiedToClipboard = false;
+let processingSyncTimer: ReturnType<typeof setTimeout> | null = null;
+let processingStateHandler: ((event: MessageEvent) => void) | null = null;
 
-function showInactiveOverlay() {
-  if (overlayElement) return; // Already showing
+function removeErrorOverlay() {
+  if (overlayElement) {
+    overlayElement.remove();
+    overlayElement = null;
+  }
+}
 
+/**
+ * Tear down the compile-error surface and reset all related state. Called
+ * when an HMR update clears the error, when React recovers on its own, or
+ * when the user dismisses the overlay.
+ *
+ * Exported for tests; at runtime it's driven by the HMR/initial-error
+ * handlers below.
+ */
+export function clearCompileError() {
+  currentError = null;
+  isFixRequested = false;
+  copiedToClipboard = false;
+  hasDetailedError = false;
+  if (processingSyncTimer !== null) {
+    clearTimeout(processingSyncTimer);
+    processingSyncTimer = null;
+  }
+  removeErrorOverlay();
+}
+
+/**
+ * Full state reset for tests. Clears the current error and the agent-state
+ * singletons that `clearCompileError` intentionally leaves intact at
+ * runtime (processing state outlives any single error), and detaches the
+ * `AGENT_PROCESSING_STATE` listener so each test starts clean.
+ */
+export function resetErrorClientForTest() {
+  clearCompileError();
+  isAgentProcessing = false;
+  hasProcessingSync = false;
+  if (processingStateHandler) {
+    window.removeEventListener('message', processingStateHandler);
+    processingStateHandler = null;
+  }
+}
+
+function createOverlayButton(
+  text: string,
+  variant: 'primary' | 'secondary',
+  onClick: () => void,
+  opts: { disabled?: boolean } = {},
+): HTMLButtonElement {
+  const isPrimary = variant === 'primary';
+  const disabled = Boolean(opts.disabled);
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.setAttribute('data-airo-dev-tools', '');
+  button.disabled = disabled;
+  button.textContent = text;
+  button.style.cssText = `
+    background-color: ${isPrimary ? 'var(--color-primary)' : 'var(--color-surface)'};
+    color: ${isPrimary ? 'var(--color-surface)' : 'var(--color-primary)'};
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    border: ${isPrimary ? 'none' : '2px solid var(--color-primary)'};
+    cursor: ${disabled ? 'not-allowed' : 'pointer'};
+    transition: all 0.2s ease-in-out;
+    font-size: 0.875rem;
+    font-weight: 500;
+    opacity: ${disabled ? '0.6' : '1'};
+  `;
+  if (!disabled) {
+    button.addEventListener('click', onClick);
+  }
+  return button;
+}
+
+/**
+ * Quiet translucent placeholder shown while the agent is actively fixing
+ * (or before the first processing-state sync). The old `#app` content stays
+ * visible underneath; we only dim it so the user knows the preview is being
+ * worked on without flashing a full error card on every mid-edit HMR.
+ */
+function buildPlaceholderOverlay(): HTMLDivElement {
   const overlay = document.createElement('div');
   overlay.id = 'airo-error-overlay';
+  overlay.setAttribute('data-airo-dev-tools', '');
   overlay.style.cssText = `
     position: fixed;
     inset: 0;
     z-index: 9999;
     background-color: rgba(255, 255, 255, 0.7);
     pointer-events: all;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  `;
+  return overlay;
+}
+
+/**
+ * The actionable error overlay shown when the agent is idle and the compile
+ * error is unresolved. Mirrors `AiroErrorBoundary`'s `MessageOverlay`: title,
+ * the error message + location, and a "Ask Airo to Fix Code" action (or a
+ * clipboard-copy affordance when the preview is loaded standalone).
+ */
+function buildActionableOverlay(parsed: ParsedViteError): HTMLDivElement {
+  const standalone = isStandalonePreview();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'airo-error-overlay';
+  overlay.setAttribute('data-airo-dev-tools', '');
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    z-index: 9999998;
+    background-color: rgba(0, 0, 0, 0.15);
+    backdrop-filter: blur(2px);
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   `;
 
-  document.body.appendChild(overlay);
-  overlayElement = overlay;
+  const card = document.createElement('div');
+  card.style.cssText = `
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-width: 40rem;
+    text-align: left;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: var(--color-surface);
+    padding: 2rem;
+    border-radius: 1rem;
+    box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.1);
+    width: calc(100vw - 2em);
+  `;
+
+  const title = document.createElement('h1');
+  title.textContent = 'Something went wrong';
+  title.style.cssText = 'font-size: 1.5rem; font-weight: 600; color: var(--color-text-primary); margin: 0;';
+
+  const message = document.createElement('pre');
+  message.textContent = parsed.file ? `${parsed.message}\n\n${parsed.file}` : parsed.message;
+  message.style.cssText = `
+    color: var(--color-text-tertiary);
+    font-size: 0.875rem;
+    margin: 0;
+    white-space: pre-wrap;
+    font-family: inherit;
+    line-height: 1.4;
+  `;
+
+  const actions = document.createElement('div');
+  actions.style.cssText = 'display: flex; gap: 1rem; justify-content: flex-end; flex-wrap: wrap;';
+  actions.appendChild(createOverlayButton('Dismiss', 'secondary', clearCompileError));
+  if (standalone) {
+    actions.appendChild(
+      createOverlayButton(
+        copiedToClipboard ? 'Copied — paste into Airo' : 'Give this error to Airo to fix',
+        'primary',
+        () => copyErrorToClipboard(parsed),
+      ),
+    );
+  } else {
+    actions.appendChild(
+      createOverlayButton(
+        isFixRequested ? 'Processing...' : 'Ask Airo to Fix Code',
+        'primary',
+        () => requestAgentFix(parsed),
+        { disabled: isFixRequested },
+      ),
+    );
+  }
+
+  card.appendChild(title);
+  card.appendChild(message);
+  card.appendChild(actions);
+  overlay.appendChild(card);
+  return overlay;
 }
 
-function removeInactiveOverlay() {
-  if (overlayElement) {
-    overlayElement.remove();
-    overlayElement = null;
+/**
+ * Render (or re-render) the overlay for `currentError`. While the agent is
+ * processing — or before the first processing-state sync, and never in
+ * standalone mode where there's no agent — we show the quiet placeholder;
+ * otherwise the actionable overlay. Rebuilt from scratch each call so stale
+ * click handlers and button states never linger.
+ */
+function renderErrorOverlay() {
+  if (!currentError) {
+    removeErrorOverlay();
+    return;
+  }
+  injectDevToolsStyles();
+  removeErrorOverlay();
+  const showPlaceholder = !isStandalonePreview() && (!hasProcessingSync || isAgentProcessing);
+  overlayElement = showPlaceholder
+    ? buildPlaceholderOverlay()
+    : buildActionableOverlay(currentError);
+  document.body.appendChild(overlayElement);
+}
+
+function ensureProcessingStateListener() {
+  if (processingStateHandler) return;
+  processingStateHandler = (event: MessageEvent) => {
+    if (!event.origin || !isOriginAllowed(event)) return;
+    if (event.data?.type !== 'AGENT_PROCESSING_STATE') return;
+    const nowProcessing = Boolean(event.data.isProcessing);
+    isAgentProcessing = nowProcessing;
+    hasProcessingSync = true;
+    // The agent stopped while a fix was outstanding: it either applied a
+    // fix (HMR/reload will clear us) or gave up. Re-enable the button so
+    // the user can retry from the re-shown overlay.
+    if (!nowProcessing) isFixRequested = false;
+    renderErrorOverlay();
+  };
+  window.addEventListener('message', processingStateHandler);
+}
+
+function requestProcessingState() {
+  try {
+    send({ type: 'request-processing-state' });
+  } catch (err) {
+    console.warn('[dev-tools] request-processing-state postMessage failed:', err);
+  }
+}
+
+/**
+ * Present a parsed Vite compile/parse error to the user. Forwards the
+ * payload to the parent for the runtime-error buffer (auto-fix path) and,
+ * when embedded, syncs the agent's processing state so the overlay only
+ * escalates to the actionable card once the agent is idle.
+ *
+ * Exported for tests; at runtime it's driven by the HMR/initial-error
+ * handlers below.
+ */
+export function presentCompileError(parsed: ParsedViteError) {
+  currentError = parsed;
+  isFixRequested = false;
+  copiedToClipboard = false;
+  sendCompileErrorToParent(parsed);
+
+  if (isStandalonePreview()) {
+    hasProcessingSync = true;
+    isAgentProcessing = false;
+    renderErrorOverlay();
+    return;
+  }
+
+  ensureProcessingStateListener();
+  requestProcessingState();
+  if (!hasProcessingSync && processingSyncTimer === null) {
+    processingSyncTimer = setTimeout(() => {
+      processingSyncTimer = null;
+      if (!hasProcessingSync) {
+        hasProcessingSync = true;
+        renderErrorOverlay();
+      }
+    }, PROCESSING_STATE_SYNC_TIMEOUT_MS);
+  }
+  renderErrorOverlay();
+}
+
+function requestAgentFix(parsed: ParsedViteError) {
+  if (isFixRequested) return;
+  isFixRequested = true;
+  try {
+    send({
+      type: 'error-fix-user-requested',
+      errorData: buildForwardedError(parsed),
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'SecurityError') {
+      // Cross-origin misconfiguration (wrong VITE_PARENT_ORIGIN). Leave the
+      // button disabled — re-clicking would hit the same failure — and log
+      // a diagnostic pointing at the likely cause.
+      console.error('Failed to send fix request to parent: SecurityError (check VITE_PARENT_ORIGIN):', err);
+    } else {
+      console.error('Failed to send fix request to parent:', err);
+      isFixRequested = false;
+    }
+  }
+  renderErrorOverlay();
+}
+
+async function copyErrorToClipboard(parsed: ParsedViteError) {
+  const parts = [
+    `${parsed.name ?? 'CompileError'}: ${parsed.message}`,
+    parsed.file && `\nLocation: ${parsed.file}`,
+    parsed.frame && `\n${parsed.frame}`,
+  ].filter(Boolean);
+  try {
+    await navigator.clipboard.writeText(parts.join('\n'));
+    copiedToClipboard = true;
+    renderErrorOverlay();
+    setTimeout(() => {
+      copiedToClipboard = false;
+      if (currentError) renderErrorOverlay();
+    }, 2000);
+  } catch (err) {
+    console.error('Failed to copy error to clipboard:', err);
   }
 }
 
@@ -170,8 +472,7 @@ beginNewRenderCycle();
 if (import.meta.env.MODE === 'development') {
   window.addEventListener('vite:initial-error', ((event: CustomEvent) => {
     if (hasDetailedError) return; // HMR already sent a detailed error; ignore the generic import failure
-    showInactiveOverlay();
-    sendCompileErrorToParent(event.detail);
+    presentCompileError(parseViteError(event.detail));
 
     // The error may be transient (e.g. Vite dep optimization). Watch for React
     // mounting into #app -- if children appear, the app recovered on its own,
@@ -181,7 +482,7 @@ if (import.meta.env.MODE === 'development') {
       const observer = new MutationObserver(() => {
         if (appEl.children.length > 0) {
           observer.disconnect();
-          removeInactiveOverlay();
+          clearCompileError();
         }
       });
       observer.observe(appEl, { childList: true });
@@ -193,26 +494,18 @@ if (import.meta.env.MODE === 'development') {
 
 // Hook into Vite HMR for errors during development
 if (import.meta.env.MODE === 'development' && import.meta.hot) {
-  let hasErrorOverlay = false;
-
   const handleHmrError = (data: any) => {
-    const { message, file } = parseViteError(data);
-    console.error('Vite compile error:', file ? `${message} (${file})` : message);
-    hasErrorOverlay = true;
+    const parsed = parseViteError(data);
+    console.error('Vite compile error:', parsed.file ? `${parsed.message} (${parsed.file})` : parsed.message);
     hasDetailedError = true;
-    showInactiveOverlay();
-    sendCompileErrorToParent(data);
+    presentCompileError(parsed);
   };
 
   const handleAfterUpdate = () => {
-    // Check both hasErrorOverlay (for HMR errors) and overlayElement (for
-    // initial-error, where hasErrorOverlay is not set because it's scoped
-    // to this block). On a successful HMR update that follows an error,
-    // tear down the inactive overlay we showed.
-    if (hasErrorOverlay || overlayElement) {
-      hasErrorOverlay = false;
-      hasDetailedError = false;
-      removeInactiveOverlay();
+    // On a successful HMR update that follows an error, tear down the
+    // overlay we showed (covers both HMR and initial-error surfaces).
+    if (currentError || overlayElement) {
+      clearCompileError();
     }
   };
 
@@ -245,10 +538,8 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
   // at the server even if the new page's init never runs (e.g. the
   // reload fails partway).
   const handleBeforeFullReload = () => {
-    if (hasErrorOverlay || overlayElement) {
-      hasErrorOverlay = false;
-      hasDetailedError = false;
-      removeInactiveOverlay();
+    if (currentError || overlayElement) {
+      clearCompileError();
     }
     beginNewRenderCycle();
   };
@@ -256,9 +547,11 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
 
   // Clean up listeners on module disposal to prevent accumulation
   import.meta.hot.dispose(() => {
-    hasErrorOverlay = false;
-    hasDetailedError = false;
-    removeInactiveOverlay();
+    clearCompileError();
+    if (processingStateHandler) {
+      window.removeEventListener('message', processingStateHandler);
+      processingStateHandler = null;
+    }
     import.meta.hot!.off('vite:error', handleHmrError);
     import.meta.hot!.off('compile-error', handleHmrError);
     import.meta.hot!.off('vite:afterUpdate', handleAfterUpdate);
