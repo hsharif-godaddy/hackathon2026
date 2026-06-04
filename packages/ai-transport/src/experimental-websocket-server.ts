@@ -56,7 +56,7 @@ import { invokeBudgetRecoveryCallback, buildContinuationPrompt, MAX_BUDGET_RETRI
 import { parseAgentCommand } from './agent-command-parser.js'
 import { trackTurnSnapshotEvent, type TurnSnapshotState } from './turn-snapshot-tracker.js'
 import { runPreflightTools } from './preflight-tools.js'
-import { assembleMessages as assembleMessagesShared } from './assemble-messages.js'
+import { assembleMessages as assembleMessagesShared, dropTrailingPrompt } from './assemble-messages.js'
 import { readTextStreamFallback } from './text-stream-fallback.js'
 
 const neverAbortedSignal = new AbortController().signal
@@ -3043,7 +3043,8 @@ export class WebSocketServer {
   private async assembleMessages(
     data: ChatMessage,
     context: Record<string, unknown> | undefined,
-    agent?: AgentWrapper
+    agent?: AgentWrapper,
+    currentPrompt?: string
   ): Promise<{
     messages: ModelMessage[]
     contextMessages: PipelineContextMessage[]
@@ -3074,11 +3075,19 @@ export class WebSocketServer {
       }
     }
 
+    // Compute first-turn status from the EFFECTIVE history: the current message
+    // is persisted before history loads, so it can show up as the trailing
+    // history entry. assembleMessagesShared drops that trailing copy, so
+    // isFirstTurn must be derived from the same deduped view — otherwise a
+    // first turn whose only history entry is the current message would look
+    // like a continuation and skip preflight.
+    const effectiveHistory = dropTrailingPrompt(data.conversationHistory ?? [], currentPrompt)
+
     // Preflight tool synthesis: when conversation is empty and the agent declares
     // preflightTools in its metadata, run them server-side and prepend synthesized
     // assistant tool_call + tool result pairs so the model sees the result on turn 1.
     let preflightMessages: Array<{ role: string; content: unknown }> = []
-    const isFirstTurn = !data.conversationHistory || data.conversationHistory.length === 0
+    const isFirstTurn = effectiveHistory.length === 0
     if (isFirstTurn && agent && typeof agent.getConfig === 'function') {
       try {
         const agentConfig = agent.getConfig()
@@ -3097,14 +3106,15 @@ export class WebSocketServer {
       }
     }
 
-    if (data.conversationHistory && data.conversationHistory.length > 0) {
-      this.logger.info('history.add', { messageCount: data.conversationHistory.length })
+    if (effectiveHistory.length > 0) {
+      this.logger.info('history.add', { messageCount: effectiveHistory.length })
     }
 
     const assembled = assembleMessagesShared({
       contextMessages: loadedContextMessages,
       conversationHistory: data.conversationHistory ?? [],
       preflightMessages,
+      ...(currentPrompt !== undefined && { currentPrompt }),
     })
 
     if (assembled.strippedOrphanTools.length > 0) {
@@ -3149,16 +3159,11 @@ export class WebSocketServer {
     // On retry/continuation, originalUserPrompt carries the true first-call prompt
     const originalPrompt = originalUserPrompt ?? data.message
 
-    // if the last message in messages == originalPrompt, remove it
-    if (data.conversationHistory && data.conversationHistory.length > 0) {
-      const lastMessage = data.conversationHistory[data.conversationHistory.length - 1]
-      if (lastMessage && lastMessage.content === originalPrompt) {
-        data.conversationHistory.pop()
-      }
-    }
-
-    // Assemble messages using clean interface-based approach
-    const { messages, contextMessages } = await this.assembleMessages(data, context, agent)
+    // Assemble messages using clean interface-based approach. Passing
+    // originalPrompt lets the shared assembler drop a trailing history copy of
+    // the current turn's message (persisted before history load) so it isn't
+    // sent twice — once from history and once as the appended prompt.
+    const { messages, contextMessages } = await this.assembleMessages(data, context, agent, originalPrompt)
 
     // Use getConversation to handle socket ID migration during reconnection
     const activeConversation = this.getConversation(socket.id)

@@ -1629,6 +1629,73 @@ describe('MessageExecutionService', () => {
 
       expect(deps.getAgent().streamGenerate).toHaveBeenCalled()
     })
+
+    it('drops the trailing history copy of the current message so it is not sent twice', async () => {
+      // The user message is persisted before history loads, so it comes back as
+      // the last history entry. It is also appended as the prompt by
+      // streamGenerate, so without dedup it would appear twice.
+      deps.loadConversationHistory.mockResolvedValue([
+        { role: 'user', content: 'Earlier turn' },
+        { role: 'assistant', content: 'Earlier reply' },
+        { role: 'user', content: 'Hello' },
+      ])
+
+      await service.execute(DEFAULT_PARAMS)
+
+      const opts = deps.getAgent().streamGenerate.mock.calls[0][1]
+      const userHellos = opts.messages.filter(
+        (m: { role: string; content: unknown }) => m.role === 'user' && m.content === 'Hello'
+      )
+      expect(userHellos).toHaveLength(0)
+      expect(opts.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ content: 'Earlier turn' }),
+          expect.objectContaining({ content: 'Earlier reply' }),
+        ])
+      )
+    })
+  })
+
+  describe('first-turn preflight', () => {
+    function agentWithPreflight(execute: ReturnType<typeof vi.fn>) {
+      return {
+        streamGenerate: deps.getAgent().streamGenerate,
+        getName: vi.fn().mockReturnValue('AI Developer'),
+        getConfig: vi.fn().mockReturnValue({
+          metadata: { preflightTools: ['scaffold'] },
+          tools: { scaffold: { execute } },
+        }),
+      }
+    }
+
+    it('runs preflight tools when the only history entry is the just-persisted current message', async () => {
+      // The current message is persisted (continueConversation) before history
+      // loads, so on a genuine first turn it is the sole trailing entry. It must
+      // be dropped before computing isFirstTurn or preflight never runs.
+      const execute = vi.fn().mockResolvedValue('scaffolded')
+      deps.getAgent.mockReturnValue(agentWithPreflight(execute))
+      deps.loadConversationHistory.mockResolvedValue([{ role: 'user', content: 'Hello' }])
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(execute).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not run preflight on a continuation turn with prior history', async () => {
+      const execute = vi.fn().mockResolvedValue('scaffolded')
+      deps.getAgent.mockReturnValue(agentWithPreflight(execute))
+      deps.loadConversationHistory.mockResolvedValue([
+        { role: 'user', content: 'Earlier turn' },
+        { role: 'assistant', content: 'Earlier reply' },
+        { role: 'user', content: 'Hello' },
+      ])
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(execute).not.toHaveBeenCalled()
+    })
   })
 
   describe('agent selection', () => {

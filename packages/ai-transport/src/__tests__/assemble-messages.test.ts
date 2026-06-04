@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { assembleMessages } from '../assemble-messages.js'
+import { assembleMessages, dropTrailingPrompt } from '../assemble-messages.js'
 import { stripLeadingOrphanTools } from '../strip-orphan-tools.js'
 
 describe('stripLeadingOrphanTools', () => {
@@ -148,5 +148,133 @@ describe('assembleMessages', () => {
     expect(result.beforeHistory).toHaveLength(0)
     expect(result.messages).toHaveLength(0)
     expect(result.strippedOrphanTools).toHaveLength(0)
+  })
+
+  describe('currentPrompt dedup', () => {
+    it('drops a trailing user history message equal to currentPrompt', () => {
+      const result = assembleMessages({
+        contextMessages: [],
+        conversationHistory: [
+          { role: 'user', content: 'first turn' },
+          { role: 'assistant', content: 'reply' },
+          { role: 'user', content: 'Just respond hello' },
+        ],
+        currentPrompt: 'Just respond hello',
+      })
+      expect(result.messages.map(m => m.content)).toEqual(['first turn', 'reply'])
+    })
+
+    it('keeps a trailing user message that does not match currentPrompt', () => {
+      const result = assembleMessages({
+        contextMessages: [],
+        conversationHistory: [
+          { role: 'user', content: 'something else' },
+        ],
+        currentPrompt: 'Just respond hello',
+      })
+      expect(result.messages.map(m => m.content)).toEqual(['something else'])
+    })
+
+    it('keeps a matching message when the trailing message is not a user message', () => {
+      const result = assembleMessages({
+        contextMessages: [],
+        conversationHistory: [
+          { role: 'user', content: 'Just respond hello' },
+          { role: 'assistant', content: 'Just respond hello' },
+        ],
+        currentPrompt: 'Just respond hello',
+      })
+      expect(result.messages.map(m => m.content)).toEqual([
+        'Just respond hello',
+        'Just respond hello',
+      ])
+    })
+
+    it('matches against the text of a parts-array user message', () => {
+      const result = assembleMessages({
+        contextMessages: [],
+        conversationHistory: [
+          { role: 'user', content: [{ type: 'text', text: 'Just respond hello' }] },
+        ],
+        currentPrompt: 'Just respond hello',
+      })
+      expect(result.messages).toHaveLength(0)
+    })
+
+    it('compares with whitespace trimmed', () => {
+      const result = assembleMessages({
+        contextMessages: [],
+        conversationHistory: [
+          { role: 'user', content: '  Just respond hello  ' },
+        ],
+        currentPrompt: 'Just respond hello',
+      })
+      expect(result.messages).toHaveLength(0)
+    })
+
+    it('only drops the last matching message, not earlier duplicates', () => {
+      const result = assembleMessages({
+        contextMessages: [],
+        conversationHistory: [
+          { role: 'user', content: 'Just respond hello' },
+          { role: 'assistant', content: 'ok' },
+          { role: 'user', content: 'Just respond hello' },
+        ],
+        currentPrompt: 'Just respond hello',
+      })
+      expect(result.messages.map(m => m.content)).toEqual([
+        'Just respond hello',
+        'ok',
+      ])
+    })
+
+    it('leaves history unchanged when currentPrompt is omitted', () => {
+      const result = assembleMessages({
+        contextMessages: [],
+        conversationHistory: [
+          { role: 'user', content: 'Just respond hello' },
+        ],
+      })
+      expect(result.messages.map(m => m.content)).toEqual(['Just respond hello'])
+    })
+  })
+})
+
+describe('dropTrailingPrompt', () => {
+  it('drops a trailing user message equal to currentPrompt', () => {
+    const history = [
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'reply' },
+      { role: 'user', content: 'now' },
+    ]
+    expect(dropTrailingPrompt(history, 'now')).toEqual([
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'reply' },
+    ])
+  })
+
+  it('returns the same array reference when nothing is dropped', () => {
+    const history = [{ role: 'user', content: 'now' }]
+    expect(dropTrailingPrompt(history, 'different')).toBe(history)
+  })
+
+  it('returns the same array reference when currentPrompt is omitted', () => {
+    const history = [{ role: 'user', content: 'now' }]
+    expect(dropTrailingPrompt(history)).toBe(history)
+  })
+
+  it('does not drop when the trailing message is not a user message', () => {
+    const history = [{ role: 'assistant', content: 'now' }]
+    expect(dropTrailingPrompt(history, 'now')).toBe(history)
+  })
+
+  it('matches parts-array content and trims whitespace', () => {
+    const history = [{ role: 'user', content: [{ type: 'text', text: '  now  ' }] }]
+    expect(dropTrailingPrompt(history, 'now')).toEqual([])
+  })
+
+  it('handles empty history', () => {
+    const history: Array<{ role: string; content: unknown }> = []
+    expect(dropTrailingPrompt(history, 'now')).toBe(history)
   })
 })

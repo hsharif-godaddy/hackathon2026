@@ -22,6 +22,7 @@ import {
   classifyStreamBudgetError,
   isToolValidationError,
   assembleMessages,
+  dropTrailingPrompt,
   captureResponseMetadata,
   readTextStreamFallback,
   recordTokenUsageObservability,
@@ -971,7 +972,12 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     // preflightTools in its metadata, run them server-side and prepend synthesized
     // assistant tool_call + tool result pairs so the model sees the result on turn 1.
     let preflightMessages: Array<{ role: string; content: unknown }> = []
-    const isFirstTurn = historyMessages.length === 0
+    // Derive first-turn status from the EFFECTIVE history. The current message
+    // is persisted (continueConversation) before history is loaded here, so on a
+    // genuine first turn it is the sole trailing history entry. assembleMessages
+    // drops that trailing copy, so isFirstTurn must use the same deduped view or
+    // preflight tools would never run on the first turn.
+    const isFirstTurn = dropTrailingPrompt(historyMessages, message).length === 0
     if (isFirstTurn && agent && typeof agent.getConfig === 'function') {
       try {
         const agentConfig = agent.getConfig()
@@ -995,6 +1001,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       conversationHistory: historyMessages,
       extraAfterHistory,
       preflightMessages: preflightMessages.length > 0 ? preflightMessages : undefined,
+      currentPrompt: message,
     })
     const beforeHistory = assembled.beforeHistory
     const messages = assembled.messages

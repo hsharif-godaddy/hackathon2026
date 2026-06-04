@@ -3578,6 +3578,117 @@ describe('WebSocketServer - /agent command handling', function agentCommandTests
   })
 })
 
+describe('WebSocketServer - current-message dedup and first-turn preflight', function dedupTests() {
+  let httpServer: HTTPServer
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockSocket.on.mockReset()
+    mockSocket.emit.mockReset()
+    mockSocket.connected = true
+    mockSocket.data = {}
+    mockSocket.handshake = { auth: {} }
+    httpServer = new HTTPServer()
+    mockAgent.streamGenerate = vi.fn().mockResolvedValue({
+      baseStream: null,
+      textStream: (async function* () { yield 'ok' })(),
+      getFinalResult: vi.fn().mockResolvedValue({
+        usage: { inputTokens: 1, outputTokens: 1 },
+        toolCalls: [],
+      }),
+    })
+  })
+
+  afterEach(() => {
+    delete (mockAgent as any).getConfig
+  })
+
+  it('drops the trailing history copy of the current message so it is not sent twice', async () => {
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+    })
+
+    try {
+      await messageHandler({
+        message: 'hello',
+        conversationHistory: [
+          { role: 'user', content: 'earlier' },
+          { role: 'assistant', content: 'reply' },
+          { role: 'user', content: 'hello' },
+        ],
+      })
+
+      const [prompt, options] = mockAgent.streamGenerate.mock.calls[0]
+      expect(prompt).toBe('hello')
+      const trailingDupes = (options.messages ?? []).filter(
+        (m: { role: string; content: unknown }) => m.role === 'user' && m.content === 'hello'
+      )
+      expect(trailingDupes).toHaveLength(0)
+      expect((options.messages ?? []).map((m: { content: unknown }) => m.content)).toEqual([
+        'earlier',
+        'reply',
+      ])
+    } finally {
+      server.close()
+    }
+  })
+
+  it('runs first-turn preflight tools when the only history entry is the current message', async () => {
+    const execute = vi.fn().mockResolvedValue('scaffolded')
+    ;(mockAgent as any).getConfig = vi.fn().mockReturnValue({
+      metadata: { preflightTools: ['scaffold'] },
+      tools: { scaffold: { execute } },
+    })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+    })
+
+    try {
+      await messageHandler({
+        message: 'build me a site',
+        conversationHistory: [{ role: 'user', content: 'build me a site' }],
+      })
+
+      // Preflight only runs when isFirstTurn is true, which requires the
+      // trailing current-message copy to be removed before the check.
+      expect(execute).toHaveBeenCalledTimes(1)
+    } finally {
+      server.close()
+    }
+  })
+
+  it('does not run preflight tools on a continuation turn with prior history', async () => {
+    const execute = vi.fn().mockResolvedValue('scaffolded')
+    ;(mockAgent as any).getConfig = vi.fn().mockReturnValue({
+      metadata: { preflightTools: ['scaffold'] },
+      tools: { scaffold: { execute } },
+    })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+    })
+
+    try {
+      await messageHandler({
+        message: 'next thing',
+        conversationHistory: [
+          { role: 'user', content: 'build me a site' },
+          { role: 'assistant', content: 'done' },
+          { role: 'user', content: 'next thing' },
+        ],
+      })
+
+      expect(execute).not.toHaveBeenCalled()
+    } finally {
+      server.close()
+    }
+  })
+})
+
 describe('WebSocketServer - postStreamValidator continuation', () => {
   let httpServer: HTTPServer
 
