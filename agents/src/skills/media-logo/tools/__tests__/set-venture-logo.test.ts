@@ -1,167 +1,107 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock logger before other imports
 vi.mock('../../../../logging/index.js', () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  },
+  Logger: { create: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })) },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-// Mock LogoService — required because tools/index.ts imports it at module load.
 vi.mock('../../../../services/LogoService.js', () => ({
-  logoService: {
-    generateLogos: vi.fn(),
-    editLogos: vi.fn(),
-  },
+  logoService: { generate: vi.fn() },
 }));
 
-// Mock AppRepository
 vi.mock('../../../../database/repositories/index.js', () => ({
-  appRepository: {
-    findById: vi.fn(),
-  },
+  appRepository: { findById: vi.fn() },
 }));
 
-// Mock grantSessionManager
 vi.mock('@airo/ai-grants', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
-    grantSessionManager: {
-      getCurrentUserId: vi.fn(),
-    },
+    grantSessionManager: { getCurrentUserId: vi.fn() },
   };
 });
 
-// Mock AppPlanTool
 vi.mock('../../../../tools/app-plan-tool.js', () => ({
-  appPlanTool: {
-    execute: vi.fn(),
-  },
+  appPlanTool: { execute: vi.fn() },
 }));
 
-// Mock MediaManifestService — the only service the new tool actually exercises.
 const mockGetSlot = vi.fn();
 vi.mock('../../../../services/MediaManifestService.js', () => ({
-  mediaManifestService: {
-    setSlot: vi.fn(),
-    getSlot: mockGetSlot,
-  },
+  mediaManifestService: { setSlot: vi.fn(), getSlot: mockGetSlot },
 }));
 
-describe('setVentureLogoTool', () => {
+vi.mock('../../../../memory/adapters/index.js', () => ({
+  getKvMemoryStore: () => ({ get: vi.fn() }),
+}));
+
+// LOGO_SLOT_PATHS values the tool looks up.
+const HORIZONTAL_PATH = 'logo/horizontal';
+const SQUARE_PATH = 'logo/primary';
+
+describe('media-logo set_venture_logo tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('returns horizontal + square URLs when both slots are populated', async () => {
-    mockGetSlot.mockImplementation(async function (_appId: string, slotPath: string) {
-      if (slotPath === 'logo/horizontal') {
-        return { success: true, slot: { currentUrl: 'https://cdn/h.png' } };
-      }
-      if (slotPath === 'logo/primary') {
-        return { success: true, slot: { currentUrl: 'https://cdn/s.png' } };
-      }
-      return { success: false };
-    });
+  const baseContext = { socketId: 'sock-1', metadata: { appId: 'app-1' } };
 
+  it('returns an error when no appId is in context', async () => {
     const { setVentureLogoTool } = await import('../index.js');
 
-    const result = await setVentureLogoTool.execute(
-      {},
-      { metadata: { appId: 'app-123' } }
-    );
+    const result = await setVentureLogoTool.execute({}, { socketId: 'sock-1', metadata: {} });
 
-    expect(result).toMatchObject({
-      structuredContent: {
-        horizontalUrl: 'https://cdn/h.png',
-        squareUrl: 'https://cdn/s.png',
-      },
-    });
-    expect(typeof (result as { text?: unknown }).text).toBe('string');
-  });
-
-  it('returns error when horizontal slot is missing', async () => {
-    mockGetSlot.mockImplementation(async function (_appId: string, slotPath: string) {
-      if (slotPath === 'logo/primary') {
-        return { success: true, slot: { currentUrl: 'https://cdn/s.png' } };
-      }
-      return { success: false };
-    });
-
-    const { setVentureLogoTool } = await import('../index.js');
-    const result = await setVentureLogoTool.execute({}, { metadata: { appId: 'app-123' } });
-
-    expect(result).toMatchObject({ error: expect.stringContaining('horizontal and square') });
-    expect((result as { structuredContent?: unknown }).structuredContent).toBeUndefined();
-  });
-
-  it('returns error when square slot is missing', async () => {
-    mockGetSlot.mockImplementation(async function (_appId: string, slotPath: string) {
-      if (slotPath === 'logo/horizontal') {
-        return { success: true, slot: { currentUrl: 'https://cdn/h.png' } };
-      }
-      return { success: false };
-    });
-
-    const { setVentureLogoTool } = await import('../index.js');
-    const result = await setVentureLogoTool.execute({}, { metadata: { appId: 'app-123' } });
-
-    expect(result).toMatchObject({ error: expect.stringContaining('horizontal and square') });
-  });
-
-  it('returns error when appId is missing from context', async () => {
-    const { setVentureLogoTool } = await import('../index.js');
-    const result = await setVentureLogoTool.execute({}, { metadata: {} });
-
-    expect(result).toMatchObject({ error: expect.stringContaining('app id') });
+    expect(result.error).toMatch(/app id/i);
     expect(mockGetSlot).not.toHaveBeenCalled();
   });
 
-  it('returns error when slot lookup succeeds but returns slot: undefined', async () => {
-    mockGetSlot.mockImplementation(async function (_appId: string, slotPath: string) {
-      if (slotPath === 'logo/horizontal') {
-        return { success: true, slot: undefined };
+  it('returns an error when a slot lookup rejects', async () => {
+    mockGetSlot.mockRejectedValue(new Error('manifest unavailable'));
+
+    const { setVentureLogoTool } = await import('../index.js');
+
+    const result = await setVentureLogoTool.execute({}, baseContext);
+
+    expect(result.error).toMatch(/look up the current logos/i);
+    expect(result.structuredContent).toBeUndefined();
+  });
+
+  it('returns an error when the square logo is missing', async () => {
+    mockGetSlot.mockImplementation((_appId: string, path: string) => {
+      if (path === HORIZONTAL_PATH) {
+        return Promise.resolve({ success: true, slot: { currentUrl: 'https://cdn/h.png' } });
       }
-      if (slotPath === 'logo/primary') {
-        return { success: true, slot: { currentUrl: 'https://cdn/s.png' } };
-      }
-      return { success: false };
+      // square slot has no current logo yet
+      return Promise.resolve({ success: false });
     });
 
     const { setVentureLogoTool } = await import('../index.js');
-    const result = await setVentureLogoTool.execute({}, { metadata: { appId: 'app-123' } });
 
-    expect(result).toMatchObject({ error: expect.stringContaining('horizontal and square') });
+    const result = await setVentureLogoTool.execute({}, baseContext);
+
+    expect(result.error).toMatch(/could not find both/i);
   });
 
-  it('returns error when currentUrl is an empty string', async () => {
-    mockGetSlot.mockImplementation(async function (_appId: string, slotPath: string) {
-      if (slotPath === 'logo/horizontal') {
-        return { success: true, slot: { currentUrl: '' } };
+  it('sends both URLs to the dashboard on success', async () => {
+    mockGetSlot.mockImplementation((_appId: string, path: string) => {
+      if (path === HORIZONTAL_PATH) {
+        return Promise.resolve({ success: true, slot: { currentUrl: 'https://cdn/h.png' } });
       }
-      if (slotPath === 'logo/primary') {
-        return { success: true, slot: { currentUrl: 'https://cdn/s.png' } };
+      if (path === SQUARE_PATH) {
+        return Promise.resolve({ success: true, slot: { currentUrl: 'https://cdn/s.png' } });
       }
-      return { success: false };
+      return Promise.resolve({ success: false });
     });
 
     const { setVentureLogoTool } = await import('../index.js');
-    const result = await setVentureLogoTool.execute({}, { metadata: { appId: 'app-123' } });
 
-    expect(result).toMatchObject({ error: expect.stringContaining('horizontal and square') });
-  });
+    const result = await setVentureLogoTool.execute({}, baseContext);
 
-  it('returns error when getSlot throws', async () => {
-    mockGetSlot.mockRejectedValue(new Error('boom'));
-
-    const { setVentureLogoTool } = await import('../index.js');
-    const result = await setVentureLogoTool.execute({}, { metadata: { appId: 'app-123' } });
-
-    expect(result).toMatchObject({ error: expect.stringContaining('look up') });
-    expect((result as { structuredContent?: unknown }).structuredContent).toBeUndefined();
+    expect(result.error).toBeUndefined();
+    expect(result.structuredContent).toEqual({
+      horizontalUrl: 'https://cdn/h.png',
+      squareUrl: 'https://cdn/s.png',
+    });
+    expect(mockGetSlot).toHaveBeenCalledWith('app-1', HORIZONTAL_PATH);
+    expect(mockGetSlot).toHaveBeenCalledWith('app-1', SQUARE_PATH);
   });
 });

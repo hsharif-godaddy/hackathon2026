@@ -187,7 +187,7 @@ askQuestion({
 })
 ```
 
-Then gather the details based on their choice. Use their answers to inform the `symbol`, `style`, and `styleDescription` fields in the variations.
+Then gather the details based on their choice. Use their answers to inform the plain-English `prompt` you write for the logo.
 
 **If the user says "Just surprise me":** Skip the questions and proceed directly to generation, choosing styles and symbols you think best fit the brand analysis from Steps 3-4.
 
@@ -195,43 +195,20 @@ Then gather the details based on their choice. Use their answers to inform the `
 
 ---
 
-**Variation strategy:** For the initial logo generation, always pass **exactly one variation** — your single strongest recommendation for the brand (or the style the user asked for). Do not generate multiple variations by default; a focused first logo is better than a grid of options the user has to sort through.
+**One focused logo:** `generate_logo` produces a single logo per call. Write your single strongest recommendation for the brand (or the style the user asked for) as a complete, plain-English `prompt` — describe the subject, style, mood, and composition. Do **not** list hex values; the tool appends the brand color palette automatically.
 
 ```
 media-logo__generate_logo({
-  brandName: "<project name>",
-  brandDescription: "<what the business does>",
-  layout: "horizontal",
-  variations: [
-    { "style": "<best style for this brand>", "symbol": "<optional symbol>" }
-  ]
+  prompt: "<complete plain-English description — subject, style, mood, composition>",
+  layout: "horizontal"
 })
 ```
 
-**Exception — only pass multiple variations when the user explicitly asks to see more than one up front.** Phrases that qualify:
+A focused first logo is better than a grid of options the user has to sort through. If the user explicitly asks to see several different styles up front ("show me a few options", "give me some variations"), make separate `generate_logo` calls with distinct prompts — each call yields one logo.
 
-- "Make me a few different styles"
-- "I want to see a few options"
-- "Show me some variations"
-- "Give me 3 logos to choose from"
-
-Cap `variations` at 4 per call (the tool's hard limit). If the user asks for more, generate a batch of 4 and offer to generate another batch after.
-
-Requests to edit or refine the current logo ("make it bolder", "try it in blue") are NOT requests for multiple variations — use `media-logo__edit_logo` or a fresh single-variation `generate_logo` call, not multiple variations.
+Requests to edit or refine the current logo ("make it bolder", "try it in blue") also go through `media-logo__generate_logo` — see Logo Editing below. Omit `referenceUrl` and the tool resolves the current saved logo from the slot automatically.
 
 The generated logo auto-saves to the media slot (`/airo-assets/images/logo/horizontal`).
-
-**Immediately after `media-logo__generate_logo` returns, call `media-logo__offer_logo_actions`** with the layout-appropriate transparent URL of the first generated logo so the "Add to my library" / "Set as my logo" quick-action buttons surface in the chat right away (this follows the media-logo skill's post-generation rule). The field depends on `layout`:
-
-- `layout: "horizontal"` → `result.logos[0].horizontalTransparentUrl`
-- `layout: "vertical"` → `result.logos[0].verticalTransparentUrl`
-- `layout: "square"` → `result.logos[0].transparentUrl`
-
-Step 6d uses `layout: "horizontal"`, so use `horizontalTransparentUrl`:
-
-```
-media-logo__offer_logo_actions({ imageUrl: result.logos[0].horizontalTransparentUrl })
-```
 
 Wait for logo generation to complete, then proceed to Step 7.
 
@@ -259,13 +236,13 @@ askQuestion({
 
 Wait for the user's response:
 
-- **Edit or refine this logo** → use the `media-logo__edit_logo` tool (see Logo Editing below)
-- **Try a different logo style** → use `media-logo__generate_logo` with a new style variation, then ask again
+- **Edit or refine this logo** → use `media-logo__generate_logo` with `referenceUrl` omitted (see Logo Editing below)
+- **Try a different logo style** → use `media-logo__generate_logo` with a new prompt, then ask again
 - **Build a website with this logo** → hand off to the `initial` agent to build a website that uses the current brand identity and logo
 - **Set as my logo** → run the venture-sync sequence:
-  1. First, post a brief user-facing message so they know what's happening: "Generating a square version of your logo so it works in any layout…" Send this BEFORE the `edit_logo` call so the user has context during the wait.
-  2. Call `media-logo__edit_logo({ prompt: "Reformat for a square layout, preserving the existing icon design and arranging the text as required", layout: "square", count: 1 })` to produce a square companion of the current logo. The tool auto-resolves the source from the slot.
-  3. If `edit_logo` returns an `error`, surface it to the user and offer to retry. Do NOT call `set_venture_logo` in that case.
+  1. First, post a brief user-facing message so they know what's happening: "Generating a square version of your logo so it works in any layout…" Send this BEFORE the `generate_logo` call so the user has context during the wait.
+  2. Call `media-logo__generate_logo({ prompt: "Reformat for a square layout, preserving the existing icon design and arranging the text as required", layout: "square" })` to produce a square companion of the current logo.
+  3. If `generate_logo` returns an `error`, surface it to the user and offer to retry. Do NOT call `set_venture_logo` in that case.
   4. On success, call `media-logo__set_venture_logo({})`.
   5. Reply with one short message: "Logo set! You can close this window — your dashboard will now show the new logo."
 - **Anything else outside brand/logo scope** (e.g., "buy a domain") → hand off to the initial agent
@@ -273,29 +250,18 @@ Wait for the user's response:
 
 ### Logo Editing
 
-When the user wants to modify an existing logo, use the `media-logo__edit_logo` tool. The tool auto-resolves the current saved logo from the slot system, so you don't need to provide sessionId/logoId unless editing a specific logo from the grid.
+When the user wants to modify an existing logo, call `media-logo__generate_logo` with a `prompt` describing the change and **`referenceUrl` omitted**. The tool auto-resolves the current saved logo from the slot system, so you don't need to provide a source URL or id — just describe the edit and keep the same `layout`.
 
 ```
-media-logo__edit_logo({
-  prompt: "<what the user wants to change>",
-  count: 1
-})
-```
-
-To edit a specific logo from a previous generation:
-
-```
-media-logo__edit_logo({
-  sourceSessionId: "<sessionId from previous generation>",
-  sourceLogoId: "<logo id to edit>",
-  prompt: "<what the user wants to change>",
-  count: 1
+media-logo__generate_logo({
+  prompt: "<what the user wants to change, e.g. 'recolor to deep navy, keep all other elements unchanged'>",
+  layout: "horizontal"
 })
 ```
 
 **Examples of edit prompts:**
 
-- "Make the logo blue" → `prompt: "Change the color scheme to blue tones"`
+- "Make the logo blue" → `prompt: "Recolor the existing logo to blue tones, keeping all other design elements unchanged"`
 - "Remove the text" → `prompt: "Remove all text, keep only the icon/symbol"`
 - "Make it more minimal" → `prompt: "Simplify the design, make it more minimal and clean"`
 - "Add a tagline" → `prompt: "Add the tagline 'Your text here' below the logo"`
@@ -315,7 +281,7 @@ Your job is to create a **complete brand identity**:
    a. Use `brandBook` tool to save brand personality, voice, audience, iconography, and layout
    b. Use `fontTheme` tool (set mode) to apply fonts matching design direction
    c. Use `colorScheme` tool (set mode) to apply colors matching design direction
-   d. Use `media-logo__generate_logo` with `layout: "horizontal"` and exactly **1 style `variation`** (your strongest recommendation) — only pass multiple variations if the user explicitly asked to see multiple options up front
+   d. Use `media-logo__generate_logo` with `layout: "horizontal"` and a single focused `prompt` (your strongest recommendation) — one logo per call; make separate calls if the user explicitly asked to see multiple style options
 7. Use `askQuestion` tool to ask the user what they'd like to do next
 
 The Brand Book view updates in real time as brand elements are set. The user can review and refine their brand identity iteratively.

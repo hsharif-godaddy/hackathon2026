@@ -1,236 +1,271 @@
 /**
- * Logo Service
+ * Logo Service — calls POST /api/logo/create on gai-logo-agent.
  *
- * Calls the logo-agent REST API directly using S2S auth.
- * Follows the GettyUploadService pattern for service-to-service calls.
+ * The endpoint takes a natural-language prompt + layouts (+ optional
+ * `referenceUrl` for edits) and returns hosted variant URLs per layout.
+ * No OpenAI calls or workspace uploads happen here — the API owns image
+ * generation and hosting end-to-end.
  *
- * Customer identity is passed via x-customer-id header.
- * LiteLLM budget metadata is passed via x-budget-user-id header.
- *
- * If the logo API returns HTTP 402, this indicates the LiteLLM budget was
- * exceeded during image generation. This is surfaced as a BudgetExceededError
- * so the agent-factory grant advancement logic can retry with the next grant.
+ * The media-logo skill tool consumes the public types (LayoutUrls,
+ * ProcessedLogo, LogoSessionResponse). Internally we map the API's
+ * flat-keyed ProcessedLogo (e.g. `horizontalTransparentUrl`) into
+ * per-layout `urls.{square,horizontal,vertical}` bundles.
  */
 
-import { getS2SToken } from '@airo/ai-lib';
-import { BudgetExceededError } from '@airo/ai-common';
+import { getS2SToken } from '@airo/ai-lib'
+import { BudgetExceededError } from '@airo/ai-common'
 
-import { logger } from '../logging/index.js';
-import { resolveEnv } from '../utils/gd-env.js';
+import { logger } from '../logging/index.js'
+import { resolveEnv } from '../utils/gd-env.js'
 
-export interface LogoGenerateInput {
-  brandName: string;
-  brandDescription: string;
-  style: string;
-  brandTagline?: string;
-  brandColors?: string;
-  brandPersonality?: string;
-  brandAudience?: string;
-  styleDescription?: string;
-  symbol?: string;
-  count?: number;
-  layout?: string;
-  // Caller context (not sent in body)
-  appId: string;
-  customerId: string;
-  budgetUserId: string;
+export type LogoLayout = 'square' | 'horizontal' | 'vertical'
+
+export interface LayoutUrls {
+  transparent: string
+  solid: string
+  reversed: string
+  reversedSolid: string
+  mockup: string
+  landscapeMockup: string
+}
+
+export interface GenerateLogoInput {
+  prompt: string
+  layout: LogoLayout[]
+  referenceUrl?: string
+  appId: string
+  customerId: string
+  budgetUserId: string
 }
 
 export interface ProcessedLogo {
-  id: string;
-  // Square layout (default)
-  transparentUrl?: string;
-  solidUrl?: string;
-  reversedUrl?: string;
-  reversedSolidUrl?: string;
-  mockupUrl?: string;
-  landscapeMockupUrl?: string;
-  // Horizontal layout
-  horizontalTransparentUrl?: string;
-  horizontalSolidUrl?: string;
-  horizontalReversedUrl?: string;
-  horizontalReversedSolidUrl?: string;
-  horizontalMockupUrl?: string;
-  horizontalLandscapeMockupUrl?: string;
-  // Vertical layout
-  verticalTransparentUrl?: string;
-  verticalSolidUrl?: string;
-  verticalReversedUrl?: string;
-  verticalReversedSolidUrl?: string;
-  verticalMockupUrl?: string;
-  verticalLandscapeMockupUrl?: string;
+  id: string
+  generatedAt: string
+  prompt: string
+  modelUsed: string
+  urls: Partial<Record<LogoLayout, LayoutUrls>>
 }
 
-export interface LogoGenerateResult {
-  sessionId: string;
-  logos: ProcessedLogo[];
-}
-
-export interface LogoEditInput {
-  sourceSessionId: string;
-  sourceLogoId: string;
-  prompt: string;
-  layout?: string;
-  count?: number;
-  // Caller context (not sent in body)
-  appId: string;
-  customerId: string;
-  budgetUserId: string;
+export interface LogoSessionResponse {
+  sessionId: string
+  logo: ProcessedLogo
 }
 
 const logoUrls = {
   dev: 'https://logo-agent.mvci.api.dev-godaddy.com',
   test: 'https://logo-agent.mvci.api.test-godaddy.com',
   prod: 'https://logo-agent.mvci.api.godaddy.com',
-} as const;
+} as const
 
 function getLogoApiBaseUrl(): string {
-  if (process.env.LOGO_API_URL) return process.env.LOGO_API_URL;
-  return logoUrls[resolveEnv()];
+  if (process.env.LOGO_API_URL) return process.env.LOGO_API_URL
+  return logoUrls[resolveEnv()]
 }
 
-const LOG_EVENTS = {
-  generate: {
-    budget_exceeded: 'logo.generate.budget_exceeded',
-    api_error: 'logo.generate.api_error',
-    success: 'logo.generate.success',
-    timeout: 'logo.generate.timeout',
-    aborted: 'logo.generate.aborted',
-    error: 'logo.generate.error',
-  },
-  edit: {
-    budget_exceeded: 'logo.edit.budget_exceeded',
-    api_error: 'logo.edit.api_error',
-    success: 'logo.edit.success',
-    timeout: 'logo.edit.timeout',
-    aborted: 'logo.edit.aborted',
-    error: 'logo.edit.error',
-  },
-} as const;
+const REQUEST_TIMEOUT_MS = 240_000
+const MODEL_USED_LABEL = 'logo-agent'
 
-class LogoService {
-  private readonly appKey = 'airo-app-builder';
+/** Flat-keyed ProcessedLogo as returned by the upstream API. */
+interface ApiProcessedLogo {
+  id: string
+  // Square
+  transparentUrl?: string
+  solidUrl?: string
+  reversedUrl?: string
+  reversedSolidUrl?: string
+  mockupUrl?: string
+  landscapeMockupUrl?: string
+  // Horizontal
+  horizontalTransparentUrl?: string
+  horizontalSolidUrl?: string
+  horizontalReversedUrl?: string
+  horizontalReversedSolidUrl?: string
+  horizontalMockupUrl?: string
+  // Vertical
+  verticalTransparentUrl?: string
+  verticalSolidUrl?: string
+  verticalReversedUrl?: string
+  verticalReversedSolidUrl?: string
+  verticalMockupUrl?: string
+}
 
-  private async callLogoApi(endpoint: string, body: Record<string, unknown>, appId: string, customerId: string, budgetUserId: string, operation: keyof typeof LOG_EVENTS): Promise<LogoGenerateResult> {
-    const baseUrl = getLogoApiBaseUrl();
-    const url = `${baseUrl}${endpoint}`;
+interface ApiResponse {
+  id: string
+  sessionId: string
+  logos: ApiProcessedLogo[]
+}
 
-    try {
-      const token = await getS2SToken();
-
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-        'x-app-key': this.appKey,
-        'x-app-builder-app-id': appId,
-        'x-customer-id': customerId,
-        'x-budget-user-id': budgetUserId,
-      };
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(240_000), // 4 minute timeout to cover long-running logo generations
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-
-        if (response.status === 402) {
-          logger.warn(LOG_EVENTS[operation].budget_exceeded, { customerId, budgetUserId });
-          throw new BudgetExceededError(`Logo ${operation} budget exceeded`, 402, errorText);
-        }
-
-        logger.error(LOG_EVENTS[operation].api_error, {
-          status: response.status,
-          error: errorText.slice(0, 500),
-          customerId,
-        });
-
-        throw new Error(`Logo API error: ${response.status} ${errorText.slice(0, 500)}`);
-      }
-
-      const result = (await response.json()) as LogoGenerateResult;
-
-      logger.info(LOG_EVENTS[operation].success, {
-        sessionId: result.sessionId,
-        logoCount: result.logos.length,
-        customerId,
-      });
-
-      return result;
-    } catch (error) {
-      if (BudgetExceededError.isInstance(error)) {
-        throw error;
-      }
-
-      if (error instanceof DOMException && error.name === 'TimeoutError') {
-        logger.error(LOG_EVENTS[operation].timeout, { timeoutMs: 240_000, customerId });
-        throw error;
-      }
-
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        logger.error(LOG_EVENTS[operation].aborted, { customerId });
-        throw error;
-      }
-
-      logger.error(LOG_EVENTS[operation].error, {
-        error: error instanceof Error ? error.message : String(error),
-        cause: error instanceof Error ? (error.cause !== undefined ? (error.cause instanceof Error ? error.cause.message : String(error.cause)) : undefined) : undefined,
-        customerId,
-      });
-
-      const normalizedError = error instanceof Error ? error : new Error(String(error), { cause: error });
-      throw normalizedError;
+/**
+ * Map the upstream's flat keys into our per-layout LayoutUrls bundle.
+ * Returns undefined when the layout's transparent variant is missing —
+ * that variant is required and its absence means the API didn't produce
+ * the layout. Other variants fall back to the most relevant sibling so
+ * the manifest never ends up with empty strings.
+ */
+function pickUrls(logo: ApiProcessedLogo, layout: LogoLayout): LayoutUrls | undefined {
+  if (layout === 'square') {
+    if (!logo.transparentUrl) return undefined
+    return {
+      transparent: logo.transparentUrl,
+      solid: logo.solidUrl ?? logo.transparentUrl,
+      reversed: logo.reversedUrl ?? logo.transparentUrl,
+      reversedSolid: logo.reversedSolidUrl ?? logo.solidUrl ?? logo.transparentUrl,
+      mockup: logo.mockupUrl ?? logo.transparentUrl,
+      landscapeMockup: logo.landscapeMockupUrl ?? logo.mockupUrl ?? logo.transparentUrl,
     }
   }
-
-  async generateLogos(input: LogoGenerateInput): Promise<LogoGenerateResult> {
-    logger.info('logo.generate.begin', {
-      brandName: input.brandName,
-      style: input.style,
-      count: input.count ?? 4,
-      customerId: input.customerId,
-    });
-
-    const body = {
-      brandName: input.brandName,
-      brandDescription: input.brandDescription,
-      style: input.style,
-      ...(input.brandTagline && { brandTagline: input.brandTagline }),
-      ...(input.brandColors && { brandColors: input.brandColors }),
-      ...(input.brandPersonality && { brandPersonality: input.brandPersonality }),
-      ...(input.brandAudience && { brandAudience: input.brandAudience }),
-      ...(input.styleDescription && { styleDescription: input.styleDescription }),
-      ...(input.symbol && { symbol: input.symbol }),
-      ...(input.count && { count: input.count }),
-      ...(input.layout && { layout: input.layout }),
-    };
-
-    return this.callLogoApi('/api/logo', body, input.appId, input.customerId, input.budgetUserId, 'generate');
+  if (layout === 'horizontal') {
+    if (!logo.horizontalTransparentUrl) return undefined
+    return {
+      transparent: logo.horizontalTransparentUrl,
+      solid: logo.horizontalSolidUrl ?? logo.horizontalTransparentUrl,
+      reversed: logo.horizontalReversedUrl ?? logo.horizontalTransparentUrl,
+      reversedSolid:
+        logo.horizontalReversedSolidUrl ??
+        logo.horizontalSolidUrl ??
+        logo.horizontalTransparentUrl,
+      mockup: logo.horizontalMockupUrl ?? logo.horizontalTransparentUrl,
+      // The API has no horizontal/vertical landscape-mockup field, so
+      // `landscapeMockup` intentionally aliases the standard mockup here.
+      landscapeMockup: logo.horizontalMockupUrl ?? logo.horizontalTransparentUrl,
+    }
   }
-
-  async editLogos(input: LogoEditInput): Promise<LogoGenerateResult> {
-    logger.info('logo.edit.begin', {
-      sourceSessionId: input.sourceSessionId,
-      sourceLogoId: input.sourceLogoId,
-      promptLength: input.prompt.length,
-      count: input.count ?? 1,
-      customerId: input.customerId,
-    });
-
-    const body = {
-      sourceSessionId: input.sourceSessionId,
-      sourceLogoId: input.sourceLogoId,
-      prompt: input.prompt,
-      ...(input.layout && { layout: input.layout }),
-      ...(input.count && { count: input.count }),
-    };
-
-    return this.callLogoApi('/api/logo/edit', body, input.appId, input.customerId, input.budgetUserId, 'edit');
+  if (!logo.verticalTransparentUrl) return undefined
+  return {
+    transparent: logo.verticalTransparentUrl,
+    solid: logo.verticalSolidUrl ?? logo.verticalTransparentUrl,
+    reversed: logo.verticalReversedUrl ?? logo.verticalTransparentUrl,
+    reversedSolid:
+      logo.verticalReversedSolidUrl ??
+      logo.verticalSolidUrl ??
+      logo.verticalTransparentUrl,
+    mockup: logo.verticalMockupUrl ?? logo.verticalTransparentUrl,
+    // No vertical landscape-mockup field exists upstream — alias the mockup.
+    landscapeMockup: logo.verticalMockupUrl ?? logo.verticalTransparentUrl,
   }
 }
 
-export const logoService = new LogoService();
+class LogoService {
+  private readonly appKey = 'airo-app-builder'
+
+  async generate(input: GenerateLogoInput): Promise<LogoSessionResponse> {
+    const url = `${getLogoApiBaseUrl().replace(/\/$/, '')}/api/logo/create`
+    const body: Record<string, unknown> = {
+      prompt: input.prompt,
+      layout: input.layout,
+      ...(input.referenceUrl && { referenceUrl: input.referenceUrl }),
+    }
+
+    logger.info('logo.generate.begin', {
+      appId: input.appId,
+      customerId: input.customerId,
+      budgetUserId: input.budgetUserId,
+      promptLength: input.prompt.length,
+      layouts: input.layout,
+      hasReference: Boolean(input.referenceUrl),
+    })
+
+    let response: Response
+    try {
+      const token = await getS2SToken()
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+          'x-app-key': this.appKey,
+          'x-app-builder-app-id': input.appId,
+          'x-customer-id': input.customerId,
+          'x-budget-user-id': input.budgetUserId,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      })
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'TimeoutError') {
+        logger.error('logo.generate.timeout', {
+          customerId: input.customerId,
+          timeoutMs: REQUEST_TIMEOUT_MS,
+        })
+      } else if (err instanceof DOMException && err.name === 'AbortError') {
+        logger.error('logo.generate.aborted', { customerId: input.customerId })
+      } else {
+        logger.error('logo.generate.error', {
+          customerId: input.customerId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+      throw err instanceof Error ? err : new Error(String(err))
+    }
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '')
+      if (response.status === 402) {
+        logger.warn('logo.generate.budget_exceeded', {
+          customerId: input.customerId,
+          budgetUserId: input.budgetUserId,
+        })
+        throw new BudgetExceededError('Logo generation budget exceeded', 402, text)
+      }
+      logger.error('logo.generate.api_error', {
+        status: response.status,
+        error: text.slice(0, 500),
+        customerId: input.customerId,
+      })
+      // Keep the upstream body in the log only — the thrown message surfaces
+      // to the user via the tool's `{ error }`, so don't leak raw API detail.
+      throw new Error(`Logo generation failed (status ${response.status})`)
+    }
+
+    const result = (await response.json()) as ApiResponse
+    const apiLogo = result.logos?.[0]
+    if (!apiLogo) {
+      logger.error('logo.generate.empty_logos', {
+        sessionId: result.sessionId,
+        customerId: input.customerId,
+      })
+      throw new Error('Logo API returned no logos')
+    }
+
+    const urls: Partial<Record<LogoLayout, LayoutUrls>> = {}
+    const droppedLayouts: LogoLayout[] = []
+    for (const layout of input.layout) {
+      const layoutUrls = pickUrls(apiLogo, layout)
+      if (layoutUrls) {
+        urls[layout] = layoutUrls
+      } else {
+        droppedLayouts.push(layout)
+      }
+    }
+    if (droppedLayouts.length > 0) {
+      logger.warn('logo.generate.layouts_dropped', {
+        appId: input.appId,
+        sessionId: result.sessionId,
+        logoId: apiLogo.id,
+        requested: input.layout,
+        dropped: droppedLayouts,
+      })
+    }
+
+    logger.info('logo.generate.success', {
+      appId: input.appId,
+      sessionId: result.sessionId,
+      logoId: apiLogo.id,
+      layouts: input.layout,
+    })
+
+    return {
+      sessionId: result.sessionId,
+      logo: {
+        id: apiLogo.id,
+        generatedAt: new Date().toISOString(),
+        prompt: input.prompt,
+        modelUsed: MODEL_USED_LABEL,
+        urls,
+      },
+    }
+  }
+}
+
+export const logoService = new LogoService()

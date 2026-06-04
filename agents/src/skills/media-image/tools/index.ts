@@ -220,7 +220,7 @@ export const generateImageTool: SkillToolDefinition = {
 
 export const editImageTool: SkillToolDefinition = {
   name: 'edit_image',
-  description: 'Apply AI edits to an existing image. Renders onto an opaque canvas — no transparency. For editing logos, load media-logo skill and use media-logo__edit_logo instead (provides transparent variant).',
+  description: 'Apply AI edits to an existing image. Renders onto an opaque canvas — no transparency. To edit a logo, load the media-logo skill and use media-logo__generate_logo with referenceUrl omitted — it iterates on the saved logo and preserves the transparent variant.',
   parameters: EditImageInputSchema,
 
   async execute(input: EditImageInput, context?: unknown) {
@@ -279,7 +279,7 @@ export const editImageTool: SkillToolDefinition = {
       if (isAllowedLogoUrl(input.imageUrl)) {
         throw new Error(
           'This URL is a generated logo. Editing logos loses transparency and degrades text/layout. ' +
-          'Regenerate via media-logo__generate_logo with adjusted style, brandColors, or symbol. Load media-logo skill first if needed.'
+          'Regenerate via media-logo__generate_logo with an adjusted prompt. Load media-logo skill first if needed.'
         );
       }
     },

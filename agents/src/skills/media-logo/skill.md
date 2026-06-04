@@ -1,21 +1,52 @@
 ---
 name: media-logo
 description: AI logo generation. Load when user wants to generate, redesign, or edit a logo.
-whenToUse: User wants to create, generate or edit a logo. Phrases like "make a logo", "edit the logo", "add X to the logo", "make the logo more X", "change the 2nd logo to be blue".
+whenToUse: User wants to create, generate, or edit a logo. Phrases like "make a logo", "edit the logo", "make the logo more X", "make a logo from this image", "redesign the logo".
 ---
 
-## Slot URL Usage in Source Code
+## Authoring the prompt
 
-Generated logos auto-save to the media slot system. Use the returned `slotUrl` in all code placements:
+Write a complete, plain-English description of the logo you want — subject, style, mood, composition, level of detail. The tool appends the brand color palette to your prompt automatically, so **do not list hex values yourself**. Don't repeat colors that are already in the palette.
+
+Good prompt:
+> A minimalist line-art glyph of a coffee cup with steam curling above it and a small sunrise behind, monoline strokes, generous padding, suitable for a cozy neighborhood cafe.
+
+Bad prompt (lists colors the tool will add anyway, and is too vague about composition):
+> Coffee cup logo, primary #B96B3C, secondary #2A4D3E, friendly.
+
+## Reference images
+
+The tool's `referenceUrl` parameter has two intended uses:
+
+1. **User uploaded an inspiration image** ("make a logo like this", "use this style"). Pass the upload's signed URL — visible in conversation context as a `https://<app-id>.agent.<cluster>.airoapp.ai/files/uploads/...` URL. The tool fetches the image and seeds the generation from it.
+
+2. **Iterating on the saved logo** ("make it blue", "remove the tagline", "make the icon larger"). **Omit** `referenceUrl` — the tool resolves the current saved logo from the slot system automatically. Don't manually supply the slot URL; let auto-resolution handle it.
+
+If neither applies — the user wants a fresh logo from scratch — omit `referenceUrl`.
+
+## Layouts
+
+One layout per call (or `all` for the full kit):
+
+- `square` (1024x1024) — favicon, app icon, social profile
+- `horizontal` (1536x1024, default) — header, navbar, email signature
+- `vertical` (1024x1536) — sidebar, hero, mobile, signage
+- `all` — generates all three orientations in one call
+
+If the user names a placement ("add it to the header"), generate the matching layout. If they don't, default to `horizontal` and ask later if they need other orientations, or generate `all` proactively when scaffolding a new app.
+
+## Slot URL placement in source code
+
+Generated logos auto-save to per-orientation media slots. **Use the slot URL in source code, never the raw CDN URL** — the user can swap logos via the LogoGridWidget and the slot URL stays the same.
 
 ```tsx
-// Header/navbar — horizontal slot
+// Header / navbar — horizontal slot
 <img src="/airo-assets/images/logo/horizontal" alt="Sunrise Cafe logo" />
 
-// Hero section or sidebar — vertical slot
+// Hero / sidebar — vertical slot
 <img src="/airo-assets/images/logo/vertical" alt="Sunrise Cafe logo" />
 
-// Favicon/app icon — square slot (default)
+// Favicon / app icon — square slot
 <img src="/airo-assets/images/logo/primary" alt="Sunrise Cafe logo" />
 
 // If background is required — append ?variant=solid to any slot (only use if the logo is the same color as the background, otherwise it may look worse)
@@ -23,90 +54,70 @@ Generated logos auto-save to the media slot system. Use the returned `slotUrl` i
 <img src="/airo-assets/images/logo/horizontal?variant=solid" alt="Sunrise Cafe logo" />
 ```
 
-**IMPORTANT:** Always use the slot URL, never hardcode the generated CDN URLs directly in source code.
-
-The user can swap logos anytime via the LogoGridWidget — the slot URL stays the same.
-
-## Placement Flow
+## Placement decision
 
 After generation, decide based on context:
 
-1. **Place immediately** when the conversation implies it — e.g., "build a site with a logo" or you're following a handoff that includes building pages.
-2. **Present and wait** when the user only asked to generate a logo. Show the results and let them browse. Place when asked later.
+1. **Place immediately** when the conversation implies it ("build a site with a logo", or you're following a handoff that includes building pages).
+2. **Present and wait** when the user only asked to generate or redesign a logo. Show the result and let them browse. Place when asked later.
 
-## Post-Generation Actions
-
-After calling `media-logo__generate_logo` or `media-logo__edit_logo`, always call
-`media-logo__offer_logo_actions` with the transparent URL of the first generated logo.
-This gives the user quick-action buttons in the chat (e.g. "Add to my library", "Set as my logo").
-
-Use the layout-specific transparent URL field — passing the wrong field yields `undefined` and no buttons render:
-
-- `layout: "horizontal"` → `result.logos[0].horizontalTransparentUrl`
-- `layout: "vertical"` → `result.logos[0].verticalTransparentUrl`
-- `layout: "square"` (or omitted) → `result.logos[0].transparentUrl`
-
-```typescript
-// Example for a horizontal generation
-media-logo__offer_logo_actions({ imageUrl: result.logos[0].horizontalTransparentUrl })
-```
-
-## Context Gathering
-
-Before calling `media-logo__generate_logo`, check conversation context for brand name (`app.title`), description (`app.description`), and colors (color palette from app plan). Only ask the user for information not already available — the tool auto-enriches missing colors as fallback. Don't assume business details beyond what's in context.
+## Examples
 
 <example>
-User: "Move the company name to the right of the icon and make the background transparent"
+User: "Make me a logo for Sunrise Cafe — a cozy neighborhood coffee shop."
 
-Correct - use the edit tool with the source logo reference:
-
-```typescript
-// Edit the current saved logo — sessionId and logoId auto-resolved from slot
-media-logo__edit_logo({
-    prompt: 'Make the logo blue and remove the tagline',
-  });
-
-// Edit a specific logo from a known session
-media-logo__edit_logo({
-    sourceSessionId: 'abc-123-session',
-    sourceLogoId: 'logo-1',
-    prompt: 'Make the logo blue and remove the tagline',
-    layout: 'horizontal',
-    count: 2,
-  });
-```
-
-Wrong — editing the existing logo using the generic image editor or bypassing the slot system:
+Correct — descriptive prompt, layout matches a natural first-fit (header), let the tool inject the palette:
 
 ```typescript
-media-image__edit_image({ prompt: 'Move text to the right...', imageUrl: '...' }); // Loses transparency, can't reposition
-terminalCommand({ command: 'curl ... -o public/assets/logo.png' }); // Bypasses delivery infrastructure
+media-logo__generate_logo({
+  prompt: 'A warm, hand-drawn logo for Sunrise Cafe — a stylized coffee cup with a small sunrise rising behind it, friendly monoline strokes, generous padding, cozy neighborhood feel.',
+  layout: 'horizontal',
+});
 ```
 
+Wrong — agent restates the palette the tool will add anyway, and the prompt is too generic:
+
+```typescript
+media-logo__generate_logo({
+  prompt: 'Coffee shop logo. Primary #B96B3C, secondary #2A4D3E, accent #F2C94C. Friendly.',
+  layout: 'horizontal',
+});
+```
 </example>
 
 <example>
-User: "Actually I want the logo with a 3d style"
+User: "Make the logo blue."
 
-Correct - generate a new logo with the new style, using the same inputs as the original generation (brand name, description, colors) to maintain consistency:
+Correct — referenceUrl omitted; tool auto-resolves the current saved logo:
 
 ```typescript
-// Generate logos in all orientations for a full brand kit
 media-logo__generate_logo({
-    brandName: 'Sunrise Cafe',
-    brandDescription: 'A cozy neighborhood coffee shop serving artisan coffee and fresh pastries',
-    style: '3D',
-    styleDescription: 'warm and welcoming',
-    brandColors: 'warm earth tones with orange accents',
-    symbol: 'coffee cup with sunrise',
-    layout: 'all',
-  });
+  prompt: 'Recolor the existing logo to a deep navy blue, keeping all other design elements unchanged.',
+  layout: 'horizontal',
+});
 ```
 
-Wrong — asking for edits to the existing logo without referencing it, which may lead to a new unrelated design:
+Wrong — agent passes the slot URL manually, defeats auto-resolution and adds noise:
 
 ```typescript
-media-logo__edit_logo({ prompt: 'Make the logo 3D and warm' }); // May not understand to keep existing design elements
+media-logo__generate_logo({
+  prompt: 'Make it blue.',
+  layout: 'horizontal',
+  referenceUrl: '/airo-assets/images/logo/horizontal',
+});
 ```
+</example>
 
+<example>
+User uploaded an image of a vintage badge. "Make me a logo like this for my brewery."
+
+Correct — pass the signed upload URL as referenceUrl:
+
+```typescript
+media-logo__generate_logo({
+  prompt: 'A vintage-style brewery badge in the same illustrated style as the reference image — central crest, banner ribbon, ornate border, warm earth tones.',
+  layout: 'all',
+  referenceUrl: 'https://app-1.agent.c4.test-airoapp.ai/files/uploads/app-1/vintage-badge.png?sig=...&exp=...',
+});
+```
 </example>

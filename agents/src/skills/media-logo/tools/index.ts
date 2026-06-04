@@ -1,360 +1,371 @@
 /**
- * Logo Skill Tools
+ * media-logo — prompt-based logo generation skill tool.
  *
- * Provides tools for:
- * - Logo generation (auto-saves all variants into a media slot)
- * - Logo editing (edit an existing generated logo via AI, auto-saves variants into a media slot)
+ * One tool, one call: `generate_logo({ prompt, layout, referenceUrl? })`.
+ * The agent owns the prompt; the tool injects the brand color palette as a
+ * deterministic suffix so the agent doesn't have to repeat hex codes (saves
+ * tokens and avoids hallucination).
+ *
+ * Edit and generate collapse into one call: pass `referenceUrl` to seed the
+ * generation, omit it for from-scratch. When the agent omits it but the user
+ * is iterating on the saved logo, the tool auto-resolves `referenceUrl` from
+ * the current slot.
  */
 
 import { z } from 'zod';
-import { logger } from '../../../logging/index.js';
+import type { SkillToolDefinition } from '@airo/ai-skills';
 import { grantSessionManager } from '@airo/ai-grants';
 import { BudgetExceededError } from '@airo/ai-common';
-import type { SkillToolDefinition } from '@airo/ai-skills';
-import { logoService, type ProcessedLogo } from '../../../services/LogoService.js';
-import { mediaManifestService } from '../../../services/MediaManifestService.js';
+
+import { logger } from '../../../logging/index.js';
 import { appRepository } from '../../../database/repositories/index.js';
 import { appPlanTool } from '../../../tools/app-plan-tool.js';
+import { mediaManifestService } from '../../../services/MediaManifestService.js';
+import { getKvMemoryStore } from '../../../memory/adapters/index.js';
+import { workspaceScopeFromAppId } from '../../../memory/interfaces/scope.js';
+import {
+  logoService,
+  type LogoLayout,
+  type LayoutUrls,
+  type LogoSessionResponse,
+} from '../../../services/LogoService.js';
 
-// ============================================================================
-// Input Schemas
-// ============================================================================
-const LOGO_STYLES = [
-  'line',
-  'glyph',
-  'full-color',
-  'dual-tone',
-  '3d',
-  'badge',
-  'colored-line',
-  'handmade',
-  'mascot',
-  'name-mark',
-] as const;
+const PROMPT_HARD_MAX = 2000;
+const PROMPT_SCHEMA_MAX = 1800; // leaves ~200 chars for the palette suffix
 
-const LogoVariationSchema = z.object({
-  style: z
-    .enum(LOGO_STYLES)
-    .describe(
-      'Logo visual style preset. Options: line (minimalist line art), glyph (iconic symbol), ' +
-        'full-color (vibrant illustrated), dual-tone (two colors), 3d (depth/dimension), ' +
-        'badge (emblem/seal), colored-line (line art with color), ' +
-        'handmade (hand-drawn feel), mascot (character illustration), ' +
-        'name-mark (stylized typography)'
-    ),
-  styleDescription: z.string().max(200).optional().describe('Additional custom style direction for this variation'),
-  symbol: z.string().max(100).optional().describe('Icon or imagery to incorporate (e.g., "coffee cup", "mountain")'),
-  brandColors: z.string().max(100).optional().describe('Color overrides for this variation'),
-});
+const ToolLayoutSchema = z.enum(['square', 'horizontal', 'vertical', 'all']);
+type ToolLayout = z.infer<typeof ToolLayoutSchema>;
 
 const GenerateLogoInputSchema = z.object({
-  brandName: z.string().min(1).max(100).describe('Primary text for the logo (business/brand name)'),
-
-  brandTagline: z.string().max(100).optional().describe('Secondary text like tagline, slogan, or "Est. 2020"'),
-
-  brandDescription: z
-    .string()
-    .min(1)
-    .max(500)
-    .describe('What the business does - informs visual choices for the logo design'),
-
-  brandPersonality: z
-    .string()
-    .max(200)
-    .optional()
-    .describe('Brand personality traits (e.g., "professional and trustworthy", "playful and creative")'),
-
-  brandAudience: z
-    .string()
-    .max(200)
-    .optional()
-    .describe('Target audience description (e.g., "young professionals", "families with children")'),
-
-  layout: z
-    .enum(['square', 'horizontal', 'vertical', 'all'])
-    .default('horizontal')
-    .describe(
-      'Which layout orientation to generate. ' +
-        'square (1024x1024 — app icons, social profiles), ' +
-        'horizontal (1536x1024, default — headers, navbars, email signatures), ' +
-        'vertical (1024x1536 — sidebars, mobile, signage), ' +
-        'or all (generates all three orientations). ' +
-        'Each logo in the response includes URLs only for the requested layout(s).'
-    ),
-
-  variations: z
-    .array(LogoVariationSchema)
-    .min(1)
-    .max(4)
-    .describe('Style variations to generate. The first variation should be the closest match to what the user wants — the best style for their brand. Subsequent variations provide alternatives for the user to choose from.'),
-});
-
-const EditLogoInputSchema = z.object({
-  sourceSessionId: z
-    .string()
-    .min(1)
-    .optional()
-    .describe('The sessionId from a previous logo generation result. If omitted, automatically resolved from the current saved logo slot.'),
-
-  sourceLogoId: z
-    .string()
-    .min(1)
-    .optional()
-    .describe('The id of the specific logo to edit. If omitted, automatically resolved from the current saved logo slot.'),
-
   prompt: z
     .string()
     .min(1)
-    .max(1000)
-    .describe('Description of the edits to make to the logo (e.g., "Make the logo blue", "Remove the tagline", "Make the icon larger")'),
-
-  layout: z
-    .enum(['square', 'horizontal', 'vertical', 'all'])
+    .max(PROMPT_SCHEMA_MAX)
+    .describe(
+      'Complete description of the logo you want, in plain English. ' +
+        'Include subject, style, mood, and composition. The tool appends ' +
+        'the brand color palette automatically — do not list hex values. ' +
+        'Example: "A minimalist line-art glyph of a coffee cup with a ' +
+        'sunrise behind it, monoline strokes, generous padding."',
+    ),
+  layout: ToolLayoutSchema.default('horizontal').describe(
+    'Logo orientation. square (1024x1024 — favicon, app icon), ' +
+      'horizontal (1536x1024, default — header, navbar), ' +
+      'vertical (1024x1536 — sidebar, hero), or all (generates all three).',
+  ),
+  referenceUrl: z
+    .string()
+    .url()
     .optional()
     .describe(
-      'Which layout orientation to edit. If omitted, uses the same layout as the source logo. ' +
-        'square (1024x1024), horizontal (1536x1024), vertical (1024x1536), or all.'
+      "Optional reference image URL. Pass when the user uploaded an inspiration " +
+        "image to chat — use the upload's signed URL visible in conversation context. " +
+        'Omit when iterating on the existing saved logo; the tool resolves the ' +
+        'current slot URL automatically.',
     ),
-
-  count: z.coerce.number().int().min(1).max(4).default(1).describe('Number of edited logo variations to generate (1-4, default: 1)'),
 });
 
-// ============================================================================
-// Type Aliases for Tool Inputs
-// ============================================================================
-
 type GenerateLogoInput = z.infer<typeof GenerateLogoInputSchema>;
-type EditLogoInput = z.infer<typeof EditLogoInputSchema>;
 
-// ============================================================================
-// Tool Definitions
-// ============================================================================
+type LogoSlotLayout = LogoLayout;
 
-/**
- * Per-orientation logo slot paths.
- * Each orientation gets its own slot so they can be used independently
- * (e.g., horizontal in header, vertical in hero, square for favicon).
- */
-type LogoLayout = 'square' | 'horizontal' | 'vertical';
-
-const LOGO_SLOT_PATHS: Record<LogoLayout, string> = {
+const LOGO_SLOT_PATHS: Record<LogoSlotLayout, string> = {
   square: 'logo/primary',
   horizontal: 'logo/horizontal',
   vertical: 'logo/vertical',
 };
 
-/** Default slot path used for backwards compatibility and auto-resolution. */
-const DEFAULT_LOGO_SLOT_PATH = 'logo/primary';
+const ALL_LAYOUTS: readonly LogoLayout[] = ['square', 'horizontal', 'vertical'] as const;
 
-/** URL getters per orientation from a ProcessedLogo. */
-const LAYOUT_URL_GETTERS: Record<LogoLayout, {
-  transparent: (l: ProcessedLogo) => string | undefined;
-  solid: (l: ProcessedLogo) => string | undefined;
-  reversed: (l: ProcessedLogo) => string | undefined;
-  reversedSolid: (l: ProcessedLogo) => string | undefined;
-  mockup: (l: ProcessedLogo) => string | undefined;
-  landscapeMockup: (l: ProcessedLogo) => string | undefined;
-}> = {
-  square: {
-    transparent: (l) => l.transparentUrl,
-    solid: (l) => l.solidUrl,
-    reversed: (l) => l.reversedUrl,
-    reversedSolid: (l) => l.reversedSolidUrl,
-    mockup: (l) => l.mockupUrl,
-    landscapeMockup: (l) => l.landscapeMockupUrl,
-  },
-  horizontal: {
-    transparent: (l) => l.horizontalTransparentUrl,
-    solid: (l) => l.horizontalSolidUrl,
-    reversed: (l) => l.horizontalReversedUrl,
-    reversedSolid: (l) => l.horizontalReversedSolidUrl,
-    mockup: (l) => l.horizontalMockupUrl,
-    landscapeMockup: (l) => l.horizontalLandscapeMockupUrl,
-  },
-  vertical: {
-    transparent: (l) => l.verticalTransparentUrl,
-    solid: (l) => l.verticalSolidUrl,
-    reversed: (l) => l.verticalReversedUrl,
-    reversedSolid: (l) => l.verticalReversedSolidUrl,
-    mockup: (l) => l.verticalMockupUrl,
-    landscapeMockup: (l) => l.verticalLandscapeMockupUrl,
-  },
-};
+/** Five core palette tokens we surface to the model. */
+type CorePaletteKey = 'primary' | 'secondary' | 'accent' | 'background' | 'foreground';
+const CORE_PALETTE_KEYS: readonly CorePaletteKey[] = [
+  'primary',
+  'secondary',
+  'accent',
+  'background',
+  'foreground',
+] as const;
 
 /**
- * Determine which orientations are present in the logo results.
- *
- * Assumption: all logos in a generation batch share the same orientation set.
- * Only the first logo is inspected. If the API ever returns heterogeneous
- * orientations across logos in a single batch, logos beyond the first may be
- * saved to the wrong slot.
+ * Read the color palette from the most authoritative source we have.
+ * Returns the subset of core tokens that are actually populated; missing
+ * tokens are skipped (no placeholders, no hallucinated hex values).
  */
-function getLayoutsFromLogos(logos: ProcessedLogo[]): LogoLayout[] {
-  const layouts: LogoLayout[] = [];
-  const first = logos[0];
-  if (!first) return ['square'];
-  if (first.transparentUrl || first.solidUrl) layouts.push('square');
-  if (first.horizontalTransparentUrl || first.horizontalSolidUrl) layouts.push('horizontal');
-  if (first.verticalTransparentUrl || first.verticalSolidUrl) layouts.push('vertical');
-
-  // Warn if any subsequent logo has a different orientation set — this would
-  // indicate the homogeneous-batch assumption no longer holds.
-  if (logos.length > 1) {
-    for (let i = 1; i < logos.length; i++) {
-      const l = logos[i]!;
-      const hasSquare = !!(l.transparentUrl || l.solidUrl);
-      const hasHorizontal = !!(l.horizontalTransparentUrl || l.horizontalSolidUrl);
-      const hasVertical = !!(l.verticalTransparentUrl || l.verticalSolidUrl);
-      const otherLayouts: LogoLayout[] = [];
-      if (hasSquare) otherLayouts.push('square');
-      if (hasHorizontal) otherLayouts.push('horizontal');
-      if (hasVertical) otherLayouts.push('vertical');
-      if (otherLayouts.length === 0) otherLayouts.push('square');
-
-      if (otherLayouts.length !== layouts.length || otherLayouts.some((lay, idx) => lay !== layouts[idx])) {
-        logger.warn('logo.layouts.mismatch', {
-          message: 'Logo batch contains heterogeneous orientation sets — only the first logo was used to determine layouts',
-          firstLogoLayouts: layouts,
-          mismatchIndex: i,
-          mismatchLayouts: otherLayouts,
-        });
-        break;
+async function readPalette(appId: string): Promise<Partial<Record<CorePaletteKey, string>>> {
+  // 1. App plan tool (hex strings keyed directly by `primary`/`secondary`/...)
+  try {
+    const plan = await appPlanTool.execute({ appId, operation: 'get' });
+    const palette = plan.data?.colorPalette;
+    if (palette) {
+      const out: Partial<Record<CorePaletteKey, string>> = {};
+      for (const k of CORE_PALETTE_KEYS) {
+        const v = palette[k];
+        if (typeof v === 'string' && v.trim()) out[k] = v.trim();
       }
+      if (Object.keys(out).length > 0) return out;
     }
+  } catch (err) {
+    logger.warn('skill.media-logo.palette.app_plan_failed', {
+      appId,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
-  return layouts.length > 0 ? layouts : ['square'];
+  // 2. Memory key `brand.colors.palette` (object shape `{ primary: { value }, ... }`)
+  try {
+    const scope = workspaceScopeFromAppId(appId);
+    const result = await getKvMemoryStore().get(scope, 'brand.colors.palette');
+    if (result.success && result.exists && result.value && typeof result.value === 'object') {
+      const palette = result.value as Record<string, unknown>;
+      const out: Partial<Record<CorePaletteKey, string>> = {};
+      for (const k of CORE_PALETTE_KEYS) {
+        const slot = palette[k];
+        if (slot && typeof slot === 'object' && 'value' in slot) {
+          const v = (slot as { value?: unknown }).value;
+          if (typeof v === 'string' && v.trim()) out[k] = v.trim();
+        } else if (typeof slot === 'string' && slot.trim()) {
+          out[k] = slot.trim();
+        }
+      }
+      if (Object.keys(out).length > 0) return out;
+    }
+  } catch (err) {
+    logger.warn('skill.media-logo.palette.memory_failed', {
+      appId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  return {};
 }
 
-/**
- * Save logos to per-orientation media slots. Each layout present in the results
- * gets its own slot, enabling independent use in different placements.
- */
-const SLOT_SAVED_EVENTS = {
-  generate_logo: 'skills.media-logo.tools.generate_logo.slot_saved',
-  edit_logo: 'skills.media-logo.tools.edit_logo.slot_saved',
-} as const;
+function buildPaletteSuffix(palette: Partial<Record<CorePaletteKey, string>>): string {
+  const parts: string[] = [];
+  for (const k of CORE_PALETTE_KEYS) {
+    const v = palette[k];
+    if (v) parts.push(`${k} ${v}`);
+  }
+  if (parts.length === 0) return '';
+  return ` Brand colors: ${parts.join(', ')}.`;
+}
 
-async function saveLogosToSlots(
+function assembleFinalPrompt(agentPrompt: string, suffix: string, appId: string): string {
+  if (!suffix) return agentPrompt;
+  const combined = agentPrompt + suffix;
+  if (combined.length <= PROMPT_HARD_MAX) return combined;
+
+  // Suffix would push past the hard cap — drop it rather than truncate the
+  // suffix mid-sentence (clamp would leave broken hex codes).
+  logger.warn('skill.media-logo.prompt_truncated', {
+    appId,
+    agentPromptLength: agentPrompt.length,
+    suffixLength: suffix.length,
+    note: 'palette suffix dropped to keep prompt under 2000 chars',
+  });
+  return agentPrompt;
+}
+
+function expandLayouts(input: ToolLayout): LogoLayout[] {
+  if (input === 'all') return [...ALL_LAYOUTS];
+  return [input];
+}
+
+interface ResolvedReference {
+  /** The reference URL to seed generation from, if one was found. */
+  url: string | undefined;
+  /**
+   * True when a saved logo slot exists but no usable reference could be
+   * resolved from it. Distinguishes "iterate-but-couldn't" (a real anomaly
+   * worth surfacing) from a clean first-time generation (no slot at all).
+   */
+  existingSlotWithoutReference: boolean;
+}
+
+async function resolveReferenceUrl(
   appId: string,
-  logos: ProcessedLogo[],
-  sessionId: string,
-  searchQuery: string,
-  toolName: keyof typeof SLOT_SAVED_EVENTS,
-  logoSessionIds?: Map<string, string>,
-): Promise<{ savedSlots: Record<string, string> }> {
-  const layouts = getLayoutsFromLogos(logos);
-  const savedSlots: Record<string, string> = {};
+  callerProvided: string | undefined,
+  layouts: LogoLayout[],
+): Promise<ResolvedReference> {
+  if (callerProvided) return { url: callerProvided, existingSlotWithoutReference: false };
 
-  for (const layout of layouts) {
-    const slotPath = LOGO_SLOT_PATHS[layout];
-    const getters = LAYOUT_URL_GETTERS[layout];
-
-    const transparentUrls = logos
-      .map(l => getters.transparent(l))
-      .filter(Boolean) as string[];
-
-    if (transparentUrls.length === 0) continue;
-
-    const solidUrlMap: Record<string, string> = {};
-    const reversedUrlMap: Record<string, string> = {};
-    const reversedSolidUrlMap: Record<string, string> = {};
-    const mockupUrlMap: Record<string, string> = {};
-    const landscapeMockupUrlMap: Record<string, string> = {};
-    const logoSourceMap: Record<string, { sessionId: string; logoId: string }> = {};
-    for (const logo of logos) {
-      const tUrl = getters.transparent(logo);
-      const sUrl = getters.solid(logo);
-      const rUrl = getters.reversed(logo);
-      const rsUrl = getters.reversedSolid(logo);
-      const mUrl = getters.mockup(logo);
-      const lmUrl = getters.landscapeMockup(logo);
-      const logoSessionId = logoSessionIds?.get(logo.id) ?? sessionId;
-      if (tUrl && sUrl) solidUrlMap[tUrl] = sUrl;
-      if (tUrl && rUrl) reversedUrlMap[tUrl] = rUrl;
-      if (tUrl && rsUrl) reversedSolidUrlMap[tUrl] = rsUrl;
-      if (tUrl && mUrl) mockupUrlMap[tUrl] = mUrl;
-      if (tUrl && lmUrl) landscapeMockupUrlMap[tUrl] = lmUrl;
-      if (tUrl) logoSourceMap[tUrl] = { sessionId: logoSessionId, logoId: logo.id };
+  // Auto-resolve from the slot. Prefer a slot matching one of the requested
+  // layouts; fall back to the primary (square) slot.
+  const candidatePaths = [
+    ...layouts.map((l) => LOGO_SLOT_PATHS[l]),
+    LOGO_SLOT_PATHS.square,
+  ];
+  const seen = new Set<string>();
+  let sawSlot = false;
+  for (const path of candidatePaths) {
+    if (seen.has(path)) continue;
+    seen.add(path);
+    try {
+      const r = await mediaManifestService.getSlot(appId, path);
+      if (!r.success || !r.slot) continue;
+      sawSlot = true;
+      const sourceMap = r.slot.logoSourceMap;
+      if (!sourceMap) continue;
+      const source = sourceMap[r.slot.currentUrl];
+      if (source) {
+        logger.info('skill.media-logo.reference.slot_resolved', {
+          appId,
+          slotPath: path,
+          currentUrl: r.slot.currentUrl,
+        });
+        return { url: r.slot.currentUrl, existingSlotWithoutReference: false };
+      }
+      logger.info('skill.media-logo.reference.slot_no_source', { appId, slotPath: path });
+    } catch (err) {
+      logger.warn('skill.media-logo.reference.slot_lookup_failed', {
+        appId,
+        slotPath: path,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
+  }
+  return { url: undefined, existingSlotWithoutReference: sawSlot };
+}
 
-    // Merge with existing slot
-    const existingResult = await mediaManifestService.getSlot(appId, slotPath);
-    const existingSlot = existingResult.success ? existingResult.slot : undefined;
-    let mergedAlternatives = transparentUrls.slice(1);
+interface SaveSlotsResult {
+  savedSlots: Partial<Record<LogoLayout, string>>;
+  slotSaveFailed: boolean;
+  failedLayouts: LogoLayout[];
+}
+
+async function saveLogoToSlots(
+  appId: string,
+  response: LogoSessionResponse,
+  searchQuery: string,
+): Promise<SaveSlotsResult> {
+  const savedSlots: Partial<Record<LogoLayout, string>> = {};
+  const failedLayouts: LogoLayout[] = [];
+  const now = new Date().toISOString();
+
+  for (const layout of ALL_LAYOUTS) {
+    const variants: LayoutUrls | undefined = response.logo.urls[layout];
+    if (!variants) continue;
+
+    const slotPath = LOGO_SLOT_PATHS[layout];
+    const transparent = variants.transparent;
+
+    const solidUrlMap = { [transparent]: variants.solid };
+    const reversedUrlMap = { [transparent]: variants.reversed };
+    const reversedSolidUrlMap = { [transparent]: variants.reversedSolid };
+    const mockupUrlMap = { [transparent]: variants.mockup };
+    const landscapeMockupUrlMap = { [transparent]: variants.landscapeMockup };
+    const logoSourceMap = {
+      [transparent]: { sessionId: response.sessionId, logoId: response.logo.id },
+    };
+
+    let mergedAlternatives: string[] = [];
     let mergedSolidUrlMap = { ...solidUrlMap };
     let mergedReversedUrlMap = { ...reversedUrlMap };
     let mergedReversedSolidUrlMap = { ...reversedSolidUrlMap };
     let mergedMockupUrlMap = { ...mockupUrlMap };
     let mergedLandscapeMockupUrlMap = { ...landscapeMockupUrlMap };
     let mergedLogoSourceMap = { ...logoSourceMap };
+    let createdAt = now;
 
-    if (existingSlot) {
-      const existingUrls = [existingSlot.currentUrl, ...(existingSlot.alternatives || [])];
-      const newUrlSet = new Set(transparentUrls);
-      const oldUrls = existingUrls.filter(url => !newUrlSet.has(url));
-      mergedAlternatives = [...mergedAlternatives, ...oldUrls];
-      mergedSolidUrlMap = { ...(existingSlot.solidUrlMap || {}), ...solidUrlMap };
-      mergedReversedUrlMap = { ...(existingSlot.reversedUrlMap || {}), ...reversedUrlMap };
-      mergedReversedSolidUrlMap = { ...(existingSlot.reversedSolidUrlMap || {}), ...reversedSolidUrlMap };
-      mergedMockupUrlMap = { ...(existingSlot.mockupUrlMap || {}), ...mockupUrlMap };
-      mergedLandscapeMockupUrlMap = { ...(existingSlot.landscapeMockupUrlMap || {}), ...landscapeMockupUrlMap };
-      mergedLogoSourceMap = { ...(existingSlot.logoSourceMap || {}), ...logoSourceMap };
+    try {
+      const existing = await mediaManifestService.getSlot(appId, slotPath);
+      if (existing.success && existing.slot) {
+        const old = existing.slot;
+        const oldUrls = [old.currentUrl, ...(old.alternatives ?? [])].filter(
+          (u) => u && u !== transparent,
+        );
+        mergedAlternatives = oldUrls;
+        mergedSolidUrlMap = { ...(old.solidUrlMap ?? {}), ...solidUrlMap };
+        mergedReversedUrlMap = { ...(old.reversedUrlMap ?? {}), ...reversedUrlMap };
+        mergedReversedSolidUrlMap = { ...(old.reversedSolidUrlMap ?? {}), ...reversedSolidUrlMap };
+        mergedMockupUrlMap = { ...(old.mockupUrlMap ?? {}), ...mockupUrlMap };
+        mergedLandscapeMockupUrlMap = {
+          ...(old.landscapeMockupUrlMap ?? {}),
+          ...landscapeMockupUrlMap,
+        };
+        mergedLogoSourceMap = { ...(old.logoSourceMap ?? {}), ...logoSourceMap };
+        createdAt = old.createdAt || now;
+      }
+
+      await mediaManifestService.setSlot(appId, slotPath, {
+        mediaType: 'logo',
+        currentUrl: transparent,
+        searchQuery,
+        alternatives: mergedAlternatives,
+        solidUrlMap: mergedSolidUrlMap,
+        reversedUrlMap: mergedReversedUrlMap,
+        reversedSolidUrlMap: mergedReversedSolidUrlMap,
+        mockupUrlMap: mergedMockupUrlMap,
+        landscapeMockupUrlMap: mergedLandscapeMockupUrlMap,
+        logoSourceMap: mergedLogoSourceMap,
+        userModified: false,
+        createdAt,
+        lastUpdated: now,
+      });
+
+      savedSlots[layout] = `/airo-assets/images/${slotPath}`;
+      logger.info('skill.media-logo.slot_saved', {
+        appId, slotPath, layout, sessionId: response.sessionId,
+      });
+    } catch (err) {
+      failedLayouts.push(layout);
+      logger.error('skill.media-logo.slot_save_failed', {
+        appId,
+        slotPath,
+        layout,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
-
-    const now = new Date().toISOString();
-
-    await mediaManifestService.setSlot(appId, slotPath, {
-      mediaType: 'logo',
-      currentUrl: transparentUrls[0]!,
-      searchQuery: existingSlot?.searchQuery || searchQuery,
-      alternatives: mergedAlternatives,
-      solidUrlMap: mergedSolidUrlMap,
-      reversedUrlMap: mergedReversedUrlMap,
-      reversedSolidUrlMap: mergedReversedSolidUrlMap,
-      mockupUrlMap: mergedMockupUrlMap,
-      landscapeMockupUrlMap: mergedLandscapeMockupUrlMap,
-      logoSourceMap: mergedLogoSourceMap,
-      userModified: false,
-      createdAt: existingSlot?.createdAt || now,
-      lastUpdated: now,
-    });
-
-    const slotUrl = `/airo-assets/images/${slotPath}`;
-    savedSlots[layout] = slotUrl;
-
-    logger.info(SLOT_SAVED_EVENTS[toolName], {
-      appId,
-      slotPath,
-      layout,
-      logoCount: logos.length,
-      totalLogos: mergedAlternatives.length + 1,
-    });
   }
 
-  return { savedSlots };
+  return { savedSlots, slotSaveFailed: failedLayouts.length > 0, failedLayouts };
 }
 
-/**
- * Build slot URL summary text for the agent.
- */
-function buildSlotSummary(savedSlots: Record<string, string>): string {
-  const entries = Object.entries(savedSlots);
-  if (entries.length === 0) {
-    return 'No slot URLs saved — logos are available via CDN URLs in the structured result.';
-  }
-  if (entries.length === 1) {
-    const [layout, url] = entries[0]!;
-    return `Slot URL: ${url} (transparent), ${url}?variant=solid (solid). Layout: ${layout}.`;
-  }
-  return 'Slot URLs: ' + entries.map(([layout, url]) => `${layout}: ${url}`).join(', ') +
-    '. Append ?variant=solid for solid backgrounds. Use the orientation-specific slot URL matching the placement context.';
+function buildResultText(args: {
+  /** Layouts actually produced by the API (not merely requested). */
+  producedLayouts: LogoLayout[];
+  savedSlots: Partial<Record<LogoLayout, string>>;
+  failedLayouts: LogoLayout[];
+  /**
+   * True when the caller omitted `referenceUrl`, a saved logo existed, but no
+   * usable reference could be resolved — i.e. an intended edit silently became
+   * a fresh design. Lets the agent tell the user it's a new logo, not a tweak.
+   */
+  generatedFromScratchDespiteExisting: boolean;
+}): string {
+  const count = args.producedLayouts.length;
+  const slotEntries = Object.entries(args.savedSlots);
+  const slotNote = slotEntries.length === 0
+    ? 'No slot URLs saved.'
+    : slotEntries.length === 1
+      ? `Slot URL: ${slotEntries[0]![1]} (use \`?variant=solid\` for a solid background).`
+      : 'Slot URLs: ' +
+        slotEntries.map(([l, u]) => `${l}: ${u}`).join(', ') +
+        '. Use the orientation matching the placement; append `?variant=solid` for solid backgrounds.';
+
+  const failureNote = args.failedLayouts.length > 0
+    ? ` Slot save failed for: ${args.failedLayouts.join(', ')} — ${args.failedLayouts.length > 1 ? 'those layouts' : 'that layout'} will not appear in the Brand Book until retried. Tell the user and offer to retry.`
+    : '';
+
+  const fromScratchNote = args.generatedFromScratchDespiteExisting
+    ? ' Note: no usable reference was found for the existing logo, so this is a brand-new design rather than an edit of the current one — let the user know if they expected a tweak.'
+    : '';
+
+  return (
+    `Generated logo${count > 1 ? 's' : ''} for ${count} layout` +
+    `${count > 1 ? 's' : ''}.${failureNote}${fromScratchNote} ${slotNote} ` +
+    "If the user's request includes a placement (e.g. \"add it to the header\"), place the appropriate slot URL in source code now. " +
+    'Otherwise, present the result and let the user decide — they can ask you to place it later.'
+  );
 }
 
 export const generateLogoTool: SkillToolDefinition = {
   name: 'generate_logo',
   description:
-    'Generate professional logos for a business using AI. Automatically saves all generated logos into the media slot system. Returns slot URL for use in source code, plus logo preview data. Requires business name and description.',
+    'Generate a logo from a prompt. Pass `referenceUrl` to seed from an uploaded image; ' +
+    'omit it to iterate on the saved logo (auto-resolved from the slot). ' +
+    'The tool appends the brand color palette to your prompt automatically — ' +
+    'do not list hex values yourself. One layout per call (or `all` for the full kit).',
 
   parameters: GenerateLogoInputSchema,
 
@@ -362,170 +373,110 @@ export const generateLogoTool: SkillToolDefinition = {
     const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
     const socketId = (context as { socketId?: string })?.socketId;
 
-    logger.info('skills.media-logo.tools.generate_logo.start', {
-      brandName: input.brandName,
-      variationCount: input.variations.length,
+    logger.info('skill.media-logo.generate_logo.start', {
       appId,
+      layout: input.layout,
+      promptLength: input.prompt.length,
+      hasReference: Boolean(input.referenceUrl),
     });
 
     if (!appId) {
-      logger.error('skills.media-logo.tools.generate_logo.no_app_id');
+      logger.error('skill.media-logo.generate_logo.no_app_id');
       return { error: 'Unable to determine app id for logo generation' };
     }
 
-    // 1. Get customer context from app database
+    // AAB-only: the `apps` table (and thus customerId) may not exist for PaaS.
+    // Logo generation is currently an AAB feature, so a missing record is a
+    // hard error rather than a fallback.
     const app = appRepository.findById(appId);
     const customerId = app?.customerId;
-
     if (!customerId) {
-      logger.error('skills.media-logo.tools.generate_logo.no_customer', { appId });
+      logger.error('skill.media-logo.generate_logo.no_customer', { appId });
       return { error: 'Unable to determine customer identity for logo generation' };
     }
 
-    // 2. Get budget user from grant system (required — logo generation must be billed)
     const budgetUserId = socketId
       ? grantSessionManager.getCurrentUserId(socketId, customerId)
       : customerId;
-
     if (!budgetUserId) {
-      logger.error('skills.media-logo.tools.generate_logo.grants_exhausted', { appId, socketId, budgetUserId });
+      logger.error('skill.media-logo.generate_logo.grants_exhausted', {
+        appId, socketId, customerId,
+      });
       return { error: 'All credit grants have been exhausted. Please purchase additional credits to generate logos.' };
     }
 
-    // 3. Enrich brand colors from app plan (used as fallback for variations without explicit colors)
-    let enrichedBrandColors: string | undefined;
-
-    if (appId) {
-      try {
-        const planResult = await appPlanTool.execute({ appId, operation: 'get' });
-        const palette = planResult.data?.colorPalette;
-        if (palette?.primary) {
-          const parts = [`primary: ${palette.primary}`];
-          if (palette.secondary) parts.push(`secondary: ${palette.secondary}`);
-          if (palette.accent) parts.push(`accent: ${palette.accent}`);
-          enrichedBrandColors = parts.join(', ');
-        }
-      } catch (e) {
-        logger.warn('skills.media-logo.tools.generate_logo.enrich_colors_failed', {
-          appId,
-          error: e instanceof Error ? e.message : String(e),
-        });
-      }
+    if (input.referenceUrl && !input.referenceUrl.startsWith('https://')) {
+      return { error: 'referenceUrl must use https' };
     }
 
-    // 4. Call logo API — one call per variation, in parallel
-    const variationResults = await Promise.allSettled(
-      input.variations.map((variation) =>
-        logoService.generateLogos({
-          brandName: input.brandName,
-          brandDescription: input.brandDescription,
-          brandTagline: input.brandTagline,
-          brandColors: variation.brandColors || enrichedBrandColors,
-          brandPersonality: input.brandPersonality,
-          brandAudience: input.brandAudience,
-          style: variation.style,
-          styleDescription: variation.styleDescription,
-          symbol: variation.symbol,
-          layout: input.layout,
-          count: 1,
-          appId,
-          customerId,
-          budgetUserId,
-        })
-      )
-    );
+    const palette = await readPalette(appId);
+    const suffix = buildPaletteSuffix(palette);
+    const finalPrompt = assembleFinalPrompt(input.prompt, suffix, appId);
 
-    // Collect successful results — preserve per-logo sessionId for edit_logo auto-resolution
-    const logos: ProcessedLogo[] = [];
-    const logoSessionIds = new Map<string, string>();
-    let sessionId = '';
-    let variationFailureCount = 0;
-    for (const r of variationResults) {
-      if (r.status === 'fulfilled') {
-        for (const logo of r.value.logos) {
-          logos.push(logo);
-          logoSessionIds.set(logo.id, r.value.sessionId);
-        }
-        if (!sessionId) sessionId = r.value.sessionId;
-      } else {
-        variationFailureCount += 1;
-        logger.warn('skills.media-logo.tools.generate_logo.variation_failed', {
-          error: r.reason instanceof Error ? r.reason.message : String(r.reason),
-        });
-      }
+    const layouts = expandLayouts(input.layout);
+    const reference = await resolveReferenceUrl(appId, input.referenceUrl, layouts);
+    const referenceUrl = reference.url;
+
+    // The caller omitted a reference and we couldn't resolve one from an
+    // existing slot — an intended "make it blue"-style edit will produce a
+    // fresh design instead. Surface it so it isn't silently misleading.
+    const generatedFromScratchDespiteExisting =
+      !input.referenceUrl && referenceUrl === undefined && reference.existingSlotWithoutReference;
+    if (generatedFromScratchDespiteExisting) {
+      logger.warn('skill.media-logo.reference.unresolved_with_existing_slot', {
+        appId,
+        layout: input.layout,
+      });
     }
 
-    const budgetExhaustedRejection = variationResults.find(
-      (r): r is PromiseRejectedResult => r.status === 'rejected' && BudgetExceededError.isInstance(r.reason),
-    );
-    if (budgetExhaustedRejection) {
-      logger.warn('skills.media-logo.tools.generate_logo.budget_exceeded', {
+    let response: LogoSessionResponse;
+    try {
+      response = await logoService.generate({
+        prompt: finalPrompt,
+        layout: layouts,
+        ...(referenceUrl !== undefined && { referenceUrl }),
         appId,
         customerId,
         budgetUserId,
-        successfulLogoCount: logos.length,
-        failedVariationCount: variationFailureCount,
       });
-      throw budgetExhaustedRejection.reason;
+    } catch (err) {
+      if (BudgetExceededError.isInstance(err)) throw err;
+      logger.error('skill.media-logo.generate_logo.error', {
+        appId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return { error: err instanceof Error ? err.message : 'Logo generation failed' };
     }
 
-    if (logos.length === 0) {
-      return { text: 'All logo variations failed to generate. Please try again.' };
-    }
+    const { savedSlots, slotSaveFailed, failedLayouts } = await saveLogoToSlots(
+      appId,
+      response,
+      input.prompt.slice(0, 80),
+    );
 
-    const result = { sessionId, logos };
+    const producedLayouts = Object.keys(response.logo.urls) as LogoLayout[];
 
-    logger.info('skills.media-logo.tools.generate_logo.success', {
-      brandName: input.brandName,
-      sessionId: result.sessionId,
-      logoCount: result.logos.length,
-      variationsRequested: input.variations.length,
+    const layoutKeys = Object.keys(savedSlots) as LogoLayout[];
+    const primaryLayout: LogoLayout =
+      layoutKeys.includes('square') ? 'square'
+      : layoutKeys.includes('horizontal') ? 'horizontal'
+      : layoutKeys.includes('vertical') ? 'vertical'
+      : layouts[0]!;
+    const primarySlotPath = LOGO_SLOT_PATHS[primaryLayout];
+    const primarySlotUrl = savedSlots[primaryLayout] ?? `/airo-assets/images/${primarySlotPath}`;
+
+    const text = buildResultText({
+      producedLayouts,
+      savedSlots,
+      failedLayouts,
+      generatedFromScratchDespiteExisting,
     });
 
-    // 5. Auto-save logos to per-orientation slots
-    let savedSlots: Record<string, string> = {};
-    let slotSaveFailed = false;
-    if (appId && result.logos.length > 0) {
-      try {
-        const saveResult = await saveLogosToSlots(appId, result.logos, result.sessionId, input.brandName, 'generate_logo', logoSessionIds);
-        savedSlots = saveResult.savedSlots;
-      } catch (e) {
-        slotSaveFailed = true;
-        logger.warn('skills.media-logo.tools.generate_logo.slot_save_failed', {
-          appId,
-          error: e instanceof Error ? e.message : String(e),
-        });
-      }
-    }
-
-    if (Object.keys(savedSlots).length === 0 && result.logos.length > 0) {
-      logger.warn('skills.media-logo.tools.generate_logo.no_slots_saved', {
-        appId,
-        logoCount: result.logos.length,
-        sessionId: result.sessionId,
-      });
-    }
-
-    // 6. Return structured result for the frontend + instructions for the agent
-    const primaryLayout = savedSlots.square ? 'square' : savedSlots.horizontal ? 'horizontal' : savedSlots.vertical ? 'vertical' : 'square';
-    const primarySlotPath = LOGO_SLOT_PATHS[primaryLayout as LogoLayout] ?? DEFAULT_LOGO_SLOT_PATH;
-    const primarySlotUrl = savedSlots[primaryLayout] || `/airo-assets/images/${primarySlotPath}`;
-
-    const failureNote = variationFailureCount > 0
-      ? ` ${variationFailureCount} of ${input.variations.length} variations failed to generate — mention this to the user.`
-      : '';
-    const slotSaveNote = slotSaveFailed
-      ? ' Slot save failed — the logo will not appear in the Brand Book until retried. Tell the user and offer to retry.'
-      : '';
-
     return {
-      text: `Generated ${result.logos.length} of ${input.variations.length} logos.${failureNote}${slotSaveNote} ${buildSlotSummary(savedSlots)} ` +
-        `Logo 1 is set as the default. ` +
-        `If the user's request includes placement (e.g. "add logo to header"), place the appropriate slot URL in source code now. ` +
-        `Otherwise, present the logos and let the user decide — they can swap via the widget and ask you to place it later.`,
+      text,
       structuredContent: {
-        logos: result.logos,
-        sessionId: result.sessionId,
+        logo: response.logo,
+        sessionId: response.sessionId,
         slotUrl: primarySlotUrl,
         slotPath: primarySlotPath,
         savedSlots,
@@ -540,226 +491,25 @@ export const generateLogoTool: SkillToolDefinition = {
 };
 
 /**
- * Logo editing tool using direct REST API call via LogoService
- */
-export const editLogoTool: SkillToolDefinition = {
-  name: 'edit_logo',
-  description:
-    'Edit an existing generated logo using AI. Optionally provide sourceSessionId and sourceLogoId from a previous generate_logo result, ' +
-    'or omit them to automatically edit the current saved logo from the slot system. ' +
-    'Describe the changes you want (e.g., "Make it blue", "Remove the tagline", "Make the icon larger"). ' +
-    'Returns new logo variants with transparent/solid/mockup versions, auto-saved to the slot system.',
-
-  parameters: EditLogoInputSchema,
-
-  async execute(input: EditLogoInput, context?: unknown) {
-    const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
-    const socketId = (context as { socketId?: string })?.socketId;
-
-    logger.info('skills.media-logo.tools.edit_logo.start', {
-      sourceSessionId: input.sourceSessionId,
-      sourceLogoId: input.sourceLogoId,
-      promptLength: input.prompt.length,
-      count: input.count,
-      appId,
-    });
-
-    if (!appId) {
-      logger.error('skills.media-logo.tools.edit_logo.no_app_id');
-      return { error: 'Unable to determine app id for logo editing' };
-    }
-
-    // 1. Get customer context from app database
-    const app = appRepository.findById(appId);
-    const customerId = app?.customerId;
-
-    if (!customerId) {
-      logger.error('skills.media-logo.tools.edit_logo.no_customer', { appId });
-      return { error: 'Unable to determine customer identity for logo editing' };
-    }
-
-    // 2. Get budget user from grant system (required — logo editing must be billed)
-    const budgetUserId = socketId
-      ? grantSessionManager.getCurrentUserId(socketId, customerId)
-      : customerId;
-
-    if (!budgetUserId) {
-      logger.error('skills.media-logo.tools.edit_logo.grants_exhausted', { appId, socketId, budgetUserId });
-      return { error: 'All credit grants have been exhausted. Please purchase additional credits to edit logos.' };
-    }
-
-    // 3. Resolve sourceSessionId/sourceLogoId from slot if not provided
-    let { sourceSessionId, sourceLogoId } = input;
-
-    if (!sourceSessionId || !sourceLogoId) {
-      try {
-        // Check all orientation slots for a logo with source tracking
-        const slotPathsToCheck = Object.values(LOGO_SLOT_PATHS);
-        const checked = new Set<string>();
-        let resolved = false;
-        let slotFoundButNoMetadata = false;
-
-        for (const slotPath of slotPathsToCheck) {
-          if (checked.has(slotPath)) continue;
-          checked.add(slotPath);
-          const slotResult = await mediaManifestService.getSlot(appId, slotPath);
-          if (slotResult.success && slotResult.slot) {
-            if (!slotResult.slot.logoSourceMap) {
-              slotFoundButNoMetadata = true;
-              continue;
-            }
-            const source = slotResult.slot.logoSourceMap[slotResult.slot.currentUrl];
-            if (source) {
-              sourceSessionId = source.sessionId;
-              sourceLogoId = source.logoId;
-              resolved = true;
-              logger.info('skills.media-logo.tools.edit_logo.auto_resolved', {
-                appId,
-                sourceSessionId,
-                sourceLogoId,
-                slotPath,
-                currentUrl: slotResult.slot.currentUrl,
-              });
-              break;
-            }
-          }
-        }
-
-        if (!resolved) {
-          return {
-            error: slotFoundButNoMetadata
-              ? "Your existing logo doesn't have edit metadata. Regenerate it with media-logo__generate_logo first, then you can edit it."
-              : 'No saved logo found to edit. Generate a logo first with media-logo__generate_logo, then edit it.',
-          };
-        }
-      } catch (e) {
-        logger.error('skills.media-logo.tools.edit_logo.auto_resolve_failed', {
-          appId,
-          error: e instanceof Error ? e.message : String(e),
-        });
-        return { error: 'Failed to look up the current logo. Provide sourceSessionId and sourceLogoId explicitly.' };
-      }
-    }
-
-    // 4. Call logo edit API — sourceSessionId/sourceLogoId are guaranteed defined
-    // (either provided by caller or resolved from slot above, with early returns on failure)
-    const result = await logoService.editLogos({
-      sourceSessionId: sourceSessionId!,
-      sourceLogoId: sourceLogoId!,
-      prompt: input.prompt,
-      layout: input.layout,
-      count: input.count,
-      appId,
-      customerId,
-      budgetUserId,
-    });
-
-    logger.info('skills.media-logo.tools.edit_logo.success', {
-      sourceSessionId,
-      sessionId: result.sessionId,
-      logoCount: result.logos.length,
-    });
-
-    // 5. Auto-save edited logos to per-orientation slots
-    let savedSlots: Record<string, string> = {};
-    if (appId && result.logos.length > 0) {
-      try {
-        const saveResult = await saveLogosToSlots(appId, result.logos, result.sessionId, 'edited logo', 'edit_logo');
-        savedSlots = saveResult.savedSlots;
-      } catch (e) {
-        logger.warn('skills.media-logo.tools.edit_logo.slot_save_failed', {
-          appId,
-          error: e instanceof Error ? e.message : String(e),
-        });
-      }
-    }
-
-    if (Object.keys(savedSlots).length === 0 && result.logos.length > 0) {
-      logger.warn('skills.media-logo.tools.edit_logo.no_slots_saved', {
-        appId,
-        logoCount: result.logos.length,
-        sessionId: result.sessionId,
-      });
-    }
-
-    // 6. Return structured result for the frontend + instructions for the agent
-    const primaryLayout = savedSlots.square ? 'square' : savedSlots.horizontal ? 'horizontal' : savedSlots.vertical ? 'vertical' : 'square';
-    const primarySlotPath = LOGO_SLOT_PATHS[primaryLayout as LogoLayout] ?? DEFAULT_LOGO_SLOT_PATH;
-    const primarySlotUrl = savedSlots[primaryLayout] || `/airo-assets/images/${primarySlotPath}`;
-
-    return {
-      text: `Edited logo and generated ${result.logos.length} variation(s). ${buildSlotSummary(savedSlots)} ` +
-        `The edited logo is now the default in the slot. Previous logos are preserved as alternatives.`,
-      structuredContent: {
-        logos: result.logos,
-        sessionId: result.sessionId,
-        slotUrl: primarySlotUrl,
-        slotPath: primarySlotPath,
-        savedSlots,
-      },
-    };
-  },
-
-  config: {
-    timeout: 240_000,
-  },
-};
-
-// ============================================================================
-// Offer Logo Actions Tool
-// ============================================================================
-
-/**
- * Passthrough tool that surfaces "Add to library" / "Set as logo" buttons
- * in the chat UI via LogoActionsToolRenderer. No server-side logic — the
- * renderer handles iframe detection and postMessage.
- */
-export const offerLogoActionsTool: SkillToolDefinition = {
-  name: 'offer_logo_actions',
-  description:
-    'Offer the user "Add to my library" and "Set as my logo" quick-action buttons for a generated logo. Call this after generate_logo or edit_logo with the transparent URL of the primary logo.',
-  parameters: z.object({
-    imageUrl: z.string().describe('The transparent logo image URL to offer actions for'),
-  }),
-  async execute(input) {
-    return {
-      text: '',
-      structuredContent: { imageUrl: input.imageUrl },
-    };
-  },
-};
-
-// ============================================================================
-// Set Venture Logo Tool
-// ============================================================================
-
-/**
- * Reads the current horizontal and square logo slot URLs and returns them so
- * the matching client renderer (SetVentureLogoToolRenderer) can post both
- * versions to the Venture Home iframe parent.
- *
- * Caller contract — see `agents/src/prompts/initial/templates/logo-designer/core.md`
- * ("Set as my logo" branch in Step 7). The prompt runs
- * `edit_logo({ layout: "square" })` immediately before this tool so the primary
- * slot reflects the user's currently-selected logo. Reordering that branch
- * without updating this comment will cause the tool to silently return stale
- * URLs.
+ * Pushes the current horizontal + square logo slot URLs to the Venture
+ * Home dashboard via the chat-side renderer. Used by the logo-designer
+ * template's "Set as my logo" branch after a fresh square generate_logo call.
  */
 export const setVentureLogoTool: SkillToolDefinition = {
   name: 'set_venture_logo',
   description:
     'Sends the current horizontal and square logos to the Venture Home dashboard via the chat-side renderer. ' +
-    'Call this only after edit_logo has produced a fresh square version. No arguments required.',
+    'Call this only after generate_logo has produced a fresh square version. No arguments required.',
   parameters: z.object({}),
   async execute(_input, context?: unknown) {
     const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
 
     if (!appId) {
-      logger.error('skills.media-logo.tools.set_venture_logo.no_app_id');
+      logger.error('skill.media-logo.set_venture_logo.no_app_id');
       return { error: 'Unable to determine app id for set_venture_logo' };
     }
 
-    logger.info('skills.media-logo.tools.set_venture_logo.start', { appId });
+    logger.info('skill.media-logo.set_venture_logo.start', { appId });
 
     let horizontalResult: Awaited<ReturnType<typeof mediaManifestService.getSlot>>;
     let squareResult: Awaited<ReturnType<typeof mediaManifestService.getSlot>>;
@@ -769,7 +519,7 @@ export const setVentureLogoTool: SkillToolDefinition = {
         mediaManifestService.getSlot(appId, LOGO_SLOT_PATHS.square),
       ]);
     } catch (e) {
-      logger.error('skills.media-logo.tools.set_venture_logo.slot_lookup_failed', {
+      logger.error('skill.media-logo.set_venture_logo.slot_lookup_failed', {
         appId,
         error: e instanceof Error ? e.message : String(e),
       });
@@ -780,18 +530,18 @@ export const setVentureLogoTool: SkillToolDefinition = {
     const squareUrl = squareResult.success ? squareResult.slot?.currentUrl : undefined;
 
     if (!horizontalUrl || !squareUrl) {
-      logger.warn('skills.media-logo.tools.set_venture_logo.slot_missing', {
+      logger.warn('skill.media-logo.set_venture_logo.slot_missing', {
         appId,
         hasHorizontal: !!horizontalUrl,
         hasSquare: !!squareUrl,
       });
       return {
         error:
-          'Could not find both horizontal and square logos. Generate a logo first, then run edit_logo with layout: "square".',
+          'Could not find both horizontal and square logos. Generate a logo first, then run generate_logo with layout: "square".',
       };
     }
 
-    logger.info('skills.media-logo.tools.set_venture_logo.success', {
+    logger.info('skill.media-logo.set_venture_logo.success', {
       appId,
       hasHorizontal: true,
       hasSquare: true,

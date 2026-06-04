@@ -1,278 +1,308 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Mock the ai-lib S2S auth
+vi.mock('../../logging/index.js', () => ({
+  Logger: { create: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })) },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}))
+
 vi.mock('@airo/ai-lib', async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>();
+  const actual = await importOriginal<Record<string, unknown>>()
   return {
     ...actual,
-    getS2SToken: vi.fn().mockResolvedValue('mock-s2s-token'),
-    isS2SAuthEnabled: vi.fn().mockReturnValue(true),
-  };
-});
+    getS2SToken: vi.fn().mockResolvedValue('s2s-token'),
+  }
+})
 
-// Mock logger
-vi.mock('../../logging/index.js', () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  },
-}));
+const fetchMock = vi.fn()
+vi.stubGlobal('fetch', fetchMock)
 
-// Mock fetch
-const mockFetch = vi.fn();
+const SQUARE_BASE = 'https://cdn.example/logo-square'
+const HORIZONTAL_BASE = 'https://cdn.example/logo-horizontal'
+
+const SQUARE_API_LOGO = {
+  id: 'logo-1',
+  transparentUrl: `${SQUARE_BASE}-transparent.png`,
+  solidUrl: `${SQUARE_BASE}-solid.png`,
+  reversedUrl: `${SQUARE_BASE}-reversed.png`,
+  reversedSolidUrl: `${SQUARE_BASE}-reversed-solid.png`,
+  mockupUrl: `${SQUARE_BASE}-mockup.png`,
+  landscapeMockupUrl: `${SQUARE_BASE}-landscape.png`,
+}
+
+const HORIZONTAL_VARIANTS = {
+  horizontalTransparentUrl: `${HORIZONTAL_BASE}-transparent.png`,
+  horizontalSolidUrl: `${HORIZONTAL_BASE}-solid.png`,
+  horizontalReversedUrl: `${HORIZONTAL_BASE}-reversed.png`,
+  horizontalReversedSolidUrl: `${HORIZONTAL_BASE}-reversed-solid.png`,
+  horizontalMockupUrl: `${HORIZONTAL_BASE}-mockup.png`,
+}
+
+function apiResponse(body: unknown, init: { status?: number; statusText?: string } = {}): Response {
+  return new Response(typeof body === 'string' ? body : JSON.stringify(body), {
+    status: init.status ?? 200,
+    statusText: init.statusText ?? '',
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
+const PREV_LOGO_API_URL = process.env.LOGO_API_URL
 
 describe('LogoService', () => {
-  let originalFetch: typeof global.fetch;
-  let originalEnv: NodeJS.ProcessEnv;
+  let logoService: typeof import('../LogoService.js').logoService
+  let BudgetExceededError: typeof import('@airo/ai-common').BudgetExceededError
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    originalFetch = global.fetch;
-    global.fetch = mockFetch;
-    originalEnv = { ...process.env };
-    process.env.LOGO_API_URL = 'https://logo-agent.mvci.api.dev-godaddy.com';
-  });
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    fetchMock.mockReset()
+    process.env.LOGO_API_URL = 'https://logo-agent.test/'
+    ;({ logoService } = await import('../LogoService.js'))
+    ;({ BudgetExceededError } = await import('@airo/ai-common'))
+  })
 
   afterEach(() => {
-    global.fetch = originalFetch;
-    process.env = originalEnv;
-    vi.resetModules();
-  });
+    if (PREV_LOGO_API_URL === undefined) delete process.env.LOGO_API_URL
+    else process.env.LOGO_API_URL = PREV_LOGO_API_URL
+  })
 
-  it('should call POST /api/logo with correct headers and body', async () => {
-    const { logoService } = await import('../LogoService.js');
+  it('POSTs the prompt + layouts to /api/logo/create with the v1 header set', async () => {
+    fetchMock.mockResolvedValueOnce(
+      apiResponse({
+        id: 'sess-abc',
+        sessionId: 'sess-abc',
+        logos: [{ ...SQUARE_API_LOGO, ...HORIZONTAL_VARIANTS }],
+      }),
+    )
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          sessionId: 'sess-123',
-          logos: [
-            {
-              id: 'logo-1',
-              transparentUrl: 'https://example.com/logo.png',
-              solidUrl: 'https://example.com/logo-solid.png',
-              mockupUrl: 'https://example.com/mockup.png',
-            },
-          ],
-        }),
-    });
+    const result = await logoService.generate({
+      prompt: 'a coffee cup logo',
+      layout: ['square', 'horizontal'],
+      appId: 'app-1',
+      customerId: 'cust-1',
+      budgetUserId: 'bu-1',
+    })
 
-    const result = await logoService.generateLogos({
-      brandName: 'Test Brand',
-      brandDescription: 'A test brand',
-      style: 'flat',
-      appId: 'app-test-1',
-      customerId: 'cust-123',
-      budgetUserId: 'budget-user-456',
-    });
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://logo-agent.test/api/logo/create')
+    expect(opts.method).toBe('POST')
+    expect(JSON.parse(opts.body)).toEqual({
+      prompt: 'a coffee cup logo',
+      layout: ['square', 'horizontal'],
+    })
+    expect(opts.headers).toMatchObject({
+      Authorization: 'Bearer s2s-token',
+      'x-app-key': 'airo-app-builder',
+      'x-app-builder-app-id': 'app-1',
+      'x-customer-id': 'cust-1',
+      'x-budget-user-id': 'bu-1',
+    })
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://logo-agent.mvci.api.dev-godaddy.com/api/logo',
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          'Content-Type': 'application/json',
-          'x-app-key': 'airo-app-builder',
-          'x-app-builder-app-id': 'app-test-1',
-          'x-customer-id': 'cust-123',
-          'x-budget-user-id': 'budget-user-456',
-          Authorization: 'Bearer mock-s2s-token',
-        }),
+    expect(result.sessionId).toBe('sess-abc')
+    expect(result.logo.id).toBe('logo-1')
+    expect(result.logo.modelUsed).toBe('logo-agent')
+    expect(result.logo.prompt).toBe('a coffee cup logo')
+    expect(Object.keys(result.logo.urls).sort()).toEqual(['horizontal', 'square'])
+  })
+
+  it('maps the upstream flat-keyed ProcessedLogo into per-layout LayoutUrls bundles', async () => {
+    fetchMock.mockResolvedValueOnce(
+      apiResponse({
+        id: 's',
+        sessionId: 's',
+        logos: [{ ...SQUARE_API_LOGO, ...HORIZONTAL_VARIANTS }],
+      }),
+    )
+
+    const result = await logoService.generate({
+      prompt: 'logo',
+      layout: ['square', 'horizontal'],
+      appId: 'a',
+      customerId: 'c',
+      budgetUserId: 'b',
+    })
+
+    expect(result.logo.urls.square).toEqual({
+      transparent: SQUARE_API_LOGO.transparentUrl,
+      solid: SQUARE_API_LOGO.solidUrl,
+      reversed: SQUARE_API_LOGO.reversedUrl,
+      reversedSolid: SQUARE_API_LOGO.reversedSolidUrl,
+      mockup: SQUARE_API_LOGO.mockupUrl,
+      landscapeMockup: SQUARE_API_LOGO.landscapeMockupUrl,
+    })
+    expect(result.logo.urls.horizontal).toEqual({
+      transparent: HORIZONTAL_VARIANTS.horizontalTransparentUrl,
+      solid: HORIZONTAL_VARIANTS.horizontalSolidUrl,
+      reversed: HORIZONTAL_VARIANTS.horizontalReversedUrl,
+      reversedSolid: HORIZONTAL_VARIANTS.horizontalReversedSolidUrl,
+      mockup: HORIZONTAL_VARIANTS.horizontalMockupUrl,
+      // landscapeMockup falls back to mockup when no horizontal landscape is returned
+      landscapeMockup: HORIZONTAL_VARIANTS.horizontalMockupUrl,
+    })
+  })
+
+  it('falls back to transparent for missing variants on a layout', async () => {
+    fetchMock.mockResolvedValueOnce(
+      apiResponse({
+        id: 's',
+        sessionId: 's',
+        logos: [{ id: 'logo-1', transparentUrl: SQUARE_API_LOGO.transparentUrl }],
+      }),
+    )
+
+    const result = await logoService.generate({
+      prompt: 'logo',
+      layout: ['square'],
+      appId: 'a',
+      customerId: 'c',
+      budgetUserId: 'b',
+    })
+
+    const sq = result.logo.urls.square!
+    expect(sq.transparent).toBe(SQUARE_API_LOGO.transparentUrl)
+    expect(sq.solid).toBe(SQUARE_API_LOGO.transparentUrl)
+    expect(sq.reversed).toBe(SQUARE_API_LOGO.transparentUrl)
+    expect(sq.mockup).toBe(SQUARE_API_LOGO.transparentUrl)
+    expect(sq.landscapeMockup).toBe(SQUARE_API_LOGO.transparentUrl)
+  })
+
+  it('omits a layout entirely when its transparent variant is missing', async () => {
+    fetchMock.mockResolvedValueOnce(
+      apiResponse({
+        id: 's',
+        sessionId: 's',
+        logos: [{ ...SQUARE_API_LOGO }], // no horizontal* fields
+      }),
+    )
+
+    const result = await logoService.generate({
+      prompt: 'logo',
+      layout: ['square', 'horizontal'],
+      appId: 'a',
+      customerId: 'c',
+      budgetUserId: 'b',
+    })
+
+    expect(result.logo.urls.square).toBeDefined()
+    expect(result.logo.urls.horizontal).toBeUndefined()
+  })
+
+  it('passes referenceUrl through verbatim when editing', async () => {
+    fetchMock.mockResolvedValueOnce(
+      apiResponse({
+        id: 's',
+        sessionId: 's',
+        logos: [{ ...SQUARE_API_LOGO }],
+      }),
+    )
+
+    await logoService.generate({
+      prompt: 'make it blue',
+      layout: ['square'],
+      referenceUrl: 'https://app-1.agent.c4.test-airoapp.ai/files/uploads/foo.png?sig=x',
+      appId: 'a',
+      customerId: 'c',
+      budgetUserId: 'b',
+    })
+
+    const [, opts] = fetchMock.mock.calls[0]
+    expect(JSON.parse(opts.body)).toEqual({
+      prompt: 'make it blue',
+      layout: ['square'],
+      referenceUrl: 'https://app-1.agent.c4.test-airoapp.ai/files/uploads/foo.png?sig=x',
+    })
+  })
+
+  it('maps a 402 response to BudgetExceededError', async () => {
+    fetchMock.mockResolvedValueOnce(apiResponse('budget gone', { status: 402 }))
+
+    await expect(
+      logoService.generate({
+        prompt: 'logo',
+        layout: ['square'],
+        appId: 'a',
+        customerId: 'c',
+        budgetUserId: 'b',
+      }),
+    ).rejects.toBeInstanceOf(BudgetExceededError)
+  })
+
+  it('throws on non-2xx, non-402 responses without leaking the upstream body', async () => {
+    fetchMock.mockResolvedValueOnce(apiResponse('boom-secret-detail', { status: 500, statusText: 'Internal' }))
+
+    await expect(
+      logoService.generate({
+        prompt: 'logo',
+        layout: ['square'],
+        appId: 'a',
+        customerId: 'c',
+        budgetUserId: 'b',
+      }),
+    ).rejects.toThrow(/Logo generation failed \(status 500\)/)
+  })
+
+  it('keeps the raw upstream error body out of the thrown message', async () => {
+    fetchMock.mockResolvedValueOnce(apiResponse('boom-secret-detail', { status: 500, statusText: 'Internal' }))
+
+    const error = await logoService
+      .generate({
+        prompt: 'logo',
+        layout: ['square'],
+        appId: 'a',
+        customerId: 'c',
+        budgetUserId: 'b',
       })
-    );
-
-    expect(result).toEqual({
-      sessionId: 'sess-123',
-      logos: [
-        {
-          id: 'logo-1',
-          transparentUrl: 'https://example.com/logo.png',
-          solidUrl: 'https://example.com/logo-solid.png',
-          mockupUrl: 'https://example.com/mockup.png',
+      .then(
+        () => {
+          throw new Error('expected generate() to reject')
         },
-      ],
-    });
-  });
+        (e: unknown) => e as Error,
+      )
 
-  it('should always include budget headers', async () => {
-    const { logoService } = await import('../LogoService.js');
+    expect(error.message).not.toContain('boom-secret-detail')
+  })
 
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          sessionId: 'sess-456',
-          logos: [],
-        }),
-    });
+  it('drops layouts the API did not return and warns', async () => {
+    fetchMock.mockResolvedValueOnce(
+      apiResponse({
+        id: 'sess-x',
+        sessionId: 'sess-x',
+        logos: [{ ...SQUARE_API_LOGO }], // square variants only — no horizontal* fields
+      }),
+    )
 
-    await logoService.generateLogos({
-      brandName: 'Test',
-      brandDescription: 'Test',
-      style: 'flat',
-      appId: 'app-test-1',
-      customerId: 'cust-123',
-      budgetUserId: 'budget-user-abc',
-    });
+    const { logger } = await import('../../logging/index.js')
 
-    const callHeaders = mockFetch.mock.calls[0][1].headers;
-    expect(callHeaders['x-budget-user-id']).toBe('budget-user-abc');
-  });
+    const result = await logoService.generate({
+      prompt: 'logo',
+      layout: ['square', 'horizontal'],
+      appId: 'app-1',
+      customerId: 'c',
+      budgetUserId: 'b',
+    })
 
-  it('should throw on API failure', async () => {
-    const { logoService } = await import('../LogoService.js');
+    // Only the produced layout is present — the requested-but-undelivered
+    // horizontal layout is dropped rather than fabricated.
+    expect(Object.keys(result.logo.urls)).toEqual(['square'])
+    expect(result.logo.urls.horizontal).toBeUndefined()
+    expect(logger.warn).toHaveBeenCalledWith(
+      'logo.generate.layouts_dropped',
+      expect.objectContaining({ requested: ['square', 'horizontal'], dropped: ['horizontal'] }),
+    )
+  })
 
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      text: () => Promise.resolve('Internal Server Error'),
-    });
-
-    await expect(
-      logoService.generateLogos({
-        brandName: 'Test',
-        brandDescription: 'Test',
-        style: 'flat',
-        appId: 'app-test-1',
-        customerId: 'cust-123',
-        budgetUserId: 'budget-user-1',
-      })
-    ).rejects.toThrow('Logo API error: 500 Internal Server Error');
-  });
-
-  it('should throw on network error', async () => {
-    const { logoService } = await import('../LogoService.js');
-
-    mockFetch.mockRejectedValueOnce(new Error('Network error'));
+  it('throws when the API returns an empty logos array', async () => {
+    fetchMock.mockResolvedValueOnce(
+      apiResponse({ id: 's', sessionId: 's', logos: [] }),
+    )
 
     await expect(
-      logoService.generateLogos({
-        brandName: 'Test',
-        brandDescription: 'Test',
-        style: 'flat',
-        appId: 'app-test-1',
-        customerId: 'cust-123',
-        budgetUserId: 'budget-user-1',
-      })
-    ).rejects.toThrow('Network error');
-  });
-
-  it('should send optional body fields when provided', async () => {
-    const { logoService } = await import('../LogoService.js');
-
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          sessionId: 'sess-789',
-          logos: [],
-        }),
-    });
-
-    await logoService.generateLogos({
-      brandName: 'My Cafe',
-      brandDescription: 'A coffee shop',
-      style: 'handmade',
-      brandTagline: 'Best coffee in town',
-      brandColors: 'warm earth tones',
-      symbol: 'coffee cup',
-      count: 2,
-      appId: 'app-test-1',
-      customerId: 'cust-123',
-      budgetUserId: 'budget-user-1',
-    });
-
-    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body).toEqual({
-      brandName: 'My Cafe',
-      brandDescription: 'A coffee shop',
-      style: 'handmade',
-      brandTagline: 'Best coffee in town',
-      brandColors: 'warm earth tones',
-      symbol: 'coffee cup',
-      count: 2,
-    });
-  });
-
-  it('should derive URL from GODADDY_API_BASE_URL when LOGO_API_URL not set', async () => {
-    delete process.env.LOGO_API_URL;
-    process.env.GODADDY_API_BASE_URL = 'https://api.dev-godaddy.com';
-
-    const { logoService } = await import('../LogoService.js');
-
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          sessionId: 'sess-1',
-          logos: [],
-        }),
-    });
-
-    await logoService.generateLogos({
-      brandName: 'Test',
-      brandDescription: 'Test',
-      style: 'flat',
-      appId: 'app-test-1',
-      customerId: 'cust-123',
-      budgetUserId: 'budget-user-1',
-    });
-
-    expect(mockFetch.mock.calls[0][0]).toBe(
-      'https://logo-agent.mvci.api.dev-godaddy.com/api/logo'
-    );
-  });
-
-  it('should call POST /api/logo/edit with x-app-builder-app-id header', async () => {
-    const { logoService } = await import('../LogoService.js');
-
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () =>
-        Promise.resolve({
-          sessionId: 'sess-edit-1',
-          logos: [
-            {
-              id: 'logo-edit-1',
-              transparentUrl: 'https://example.com/edited.png',
-            },
-          ],
-        }),
-    });
-
-    const result = await logoService.editLogos({
-      sourceSessionId: 'sess-source-1',
-      sourceLogoId: 'logo-source-1',
-      prompt: 'Make it blue',
-      appId: 'app-test-edit',
-      customerId: 'cust-123',
-      budgetUserId: 'budget-user-edit',
-    });
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://logo-agent.mvci.api.dev-godaddy.com/api/logo/edit',
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          'x-app-key': 'airo-app-builder',
-          'x-app-builder-app-id': 'app-test-edit',
-          'x-customer-id': 'cust-123',
-          'x-budget-user-id': 'budget-user-edit',
-          Authorization: 'Bearer mock-s2s-token',
-        }),
-      })
-    );
-
-    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body).toEqual({
-      sourceSessionId: 'sess-source-1',
-      sourceLogoId: 'logo-source-1',
-      prompt: 'Make it blue',
-    });
-
-    expect(result.sessionId).toBe('sess-edit-1');
-  });
-});
+      logoService.generate({
+        prompt: 'logo',
+        layout: ['square'],
+        appId: 'a',
+        customerId: 'c',
+        budgetUserId: 'b',
+      }),
+    ).rejects.toThrow(/no logos/)
+  })
+})
