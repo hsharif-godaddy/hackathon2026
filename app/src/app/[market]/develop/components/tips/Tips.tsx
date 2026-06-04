@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from 'framer-motion'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Loader } from '@airo-ux/loader'
 import Box from '@ux/box'
+import ClockIcon from '@ux/icon/clock'
 
 import { shuffleArray, tips } from '@/app/[market]/develop/components/tips/tips-content'
 import {
@@ -166,6 +167,8 @@ interface TipsProps {
   showTips?: boolean
   staticTipTitle?: string | null
   staticTipDescription?: string | null
+  timeEstimateMinutes?: number | null
+  onTimeEstimateShown?: () => void
 }
 
 /**
@@ -186,6 +189,8 @@ export default function Tips({
   showTips = true,
   staticTipTitle = null,
   staticTipDescription = null,
+  timeEstimateMinutes = null,
+  onTimeEstimateShown,
 }: TipsProps) {
   const hasStaticTip = staticTipTitle != null && staticTipDescription != null
   const t = useTranslations()
@@ -198,6 +203,14 @@ export default function Tips({
   const orderedTipsRef = useRef(orderedTips)
   const exitingTipRef = useRef<string | null>(null)
   const rotationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Fire the "pill shown" impression from the pill's own render, so it counts
+  // only when the user actually sees the estimate (not merely when gating passes).
+  useEffect(() => {
+    if (timeEstimateMinutes != null) {
+      onTimeEstimateShown?.()
+    }
+  }, [timeEstimateMinutes, onTimeEstimateShown])
 
   const cardVariants = isHorizontalStack
     ? horizontalCardVariants
@@ -433,11 +446,30 @@ export default function Tips({
       : undefined
 
   return (
-    <Box className="h-full mt-6" blockAlignChildren="center" inlineAlignChildren="center" gap="xl">
+    <Box className="h-full mt-6" blockAlignChildren="center" inlineAlignChildren="center" gap="lg">
       <Loader
         title={loaderTitle}
         description={buildingDescription ?? undefined}
       />
+
+      {timeEstimateMinutes != null && (
+        <div
+          data-testid="build-time-estimate"
+          role="status"
+          className="flex items-center gap-1.5 rounded-full px-3 py-1"
+          // Bespoke translucent-white pill with a soft ambient shadow per design;
+          // no matching UXCore token, so these literals are intentional.
+          style={{
+            background: 'rgba(255, 255, 255, 0.5)',
+            boxShadow: '0 8px 24px rgba(20, 20, 40, 0.025)',
+          }}
+        >
+          <ClockIcon width={25} height={25} aria-hidden="true" className="text-ai-light" />
+          <span className="text-sm" style={{ color: 'rgba(20, 20, 30, 0.78)' }}>
+            {t('builder_preview_build_time_estimate', { minutes: timeEstimateMinutes }, 'On average ~{minutes} minutes')}
+          </span>
+        </div>
+      )}
 
       {showTips && hasStaticTip && (
         <Box className="w-full max-w-2xl px-3" gap="md">

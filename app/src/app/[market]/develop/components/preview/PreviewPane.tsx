@@ -24,9 +24,12 @@ import PreviewSkeleton from '@/app/[market]/develop/components/preview/PreviewSk
 import Tips from '@/app/[market]/develop/components/tips/Tips'
 import { MobileMode, PreviewViewMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
+import { useFirstBuildEstimateImpression } from '@/app/[market]/develop/hooks/useFirstBuildEstimateImpression'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
+import { EXPERIMENT_IDS, INITIAL_AGENT_V3_COHORT } from '@/config/experiments'
 import { isInitialBuildComplete, isInitialBuildFunnelActive } from '@/hooks/shared/initialBuildFunnel'
+import { useHivemind } from '@/hooks/useHivemind'
 import { useImpression } from '@/hooks/useImpression'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -40,6 +43,9 @@ const DomainPanel = dynamic(
   () => import('@/app/[market]/develop/components/settings/DomainPanel'),
   { ssr: false, loading: () => <PreviewSkeleton testId="domain-panel-skeleton" /> },
 )
+
+// Minutes shown by the first-build time-estimate pill.
+const FIRST_BUILD_ESTIMATE_MINUTES: number = 5
 
 // Timing constants for iframe lifecycle management
 const REFRESH_DEBOUNCE_MS = 500 // Debounce rapid refresh requests
@@ -191,6 +197,17 @@ export default function PreviewPane({
   )
 
   const appId = useAppIdFromParams()
+
+  const isBuildTimeEstimateFlagOn = useSwitchboard('appbuilder-build-time-estimate') === true
+  const { cohort: initialAgentCohort } = useHivemind(EXPERIMENT_IDS.initialAgent)
+  const isBuildTimeEstimateEnabled =
+    isBuildTimeEstimateFlagOn || initialAgentCohort === INITIAL_AGENT_V3_COHORT
+
+  const isFirstBuildScreen = showBuildingOverlay && !isAwaitingAskQuestion
+  const buildEstimateMinutes =
+    isFirstBuildScreen && isBuildTimeEstimateEnabled ? FIRST_BUILD_ESTIMATE_MINUTES : null
+
+  const markBuildEstimateShown = useFirstBuildEstimateImpression(appId)
 
   useEffect(() => {
     if (isMobile) {
@@ -1056,7 +1073,7 @@ export default function PreviewPane({
     } else {
       loadingMessage = t('builder_preview_loading_app');
     }
-    return <PreviewLoadingState message={loadingMessage} isMobile={isMobile} />
+    return <PreviewLoadingState message={loadingMessage} isMobile={isMobile} timeEstimateMinutes={buildEstimateMinutes} onTimeEstimateShown={markBuildEstimateShown} />
   }
 
   // Error state when server failed — show "Ask Airo to fix" alongside "Try Again"
@@ -1274,7 +1291,11 @@ export default function PreviewPane({
                       )}
                     />
                   ) : (
-                    <Tips buildingMessage={t('builder_preview_building_app')} />
+                    <Tips
+                      buildingMessage={t('builder_preview_building_app')}
+                      timeEstimateMinutes={buildEstimateMinutes}
+                      onTimeEstimateShown={markBuildEstimateShown}
+                    />
                   )}
                 </div>
               )}

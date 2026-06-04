@@ -43,3 +43,6 @@ export const INELIGIBLE_COHORT = 'ineligible' as const
 /** Binary experiment cohorts for simple on/off Hivemind experiments. */
 export const COHORT_ON = 'on' as const
 export const COHORT_OFF = 'off' as const
+
+/** Initial-agent experiment cohort for the standard (non-fullscreen) winning v3 agent. */
+export const INITIAL_AGENT_V3_COHORT = 'initial_agent_v3' as const

@@ -149,6 +149,43 @@ describe('Tips', () => {
     expect(screen.getByTestId('loader-description')).toHaveTextContent('Please wait')
   })
 
+  it('renders the time-estimate pill with interpolated minutes when timeEstimateMinutes is provided', () => {
+    renderWithProviders(<Tips buildingMessage="Building" timeEstimateMinutes={5} />)
+
+    const pill = screen.getByTestId('build-time-estimate')
+    expect(pill).toHaveTextContent('On average ~5 minutes')
+  })
+
+  it('does not render the time-estimate pill when timeEstimateMinutes is omitted', () => {
+    renderWithProviders(<Tips buildingMessage="Building" />)
+
+    expect(screen.queryByTestId('build-time-estimate')).not.toBeInTheDocument()
+  })
+
+  it('does not render the time-estimate pill when timeEstimateMinutes is null', () => {
+    renderWithProviders(<Tips buildingMessage="Building" timeEstimateMinutes={null} />)
+
+    expect(screen.queryByTestId('build-time-estimate')).not.toBeInTheDocument()
+  })
+
+  it('calls onTimeEstimateShown once when the pill renders', () => {
+    const onTimeEstimateShown = vi.fn()
+    renderWithProviders(
+      <Tips buildingMessage="Building" timeEstimateMinutes={5} onTimeEstimateShown={onTimeEstimateShown} />,
+    )
+
+    expect(onTimeEstimateShown).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not call onTimeEstimateShown when the pill is not rendered', () => {
+    const onTimeEstimateShown = vi.fn()
+    renderWithProviders(
+      <Tips buildingMessage="Building" onTimeEstimateShown={onTimeEstimateShown} />,
+    )
+
+    expect(onTimeEstimateShown).not.toHaveBeenCalled()
+  })
+
   it('renders four tip shells; lazy copy only on the front at rest (md+)', () => {
     renderWithProviders(<Tips />)
 

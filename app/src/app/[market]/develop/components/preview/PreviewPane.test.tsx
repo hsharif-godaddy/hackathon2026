@@ -45,9 +45,25 @@ vi.mock('./PreviewError', () => ({
 }));
 
 vi.mock('@/app/[market]/develop/components/tips/Tips', () => ({
-  default: ({ buildingMessage }: { buildingMessage?: string }) => (
-    <div data-testid="tips">{buildingMessage ?? 'Tips'}</div>
-  ),
+  default: ({
+    buildingMessage,
+    timeEstimateMinutes,
+    onTimeEstimateShown,
+  }: {
+    buildingMessage?: string
+    timeEstimateMinutes?: number | null
+    onTimeEstimateShown?: () => void
+  }) => {
+    // Mirror the real Tips: onTimeEstimateShown fires only when the pill renders.
+    if (timeEstimateMinutes != null) {
+      onTimeEstimateShown?.();
+    }
+    return (
+      <div data-testid="tips" data-time-estimate-minutes={timeEstimateMinutes ?? ''}>
+        {buildingMessage ?? 'Tips'}
+      </div>
+    );
+  },
 }));
 
 vi.mock('./brand-book', () => ({
@@ -213,6 +229,21 @@ vi.mock('@/app/[market]/develop/components/chat/useLatestNBAs', () => ({
 const mockIsInitialBuildFunnelActive = vi.hoisted(() => vi.fn(function () { return true; }));
 const mockIsInitialBuildComplete = vi.hoisted(() => vi.fn(function () { return false; }));
 
+const { mockInitialAgentCohort, mockMarkBuildEstimateShown } = vi.hoisted(() => ({
+  mockInitialAgentCohort: { current: undefined as string | undefined },
+  mockMarkBuildEstimateShown: vi.fn(),
+}));
+
+vi.mock('@/hooks/useHivemind', () => ({
+  useHivemind: () => ({ cohort: mockInitialAgentCohort.current, data: undefined, experiment: undefined }),
+  useIsInCohort: (experimentId: string, cohortId: string) => mockInitialAgentCohort.current === cohortId,
+  useExperimentCohorts: () => ({}),
+}));
+
+vi.mock('@/app/[market]/develop/hooks/useFirstBuildEstimateImpression', () => ({
+  useFirstBuildEstimateImpression: () => mockMarkBuildEstimateShown,
+}));
+
 vi.mock('@/hooks/shared/initialBuildFunnel', () => ({
   isInitialBuildFunnelActive: () => mockIsInitialBuildFunnelActive(),
   isInitialBuildComplete: () => mockIsInitialBuildComplete(),
@@ -236,6 +267,7 @@ describe('PreviewPane', () => {
     mockUseLatestNBAs.mockReturnValue(null);
     mockIsInitialBuildFunnelActive.mockReturnValue(true);
     mockIsInitialBuildComplete.mockReturnValue(false);
+    mockInitialAgentCohort.current = undefined;
   });
 
   afterEach(() => {
@@ -1432,5 +1464,112 @@ describe('PreviewPane — Ask Airo to fix button', () => {
       expect(screen.queryByText('Action needed to continue')).not.toBeInTheDocument();
       expect(screen.getByText('builder_preview_building_app')).toBeInTheDocument();
     });
+  });
+});
+
+describe('first-build time-estimate pill', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDevelopPageStore.viewMode = ViewMode.PREVIEW;
+    mockDevelopPageStore.mobileMode = MobileMode.PREVIEW;
+    for (const key of Object.keys(mockSwitchboardResults)) {
+      delete mockSwitchboardResults[key];
+    }
+    mockUseLatestNBAs.mockReturnValue(null);
+    mockInitialAgentCohort.current = undefined;
+  });
+
+  it('shows the pill on the overlay (server ready) when in the initial_agent_v3 cohort', () => {
+    mockInitialAgentCohort.current = 'initial_agent_v3';
+    mockServerPollingStore.getServerState = vi.fn(function () {
+      return { isReady: true, url: 'http://localhost:3000', status: 'running' };
+    });
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} showBuildingOverlay />);
+
+    expect(screen.getByTestId('tips')).toHaveAttribute('data-time-estimate-minutes', '5');
+    expect(mockMarkBuildEstimateShown).toHaveBeenCalled();
+  });
+
+  it('shows the pill on the loading state (no serverState) when in the initial_agent_v3 cohort', () => {
+    mockInitialAgentCohort.current = 'initial_agent_v3';
+    mockServerPollingStore.getServerState = vi.fn(function () {
+      return undefined;
+    });
+    mockServerPollingStore.isPollingServer = vi.fn(function () { return true; });
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} showBuildingOverlay />);
+
+    expect(screen.getByTestId('tips')).toHaveAttribute('data-time-estimate-minutes', '5');
+    expect(mockMarkBuildEstimateShown).toHaveBeenCalled();
+  });
+
+  it('does not show the pill when not in v3 and the flag is off', () => {
+    mockInitialAgentCohort.current = 'initial_agent_v1';
+    mockServerPollingStore.getServerState = vi.fn(function () {
+      return { isReady: true, url: 'http://localhost:3000', status: 'running' };
+    });
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} showBuildingOverlay />);
+
+    expect(screen.getByTestId('tips')).toHaveAttribute('data-time-estimate-minutes', '');
+    expect(mockMarkBuildEstimateShown).not.toHaveBeenCalled();
+  });
+
+  it('does not show the pill on a normal (non-build) load even in the v3 cohort', () => {
+    // The pill is gated on the first-build screen (showBuildingOverlay), not just
+    // the cohort. A normal (non-build) load in the v3 cohort must keep it off,
+    // so the showBuildingOverlay term in isFirstBuildScreen can't be dropped.
+    mockInitialAgentCohort.current = 'initial_agent_v3';
+    mockServerPollingStore.getServerState = vi.fn(function () {
+      return undefined;
+    });
+    mockServerPollingStore.isPollingServer = vi.fn(function () { return true; });
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} showBuildingOverlay={false} />);
+
+    expect(screen.getByTestId('tips')).toHaveAttribute('data-time-estimate-minutes', '');
+    expect(mockMarkBuildEstimateShown).not.toHaveBeenCalled();
+  });
+
+  it('shows the pill via the Switchboard flag even when not in v3', () => {
+    mockInitialAgentCohort.current = 'initial_agent_v1';
+    mockSwitchboardResults['appbuilder-build-time-estimate'] = true;
+    mockServerPollingStore.getServerState = vi.fn(function () {
+      return { isReady: true, url: 'http://localhost:3000', status: 'running' };
+    });
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} showBuildingOverlay />);
+
+    expect(screen.getByTestId('tips')).toHaveAttribute('data-time-estimate-minutes', '5');
+    expect(mockMarkBuildEstimateShown).toHaveBeenCalled();
+  });
+
+  it('does not show the pill on the ask-question overlay even in the v3 cohort', () => {
+    mockInitialAgentCohort.current = 'initial_agent_v3';
+    mockUseLatestNBAs.mockReturnValue({ source: 'askQuestion', question: 'Pick a color', suggestions: [] });
+    mockServerPollingStore.getServerState = vi.fn(function () {
+      return { isReady: true, url: 'http://localhost:3000', status: 'running' };
+    });
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} showBuildingOverlay />);
+
+    expect(screen.getByTestId('tips')).toHaveAttribute('data-time-estimate-minutes', '');
+    expect(mockMarkBuildEstimateShown).not.toHaveBeenCalled();
+  });
+
+  it('does not fire the impression on the resume early-return even when gating is enabled', () => {
+    // Regression: the impression must reflect a pill the user actually saw. The
+    // resume early-return renders a PreviewLoadingState WITHOUT the pill, so even
+    // though gating (v3 cohort + first-build screen) is satisfied, nothing fires.
+    mockInitialAgentCohort.current = 'initial_agent_v3';
+    mockServerPollingStore.getServerState = vi.fn(function () {
+      return { isReady: true, url: 'http://localhost:3000', status: 'running' };
+    });
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} showBuildingOverlay isResuming />);
+
+    expect(screen.getByTestId('tips')).toHaveAttribute('data-time-estimate-minutes', '');
+    expect(mockMarkBuildEstimateShown).not.toHaveBeenCalled();
   });
 });
