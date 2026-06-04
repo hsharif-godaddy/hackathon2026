@@ -29,14 +29,14 @@ budget-service exposes a REST API for budgets, credit pools (budget items), LLM-
 ## Trust boundaries
 
 1. **Network edge → service** — TLS typically terminates at ingress (Katana); service may also use `SERVER_CERT_PATH` / `SERVER_KEY_PATH` for TLS directly.
-2. **Client → `/api/v1`** — JWT validation at middleware; no cookie-based auth for API.
+2. **Client → `/api/v1`** — JWT validation at middleware. Cookie-based auth (`auth_idp`) is accepted only on `GET /api/v1/budgets/{budgetId}`; all other routes are header-only.
 3. **Service → PostgreSQL** — Credentials from env; connection pool with timeouts.
 4. **Service → SSO** — Token validation (library behavior; keys/caching per [gd-auth-lib](https://github.com/gdcorp-identity/gd-auth-lib/tree/main/go/gd_auth_lib)).
 5. **Service → webhook URLs** — Outbound HTTPS POST; production URLs restricted by validation (see [Webhooks](webhooks.md)).
 
 ## Authentication vs Authorization
 
-- **Authentication:** `/api/v1/*` requests must carry a valid **AWS IAM, Cert, or Cert2S**-class service JWT unless `LOCAL_AUTH_DISABLE=true` (local only). OpenAPI/Swagger and `/health` are unauthenticated by design.
+- **Authentication:** `/api/v1/*` requests must carry a valid **AWS IAM, Cert, or Cert2S**-class service JWT unless `LOCAL_AUTH_DISABLE=true` (local only). OpenAPI/Swagger and `/health` are unauthenticated by design. **`GET /api/v1/budgets/{budgetId}`** additionally accepts a Shopper JWT (`typ=idp`); any valid shopper token can read any budget (no per-budget ownership check). PATCH/DELETE on the same path remain service-only. The shopper JWT may be presented as the `Authorization` header or the `auth_idp` cookie; cookie acceptance is limited to this single GET path. SameSite=Lax on `auth_idp` (set by GoDaddy SSO) prevents cross-site cookie leakage to malicious origins; PATCH/DELETE on the same path do not accept cookies, so write paths are unaffected by cookie-bearing requests.
 - **IAM role allowlist:** **`AUTH_ALLOWED_ROLES`** (JSON array of ARN patterns, trailing `*` wildcard) must be non-empty when JWT auth is enabled; otherwise **`config.Load`** fails at startup. The middleware extracts the caller's IAM ARN via `gd-auth-lib.GetAwsIamArn()` and rejects tokens whose ARN does not match any entry (**403 Forbidden**). With **`LOCAL_AUTH_DISABLE=true`**, allowlists are omitted for local open API.
 - **Cert CommonName allowlist:** **`AUTH_ALLOWED_CERTS`** (JSON array of CommonName patterns, trailing `*` wildcard) must be non-empty when JWT auth is enabled; otherwise startup fails. The middleware extracts the caller's CommonName via `gd-auth-lib.GetCommonName()` and rejects tokens whose CN does not match any entry (**403 Forbidden**).
 - **Authorization:** Handlers do **not** map JWT claims to budget or session rows. Any caller with a **valid token** and an allowed role/cert (per allowlists when JWT auth is enabled) who knows a resource id (`budgetId`, `sessionId`, etc.) can invoke the corresponding API. **Access control is expected from:** the IAM role and cert allowlists, network policies, which services receive credentials, and caller-side enforcement—not from row-level checks inside this service.

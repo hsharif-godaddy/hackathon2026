@@ -4,6 +4,7 @@ info:
   description: |
     Credits and budget sessions for Airo. `/api/v1/*` requires IAM / cert-class service JWT
     (`Authorization: Bearer` or `sso-jwt`) via `packages/go-auth`, except when `LOCAL_AUTH_DISABLE=true`.
+    Some GET endpoints additionally accept a Shopper JWT (`typ=idp`) — see per-operation descriptions.
     This spec and Swagger UI are served without authentication at `/openapi.yaml` and `/swagger/`.
     When `DATABASE_URL` is unset, most `/api/v1` handlers return **503** `SERVICE_UNAVAILABLE` (`database not configured`).
   version: 1.0.0
@@ -29,7 +30,7 @@ paths:
       summary: OpenAPI 3 document (embedded; same bytes as this file)
       security: []
       responses:
-        "200":
+        '200':
           description: YAML document
           content:
             application/yaml:
@@ -40,7 +41,7 @@ paths:
       summary: OpenAPI document metadata (no body)
       security: []
       responses:
-        "200":
+        '200':
           description: OK
 
   /swagger:
@@ -49,7 +50,7 @@ paths:
       summary: Redirect to Swagger UI
       security: []
       responses:
-        "301":
+        '301':
           description: Redirect to `/swagger/`
           headers:
             Location:
@@ -63,7 +64,7 @@ paths:
       summary: Swagger UI (loads `/openapi.yaml`)
       security: []
       responses:
-        "200":
+        '200':
           description: HTML
           content:
             text/html:
@@ -76,59 +77,77 @@ paths:
       summary: Liveness — aggregate status only (DB ping and token generator checked internally; not exposed)
       security: []
       responses:
-        "200":
+        '200':
           description: OK (`status` is `ok`)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthResponse"
-        "503":
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
           description: Not ready (`status` is `degraded` or `unhealthy`)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthResponse"
+                $ref: '#/components/schemas/HealthResponse'
     head:
       tags: [health]
       summary: Liveness (no body)
       security: []
       responses:
-        "200":
+        '200':
           description: OK
-        "503":
+        '503':
           description: Service degraded or unhealthy
 
   /api/v1/auth-check:
     get:
       tags: [v1]
       summary: Auth probe — returns 200 when JWT is accepted
+      description: |
+        Accepts service tokens (`awsiam`, `cert`, `cert2s`) via `Authorization`
+        header (`Bearer` or `sso-jwt`) and shopper tokens (`idp`) via either the
+        `Authorization` header or the `auth_idp` cookie. The response surfaces
+        the resolved token type and source so callers can verify which path
+        authenticated the request.
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
                 type: object
+                required: [message]
                 properties:
                   message:
                     type: string
-                    example: IAM or Cert-class service JWT accepted
+                    example: idp token accepted
+                  tokenType:
+                    type: string
+                    description: |
+                      Resolved token type from `claims.GetType()`. `cert2s`
+                      delegation tokens surface as `cert` — gd-auth-lib does not
+                      distinguish them at this seam.
+                    enum: [awsiam, cert, idp]
+                  tokenSource:
+                    type: string
+                    description: Where the JWT was read from on this request.
+                    enum: [header, cookie]
 
   /api/v1/products:
     get:
       tags: [v1]
       summary: List products
       parameters:
-        - $ref: "#/components/parameters/includeDeletedQuery"
+        - $ref: '#/components/parameters/includeDeletedQuery'
       responses:
-        "200":
+        '200':
           description: Product rows
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Product"
+                  $ref: '#/components/schemas/Product'
     post:
       tags: [v1]
       summary: Register or revive productKey
@@ -143,30 +162,30 @@ paths:
                 productKey:
                   type: string
       responses:
-        "201":
+        '201':
           description: Created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Product"
-        "400":
-          $ref: "#/components/responses/Error"
-        "409":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
 
   /api/v1/products/{productKey}:
     delete:
       tags: [v1]
       summary: Soft-delete product
       parameters:
-        - $ref: "#/components/parameters/productKeyPath"
+        - $ref: '#/components/parameters/productKeyPath'
       responses:
-        "204":
+        '204':
           description: Deleted
-        "400":
-          $ref: "#/components/responses/Error"
-        "409":
-          $ref: "#/components/responses/Error"
+        '400':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
 
   /api/v1/webhooks:
     get:
@@ -174,19 +193,19 @@ paths:
       summary: List webhooks
       description: Returns webhook subscriptions (active only unless `includeDeleted` is `true` or `1`). Omit `productKey` to list all; set `productKey` to restrict to one product.
       parameters:
-        - $ref: "#/components/parameters/productKeyQuery"
-        - $ref: "#/components/parameters/includeDeletedQuery"
+        - $ref: '#/components/parameters/productKeyQuery'
+        - $ref: '#/components/parameters/includeDeletedQuery'
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Webhook"
-        "400":
-          $ref: "#/components/responses/Error"
+                  $ref: '#/components/schemas/Webhook'
+        '400':
+          $ref: '#/components/responses/Error'
     post:
       tags: [v1]
       summary: Create webhook subscription
@@ -217,41 +236,41 @@ paths:
                   type: string
                   format: uri
       responses:
-        "201":
+        '201':
           description: Created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Webhook"
-        "400":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/Webhook'
+        '400':
+          $ref: '#/components/responses/Error'
 
   /api/v1/webhooks/{webhookId}:
     get:
       tags: [v1]
       summary: Get webhook
       parameters:
-        - $ref: "#/components/parameters/webhookIdPath"
-        - $ref: "#/components/parameters/includeDeletedQuery"
+        - $ref: '#/components/parameters/webhookIdPath'
+        - $ref: '#/components/parameters/includeDeletedQuery'
       responses:
-        "200":
+        '200':
           description: OK (includes soft-deleted webhooks when `includeDeleted` is `true` or `1`)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Webhook"
-        "404":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/Webhook'
+        '404':
+          $ref: '#/components/responses/Error'
     delete:
       tags: [v1]
       summary: Soft-delete webhook
       parameters:
-        - $ref: "#/components/parameters/webhookIdPath"
+        - $ref: '#/components/parameters/webhookIdPath'
       responses:
-        "204":
+        '204':
           description: Deleted
-        "404":
-          $ref: "#/components/responses/Error"
+        '404':
+          $ref: '#/components/responses/Error'
 
   /api/v1/reports:
     get:
@@ -317,18 +336,18 @@ paths:
             enum: [asc, desc]
             default: desc
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ReportListResponse"
-        "400":
-          $ref: "#/components/responses/Error"
-        "500":
-          $ref: "#/components/responses/Error"
-        "503":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/ReportListResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
 
   /api/v1/reports/aggregate:
     get:
@@ -381,18 +400,18 @@ paths:
           schema:
             type: string
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ReportAggregateResponse"
-        "400":
-          $ref: "#/components/responses/Error"
-        "500":
-          $ref: "#/components/responses/Error"
-        "503":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/ReportAggregateResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '500':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
 
   /api/v1/budgets:
     post:
@@ -403,38 +422,47 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/PostBudgetRequest"
+              $ref: '#/components/schemas/PostBudgetRequest'
       responses:
-        "201":
+        '201':
           description: Created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Budget"
-        "400":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/Budget'
+        '400':
+          $ref: '#/components/responses/Error'
 
   /api/v1/budgets/{budgetId}:
     get:
       tags: [v1]
       summary: Get budget
+      description: |
+        Accepts a Shopper JWT (`typ=idp`) in addition to the IAM / cert-class
+        service JWTs accepted by other `/api/v1/*` routes. The shopper JWT may
+        be delivered via the `Authorization` header OR the `auth_idp` cookie
+        (header wins when both are present). PATCH and DELETE on this same
+        path remain service-only.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
       parameters:
-        - $ref: "#/components/parameters/budgetIdPath"
-        - $ref: "#/components/parameters/includeDeletedQuery"
+        - $ref: '#/components/parameters/budgetIdPath'
+        - $ref: '#/components/parameters/includeDeletedQuery'
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Budget"
-        "404":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/Budget'
+        '404':
+          $ref: '#/components/responses/Error'
     patch:
       tags: [v1]
       summary: Batch update existing budget items
       parameters:
-        - $ref: "#/components/parameters/budgetIdPath"
+        - $ref: '#/components/parameters/budgetIdPath'
       requestBody:
         required: true
         content:
@@ -447,110 +475,110 @@ paths:
                   type: array
                   minItems: 1
                   items:
-                    $ref: "#/components/schemas/PatchBudgetBatchItem"
+                    $ref: '#/components/schemas/PatchBudgetBatchItem'
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Budget"
-        "400":
-          $ref: "#/components/responses/Error"
-        "404":
-          $ref: "#/components/responses/Error"
-        "409":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/Budget'
+        '400':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
     delete:
       tags: [v1]
       summary: Soft-delete budget and items
       parameters:
-        - $ref: "#/components/parameters/budgetIdPath"
+        - $ref: '#/components/parameters/budgetIdPath'
       responses:
-        "204":
+        '204':
           description: Deleted
-        "404":
-          $ref: "#/components/responses/Error"
-        "409":
-          $ref: "#/components/responses/Error"
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
 
   /api/v1/budgets/{budgetId}/budget-items:
     post:
       tags: [v1]
       summary: Append one budget item
       parameters:
-        - $ref: "#/components/parameters/budgetIdPath"
+        - $ref: '#/components/parameters/budgetIdPath'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/BudgetItemInput"
+              $ref: '#/components/schemas/BudgetItemInput'
       responses:
-        "201":
+        '201':
           description: Created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BudgetItem"
-        "400":
-          $ref: "#/components/responses/Error"
-        "404":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/BudgetItem'
+        '400':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
 
   /api/v1/budgets/{budgetId}/budget-items/{budgetItemId}:
     get:
       tags: [v1]
       summary: Get budget item
       parameters:
-        - $ref: "#/components/parameters/budgetIdPath"
-        - $ref: "#/components/parameters/budgetItemIdPath"
-        - $ref: "#/components/parameters/includeDeletedQuery"
+        - $ref: '#/components/parameters/budgetIdPath'
+        - $ref: '#/components/parameters/budgetItemIdPath'
+        - $ref: '#/components/parameters/includeDeletedQuery'
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BudgetItem"
-        "404":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/BudgetItem'
+        '404':
+          $ref: '#/components/responses/Error'
     patch:
       tags: [v1]
       summary: Update budget item
       parameters:
-        - $ref: "#/components/parameters/budgetIdPath"
-        - $ref: "#/components/parameters/budgetItemIdPath"
+        - $ref: '#/components/parameters/budgetIdPath'
+        - $ref: '#/components/parameters/budgetItemIdPath'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/PatchBudgetItem"
+              $ref: '#/components/schemas/PatchBudgetItem'
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BudgetItem"
-        "400":
-          $ref: "#/components/responses/Error"
-        "404":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/BudgetItem'
+        '400':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
     delete:
       tags: [v1]
       summary: Soft-delete budget item
       parameters:
-        - $ref: "#/components/parameters/budgetIdPath"
-        - $ref: "#/components/parameters/budgetItemIdPath"
+        - $ref: '#/components/parameters/budgetIdPath'
+        - $ref: '#/components/parameters/budgetItemIdPath'
       responses:
-        "204":
+        '204':
           description: Deleted
-        "404":
-          $ref: "#/components/responses/Error"
-        "409":
-          $ref: "#/components/responses/Error"
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
 
   /api/v1/sessions:
     post:
@@ -585,44 +613,44 @@ paths:
                     When true, opens the session even if the budget has no consumable capacity.
                     A budget with zero budget_items still rejects with 402.
       responses:
-        "201":
+        '201':
           description: Created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BudgetSession"
-        "402":
+                $ref: '#/components/schemas/BudgetSession'
+        '402':
           description: NO_BUDGET_CAPACITY
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorBody"
-        "400":
-          $ref: "#/components/responses/Error"
-        "404":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/ErrorBody'
+        '400':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
 
   /api/v1/sessions/{sessionId}:
     get:
       tags: [v1]
       summary: Get session (404 if reconciled)
       parameters:
-        - $ref: "#/components/parameters/sessionIdPath"
+        - $ref: '#/components/parameters/sessionIdPath'
         - name: debug
           in: query
           schema:
             type: string
-            enum: ["1"]
+            enum: ['1']
           description: If set to 1, include allocation debug in response
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BudgetSession"
-        "404":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/BudgetSession'
+        '404':
+          $ref: '#/components/responses/Error'
     patch:
       tags: [v1]
       summary: Append spend lines
@@ -631,7 +659,7 @@ paths:
         same priority walk as reports but may be partial: under `?debug=1`, `debug.sessionItems[].creditsChargedStored`
         and `creditsChargedReplayed` reflect only what the pool could cover; excess `cost` USD does not fail the request.
       parameters:
-        - $ref: "#/components/parameters/sessionIdPath"
+        - $ref: '#/components/parameters/sessionIdPath'
       requestBody:
         required: true
         content:
@@ -654,18 +682,18 @@ paths:
                       callRequestId:
                         type: string
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BudgetSession"
-        "400":
-          $ref: "#/components/responses/Error"
-        "404":
-          $ref: "#/components/responses/Error"
-        "409":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/BudgetSession'
+        '400':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
 
   /api/v1/sessions/{sessionId}/reports:
     post:
@@ -681,7 +709,7 @@ paths:
         (`label: "allowed-overage"`, `budgetCost: 0`, `productCost` = remainder). The original item's stored
         `budgetCost` reflects only what was actually allocated. Ledger spend is applied here (not on PATCH).
       parameters:
-        - $ref: "#/components/parameters/sessionIdPath"
+        - $ref: '#/components/parameters/sessionIdPath'
       requestBody:
         required: true
         content:
@@ -712,35 +740,35 @@ paths:
                     only the actually allocated amount. The label "allowed-overage" is reserved and cannot
                     be used as a reportItems label.
       responses:
-        "201":
+        '201':
           description: Created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SessionReport"
-        "400":
-          $ref: "#/components/responses/Error"
-        "404":
-          $ref: "#/components/responses/Error"
-        "409":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/SessionReport'
+        '400':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
 
   /api/v1/sessions/{sessionId}/reports/{reportId}:
     get:
       tags: [v1]
       summary: Get report
       parameters:
-        - $ref: "#/components/parameters/sessionIdPath"
-        - $ref: "#/components/parameters/reportIdPath"
+        - $ref: '#/components/parameters/sessionIdPath'
+        - $ref: '#/components/parameters/reportIdPath'
       responses:
-        "200":
+        '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SessionReport"
-        "404":
-          $ref: "#/components/responses/Error"
+                $ref: '#/components/schemas/SessionReport'
+        '404':
+          $ref: '#/components/responses/Error'
 
 components:
   securitySchemes:
@@ -749,6 +777,14 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: IAM or Cert-class service JWT (see go-auth)
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: auth_idp
+      description: |
+        GoDaddy SSO shopper session cookie. Accepted only on GET endpoints
+        that opt in (currently `GET /api/v1/budgets/{budgetId}`). Set by
+        the SSO domain on shopper login; not accepted on PATCH/DELETE/POST.
 
   parameters:
     budgetIdPath:
@@ -817,7 +853,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorBody"
+            $ref: '#/components/schemas/ErrorBody'
 
   schemas:
     ErrorBody:
@@ -943,7 +979,7 @@ components:
     PatchBudgetBatchItem:
       description: Each entry updates an existing item; use POST .../budget-items to add an item.
       allOf:
-        - $ref: "#/components/schemas/PatchBudgetItem"
+        - $ref: '#/components/schemas/PatchBudgetItem'
         - type: object
           required: [budgetItemId]
           properties:
@@ -999,7 +1035,7 @@ components:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/BudgetItemInput"
+            $ref: '#/components/schemas/BudgetItemInput'
 
     Budget:
       type: object
@@ -1024,7 +1060,7 @@ components:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/BudgetItem"
+            $ref: '#/components/schemas/BudgetItem'
 
     BudgetSession:
       type: object
@@ -1101,7 +1137,7 @@ components:
           type: array
           description: Summary rows; not the full SessionReport from single-report GET
           items:
-            $ref: "#/components/schemas/SessionReportListItem"
+            $ref: '#/components/schemas/SessionReportListItem'
         total:
           type: integer
           description: Count matching the filters, before limit/offset

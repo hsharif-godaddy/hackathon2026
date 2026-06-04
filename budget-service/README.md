@@ -46,7 +46,8 @@ In a separate terminal, launch the Dev UI that proxies to the local service:
 
 ```bash
 make dev-budget-ui
-# Open http://localhost:9980/ (default DEV_BUDGET_UI_ADDR)
+# HTTP:  http://localhost:9980/ (default DEV_BUDGET_UI_ADDR)
+# HTTPS: set SERVER_CERT_PATH + SERVER_KEY_PATH (same vars as the server) to listen on TLS
 ```
 
 For setup details (JFrog Artifactory, JWT minting, Postgres baseline, Makefile targets), see [Local Development](docs/local-development.md).

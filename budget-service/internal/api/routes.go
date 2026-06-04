@@ -22,10 +22,16 @@ func NewRouter(s *Server, authMW *auth.Middleware) http.Handler {
 	r.HandleFunc("/health", s.getHealth).Methods(http.MethodGet, http.MethodHead)
 
 	v1 := r.PathPrefix("/api/v1").Subrouter()
-	v1.Use(authMW.AuthenticateAWSIAMService)
 	v1.Use(RequireJSONContentType)
 
-	v1.HandleFunc("/auth-check", func(w http.ResponseWriter, r *http.Request) {
+	// All v1 routes must be explicitly wrapped with serviceAuth or shopperOrServiceAuth.
+	// We do not use v1.Use(authMW.AuthenticateAWSIAMService) because gorilla/mux applies
+	// parent middleware to every subrouter handler, which would prevent per-route
+	// auth differentiation (e.g. shopper-or-service on GET /budgets/{budgetId}).
+	serviceAuth := mux.MiddlewareFunc(authMW.AuthenticateAWSIAMService)
+	shopperOrServiceAuth := mux.MiddlewareFunc(authMW.AuthenticateShopperOrService)
+
+	v1.Handle("/auth-check", shopperOrServiceAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		claims := auth.GetClaims(r)
 		if claims == nil {
 			writeJSON(w, http.StatusOK, map[string]any{
@@ -33,36 +39,41 @@ func NewRouter(s *Server, authMW *auth.Middleware) http.Handler {
 			})
 			return
 		}
+		tokenType := claims.GetType()
 		writeJSON(w, http.StatusOK, map[string]any{
-			"message": claims.GetType() + "-class service JWT accepted",
+			"message":     tokenType + " token accepted",
+			"tokenType":   tokenType,
+			"tokenSource": auth.GetTokenSource(r),
 		})
-	}).Methods(http.MethodGet)
+	}))).Methods(http.MethodGet)
 
-	v1.HandleFunc("/products", s.getProducts).Methods(http.MethodGet)
-	v1.HandleFunc("/products", s.postProduct).Methods(http.MethodPost)
-	v1.HandleFunc("/products/{productKey}", s.deleteProduct).Methods(http.MethodDelete)
+	v1.Handle("/products", serviceAuth(http.HandlerFunc(s.getProducts))).Methods(http.MethodGet)
+	v1.Handle("/products", serviceAuth(http.HandlerFunc(s.postProduct))).Methods(http.MethodPost)
+	v1.Handle("/products/{productKey}", serviceAuth(http.HandlerFunc(s.deleteProduct))).Methods(http.MethodDelete)
 
-	v1.HandleFunc("/webhooks/{webhookId}", s.getWebhook).Methods(http.MethodGet)
-	v1.HandleFunc("/webhooks/{webhookId}", s.deleteWebhook).Methods(http.MethodDelete)
-	v1.HandleFunc("/webhooks", s.getWebhooks).Methods(http.MethodGet)
-	v1.HandleFunc("/webhooks", s.postWebhook).Methods(http.MethodPost)
+	v1.Handle("/webhooks/{webhookId}", serviceAuth(http.HandlerFunc(s.getWebhook))).Methods(http.MethodGet)
+	v1.Handle("/webhooks/{webhookId}", serviceAuth(http.HandlerFunc(s.deleteWebhook))).Methods(http.MethodDelete)
+	v1.Handle("/webhooks", serviceAuth(http.HandlerFunc(s.getWebhooks))).Methods(http.MethodGet)
+	v1.Handle("/webhooks", serviceAuth(http.HandlerFunc(s.postWebhook))).Methods(http.MethodPost)
 
-	v1.HandleFunc("/reports/aggregate", s.getReportsAggregate).Methods(http.MethodGet)
-	v1.HandleFunc("/reports", s.getReports).Methods(http.MethodGet)
-	v1.HandleFunc("/sessions/{sessionId}/reports/{reportId}", s.getBudgetSessionReport).Methods(http.MethodGet)
-	v1.HandleFunc("/sessions/{sessionId}/reports", s.postBudgetSessionReport).Methods(http.MethodPost)
-	v1.HandleFunc("/sessions/{sessionId}", s.getBudgetSession).Methods(http.MethodGet)
-	v1.HandleFunc("/sessions/{sessionId}", s.patchBudgetSession).Methods(http.MethodPatch)
-	v1.HandleFunc("/sessions", s.postBudgetSession).Methods(http.MethodPost)
+	v1.Handle("/reports/aggregate", serviceAuth(http.HandlerFunc(s.getReportsAggregate))).Methods(http.MethodGet)
+	v1.Handle("/reports", serviceAuth(http.HandlerFunc(s.getReports))).Methods(http.MethodGet)
+	v1.Handle("/sessions/{sessionId}/reports/{reportId}", serviceAuth(http.HandlerFunc(s.getBudgetSessionReport))).Methods(http.MethodGet)
+	v1.Handle("/sessions/{sessionId}/reports", serviceAuth(http.HandlerFunc(s.postBudgetSessionReport))).Methods(http.MethodPost)
+	v1.Handle("/sessions/{sessionId}", serviceAuth(http.HandlerFunc(s.getBudgetSession))).Methods(http.MethodGet)
+	v1.Handle("/sessions/{sessionId}", serviceAuth(http.HandlerFunc(s.patchBudgetSession))).Methods(http.MethodPatch)
+	v1.Handle("/sessions", serviceAuth(http.HandlerFunc(s.postBudgetSession))).Methods(http.MethodPost)
 
-	v1.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.getBudgetItem).Methods(http.MethodGet)
-	v1.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.patchBudgetItem).Methods(http.MethodPatch)
-	v1.HandleFunc("/budgets/{budgetId}/budget-items/{budgetItemId}", s.deleteBudgetItem).Methods(http.MethodDelete)
-	v1.HandleFunc("/budgets/{budgetId}/budget-items", s.postBudgetItem).Methods(http.MethodPost)
-	v1.HandleFunc("/budgets/{budgetId}", s.getBudget).Methods(http.MethodGet)
-	v1.HandleFunc("/budgets/{budgetId}", s.patchBudget).Methods(http.MethodPatch)
-	v1.HandleFunc("/budgets/{budgetId}", s.deleteBudget).Methods(http.MethodDelete)
-	v1.HandleFunc("/budgets", s.postBudget).Methods(http.MethodPost)
+	v1.Handle("/budgets/{budgetId}/budget-items/{budgetItemId}", serviceAuth(http.HandlerFunc(s.getBudgetItem))).Methods(http.MethodGet)
+	v1.Handle("/budgets/{budgetId}/budget-items/{budgetItemId}", serviceAuth(http.HandlerFunc(s.patchBudgetItem))).Methods(http.MethodPatch)
+	v1.Handle("/budgets/{budgetId}/budget-items/{budgetItemId}", serviceAuth(http.HandlerFunc(s.deleteBudgetItem))).Methods(http.MethodDelete)
+	v1.Handle("/budgets/{budgetId}/budget-items", serviceAuth(http.HandlerFunc(s.postBudgetItem))).Methods(http.MethodPost)
+	// GET /budgets/{budgetId} accepts a Shopper JWT in addition to service tokens.
+	// PATCH and DELETE on the same path remain service-only.
+	v1.Handle("/budgets/{budgetId}", shopperOrServiceAuth(http.HandlerFunc(s.getBudget))).Methods(http.MethodGet)
+	v1.Handle("/budgets/{budgetId}", serviceAuth(http.HandlerFunc(s.patchBudget))).Methods(http.MethodPatch)
+	v1.Handle("/budgets/{budgetId}", serviceAuth(http.HandlerFunc(s.deleteBudget))).Methods(http.MethodDelete)
+	v1.Handle("/budgets", serviceAuth(http.HandlerFunc(s.postBudget))).Methods(http.MethodPost)
 
 	return LoggingMiddleware(r, s.LogRequestBodies)
 }

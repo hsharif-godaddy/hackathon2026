@@ -78,6 +78,16 @@ TOKEN="$(go run ./cmd/mint-iam-jwt)"
 curl -sS -H "Authorization: sso-jwt $TOKEN" "http://localhost:8080/api/v1/auth-check"
 ```
 
+### Shopper JWT (auth_idp cookie)
+
+`/api/v1/auth-check` also accepts an idp (shopper) token from the `auth_idp` cookie. Useful for verifying browser-style cookie auth without forging an `Authorization` header. The probe response surfaces the resolved `tokenType` and `tokenSource` so you can confirm which path matched.
+
+```bash
+SHOPPER_JWT="<paste idp jwt>"
+curl -sS --cookie "auth_idp=$SHOPPER_JWT" "http://localhost:8080/api/v1/auth-check"
+# {"message":"idp token accepted","tokenSource":"cookie","tokenType":"idp"}
+```
+
 ### `verify-iam-auth.sh`
 
 All-in-one check (STS identity, mint, `GET /api/v1/auth-check`). After `aws sso login`, run from `budget-service/`:

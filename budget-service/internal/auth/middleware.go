@@ -26,11 +26,18 @@ type contextKey string
 const (
 	// ClaimsKey is the context key for storing validated token claims.
 	ClaimsKey contextKey = "auth_claims"
+	// TokenSourceKey is the context key for the resolved token source: "header"
+	// when the JWT was read from Authorization, "cookie" when read from auth_idp.
+	// Set by both AuthenticateAWSIAMService (always "header") and
+	// AuthenticateShopperOrService. Read via GetTokenSource.
+	TokenSourceKey contextKey = "auth_token_source"
 )
 
-// gdAuthValidator is the subset of gd-auth-lib GDAuth used by the middleware.
-// *gdauth.GDAuth satisfies it; tests may inject a stub via Middleware.validator.
-type gdAuthValidator interface {
+// GDAuthValidator is the subset of gd-auth-lib GDAuth used by the middleware.
+// *gdauth.GDAuth satisfies it. Production callers use NewMiddleware (which wires
+// the gd-auth singleton); tests and callers that need to bypass the singleton
+// pass a stub via NewMiddlewareWithValidator.
+type GDAuthValidator interface {
 	ParseToken(token string, opts *gdauth.AuthOptions) (*gdauth.TokenClaims, error)
 	GetAwsIamArn(claims *gdauth.TokenClaims) (string, error)
 	GetCommonName(claims *gdauth.TokenClaims) (string, error)
@@ -39,7 +46,7 @@ type gdAuthValidator interface {
 // Middleware provides HTTP middleware for GoDaddy SSO JWT authentication.
 type Middleware struct {
 	client       *Client
-	validator    gdAuthValidator // non-nil in tests only; production uses client.GDAuth
+	validator    GDAuthValidator // non-nil in tests only; production uses client.GDAuth
 	authType     string
 	allowedRoles []string
 	allowedCerts []string
@@ -74,7 +81,21 @@ func NewMiddleware(authType string, allowedRoles []string, allowedCerts []string
 	return m
 }
 
-func (m *Middleware) gdAuth() gdAuthValidator {
+// NewMiddlewareWithValidator constructs a Middleware that uses the supplied
+// validator and SSO host instead of the gd-auth singleton. Intended for tests
+// and benchmarks; production callers use NewMiddleware. authType "none" still
+// bypasses validation; otherwise the validator is invoked to parse tokens.
+func NewMiddlewareWithValidator(authType string, allowedRoles, allowedCerts []string, ssoHost string, v GDAuthValidator) *Middleware {
+	return &Middleware{
+		authType:     authType,
+		allowedRoles: allowedRoles,
+		allowedCerts: allowedCerts,
+		client:       &Client{SSOHost: ssoHost},
+		validator:    v,
+	}
+}
+
+func (m *Middleware) gdAuth() GDAuthValidator {
 	if m.validator != nil {
 		return m.validator
 	}
@@ -105,6 +126,21 @@ func extractToken(r *http.Request) string {
 	}
 
 	return ""
+}
+
+// extractTokenWithCookie returns the JWT to validate. Authorization header wins
+// (Bearer or sso-jwt); falls back to the auth_idp cookie. Returns ("", "") if
+// neither is present. The second return value is the source: "header" or "cookie".
+// Callers that should be header-only (service-token middlewares) call extractToken
+// directly instead.
+func extractTokenWithCookie(r *http.Request) (token string, source string) {
+	if t := extractToken(r); t != "" {
+		return t, "header"
+	}
+	if c, err := r.Cookie("auth_idp"); err == nil && c.Value != "" {
+		return c.Value, "cookie"
+	}
+	return "", ""
 }
 
 // AuthenticateAWSIAMService validates service SSO JWTs from Authorization: Bearer
@@ -208,8 +244,124 @@ func (m *Middleware) AuthenticateAWSIAMService(next http.Handler) http.Handler {
 			Labels: []slog.Attr{slog.String("token_type", tokenType)},
 		})
 
-		// Store claims in context for downstream handlers
+		// Store claims in context for downstream handlers. Token source is
+		// always "header" here — this middleware does not read cookies.
 		ctx := context.WithValue(r.Context(), ClaimsKey, claims)
+		ctx = context.WithValue(ctx, TokenSourceKey, "header")
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// AuthenticateShopperOrService validates shopper SSO JWTs (typ=idp) in addition to
+// the service tokens accepted by AuthenticateAWSIAMService (awsiam, cert, cert2s).
+// Apply this on routes that should be reachable by an end-shopper or by service callers.
+// idp tokens are accepted without an allowlist; awsiam/cert tokens use the same
+// m.allowedRoles / m.allowedCerts gates as AuthenticateAWSIAMService.
+//
+// Token source: Authorization header (Bearer / sso-jwt) is preferred; falls back
+// to the auth_idp cookie. The resolved source is recorded as a `token_source`
+// label on every seclog event so SIEM can distinguish header vs cookie auth.
+func (m *Middleware) AuthenticateShopperOrService(next http.Handler) http.Handler {
+	if m.authType == "none" {
+		return next
+	}
+
+	if m.client == nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			seclog.AuthFailure(r, seclog.Event{
+				Reason: "AUTH_MISCONFIGURED",
+				Status: http.StatusUnauthorized,
+				Labels: []slog.Attr{slog.String("cause", "client_nil")},
+			})
+			writeAuthError(w, http.StatusUnauthorized, "AUTH_MISCONFIGURED", "auth misconfigured")
+		})
+	}
+	g := m.gdAuth()
+	if g == nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			seclog.AuthFailure(r, seclog.Event{
+				Reason: "AUTH_MISCONFIGURED",
+				Status: http.StatusUnauthorized,
+				Labels: []slog.Attr{slog.String("cause", "gdauth_nil")},
+			})
+			writeAuthError(w, http.StatusUnauthorized, "AUTH_MISCONFIGURED", "auth misconfigured")
+		})
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token, source := extractTokenWithCookie(r)
+		if token == "" {
+			seclog.AuthFailure(r, seclog.Event{
+				Reason: "MISSING_AUTHORIZATION",
+				Status: http.StatusUnauthorized,
+			})
+			writeAuthError(w, http.StatusUnauthorized, "MISSING_AUTHORIZATION", "missing authorization token")
+			return
+		}
+		sourceLabel := slog.String("token_source", source)
+
+		authOptions := &gdauth.AuthOptions{
+			GoDaddySSO: &gdauth.GoDaddySSOConfig{
+				Host:             m.client.SSOHost,
+				SecurityLevel:    gdauth.SecurityLevelLow,
+				Auths:            []gdauth.Auths{gdauth.AuthsBasic, gdauth.AuthsCert2S},
+				FilterByAuthType: false,
+				AllowHeartbeat:   false,
+			},
+		}
+
+		claims, err := g.ParseToken(token, authOptions)
+		if err != nil {
+			seclog.AuthFailure(r, seclog.Event{
+				Reason: "INVALID_TOKEN",
+				Status: http.StatusUnauthorized,
+				Err:    err,
+				Labels: []slog.Attr{sourceLabel},
+			})
+			writeAuthError(w, http.StatusUnauthorized, "INVALID_TOKEN", "invalid token")
+			return
+		}
+
+		tokenType := claims.GetType()
+		var resolvedUser string
+		switch tokenType {
+		case string(gdauth.AuthTypeAWSIAM), string(gdauth.AuthTypeCERT):
+			user, handled := m.resolveUserForToken(w, r, g, claims, tokenType)
+			if handled {
+				return
+			}
+			resolvedUser = user
+		case string(gdauth.AuthTypeIDP):
+			// shopper — no allowlist; proceed. resolvedUser left empty: the
+			// GDAuthValidator interface deliberately exposes only the principal
+			// extractors needed for awsiam/cert allowlisting; shopper identity
+			// (shopper ID / customer ID) is read by downstream handlers from
+			// claims via GetClaims when needed.
+		default:
+			seclog.AuthzFailure(r, seclog.Event{
+				Reason: "UNAUTHORIZED_TOKEN_TYPE",
+				Status: http.StatusUnauthorized,
+				Labels: []slog.Attr{
+					slog.String("token_type", tokenType),
+					slog.String("expected", "idp, awsiam, or cert"),
+					sourceLabel,
+				},
+			})
+			writeAuthError(w, http.StatusUnauthorized, "UNAUTHORIZED_TOKEN_TYPE", "unauthorized token type")
+			return
+		}
+
+		seclog.AuthSuccess(r, seclog.Event{
+			Reason: "AUTH_SUCCESS",
+			User:   resolvedUser,
+			Labels: []slog.Attr{
+				slog.String("token_type", tokenType),
+				sourceLabel,
+			},
+		})
+
+		ctx := context.WithValue(r.Context(), ClaimsKey, claims)
+		ctx = context.WithValue(ctx, TokenSourceKey, source)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -220,7 +372,7 @@ func (m *Middleware) AuthenticateAWSIAMService(next http.Handler) http.Handler {
 // handled=true; the caller must return without further work. On success it
 // returns the resolved principal (IAM ARN or cert CN) and handled=false.
 func (m *Middleware) resolveUserForToken(
-	w http.ResponseWriter, r *http.Request, g gdAuthValidator, claims *gdauth.TokenClaims, tokenType string,
+	w http.ResponseWriter, r *http.Request, g GDAuthValidator, claims *gdauth.TokenClaims, tokenType string,
 ) (user string, handled bool) {
 	tokenLabel := slog.String("token_type", tokenType)
 
@@ -325,4 +477,12 @@ func matchesAllowlist(value string, patterns []string) bool {
 func GetClaims(r *http.Request) *gdauth.TokenClaims {
 	claims, _ := r.Context().Value(ClaimsKey).(*gdauth.TokenClaims)
 	return claims
+}
+
+// GetTokenSource returns the source of the JWT that authenticated this
+// request — "header" or "cookie" — or "" when no auth ran (e.g. authType=="none"
+// bypass, or the request never went through one of this package's middlewares).
+func GetTokenSource(r *http.Request) string {
+	src, _ := r.Context().Value(TokenSourceKey).(string)
+	return src
 }

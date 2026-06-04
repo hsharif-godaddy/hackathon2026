@@ -34,8 +34,10 @@ GET /api/v1/auth-check
 ```
 
 ```json
-{ "message": "IAM or Cert-class service JWT accepted" }
+{ "message": "awsiam token accepted", "tokenType": "awsiam", "tokenSource": "header" }
 ```
+
+Accepts service tokens (`awsiam`, `cert`, `cert2s`) via the `Authorization` header and shopper tokens (`idp`) via either the header or the `auth_idp` cookie. The response reports the resolved `tokenType` and `tokenSource` so callers can confirm which extraction path matched.
 
 ## 2 · Register a product
 

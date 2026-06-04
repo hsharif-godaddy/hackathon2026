@@ -54,10 +54,11 @@ Defaults: `BUDGET_SERVICE_URL=http://127.0.0.1:8080`, `WEBHOOK_SINK_URL=http://1
 
 ### Environment
 
-| Variable             | Default                 | Purpose                                                                                                                                                     |
-| -------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BUDGET_SERVICE_URL` | `http://127.0.0.1:8080` | Base URL of the budget API (`cmd/server`). May be **`https://…`** on a **remote** host your machine can reach (VPN, etc.). Must not be the dev UI URL/port. |
-| `DEV_BUDGET_UI_ADDR` | `:9980`                 | Listen address for the dev UI + proxy.                                                                                                                      |
+| Variable                              | Default                 | Purpose                                                                                                                                                     |
+| ------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BUDGET_SERVICE_URL`                  | `http://127.0.0.1:8080` | Base URL of the budget API (`cmd/server`). May be **`https://…`** on a **remote** host your machine can reach (VPN, etc.). Must not be the dev UI URL/port. |
+| `DEV_BUDGET_UI_ADDR`                  | `:9980`                 | Listen address for the dev UI + proxy. The port is the part after `:`; bind to all interfaces with `0.0.0.0:<port>`.                                        |
+| `SERVER_CERT_PATH`, `SERVER_KEY_PATH` | —                       | Both set → dev UI listens on **HTTPS** (TLS 1.3) with the same cert/key the budget server reads. Both unset → HTTP. Reuses the server's `.env` values.      |
 
 Set variables in the **shell** that runs the process, prefix the command, or put `BUDGET_SERVICE_URL=...` in **`.env.local`** / **`.env`**: **`make dev-budget-ui`** sources the same file as **`make dev`**. Raw **`go run ./cmd/dev-budget-ui`** does not read `.env`; export or prefix env vars in that case.
 
@@ -77,7 +78,7 @@ go run ./cmd/server
 make dev-budget-ui
 ```
 
-Open **http://127.0.0.1:9980/**. **`BUDGET_SERVICE_URL` must be the budget API** (e.g. port **8080** locally), **not** `:9980`, or `/api/*` loops and the browser shows **`ERR_TOO_MANY_REDIRECTS`** (the dev UI exits at startup if it detects loopback + same port as the UI).
+Open **http://127.0.0.1:9980/** (or **https://** if `SERVER_CERT_PATH` / `SERVER_KEY_PATH` are set — typically when matching the server's `BUDGET_SERVICE_URL=https://local.gasket.dev-godaddy.com:8443` setup, open **https://local.gasket.dev-godaddy.com:9980/** so the wildcard cert validates). **`BUDGET_SERVICE_URL` must be the budget API** (e.g. port **8080** locally), **not** `:9980`, or `/api/*` loops and the browser shows **`ERR_TOO_MANY_REDIRECTS`** (the dev UI exits at startup if it detects loopback + same port as the UI).
 
 ### Remote API
 
@@ -109,7 +110,7 @@ E2E-relevant targets only; full target list in [`Makefile`](../Makefile).
 | `make e2e-down`         | Stop e2e profile services (postgres unchanged)                                                                      |
 | `make e2e-local`        | Run `scripts/e2e-local.sh` with standard env defaults                                                               |
 | `make verify-iam-auth`  | Run `scripts/verify-iam-auth.sh` (mint IAM JWT + `GET /api/v1/auth-check`)                                          |
-| `make dev-budget-ui`    | `go run ./cmd/dev-budget-ui` (env: `BUDGET_SERVICE_URL`, `DEV_BUDGET_UI_ADDR` — see [above](#dev-ui-dev-budget-ui)) |
+| `make dev-budget-ui`    | `go run ./cmd/dev-budget-ui` (env: `BUDGET_SERVICE_URL`, `DEV_BUDGET_UI_ADDR`, optional `SERVER_CERT_PATH`/`SERVER_KEY_PATH` for HTTPS — see [above](#dev-ui-dev-budget-ui)) |
 
 `make test` does **not** run the shell E2E script (keeps CI fast). Go tests with `TEST_DATABASE_URL` remain the hermetic option.
 

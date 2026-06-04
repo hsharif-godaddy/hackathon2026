@@ -73,3 +73,37 @@ func TestRouterRejectsPOSTWithoutJSONContentType(t *testing.T) {
 		t.Fatalf("expected UNSUPPORTED_MEDIA_TYPE, got %s", rec.Body.String())
 	}
 }
+
+func TestRouter_BudgetByIdAllMethodsReachable(t *testing.T) {
+	t.Parallel()
+	h := NewRouter(&Server{}, auth.NewMiddleware("none", nil, nil))
+
+	cases := []struct {
+		method   string
+		body     string
+		wantCode int // 503 SERVICE_UNAVAILABLE because Server.Store is nil
+	}{
+		{http.MethodGet, "", http.StatusServiceUnavailable},
+		{http.MethodPatch, `{"items":[{"budgetItemId":"00000000-0000-0000-0000-000000000000"}]}`, http.StatusServiceUnavailable},
+		{http.MethodDelete, "", http.StatusServiceUnavailable},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.method, func(t *testing.T) {
+			t.Parallel()
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(tc.method, "/api/v1/budgets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", strings.NewReader(tc.body))
+			if tc.body != "" {
+				req.Header.Set("Content-Type", "application/json")
+			}
+			h.ServeHTTP(rec, req)
+			if rec.Code != tc.wantCode {
+				t.Fatalf("%s: want %d, got %d body=%s", tc.method, tc.wantCode, rec.Code, rec.Body.String())
+			}
+			// Sanity: not a routing error
+			if strings.Contains(rec.Body.String(), `"code":"NOT_FOUND"`) || strings.Contains(rec.Body.String(), `"code":"METHOD_NOT_ALLOWED"`) {
+				t.Fatalf("%s: routing error returned: %s", tc.method, rec.Body.String())
+			}
+		})
+	}
+}

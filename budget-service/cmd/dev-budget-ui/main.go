@@ -2,6 +2,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"log"
 	"net"
 	"net/http"
@@ -19,6 +20,12 @@ func main() {
 		log.Fatal("BUDGET_SERVICE_URL must be a valid URL")
 	}
 	listenAddr := getenv("DEV_BUDGET_UI_ADDR", ":9980")
+	certPath := strings.TrimSpace(os.Getenv("SERVER_CERT_PATH"))
+	keyPath := strings.TrimSpace(os.Getenv("SERVER_KEY_PATH"))
+	if (certPath == "") != (keyPath == "") {
+		log.Fatal("SERVER_CERT_PATH and SERVER_KEY_PATH must both be set or both empty")
+	}
+	useTLS := certPath != "" && keyPath != ""
 	fatalIfSelfProxy(upstream, listenAddr)
 
 	proxy := httputil.NewSingleHostReverseProxy(upstream)
@@ -54,24 +61,51 @@ func main() {
 			http.NotFound(w, r)
 		}
 	})
+	srv := &http.Server{Addr: listenAddr, Handler: h}
+	if useTLS {
+		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+		if err != nil {
+			log.Fatalf("dev-budget-ui: load cert/key: %v", err)
+		}
+		srv.TLSConfig = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS13,
+		}
+		log.Printf("dev-budget-ui listening %s (TLS) proxy-> %s", listenAddr, upstream.Redacted())
+		log.Printf("Budget Service Dev UI: %s", browserURL(listenAddr, true, upstream))
+		log.Fatal(srv.ListenAndServeTLS("", ""))
+	}
 	log.Printf("dev-budget-ui listening %s proxy-> %s", listenAddr, upstream.Redacted())
-	log.Printf("Budget Service Dev UI: %s", browserURL(listenAddr))
-	log.Fatal((&http.Server{Addr: listenAddr, Handler: h}).ListenAndServe())
+	log.Printf("Budget Service Dev UI: %s", browserURL(listenAddr, false, upstream))
+	log.Fatal(srv.ListenAndServe())
 }
 
-// browserURL turns a listen address (":9980", "0.0.0.0:9980", "127.0.0.1:9980") into a clickable localhost URL.
-func browserURL(listen string) string {
+// browserURL turns a listen address (":9980", "0.0.0.0:9980", "127.0.0.1:9980") into a clickable URL.
+// When TLS is on and the listen host is unspecified, prefers upstream's hostname so the wildcard cert
+// validates (e.g. https://local.gasket.dev-godaddy.com:9980/ rather than https://localhost:9980/).
+func browserURL(listen string, useTLS bool, upstream *url.URL) string {
+	scheme := "http"
+	if useTLS {
+		scheme = "https"
+	}
 	host, port, err := net.SplitHostPort(listen)
 	if err != nil {
 		if strings.HasPrefix(listen, ":") {
-			return "http://localhost:" + strings.TrimPrefix(listen, ":") + "/"
+			host = ""
+			port = strings.TrimPrefix(listen, ":")
+		} else {
+			return scheme + "://" + listen + "/"
 		}
-		return "http://" + listen + "/"
 	}
 	if host == "" || host == "0.0.0.0" || host == "::" {
 		host = "localhost"
+		if useTLS && upstream != nil {
+			if uh := strings.ToLower(upstream.Hostname()); uh != "" && uh != "127.0.0.1" && uh != "::1" && uh != "localhost" {
+				host = upstream.Hostname()
+			}
+		}
 	}
-	return "http://" + host + ":" + port + "/"
+	return scheme + "://" + host + ":" + port + "/"
 }
 
 func serveEmbed(w http.ResponseWriter, r *http.Request, name, contentType string) {

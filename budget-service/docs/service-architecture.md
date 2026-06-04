@@ -54,7 +54,7 @@ Config lives in [Edge Front Door](https://github.com/gdcorp-engineering/frontdoo
 
 ## Request flow
 
-The router applies logging around the entire mux (`internal/api/middleware.go`); `/api/v1` routes use JWT middleware then the handler (`internal/api/routes.go`). When `AUTH_ALLOWED_ROLES` or `AUTH_ALLOWED_CERTS` is configured, the middleware additionally checks the caller's IAM ARN or cert CommonName against the respective allowlist after token validation (403 if not matched).
+The router applies logging around the entire mux (`internal/api/middleware.go`); `/api/v1` routes are individually wrapped with one of two JWT middlewares (`internal/api/routes.go`): `AuthenticateAWSIAMService` (default; accepts IAM, Cert, or Cert2S service tokens via `Authorization: Bearer` / `sso-jwt`) or `AuthenticateShopperOrService` (the same service tokens plus a Shopper JWT, `typ=idp`, delivered via `Authorization` header or the `auth_idp` cookie — header wins when both are present; used today only by `GET /api/v1/budgets/{budgetId}`). When `AUTH_ALLOWED_ROLES` or `AUTH_ALLOWED_CERTS` is configured, the middleware additionally checks the caller's IAM ARN or cert CommonName against the respective allowlist after token validation (403 if not matched). Shopper tokens are accepted without an allowlist check.
 
 ```mermaid
 sequenceDiagram
@@ -124,7 +124,7 @@ sequenceDiagram
 | ---- | ------------------------ | ------------------- |
 | Health | `GET/HEAD /health` | Optional DB ping |
 | OpenAPI | `GET /openapi.yaml`, `/swagger/*` | None |
-| Auth probe | `GET /api/v1/auth-check` | None |
+| Auth probe | `GET /api/v1/auth-check` (header service tokens or `auth_idp` cookie shopper token) | None |
 | Products | `GET/POST /api/v1/products`, `DELETE .../products/{productKey}` | `products` |
 | Webhooks | `GET/POST /api/v1/webhooks`, `GET/DELETE .../webhooks/{webhookId}` | `webhooks` |
 | Budgets | `POST /api/v1/budgets`, `GET/PATCH/DELETE .../budgets/{budgetId}` | `budgets`, `budget_items` |

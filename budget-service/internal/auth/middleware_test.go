@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	gdauth "github.com/gdcorp-identity/gd-auth-lib/go/gd_auth_lib"
+	"github.com/gorilla/mux"
 )
 
 // mockGDAuth implements minimal GDAuth behavior for testing.
@@ -112,6 +113,81 @@ func (m *testableMiddleware) AuthenticateAWSIAMService(next http.Handler) http.H
 				writeAuthError(w, http.StatusForbidden, "CERT_CN_DENIED", "forbidden: cert CommonName not in allowlist")
 				return
 			}
+		}
+
+		ctx := context.WithValue(r.Context(), ClaimsKey, claims)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func (m *testableMiddleware) AuthenticateShopperOrService(next http.Handler) http.Handler {
+	if m.authType == "none" {
+		return next
+	}
+
+	if m.parser == nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			writeAuthError(w, http.StatusUnauthorized, "AUTH_MISCONFIGURED", "auth misconfigured")
+		})
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token, _ := extractTokenWithCookie(r)
+		if token == "" {
+			writeAuthError(w, http.StatusUnauthorized, "MISSING_AUTHORIZATION", "missing authorization token")
+			return
+		}
+
+		authOptions := &gdauth.AuthOptions{
+			GoDaddySSO: &gdauth.GoDaddySSOConfig{
+				Host:             m.ssoHost,
+				SecurityLevel:    gdauth.SecurityLevelLow,
+				Auths:            []gdauth.Auths{gdauth.AuthsBasic, gdauth.AuthsCert2S},
+				FilterByAuthType: false,
+				AllowHeartbeat:   false,
+			},
+		}
+
+		claims, err := m.parser.ParseToken(token, authOptions)
+		if err != nil {
+			writeAuthError(w, http.StatusUnauthorized, "INVALID_TOKEN", "invalid token")
+			return
+		}
+
+		switch claims.GetType() {
+		case string(gdauth.AuthTypeAWSIAM):
+			if len(m.allowedRoles) == 0 {
+				writeAuthError(w, http.StatusForbidden, "IAM_ALLOWLIST_NOT_CONFIGURED", "forbidden: IAM role allowlist not configured")
+				return
+			}
+			arn, err := m.getArn(claims)
+			if err != nil {
+				writeAuthError(w, http.StatusForbidden, "IAM_ROLE_EXTRACT_FAILED", "forbidden: unable to extract IAM role")
+				return
+			}
+			if !matchesAllowlist(arn, m.allowedRoles) {
+				writeAuthError(w, http.StatusForbidden, "IAM_ROLE_DENIED", "forbidden: IAM role not in allowlist")
+				return
+			}
+		case string(gdauth.AuthTypeCERT):
+			if len(m.allowedCerts) == 0 {
+				writeAuthError(w, http.StatusForbidden, "CERT_ALLOWLIST_NOT_CONFIGURED", "forbidden: cert allowlist not configured")
+				return
+			}
+			cn, err := m.getCN(claims)
+			if err != nil {
+				writeAuthError(w, http.StatusForbidden, "CERT_CN_EXTRACT_FAILED", "forbidden: unable to extract cert CommonName")
+				return
+			}
+			if !matchesAllowlist(cn, m.allowedCerts) {
+				writeAuthError(w, http.StatusForbidden, "CERT_CN_DENIED", "forbidden: cert CommonName not in allowlist")
+				return
+			}
+		case string(gdauth.AuthTypeIDP):
+			// shopper — no allowlist; proceed
+		default:
+			writeAuthError(w, http.StatusUnauthorized, "UNAUTHORIZED_TOKEN_TYPE", "unauthorized token type")
+			return
 		}
 
 		ctx := context.WithValue(r.Context(), ClaimsKey, claims)
@@ -327,6 +403,381 @@ func TestAuthenticateAWSIAMService_AuthDisabled(t *testing.T) {
 	}
 }
 
+// --- AuthenticateShopperOrService tests ---
+
+func newShopperMockParser() *mockGDAuth {
+	return &mockGDAuth{
+		parseTokenFunc: func(token string, opts *gdauth.AuthOptions) (*gdauth.TokenClaims, error) {
+			return gdauth.NewTokenClaims(map[string]any{
+				"typ": string(gdauth.AuthTypeIDP),
+				"jti": "test-shopper-jti",
+			}), nil
+		},
+	}
+}
+
+func TestAuthenticateShopperOrService_ValidShopperToken(t *testing.T) {
+	t.Parallel()
+
+	m := &testableMiddleware{
+		parser:   newShopperMockParser(),
+		ssoHost:  "https://sso.test.godaddy.com",
+		authType: "jwt",
+	}
+
+	handler := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer valid-shopper-token")
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAuthenticateShopperOrService_ShopperParseFails(t *testing.T) {
+	t.Parallel()
+
+	mockParser := &mockGDAuth{
+		parseTokenFunc: func(token string, opts *gdauth.AuthOptions) (*gdauth.TokenClaims, error) {
+			return nil, errors.New("token validation failed")
+		},
+	}
+
+	m := &testableMiddleware{
+		parser:   mockParser,
+		ssoHost:  "https://sso.test.godaddy.com",
+		authType: "jwt",
+	}
+
+	handler := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer bad-shopper-token")
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "INVALID_TOKEN") {
+		t.Errorf("expected INVALID_TOKEN, got %s", rec.Body.String())
+	}
+}
+
+func TestAuthenticateShopperOrService_AcceptsIAMWithAllowlist(t *testing.T) {
+	t.Parallel()
+
+	arn := "arn:aws:iam::123456789:role/airo-budget"
+	m := &testableMiddleware{
+		parser:       newIAMMockParser(),
+		ssoHost:      "https://sso.test.godaddy.com",
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123456789:role/airo-*"},
+		getArn:       staticClaimGetter(arn),
+	}
+
+	handler := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer valid-iam-token")
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAuthenticateShopperOrService_RejectsIAMNotInAllowlist(t *testing.T) {
+	t.Parallel()
+
+	arn := "arn:aws:iam::999:role/unknown"
+	m := &testableMiddleware{
+		parser:       newIAMMockParser(),
+		ssoHost:      "https://sso.test.godaddy.com",
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/airo-*"},
+		getArn:       staticClaimGetter(arn),
+	}
+
+	handler := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer iam-token")
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "IAM_ROLE_DENIED") {
+		t.Errorf("expected IAM_ROLE_DENIED, got %s", rec.Body.String())
+	}
+}
+
+func TestAuthenticateShopperOrService_AcceptsCertWithAllowlist(t *testing.T) {
+	t.Parallel()
+
+	cn := "service-a.airo-builder.godaddy.com"
+	m := &testableMiddleware{
+		parser:       newCertMockParser(),
+		ssoHost:      "https://sso.test.godaddy.com",
+		authType:     "jwt",
+		allowedCerts: []string{"service-a.airo-builder.godaddy.com"},
+		getCN:        staticClaimGetter(cn),
+	}
+
+	handler := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "sso-jwt valid-cert-token")
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAuthenticateShopperOrService_RejectsCertNotInAllowlist(t *testing.T) {
+	t.Parallel()
+
+	cn := "rogue.example.com"
+	m := &testableMiddleware{
+		parser:       newCertMockParser(),
+		ssoHost:      "https://sso.test.godaddy.com",
+		authType:     "jwt",
+		allowedCerts: []string{"service-a.airo-builder.godaddy.com"},
+		getCN:        staticClaimGetter(cn),
+	}
+
+	handler := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "sso-jwt cert-token")
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "CERT_CN_DENIED") {
+		t.Errorf("expected CERT_CN_DENIED, got %s", rec.Body.String())
+	}
+}
+
+func TestAuthenticateShopperOrService_RejectsUnknownTokenType(t *testing.T) {
+	t.Parallel()
+
+	mockParser := &mockGDAuth{
+		parseTokenFunc: func(token string, opts *gdauth.AuthOptions) (*gdauth.TokenClaims, error) {
+			return gdauth.NewTokenClaims(map[string]any{
+				"typ": string(gdauth.AuthTypeJOMAX),
+				"jti": "jomax-jti",
+			}), nil
+		},
+	}
+
+	m := &testableMiddleware{
+		parser:   mockParser,
+		ssoHost:  "https://sso.test.godaddy.com",
+		authType: "jwt",
+	}
+
+	handler := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer jomax-token")
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "UNAUTHORIZED_TOKEN_TYPE") {
+		t.Errorf("expected UNAUTHORIZED_TOKEN_TYPE, got %s", rec.Body.String())
+	}
+}
+
+func TestAuthenticateShopperOrService_MissingToken(t *testing.T) {
+	t.Parallel()
+
+	m := &testableMiddleware{
+		parser:   newShopperMockParser(),
+		ssoHost:  "https://sso.test.godaddy.com",
+		authType: "jwt",
+	}
+
+	handler := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	// No Authorization header
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "MISSING_AUTHORIZATION") {
+		t.Errorf("expected MISSING_AUTHORIZATION, got %s", rec.Body.String())
+	}
+}
+
+func TestAuthenticateShopperOrService_AuthDisabled(t *testing.T) {
+	t.Parallel()
+
+	m := &testableMiddleware{
+		parser:   nil,
+		authType: "none",
+	}
+
+	handler := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 (auth disabled), got %d", rec.Code)
+	}
+}
+
+func TestAuthenticateShopperOrService_NilParserMisconfigured(t *testing.T) {
+	t.Parallel()
+
+	m := &testableMiddleware{
+		parser:   nil,
+		ssoHost:  "https://sso.test.godaddy.com",
+		authType: "jwt",
+	}
+
+	handler := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer some-token")
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "AUTH_MISCONFIGURED") {
+		t.Errorf("expected AUTH_MISCONFIGURED, got %s", rec.Body.String())
+	}
+}
+
+func TestAuthenticateShopperOrService_CookieOnly_ValidShopper(t *testing.T) {
+	t.Parallel()
+
+	m := &testableMiddleware{
+		parser:   newShopperMockParser(),
+		ssoHost:  "https://sso.test.godaddy.com",
+		authType: "jwt",
+	}
+
+	handler := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.AddCookie(&http.Cookie{Name: "auth_idp", Value: "valid-shopper-cookie"})
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAuthenticateShopperOrService_HeaderAndCookie_HeaderWins(t *testing.T) {
+	t.Parallel()
+
+	mockParser := &mockGDAuth{
+		parseTokenFunc: func(token string, opts *gdauth.AuthOptions) (*gdauth.TokenClaims, error) {
+			if token == "header-tok" {
+				return gdauth.NewTokenClaims(map[string]any{
+					"typ": string(gdauth.AuthTypeIDP),
+					"jti": "wins-from-header",
+				}), nil
+			}
+			return nil, errors.New("cookie token should not have been parsed")
+		},
+	}
+
+	m := &testableMiddleware{
+		parser:   mockParser,
+		ssoHost:  "https://sso.test.godaddy.com",
+		authType: "jwt",
+	}
+
+	handler := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer header-tok")
+	req.AddCookie(&http.Cookie{Name: "auth_idp", Value: "cookie-tok"})
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 (header should win), got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAuthenticateShopperOrService_CookieParseFails(t *testing.T) {
+	t.Parallel()
+
+	mockParser := &mockGDAuth{
+		parseTokenFunc: func(token string, opts *gdauth.AuthOptions) (*gdauth.TokenClaims, error) {
+			return nil, errors.New("token validation failed")
+		},
+	}
+
+	m := &testableMiddleware{
+		parser:   mockParser,
+		ssoHost:  "https://sso.test.godaddy.com",
+		authType: "jwt",
+	}
+
+	handler := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.AddCookie(&http.Cookie{Name: "auth_idp", Value: "garbage"})
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "INVALID_TOKEN") {
+		t.Errorf("expected INVALID_TOKEN, got %s", rec.Body.String())
+	}
+}
+
+func TestAuthenticateShopperOrService_EmptyCookie_NoHeader_MissingAuthorization(t *testing.T) {
+	t.Parallel()
+
+	m := &testableMiddleware{
+		parser:   newShopperMockParser(),
+		ssoHost:  "https://sso.test.godaddy.com",
+		authType: "jwt",
+	}
+
+	handler := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.AddCookie(&http.Cookie{Name: "auth_idp", Value: ""})
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "MISSING_AUTHORIZATION") {
+		t.Errorf("expected MISSING_AUTHORIZATION, got %s", rec.Body.String())
+	}
+}
+
 func TestExtractToken_BearerPrefix(t *testing.T) {
 	t.Parallel()
 
@@ -371,6 +822,77 @@ func TestExtractToken_UnsupportedPrefix(t *testing.T) {
 	token := extractToken(req)
 	if token != "" {
 		t.Errorf("expected empty string for unsupported prefix, got '%s'", token)
+	}
+}
+
+func TestExtractTokenWithCookie_HeaderOnly(t *testing.T) {
+	t.Parallel()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer header-tok")
+	tok, src := extractTokenWithCookie(req)
+	if tok != "header-tok" || src != "header" {
+		t.Fatalf("got (%q, %q), want (\"header-tok\", \"header\")", tok, src)
+	}
+}
+
+func TestExtractTokenWithCookie_HeaderAndCookie_HeaderWins(t *testing.T) {
+	t.Parallel()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "sso-jwt header-tok")
+	req.AddCookie(&http.Cookie{Name: "auth_idp", Value: "cookie-tok"})
+	tok, src := extractTokenWithCookie(req)
+	if tok != "header-tok" || src != "header" {
+		t.Fatalf("got (%q, %q), want (\"header-tok\", \"header\")", tok, src)
+	}
+}
+
+func TestExtractTokenWithCookie_CookieOnly(t *testing.T) {
+	t.Parallel()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.AddCookie(&http.Cookie{Name: "auth_idp", Value: "cookie-tok"})
+	tok, src := extractTokenWithCookie(req)
+	if tok != "cookie-tok" || src != "cookie" {
+		t.Fatalf("got (%q, %q), want (\"cookie-tok\", \"cookie\")", tok, src)
+	}
+}
+
+func TestExtractTokenWithCookie_Neither(t *testing.T) {
+	t.Parallel()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	tok, src := extractTokenWithCookie(req)
+	if tok != "" || src != "" {
+		t.Fatalf("got (%q, %q), want (\"\", \"\")", tok, src)
+	}
+}
+
+func TestExtractTokenWithCookie_MalformedHeaderFallsBackToCookie(t *testing.T) {
+	t.Parallel()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz") // unsupported prefix
+	req.AddCookie(&http.Cookie{Name: "auth_idp", Value: "cookie-tok"})
+	tok, src := extractTokenWithCookie(req)
+	if tok != "cookie-tok" || src != "cookie" {
+		t.Fatalf("got (%q, %q), want (\"cookie-tok\", \"cookie\")", tok, src)
+	}
+}
+
+func TestExtractTokenWithCookie_EmptyCookieValue(t *testing.T) {
+	t.Parallel()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.AddCookie(&http.Cookie{Name: "auth_idp", Value: ""})
+	tok, src := extractTokenWithCookie(req)
+	if tok != "" || src != "" {
+		t.Fatalf("got (%q, %q), want (\"\", \"\")", tok, src)
+	}
+}
+
+func TestExtractTokenWithCookie_DifferentCookieIgnored(t *testing.T) {
+	t.Parallel()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.AddCookie(&http.Cookie{Name: "session", Value: "should-not-be-used"})
+	tok, src := extractTokenWithCookie(req)
+	if tok != "" || src != "" {
+		t.Fatalf("got (%q, %q), want (\"\", \"\") — only auth_idp should be read", tok, src)
 	}
 }
 
@@ -715,7 +1237,7 @@ func TestAllowedCerts_IAMTokenIgnoresCertAllowlist(t *testing.T) {
 	}
 }
 
-// stubProdGDAuth implements gdAuthValidator for exercising real Middleware.AuthenticateAWSIAMService.
+// stubProdGDAuth implements GDAuthValidator for exercising real Middleware.AuthenticateAWSIAMService.
 type stubProdGDAuth struct {
 	claims   *gdauth.TokenClaims
 	parseErr error
@@ -1055,6 +1577,174 @@ func TestMiddleware_AuthenticateAWSIAMService_WrongTokenType(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "UNAUTHORIZED_TOKEN_TYPE") {
 		t.Fatalf("body=%s", rec.Body.String())
+	}
+}
+
+// --- Middleware.AuthenticateShopperOrService production-path tests ---
+
+func TestMiddleware_AuthenticateShopperOrService_AcceptsShopper(t *testing.T) {
+	t.Parallel()
+
+	claims := gdauth.NewTokenClaims(map[string]any{
+		"typ": string(gdauth.AuthTypeIDP),
+		"jti": "prod-shopper",
+	})
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    &stubProdGDAuth{claims: claims},
+	}
+	h := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", nil)
+	req.Header.Set("Authorization", "Bearer shopper-token")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMiddleware_AuthenticateShopperOrService_AcceptsIAMInAllowlist(t *testing.T) {
+	t.Parallel()
+
+	claims := gdauth.NewTokenClaims(map[string]any{
+		"typ": string(gdauth.AuthTypeAWSIAM),
+		"jti": "prod-iam",
+	})
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123456789012:role/stub"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    &stubProdGDAuth{claims: claims},
+	}
+	h := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/x", nil)
+	req.Header.Set("Authorization", "Bearer iam-token")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMiddleware_AuthenticateShopperOrService_RejectsJOMAX(t *testing.T) {
+	t.Parallel()
+
+	claims := gdauth.NewTokenClaims(map[string]any{
+		"typ": string(gdauth.AuthTypeJOMAX),
+		"jti": "prod-jomax",
+	})
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    &stubProdGDAuth{claims: claims},
+	}
+	h := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/x", nil)
+	req.Header.Set("Authorization", "Bearer jomax-token")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "UNAUTHORIZED_TOKEN_TYPE") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+}
+
+func TestMiddleware_AuthenticateShopperOrService_NilClient(t *testing.T) {
+	t.Parallel()
+
+	m := &Middleware{authType: "jwt", client: nil}
+	h := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/x", nil)
+	req.Header.Set("Authorization", "Bearer t")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "AUTH_MISCONFIGURED") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+}
+
+func TestMiddleware_AuthenticateShopperOrService_ClientWithNilGDAuth(t *testing.T) {
+	t.Parallel()
+
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::1:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com", GDAuth: nil},
+		validator:    nil,
+	}
+	h := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
+	req.Header.Set("Authorization", "Bearer t")
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401 misconfigured, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "AUTH_MISCONFIGURED") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+}
+
+func TestMiddleware_AuthenticateShopperOrService_AcceptsShopperFromCookie(t *testing.T) {
+	t.Parallel()
+
+	claims := gdauth.NewTokenClaims(map[string]any{
+		"typ": string(gdauth.AuthTypeIDP),
+		"jti": "prod-shopper-cookie",
+	})
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    &stubProdGDAuth{claims: claims},
+	}
+	h := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", nil)
+	req.AddCookie(&http.Cookie{Name: "auth_idp", Value: "cookie-shopper-token"})
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMiddleware_AuthenticateAWSIAMService_RejectsCookieOnly(t *testing.T) {
+	t.Parallel()
+
+	claims := gdauth.NewTokenClaims(map[string]any{
+		"typ": string(gdauth.AuthTypeAWSIAM),
+		"jti": "service-cookie-attempt",
+	})
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    &stubProdGDAuth{claims: claims},
+	}
+	h := m.AuthenticateAWSIAMService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/x", nil)
+	req.AddCookie(&http.Cookie{Name: "auth_idp", Value: "ignored-by-service-middleware"})
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "MISSING_AUTHORIZATION") {
+		t.Fatalf("want MISSING_AUTHORIZATION (cookie ignored on service middleware), got %s", rec.Body.String())
 	}
 }
 
@@ -1405,5 +2095,280 @@ func TestMiddleware_AuthMisconfigured_EmitsCauseLabel(t *testing.T) {
 				t.Errorf("labels.cause=%v want %q", labels["cause"], tc.wantCause)
 			}
 		})
+	}
+}
+func TestPerRouteHandlerWrappingAppliesShopperMiddlewareOnGetOnly(t *testing.T) {
+	t.Parallel()
+
+	shopperClaims := gdauth.NewTokenClaims(map[string]any{
+		"typ": string(gdauth.AuthTypeIDP),
+		"jti": "wiring-shopper",
+	})
+
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    &stubProdGDAuth{claims: shopperClaims},
+	}
+
+	serviceAuth := mux.MiddlewareFunc(m.AuthenticateAWSIAMService)
+	shopperOrServiceAuth := mux.MiddlewareFunc(m.AuthenticateShopperOrService)
+
+	okHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	r := mux.NewRouter()
+	v1 := r.PathPrefix("/api/v1").Subrouter()
+
+	// GET /budgets/{budgetId}: shopper or service auth (per-handler wrap)
+	v1.Handle("/budgets/{budgetId}", shopperOrServiceAuth(okHandler)).Methods(http.MethodGet)
+	// PATCH and DELETE: service-only auth (per-handler wrap)
+	v1.Handle("/budgets/{budgetId}", serviceAuth(okHandler)).Methods(http.MethodPatch)
+	v1.Handle("/budgets/{budgetId}", serviceAuth(okHandler)).Methods(http.MethodDelete)
+
+	cases := []struct {
+		name       string
+		method     string
+		wantStatus int
+		wantBody   string
+	}{
+		{"GET shopper accepted", http.MethodGet, http.StatusOK, ""},
+		{"PATCH shopper rejected as wrong typ", http.MethodPatch, http.StatusUnauthorized, "UNAUTHORIZED_TOKEN_TYPE"},
+		{"DELETE shopper rejected as wrong typ", http.MethodDelete, http.StatusUnauthorized, "UNAUTHORIZED_TOKEN_TYPE"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(tc.method, "/api/v1/budgets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", nil)
+			req.Header.Set("Authorization", "Bearer shopper-token")
+			r.ServeHTTP(rec, req)
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("%s: want %d, got %d body=%s", tc.name, tc.wantStatus, rec.Code, rec.Body.String())
+			}
+			if tc.wantBody != "" && !strings.Contains(rec.Body.String(), tc.wantBody) {
+				t.Fatalf("%s: body=%s want substring %q", tc.name, rec.Body.String(), tc.wantBody)
+			}
+		})
+	}
+}
+
+// Asserts that AuthenticateShopperOrService propagates the resolved token
+// source ("header" vs "cookie") into seclog events. This label is the only
+// SIEM signal distinguishing a bad-Authorization-header attempt from a
+// bad-auth_idp-cookie attempt; without these asserts, accidental drops of
+// the label would silently regress that distinction.
+func TestMiddleware_AuthenticateShopperOrService_EmitsTokenSourceLabel(t *testing.T) {
+	cases := []struct {
+		name       string
+		setup      func(*http.Request)
+		wantSource string
+	}{
+		{
+			name: "header",
+			setup: func(req *http.Request) {
+				req.Header.Set("Authorization", "Bearer shopper-token")
+			},
+			wantSource: "header",
+		},
+		{
+			name: "cookie",
+			setup: func(req *http.Request) {
+				req.AddCookie(&http.Cookie{Name: "auth_idp", Value: "shopper-token"})
+			},
+			wantSource: "cookie",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name+"_success", func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+			t.Cleanup(func() { slog.SetDefault(prev) })
+
+			claims := gdauth.NewTokenClaims(map[string]any{
+				"typ": string(gdauth.AuthTypeIDP),
+				"jti": "shopper-source-" + tc.name,
+			})
+			m := &Middleware{
+				authType:     "jwt",
+				allowedRoles: []string{"arn:aws:iam::123:role/x"},
+				allowedCerts: []string{"cn.example"},
+				client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+				validator:    &stubProdGDAuth{claims: claims},
+			}
+
+			h := m.AuthenticateShopperOrService(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", nil)
+			tc.setup(req)
+			h.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+			}
+			got := findSeclogLine(t, &buf)
+			if got == nil {
+				t.Fatalf("no seclog event captured; output=%q", buf.String())
+			}
+			if v := nestedString(got, "event.outcome"); v != "success" {
+				t.Errorf("event.outcome=%q want success", v)
+			}
+			labels, ok := got["labels"].(map[string]any)
+			if !ok {
+				t.Fatalf("labels missing or not an object; got %v", got["labels"])
+			}
+			if src, _ := labels["token_source"].(string); src != tc.wantSource {
+				t.Errorf("labels.token_source=%v want %q", labels["token_source"], tc.wantSource)
+			}
+		})
+
+		t.Run(tc.name+"_invalid_token", func(t *testing.T) {
+			var buf bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+			t.Cleanup(func() { slog.SetDefault(prev) })
+
+			m := &Middleware{
+				authType:     "jwt",
+				allowedRoles: []string{"arn:aws:iam::123:role/x"},
+				allowedCerts: []string{"cn.example"},
+				client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+				validator:    &stubProdGDAuth{parseErr: errors.New("token validation error: bad sig (code: 1)")},
+			}
+
+			h := m.AuthenticateShopperOrService(dummyHandler())
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", nil)
+			tc.setup(req)
+			h.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+			}
+			got := findSeclogLine(t, &buf)
+			if got == nil {
+				t.Fatalf("no seclog event captured; output=%q", buf.String())
+			}
+			if v := nestedString(got, "event.reason"); v != "INVALID_TOKEN" {
+				t.Errorf("event.reason=%q want INVALID_TOKEN", v)
+			}
+			labels, ok := got["labels"].(map[string]any)
+			if !ok {
+				t.Fatalf("labels missing or not an object; got %v", got["labels"])
+			}
+			if src, _ := labels["token_source"].(string); src != tc.wantSource {
+				t.Errorf("labels.token_source=%v want %q", labels["token_source"], tc.wantSource)
+			}
+		})
+	}
+}
+
+// Covers the simpler entry paths on the real Middleware that the
+// testableMiddleware variant doesn't exercise: auth disabled, missing both
+// header and cookie. Both must still flow through the shopper middleware
+// (auth disabled = bypass; missing token = 401 with MISSING_AUTHORIZATION
+// seclog event, no token_source label since the source is unresolved).
+func TestMiddleware_AuthenticateShopperOrService_EntryPaths(t *testing.T) {
+	t.Run("auth_disabled_bypasses", func(t *testing.T) {
+		t.Parallel()
+		m := &Middleware{authType: "none"}
+		called := false
+		h := m.AuthenticateShopperOrService(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			w.WriteHeader(http.StatusOK)
+		}))
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", nil)
+		h.ServeHTTP(rec, req)
+		if !called {
+			t.Fatalf("next handler should run when authType=none")
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d", rec.Code)
+		}
+	})
+
+	t.Run("missing_token_emits_seclog", func(t *testing.T) {
+		var buf bytes.Buffer
+		prev := slog.Default()
+		slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+
+		claims := gdauth.NewTokenClaims(map[string]any{"typ": string(gdauth.AuthTypeIDP)})
+		m := &Middleware{
+			authType:     "jwt",
+			allowedRoles: []string{"arn:aws:iam::123:role/x"},
+			allowedCerts: []string{"cn.example"},
+			client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+			validator:    &stubProdGDAuth{claims: claims},
+		}
+
+		h := m.AuthenticateShopperOrService(dummyHandler())
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", nil)
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("want 401, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		got := findSeclogLine(t, &buf)
+		if got == nil {
+			t.Fatalf("no seclog event captured; output=%q", buf.String())
+		}
+		if v := nestedString(got, "event.reason"); v != "MISSING_AUTHORIZATION" {
+			t.Errorf("event.reason=%q want MISSING_AUTHORIZATION", v)
+		}
+		if v := nestedString(got, "event.outcome"); v != "failure" {
+			t.Errorf("event.outcome=%q want failure", v)
+		}
+	})
+}
+
+// Shopper middleware accepts awsiam/cert tokens too — when one of those fails
+// the allowlist, resolveUserForToken writes the response and returns
+// handled=true; AuthenticateShopperOrService must honor that and not call
+// next. Without this assertion, a regression that ignores `handled` would let
+// an unauthorized service token through on shopper-accessible routes.
+func TestMiddleware_AuthenticateShopperOrService_AllowlistDenialBlocksNext(t *testing.T) {
+	t.Parallel()
+
+	claims := gdauth.NewTokenClaims(map[string]any{
+		"typ": string(gdauth.AuthTypeAWSIAM),
+		"jti": "shopper-mw-iam-denied",
+	})
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::999:role/not-stub"}, // stubProdGDAuth returns ::123456789012:role/stub
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    &stubProdGDAuth{claims: claims},
+	}
+
+	called := false
+	h := m.AuthenticateShopperOrService(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", nil)
+	req.Header.Set("Authorization", "Bearer iam-token")
+	h.ServeHTTP(rec, req)
+
+	if called {
+		t.Fatalf("next handler must not run when allowlist denies the token")
+	}
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "IAM_ROLE_DENIED") {
+		t.Fatalf("body=%s want IAM_ROLE_DENIED", rec.Body.String())
 	}
 }
