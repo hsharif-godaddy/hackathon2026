@@ -142,7 +142,7 @@ describe('notification-service', () => {
     });
 
     it('sends when first_app guard passes and appId is absent (homepage event)', async () => {
-      mockExtract.mockReturnValue({ eid: 'appbuilder.homepage.prompt.submit.click', customerId: 'cust-1' });
+      mockExtract.mockReturnValue({ eid: 'appbuilder.homepage.redirect.develop.impression', customerId: 'cust-1' });
       mockGetAppCount.mockResolvedValue(1);
       mockGetTemplateConfig.mockReturnValue([{ ...TEMPLATE, guard: 'first_app' }]);
       expect(await processEvent({})).toBe('sent');

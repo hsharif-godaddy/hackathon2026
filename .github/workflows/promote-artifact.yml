@@ -15,6 +15,7 @@ on:
           - 'debug-console'
           - 'image-search-service'
           - 'knowledge-service'
+          - 'notification-service'
       environment:
         description: 'Environment to promote to'
         required: true
@@ -95,6 +96,11 @@ jobs:
               },
               "knowledge-service": {
                 "dev-private": "dev-private",
+                "prod": "prod"
+              },
+              "notification-service": {
+                "dev-private": "dev-private",
+                "test": "test",
                 "prod": "prod"
               }
             }
