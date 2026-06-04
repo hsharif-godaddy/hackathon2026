@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -204,7 +205,8 @@ func (r *run) runProd(ctx context.Context, opts Options) error {
 		r.fail(ctx, "release creation failed")
 		return err
 	}
-	r.update(ctx, true) // Complete + release link
+	r.update(ctx, true)  // Complete + release link
+	r.writeProdSummary() // post-deploy manual checklist on the prod job summary
 	return nil
 }
 
@@ -468,20 +470,26 @@ func (r *run) emitOutput(key, value string) {
 	emitOutput(os.Stdout, key, value)
 }
 
-// writeTestSummary prints a human-readable result table to $GITHUB_STEP_SUMMARY
-// (markdown) for the approve-prod reviewer; falls back to stdout.
-func (r *run) writeTestSummary() {
-	w := os.Stdout
+// stepSummaryWriter returns the GHA job-summary file (markdown, appended) and a
+// close func, or stdout + a no-op when not running under Actions / on error.
+func stepSummaryWriter() (io.Writer, func()) {
 	if path := os.Getenv("GITHUB_STEP_SUMMARY"); path != "" {
 		if f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644); err == nil {
-			defer f.Close()
-			w = f
+			return f, func() { f.Close() }
 		} else {
-			// Fall back to stdout, but say so — otherwise the approve-prod
-			// reviewer silently loses the per-stage results table.
-			logger.Log("headless.warn: could not open GITHUB_STEP_SUMMARY %q (%v); writing summary to stdout", path, err)
+			logger.Log("headless.warn: could not open GITHUB_STEP_SUMMARY %q (%v); writing to stdout", path, err)
 		}
 	}
+	return os.Stdout, func() {}
+}
+
+// writeTestSummary prints a human-readable result table to $GITHUB_STEP_SUMMARY
+// (markdown) for the approve-prod reviewer, followed by the test-phase manual
+// checklist so the reviewer can tick it off before approving; falls back to stdout.
+func (r *run) writeTestSummary() {
+	w, done := stepSummaryWriter()
+	defer done()
+
 	fmt.Fprintf(w, "## Test phase results\n\n- Branch: `%s`\n- Commit: `%s`\n\n", r.branch, short(r.p.Values()["commit"]))
 	fmt.Fprintln(w, "| Stage | Result | Run |")
 	fmt.Fprintln(w, "| --- | --- | --- |")
@@ -494,6 +502,36 @@ func (r *run) writeTestSummary() {
 			link = fmt.Sprintf("[run](%s)", sr.RunURL)
 		}
 		fmt.Fprintf(w, "| %s | %s | %s |\n", sr.Stage.Name, sr.State.String(), link)
+	}
+	writeChecklistSection(w, "test", r.p.Stages())
+}
+
+// writeProdSummary prints the prod-phase manual checklist to $GITHUB_STEP_SUMMARY
+// after the release is cut, so the deployer doesn't forget the post-deploy
+// verification on prod; falls back to stdout.
+func (r *run) writeProdSummary() {
+	w, done := stepSummaryWriter()
+	defer done()
+
+	fmt.Fprintf(w, "## Prod release\n\n- Branch: `%s`\n- Commit: `%s`\n", r.branch, short(r.p.Values()["commit"]))
+	if r.releaseTag != "" {
+		fmt.Fprintf(w, "- Release: [%s](%s)\n", r.releaseTag, r.releaseURL)
+	}
+	writeChecklistSection(w, "prod", r.p.Stages())
+}
+
+// writeChecklistSection appends the manual-checklist items for env (a stage of
+// type "checklist") to w as a markdown task list, so they render on the GHA job
+// summary page and the dev can't miss them. No-op when env has no checklist.
+func writeChecklistSection(w io.Writer, env string, stages []*pipeline.StageRun) {
+	for _, sr := range stages {
+		if sr.Env != env || sr.Stage.Type != "checklist" || len(sr.Stage.Items) == 0 {
+			continue
+		}
+		fmt.Fprintf(w, "\n### :ballot_box_with_check: %s — %s\n\n", sr.Stage.Name, env)
+		for _, item := range sr.Stage.Items {
+			fmt.Fprintf(w, "- [ ] %s\n", item)
+		}
 	}
 }
 

@@ -26,9 +26,10 @@ All release logic — stage ordering/parallelism, dispatch + wait, log-output pa
 ## Approve prod
 
 1. Open the run in **Actions → Release Pipeline**.
-2. Read the **`test-phase`** job summary (per-stage results table) and the Slack thread — including any **advisory** failures (see below).
+2. Read the **`test-phase`** job summary (per-stage results table **and the Manual Checklist** — the binary prints the checklist items as a tickable task list, so you can run through the manual QA before approving) and the Slack thread — including any **advisory** failures (see below).
 3. On **`approve-prod`** → **Review deployments** → select `release-prod-approval` → **Approve and deploy** (or **Reject**).
 4. Reviewers are configured in **Settings → Environments → `release-prod-approval`** (isolated from the `prod` Environment, so direct `promote-artifact.yml` runs are not gated).
+5. After prod is cut, the **`prod-phase`** job summary prints the **prod** Manual Checklist (post-deploy verification on the live site).
 
 **Blocking vs advisory.** The validate stages — **E2E, Regression, Health Check** (plus **Simulation Evaluation** in the test phase) — are *advisory* in both phases: a failure shows ❌ in Slack + the approval summary, each stage runs to completion independently (a failure in one no longer cancels its siblings), and the failure does not hard-stop the phase. What "advisory" buys you differs by phase:
 

@@ -1,9 +1,11 @@
 package headless
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -206,5 +208,32 @@ func TestPhaseStateJSON(t *testing.T) {
 	}
 	if back.Operator != "x" {
 		t.Errorf("operator round-trip = %q", back.Operator)
+	}
+}
+
+func TestWriteChecklistSection(t *testing.T) {
+	stages := []*pipeline.StageRun{
+		{Env: "test", Stage: config.Stage{Type: "workflow", Name: "E2E"}}, // not a checklist
+		{Env: "test", Stage: config.Stage{Type: "checklist", Name: "Manual Checklist", Items: []string{"Load test URL", "Create an app"}}},
+		{Env: "prod", Stage: config.Stage{Type: "checklist", Name: "Manual Checklist", Items: []string{"Load prod URL"}}},
+	}
+
+	var test bytes.Buffer
+	writeChecklistSection(&test, "test", stages)
+	out := test.String()
+	for _, want := range []string{"- [ ] Load test URL", "- [ ] Create an app", "Manual Checklist"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("test checklist missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Load prod URL") {
+		t.Errorf("prod item leaked into the test section:\n%s", out)
+	}
+
+	// An env with no checklist stage produces nothing (no stray header).
+	var none bytes.Buffer
+	writeChecklistSection(&none, "staging", stages)
+	if none.Len() != 0 {
+		t.Errorf("expected no output for an env without a checklist, got %q", none.String())
 	}
 }
