@@ -3,7 +3,23 @@ name: authentication
 description: Add BetterAuth authentication (Email/Password, OAuth, or both).
 whenToUse: User wants login, signup, user accounts, authentication, or to restrict access to pages. Phrases like "add login", "user accounts", "sign up page", "authentication", "password protection", "password protect this site", "password protect a page", "require login", "restrict access", "lock down", "admin access", "members only", "private page", "secure this page".
 dependencies:
-  - better-auth
+  # MAINTAINER: when bumping either pin below, also update the manual
+  # `npm install` command in the "Note" under Step 1 (search for
+  # `better-auth@`). Both versions appear in this file in two places.
+  # Pinned. Newer 1.6.12+ ships the kysely 0.29 upgrade
+  # (better-auth/better-auth#9554), which (a) raises the customer-app
+  # Node floor to 22 and (b) breaks Turbopack/strict-ESM builds because
+  # migration constants moved to `kysely/migration` (fix in flight at
+  # better-auth/better-auth#9811, not yet merged). Hold this pin until
+  # both land in a published release.
+  - better-auth@1.6.11
+  # Required peer of @better-auth/core (declared in its peerDependencies
+  # as @opentelemetry/api ^1.9.0). npm doesn't auto-install peers, so
+  # without this line every auth request crashes with `getTracer is not
+  # a function` (better-auth/better-auth#9365). Pinned to 1.9.1 to match
+  # the version resolved elsewhere in the monorepo.
+  - '@opentelemetry/api@1.9.1'
+
 post-install-notes: 'Auth API route files are included in the templates — do NOT create additional route files under src/server/api/auth/. Do NOT install better-call or other better-auth sub-dependencies. The installed template files are complete — configure auth.ts and create login/signup pages only.'
 intents:
   - login/signup/user accounts/members-only/restrict access/admin
@@ -48,14 +64,14 @@ skill({ action: 'install', skill: 'authentication' });
 
 This automatically:
 
-- Installs the `better-auth` package
+- Installs the `better-auth` package and the `@opentelemetry/api` peer dependency
 - Copies all template files (auth library, dynamic route files, pages)
 
 No manual server-side route setup is needed — all BetterAuth API routes (sign-in, sign-up, sign-out, session, CSRF, OAuth callbacks, etc.) are handled automatically by the dynamic route files under `src/server/api/auth/`.
 
 **CRITICAL:** The skill templates include dynamic route files under `src/server/api/auth/[action]/` that handle all BetterAuth requests. Do NOT create additional API route files, catch-all routes (`[...all]`), or endpoint-specific route files (`sign-in/POST.ts`, `get-session/GET.ts`, etc.) — these will conflict with the existing dynamic routes. Do NOT install `better-call` or any other better-auth sub-dependencies manually — they are installed automatically as transitive dependencies of `better-auth`.
 
-**Note**: If package installation fails (e.g., network issues), the skill templates are still installed. You can manually install the package with `npm install better-auth` if needed.
+**Note**: If package installation fails (e.g., network issues), the skill templates are still installed. You can manually install the packages — pinned versions are required — with `npm install better-auth@1.6.11 @opentelemetry/api@1.9.1`. Do NOT install `better-auth` unpinned or omit `@opentelemetry/api`; see the `dependencies:` block in the frontmatter for the rationale.
 
 ### Step 2: Configure Secrets
 
