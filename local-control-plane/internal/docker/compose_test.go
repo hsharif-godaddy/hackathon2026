@@ -74,6 +74,7 @@ func TestGetEnvOrDefault(t *testing.T) {
 }
 
 func TestGeneratePreviewEnvironment(t *testing.T) {
+	t.Setenv("LOCAL_DEV_CONTAINER_HOST_IP", "disabled")
 	t.Setenv("AUTH_TYPE", "jwt")
 	t.Setenv("NEXT_PUBLIC_APP_URL", "https://test.example.com")
 	t.Setenv("AGENTS_BASE_URL", "http://agents:4000")
@@ -120,6 +121,7 @@ func TestGeneratePreviewEnvironment(t *testing.T) {
 }
 
 func TestGeneratePreviewEnvironment_SMTPOverride(t *testing.T) {
+	t.Setenv("LOCAL_DEV_CONTAINER_HOST_IP", "disabled")
 	t.Setenv("SMTP_DESTINATION", "smtp.example.com:587")
 	t.Setenv("AIRO_DEFAULT_SENDER_DOMAIN", "custom.example")
 
@@ -135,6 +137,7 @@ func TestGeneratePreviewEnvironment_SMTPOverride(t *testing.T) {
 }
 
 func TestGeneratePublishEnvironment(t *testing.T) {
+	t.Setenv("LOCAL_DEV_CONTAINER_HOST_IP", "disabled")
 	app := &store.App{
 		ID:                    "test123",
 		PublishPort:           5500,
@@ -273,6 +276,7 @@ func TestGenerateEnvironmentGoDaddyCommerceConfig(t *testing.T) {
 }
 
 func TestGenerateComposeFile(t *testing.T) {
+	t.Setenv("LOCAL_DEV_CONTAINER_HOST_IP", "disabled")
 	app := &store.App{
 		ID:                    "testapp",
 		PreviewPort:           5001,
@@ -321,6 +325,24 @@ func TestGenerateComposeFile(t *testing.T) {
 	// Volumes should reference the base path
 	if !strings.Contains(compose, "/tmp/airo-app-builder/testapp/preview:/app") {
 		t.Error("expected preview volume mount")
+	}
+}
+
+func TestGenerateComposeFileWSLHostIPOverride(t *testing.T) {
+	t.Setenv("LOCAL_DEV_CONTAINER_HOST_IP", "172.24.217.84")
+	app := &store.App{
+		ID:             "testapp",
+		PreviewPort:    5001,
+		SupervisorPort: 8878,
+	}
+
+	compose := GenerateComposeFile(app, "/tmp/airo-app-builder/testapp")
+
+	if !strings.Contains(compose, `host.docker.internal:172.24.217.84`) {
+		t.Errorf("expected WSL host IP in extra_hosts, got:\n%s", compose)
+	}
+	if !strings.Contains(compose, `local.gasket.dev-godaddy.com:172.24.217.84`) {
+		t.Errorf("expected gasket host IP in extra_hosts, got:\n%s", compose)
 	}
 }
 

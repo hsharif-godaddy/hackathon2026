@@ -73,12 +73,7 @@ func generatePreviewService(app *store.App, basePath string) string {
 	portLines := formatPortLines(ports)
 
 	appURL := getEnvOrDefault("NEXT_PUBLIC_APP_URL", "https://local.gasket.dev-godaddy.com:8443")
-	extraHosts := `    extra_hosts:
-      - "host.docker.internal:host-gateway"`
-	if strings.Contains(appURL, "local.gasket.dev-godaddy.com") {
-		extraHosts += `
-      - "local.gasket.dev-godaddy.com:host-gateway"`
-	}
+	extraHosts := formatExtraHosts(appURL)
 
 	return fmt.Sprintf(`  preview:
     image: aab-template-v8:latest
@@ -171,10 +166,7 @@ func generatePreviewEnvironment(app *store.App) map[string]string {
 		"NEXT_PUBLIC_APP_URL",
 		"https://local.gasket.dev-godaddy.com:8443",
 	)
-	agentsBaseURL := getEnvOrDefault(
-		"AGENTS_BASE_URL",
-		"https://local.gasket.dev-godaddy.com:4000",
-	)
+	agentsBaseURL := defaultAgentsBaseURL()
 	authType := resolveAuthType()
 
 	env := map[string]string{
@@ -259,7 +251,7 @@ func generatePreviewEnvironment(app *store.App) map[string]string {
 		// doesn't own — set to test-airoapp.ai so canonical fallbacks
 		// look like prod-shaped non-prod addresses.
 		"SMTP_DESTINATION": getEnvOrDefault(
-			"SMTP_DESTINATION", "host.docker.internal:1025",
+			"SMTP_DESTINATION", defaultSMTPDestination(),
 		),
 		"AIRO_DEFAULT_SENDER_DOMAIN": getEnvOrDefault(
 			"AIRO_DEFAULT_SENDER_DOMAIN", "test-airoapp.ai",
@@ -321,7 +313,7 @@ func generatePublishEnvironment(app *store.App) map[string]string {
 		// SMTP proxy: same redirect to Mailpit as preview. See the preview
 		// env-block comment for the full reasoning.
 		"SMTP_DESTINATION": getEnvOrDefault(
-			"SMTP_DESTINATION", "host.docker.internal:1025",
+			"SMTP_DESTINATION", defaultSMTPDestination(),
 		),
 		"AIRO_DEFAULT_SENDER_DOMAIN": getEnvOrDefault(
 			"AIRO_DEFAULT_SENDER_DOMAIN", "test-airoapp.ai",
