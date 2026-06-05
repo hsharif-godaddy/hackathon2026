@@ -14,8 +14,8 @@ export const ALLOWED_OVERRIDE_MODELS = new Set([
   'claude-sonnet-4-5',
   'claude-sonnet-4-5-20250929',
   'claude-haiku-4-5',
-  'azure/Kimi-K2.6',
-  'azure/Kimi-K2.6-thinking',
+  'azure/kimi-k2.6',
+  'azure/kimi-k2.6-thinking',
   'sonnet',
   'haiku',
 ]);

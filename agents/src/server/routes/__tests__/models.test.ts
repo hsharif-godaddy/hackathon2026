@@ -279,10 +279,10 @@ describe('@airo/agents', function packageTests() {
         return true;
       });
       vi.mocked(getModelInfo).mockImplementation(function info(name: string) {
-        if (name === 'azure/Kimi-K2.6' || name === 'azure/Kimi-K2.6-thinking') {
+        if (name === 'azure/kimi-k2.6' || name === 'azure/kimi-k2.6-thinking') {
           return {
             shortName: name,
-            fullName: 'azure/Kimi-K2.6',
+            fullName: 'azure/kimi-k2.6',
             provider: 'openai' as const,
             isSupported: true,
             usingProxy: false,
@@ -305,8 +305,8 @@ describe('@airo/agents', function packageTests() {
       handler(req, res as Response);
 
       const body = res.getBody() as { models: { shortName: string }[] };
-      expect(body.models.some((m) => m.shortName === 'azure/Kimi-K2.6')).toBe(true);
-      expect(body.models.some((m) => m.shortName === 'azure/Kimi-K2.6-thinking')).toBe(true);
+      expect(body.models.some((m) => m.shortName === 'azure/kimi-k2.6')).toBe(true);
+      expect(body.models.some((m) => m.shortName === 'azure/kimi-k2.6-thinking')).toBe(true);
     });
 
     it('excludes models whose provider environment is not configured', function filtersUnavailableProviders() {
