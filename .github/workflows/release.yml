@@ -1,5 +1,12 @@
 name: Release Pipeline
 
+# Richer title in the Actions run list than the default "#N: Scheduled":
+# shows the branch, the commit being released, and how it was triggered
+# (scheduled vs. manual-by-whom), plus a [DRY] marker for dry-runs. Evaluated
+# at run start from the github/inputs contexts (job outputs aren't available
+# here, and GitHub expressions can't truncate the SHA — so it's the full SHA).
+run-name: '${{ inputs.dry_run && ''[DRY] '' || '''' }}Release #${{ github.run_number }} — ${{ inputs.branch || ''main'' }} @ ${{ github.sha }} (${{ github.event_name == ''workflow_dispatch'' && format(''manual by {0}'', github.actor) || ''scheduled'' }})'
+
 # Drives a full airo-app-builder release by invoking the Go `release-manager`
 # binary in headless mode — the SAME binary an operator runs interactively as
 # the TUI, so the logic (stage ordering, dispatch+wait, output parsing, Slack

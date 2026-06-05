@@ -1,5 +1,10 @@
 name: Release Rollback
 
+# Richer title in the Actions run list: who triggered it and why. (SHA is
+# omitted — a rollback restores a previously-good artifact, not this ref, so
+# the commit here would mislead; the reason is the useful signal.)
+run-name: 'Rollback #${{ github.run_number }} by ${{ github.actor }}${{ inputs.reason && format('' — {0}'', inputs.reason) || '''' }}'
+
 # Manual rollback of a prod release, driven by the Go release-manager binary in
 # headless mode. The binary auto-discovers the previous-good artifact ID + image
 # tags from prod run history (FetchRollbackSnapshot) and dispatches the rollback
