@@ -1,7 +1,8 @@
 // DPP → /develop hand-off regression: cross-session re-send guard + cold-overlay fix.
 // See docs/dpp-develop-handoff.md and scripts/dpp-local-repro.sh. Skipped on local/dev (no /v1/apps).
-import { test, expect, type APIRequestContext } from '@playwright/test'
+import { type APIRequestContext } from '@playwright/test';
 
+import { test, expect } from '../helpers/test-fixtures';
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api'
 import { loginIfNeeded } from '../helpers/auth'
 import {

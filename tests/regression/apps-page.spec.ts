@@ -11,7 +11,7 @@
  * - Single login per test, single browser session
  * - All assertions run sequentially
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers/test-fixtures';
 
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { handleSsoLogin, openUserMenu, ensureAuthenticated } from '../helpers/auth';

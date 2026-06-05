@@ -8,7 +8,7 @@
  * Prerequisite: the `appbuilder-credits-deeplink` Switchboard flag must be
  * enabled for the test account. See app/CLAUDE.md for setup instructions.
  */
-import { expect, test } from '@playwright/test';
+import { test, expect } from '../helpers/test-fixtures';
 
 import { loginIfNeeded } from '../helpers/auth';
 import { DEFAULT_TIMEOUT, LONG_TIMEOUT } from '../helpers/constants';

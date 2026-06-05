@@ -7,7 +7,7 @@
  *
  * Each flow runs as a single continuous test with one login/no-login.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers/test-fixtures';
 
 import { clearAuthState, detectSsoType, handleSsoLogin, openUserMenu, userMenuTrigger, verifyAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, DEFAULT_TIMEOUT } from '../helpers/constants';

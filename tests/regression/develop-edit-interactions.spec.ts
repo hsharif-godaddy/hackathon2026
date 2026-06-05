@@ -9,7 +9,7 @@
  * Strategy:
  * - Each test creates its own app
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers/test-fixtures';
 
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { ensureAuthenticated, loginIfNeeded } from '../helpers/auth';

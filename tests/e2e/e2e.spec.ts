@@ -27,7 +27,7 @@
  *   so a selector regression on prod fails the test instead of silently skipping
  * - ensureAuthenticated() called after long AI waits
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers/test-fixtures';
 
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { detectSsoType, handleSsoLogin, isSignInUIResult, ensureAuthenticated } from '../helpers/auth';

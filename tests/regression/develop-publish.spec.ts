@@ -14,7 +14,7 @@
  * - AI agent handles publishing automatically
  * - No manual publish clicks needed
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers/test-fixtures';
 
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { handleSsoLogin, ensureAuthenticated, loginIfNeeded } from '../helpers/auth';

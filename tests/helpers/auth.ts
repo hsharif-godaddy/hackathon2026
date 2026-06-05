@@ -11,6 +11,40 @@ export function userMenuTrigger(page: Page) {
   return page.getByTestId('airo-header').getByTestId('user-menu-trigger');
 }
 
+/**
+ * Name of the cookie the app uses to decide which SSO deck view to show.
+ * Mirrors `COOKIE_NAME` in `app/src/lib/returningUser.ts` — kept as a literal
+ * here because the test suite is a separate package and cannot import app
+ * internals. If the app renames the cookie, update this to match.
+ */
+const RETURNING_USER_COOKIE = 'airo_returning_user';
+
+/**
+ * Mark this browser as a returning user BEFORE any app page loads.
+ *
+ * As of PR #4561 the app routes a fresh sign-in (authReason === null) without
+ * the `airo_returning_user` cookie to the SSO deck's *create-account* view
+ * instead of *login* (see `app/src/lib/ssoPageRoute.ts#getSsoPageToLoad`).
+ * Every Playwright run starts from a clean browser profile with no cookies, so
+ * the SSO deck shows the create-account form, which has no username/password
+ * fields — `fillCredentials` then times out waiting for an input that never
+ * appears.
+ *
+ * The test account is a real existing user, so seeding the returning-user
+ * cookie is honest, not a workaround: it puts the browser in the same state a
+ * returning user's browser would be in. `addInitScript` runs before page
+ * scripts on every navigation, so the cookie is present by the time
+ * `SsoLogin.tsx` reads it via `isReturningUser()`.
+ *
+ * Call this once per test (e.g. in `beforeEach`) BEFORE the first `page.goto`.
+ */
+export async function seedReturningUserCookie(page: Page): Promise<void> {
+  await page.addInitScript((cookieName: string) => {
+    const oneYearSeconds = 365 * 24 * 60 * 60;
+    document.cookie = `${cookieName}=1; Max-Age=${oneYearSeconds}; Path=/; SameSite=Lax; Secure`;
+  }, RETURNING_USER_COOKIE);
+}
+
 /** SSO detection result types */
 export type SsoDetectionResult = 'iframe' | 'modal' | 'redirect' | 'authenticated' | 'timeout' | null;
 

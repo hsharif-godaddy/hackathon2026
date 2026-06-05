@@ -17,7 +17,7 @@
  * depends on a live agent and is high flake risk in smoke. Step 6b only validates drop/paste
  * staging; add a dedicated integration or nightly test if we need upload path coverage.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers/test-fixtures';
 
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { handleSsoLogin, openUserMenu, ensureAuthenticated } from '../helpers/auth';

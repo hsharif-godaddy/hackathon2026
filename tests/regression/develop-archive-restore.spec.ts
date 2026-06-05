@@ -7,8 +7,9 @@
  * Covers: preview restoring/failed states, disabled chat input during archive UX,
  * restore POST failure + retry from PreviewPane (develop-preview-archive-restore-failed).
  */
-import { expect, test, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
 
+import { test, expect } from '../helpers/test-fixtures';
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { handleSsoLogin } from '../helpers/auth';
 import { DEFAULT_TIMEOUT, E2E_NO_DELETE, LONG_TIMEOUT, getSpecPrefix } from '../helpers/constants';

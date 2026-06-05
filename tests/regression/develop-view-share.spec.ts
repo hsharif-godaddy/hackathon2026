@@ -7,7 +7,7 @@
  * 3. Published segment shown after publish with segmented controller
  * 4. Public access level shows share token URL (feature flagged)
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers/test-fixtures';
 
 import { handleSsoLogin, ensureAuthenticated } from '../helpers/auth';
 import {
