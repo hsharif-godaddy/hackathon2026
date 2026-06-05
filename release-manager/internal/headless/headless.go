@@ -180,6 +180,13 @@ func (r *run) runTest(ctx context.Context, opts Options) error {
 	}
 
 	r.postInitial(ctx)
+	// Persist state early — with the Slack ts — so the job's `if: cancelled()`
+	// cleanup step can finalize THIS message (via --mode abort) even if we're
+	// killed mid-orchestrate. Best-effort: the authoritative write happens after
+	// orchestrate succeeds, below.
+	if err := r.writeState(opts.StateFile); err != nil {
+		logger.Log("headless.warn: early state write failed (%v); a cancel may leave the Slack message un-finalized", err)
+	}
 	if err := r.orchestrate(ctx, r.p.StageGroups("test")); err != nil {
 		r.fail(ctx, "test phase failed")
 		return err

@@ -140,6 +140,22 @@ jobs:
             --branch "$BRANCH" \
             --state-file "$RUNNER_TEMP/state.json" \
             $DRY
+      # If the run is CANCELLED mid-test (someone hits "Cancel workflow run"),
+      # GitHub re-evaluates step `if`s, so this runs even though the step above
+      # was killed. It finalizes the same Slack message in place via the
+      # pre-built binary (--mode abort reads the state.json written early in the
+      # test phase). No-op in dry-run / if no message was posted. Best-effort,
+      # must finish inside the ~10s cancel grace window — so just the pre-built
+      # binary + one Slack edit, nothing heavier.
+      - name: Mark cancelled in Slack
+        if: cancelled()
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+        run: |
+          "$RUNNER_TEMP/release-manager" run --headless --mode abort \
+            --state-file "$RUNNER_TEMP/state.json" \
+            --reason "Release cancelled" || true
       - name: Upload phase state
         # Always upload — the prod phase imports it even in dry-run (the test
         # phase writes state.json regardless of dry-run).
@@ -225,6 +241,18 @@ jobs:
             --branch "$BRANCH" \
             --state-file "$RUNNER_TEMP/state.json" \
             $DRY
+      # Same cancel-cleanup as the test phase: if the run is cancelled mid-prod,
+      # finalize the Slack message to "cancelled" (state.json was downloaded
+      # above, so the message ts is available).
+      - name: Mark cancelled in Slack
+        if: cancelled()
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+        run: |
+          "$RUNNER_TEMP/release-manager" run --headless --mode abort \
+            --state-file "$RUNNER_TEMP/state.json" \
+            --reason "Release cancelled" || true
 
   # ---------------------------------------------------------------------------
   # GATE DECLINED — a reviewer REJECTED the prod gate (approve-prod = failure).
