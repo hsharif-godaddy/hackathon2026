@@ -5,7 +5,6 @@
  * The account ID is persisted in memory under `integrations.inbox.brandId`.
  *
  *   discover_account       — find or auto-create the account for this app
- *   select_account         — manually link/activate an account (override)
  *   setup_widget           — find/create the default embeddable, write config
  *   update_widget_config   — sync widget settings to backend + config file
  *
@@ -146,57 +145,6 @@ export const discoverAccountTool: SkillToolDefinition = {
 };
 
 // ============================================================================
-// select_account — persist the user's account choice to memory
-// ============================================================================
-
-export const selectAccountTool: SkillToolDefinition = {
-  name: 'select_account',
-  description:
-    'Manually select an existing Inbox account or activate a new one from an entitlement. ' +
-    'Normally discover_account handles this automatically. Use select_account only if you need to ' +
-    'override — e.g. pick a specific existing account instead of creating a new one. ' +
-    'Pass accountUrl: "create_new" with an entitlementId to activate, or a brandUrl to select.',
-  parameters: z.object({
-    accountUrl: z.string().describe('The account URL slug (from discover_account results), or "create_new" to activate a new account'),
-    entitlementId: z.string().optional().describe('Required when accountUrl is "create_new". The entitlementId from the createOption in discover_account results.'),
-  }),
-  execute: async (input: { accountUrl: string; entitlementId?: string }, context?: ToolContext) => {
-    const appId = getAppId(context);
-    if (!appId) return { error: 'App ID required. Pass context.metadata.appId.' };
-
-    if (input.accountUrl === 'create_new') {
-      const client = getClient(context);
-      if (!client) {
-        return { error: 'ClientActionService not available — tool requires an authenticated websocket session.' };
-      }
-
-      const app = await appRepository.findById(appId);
-      const result = await activateAccount(client, appId, input.entitlementId, app?.name);
-      if (!result.success) {
-        return { error: `Failed to activate account: ${result.error}` };
-      }
-
-      const accountUrl = result.data.accountUrl;
-      const brandUrl = result.data.brandUrl;
-      if (!accountUrl || !brandUrl) {
-        return { error: 'Account activation response missing required fields (accountUrl or brandUrl)' };
-      }
-      await memoryRepo.set(appId, MEM_ACCOUNT_ID, accountUrl);
-      await memoryRepo.set(appId, MEM_BRAND_ID, brandUrl);
-      logger.info('inbox.skill.select_account.activated', { appId, accountUrl, accountId: brandUrl });
-      return { success: true, accountId: brandUrl, activated: true };
-    }
-
-    await memoryRepo.set(appId, MEM_ACCOUNT_ID, input.accountUrl);
-    await memoryRepo.set(appId, MEM_BRAND_ID, input.accountUrl);
-    logger.info('inbox.skill.select_account.linked', { appId, accountId: input.accountUrl });
-
-    return { success: true, accountId: input.accountUrl };
-  },
-  config: { requiresApp: true, timeout: 30_000 },
-};
-
-// ============================================================================
 // setup_widget — find embeddable, return brandId. Idempotent.
 // ============================================================================
 
@@ -204,7 +152,7 @@ export const setupWidgetTool: SkillToolDefinition = {
   name: 'setup_widget',
   description:
     'Wire the Inbox chat widget into this site. Looks up the Inbox account ' +
-    '(must already be configured via discover_account/select_account), ensures a default embeddable exists, ' +
+    '(must already be configured via discover_account), ensures a default embeddable exists, ' +
     'syncs color/icon to the backend, and writes the config file. ' +
     'After this tool succeeds, you MUST import and mount <InboxChatWidget /> in src/App.tsx. ' +
     'Idempotent. If the account is not configured, returns brandNotProvisioned: true.',

@@ -57,7 +57,7 @@ vi.mock('../widget-config.js', () => ({
   writeWidgetConfig: (...args: unknown[]) => mockWriteWidgetConfig(...args),
 }));
 
-const { discoverAccountTool, selectAccountTool, setupWidgetTool, updateWidgetConfigTool } =
+const { discoverAccountTool, setupWidgetTool, updateWidgetConfigTool } =
   await import('../index.js');
 
 // --- Test helpers ---
@@ -323,118 +323,6 @@ describe('inbox skill tools', () => {
       });
 
       const result = await discoverAccountTool.execute({}, context);
-
-      expect(result.error).toContain('missing required fields');
-    });
-  });
-
-  // --------------------------------------------------------------------------
-  // select_account
-  // --------------------------------------------------------------------------
-
-  describe('select_account', () => {
-    it('persists existing account URL to memory', async () => {
-      const result = await selectAccountTool.execute(
-        { accountUrl: 'a1b2c3d4-0000-4000-8000-000000000001' },
-        context,
-      );
-
-      expect(result.success).toBe(true);
-      expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
-      expect(mockMemorySet).toHaveBeenCalledWith(
-        'app-123',
-        'integrations.inbox.accountId',
-        'a1b2c3d4-0000-4000-8000-000000000001',
-      );
-      expect(mockMemorySet).toHaveBeenCalledWith(
-        'app-123',
-        'integrations.inbox.brandId',
-        'a1b2c3d4-0000-4000-8000-000000000001',
-      );
-    });
-
-    it('activates account for create_new without entitlementId', async () => {
-      mockActivateAccount.mockResolvedValue({
-        success: true,
-        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', accountUrl: 'https://account3.reamaze.io', ventureId: 'v1', aabAppId: 'app-123' },
-      });
-
-      const result = await selectAccountTool.execute(
-        { accountUrl: 'create_new' },
-        context,
-      );
-
-      expect(result.success).toBe(true);
-      expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000003');
-      expect(mockActivateAccount).toHaveBeenCalledWith(expect.anything(), 'app-123', undefined, 'My App');
-      expect(mockMemorySet).toHaveBeenCalledWith(
-        'app-123',
-        'integrations.inbox.accountId',
-        'https://account3.reamaze.io',
-      );
-    });
-
-    it('activates account for create_new with entitlementId', async () => {
-      mockActivateAccount.mockResolvedValue({
-        success: true,
-        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', accountUrl: 'https://account3.reamaze.io', ventureId: 'v1', aabAppId: 'app-123' },
-      });
-
-      const result = await selectAccountTool.execute(
-        { accountUrl: 'create_new', entitlementId: 'ent-1' },
-        context,
-      );
-
-      expect(result.success).toBe(true);
-      expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000003');
-      expect(result.activated).toBe(true);
-      expect(mockMemorySet).toHaveBeenCalledWith(
-        'app-123',
-        'integrations.inbox.accountId',
-        'https://account3.reamaze.io',
-      );
-      expect(mockMemorySet).toHaveBeenCalledWith(
-        'app-123',
-        'integrations.inbox.brandId',
-        'a1b2c3d4-0000-4000-8000-000000000003',
-      );
-    });
-
-    it('returns error when activation fails', async () => {
-      mockActivateAccount.mockResolvedValue({
-        success: false,
-        error: 'Entitlement already used',
-      });
-
-      const result = await selectAccountTool.execute(
-        { accountUrl: 'create_new', entitlementId: 'ent-1' },
-        context,
-      );
-
-      expect(result.error).toContain('Entitlement already used');
-    });
-
-    it('returns error when no client for create_new', async () => {
-      mockGetActionService.mockReturnValue(null);
-
-      const result = await selectAccountTool.execute(
-        { accountUrl: 'create_new', entitlementId: 'ent-1' },
-        context,
-      );
-
-      expect(result.error).toContain('ClientActionService not available');
-    });
-
-    it('returns error when activateAccount response is missing accountUrl in select_account', async () => {
-      mockActivateAccount.mockResolvedValue({
-        success: true,
-        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', accountUrl: undefined, ventureId: 'v1', aabAppId: 'app-123' } as any,
-      });
-
-      const result = await selectAccountTool.execute(
-        { accountUrl: 'create_new', entitlementId: 'ent-1' },
-        context,
-      );
 
       expect(result.error).toContain('missing required fields');
     });
