@@ -53,14 +53,12 @@ function getPreviewLinkOptions(t: TranslateFn) {
   return [
     {
       value: 'private' as const,
-      label: t('builder_share_link_access_private'),
-      description: t('builder_share_link_access_private_desc'),
+      label: t('builder_share_link_access_private_label'),
       icon: LockedIcon,
     },
     {
       value: 'public' as const,
-      label: t('builder_share_link_access_public'),
-      description: t('builder_share_link_access_public_desc'),
+      label: t('builder_share_link_access_public_label'),
       icon: WorldIcon,
     },
   ];
@@ -190,25 +188,6 @@ function formatTimeRemaining(expiresAt: number, t: TranslateFn, now: number = Da
   return t('builder_share_link_expires_mins', { count: Math.max(1, Math.floor(remaining / MS_PER_MINUTE)) });
 }
 
-interface LinkTypeDisplayProps {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  description: string;
-  descriptionTestId?: string;
-}
-
-function LinkTypeDisplay({ icon: Icon, label, description, descriptionTestId }: LinkTypeDisplayProps) {
-  return (
-    <>
-      <Icon className="size-2.5 shrink-0" />
-      <span className="flex min-w-0 flex-1 flex-col">
-        <text.span as="action" size={-1} text={label} />
-        <text.span as="caption" size={-1} emphasis="passive" text={description} data-testid={descriptionTestId} />
-      </span>
-    </>
-  );
-}
-
 interface TokenExpiryStatusProps {
   expiresAt: number;
   onExpired?: () => void;
@@ -279,7 +258,7 @@ function PreviewLinkDropdown({ value, onChange, t }: PreviewLinkDropdownProps) {
 
   return (
     <div className="w-full" data-testid="share-link-access-level">
-      <text.span as="label" size={-2} text={t('builder_share_link_access_level')} />
+      <text.span as="label" size={-2} text={t('builder_share_link_who_can_access')} />
       <Popover open={open} onOpenChange={setOpen} modal={false}>
         <PopoverTrigger asChild>
           <button
@@ -293,7 +272,7 @@ function PreviewLinkDropdown({ value, onChange, t }: PreviewLinkDropdownProps) {
             data-testid="share-link-access-level-trigger"
           >
             <selected.icon className="size-2.5 shrink-0" />
-            <text.span as="action" size={-1} className="flex-1" text={selected.label} />
+            <text.span size={-1} className="flex-1" text={selected.label} />
             <ChevronDownIcon className="size-2.5 shrink-0 opacity-60" />
           </button>
         </PopoverTrigger>
@@ -315,7 +294,8 @@ function PreviewLinkDropdown({ value, onChange, t }: PreviewLinkDropdownProps) {
               onClick={optionClick(option.value)}
               data-testid={`share-link-access-level-${option.value}`}
             >
-              <LinkTypeDisplay icon={option.icon} label={option.label} description={option.description} />
+              <option.icon className="size-2.5 shrink-0" />
+              <text.span size={-1} text={option.label} className="flex-1 min-w-0" />
               {value === option.value && <CheckmarkIcon className="size-2.5 shrink-0" />}
             </button>
           ))}

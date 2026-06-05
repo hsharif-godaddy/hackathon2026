@@ -655,7 +655,7 @@ describe('ShareLink', () => {
       await openPopover();
 
       const trigger = screen.getByTestId('share-link-access-level-trigger');
-      expect(trigger).toHaveTextContent('builder_share_link_access_private');
+      expect(trigger).toHaveTextContent('builder_share_link_access_private_label');
     });
 
     it('opens dropdown on trigger click', async () => {
@@ -679,7 +679,7 @@ describe('ShareLink', () => {
 
       await waitFor(() => {
         const trigger = screen.getByTestId('share-link-access-level-trigger');
-        expect(trigger).toHaveTextContent('builder_share_link_access_public');
+        expect(trigger).toHaveTextContent('builder_share_link_access_public_label');
       });
     });
 
@@ -1185,7 +1185,7 @@ describe('ShareLink', () => {
       await user.click(screen.getByTestId('share-link-access-level-public'));
 
       await waitFor(() => {
-        expect(screen.getByTestId('share-link-access-level-trigger')).toHaveTextContent('builder_share_link_access_public');
+        expect(screen.getByTestId('share-link-access-level-trigger')).toHaveTextContent('builder_share_link_access_public_label');
       });
 
       switchToSegment('published');
@@ -1195,7 +1195,7 @@ describe('ShareLink', () => {
 
       switchToSegment('preview');
       await waitFor(() => {
-        expect(screen.getByTestId('share-link-access-level-trigger')).toHaveTextContent('builder_share_link_access_public');
+        expect(screen.getByTestId('share-link-access-level-trigger')).toHaveTextContent('builder_share_link_access_public_label');
       });
     });
 
@@ -1207,14 +1207,14 @@ describe('ShareLink', () => {
       await user.click(screen.getByTestId('share-link-access-level-public'));
 
       await waitFor(() => {
-        expect(screen.getByTestId('share-link-access-level-trigger')).toHaveTextContent('builder_share_link_access_public');
+        expect(screen.getByTestId('share-link-access-level-trigger')).toHaveTextContent('builder_share_link_access_public_label');
       });
 
       fireEvent.click(screen.getByTestId('share-link-button'));
       fireEvent.click(screen.getByTestId('share-link-button'));
 
       await waitFor(() => {
-        expect(screen.getByTestId('share-link-access-level-trigger')).toHaveTextContent('builder_share_link_access_private');
+        expect(screen.getByTestId('share-link-access-level-trigger')).toHaveTextContent('builder_share_link_access_private_label');
       });
     });
   });

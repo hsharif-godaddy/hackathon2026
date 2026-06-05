@@ -1,8 +1,8 @@
 # Share Link
 
 **Author:** Rahul Rahate - Director, User Experience | Elena Nelmes - Lead UX Engineer
-**Date last updated:** 2026-06-03
-**Version:** Current (v3)
+**Date last updated:** 2026-06-05
+**Version:** Current (v3.1)
 
 ## Overview
 
@@ -31,10 +31,10 @@ Uses `SegmentedController` from `@airo-ux/pattern-library` for segment switching
 
 Within the Preview segment, a dropdown (`PreviewLinkDropdown`) controls whether the preview link is private (session-only) or public (shareable 7-day token). Only shown when `appbuilder-share-links` flag is enabled.
 
-| Option | Icon | Description |
-|--------|------|-------------|
-| **Private** | LockedIcon | Only you can access (requires GoDaddy SSO session) |
-| **Public** | WorldIcon | Temporary link anyone can access — auto-creates 7-day token on selection |
+| Option | Icon | Label i18n Key |
+|--------|------|----------------|
+| **Private** | LockedIcon | `builder_share_link_access_private_label` |
+| **Public** | WorldIcon | `builder_share_link_access_public_label` |
 
 **Default:** Private (resets each time the popover opens)
 
@@ -63,9 +63,9 @@ When a public token expires while the popover is open with "Public" selected, th
 
 The `tokenExpired` flag is reset when the `tokens` data changes (new token created) and when the popover opens.
 
-### Dropdown Trigger vs Menu
+### Dropdown Display
 
-The dropdown trigger shows only the selected option's **icon and label** (single line, compact). Descriptions are only shown inside the dropdown menu when it is open, providing clarification on what Private/Public means during selection.
+The dropdown trigger and menu options both show the **icon and label** only (single line, compact). No helper/description text.
 
 ### Token Expiry Countdown
 
@@ -426,11 +426,9 @@ When "Public" is selected and an active token exists, a separate `TokenExpirySta
 | `builder_share_link_segment_label` | Segmented controller aria-label |
 | `builder_common_published` | Published segment label |
 | `builder_common_preview` | Preview segment label |
-| `builder_share_link_access_level` | Access level dropdown label |
-| `builder_share_link_access_private` | Private option label |
-| `builder_share_link_access_private_desc` | Private option description ("Only you can access") |
-| `builder_share_link_access_public` | Public option label |
-| `builder_share_link_access_public_desc` | Public option description ("Anyone with the link can access") |
+| `builder_share_link_who_can_access` | Access dropdown label |
+| `builder_share_link_access_private_label` | Private option label |
+| `builder_share_link_access_public_label` | Public option label |
 | `builder_share_link_expires_days` | "Public access expires in {count, plural, one {# day} other {# days}}" |
 | `builder_share_link_expires_hours` | "Public access expires in {count, plural, one {# hour} other {# hours}}" |
 | `builder_share_link_expires_mins` | "Public access expires in {count, plural, one {# min} other {# mins}}" |
