@@ -51,6 +51,22 @@ const METHOD_FILES = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
  * 3. Add it to the known_hashes array
  */
 const SYNC_MANIFEST = [
+  // Listed before entry.ts so this file lands in the customer app before
+  // entry.ts is upgraded to a version that imports it. With force:false and
+  // empty known_hashes the file is created on first sync but never overwritten
+  // if a customer has authored their own version.
+  {
+    file: 'src/server/seo-host.ts',
+    description: 'System-host classifier used by entry.ts SEO gate',
+    known_hashes: [],
+    force: false,
+  },
+  {
+    file: 'src/server/seo-host.test.ts',
+    description: 'Unit tests for the Airo system-host classifier',
+    known_hashes: [],
+    force: false,
+  },
   // Intentionally NOT in syncGroup: 'ssrMigration'. Unlike index.html (which agents edit
   // interactively), entry.ts is rewritten by the migrate-to-ssr-entry migration with
   // per-app API route imports — producing a unique hash per app. Including it in the group
@@ -64,7 +80,9 @@ const SYNC_MANIFEST = [
       '97f7b2dca47358d1cdf6838aa346a13c', // before async render + redirect forwarding (data-router SSR)
       '102ddeac9f0c0017adf7405e1dbf3c92', // before non-redirect loader Response (error-response branch)
       '3d66a88d88b8ec09bf5098b474c7a56c', // before empty status-200 Response fallback handling
-      'f0d49c600a0fc04550f9afe25f5f2f67'  // before sanitized API error responses
+      'f0d49c600a0fc04550f9afe25f5f2f67', // before sanitized API error responses
+      '2791732d0b10bf8716d0cc70f3734497', // before per-host SEO gate (RUBICON-373)
+      '12a5f4baadf6ce4963913fe37384e51e'  // SEO: add must-revalidate to cache directives
     ],
     force: false,
   },

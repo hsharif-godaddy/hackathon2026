@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import healthGet from "./api/health/GET";
 // </api-imports>
 import { seoRoutes } from "../lib/seo-routes";
+import { isSystemHost } from "./seo-host";
 
 function normalizeCommerceApiBaseUrlEnv() {
 	if (process.env.GODADDY_API_BASE_URL) return;
@@ -47,8 +48,6 @@ app.use("/api", (err: unknown, req: Request, res: Response, _next: NextFunction)
 });
 
 function baseUrl(req: Request): string {
-	const env = process.env.PUBLIC_URL || process.env.SITE_URL;
-	if (env) return env.replace(/\/+$/, "");
 	return `${req.protocol}://${req.hostname}`;
 }
 
@@ -59,6 +58,13 @@ function escapeXml(s: string): string {
 }
 
 app.get("/robots.txt", (req, res) => {
+	if (isSystemHost(req)) {
+		res
+			.type("text/plain")
+			.set("Cache-Control", "public, max-age=60, must-revalidate").set("Vary", "Host")
+			.send("User-agent: *\nDisallow: /\n");
+		return;
+	}
 	const base = baseUrl(req);
 	const body = [
 		"User-agent: *",
@@ -67,10 +73,15 @@ app.get("/robots.txt", (req, res) => {
 		`Sitemap: ${base}/sitemap.xml`,
 		"",
 	].join("\n");
-	res.type("text/plain").set("Cache-Control", "public, max-age=3600").send(body);
+	res.type("text/plain").set("Cache-Control", "public, max-age=60, must-revalidate").set("Vary", "Host").send(body);
 });
 
 app.get("/sitemap.xml", (req, res) => {
+	if (isSystemHost(req)) {
+		const empty = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"/>\n`;
+		res.type("application/xml").set("Cache-Control", "public, max-age=60, must-revalidate").set("Vary", "Host").send(empty);
+		return;
+	}
 	const base = baseUrl(req);
 	const urls = seoRoutes
 		.filter((r) => typeof r.path === "string" && r.path.startsWith("/"))
@@ -85,7 +96,7 @@ app.get("/sitemap.xml", (req, res) => {
 		})
 		.join("\n");
 	const body = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
-	res.type("application/xml").set("Cache-Control", "public, max-age=3600").send(body);
+	res.type("application/xml").set("Cache-Control", "public, max-age=60, must-revalidate").set("Vary", "Host").send(body);
 });
 
 if (import.meta.env.PROD) {
@@ -217,11 +228,18 @@ if (import.meta.env.PROD) {
 					.send(fallbackShell);
 				return;
 			}
+			// Per-host SEO injection. System URLs get a noindex meta so
+			// crawlers drop them from the index over time; customer-attached
+			// hosts get a self-canonical link so search engines treat them
+			// as authoritative for the rendered content.
+			const seoHead = isSystemHost(req)
+				? `<meta name="robots" content="noindex,nofollow">`
+				: `<link rel="canonical" href="${escapeXml(`${req.protocol}://${req.hostname}${req.path}`)}">`;
 			// Function replacements disable String.replace's $-special sequences
 			// ($&, $', $`, $$) so user-authored titles / JSON-LD like
 			// "Save $& today" insert literally instead of being interpolated.
 			const out = template
-				.replace("<!--app-head-->", () => result.head)
+				.replace("<!--app-head-->", () => seoHead + result.head)
 				.replace("<!--app-html-->", () => result.html);
 			res
 				.status(result.status)
