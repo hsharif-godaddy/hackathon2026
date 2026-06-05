@@ -219,13 +219,13 @@ export function extractClusterFromUrl(url: string): string | null {
   try {
     const normalized = url.includes('://') ? url : `https://${url}`;
     const { hostname } = new URL(normalized);
-    // Expected pattern: <appId>.<service>.<cluster>.airoapp.ai
+    // Pattern: <appId>.<service>.<cluster>.<apex>, apex = `airoapp.ai` (prod)
+    // or `<env>-airoapp.ai` (dev/test, e.g. `test-airoapp.ai`). Cluster is the
+    // third-from-last label: prod `…c24.airoapp.ai`→c24, test `…c4.test-airoapp.ai`→c4.
     const parts = hostname.split('.');
-    if (
-      parts.length >= 4 &&
-      parts[parts.length - 2] === 'airoapp' &&
-      parts[parts.length - 1] === 'ai'
-    ) {
+    const tld = parts[parts.length - 1];
+    const sld = parts[parts.length - 2];
+    if (parts.length >= 4 && tld === 'ai' && (sld === 'airoapp' || sld.endsWith('-airoapp'))) {
       return parts[parts.length - 3] || null;
     }
     return null;

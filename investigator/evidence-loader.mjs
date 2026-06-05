@@ -6,10 +6,7 @@
  * Secret path names come from Lambda env vars (*_SECRET) set by CDK.
  *
  *   LOKI_API_KEY_SECRET             → /Katana/Secrets/.../LOKI_API_KEY
- *   EB_LANGFUSE_PUBLIC_KEY_SECRET   → /Katana/Secrets/.../EB_LANGFUSE_PUBLIC_KEY
- *   EB_LANGFUSE_SECRET_KEY_SECRET   → /Katana/Secrets/.../EB_LANGFUSE_SECRET_KEY
  *   AIRO_BUILDER_ES_API_KEY_SECRET  → /Katana/Secrets/.../AIRO_BUILDER_ES_API_KEY
- *   CONTROL_PLANE_ES_API_KEY_SECRET → /Katana/Secrets/.../CONTROL_PLANE_ES_API_KEY
  */
 
 import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
@@ -41,11 +38,7 @@ async function readSecret(secretName) {
  * Throws if any required secret env var is unset.
  * @returns {Promise<{
  *   lokiApiKey: string;
- *   ebLangfusePublicKey: string;
- *   ebLangfuseSecretKey: string;
  *   airoBuilderEsApiKey: string;
- *   controlPlaneEsApiKey: string;
- *   fullstoryApiKey: string;
  * }>}
  */
 export async function loadEvidenceCredentials() {
@@ -59,11 +52,7 @@ export async function loadEvidenceCredentials() {
     try {
       const entries = [
         ['LOKI_API_KEY_SECRET', 'lokiApiKey'],
-        ['EB_LANGFUSE_PUBLIC_KEY_SECRET', 'ebLangfusePublicKey'],
-        ['EB_LANGFUSE_SECRET_KEY_SECRET', 'ebLangfuseSecretKey'],
         ['AIRO_BUILDER_ES_API_KEY_SECRET', 'airoBuilderEsApiKey'],
-        ['CONTROL_PLANE_ES_API_KEY_SECRET', 'controlPlaneEsApiKey'],
-        ['FULLSTORY_API_KEY_SECRET', 'fullstoryApiKey'],
       ];
 
       const missing = entries.filter(([envVar]) => !process.env[envVar]).map(([e]) => e);

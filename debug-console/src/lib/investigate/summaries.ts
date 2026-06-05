@@ -13,11 +13,26 @@ import type { InvestigationState, InvestigationSummary } from './types';
 
 export const FEEDBACK_EXCERPT_MAX = 200;
 
+// Bump whenever buildSummary gains fields that must backfill into already-
+// persisted summaries. The ensureSummary early-return only short-circuits when
+// BOTH schemaCompleted AND schemaVersion match — so a stale-version summary is
+// re-read from the analysis sidecar and re-written once, picking up new fields
+// (e.g. the verdict/* fields added in this PR) instead of being frozen forever.
+export const SUMMARY_SCHEMA_VERSION = 2;
+
 export interface AnalysisOverlay {
   sentiment?: 'positive' | 'neutral' | 'negative' | null;
   confidence?: number | null;
   rootCause?: string | null;
   category?: string | null;
+  verdict?: 'agent-bug' | 'customer-error' | 'platform-bug' | 'external' | 'no-issue' | null;
+  relatesTo?: string | null;
+  verdictConfidence?: 'low' | 'medium' | 'high' | null;
+  verdictRationale?: string | null;
+  verifierNote?: string | null;
+  fixKind?: 'app-prompt' | 'eng-note' | 'none' | null;
+  fixPrompt?: string | null;
+  engNote?: string | null;
 }
 
 export interface BuildSummaryOptions {
@@ -75,7 +90,6 @@ export function buildSummary(state: InvestigationState, opts: BuildSummaryOption
     durationMs: state.durationMs,
     startedBy: state.startedBy,
     feedbackExcerpt: excerpt,
-    fullstoryUrl: state.input?.fullstoryUrl ?? null,
     reportAvailable,
     reportSize: reportAvailable ? opts.reportSize ?? null : null,
     reportEtag: reportAvailable ? opts.reportEtag ?? null : null,
@@ -91,8 +105,17 @@ export function buildSummary(state: InvestigationState, opts: BuildSummaryOption
     confidence: analysis?.confidence ?? null,
     rootCause: analysis?.rootCause ?? null,
     category: analysis?.category ?? null,
+    verdict: analysis?.verdict ?? null,
+    relatesTo: analysis?.relatesTo ?? null,
+    verdictConfidence: analysis?.verdictConfidence ?? null,
+    verdictRationale: analysis?.verdictRationale ?? null,
+    verifierNote: analysis?.verifierNote ?? null,
+    fixKind: analysis?.fixKind ?? null,
+    fixPrompt: analysis?.fixPrompt ?? null,
+    engNote: analysis?.engNote ?? null,
     error: state.error,
     schemaCompleted,
+    schemaVersion: SUMMARY_SCHEMA_VERSION,
   };
 }
 
@@ -212,6 +235,14 @@ export async function readAnalysis(
       confidence?: number;
       rootCause?: string;
       category?: string;
+      verdict?: string;
+      relatesTo?: string;
+      verdictConfidence?: string;
+      verdictRationale?: string;
+      verifierNote?: string;
+      fixKind?: string;
+      fixPrompt?: string;
+      engNote?: string;
     };
     return {
       sentiment: (['positive', 'neutral', 'negative'] as string[]).includes(parsed.sentiment ?? '')
@@ -220,6 +251,20 @@ export async function readAnalysis(
       confidence: typeof parsed.confidence === 'number' ? parsed.confidence : null,
       rootCause: typeof parsed.rootCause === 'string' ? parsed.rootCause : null,
       category: typeof parsed.category === 'string' ? parsed.category : null,
+      verdict: (['agent-bug', 'customer-error', 'platform-bug', 'external', 'no-issue'] as string[]).includes(parsed.verdict ?? '')
+        ? (parsed.verdict as AnalysisOverlay['verdict'])
+        : null,
+      relatesTo: typeof parsed.relatesTo === 'string' ? parsed.relatesTo : null,
+      verdictConfidence: (['low', 'medium', 'high'] as string[]).includes(parsed.verdictConfidence ?? '')
+        ? (parsed.verdictConfidence as AnalysisOverlay['verdictConfidence'])
+        : null,
+      verdictRationale: typeof parsed.verdictRationale === 'string' ? parsed.verdictRationale : null,
+      verifierNote: typeof parsed.verifierNote === 'string' ? parsed.verifierNote : null,
+      fixKind: (['app-prompt', 'eng-note', 'none'] as string[]).includes(parsed.fixKind ?? '')
+        ? (parsed.fixKind as AnalysisOverlay['fixKind'])
+        : null,
+      fixPrompt: typeof parsed.fixPrompt === 'string' ? parsed.fixPrompt : null,
+      engNote: typeof parsed.engNote === 'string' ? parsed.engNote : null,
     };
   } catch (err) {
     const e = err as { name?: string; $metadata?: { httpStatusCode?: number } };
@@ -266,10 +311,11 @@ export async function ensureSummary(
       // returns wrote=false but doesn't error.
       existing = null;
     }
-    if (existing?.schemaCompleted) {
+    if (existing?.schemaCompleted && existing.schemaVersion === SUMMARY_SCHEMA_VERSION) {
       return { wrote: false, date: previewDate };
     }
-    // Schema incomplete or unparseable — fall through to re-read analysis and re-write.
+    // Schema incomplete, stale-version (pre-verdict fields), or unparseable —
+    // fall through to re-read analysis and re-write so new fields backfill.
   } catch (err) {
     const e = err as { name?: string; $metadata?: { httpStatusCode?: number } };
     if (e?.name !== 'NoSuchKey' && e?.$metadata?.httpStatusCode !== 404) {

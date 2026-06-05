@@ -123,25 +123,35 @@ interface Config {
   crmExtraSecretPrefixes?: string[];
   /** Loki endpoint for direct log queries from the investigator Lambda. */
   lokiEndpoint: string;
-  /** EB Langfuse base URL for direct trace queries. */
-  ebLangfuseBaseUrl: string;
   /** Airo-app ES endpoint for frontend log queries. */
   airoBuilderEsEndpoint: string;
-  /** Control-plane ES endpoint for mgmt log queries. */
-  controlPlaneEsEndpoint: string;
   /**
    * ASM secret path names for direct evidence query credentials.
    * Lambda reads these at runtime; all are plain-string secrets.
    */
   lokiApiKeySecret: string;
-  ebLangfusePublicKeySecret: string;
-  ebLangfuseSecretKeySecret: string;
   airoBuilderEsApiKeySecret: string;
-  controlPlaneEsApiKeySecret: string;
-  /** ASM secret path for the FullStory API key used in evidence collection. */
-  fullstoryApiKeySecret: string;
-  /** FullStory MCP endpoint URL (default: https://api.fullstory.com/mcp/fullstory). */
-  fullstoryMcpUrl: string;
+  /**
+   * Secrets Manager secret name holding the agents-service JWT signing keys
+   * (the `${env}-airo-jwt-keys` secret created by AiroJWTKeyStack). The
+   * investigator Lambda reads the active key to mint an agents-service token,
+   * mirroring app/'s JWTService and debug-console's agent-jwt
+   * (JWT_SECRETS_NAME).
+   */
+  jwtSecretsName: string;
+  /**
+   * IAM role ARN for the GH Actions runner that uploads the platform
+   * code-review-graph to S3 (refresh-platform-graph.yml). Granted
+   * s3:PutObject on the platform-graph/ prefix only (bucket resource
+   * policy). This is the self-hosted `airo-cicd-runners` instance role
+   * (GD-AWS-USA-GD-AiroBuilde-CICD in 754151945003) — the identity the
+   * runner actually presents (confirmed via an upload AccessDenied error
+   * naming the assumed-role). Same pool serves dev + prod, so the same
+   * principal is granted on each env's bucket. Empty string = no grant
+   * (Lambda still reads what's there; the builder upload 403s until the
+   * stack is deployed with this grant).
+   */
+  platformGraphBuilderRoleArn?: string;
   /** Public base URL for the debug-console service in this environment. */
   debugConsoleBaseUrl: string;
   /** Full URL for the GoDaddy SSO token endpoint (used by investigator to mint JWTs). */
@@ -257,16 +267,11 @@ const devConfig: Config = {
   crmKeySecretArn: '/Katana/Secrets/airobuilde/app/pre-test/AIRO_CLIENT_KEY',
   crmExtraSecretPrefixes: ['/Katana/Secrets/airobuilde/app/test/AIRO_CLIENT_'],
   lokiEndpoint: 'https://grafana.monitoring.gd3p.tools/api/datasources/proxy/uid/ff18mpwxpc7wgd',
-  ebLangfuseBaseUrl: 'https://agentobser-agent-obs-langfuse-test.agentobser-test.prod.onkatana.net',
   airoBuilderEsEndpoint: 'https://airobuilde-non-prod-usw2.es.us-west-2.aws.found.io:9243',
-  controlPlaneEsEndpoint: 'https://pioneermgt-non-prod-usw2.es.us-west-2.aws.found.io:9243',
   lokiApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/LOKI_API_KEY',
-  ebLangfusePublicKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/EB_LANGFUSE_PUBLIC_KEY',
-  ebLangfuseSecretKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/EB_LANGFUSE_SECRET_KEY',
   airoBuilderEsApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/AIRO_BUILDER_ES_API_KEY',
-  controlPlaneEsApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/CONTROL_PLANE_ES_API_KEY',
-  fullstoryApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/FULLSTORY_API_KEY',
-  fullstoryMcpUrl: 'https://api.fullstory.com/mcp/fullstory',
+  jwtSecretsName: 'dev-airo-jwt-keys',
+  platformGraphBuilderRoleArn: 'arn:aws:iam::754151945003:role/GD-AWS-USA-GD-AiroBuilde-CICD',
   debugConsoleBaseUrl: 'https://console.airo-builder.test-godaddy.com',
   ssoEndpoint: 'https://sso.test-godaddy.com/v1/secure/api/token',
   vpnIps: {
@@ -369,16 +374,10 @@ const testConfig: Config = {
   crmKeySecretArn: '/Katana/Secrets/airobuilde/app/pre-test/AIRO_CLIENT_KEY',
   crmExtraSecretPrefixes: ['/Katana/Secrets/airobuilde/app/test/AIRO_CLIENT_'],
   lokiEndpoint: 'https://grafana.monitoring.gd3p.tools/api/datasources/proxy/uid/ff18mpwxpc7wgd',
-  ebLangfuseBaseUrl: 'https://agentobser-agent-obs-langfuse-test.agentobser-test.prod.onkatana.net',
   airoBuilderEsEndpoint: 'https://airobuilde-non-prod-usw2.es.us-west-2.aws.found.io:9243',
-  controlPlaneEsEndpoint: 'https://pioneermgt-non-prod-usw2.es.us-west-2.aws.found.io:9243',
   lokiApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/LOKI_API_KEY',
-  ebLangfusePublicKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/EB_LANGFUSE_PUBLIC_KEY',
-  ebLangfuseSecretKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/EB_LANGFUSE_SECRET_KEY',
   airoBuilderEsApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/AIRO_BUILDER_ES_API_KEY',
-  controlPlaneEsApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/CONTROL_PLANE_ES_API_KEY',
-  fullstoryApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/FULLSTORY_API_KEY',
-  fullstoryMcpUrl: 'https://api.fullstory.com/mcp/fullstory',
+  jwtSecretsName: 'test-airo-jwt-keys',
   debugConsoleBaseUrl: 'https://console.airo-builder.test-godaddy.com',
   ssoEndpoint: 'https://sso.test-godaddy.com/v1/secure/api/token',
   vpnIps: {},
@@ -484,16 +483,11 @@ const prodConfig: Config = {
   crmCertSecretArn: '/Katana/Secrets/airobuilde/app/prod-ecs/AIRO_CLIENT_CERT',
   crmKeySecretArn: '/Katana/Secrets/airobuilde/app/prod-ecs/AIRO_CLIENT_KEY',
   lokiEndpoint: 'https://grafana.monitoring.gd3p.tools/api/datasources/proxy/uid/ff18mpwxpc7wgd',
-  ebLangfuseBaseUrl: 'https://agentobser-langfuse.int.godaddy.com',
   airoBuilderEsEndpoint: 'https://airobuilde-prod-usw2.es.us-west-2.aws.found.io:9243',
-  controlPlaneEsEndpoint: 'https://pioneermgt-prod-usw2.es.us-west-2.aws.found.io:9243',
   lokiApiKeySecret: '/Katana/Secrets/airobuilde/console/prod/LOKI_API_KEY',
-  ebLangfusePublicKeySecret: '/Katana/Secrets/airobuilde/console/prod/EB_LANGFUSE_PUBLIC_KEY',
-  ebLangfuseSecretKeySecret: '/Katana/Secrets/airobuilde/console/prod/EB_LANGFUSE_SECRET_KEY',
   airoBuilderEsApiKeySecret: '/Katana/Secrets/airobuilde/console/prod/AIRO_BUILDER_ES_API_KEY',
-  controlPlaneEsApiKeySecret: '/Katana/Secrets/airobuilde/console/prod/CONTROL_PLANE_ES_API_KEY',
-  fullstoryApiKeySecret: '/Katana/Secrets/airobuilde/console/prod/FULLSTORY_API_KEY',
-  fullstoryMcpUrl: 'https://api.fullstory.com/mcp/fullstory',
+  jwtSecretsName: 'prod-airo-jwt-keys',
+  platformGraphBuilderRoleArn: 'arn:aws:iam::754151945003:role/GD-AWS-USA-GD-AiroBuilde-CICD',
   debugConsoleBaseUrl: 'https://console.airo-builder.godaddy.com',
   ssoEndpoint: 'https://sso.godaddy.com/v1/secure/api/token',
   vpnIps: {},

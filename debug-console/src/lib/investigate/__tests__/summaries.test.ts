@@ -24,7 +24,7 @@ const baseState: InvestigationState = {
   heartbeatAt: '2026-05-14T23:31:30.000Z',
   phase: 'done',
   lastEvent: 'finished',
-  input: { feedback: 'hello world', fullstoryUrl: null, timeWindow: null },
+  input: { feedback: 'hello world', timeWindow: null },
   resultKey: 'active/cust1/app1/result.md',
   reportFilename: 'report.md',
   completedAt: '2026-05-15T00:00:30.000Z',
@@ -86,6 +86,56 @@ describe('buildSummary', () => {
     expect(s.rootCause).toBe('bad publish');
     expect(s.category).toBe('publish-failure');
     expect(s.schemaCompleted).toBe(true);
+  });
+
+  it('overlays verdict + fix fields when provided', () => {
+    const s = buildSummary(baseState, {
+      analysis: {
+        sentiment: 'negative',
+        confidence: 0.9,
+        rootCause: 'bad publish',
+        category: 'publish-failure',
+        verdict: 'agent-bug',
+        relatesTo: 'PUB-123',
+        verdictConfidence: 'high',
+        verdictRationale: 'agent retried publish incorrectly',
+        verifierNote: 'no log evidence cited for the retry claim',
+        fixKind: 'app-prompt',
+        fixPrompt: 'fix the publish step',
+        engNote: null,
+      },
+    });
+    expect(s.verdict).toBe('agent-bug');
+    expect(s.relatesTo).toBe('PUB-123');
+    expect(s.verdictConfidence).toBe('high');
+    expect(s.verdictRationale).toBe('agent retried publish incorrectly');
+    expect(s.verifierNote).toBe('no log evidence cited for the retry claim');
+    expect(s.fixKind).toBe('app-prompt');
+    expect(s.fixPrompt).toBe('fix the publish step');
+    expect(s.engNote).toBeNull();
+  });
+
+  it('leaves verdict + fix fields null when analysis omits them (old sidecars)', () => {
+    const s = buildSummary(baseState, {
+      analysis: { sentiment: 'negative', confidence: 0.9, rootCause: 'bad publish', category: 'publish-failure' },
+    });
+    expect(s.verdict).toBeNull();
+    expect(s.relatesTo).toBeNull();
+    expect(s.verdictConfidence).toBeNull();
+    expect(s.verdictRationale).toBeNull();
+    expect(s.verifierNote).toBeNull();
+    expect(s.fixKind).toBeNull();
+    expect(s.fixPrompt).toBeNull();
+    expect(s.engNote).toBeNull();
+  });
+
+  it('does not gate schemaCompleted on the new verdict/fix fields', () => {
+    // Only sentiment/confidence/rootCause present, no verdict/fix → still complete.
+    const s = buildSummary(baseState, {
+      analysis: { sentiment: 'negative', confidence: 0.9, rootCause: 'bad publish', category: null },
+    });
+    expect(s.schemaCompleted).toBe(true);
+    expect(s.verdict).toBeNull();
   });
 });
 
@@ -237,6 +287,78 @@ describe('readAnalysis', () => {
   it('returns null when sidecar missing', async () => {
     const { s3 } = fakeS3();
     expect(await readAnalysis('cust1', 'app1', 'inv-missing', { s3, bucket: 'b' })).toBeNull();
+  });
+
+  it('parses + validates verdict + fix fields when present', async () => {
+    const sidecar = {
+      v: 1,
+      sentiment: 'negative',
+      confidence: 0.87,
+      rootCause: 'publish blocked',
+      category: 'publish-failure',
+      verdict: 'platform-bug',
+      relatesTo: 'INFRA-9',
+      verdictConfidence: 'medium',
+      verdictRationale: 'preview container OOM',
+      verifierNote: 'verdict not anchored to a specific log template',
+      fixKind: 'eng-note',
+      fixPrompt: null,
+      engNote: 'bump preview memory',
+    };
+    const key = `analysis/${encodeURIComponent('cust1')}/${encodeURIComponent('app1')}/inv-2026-05-14-deadbeef.json`;
+    const { s3 } = fakeS3({ [key]: JSON.stringify(sidecar) });
+    const result = await readAnalysis('cust1', 'app1', 'inv-2026-05-14-deadbeef', { s3, bucket: 'b' });
+    expect(result?.verdict).toBe('platform-bug');
+    expect(result?.relatesTo).toBe('INFRA-9');
+    expect(result?.verdictConfidence).toBe('medium');
+    expect(result?.verdictRationale).toBe('preview container OOM');
+    expect(result?.verifierNote).toBe('verdict not anchored to a specific log template');
+    expect(result?.fixKind).toBe('eng-note');
+    expect(result?.fixPrompt).toBeNull();
+    expect(result?.engNote).toBe('bump preview memory');
+  });
+
+  it('nulls out invalid verdict / verdictConfidence / fixKind (allowlist)', async () => {
+    const sidecar = {
+      v: 1,
+      sentiment: 'negative',
+      confidence: 0.5,
+      rootCause: 'x',
+      verdict: 'bogus',
+      verdictConfidence: 'extreme',
+      fixKind: 'nuke-it',
+      relatesTo: 42, // non-string → null
+      verdictRationale: { nope: true }, // non-string → null
+      verifierNote: 123, // non-string → null
+      fixPrompt: 99, // non-string → null
+      engNote: ['arr'], // non-string → null
+    };
+    const key = `analysis/${encodeURIComponent('cust1')}/${encodeURIComponent('app1')}/inv-2026-05-14-deadbeef.json`;
+    const { s3 } = fakeS3({ [key]: JSON.stringify(sidecar) });
+    const result = await readAnalysis('cust1', 'app1', 'inv-2026-05-14-deadbeef', { s3, bucket: 'b' });
+    expect(result?.verdict).toBeNull();
+    expect(result?.verdictConfidence).toBeNull();
+    expect(result?.fixKind).toBeNull();
+    expect(result?.relatesTo).toBeNull();
+    expect(result?.verdictRationale).toBeNull();
+    expect(result?.verifierNote).toBeNull();
+    expect(result?.fixPrompt).toBeNull();
+    expect(result?.engNote).toBeNull();
+  });
+
+  it('leaves new fields null for old sidecars that omit them', async () => {
+    const sidecar = { v: 1, sentiment: 'positive', confidence: 0.6, rootCause: 'none', category: null };
+    const key = `analysis/${encodeURIComponent('cust1')}/${encodeURIComponent('app1')}/inv-2026-05-14-deadbeef.json`;
+    const { s3 } = fakeS3({ [key]: JSON.stringify(sidecar) });
+    const result = await readAnalysis('cust1', 'app1', 'inv-2026-05-14-deadbeef', { s3, bucket: 'b' });
+    expect(result?.verdict).toBeNull();
+    expect(result?.relatesTo).toBeNull();
+    expect(result?.verdictConfidence).toBeNull();
+    expect(result?.verdictRationale).toBeNull();
+    expect(result?.verifierNote).toBeNull();
+    expect(result?.fixKind).toBeNull();
+    expect(result?.fixPrompt).toBeNull();
+    expect(result?.engNote).toBeNull();
   });
 });
 

@@ -88,7 +88,6 @@ describe('buildChildEnv', () => {
     process.env.CLAUDE_CONFIG_DIR = '/tmp/.claude';
     process.env.ANTHROPIC_AUTH_TOKEN = 'tok-123';
     process.env.ANTHROPIC_BASE_URL = 'https://api.gocode.example';
-    process.env.JOMAX_TOKEN = 'jom-456';
     process.env.REPORT_DIR = '/tmp/inv';
     process.env.CONSOLE_BASE = 'https://console.example';
     process.env.NODE_OPTIONS = '--enable-source-maps';
@@ -101,11 +100,58 @@ describe('buildChildEnv', () => {
 
     for (const k of [
       'PATH', 'HOME', 'CLAUDE_CONFIG_DIR', 'ANTHROPIC_AUTH_TOKEN',
-      'ANTHROPIC_BASE_URL', 'JOMAX_TOKEN', 'REPORT_DIR', 'CONSOLE_BASE',
+      'ANTHROPIC_BASE_URL', 'REPORT_DIR', 'CONSOLE_BASE',
       'NODE_OPTIONS', 'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS',
       'LANG', 'LC_ALL', 'TZ',
     ]) {
       assert.equal(env[k], process.env[k], `missing or wrong: ${k}`);
+    }
+  });
+
+  it('forwards LOKI_CLUSTER / APP_CODE_DIR / CONVERSATIONS_PATH to the child (B1 regression)', () => {
+    // The handler sets these on process.env right before spawning the CLI.
+    // buildChildEnv is an allowlist, so if it omits them the skill's Loki
+    // searcher degrades to "cluster unavailable" and the prompt's
+    // $APP_CODE_DIR / $CONVERSATIONS_PATH expand to empty — silently
+    // disabling three headline features. Guard against that regression.
+    process.env.PATH = '/usr/bin';
+    process.env.LOKI_CLUSTER = 'c24';
+    process.env.APP_CODE_DIR = '/tmp/inv/app';
+    process.env.CONVERSATIONS_PATH = '/tmp/inv/conversations.json';
+    // PLATFORM_GRAPH_ROOT is the same class: the handler sets it right before
+    // spawn and the prompt references $PLATFORM_GRAPH_ROOT as the repo_root for
+    // the platform code-review-graph. Omitting it from the allowlist would
+    // leave the child blind to the platform graph.
+    process.env.PLATFORM_GRAPH_ROOT = '/tmp/platform-graph';
+
+    const env = buildChildEnv();
+
+    assert.equal(env.LOKI_CLUSTER, 'c24');
+    assert.equal(env.APP_CODE_DIR, '/tmp/inv/app');
+    assert.equal(env.CONVERSATIONS_PATH, '/tmp/inv/conversations.json');
+    assert.equal(env.PLATFORM_GRAPH_ROOT, '/tmp/platform-graph');
+  });
+
+  it('no longer forwards allowlist entries the branch stopped setting (dead-entry cleanup)', () => {
+    // langfuse / fullstory / jomax / control-plane-ES were removed from the
+    // handler earlier on this branch. Their allowlist entries are dead code
+    // and must not be reintroduced — keeping them widens the child's blast
+    // radius for no benefit.
+    process.env.PATH = '/usr/bin';
+    process.env.EB_LANGFUSE_BASE_URL = 'https://lf.example';
+    process.env.EB_LANGFUSE_PUBLIC_KEY = 'pk';
+    process.env.EB_LANGFUSE_SECRET_KEY = 'sk';
+    process.env.FULLSTORY_API_KEY = 'fs';
+    process.env.CONTROL_PLANE_ES_API_KEY = 'cp';
+    process.env.JOMAX_TOKEN = 'jom';
+
+    const env = buildChildEnv();
+
+    for (const k of [
+      'EB_LANGFUSE_BASE_URL', 'EB_LANGFUSE_PUBLIC_KEY', 'EB_LANGFUSE_SECRET_KEY',
+      'FULLSTORY_API_KEY', 'CONTROL_PLANE_ES_API_KEY', 'JOMAX_TOKEN',
+    ]) {
+      assert.equal(env[k], undefined, `should no longer forward: ${k}`);
     }
   });
 

@@ -50,6 +50,28 @@ type StatusResponse = {
     inputTokens: number;
     outputTokens: number;
   } | null;
+  // Verdict + fix sidecar fields (analysis.json). Absent on old runs whose
+  // sidecar predates Task 5 — all default to null and render nothing.
+  verdict: 'agent-bug' | 'customer-error' | 'platform-bug' | 'external' | 'no-issue' | null;
+  relatesTo: string | null;
+  verdictConfidence: 'low' | 'medium' | 'high' | null;
+  verdictRationale: string | null;
+  verifierNote?: string | null;
+  fixKind: 'app-prompt' | 'eng-note' | 'none' | null;
+  fixPrompt: string | null;
+  engNote: string | null;
+};
+
+type VerdictKind = NonNullable<StatusResponse['verdict']>;
+
+// Inline color tokens per verdict, matching the file's existing inline-style
+// approach. Background is a soft tint; `fg` drives the badge text + border.
+const VERDICT_STYLES: Record<VerdictKind, { bg: string; fg: string; label: string }> = {
+  'agent-bug': { bg: '#fef3c7', fg: '#92400e', label: 'Agent bug' },
+  'platform-bug': { bg: '#fee2e2', fg: '#b91c1c', label: 'Platform bug' },
+  'customer-error': { bg: '#dbeafe', fg: '#1d4ed8', label: 'Customer error' },
+  external: { bg: '#f3f4f6', fg: '#374151', label: 'External' },
+  'no-issue': { bg: '#d1fae5', fg: '#047857', label: 'No issue' },
 };
 
 // Legacy sessionStorage key from the pre-S2S GoCode API-key flow. Kept
@@ -85,13 +107,11 @@ function formatDurationMs(ms: number | null): string {
 const PHASE_LABELS: Record<string, string> = {
   bootstrap: 'Warming up',
   'claude-analysis': 'Launching Claude analysis',
-  'phase-0-gather': 'Analyzing agent conversation',
-  'phase-1-fullstory': 'Analyzing agent conversation',
-  'phase-2-conversation': 'Analyzing agent conversation',
-  'phase-3-logs': 'Querying logs',
-  'phase-4-blast-radius': 'Assessing blast radius',
-  'phase-5-codebase': 'Cross-referencing codebase',
-  'phase-6-synthesis': 'Writing report',
+  // Keys must match the phase markers the skill actually emits
+  // (phases/phase-0-gather.md, phase-1-analyze.md, phase-2-synthesis.md).
+  'phase-0-gather': 'Gathering logs',
+  'phase-1-analyze': 'Analyzing evidence',
+  'phase-2-synthesis': 'Writing report',
 };
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -109,25 +129,16 @@ function friendlyPhase(phase: string | null): string {
   return PHASE_LABELS[phase] ?? phase;
 }
 
-const FULLSTORY_NUMERIC_SESSION_RE = /\/session\/\d{6,}:\d{6,}/;
-const FULLSTORY_UUID_SESSION_RE = /\/client-session\//;
-
-function FullstoryUrlHint({ value }: { value: string }): React.JSX.Element | null {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return (
-      <span style={fullstoryHintStyle}>
-        Prefer the numeric <code>/session/</code> URL from the browser address bar for a direct 1-call fetch. Share links work too but fall back to segment discovery.
-      </span>
-    );
+// Icon for an activity row, keyed by the raw tool name the Lambda sent.
+function activityIcon(tool: string): string {
+  if (tool.startsWith('mcp__crg__')) return '🕸';
+  switch (tool) {
+    case 'Grep': return '🔍';
+    case 'Read': return '📄';
+    case 'Glob': return '📁';
+    case 'Bash': return '📜'; // only log-search Bash is surfaced
+    default: return '•';
   }
-  if (FULLSTORY_NUMERIC_SESSION_RE.test(trimmed)) {
-    return <span style={{ ...fullstoryHintStyle, color: '#047857' }}>✓ Direct session fetch (1 API call).</span>;
-  }
-  if (FULLSTORY_UUID_SESSION_RE.test(trimmed)) {
-    return <span style={{ ...fullstoryHintStyle, color: '#92400e' }}>⚠ Share link — falls back to segment discovery. Paste the numeric <code>/session/</code> URL for a direct fetch.</span>;
-  }
-  return <span style={{ ...fullstoryHintStyle, color: '#b91c1c' }}>✗ Unrecognised FullStory URL.</span>;
 }
 
 function badgeColor(status: StatusResponse['status'] | 'pending'): string {
@@ -156,7 +167,6 @@ export default function InvestigatePanel(props: Props = {}) {
   const [appId, setAppId] = useState(props.appId ?? '');
   const [customerId, setCustomerId] = useState(props.customerId ?? '');
   const [feedback, setFeedback] = useState('');
-  const [fullstoryUrl, setFullstoryUrl] = useState('');
   const [timeWindow, setTimeWindow] = useState('24h');
 
   // One-time cleanup of the pre-S2S GoCode API key that used to live in
@@ -174,6 +184,17 @@ export default function InvestigatePanel(props: Props = {}) {
 
   const esRef = useRef<EventSource | null>(null);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const timelineRef = useRef<HTMLOListElement | null>(null);
+
+  // Stick-to-bottom: as activity events stream in, keep the newest visible —
+  // but only auto-scroll when the user is already near the bottom, so scrolling
+  // up to read an earlier step isn't yanked back down.
+  useEffect(() => {
+    const el = timelineRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    if (nearBottom) el.scrollTop = el.scrollHeight;
+  }, [timeline]);
 
   // Report streaming state. Keyed on etag so a reopened-but-unchanged report
   // reuses the cached text without re-downloading.
@@ -397,6 +418,14 @@ export default function InvestigatePanel(props: Props = {}) {
           reportSize: null,
           reportEtag: null,
           cost: null,
+          verdict: null,
+          relatesTo: null,
+          verdictConfidence: null,
+          verdictRationale: null,
+          verifierNote: null,
+          fixKind: null,
+          fixPrompt: null,
+          engNote: null,
         });
       } catch {
         /* ignore malformed */
@@ -412,6 +441,7 @@ export default function InvestigatePanel(props: Props = {}) {
       'evidence.ready',
       'heartbeat',
       'report.ready',
+      'activity',
       'investigation.warning',
       'investigation.completed',
       'investigation.failed',
@@ -529,7 +559,6 @@ export default function InvestigatePanel(props: Props = {}) {
           appId: appId.trim(),
           customerId: customerId.trim(),
           feedback: feedback.trim(),
-          fullstoryUrl: fullstoryUrl.trim() || null,
           timeWindow: timeWindow.trim() || null,
         }),
       });
@@ -572,6 +601,14 @@ export default function InvestigatePanel(props: Props = {}) {
         reportSize: null,
         reportEtag: null,
         cost: null,
+        verdict: null,
+        relatesTo: null,
+        verdictConfidence: null,
+        verdictRationale: null,
+        verifierNote: null,
+        fixKind: null,
+        fixPrompt: null,
+        engNote: null,
       });
       openStream(data.investigationId, appId.trim(), customerId.trim());
       // Embedded: collapse the form so the user sees the live progress +
@@ -595,6 +632,48 @@ export default function InvestigatePanel(props: Props = {}) {
       setTimeout(() => setCopiedAt(null), 2000);
     } catch {
       /* ignore — older browsers without clipboard access silently skip */
+    }
+  }
+
+  const [fixCopiedAt, setFixCopiedAt] = useState<number | null>(null);
+  const fixCopyLabel = fixCopiedAt ? 'Copied ✓' : 'Copy fix prompt';
+
+  async function handleCopyFix() {
+    const prompt = status?.fixPrompt;
+    if (!prompt) return;
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setFixCopiedAt(Date.now());
+      setTimeout(() => setFixCopiedAt(null), 2000);
+    } catch {
+      /* ignore — older browsers without clipboard access silently skip */
+    }
+  }
+
+  // Operator capture half of the investigator feedback loop: flag this verdict
+  // as a false positive. Persists a candidate lesson to the S3 lessons inbox
+  // (server-side) for human curation into the agent's aab-behaviors.md.
+  const [lessonState, setLessonState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  async function handleFlagFalsePositive() {
+    if (!investigationId || !appId || !customerId) return;
+    const note = window.prompt(
+      'Why is this a false positive? (e.g. "pages are built on demand — customer never asked for /schedule"). This becomes a candidate knowledge-base entry.',
+    );
+    if (note === null) return; // cancelled
+    const trimmed = note.trim();
+    if (!trimmed) return;
+    setLessonState('saving');
+    try {
+      const res = await fetch(`/api/investigate/${encodeURIComponent(investigationId)}/lesson`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appId, customerId, note: trimmed }),
+      });
+      setLessonState(res.ok ? 'saved' : 'error');
+    } catch {
+      setLessonState('error');
     }
   }
 
@@ -719,17 +798,6 @@ export default function InvestigatePanel(props: Props = {}) {
           </label>
         </div>
 
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 500 }}>FullStory URL (optional)</span>
-          <input
-            value={fullstoryUrl}
-            onChange={(e) => setFullstoryUrl(e.target.value)}
-            placeholder="https://app.fullstory.com/ui/YKBRC/session/1388843285576721830:1562263520177247197:..."
-            style={inputStyle}
-          />
-          <FullstoryUrlHint value={fullstoryUrl} />
-        </label>
-
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <button
             type="submit"
@@ -833,11 +901,28 @@ export default function InvestigatePanel(props: Props = {}) {
           {(() => {
             // Hide heartbeats (too chatty) and collapse runs of the same
             // phase label (phase-0/1/2 all map to "Analyzing agent
-            // conversation" — we don't want three identical lines).
-            const visible: Array<{ key: number; label: string; ts: string }> = [];
+            // conversation" — we don't want three identical lines). `activity`
+            // rows are per-action and never dup-collapsed; each carries the
+            // tool input as expandable detail.
+            type VisibleStep = {
+              key: number;
+              label: string;
+              ts: string;
+              tool?: string;
+              detail?: string;
+            };
+            const visible: VisibleStep[] = [];
             let lastLabel: string | null = null;
             for (const e of timeline) {
               if (e.type === 'heartbeat') continue;
+              if (e.type === 'activity') {
+                const label = typeof e.data.label === 'string' ? e.data.label : 'Working…';
+                const tool = typeof e.data.tool === 'string' ? e.data.tool : undefined;
+                const detail = typeof e.data.detail === 'string' ? e.data.detail : undefined;
+                lastLabel = null; // activity breaks the phase-collapse run
+                visible.push({ key: e.seq, label, ts: e.ts, tool, detail });
+                continue;
+              }
               let label: string;
               if (e.type === 'phase.started') {
                 const phase = typeof e.data.phase === 'string' ? e.data.phase : null;
@@ -855,16 +940,165 @@ export default function InvestigatePanel(props: Props = {}) {
                 <summary style={{ cursor: 'pointer', fontSize: 13, color: '#6b7280' }}>
                   Timeline ({visible.length} steps)
                 </summary>
-                <ol style={{ marginTop: 8, paddingLeft: 20, fontSize: 12, color: '#374151', maxHeight: 240, overflowY: 'auto' }}>
-                  {visible.map((e) => (
-                    <li key={e.key} style={{ marginBottom: 4 }}>
-                      <span style={{ color: '#1f2937' }}>{e.label}</span>
-                      {' · '}
-                      <span style={{ color: '#9ca3af' }}>{new Date(e.ts).toLocaleTimeString()}</span>
-                    </li>
-                  ))}
+                <ol ref={timelineRef} style={{ marginTop: 8, paddingLeft: 20, fontSize: 12, color: '#374151', maxHeight: 240, overflowY: 'auto' }}>
+                  {visible.map((e) => {
+                    const time = new Date(e.ts).toLocaleTimeString();
+                    // Activity rows with a tool input are click-to-expand.
+                    if (e.detail) {
+                      return (
+                        <li key={e.key} style={{ marginBottom: 4 }} data-testid="investigate-activity">
+                          <details>
+                            <summary style={{ cursor: 'pointer' }}>
+                              <span style={{ color: '#1f2937' }}>
+                                {e.tool ? `${activityIcon(e.tool)} ` : ''}
+                                {e.label}
+                              </span>
+                              {' · '}
+                              <span style={{ color: '#9ca3af' }}>{time}</span>
+                            </summary>
+                            <pre style={{ margin: '4px 0 0 16px', padding: '6px 8px', background: '#f3f4f6', borderRadius: 4, fontSize: 11, color: '#374151', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                              {e.detail}
+                            </pre>
+                          </details>
+                        </li>
+                      );
+                    }
+                    return (
+                      <li key={e.key} style={{ marginBottom: 4 }}>
+                        <span style={{ color: '#1f2937' }}>{e.label}</span>
+                        {' · '}
+                        <span style={{ color: '#9ca3af' }}>{time}</span>
+                      </li>
+                    );
+                  })}
                 </ol>
               </details>
+            );
+          })()}
+
+          {status.verdict && (() => {
+            const vs = VERDICT_STYLES[status.verdict];
+            return (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span
+                    data-testid="investigate-verdict"
+                    style={{
+                      background: vs.bg,
+                      color: vs.fg,
+                      border: `1px solid ${vs.fg}`,
+                      padding: '3px 10px',
+                      borderRadius: 10,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.4,
+                    }}
+                  >
+                    {vs.label}
+                  </span>
+                  {status.relatesTo && (
+                    <span style={{ fontSize: 13, color: '#374151' }}>
+                      relates to <strong>{status.relatesTo}</strong>
+                    </span>
+                  )}
+                  {status.verdictConfidence && (
+                    <span style={{ fontSize: 12, color: '#6b7280' }}>
+                      {status.verdictConfidence} confidence
+                    </span>
+                  )}
+                </div>
+                {status.verdictRationale && (
+                  <div style={{ marginTop: 6, fontSize: 13, color: '#374151', lineHeight: 1.45 }}>
+                    {status.verdictRationale}
+                  </div>
+                )}
+                {status.verifierNote && (
+                  <div
+                    data-testid="investigate-verifier-note"
+                    style={{ marginTop: 6, fontSize: 12, color: '#92400e', lineHeight: 1.4 }}
+                  >
+                    ⚠ Verifier flagged: {status.verifierNote}
+                  </div>
+                )}
+
+                {status.fixKind === 'app-prompt' && status.fixPrompt && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>Suggested fix prompt</span>
+                      <button
+                        type="button"
+                        data-testid="investigate-copy-fix"
+                        onClick={handleCopyFix}
+                        style={{
+                          padding: '6px 12px',
+                          background: '#1f2937',
+                          color: 'white',
+                          border: 0,
+                          borderRadius: 6,
+                          fontSize: 12,
+                          cursor: 'pointer',
+                        }}
+                        title="Copies the suggested fix prompt to your clipboard"
+                      >
+                        {fixCopyLabel}
+                      </button>
+                    </div>
+                    <pre style={{
+                      marginTop: 8,
+                      padding: '12px 14px',
+                      background: '#f9fafb',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: 6,
+                      fontSize: 13,
+                      lineHeight: 1.5,
+                      color: '#111827',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}>{status.fixPrompt}</pre>
+                  </div>
+                )}
+
+                {status.fixKind === 'eng-note' && status.engNote && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>Engineering note</div>
+                    <div style={{ marginTop: 6, fontSize: 13, color: '#374151', lineHeight: 1.45 }}>
+                      {status.engNote}
+                    </div>
+                  </div>
+                )}
+
+                {(status.fixKind === 'none' || status.fixKind === null) && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: '#9ca3af' }}>No action.</div>
+                )}
+
+                <div style={{ marginTop: 12 }}>
+                  <button
+                    type="button"
+                    data-testid="investigate-flag-false-positive"
+                    onClick={handleFlagFalsePositive}
+                    disabled={lessonState === 'saving' || lessonState === 'saved'}
+                    style={{
+                      padding: '5px 10px',
+                      background: 'transparent',
+                      color: '#6b7280',
+                      border: '1px solid #d1d5db',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      cursor: lessonState === 'saving' || lessonState === 'saved' ? 'default' : 'pointer',
+                    }}
+                    title="Flag this verdict as a false positive — captures a candidate lesson for the investigator's knowledge base"
+                  >
+                    {lessonState === 'saved'
+                      ? 'Lesson captured ✓'
+                      : lessonState === 'saving'
+                        ? 'Saving…'
+                        : lessonState === 'error'
+                          ? 'Failed — retry'
+                          : 'Flag false positive'}
+                  </button>
+                </div>
+              </div>
             );
           })()}
 
@@ -1064,12 +1298,6 @@ const topNoticeRowStyle: React.CSSProperties = {
   gap: 12,
   flexWrap: 'wrap',
   marginBottom: 12,
-};
-
-const fullstoryHintStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: '#6b7280',
-  lineHeight: 1.4,
 };
 
 const wipWarningStyle: React.CSSProperties = {

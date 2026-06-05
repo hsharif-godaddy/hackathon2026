@@ -62,26 +62,29 @@ export function buildChildEnv() {
     'ANTHROPIC_AUTH_TOKEN',
     'ANTHROPIC_BASE_URL',
     'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS',
-    // Skill-side: JOMAX scopes downstream API calls; REPORT_DIR is where
-    // the skill writes its final markdown; CONSOLE_BASE steers the
-    // frontend-log searcher at the right console env.
-    'JOMAX_TOKEN',
+    // Skill-side: REPORT_DIR is where the skill writes its final markdown;
+    // CONSOLE_BASE steers the frontend-log searcher at the right console env.
     'REPORT_DIR',
     'CONSOLE_BASE',
-    // Direct evidence mode (source=feedback): bypasses console, queries
-    // Loki / EB Langfuse / ES / FullStory directly using these credentials.
+    // Per-invocation context the handler sets right before spawn. Without
+    // these in the allowlist the child never sees them: LOKI_CLUSTER scopes
+    // the skill's Loki searcher (omitting it degrades every query to
+    // "cluster unavailable"), and APP_CODE_DIR / CONVERSATIONS_PATH back the
+    // prompt's $APP_CODE_DIR / $CONVERSATIONS_PATH (omitting them leaves the
+    // app-code and conversation context empty). PLATFORM_GRAPH_ROOT is the
+    // S3-loaded platform code-review-graph root the skill passes as repo_root
+    // to the MCP tools — same allowlist-or-the-child-never-sees-it hazard.
+    'LOKI_CLUSTER',
+    'APP_CODE_DIR',
+    'CONVERSATIONS_PATH',
+    'PLATFORM_GRAPH_ROOT',
+    // Direct evidence mode: bypasses console, queries Loki / ES directly
+    // using these credentials.
     'INVESTIGATION_DIRECT_MODE',
     'LOKI_ENDPOINT',
     'LOKI_API_KEY',
-    'EB_LANGFUSE_BASE_URL',
-    'EB_LANGFUSE_PUBLIC_KEY',
-    'EB_LANGFUSE_SECRET_KEY',
     'AIRO_BUILDER_ES_ENDPOINT',
     'AIRO_BUILDER_ES_API_KEY',
-    'CONTROL_PLANE_ES_ENDPOINT',
-    'CONTROL_PLANE_ES_API_KEY',
-    'FULLSTORY_API_KEY',
-    'FULLSTORY_MCP_URL',
     'ENVIRONMENT_NAME',
     // Node runtime flags (source maps for traces).
     'NODE_OPTIONS',

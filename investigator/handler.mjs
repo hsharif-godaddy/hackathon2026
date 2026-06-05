@@ -9,8 +9,73 @@ import { createEventEmitter } from './events.mjs';
 import { decodeJwtExpMs, buildChildEnv } from './auth.mjs';
 import { addCrmCaseNote } from './crm-casenote.mjs';
 import { loadEvidenceCredentials } from './evidence-loader.mjs';
+import { mintAgentToken } from './agent-jwt.mjs';
+import { fetchAppZip, fetchConversations } from './agent-fetch.mjs';
+import { writeMcpConfig, buildCustomerGraph, isGraphAvailable } from './graph-setup.mjs';
+import { ensurePlatformGraph } from './platform-graph.mjs';
+import { runVerifier } from './verifier.mjs';
+import { extractToolActivities } from './activity.mjs';
+import { buildLessonRecord, lessonKey } from './lessons.mjs';
 // Re-export pure helpers so existing import paths in tests keep working.
 export { decodeJwtExpMs, buildChildEnv };
+
+/**
+ * Parse the Loki cluster from an agent URL. Mirrors the debug-console
+ * `extractClusterFromUrl` (debug-console/src/lib/investigate/evidence.ts).
+ * Hosts follow `<appId>.<service>.<cluster>.<apex>` where the apex is
+ * `airoapp.ai` in prod and `test-airoapp.ai` in dev/test — so the cluster is
+ * the third-from-last label:
+ *   prod  t1ilkvwm8o.preview.c24.airoapp.ai    -> c24
+ *   test  t1ilkvwm8o.agent.c4.test-airoapp.ai  -> c4
+ * Returns null for anything that doesn't match — the skill then degrades
+ * rather than running an unbounded cross-cluster scan.
+ *
+ * @param {string} url
+ * @returns {string | null}
+ */
+export function extractClusterFromUrl(url) {
+  try {
+    const normalized = url.includes('://') ? url : `https://${url}`;
+    const { hostname } = new URL(normalized);
+    const parts = hostname.split('.');
+    const tld = parts[parts.length - 1];
+    const sld = parts[parts.length - 2];
+    // Accept the prod apex `airoapp.ai` and the dev/test apex
+    // `<env>-airoapp.ai` (e.g. `test-airoapp.ai`).
+    if (parts.length >= 4 && tld === 'ai' && (sld === 'airoapp' || sld.endsWith('-airoapp'))) {
+      return parts[parts.length - 3] || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Allowlist the agent host BEFORE we attach a minted bearer token to a fetch
+// against it. agentUrl arrives in the invoke payload; validating it closes an
+// SSRF / token-leak surface (a bad payload can't make us send a valid agents
+// token to an attacker host) even though callers are IAM-trusted today.
+// Accept only HTTPS on the prod apex `airoapp.ai` or a dev/test `<env>-airoapp.ai`
+// apex — the same shape extractClusterFromUrl parses.
+// Anchor the second-level label to OUR controlled env apexes only. A loose
+// `endsWith('-airoapp')` would admit attacker-registrable look-alikes like
+// `evil-airoapp.ai` (and `x.evil-airoapp.ai`) — which would then receive a
+// minted agents-service bearer token. Only `airoapp`, `dev-airoapp`, and
+// `test-airoapp` are real.
+const ALLOWED_AGENT_SLD_RE = /^(?:dev-|test-)?airoapp$/;
+export function isAllowedAgentHost(url) {
+  try {
+    const normalized = url.includes('://') ? url : `https://${url}`;
+    const u = new URL(normalized);
+    if (u.protocol !== 'https:') return false;
+    const parts = u.hostname.split('.');
+    const tld = parts[parts.length - 1];
+    const sld = parts[parts.length - 2];
+    return parts.length >= 3 && tld === 'ai' && ALLOWED_AGENT_SLD_RE.test(sld);
+  } catch {
+    return false;
+  }
+}
 
 const { IamTokenClient } = gdAuth;
 
@@ -38,6 +103,13 @@ const SKILL_LINK_DIR = `${CLAUDE_HOME}/skills/${SKILL_NAME}`;
 // both sides together if this ever changes.
 const MAX_RUN_MS = 14 * 60_000;
 const HEARTBEAT_MS = 10_000;
+// Headroom reserved INSIDE MAX_RUN_MS for the fresh-context verifier
+// (LLM-as-judge) spawn that runs after the main agent exits. The main
+// agent's kill timer is shortened by this much so the judge fits within
+// the 15-minute Lambda cap. The verifier is a strict soft-fail (see
+// verifier.mjs): if it can't finish in this window it returns
+// { ran: false } and the analysis ships unchanged.
+const VERIFIER_BUDGET_MS = 3 * 60_000;
 
 const s3 = new S3Client({ region: REGION });
 
@@ -157,9 +229,10 @@ async function bootstrap() {
     if (err && err.code !== 'EEXIST') throw err;
   }
 
-  // Per-invocation secrets (jomaxToken; gocodeApiKey on the legacy path)
-  // are set on process.env inside the handler and cleared in its finally
-  // block so they never leak into the next warm-container invocation.
+  // Per-invocation secrets (gocodeApiKey on the legacy path; the Loki/ES
+  // evidence keys for direct mode) are set on process.env inside the handler
+  // and cleared in its finally block so they never leak into the next
+  // warm-container invocation.
   // The S2S JWT, by contrast, IS reused across warm invocations on
   // purpose — it is bound to the Lambda execution role, so caching it
   // avoids stampeding SSO on bursts of Investigate clicks. See
@@ -327,7 +400,7 @@ async function snapshotToHistory(stateKey, historyPrefix, investigationId) {
   }));
 }
 
-function spawnClaude(prompt, logStream) {
+function spawnClaude(prompt, logStream, mcpConfigPath) {
   const args = [
     '-p', prompt,
     '--model', 'claude-sonnet-4-6',
@@ -342,6 +415,15 @@ function spawnClaude(prompt, logStream) {
     '--max-turns', '60',
     '--dangerously-skip-permissions',
   ];
+  // Hand the Claude CLI the stdio MCP config so the skill can reach the
+  // code-review-graph server (platform graph always; customer graph when the
+  // runtime build succeeded). The CLI passes the config's `env` block
+  // (PYTHONPATH/LD_LIBRARY_PATH) to the spawned python server — that's why
+  // buildChildEnv() deliberately does NOT carry them: the MCP server env is
+  // separate from the claude process env.
+  if (mcpConfigPath) {
+    args.push('--mcp-config', mcpConfigPath);
+  }
   const child = spawn(CLAUDE_BIN, args, {
     env: buildChildEnv(),
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -384,15 +466,14 @@ export async function handler(event) {
     appId,
     customerId,
     feedback,
-    fullstoryUrl,
     timeWindow,
     stateKey,
     historyPrefix,
     resultKey,
     tracePrefix,
     eventsPrefix,
-    jomaxToken,
     gocodeApiKey,
+    agentUrl,
     source,
   } = event;
 
@@ -410,7 +491,7 @@ export async function handler(event) {
   await emitEvent('investigation.started', {
     appId,
     customerId,
-    input: { feedback, fullstoryUrl, timeWindow },
+    input: { feedback, timeWindow },
     lambdaRequestId: process.env.AWS_LAMBDA_REQUEST_ID || null,
   });
 
@@ -469,35 +550,23 @@ export async function handler(event) {
     return { statusCode: 500, body: 'bootstrap failed' };
   }
 
-  // Per-invocation credentials:
-  //   - JOMAX token   → forwarded from caller; scopes downstream API calls
-  //                     to the user who triggered this investigation.
-  //   - GoCode auth   → depends on GOCODE_USE_S2S_AUTH:
-  //                       'true'  → mint IAM JWT via gd-auth-client using
-  //                                 the Lambda execution role directly
-  //                                 (no STS assume; ignores gocodeApiKey
-  //                                 from payload). Role must be registered
-  //                                 with GoCode S2S — see README.
-  //                       'false' → use gocodeApiKey from invoke payload
-  //                                 (legacy; kept for fast manual rollback
-  //                                 via Lambda console env var flip).
-  // Both live in process env for this invocation only and are cleared in a
+  // Per-invocation credential: GoCode auth, used by Claude CLI as
+  // ANTHROPIC_AUTH_TOKEN. Depends on GOCODE_USE_S2S_AUTH:
+  //   'true'  → mint IAM JWT via gd-auth-client using the Lambda execution
+  //             role directly (no STS assume; ignores gocodeApiKey from
+  //             payload). Role must be registered with GoCode S2S — see
+  //             README.
+  //   'false' → use gocodeApiKey from invoke payload (legacy; kept for fast
+  //             manual rollback via Lambda console env var flip).
+  // It lives in process env for this invocation only and is cleared in a
   // finally block below — Lambda reuses warm containers, so an exception
   // escaping before cleanup could leak creds into the next invocation.
-  // feedback-source invocations are triggered by the BFF fan-out (no user session).
-  // They rely on the Lambda's IAM identity for downstream calls; jomaxToken is
-  // not available and not required on this path.
-  if (source !== 'feedback' && (!jomaxToken || typeof jomaxToken !== 'string')) {
-    await emitEvent('investigation.failed', { phase: 'credentials', error: 'jomaxToken missing' });
-    await tryReleaseLockAsFailed(stateKey, {
-      status: 'failed',
-      lastEvent: 'missing jomax token from caller',
-      completedAt: new Date().toISOString(),
-      error: 'jomaxToken missing from invoke payload — console failed to forward user session',
-    });
-    return { statusCode: 400, body: 'jomaxToken required' };
-  }
-
+  //
+  // Both triggers (console click + BFF feedback fan-out) now run the same
+  // direct-evidence path: no per-user session token and no console proxy.
+  // Both rely on the Lambda's IAM identity (S2S JWT for GoCode; Secrets
+  // Manager for the Loki/ES evidence keys loaded below) for all downstream
+  // calls.
   const s2sEnabled = process.env.GOCODE_USE_S2S_AUTH === 'true';
   let gocodeAuthToken;
   if (s2sEnabled) {
@@ -533,25 +602,12 @@ export async function handler(event) {
       return { statusCode: 500, body: 'gocode auth failed' };
     }
   } else {
-    // Legacy auth path: caller forwards a gocodeApiKey. The BFF fan-out
-    // (source==='feedback') never has a user-side API key — it relies on
-    // the Lambda's IAM identity via S2S — so flipping GOCODE_USE_S2S_AUTH
-    // off would break feedback-source invocations. Fail fast with an
-    // explicit message so a future operator who flips the env var for
-    // rollback gets a clear cause rather than the generic "key missing".
-    if (source === 'feedback') {
-      await emitEvent('investigation.failed', {
-        phase: 'credentials',
-        error: 'feedback source requires GOCODE_USE_S2S_AUTH=true',
-      });
-      await tryReleaseLockAsFailed(stateKey, {
-        status: 'failed',
-        lastEvent: 'feedback source incompatible with legacy gocodeApiKey auth',
-        completedAt: new Date().toISOString(),
-        error: 'feedback-source invocations require GOCODE_USE_S2S_AUTH=true (no user gocodeApiKey available)',
-      });
-      return { statusCode: 400, body: 'feedback requires s2s auth' };
-    }
+    // Legacy rollback path: caller forwards a gocodeApiKey. This branch is
+    // only reached when an operator flips GOCODE_USE_S2S_AUTH='false' in the
+    // Lambda console. Neither trigger forwards a gocodeApiKey anymore (both
+    // rely on the S2S JWT minted above), so in practice this 400s generically
+    // when the env var is flipped — which is the intended "rollback needs a
+    // key" signal, not a per-source rejection.
     if (!gocodeApiKey || typeof gocodeApiKey !== 'string') {
       await emitEvent('investigation.failed', { phase: 'credentials', error: 'gocodeApiKey missing' });
       await tryReleaseLockAsFailed(stateKey, {
@@ -589,69 +645,244 @@ export async function handler(event) {
     }
   }
 
+  // Guards the catch below from clobbering a good terminal verdict: set true
+  // once the terminal mergeState lands, so a future post-terminal throw (a new
+  // CRM/history/cleanup callee) can't flip a completed/killed run to failed.
+  let terminalRecorded = false;
+
   try {
-    // feedback-source: bypass debug-console entirely — load evidence
-    // credentials from Secrets Manager and set them as env vars so the
-    // Python skill queries Loki / EB Langfuse / ES directly via
-    // INVESTIGATION_DIRECT_MODE.
+    // Both triggers (console click + BFF feedback fan-out) run the same
+    // direct-evidence path: bypass the debug-console proxy entirely — load
+    // evidence credentials from Secrets Manager and set them as env vars so
+    // the Python skill queries Loki / ES directly via INVESTIGATION_DIRECT_MODE.
+    // This MUST happen before claude spawns so the skill sees direct mode.
     //
     // Failure semantics are NEGATIVE-ONLY by design: the success path
     // doesn't write `evidenceCredsLoaded: true` to state.json. A dashboard
     // polling /api/investigate/{id}/status distinguishes
     //   - "partial evidence run"  → state has `evidenceCredsLoaded: false`
     //   - "fully healthy run"     → field is absent
-    //   - "console-source run"    → field is absent (non-feedback path)
-    // Conflating the latter two is OK: console-source already authenticates
-    // through JOMAX and never goes through this branch, so its absence
-    // genuinely means "no degradation here."
-    if (source === 'feedback') {
-      try {
-        const creds = await loadEvidenceCredentials();
-        process.env.LOKI_API_KEY = creds.lokiApiKey;
-        process.env.EB_LANGFUSE_PUBLIC_KEY = creds.ebLangfusePublicKey;
-        process.env.EB_LANGFUSE_SECRET_KEY = creds.ebLangfuseSecretKey;
-        process.env.AIRO_BUILDER_ES_API_KEY = creds.airoBuilderEsApiKey;
-        process.env.CONTROL_PLANE_ES_API_KEY = creds.controlPlaneEsApiKey;
-        process.env.FULLSTORY_API_KEY = creds.fullstoryApiKey;
-        process.env.INVESTIGATION_DIRECT_MODE = 'true';
-        console.log('[investigator] evidence.credentials.loaded', { investigationId });
-      } catch (err) {
-        const errorMessage = err && err.message ? err.message : String(err);
-        console.error('[investigator] evidence.credentials.failed — investigation may be partial', {
-          investigationId,
-          error: errorMessage,
+    //
+    // PERF: start the independent slow I/O (platform-graph S3 fetch + agent
+    // token mint) BEFORE awaiting evidence creds, so they overlap the rest of
+    // setup instead of running serially. Both are awaited at their existing
+    // call sites below; each resolves to a tagged result and NEVER throws
+    // (note the .catch), so every side-effecting handler (env / emitEvent /
+    // mergeState) still runs sequentially in the main flow — the last-writer-
+    // wins mergeState therefore never races.
+    const platformGraphRootP = ensurePlatformGraph({ client: s3 }).catch(() => null);
+    // Only mint (and later attach) a token when the agent host is allowlisted —
+    // never send a valid agents token to an unexpected host from the payload.
+    const agentHostAllowed = Boolean(agentUrl) && isAllowedAgentHost(agentUrl);
+    const agentTokenP = agentHostAllowed
+      ? mintAgentToken({ appId, canDownload: true })
+          .then((minted) => ({ ok: true, token: minted.token }))
+          .catch((err) => ({ ok: false, err }))
+      : Promise.resolve(null);
+
+    try {
+      const creds = await loadEvidenceCredentials();
+      process.env.LOKI_API_KEY = creds.lokiApiKey;
+      process.env.AIRO_BUILDER_ES_API_KEY = creds.airoBuilderEsApiKey;
+      process.env.INVESTIGATION_DIRECT_MODE = 'true';
+      console.log('[investigator] evidence.credentials.loaded', { investigationId });
+    } catch (err) {
+      const errorMessage = err && err.message ? err.message : String(err);
+      console.error('[investigator] evidence.credentials.failed — investigation may be partial', {
+        investigationId,
+        error: errorMessage,
+      });
+      // Surface as a structured event so the SSE stream + dashboard see
+      // the degradation. Use the same logEmitFailure helper as phase
+      // markers + heartbeats — this is the most consequential event to
+      // lose silently (the alarm itself), so a misconfigured events/
+      // prefix MUST surface in CloudWatch.
+      emitEvent('investigation.warning', {
+        source: 'evidence-credentials',
+        message: 'Evidence credential load failed; skill will run without direct mode',
+        error: errorMessage,
+      }).catch((emitErr) => logEmitFailure('investigation.warning', emitErr));
+      // Stamp the state document so a dashboard polling /status can
+      // distinguish "completed with partial evidence" from a fully
+      // healthy run without correlating CloudWatch logs.
+      await mergeState(stateKey, {
+        evidenceCredsLoaded: false,
+        evidenceCredsError: errorMessage.slice(0, 240),
+      }).catch((stateErr) => {
+        console.error('[investigator] mergeState evidenceCredsLoaded=false failed', {
+          stateKey, err: stateErr,
         });
-        // Surface as a structured event so the SSE stream + dashboard see
-        // the degradation. Use the same logEmitFailure helper as phase
-        // markers + heartbeats — this is the most consequential event to
-        // lose silently (the alarm itself), so a misconfigured events/
-        // prefix MUST surface in CloudWatch.
-        emitEvent('investigation.warning', {
-          source: 'evidence-credentials',
-          message: 'Evidence credential load failed; skill will run without direct mode',
-          error: errorMessage,
-        }).catch((emitErr) => logEmitFailure('investigation.warning', emitErr));
-        // Stamp the state document so a dashboard polling /status can
-        // distinguish "completed with partial evidence" from a fully
-        // healthy run without correlating CloudWatch logs.
-        await mergeState(stateKey, {
-          evidenceCredsLoaded: false,
-          evidenceCredsError: errorMessage.slice(0, 240),
-        }).catch((stateErr) => {
-          console.error('[investigator] mergeState evidenceCredsLoaded=false failed', {
-            stateKey, err: stateErr,
-          });
-        });
-        // Continue without direct mode; skill will fail evidence collection
-        // gracefully and still run the analysis on whatever it has.
-      }
+      });
+      // Continue without direct mode; skill will fail evidence collection
+      // gracefully and still run the analysis on whatever it has.
     }
-    process.env.JOMAX_TOKEN = jomaxToken ?? '';
     process.env.ANTHROPIC_AUTH_TOKEN = gocodeAuthToken;
 
     const workDir = `/tmp/${investigationId}`;
     await fs.mkdir(workDir, { recursive: true });
     process.env.REPORT_DIR = workDir;
+
+    // Fetch app code + conversation history from the agents service so the
+    // skill can correlate logs against the actual source + customer/agent
+    // dialogue. This is strictly SOFT-DEGRADE: any failure (auth, network,
+    // unzip) emits a warning + state note and continues with a logs-only
+    // investigation — it must NEVER hard-fail the run. Mirrors the
+    // evidence-credentials degradation pattern above.
+    // Track evidence coverage so a degraded run can't emit a confident verdict.
+    let appCodeAvailable = false;
+    let conversationsAvailable = false;
+
+    if (agentHostAllowed) {
+      // Derive the Loki cluster from the agent URL and expose it to the skill.
+      // cluster is a mandatory label for the structured-metadata Loki queries —
+      // without it the data-plane selector scans ~386 GiB/hr (the skill
+      // degrades to an incomplete result rather than run that). Empty string
+      // when unparseable so the skill sees an explicit "unset".
+      process.env.LOKI_CLUSTER = extractClusterFromUrl(agentUrl) ?? '';
+
+      let agentToken = null;
+      // Already in flight since setup start — await the tagged result here so
+      // the mint overlapped creds loading instead of running after it.
+      const tokenResult = await agentTokenP;
+      if (tokenResult && tokenResult.ok) {
+        agentToken = tokenResult.token;
+      } else if (tokenResult && !tokenResult.ok) {
+        const err = tokenResult.err;
+        const errorMessage = err && err.message ? err.message : String(err);
+        console.error('[investigator] agent.token.mint.failed — code+convo context unavailable', {
+          investigationId,
+          error: errorMessage,
+        });
+        emitEvent('investigation.warning', {
+          source: 'agent-auth',
+          message: 'Agent token mint failed; investigation will run without code/conversation context',
+          error: errorMessage,
+        }).catch((emitErr) => logEmitFailure('investigation.warning', emitErr));
+      }
+
+      if (agentToken) {
+        // PERF: start the app-zip download and the conversation fetch together
+        // so they overlap on the wire; await zip first (handle + build graph),
+        // then convos below. Both are pure result objects — no side effects
+        // inside — so the handling stays sequential.
+        const codeResP = fetchAppZip({ agentUrl, appId, token: agentToken, destDir: workDir });
+        const convoResP = fetchConversations({ agentUrl, appId, token: agentToken });
+        // App code → unzipped under workDir. On success expose the dir to the
+        // skill via APP_CODE_DIR; on failure warn + note and continue.
+        const codeRes = await codeResP;
+        if (codeRes.ok) {
+          process.env.APP_CODE_DIR = codeRes.dir;
+          appCodeAvailable = true;
+          console.log('[investigator] agent.code.fetched', { investigationId, dir: codeRes.dir });
+
+          // Build the customer's code graph from the just-unzipped source so
+          // the skill can query it via the code-review-graph MCP. SOFT-DEGRADE:
+          // on failure we warn + continue — the agent still has Read/Grep and
+          // (when present) the baked platform graph. Gated on graphAvailable:
+          // if the CRG python deps aren't in the image there's nothing to build
+          // and nothing for the MCP to serve, so skip silently rather than burn
+          // the build budget on a guaranteed-failing invocation.
+          if (await isGraphAvailable()) {
+            const graphRes = await buildCustomerGraph(codeRes.dir);
+            if (!graphRes.ok) {
+              console.error('[investigator] customer.graph.build.failed', {
+                investigationId,
+                dir: codeRes.dir,
+                detail: graphRes.detail,
+              });
+              emitEvent('investigation.warning', {
+                source: 'customer-graph',
+                message: 'Customer code graph build failed; skill will rely on the platform graph + Read/Grep',
+                error: graphRes.detail,
+              }).catch((emitErr) => logEmitFailure('investigation.warning', emitErr));
+            } else {
+              console.log('[investigator] customer.graph.built', { investigationId, dir: codeRes.dir });
+            }
+          } else {
+            console.log('[investigator] customer.graph.skipped — CRG tooling not present in image', { investigationId });
+          }
+        } else {
+          console.error('[investigator] agent.code.fetch.failed', {
+            investigationId,
+            error: codeRes.error,
+          });
+          emitEvent('investigation.warning', {
+            source: 'app-code',
+            message: 'App code fetch failed; investigation will run without source context',
+            error: codeRes.error,
+          }).catch((emitErr) => logEmitFailure('investigation.warning', emitErr));
+          await mergeState(stateKey, {
+            appCodeFetched: false,
+            appCodeError: String(codeRes.error).slice(0, 240),
+          }).catch((stateErr) => {
+            console.error('[investigator] mergeState appCodeFetched=false failed', {
+              stateKey, err: stateErr,
+            });
+          });
+        }
+
+        // Conversations → persisted to conversations.json. fetchConversations
+        // returns an array on ok (it unwraps the common {conversations:[...]}
+        // wrapper and fails on unusable shapes); the Array.isArray guard here
+        // is belt-and-suspenders so a non-array can never be written or counted
+        // as coverage (which would wrongly skip the degraded-coverage cap).
+        const convoRes = await convoResP;
+        if (convoRes.ok && Array.isArray(convoRes.conversations)) {
+          const conversationsPath = path.join(workDir, 'conversations.json');
+          try {
+            await fs.writeFile(conversationsPath, JSON.stringify(convoRes.conversations));
+            process.env.CONVERSATIONS_PATH = conversationsPath;
+            conversationsAvailable = true;
+            console.log('[investigator] agent.conversations.fetched', { investigationId });
+          } catch (err) {
+            const errorMessage = err && err.message ? err.message : String(err);
+            console.error('[investigator] agent.conversations.write.failed', {
+              investigationId,
+              error: errorMessage,
+            });
+            emitEvent('investigation.warning', {
+              source: 'conversations',
+              message: 'Conversation history could not be persisted; continuing without it',
+              error: errorMessage,
+            }).catch((emitErr) => logEmitFailure('investigation.warning', emitErr));
+          }
+        } else {
+          console.error('[investigator] agent.conversations.fetch.failed', {
+            investigationId,
+            error: convoRes.error,
+          });
+          emitEvent('investigation.warning', {
+            source: 'conversations',
+            message: 'Conversation history fetch failed; continuing without it',
+            error: convoRes.error,
+          }).catch((emitErr) => logEmitFailure('investigation.warning', emitErr));
+          await mergeState(stateKey, {
+            conversationsFetched: false,
+            conversationsError: String(convoRes.error).slice(0, 240),
+          }).catch((stateErr) => {
+            console.error('[investigator] mergeState conversationsFetched=false failed', {
+              stateKey, err: stateErr,
+            });
+          });
+        }
+      }
+    } else {
+      // Either no agentUrl, or its host isn't allowlisted (SSRF guard). Either
+      // way the skill runs logs-only; surface a single warning so the dashboard
+      // distinguishes a deliberately logs-only run from a silent context gap.
+      if (agentUrl) {
+        console.error('[investigator] agent.host.rejected — agentUrl host not allowlisted', {
+          investigationId,
+          appId,
+        });
+      }
+      emitEvent('investigation.warning', {
+        source: 'agent-url',
+        message: agentUrl
+          ? 'agentUrl host not allowlisted; code+conversation context unavailable; logs-only'
+          : 'No agentUrl provided; code+conversation context unavailable; logs-only',
+      }).catch((emitErr) => logEmitFailure('investigation.warning', emitErr));
+    }
 
     const traceLocalPath = path.join(workDir, 'trace.jsonl');
     const logStream = createWriteStream(traceLocalPath);
@@ -665,8 +896,49 @@ export async function handler(event) {
     });
     await emitEvent('phase.started', { phase: 'claude-analysis' });
 
-    const prompt = buildPrompt({ appId, feedback, fullstoryUrl, timeWindow });
-    const child = spawnClaude(prompt, logStream);
+    // Write the MCP config ONLY when the CRG python tooling is actually present
+    // in the image. If a build shipped without /opt/py-packages/code_review_graph
+    // (or the deps install was skipped), handing the Claude CLI an --mcp-config
+    // that points at a server it can't start surfaces as a noisy MCP connection
+    // failure and can disrupt the run. Gate it: a missing/failed graph then can
+    // NEVER break an investigation — the agent falls back to Read/Grep + the log
+    // skill. When present, the config exposes the baked platform graph (always)
+    // plus the customer graph (when the build above succeeded).
+    // Fetch the platform code-review-graph from S3 (rebuilt twice a day by
+    // .github/workflows/refresh-platform-graph.yml and uploaded to
+    // `platform-graph/graph.db.gz`). SOFT-FAIL: a missing object or any S3 error
+    // returns null — the skill then queries only the customer graph + Read/Grep,
+    // so platform-graph absence never breaks a run. PLATFORM_GRAPH_ROOT is the
+    // repo root the skill passes to the code-review-graph MCP tools; '' means
+    // "unset" (the prompt only references it when set). It must be in the
+    // buildChildEnv allowlist (auth.mjs) or the child CLI never sees it.
+    // Already in flight since setup start — overlaps creds/token/zip/convos.
+    const platformGraphRoot = await platformGraphRootP;
+    process.env.PLATFORM_GRAPH_ROOT = platformGraphRoot ?? '';
+    if (platformGraphRoot) {
+      console.log('[investigator] platform.graph.loaded', { investigationId, root: platformGraphRoot });
+    } else {
+      emitEvent('investigation.warning', {
+        source: 'platform-graph',
+        message: 'Platform code graph unavailable; skill will rely on the customer graph + Read/Grep',
+      }).catch((emitErr) => logEmitFailure('investigation.warning', emitErr));
+    }
+
+    let mcpConfigPath = null;
+    if (await isGraphAvailable()) {
+      mcpConfigPath = await writeMcpConfig(path.join(workDir, 'mcp.json'));
+    } else {
+      console.log('[investigator] mcp.config.skipped — CRG tooling not present in image', { investigationId });
+    }
+
+    const prompt = buildPrompt({
+      appId,
+      feedback,
+      timeWindow,
+      hasAppCode: appCodeAvailable,
+      hasConversations: conversationsAvailable,
+    });
+    const child = spawnClaude(prompt, logStream, mcpConfigPath);
 
     let latestPhase = 'claude-analysis';
     let latestEvent = 'claude searching telemetry';
@@ -675,18 +947,49 @@ export async function handler(event) {
     // block so the evidence-credentials degradation emit can share the
     // same counter. See review S-13 follow-up note above.)
 
-    // Tap stdout for phase markers. Pipe already handles writing to trace file.
+    // Tap stdout for phase markers + per-action activity. The pipe (spawnClaude)
+    // already writes the raw stream-json to the trace file; this tap only reads.
+    //
+    // stream-json emits one JSON object per line, but a `data` chunk can split a
+    // line across two events — so we buffer and only process COMPLETE lines
+    // (split on \n, keep the remainder). Without this, extractToolActivities'
+    // JSON.parse would throw on the partial line and silently drop that tool
+    // call. Phase parsing (substring match) was tolerant of splits; activity
+    // parsing is not, hence the buffer.
+    let stdoutBuf = '';
+    // Cap activity emits so a pathological run can't fire thousands of S3 PUTs.
+    // The full trace + report still capture everything; this only bounds the
+    // live feed. We emit one warning when the cap trips, then go quiet.
+    const MAX_ACTIVITY_EVENTS = 200;
+    let activityCount = 0;
+    let activityCapNoted = false;
     child.stdout.on('data', (buf) => {
-    const s = buf.toString('utf-8');
-    for (const line of s.split('\n')) {
-      const phase = parsePhaseFromLine(line);
-      if (phase && phase !== latestPhase) {
-        latestPhase = phase;
-        // Fire-and-forget phase transition — don't block stdout handler on S3.
-        emitEvent('phase.started', { phase }).catch((err) => logEmitFailure('phase.started', err));
+      stdoutBuf += buf.toString('utf-8');
+      const lines = stdoutBuf.split('\n');
+      // Last element is an incomplete line (no trailing \n yet) — hold it back.
+      stdoutBuf = lines.pop() ?? '';
+      for (const line of lines) {
+        const phase = parsePhaseFromLine(line);
+        if (phase && phase !== latestPhase) {
+          latestPhase = phase;
+          // Fire-and-forget phase transition — don't block stdout handler on S3.
+          emitEvent('phase.started', { phase }).catch((err) => logEmitFailure('phase.started', err));
+        }
+        if (line.length > 0) latestEvent = line.slice(0, 240);
+
+        // Curated tool activity → live feed. Best-effort, never throws.
+        for (const activity of extractToolActivities(line)) {
+          if (activityCount >= MAX_ACTIVITY_EVENTS) {
+            if (!activityCapNoted) {
+              activityCapNoted = true;
+              console.log('[investigator] activity.cap.reached', { investigationId, cap: MAX_ACTIVITY_EVENTS });
+            }
+            break;
+          }
+          activityCount += 1;
+          emitEvent('activity', activity).catch((err) => logEmitFailure('activity', err));
+        }
       }
-      if (line.length > 0) latestEvent = line.slice(0, 240);
-    }
     });
 
     // `finalized` guards the heartbeat against clobbering the terminal write.
@@ -727,7 +1030,9 @@ export async function handler(event) {
       });
     }, HEARTBEAT_MS);
 
-    const childRunMs = Math.max(60_000, MAX_RUN_MS - (Date.now() - started));
+    // Reserve VERIFIER_BUDGET_MS inside MAX_RUN_MS so the fresh-context
+    // judge spawn (below) has headroom before the 15-minute Lambda cap.
+    const childRunMs = Math.max(60_000, MAX_RUN_MS - VERIFIER_BUDGET_MS - (Date.now() - started));
     const killTimer = setTimeout(() => {
     try { process.kill(-child.pid, 'SIGTERM'); } catch {}
     setTimeout(() => {
@@ -980,6 +1285,113 @@ export async function handler(event) {
       await emitEvent('report.ready', { resultKey, reportFilename: reportName });
     }
 
+    // Degraded-coverage guard: a run missing the customer app code or the
+    // agent conversation cannot support a HIGH-confidence verdict — especially
+    // a confident "no app bug" (no-issue / customer-error) that would land in a
+    // CRM note. Cap confidence to 'medium' and record why. Runs BEFORE the
+    // verifier so the judge can still downgrade further to 'low'.
+    if (analysisSidecar && (!appCodeAvailable || !conversationsAvailable)) {
+      const missing = [
+        !appCodeAvailable ? 'customer app code' : null,
+        !conversationsAvailable ? 'agent conversation' : null,
+      ].filter(Boolean).join(' + ');
+      analysisSidecar.coverageNote = `Partial evidence: ${missing} unavailable; verdict confidence capped.`;
+      if (analysisSidecar.verdictConfidence === 'high') {
+        analysisSidecar.verdictConfidence = 'medium';
+        console.log('[investigator] verdict.confidence.capped — partial coverage', {
+          investigationId,
+          missing,
+        });
+      }
+    }
+
+    // Fresh-context verifier (LLM-as-judge). After a clean completion with
+    // both a report and an analysis sidecar, run a SEPARATE single-shot
+    // `claude -p` judge that scores the report+verdict+fix against a rubric
+    // (see verifier.mjs). On a judge FAILURE we downgrade the analysis
+    // verdictConfidence to 'low' and attach a verifierNote — fail-closed —
+    // BEFORE the analysis upload below so the downgraded copy is what
+    // debug-console reads. The judge is a strict soft-fail: any error
+    // (spawn/timeout/invalid JSON) returns { ran: false } and the analysis
+    // ships unchanged. The whole block is wrapped so it can NEVER block or
+    // fail the finalize path.
+    if (analysisSidecar && status === 'completed' && reportMd) {
+      try {
+        // Cap the judge's budget to what's left of the reserved window so it
+        // can't push the invocation past the Lambda cap.
+        const remainingMs = MAX_RUN_MS - (Date.now() - started);
+        const verifierTimeoutMs = Math.max(30_000, Math.min(VERIFIER_BUDGET_MS, remainingMs));
+        const v = await runVerifier({
+          reportMd,
+          analysis: analysisSidecar,
+          complaint: feedback,
+          timeWindow,
+          workDir,
+          appId,
+          timeoutMs: verifierTimeoutMs,
+        });
+        if (v.ran && v.pass === false) {
+          // Fail-closed: an unsupported / overconfident verdict gets pinned
+          // to low confidence so downstream consumers don't trust it.
+          analysisSidecar.verdictConfidence = 'low';
+          if (v.note) analysisSidecar.verifierNote = v.note;
+          console.log('[investigator] verifier.failed', {
+            investigationId,
+            score: v.score ?? null,
+            note: v.note ?? null,
+          });
+          emitEvent('investigation.warning', {
+            source: 'verifier',
+            message: 'Verifier downgraded verdict confidence: report/verdict not supported by cited evidence',
+            note: v.note ?? null,
+            score: v.score ?? null,
+          }).catch((emitErr) => logEmitFailure('investigation.warning', emitErr));
+
+          // Feedback loop: an over-claim is a candidate lesson for the
+          // knowledge base. Persist it to the lessons inbox for human
+          // curation (scripts/investigate-distill-lessons.mjs → PR into
+          // references/aab-behaviors.md). Best-effort — never blocks finalize.
+          try {
+            const lesson = buildLessonRecord({
+              investigationId,
+              appId,
+              customerId,
+              ts: new Date().toISOString(),
+              source: 'verifier',
+              analysis: analysisSidecar,
+              verifierNote: v.note ?? null,
+              score: v.score ?? null,
+              feedback,
+              timeWindow,
+            });
+            await putJson(lessonKey(lesson), lesson);
+          } catch (lessonErr) {
+            console.error('[investigator] lesson.capture.failed', {
+              investigationId,
+              error: lessonErr && lessonErr.message ? lessonErr.message : String(lessonErr),
+            });
+          }
+        } else if (v.ran && v.pass === true) {
+          console.log('[investigator] verifier.passed', {
+            investigationId,
+            score: v.score ?? null,
+          });
+        }
+        // v.ran === false → soft-fail: leave the analysis unchanged.
+        // Machine-readable marker so consumers can distinguish a VERIFIED
+        // verdict from one shipped unverified (judge timeout / spawn-fail /
+        // invalid JSON). true only when the judge actually ran.
+        analysisSidecar.verified = v.ran === true;
+      } catch (err) {
+        // The verifier must NEVER block finalize. runVerifier already
+        // soft-fails internally; this is belt-and-suspenders.
+        console.error('[investigator] verifier.block.error', {
+          investigationId,
+          error: err && err.message ? err.message : String(err),
+        });
+      }
+    }
+
     // Upload analysis sidecar so debug-console can populate sentiment/rootCause
     // fields in the investigation summary listing. Best-effort — failure here
     // does NOT affect the investigation result.
@@ -1026,6 +1438,8 @@ export async function handler(event) {
       cost,
       error: status === 'failed' ? `claude exit code ${exitInfo.code}` : null,
     });
+    // Terminal state is now persisted — the catch must not overwrite it.
+    terminalRecorded = true;
 
     // Freeze into history — `active/` is overwritten on the next run for the
     // same (customer, app), so if these copies silently fail the completed
@@ -1079,22 +1493,72 @@ export async function handler(event) {
     }
 
     return { statusCode: 200, body: JSON.stringify({ investigationId, status: finalState.status }) };
+  } catch (err) {
+    // The main body previously had no catch: an uncaught throw (fs.mkdir,
+    // createWriteStream, spawnClaude, a terminal mergeState, …) would escape
+    // after the finally cleared creds WITHOUT recording terminal state, so the
+    // UI spun at "running" until the ~15-min stale cutoff with no reason.
+    // Record a terminal failed state + emit the failed event so the dashboard
+    // shows the failure immediately. Best-effort — never throw out of here.
+    const errorMessage = err && err.message ? err.message : String(err);
+    if (terminalRecorded) {
+      // A post-terminal callee threw AFTER the good verdict was persisted. Do
+      // NOT overwrite it — the UI reads the terminal state from S3. Just log.
+      console.error('[investigator] post-terminal error — terminal state preserved', {
+        investigationId,
+        error: errorMessage,
+      });
+      return { statusCode: 200, body: JSON.stringify({ investigationId }) };
+    }
+    console.error('[investigator] investigation.uncaught — recording failed state', {
+      investigationId,
+      error: errorMessage,
+    });
+    await emitEvent('investigation.failed', {
+      status: 'failed',
+      durationMs: Date.now() - started,
+      error: errorMessage.slice(0, 240),
+    }).catch((emitErr) => logEmitFailure('investigation.failed', emitErr));
+    await tryReleaseLockAsFailed(stateKey, {
+      status: 'failed',
+      lastEvent: 'investigation failed with an unexpected error',
+      error: errorMessage.slice(0, 240),
+      heartbeatAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      durationMs: Date.now() - started,
+    });
+    // Return (don't rethrow): an async Lambda re-throw can trigger a retry that
+    // double-runs the investigation; the failure is already recorded in state.
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ investigationId, status: 'failed', error: errorMessage.slice(0, 240) }),
+    };
   } finally {
     // Drop the per-invocation creds regardless of exit path so they don't
     // linger into the next warm-container invocation. `delete` rather
     // than assigning '' so any downstream code that reads them gets an
     // unambiguous "not set" rather than empty string. Direct-mode evidence
-    // creds must be cleared too — leaving them set would leak Loki / ES /
-    // Langfuse / FullStory keys into a subsequent non-feedback invocation
-    // that should run via the console proxy with JOMAX, not direct mode.
-    delete process.env.JOMAX_TOKEN;
+    // creds must be cleared too — leaving them set would leak Loki / ES
+    // keys into a subsequent invocation.
     delete process.env.ANTHROPIC_AUTH_TOKEN;
     delete process.env.INVESTIGATION_DIRECT_MODE;
     delete process.env.LOKI_API_KEY;
-    delete process.env.EB_LANGFUSE_PUBLIC_KEY;
-    delete process.env.EB_LANGFUSE_SECRET_KEY;
     delete process.env.AIRO_BUILDER_ES_API_KEY;
-    delete process.env.CONTROL_PLANE_ES_API_KEY;
-    delete process.env.FULLSTORY_API_KEY;
+    // Per-invocation Loki cluster scope: clear it so a warm container's next
+    // run can't reuse the previous app's cluster (which would scope its
+    // queries to the wrong cluster and silently return nothing).
+    delete process.env.LOKI_CLUSTER;
+    // Code/conversation context pointers are per-invocation: clear them so a
+    // warm container's next run can't read a stale app dir or conversations
+    // file from a previous (customer, app).
+    delete process.env.APP_CODE_DIR;
+    delete process.env.CONVERSATIONS_PATH;
+    // Platform graph root pointer is per-invocation too: clear it so a warm
+    // container's next run re-resolves it (and a soft-fail run doesn't leave a
+    // stale root pointing at an evicted /tmp file).
+    delete process.env.PLATFORM_GRAPH_ROOT;
+    // Per-invocation report dir pointer — clear it too so the documented
+    // "no per-invocation env survives the finally" invariant holds.
+    delete process.env.REPORT_DIR;
   }
 }

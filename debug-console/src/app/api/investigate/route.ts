@@ -3,13 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
-import { gdAuthService } from '@/lib/gd-auth-service';
 import { INVESTIGATE_CONFIG } from '@/lib/investigate/config';
 import { invokeInvestigator } from '@/lib/investigate/lambda-client';
 import { acquireLock } from '@/lib/investigate/lock';
 import { keysForInvestigation } from '@/lib/investigate/types';
 import type { InvestigationState } from '@/lib/investigate/types';
 import { logger } from '@/lib/logger';
+import mgmtControlPlaneAdapter from '@/lib/mgmt-control-plane-adapter';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -18,7 +18,6 @@ interface InvestigateRequest {
   appId?: string;
   customerId?: string;
   feedback?: string;
-  fullstoryUrl?: string | null;
   timeWindow?: string | null;
   source?: 'console' | 'feedback';
   category?: 'issue' | 'support' | 'feedback';
@@ -58,13 +57,16 @@ export const POST = withAuth(async (request, auth) => {
     return bad(`feedback exceeds ${MAX_FEEDBACK_LEN} characters`);
   }
 
-  // Forward the user's JOMAX token so the Lambda can hit console/agent APIs
-  // as the calling user. Saves us from maintaining a service-account token
-  // with a refresh job; the token lifetime is comfortably longer than the
-  // ~60-120s a typical investigation takes.
-  const jomaxToken = gdAuthService.extractTokenFromRequest(request);
-  if (!jomaxToken) {
-    return bad('unable to read JOMAX token from request', 401);
+  // Console is trigger-only: it resolves the app's agent URL and hands it to
+  // the Lambda, which mints its own agent token and reads code/conversations.
+  // If we can't resolve the agent URL there's nothing the Lambda can do, so
+  // fail before seeding a lock (a lock here would block re-runs needlessly).
+  let agentUrl: string;
+  try {
+    agentUrl = await mgmtControlPlaneAdapter.getAgentUrl(appId);
+  } catch (error) {
+    logger.error('investigate.agentUrl.unresolved', { appId, customerId }, { error: error as Error });
+    return NextResponse.json({ error: 'agent_url_unresolved' }, { status: 502 });
   }
 
   const investigationId = newInvestigationId();
@@ -85,7 +87,6 @@ export const POST = withAuth(async (request, auth) => {
     lastEvent: 'awaiting lambda cold start',
     input: {
       feedback,
-      fullstoryUrl: body.fullstoryUrl ?? null,
       timeWindow: body.timeWindow ?? null,
     },
     resultKey: null,
@@ -127,14 +128,13 @@ export const POST = withAuth(async (request, auth) => {
       appId,
       customerId,
       feedback,
-      fullstoryUrl: body.fullstoryUrl ?? null,
       timeWindow: body.timeWindow ?? null,
       stateKey: keys.stateKey,
       historyPrefix: keys.historyPrefix,
       resultKey: keys.resultKey,
       tracePrefix: keys.tracePrefix,
       eventsPrefix: keys.eventsPrefix,
-      jomaxToken,
+      agentUrl,
       source: body.source ?? 'console',
       category: body.category,
       rating: body.rating,

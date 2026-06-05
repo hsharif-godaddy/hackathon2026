@@ -168,6 +168,11 @@ export class AiroInvestigatorStack extends GDStack {
                 's3:DeleteObject',
                 's3:ListBucket',
               ],
+              // `${bucket}/*` already covers the `platform-graph/` prefix the
+              // Lambda reads at runtime (platform-graph.mjs GetObject on
+              // `platform-graph/graph.db`) — no separate grant needed. The
+              // scheduled builder that WRITES that prefix is a different role
+              // and is granted PutObject via a bucket resource policy below.
               resources: [
                 this.stateBucket.bucketArn,
                 `${this.stateBucket.bucketArn}/*`,
@@ -273,27 +278,25 @@ export class AiroInvestigatorStack extends GDStack {
         DEBUG_CONSOLE_BASE_URL: config.debugConsoleBaseUrl,
         AIRO_SSO_ENDPOINT: config.ssoEndpoint,
         // Direct-mode (fanout / source=feedback) evidence collection reads
-        // ENVIRONMENT_NAME in `_loki_env` and `_es_control_plane_index`
+        // ENVIRONMENT_NAME in `_loki_env`
         // (investigator/skills/airo-log-investigate/search_frontend_logs.py)
-        // to resolve the Loki `env` label and the ES control-plane index
-        // suffix. The console-proxy path applies the same resolution via
+        // to resolve the Loki `env` label. The console-proxy path
+        // applies the same resolution via
         // `resolvedEnv` in debug-console/src/lib/log-sources.ts; setting
         // the var here keeps both sides on the same contract so prod
         // fanout runs don't fall back to "dev" and silently return 0 logs.
         ENVIRONMENT_NAME: config.envName,
         // Direct evidence query URLs (no secrets — plain env vars)
         LOKI_ENDPOINT: config.lokiEndpoint,
-        EB_LANGFUSE_BASE_URL: config.ebLangfuseBaseUrl,
         AIRO_BUILDER_ES_ENDPOINT: config.airoBuilderEsEndpoint,
-        CONTROL_PLANE_ES_ENDPOINT: config.controlPlaneEsEndpoint,
         // ASM secret path names — Lambda reads values at runtime
         LOKI_API_KEY_SECRET: config.lokiApiKeySecret,
-        EB_LANGFUSE_PUBLIC_KEY_SECRET: config.ebLangfusePublicKeySecret,
-        EB_LANGFUSE_SECRET_KEY_SECRET: config.ebLangfuseSecretKeySecret,
         AIRO_BUILDER_ES_API_KEY_SECRET: config.airoBuilderEsApiKeySecret,
-        CONTROL_PLANE_ES_API_KEY_SECRET: config.controlPlaneEsApiKeySecret,
-        FULLSTORY_API_KEY_SECRET: config.fullstoryApiKeySecret,
-        FULLSTORY_MCP_URL: config.fullstoryMcpUrl,
+        // JWT signing secret path — Lambda mints the agents-service token
+        // (audience: agents-service) by reading the active key from this
+        // Secrets Manager secret, same secret app/'s JWTService and
+        // debug-console's agent-jwt read. See JwtSigningSecretRead below.
+        JWT_SECRETS_NAME: config.jwtSecretsName,
       },
       logGroup,
     });
@@ -321,14 +324,10 @@ export class AiroInvestigatorStack extends GDStack {
     }
 
     // ---- Secrets Manager read for direct evidence query credentials ----
-    // Loki API key, EB Langfuse keys, ES API keys — all Katana-managed.
+    // Loki API key + airo-builder ES API key — both Katana-managed.
     const evidenceSecretPaths = [
       config.lokiApiKeySecret,
-      config.ebLangfusePublicKeySecret,
-      config.ebLangfuseSecretKeySecret,
       config.airoBuilderEsApiKeySecret,
-      config.controlPlaneEsApiKeySecret,
-      config.fullstoryApiKeySecret,
     ].filter(Boolean);
     if (evidenceSecretPaths.length > 0) {
       const arnPrefix = `arn:aws:secretsmanager:${this.region}:${this.account}:secret:`;
@@ -336,6 +335,38 @@ export class AiroInvestigatorStack extends GDStack {
         sid: 'EvidenceSecretsRead',
         actions: ['secretsmanager:GetSecretValue'],
         resources: evidenceSecretPaths.map((p) => `${arnPrefix}${p}*`),
+      }));
+    }
+
+    // ---- Secrets Manager read for the JWT signing secret ----
+    // The Lambda mints an agents-service JWT (audience: agents-service) to
+    // call the per-app agent container directly. It reads the active signing
+    // key from the `${env}-airo-jwt-keys` secret created by AiroJWTKeyStack —
+    // the same secret app/'s JWTService and debug-console's agent-jwt read.
+    // Wildcard suffix matches the random suffix ASM appends on creation.
+    if (config.jwtSecretsName) {
+      this.investigatorFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: 'JwtSigningSecretRead',
+        actions: ['secretsmanager:GetSecretValue'],
+        resources: [
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${config.jwtSecretsName}*`,
+        ],
+      }));
+      // The jwt-keys secret is encrypted with a customer-managed KMS key, so
+      // GetSecretValue alone returns "Access to KMS is not allowed". Mirror
+      // app/'s JWTService + debug-console's consumer grant in
+      // airo-jwt-key-stack.ts: kms:Decrypt scoped by the ViaService condition
+      // (resources '*' is correct here — the condition restricts it to
+      // Secrets-Manager-initiated decrypts, not the key ARN).
+      this.investigatorFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: 'JwtSigningSecretKmsDecrypt',
+        actions: ['kms:Decrypt'],
+        resources: ['*'],
+        conditions: {
+          StringEquals: {
+            'kms:ViaService': `secretsmanager.${this.region}.amazonaws.com`,
+          },
+        },
       }));
     }
 
@@ -427,6 +458,22 @@ export class AiroInvestigatorStack extends GDStack {
         conditions: {
           StringLike: { 's3:prefix': ['active/*', 'events/*', 'summaries/*'] },
         },
+      }));
+    }
+
+    // ---- Platform graph builder: S3 write for scheduled refresh ----
+    // The refresh-platform-graph.yml GH Actions workflow uploads an updated
+    // graph.db 2×/day to s3://${bucket}/platform-graph/. The Lambda reads it
+    // at runtime via its existing inline StateBucket policy (covers ${bucket}/*).
+    // Here we grant the GH Actions runner's deploy role PutObject specifically
+    // on the platform-graph/ prefix so it can upload but nothing else.
+    if (config.platformGraphBuilderRoleArn) {
+      this.stateBucket.addToResourcePolicy(new iam.PolicyStatement({
+        sid: 'PlatformGraphBuilderWrite',
+        effect: iam.Effect.ALLOW,
+        actions: ['s3:PutObject'],
+        resources: [`${this.stateBucket.bucketArn}/platform-graph/*`],
+        principals: [new iam.ArnPrincipal(config.platformGraphBuilderRoleArn)],
       }));
     }
 

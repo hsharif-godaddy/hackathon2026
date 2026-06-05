@@ -1,0 +1,123 @@
+name: Refresh Platform Graph
+
+on:
+  schedule:
+    # 2×/day: 06:23 and 18:23 UTC (off-minute to avoid fleet congestion)
+    - cron: '23 6 * * *'
+    - cron: '23 18 * * *'
+  workflow_dispatch:
+
+run-name: 'Platform Graph Refresh | ${{ github.ref_name }} | ${{ github.actor }}'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  STATE_BUCKET: ${{ vars.INVESTIGATOR_STATE_BUCKET }}
+  # Upload the gzipped DB (~3-4x smaller); the Lambda gunzips on download.
+  GRAPH_S3_KEY: platform-graph/graph.db.gz
+  # Hash is of the RAW (uncompressed) DB so change-detection is stable
+  # regardless of gzip non-determinism.
+  HASH_S3_KEY: platform-graph/graph.db.sha256
+
+jobs:
+  build-and-upload:
+    name: Build code-review-graph for platform source
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: main
+          sparse-checkout: |
+            agents/src
+            app/src
+            app-templates
+
+      - name: Install python3 + code-review-graph
+        run: |
+          python3 --version
+          # Runner python is PEP 668 externally-managed — use a venv.
+          python3 -m venv /tmp/crgvenv
+          /tmp/crgvenv/bin/pip install --upgrade pip
+          /tmp/crgvenv/bin/pip install code-review-graph
+          echo "/tmp/crgvenv/bin" >> "$GITHUB_PATH"
+
+      - name: Compose source-only root
+        run: |
+          mkdir -p /tmp/platform-src
+          rsync -a --prune-empty-dirs \
+            --exclude node_modules \
+            --exclude dist \
+            --exclude .next \
+            --exclude build \
+            --exclude out \
+            --exclude coverage \
+            --exclude '.git' \
+            --exclude '*.min.*' \
+            --exclude '*.lock' \
+            --exclude '*.map' \
+            agents/src app/src app-templates \
+            /tmp/platform-src/
+
+      - name: Restore cached graph
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/platform-src/.code-review-graph
+          key: crg-platform-graph-v1-${{ hashFiles('agents/src/**/*.ts', 'app/src/**/*.ts') }}
+          restore-keys: |
+            crg-platform-graph-v1-
+
+      - name: Build or update graph
+        run: |
+          cd /tmp/platform-src
+          if [ -f .code-review-graph/graph.db ]; then
+            echo "Cache hit — running incremental update"
+            code-review-graph update --repo . || code-review-graph build --repo . --skip-flows
+          else
+            echo "Cold cache — running full build"
+            code-review-graph build --repo . --skip-flows
+          fi
+          echo "Graph built: $(du -sh .code-review-graph/graph.db)"
+
+      - name: Conditional upload to S3
+        run: |
+          if [ -z "${STATE_BUCKET}" ]; then
+            echo "INVESTIGATOR_STATE_BUCKET not set — skipping upload (build verified above)."
+            echo "Set the repo variable to enable upload."
+            exit 0
+          fi
+          NEW_HASH=$(sha256sum /tmp/platform-src/.code-review-graph/graph.db | cut -d' ' -f1)
+          echo "New hash: $NEW_HASH"
+
+          # Fetch existing hash from S3 (may not exist yet)
+          OLD_HASH=$(aws s3 cp "s3://${STATE_BUCKET}/${HASH_S3_KEY}" - 2>/dev/null || echo "none")
+          echo "Old hash: $OLD_HASH"
+
+          if [ "$NEW_HASH" = "$OLD_HASH" ]; then
+            echo "Graph unchanged — skipping upload"
+          else
+            echo "Graph changed — gzipping + uploading"
+            gzip -c /tmp/platform-src/.code-review-graph/graph.db > /tmp/graph.db.gz
+            echo "Compressed: $(du -h /tmp/graph.db.gz | cut -f1) (from $(du -h /tmp/platform-src/.code-review-graph/graph.db | cut -f1))"
+            aws s3 cp /tmp/graph.db.gz "s3://${STATE_BUCKET}/${GRAPH_S3_KEY}"
+            echo "$NEW_HASH" | aws s3 cp - "s3://${STATE_BUCKET}/${HASH_S3_KEY}"
+            echo "Upload complete"
+          fi
+
+      - name: Summary
+        run: |
+          {
+            printf '**Platform Graph Refresh:**\n\n```\n'
+            echo "Source: agents/src + app/src + app-templates"
+            echo "Graph: $(du -sh /tmp/platform-src/.code-review-graph/graph.db 2>/dev/null | cut -f1)"
+            echo "Bucket: ${STATE_BUCKET}"
+            echo "Key: ${GRAPH_S3_KEY}"
+            printf '\n```\n'
+          } >> $GITHUB_STEP_SUMMARY

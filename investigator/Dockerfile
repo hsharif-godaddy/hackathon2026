@@ -14,13 +14,69 @@
 # deploying AiroInvestigatorStack. Defaults support local builds.
 ARG LAMBDA_BASE_REPO=public.ecr.aws/lambda/nodejs
 ARG LAMBDA_BASE_TAG=22
+
+# ---------------------------------------------------------------------------
+# Stage 1 (pybuild): install the python code-review-graph (CRG) deps into a
+# relocatable --target dir. Kept in a separate stage so the gcc/make/git build
+# toolchain never ships in the runtime image — only the resolved
+# /opt/py-packages tree is copied forward. The platform graph is no longer
+# baked here; it is fetched from S3 at runtime (see Task 3.3 note below).
+#
+# Pinned by the Task 0.1 spike (docs/superpowers/notes/2026-06-02-
+# investigate-pydeps-mcp-spike.md):
+#   - python via dnf python3.11 + python3.11-pip.
+#   - LD_LIBRARY_PATH=/usr/lib64 REQUIRED in BOTH stages (else python ssl/pip
+#     resolve against Node's bundled libcrypto in /var/lang and break).
+#   - `python3.11 -m pip install --target /opt/py-packages ...` works.
+# ---------------------------------------------------------------------------
+FROM ${LAMBDA_BASE_REPO}:${LAMBDA_BASE_TAG} AS pybuild
+
+# REQUIRED: prefer the system OpenSSL over Node's bundled libcrypto so python's
+# ssl import (and therefore pip's TLS) resolves. See spike note above.
+ENV LD_LIBRARY_PATH=/usr/lib64
+
+RUN dnf install -y python3.11 python3.11-pip gcc gcc-c++ make git \
+  && dnf clean all \
+  && rm -rf /var/cache/dnf
+
+# Resolve the CRG + drain3 deps into a relocatable target dir (spike 0.1).
+RUN python3.11 -m pip install --target /opt/py-packages code-review-graph drain3
+
+# NOTE: the platform code-review-graph is NO LONGER baked into the image
+# (Task 3.3). It is rebuilt twice a day by .github/workflows/refresh-platform-
+# graph.yml — which composes a source-only tree (agents/src + app/src +
+# app-templates, node_modules/build excluded), runs an incremental
+# `code-review-graph update` (full `build --skip-flows` on a cold cache), and
+# uploads the resulting graph.db to S3 at `platform-graph/graph.db` only when
+# its sha256 changed. The Lambda fetches it at invocation time
+# (investigator/platform-graph.mjs, ETag-cached + soft-fail). This keeps the
+# image small/fast to build, lets the graph cover the whole platform (not just
+# the investigator tree the old `COPY .` context was limited to), and refreshes
+# without a redeploy.
+
+# ---------------------------------------------------------------------------
+# Stage 2 (runtime): the actual Lambda image.
+# ---------------------------------------------------------------------------
 FROM ${LAMBDA_BASE_REPO}:${LAMBDA_BASE_TAG}
 
-# System deps needed by the frontend log skill.
+# REQUIRED in the runtime stage too (spike 0.1): python3.11's ssl import and
+# the CRG MCP server both need the system OpenSSL ahead of Node's libcrypto.
+ENV LD_LIBRARY_PATH=/usr/lib64
+
+# System deps:
+#   - python3.11: runs the CRG MCP server + customer-graph build, and (via the
+#     skill wrappers + PYTHONPATH=/opt/py-packages) gives the skill drain3.
+#   - python3: kept so anything still resolving bare `python3` (stdlib-only)
+#     keeps working; the skill wrappers now prefer python3.11 explicitly.
+#   - git/unzip: git for CRG's tree walk; unzip for the customer app zip.
+#   - jq/bc/tar/gzip: existing frontend log skill deps.
 # Weak-dep suppression was tried via --setopt=install_weak_deps but the
 # dnf build shipped in the Lambda base rejects both `False` and `false`.
 RUN dnf install -y \
+      python3.11 \
       python3 \
+      git \
+      unzip \
       jq \
       bc \
       tar \
@@ -28,12 +84,13 @@ RUN dnf install -y \
   && dnf clean all \
   && rm -rf /var/cache/dnf
 
-# urllib3 / certifi via pip was attempted for connection pooling + Retry +
-# gzip on the direct evidence collector but the Lambda Node base ships
-# Python 3.9 with stripped stdlib (missing `_sha512`), which breaks pip's
-# bootstrap. Falling back to the stdlib code path in search_frontend_logs.py
-# (urllib.request) — feature-flagged via the _URLLIB3_AVAILABLE try/except.
-# Move to a Python-base Lambda or rebuild the stdlib if we need pooling.
+# CRG python deps from the build stage. The platform graph is fetched from S3
+# at runtime (platform-graph.mjs), so nothing graph-related is copied here.
+COPY --from=pybuild /opt/py-packages /opt/py-packages
+
+# Make the CRG deps importable by python3.11 (MCP server + customer build) and
+# by the skill wrappers (drain3 / urllib3 fallbacks are import-guarded).
+ENV PYTHONPATH=/opt/py-packages
 
 # Claude Code CLI — pin to a concrete version so two rebuilds of the same
 # commit produce identical runtime behavior. `@latest` previously drifted
@@ -70,14 +127,16 @@ RUN --mount=type=bind,source=.npmrc,target=/root/.npmrc \
     npm install --omit=dev --no-audit --no-fund
 COPY handler.mjs auth.mjs prompt.mjs events.mjs \
      cert-loader.mjs crm-token.mjs crm-casenote.mjs \
-     evidence-loader.mjs ./
+     evidence-loader.mjs agent-jwt.mjs agent-fetch.mjs graph-setup.mjs \
+     platform-graph.mjs verifier.mjs activity.mjs lessons.mjs ./
 
 # Lambda invokes the image as its own least-privileged runtime user, not
 # necessarily the user Docker used during local tests. Make startup/runtime
 # files explicitly readable/executable for that sandbox user so ECR mirror or
 # base-image permission quirks cannot surface as Runtime.InvalidEntrypoint.
 RUN chmod a+rx /lambda-entrypoint.sh /var/runtime/bootstrap \
-  && chmod -R a+rX "${LAMBDA_TASK_ROOT}" /opt/skills /opt/claude-template
+  && chmod -R a+rX "${LAMBDA_TASK_ROOT}" /opt/skills /opt/claude-template \
+       /opt/py-packages
 
 # Belt-and-suspenders for Lambda container startup: the base entrypoint normally
 # derives _HANDLER from CMD, but setting it explicitly prevents blank-handler

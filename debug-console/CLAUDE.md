@@ -32,7 +32,7 @@ Browser (Dashboard.tsx)  ── /api/* ──▶  Next.js routes  ── fetch �
 - `src/lib/loki-merged.ts` — single-query helper covering `airo-agents` + `airo-preview` + `airo-publish` with cluster scoping; reused by Logs API and app-context.
 - `src/lib/api-auth.ts` — `withAuth` wrapper + AD-group membership cache (60s TTL, coalesced).
 - `src/lib/mgmt-control-plane-adapter.ts` — read-through cache (30s TTL) over mgmt-airo. `getAppDetails` always fetches the full version so lite callers reuse it.
-- `src/lib/investigate/` — investigate flow (evidence collection across Loki/ES/Langfuse, S3-backed event log, SSE streaming).
+- `src/lib/investigate/` — investigate flow (trigger-only: the Investigate Lambda now collects evidence directly; debug-console handles trigger, S3-backed event log, SSE streaming). `evidence.ts` is retained only for `resolveAppCluster` (cluster lookup reused by the Logs view, `/api/es-logs`, and `loki-merged.ts`).
 - `src/lib/analytics/` — direct Loki/Katana queries powering the `/analytics` charts; the legacy ES-rollup scheduler was removed (see `analysis/` for research notes).
 - `src/components/`, `src/pages/Dashboard.tsx` — UI. Tabs are lazy-mounted on first visit (`visitedTabs` set).
 - `src/hooks/useAppContext.ts` — client-side cache + section-gated fetcher for `/api/app-context` (60s TTL, in-flight coalescing).

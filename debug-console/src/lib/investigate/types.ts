@@ -7,7 +7,6 @@ export type InvestigationStatus =
 
 export interface InvestigationInput {
   feedback: string;
-  fullstoryUrl?: string | null;
   timeWindow?: string | null;
 }
 
@@ -117,6 +116,10 @@ export type InvestigationEventType =
   | 'evidence.ready'
   | 'heartbeat'
   | 'report.ready'
+  // Per-action agent activity (a curated tool_use: code search/read, code-graph
+  // query, log-script run) streamed live to the panel timeline. data carries
+  // { tool, label, detail }. Stream-only — not persisted to state.json.
+  | 'activity'
   // Non-fatal warning surfaced from the Lambda (e.g. GoCode SSO
   // primary-region failure that fell back to secondary). Investigation
   // continues; operators see it on the SSE stream.
@@ -207,7 +210,6 @@ export interface InvestigationSummary {
   durationMs: number | null;
   startedBy: string;
   feedbackExcerpt: string;
-  fullstoryUrl: string | null;
   reportAvailable: boolean;
   reportSize: number | null;
   reportEtag: string | null;
@@ -221,6 +223,18 @@ export interface InvestigationSummary {
   confidence: number | null;
   rootCause: string | null;
   category: string | null;
+  verdict: 'agent-bug' | 'customer-error' | 'platform-bug' | 'external' | 'no-issue' | null;
+  relatesTo: string | null;
+  verdictConfidence: 'low' | 'medium' | 'high' | null;
+  verdictRationale: string | null;
+  verifierNote: string | null;
+  fixKind: 'app-prompt' | 'eng-note' | 'none' | null;
+  fixPrompt: string | null;
+  engNote: string | null;
   error: string | null;
   schemaCompleted: boolean;
+  // Bumped when buildSummary gains fields that must backfill into already-
+  // persisted summaries; the ensureSummary guard re-writes on a version miss.
+  // Optional so pre-existing summaries (no field) read back as stale.
+  schemaVersion?: number;
 }

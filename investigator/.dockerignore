@@ -1,0 +1,27 @@
+# Bound the Docker build context for the investigator image. The CDK asset
+# builds from `investigator/` (cdk/lib/investigator-stack.ts), so everything
+# here is relative to that dir. Excluding build artifacts keeps the context —
+# and the `COPY . /opt/platform-src` platform-graph bake — small and fast.
+#
+# NOTE: do NOT exclude .npmrc — the Dockerfile bind-mounts it for `npm install`
+# (CI writes it into the context before `cdk deploy`; local dev drops one in).
+
+node_modules
+**/node_modules
+
+# Python caches / test artifacts
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+.code-review-graph
+
+# Spike scaffolding — not part of the runtime image
+docker/spike-pydeps.Dockerfile
+docker/spike-mcp-smoke.sh
+
+# Local-only / VCS noise
+.git
+.gitignore
+*.log
+.DS_Store

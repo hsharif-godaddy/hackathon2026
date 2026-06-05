@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
-import { ensureSummaryAfterTerminal } from '@/lib/investigate/summaries';
+import { ensureSummaryAfterTerminal, readAnalysis } from '@/lib/investigate/summaries';
 import { headResult, isStaleHeartbeat, isTerminal, readState } from '@/lib/investigate/state';
 import { keysFor } from '@/lib/investigate/types';
 import { logger } from '@/lib/logger';
@@ -67,6 +67,14 @@ export const GET = withAuth<{ id: string }>(async (request, _auth, context) => {
     }
   }
 
+  // Surface the verdict + fix-prompt sidecar so the panel can render the
+  // verdict badge and Copy-fix-prompt button. Gated to completed runs,
+  // mirroring ensureSummary's readAnalysis gating — failed/killed runs never
+  // produce a sidecar. Best-effort: readAnalysis returns null on 404/error.
+  const analysis = terminal && state.status === 'completed'
+    ? await readAnalysis(customerId, appId, investigationId)
+    : null;
+
   // Floating promise — safe because debug-console is a long-lived Node process.
   // If this ever runs on Vercel/edge (frozen after response), the write would be
   // silently dropped. Await the call instead if the deploy target changes.
@@ -91,5 +99,13 @@ export const GET = withAuth<{ id: string }>(async (request, _auth, context) => {
     reportEtag,
     evidence: state.evidence ?? null,
     cost: state.cost ?? null,
+    verdict: analysis?.verdict ?? null,
+    relatesTo: analysis?.relatesTo ?? null,
+    verdictConfidence: analysis?.verdictConfidence ?? null,
+    verdictRationale: analysis?.verdictRationale ?? null,
+    verifierNote: analysis?.verifierNote ?? null,
+    fixKind: analysis?.fixKind ?? null,
+    fixPrompt: analysis?.fixPrompt ?? null,
+    engNote: analysis?.engNote ?? null,
   });
 });

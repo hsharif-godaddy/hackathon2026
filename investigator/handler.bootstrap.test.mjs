@@ -3,14 +3,20 @@ import assert from 'node:assert/strict';
 
 // Mock the AWS SDK + gd-auth-client + node:child_process at module-load
 // so importing `./handler.mjs` doesn't try to construct real clients or
-// spawn anything. The s2s-disabled feedback-source early-reject path only
-// touches S3 (mergeState → GetObject + PutObject; emitEvent → PutObject)
-// and the lock release; spawn is never reached.
+// spawn anything. The s2s-disabled legacy early-reject path only touches
+// S3 (mergeState → GetObject + PutObject; emitEvent → PutObject) and the
+// lock release; spawn is never reached.
+//
+// Post Task 4.2, both triggers (console + feedback) run the SAME direct
+// path with no JOMAX token and no per-source gocode gating. The only
+// remaining legacy guard is the generic gocodeApiKey check: when an
+// operator flips GOCODE_USE_S2S_AUTH='false' for rollback and no
+// gocodeApiKey is forwarded (neither trigger sends one anymore), the
+// handler 400s generically for BOTH sources.
 //
 // Behavior we want to lock:
-//   1. `source: 'feedback'` invocation with `GOCODE_USE_S2S_AUTH=false`
-//      returns 400 (prevents legacy-key path from silently breaking
-//      automation-source invocations) — review F-11.
+//   1. Any source with `GOCODE_USE_S2S_AUTH=false` and no gocodeApiKey
+//      returns 400 'gocodeApiKey required'.
 //   2. mergeState writes `status: 'failed'` with the descriptive error
 //      so a debug-console SSE consumer sees the cause.
 
@@ -99,6 +105,11 @@ mock.module('node:fs', {
       end: () => {},
       on: () => {},
     }),
+    // agent-fetch.mjs (imported transitively via handler.mjs) imports
+    // `mkdirSync` from node:fs at module load; provide a no-op so the mocked
+    // module satisfies the named export. This path's early-reject returns
+    // before any fetch runs, so the implementation is never invoked.
+    mkdirSync: () => {},
   },
 });
 
@@ -109,7 +120,6 @@ const BASE_EVENT = {
   appId: 'app-1',
   customerId: 'cust-1',
   feedback: 'something broken',
-  fullstoryUrl: null,
   timeWindow: null,
   stateKey: 'active/cust-1/app-1/state.json',
   resultKey: 'active/cust-1/app-1/result.md',
@@ -118,7 +128,7 @@ const BASE_EVENT = {
   eventsPrefix: 'events/cust-1/app-1/',
 };
 
-describe('handler — s2s-disabled feedback-source early reject', () => {
+describe('handler — s2s-disabled legacy early reject (no gocodeApiKey)', () => {
   beforeEach(() => {
     s3Calls.length = 0;
     stateStore.clear();
@@ -128,15 +138,15 @@ describe('handler — s2s-disabled feedback-source early reject', () => {
     process.env.AWS_REGION = 'us-west-2';
   });
 
-  it('rejects feedback-source invocation with 400 when GOCODE_USE_S2S_AUTH is false', async () => {
+  it('rejects feedback-source invocation with 400 gocodeApiKey required when s2s is off and no key forwarded', async () => {
     const result = await handler({
       ...BASE_EVENT,
       source: 'feedback',
-      // No gocodeApiKey — feedback-source has no user-side key, that's
-      // exactly the regression this guard prevents from silently failing.
+      // No gocodeApiKey — neither trigger forwards one anymore; under the
+      // legacy rollback env var this is the generic key-missing 400.
     });
     assert.equal(result.statusCode, 400);
-    assert.match(result.body, /feedback requires s2s auth/);
+    assert.match(result.body, /gocodeApiKey required/);
   });
 
   it('writes a failure state to S3 on the early reject path', async () => {
@@ -159,22 +169,19 @@ describe('handler — s2s-disabled feedback-source early reject', () => {
       failedWrite,
       `expected a state write with status: 'failed'; got bodies:\n${stateWrites.map((c) => String(c.args.Body)).join('\n---\n')}`,
     );
-    assert.match(String(failedWrite.args.Body), /GOCODE_USE_S2S_AUTH=true/);
+    assert.match(String(failedWrite.args.Body), /gocodeApiKey missing from invoke payload/);
   });
 
-  it('console-source under same env returns 400 jomaxToken required (the s2s-disabled guard does NOT eat legacy errors)', async () => {
-    // The s2s-disabled-feedback guard at handler.mjs:523 must short-circuit
-    // ONLY the feedback path; console-source should still hit the
-    // jomaxToken check at line 471 first. This pins that the two error
-    // paths stay independent — a regression that flipped them would
-    // surface as customer impact via dashboard misclassification.
+  it('console-source under same env hits the SAME generic gocodeApiKey 400 (no per-source gating)', async () => {
+    // Post Task 4.2 there is no console-only jomaxToken guard and no
+    // feedback-only s2s guard. Both triggers run one unified path, so
+    // console-source with s2s off and no key gets the identical generic
+    // 400 — proving the two former per-source error paths were collapsed.
     const result = await handler({
       ...BASE_EVENT,
       source: 'console',
-      // No jomaxToken → console-source expects 400 with the jomax-flavored
-      // message, which is the line-471 guard, not the s2s guard.
     });
     assert.equal(result.statusCode, 400);
-    assert.match(result.body, /jomaxToken required/);
+    assert.match(result.body, /gocodeApiKey required/);
   });
 });

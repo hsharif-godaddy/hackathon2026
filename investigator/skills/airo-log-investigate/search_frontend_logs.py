@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 # urllib3 powers the direct-evidence HTTP path: connection pool keeps TLS
-# warm across the 50+ requests a single Loki/Langfuse/ES collection makes,
+# warm across the 50+ requests a single Loki/ES collection makes,
 # native Retry handles 429/5xx with exponential backoff + jitter, and the
 # `decode_content=True` flag auto-inflates gzip responses. Stdlib urllib
 # offers none of these. Import is module-scoped so test environments without
@@ -43,6 +43,20 @@ except ImportError:  # pragma: no cover
     urllib3 = None  # type: ignore[assignment]
     Retry = None  # type: ignore[assignment]
     _URLLIB3_AVAILABLE = False
+
+# drain3 powers Stage-2 template mining: it clusters near-identical log lines
+# (varying only in IDs/timestamps/numbers) into a single parameterised
+# template, collapsing thousands of noisy lines into a handful of ranked
+# patterns. Import is guarded so the test suite runs without it (drain3 is
+# NOT installed locally); production has it via the M3.1 image. When absent,
+# `mine_templates` falls back to the existing signature masker, which produces
+# the same output shape (one entry per masked pattern).
+try:  # pragma: no cover — import-time branching
+    from drain3 import TemplateMiner
+    _DRAIN3_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    TemplateMiner = None  # type: ignore[assignment,misc]
+    _DRAIN3_AVAILABLE = False
 
 
 CONSOLE_BASE = "https://console.airo-builder.godaddy.com"
@@ -80,7 +94,7 @@ class LogSource:
     status_fields: tuple[str, ...]
     error_terms: tuple[str, ...]
     # backend_type matches debug-console's EvidenceSourceConfig.backendType
-    # (loki | elasticsearch | langfuse | fullstory). Surfaced in the index
+    # (loki | elasticsearch). Surfaced in the index
     # so phase prompts and downstream consumers see the same shape they
     # get from /api/investigate-evidence.
     backend_type: str = "elasticsearch"
@@ -175,34 +189,12 @@ LOG_SOURCES = {
     "control-plane": LogSource(
         name="control-plane",
         console_source="control_plane",
-        description="Control plane hosting activity logs from the console evidence API ES collector.",
+        description="Control plane hosting activity logs from the console evidence API Loki collector (plane=control).",
         message_fields=("message", "log", "event", "msg"),
-        level_fields=("level", "log.level", "severity"),
+        level_fields=("level", "detected_level", "log.level", "severity"),
         status_fields=("status", "statusCode", "http.status_code", "http.response.status_code"),
         error_terms=("error", "exception", "failed", "timeout", "deploy", "publish"),
-        backend_type="elasticsearch",
-    ),
-
-    "langfuse": LogSource(
-        name="langfuse",
-        console_source="langfuse",
-        description="EB Langfuse traces and observations filtered by metadata.business_data_appId through the console evidence API.",
-        message_fields=("message", "name", "event", "statusMessage", "output", "input"),
-        level_fields=("level", "severity"),
-        status_fields=("status", "statusCode", "http.status_code", "http.response.status_code"),
-        error_terms=("error", "exception", "failed", "timeout", "tool", "generation"),
-        backend_type="langfuse",
-    ),
-
-    "fullstory": LogSource(
-        name="fullstory",
-        console_source="fullstory",
-        description="FullStory session replays discovered via hosted MCP server (build_segment + get_sessions + get_session_events) scoped to /develop/{appId}.",
-        message_fields=("message", "event", "line"),
-        level_fields=("level",),
-        status_fields=("status",),
-        error_terms=("rage", "dead-click", "error-click", "console-error", "feedback", "exception"),
-        backend_type="fullstory",
+        backend_type="loki",
     ),
 }
 
@@ -304,16 +296,12 @@ def build_investigate_evidence_payload(
     sources: list[LogSource],
     app_id: str,
     window: str,
-    *,
-    fullstory_url: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "appId": app_id,
         "timeWindow": window,
         "sources": [source.console_source for source in sources],
     }
-    if fullstory_url:
-        payload["fullstoryUrl"] = fullstory_url
     return payload
 
 
@@ -613,14 +601,68 @@ def write_batched_evidence(data: dict[str, Any], out_dir: Path) -> list[Path]:
     return index_paths
 
 
+def render_digest_toon(digest: dict[str, Any]) -> list[str]:
+    """Render the Stage-2/3 digest as toon lines: aggregation histograms,
+    then ranked templates with counts+examples, then verbatim rare errors.
+    Emitted FIRST so the agent reads the distilled signal before raw pages.
+    """
+    aggregation = digest.get("aggregation") if isinstance(digest.get("aggregation"), dict) else {}
+    templates = digest.get("templates") if isinstance(digest.get("templates"), list) else []
+    rare_errors = digest.get("rareErrors") if isinstance(digest.get("rareErrors"), list) else []
+
+    lines = ["# airo_log_digest"]
+    if aggregation.get("error"):
+        lines.append(f"aggregation: soft-fail ({compact_text(aggregation.get('error'), 160)})")
+    lines.append(f"window: {aggregation.get('windowLabel', '')} | cluster={aggregation.get('cluster', '')}")
+
+    level_hist = aggregation.get("levelHistogram") if isinstance(aggregation.get("levelHistogram"), dict) else {}
+    lines.append("levelHistogram{level,count}:")
+    for level, count in sorted(level_hist.items(), key=lambda kv: kv[1], reverse=True):
+        lines.append(f"  {level}|{count}")
+
+    by_service = aggregation.get("byService") if isinstance(aggregation.get("byService"), dict) else {}
+    lines.append("byService{service,level,count}:")
+    for service, levels in by_service.items():
+        if not isinstance(levels, dict):
+            continue
+        for level, count in sorted(levels.items(), key=lambda kv: kv[1], reverse=True):
+            lines.append(f"  {service}|{level}|{count}")
+
+    lines.append("templates{count,sourceId,template,example}:")
+    for row in templates:
+        if not isinstance(row, dict):
+            continue
+        examples = row.get("examples") if isinstance(row.get("examples"), list) else []
+        example = compact_text(examples[0], 160) if examples else ""
+        lines.append(
+            f"  {row.get('count', 0)}|{row.get('sourceId', '')}|{compact_text(row.get('template', ''), 180)}|{example}"
+        )
+
+    lines.append("rareErrors{count,sourceId,signature,rawRef}:")
+    for row in rare_errors:
+        if not isinstance(row, dict):
+            continue
+        lines.append(
+            f"  {row.get('count', 0)}|{row.get('sourceId', '')}|{compact_text(row.get('signature', ''), 160)}|{row.get('rawRef', '')}"
+        )
+    lines.append("")
+    return lines
+
+
 def render_batched_toon(data: dict[str, Any], index_paths: list[Path]) -> str:
-    lines = [
+    lines: list[str] = []
+    digest = data.get("digest")
+    if isinstance(digest, dict):
+        # Digest first: the agent reads the distilled aggregation + templates
+        # + rare errors before the per-source detail below.
+        lines.extend(render_digest_toon(digest))
+    lines.extend([
         "# airo_evidence_bundle",
         f"appId: {data.get('appId', '')}",
         f"timeWindow: {data.get('timeWindow', '')}",
         f"complete: {data.get('complete', False)}",
         "sources{source,complete,logs,incomplete,indexFile}:",
-    ]
+    ])
     path_by_source = {path.parent.name: path for path in index_paths}
     for source in data.get("sources", []):
         if not isinstance(source, dict):
@@ -677,14 +719,12 @@ def collect_bucket_results(
 
 
 # ---------------------------------------------------------------------------
-# Direct evidence mode — bypasses debug-console; queries Loki / Langfuse / ES
+# Direct evidence mode — bypasses debug-console; queries Loki / ES
 # directly using credentials loaded from Secrets Manager by the Lambda handler.
 # Activated when INVESTIGATION_DIRECT_MODE=true (source=feedback path only).
 # Queries are identical to what debug-console's /api/investigate-evidence does.
 # All sources fetched in parallel via ThreadPoolExecutor.
 # ---------------------------------------------------------------------------
-
-import base64 as _base64  # stdlib — imported here to avoid top-level name clash
 
 _ES_PAGE_SIZE = 1000
 # search_after has no result_window cap (unlike from+size, which dies past
@@ -692,30 +732,13 @@ _ES_PAGE_SIZE = 1000
 # Lambda wall time on pathological queries — 50 pages × 1000 = 50K hits per
 # source is ~50× the realistic per-app daily volume but well within RSS.
 _ES_MAX_PAGES = 50
-_FULLSTORY_MAX_SESSIONS = 3
-_FULLSTORY_LIST_LIMIT = 10
-_FULLSTORY_MAX_EVENT_LINES = 1000
-_FULLSTORY_MCP_URL_DEFAULT = 'https://api.fullstory.com/mcp/fullstory'
-_FULLSTORY_PAIN_PATTERN = re.compile(
-    r'rage[-_ ]?click|dead[-_ ]?click|error[-_ ]?click|console-error|feedback|exception|uncaught|\berror\b',
-    re.IGNORECASE,
-)
-_LANGFUSE_PAGE_SIZE = 100
-_LANGFUSE_MAX_PAGES = 200
-_LANGFUSE_DETAIL_BATCH = 20
-_LANGFUSE_MAX_ELAPSED_S = 4 * 60  # 4-minute wall-clock budget, matching console
-# Memory cap for accumulated trace bodies. Each trace can carry massive
-# input/output strings (tool args, model completions); without this cap a
-# noisy app will OOM the Lambda. 50 MiB is well above typical (a few KB per
-# trace × few hundred traces) and far below /tmp + RSS headroom.
-_LANGFUSE_MAX_DETAIL_BYTES = 50 * 1024 * 1024
 
 
-# Pool size accommodates the worst-case concurrency burst: outer pool of 6
-# (one per source) wraps an inner Loki pool of 8 + Langfuse detail pool of
-# 20. Cap at 32 to leave headroom on Lambda's ENI without artificially
-# serialising calls on hot hosts (Loki, ES). `maxsize` is per-host; the
-# pool itself can hold an unbounded number of host connection pools.
+# Pool size accommodates the worst-case concurrency burst: outer pool of 4
+# (one per source) wraps an inner Loki pool of 8. Cap at 32 to leave
+# headroom on Lambda's ENI without artificially serialising calls on hot
+# hosts (Loki, ES). `maxsize` is per-host; the pool itself can hold an
+# unbounded number of host connection pools.
 _HTTP_POOL_MAXSIZE = 32
 
 # Retry policy: 5 total tries with exponential backoff (urllib3 sleeps
@@ -739,7 +762,7 @@ _HTTP_RETRY: Any = None
 # read arbitrary local files (Semgrep flags this as
 # python.lang.security.audit.dynamic-urllib-use-detected). Every URL in this
 # module is built from CDK-set env vars (LOKI_ENDPOINT,
-# EB_LANGFUSE_BASE_URL, *_ES_ENDPOINT, FULLSTORY_MCP_URL) which are
+# *_ES_ENDPOINT) which are
 # `https://` by configuration, but defense-in-depth: enforce scheme +
 # netloc before handing the URL to urlopen so a corrupted env var cannot
 # turn into a `file:///etc/passwd` read.
@@ -782,8 +805,8 @@ def _get_http_pool() -> Any:
         backoff_jitter=0.25,
         status_forcelist=list(_HTTP_RETRY_STATUSES),
         # GET/POST: GET is idempotent so always safe; POST is included
-        # because Loki/ES/Langfuse query endpoints we POST to are read-only
-        # by API contract. A retry never re-creates a write side effect.
+        # because Loki/ES query endpoints we POST to are read-only by API
+        # contract. A retry never re-creates a write side effect.
         allowed_methods=frozenset(("GET", "POST")),
         respect_retry_after_header=True,
         raise_on_status=False,  # surface non-retryable failures via response, not exception
@@ -805,7 +828,7 @@ def _get_http_pool() -> Any:
 def _request_via_pool(method: str, url: str, headers: dict[str, str], body: bytes | None, timeout: int) -> Any:
     # Defense in depth: enforce https + non-empty netloc + no inline creds
     # for both transport branches. URL today is built from CDK env vars
-    # (LOKI_ENDPOINT, EB_LANGFUSE_BASE_URL, *_ES_ENDPOINT) — but Semgrep
+    # (LOKI_ENDPOINT, *_ES_ENDPOINT) — but Semgrep
     # can't tell that, and a future caller could pass a tainted URL. The
     # check is O(microseconds) compared to the network round-trip.
     _assert_http_url(url)
@@ -896,11 +919,73 @@ def _loki_env() -> str:
     return "prod" if (os.environ.get("ENVIRONMENT_NAME", "dev") == "prod") else "dev"
 
 
-def _loki_merged_query(app_id: str) -> str:
-    """Exact same merged Loki query as console's buildMergedLokiQuery (no cluster — Lambda doesn't resolve it)."""
-    job_pattern = "airo-agents|airo-preview-application|airo-publish-application"
-    env = _loki_env()
-    return f'{{job=~"({job_pattern})",env="{env}"}} |= "\\"app_id\\":\\"{app_id}\\""'
+# Structured-metadata rollout boundary. Before this instant, `app_id` is only
+# present as a JSON substring on the log line, so windows that start earlier
+# must fall back to the legacy `|=` line match. At/after it, `app_id` is
+# indexed as structured metadata and queried with the post-pipe `| app_id="…"`
+# label filter. Placeholder/configurable — adjust when the real cutover lands.
+LOKI_STRUCTURED_METADATA_CUTOVER = "2026-06-01T00:00:00Z"
+
+
+def _loki_selector(
+    plane: str,
+    app_id: str,
+    env: str,
+    *,
+    cluster: str | None = None,
+    service_name_re: str | None = None,
+    use_structured_metadata: bool = True,
+) -> str:
+    """Build a Loki query for the given plane scoped by cluster + service_name.
+
+    cluster + service_name are the LABELS that prune chunks; without them the
+    selector scans every plane stream (~386 GiB/hr in prod). `app_id` is
+    structured metadata (a post-pipe label filter), NOT a stream label — it
+    does not prune chunks, so it never substitutes for the label scoping. When
+    `use_structured_metadata` is False (windows before the cutover) we fall
+    back to the legacy JSON line-substring match.
+    """
+    labels = [f'env="{env}"', f'plane="{plane}"']
+    if cluster:
+        labels.append(f'cluster="{cluster}"')
+    if service_name_re:
+        labels.append(f'service_name=~"{service_name_re}"')
+    sel = "{" + ",".join(labels) + "}"
+    if use_structured_metadata:
+        return f'{sel} | app_id="{app_id}"'
+    return f'{sel} |= "\\"app_id\\":\\"{app_id}\\""'
+
+
+# Data-plane service_name stream label → investigator source id. Control-plane
+# streams carry plane="control" (no airo-* service_name) and route to
+# `control-plane`. Any unrecognised data-plane stream defaults to airo-agents
+# so a renamed/extra service never silently drops its lines.
+_LOKI_SERVICE_TO_SOURCE = {
+    "airo-agents": "airo-agents",
+    "airo-preview-application": "airo-preview",
+    "airo-publish-application": "airo-publish",
+}
+
+
+def _loki_service_to_source(service_name: str, plane: str = "") -> str:
+    if plane == "control":
+        return "control-plane"
+    return _LOKI_SERVICE_TO_SOURCE.get(service_name, "airo-agents")
+
+
+def _use_structured_metadata(window: "Window") -> bool:
+    """Structured metadata only for windows starting at/after the cutover.
+
+    ISO-8601 UTC strings (`…Z`, millisecond precision) compare correctly as
+    plain strings, but parse both sides defensively so a differing precision
+    or offset can't flip the comparison.
+    """
+    try:
+        return parse_iso(window.start) >= parse_iso(LOKI_STRUCTURED_METADATA_CUTOVER)
+    except (ValueError, TypeError):
+        # If the window start is unparseable, prefer the safe legacy match
+        # rather than risk an empty structured-metadata result.
+        return False
 
 
 # Loki direct-mode pagination knobs. Loki's /query_range caps a single
@@ -943,11 +1028,6 @@ def _fetch_loki_bucket(
     headers: dict[str, str] = {}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    job_to_source = {
-        "airo-agents": "airo-agents",
-        "airo-preview-application": "airo-preview",
-        "airo-publish-application": "airo-publish",
-    }
 
     logs: list[dict[str, Any]] = []
     end_ns = end_ns_initial
@@ -975,7 +1055,13 @@ def _fetch_loki_bucket(
             oldest_ts_ns: int | None = None
             for stream in resp.get("data", {}).get("result", []):
                 stream_labels = stream.get("stream", {})
-                job = stream_labels.get("job", "")
+                # Source splitting keys off the `service_name` stream label
+                # (the data-plane discriminator) plus `plane` for control-plane
+                # streams, since those have no airo-* service_name. `job` is no
+                # longer reliable under the structured-metadata schema.
+                service_name = stream_labels.get("service_name", "")
+                plane = stream_labels.get("plane", "")
+                source_id = _loki_service_to_source(service_name, plane)
                 for ts_str, line in stream.get("values", []):
                     page_lines += 1
                     try:
@@ -988,8 +1074,8 @@ def _fetch_loki_bucket(
                         parsed = json.loads(line)
                     except json.JSONDecodeError:
                         parsed = {"raw": line}
-                    parsed["_loki_stream_job"] = job
-                    parsed["_source_id"] = job_to_source.get(job, job)
+                    parsed["_loki_service_name"] = service_name
+                    parsed["_source_id"] = source_id
                     logs.append(parsed)
             pages += 1
             # Page didn't fill the limit (or returned nothing) → bucket fully
@@ -1018,6 +1104,12 @@ def _fetch_loki_bucket(
         return bucket.label, logs, False
 
 
+# Data-plane service_name selector. db-init / pre-start are short-lived
+# startup containers whose failures often explain a missing app, so they're
+# included alongside the three long-lived services.
+_LOKI_DATA_PLANE_SERVICE_RE = "airo-(agents|preview-application|publish-application|db-init|pre-start)"
+
+
 def _fetch_loki_all_sources(
     app_id: str,
     window: "Window",
@@ -1025,36 +1117,77 @@ def _fetch_loki_all_sources(
     timeout: int,  # noqa: ARG001 — kept for caller-signature parity; Loki uses its own constants
 ) -> dict[str, dict[str, Any]]:
     """
-    Fetches merged Loki logs for airo-agents / airo-preview / airo-publish
-    using time-bucketed queries (same as console). Returns a dict of
-    sourceId -> source_result, parallelised across buckets.
+    Fetches merged Loki logs for the data plane (airo-agents / airo-preview /
+    airo-publish, split by service_name) and the control plane
+    (plane="control"), using time-bucketed, cluster-scoped queries. Returns a
+    dict of sourceId -> source_result (including `control-plane`), parallelised
+    across (bucket × plane) fetches.
+
+    cluster + service_name LABELS are mandatory for cost/correctness: without
+    `cluster` the data-plane selector scans ~386 GiB/hr instead of ~1.5 GiB/hr.
+    When LOKI_CLUSTER is unset we DEGRADE — return empty-but-shaped incomplete
+    results for every source — rather than issue an unbounded scan.
     """
-    del timeout  # ES/Langfuse/FullStory still use it; Loki has its own budget
+    del timeout  # ES still uses it; Loki has its own budget
     endpoint = os.environ.get("LOKI_ENDPOINT", "").rstrip("/")
     api_key = os.environ.get("LOKI_API_KEY", "")
-    source_ids = ["airo-agents", "airo-preview", "airo-publish"]
+    env = _loki_env()
+    cluster = os.environ.get("LOKI_CLUSTER") or None
+    source_ids = ["airo-agents", "airo-preview", "airo-publish", "control-plane"]
 
-    if not endpoint:
-        empty = _build_source_result("", [], False, [{"bucket": "all", "start": window.start, "end": window.end, "error": "LOKI_ENDPOINT not set"}])
+    def _all_incomplete(reason: str) -> dict[str, dict[str, Any]]:
+        empty = _build_source_result(
+            "", [], False,
+            [{"bucket": "all", "start": window.start, "end": window.end, "error": reason}],
+        )
         return {sid: {**empty, "sourceId": sid} for sid in source_ids}
 
-    buckets = build_time_buckets(window, bucket_hours)
-    query = _loki_merged_query(app_id)
-    # Loki uses its own per-page timeout / per-bucket budget (constants
-    # above). The shared `timeout` arg drives ES/Langfuse/FullStory only —
-    # those are single-shot calls where the previous default was already
-    # adequate. Splitting the budget here avoids regressing the other
-    # sources when widening Loki's headroom.
+    if not endpoint:
+        return _all_incomplete("LOKI_ENDPOINT not set")
 
-    # Fetch all buckets in parallel
+    if not cluster:
+        # Mandatory label scoping is missing — refuse to run an unbounded scan.
+        print(
+            "[direct] LOKI_CLUSTER unset — skipping Loki fetch to avoid an "
+            "unbounded cross-cluster scan; sources marked incomplete",
+            file=sys.stderr,
+        )
+        return _all_incomplete("LOKI_CLUSTER not set — Loki fetch skipped (would be unbounded)")
+
+    buckets = build_time_buckets(window, bucket_hours)
+    use_sm = _use_structured_metadata(window)
+    # Two merged queries: data-plane (service_name-scoped) and control-plane
+    # (plane="control"). Both cluster-scoped. Each runs across every bucket.
+    data_query = _loki_selector(
+        "data", app_id, env,
+        cluster=cluster, service_name_re=_LOKI_DATA_PLANE_SERVICE_RE,
+        use_structured_metadata=use_sm,
+    )
+    control_query = _loki_selector(
+        "control", app_id, env,
+        cluster=cluster,
+        use_structured_metadata=use_sm,
+    )
+    # Loki uses its own per-page timeout / per-bucket budget (constants
+    # above). The shared `timeout` arg drives ES only.
+
     all_pages_by_source: dict[str, list[dict[str, Any]]] = {sid: [] for sid in source_ids}
     incomplete_by_source: dict[str, list[dict[str, Any]]] = {sid: [] for sid in source_ids}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(buckets), 8)) as pool:
+    # One unit of work per (query, bucket). Source splitting happens after the
+    # fetch via each log's `_source_id` (derived from service_name / plane in
+    # _fetch_loki_bucket), so the two queries' results merge cleanly.
+    fetch_units = [
+        (q, bucket)
+        for q in (data_query, control_query)
+        for bucket in buckets
+    ]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(fetch_units), 8)) as pool:
         futures = {
             pool.submit(_fetch_loki_bucket, endpoint, api_key, query, bucket,
                         _LOKI_PER_PAGE_TIMEOUT_S, _LOKI_PER_BUCKET_BUDGET_S): bucket
-            for bucket in buckets
+            for (query, bucket) in fetch_units
         }
         for future in concurrent.futures.as_completed(futures):
             bucket = futures[future]
@@ -1064,12 +1197,8 @@ def _fetch_loki_all_sources(
                 label, logs, ok = bucket.label, [], False
                 print(f"[direct] loki bucket {label} unexpected error: {err}", file=sys.stderr)
 
-            # Split merged logs by job → source
-            job_to_source = {
-                "airo-agents": "airo-agents",
-                "airo-preview-application": "airo-preview",
-                "airo-publish-application": "airo-publish",
-            }
+            # Split merged logs by service_name/plane → source (tagged upstream
+            # as `_source_id`).
             if logs:
                 by_source: dict[str, list[dict[str, Any]]] = {sid: [] for sid in source_ids}
                 for log in logs:
@@ -1132,106 +1261,416 @@ def _fetch_loki_all_sources(
     return results
 
 
-# ---- EB Langfuse --------------------------------------------------------
+# ---- Loki Stage-1 aggregation -------------------------------------------
+# Server-side level/service histogram via Loki metric queries. Computed with
+# `count_over_time` rolled up by `sum by (service_name, detected_level)` so the
+# digest is a handful of numbers, NOT a raw-line pull. Same mandatory
+# cluster + service_name label scoping as the bucket fetch (without `cluster`
+# the data-plane query scans ~386 GiB/hr) — when `cluster` is unset we DEGRADE
+# to a shaped soft-fail rather than issue an unbounded scan.
 
-def _fetch_langfuse_trace_detail(base_url: str, auth_header: str, trace_id: str, timeout: int) -> dict[str, Any] | None:
-    try:
-        return _http_get_json(f"{base_url}/api/public/traces/{trace_id}", {"Authorization": auth_header}, {}, timeout)
-    except Exception:  # noqa: BLE001
-        return None
+# Instant-query time format. The range fetch (`_fetch_loki_bucket`) builds
+# start/end as nanosecond-epoch strings (`int(ts.timestamp() * 1e9)`). Reuse
+# that exact format for the instant query's `time` param so both Loki paths
+# speak the same dialect.
+def _loki_ns(iso: str) -> str:
+    return str(int(parse_iso(iso).timestamp() * 1_000_000_000))
 
 
-def _fetch_langfuse_all(app_id: str, window: "Window", timeout: int) -> dict[str, Any]:
-    """Full pagination of Langfuse EB traces matching appId, with per-trace detail fetch."""
-    base_url = os.environ.get("EB_LANGFUSE_BASE_URL", "").rstrip("/")
-    pub_key = os.environ.get("EB_LANGFUSE_PUBLIC_KEY", "")
-    sec_key = os.environ.get("EB_LANGFUSE_SECRET_KEY", "")
+def _loki_agg_query(
+    plane: str,
+    app_id: str,
+    env: str,
+    window_s: str,
+    *,
+    cluster: str | None,
+    service_name_re: str | None = None,
+) -> str:
+    """Instant-query LogQL: per (service_name, detected_level) line counts.
 
-    if not base_url or not pub_key or not sec_key:
-        return _build_source_result("langfuse", [], False, [{"bucket": "all", "start": window.start, "end": window.end, "error": "EB_LANGFUSE_* vars not set"}])
+    `window_s` is a LogQL duration (e.g. "1h"/"24h") covering the whole
+    window. Reuses `_loki_selector` for the inner stream selector so the
+    cluster + service_name label scoping (and the structured-metadata vs
+    legacy app_id filter) stays identical to the raw-bucket path.
+    """
+    selector = _loki_selector(
+        plane, app_id, env,
+        cluster=cluster, service_name_re=service_name_re,
+    )
+    return (
+        f"sum by (service_name, detected_level) "
+        f"(count_over_time({selector}[{window_s}]))"
+    )
 
-    auth_header = "Basic " + _base64.b64encode(f"{pub_key}:{sec_key}".encode()).decode()
-    headers = {"Authorization": auth_header}
-    # Exact filter format from debug-console buildAppIdFilter
-    app_id_filter = json.dumps([{
-        "type": "stringObject",
-        "column": "metadata",
-        "key": "business_data_appId",
-        "operator": "=",
-        "value": app_id,
-    }])
 
-    page = 1
-    total_pages = 1
-    all_trace_ids: list[str] = []
-    incomplete: list[dict[str, Any]] = []
-    budget_start = time.time()
+def _parse_loki_agg(resp: Any) -> dict[tuple[str, str], int]:
+    """Parse a Loki instant-query metric response into a (service, level) map.
 
-    while page <= total_pages and page <= _LANGFUSE_MAX_PAGES:
-        if time.time() - budget_start > _LANGFUSE_MAX_ELAPSED_S:
-            incomplete.append({"bucket": f"p{page:03d}", "start": window.start, "end": window.end, "error": f"4-minute budget exceeded after {page - 1} pages"})
-            break
+    Reads `resp["data"]["result"][].metric` (service_name / detected_level,
+    missing → "unknown") and `value[1]` (string int). Defensive: any missing
+    key or unparseable value skips that series rather than throwing.
+    """
+    out: dict[tuple[str, str], int] = {}
+    if not isinstance(resp, dict):
+        return out
+    result = field_value(resp, "data.result")
+    if not isinstance(result, list):
+        return out
+    for series in result:
+        if not isinstance(series, dict):
+            continue
+        metric = series.get("metric")
+        metric = metric if isinstance(metric, dict) else {}
+        service_name = str(metric.get("service_name") or "unknown")
+        detected_level = str(metric.get("detected_level") or "unknown")
+        value = series.get("value")
+        if not isinstance(value, (list, tuple)) or len(value) < 2:
+            continue
         try:
-            resp = _http_get_json(
-                f"{base_url}/api/public/traces",
-                headers,
-                {
-                    "page": str(page),
-                    "limit": str(_LANGFUSE_PAGE_SIZE),
-                    "filter": app_id_filter,
-                    "fromTimestamp": window.start,
-                    "toTimestamp": window.end,
-                },
-                timeout,
-            )
-            data = resp.get("data", [])
-            all_trace_ids.extend(t["id"] for t in data if isinstance(t, dict) and isinstance(t.get("id"), str))
-            meta_pages = resp.get("meta", {}).get("totalPages", 1)
-            total_pages = min(int(meta_pages), _LANGFUSE_MAX_PAGES)
-            page += 1
-        except Exception as err:  # noqa: BLE001
-            incomplete.append({"bucket": f"p{page:03d}", "start": window.start, "end": window.end, "error": str(err)})
-            break
+            count = int(value[1])
+        except (TypeError, ValueError):
+            continue
+        out[(service_name, detected_level)] = out.get((service_name, detected_level), 0) + count
+    return out
 
-    # Fetch trace details in parallel batches of 20 (exact same as console).
-    # Stop accumulating once total serialized size exceeds the memory cap to
-    # bound RSS on noisy apps. Outstanding futures still complete (their
-    # results are just dropped) so we don't tear down the pool mid-flight.
-    details: list[dict[str, Any]] = []
-    accumulated_bytes = 0
-    truncated = False
-    with concurrent.futures.ThreadPoolExecutor(max_workers=_LANGFUSE_DETAIL_BATCH) as pool:
-        for offset in range(0, len(all_trace_ids), _LANGFUSE_DETAIL_BATCH):
-            if truncated:
+
+def _agg_soft_fail(window: "Window", cluster: str | None, reason: str) -> dict[str, Any]:
+    return {
+        "levelHistogram": {},
+        "byService": {},
+        "windowLabel": window.label,
+        "cluster": cluster,
+        "error": reason,
+    }
+
+
+def _collect_aggregation(
+    app_id: str,
+    window: "Window",
+    env: str,
+    cluster: str | None,
+    timeout: int,
+) -> dict[str, Any]:
+    """Run the Stage-1 data-plane + control-plane Loki aggregations.
+
+    Returns a compact digest: a level histogram (summed across services) and a
+    per-service breakdown. Cluster-scoped only — an unset cluster or any error
+    returns a shaped soft-fail (`error` key, empty maps) and never issues an
+    unbounded scan or throws.
+    """
+    endpoint = os.environ.get("LOKI_ENDPOINT", "").rstrip("/")
+    if not endpoint:
+        return _agg_soft_fail(window, cluster, "LOKI_ENDPOINT not set")
+    if not cluster:
+        return _agg_soft_fail(
+            window, cluster,
+            "LOKI_CLUSTER not set — aggregation skipped (would be unbounded)",
+        )
+
+    api_key = os.environ.get("LOKI_API_KEY", "")
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    # Window span as a LogQL range-vector duration. `window.hours` is always
+    # ≥1 (parse_window floors at 1), so this is a valid duration.
+    window_s = f"{max(1, window.hours)}h"
+    time_ns = _loki_ns(window.end)
+    url = f"{endpoint}/loki/api/v1/query"
+
+    data_query = _loki_agg_query(
+        "data", app_id, env,
+        window_s, cluster=cluster, service_name_re=_LOKI_DATA_PLANE_SERVICE_RE,
+    )
+    control_query = _loki_agg_query(
+        "control", app_id, env, window_s, cluster=cluster,
+    )
+
+    try:
+        combined: dict[tuple[str, str], int] = {}
+        for query in (data_query, control_query):
+            resp = _http_get_json(url, headers, {"query": query, "time": time_ns}, timeout)
+            for key, count in _parse_loki_agg(resp).items():
+                combined[key] = combined.get(key, 0) + count
+    except Exception as err:  # noqa: BLE001 — soft-fail; never break the bundle
+        print(f"[direct] loki aggregation failed: {err}", file=sys.stderr)
+        return _agg_soft_fail(window, cluster, compact_text(f"{type(err).__name__}: {err}", 240))
+
+    level_histogram: dict[str, int] = {}
+    by_service: dict[str, dict[str, int]] = {}
+    for (service_name, level), count in combined.items():
+        level_histogram[level] = level_histogram.get(level, 0) + count
+        service_levels = by_service.setdefault(service_name, {})
+        service_levels[level] = service_levels.get(level, 0) + count
+
+    return {
+        "levelHistogram": level_histogram,
+        "byService": by_service,
+        "windowLabel": window.label,
+        "cluster": cluster,
+    }
+
+
+# ---- Stage-2/3 template mining + digest ---------------------------------
+# Stage 2 mines log templates (drain3 in prod, signature-masker fallback in
+# test/local) so a noisy app's thousands of error lines collapse into a
+# handful of ranked patterns. Stage 3 combines the Stage-1 aggregation
+# histogram, those mined templates, and the verbatim rare-error signatures
+# into one compact digest the agent reads FIRST — before any raw page.
+
+# Per-source cap on lines fed to the miner. A pathological app can emit tens
+# of thousands of error lines in a window; mining all of them blows memory
+# and Lambda wall time for no extra signal (templates converge well before
+# 2000 lines). Bound the sample so cost stays predictable.
+_TEMPLATE_MINE_MAX_LINES_PER_SOURCE = 2000
+# Top-K templates kept across all sources in the digest.
+_DIGEST_MAX_TEMPLATES = 15
+# Verbatim rare-error lines kept across all sources in the digest.
+_DIGEST_MAX_RARE_ERRORS = 50
+
+# Module-level masking source. `LogSource.signature_for` is stateless (pure
+# string normalisation), so any registered source's bound method gives the
+# identical masking the index already uses. Reuse the frontend source as the
+# canonical masker for the drain3-absent fallback path.
+_MASKING_SOURCE = LOG_SOURCES["airo-app-frontend"]
+
+
+def _mask_line(line: str) -> str:
+    """Mask one raw line to its signature via the existing index masker.
+
+    Identical normalisation to `build_index`'s `signature_for` (IDs, numbers,
+    urls, hex → placeholders), so the fallback template-mining path groups
+    lines exactly the way the rest of the pipeline already groups signatures.
+    """
+    return _MASKING_SOURCE.signature_for(line)
+
+
+def mine_templates(lines: list[str]) -> list[dict[str, Any]]:
+    """Cluster log lines into parameterised templates, ranked by frequency.
+
+    Output shape (both paths identical):
+        [{"template": str, "count": int, "examples": list[str]}, ...]
+    sorted by count descending. `examples` holds up to 2 verbatim raw lines
+    that mapped to the template.
+
+    drain3 path (production): feed each line to the miner, then read back
+    `miner.drain.clusters`. We track the first 2 raw lines per cluster id
+    ourselves (drain3 stores only the template, not the raw lines).
+
+    Fallback path (test/local — drain3 absent): group lines by `_mask_line`
+    (the existing signature masker). Same shape, dependency-free, so the unit
+    suite runs without drain3 while production gets true template mining.
+    """
+    if not lines:
+        return []
+
+    if _DRAIN3_AVAILABLE:
+        miner = TemplateMiner()
+        examples_by_cluster: dict[int, list[str]] = {}
+        for line in lines:
+            text = "" if line is None else str(line)
+            result = miner.add_log_message(text)
+            cluster_id = result.get("cluster_id")
+            if cluster_id is not None:
+                bucket = examples_by_cluster.setdefault(cluster_id, [])
+                if len(bucket) < 2:
+                    bucket.append(text)
+        templates = [
+            {
+                "template": cluster.get_template(),
+                "count": cluster.size,
+                "examples": examples_by_cluster.get(cluster.cluster_id, []),
+            }
+            for cluster in miner.drain.clusters
+        ]
+        templates.sort(key=lambda t: t["count"], reverse=True)
+        return templates
+
+    # Fallback: group by masked signature.
+    counts: Counter[str] = Counter()
+    examples_by_template: dict[str, list[str]] = {}
+    for line in lines:
+        text = "" if line is None else str(line)
+        masked = _mask_line(text)
+        counts[masked] += 1
+        bucket = examples_by_template.setdefault(masked, [])
+        if len(bucket) < 2:
+            bucket.append(text)
+    templates = [
+        {"template": template, "count": count, "examples": examples_by_template.get(template, [])}
+        for template, count in counts.items()
+    ]
+    templates.sort(key=lambda t: t["count"], reverse=True)
+    return templates
+
+
+def build_log_digest(bundle: dict[str, Any]) -> dict[str, Any]:
+    """Combine Stage-1 aggregation + mined templates + rare errors.
+
+    Returns a compact dict the agent reads first:
+        {
+          "aggregation": <bundle["aggregation"]>,   # Stage-1 histograms
+          "templates":  [{template,count,examples,sourceId}, ...],  # Stage-2
+          "rareErrors": [{signature,count,rawRef,sourceId}, ...],   # Stage-3
+        }
+
+    `templates` are mined from each source's error/warn-leaning raw MESSAGES
+    (capped per source), tagged with sourceId, top-K across sources by count.
+    `rareErrors` reuses each source's already-computed `rareErrorSignatures`,
+    kept verbatim, tagged with sourceId, capped overall.
+    """
+    sources = bundle.get("sources")
+    sources = sources if isinstance(sources, list) else []
+
+    template_rows: list[dict[str, Any]] = []
+    rare_errors: list[dict[str, Any]] = []
+
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        source_id = str(source.get("sourceId") or "unknown")
+        log_source = LOG_SOURCES.get(source_id, _MASKING_SOURCE)
+
+        # Gather error/warn-leaning raw messages, capped per source so a noisy
+        # app can't blow memory/time.
+        messages: list[str] = []
+        raw_pages = source.get("rawPages")
+        raw_pages = raw_pages if isinstance(raw_pages, list) else []
+        for page in raw_pages:
+            if len(messages) >= _TEMPLATE_MINE_MAX_LINES_PER_SOURCE:
                 break
-            batch = all_trace_ids[offset:offset + _LANGFUSE_DETAIL_BATCH]
-            futures = [pool.submit(_fetch_langfuse_trace_detail, base_url, auth_header, tid, timeout) for tid in batch]
-            for f in concurrent.futures.as_completed(futures):
-                result = f.result()
-                if not result:
+            if not isinstance(page, dict):
+                continue
+            logs = page.get("logs")
+            logs = logs if isinstance(logs, list) else []
+            for log in logs:
+                if len(messages) >= _TEMPLATE_MINE_MAX_LINES_PER_SOURCE:
+                    break
+                if not isinstance(log, dict):
                     continue
-                if accumulated_bytes >= _LANGFUSE_MAX_DETAIL_BYTES:
-                    if not truncated:
-                        truncated = True
-                        incomplete.append({
-                            "bucket": "details",
-                            "start": window.start,
-                            "end": window.end,
-                            "error": f"detail accumulation hit {_LANGFUSE_MAX_DETAIL_BYTES // (1024 * 1024)} MiB cap; remaining traces skipped",
-                        })
-                    continue
-                # Approximate serialized size — json.dumps once per trace is
-                # cheaper than rebuilding the whole list later just to size
-                # it. This is bookkeeping only; the trace itself is stored
-                # as the original dict so JSON roundtrip cost stays a one-off.
-                try:
-                    accumulated_bytes += len(json.dumps(result, separators=(",", ":")))
-                except (TypeError, ValueError):
-                    accumulated_bytes += 4096  # conservative fallback
-                details.append(result)
+                if log_source.is_error(log):
+                    messages.append(log_source.message_for(log))
 
-    raw_pages = [{"bucket": "langfuse", "page": 0, "logs": details}] if details else []
-    return _build_source_result("langfuse", raw_pages, len(incomplete) == 0, incomplete or None)
+        for tmpl in mine_templates(messages):
+            template_rows.append({**tmpl, "sourceId": source_id})
+
+        # Verbatim rare-error signatures (already count<=3, error-ish).
+        index = source.get("index")
+        index = index if isinstance(index, dict) else {}
+        source_rares = index.get("rareErrorSignatures")
+        source_rares = source_rares if isinstance(source_rares, list) else []
+        for rare in source_rares:
+            if isinstance(rare, dict):
+                rare_errors.append({**rare, "sourceId": source_id})
+
+    template_rows.sort(key=lambda t: t.get("count", 0), reverse=True)
+
+    return {
+        "aggregation": bundle.get("aggregation", {}),
+        "templates": template_rows[:_DIGEST_MAX_TEMPLATES],
+        "rareErrors": rare_errors[:_DIGEST_MAX_RARE_ERRORS],
+    }
+
+
+# ---- Stage-4 drill-on-demand raw line fetch -----------------------------
+# After reading the digest (Stage-1/2/3), the agent often needs the actual
+# raw Loki lines for ONE service/template/window to confirm a hypothesis.
+# `fetch_log_lines` is that targeted drill: a single cluster-scoped
+# query_range bounded by `limit`, with an optional `|=` line filter for the
+# template substring. Cluster-scoped only — an unset cluster soft-fails
+# rather than issue an unbounded scan, exactly like the bucket/aggregation
+# paths. Never throws; any error returns a shaped soft-fail.
+
+
+def fetch_log_lines(
+    app_id: str,
+    *,
+    plane: str = "data",
+    service_name: str | None = None,
+    contains: str | None = None,
+    window: str = "1h",
+    env: str | None = None,
+    cluster: str | None = None,
+    limit: int = 100,
+    timeout: int = 30,
+) -> dict[str, Any]:
+    """Pull raw Loki lines for one service/template/window (drill-on-demand).
+
+    `service_name` is an exact service (e.g. "airo-preview-application") that
+    fills the `service_name_re` regex slot (an exact name works as a regex);
+    None omits it so the query covers every service in the plane+cluster.
+    `contains` appends a `|= "<contains>"` line filter (embedded quotes
+    escaped). Returns {"ok": True, "lines": [...], "count": n} newest-first,
+    capped to `limit`. Cluster-scoped: an unset cluster (or any error) returns
+    {"ok": False, "error": str, "lines": []} and never issues an unbounded
+    scan.
+    """
+    env = env or _loki_env()
+    cluster = cluster or os.environ.get("LOKI_CLUSTER") or None
+    if not cluster:
+        # Mandatory label scoping is missing — refuse an unbounded scan.
+        return {"ok": False, "error": "cluster unavailable", "lines": []}
+
+    try:
+        endpoint = os.environ.get("LOKI_ENDPOINT", "").rstrip("/")
+        if not endpoint:
+            return {"ok": False, "error": "LOKI_ENDPOINT not set", "lines": []}
+
+        win = parse_window(window)
+        query = _loki_selector(
+            plane, app_id, env,
+            cluster=cluster,
+            service_name_re=(service_name or None),
+            use_structured_metadata=_use_structured_metadata(win),
+        )
+        if contains:
+            # Append a line-substring filter. Escape embedded double-quotes so
+            # the LogQL string literal stays well-formed.
+            escaped = contains.replace('"', '\\"')
+            query = f'{query} |= "{escaped}"'
+
+        api_key = os.environ.get("LOKI_API_KEY", "")
+        headers: dict[str, str] = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        resp = _http_get_json(
+            f"{endpoint}/loki/api/v1/query_range",
+            headers,
+            {
+                "query": query,
+                "start": _loki_ns(win.start),
+                "end": _loki_ns(win.end),
+                "limit": str(limit),
+                "direction": "backward",
+            },
+            timeout,
+        )
+
+        lines: list[dict[str, Any]] = []
+        result = field_value(resp, "data.result")
+        result = result if isinstance(result, list) else []
+        for stream in result:
+            if not isinstance(stream, dict):
+                continue
+            stream_labels = stream.get("stream")
+            stream_labels = stream_labels if isinstance(stream_labels, dict) else {}
+            svc = stream_labels.get("service_name")
+            for value in stream.get("values", []):
+                if not isinstance(value, (list, tuple)) or len(value) < 2:
+                    continue
+                ts, line = value[0], value[1]
+                lines.append({"ts": ts, "line": str(line), "service_name": svc})
+
+        # direction=backward returns each stream newest-first, but multiple
+        # streams interleave by stream, not globally. Re-sort by ts descending
+        # (ns strings sort lexicographically same as numerically while equal
+        # width) then cap to `limit`.
+        lines.sort(key=lambda row: str(row.get("ts") or ""), reverse=True)
+        lines = lines[:limit]
+        return {"ok": True, "lines": lines, "count": len(lines)}
+    except Exception as err:  # noqa: BLE001 — soft-fail; never throw
+        return {"ok": False, "error": compact_text(f"{type(err).__name__}: {err}", 240), "lines": []}
 
 
 # ---- Elasticsearch ------------------------------------------------------
@@ -1337,274 +1776,6 @@ def _fetch_es_source(
     return _fetch_es_paginated(endpoint, api_key, index, app_id_query, "@timestamp", start_iso, end_iso, source_id, timeout)
 
 
-def _es_control_plane_index() -> str:
-    env = "prod" if (os.environ.get("ENVIRONMENT_NAME", "dev") == "prod") else "dev"
-    if env == "prod":
-        return "pagely-mgmt-worker-hosting-activity-prod,pagely-mgmt-worker-airo-activity-prod"
-    return "pagely-mgmt-worker-hosting-activity-dev,pagely-mgmt-worker-airo-activity-dev"
-
-
-# ---- FullStory MCP -------------------------------------------------------
-
-def _fullstory_mcp_call(auth_header: str, mcp_url: str, tool_name: str, args: dict[str, Any], timeout: int) -> Any:
-    """
-    Calls a FullStory MCP tool via JSON-RPC 2.0.
-    Handles both application/json and text/event-stream responses (same as console).
-    Routes through the urllib3 pool so retries (429/5xx) and connection
-    reuse apply to FullStory just like Loki/ES/Langfuse.
-    """
-    # mcp_url comes from FULLSTORY_MCP_URL env var (CDK-set, defaults to
-    # api.fullstory.com). Defense-in-depth: block file:// + any non-https
-    # scheme + inline creds before either transport branch even sees it.
-    _assert_http_url(mcp_url)
-    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": tool_name, "arguments": args}}).encode()
-    pool = _get_http_pool()
-    headers = {
-        "Authorization": auth_header,
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream",
-    }
-    if pool is None:
-        # Stdlib fallback (test envs without urllib3 installed). Production
-        # always has urllib3 — see Dockerfile.
-        # _assert_http_url above already enforced scheme + netloc + creds.
-        # Semgrep can't trace through the assertion (covered by
-        # AssertHttpUrlSsrfTest); suppress both rules at the call site.
-        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-        # nosemgrep: godaddy.python.security.packages.ssrf
-        req = urllib.request.Request(mcp_url, data=body, headers=headers, method="POST")  # nosemgrep
-        try:
-            # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-            # nosemgrep: godaddy.python.security.packages.ssrf
-            with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310  # nosemgrep
-                raw = resp.read().decode()
-        except urllib.error.HTTPError as err:
-            raise RuntimeError(f"FullStory MCP HTTP {err.code}: {err.read()[:200].decode(errors='replace')}") from err
-    else:
-        try:
-            resp = pool.request("POST", mcp_url, body=body, headers=headers, timeout=timeout, decode_content=True)
-        except urllib3.exceptions.MaxRetryError as err:
-            raise RuntimeError(f"FullStory MCP retries exhausted: {err.reason}") from err
-        except urllib3.exceptions.HTTPError as err:
-            raise RuntimeError(f"FullStory MCP transport error: {err}") from err
-        if resp.status >= 400:
-            preview = resp.data[:200].decode(errors="replace") if resp.data else ""
-            raise RuntimeError(f"FullStory MCP HTTP {resp.status}: {preview}")
-        raw = resp.data.decode("utf-8") if resp.data else ""
-
-    # Handle SSE format: extract last data: line containing the JSON-RPC response
-    text = raw
-    if "data:" in raw:
-        for line in reversed(raw.splitlines()):
-            stripped = line.strip()
-            if stripped.startswith("data:"):
-                text = stripped[5:].strip()
-                break
-
-    try:
-        rpc = json.loads(text)
-    except json.JSONDecodeError:
-        raise RuntimeError(f"FullStory MCP non-JSON response: {text[:200]}")
-
-    if rpc.get("error"):
-        err_obj = rpc["error"]
-        raise RuntimeError(f"FullStory MCP tool {tool_name} failed: {err_obj.get('message', err_obj)}")
-
-    # Extract text content from result
-    content = rpc.get("result", {}).get("content", [])
-    text_item = next((c for c in content if isinstance(c, dict) and c.get("type") == "text"), None)
-    if not text_item:
-        raise RuntimeError(f"FullStory MCP tool {tool_name} returned no text content")
-
-    raw_text = text_item["text"]
-    # Try JSON parse first (build_segment + get_sessions return JSON strings)
-    try:
-        return json.loads(raw_text)
-    except json.JSONDecodeError:
-        return raw_text  # get_session_events returns plain transcript text
-
-
-def _parse_fullstory_url(url: str) -> dict[str, Any] | None:
-    """Exact port of parseFullstorySessionUrl from console's fullstory-mcp-client.ts."""
-    import re as _re
-    try:
-        from urllib.parse import urlparse as _urlparse, unquote as _unquote
-        parsed = _urlparse(url)
-        pathname = _unquote(parsed.path)
-        match = _re.search(r'/(?:client-session|session)/([^/:?#]+):([^/:?#]+)(?::(\d+))?', pathname)
-        if not match:
-            return None
-        device_id, session_id, anchor_raw = match.group(1), match.group(2), match.group(3)
-        uuid_pat = _re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', _re.IGNORECASE)
-        kind = 'uuid' if (uuid_pat.match(device_id) or uuid_pat.match(session_id)) else 'numeric'
-        anchor_ms = int(anchor_raw) if anchor_raw and len(anchor_raw) >= 10 else None
-        return {"deviceId": device_id, "sessionId": session_id, "kind": kind, "anchorEpochMs": anchor_ms}
-    except Exception:  # noqa: BLE001
-        return None
-
-
-def _parse_event_line_offset(line: str, prev_offset: int) -> int:
-    import re as _re
-    abs_match = _re.match(r'^\s*\[(\d+):(\d{1,2})\]', line)
-    if abs_match:
-        return int(abs_match.group(1)) * 60 + int(abs_match.group(2))
-    rel_match = _re.search(r'\(\+(\d+)s\)', line)
-    if rel_match:
-        return prev_offset + int(rel_match.group(1))
-    return prev_offset
-
-
-def _normalize_fullstory_events(session: dict[str, Any], events_text: str) -> list[dict[str, Any]]:
-    """Port of normalizeFullstorySessionEvents — same event-line parsing, timestamp logic."""
-    lines = [l.rstrip() for l in events_text.split('\n') if l.strip() and not l.startswith('#') and not l.startswith('<<<') and not l.startswith('>>>')]
-    # Compute max offset to determine session start
-    max_offset = 0
-    cursor = 0
-    for line in lines:
-        cursor = _parse_event_line_offset(line, cursor)
-        if cursor > max_offset:
-            max_offset = cursor
-    anchor_ms = session.get("anchorEpochMs")
-    session_start_ms = (anchor_ms - max_offset * 1000) if anchor_ms else 0
-
-    logs: list[dict[str, Any]] = []
-    offset = 0
-    for line in lines:
-        offset = _parse_event_line_offset(line, offset)
-        level = 'error' if _FULLSTORY_PAIN_PATTERN.search(line) else 'info'
-        if level != 'error' and len(logs) >= _FULLSTORY_MAX_EVENT_LINES:
-            continue
-        ts = datetime.fromtimestamp((session_start_ms + offset * 1000) / 1000, tz=timezone.utc).isoformat()
-        kind_match = re.search(r'\b(navigate|click|element-seen|rage-click|dead-click|error-click|console-error|feedback|page-view)\b', line, re.IGNORECASE)
-        logs.append({
-            "id": f"{session.get('sessionId', 'x')}-{offset}-{len(logs)}",
-            "timestamp": ts,
-            "level": level,
-            "message": line.strip()[:500],
-            "event": kind_match.group(1).lower() if kind_match else None,
-            "sourceId": "fullstory",
-            "raw": {
-                "device_id": session.get("deviceId"),
-                "session_id": session.get("sessionId"),
-                "session_url": session.get("sessionUrl"),
-                "offset_seconds": offset,
-                "line": line.strip(),
-            },
-        })
-    return logs
-
-
-def _fetch_fullstory_all(app_id: str, window: "Window", fullstory_url: str | None, timeout: int) -> dict[str, Any]:
-    """
-    Exact port of collectFullstoryEvidence from console — same MCP tool sequence,
-    same session limit, same UUID/numeric URL handling, same event transcript parsing.
-    """
-    api_key = os.environ.get("FULLSTORY_API_KEY", "")
-    mcp_url = os.environ.get("FULLSTORY_MCP_URL", _FULLSTORY_MCP_URL_DEFAULT)
-    window_start = window.start
-    window_end = window.end
-
-    if not api_key:
-        return _build_source_result("fullstory", [], False, [{"bucket": "all", "start": window_start, "end": window_end, "error": "FULLSTORY_API_KEY not set"}])
-
-    auth_header = f"Basic {api_key}"
-    sessions: list[dict[str, Any]] = []
-    incomplete: list[dict[str, Any]] = []
-    notes: list[str] = []
-    complete = True
-    fell_back = False
-
-    if fullstory_url:
-        parsed = _parse_fullstory_url(fullstory_url)
-        if not parsed:
-            incomplete.append({"bucket": "url", "start": window_start, "end": window_end, "error": f"unparseable FullStory URL: {fullstory_url}"})
-            complete = False
-        elif parsed["kind"] == "uuid":
-            notes.append(f"FullStory URL uses UUID client-session IDs (not resolvable via API); fell back to segment discovery for appId {app_id}")
-            fell_back = True
-        else:
-            sessions.append({**parsed, "sessionUrl": fullstory_url})
-
-    if not fullstory_url or fell_back:
-        # FullStory segments query "users who visited ... in the last N days"
-        # — N is anchored to *now*, not to the window's span. If the user
-        # asks for a window that's 12h wide but starting 5 days ago, the
-        # segment must look back 5+ days (else it misses the target). Cap
-        # at 7 days to match FullStory retention defaults.
-        now = datetime.now(timezone.utc)
-        elapsed_ms = max(0, int((now - parse_iso(window.start)).total_seconds() * 1000))
-        lookback_days = min(7, max(1, -(-elapsed_ms // (24 * 3600 * 1000))))  # ceiling div
-        segment_query = f"users who visited a page containing /develop/{app_id} in the last {lookback_days} days"
-        try:
-            segment_name = f"airo-investigate-{app_id}-{int(time.time() * 1000)}"
-            segment = _fullstory_mcp_call(auth_header, mcp_url, "build_segment", {"query": segment_query, "name": segment_name}, timeout)
-            if not isinstance(segment, dict) or not segment.get("segment_id"):
-                raise RuntimeError("build_segment returned no segment_id")
-            session_list = _fullstory_mcp_call(auth_header, mcp_url, "get_sessions", {"segment_id": segment["segment_id"], "limit": _FULLSTORY_LIST_LIMIT}, timeout)
-            # `get_sessions` should return a dict with a `sessions` array,
-            # but the MCP wrapper has a transcript-string fallthrough. Guard
-            # explicitly so a future protocol shift doesn't surface as
-            # AttributeError("'str' object has no attribute 'get'").
-            if not isinstance(session_list, dict):
-                raise RuntimeError(f"get_sessions returned non-dict: {type(session_list).__name__}")
-            sessions_field = session_list.get("sessions", [])
-            found = sessions_field if isinstance(sessions_field, list) else []
-            picked = found[:_FULLSTORY_MAX_SESSIONS]
-            sessions.extend(picked)
-            if len(found) > len(picked):
-                notes.append(f"segment matched {len(found)} sessions; fetched the {len(picked)} most recent")
-        except Exception as err:  # noqa: BLE001
-            complete = False
-            incomplete.append({"bucket": "discovery", "start": window_start, "end": window_end, "error": str(err)})
-
-    if not sessions and complete:
-        incomplete.append({"bucket": "discovery", "start": window_start, "end": window_end, "error": f"no FullStory sessions found for appId {app_id}"})
-        complete = False
-
-    # Fetch session events in parallel (same as console's Promise.all)
-    raw_pages: list[dict[str, Any]] = []
-    def _get_events(idx_session: tuple[int, dict[str, Any]]) -> tuple[int, dict[str, Any], list[dict[str, Any]], str | None]:
-        idx, session = idx_session
-        try:
-            # FullStory MCP rejects numeric device_id/session_id values
-            # ("expected string for device_id, got number:5.229e+15"). The
-            # `get_sessions` API returns these IDs as integers — coerce to
-            # string before forwarding so large numerics don't render in
-            # scientific notation either.
-            device_id_raw = session.get("deviceId") or session.get("device_id")
-            session_id_raw = session.get("sessionId") or session.get("session_id")
-            events_resp = _fullstory_mcp_call(
-                auth_header, mcp_url, "get_session_events",
-                {"device_id": str(device_id_raw) if device_id_raw is not None else None,
-                 "session_id": str(session_id_raw) if session_id_raw is not None else None},
-                timeout,
-            )
-            # `_fullstory_mcp_call` may return either a dict (JSON-RPC result)
-            # or the raw transcript string. Hoist the type check once so we
-            # don't risk calling `.get()` on a string further down.
-            is_dict = isinstance(events_resp, dict)
-            events_text = events_resp.get("events", "") if is_dict else (events_resp if isinstance(events_resp, str) else "")
-            if not events_text:
-                return idx, session, [], "empty events"
-            resp_session_url = events_resp.get("session_url") if is_dict else None
-            session_url = session.get("sessionUrl") or session.get("session_url") or resp_session_url
-            merged = {**session, "sessionUrl": session_url}
-            return idx, merged, _normalize_fullstory_events(merged, events_text), None
-        except Exception as err:  # noqa: BLE001
-            return idx, session, [], str(err)
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=_FULLSTORY_MAX_SESSIONS) as pool:
-        for idx, session, logs, error in pool.map(_get_events, enumerate(sessions)):
-            bucket = f"s{str(idx + 1).zfill(2)}-{session.get('sessionId') or session.get('session_id', 'x')}"
-            if error:
-                complete = False
-                incomplete.append({"bucket": bucket, "start": window_start, "end": window_end, "error": error})
-            else:
-                raw_pages.append({"page": idx, "bucket": bucket, "logs": logs})
-
-    return _build_source_result("fullstory", raw_pages, complete, incomplete or None)
-
-
 def _enrich_source_index(
     source_result: dict[str, Any],
     app_id: str,
@@ -1613,7 +1784,7 @@ def _enrich_source_index(
     """Mirror debug-console buildEvidenceIndex on a direct-mode source result.
 
     Loki sources are already enriched by `_fetch_loki_all_sources` because
-    they're bucket-fetched. Langfuse/ES/FullStory take a flat path through
+    they're bucket-fetched. ES sources take a flat path through
     `_build_source_result` that leaves `topSignatures`/`rareErrorSignatures`
     empty — Claude then has to fall back to scanning raw pages, burning
     turns. Re-running `build_index()` here produces the same shape every
@@ -1670,9 +1841,9 @@ def _enrich_source_index(
     return enriched
 
 
-def fetch_direct_evidence(app_id: str, window_label: str, fullstory_url: str | None, timeout: int) -> dict[str, Any]:
+def fetch_direct_evidence(app_id: str, window_label: str, timeout: int) -> dict[str, Any]:
     """
-    Builds an evidence bundle by querying Loki / EB Langfuse / ES directly.
+    Builds an evidence bundle by querying Loki / ES directly.
     Exact same queries as debug-console /api/investigate-evidence.
     All sources fetched in parallel. Returns the same structure as the console
     endpoint so write_batched_evidence processes it unchanged.
@@ -1685,57 +1856,62 @@ def fetch_direct_evidence(app_id: str, window_label: str, fullstory_url: str | N
     # 7d direct-mode invocations into ~168 buckets.
     bucket_hours = None
 
-    # Dispatch all independent sources in parallel (6 workers — one per source group)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+    # Dispatch all independent sources in parallel (one per source group).
+    # control-plane now comes from Loki (plane="control") inside
+    # _fetch_loki_all_sources; the only remaining ES source is the airo-app
+    # frontend.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         loki_future = pool.submit(_fetch_loki_all_sources, app_id, window, bucket_hours, timeout)
-        langfuse_future = pool.submit(_fetch_langfuse_all, app_id, window, timeout)
         es_airo_future = pool.submit(
             _fetch_es_source, app_id,
             "AIRO_BUILDER_ES_ENDPOINT", "AIRO_BUILDER_ES_API_KEY",
             "logs-*", "data.appId", "airo-app-frontend",
             start_iso, end_iso, timeout,
         )
-        es_cp_future = pool.submit(
-            _fetch_es_source, app_id,
-            "CONTROL_PLANE_ES_ENDPOINT", "CONTROL_PLANE_ES_API_KEY",
-            _es_control_plane_index(), "app_id|appId_str", "control-plane",
-            start_iso, end_iso, timeout,
-        )
-        fullstory_future = pool.submit(_fetch_fullstory_all, app_id, window, fullstory_url, timeout)
 
         loki_by_source = loki_future.result()
-        langfuse_result = langfuse_future.result()
         es_airo_result = es_airo_future.result()
-        es_cp_result = es_cp_future.result()
-        fullstory_result = fullstory_future.result()
 
     # Loki sources are already bucket-indexed inside _fetch_loki_all_sources.
-    # The remaining sources go through _build_source_result → empty index;
-    # mirror console's buildEvidenceIndex so all 7 sources hand Claude the
+    # The remaining ES source goes through _build_source_result → empty index;
+    # mirror console's buildEvidenceIndex so every source hands Claude the
     # same { topSignatures, rareErrorSignatures, levelCounts, rawRefs }
     # surface. Without this, phase-1 prompts make Claude fetch raw pages
-    # for Langfuse/ES/FullStory, which is the path that burns turns.
-    langfuse_result = _enrich_source_index(langfuse_result, app_id, window)
+    # for ES, which is the path that burns turns.
     es_airo_result = _enrich_source_index(es_airo_result, app_id, window)
-    es_cp_result = _enrich_source_index(es_cp_result, app_id, window)
-    fullstory_result = _enrich_source_index(fullstory_result, app_id, window)
 
     sources = [
         loki_by_source["airo-agents"],
         loki_by_source["airo-preview"],
         loki_by_source["airo-publish"],
-        langfuse_result,
+        loki_by_source["control-plane"],
         es_airo_result,
-        es_cp_result,
-        fullstory_result,
     ]
 
-    return {
+    # Stage-1 server-side Loki histogram (level/service counts via metric
+    # queries — no raw-line pull). Cluster-scoped; soft-fails to a shaped
+    # empty digest when LOKI_CLUSTER is unset so it can never trigger an
+    # unbounded scan. Attached as a top-level `aggregation` key alongside the
+    # existing bundle fields.
+    aggregation = _collect_aggregation(
+        app_id, window, _loki_env(),
+        os.environ.get("LOKI_CLUSTER") or None, timeout,
+    )
+
+    bundle: dict[str, Any] = {
         "appId": app_id,
         "timeWindow": window_label,
         "complete": all(s.get("complete", False) for s in sources),
         "sources": sources,
+        "aggregation": aggregation,
     }
+
+    # Stage-2/3 digest: aggregation histograms + drain3-mined templates +
+    # verbatim rare errors, combined into one compact surface the agent reads
+    # first. Built from the now-assembled bundle so it can mine each source's
+    # raw error messages and reuse the already-computed rareErrorSignatures.
+    bundle["digest"] = build_log_digest(bundle)
+    return bundle
 
 
 def run(args: argparse.Namespace) -> int:
@@ -1753,10 +1929,10 @@ def run(args: argparse.Namespace) -> int:
 
     if args.batched_evidence:
         if direct_mode:
-            # feedback-source path: query Loki / Langfuse / ES directly
+            # feedback-source path: query Loki / ES directly
             try:
                 data = fetch_direct_evidence(
-                    args.appId, window.label, args.fullstory_url or None, args.timeout
+                    args.appId, window.label, args.timeout
                 )
             except Exception as err:  # noqa: BLE001
                 message = compact_text(f"{type(err).__name__}: {err}", 500)
@@ -1770,7 +1946,7 @@ def run(args: argparse.Namespace) -> int:
             sources = [get_log_source(name.strip()) for name in args.sources.split(",") if name.strip()]
             path = build_investigate_evidence_path(sources=sources, app_id=args.appId, window=window.label)
             payload = build_investigate_evidence_payload(
-                sources, args.appId, window.label, fullstory_url=args.fullstory_url or None
+                sources, args.appId, window.label
             )
             try:
                 data = post_json(base_url, token, path, payload, args.timeout)
@@ -1828,9 +2004,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Fetch and index all bounded airo-app logs for one app.")
     parser.add_argument("--appId", required=True)
     parser.add_argument("--source", default="airo-app-frontend", choices=sorted(LOG_SOURCES))
-    parser.add_argument("--sources", default="airo-app-frontend,airo-agents,airo-preview,airo-publish,control-plane,langfuse,fullstory")
+    parser.add_argument("--sources", default="airo-app-frontend,airo-agents,airo-preview,airo-publish,control-plane")
     parser.add_argument("--window", default="24h", help="24h, 7d, or startISO,endISO")
-    parser.add_argument("--fullstory-url", default=None, help="Optional FullStory session URL forwarded to /api/investigate-evidence for exact session lookup")
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--page-size", type=int, default=500)
     parser.add_argument("--bucket-hours", type=int, default=None)
@@ -1840,8 +2015,8 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=45,
         help=(
-            "Per-HTTP-call timeout (seconds) for ES / Langfuse / FullStory "
-            "sources. Loki uses its own per-page / per-bucket budget "
+            "Per-HTTP-call timeout (seconds) for ES sources. Loki uses its "
+            "own per-page / per-bucket budget "
             "(see _LOKI_PER_PAGE_TIMEOUT_S / _LOKI_PER_BUCKET_BUDGET_S)."
         ),
     )

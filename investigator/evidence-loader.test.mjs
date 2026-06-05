@@ -28,26 +28,14 @@ const { loadEvidenceCredentials, _resetEvidenceCacheForTests } = await import('.
 
 const ENV_VARS = [
   'LOKI_API_KEY_SECRET',
-  'EB_LANGFUSE_PUBLIC_KEY_SECRET',
-  'EB_LANGFUSE_SECRET_KEY_SECRET',
   'AIRO_BUILDER_ES_API_KEY_SECRET',
-  'CONTROL_PLANE_ES_API_KEY_SECRET',
-  'FULLSTORY_API_KEY_SECRET',
 ];
 
 function setAllEnv() {
   process.env.LOKI_API_KEY_SECRET = 'arn:loki';
-  process.env.EB_LANGFUSE_PUBLIC_KEY_SECRET = 'arn:lf-pub';
-  process.env.EB_LANGFUSE_SECRET_KEY_SECRET = 'arn:lf-sec';
   process.env.AIRO_BUILDER_ES_API_KEY_SECRET = 'arn:airo-es';
-  process.env.CONTROL_PLANE_ES_API_KEY_SECRET = 'arn:cp-es';
-  process.env.FULLSTORY_API_KEY_SECRET = 'arn:fs';
   secretValues['arn:loki'] = 'LOKI_VALUE';
-  secretValues['arn:lf-pub'] = 'LF_PUB_VALUE';
-  secretValues['arn:lf-sec'] = 'LF_SEC_VALUE';
   secretValues['arn:airo-es'] = 'AIRO_ES_VALUE';
-  secretValues['arn:cp-es'] = 'CP_ES_VALUE';
-  secretValues['arn:fs'] = 'FS_VALUE';
 }
 
 describe('loadEvidenceCredentials', () => {
@@ -60,34 +48,34 @@ describe('loadEvidenceCredentials', () => {
     process.env.AWS_REGION = 'us-west-2';
   });
 
-  it('returns all evidence credentials when env vars + secrets are present', async () => {
+  it('returns exactly loki + airo-es credentials (no control-plane-es/langfuse/fullstory)', async () => {
     setAllEnv();
     const creds = await loadEvidenceCredentials();
     assert.equal(creds.lokiApiKey, 'LOKI_VALUE');
-    assert.equal(creds.ebLangfusePublicKey, 'LF_PUB_VALUE');
-    assert.equal(creds.ebLangfuseSecretKey, 'LF_SEC_VALUE');
     assert.equal(creds.airoBuilderEsApiKey, 'AIRO_ES_VALUE');
-    assert.equal(creds.controlPlaneEsApiKey, 'CP_ES_VALUE');
-    assert.equal(creds.fullstoryApiKey, 'FS_VALUE');
-    assert.equal(sendCallCount, 6);
+    assert.deepEqual(
+      Object.keys(creds).sort(),
+      ['airoBuilderEsApiKey', 'lokiApiKey'],
+    );
+    assert.equal(sendCallCount, 2);
   });
 
   it('throws when ANY required env var is unset (lists all missing)', async () => {
     setAllEnv();
     delete process.env.LOKI_API_KEY_SECRET;
-    delete process.env.FULLSTORY_API_KEY_SECRET;
+    delete process.env.AIRO_BUILDER_ES_API_KEY_SECRET;
     await assert.rejects(loadEvidenceCredentials(), (err) => {
       assert.match(err.message, /Evidence secret env vars not set/);
       assert.match(err.message, /LOKI_API_KEY_SECRET/);
-      assert.match(err.message, /FULLSTORY_API_KEY_SECRET/);
+      assert.match(err.message, /AIRO_BUILDER_ES_API_KEY_SECRET/);
       return true;
     });
   });
 
   it('throws when a secret has no SecretString (empty/binary-only)', async () => {
     setAllEnv();
-    secretValues['arn:fs'] = '';
-    await assert.rejects(loadEvidenceCredentials(), /Evidence secret 'arn:fs' has no SecretString/);
+    secretValues['arn:airo-es'] = '';
+    await assert.rejects(loadEvidenceCredentials(), /Evidence secret 'arn:airo-es' has no SecretString/);
   });
 
   it('caches across calls within TTL — no second fetch', async () => {
@@ -108,9 +96,9 @@ describe('loadEvidenceCredentials', () => {
     ]);
     assert.deepEqual(a, b);
     assert.deepEqual(b, c);
-    // Six secrets, fetched once. Without inflight coalescing concurrent
-    // callers would each fire their own batch (6 × 3 = 18 calls).
-    assert.equal(sendCallCount, 6);
+    // Two secrets, fetched once. Without inflight coalescing concurrent
+    // callers would each fire their own batch (2 × 3 = 6 calls).
+    assert.equal(sendCallCount, 2);
   });
 
   it('does not poison the cache when a fetch fails — next call retries', async () => {
