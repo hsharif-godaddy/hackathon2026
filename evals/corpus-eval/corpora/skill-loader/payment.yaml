@@ -1,0 +1,169 @@
+metadata:
+  name: Skill Loader - Payment
+  version: 1.0.0
+
+cases:
+  # --- Positive: payment skill should load ---
+
+  - id: accept-payments-generic
+    prompt: 'I want to accept payments on my site'
+    expectedSkill: payment
+    tags: [positive]
+    rationale: Generic payment request — should load the payment router skill
+
+  - id: add-checkout
+    prompt: 'Add a checkout page to my app'
+    expectedSkill: payment
+    tags: [positive]
+    rationale: Checkout is a core payment intent
+
+  - id: buy-now-button
+    prompt: 'I need a buy now button for my products'
+    expectedSkill: payment
+    tags: [positive]
+    rationale: Buy now is an explicit payment intent phrase
+
+  - id: charge-customers
+    prompt: 'How do I charge customers for my services?'
+    expectedSkill: payment
+    tags: [positive]
+    rationale: Charge customers is a direct payment intent phrase from the skill frontmatter
+
+  - id: payment-page
+    prompt: 'I need a payment page for my business'
+    expectedSkill: payment
+    tags: [positive]
+    rationale: Payment page is an explicit intent from the skill
+
+  - id: one-time-payment
+    prompt: 'I want to accept one-time payments on my site'
+    expectedSkill: payment
+    tags: [positive]
+    rationale: One-time payment without product/selling context routes to the payment router
+
+  - id: stripe-explicit
+    prompt: 'I want to add Stripe payments'
+    expectedSkill: payment
+    tags: [positive]
+    rationale: Stripe is explicitly listed in payment skill intents — loads the router first
+
+  - id: stripe-checkout
+    prompt: 'Set up Stripe checkout for my store'
+    expectedSkill: payment
+    tags: [positive]
+    rationale: Stripe checkout maps directly to the payment skill intents
+
+  - id: stripe-subscription
+    prompt: 'I want to add Stripe subscription billing'
+    expectedSkill: payment
+    tags: [positive]
+    rationale: Stripe subscription is a listed intent
+
+  - id: credit-card-payments
+    prompt: 'I need to accept credit card payments from my customers'
+    expectedSkill: payment
+    tags: [positive]
+    rationale: Credit card payments is a payment integration request without product/selling context
+
+  - id: subscription-billing
+    prompt: 'Add subscription billing to my app'
+    expectedSkill: payment
+    tags: [positive]
+    rationale: Subscription billing is a payment concern
+
+  - id: godaddy-payments
+    prompt: 'I want to use GoDaddy Payments for my site'
+    expectedSkill: payment
+    tags: [positive]
+    rationale: GoDaddy Payments is one of the provider options in the payment router
+
+  # --- Positive: harder cases (no literal "payment" keyword or buried intent) ---
+
+  - id: monetize-services
+    prompt: 'I want to monetize the services I offer through my app'
+    expectedSkill: payment
+    tags: [positive, hard]
+    rationale: Monetize implies charging customers — payment intent without the keyword
+
+  - id: collect-money
+    prompt: 'How can I collect money from my clients through this site?'
+    expectedSkill: payment
+    tags: [positive, hard]
+    rationale: Collecting money is payment intent without using payment vocabulary
+
+  - id: online-payment-integration
+    prompt: 'I need to integrate online payments into my app'
+    expectedSkill: payment
+    tags: [positive, hard]
+    rationale: Generic online payment integration — no product/store context to pull toward commerce
+
+  - id: customer-purchase-flow
+    prompt: 'Build a purchase flow so customers can buy my courses'
+    expectedSkill: payment
+    tags: [positive, hard]
+    rationale: Purchase flow implies payment — no explicit payment keyword
+
+  - id: pay-for-service
+    prompt: 'I want clients to be able to pay for my consulting sessions online'
+    expectedSkill: payment
+    tags: [positive, hard]
+    rationale: Pay for service intent without typical payment skill keywords
+
+  # --- Negative: tricky near-misses that should NOT load the skill ---
+
+  - id: pricing-page-display
+    prompt: 'Create a pricing page that shows my three plans'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Displaying pricing info is a UI task — no actual payment integration requested
+
+  - id: payment-bug-fix
+    prompt: 'The checkout button on my products page is broken, can you fix it?'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Bug fix on existing checkout UI — no skill reload; avoid payment keywords that re-trigger routing
+
+  - id: price-comparison-table
+    prompt: 'Add a price comparison table for my subscription tiers'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Price comparison is a UI layout task, not payment integration
+
+  - id: refund-policy-page
+    prompt: 'Add a refund policy section to my About page'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Static content edit on an existing page — no payment or SEO skill routing
+
+  # --- Negative: no skill should be loaded ---
+  # Use generic UI/layout prompts that do not match other skills (blog, seo, email, etc.).
+
+  - id: add-hero-section
+    prompt: 'Add a hero section with a background image to my homepage'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Pure UI feature — no payment intent
+
+  - id: fix-mobile-layout
+    prompt: 'The mobile layout is broken, please fix it'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Layout bug fix — no payment intent
+
+  - id: change-font-size
+    prompt: 'Make the heading text larger on the homepage'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Typography tweak — no skill routing
+
+  - id: update-footer-year
+    prompt: 'Update the copyright year in the footer to 2026'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Minor content edit — no skill routing
+
+  - id: center-align-button
+    prompt: 'Center the Sign Up button on the landing page'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Layout adjustment — no skill routing

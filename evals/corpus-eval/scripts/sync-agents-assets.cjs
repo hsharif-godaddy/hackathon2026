@@ -11,8 +11,8 @@
 
 'use strict';
 
-const { cpSync, existsSync, mkdirSync } = require('fs');
-const { join, dirname } = require('path');
+const { cpSync, existsSync, lstatSync, mkdirSync, readdirSync } = require('fs');
+const { join, dirname, relative } = require('path');
 
 const agentsSrc = join(__dirname, '../../../agents/src');
 const agentsDist = join(__dirname, '../../../agents/dist');
@@ -36,8 +36,6 @@ ensureDir(agentsDist);
 cpSync(promptsSrc, promptsDist, { recursive: true });
 console.log(`✓ Copied prompts → agents/dist/prompts`);
 
-// Copy skill.md files from each skill subdirectory
-const { readdirSync, lstatSync } = require('fs');
 const skillsSrc = join(agentsSrc, 'skills');
 const skillsDist = join(agentsDist, 'skills');
 
@@ -46,22 +44,35 @@ if (!existsSync(skillsSrc)) {
   process.exit(1);
 }
 
-// lstatSync (not statSync) so symlinks are excluded — they report isDirectory()=false
-// via lstat, preventing traversal outside the project root if a symlink exists in skills/.
-const skillDirs = readdirSync(skillsSrc).filter(name => {
-  return lstatSync(join(skillsSrc, name)).isDirectory();
-});
+/**
+ * Recursively find skill.md under skillsSrc. Uses lstat so symlinks are never followed.
+ */
+function findSkillMdFiles(dir, found = []) {
+  for (const name of readdirSync(dir)) {
+    const fullPath = join(dir, name);
+    const info = lstatSync(fullPath);
+    if (info.isSymbolicLink()) {
+      continue;
+    }
+    if (info.isDirectory()) {
+      findSkillMdFiles(fullPath, found);
+      continue;
+    }
+    if (info.isFile() && name === 'skill.md') {
+      found.push(fullPath);
+    }
+  }
+  return found;
+}
 
 let copied = 0;
-for (const skill of skillDirs) {
-  const srcMd = join(skillsSrc, skill, 'skill.md');
-  if (!existsSync(srcMd)) continue;
-
-  const destMd = join(skillsDist, skill, 'skill.md');
+for (const srcMd of findSkillMdFiles(skillsSrc)) {
+  const rel = relative(skillsSrc, srcMd);
+  const destMd = join(skillsDist, rel);
   ensureDir(dirname(destMd));
   cpSync(srcMd, destMd);
   copied++;
 }
 
-console.log(`✓ Copied skill.md for ${copied} skill(s) → agents/dist/skills/`);
+console.log(`✓ Copied ${copied} skill.md file(s) → agents/dist/skills/`);
 console.log('Assets synced. Ready to run skill-loader eval.');
