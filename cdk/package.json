@@ -10,14 +10,16 @@
     "cdk": "cdk",
     "build:lambdas": "npx tsx lambda/build.ts --all",
     "build:lambda": "npx tsx lambda/build.ts",
-    "verify:lambdas": "npx tsx lambda/build.ts --all && npx tsx lambda/verify.ts"
+    "verify:lambdas": "npx tsx lambda/build.ts --all && npx tsx lambda/verify.ts",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "aws-cdk": "^2.1121.0",
     "ts-node": "^10.9.2",
     "tsx": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.1049.0",

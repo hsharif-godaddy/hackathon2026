@@ -61,11 +61,10 @@ async function main() {
 
   // DynamoDB tables, KMS RSA CMK, Secrets Manager entries used by stripe-service.
   // Service runtime (ALB/ECS/ECR) is Katana-managed; this stack owns the data plane.
-  // Gated to dev for now — widen to test/prod with a one-line change once we're
-  // ready to provision real Stripe resources beyond dev-private.
-  if (config.envName === 'dev') {
-    new AiroStripeServiceStack(app, 'AiroStripeServiceStack', { env });
-  }
+  // Deploys to dev + test + prod. Prod resources use RETAIN removal policy
+  // (see airo-stripe-service-stack.ts:39-40) to protect against accidental
+  // stack deletion dropping live DDB / KMS state.
+  new AiroStripeServiceStack(app, 'AiroStripeServiceStack', { env });
 
   // Create GoCode Spend ESSP Lambda stack
   new GocaasSpendLambdaStack(app, 'GocaasSpendLambdaStack', { env });

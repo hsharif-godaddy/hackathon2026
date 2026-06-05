@@ -17,8 +17,9 @@ import config from './config';
  *   claim state, live account ID. GSI on app_id for agent status lookups.
  * - `${env}-airo-stripe-events` DynamoDB: webhook idempotency via 30-day TTL.
  * - RSA-2048 KMS CMK: decrypts Stripe Managed API Key material. Asymmetric,
- *   non-exportable, kms:Decrypt only (never Encrypt — Stripe encrypts with
- *   the public half).
+ *   non-exportable. The task role gets kms:GetPublicKey (to hand Stripe the
+ *   public half so it wraps the CEK against it) and kms:Decrypt (to unwrap
+ *   the wrapped CEK) — never Encrypt; Stripe encrypts with the public half.
  * - Two Secrets Manager secrets (created empty, populated out-of-band):
  *   the Stripe platform account API key and the webhook signing secret.
  *
@@ -30,7 +31,8 @@ export class AiroStripeServiceStack extends GDStack {
   public readonly sandboxesTable: dynamodb.Table;
   public readonly eventsTable: dynamodb.Table;
   public readonly managedKeysCmk: kms.Key;
-  public readonly platformKeySecret: secretsmanager.Secret;
+  public readonly platformKeyTestSecret: secretsmanager.Secret;
+  public readonly platformKeyLiveSecret: secretsmanager.Secret;
   public readonly webhookSigningSecret: secretsmanager.Secret;
 
   constructor(scope: Construct, id: string, props: GDStackProps) {
@@ -39,6 +41,25 @@ export class AiroStripeServiceStack extends GDStack {
     const prodRemoval =
       config.envName === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY;
 
+    // Forward-compat hedge for a future Tier 2 us-east-1 warm standby (see
+    // STRIPE_INTEGRATION_PLAN.md §10.4): create the prod CMK as a multi-region
+    // PRIMARY now, while still deploying single-region. KMS `multiRegion` is
+    // immutable after key creation, and prod's CMK is provisioned fresh on
+    // first deploy — this is the one moment to set it. A multi-region primary
+    // with no replicas behaves identically to a single-region key (same price,
+    // material stays in-region) but lets us add a us-east-1 replica later
+    // WITHOUT a new CMK + re-mint of every merchant's Managed API Keys.
+    // undefined (not false) for dev/test so the property is omitted entirely —
+    // those keys already exist single-region and KMS rejects any MultiRegion change.
+    const multiRegionKey = config.envName === 'prod' ? true : undefined;
+
+    // DynamoDB-native deletion protection (prod only). Distinct from the CFN
+    // RemovalPolicy.RETAIN above: RETAIN stops CloudFormation from deleting the
+    // table on stack/resource removal, but does NOT block a direct DeleteTable
+    // API/console call. deletionProtection blocks that too. dev/test stay off so
+    // they remain easy to tear down and recreate. Non-disruptive to toggle.
+    const prodDeletionProtection = config.envName === 'prod' ? true : undefined;
+
     this.sandboxesTable = new dynamodb.Table(this, 'StripeSandboxesTable', {
       tableName: `${config.envName}-airo-stripe-sandboxes`,
       partitionKey: { name: 'sandbox_id', type: dynamodb.AttributeType.STRING },
@@ -46,6 +67,7 @@ export class AiroStripeServiceStack extends GDStack {
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       removalPolicy: prodRemoval,
+      deletionProtection: prodDeletionProtection,
     });
     this.sandboxesTable.addGlobalSecondaryIndex({
       indexName: 'app_id-index',
@@ -61,14 +83,21 @@ export class AiroStripeServiceStack extends GDStack {
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       timeToLiveAttribute: 'ttl',
       removalPolicy: prodRemoval,
+      deletionProtection: prodDeletionProtection,
     });
 
     // Asymmetric KMS keys do not support automatic rotation; rotation is a
     // manual process (new key + Stripe re-upload of public half).
+    //
+    // multiRegion (prod only): provisions a multi-region PRIMARY so a us-east-1
+    // replica can be added later without re-issuing the public half. No replica
+    // exists today — the service runs single-region (us-west-2). See the
+    // multiRegionKey comment above for why this is set at creation.
     this.managedKeysCmk = new kms.Key(this, 'StripeManagedKeysCmk', {
       description: `RSA-2048 CMK for Stripe Managed API Keys decryption (${config.envName})`,
       keySpec: kms.KeySpec.RSA_2048,
       keyUsage: kms.KeyUsage.ENCRYPT_DECRYPT,
+      multiRegion: multiRegionKey,
       removalPolicy: prodRemoval,
       pendingWindow: cdk.Duration.days(30),
     });
@@ -78,19 +107,54 @@ export class AiroStripeServiceStack extends GDStack {
     });
     managedKeysAlias.applyRemovalPolicy(prodRemoval);
 
-    // Secrets are created with a placeholder; operators populate real values
-    // out-of-band via `aws secretsmanager put-secret-value` once Stripe
-    // credentials are provisioned for the platform account.
+    // Two platform-key secrets, one per Stripe mode. Stripe's preview APIs
+    // are mode-scoped: claimableSandboxes.create runs only in test mode
+    // (sandboxes are test-mode constructs), apiKeys.create against a
+    // claimed live merchant requires the platform's sk_live key. Both
+    // operations occur in the same merchant lifecycle, so every env that
+    // serves real merchants needs both keys loaded. See plan §4.2.1.
     //
-    // RETAIN in all envs (including dev) because the plaintext values are
-    // operator-managed. Trade-off: destroying + recreating this stack in dev
-    // hits `ResourceExistsException` on the `${env}-airo-stripe-*` names
-    // until AWS's orphan recovery window expires. Delete manually with
+    // The legacy single-secret name (`${env}-airo-stripe-platform-key`,
+    // observed empirically to fail one mode or the other depending on the
+    // populated value) is no longer provisioned by this stack. In dev and
+    // test where the legacy secret was already created, RemovalPolicy.RETAIN
+    // on the prior CFN resource leaves it orphaned in AWS — operators can
+    // delete those manually with
     // `aws secretsmanager delete-secret --force-delete-without-recovery`
-    // first if you need to re-create the stack in dev.
-    this.platformKeySecret = new secretsmanager.Secret(this, 'StripePlatformKeySecret', {
-      secretName: `${config.envName}-airo-stripe-platform-key`,
-      description: 'Stripe platform account secret key (sk_test_*/sk_live_*). Populated manually.',
+    // once the new test/live secrets are populated. Prod has not yet
+    // deployed the legacy secret, so prod gets a clean two-secret state
+    // from the start.
+    //
+    // Secrets are created with placeholders; operators populate real values
+    // out-of-band via `aws secretsmanager put-secret-value`. RETAIN in all
+    // envs because the plaintext values are operator-managed. Trade-off:
+    // destroying + recreating this stack in dev hits `ResourceExistsException`
+    // on the `${env}-airo-stripe-*` names until AWS's orphan recovery
+    // window expires.
+    this.platformKeyTestSecret = new secretsmanager.Secret(this, 'StripePlatformKeyTestSecret', {
+      secretName: `${config.envName}-airo-stripe-platform-key-test`,
+      description:
+        'Stripe platform TEST-mode secret key (sk_test_*). Used for ' +
+        'claimableSandboxes.create in every env (dev, test, prod) — sandboxes ' +
+        'are test-mode constructs and the API only exists in test mode. ' +
+        'Populated manually. Required for stripe-service to start.',
+      generateSecretString: {
+        generateStringKey: 'initialValue',
+        secretStringTemplate: '{"apiKey":"REPLACE_ME"}',
+        excludeCharacters: '"@/\\',
+      },
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    this.platformKeyLiveSecret = new secretsmanager.Secret(this, 'StripePlatformKeyLiveSecret', {
+      secretName: `${config.envName}-airo-stripe-platform-key-live`,
+      description:
+        'Stripe platform LIVE-mode secret key (sk_live_*). Used for ' +
+        'apiKeys.create on claimed live merchant accounts (go-live mint). ' +
+        'Populated manually. Optional in dev/test envs — leave at REPLACE_ME ' +
+        "if you don't run the live-key flow there; stripe-service will boot " +
+        'with sandbox-only capability and surface a clear error if MintLiveAPIKeys ' +
+        'is invoked. Required in prod.',
       generateSecretString: {
         generateStringKey: 'initialValue',
         secretStringTemplate: '{"apiKey":"REPLACE_ME"}',
@@ -123,19 +187,33 @@ export class AiroStripeServiceStack extends GDStack {
         const principal = new iam.ArnPrincipal(arn);
         this.sandboxesTable.grantReadWriteData(principal);
         this.eventsTable.grantReadWriteData(principal);
-        this.platformKeySecret.addToResourcePolicy(
+        // SecretsManager::ResourcePolicy requires explicit Resource in the
+        // policy JSON; recent aws-cdk-lib versions no longer auto-fill "*"
+        // when omitted, so include it. The policy is attached to a specific
+        // secret, so "*" here scopes to "this secret only" — same shape as
+        // dev-private's deployed policy.
+        this.platformKeyTestSecret.addToResourcePolicy(
           new iam.PolicyStatement({
             actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
             principals: [principal],
+            resources: ['*'],
+          })
+        );
+        this.platformKeyLiveSecret.addToResourcePolicy(
+          new iam.PolicyStatement({
+            actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
+            principals: [principal],
+            resources: ['*'],
           })
         );
         this.webhookSigningSecret.addToResourcePolicy(
           new iam.PolicyStatement({
             actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
             principals: [principal],
+            resources: ['*'],
           })
         );
-        this.managedKeysCmk.grant(principal, 'kms:Decrypt', 'kms:DescribeKey');
+        this.managedKeysCmk.grant(principal, 'kms:Decrypt', 'kms:DescribeKey', 'kms:GetPublicKey');
       }
     }
 
@@ -163,9 +241,13 @@ export class AiroStripeServiceStack extends GDStack {
       value: `alias/${config.envName}-airo-stripe-managed-keys`,
       exportName: `${config.envName}-airo-stripe-managed-keys-alias`,
     });
-    new cdk.CfnOutput(this, 'PlatformKeySecretArn', {
-      value: this.platformKeySecret.secretArn,
-      exportName: `${config.envName}-airo-stripe-platform-key-secret-arn`,
+    new cdk.CfnOutput(this, 'PlatformKeyTestSecretArn', {
+      value: this.platformKeyTestSecret.secretArn,
+      exportName: `${config.envName}-airo-stripe-platform-key-test-secret-arn`,
+    });
+    new cdk.CfnOutput(this, 'PlatformKeyLiveSecretArn', {
+      value: this.platformKeyLiveSecret.secretArn,
+      exportName: `${config.envName}-airo-stripe-platform-key-live-secret-arn`,
     });
     new cdk.CfnOutput(this, 'WebhookSigningSecretArn', {
       value: this.webhookSigningSecret.secretArn,

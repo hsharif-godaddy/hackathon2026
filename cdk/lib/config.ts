@@ -335,9 +335,9 @@ const testConfig: Config = {
     'arn:aws:iam::269423819739:role/airobuilde-custom-KatanaEnvironment9636GlobalEcsTaskRoleC9421049', // budget-service test
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment7794GlobalEcsTaskRole03DD121F', // console-service dev-private (test is dev-private only for console)
   ],
-  // AiroStripeServiceStack isn't deployed in test yet (see main.ts). Populate
-  // before widening the stack's env gate.
-  stripeServiceTaskRoleArns: [],
+  stripeServiceTaskRoleArns: [
+    'arn:aws:iam::269423819739:role/airobuilde-custom-KatanaEnvironment1080GlobalEcsTaskRole41B00ECB', // stripe-service test
+  ],
   // AiroInvestigatorStack isn't deployed in test (see main.ts), so these are
   // safe empty lists; kept here to satisfy the type contract.
   investigatorInvokerRoleArns: [],
@@ -434,9 +434,9 @@ const prodConfig: Config = {
     'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment7797GlobalEcsTaskRole2CAC93CD', // console-service prod
     'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment9637GlobalEcsTaskRoleCE42F0DB', // budget-service prod
   ],
-  // AiroStripeServiceStack isn't deployed in prod yet (see main.ts). Populate
-  // before widening the stack's env gate.
-  stripeServiceTaskRoleArns: [],
+  stripeServiceTaskRoleArns: [
+    'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment1081GlobalEcsTaskRole31913DA4', // stripe-service prod
+  ],
   investigatorInvokerRoleArns: [
     'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment7797GlobalEcsTaskRole2CAC93CD', // console-service prod
   ],
