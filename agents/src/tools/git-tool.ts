@@ -917,8 +917,11 @@ export class GitTool {
         if (!pullResult.success) {
           const stderr = (pullResult.stderr || '').toLowerCase();
 
-          // Check for merge conflicts
-          if (stderr.includes('conflict') || stderr.includes('merge')) {
+          // Detect merge conflicts via repo state, not stderr text. `git ls-files
+          // --unmerged` is locale-independent and only non-empty when the index
+          // actually has conflicted entries — so it won't misclassify failures
+          // like "Failed to merge: authentication failed" as a conflict.
+          if (await this.gitUtils.hasUnmergedFiles(appPath)) {
             this.logger.warn('git-tool.pull.merge-conflict', { appId, remoteName, branch });
             return {
               success: false,

@@ -1881,4 +1881,24 @@ export class GitUtils {
     return this.executeGitCommand(['fetch', remoteName], repoPath, options);
   }
 
+  /**
+   * Check whether the working tree has unmerged paths (i.e. a real merge/rebase
+   * conflict). Uses `git ls-files --unmerged`, which lists index entries with
+   * conflict stages. Locale-independent and works for both merge and rebase.
+   *
+   * @param repoPath - Path to the git repository
+   * @param options - Git command options
+   * @returns true if at least one unmerged path exists
+   */
+  async hasUnmergedFiles(
+    repoPath: string,
+    options: GitCommandOptions = {}
+  ): Promise<boolean> {
+    const result = await this.executeGitCommand(['ls-files', '--unmerged'], repoPath, options);
+    if (!result.success) {
+      return false;
+    }
+    return result.stdout.trim().length > 0;
+  }
+
 }
