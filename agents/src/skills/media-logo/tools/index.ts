@@ -190,10 +190,17 @@ async function resolveReferenceUrl(
   if (callerProvided) return { url: callerProvided, existingSlotWithoutReference: false };
 
   // Auto-resolve from the slot. Prefer a slot matching one of the requested
-  // layouts; fall back to the primary (square) slot.
+  // layouts; otherwise fall back across the other orientations so an edit that
+  // targets a layout the user hasn't generated yet can still seed from the logo
+  // they already have. Horizontal is the canonical user logo (the default
+  // layout and what the logo-designer flow generates first), so it leads the
+  // fallback — this is what lets "Set as my logo" reformat the existing
+  // horizontal logo into a square companion when no square slot exists yet.
   const candidatePaths = [
     ...layouts.map((l) => LOGO_SLOT_PATHS[l]),
+    LOGO_SLOT_PATHS.horizontal,
     LOGO_SLOT_PATHS.square,
+    LOGO_SLOT_PATHS.vertical,
   ];
   const seen = new Set<string>();
   let sawSlot = false;

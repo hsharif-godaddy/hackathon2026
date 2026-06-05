@@ -296,6 +296,81 @@ describe('media-logo generate_logo tool', () => {
       );
     });
 
+    it('falls back to the horizontal logo when reformatting to square and no square slot exists yet', async () => {
+      // "Set as my logo" flow: the user has only generated a horizontal logo
+      // (slot logo/horizontal). The square slot (logo/primary) is still empty.
+      // Reformatting to square must seed from the existing horizontal logo.
+      mockGetSlot.mockImplementation(async (_appId: string, path: string) => {
+        if (path === 'logo/horizontal') {
+          return {
+            success: true,
+            slot: {
+              mediaType: 'logo',
+              currentUrl: '/airo-assets/uploads/horizontal-logo.png',
+              alternatives: [],
+              searchQuery: '',
+              userModified: false,
+              createdAt: '',
+              lastUpdated: '',
+              logoSourceMap: {
+                '/airo-assets/uploads/horizontal-logo.png': { sessionId: 'h-sess', logoId: 'h-logo' },
+              },
+            },
+          };
+        }
+        // square (logo/primary) and vertical slots have not been generated yet
+        return { success: false };
+      });
+
+      const { generateLogoTool } = await import('../index.js');
+
+      await generateLogoTool.execute(
+        {
+          prompt: 'Reformat for a square layout, preserving the existing icon design and arranging the text as required',
+          layout: 'square',
+        },
+        baseContext,
+      );
+
+      expect(mockGenerate).toHaveBeenCalledWith(
+        expect.objectContaining({ referenceUrl: '/airo-assets/uploads/horizontal-logo.png' }),
+      );
+    });
+
+    it('prefers the horizontal slot over other orientations as the cross-layout fallback', async () => {
+      // Square requested, square slot empty, but BOTH horizontal and vertical
+      // logos exist. The canonical (horizontal) logo should win.
+      const makeSlot = (currentUrl: string) => ({
+        success: true,
+        slot: {
+          mediaType: 'logo',
+          currentUrl,
+          alternatives: [],
+          searchQuery: '',
+          userModified: false,
+          createdAt: '',
+          lastUpdated: '',
+          logoSourceMap: { [currentUrl]: { sessionId: 's', logoId: 'l' } },
+        },
+      });
+      mockGetSlot.mockImplementation(async (_appId: string, path: string) => {
+        if (path === 'logo/horizontal') return makeSlot('/airo-assets/uploads/horizontal-logo.png');
+        if (path === 'logo/vertical') return makeSlot('/airo-assets/uploads/vertical-logo.png');
+        return { success: false }; // square (logo/primary) empty
+      });
+
+      const { generateLogoTool } = await import('../index.js');
+
+      await generateLogoTool.execute(
+        { prompt: 'Reformat for a square layout', layout: 'square' },
+        baseContext,
+      );
+
+      expect(mockGenerate).toHaveBeenCalledWith(
+        expect.objectContaining({ referenceUrl: '/airo-assets/uploads/horizontal-logo.png' }),
+      );
+    });
+
     it('falls through to no referenceUrl when slot has no logoSourceMap entry', async () => {
       mockGetSlot.mockResolvedValue({
         success: true,
