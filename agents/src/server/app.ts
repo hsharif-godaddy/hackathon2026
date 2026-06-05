@@ -184,7 +184,7 @@ import compression from 'compression';
 import { createServer } from 'http';
 
 import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware, validateProductAccess } from './middleware/index.js';
-import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, securityReportRouter, secretsScanRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, customerLogsRouter, diagnoseRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, brandDataRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, inboxAccountRouter } from './routes/index.js';
+import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, securityReportRouter, secretsScanRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, blogPostsRouter, customerLogsRouter, diagnoseRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, brandDataRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, inboxAccountRouter } from './routes/index.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
 import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
 import { initAgentRuntime, getEventChannel, getAgentFactory, getMessageLifecycleDeps, getGitHookService } from './agent-runtime.js';
@@ -452,6 +452,7 @@ protectedRouter.use('/', downloadRouter);
 protectedRouter.use('/', goLiveRouter);
 protectedRouter.use('/', conversationsRouter);
 protectedRouter.use('/', socialRouter);
+protectedRouter.use('/', blogPostsRouter);
 protectedRouter.use('/media', mediaRouter);
 protectedRouter.use('/', transferValidateRouter);
 protectedRouter.use('/', modelsRouter);
