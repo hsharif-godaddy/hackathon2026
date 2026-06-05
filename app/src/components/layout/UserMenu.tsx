@@ -4,13 +4,13 @@ import { usePathname, useRouter } from 'next/navigation';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Button from '@ux/button';
 import AppsIcon from '@ux/icon/apps';
+import BagIcon from '@ux/icon/bag';
 import CommentsIcon from '@ux/icon/comments';
+import CreditCardIcon from '@ux/icon/credit-card';
 import DashboardIcon from '@ux/icon/dashboard';
-import GdTheGoIcon from '@ux/icon/gd-the-go';
 import HeartIcon from '@ux/icon/heart';
 import LogoutIcon from '@ux/icon/logout';
-import MapIcon from '@ux/icon/map';
-import ProductsIcon from '@ux/icon/products';
+import ShippingIcon from '@ux/icon/shipping';
 import UserIcon from '@ux/icon/user';
 
 import IconButton from '@/app/[market]/develop/components/IconButton';
@@ -149,7 +149,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
     if (!isAuthenticated) {
       return [
         [
-          { key: 'godaddy', onClick: handleGoDaddy, eid: `${location}.user_menu.godaddy`, icon: <GdTheGoIcon className="size-2" />, text: t('builder_user_menu_godaddy') },
+          { key: 'godaddy', onClick: handleGoDaddy, eid: `${location}.user_menu.godaddy`, icon: <BagIcon className="size-2" />, text: t('builder_user_menu_godaddy') },
           { key: 'sign-in', onClick: handleSignInClick, eid: `${location}.user_menu.sign_in`, icon: <UserIcon className="size-2" />, text: t('builder_common_signin') },
         ],
       ];
@@ -160,8 +160,8 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
         { key: 'all-projects', onClick: handleAllProjects, eid: `${location}.user_menu.all_projects`, icon: <AppsIcon className="size-2" />, text: t('builder_common_projects') },
       ],
       [
-        showManagePlan ? { key: 'manage-plan', onClick: handleManagePlan, eid: `${location}.user_menu.manage_plan`, icon: <MapIcon className="size-2" />, text: t('builder_user_menu_manage_plan') } : null,
-        { key: 'my-products', onClick: handleMyProducts, eid: `${location}.user_menu.my_products`, icon: <ProductsIcon className="size-2" />, text: t('builder_user_menu_my_products') },
+        showManagePlan ? { key: 'manage-plan', onClick: handleManagePlan, eid: `${location}.user_menu.manage_plan`, icon: <CreditCardIcon className="size-2" />, text: t('builder_user_menu_manage_plan') } : null,
+        { key: 'my-products', onClick: handleMyProducts, eid: `${location}.user_menu.my_products`, icon: <ShippingIcon className="size-2" />, text: t('builder_user_menu_my_products') },
         isVentureConnectionEnabled && ventureId ? { key: 'dashboard', onClick: () => handleMyDashboard(ventureId), eid: `${location}.user_menu.dashboard`, icon: <DashboardIcon className="size-2" />, text: t('builder_user_menu_dashboard') } : null,
       ].filter(Boolean) as MenuItemConfig[],
       [
@@ -170,7 +170,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
         { key: 'give-feedback', onClick: handleGiveFeedback, eid: `${location}.user_menu.give_feedback`, icon: <CommentsIcon className="size-2" />, text: t('builder_user_menu_give_feedback') },
       ].filter(Boolean) as MenuItemConfig[],
       [
-        { key: 'godaddy', onClick: handleGoDaddy, eid: `${location}.user_menu.godaddy`, icon: <GdTheGoIcon className="size-2" />, text: t('builder_user_menu_godaddy') },
+        { key: 'godaddy', onClick: handleGoDaddy, eid: `${location}.user_menu.godaddy`, icon: <BagIcon className="size-2" />, text: t('builder_user_menu_godaddy') },
         { key: 'sign-out', onClick: handleSignOut, eid: `${location}.user_menu.sign_out`, icon: <LogoutIcon className="size-2" />, text: t('builder_user_menu_sign_out') },
       ],
     ];

@@ -6,6 +6,7 @@
 @import "@ux/icon/arrow-left/index.css";
 @import "@ux/icon/arrow-right/index.css";
 @import "@ux/icon/attachment/index.css";
+@import "@ux/icon/bag/index.css";
 @import "@ux/icon/binoculars/index.css";
 @import "@ux/icon/bullseye/index.css";
 @import "@ux/icon/calendar/index.css";
@@ -28,6 +29,7 @@
 @import "@ux/icon/content/index.css";
 @import "@ux/icon/conversations/index.css";
 @import "@ux/icon/copy/index.css";
+@import "@ux/icon/credit-card/index.css";
 @import "@ux/icon/crop/index.css";
 @import "@ux/icon/database/index.css";
 @import "@ux/icon/dashboard-filled/index.css";
@@ -57,7 +59,6 @@
 @import "@ux/icon/locked/index.css";
 @import "@ux/icon/logout/index.css";
 @import "@ux/icon/mail/index.css";
-@import "@ux/icon/map/index.css";
 @import "@ux/icon/map-pin/index.css";
 @import "@ux/icon/menu/index.css";
 @import "@ux/icon/mic/index.css";
@@ -67,7 +68,7 @@
 @import "@ux/icon/paint-bucket/index.css";
 @import "@ux/icon/play/index.css";
 @import "@ux/icon/plus/index.css";
-@import "@ux/icon/products/index.css";
+@import "@ux/icon/shipping/index.css";
 @import "@ux/icon/refresh/index.css";
 @import "@ux/icon/revert/index.css";
 @import "@ux/icon/search/index.css";
