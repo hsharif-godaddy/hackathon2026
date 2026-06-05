@@ -101,14 +101,22 @@ export const PlatformItem = memo(function PlatformItem({
         {overallStatus !== Status.Linked && (
           <Box orientation="horizontal" gap="sm" blockAlignChildren="end">
             {overallStatus === Status.NotConnected && (
-              <Button size="sm" design="primary" onClick={() => onConnectPlatform(platform)} data-eid={generateClickEID('social.settings.connect')}>
-                {t('builder_social_connect')}
-              </Button>
+              <Button
+                size="sm"
+                design="primary"
+                onClick={() => onConnectPlatform(platform)}
+                data-eid={generateClickEID('social.settings.connect')}
+                text={t('builder_social_connect')}
+              />
             )}
             {overallStatus === Status.NotLinked && (
-              <Button size="sm" design="primary" onClick={() => onSelectConnection(platform)} data-eid={generateClickEID('social.settings.link_account')}>
-                {t('builder_social_link_account')}
-              </Button>
+              <Button
+                size="sm"
+                design="primary"
+                onClick={() => onSelectConnection(platform)}
+                data-eid={generateClickEID('social.settings.link_account')}
+                text={t('builder_social_link_account')}
+              />
             )}
           </Box>
         )}

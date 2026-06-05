@@ -898,12 +898,9 @@ export function MediaSlotDetail({
                               aria-label={t('builder_domain_purchase_search_button')}
                               data-testid="media-search-button"
                               data-eid={generateClickEID("develop.media_slot_detail.search_button")}
-                            >
-                              {isSearching
-                                ? <RefreshIcon className="size-2.5 animate-spin" />
-                                : <span className="flex items-center gap-1"><SearchIcon className="size-2.5" /> {t('builder_domain_purchase_search_button')}</span>
-                              }
-                            </Button>
+                              icon={isSearching ? <RefreshIcon className="size-2.5 animate-spin" /> : <SearchIcon className="size-2.5" />}
+                              text={isSearching ? undefined : t('builder_domain_purchase_search_button')}
+                            />
                           }
                         />
                       </>

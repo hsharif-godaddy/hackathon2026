@@ -52,9 +52,7 @@ export default function SsoLoginPrompt() {
     <>
       <div className="flex flex-col items-center justify-center min-h-[200px] gap-4">
         {dismissed ? (
-          <Button design="primary" onClick={handleRetry}>
-            {t('builder_common_signin')}
-          </Button>
+          <Button design="primary" onClick={handleRetry} text={t('builder_common_signin')} />
         ) : (
           <Spinner />
         )}

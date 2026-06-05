@@ -65,9 +65,8 @@ export default function FilePreview({ file, onRemove }: FilePreviewProps) {
           design="tertiary"
           size="sm"
           aria-label={t('builder_common_remove_file')}
-        >
-          <XIcon className="w-3 h-3" />
-        </Button>
+          icon={<XIcon className="w-3 h-3" />}
+        />
       )}
     </div>
   );

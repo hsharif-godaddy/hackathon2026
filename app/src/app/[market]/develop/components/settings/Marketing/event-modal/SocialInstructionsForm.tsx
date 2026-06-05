@@ -110,17 +110,15 @@ export default function SocialInstructionsForm({
           onClick={onBack}
           design="secondary"
           size="md"
-        >
-          {t('builder_marketing_back')}
-        </Button>
+          text={t('builder_marketing_back')}
+        />
         <Button
           onClick={onSubmit}
           disabled={selectedPlatforms.size === 0 || !timeValidation.isValid}
           design="primary"
           size="md"
-        >
-          {t('builder_marketing_schedule_socialpost')}
-        </Button>
+          text={t('builder_marketing_schedule_socialpost')}
+        />
       </Box>
     </Box>
   );

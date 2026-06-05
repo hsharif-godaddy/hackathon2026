@@ -26,8 +26,8 @@ vi.mock('@/hooks/useTranslations', () => ({
 
 vi.mock('@ux/button', () => ({
   __esModule: true,
-  default: ({ children, onClick }: any) => (
-    <button type="button" onClick={onClick}>{children}</button>
+  default: ({ children, onClick, icon, text }: any) => (
+    <button type="button" onClick={onClick}>{icon}{text}{children}</button>
   ),
 }));
 

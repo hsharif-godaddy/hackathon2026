@@ -135,18 +135,16 @@ export function VideoGenerationSection({ siteId }: VideoGenerationSectionProps) 
                   setIsMuted(videoRef.current.muted)
                 }
               }}
-            >
-              {isMuted ? t('golive_video_button_unmute') : t('golive_video_button_mute')}
-            </Button>
+              text={isMuted ? t('golive_video_button_unmute') : t('golive_video_button_mute')}
+            />
             <Button
               design="primary"
               size="sm"
               icon={<DownloadIcon />}
               disabled={isDownloading}
               onClick={handleDownload}
-            >
-              {isDownloading ? t('golive_video_button_downloading') : t('golive_video_button_download')}
-            </Button>
+              text={isDownloading ? t('golive_video_button_downloading') : t('golive_video_button_download')}
+            />
           </div>
           </div>
         </Card>

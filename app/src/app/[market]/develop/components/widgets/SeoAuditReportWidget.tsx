@@ -381,9 +381,12 @@ export default function SeoAuditReportWidget({
         <div className="flex flex-wrap items-start justify-between gap-2">
           <text.p className="font-semibold text-base m-0">{t('builder_seo_audit_title', undefined, 'SEO audit report')}</text.p>
           {(problemRows.length > 0 || report.strategy) && (
-            <Button design="secondary" size="small" onClick={() => setModalOpen(true)}>
-              {t('builder_seo_audit_view_all', undefined, 'View details')}
-            </Button>
+            <Button
+              design="secondary"
+              size="small"
+              onClick={() => setModalOpen(true)}
+              text={t('builder_seo_audit_view_all', undefined, 'View details')}
+            />
           )}
         </div>
 
@@ -427,9 +430,8 @@ export default function SeoAuditReportWidget({
             disabled={!canClickFix}
             onClick={handleFixClick}
             data-app-id={appId}
-          >
-            {t('builder_seo_audit_fix_button', undefined, 'Fix SEO issues')}
-          </Button>
+            text={t('builder_seo_audit_fix_button', undefined, 'Fix SEO issues')}
+          />
         )}
       </Box>
 

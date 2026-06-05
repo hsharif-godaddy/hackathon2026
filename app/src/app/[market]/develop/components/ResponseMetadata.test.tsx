@@ -268,9 +268,13 @@ describe('ResponseMetadata', function responseMetadataTests() {
       await user.click(getThumbsUpButton());
 
       expect(getThumbsUpButton()).toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: /builder_chat_response_feedback_negative/i })
-      ).not.toBeInTheDocument();
+      // The thumbs-down motion.div has an exit animation, so AnimatePresence
+      // keeps the button mounted until it finishes — wait for unmount.
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('button', { name: /builder_chat_response_feedback_negative/i })
+        ).not.toBeInTheDocument();
+      });
     });
 
     it('should hide thumbs up when negative feedback is selected', async function hideThumbsUpOnNegative() {

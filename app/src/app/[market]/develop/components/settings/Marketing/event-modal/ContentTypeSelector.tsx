@@ -92,9 +92,8 @@ export default function ContentTypeSelector({
           onClick={onClose}
           design="secondary"
           size="md"
-        >
-          {t('builder_marketing_close')}
-        </Button>
+          text={t('builder_marketing_close')}
+        />
       </Box>
     </Box>
   );

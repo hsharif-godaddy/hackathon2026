@@ -607,9 +607,8 @@ export function SecretsPanel({ appId, variant }: SecretsPanelProps) {
             onClick={handleSubmit}
             disabled={!hasChanges || isSubmitting}
             size="sm"
-          >
-            {isSubmitting ? t('builder_settings_secrets_saving') : t('builder_settings_secrets_save')}
-          </Button>
+            text={isSubmitting ? t('builder_settings_secrets_saving') : t('builder_settings_secrets_save')}
+          />
         )}
         hideStatus={true}
       >

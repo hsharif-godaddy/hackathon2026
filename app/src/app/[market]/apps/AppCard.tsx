@@ -564,12 +564,9 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
                 data-testid="app-card-copy-code-button"
                 data-eid={generateClickEID('apps.app.copy_transfer_code')}
                 className="flex-1 justify-center"
-              >
-                <span className="flex items-center gap-1">
-                  <CopyIcon className="size-2" />
-                  {copied ? t('builder_transfer_token_copied', undefined, 'Copied!') : copyFailed ? t('builder_common_error', undefined, 'Error') : t('builder_transfer_copy_code', undefined, 'Copy Code')}
-                </span>
-              </Button>
+                icon={<CopyIcon className="size-2" />}
+                text={copied ? t('builder_transfer_token_copied', undefined, 'Copied!') : copyFailed ? t('builder_common_error', undefined, 'Error') : t('builder_transfer_copy_code', undefined, 'Copy Code')}
+              />
             </div>
           </Box>
           {/* Cancel Transfer Inline Alert */}

@@ -631,9 +631,8 @@ export default function ChatSecretsRequestMessage({
               size="sm"
               onClick={handleAddRow}
               disabled={isFormDisabled}
-            >
-              + Add Another Secret
-            </Button>
+              text="+ Add Another Secret"
+            />
           </div>
         )}
 
@@ -660,19 +659,17 @@ export default function ChatSecretsRequestMessage({
                 size="sm"
                 onClick={handleCancel}
                 disabled={!isInteractive}
-              >
-                Cancel
-              </Button>
+                text="Cancel"
+              />
               <Button
                 design="primary"
                 size="sm"
                 onClick={handleSubmit}
                 disabled={!isInteractive || !isFormValid()}
-              >
-                {mode === 'update'
+                text={mode === 'update'
                   ? 'Update Secret'
                   : formRows.length === 1 ? 'Save Secret' : 'Save Secrets'}
-              </Button>
+              />
             </>
           )}
 
@@ -695,9 +692,8 @@ export default function ChatSecretsRequestMessage({
                 design="secondary"
                 size="sm"
                 onClick={() => setStatus('pending')}
-              >
-                Try Again
-              </Button>
+                text="Try Again"
+              />
             </div>
           )}
         </div>

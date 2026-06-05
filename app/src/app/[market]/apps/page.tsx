@@ -175,9 +175,8 @@ function SitesPageContent() {
               data-testid="create-app-card"
               data-eid={generateClickEID('apps.app_list.new_app')}
               className="flex-1 md:flex-initial"
-            >
-              {t('builder_apps_create_project')}
-            </Button>
+              text={t('builder_apps_create_project')}
+            />
             {canUseTransfer && (
               <Button
                 design="secondary"
@@ -187,9 +186,8 @@ function SitesPageContent() {
                 data-testid="transfer-app-card"
                 data-eid={generateClickEID('apps.emptystate.accept_transfer')}
                 className="flex-1 md:flex-initial"
-              >
-                {t('builder_transfer_accept_button')}
-              </Button>
+                text={t('builder_transfer_accept_button')}
+              />
             )}
           </div>
           )}
@@ -201,9 +199,8 @@ function SitesPageContent() {
             <Button
               onClick={() => window.location.reload()}
               design="secondary"
-            >
-              {t('builder_common_try_again')}
-            </Button>
+              text={t('builder_common_try_again')}
+            />
           </div>
         )}
 
@@ -228,9 +225,8 @@ function SitesPageContent() {
                 onClick={() => router.push('/')}
                 data-testid="create-app-empty-state"
                 data-eid={generateClickEID('apps.emptystate.new_app')}
-              >
-                {t('builder_apps_create_project')}
-              </Button>
+                text={t('builder_apps_create_project')}
+              />
               {canUseTransfer && (
                 <Button
                   design="secondary"
@@ -239,9 +235,8 @@ function SitesPageContent() {
                   onClick={() => setIsAcceptTransferOpen(true)}
                   data-testid="transfer-app-empty-state"
                   data-eid={generateClickEID('apps.emptystate.accept_transfer')}
-                >
-                  {t('builder_transfer_accept_button')}
-                </Button>
+                  text={t('builder_transfer_accept_button')}
+                />
               )}
             </div>
           </div>

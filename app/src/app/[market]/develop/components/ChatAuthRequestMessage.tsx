@@ -151,9 +151,8 @@ export default function ChatAuthRequestMessage({
                             design="primary"
                             size="sm"
                             onClick={handleAuthenticate}
-                        >
-                            Authenticate with {provider === 'godaddy' ? 'GoDaddy' : provider}
-                        </Button>
+                            text={`Authenticate with ${provider === 'godaddy' ? 'GoDaddy' : provider}`}
+                        />
                     )}
 
                     {status === 'authenticating' && (
@@ -182,9 +181,8 @@ export default function ChatAuthRequestMessage({
                                 design="secondary"
                                 size="sm"
                                 onClick={handleAuthenticate}
-                            >
-                                Try Again
-                            </Button>
+                                text="Try Again"
+                            />
                         </div>
                     )}
                 </div>

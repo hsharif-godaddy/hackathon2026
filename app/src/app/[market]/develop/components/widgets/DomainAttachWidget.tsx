@@ -790,10 +790,9 @@ export default function DomainAttachWidget({
                 design="primary"
                 size="sm"
                 onClick={handleOpenPurchase}
+                icon={<CartIcon className="w-4 h-4 mr-1" />}
                 text={t('builder_domain_purchase_button')}
-              >
-                <CartIcon className="w-4 h-4 mr-1" />
-              </Button>
+              />
             )}
           </>
         )}
@@ -971,10 +970,9 @@ export default function DomainAttachWidget({
             design="tertiary"
             size="sm"
             onClick={handleOpenPurchase}
+            icon={<CartIcon className="w-4 h-4 mr-1" />}
             text={t('builder_domain_purchase_button')}
-          >
-            <CartIcon className="w-4 h-4 mr-1" />
-          </Button>
+          />
         </Box>
       )}
 

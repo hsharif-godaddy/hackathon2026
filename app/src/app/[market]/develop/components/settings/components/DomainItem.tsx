@@ -7,7 +7,6 @@ import EditIcon from '@ux/icon/edit';
 import LinkIcon from '@ux/icon/link';
 import MenuIcon from '@ux/icon/menu';
 import UnlinkIcon from '@ux/icon/unlink';
-import WindowNewIcon from '@ux/icon/window-new';
 import Tag from "@ux/tag";
 import text from "@ux/text";
 
@@ -282,23 +281,14 @@ export default function DomainItem({
         <Box orientation="horizontal" gap="md">
           {isConnected && appDomain?.status === DomainStatus.ACTIVE ? (
             <Button
+              as="external"
               design="inline"
               data-eid={generateClickEID(`settings.domains.domain_link`)}
               className="!hover:bg-transparent"
               href={getDomainUrl(domainName)}
               external
-            >
-              <Box
-                className="w-auto"
-                orientation="horizontal"
-                gap="sm"
-                inlineAlignChildren="center"
-                blockAlignChildren="start"
-              >
-                <text.p>{domainName}</text.p>
-                <WindowNewIcon className="size-2" />
-              </Box>
-            </Button>
+              text={domainName}
+            />
           ) : (
             <text.p>{domainName}</text.p>
           )}
@@ -396,24 +386,36 @@ export default function DomainItem({
           <text.p className="ux-text ux-text-caption">
             {domainError?.error?.action === 'CONTACT_SUPPORT' ? (
               <span>{domainErrorMessage}&nbsp;
-                <Button className="ux-text ux-text-caption ux-text-link" design="inline" href={config.supportUrl} external>
-                  {t('builder_common_contact_support')}
-                </Button>
+                <Button
+                  className="ux-text ux-text-caption ux-text-link"
+                  design="inline"
+                  href={config.supportUrl}
+                  external
+                  text={t('builder_common_contact_support')}
+                />
               </span>
             ) : domainError?.error?.action === 'RETRY' ? (
               <span>{domainErrorMessage}&nbsp;
                 {t('builder_domain_error_please_retry')}&nbsp;
                 {t('builder_domain_error_if_issue_persists')}&nbsp;
-                <Button className="ux-text ux-text-caption ux-text-link" design="inline" href={config.supportUrl} external>
-                  {t('builder_common_contact_support')}
-                </Button>
+                <Button
+                  className="ux-text ux-text-caption ux-text-link"
+                  design="inline"
+                  href={config.supportUrl}
+                  external
+                  text={t('builder_common_contact_support')}
+                />
               </span>
             ) : (
               <span>{domainErrorMessage}&nbsp;
                 {t('builder_domain_disconnect_and_reconnect')}&nbsp;
-                <Button className="ux-text ux-text-caption ux-text-link" design="inline" href={config.supportUrl} external>
-                  {t('builder_common_contact_support')}
-                </Button>
+                <Button
+                  className="ux-text ux-text-caption ux-text-link"
+                  design="inline"
+                  href={config.supportUrl}
+                  external
+                  text={t('builder_common_contact_support')}
+                />
               </span>
             )}
           </text.p>

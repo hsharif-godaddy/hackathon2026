@@ -13,7 +13,7 @@ export interface SubmitInitialPromptProps {
   disabled: boolean;
   isLoading: boolean;
   icon?: ReactNode;
-  children?: ReactNode;
+  text?: string;
 }
 
 export function SubmitInitialPrompt({
@@ -21,7 +21,7 @@ export function SubmitInitialPrompt({
   disabled,
   isLoading,
   icon = null,
-  children,
+  text,
 }: SubmitInitialPromptProps) {
   const t = useTranslations();
   const { isBelowSmBreakpoint } = useBreakpoints();
@@ -40,8 +40,7 @@ export function SubmitInitialPrompt({
           : t('builder_homepage_hero_prompt_button')
       }
       data-partial="componentAiro"
-    >
-      {children}
-    </Button>
+      text={text}
+    />
   );
 }

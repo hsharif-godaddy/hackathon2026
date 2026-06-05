@@ -304,9 +304,8 @@ export default function PublishStatusAlert() {
               design='inline'
               data-eid={generateClickEID('publish-alert.success.feedback')}
               onClick={() => setShowFeedback(true)}
-            >
-              <text.span emphasis='passive'>{t('builder_settings_nav_feedback')}</text.span>
-            </Button>
+              text={t('builder_settings_nav_feedback')}
+            />
           </div>
         </Alert>
         {feedbackModal}

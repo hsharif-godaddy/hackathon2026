@@ -99,17 +99,15 @@ export default function BlogInstructionsForm({
           onClick={onBack}
           design="secondary"
           size="md"
-        >
-          {t('builder_marketing_back')}
-        </Button>
+          text={t('builder_marketing_back')}
+        />
         <Button
           onClick={onSubmit}
           disabled={!timeValidation.isValid}
           design="primary"
           size="md"
-        >
-          {t('builder_marketing_create_blog_post')}
-        </Button>
+          text={t('builder_marketing_create_blog_post')}
+        />
       </Box>
     </Box>
   );

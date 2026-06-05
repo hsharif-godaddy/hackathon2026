@@ -117,9 +117,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
           <text.h3 as="heading" size={-1}>
             Something went wrong. Please try again.
           </text.h3>
-          <Button onClick={this.reset} design="primary" size="md">
-            Try Again
-          </Button>
+          <Button onClick={this.reset} design="primary" size="md" text="Try Again" />
         </Box>
       );
     }

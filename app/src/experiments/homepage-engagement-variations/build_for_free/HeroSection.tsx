@@ -22,6 +22,7 @@ import { useHeroPromptState } from '@/hooks/home/useHeroPromptState'
 import { useTextareaAutoResize } from '@/hooks/home/useTextareaAutoResize'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useImpression } from '@/hooks/useImpression'
+import { useTranslations } from '@/hooks/useTranslations'
 
 const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   promptText,
@@ -39,6 +40,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   onFilesChange,
 }, ref) => {
   useImpression('homepage.firstprompt.view', { customProperties: { variant: HOMEPAGE_ENGAGEMENT_COHORT_IDS.BUILD_FOR_FREE } })
+  const t = useTranslations()
   const { isBelowSmBreakpoint, isMdBreakpoint } = useBreakpoints()
 
   const {
@@ -179,9 +181,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                     onClick={handleStartBuilding}
                     disabled={!displayText.trim() || isLoading || isTyping || isOverLimit}
                     isLoading={isLoading}
-                  >
-                    <FormattedMessage id="builder_homepage_submit_cta_build_for_free" defaultMessage="Build For Free" />
-                  </SubmitInitialPrompt>
+                    text={t('builder_homepage_submit_cta_build_for_free', undefined, 'Build For Free')}
+                  />
                 </Box>
               </Box>
             </Box>

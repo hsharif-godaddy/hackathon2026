@@ -763,9 +763,8 @@ export default function StreamingMessageList({
                 paginationAnchorRef.current = null
               }
             }}
-          >
-            {t('builder_common_try_again', undefined, 'Try again')}
-          </Button>
+            text={t('builder_common_try_again', undefined, 'Try again')}
+          />
         </div>
       )}
 

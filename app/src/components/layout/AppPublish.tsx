@@ -883,9 +883,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
                 onClick={() => handlePublishFeedbackClick('Publish Popover')}
                 icon={<CommentsIcon className='size-2' />}
                 size='sm'
-              >
-                {t('builder_settings_nav_feedback')}
-              </Button>
+                text={t('builder_settings_nav_feedback')}
+              />
             )}
           </div>
         </PopoverContent>

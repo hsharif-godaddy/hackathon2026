@@ -130,9 +130,8 @@ export default function QRCodeToolRenderer({
                 icon={<Download className="w-2.5 h-2.5" />}
                 design="secondary"
                 size="sm"
-              >
-                {t('builder_qr_code_download_button_short')}
-              </Button>
+                text={t('builder_qr_code_download_button_short')}
+              />
             </div>
           </div>
         </div>
@@ -173,9 +172,8 @@ export default function QRCodeToolRenderer({
               icon={<Download className="w-3 h-3" />}
               design="primary"
               size="md"
-            >
-              {t('builder_qr_code_download_button')}
-            </Button>
+              text={t('builder_qr_code_download_button')}
+            />
           </div>
         </Modal>
       )}

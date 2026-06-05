@@ -163,6 +163,7 @@ export default function ResponseMetadata({
             {enablePerMessageFeedback && <InvocationFeedbackControls />}
             <AnimatePresence>
               <Button
+                key="copy"
                 type="button"
                 design="stateless"
                 size="small"
@@ -171,20 +172,21 @@ export default function ResponseMetadata({
                 title={t('builder_chat_copy_clipboard')}
                 data-eid={generateClickEID('chat.response_metadata.copy')}
                 onClick={handleCopyResponse}
-              >
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.5 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.5 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                >
-                  {copiedToClipboard ? (
-                    <CheckIcon className={invocationFeedbackActionIconClass} />
-                  ) : (
-                    <ClipboardIcon className={invocationFeedbackActionIconClass} />
-                  )}
-                </motion.div>
-              </Button>
+                icon={
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.5 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.5 }}
+                    transition={{ duration: 0.2, ease: 'easeOut' }}
+                  >
+                    {copiedToClipboard ? (
+                      <CheckIcon className={invocationFeedbackActionIconClass} />
+                    ) : (
+                      <ClipboardIcon className={invocationFeedbackActionIconClass} />
+                    )}
+                  </motion.div>
+                }
+              />
             </AnimatePresence>
             {onUndo ? (
               <Button
@@ -195,9 +197,8 @@ export default function ResponseMetadata({
                 title={t('builder_chat_undo', undefined, 'Undo')}
                 aria-label={t('builder_chat_undo', undefined, 'Undo')}
                 onClick={onUndo}
-              >
-                <Undo2 className={invocationFeedbackActionIconClass} />
-              </Button>
+                icon={<Undo2 className={invocationFeedbackActionIconClass} />}
+              />
             ) : onRestore ? (
               <Button
                 type="button"
@@ -207,9 +208,8 @@ export default function ResponseMetadata({
                 title={t('builder_chat_restore', undefined, 'Restore')}
                 aria-label={t('builder_chat_restore', undefined, 'Restore')}
                 onClick={onRestore}
-              >
-                <RevertIcon className={invocationFeedbackActionIconClass} />
-              </Button>
+                icon={<RevertIcon className={invocationFeedbackActionIconClass} />}
+              />
             ) : null}
           </div>
         </div>

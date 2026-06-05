@@ -33,15 +33,18 @@ vi.mock('@ux/button', () => ({
     disabled,
     'aria-label': ariaLabel,
     icon,
+    text,
   }: {
     children?: React.ReactNode;
     onClick?: () => void;
     disabled?: boolean;
     'aria-label'?: string;
     icon?: React.ReactNode;
+    text?: React.ReactNode;
   }) => (
     <button type="button" onClick={onClick} disabled={disabled} aria-label={ariaLabel}>
       {icon}
+      {text}
       {children}
     </button>
   ),
@@ -97,11 +100,14 @@ describe('SubmitInitialPrompt', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
-  it('renders children inside the button', () => {
+  it('renders text inside the button', () => {
     renderWithProviders(
-      <SubmitInitialPrompt onClick={vi.fn()} disabled={false} isLoading={false}>
-        Submit
-      </SubmitInitialPrompt>,
+      <SubmitInitialPrompt
+        onClick={vi.fn()}
+        disabled={false}
+        isLoading={false}
+        text="Submit"
+      />,
     );
     expect(screen.getByText('Submit')).toBeInTheDocument();
   });

@@ -686,9 +686,8 @@ export default function VersionHistory() {
                                 size="sm"
                                 onClick={() => handleRestoreCommit(commit)}
                                 disabled={restoreMutation.isPending || isHistoryDisabled}
-                              >
-                                {isRestoringThisCommit ? t('builder_preview_error_restoring') : t('builder_preview_error_restore')}
-                              </Button>
+                                text={isRestoringThisCommit ? t('builder_preview_error_restoring') : t('builder_preview_error_restore')}
+                              />
                             </div>
                           )}
                         </li>
@@ -708,9 +707,8 @@ export default function VersionHistory() {
               size="md"
               onClick={() => setOffset(prev => prev + GIT_HISTORY_PAGE_SIZE)}
               disabled={isFetching || isHistoryDisabled}
-            >
-              {isFetching ? t('builder_common_loading') : t('builder_version_history_load_more')}
-            </Button>
+              text={isFetching ? t('builder_common_loading') : t('builder_version_history_load_more')}
+            />
           </div>
         )}
       </div>

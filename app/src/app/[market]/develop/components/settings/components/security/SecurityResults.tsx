@@ -466,9 +466,8 @@ export default function SecurityResults({
                   design="secondary"
                   disabled={isCreatingTodoList}
                   onClick={handleSelectAll}
-                >
-                  {areAllSelected() ? t('builder_common_deselect_all') : t('builder_common_select_all')}
-                </Button>
+                  text={areAllSelected() ? t('builder_common_deselect_all') : t('builder_common_select_all')}
+                />
                 <Button
                   className="min-w-0 w-full justify-center @md:w-auto"
                   size="sm"

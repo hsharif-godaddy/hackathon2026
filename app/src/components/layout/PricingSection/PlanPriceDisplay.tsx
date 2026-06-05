@@ -18,9 +18,9 @@ export default function PlanPriceDisplay({ planOffer, isLoading }: PlanPriceDisp
   if (isLoading) {
     return (
       <div className="my-3">
-        <Skeleton size="md" width="150px" height="28px" />
-        <Skeleton size="sm" width="120px" height="16px" className="mt-1" />
-        <Skeleton size="sm" width="200px" height="14px" className="mt-2" />
+        <Skeleton width="150px" height="28px" />
+        <Skeleton width="120px" height="16px" className="mt-1" />
+        <Skeleton width="200px" height="14px" className="mt-2" />
       </div>
     )
   }

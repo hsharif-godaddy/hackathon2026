@@ -47,18 +47,16 @@ export default function EventList({
             onClick={onBack}
             design="secondary"
             size="md"
-          >
-            {t('builder_marketing_back')}
-          </Button>
+            text={t('builder_marketing_back')}
+          />
           <Button
             onClick={onCreateCustomPost}
             design="primary"
             size="md"
-          >
-            {contentType === 'blog'
+            text={contentType === 'blog'
               ? t('builder_marketing_schedule_blog_post')
               : t('builder_marketing_schedule_socialpost')}
-          </Button>
+          />
         </Box>
       </Box>
     );
@@ -91,9 +89,8 @@ export default function EventList({
                 disabled={isPast}
                 design="secondary"
                 size="sm"
-              >
-                {isPast ? t('builder_marketing_past_date') : t('builder_marketing_schedule_post')}
-              </Button>
+                text={isPast ? t('builder_marketing_past_date') : t('builder_marketing_schedule_post')}
+              />
             </Box>
           </Box>
         ))}
@@ -105,17 +102,15 @@ export default function EventList({
           onClick={onBack}
           design="secondary"
           size="md"
-        >
-          {t('builder_marketing_back')}
-        </Button>
+          text={t('builder_marketing_back')}
+        />
         <Button
           onClick={onCreateCustomPost}
           disabled={isPast}
           design="primary"
           size="md"
-        >
-          {t('builder_marketing_schedule_custom_post')}
-        </Button>
+          text={t('builder_marketing_schedule_custom_post')}
+        />
       </Box>
     </Box>
   );
