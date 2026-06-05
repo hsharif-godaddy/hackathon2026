@@ -128,7 +128,7 @@ ${isFirstPage ? '4' : '3'}. **CHOOSE APPROPRIATELY SIZED IMAGES** - Check the di
    - For feature images: Use images 300px+ wide
    - Only use small images (<100px) for icons or decorative elements
 
-${isFirstPage ? '5' : '4'}. **IMPORTED ASSETS + STOCK IMAGES** - Prioritize imported images for branding (logo, hero). If the new design needs additional images that weren't in the source (e.g., new sections, decorative backgrounds), instruct the develop agent to search for appropriate stock images.
+${isFirstPage ? '5' : '4'}. **USE IMPORTED ASSETS — DO NOT GENERATE NEW IMAGES** - The source site's images are already downloaded and listed above with paths like \`/assets/images/[filename]\`. Use those paths directly in the code. Do NOT use the media tool to search for or generate replacement images. Only search for stock images if a section genuinely has no suitable imported image AND the design requires one.
 
 ${isFirstPage ? `6. **HOMEPAGE STRUCTURE**:
    - **HEADER**: Include explicit requirements for header with logo, navigation, and any CTAs
