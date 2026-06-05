@@ -1,6 +1,7 @@
 'use client'
 
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import * as ReactIntl from 'react-intl'
 import depsEsm from '@cds/deps-esm'
 import CdsComponentLoader from '@venture/cds-loader'
@@ -133,9 +134,19 @@ export function ComponentLoader({
 
   if (error) return renderErrorFallback ? <>{renderErrorFallback(error)}</> : null
 
-  return (
-    <div ref={containerRef}>
+  const loader = (
+    <div ref={containerRef} className="cds-paywall-portal" data-testid="cds-loader-root">
       <CdsComponentLoader source={source} onError={handleError} {...props} {...(props.loaderMode === 'esm' && { deps: depsEsm })} />
     </div>
   )
+
+  // UPP mounts #UpgradeLibraryPortal inside this wrapper and @ux/disrupt sets
+  // data-inert + overflow:hidden on that parent. On mobile develop, ancestors
+  // also use overflow-hidden/ios-fixed-container. Portaling to body avoids the
+  // ancestor chain; paywall SCSS overrides data-inert clipping on the portal.
+  if (typeof document === 'undefined') {
+    return loader
+  }
+
+  return createPortal(loader, document.body)
 }

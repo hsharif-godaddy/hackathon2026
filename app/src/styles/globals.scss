@@ -294,42 +294,6 @@
     z-index: 1;
   }
 
-  /* UPP mounts #UpgradeLibraryPortal inside the CDS loader div (not document.body).
-     That wrapper has no height, so disrupt backdrops using position:absolute collapse
-     to a few pixels on mobile. Pin the portal to the viewport instead. */
-  #UpgradeLibraryPortal,
-  #feedback-modal-portal {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-    pointer-events: none;
-
-    .ux-disrupt-backdrop {
-      pointer-events: auto;
-    }
-  }
-
-  #UpgradeLibraryPortal {
-    .tooltip-help-icon svg,
-    .PlanBox-featureItemTooltip svg {
-      display: inline;
-    }
-
-    /* On mobile, allow the plan grid to scroll horizontally instead of being clipped.
-       The ux-disrupt-backdrop sets overflow-x: hidden which hides plan cards that
-       exceed the mobile viewport width. */
-    @media (max-width: 767px) {
-      .ux-disrupt-backdrop {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-    }
-  }
-
-  body:has(#UpgradeLibraryPortal .ux-modal) .tooltip[role="tooltip"] {
-    z-index: 101 !important;
-  }
-
   /* SSO login modal styling to account for iframe padding */
   .sso-login-modal.ux-modal {
     gap: 0 !important;
@@ -339,6 +303,71 @@
   .invite-friends-modal.ux-modal {
     gap: 0.75rem !important;
   }
+}
+
+/* UPP mounts #UpgradeLibraryPortal inside cdsLoader (portaled to body).
+   @ux/disrupt sets data-inert on the portal parent, which adds overflow:hidden
+   and collapses absolute backdrops. Keep outside @layer base to beat UPP CSS. */
+.cds-paywall-portal,
+#UpgradeLibraryPortal {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100dvh !important;
+  z-index: 1000;
+  overflow: visible !important;
+  pointer-events: none; /* let clicks pass through the empty portal */
+
+  .ux-disrupt-backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100dvh !important;
+    pointer-events: auto; /* backdrop still catches clicks when modal is open */
+  }
+
+  .tooltip-help-icon svg,
+  .PlanBox-featureItemTooltip svg {
+    display: inline;
+  }
+
+  @media (max-width: 767px) {
+    .ux-disrupt-backdrop {
+      overflow-x: auto !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .ux-disrupt-content.ux-disrupt--stretch {
+      width: 100%;
+      max-width: 100%;
+    }
+  }
+}
+
+/* getFeedbackModalPortal() appends this div to body once and never removes it.
+   Pin it to the viewport so @ux/disrupt's backdrop fills correctly, and make the
+   empty shell passthrough so it doesn't block clicks after the modal closes. */
+#feedback-modal-portal {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100dvh !important;
+  z-index: 1000;
+  overflow: visible !important;
+  pointer-events: none; /* let clicks pass through the empty portal */
+
+  .ux-disrupt-backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100dvh !important;
+    pointer-events: auto; /* backdrop still catches clicks when modal is open */
+  }
+}
+
+body:has(#UpgradeLibraryPortal .ux-modal) .tooltip[role="tooltip"] {
+  z-index: 1001 !important;
 }
 
 @layer utilities {

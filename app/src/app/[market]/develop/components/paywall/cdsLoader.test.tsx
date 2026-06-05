@@ -283,6 +283,24 @@ describe('ComponentLoader', function componentLoaderTests() {
   })
 
   describe('rendering', function renderingTests() {
+    it('should portal CDS loader to document.body', async function portalToBody() {
+      render(
+        <ComponentLoader
+          type="test"
+          source="test-source"
+        />
+      )
+
+      await waitFor(() => {
+        expect(screen.getByTestId('cds-component')).toBeInTheDocument()
+      })
+
+      const portalRoot = document.body.querySelector('[data-testid="cds-loader-root"]')
+      expect(portalRoot).toBeInTheDocument()
+      expect(portalRoot).toHaveClass('cds-paywall-portal')
+      expect(portalRoot?.parentElement).toBe(document.body)
+    })
+
     it('should pass props to CDS component', async function passProps() {
       render(
         <ComponentLoader
