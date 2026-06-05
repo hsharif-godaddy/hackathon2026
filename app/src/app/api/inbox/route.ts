@@ -23,6 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
+import { getReamazeHost, UUID_RE } from '@/lib/inbox/reamaze-host';
 import { logger } from '@/lib/request-context';
 import { ApiErrorCode } from '@/utils/api-errors';
 
@@ -41,13 +42,6 @@ interface InboxRequest {
   brandId?: string;
   embeddableId?: number;
   body?: unknown;
-}
-
-function getReamazeHost(): string {
-  const environmentName = process.env.ENVIRONMENT_NAME || '';
-  if (environmentName === 'production') return 'reamaze.godaddy.com';
-  if (environmentName === 'test') return 'reamaze.test-godaddy.com';
-  return 'reamaze.dev-godaddy.com';
 }
 
 const REAMAZE_HOST = getReamazeHost();
@@ -98,7 +92,6 @@ export const POST = withCustomerAuth(async (
     return NextResponse.json({ error: 'brandId (string) is required' }, { status: 400 });
   }
 
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!isAccountLevel && !UUID_RE.test(body.brandId!)) {
     return NextResponse.json({ error: 'brandId must be a valid UUID' }, { status: 400 });
   }

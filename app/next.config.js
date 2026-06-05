@@ -25,6 +25,22 @@ export default gasket.actions.getNextConfig({
     '@aws-sdk/client-secrets-manager',
     '@aws-sdk/client-sts',
   ],
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**.dev-reamaze.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.test-reamaze.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.reamaze.com',
+      },
+    ],
+  },
   outputFileTracingIncludes: {
     '/explore/[name]/[[...lang]]': ['./src/data/landing-pages/**/*.yaml'],
   },
