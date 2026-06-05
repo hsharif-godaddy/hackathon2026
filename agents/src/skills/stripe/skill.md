@@ -550,6 +550,7 @@ If only `stripe__setup` and `stripe__status` show in your tool list (no create/l
 1. If sandbox isn't provisioned yet, call `stripe__setup` first.
 2. If it is and MCP tools are still missing, tell the user the Stripe MCP tools aren't available in this session and ask them to start a new conversation. The agent process picks up `STRIPE_MCP_KEY` on restart and `onLoad` will re-fetch the tools.
 3. **Do NOT** attempt to create products, prices, or any Stripe objects via terminal commands, `node -e` scripts, or curl. Wait for the user.
+4. **MCP tools are sandbox-only.** When `stripe__status` returns `claimStatus: 'live'`, the MCP product/price tools are no longer available — the account has moved to live mode and MCP access has been removed to keep the live account secure. If the user asks to create or manage products/prices in live mode, guide them to their Stripe Dashboard: `https://dashboard.stripe.com/products`. The checkout integration continues to work normally; only agent-initiated product creation via MCP is unavailable.
 
 ## Reference: status and idempotency
 

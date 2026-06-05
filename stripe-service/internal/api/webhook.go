@@ -609,11 +609,11 @@ func (s *Server) provisionLiveKeys(ctx context.Context, eventID, sandboxID, owne
 		"mcpPrefix", keyPrefix(keys.MCPKey),
 	)
 
-	// Push the live keys via hosting. See buildLiveSecretsOps for the
-	// per-variant rationale (sk/pk land on both preview and publish; MCP
-	// is protected; op count varies because MCPKey may be empty in live
-	// mode).
-	ops := buildLiveSecretsOps(keys.SecretKey, keys.PublishableKey, keys.MCPKey)
+	// Push the live keys via hosting. buildLiveSecretsOps always returns 5
+	// ops: STRIPE_MCP_KEY is DELETED (MCP is sandbox-only — no agent MCP
+	// access in live mode), and sk/pk are upserted to both preview and
+	// publish variants. See buildLiveSecretsOps for the per-variant rationale.
+	ops := buildLiveSecretsOps(keys.SecretKey, keys.PublishableKey)
 	slog.Info("stripe_service.webhook.live_keys.push_started",
 		"eventId", eventID, "appId", sandbox.AppID, "opsCount", len(ops))
 	if err := s.Secrets.UpdateSecrets(ctx, sandbox.AppID, ops); err != nil {

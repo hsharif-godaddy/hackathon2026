@@ -715,88 +715,40 @@ func TestBuildSecretsOps_FiveOpShape(t *testing.T) {
 }
 
 // TestBuildLiveSecretsOps_FourOpShape_WhenMCPSkipped: when MintLiveAPIKeys
-// returns "" for MCPKey (mcp_key not yet supported in live mode, plan §9 Q9),
-// the MCP op is skipped. sk/pk land on both preview and publish variants so
-// the BFF preview->publish secrets-sync doesn't clobber publish.
-func TestBuildLiveSecretsOps_FourOpShape_WhenMCPSkipped(t *testing.T) {
-	ops := buildLiveSecretsOps("sk_live_X", "pk_live_X", "")
-	if len(ops) != 4 {
-		t.Fatalf("ops count: want 4 (sk + pk on both variants; MCP skipped), got %d", len(ops))
-	}
-
-	type key struct{ name, variant string }
-	byKey := map[key]hosting.SecretOp{}
-	for _, op := range ops {
-		v := ""
-		if len(op.Secret.Variants) == 1 {
-			v = op.Secret.Variants[0]
-		}
-		byKey[key{op.Secret.Name, v}] = op
-	}
-
-	if _, leaked := byKey[key{"STRIPE_MCP_KEY", ""}]; leaked {
-		t.Errorf("STRIPE_MCP_KEY op MUST NOT be present when liveMCPKey is empty")
-	}
-
-	wantValues := map[key]string{
-		{"STRIPE_SECRET_KEY", "preview"}:      "sk_live_X",
-		{"STRIPE_SECRET_KEY", "publish"}:      "sk_live_X",
-		{"STRIPE_PUBLISHABLE_KEY", "preview"}: "pk_live_X",
-		{"STRIPE_PUBLISHABLE_KEY", "publish"}: "pk_live_X",
-	}
-	for k, wantVal := range wantValues {
-		op, ok := byKey[k]
-		if !ok {
-			t.Errorf("missing op for %+v", k)
-			continue
-		}
-		if op.Secret.Value != wantVal {
-			t.Errorf("op %+v value: want %q, got %q", k, wantVal, op.Secret.Value)
-		}
-		if op.Secret.Protected != nil {
-			t.Errorf("op %+v: non-MCP ops should leave Protected nil; got %+v", k, op.Secret.Protected)
-		}
-		if op.Secret.SystemManaged {
-			t.Errorf("op %+v must NOT be systemManaged", k)
-		}
-	}
-}
-
-// TestBuildLiveSecretsOps_FiveOpShape: full 5-op shape when MCP is available.
-// MCP (protected, no variants) + sk × {preview, publish} + pk × {preview, publish}.
-func TestBuildLiveSecretsOps_FiveOpShape(t *testing.T) {
-	ops := buildLiveSecretsOps("sk_live_X", "pk_live_X", "ek_live_X")
+// TestBuildLiveSecretsOps: always 5 ops — delete STRIPE_MCP_KEY (MCP is
+// sandbox-only; live product management uses Stripe dashboard) + sk/pk on
+// both preview and publish variants.
+func TestBuildLiveSecretsOps(t *testing.T) {
+	ops := buildLiveSecretsOps("sk_live_X", "pk_live_X")
 	if len(ops) != 5 {
 		t.Fatalf("ops count: want 5, got %d", len(ops))
 	}
 
+	// First op must be the MCP key delete.
+	mcpOp := ops[0]
+	if mcpOp.Type != hosting.SecretOpDelete {
+		t.Errorf("ops[0].Type: want delete, got %q", mcpOp.Type)
+	}
+	if mcpOp.Secret.Name != "STRIPE_MCP_KEY" {
+		t.Errorf("ops[0].Name: want STRIPE_MCP_KEY, got %q", mcpOp.Secret.Name)
+	}
+	if mcpOp.Secret.Protected == nil || !*mcpOp.Secret.Protected {
+		t.Errorf("MCP delete op must set protected:true so it targets the agent task")
+	}
+	if mcpOp.Secret.Value != "" {
+		t.Errorf("MCP delete op must carry no value; got %q", mcpOp.Secret.Value)
+	}
+
+	// Remaining 4 ops: sk/pk upserts to preview+publish.
 	type key struct{ name, variant string }
 	byKey := map[key]hosting.SecretOp{}
-	for _, op := range ops {
+	for _, op := range ops[1:] {
 		v := ""
 		if len(op.Secret.Variants) == 1 {
 			v = op.Secret.Variants[0]
 		}
 		byKey[key{op.Secret.Name, v}] = op
 	}
-
-	mcp, ok := byKey[key{"STRIPE_MCP_KEY", ""}]
-	if !ok {
-		t.Fatalf("missing MCP op; got keys=%+v", byKey)
-	}
-	if mcp.Secret.Protected == nil || !*mcp.Secret.Protected {
-		t.Errorf("MCP op must set protected:true")
-	}
-	if len(mcp.Secret.Variants) != 0 {
-		t.Errorf("MCP op should not carry variants; got %v", mcp.Secret.Variants)
-	}
-	if mcp.Secret.Value != "ek_live_X" {
-		t.Errorf("MCP value: want ek_live_X, got %q", mcp.Secret.Value)
-	}
-	if mcp.Secret.SystemManaged {
-		t.Errorf("MCP op must NOT be systemManaged")
-	}
-
 	wantValues := map[key]string{
 		{"STRIPE_SECRET_KEY", "preview"}:      "sk_live_X",
 		{"STRIPE_SECRET_KEY", "publish"}:      "sk_live_X",
@@ -812,11 +764,8 @@ func TestBuildLiveSecretsOps_FiveOpShape(t *testing.T) {
 		if op.Secret.Value != wantVal {
 			t.Errorf("op %+v value: want %q, got %q", k, wantVal, op.Secret.Value)
 		}
-		if op.Secret.Protected != nil {
-			t.Errorf("op %+v: non-MCP ops should leave Protected nil; got %+v", k, op.Secret.Protected)
-		}
-		if op.Secret.SystemManaged {
-			t.Errorf("op %+v must NOT be systemManaged", k)
+		if op.Type != hosting.SecretOpUpsert {
+			t.Errorf("op %+v type: want upsert, got %q", k, op.Type)
 		}
 	}
 }

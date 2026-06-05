@@ -1,24 +1,42 @@
 /**
  * Lazy, per-app Stripe MCP client.
  *
- * LLM-initiated writes to Stripe (create product, price, etc.) must go through
- * MCP using the restricted MCP key (`ek_test_*`), not the secret key. This
- * module fetches the MCP tool list for a given app's sandbox and caches it
- * keyed by MCP key.
+ * MCP is SANDBOX-ONLY. LLM-initiated writes to Stripe (create product, price,
+ * etc.) go through mcp.stripe.com authenticated with STRIPE_MCP_KEY — the
+ * ek_test_* restricted key from sandbox creation. At go-live, stripe-service
+ * DELETES STRIPE_MCP_KEY from hosting (see buildLiveSecretsOps): live product
+ * management happens directly in the Stripe Dashboard, not via the agent. We
+ * deliberately do NOT swap in sk_live_* — that would expose a full live key to
+ * the agent and drift if the merchant rotates it.
+ *
+ * STRIPE_MCP_KEY is delivered as a Protected secret so it lands in the agent
+ * task's alloc config.json. STRIPE_SECRET_KEY is variant-scoped to preview and
+ * publish tasks only and is NOT present in the agent's config — this is why we
+ * read STRIPE_MCP_KEY, not STRIPE_SECRET_KEY, here.
  *
  * Lifecycle:
- *   - First call to loadStripeMcpTools(appId) reads the MCP key from the
- *     right config.json (see readStripeMcpKey below), opens an MCP client,
- *     fetches tools, and caches the in-flight Promise keyed by MCP key so
- *     concurrent callers (e.g. initialize() + a mid-conversation onLoad
- *     re-fire) share one createMCPClient() call.
- *   - Subsequent calls for the same key return the cached Promise.
- *   - When STRIPE_MCP_KEY is absent (pre-provisioning), returns {} so callers
- *     can register MCP tools only when the key is present. Cache entry is
- *     cleared on error so the next skill activation can retry.
+ *   - First call to loadStripeMcpTools(appId) reads STRIPE_MCP_KEY from
+ *     the right config.json (see readStripeMcpKey), opens an MCP client,
+ *     fetches tools, and caches the in-flight Promise keyed by MCP key value
+ *     so concurrent callers share one createMCPClient() call. Cache entries
+ *     expire after MCP_SESSION_TTL_MS — see TTL note below.
+ *   - When STRIPE_MCP_KEY is absent (pre-provisioning OR post-go-live), returns
+ *     {} so no MCP tools are registered.
+ *   - Cache entry is cleared on error so the next skill activation can retry.
+ *
+ * Each tool's execute is also guarded (see guardToolWithCurrentKey) to refuse
+ * if STRIPE_MCP_KEY changes or disappears AFTER registration — tool
+ * registration is sticky, so deleting the key at go-live alone doesn't disable
+ * tools already live in an in-flight conversation.
+ *
+ * TTL note: the 4-minute sliding-window TTL evicts stale sessions when
+ * loadStripeMcpTools is re-invoked (new conversation, explicit load_skill).
+ * It does NOT fix the case where a pinned skill's session expires mid-
+ * conversation without a re-load — that requires lazy reconnect at the execute
+ * layer and is tracked in AIROBUILD-2231.
  *
  * Tool naming: this module returns tools keyed by their RAW MCP names (e.g.
- * "products_create"). The skill-tool-manager applies the `stripe__` prefix
+ * "create_product"). The skill-tool-manager applies the `stripe__` prefix
  * via buildSkillToolName when registerDynamicTools is called.
  */
 
@@ -32,44 +50,60 @@ import { getNomadAllocConfig } from '../../utils/nomad-config.js';
 
 const MCP_STRIPE_URL = 'https://mcp.stripe.com';
 
-// Cache the in-flight Promise per MCP key. The key uniquely identifies the
-// sandbox; storing the Promise (not the resolved value) lets concurrent
-// callers share one createMCPClient() call rather than creating an orphaned
-// client. A new sandbox mints a new key, which gets its own cache entry —
-// existing entries are not invalidated.
-const cachedToolsByKey = new Map<string, Promise<Record<string, Tool>>>();
+// MCP session TTL: Stripe's HTTP MCP sessions expire after a period of
+// inactivity. Cached execute functions that reference a stale session fail
+// silently ("no corresponding tool result"). Re-initialize after this window
+// to ensure tool calls always run against a live session.
+const MCP_SESSION_TTL_MS = 4 * 60 * 1000; // 4 minutes
+
+type CacheEntry = {
+  promise: Promise<Record<string, Tool>>;
+  cachedAt: number;
+  // close() is populated once createMCPClient resolves; no-op until then.
+  // Called on TTL eviction and init errors to release the underlying transport.
+  close: () => Promise<void>;
+};
+
+// Cache the in-flight Promise per MCP key. Keyed by the secret key value so
+// a new sandbox (new key) gets its own entry. Entries older than
+// MCP_SESSION_TTL_MS are evicted so the next call opens a fresh session.
+// TTL resets on each cache hit (sliding window) so active sessions aren't
+// torn down mid-conversation.
+const cachedToolsByKey = new Map<string, CacheEntry>();
+
+/**
+ * Close and drop every cached entry whose key is not `keepKey`. Pass null to
+ * evict all (e.g. after go-live, when the key was deleted). Prevents the prior
+ * key's open MCP client from leaking when the key rotates or disappears.
+ */
+function evictStaleEntries(keepKey: string | null, appId?: string): void {
+  for (const [key, entry] of cachedToolsByKey) {
+    if (key === keepKey) {
+      continue;
+    }
+    cachedToolsByKey.delete(key);
+    entry.close().catch(() => {});
+    logger.info('stripe_mcp_client.stale_entry_evicted', { appId });
+  }
+}
 
 /**
  * Read STRIPE_MCP_KEY from the config.json that belongs to the calling app.
  *
- * Production (Nomad): NOMAD_ALLOC_DIR is set; getNomadAllocConfig() reads
- * ${NOMAD_ALLOC_DIR}/config.json — the single per-alloc file Nomad templating
- * writes for this app's tasks. appId is unused because deployment topology is
- * one app per agent process.
+ * Production (Nomad): NOMAD_ALLOC_DIR is set. STRIPE_MCP_KEY is a Protected
+ * secret so hosting delivers it to the agent task's alloc config.json.
+ * STRIPE_MCP_KEY arrives after process start (written by stripe-service after
+ * provisioning), so we bypass getNomadAllocConfig()'s permanent memoization
+ * and read the file fresh on every call.
  *
- * Local dev: NOMAD_ALLOC_DIR is unset (this env var is the codebase's
- * canonical "is this local?" signal — see publish.ts, git.ts, app.ts), so
- * getNomadAllocConfig() returns null. Each app has its own config.json under
- * APPS_BASE_DIR/<appId>/local/preview/config.json (written by
- * local-control-plane's syncSecretsToConfigFiles when stripe-service pushes
- * secrets via UpdateSecrets). We need appId to pick the right file because
- * one local agent process serves N apps.
- *
- * Mirrors the prod-vs-local config split in mysql-utils.ts:loadCredentialsFromApp.
- *
- * NOTE: Unlike other alloc-config consumers (DATABASE, CAPABILITIES, etc.),
- * STRIPE_MCP_KEY is written by stripe-service *after* agent startup — it
- * arrives when the merchant provisions their Stripe sandbox mid-conversation.
- * getNomadAllocConfig() permanently memoizes its first successful read, so it
- * would return the startup snapshot (no key) forever. We bypass the memoized
- * helper and read the file fresh on every call so retries in
- * reloadMcpToolsAfterSetup and onLoad actually pick up the key once it lands.
+ * Local dev: NOMAD_ALLOC_DIR is unset. Each app has its own config.json under
+ * APPS_BASE_DIR/<appId>/local/preview/config.json written by local-control-plane
+ * when stripe-service pushes secrets via UpdateSecrets.
  */
 function readStripeMcpKey(appId?: string): string | null {
   if (env.NOMAD_ALLOC_DIR) {
-    // Production (Nomad): read fresh on every call — STRIPE_MCP_KEY arrives
-    // after process start, so the memoized getNomadAllocConfig() would return
-    // a stale snapshot that never contains the key.
+    // Read fresh every call — STRIPE_MCP_KEY arrives after process start so
+    // the memoized getNomadAllocConfig() would return a stale snapshot.
     const allocConfigPath = join(env.NOMAD_ALLOC_DIR, 'config.json');
     if (!existsSync(allocConfigPath)) {
       return null;
@@ -79,7 +113,11 @@ function readStripeMcpKey(appId?: string): string | null {
       const config = JSON.parse(raw) as Record<string, { VALUE?: unknown }>;
       const v = config.STRIPE_MCP_KEY?.VALUE;
       return typeof v === 'string' && v ? v : null;
-    } catch {
+    } catch (err) {
+      logger.error('stripe_mcp_client.config_read_failed', {
+        path: allocConfigPath,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return null;
     }
   }
@@ -112,31 +150,97 @@ function readStripeMcpKey(appId?: string): string | null {
 }
 
 /**
+ * Wrap an MCP tool's execute so it re-checks the current STRIPE_MCP_KEY in
+ * config before running. Tool registration is sticky: once registered into a
+ * conversation, a tool stays callable even after the key is deleted from config
+ * (e.g. at go-live, when MCP becomes sandbox-only). Without this guard the
+ * agent could keep calling create_product against the stale sandbox session.
+ *
+ * The check is a single local config read (sub-ms, page-cached) — no network
+ * call — so it adds negligible latency per tool execution. It refuses when the
+ * key is gone (deleted at go-live) or has rotated to a different value (the
+ * cached session no longer matches what config says is current).
+ */
+function guardToolWithCurrentKey(
+  toolName: string,
+  toolDef: Tool,
+  boundKey: string,
+  appId?: string,
+): Tool {
+  const originalExecute = toolDef.execute;
+  if (typeof originalExecute !== 'function') {
+    return toolDef;
+  }
+  return {
+    ...toolDef,
+    execute: async (args: unknown, options: unknown) => {
+      const currentKey = readStripeMcpKey(appId);
+      if (currentKey !== boundKey) {
+        logger.info('stripe_mcp_client.tool_blocked_stale_key', {
+          appId,
+          toolName,
+          reason: currentKey ? 'key_rotated' : 'key_absent',
+        });
+        return {
+          error: 'stripe_mcp_unavailable',
+          message:
+            'Stripe MCP tools are no longer available for this app. This usually means the ' +
+            'account has gone live, where product and price management happens directly in ' +
+            'the Stripe Dashboard (https://dashboard.stripe.com/products).',
+        };
+      }
+      return (originalExecute as (a: unknown, o: unknown) => Promise<unknown>)(args, options);
+    },
+  };
+}
+
+/**
  * Load Stripe MCP tools for the calling app. Returns an empty record when
  * STRIPE_MCP_KEY is not yet available (pre-provisioning, or pre-fire path
- * where appId is not known). Caches the tool list keyed by MCP key — re-fetch
- * happens transparently if the key rotates (new sandbox).
+ * where appId is not known). Caches the tool list keyed by MCP key value —
+ * re-fetch happens transparently if the key rotates (new sandbox or go-live).
  *
- * Returned keys are raw MCP tool names (e.g. "products_create"), without the
+ * Returned keys are raw MCP tool names (e.g. "create_product"), without the
  * skill prefix. registerDynamicTools in SkillToolManager applies the prefix.
+ * Each tool's execute is wrapped (see guardToolWithCurrentKey) to refuse if
+ * STRIPE_MCP_KEY changes or disappears after registration.
  */
 export async function loadStripeMcpTools(appId?: string): Promise<Record<string, Tool>> {
   const mcpKey = readStripeMcpKey(appId);
+
+  // Close + drop any cached entries whose key is no longer current. After
+  // go-live the key is deleted, so without this the prior ek_test_* entry's
+  // open client would leak until process restart. keepKey=null evicts all.
+  evictStaleEntries(mcpKey, appId);
+
   if (!mcpKey) {
     logger.info('stripe_mcp_client.no_key', {
       appId,
       message:
-        'STRIPE_MCP_KEY not found in alloc/local config; Stripe MCP tools will not be available until sandbox is provisioned for this app',
+        'STRIPE_MCP_KEY not found in alloc/local config; Stripe MCP tools will not be available until the sandbox is provisioned',
     });
     return {};
   }
 
-  const cached = cachedToolsByKey.get(mcpKey);
-  if (cached) {
-    return cached;
+  const entry = cachedToolsByKey.get(mcpKey);
+  if (entry && Date.now() - entry.cachedAt < MCP_SESSION_TTL_MS) {
+    // Sliding window: reset the TTL on each hit so active sessions aren't
+    // torn down mid-conversation.
+    entry.cachedAt = Date.now();
+    return entry.promise;
+  }
+  if (entry) {
+    const ageMs = Date.now() - entry.cachedAt;
+    logger.info('stripe_mcp_client.session_expired', { appId, ageMs });
+    cachedToolsByKey.delete(mcpKey);
+    entry.close().catch(() => {});
   }
 
   logger.info('stripe_mcp_client.init', { url: MCP_STRIPE_URL, appId });
+
+  // closeRef lets the async IIFE hand back a close handle once the client
+  // is created, so the cache entry can close it on TTL eviction or error.
+  const closeRef: { fn: () => Promise<void> } = { fn: () => Promise.resolve() };
 
   const promise: Promise<Record<string, Tool>> = (async () => {
     try {
@@ -147,11 +251,12 @@ export async function loadStripeMcpTools(appId?: string): Promise<Record<string,
           headers: { Authorization: `Bearer ${mcpKey}` },
         },
       });
+      closeRef.fn = () => client.close();
 
       const raw = await client.tools();
       const tools: Record<string, Tool> = {};
       for (const [name, toolDef] of Object.entries(raw)) {
-        tools[name] = toolDef;
+        tools[name] = guardToolWithCurrentKey(name, toolDef, mcpKey, appId);
       }
 
       logger.info('stripe_mcp_client.tools_loaded', {
@@ -166,13 +271,15 @@ export async function loadStripeMcpTools(appId?: string): Promise<Record<string,
         appId,
         error: error instanceof Error ? error.message : String(error),
       });
-      // Clear cache on error — allow retry on next skill activation.
+      // Close the transport (best-effort) and clear cache so the next skill
+      // activation retries with a fresh client.
+      closeRef.fn().catch(() => {});
       cachedToolsByKey.delete(mcpKey);
       return {};
     }
   })();
 
-  cachedToolsByKey.set(mcpKey, promise);
+  cachedToolsByKey.set(mcpKey, { promise, cachedAt: Date.now(), close: () => closeRef.fn() });
   return promise;
 }
 
@@ -180,3 +287,6 @@ export async function loadStripeMcpTools(appId?: string): Promise<Record<string,
 export function _resetStripeMcpClientCache(): void {
   cachedToolsByKey.clear();
 }
+
+/** Expose TTL for tests. */
+export const _MCP_SESSION_TTL_MS = MCP_SESSION_TTL_MS;

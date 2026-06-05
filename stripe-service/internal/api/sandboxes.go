@@ -105,11 +105,10 @@ func buildSecretsOps(secretKey, publishableKey, mcpKey string) []hosting.SecretO
 }
 
 // buildLiveSecretsOps constructs the bulk-secrets payload pushed at go-live.
-// Up to 5 ops:
-//   - STRIPE_MCP_KEY (protected, no variants) — skipped when liveMCPKey is
-//     empty (Stripe's v2.iam.api_keys doesn't accept type=mcp_key in live
-//     mode yet; plan §9 Q9). When skipped, the ek_test_* placed at sandbox
-//     creation stays in hosting.
+// 5 ops:
+//   - STRIPE_MCP_KEY delete: removes the sandbox ek_test_* key so the agent
+//     loses MCP tool access in live mode. MCP is sandbox-only; live product
+//     management goes through the Stripe dashboard directly.
 //   - STRIPE_SECRET_KEY × {preview, publish}: sk_live_*
 //   - STRIPE_PUBLISHABLE_KEY × {preview, publish}: pk_live_*
 //
@@ -119,19 +118,15 @@ func buildSecretsOps(secretKey, publishableKey, mcpKey string) []hosting.SecretO
 // (required for the customer-app's #airo/secrets resolver), so any
 // preview/publish drift would be auto-synced — clobbering publish's
 // sk_live_* with preview's value on the next publish.
-func buildLiveSecretsOps(liveSecretKey, livePublishableKey, liveMCPKey string) []hosting.SecretOp {
+func buildLiveSecretsOps(liveSecretKey, livePublishableKey string) []hosting.SecretOp {
 	ops := make([]hosting.SecretOp, 0, 5)
-	if liveMCPKey != "" {
-		ops = append(ops, hosting.SecretOp{
-			Type: hosting.SecretOpUpsert,
-			Secret: hosting.SecretPayload{
-				Name:          "STRIPE_MCP_KEY",
-				Value:         liveMCPKey,
-				Protected:     boolPtr(true),
-				SystemManaged: false,
-			},
-		})
-	}
+	// Remove the sandbox MCP key — MCP tools are sandbox-only. The agent
+	// skill.md guides live-mode users to the Stripe dashboard for product
+	// management instead.
+	ops = append(ops, hosting.SecretOp{
+		Type:   hosting.SecretOpDelete,
+		Secret: hosting.SecretPayload{Name: "STRIPE_MCP_KEY", Protected: boolPtr(true)},
+	})
 	ops = append(ops,
 		hosting.SecretOp{Type: hosting.SecretOpUpsert, Secret: hosting.SecretPayload{
 			Name:          "STRIPE_SECRET_KEY",

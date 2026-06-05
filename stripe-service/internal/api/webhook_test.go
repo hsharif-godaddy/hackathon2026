@@ -1052,23 +1052,34 @@ func TestWebhook_OwnerAccountUpdated_LiveKeysProvisioning_HappyPath(t *testing.T
 		t.Errorf("UpdateSecrets.appID: want %q (from sandbox row, not the merchant acct), got %q", want, got)
 	}
 	if got, want := len(pusher.lastOps), 5; got != want {
-		t.Fatalf("ops count: want 5 (MCP + sk x {preview,publish} + pk x {preview,publish}), got %d", got)
+		t.Fatalf("ops count: want 5 (MCP delete + sk x {preview,publish} + pk x {preview,publish}), got %d", got)
 	}
 
-	// Pin the exact shape. Preview-variant ops MUST be present so the
-	// BFF's preview->publish secrets sync (triggered on every "Publish app"
-	// click) doesn't clobber publish's sk_live_* with a stale sk_test_*
-	// from preview. See buildLiveSecretsOps for the full rationale.
+	// First op: delete STRIPE_MCP_KEY — MCP is sandbox-only, removed at go-live.
+	mcpOp := pusher.lastOps[0]
+	if mcpOp.Type != hosting.SecretOpDelete {
+		t.Errorf("ops[0].Type: want delete (remove sandbox MCP key at go-live), got %q", mcpOp.Type)
+	}
+	if mcpOp.Secret.Name != "STRIPE_MCP_KEY" {
+		t.Errorf("ops[0].Name: want STRIPE_MCP_KEY, got %q", mcpOp.Secret.Name)
+	}
+	if mcpOp.Secret.Protected == nil || !*mcpOp.Secret.Protected {
+		t.Errorf("MCP delete op must set protected:true; got %+v", mcpOp.Secret.Protected)
+	}
+	if mcpOp.Secret.Value != "" {
+		t.Errorf("MCP delete op must carry no value; got %q", mcpOp.Secret.Value)
+	}
+
+	// Remaining 4 ops: sk/pk upserts to preview+publish.
 	type key struct{ name, variant string }
 	wantValues := map[key]string{
-		{"STRIPE_MCP_KEY", ""}:                "ek_live_merchant_xyz",
 		{"STRIPE_SECRET_KEY", "preview"}:      "sk_live_merchant_xyz",
 		{"STRIPE_SECRET_KEY", "publish"}:      "sk_live_merchant_xyz",
 		{"STRIPE_PUBLISHABLE_KEY", "preview"}: "pk_live_merchant_xyz",
 		{"STRIPE_PUBLISHABLE_KEY", "publish"}: "pk_live_merchant_xyz",
 	}
 	gotByKey := map[key]hosting.SecretOp{}
-	for _, op := range pusher.lastOps {
+	for _, op := range pusher.lastOps[1:] {
 		v := ""
 		if len(op.Secret.Variants) == 1 {
 			v = op.Secret.Variants[0]
@@ -1084,19 +1095,6 @@ func TestWebhook_OwnerAccountUpdated_LiveKeysProvisioning_HappyPath(t *testing.T
 		if op.Secret.Value != wantVal {
 			t.Errorf("op %+v value: want %q, got %q", k, wantVal, op.Secret.Value)
 		}
-	}
-	// MCP must be protected; sk/pk must NOT be.
-	mcp := gotByKey[key{"STRIPE_MCP_KEY", ""}]
-	if mcp.Secret.Protected == nil || !*mcp.Secret.Protected {
-		t.Errorf("MCP op must set protected:true; got %+v", mcp.Secret.Protected)
-	}
-	for _, k := range []key{
-		{"STRIPE_SECRET_KEY", "preview"},
-		{"STRIPE_SECRET_KEY", "publish"},
-		{"STRIPE_PUBLISHABLE_KEY", "preview"},
-		{"STRIPE_PUBLISHABLE_KEY", "publish"},
-	} {
-		op := gotByKey[k]
 		if op.Secret.Protected != nil && *op.Secret.Protected {
 			t.Errorf("op %+v should not be protected", k)
 		}
