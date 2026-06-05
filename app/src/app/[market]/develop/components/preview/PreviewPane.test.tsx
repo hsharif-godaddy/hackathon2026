@@ -1198,6 +1198,142 @@ describe('PreviewPane — iframe bootstrap-timeout auto-remount', () => {
   });
 });
 
+describe('PreviewPane — Storage Access fallback gating', () => {
+  const IFRAME_BOOTSTRAP_RETRY_MS = 3000;
+  const MAX_IFRAME_BOOTSTRAP_RETRIES = 3;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    mockDevelopPageStore.viewMode = ViewMode.PREVIEW;
+    mockDevelopPageStore.publishStates = { 'test-app-123': { isPublishing: false } };
+    mockServerPollingStore.getServerState = vi.fn(function () { return {
+      isReady: true,
+      url: 'http://localhost:3000',
+    }; });
+    mockServerPollingStore.isPollingServer = vi.fn(function () { return false; });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  function stubWebKit(): void {
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+    });
+  }
+
+  function stubChrome(): void {
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    });
+  }
+
+  async function exhaustBootstrapRetries(): Promise<void> {
+    for (let i = 0; i < MAX_IFRAME_BOOTSTRAP_RETRIES + 1; i++) {
+      await vi.advanceTimersByTimeAsync(IFRAME_BOOTSTRAP_RETRY_MS + 1);
+    }
+  }
+
+  it('redirects iframe to storage-access bootstrap when WebKit + auth probe detects 307', async () => {
+    stubWebKit();
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaqueredirect' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+    await exhaustBootstrapRetries();
+
+    // Allow the probe fetch promise to resolve
+    await vi.advanceTimersByTimeAsync(0);
+    await act(async () => { await Promise.resolve(); });
+
+    const iframe = document.querySelector('iframe');
+    expect(iframe?.src).toContain('/airo/storage-access');
+    expect(iframe?.src).toContain('redirect=');
+  });
+
+  it('does NOT redirect to storage-access when auth probe returns opaque (no 307)', async () => {
+    stubWebKit();
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaque' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+    await exhaustBootstrapRetries();
+
+    await vi.advanceTimersByTimeAsync(0);
+    await act(async () => { await Promise.resolve(); });
+
+    const iframe = document.querySelector('iframe');
+    expect(iframe?.src).not.toContain('/airo/storage-access');
+  });
+
+  it('does NOT redirect to storage-access on Chrome even if retries exhausted', async () => {
+    stubChrome();
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaqueredirect' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+    await exhaustBootstrapRetries();
+
+    await vi.advanceTimersByTimeAsync(0);
+    await act(async () => { await Promise.resolve(); });
+
+    const iframe = document.querySelector('iframe');
+    expect(iframe?.src).not.toContain('/airo/storage-access');
+    // Probe should not even be called on non-WebKit
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT redirect when probe fetch throws (network error)', async () => {
+    stubWebKit();
+    const fetchMock = vi.fn().mockRejectedValue(new Error('network error'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+    await exhaustBootstrapRetries();
+
+    await vi.advanceTimersByTimeAsync(0);
+    await act(async () => { await Promise.resolve(); });
+
+    const iframe = document.querySelector('iframe');
+    expect(iframe?.src).not.toContain('/airo/storage-access');
+  });
+
+  it('resets isAuthBlocked when previewUrl changes', async () => {
+    stubWebKit();
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaqueredirect' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { rerender } = renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+    await exhaustBootstrapRetries();
+
+    await vi.advanceTimersByTimeAsync(0);
+    await act(async () => { await Promise.resolve(); });
+
+    // Confirm it's in storage-access mode
+    let iframe = document.querySelector('iframe');
+    expect(iframe?.src).toContain('/airo/storage-access');
+
+    // URL changes — should reset
+    mockServerPollingStore.getServerState = vi.fn(function () { return {
+      isReady: true,
+      url: 'http://localhost:4000',
+    }; });
+    fetchMock.mockResolvedValue({ type: 'opaque' });
+    rerender(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    await vi.advanceTimersByTimeAsync(0);
+    await act(async () => { await Promise.resolve(); });
+
+    iframe = document.querySelector('iframe');
+    expect(iframe?.src).not.toContain('/airo/storage-access');
+  });
+});
+
 describe('publish-snapshot-request handling', function publishSnapshotHandlingTests() {
   const publishDetail = {
     appId: 'test-app-123',

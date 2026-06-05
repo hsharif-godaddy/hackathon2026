@@ -101,6 +101,72 @@ export function restoreIframeState(
   }
 }
 
+/**
+ * Compare two preview URLs for route equality while ignoring the bootstrap
+ * `airoShareToken` query param. The iframe `src` carries that param (the BFF
+ * appends it in /api/servers/[id] so the cross-site preview authenticates via
+ * the URL instead of a third-party cookie that Safari ITP drops), but the
+ * customer app reports its own URL — which may not include the token. A raw
+ * `search` comparison would then spuriously differ and silently skip
+ * post-refresh scroll restoration, so strip the token from both sides first.
+ */
+function isSamePreviewRoute(a: URL, b: URL): boolean {
+  const searchWithoutShareToken = (u: URL): string => {
+    const params = new URLSearchParams(u.search)
+    params.delete('airoShareToken')
+    return params.toString()
+  }
+  return a.pathname === b.pathname && searchWithoutShareToken(a) === searchWithoutShareToken(b)
+}
+
+function isWebKit(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent
+  return /AppleWebKit/.test(ua) && !/Chrome\//.test(ua)
+}
+
+/**
+ * Probe the preview origin's /airo/auth-check endpoint to detect whether
+ * requests are being 307'd due to auth/cookie issues. This endpoint is behind
+ * JWT middleware in dev-supervisor (not proxied to Node.js), so it's
+ * lightweight. Uses redirect:'manual' + mode:'no-cors' so we can distinguish
+ * a redirect (type 'opaqueredirect') from a successful response (type 'opaque')
+ * without needing CORS headers on the preview.
+ */
+async function probePreviewAuth(previewUrl: string): Promise<boolean> {
+  try {
+    const u = new URL(previewUrl)
+    const res = await fetch(u.origin + '/airo/auth-check', {
+      method: 'HEAD',
+      credentials: 'include',
+      redirect: 'manual',
+      mode: 'no-cors',
+    })
+    return res.type === 'opaqueredirect'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Build the dev-supervisor Storage Access bootstrap URL for a preview origin.
+ * When Safari ITP blocks the cross-site preview cookie, the embedded app's
+ * sub-resources are 307'd and it never loads. Pointing the iframe at this page
+ * lets the user grant cookie access via `document.requestStorageAccess()` (a
+ * one-tap gesture *inside* the iframe — the only context the API accepts),
+ * after which it redirects back to `previewUrl` with the cookie now usable.
+ * The original path+query (including airoShareToken) is passed as a
+ * SAME-ORIGIN relative `redirect` so the bootstrap returns to exactly where
+ * the iframe was headed.
+ */
+function buildStorageAccessUrl(previewUrl: string): string {
+  const u = new URL(previewUrl)
+  const redirectPath = `${u.pathname}${u.search}`
+  const bootstrap = new URL('/airo/storage-access', u.origin)
+  bootstrap.searchParams.set('redirect', redirectPath)
+  return bootstrap.toString()
+}
+
 export interface PublishSnapshotRequestDetail {
   appId: string
   deploymentId: string | undefined
@@ -236,6 +302,7 @@ export default function PreviewPane({
   // don't exhaust the auto-retry budget — the manual retry resets this
   // and gives the user another 3 auto-attempts.
   const [bootstrapRetryCount, setBootstrapRetryCount] = useState(0)
+  const [isAuthBlocked, setIsAuthBlocked] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const previewShellRef = useRef<HTMLDivElement>(null)
 
@@ -457,8 +524,9 @@ export default function PreviewPane({
         const currentUrl = new URL(iframeRef.current.src)
         const savedUrl = pendingStateRestore.url ? new URL(pendingStateRestore.url) : null
 
-        // Only restore if URLs match (same pathname and search params)
-        if (savedUrl && currentUrl.pathname === savedUrl.pathname && currentUrl.search === savedUrl.search) {
+        // Only restore if URLs match (same pathname and search params,
+        // ignoring the bootstrap airoShareToken on the iframe src).
+        if (savedUrl && isSamePreviewRoute(currentUrl, savedUrl)) {
           // Set waiting state and start fallback timer
           setIsWaitingForIframeReady(true)
 
@@ -490,7 +558,7 @@ export default function PreviewPane({
       const currentUrl = new URL(iframeRef.current.src)
       const savedUrl = pendingStateRestore.url ? new URL(pendingStateRestore.url) : null
 
-      if (!savedUrl || currentUrl.pathname !== savedUrl.pathname || currentUrl.search !== savedUrl.search) {
+      if (!savedUrl || !isSamePreviewRoute(currentUrl, savedUrl)) {
         logger.debug('preview-pane.state-restore.abort', { message: 'URL mismatch during restoration, aborting' })
         setPendingStateRestore(null)
         setIsWaitingForIframeReady(false)
@@ -938,7 +1006,24 @@ export default function PreviewPane({
   // counter on every iframeKey bump would create an infinite loop.
   useEffect(() => {
     setBootstrapRetryCount(0)
+    setIsAuthBlocked(false)
   }, [previewUrl])
+
+  // When bootstrap retries are exhausted on WebKit, probe the preview origin
+  // to confirm the failure is auth-related (307 redirect) before showing the
+  // Storage Access fallback. Non-auth failures (app crash, slow startup) won't
+  // trigger the fallback UI.
+  useEffect(() => {
+    if (iframeBootstrapped) return
+    if (bootstrapRetryCount < MAX_IFRAME_BOOTSTRAP_RETRIES) return
+    if (!previewUrl || !isWebKit()) return
+
+    let cancelled = false
+    probePreviewAuth(previewUrl).then((blocked) => {
+      if (!cancelled) setIsAuthBlocked(blocked)
+    })
+    return () => { cancelled = true }
+  }, [iframeBootstrapped, bootstrapRetryCount, previewUrl])
 
   const handleManualRetry = () => {
     logger.info('preview-pane.retry', { message: 'Manual retry - restarting server polling', appId })
@@ -1142,6 +1227,13 @@ export default function PreviewPane({
   // Success state - show the preview
   if (previewUrl && serverState?.isReady) {
     const isPreviewSurfaceVisible = viewMode !== ViewMode.CODE && viewMode !== ViewMode.BRAND
+    // Storage Access fallback: only activate when all three conditions hold:
+    // 1. iframe never signalled IFRAME_READY after retries exhausted
+    // 2. We're on WebKit (Safari ITP is the only browser that blocks this way)
+    // 3. A probe confirmed the preview origin is 307-redirecting (auth blocked)
+    const storageAccessFallback =
+      !iframeBootstrapped && bootstrapRetryCount >= MAX_IFRAME_BOOTSTRAP_RETRIES && isAuthBlocked
+    const iframeSrc = storageAccessFallback ? buildStorageAccessUrl(previewUrl) : previewUrl
     const showEditingChip = Boolean(
       !isMobile &&
       isPreviewEnhancedOverlaysEnabled &&
@@ -1200,11 +1292,11 @@ export default function PreviewPane({
                         ref={iframeRef}
                         id="preview-iframe"
                         data-testid="preview-iframe"
-                        src={previewUrl}
+                        src={iframeSrc}
                         className="w-full h-full border rounded-lg md:rounded-b-none"
                         onError={handleIframeError}
                         onLoad={handleIframeLoad}
-                        sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation allow-storage-access-by-user-activation"
                         title={t('builder_preview_preview_for', { appId })}
                         aria-hidden={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || showBuildingOverlay ? 'true' : undefined}
                         tabIndex={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || showBuildingOverlay ? -1 : undefined}

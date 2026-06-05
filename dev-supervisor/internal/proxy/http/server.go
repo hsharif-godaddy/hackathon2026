@@ -153,6 +153,13 @@ func (p *HTTPProxy) Start() error {
 	// Add canary checks endpoint for infrastructure verification
 	mux.HandleFunc("/airo/canary_checks", handlerWithName("health", handleCanaryChecks))
 
+	// Storage Access bootstrap (unauthenticated — in JWT_EXCLUDED_PATHS).
+	// Loaded inside the preview iframe when the cross-site preview_auth cookie
+	// is blocked by Safari ITP; calls document.requestStorageAccess() from a
+	// user gesture, then redirects into the authenticated app. Must be
+	// excluded because the broken state is "no usable credential present".
+	mux.HandleFunc("/airo/storage-access", handlerWithName("storage-access", handleStorageAccess))
+
 	// Add auth-check endpoint (behind JWT middleware - NOT excluded)
 	// Used by builder to verify cookie was stored after auth bootstrap
 	mux.HandleFunc("/airo/auth-check", handlerWithName("auth-check", handleAuthCheck))
