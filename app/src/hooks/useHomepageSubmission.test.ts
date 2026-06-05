@@ -11,6 +11,7 @@ const mockAuthContext = vi.hoisted(() => vi.fn(function () { return { isAuthenti
 const mockUseSubscription = vi.hoisted(() => vi.fn(function () { return { subscriptions: [] as { id: string }[], isLoading: false, isError: false }; }))
 const mockFetchQuickCreate = vi.hoisted(() => vi.fn())
 const mockRouterPush = vi.hoisted(() => vi.fn())
+const mockT = vi.hoisted(() => vi.fn((key: string) => key))
 
 vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: vi.fn(function () { return vi.fn(); }),
@@ -54,7 +55,7 @@ vi.mock('@/hooks/useAnalytics', () => ({
 }))
 vi.mock('@/hooks/useSsoSignIn', () => ({ useSsoSignIn: () => ({ signIn: vi.fn() }) }))
 vi.mock('@/hooks/useSwitchboard', () => ({ useSwitchboard: () => false }))
-vi.mock('@/hooks/useTranslations', () => ({ useTranslations: () => (key: string) => key }))
+vi.mock('@/hooks/useTranslations', () => ({ useTranslations: () => mockT }))
 vi.mock('@/hooks/useSafariClass', () => ({ useSafariClass: () => undefined }))
 vi.mock('@/hooks/useAuthGateTracking', () => ({ useAuthGateTracking: () => undefined }))
 vi.mock('@/hooks/useHomepageBounceTracking', () => ({
@@ -74,7 +75,11 @@ describe('useHomepageSubmission', () => {
 
   describe('setUploadedFiles (handleFilesChange)', () => {
     const mockFile = { name: 'design.fig', content: 'abc', isDesignMd: false }
+    // The translation key (first arg to t). The mock echoes it as the message.
     const PREFILL = 'builder_design_file_upload_prompt_prefill'
+    // The text actually injected: the hook appends a trailing space when the
+    // translation lacks one (the mock's echoed key has none).
+    const PREFILL_TEXT = `${PREFILL} `
 
     it('sets the files when files are provided', () => {
       const { result } = renderHook(() => useHomepageSubmission())
@@ -89,7 +94,7 @@ describe('useHomepageSubmission', () => {
 
       act(() => { result.current.setUploadedFiles([mockFile]) })
 
-      expect(result.current.promptText).toBe(PREFILL)
+      expect(result.current.promptText).toBe(PREFILL_TEXT)
     })
 
     it('does not overwrite promptText when prompt already has content', () => {
@@ -135,6 +140,26 @@ describe('useHomepageSubmission', () => {
       act(() => { result.current.setUploadedFiles([]) })
 
       expect(result.current.promptText).toBe('')
+    })
+
+    it('passes the file count to the prefill translation for ICU pluralization', () => {
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      act(() => { result.current.setUploadedFiles([mockFile, mockFile]) })
+
+      expect(mockT).toHaveBeenCalledWith(PREFILL, { count: 2 }, expect.stringContaining('plural'))
+    })
+
+    it('refreshes the prefill when the file count changes and prompt is still the prefill', () => {
+      // The mock t() echoes the key, so prefill text is identical across counts;
+      // this asserts the count change does not get blocked as if it were user text.
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      act(() => { result.current.setUploadedFiles([mockFile]) })
+      act(() => { result.current.setUploadedFiles([mockFile, mockFile]) })
+
+      expect(result.current.promptText).toBe(PREFILL_TEXT)
+      expect(mockT).toHaveBeenCalledWith(PREFILL, { count: 2 }, expect.any(String))
     })
   })
 

@@ -96,8 +96,10 @@ vi.mock('@/hooks/useHomepageBounceTracking', () => ({
 }))
 
 // useTranslations is mocked to echo the key, so the prefill text the hook
-// applies is the raw key string.
+// applies is the raw key string plus the trailing space the hook appends when
+// the translation lacks one.
 const PREFILL = 'builder_design_file_upload_prompt_prefill'
+const PREFILL_TEXT = `${PREFILL} `
 
 /**
  * Minimal stand-in for HeroSection: binds the hook's promptText to a textarea,
@@ -160,7 +162,7 @@ describe('homepage upload -> prefill -> CTA (integration)', () => {
 
     await user.upload(input, new File(['x'], 'design.png', { type: 'image/png' }))
 
-    await waitFor(() => expect(getByTestId('prompt')).toHaveValue(PREFILL))
+    await waitFor(() => expect(getByTestId('prompt')).toHaveValue(PREFILL_TEXT))
     expect(getByTestId('cta')).toBeEnabled()
   })
 
@@ -172,7 +174,7 @@ describe('homepage upload -> prefill -> CTA (integration)', () => {
     const input = container.querySelector('input[type="file"]') as HTMLInputElement
 
     await user.upload(input, new File(['x'], 'design.png', { type: 'image/png' }))
-    await waitFor(() => expect(getByTestId('prompt')).toHaveValue(PREFILL))
+    await waitFor(() => expect(getByTestId('prompt')).toHaveValue(PREFILL_TEXT))
 
     await user.click(getByTestId('remove-0'))
 

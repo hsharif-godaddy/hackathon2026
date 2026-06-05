@@ -51,6 +51,7 @@ export function useHomepageSubmission() {
   const [error, setError] = useState<string | null>(null)
   const [showMockLogin, setShowMockLogin] = useState(false)
   const heroSectionRef = useRef<HeroSectionRef>(null)
+  const lastFilePrefillRef = useRef('')
   const homepageViewRecordedRef = useRef(false)
   const scrollMilestonesLoggedRef = useRef<Set<number>>(new Set())
   const authGateShownAtRef = useRef<number | null>(null)
@@ -476,12 +477,30 @@ export function useHomepageSubmission() {
 
   const handleFilesChange = useCallback((files: UploadedDesignFile[]) => {
     setUploadedFiles(files)
-    const filePrefill = t('builder_design_file_upload_prompt_prefill', undefined, 'Use this attachment to create a ')
+
+    // Snapshot the prefill we last injected BEFORE updating the ref, so the
+    // updater compares prev against a stable value rather than reading the ref
+    // (which may be reassigned before a deferred state update runs).
+    const previousPrefill = lastFilePrefillRef.current
 
     if (files.length > 0) {
-      setPromptText(prev => prev || filePrefill)
+      // count drives ICU pluralization ("this attachment" vs "these attachments").
+      const translatedPrefill = t(
+        'builder_design_file_upload_prompt_prefill',
+        { count: files.length },
+        'Use {count, plural, one {this attachment} other {these attachments}} to create a '
+      )
+      // Guarantee a trailing space so the user can type the noun immediately,
+      // without depending on the translation to include one.
+      const filePrefill = /\s$/.test(translatedPrefill) ? translatedPrefill : `${translatedPrefill} `
+      lastFilePrefillRef.current = filePrefill
+      // Overwrite only when the field is empty or still holds a prefill we
+      // injected (so a file count change refreshes the plural form, but the
+      // user's own text is never clobbered).
+      setPromptText(prev => (prev === '' || prev === previousPrefill ? filePrefill : prev))
     } else {
-      setPromptText(prev => prev === filePrefill ? '' : prev)
+      lastFilePrefillRef.current = ''
+      setPromptText(prev => (prev === previousPrefill ? '' : prev))
     }
   }, [t])
 
