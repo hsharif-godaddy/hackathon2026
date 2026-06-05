@@ -42,6 +42,36 @@ function formatEvaluatorBlock(
   ].join('\n');
 }
 
+/**
+ * Returns a warning message when the gate passes but one or more evaluators
+ * had their margin floored (baseline SD was near-zero). This indicates the
+ * baseline is fragile and the pass was rescued by the minMargin floor.
+ */
+export function formatMarginFloorWarning(r: RegressionResult): string | null {
+  if (r.gate === 'fail') return null;
+
+  const flooredEvals = r.evaluators.filter(
+    (e): e is ComparedRegressionEvalResult =>
+      e.type === 'compared' &&
+      e.statistical?.marginFloored === true &&
+      !e.exceeded,
+  );
+
+  if (flooredEvals.length === 0) return null;
+
+  const evalLines = flooredEvals.map((e) => {
+    const margin = e.statistical!.margin.toFixed(3);
+    const sd = e.statistical!.baselineSD.toFixed(4);
+    return `  ${e.evaluator}: baseline SD=${sd}, margin floored to ${margin}`;
+  });
+
+  return [
+    `Pass (margin-floored): "${r.scenarioName}"`,
+    ...evalLines,
+    '  Consider graduating with more trials for a tighter baseline.',
+  ].join('\n');
+}
+
 export function formatRegressionFailureMessage(r: RegressionResult): string | null {
   const exceeded = r.evaluators.filter(isExceededWithStats);
   if (exceeded.length === 0) return null;

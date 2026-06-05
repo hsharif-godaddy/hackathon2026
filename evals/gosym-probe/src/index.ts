@@ -47,7 +47,7 @@ import type {
   Scenario,
   StabilityLevel,
 } from './scenarios/types.js';
-import { formatRegressionFailureMessage } from './reporters/regression-message.js';
+import { formatMarginFloorWarning, formatRegressionFailureMessage } from './reporters/regression-message.js';
 import { registerLock, unregisterLock } from './util/lock-registry.js';
 
 function makeProgressCallback(
@@ -648,6 +648,12 @@ async function main(): Promise<void> {
             );
           }
         }
+        for (const r of results) {
+          if (r.regressionStatus) {
+            const floorWarning = formatMarginFloorWarning(r.regressionStatus);
+            if (floorWarning) console.warn(floorWarning);
+          }
+        }
         process.exitCode = 1;
         return;
       }
@@ -658,6 +664,10 @@ async function main(): Promise<void> {
             `Warning: regression detected in "${r.scenarioName}"` +
             ` (fallback threshold). Re-graduate to enable statistical gating.`,
           );
+        }
+        if (r.regressionStatus) {
+          const floorWarning = formatMarginFloorWarning(r.regressionStatus);
+          if (floorWarning) console.warn(floorWarning);
         }
       }
     }

@@ -82,8 +82,9 @@ export class RegressionComparator {
       const currentTrialScores = extractTrialScoresForEvaluator(name, trials);
       if (currentTrialScores.length > 0) {
         const k = this.resolveK(name, config);
-        const margin = computeMargin(baselineTrialScores, k);
+        const { margin, floored } = computeMargin(baselineTrialScores, k, config.minMargin);
 
+        // Only reachable when minMargin is 0 (disables floor, restores strict uniform-match mode).
         if (margin === 0) {
           const baselineConstant = baselineTrialScores[0];
           const allMatch = currentTrialScores.every((s) => s === baselineConstant);
@@ -126,6 +127,7 @@ export class RegressionComparator {
           n: { baseline: baselineTrialScores.length, current: currentTrialScores.length },
           confidenceInterval: tostResult.confidenceInterval,
           nonInferiorityProven: tostResult.nonInferiorityProven,
+          ...(floored && { marginFloored: true }),
         };
         return {
           type: 'compared',
@@ -177,8 +179,9 @@ export class RegressionComparator {
       const currentTrialScores = extractTrialScoresForEvaluator(name, trials);
       if (currentTrialScores.length > 0) {
         const k = this.resolveK(name, config);
-        const margin = computeMargin(baselineTrialScores, k);
+        const { margin, floored } = computeMargin(baselineTrialScores, k, config.minMargin);
 
+        // Only reachable when minMargin is 0 (disables floor, restores strict uniform-match mode).
         if (margin === 0) {
           const baselineConstant = baselineTrialScores[0];
           const allMatch = currentTrialScores.every((s) => s === baselineConstant);
@@ -215,6 +218,7 @@ export class RegressionComparator {
           n: { baseline: baselineTrialScores.length, current: currentTrialScores.length },
           confidenceInterval: tostResult.confidenceInterval,
           nonInferiorityProven: tostResult.nonInferiorityProven,
+          ...(floored && { marginFloored: true }),
         };
         return {
           type: 'compared',

@@ -11,6 +11,7 @@ import type { StatisticalRegressionConfig } from '../../../config/environments/t
 const THRESHOLDS: StatisticalRegressionConfig = {
   alpha: 0.05,
   k: 2.0,
+  minMargin: 0.05,
   seed: 42,
   fallbackThresholds: {
     thresholds: {
@@ -942,6 +943,68 @@ describe('RegressionComparator', () => {
       const r = comparator.compare(result, baseline, THRESHOLDS);
       const e = r.evaluators.find((x) => x.evaluator === 'jtbd-completion') as ComparedRegressionEvalResult | undefined;
       expect(e?.statistical?.n.current).toBe(2); // unknown excluded
+    });
+  });
+
+  // ── minMargin floor behavior ──────────────────────────────────────────────
+
+  describe('minMargin floor behavior', () => {
+    it('marginFloored: true propagates into StatisticalMetadata for zero-variance baseline', () => {
+      // Use non-binary scores (0.5) so isBinaryScores = false → tostPermutation is used.
+      // tostProportions (Wilson CI) cannot prove non-inferiority for p=1.0, n=5 against a 0.05
+      // margin because the Wilson CI lower bound (~-0.74) falls well below -margin.
+      // With tostPermutation, identical distributions prove non-inferiority trivially.
+      // SD=0, k*SD=0 < minMargin(0.05) → margin floored to 0.05, marginFloored=true.
+      const baselineTrialScores = [0.5, 0.5, 0.5, 0.5, 0.5];
+      const trials = [0, 1, 2, 3, 4].map((i) =>
+        makeTrialResult(i, 'jtbd-completion', 0.5, 'pass'),
+      );
+      const result = makeResult({ 'jtbd-completion': makeAgg(5, 5) }, trials);
+
+      const baseline = makeBaseline({ 'jtbd-completion': { passingTrials: 5, totalTrials: 5 } });
+      baseline.scores['jtbd-completion'].trialScores = baselineTrialScores;
+
+      const r = comparator.compare(result, baseline, THRESHOLDS);
+      const e = r.evaluators.find((x) => x.evaluator === 'jtbd-completion') as ComparedRegressionEvalResult | undefined;
+
+      expect(r.gate).toBe('pass');
+      expect(e?.statistical?.marginFloored).toBe(true);
+      expect(e?.statistical?.margin).toBe(0.05);
+    });
+
+    it('floor flips a verdict from fail to pass with wide minMargin', () => {
+      const WIDE_FLOOR_CONFIG: StatisticalRegressionConfig = {
+        ...THRESHOLDS,
+        minMargin: 0.5,
+      };
+      const NO_FLOOR_CONFIG: StatisticalRegressionConfig = {
+        ...THRESHOLDS,
+        minMargin: 0,
+      };
+
+      // Non-binary baseline (0.5s, SD=0). Current: 0.4s (mean drop = 0.1).
+      // isBinaryScores = false → tostPermutation used (not tostProportions).
+      // Without floor: margin=0, uniform-match fires → 0.4 ≠ 0.5 → exceeded.
+      // With wide floor (0.5): margin=0.5 >> drop=0.1 → tostPermutation proves non-inferiority.
+      const baselineTrialScores = [0.5, 0.5, 0.5, 0.5, 0.5];
+      const trials = [0, 1, 2, 3, 4].map((i) =>
+        makeTrialResult(i, 'jtbd-completion', 0.4, 'fail'),
+      );
+      const result = makeResult({ 'jtbd-completion': makeAgg(0, 5) }, trials);
+
+      const baseline = makeBaseline({ 'jtbd-completion': { passingTrials: 5, totalTrials: 5 } });
+      baseline.scores['jtbd-completion'].trialScores = baselineTrialScores;
+
+      // Without floor (minMargin=0): SD=0 → uniform-match branch fires, 0.4 ≠ 0.5 → exceeded
+      const rNoFloor = comparator.compare(result, baseline, NO_FLOOR_CONFIG);
+      const eNoFloor = rNoFloor.evaluators.find((x) => x.evaluator === 'jtbd-completion') as ComparedRegressionEvalResult | undefined;
+      expect(eNoFloor?.exceeded).toBe(true);
+
+      // With wide floor (minMargin=0.5): margin floored to 0.5, drop=0.1 within margin → passes
+      const rFloor = comparator.compare(result, baseline, WIDE_FLOOR_CONFIG);
+      const eFloor = rFloor.evaluators.find((x) => x.evaluator === 'jtbd-completion') as ComparedRegressionEvalResult | undefined;
+      expect(eFloor?.exceeded).toBe(false);
+      expect(eFloor?.statistical?.marginFloored).toBe(true);
     });
   });
 });

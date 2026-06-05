@@ -9,49 +9,82 @@ import {
 
 describe('computeMargin', () => {
   describe('boundary: empty and degenerate inputs', () => {
-    it('returns 0 for empty array', () => {
-      expect(computeMargin([], 2)).toBe(0);
+    it('returns margin=0 floored=false for empty array', () => {
+      expect(computeMargin([], 2)).toEqual({ margin: 0, floored: false });
     });
 
-    it('returns 0 for single value (no variance)', () => {
-      expect(computeMargin([0.5], 2)).toBe(0);
+    it('returns margin=0 floored=false for single value (no variance)', () => {
+      expect(computeMargin([0.5], 2)).toEqual({ margin: 0, floored: false });
     });
 
-    it('returns 0 when all values are identical (SD=0)', () => {
-      expect(computeMargin([0.5, 0.5, 0.5], 2)).toBe(0);
+    it('returns margin=0 floored=false when all values are identical (SD=0)', () => {
+      expect(computeMargin([0.5, 0.5, 0.5], 2)).toEqual({ margin: 0, floored: false });
     });
   });
 
   describe('boundary: k multiplier', () => {
     // [0, 1]: mean=0.5, sum_sq_dev=0.5, pop_var=0.25, SD=0.5
     it('applies k=1 multiplier: [0, 1] → 0.5', () => {
-      expect(computeMargin([0, 1], 1)).toBeCloseTo(0.5, 10);
+      expect(computeMargin([0, 1], 1).margin).toBeCloseTo(0.5, 10);
     });
 
     it('applies k=2 multiplier: [0, 1] → 1.0', () => {
-      expect(computeMargin([0, 1], 2)).toBeCloseTo(1.0, 10);
+      expect(computeMargin([0, 1], 2).margin).toBeCloseTo(1.0, 10);
     });
 
     it('applies k=3 multiplier: [0, 1] → 1.5', () => {
-      expect(computeMargin([0, 1], 3)).toBeCloseTo(1.5, 10);
+      expect(computeMargin([0, 1], 3).margin).toBeCloseTo(1.5, 10);
     });
   });
 
   describe('boundary: hand-computed expected values', () => {
     it('pair [0, 1], k=2: population SD=0.5 → margin=1.0', () => {
       // pop_var = ((0-0.5)^2 + (1-0.5)^2) / 2 = 0.25, SD = 0.5
-      expect(computeMargin([0, 1], 2)).toBeCloseTo(1.0, 10);
+      expect(computeMargin([0, 1], 2).margin).toBeCloseTo(1.0, 10);
     });
 
     it('[0, 0.5, 1], k=2: population SD=sqrt(1/6) → margin=2*sqrt(1/6)', () => {
       // mean=0.5, sum_sq_dev=(0.25+0+0.25)=0.5, pop_var=0.5/3=1/6
       const expected = 2 * Math.sqrt(1 / 6);
-      expect(computeMargin([0, 0.5, 1], 2)).toBeCloseTo(expected, 10);
+      expect(computeMargin([0, 0.5, 1], 2).margin).toBeCloseTo(expected, 10);
     });
 
     it('high-variance [0, 0, 0, 1, 1, 1], k=2: SD=0.5 → margin=1.0', () => {
       // mean=0.5, exactly 3 zeros and 3 ones, pop_var=0.25
-      expect(computeMargin([0, 0, 0, 1, 1, 1], 2)).toBeCloseTo(1.0, 10);
+      expect(computeMargin([0, 0, 0, 1, 1, 1], 2).margin).toBeCloseTo(1.0, 10);
+    });
+  });
+
+  describe('boundary: minMargin floor', () => {
+    it('applies floor when SD=0 and minMargin > 0', () => {
+      // All identical scores → SD=0, raw margin=0, but floor lifts it
+      expect(computeMargin([0, 0, 0, 0, 0], 2, 0.05)).toEqual({ margin: 0.05, floored: true });
+    });
+
+    it('applies floor when k*SD < minMargin', () => {
+      // [0, 0, 0, 0, 0.1]: SD≈0.04, k=2 → raw≈0.08 < 0.1 floor
+      const result = computeMargin([0, 0, 0, 0, 0.1], 2, 0.1);
+      expect(result.margin).toBe(0.1);
+      expect(result.floored).toBe(true);
+    });
+
+    it('does not apply floor when k*SD > minMargin', () => {
+      // [0, 1]: SD=0.5, k=2 → raw=1.0 > 0.05 floor
+      const result = computeMargin([0, 1], 2, 0.05);
+      expect(result.margin).toBeCloseTo(1.0, 10);
+      expect(result.floored).toBe(false);
+    });
+
+    it('does not apply floor when minMargin=0 (default)', () => {
+      expect(computeMargin([0, 0, 0], 2, 0)).toEqual({ margin: 0, floored: false });
+    });
+
+    it('returns floored=false when raw equals minMargin exactly', () => {
+      // Edge: raw margin equals floor exactly (not lifted)
+      // [0, 0.05]: SD=0.025, k=2 → raw=0.05 = minMargin
+      const result = computeMargin([0, 0.05], 2, 0.05);
+      expect(result.margin).toBeCloseTo(0.05, 10);
+      expect(result.floored).toBe(false);
     });
   });
 });
@@ -346,7 +379,7 @@ describe('power validation', () => {
 
   describe('n=5+10: proves non-inferiority at k=2 (identical distribution)', () => {
     it('tostPermutation: 5 current trials from identical distribution → non-inferior', () => {
-      const margin = computeMargin(baseline10, 2); // 2 * 0.5 = 1.0
+      const { margin } = computeMargin(baseline10, 2); // 2 * 0.5 = 1.0
       const current5 = [0, 1, 0, 1, 1]; // same distribution, mean=0.6
 
       // Combined = 15 → exact path
@@ -356,7 +389,7 @@ describe('power validation', () => {
     });
 
     it('tostProportions: 5 current trials → non-inferior', () => {
-      const margin = computeMargin(baseline10, 2);
+      const { margin } = computeMargin(baseline10, 2);
       const current5 = [0, 1, 0, 1, 1];
 
       const result = tostProportions(baseline10, current5, { alpha: 0.05, margin });
@@ -370,7 +403,7 @@ describe('power validation', () => {
       // SE_perm ≈ 0.5 * sqrt(1/3 + 1/10) ≈ 0.329
       // q_97.5 ≈ 1.96 * 0.329 ≈ 0.645
       // CI_lower ≈ 0 - 0.645 = -0.645 < -0.25 → fails
-      const tightMargin = computeMargin(baseline10, 0.5); // 0.25
+      const { margin: tightMargin } = computeMargin(baseline10, 0.5); // 0.25
       const current3 = [0, 1, 0]; // mean ≈ 0.333
 
       const result = tostPermutation(baseline10, current3, { alpha: 0.05, margin: tightMargin });
@@ -378,7 +411,7 @@ describe('power validation', () => {
     });
 
     it('tostProportions: 3 current trials with tight margin → not provable', () => {
-      const tightMargin = computeMargin(baseline10, 0.5); // 0.25
+      const { margin: tightMargin } = computeMargin(baseline10, 0.5); // 0.25
       const current3 = [0, 1, 0];
 
       const result = tostProportions(baseline10, current3, { alpha: 0.05, margin: tightMargin });
@@ -388,7 +421,7 @@ describe('power validation', () => {
     it('n=3+10 does prove non-inferiority at k=2 (margin matches CI width)', () => {
       // This verifies the statistical boundary: k=2 is generous enough for n=3
       // because 1.96 * sqrt(1/3 + 1/10) ≈ 1.29 < 2.0
-      const margin = computeMargin(baseline10, 2); // 1.0
+      const { margin } = computeMargin(baseline10, 2); // 1.0
       const current3 = [0, 1, 0]; // same distribution
 
       const result = tostPermutation(baseline10, current3, { alpha: 0.05, margin });

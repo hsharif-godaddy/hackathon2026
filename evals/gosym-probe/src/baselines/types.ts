@@ -53,7 +53,7 @@ interface RegressionEvalResultBase {
  */
 export interface StatisticalMetadata {
   method: TOSTMethod;
-  /** Non-inferiority margin used: k * SD(baselineTrialScores). */
+  /** Non-inferiority margin used: max(k * SD(baselineTrialScores), minMargin). */
   margin: number;
   /** Population SD of baseline trial scores. */
   baselineSD: number;
@@ -65,6 +65,12 @@ export interface StatisticalMetadata {
   confidenceInterval: { lower: number; upper: number };
   /** True when CI proves current is within margin of baseline (gate passes). */
   nonInferiorityProven: boolean;
+  /**
+   * True when the minMargin floor was applied because k * SD was below the
+   * configured minimum. Signals that the baseline has insufficient variance
+   * and the pass should carry a warning.
+   */
+  marginFloored?: boolean;
 }
 
 export interface ComparedRegressionEvalResult extends RegressionEvalResultBase {

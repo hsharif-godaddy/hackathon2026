@@ -108,7 +108,7 @@ function makeConfig(): Config {
     },
     eval: { defaultTrials: 2, maxTurns: 5, turnTimeoutMs: 5000 },
     playwright: { ignoreHttpsErrors: false },
-    regression: { alpha: 0.05, k: 2.0, fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 } },
+    regression: { alpha: 0.05, k: 2.0, minMargin: 0.05, fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 } },
   };
 }
 

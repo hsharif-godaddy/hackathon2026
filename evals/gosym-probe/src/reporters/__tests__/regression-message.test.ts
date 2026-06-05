@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   formatCompactNumber,
   classifyEvaluatorSignal,
+  formatMarginFloorWarning,
   formatRegressionFailureMessage,
 } from '../regression-message.js';
 import type {
@@ -312,5 +313,97 @@ describe('formatRegressionFailureMessage', () => {
     const nameIndent = nameLine.length - nameLine.trimStart().length;
     const tagIndent = tagLine.length - tagLine.trimStart().length;
     expect(tagIndent).toBeGreaterThan(nameIndent);
+  });
+});
+
+// ── formatMarginFloorWarning ────────────────────────────────────────────────
+
+describe('formatMarginFloorWarning', () => {
+  function makePassResult(
+    scenarioName: string,
+    evaluators: RegressionResult['evaluators'],
+  ): RegressionResult {
+    return { scenarioName, gate: 'pass', stabilityLevel: 'low', evaluators };
+  }
+
+  function makeFlooredStatistical(
+    baselineSD: number,
+    margin: number,
+  ): StatisticalMetadata {
+    return {
+      method: 'permutation-exact',
+      margin,
+      baselineSD,
+      k: 2,
+      n: { baseline: 5, current: 5 },
+      confidenceInterval: { lower: -0.01, upper: 0.03 },
+      nonInferiorityProven: true,
+      marginFloored: true,
+    };
+  }
+
+  it('returns null when gate is fail', () => {
+    const r: RegressionResult = {
+      scenarioName: 'test',
+      gate: 'fail',
+      stabilityLevel: 'low',
+      evaluators: [
+        makeCompared('tool-failure-rate', 0.02, true, makeFlooredStatistical(0, 0.05)),
+      ],
+    };
+    expect(formatMarginFloorWarning(r)).toBeNull();
+  });
+
+  it('returns null when no evaluators have marginFloored', () => {
+    const r = makePassResult('test', [
+      makeCompared('jtbd-completion', 0.0, false, makeStatistical(5, -0.1, 0.1)),
+    ]);
+    expect(formatMarginFloorWarning(r)).toBeNull();
+  });
+
+  it('returns null when marginFloored evaluator has exceeded=true', () => {
+    const stat = makeFlooredStatistical(0, 0.05);
+    stat.nonInferiorityProven = false;
+    const r = makePassResult('test', [
+      makeCompared('tool-failure-rate', 0.02, true, stat),
+    ]);
+    expect(formatMarginFloorWarning(r)).toBeNull();
+  });
+
+  it('returns warning when gate passes and evaluator has marginFloored=true', () => {
+    const r = makePassResult('cleaning-biz-ambiguity', [
+      makeCompared('tool-failure-rate', 0.02, false, makeFlooredStatistical(0, 0.05)),
+    ]);
+    const msg = formatMarginFloorWarning(r);
+    expect(msg).not.toBeNull();
+    expect(msg).toContain('Pass (margin-floored)');
+    expect(msg).toContain('"cleaning-biz-ambiguity"');
+    expect(msg).toContain('tool-failure-rate');
+    expect(msg).toContain('baseline SD=0.0000');
+    expect(msg).toContain('margin floored to 0.050');
+    expect(msg).toContain('Consider graduating with more trials');
+  });
+
+  it('includes multiple floored evaluators', () => {
+    const r = makePassResult('test', [
+      makeCompared('tool-failure-rate', 0.01, false, makeFlooredStatistical(0, 0.05)),
+      makeCompared('agent-steps', 0.03, false, makeFlooredStatistical(0.001, 0.05)),
+    ]);
+    const msg = formatMarginFloorWarning(r)!;
+    expect(msg).toContain('tool-failure-rate');
+    expect(msg).toContain('agent-steps');
+  });
+
+  it('works with gate=warning (not just pass)', () => {
+    const r: RegressionResult = {
+      scenarioName: 'test',
+      gate: 'warning',
+      stabilityLevel: 'low',
+      evaluators: [
+        makeCompared('tool-failure-rate', 0.02, false, makeFlooredStatistical(0, 0.05)),
+      ],
+    };
+    const msg = formatMarginFloorWarning(r);
+    expect(msg).not.toBeNull();
   });
 });

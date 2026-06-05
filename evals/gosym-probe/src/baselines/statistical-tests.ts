@@ -151,25 +151,39 @@ export interface TOSTResult {
 
 // ── computeMargin ─────────────────────────────────────────────────────────────
 
+export interface MarginResult {
+  /** The effective non-inferiority margin (after floor). */
+  margin: number;
+  /** True when the minMargin floor was applied (raw < minMargin). */
+  floored: boolean;
+}
+
 /**
- * Non-inferiority margin = k × populationSD(trialScores).
- * Returns 0 for empty, single-element, or zero-variance arrays.
+ * Non-inferiority margin = max(k × populationSD(trialScores), minMargin).
  *
- * **Zero margin (SD=0):** When all baseline trial scores are identical
- * (e.g., [1,1,1,1,1]), populationSD returns 0, so margin = 0. TOST
- * cannot prove non-inferiority with a zero margin.
+ * Returns { margin: 0, floored: false } for empty, single-element, or
+ * zero-variance arrays when minMargin is 0.
  *
- * **Caller responsibility:** When margin=0, callers must bypass TOST
- * and use a strict uniform-match check instead: the current run passes
- * only if every trial score equals the baseline constant. Any deviation
- * from the constant value is a failure.
+ * **minMargin floor:** When baseline variance is zero or near-zero,
+ * k * SD produces a margin too tight for TOST to prove non-inferiority
+ * with small sample sizes. The `minMargin` floor ensures a minimum
+ * tolerance so trivial deviations are not flagged as regressions.
+ * When the floor is applied, `floored: true` signals that the result
+ * should carry a warning annotation.
  *
- * **Operational context:** Normal graduation workflows (low=5, medium=10,
- * high=20 trials) can produce zero-variance baselines when evaluators are
- * perfectly consistent (e.g., binary evaluators that always pass).
+ * **Caller responsibility:** When margin=0 (SD=0 and minMargin=0),
+ * callers must bypass TOST and use a strict uniform-match check
+ * instead: the current run passes only if every trial score equals
+ * the baseline constant.
  */
-export function computeMargin(trialScores: readonly number[], k: number): number {
-  return k * populationSD(trialScores);
+export function computeMargin(
+  trialScores: readonly number[],
+  k: number,
+  minMargin: number = 0,
+): MarginResult {
+  const raw = k * populationSD(trialScores);
+  const margin = Math.max(raw, minMargin);
+  return { margin, floored: margin > raw };
 }
 
 // ── tostProportions ───────────────────────────────────────────────────────────
