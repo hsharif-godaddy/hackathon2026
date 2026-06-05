@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -410,8 +413,8 @@ func TestShareQueryParam_SiteMismatchDoesNotFallBackToJWT(t *testing.T) {
 
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 for explicit wrong-site share URL without redirect config, got %d", rec.Code)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for explicit wrong-site share URL, got %d", rec.Code)
 	}
 }
 
@@ -534,6 +537,110 @@ func TestCookieMaxAgeFromClaims(t *testing.T) {
 			got := auth.CookieMaxAgeFromClaims(tt.claims)
 			if got < tt.wantMin || got > tt.wantMax {
 				t.Errorf("CookieMaxAgeFromClaims() = %d, want [%d, %d]", got, tt.wantMin, tt.wantMax)
+			}
+		})
+	}
+}
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "auth-test-alloc")
+	if err != nil {
+		panic(err)
+	}
+
+	configJSON := `{"JWT_REDIRECT_URL":{"SYSTEM_MANAGED":true,"VALUE":"https://airo-builder.test-godaddy.com/develop/test-app?siteId=test-app"}}`
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(configJSON), 0o644); err != nil {
+		panic(err)
+	}
+
+	os.Setenv("NOMAD_ALLOC_DIR", dir)
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+func TestAuthFailure_HybridMode(t *testing.T) {
+	tests := []struct {
+		name          string
+		accept        string
+		path          string
+		wantStatus    int
+		wantHTML      bool
+		wantLoginLink bool
+	}{
+		{
+			name:          "browser request gets 401 login page",
+			accept:        "text/html",
+			path:          "/page",
+			wantStatus:    http.StatusUnauthorized,
+			wantHTML:      true,
+			wantLoginLink: true,
+		},
+		{
+			name:       "API request gets 401 text",
+			accept:     "application/json",
+			path:       "/api/something",
+			wantStatus: http.StatusUnauthorized,
+			wantHTML:   false,
+		},
+		{
+			name:       "JSON accept header gets 401 text",
+			accept:     "application/json",
+			path:       "/page",
+			wantStatus: http.StatusUnauthorized,
+			wantHTML:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mw := auth.NewJWTMiddleware(auth.JWTMiddlewareConfig{
+				Enabled: true,
+				Validator: &stubValidator{
+					result: auth.ValidationResult{Valid: false, Reason: "no token"},
+				},
+				SiteID:    "test-app",
+				APIPrefix: "/api",
+			})
+
+			inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+
+			handler := mw.Wrap(inner)
+
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			req.Header.Set("Accept", tt.accept)
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("expected status %d, got %d", tt.wantStatus, rec.Code)
+			}
+
+			contentType := rec.Header().Get("Content-Type")
+			body := rec.Body.String()
+
+			if tt.wantHTML {
+				if !strings.Contains(contentType, "text/html") {
+					t.Errorf("expected text/html content-type, got %q", contentType)
+				}
+				if !strings.Contains(body, "Login to view this page.") {
+					t.Error("expected login page message in body")
+				}
+			}
+
+			if tt.wantLoginLink {
+				if !strings.Contains(body, "https://airo-builder.test-godaddy.com/develop/test-app") {
+					t.Error("expected login URL in body")
+				}
+			}
+
+			if !tt.wantHTML {
+				if strings.Contains(contentType, "text/html") {
+					t.Errorf("expected non-HTML content-type for API request, got %q", contentType)
+				}
 			}
 		})
 	}

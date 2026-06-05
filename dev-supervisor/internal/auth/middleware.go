@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"fmt"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -11,6 +13,28 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
 )
 
+const authLoginPageHTML = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Login Required</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
+.container { text-align: center; padding: 2rem; }
+p { font-size: 1.25rem; color: #333; margin-bottom: 1.5rem; }
+a { display: inline-block; padding: 0.75rem 1.5rem; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-size: 1rem; }
+a:hover { background: #333; }
+</style>
+</head>
+<body>
+<div class="container">
+<p>Login to view this page.</p>
+<a href="%s">Login</a>
+</div>
+</body>
+</html>`
+
 // TokenValidator validates JWT tokens and returns a result.
 // Extracted as an interface so tests can inject a stub without needing JWKS.
 type TokenValidator interface {
@@ -19,7 +43,7 @@ type TokenValidator interface {
 
 // JWTMiddlewareConfig defines configuration for JWT middleware
 // Authentication failure handling uses hybrid mode:
-// - Browser requests (text/html): Redirect to builder develop page
+// - Browser requests (text/html): Serve a 401 login page with link to builder
 // - API/JSON requests: Return 401 Unauthorized with JSON error
 type JWTMiddlewareConfig struct {
 	Enabled        bool // Enable JWT validation
@@ -312,14 +336,13 @@ func (m *JWTMiddleware) handleShareToken(
 
 // handleAuthFailure handles authentication failures using hybrid mode
 // Hybrid mode behavior:
-// - Browser requests (Accept: text/html): Redirect to builder develop page
+// - Browser requests (Accept: text/html): Serve a 401 login page with link to builder
 // - API/JSON requests: Return 401 Unauthorized with JSON error
 func (m *JWTMiddleware) handleAuthFailure(w http.ResponseWriter, r *http.Request, reason string) {
-	// Hybrid mode: redirect browsers, return 401 for APIs
 	if m.isAPIOrJSONRequest(r) {
 		m.returnError(w, r, reason)
 	} else {
-		m.redirect(w, r, reason)
+		m.serveLoginPage(w, r, reason)
 	}
 }
 
@@ -334,9 +357,9 @@ func (m *JWTMiddleware) returnError(w http.ResponseWriter, r *http.Request, reas
 	http.Error(w, "Unauthorized", http.StatusUnauthorized)
 }
 
-// redirect redirects to builder develop page
+// serveLoginPage serves a 401 HTML page with a login link to the builder develop page
 // JWT_REDIRECT_URL is a system-managed secret from /alloc/config.json (trusted source)
-func (m *JWTMiddleware) redirect(w http.ResponseWriter, r *http.Request, reason string) {
+func (m *JWTMiddleware) serveLoginPage(w http.ResponseWriter, r *http.Request, reason string) {
 	redirectURL := m.buildSmartRedirectURL()
 	if redirectURL == "" {
 		// No redirect URL configured - return 403 Forbidden
@@ -347,13 +370,14 @@ func (m *JWTMiddleware) redirect(w http.ResponseWriter, r *http.Request, reason 
 		return
 	}
 
-	slog.Info("jwt.middleware.redirecting",
+	slog.Info("jwt.middleware.serving_login_page",
 		"path", r.URL.Path,
 		"reason", reason,
-		"redirect_url", redirectURL)
+		"login_url", redirectURL)
 
-	// CORS headers are set by CORS middleware (outermost layer)
-	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusUnauthorized)
+	fmt.Fprintf(w, authLoginPageHTML, template.HTMLEscapeString(redirectURL))
 }
 
 // buildSmartRedirectURL reads JWT redirect URL from /alloc/config.json
