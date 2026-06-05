@@ -327,7 +327,7 @@ function modifyAllowedHosts(serverObj: t.ObjectExpression): boolean {
 const DEDUPE_PACKAGES = ['react', 'react-dom', 'react-router-dom'] as const;
 
 /** Packages to pre-bundle in dev mode to prevent dual-instance issues in lazy chunks */
-const OPTIMIZE_DEPS_PACKAGES = ['react', 'react-dom', 'react-router-dom'] as const;
+const OPTIMIZE_DEPS_PACKAGES = ['react', 'react-dom', 'react-router-dom', 'motion/react'] as const;
 
 /**
  * Create: dedupe: ["react", "react-dom"]

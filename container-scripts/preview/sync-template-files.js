@@ -294,7 +294,9 @@ const SYNC_MANIFEST = [
       '3d56a8c11d01f1ab838efc5ca22b0fab', // d4d0b652a - switch nomad job to v8 template
       '29998491ae42daa36a849f98768adcf7', // 7f6cf57d0 - prod mode refactor
       'e2afec2400ba08ac1e3e1578ab6cb057', // 8b205e08b - hooks and stores introduction
-      '4999ddbeb0b0fa89df23daf9cd01eacb'  // 451020eac - initial v8 template vite.config.ts shape
+      '4999ddbeb0b0fa89df23daf9cd01eacb', // 451020eac - initial v8 template vite.config.ts shape
+      'bb713c7973458231b47f8d6571b72bb0', // d3b2c3339 - before motion/react optimizeDeps fix
+      'c01551a9385c3e0891f2cc2cc3479c69'  // 7500c74c7 - motion/react added to dedupe+optimizeDeps (dedupe removed as ineffective)
     ],
     force: false,
     syncGroup: 'ssrMigration'

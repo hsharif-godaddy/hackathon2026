@@ -107,7 +107,7 @@ export default defineConfig({
     dedupe: ["react", "react-dom", "react-router-dom"]
   },
   optimizeDeps: {
-    include: ["react", "react-dom", "react-router-dom"]
+    include: ["react", "react-dom", "react-router-dom", "motion/react"]
   }
 });
 `;
@@ -321,7 +321,7 @@ export default defineConfig({
     dedupe: ["react", "react-dom", "react-router-dom"]
   },
   optimizeDeps: {
-    include: ["react", "react-dom", "react-router-dom"]
+    include: ["react", "react-dom", "react-router-dom", "motion/react"]
   }
 });
 `;
@@ -969,7 +969,7 @@ export default defineConfig({
     dedupe: ["react", "react-dom", "react-router-dom"]
   },
   optimizeDeps: {
-    include: ["react", "react-dom", "react-router-dom"]
+    include: ["react", "react-dom", "react-router-dom", "motion/react"]
   }
 });
 `;
