@@ -81,6 +81,7 @@ import { runWithModelOverride, getActiveModelOverride } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../profiles/index.js'
 import { createAgentRouter } from './agent-router.js'
 import { getPersistedAgentIdForApp } from './persisted-agent.js'
+import { resolveRebuildBuildPagePrompt } from './rebuild-build-page-message.js'
 import { getModelOverride } from '../utils/model-selection.js'
 import {
   guardAllowedOverrideModel,
@@ -1357,6 +1358,13 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           activeWebSocketTransactions.set(socketId, transaction)
         }
       },
+
+      // Deterministic rebuild "Build Page": when the client signals a page slug
+      // to build, substitute the agent's turn input with the source-built page
+      // prompt so the develop turn doesn't depend on the model choosing to call
+      // rebuildPageSelector. Returns undefined for non-rebuild turns.
+      getEffectiveAgentMessage: (_socketId: string, _message: string, context?: Record<string, unknown>) =>
+        resolveRebuildBuildPagePrompt(context),
 
       // Optional event handlers (persistence is now handled automatically)
       onMessageStart: async (socketId: string, message: string, agentName?: string, context?: Record<string, unknown>) => {

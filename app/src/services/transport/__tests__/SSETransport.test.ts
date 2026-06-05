@@ -151,6 +151,25 @@ describe('SSETransport', () => {
     expect(body.userTimezone).toBe('America/New_York')
   })
 
+  it('includes rebuildBuildPageSlug in POST body when provided', async () => {
+    transport.connect('app_1', 'token_123', 'conv_1')
+    await vi.waitFor(() => {
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
+    })
+
+    await transport.sendMessage({
+      content: 'Build the about page',
+      sessionId: 'sess_1',
+      rebuildBuildPageSlug: 'about',
+    })
+
+    const call = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: any[]) => (c[0] as string).includes('/messages')
+    )
+    const body = JSON.parse(call[1].body)
+    expect(body.rebuildBuildPageSlug).toBe('about')
+  })
+
   it('does not include X-Connection-Id header', async () => {
     transport.connect('app_1', 'token_123', 'conv_1')
     await vi.waitFor(() => {

@@ -87,6 +87,7 @@ async function setupServerWithConnection(
     defaultAgent: string
     messagePersistence?: any
     messageMiddleware?: any
+    getEffectiveAgentMessage?: any
   },
   eventName: 'chat' | 'chat_message' = 'chat'
 ): Promise<{ server: WebSocketServer; messageHandler: (data: any) => Promise<void> }> {
@@ -141,6 +142,113 @@ function createMockPersistence(overrides: Partial<ReturnType<typeof createNoOpPe
 // hooks run after this one, so per-test setup can still override as needed.
 beforeEach(() => {
   mockAgent.streamGenerate = vi.fn()
+})
+
+describe('WebSocketServer - getEffectiveAgentMessage', () => {
+  function okStream() {
+    return {
+      baseStream: null,
+      textStream: (async function* () { yield 'ok' })(),
+      getFinalResult: vi.fn().mockResolvedValue({ usage: { inputTokens: 1, outputTokens: 1 }, toolCalls: [] }),
+    }
+  }
+
+  it('feeds the substituted message to the agent while persisting the original user message', async () => {
+    const httpServer = new HTTPServer()
+    const startConversationSpy = vi.fn().mockResolvedValue('conv-1')
+    const mockPersistence = createMockPersistence({ startConversation: startConversationSpy })
+
+    let agentPrompt: string | undefined
+    mockAgent.streamGenerate = vi.fn().mockImplementation((prompt: string) => {
+      agentPrompt = prompt
+      return Promise.resolve(okStream())
+    })
+
+    const getEffectiveAgentMessage = vi.fn().mockImplementation(
+      async (_socketId: string, message: string) =>
+        message === 'Build the about page' ? 'SUBSTITUTED PAGE PROMPT' : undefined
+    )
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence,
+      getEffectiveAgentMessage,
+    })
+
+    await messageHandler({ message: 'Build the about page', agentId: 'test-agent', context: { metadata: { appId: 'a1' } } })
+
+    // Agent receives the substituted prompt...
+    expect(agentPrompt).toBe('SUBSTITUTED PAGE PROMPT')
+    // ...but the persisted/displayed user message stays the original friendly text.
+    expect(startConversationSpy).toHaveBeenCalledWith('Build the about page', expect.anything())
+    server.close()
+  })
+
+  it('leaves the message unchanged when the callback returns undefined', async () => {
+    const httpServer = new HTTPServer()
+    let agentPrompt: string | undefined
+    mockAgent.streamGenerate = vi.fn().mockImplementation((prompt: string) => {
+      agentPrompt = prompt
+      return Promise.resolve(okStream())
+    })
+
+    const getEffectiveAgentMessage = vi.fn().mockResolvedValue(undefined)
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      getEffectiveAgentMessage,
+    })
+
+    await messageHandler({ message: 'just a normal message', agentId: 'test-agent' })
+
+    expect(agentPrompt).toBe('just a normal message')
+    server.close()
+  })
+
+  it.each([
+    ['an empty string', ''],
+    ['the same string (no-op)', 'keep me'],
+  ])('does not substitute when the callback returns %s', async (_label, ret) => {
+    const httpServer = new HTTPServer()
+    let agentPrompt: string | undefined
+    mockAgent.streamGenerate = vi.fn().mockImplementation((prompt: string) => {
+      agentPrompt = prompt
+      return Promise.resolve(okStream())
+    })
+    const getEffectiveAgentMessage = vi.fn().mockResolvedValue(ret)
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      getEffectiveAgentMessage,
+    })
+
+    await messageHandler({ message: 'keep me', agentId: 'test-agent' })
+
+    expect(agentPrompt).toBe('keep me')
+    server.close()
+  })
+
+  it('falls back to the original message when the callback throws', async () => {
+    const httpServer = new HTTPServer()
+    let agentPrompt: string | undefined
+    mockAgent.streamGenerate = vi.fn().mockImplementation((prompt: string) => {
+      agentPrompt = prompt
+      return Promise.resolve(okStream())
+    })
+    const getEffectiveAgentMessage = vi.fn().mockRejectedValue(new Error('resolver boom'))
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      getEffectiveAgentMessage,
+    })
+
+    await messageHandler({ message: 'original survives', agentId: 'test-agent' })
+
+    expect(agentPrompt).toBe('original survives')
+    server.close()
+  })
 })
 
 describe('WebSocketServer - Error Handling', () => {

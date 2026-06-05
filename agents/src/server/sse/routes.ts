@@ -466,7 +466,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     const conversationId = req.params.conversationId!
     const {
       content, agentId, agentProfile,
-      templateId, modelOverride,
+      templateId, modelOverride, rebuildBuildPageSlug,
       visualContext, aiEditContext, aiEditContexts, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
       uploadedFileName,
@@ -648,6 +648,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       todoListContext,
       isActionRequest,
       customContext,
+      rebuildBuildPageSlug,
       buildErrorContext,
       uploadedFileName,
       bmsBudgetId,

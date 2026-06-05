@@ -53,6 +53,9 @@ export interface BuildMessageParams<
   modelOverride?: string
   agentProfile?: string
   market?: string
+  /** Set by the rebuild page-selector "Build Page" button so the server can
+   *  deterministically build this page from source (AIROBUILD-2104). */
+  rebuildBuildPageSlug?: string
 }
 
 export class ChatMessageBuilder {
@@ -76,6 +79,7 @@ export class ChatMessageBuilder {
         ...(params.modelOverride && { modelOverride: params.modelOverride }),
         ...(params.agentProfile && { agentProfile: params.agentProfile }),
         ...(params.market && { market: params.market }),
+        ...(params.rebuildBuildPageSlug && { rebuildBuildPageSlug: params.rebuildBuildPageSlug }),
       },
 
       conversation: {

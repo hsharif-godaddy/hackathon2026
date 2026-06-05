@@ -59,6 +59,31 @@ describe('ChatMessageBuilder', () => {
       })
     })
 
+    it('should put rebuildBuildPageSlug into context.metadata when provided', () => {
+      const params: BuildMessageParams = {
+        content: 'Build the about page',
+        appId: 'app-123',
+        sessionId: 'session-456',
+        rebuildBuildPageSlug: 'about',
+      }
+
+      const result = builder.build(params)
+
+      expect(result.context?.metadata?.rebuildBuildPageSlug).toBe('about')
+    })
+
+    it('should omit rebuildBuildPageSlug from metadata when not provided', () => {
+      const params: BuildMessageParams = {
+        content: 'Hello',
+        appId: 'app-123',
+        sessionId: 'session-456',
+      }
+
+      const result = builder.build(params)
+
+      expect(result.context?.metadata && 'rebuildBuildPageSlug' in result.context.metadata).toBe(false)
+    })
+
     it('should include conversationId when provided', () => {
       const params: BuildMessageParams = {
         content: 'Test',

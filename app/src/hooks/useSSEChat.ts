@@ -1001,6 +1001,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         todoListContext: options.todoListContext,
         isActionRequest: options.isActionRequest,
         customContext: options.customContext,
+        rebuildBuildPageSlug: options.rebuildBuildPageSlug,
         budgetServiceEnabled: budgetServiceEnabledRef.current || undefined,
         market: marketRef.current,
         subscriptionId: subscriptionIdRef.current,

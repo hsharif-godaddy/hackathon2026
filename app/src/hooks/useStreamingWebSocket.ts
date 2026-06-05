@@ -94,6 +94,9 @@ export interface SendMessageOptions {
   /** Custom context for extensions */
   customContext?: CustomContext
 
+  /** Rebuild page-selector "Build Page" slug — server builds it from source (AIROBUILD-2104) */
+  rebuildBuildPageSlug?: string
+
   /** Template ID for custom initial agent prompts */
   templateId?: string
 
@@ -401,6 +404,7 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
           todoListContext: options.todoListContext,
           isActionRequest: options.isActionRequest,
           customContext: options.customContext,
+          rebuildBuildPageSlug: options.rebuildBuildPageSlug,
           templateId: options.templateId,
           modelOverride: defaults.modelOverride,
           agentProfile: defaults.agentProfile,

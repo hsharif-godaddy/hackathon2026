@@ -453,6 +453,7 @@ export class StreamingWebSocketController extends EventEmitter {
     todoListContext?: TodoContext
     isActionRequest?: boolean
     customContext?: CustomContext
+    rebuildBuildPageSlug?: string
     templateId?: string
     modelOverride?: string
     agentProfile?: string
@@ -531,6 +532,7 @@ export class StreamingWebSocketController extends EventEmitter {
         buildErrorContext,
         isActionRequest: params.isActionRequest,
         customContext: params.customContext,
+        rebuildBuildPageSlug: params.rebuildBuildPageSlug,
         templateId: params.templateId,
         modelOverride: params.modelOverride,
         agentProfile: params.agentProfile,

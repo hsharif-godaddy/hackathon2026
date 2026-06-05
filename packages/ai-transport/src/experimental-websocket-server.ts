@@ -390,6 +390,23 @@ export interface WebSocketConfig {
   ) => Promise<void>
 
   /**
+   * Optionally replace the agent-facing message for this turn WITHOUT changing
+   * the persisted/displayed user message. Invoked after persistence and before
+   * the agent loop. Return a non-empty string to substitute; return undefined
+   * to leave the message unchanged. Used for deterministic, server-resolved
+   * prompts (e.g. the rebuild "build page" flow) that must not depend on the
+   * model choosing to call a tool.
+   *
+   * Error contract: additive/non-fatal — the server wraps this in try/catch, so
+   * a throw is swallowed and the turn proceeds with the original message.
+   */
+  getEffectiveAgentMessage?: (
+    socketId: string,
+    message: string,
+    context: Record<string, unknown> | undefined
+  ) => Promise<string | undefined>
+
+  /**
    * Transport-layer chunk timeout in ms (default: -1, disabled).
    * Set to a positive ms value to enable. Aborts the per-socket
    * AbortController when no chunk arrives within this window.
@@ -2165,6 +2182,38 @@ export class WebSocketServer {
 
       // Accumulate execution steps across all agent iterations for cost attribution.
       // Each agent's steps are collected and combined, not overwritten.
+      // Optionally substitute the agent-facing message for this turn. Runs
+      // after setupPersistence (so the persisted/displayed user message stays
+      // the user's original text) and before the loop below (so the agent
+      // receives the substituted text). Non-fatal: a throw falls back to the
+      // original message.
+      if (this.config.getEffectiveAgentMessage) {
+        try {
+          const effectiveMessage = await this.config.getEffectiveAgentMessage(
+            socketId,
+            data.message,
+            data.context as Record<string, unknown> | undefined
+          )
+          if (
+            typeof effectiveMessage === 'string' &&
+            effectiveMessage.length > 0 &&
+            effectiveMessage !== data.message
+          ) {
+            this.logger.info('websocket.effective_message.substituted', {
+              socketId,
+              originalLength: data.message.length,
+              effectiveLength: effectiveMessage.length,
+            })
+            data.message = effectiveMessage
+          }
+        } catch (error) {
+          this.logger.warn('websocket.effective_message.error', {
+            socketId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+
       const allExecutionSteps: ExecutionStep[] = []
 
       // 7. Execute agent(s) - loop handles handoffs and auto-continuation

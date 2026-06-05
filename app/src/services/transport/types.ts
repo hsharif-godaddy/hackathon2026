@@ -28,6 +28,8 @@ export interface SendMessageParams {
   templateId?: string
   modelOverride?: string
   agentProfile?: string
+  /** Rebuild page-selector "Build Page" slug — server builds it from source (AIROBUILD-2104) */
+  rebuildBuildPageSlug?: string
   budgetServiceEnabled?: boolean
   subscriptionId?: string
   buildErrorContext?: { error: string; details: string; exitCode?: number } | null

@@ -14,6 +14,12 @@ interface SendMessageOptions {
    * Context data sent to the agent but not displayed in the chat bubble.
    */
   customContext?: CustomContext
+  /**
+   * Set by the rebuild page-selector "Build Page" button. Signals the server to
+   * deterministically build this page from the scraped source (AIROBUILD-2104),
+   * rather than relying on the agent to choose the rebuild tool.
+   */
+  rebuildBuildPageSlug?: string
 }
 
 interface ChatContextValue {

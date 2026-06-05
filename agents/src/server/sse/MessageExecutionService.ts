@@ -39,6 +39,7 @@ import type { EventStreamRegistry, SubscriberLifecycleListener } from './EventSt
 import { SSEClientActionService } from './SSEClientActionService.js'
 import { registerActionService, cleanupActionService, getActionService } from '../agent-runtime.js'
 import { sseSessionKey } from './session-key.js'
+import { resolveRebuildBuildPagePrompt } from '../rebuild-build-page-message.js'
 import { logger, errorFields } from '../../logging/index.js'
 import { getBudgetServiceClient } from '../../services/budget-service-instance.js'
 import {
@@ -191,6 +192,9 @@ interface ExecuteParams {
   isActionRequest?: boolean
   customContext?: BuildContextAttachmentsCustomContext
   buildErrorContext?: BuildContextAttachmentsBuildErrorContext | null
+  /** Rebuild page-selector "Build Page" slug — substitutes the agent turn input
+   *  with the source-built page prompt (AIROBUILD-2104). */
+  rebuildBuildPageSlug?: string
   uploadedFileName?: string
   bmsBudgetId?: string
   budgetSessionId?: string
@@ -1520,7 +1524,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
   private async executeUnderTrace(params: ExecuteParams): Promise<void> {
     const {
       appId, conversationId, content, siteId, agentId, agentProfile,
-      templateId, modelOverride,
+      templateId, modelOverride, rebuildBuildPageSlug,
       visualContext, aiEditContext, aiEditContexts, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
       bmsBudgetId, budgetSessionId, subscriptionId, authType,
@@ -1749,7 +1753,16 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       let lastTurnResult: Awaited<ReturnType<typeof this.streamAgentTurn>> | undefined
       let currentIteration = 0
 
-      const runLoop = () => executeAgentLoop(resolvedAgentId, content, {
+      // Deterministic rebuild "Build Page" (AIROBUILD-2104): substitute the
+      // agent-facing content with the source-built page prompt. Runs after
+      // continueConversation above, so the persisted/displayed user message
+      // stays the original text; only the agent loop input is replaced. This is
+      // the SSE-transport counterpart of the WS getEffectiveAgentMessage hook.
+      const agentContent = rebuildBuildPageSlug
+        ? (await resolveRebuildBuildPagePrompt({ metadata: { appId, rebuildBuildPageSlug } })) ?? content
+        : content
+
+      const runLoop = () => executeAgentLoop(resolvedAgentId, agentContent, {
         getAgent: (name) => this.deps.getAgent(name),
         streamAgentTurn: async (agent, agentName, message, iteration) => {
           currentIteration = iteration

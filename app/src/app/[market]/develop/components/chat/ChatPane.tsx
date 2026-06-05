@@ -961,6 +961,7 @@ function ChatPaneInner({
           aiEditContext: { screenshot: null },
           isActionRequest: options?.isActionRequest,
           customContext: mergedCustomContext,
+          rebuildBuildPageSlug: options?.rebuildBuildPageSlug,
         });
         handleClearAllAiEditContexts();
       } else {
@@ -975,6 +976,7 @@ function ChatPaneInner({
               : undefined,
           selectedAssets: mergedAssets,
           customContext: mergedCustomContext,
+          rebuildBuildPageSlug: options?.rebuildBuildPageSlug,
         };
         void sendMessage(sendOptions);
 

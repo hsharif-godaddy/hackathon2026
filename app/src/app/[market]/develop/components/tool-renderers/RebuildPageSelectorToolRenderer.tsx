@@ -159,8 +159,11 @@ export default function RebuildPageSelectorToolRenderer({
   function handleBuildPage() {
     if (!selectedPage || isProcessing || !sendUserMessage) return
 
-    // Send a message to trigger the build
-    sendUserMessage(`Build the ${selectedPage} page`, { isActionRequest: true })
+    // Send a message to trigger the build. rebuildBuildPageSlug lets the server
+    // build this page deterministically from the scraped source (AIROBUILD-2104)
+    // instead of relying on the agent to choose the rebuild tool; the friendly
+    // text remains the visible chat bubble.
+    sendUserMessage(`Build the ${selectedPage} page`, { isActionRequest: true, rebuildBuildPageSlug: selectedPage })
   }
 
   // All pages built

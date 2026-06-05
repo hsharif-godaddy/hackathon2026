@@ -70,6 +70,10 @@ vi.mock('../../message-lifecycle.js', () => ({
   runMessageEndHooks: (...args: any[]) => mockRunMessageEndHooks(...args),
 }))
 
+const mockResolveRebuildBuildPagePrompt = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+vi.mock('../../rebuild-build-page-message.js', () => ({
+  resolveRebuildBuildPagePrompt: (...args: any[]) => mockResolveRebuildBuildPagePrompt(...args),
+}))
 vi.mock('../../../services/budget-service-instance.js', () => ({
   getBudgetServiceClient: mockGetBudgetServiceClient,
 }))
@@ -1342,6 +1346,54 @@ describe('MessageExecutionService', () => {
           appId: 'app_1',
         })
       )
+    })
+
+    it('substitutes agent content with the source-built page prompt while persisting the original (rebuild Build Page)', async () => {
+      mockResolveRebuildBuildPagePrompt.mockResolvedValueOnce('SOURCE PAGE PROMPT')
+      const streamGenerate = vi.fn().mockResolvedValue({
+        textStream: (async function* () { yield 'ok' })(),
+        baseStream: null,
+        getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'stop', usage: { totalTokens: 0 }, toolCalls: [] }),
+      })
+      deps.getAgent.mockReturnValue({ streamGenerate, getName: vi.fn().mockReturnValue('AI Developer') })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, content: 'Build the about page', rebuildBuildPageSlug: 'about' })
+
+      // The persisted/displayed user message stays the original friendly text...
+      expect(deps.conversationPersistence.continueConversation).toHaveBeenCalledWith(
+        'conv_1',
+        'Build the about page',
+        expect.anything()
+      )
+      // ...the resolver was consulted with the slug + appId...
+      expect(mockResolveRebuildBuildPagePrompt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({ appId: 'app_1', rebuildBuildPageSlug: 'about' }),
+        })
+      )
+      // ...and the SUBSTITUTED prompt is what the agent loop actually receives.
+      expect(streamGenerate.mock.calls[0][0]).toBe('SOURCE PAGE PROMPT')
+    })
+
+    it('feeds the agent the original content when the resolver returns undefined', async () => {
+      mockResolveRebuildBuildPagePrompt.mockResolvedValueOnce(undefined)
+      const streamGenerate = vi.fn().mockResolvedValue({
+        textStream: (async function* () { yield 'ok' })(),
+        baseStream: null,
+        getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'stop', usage: { totalTokens: 0 }, toolCalls: [] }),
+      })
+      deps.getAgent.mockReturnValue({ streamGenerate, getName: vi.fn().mockReturnValue('AI Developer') })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, content: 'Build the about page', rebuildBuildPageSlug: 'about' })
+
+      expect(streamGenerate.mock.calls[0][0]).toBe('Build the about page')
+    })
+
+    it('does not consult the rebuild resolver when no slug is provided', async () => {
+      await service.execute(DEFAULT_PARAMS)
+      expect(mockResolveRebuildBuildPagePrompt).not.toHaveBeenCalled()
     })
 
     it('calls startAgentTurn to create in-progress placeholder', async () => {
