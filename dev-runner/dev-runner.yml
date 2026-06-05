@@ -20,7 +20,7 @@ processes:
       - "UnhandledPromiseRejection"
       - "EADDRINUSE"
     healthCheck:
-      url: http://localhost:4000/health
+      url: https://local.gasket.dev-godaddy.com:4000/health
       unhealthyInterval: 10s
       healthyInterval: 60s
 

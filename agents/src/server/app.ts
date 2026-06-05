@@ -181,8 +181,8 @@ import path from 'node:path';
 import express, { Express, Router } from 'express';
 import helmet from 'helmet';
 import compression from 'compression';
-import { createServer } from 'http';
 
+import { create as createServer } from './server-factory.js';
 import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware, validateProductAccess } from './middleware/index.js';
 import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, securityReportRouter, secretsScanRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, socialRouter, blogPostsRouter, customerLogsRouter, diagnoseRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, brandDataRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, inboxAccountRouter } from './routes/index.js';
 // Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
@@ -218,8 +218,11 @@ import { resolveAppBaseUrl } from '../utils/share-token.js';
 const app: Express = express();
 const port = process.env.PORT || 4000;
 
-// Create HTTP server to support both Express and WebSocket
-const server = createServer(app);
+// Create HTTP(S) server to support both Express and WebSocket
+const { server, secure } = createServer(app);
+const scheme = secure ? 'https' : 'http';
+const wsScheme = secure ? 'wss' : 'ws';
+const localHost = secure ? 'local.gasket.dev-godaddy.com' : 'localhost';
 let wsServer: Awaited<ReturnType<typeof setupAILibWebSocketServer>>['wsServer'] | null = null;
 let isShuttingDown = false;
 const sseRegistry = new EventStreamRegistry();
@@ -407,7 +410,7 @@ app.get('/', (req, res) => {
       appDetails: '/apps/{app-id}',
       chat: '/agent/{agent-id}/chat',
       chatStreaming: '/agent/{agent-id}/chat-streaming',
-      websocketChat: 'ws://localhost:4000/ws/{agent-id}',
+      websocketChat: `${wsScheme}://${localHost}:${port}/ws/{agent-id}`,
     },
     documentation: 'See README.md for detailed API documentation',
   });
@@ -683,10 +686,11 @@ async function initialize() {
     // Start server
     server.listen(port, () => {
       logger.info('server.listen.success', {
-        url: `http://localhost:${port}`,
+        url: `${scheme}://${localHost}:${port}`,
         port,
-        healthCheck: `http://localhost:${port}/health`,
-        agentsList: `http://localhost:${port}/agents`,
+        secure,
+        healthCheck: `${scheme}://${localHost}:${port}/health`,
+        agentsList: `${scheme}://${localHost}:${port}/agents`,
       });
 
       logger.info('server.migration.complete', {

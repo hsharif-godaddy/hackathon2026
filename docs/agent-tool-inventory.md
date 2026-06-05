@@ -324,7 +324,7 @@ sequenceDiagram
 
 #### WebSocket Endpoints
 
-**Connection URL**: `ws://localhost:4000` (development) or `wss://agents.domain.com` (production)
+**Connection URL**: `wss://local.gasket.dev-godaddy.com:4000` (development) or `wss://agents.domain.com` (production)
 
 **Key Events**:
 
@@ -358,7 +358,7 @@ sequenceDiagram
 
 ### Secondary Communication: HTTPS REST API
 
-**Base URL**: `http://localhost:4000` (development)
+**Base URL**: `https://local.gasket.dev-godaddy.com:4000` (development)
 
 **Key Endpoints**:
 
@@ -1221,7 +1221,7 @@ UNSPLASH_ACCESS_KEY=...
 
 ```typescript
 // WebSocket connection for real-time development
-const socket = io("http://localhost:4000", {
+const socket = io("https://local.gasket.dev-godaddy.com:4000", {
   extraHeaders: {
     Authorization: `Bearer ${jwtToken}`,
   },

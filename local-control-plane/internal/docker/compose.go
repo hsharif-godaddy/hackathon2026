@@ -173,7 +173,7 @@ func generatePreviewEnvironment(app *store.App) map[string]string {
 	)
 	agentsBaseURL := getEnvOrDefault(
 		"AGENTS_BASE_URL",
-		"http://host.docker.internal:4000",
+		"https://local.gasket.dev-godaddy.com:4000",
 	)
 	authType := resolveAuthType()
 

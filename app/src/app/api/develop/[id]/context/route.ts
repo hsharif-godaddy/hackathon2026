@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+import { dynamicApiConfigService } from '@/config/dynamic-api'
 import { agentFetch } from '@/lib/agent-fetch'
 import { features } from '@/lib/features'
 import { logger } from '@/lib/request-context'
@@ -41,8 +42,10 @@ export async function GET(
     const injectFakeAiEdit = searchParams.get('injectFakeAiEdit') === 'true'
     const userInput = searchParams.get('userInput') || ''
 
-    // Dev-only endpoint with no auth context — talk directly to local agents
-    const agentsResponse = await agentFetch(`http://localhost:4000/debug/context/${appId}?` + new URLSearchParams({
+    // Dev-only endpoint — resolve the agent base URL from the site (HTTPS in local dev)
+    // rather than assuming http://localhost:4000.
+    const { baseUrl } = await dynamicApiConfigService.getConfigForSite(appId)
+    const agentsResponse = await agentFetch(`${baseUrl}/debug/context/${appId}?` + new URLSearchParams({
       injectFakeVisual: injectFakeVisual.toString(),
       injectFakeAiEdit: injectFakeAiEdit.toString(),
       userInput

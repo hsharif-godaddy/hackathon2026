@@ -111,8 +111,8 @@ func appToResponse(app *store.App) map[string]any {
 	}
 
 	urls := map[string]string{
-		"agent":   "http://localhost:4000",
-		"backend": "http://localhost:4000",
+		"agent":   "https://local.gasket.dev-godaddy.com:4000",
+		"backend": "https://local.gasket.dev-godaddy.com:4000",
 	}
 	if app.PreviewPort > 0 {
 		urls["preview"] = fmt.Sprintf("https://local.gasket.dev-godaddy.com:%d", app.PreviewPort)
@@ -735,7 +735,7 @@ func (s *Server) registerWithAgent(app *store.App) error {
 
 	agentsURL := os.Getenv("AGENTS_BASE_URL")
 	if agentsURL == "" {
-		agentsURL = "http://localhost:4000"
+		agentsURL = "https://local.gasket.dev-godaddy.com:4000"
 	}
 
 	// EVAL_CUSTOMER_ID overrides the customer identity sent to the agents service

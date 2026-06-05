@@ -92,8 +92,8 @@ Validates the current API configuration and returns any errors found.
 Create a `.env.local` file in the app directory:
 
 ```bash
-NEXT_PUBLIC_API_BASE_URL=http://localhost:4000
-NEXT_PUBLIC_API_WS_URL=ws://localhost:4000
+NEXT_PUBLIC_API_BASE_URL=https://local.gasket.dev-godaddy.com:4000
+NEXT_PUBLIC_API_WS_URL=wss://local.gasket.dev-godaddy.com:4000
 ```
 
 ### Staging
