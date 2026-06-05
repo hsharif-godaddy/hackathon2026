@@ -13,8 +13,6 @@ on:
           - 'blog'
           - 'budget-service'
           - 'debug-console'
-          - 'image-search-service'
-          - 'knowledge-service'
           - 'notification-service'
       environment:
         description: 'Environment to promote to'
@@ -88,13 +86,6 @@ jobs:
                 "prod": "prod"
               },
               "debug-console": {
-                "dev-private": "dev-private",
-                "prod": "prod"
-              },
-              "image-search-service": {
-                "dev-private": "dev-private"
-              },
-              "knowledge-service": {
                 "dev-private": "dev-private",
                 "prod": "prod"
               },

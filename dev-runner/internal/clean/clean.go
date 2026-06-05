@@ -60,9 +60,6 @@ var envFiles = []string{
 	"app/.env.local.test",
 	"app/.env.local.prod",
 	"design-rag/.env",
-	"image-search-service/.env",
-	"image-search-service/certs/client.crt",
-	"image-search-service/certs/client.key",
 	"local-control-plane/.env",
 }
 
@@ -118,8 +115,6 @@ var goServices = []goService{
 	{"dev-supervisor", []string{"dist/"}},
 	{"local-control-plane", []string{"dist/"}},
 	{"budget-service", []string{"bin/", "tmp/"}},
-	{"image-search-service", []string{"dist/"}},
-	{"knowledge-service", []string{"dist/"}},
 	{"go-agent", []string{"dist/", "coverage.out", "coverage.html"}},
 	{"release-manager", []string{"dist/"}},
 	{"cli-agent-client", []string{"bin/"}},

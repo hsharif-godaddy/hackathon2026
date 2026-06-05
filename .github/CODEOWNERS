@@ -42,10 +42,8 @@
 /e2e/ @mlefebvre1-godaddy @hdewan-godaddy @deverton-godaddy
 /go-agent/ @jeichorn-godaddy @rjha3-godaddy @deverton-godaddy
 /evals/goarena/ @cmachgodaddy
-/image-search-service/ @jeichorn-godaddy @skilaru-godaddy @jundai-godaddy
 /kibana-dashboards/ @hdewan-godaddy @deverton-godaddy
 /knowledge-base/ @arai1-godaddy @deverton-godaddy @skemp-godaddy
-/knowledge-service/ @skilaru-godaddy @kra-godaddy
 /local-control-plane/ @deverton-godaddy @matkinson-godaddy @bbetts-godaddy
 /packages/ @gdcorp-partners/dev-airo-ai-core-agent-squad
 /packages/ai-lib/ @gdcorp-partners/dev-airo-ai-core-agent-squad @mlefebvre1-godaddy

@@ -13,7 +13,7 @@ These dashboards surface the structured JSON logs described below.
 
 ## Logs
 
-Structured JSON to **stdout** via `log/slog` (same idea as `knowledge-service`). Default level is **info**. The logger is configured from `LOG_LEVEL` before config load so early failures (e.g. invalid env) still emit JSON on stdout.
+Structured JSON to **stdout** via `log/slog`. Default level is **info**. The logger is configured from `LOG_LEVEL` before config load so early failures (e.g. invalid env) still emit JSON on stdout.
 
 ### HTTP access
 

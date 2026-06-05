@@ -174,7 +174,7 @@ function formatSearchResults(query: string, results: any[]): string {
  * and visual style references.
  */
 export const ragSearchAITool: Tool = createTool(
-  'Search for design inspiration, styles, trends, and Google Fonts using semantic similarity. Use collection="design" for general design inspiration, or collection="fonts" for Google Fonts typography recommendations. Returns relevant results from curated knowledge bases.',
+  'Search for design inspiration, styles, and trends. Use this to find design styles, color schemes, typography guidance, and visual references. Font suggestions are included in design results via each style\'s typography field.',
   z.object({
     query: z
       .string()
@@ -185,7 +185,7 @@ export const ragSearchAITool: Tool = createTool(
       .string()
       .default('designs')
       .describe(
-        'Knowledge base to search: "design" for design styles/trends, "fonts" for Google Fonts (default: "design")'
+        'Knowledge base to search: "designs" or "design" for all styles/trends, "classic" for classic styles only, "trends" for modern trends only (default: "designs")'
       ),
     limit: z
       .number()
@@ -201,7 +201,6 @@ export const ragSearchAITool: Tool = createTool(
 
     const aliases = new Map<string, string>([
       ['design', 'designs'],
-      ['font', 'fonts']
     ]);
 
     const collection = aliases.get(input.collection) || input.collection;

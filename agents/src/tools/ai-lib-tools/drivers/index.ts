@@ -24,8 +24,6 @@ export type {
   GettyMediaItem,
 } from './getty-media-driver.js';
 
-export { ImageSearchServiceDriver } from './image-search-service-driver.js';
-
 export { KnowBDriver, knowBDriver } from './knowb-driver.js';
 export type {
   KnowBSearchOptions,

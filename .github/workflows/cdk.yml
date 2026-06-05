@@ -34,8 +34,6 @@ on:
           - 'FeedbackFanoutStack'
           - 'FeedbackS3Stack'
           - 'LakeFormationAdminsStack'
-          - 'QdrantEcrStack'
-          - 'QdrantVectorDbStack'
           - 'LambdaBaseEcrStack'
           - 'AiroInvestigatorStack'
           - 'S2sIamJwtStack'
@@ -146,7 +144,6 @@ jobs:
           echo "//gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
           cp .npmrc lambda/gocode-spend-essp-exporter/.npmrc
           cp .npmrc lambda/langfuse-metrics-essp-exporter/.npmrc
-          cp .npmrc lambda/qdrant-tls-bootstrap/.npmrc
           # investigator is a Docker Lambda image (not esbuild-bundled);
           # its Dockerfile bind-mounts this .npmrc to install gd-auth-client
           # from the private GoDaddy Artifactory registry. gd-auth-client

@@ -13,9 +13,9 @@ import config from './config';
  * satisfies GoDaddy's GCI policy requirement that production Docker images
  * source their base layers from within GoDaddy's ECR surface.
  *
- * Follows the same pattern as QdrantEcrStack — the ECR repo is a separate
- * stack deployed before the investigator Lambda, so the image can be
- * populated before `AiroInvestigatorStack` builds the Docker image.
+ * The ECR repo is a separate stack deployed before the investigator Lambda,
+ * so the image can be populated before `AiroInvestigatorStack` builds the
+ * Docker image.
  *
  * Lifecycle:
  *   1. Deploy this stack (creates the ECR repo).
@@ -23,7 +23,7 @@ import config from './config';
  *      manually) — it mirrors public.ecr.aws/lambda/nodejs:20 → this repo.
  *   3. Deploy AiroInvestigatorStack — Dockerfile pulls from this repo.
  *
- * Only deployed for dev and prod (test skipped, matches QdrantEcrStack).
+ * Only deployed for dev and prod (test skipped).
  */
 export class LambdaBaseEcrStack extends GDStack {
   public readonly repository?: ecr.Repository;

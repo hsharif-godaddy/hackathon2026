@@ -4,9 +4,7 @@ This directory contains architecture and deployment documentation for each CDK s
 
 ## Stacks
 
-| Stack                 | Environments | Description                                          |
-| --------------------- | ------------ | ---------------------------------------------------- |
-| [Qdrant](./qdrant.md) | dev, prod    | 3-node Qdrant vector database cluster on ECS Fargate |
+No per-stack documentation files exist yet. Add one using the template below when deploying a new stack.
 
 ## Documentation Template
 

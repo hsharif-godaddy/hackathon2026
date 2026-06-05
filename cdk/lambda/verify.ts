@@ -4,14 +4,14 @@
  *
  * Usage:
  *   npx tsx lambda/verify.ts                    # Verify all lambdas
- *   npx tsx lambda/verify.ts qdrant-tls-bootstrap  # Verify specific lambda
+ *   npx tsx lambda/verify.ts <lambda-name>      # Verify specific lambda
  */
 
 import * as path from "path";
 import * as fs from "fs";
 import { pathToFileURL } from "url";
 
-const LAMBDAS = ["qdrant-tls-bootstrap"];
+const LAMBDAS: string[] = [];
 
 async function verifyLambda(name: string): Promise<boolean> {
   const distPath = path.join(__dirname, name, "dist", "index.mjs");

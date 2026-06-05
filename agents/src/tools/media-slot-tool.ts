@@ -43,7 +43,6 @@ export interface MediaSlotOptions {
   graphicalStyles?: string[];
   sortOrder?: string;
   color?: string;
-  useService?: boolean;
   advancedFilters?: MediaSearchOptions['advancedFilters'];
   count?: number;
   // Context
@@ -96,7 +95,6 @@ export class MediaSlotTool {
       graphicalStyles,
       sortOrder,
       color,
-      useService,
       advancedFilters,
       count = 5,
       appId,
@@ -155,7 +153,6 @@ export class MediaSlotTool {
           ...(graphicalStyles && { graphicalStyles }),
           ...(sortOrder && { sortOrder }),
           ...(color && { color }),
-          ...(useService !== undefined && { useService }),
           ...(advancedFilters && { advancedFilters }),
         }
       );

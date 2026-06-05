@@ -1,5 +1,4 @@
 import { logger } from '../logging/index.js';
-import { qdrantService, type VectorSearchResult } from '../services/qdrant-service.js';
 import { readFile } from 'fs/promises';
 import { resolve } from 'path';
 
@@ -111,25 +110,6 @@ export class RagTool {
         ...designTrends.map(this.unifyDesignTrend)
       ];
 
-      const storePromises = this.designData.map(async (design) => {
-        const key = `design.${design.type}.${design.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-        const searchText = this.extractSearchableText(design);
-
-        return qdrantService.storeVector({
-          key,
-          value: design,
-          text: searchText,
-          metadata: {
-            type: design.type,
-            name: design.name,
-            source: design.metadata.source,
-            collection: 'design-rag'
-          }
-        });
-      });
-
-      await Promise.all(storePromises);
-
       this.initialized = true;
 
       this.logger.info('rag.init.success', {
@@ -218,32 +198,46 @@ export class RagTool {
         };
       }
 
-      const vectorResult: VectorSearchResult = await qdrantService.searchVectors({
-        query,
-        limit,
-        score_threshold,
-        ...(collection && { collection })
-      });
+      const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 0);
 
-      if (!vectorResult.success) {
-        return {
-          success: false,
-          error: vectorResult.error || 'Vector search failed'
+      let candidates = this.designData;
+      if (collection) {
+        const collectionMap: Record<string, string[]> = {
+          'designs': ['classic-styles', 'design-trends-rag'],
+          'design': ['classic-styles', 'design-trends-rag'],
+          'classic': ['classic-styles'],
+          'trends': ['design-trends-rag'],
         };
+        const allowedSources = collectionMap[collection];
+        if (allowedSources !== undefined) {
+          candidates = allowedSources.length > 0
+            ? this.designData.filter(d => allowedSources.includes(d.metadata.source))
+            : [];
+        }
       }
 
-      const results = vectorResult.results || [];
+      const scored = candidates
+        .map(design => {
+          const text = this.extractSearchableText(design).toLowerCase();
+          const matchCount = terms.filter(term => text.includes(term)).length;
+          const score = terms.length > 0 ? matchCount / terms.length : 0;
+          const key = `design.${design.type}.${design.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+          return { key, value: design, score };
+        })
+        .filter(r => r.score >= score_threshold)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit);
 
       const duration = Date.now() - startTime;
       this.logger.info('rag.search.success', {
         query,
-        resultCount: results.length,
+        resultCount: scored.length,
         executionTime: duration
       });
 
       return {
         success: true,
-        results
+        results: scored
       };
     } catch (error) {
       this.logger.error('rag.search.failed', {

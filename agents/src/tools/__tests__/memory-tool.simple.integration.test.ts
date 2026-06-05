@@ -325,7 +325,7 @@ describe('MemoryTool Simple Integration Tests', () => {
       const endTime = Date.now();
       const duration = endTime - startTime;
 
-      expect(duration).toBeLessThan(5000); // Should complete within 5 seconds even with Qdrant failures
+      expect(duration).toBeLessThan(5000); // Should complete within 5 seconds
     });
   });
 

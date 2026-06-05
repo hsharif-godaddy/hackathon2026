@@ -123,8 +123,8 @@ export class FeedbackFanoutStack extends GDStack {
     // real webhook URL via AWS Console after first deploy. Lambda's slack
     // module skips Slack posting when the value is unset/REPLACE_ME.
     //
-    // Same convention as the Stripe platform key + webhook signing secrets,
-    // JWT keys, and Qdrant API key + TLS certs in this codebase.
+    // Same convention as the Stripe platform key + webhook signing secrets
+    // and JWT keys in this codebase.
     // `generateStringKey: 'initialValue'` is intentional — it must NOT be a
     // key already present in `secretStringTemplate`. CDK appends a random
     // string at this key on first deploy; if it matched `webhookUrl` (or

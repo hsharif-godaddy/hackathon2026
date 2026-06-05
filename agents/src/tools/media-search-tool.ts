@@ -30,7 +30,6 @@
  * ```
  */
 import { GettyMediaDriver } from './ai-lib-tools/drivers/getty-media-driver.js';
-import { ImageSearchServiceDriver } from './ai-lib-tools/drivers/image-search-service-driver.js';
 import type { MediaDriver, MediaDriverSearchOptions } from './ai-lib-tools/drivers/media-driver.js';
 import { createOpenAIClient } from '@airo/ai-lib';
 import { AIRO_ASSET_UPLOADS_URL_PREFIX } from '@airo/shared/media';
@@ -57,7 +56,6 @@ export interface MediaSearchOptions {
   prompt: string | string[];
   mediaType?: MediaType;
   count?: number;
-  useService?: boolean; // per-request toggle
 
   // Core filters (top-level for LLM visibility)
   orientations?: string | string[];
@@ -68,10 +66,9 @@ export interface MediaSearchOptions {
   color?: string;
 
   // Advanced filters (nested object).
-  // Note: numberOfPeople, ethnicity, ageOfPeople, minimumSize are supported by both Getty and the service.
-  // The remaining fields (subjectCategory, copySpaceAmount, copySpaceLocation, usageContext,
-  // backgroundType, visualComplexity, tone, peopleFocus) are only supported by the image search service
-  // and are silently ignored when useService is false.
+  // Getty applies numberOfPeople, ethnicity, ageOfPeople, minimumSize. The remaining fields
+  // (subjectCategory, copySpaceAmount, copySpaceLocation, usageContext, backgroundType,
+  // visualComplexity, tone, peopleFocus) are accepted but silently ignored by the Getty driver.
   advancedFilters?: {
     numberOfPeople?: string[];
     ethnicity?: string[];
@@ -133,12 +130,10 @@ export interface MediaSearchResult {
  */
 export class MediaSearchTool {
   private gettyDriver: GettyMediaDriver;
-  private serviceDriver: ImageSearchServiceDriver;
   private appsBaseDir: string;
 
   constructor() {
     this.gettyDriver = new GettyMediaDriver();
-    this.serviceDriver = new ImageSearchServiceDriver();
     this.appsBaseDir = process.env.APPS_BASE_DIR || '/tmp/airo-app-builder';
   }
 
@@ -168,7 +163,6 @@ export class MediaSearchTool {
       moods?: string[];
       graphicalStyles?: string[];
       sortOrder?: string;
-      useService?: boolean;
       advancedFilters?: MediaSearchOptions['advancedFilters'];
     }
   ): Promise<MediaSearchResult> {
@@ -259,22 +253,10 @@ export class MediaSearchTool {
   }
 
   /**
-   * Get the appropriate driver based on configuration
+   * Get the media driver. All media search routes through Getty.
    */
-  private getDriver(mediaType: string, useService?: boolean): MediaDriver {
-    // Only use image search service for images, never for videos
-    if (mediaType === 'image' && this.shouldUseService(useService)) {
-      return this.serviceDriver;
-    }
+  private getDriver(): MediaDriver {
     return this.gettyDriver;
-  }
-
-  /**
-   * Determine whether to route through image search service
-   */
-  private shouldUseService(useService?: boolean): boolean {
-    if (useService !== undefined) return useService;
-    return process.env.IMAGE_SEARCH_USE_SERVICE === 'true';
   }
 
   /**
@@ -291,7 +273,6 @@ export class MediaSearchTool {
       moods?: string[];
       graphicalStyles?: string[];
       sortOrder?: string;
-      useService?: boolean;
       advancedFilters?: MediaSearchOptions['advancedFilters'];
     }
   ): MediaDriverSearchOptions {
@@ -339,7 +320,6 @@ export class MediaSearchTool {
       moods?: string[];
       graphicalStyles?: string[];
       sortOrder?: string;
-      useService?: boolean;
       advancedFilters?: MediaSearchOptions['advancedFilters'];
     }
   ): Promise<MediaSearchResult> {
@@ -352,7 +332,7 @@ export class MediaSearchTool {
         provider: 'getty',
       });
 
-      const driver = this.getDriver(mediaType, options?.useService);
+      const driver = this.getDriver();
       const driverOptions = this.buildDriverOptions(
         prompt,
         mediaType as 'image' | 'video',
@@ -469,7 +449,6 @@ export class MediaSearchTool {
       moods?: string[];
       graphicalStyles?: string[];
       sortOrder?: string;
-      useService?: boolean;
       advancedFilters?: MediaSearchOptions['advancedFilters'];
     }
   ): Promise<MediaSearchResult> {
@@ -685,7 +664,6 @@ export async function findMedia(options: MediaSearchOptions): Promise<MediaSearc
     moods,
     graphicalStyles,
     sortOrder,
-    useService,
     advancedFilters,
     appId,
     size,
@@ -716,7 +694,6 @@ export async function findMedia(options: MediaSearchOptions): Promise<MediaSearc
       ...(moods !== undefined && { moods }),
       ...(graphicalStyles !== undefined && { graphicalStyles }),
       ...(sortOrder !== undefined && { sortOrder }),
-      ...(useService !== undefined && { useService }),
       ...(advancedFilters !== undefined && { advancedFilters }),
     };
     return await mediaSearchTool.searchMedia(

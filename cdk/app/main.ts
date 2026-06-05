@@ -8,15 +8,12 @@ import { AiroStripeServiceStack } from "../lib/airo-stripe-service-stack";
 import { MonitoringStack } from '../lib/monitoring-stack';
 import { GocaasSpendLambdaStack } from "../lib/gocaas-spend-lambda-stack";
 import { BudgetServiceLakeExportStack } from "../lib/budget-service-lake-export-stack";
-import { ImageSearchStack } from "../lib/image-search-stack";
 import { LangfuseMetricsEsspExporterStack } from "../lib/langfuse-metrics-essp-exporter-stack";
 import { EvalSnapshotsStack } from "../lib/eval-snapshots-stack";
 import { EventsS3Stack } from "../lib/events-s3-stack";
 import { FeedbackS3Stack } from "../lib/feedback-s3-stack";
 import { OfflineMLDataS3Stack } from "../lib/offline-ml-data-s3-stack";
 import { LakeFormationAdminsStack } from "../lib/lake-formation-admins-stack";
-import { QdrantStack } from "../lib/qdrant-stack";
-import { QdrantEcrStack } from "../lib/qdrant-ecr-stack";
 import { LambdaBaseEcrStack } from "../lib/lambda-base-ecr-stack";
 import { FeedbackAutomationStack } from "../lib/feedback-automation-stack";
 import { FeedbackFanoutStack } from "../lib/feedback-fanout-stack";
@@ -80,9 +77,6 @@ async function main() {
 
   // Create Langfuse Metrics ESSP Exporter Lambda stack (5-min cron, hourly buckets)
   new LangfuseMetricsEsspExporterStack(app, 'LangfuseMetricsEsspExporterStack', { env });
-
-  // Create Image Search Service infrastructure (S3 bucket for analysis cache)
-  new ImageSearchStack(app, 'ImageSearchStack', { env });
 
   // Create Eval Snapshots infrastructure (S3 bucket for evaluation screenshots + data)
   new EvalSnapshotsStack(app, 'EvalSnapshotsStack', { env });
@@ -163,14 +157,6 @@ async function main() {
     kmsKey: transactionalEventsKmsStack.kmsKey,
   });
   transactionalEventsKinesisStack.addDependency(transactionalEventsKmsStack);
-
-  // Create Qdrant ECR repository (dev and prod only)
-  // Deploy this first to allow pre-populating Docker images
-  new QdrantEcrStack(app, "QdrantEcrStack", { env });
-
-  // Create Qdrant vector database cluster (dev and prod only)
-  // Requires QdrantEcrStack to be deployed first with Docker image
-  new QdrantStack(app, "QdrantVectorDbStack", { env });
 
   app.synth();
 }

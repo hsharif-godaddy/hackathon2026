@@ -25,7 +25,7 @@ Before calling the LLM, the system assembles a rich context:
 - **Conversation history** — loaded from SQLite via `messageProvider.loadMessages()`, token-limited to ~40K tokens
 - **Visual context** — screenshots, scroll position, viewport info sent by the browser client
 - **App context** — template description, file tree, page structure injected via `AILibContextManager`
-- **RAG docs** — documentation retrieved via KnowB/knowledge-service semantic search (`searchDocumentation`)
+- **RAG docs** — documentation retrieved via KnowB (GoKnowb) semantic search (`searchDocumentation`)
 
 ## 4. Agent → LLM Call
 

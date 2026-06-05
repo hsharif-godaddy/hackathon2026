@@ -28,7 +28,6 @@
     "node_modules",
     "cdk.out",
     "lambda/gocode-spend-essp-exporter",
-    "lambda/langfuse-metrics-essp-exporter",
-    "lambda/qdrant-tls-bootstrap"
+    "lambda/langfuse-metrics-essp-exporter"
   ]
 }

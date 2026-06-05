@@ -1,6 +1,5 @@
 import { logger } from '../logging/index.js';
 import { toolMemoryEvents } from '../logging/events/index.js';
-import { qdrantService, type VectorSearchResult } from '../services/qdrant-service.js';
 import { AppRepository } from '../database/index.js';
 import { getKvMemoryStore } from '../memory/adapters/index.js';
 import type { KvMemoryStore } from '../memory/interfaces/index.js';
@@ -84,52 +83,6 @@ export class MemoryTool {
   }
 
   /**
-   * Extract searchable text from a value for vector storage
-   */
-  private extractSearchableText(value: unknown): string {
-    if (typeof value === 'string') {
-      return value;
-    }
-    
-    if (typeof value === 'number' || typeof value === 'boolean') {
-      return String(value);
-    }
-    
-    if (value === null || value === undefined) {
-      return '';
-    }
-    
-    if (typeof value === 'object') {
-      try {
-        // Extract text from object properties recursively
-        const extractFromObject = (obj: any): string[] => {
-          const texts: string[] = [];
-          
-          if (Array.isArray(obj)) {
-            obj.forEach(item => texts.push(...extractFromObject(item)));
-          } else if (obj && typeof obj === 'object') {
-            Object.entries(obj).forEach(([key, val]) => {
-              // Include property names as searchable text
-              texts.push(key);
-              texts.push(...extractFromObject(val));
-            });
-          } else {
-            texts.push(String(obj));
-          }
-          
-          return texts;
-        };
-        
-        return extractFromObject(value).filter(text => text && text.length > 0).join(' ');
-      } catch {
-        return JSON.stringify(value);
-      }
-    }
-    
-    return String(value);
-  }
-
-  /**
    * Get the appId from the appPath using AppRepository
    */
   private getAppIdFromPath(appPath: string): string | null {
@@ -209,30 +162,6 @@ export class MemoryTool {
           key,
           error: dbResult.error || 'Failed to store in database'
         };
-      }
-
-      // Also store in vector database for semantic search
-      const searchText = this.extractSearchableText(value);
-      if (searchText.length > 0) {
-        const vectorResult = await qdrantService.storeVector({
-          key,
-          value,
-          text: searchText,
-          metadata: {
-            appId: resolvedAppId,
-            timestamp: new Date().toISOString(),
-            type: typeof value === 'string' ? 'text' : 'json'
-          }
-        });
-        
-        if (!vectorResult.success) {
-          // Log vector storage failure but don't fail the database operation
-          this.logger.warn('memory.vector.store.warning', {
-            key,
-            error: vectorResult.error || 'Vector storage failed',
-            databaseOperationSucceeded: true
-          });
-        }
       }
 
       const duration = Date.now() - startTime;
@@ -431,13 +360,6 @@ export class MemoryTool {
   }
 
   /**
-   * Get vector storage metrics for monitoring
-   */
-  getVectorMetrics() {
-    return qdrantService.getMetrics();
-  }
-
-  /**
    * Search memory using semantic similarity and text search
    */
   async searchMemory(options: MemorySearchOptions, appPath: string, appId?: string, customerId?: string): Promise<MemorySearchResult> {
@@ -471,45 +393,14 @@ export class MemoryTool {
         };
       }
 
-      // Try semantic search first using Qdrant vector database
       let results: Array<{ key: string; value: unknown; score: number; metadata?: Record<string, unknown> }> = [];
-      
-      try {
-        const vectorResult: VectorSearchResult = await qdrantService.searchVectors({
-          query,
-          limit,
-          score_threshold
-        });
 
-        if (vectorResult.success && vectorResult.results) {
-          // Filter results by appId if metadata is available
-          results = vectorResult.results.filter(result => 
-            !result.metadata || result.metadata.appId === resolvedAppId
-          );
-        }
-      } catch (vectorError) {
-        this.logger.warn('memory.vector.search.failed', {
-          query,
-          error: vectorError instanceof Error ? vectorError.message : String(vectorError),
-          fallbackToTextSearch: true
-        });
-      }
-
-      // If vector search didn't return enough results or failed, supplement with text search
-      if (results.length < limit) {
-        const dbResult = await this.kvMemoryStore.search(workspaceScopeFromAppId(resolvedAppId, customerId), query, limit - results.length);
-        
-        if (dbResult.success) {
-          // Add database results, avoiding duplicates and ensuring they have a score
-          const existingKeys = new Set(results.map(r => r.key));
-          const additionalResults = dbResult.results
-            .filter(result => !existingKeys.has(result.key))
-            .map(result => ({
-              ...result,
-              score: result.score || 0.5 // Default score for text-based search results
-            }));
-          results.push(...additionalResults);
-        }
+      const dbResult = await this.kvMemoryStore.search(workspaceScopeFromAppId(resolvedAppId, customerId), query, limit);
+      if (dbResult.success) {
+        results = dbResult.results.map(result => ({
+          ...result,
+          score: result.score || 0.5
+        }));
       }
 
       const duration = Date.now() - startTime;

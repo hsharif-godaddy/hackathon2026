@@ -190,7 +190,7 @@ pnpm search "minimalist modern" --node /airo_design
 
 ## Related
 
-- `agents/src/tools/rag-tool.ts` - Generic RAG tool for Qdrant
+- `agents/src/tools/rag-tool.ts` - Generic in-memory RAG tool
 - `agents/scripts/knowb-cli.ts` - Agents KnowB CLI
 - `packages/design-extractor/` - PDF design extraction (legacy)
 - `.github/workflows/knowledge_base.yml` - KnowB upload workflow

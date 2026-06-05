@@ -52,7 +52,7 @@ Scripts/CI can still use the non-interactive CLI: `dev-runner clean --all`, `--b
 | ------------------ | ----------------- | ---------------------------------------------------------------------------------------------- |
 | Build artifacts    | ✓ on              | Go service `dist/`, JS package `dist/`, `app/.next`, `.turbo/`, `*.tsbuildinfo`, Playwright artifacts, etc. |
 | Runtime data       | off               | `local-control-plane.db*`, `.dev-bms/` (preflight seed marker)                                 |
-| Env files & certs  | off               | `agents/.env*`, `app/.env*`, `image-search-service/certs/*`, `local-control-plane/.env`, etc.  |
+| Env files & certs  | off               | `agents/.env*`, `app/.env*`, `local-control-plane/.env`, etc.                                  |
 | node_modules       | ✓ on              | Every `node_modules/` under the project root (slow — needs `pnpm install` after)               |
 
 **CLI flags for `dev-runner clean`:** `--all`, `--build`, `--runtime`, `--env`, `--node-modules`, `--yes` / `-y`. With no group flag the legacy scope (build + runtime + env) is used.

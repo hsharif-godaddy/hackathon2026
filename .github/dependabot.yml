@@ -164,30 +164,6 @@ updates:
     cooldown:
       default-days: 7
 
-  # Monitor knowledge-service
-  - package-ecosystem: 'gomod'
-    directory: '/knowledge-service'
-    ignore:
-      - dependency-name: '*'
-        update-types:
-          - 'version-update:semver-major'
-    schedule:
-      interval: 'daily'
-    cooldown:
-      default-days: 7
-
-  # Monitor image-search-service
-  - package-ecosystem: 'gomod'
-    directory: '/image-search-service'
-    ignore:
-      - dependency-name: '*'
-        update-types:
-          - 'version-update:semver-major'
-    schedule:
-      interval: 'daily'
-    cooldown:
-      default-days: 7
-
   # Monitor budget-service
   - package-ecosystem: 'gomod'
     directory: '/budget-service'

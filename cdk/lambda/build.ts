@@ -4,7 +4,7 @@
  *
  * Usage:
  *   npx tsx lambda/build.ts                    # Build all lambdas
- *   npx tsx lambda/build.ts qdrant-tls-bootstrap  # Build specific lambda
+ *   npx tsx lambda/build.ts <lambda-name>      # Build specific lambda
  *   npx tsx lambda/build.ts --all              # Build all lambdas (explicit)
  */
 
@@ -22,14 +22,7 @@ interface LambdaConfig {
 }
 
 const LAMBDAS: LambdaConfig[] = [
-  {
-    name: "qdrant-tls-bootstrap",
-    entry: "index.ts",
-    external: ["@aws-sdk/*"], // Only AWS SDK is available at runtime
-    format: "esm",
-    installDeps: true, // Has node-forge dependency
-  },
-  // Add more lambdas here as they are migrated
+  // Add lambdas here as they are migrated to esbuild bundling
   // {
   //   name: 'key-rotation',
   //   entry: 'index.ts',

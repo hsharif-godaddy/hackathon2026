@@ -1,15 +1,15 @@
 # RAG Search Tool
 
-Semantic search tool for finding design inspiration, styles, and Google Fonts using vector similarity.
+Keyword search tool for finding design inspiration, styles, and trends across curated design knowledge.
 
 ## Overview
 
-The RAG (Retrieval-Augmented Generation) Search Tool provides semantic search capabilities across curated design knowledge bases. It uses vector embeddings to find relevant design styles, trends, and typography based on natural language queries.
+The RAG (Retrieval-Augmented Generation) Search Tool searches curated design knowledge bases that are loaded fully into memory at startup. Matching is keyword-based: the query is split into terms and each design is scored by the fraction of query terms that appear in its searchable text. There are no embeddings, no external vector database, and no network calls — search runs entirely in-process.
 
 ## Features
 
-- **Semantic Search**: Find relevant results based on meaning, not just keywords
-- **Multiple Collections**: Search across different knowledge bases (designs, fonts)
+- **Keyword Search**: Find relevant results by term overlap against design metadata
+- **Multiple Collections**: Search across different knowledge bases (designs, classic styles, trends)
 - **Configurable Relevance**: Adjust score threshold for more or fewer results
 - **Rich Metadata**: Results include detailed design characteristics, colors, typography, and use cases
 
@@ -29,26 +29,27 @@ const result = await ragSearchAITool.execute({
 });
 ```
 
-### Search for Fonts
+### Search Including Font Guidance
+
+Font suggestions are embedded in design results. Query the designs collection and look at `value.typography.fonts` in each result:
 
 ```typescript
-// Search for Google Fonts
-const fonts = await ragSearchAITool.execute({
+const result = await ragSearchAITool.execute({
   query: 'modern sans-serif fonts for tech startups',
-  collection: 'fonts',
-  limit: 10,
-  score_threshold: 0.6,
+  collection: 'designs',
+  limit: 5,
 });
+// result.results[n].value.typography.fonts contains font name suggestions
 ```
 
 ## Parameters
 
-| Parameter         | Type   | Default   | Description                                            |
-| ----------------- | ------ | --------- | ------------------------------------------------------ |
-| `query`           | string | required  | Natural language search query                          |
-| `collection`      | string | 'designs' | Knowledge base to search ('designs' or 'fonts')        |
-| `limit`           | number | 5         | Maximum results to return (max: 20)                    |
-| `score_threshold` | number | 0.7       | Minimum similarity score (0-1, higher = more relevant) |
+| Parameter         | Type   | Default   | Description                                                                              |
+| ----------------- | ------ | --------- | ---------------------------------------------------------------------------------------- |
+| `query`           | string | required  | Natural language search query                                                            |
+| `collection`      | string | 'designs' | Knowledge base: `'designs'`/`'design'` (all), `'classic'` (classic styles), `'trends'` |
+| `limit`           | number | 5         | Maximum results to return (max: 20)                                                      |
+| `score_threshold` | number | 0.7       | Minimum similarity score (0-1, higher = more relevant)                                   |
 
 ## Collections
 
@@ -64,15 +65,9 @@ Contains curated design styles and trends including:
 - Layout principles
 - Industry use cases
 
-### `fonts` Collection
+### Fonts
 
-Contains Google Fonts data including:
-
-- Font names and categories
-- Visual characteristics
-- Use cases and industries
-- Font pairing suggestions
-- Style descriptions
+There is no `fonts` collection. Use the `designs` collection with a font-oriented query (e.g., `"sans-serif fonts for tech"`); each result includes font suggestions in `typography.fonts` and `typography.styles`.
 
 ## Response Format
 
@@ -108,35 +103,14 @@ Contains Google Fonts data including:
 }
 ```
 
-### Font Results
-
-```typescript
-{
-  success: true,
-  results: [
-    {
-      key: 'font.inter',
-      score: 0.92,
-      value: {
-        name: 'Inter',
-        category: 'sans-serif',
-        description: 'Modern, clean, excellent readability',
-        characteristics: ['Geometric', 'Neutral', 'Versatile'],
-        useCases: ['UI design', 'Tech products', 'Dashboards'],
-        pairsWith: ['Merriweather', 'Lora', 'Georgia'],
-        variants: ['100', '200', '300', '400', '500', '600', '700', '800', '900']
-      }
-    }
-  ]
-}
-```
-
 ## Score Threshold Guidelines
 
-- **0.9+**: Very high relevance (exact matches)
-- **0.7-0.9**: High relevance (recommended default)
-- **0.5-0.7**: Moderate relevance (broader results)
-- **< 0.5**: Low relevance (may include unrelated results)
+Scores are the fraction of query terms found in a design's searchable text (e.g. a 4-term query that matches 3 terms scores `0.75`). A result is returned only when its score is `>= score_threshold`.
+
+- **1.0**: Every query term matched
+- **0.7-0.9**: Most query terms matched (recommended default)
+- **0.5-0.7**: About half the query terms matched (broader results)
+- **< 0.5**: Few query terms matched (may include loosely related results)
 
 ## Error Handling
 
@@ -166,7 +140,7 @@ try {
 - "modern e-commerce layout principles"
 - "healthcare app visual style"
 
-### Font Search
+### Typography & Font Guidance (via `designs` collection)
 
 - "modern sans-serif fonts for tech"
 - "elegant serif fonts for luxury brands"
@@ -207,39 +181,29 @@ const designAgent = {
 └────────┬────────┘
          │
          ▼
-┌─────────────────┐
-│ Qdrant Service  │
-│ (Vector Search) │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Qdrant Database │
-│  (Vector Store) │
-└─────────────────┘
+┌──────────────────────┐
+│  In-memory design    │
+│  data (loaded from   │
+│  design-data/*.json) │
+└──────────────────────┘
 ```
+
+Design data is read once from `design-data/classic-styles.json` and `design-data/design-trends-rag.json` on first search, then kept in memory for the process lifetime.
 
 ## Dependencies
 
-- **@airo/ai-lib**: Tool creation and embedding generation
-- **@qdrant/js-client-rest**: Vector database client
-- **OpenAI text-embedding-3-small**: Embedding model (1536 dimensions)
+- **@airo/ai-lib**: Tool creation
+
+No external services. Search is a pure in-process keyword scan; there is no vector database or embedding model.
 
 ## Environment Variables
 
-```bash
-# Required
-QDRANT_URL=http://localhost:6333
-
-# Optional (for OpenAI embeddings)
-OPENAI_API_KEY=your-api-key-here
-```
+None. The tool reads its data from the bundled `design-data/*.json` files and requires no configuration.
 
 ## Performance Considerations
 
-- **Embedding Generation**: ~100-200ms per query
-- **Vector Search**: ~10-50ms depending on collection size
-- **Total Latency**: ~150-300ms per search
+- **First search**: Includes a one-time load + parse of the design-data JSON files
+- **Subsequent searches**: In-memory term scan, typically sub-millisecond for the current dataset size
 
 ## Best Practices
 
@@ -288,10 +252,10 @@ describe('RAG Search Tool', function tests() {
     assume(result.results.length).is.greaterThan(0);
   });
 
-  it('should search fonts successfully', async function searchFonts() {
+  it('should return font guidance via designs collection', async function fontGuidance() {
     const result = await ragSearchAITool.execute({
       query: 'modern sans-serif',
-      collection: 'fonts',
+      collection: 'designs',
       limit: 5,
     });
 
@@ -325,27 +289,14 @@ describe('RAG Search Tool', function tests() {
 
 1. Lower the `score_threshold` (try 0.5)
 2. Use broader search terms
-3. Check collection name is correct ('designs' or 'fonts')
-4. Verify Qdrant is running and collections are populated
+3. Check the collection name is correct (`designs`, `classic`, or `trends`; `fonts` currently has no backing data)
 
-### Qdrant Connection Error
+### Data Load Error
 
-**Problem**: Cannot connect to Qdrant
-
-**Solutions**:
-
-1. Check `QDRANT_URL` environment variable
-2. Verify Qdrant service is running: `curl http://localhost:6333/health`
-3. Check Docker container: `docker ps | grep qdrant`
-4. Review logs: `docker logs qdrant`
-
-### Slow Response Times
-
-**Problem**: Searches take too long
+**Problem**: Search fails on first call with a file read or JSON parse error
 
 **Solutions**:
 
-1. Reduce `limit` parameter
-2. Check Qdrant performance metrics
-3. Ensure embeddings are being cached
-4. Consider using a dedicated Qdrant instance
+1. Confirm `design-data/classic-styles.json` and `design-data/design-trends-rag.json` exist relative to the process working directory
+2. Validate the JSON files parse cleanly
+3. Review logs for the `rag.init.failed` event, which includes the underlying error
