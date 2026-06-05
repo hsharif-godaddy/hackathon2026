@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { ConversationRepository } from '../../database/repositories/ConversationRepository.js'
+import { persistHandoffAgent } from '../develop-variant.js'
+import { runWithProfile } from '../../profiles/index.js'
+import type { ProfileData } from '../../profiles/types.js'
 
 vi.mock('../../logging/index.js', () => ({
   Logger: {
@@ -39,7 +42,9 @@ describe('Agent Handoff Callback', () => {
     logger = Logger.create({ component: 'test' })
   })
 
-  // Helper to create the onAgentChanged callback
+  // Mirrors the real WS onAgentChanged wrapper: it delegates the map+persist to
+  // the shared persistHandoffAgent seam (so this exercises the wired behavior,
+  // not a divergent copy) and re-throws on failure per the fatal contract.
   const createCallback = (conversationRepository: any) => {
     return async (conversationId: string, oldAgentName: string, newAgentName: string, appId?: string) => {
       logger.info('websocket.agent.handoff', {
@@ -50,21 +55,29 @@ describe('Agent Handoff Callback', () => {
       })
 
       try {
-        await conversationRepository.updateAgentId(conversationId, newAgentName)
+        const concreteAgent = await persistHandoffAgent(conversationRepository, conversationId, newAgentName)
         logger.debug('websocket.agent.handoff.updated', {
           conversationId,
-          newAgent: newAgentName
+          newAgent: concreteAgent
         })
       } catch (error) {
+        // Fatal per the ai-transport onAgentChanged contract: log, then rethrow
+        // so the turn aborts rather than continuing under an unpersisted agent.
         logger.error('websocket.agent.handoff.update_failed', {
           conversationId,
           oldAgent: oldAgentName,
           newAgent: newAgentName,
           error: error instanceof Error ? error.message : String(error)
         })
+        throw error
       }
     }
   }
+
+  const profile = (partial: Partial<ProfileData> & Pick<ProfileData, 'name' | 'properties'>): ProfileData => ({
+    description: '',
+    ...partial,
+  })
 
   describe('onAgentChanged callback', () => {
     it('should update agent_id when handoff occurs', async () => {
@@ -74,6 +87,30 @@ describe('Agent Handoff Callback', () => {
 
       expect(mockConversationRepo.updateAgentId).toHaveBeenCalledWith('conv-123', 'develop')
       expect(mockConversationRepo.updateAgentId).toHaveBeenCalledTimes(1)
+    })
+
+    it('persists develop-<profile> when the active profile carries develop/skill flags', async () => {
+      // Exercises the wired write seam: under runWithProfile, the handoff to base
+      // develop must be mapped to the profile variant before persistence.
+      const callback = createCallback(mockConversationRepo)
+
+      await runWithProfile(
+        profile({ name: 'experimental', properties: { 'skill.inbox.enabled': true } }),
+        () => callback('conv-123', 'initial', 'develop', 'app-456'),
+      )
+
+      expect(mockConversationRepo.updateAgentId).toHaveBeenCalledWith('conv-123', 'develop-experimental')
+    })
+
+    it('persists base develop when the active profile has no develop/skill flags', async () => {
+      const callback = createCallback(mockConversationRepo)
+
+      await runWithProfile(
+        profile({ name: 'ds', properties: { 'initial.promptVersion': 'design-system' } }),
+        () => callback('conv-123', 'initial', 'develop', 'app-456'),
+      )
+
+      expect(mockConversationRepo.updateAgentId).toHaveBeenCalledWith('conv-123', 'develop')
     })
 
     it('should log handoff event with all context', async () => {
@@ -133,7 +170,7 @@ describe('Agent Handoff Callback', () => {
 
       const callback = createCallback(mockConversationRepo)
 
-      await callback('conv-123', 'initial', 'develop', 'app-456')
+      await expect(callback('conv-123', 'initial', 'develop', 'app-456')).rejects.toThrow('Database connection failed')
 
       expect(logger.error).toHaveBeenCalledWith('websocket.agent.handoff.update_failed', {
         conversationId: 'conv-123',
@@ -143,14 +180,16 @@ describe('Agent Handoff Callback', () => {
       })
     })
 
-    it('should not throw when updateAgentId fails', async () => {
+    it('should rethrow when updateAgentId fails (fatal per transport contract)', async () => {
       const error = new Error('Database error')
       mockConversationRepo.updateAgentId.mockRejectedValueOnce(error)
 
       const callback = createCallback(mockConversationRepo)
 
-      // Should not throw - errors are caught and logged
-      await expect(callback('conv-123', 'initial', 'develop', 'app-456')).resolves.toBeUndefined()
+      // Must propagate so the turn aborts — a swallowed failure would leave the
+      // turn running under an agent that was never persisted, silently reverting
+      // the handoff on the next reload.
+      await expect(callback('conv-123', 'initial', 'develop', 'app-456')).rejects.toThrow('Database error')
     })
 
     it('should handle non-Error thrown values', async () => {
@@ -158,7 +197,7 @@ describe('Agent Handoff Callback', () => {
 
       const callback = createCallback(mockConversationRepo)
 
-      await callback('conv-123', 'initial', 'develop', 'app-456')
+      await expect(callback('conv-123', 'initial', 'develop', 'app-456')).rejects.toBe('String error')
 
       expect(logger.error).toHaveBeenCalledWith('websocket.agent.handoff.update_failed', {
         conversationId: 'conv-123',

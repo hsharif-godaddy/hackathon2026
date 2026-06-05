@@ -51,7 +51,6 @@ export interface BuildMessageParams<
   customContext?: CustomContext
   templateId?: string
   modelOverride?: string
-  agentProfile?: string
   market?: string
   /** Set by the rebuild page-selector "Build Page" button so the server can
    *  deterministically build this page from source (AIROBUILD-2104). */
@@ -77,7 +76,6 @@ export class ChatMessageBuilder {
         userTimezone: ChatMessageBuilder.cachedTimezone,
         ...(params.templateId && { templateId: params.templateId }),
         ...(params.modelOverride && { modelOverride: params.modelOverride }),
-        ...(params.agentProfile && { agentProfile: params.agentProfile }),
         ...(params.market && { market: params.market }),
         ...(params.rebuildBuildPageSlug && { rebuildBuildPageSlug: params.rebuildBuildPageSlug }),
       },

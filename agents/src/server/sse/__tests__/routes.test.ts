@@ -53,6 +53,7 @@ function createMockDeps() {
     }),
     resolveAgent: vi.fn().mockResolvedValue('develop'),
     getStateManager: vi.fn().mockReturnValue(null),
+    getTemplateIds: vi.fn().mockReturnValue([]),
     lifecycle: {
       create: vi.fn().mockImplementation(function (scope: { appId: string }, agentId: string) { return Promise.resolve({ id: 'conv_new', appId: scope.appId, agentId }); }
       ),
@@ -104,12 +105,64 @@ describe('SSE routes', () => {
       expect(res.body.isNew).toBe(true)
     })
 
-    it('calls resolveAgent with provided agentId and templateId', async () => {
+    it('freezes the default initial agent and ignores a client-sent agentId', async () => {
+      // The create seam resolves the concrete INITIAL agent; a stale client
+      // `agentId` must never re-route. With no profile/template, that is `initial`.
       await request(app)
         .post('/api/conversations/abcdefghij')
-        .send({ agentId: 'marketing', templateId: 'v8' })
+        .send({ agentId: 'marketing' })
 
-      expect(deps.resolveAgent).toHaveBeenCalledWith(expect.objectContaining({ appId: 'abcdefghij', agentId: 'marketing', templateId: 'v8' }))
+      expect(deps.lifecycle.getOrCreateForApp).toHaveBeenCalledWith(
+        expect.objectContaining({ appId: 'abcdefghij' }),
+        'initial',
+      )
+      expect(deps.resolveAgent).not.toHaveBeenCalled()
+    })
+
+    it('freezes initial-<templateId> when a registered template is provided', async () => {
+      deps.getTemplateIds = vi.fn().mockReturnValue(['v8'])
+
+      await request(app)
+        .post('/api/conversations/abcdefghij')
+        .send({ templateId: 'v8' })
+
+      expect(deps.lifecycle.getOrCreateForApp).toHaveBeenCalledWith(
+        expect.objectContaining({ appId: 'abcdefghij' }),
+        'initial-v8',
+      )
+    })
+
+    it('ignores an unregistered template and falls back to initial', async () => {
+      await request(app)
+        .post('/api/conversations/abcdefghij')
+        .send({ templateId: 'not-a-template' })
+
+      expect(deps.lifecycle.getOrCreateForApp).toHaveBeenCalledWith(
+        expect.objectContaining({ appId: 'abcdefghij' }),
+        'initial',
+      )
+    })
+
+    it('freezes the JWT-profile variant at create (profile is the sole source)', async () => {
+      // Lock the create-seam profile wiring: the JWT agentProfile (here a real
+      // registered profile that pins promptVersion 2.0) freezes initial-v2.
+      const profileDeps = {
+        ...createMockDeps(),
+        authenticate: vi.fn(function (req: any, _res: any, next: any) {
+          req.agentContext = { siteId: req.params.appId ?? 'abcdefghij', agentProfile: 'new-initial-agent' }
+          next()
+        }),
+      }
+      const profileApp = express()
+      profileApp.use(express.json())
+      profileApp.use('/api/conversations', createSSERoutes(profileDeps as any))
+
+      await request(profileApp).post('/api/conversations/abcdefghij').send({})
+
+      expect(profileDeps.lifecycle.getOrCreateForApp).toHaveBeenCalledWith(
+        expect.objectContaining({ appId: 'abcdefghij' }),
+        'initial-v2',
+      )
     })
   })
 
@@ -961,7 +1014,7 @@ describe('SSE routes', () => {
       for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
         await new Promise(r => setTimeout(r, 5))
       }
-      expect(depsWithService.resolveAgent).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'initial-v2' }))
+      expect(depsWithService.resolveAgent).toHaveBeenCalledWith(expect.objectContaining({ manualAgentOverride: 'initial-v2' }))
       expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
         agentId: 'initial-v2',
         content: 'Build me a pricing page',
@@ -987,11 +1040,97 @@ describe('SSE routes', () => {
       for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
         await new Promise(r => setTimeout(r, 5))
       }
-      expect(depsWithService.resolveAgent).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'develop' }))
+      // A bodyless /agent yields no override, and a client-sent body agentId no
+      // longer steers routing — the resolver is consulted with no manual override.
+      expect(depsWithService.resolveAgent).toHaveBeenCalledWith(expect.objectContaining({ manualAgentOverride: undefined }))
       expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
         agentId: 'develop',
         content: '/agent initial-v2',
       }))
+    })
+
+    it('finalizes the frozen initial agent to the template agent on the initial prompt', async () => {
+      // SSE freezes at the bodyless create POST without templateId, so a ?template=
+      // app freezes on the JWT profile (e.g. initial-design-system). The first
+      // message carries the template and must re-freeze to initial-<template>.
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const depsWithService = {
+        ...deps,
+        resolveAgent: vi.fn().mockResolvedValue('initial-design-system'),
+        getTemplateIds: vi.fn().mockReturnValue(['logo-designer']),
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
+      }
+      const appWithService = express()
+      appWithService.use(express.json())
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      const res = await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'Build it', templateId: 'logo-designer' })
+
+      expect(res.status).toBe(202)
+      for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
+        await new Promise(r => setTimeout(r, 5))
+      }
+      expect(depsWithService.lifecycle.updateAgentId).toHaveBeenCalledWith('conv_1', 'initial-logo-designer')
+      expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'initial-logo-designer' }))
+    })
+
+    it('does not finalize to a template agent once past the initial phase (e.g. develop)', async () => {
+      // Guard: a handed-off conversation (develop) must not be reverted to a
+      // template initial agent, even if a templateId rides the message.
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const depsWithService = {
+        ...deps,
+        resolveAgent: vi.fn().mockResolvedValue('develop'),
+        getTemplateIds: vi.fn().mockReturnValue(['logo-designer']),
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
+      }
+      const appWithService = express()
+      appWithService.use(express.json())
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      const res = await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'change the header', templateId: 'logo-designer' })
+
+      expect(res.status).toBe(202)
+      for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
+        await new Promise(r => setTimeout(r, 5))
+      }
+      expect(depsWithService.lifecycle.updateAgentId).not.toHaveBeenCalled()
+      expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'develop' }))
+    })
+
+    it('keeps the already-frozen agent for the turn when the template finalize durable write fails', async () => {
+      // If updateAgentId throws, the turn proceeds on the already-frozen agent
+      // (store + session stay aligned); a later message retries.
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const failingLifecycle = {
+        ...createMockDeps().lifecycle,
+        updateAgentId: vi.fn().mockRejectedValue(new Error('sqlite locked')),
+      }
+      const depsWithService = {
+        ...deps,
+        lifecycle: failingLifecycle,
+        resolveAgent: vi.fn().mockResolvedValue('initial-design-system'),
+        getTemplateIds: vi.fn().mockReturnValue(['logo-designer']),
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
+      }
+      const appWithService = express()
+      appWithService.use(express.json())
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      const res = await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'Build it', templateId: 'logo-designer' })
+
+      expect(res.status).toBe(202)
+      for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
+        await new Promise(r => setTimeout(r, 5))
+      }
+      expect(failingLifecycle.updateAgentId).toHaveBeenCalledWith('conv_1', 'initial-logo-designer')
+      expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'initial-design-system' }))
     })
 
     it('returns 400 when content exceeds max length', async () => {

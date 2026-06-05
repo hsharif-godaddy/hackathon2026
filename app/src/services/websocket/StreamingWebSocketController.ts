@@ -456,7 +456,6 @@ export class StreamingWebSocketController extends EventEmitter {
     rebuildBuildPageSlug?: string
     templateId?: string
     modelOverride?: string
-    agentProfile?: string
     uploadedFileName?: string
     market?: string
   }): Promise<void> {
@@ -535,7 +534,6 @@ export class StreamingWebSocketController extends EventEmitter {
         rebuildBuildPageSlug: params.rebuildBuildPageSlug,
         templateId: params.templateId,
         modelOverride: params.modelOverride,
-        agentProfile: params.agentProfile,
         market: params.market,
       }
 

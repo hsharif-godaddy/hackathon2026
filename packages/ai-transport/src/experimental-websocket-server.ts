@@ -2726,12 +2726,10 @@ export class WebSocketServer {
       return routedAgent
     }
 
-    // Check for explicit agent selection in message (after router hook)
-    if (data.agentId || data.agentName) {
-      return data.agentId || data.agentName
-    }
-
-    // Fall back to default agent
+    // NOTE: client-sent `data.agentId`/`data.agentName` is intentionally NOT
+    // consulted as a fallback. Agent selection is owned by the router (frozen
+    // `conversations.agentId`) and the `/agent` override; a stale or forged client
+    // field must never steer routing. Fall back to the default agent instead.
     return this.config.defaultAgent
   }
 

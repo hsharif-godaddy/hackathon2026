@@ -154,7 +154,6 @@ interface LifecycleContext {
     modelOverride?: string
     modelSelectorEnabled?: boolean
     agentProfile?: string
-    agentProfileSelectorEnabled?: boolean
     customerId?: string
     visitorId?: string
     trafficSessionId?: string
@@ -179,7 +178,6 @@ interface ExecuteParams {
   content: string
   siteId: string
   agentId: string
-  agentProfile?: string
   templateId?: string
   modelOverride?: string
   // These are opaque wire shapes consumed by tools downstream. Kept as
@@ -1523,7 +1521,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
 
   private async executeUnderTrace(params: ExecuteParams): Promise<void> {
     const {
-      appId, conversationId, content, siteId, agentId, agentProfile,
+      appId, conversationId, content, siteId, agentId,
       templateId, modelOverride, rebuildBuildPageSlug,
       visualContext, aiEditContext, aiEditContexts, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
@@ -1665,7 +1663,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     const executionContext: Record<string, unknown> = {
       metadata: {
         sessionId: sseSocketId,
-        appId, siteId, conversationId, templateId, modelOverride, agentProfile,
+        appId, siteId, conversationId, templateId, modelOverride,
         agentId: resolvedAgentId,
         ...(appPath && { appPath }),
         ...(subscriptionId && { subscriptionId }),
@@ -1716,11 +1714,13 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       },
     }
 
-    // Resolve agent profile + model override from flags (per-project metadata
-    // takes precedence over JWT defaults; both require their own feature flags).
+    // Resolve the agent profile from the JWT only — the BFF-resolved
+    // switchboard/hivemind profile is the sole source. There is no per-message
+    // client profile (the ProfileSelector was removed); model override still
+    // honors its own per-project metadata + flag below.
     const profile = resolveProfile({
-      agentProfileSelectorEnabled: !!agentCtx?.agentProfileSelectorEnabled,
-      perProjectProfile: agentProfile,
+      agentProfileSelectorEnabled: false,
+      perProjectProfile: undefined,
       jwtAgentProfile: agentCtx?.agentProfile,
     })
     if (profile) {

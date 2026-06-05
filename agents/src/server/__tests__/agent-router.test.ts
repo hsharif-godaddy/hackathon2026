@@ -50,8 +50,8 @@ describe('agent-router', function agentRouterTests() {
     expect(id).toBe('initial-v3-exp')
   })
 
-  it('falls back to initial-v3 when modular variant failed to register at startup', async function modularMissing() {
-    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
+  it('falls back to initial-v3 and errors when modular variant failed to register at startup', async function modularMissing() {
+    const errorSpy = vi.spyOn(logger, 'error').mockImplementation(function () {})
     resolveProfileSpy.mockReturnValue(profile({
       name: 'broken',
       properties: { 'initial.modularPromptFiles': 'identity.md' },
@@ -63,7 +63,7 @@ describe('agent-router', function agentRouterTests() {
       agentContext: { agentProfile: 'broken' },
     })
     expect(id).toBe('initial-v3')
-    expect(warnSpy).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       'agent_router.initial_modular_variant_unregistered',
       expect.objectContaining({
         appId: 'app_new',
@@ -72,7 +72,7 @@ describe('agent-router', function agentRouterTests() {
         fallbackAgentId: 'initial-v3',
       }),
     )
-    warnSpy.mockRestore()
+    errorSpy.mockRestore()
   })
 
   it('prefers modular branch over promptVersion 3.0 when both are set', async function modularBeatsV3() {
@@ -207,7 +207,7 @@ describe('agent-router', function agentRouterTests() {
     warnSpy.mockRestore()
   })
 
-  describe('session develop reroute', function sessionDevelopReroute() {
+  describe('session agent (concrete ids verbatim; base develop → develop-<profile>)', function sessionAgent() {
     const appId = 'app_session_1'
 
     function sessionWithAgent(agent: string) {
@@ -220,7 +220,9 @@ describe('agent-router', function agentRouterTests() {
       return { sessionId: 'sock-1', stateManager }
     }
 
-    it('returns develop-<profile> when session is develop and profile has develop.* flags', async function sessionToDevelopVariant() {
+    it('maps a session base develop to develop-<profile> when the profile carries develop.* flags', async function sessionDevelopVariant() {
+      // Profiles with develop/skill flags but no initial variant (e.g. experimental)
+      // hand off to base develop; the read-time mapping resolves the variant.
       resolveProfileSpy.mockReturnValue(profile({
         name: 'expdev',
         properties: { 'develop.promptOptimization': true },
@@ -234,18 +236,7 @@ describe('agent-router', function agentRouterTests() {
       expect(id).toBe('develop-expdev')
     })
 
-    it('returns develop when session is develop but resolveProfile returns null', async function sessionDevelopNoProfile() {
-      resolveProfileSpy.mockReturnValue(null)
-
-      const id = await resolveAgent({
-        appId,
-        agentContext: { agentProfile: 'expdev' },
-        session: sessionWithAgent('develop'),
-      })
-      expect(id).toBe('develop')
-    })
-
-    it('returns develop when session is develop but profile has no develop.* or skill.* keys', async function sessionDevelopNoFlags() {
+    it('returns base develop verbatim when the profile has no develop/skill flags', async function sessionDevelopPlain() {
       resolveProfileSpy.mockReturnValue(profile({
         name: 'plain',
         properties: { 'initial.promptVersion': '3.0' },
@@ -259,18 +250,31 @@ describe('agent-router', function agentRouterTests() {
       expect(id).toBe('develop')
     })
 
-    it('returns develop-<profile> when session is develop and profile has skill.* flags', async function sessionToDevelopVariantSkillFlags() {
-      resolveProfileSpy.mockReturnValue(profile({
-        name: 'skillonly',
-        properties: { 'skill.inbox.enabled': true },
-      }))
+    it('returns base develop verbatim when no profile resolves (null)', async function sessionDevelopNullProfile() {
+      resolveProfileSpy.mockReturnValue(null)
 
       const id = await resolveAgent({
         appId,
-        agentContext: { agentProfile: 'skillonly' },
         session: sessionWithAgent('develop'),
       })
-      expect(id).toBe('develop-skillonly')
+      expect(id).toBe('develop')
+    })
+
+    it('returns a session develop variant verbatim', async function sessionDevelopVariantVerbatim() {
+      const id = await resolveAgent({
+        appId,
+        agentContext: { agentProfile: 'expdev' },
+        session: sessionWithAgent('develop-expdev'),
+      })
+      expect(id).toBe('develop-expdev')
+    })
+
+    it('returns a session initial variant verbatim', async function sessionInitialVariantVerbatim() {
+      const id = await resolveAgent({
+        appId,
+        session: sessionWithAgent('initial-v3-exp'),
+      })
+      expect(id).toBe('initial-v3-exp')
     })
 
     it('clears the session and ignores the stale agent when the session is bound to a different app', async function sessionAppChanged() {
@@ -329,7 +333,26 @@ describe('agent-router', function agentRouterTests() {
       expect(id).toBe('initial-v3-exp')
     })
 
-    it('reroutes persisted develop to develop-<profile> when profile has develop.* flags', async function persistedDevelopVariant() {
+    it('returns a persisted develop variant verbatim (no per-message re-resolution)', async function persistedDevelopVariant() {
+      // A profile with develop.* flags must NOT re-route a stored concrete id —
+      // the develop variant was frozen at handoff.
+      resolveProfileSpy.mockReturnValue(profile({
+        name: 'expdev',
+        properties: { 'develop.promptOptimization': true },
+      }))
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => true,
+        getTemplateIds: () => [],
+        getPersistedAgentForApp: async () => 'develop-expdev',
+      })
+
+      const id = await resolve({ appId, agentContext: { agentProfile: 'expdev' } })
+      expect(id).toBe('develop-expdev')
+    })
+
+    it('maps a persisted base develop to develop-<profile> when the profile carries develop.* flags (legacy rows)', async function persistedDevelopMaps() {
+      // Legacy apps (and experimental, which has no initial variant) store base
+      // develop; the read-time mapping resolves the variant for the active profile.
       resolveProfileSpy.mockReturnValue(profile({
         name: 'expdev',
         properties: { 'develop.promptOptimization': true },
@@ -344,16 +367,33 @@ describe('agent-router', function agentRouterTests() {
       expect(id).toBe('develop-expdev')
     })
 
-    it('returns persisted develop verbatim when no profile flags apply', async function persistedDevelopPlain() {
-      resolveProfileSpy.mockReturnValue(null)
+    it('returns persisted base develop verbatim when the profile has no develop/skill flags', async function persistedDevelopPlain() {
+      resolveProfileSpy.mockReturnValue(profile({
+        name: 'plain',
+        properties: { 'initial.promptVersion': '3.0' },
+      }))
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
         getTemplateIds: () => [],
         getPersistedAgentForApp: async () => 'develop',
       })
 
-      const id = await resolve({ appId })
+      const id = await resolve({ appId, agentContext: { agentProfile: 'plain' } })
       expect(id).toBe('develop')
+    })
+
+    it('preserves the persisted design-system initial variant across reload (AIROBUILD-2079 / #4437)', async function persistedDesignSystemSurvivesReload() {
+      // The reported regression: a JWT agentProfile no longer steered an app whose
+      // conversation was already stored. The stored concrete id is now returned
+      // verbatim regardless of the current JWT profile.
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => true,
+        getTemplateIds: () => [],
+        getPersistedAgentForApp: async () => 'initial-v3-initial-agent-design-system',
+      })
+
+      const id = await resolve({ appId, agentContext: { agentProfile: 'some-other-profile' } })
+      expect(id).toBe('initial-v3-initial-agent-design-system')
     })
 
     it('falls through to hasMessagesForApp when there is no persisted agent (brand-new app)', async function noPersistedFallsThrough() {
@@ -380,6 +420,65 @@ describe('agent-router', function agentRouterTests() {
       expect(warnSpy).toHaveBeenCalledWith(
         'agent_router.persisted_agent_check_failed',
         expect.objectContaining({ appId }),
+      )
+      warnSpy.mockRestore()
+    })
+
+    it('degrades to develop when the store read throws and the app already has messages', async function persistedReadThrowsExistingApp() {
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => true,
+        getTemplateIds: () => [],
+        getPersistedAgentForApp: async () => { throw new Error('sqlite locked') },
+      })
+
+      const id = await resolve({ appId })
+      expect(id).toBe('develop')
+      warnSpy.mockRestore()
+    })
+
+    it('emits an alertable error and defaults to develop when BOTH the store read and the heuristic throw', async function doubleStoreOutage() {
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
+      const errorSpy = vi.spyOn(logger, 'error').mockImplementation(function () {})
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => { throw new Error('heuristic down') },
+        getTemplateIds: () => [],
+        getPersistedAgentForApp: async () => { throw new Error('sqlite locked') },
+      })
+
+      const id = await resolve({ appId })
+      expect(id).toBe('develop')
+      expect(errorSpy).toHaveBeenCalledWith(
+        'agent_router.agent_resolution_degraded',
+        expect.objectContaining({ appId }),
+      )
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+    })
+
+    it('returns the turn (no unhandled rejection) when session rehydrate switchAgent rejects', async function rehydrateSwitchAgentRejects() {
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
+      const resolve = createAgentRouter({
+        hasMessagesForApp: () => true,
+        getTemplateIds: () => [],
+        getPersistedAgentForApp: async () => 'initial',
+      })
+      const stateManager = {
+        getCurrentAgent: vi.fn().mockReturnValue(undefined),
+        getSessionMetadata: vi.fn().mockReturnValue(undefined),
+        switchAgent: vi.fn().mockRejectedValue(new Error('session write failed')),
+        setSessionMetadata: vi.fn(),
+      }
+
+      const id = await resolve({ appId, session: { sessionId: 'sock-new', stateManager } })
+      expect(id).toBe('initial')
+      // rehydrate is fire-and-forget; flush the rejected microtask and confirm it
+      // was caught (warn logged) rather than surfacing as an unhandled rejection.
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(warnSpy).toHaveBeenCalledWith(
+        'agent_router.session_rehydrate_error',
+        expect.objectContaining({ appId, agentId: 'initial' }),
       )
       warnSpy.mockRestore()
     })
@@ -420,21 +519,35 @@ describe('agent-router', function agentRouterTests() {
     })
   })
 
-  it('routes to develop-<profile> for existing app when profile has skill.* flags', async function existingAppSkillFlags() {
-    const resolveAgentWithMessages = createAgentRouter({
+  it('honors a /agent override above the stored agent', async function manualOverrideWins() {
+    const resolve = createAgentRouter({
       hasMessagesForApp: () => true,
       getTemplateIds: () => [],
+      getPersistedAgentForApp: async () => 'develop',
     })
-    resolveProfileSpy.mockReturnValue(profile({
-      name: 'skillonly',
-      properties: { 'skill.inbox.enabled': true },
-    }))
 
-    const id = await resolveAgentWithMessages({
-      appId: 'app_existing',
-      agentContext: { agentProfile: 'skillonly' },
+    const id = await resolve({ appId: 'app_existing', manualAgentOverride: 'marketing' })
+    expect(id).toBe('marketing')
+  })
+
+  it('honors a /agent override above a session agent without reading the store', async function manualOverrideBeatsSession() {
+    const getPersistedAgentForApp = vi.fn(async () => 'develop')
+    const resolve = createAgentRouter({
+      hasMessagesForApp: () => true,
+      getTemplateIds: () => [],
+      getPersistedAgentForApp,
     })
-    expect(id).toBe('develop-skillonly')
+    const stateManager = {
+      getCurrentAgent: vi.fn().mockReturnValue('develop'),
+      getSessionMetadata: vi.fn().mockReturnValue({ appId: 'app_existing' }),
+      switchAgent: vi.fn().mockResolvedValue(undefined),
+      setSessionMetadata: vi.fn(),
+    }
+
+    const id = await resolve({ appId: 'app_existing', manualAgentOverride: 'marketing', session: { sessionId: 'sock-1', stateManager } })
+    expect(id).toBe('marketing')
+    expect(stateManager.getCurrentAgent).not.toHaveBeenCalled()
+    expect(getPersistedAgentForApp).not.toHaveBeenCalled()
   })
 
   it('router prefers modular branch when both modularPromptFiles and promptVersion 2.0 are set', async function modularBeatsV2InRouter() {

@@ -19,6 +19,7 @@ import { getBudgetServiceClient } from '../../services/budget-service-instance.j
 import { BudgetExceededError } from '@airo/ai-common'
 import { ConnectionInitializer } from '../connection-initializer.js'
 import type { AgentRouterParams, AgentStateManager } from '../agent-router.js'
+import { resolveInitialAgentId } from '../resolve-initial-agent.js'
 import { buildContextAttachments } from '@airo/shared/context-attachment'
 
 import apm from 'elastic-apm-node'
@@ -39,6 +40,7 @@ interface SSERouteDeps {
   executionService?: MessageExecutionService
   resolveAgent: (params: AgentRouterParams) => string | Promise<string>
   getStateManager: () => AgentStateManager | null
+  getTemplateIds: () => string[]
   lifecycle: ConversationLifecycleStore
   messages: MessageStore
 }
@@ -100,14 +102,26 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
 
   const convOwnership = validateConversationOwnership(deps.lifecycle)
 
-  // POST /:appId - create or resolve conversation
+  // POST /:appId - create or resolve conversation.
+  //
+  // This is the SSE freeze seam: for a brand-new app we resolve the concrete
+  // initial agent once (from the JWT profile + first-message ProfileSelector +
+  // ?template=) and store it verbatim. `getOrCreateForApp` only applies the
+  // resolved id when creating; an existing conversation keeps its frozen agent,
+  // so a stale client `agentId`/profile can never re-route an existing app.
   router.post('/:appId', deps.authenticate, validateAppOwnershipFromParam('appId'), asyncHandler(async (req: Request, res: Response) => {
     const appId = req.params.appId!
-    const { agentId, templateId } = req.body
+    const { templateId } = req.body
 
     try {
-      const resolvedAgentId = await deps.resolveAgent({ appId, agentId, templateId })
-      const customerId = (req as AuthenticatedRequest).agentContext?.customerId
+      const agentContext = (req as AuthenticatedRequest).agentContext
+      const resolvedAgentId = resolveInitialAgentId({
+        appId,
+        templateId,
+        jwtAgentProfile: agentContext?.agentProfile,
+        getTemplateIds: deps.getTemplateIds,
+      })
+      const customerId = agentContext?.customerId
       const { conversation, isNew } = await deps.lifecycle.getOrCreateForApp(workspaceScopeFromAppId(appId, customerId), resolvedAgentId)
 
       res.status(200).json({
@@ -465,7 +479,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     const appId = req.params.appId!
     const conversationId = req.params.conversationId!
     const {
-      content, agentId, agentProfile,
+      content,
       templateId, modelOverride, rebuildBuildPageSlug,
       visualContext, aiEditContext, aiEditContexts, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
@@ -523,9 +537,12 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     const effectiveContent = parsedAgentCommand.hasCommand && parsedAgentCommand.hasBody
       ? parsedAgentCommand.strippedContent ?? content
       : content
-    const requestedAgentId = parsedAgentCommand.hasCommand && parsedAgentCommand.hasBody
+    // `/agent <name>` override only — the top-priority routing bypass. A client-sent
+    // body `agentId` no longer steers routing: post-create the frozen
+    // `conversations.agentId` is authoritative.
+    const manualAgentOverride = parsedAgentCommand.hasCommand && parsedAgentCommand.hasBody
       ? parsedAgentCommand.agentId
-      : agentId
+      : undefined
 
     if (apmTransaction) {
       apmTransaction.setLabel('requestId', (req as any).requestId ?? 'unknown')
@@ -598,12 +615,12 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     }
 
     const sseSocketId = sseSessionKey(conversationId)
+    const stateManager = deps.getStateManager()
 
     let resolvedAgentId: string
     try {
-      const stateManager = deps.getStateManager()
       resolvedAgentId = await deps.resolveAgent({
-        appId, agentId: requestedAgentId, agentProfile, templateId, agentContext,
+        appId, manualAgentOverride, templateId, agentContext,
         ...(stateManager && { session: { sessionId: sseSocketId, stateManager } }),
       })
     } catch (err) {
@@ -632,13 +649,52 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       apmTransaction.setLabel('isInitialPrompt', String(isInitialPrompt))
     }
 
+    // SSE freezes the agent at the bare `POST /:appId` create call. The client
+    // does not send `templateId` at create — only with the message (sendMessage) —
+    // so a `?template=` app freezes on the JWT profile instead of
+    // `initial-<templateId>`. WS does not hit this because it freezes lazily on the
+    // first message. Finalize here: on the initial prompt, if a valid template was
+    // supplied, re-freeze to the template agent (template wins over the JWT
+    // profile, per the create-time priority). Template-only by design — we never
+    // re-derive the profile here, so this can neither re-cohort a profile nor
+    // revert a post-handoff agent (the `startsWith('initial')` guard skips anything
+    // already handed off).
+    if (isInitialPrompt && resolvedAgentId.startsWith('initial')) {
+      const validTemplate = typeof templateId === 'string' && deps.getTemplateIds().includes(templateId)
+        ? templateId
+        : undefined
+      const templateAgentId = validTemplate ? `initial-${validTemplate}` : undefined
+      if (templateAgentId && templateAgentId !== resolvedAgentId) {
+        const previousAgentId = resolvedAgentId
+        try {
+          // The durable store is the source of truth — write it first. Only once
+          // it succeeds do we run this turn on the template agent and refresh the
+          // warm session cache. If the cache update throws, the store is already
+          // correct and the next message's store read self-corrects (transient
+          // one-message window). If the durable write itself throws, we keep the
+          // already-frozen agent for this turn so store and session stay aligned.
+          await deps.lifecycle.updateAgentId(conversationId, templateAgentId)
+          resolvedAgentId = templateAgentId
+          logger.info('sse.initial_prompt.template_finalized', {
+            appId, conversationId, from: previousAgentId, to: templateAgentId,
+          })
+          try {
+            await stateManager?.switchAgent(sseSocketId, templateAgentId)
+          } catch (sessionErr) {
+            logger.warn('sse.initial_prompt.template_finalize_session_warn', { appId, conversationId, ...errorFields(sessionErr) })
+          }
+        } catch (err) {
+          logger.warn('sse.initial_prompt.template_finalize_failed', { appId, conversationId, ...errorFields(err) })
+        }
+      }
+    }
+
     deps.executionService.execute({
       appId,
       conversationId,
       content: effectiveContent,
       siteId,
       agentId: resolvedAgentId,
-      agentProfile,
       templateId,
       modelOverride,
       visualContext,
@@ -667,7 +723,6 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           modelOverride: agentContext?.modelOverride,
           modelSelectorEnabled: agentContext?.modelSelectorEnabled,
           agentProfile: agentContext?.agentProfile,
-          agentProfileSelectorEnabled: agentContext?.agentProfileSelectorEnabled,
           customerId: agentContext?.customerId,
           visitorId: agentContext?.visitorId,
           trafficSessionId: agentContext?.trafficSessionId,

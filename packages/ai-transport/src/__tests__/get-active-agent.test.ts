@@ -109,4 +109,19 @@ describe('getActiveAgent', () => {
 
     expect(result).toBe('initial')
   })
+
+  it('ignores a client-sent data.agentId/agentName and falls back to the default agent', async () => {
+    // The router owns selection; a stale/forged client field must not steer routing.
+    agentRouter.mockResolvedValue(undefined)
+    stateManager.getCurrentAgent.mockReturnValue(undefined)
+
+    const server = createServer()
+    const result = await callGetActiveAgent(server, socketId, {
+      ...messageData,
+      agentId: 'marketing',
+      agentName: 'marketing',
+    })
+
+    expect(result).toBe('develop')
+  })
 })

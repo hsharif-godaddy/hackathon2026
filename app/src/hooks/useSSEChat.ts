@@ -983,7 +983,6 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     try {
       const defaults = await resolveMessageDefaults({
         modelOverride: options.modelOverride,
-        agentProfile: options.agentProfile,
         visualContext: options.visualContext,
       })
 
@@ -993,7 +992,6 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         userTimezone: BROWSER_TIMEZONE,
         templateId: options.templateId,
         modelOverride: defaults.modelOverride,
-        agentProfile: defaults.agentProfile,
         visualContext: defaults.visualContext,
         aiEditContext: options.aiEditContext,
         aiEditContexts: options.aiEditContexts,

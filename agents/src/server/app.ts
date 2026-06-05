@@ -208,6 +208,7 @@ import { ConversationContextManager } from '../services/ConversationContextManag
 import { getTemplateIds } from '../agents/template-registry.js';
 import { createAgentRouter } from './agent-router.js';
 import { getPersistedAgentIdForApp } from './persisted-agent.js';
+import { persistHandoffAgent } from './develop-variant.js';
 import { getModelOverride } from '../utils/model-selection.js';
 import { getActiveModelOverride } from '@airo/ai-lib';
 import { closeDatabase, getDatabase } from '../database/index.js';
@@ -297,7 +298,10 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
       setSelectedTodoList: (id: string, listId: string) => agentFactory.stateManager.setSelectedTodoList(id, listId),
     },
     onAgentChanged: async (convId: string, _oldAgent: string, newAgent: string) => {
-      await getConversationLifecycleStore().updateAgentId(convId, newAgent)
+      // Maps base develop -> develop-<profile> for the active profile and persists
+      // it (atomic map+persist; see persistHandoffAgent). Not wrapped — a failure
+      // must propagate to abort the turn per the ai-transport contract.
+      await persistHandoffAgent(getConversationLifecycleStore(), convId, newAgent)
     },
     get backgroundSummarizer() {
       return getBackgroundSummarizer()
@@ -468,6 +472,7 @@ protectedRouter.use('/api/conversations', createSSERoutes({
     if (!factory) return null
     return factory.stateManager as import('./agent-router.js').AgentStateManager
   },
+  getTemplateIds,
   lifecycle: getConversationLifecycleStore(),
   messages: getMessageStore(),
 }));

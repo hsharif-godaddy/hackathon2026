@@ -211,7 +211,6 @@ interface DevelopPageStore {
 
   // Model override (per-project)
   selectedModel: string | null
-  selectedProfile: string | null
 
   // Inbox account data
   inboxAccountId: string | null
@@ -316,7 +315,6 @@ interface DevelopPageStore {
   setIsChatPaneCollapsed: (collapsed: boolean) => void
   setHasUnsavedChanges: (hasChanges: boolean) => void
   setSelectedModel: (model: string | null) => void
-  setSelectedProfile: (profile: string | null) => void
   setInboxAccountId: (accountId: string | null) => void
   setInboxBrandId: (brandId: string | null) => void
   setIsMobile: (isMobile: boolean) => void
@@ -459,7 +457,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     isRestarting: false,
     hasUnsavedChanges: false,
     selectedModel: null,
-    selectedProfile: null,
     inboxAccountId: null,
     inboxBrandId: null,
     isVersionHistoryOpen: false,
@@ -543,7 +540,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setIsChatPaneCollapsed: (collapsed) => set((state) => { state.isChatPaneCollapsed = collapsed }),
     setHasUnsavedChanges: (hasChanges) => set((state) => { state.hasUnsavedChanges = hasChanges }),
     setSelectedModel: (model) => set((state) => { state.selectedModel = model }),
-    setSelectedProfile: (profile) => set((state) => { state.selectedProfile = profile }),
     setInboxAccountId: (accountId) => set((state) => { state.inboxAccountId = accountId }),
     setInboxBrandId: (brandId) => set((state) => { state.inboxBrandId = brandId }),
     setIsMobile: (isMobile) => {
@@ -975,7 +971,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.autoSendTriggered = false
         state.hasUnsavedChanges = false
         state.selectedModel = null
-        state.selectedProfile = null
         state.feedbackInitialStep = null
       })
     },

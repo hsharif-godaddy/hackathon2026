@@ -79,6 +79,7 @@ import { jwtAuthMiddleware, buildAgentContext, type AgentContext } from './middl
 import { getAgentConfig } from '../services/features.js'
 import { runWithModelOverride, getActiveModelOverride } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../profiles/index.js'
+import { persistHandoffAgent } from './develop-variant.js'
 import { createAgentRouter } from './agent-router.js'
 import { getPersistedAgentIdForApp } from './persisted-agent.js'
 import { resolveRebuildBuildPagePrompt } from './rebuild-build-page-message.js'
@@ -1105,11 +1106,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         const socket = getSocket(socketId)
         const agentContext = socket?.handshake?.auth?.agentContext
+        // NOTE: client-sent `data.agentId/agentName` is intentionally NOT forwarded.
+        // The `/agent` override was already handled above; post-create routing is
+        // driven solely by the frozen `conversations.agentId`.
         return wsAgentRouter({
           appId,
-          agentId: data.agentId || data.agentName,
           templateId: metadata?.templateId,
-          agentProfile: metadata?.agentProfile,
           agentContext,
           session: { sessionId: socketId, stateManager },
         })
@@ -2424,18 +2426,28 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         })
 
         try {
-          await lifecycleStore.updateAgentId(conversationId, newAgentName)
+          // Maps base develop -> develop-<profile> for the active profile and
+          // persists it (atomic map+persist; see persistHandoffAgent).
+          const concreteAgent = await persistHandoffAgent(lifecycleStore, conversationId, newAgentName)
           logger.debug('websocket.agent.handoff.updated', {
             conversationId,
-            newAgent: newAgentName
+            newAgent: concreteAgent
           })
         } catch (error) {
+          // Per the ai-transport contract (experimental-websocket-server.ts
+          // onAgentChanged call site), this hook is fatal: a swallowed failure
+          // would leave the turn running under the new agent while
+          // conversations.agentId keeps the old id, so a later reload reads the
+          // stale frozen id and silently reverts the handoff. Log, then rethrow
+          // to abort the turn (matching the SSE sibling in app.ts, which does
+          // not catch) so the client retry starts from clean state.
           logger.error('websocket.agent.handoff.update_failed', {
             conversationId,
             oldAgent: oldAgentName,
             newAgent: newAgentName,
             error: error instanceof Error ? error.message : String(error)
           })
+          throw error
         }
       },
 
@@ -2541,9 +2553,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const socket = getSocket(socketId)
         const agentContext = socket?.handshake?.auth?.agentContext
 
+        // Profile comes from the JWT only — the BFF-resolved switchboard/hivemind
+        // profile is the sole source. There is no per-message client profile (the
+        // ProfileSelector was removed); model override below keeps its own path.
         const profile = resolveProfile({
-          agentProfileSelectorEnabled: !!agentContext?.agentProfileSelectorEnabled,
-          perProjectProfile: (context as any)?.metadata?.agentProfile as string | undefined,
+          agentProfileSelectorEnabled: false,
+          perProjectProfile: undefined,
           jwtAgentProfile: agentContext?.agentProfile as string | undefined,
         })
 

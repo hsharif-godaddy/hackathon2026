@@ -258,7 +258,6 @@ export class SSETransport implements ChatTransport {
         userTimezone: params.userTimezone,
         templateId: params.templateId,
         modelOverride: params.modelOverride,
-        agentProfile: params.agentProfile,
         visualContext: params.visualContext,
         aiEditContext: params.aiEditContext,
         aiEditContexts: params.aiEditContexts,

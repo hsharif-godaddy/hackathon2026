@@ -27,7 +27,6 @@ export interface SendMessageParams {
   customContext?: unknown
   templateId?: string
   modelOverride?: string
-  agentProfile?: string
   /** Rebuild page-selector "Build Page" slug — server builds it from source (AIROBUILD-2104) */
   rebuildBuildPageSlug?: string
   budgetServiceEnabled?: boolean
