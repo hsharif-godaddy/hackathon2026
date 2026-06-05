@@ -14,6 +14,7 @@ import rateLimit from 'express-rate-limit';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs/promises';
+import sharp from 'sharp';
 import {
   AIRO_ASSET_UPLOADS_URL_PREFIX,
   getFilenameFromUploadUrl,
@@ -981,6 +982,7 @@ router.post(
       // For images, process through sharp for resizing/quality.
       let outputBuffer: Buffer;
       let ext: string;
+      let dimensions: { width: number; height: number } | undefined;
       if (isVideo) {
         outputBuffer = fileBuffer;
         ext = ALLOWED_VIDEO_TYPES[matchingFile.mimeType ?? ''] || 'mp4';
@@ -992,6 +994,9 @@ router.post(
         });
         outputBuffer = processed.buffer;
         ext = processed.format === 'jpeg' ? 'jpg' : processed.format;
+        if (processed.originalWidth && processed.originalHeight) {
+          dimensions = { width: processed.originalWidth, height: processed.originalHeight };
+        }
       }
 
       // Generate filename and write to persistent media directory
@@ -1028,7 +1033,7 @@ router.post(
         appId,
         slotName,
         uploadedUrl,
-        { sourceFilename: filename, isVideo }
+        { sourceFilename: filename, isVideo, dimensions }
       );
 
       if (!updateResult.success) {
@@ -1430,13 +1435,29 @@ router.post(
         }
       }
 
+      let dimensions: { width: number; height: number } | undefined;
+      if (!isVideoUpload) {
+        try {
+          const meta = await sharp(file.buffer).metadata();
+          if (meta.width && meta.height) {
+            dimensions = { width: meta.width, height: meta.height };
+          }
+        } catch (metaErr) {
+          logger.debug('route.media.upload.metadata_read_failed', {
+            appId,
+            slotName,
+            error: metaErr instanceof Error ? metaErr.message : String(metaErr),
+          });
+        }
+      }
+
       // Update manifest: new URL becomes current, old current goes to alternatives.
       // Pass chatUploadFilename so the slot tracks which chat upload produced this URL.
       const updateResult = await mediaManifestService.updateSlotWithUpload(
         appId,
         slotName,
         uploadedUrl,
-        { sourceFilename: chatUploadFilename, isVideo: isVideoUpload }
+        { sourceFilename: chatUploadFilename, isVideo: isVideoUpload, dimensions }
       );
 
       if (!updateResult.success) {

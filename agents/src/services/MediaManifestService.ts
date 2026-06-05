@@ -88,10 +88,90 @@ export interface MediaSlot {
   /** Maps transparent URL → landscape mockup URL for logo variants.
    *  Only populated when mediaType === 'logo'. */
   landscapeMockupUrlMap?: Record<string, string>;
-  /** Maps transparent URL → { sessionId, logoId } for logo edit traceability.
-   *  Only populated when mediaType === 'logo'. Allows edit_logo to find the
-   *  source session/logo for any saved logo variant. */
   logoSourceMap?: Record<string, { sessionId: string; logoId: string }>;
+  /** Aspect-ratio classification of the upload, set when dimensions are available. */
+  naturalOrientation?: LogoOrientation;
+}
+
+export type LogoOrientation = 'square' | 'horizontal' | 'vertical';
+
+export const LOGO_NATURAL_SLOT_PATHS: Record<LogoOrientation, string> = {
+  square: 'logo/primary',
+  horizontal: 'logo/horizontal',
+  vertical: 'logo/vertical',
+};
+
+/** Variant-map fields whose keys are tied to the prior `currentUrl` and must
+ *  be dropped on upload — otherwise the supervisor resolver silently
+ *  mis-resolves `?variant=solid` to a stale AI URL. */
+const LOGO_VARIANT_MAP_FIELDS = [
+  'solidUrlMap',
+  'reversedUrlMap',
+  'reversedSolidUrlMap',
+  'mockupUrlMap',
+  'landscapeMockupUrlMap',
+  'logoSourceMap',
+] as const satisfies readonly (keyof MediaSlot)[];
+
+/** ±15% from 1:1 is the perceptual "is this a square?" tolerance. */
+export function classifyOrientation({ width, height }: { width: number; height: number }): LogoOrientation | undefined {
+  if (!width || !height || width <= 0 || height <= 0) return undefined;
+  const ratio = width / height;
+  if (ratio > 1.18) return 'horizontal';
+  if (ratio < 0.85) return 'vertical';
+  return 'square';
+}
+
+function clearLogoVariantMaps(): Partial<MediaSlot> {
+  return Object.fromEntries(LOGO_VARIANT_MAP_FIELDS.map((field) => [field, undefined])) as Partial<MediaSlot>;
+}
+
+function buildSiblingLogoSlot(
+  existing: MediaSlot | undefined,
+  uploadedUrl: string,
+  sourceFilename: string | undefined,
+  naturalOrientation: LogoOrientation,
+  nowIso: string,
+): MediaSlot {
+  const uploadSources = sourceFilename ? { [uploadedUrl]: sourceFilename } : undefined;
+
+  if (!existing) {
+    return {
+      mediaType: 'logo',
+      currentUrl: uploadedUrl,
+      searchQuery: '',
+      alternatives: [],
+      userModified: true,
+      createdAt: nowIso,
+      lastUpdated: nowIso,
+      naturalOrientation,
+      ...(uploadSources && { uploadSources }),
+    };
+  }
+
+  const carriedAlternatives = existing.currentUrl && existing.currentUrl !== uploadedUrl
+    ? [existing.currentUrl, ...existing.alternatives]
+    : existing.alternatives;
+  const dedupedAlternatives = [...new Set(carriedAlternatives)].filter((url) => url !== uploadedUrl);
+
+  const mergedUploadSources = {
+    ...(existing.uploadSources || {}),
+    ...(sourceFilename ? { [uploadedUrl]: sourceFilename } : {}),
+  };
+
+  return {
+    ...existing,
+    currentUrl: uploadedUrl,
+    alternatives: dedupedAlternatives,
+    userModified: true,
+    lastUpdated: nowIso,
+    searchQuery: '',
+    gettyId: undefined,
+    alternativeGettyIds: undefined,
+    naturalOrientation,
+    uploadSources: Object.keys(mergedUploadSources).length > 0 ? mergedUploadSources : undefined,
+    ...clearLogoVariantMaps(),
+  };
 }
 
 /**
@@ -929,6 +1009,10 @@ export class MediaManifestService {
         // Update mediaType when swapping between image and video (preserve logo/generated)
         ...resolveMediaTypeUpdate(existingSlot.mediaType, isVideo, isImage),
         ...(options.searchQuery !== undefined && { searchQuery: options.searchQuery }),
+        // naturalOrientation describes the upload that set it; any URL swap (alternative
+        // pick, AI revert) invalidates it. Cleared here so downstream consumers don't
+        // size a horizontal AI logo as if it were the prior square upload.
+        ...(newCurrentUrl !== existingSlot.currentUrl ? { naturalOrientation: undefined } : {}),
       };
 
       manifest[slotName] = updatedSlot;
@@ -977,9 +1061,14 @@ export class MediaManifestService {
     appId: string,
     slotName: string,
     uploadedUrl: string,
-    options?: { sourceFilename?: string; isVideo?: boolean }
+    options?: {
+      sourceFilename?: string;
+      isVideo?: boolean;
+      /** Natural pixel dimensions; when provided for a logo, co-populates the layout-matching sibling slot. */
+      dimensions?: { width: number; height: number };
+    }
   ): Promise<ManifestOperationResult> {
-    const { sourceFilename, isVideo } = options || {};
+    const { sourceFilename, isVideo, dimensions } = options || {};
     const app = this.appRepository.findById(appId);
     if (!app) {
       return {
@@ -1055,13 +1144,17 @@ export class MediaManifestService {
         updatedUploadSources[uploadedUrl] = sourceFilename;
       }
 
+      const naturalOrientation = dimensions ? classifyOrientation(dimensions) : undefined;
+      const isLogoSlot = existingSlot.mediaType === 'logo' || slotName.startsWith('logo/');
+      const nowIso = new Date().toISOString();
+
       // Update slot with uploaded URL as current
       const updatedSlot: MediaSlot = {
         ...existingSlot,
         currentUrl: uploadedUrl,
         alternatives: deduplicatedAlternatives,
         userModified: true,
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: nowIso,
         searchQuery: '', // upload is unrelated to any prior search term
         gettyId: undefined, // Uploaded image has no Getty ID
         alternativeGettyIds: newAlternativeGettyIds.some((id) => id)
@@ -1072,9 +1165,29 @@ export class MediaManifestService {
           : undefined,
         // Update mediaType when uploading a video or reverting to an image (preserve logo/generated)
         ...resolveMediaTypeUpdate(existingSlot.mediaType, !!isVideo, isVideo === false),
+        ...(isLogoSlot ? clearLogoVariantMaps() : {}),
+        ...(isLogoSlot && naturalOrientation ? { naturalOrientation } : {}),
       };
 
       manifest[slotName] = updatedSlot;
+
+      if (isLogoSlot && naturalOrientation) {
+        const siblingSlotName = LOGO_NATURAL_SLOT_PATHS[naturalOrientation];
+        if (siblingSlotName !== slotName) {
+          const siblingSlot = manifest[siblingSlotName];
+          const siblingHasDeliberateUserChoice =
+            !!siblingSlot?.userModified && siblingSlot.currentUrl !== uploadedUrl;
+          if (!siblingHasDeliberateUserChoice) {
+            manifest[siblingSlotName] = buildSiblingLogoSlot(
+              siblingSlot,
+              uploadedUrl,
+              sourceFilename,
+              naturalOrientation,
+              nowIso,
+            );
+          }
+        }
+      }
 
       // Write manifest and versions file atomically
       await this.writeManifest(manifestPath, manifest);
@@ -1194,6 +1307,7 @@ export class MediaManifestService {
         : undefined,
       uploadSources:
         newUploadSources && Object.keys(newUploadSources).length > 0 ? newUploadSources : undefined,
+      ...(newCurrentUrl !== existingSlot.currentUrl ? { naturalOrientation: undefined } : {}),
       solidUrlMap: pruneStringMap(existingSlot.solidUrlMap),
       reversedUrlMap: pruneStringMap(existingSlot.reversedUrlMap),
       reversedSolidUrlMap: pruneStringMap(existingSlot.reversedSolidUrlMap),

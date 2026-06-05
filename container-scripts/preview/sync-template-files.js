@@ -195,6 +195,14 @@ const SYNC_MANIFEST = [
     force: false
   },
   {
+    file: 'public/airo-logo-orientation.js',
+    description: 'Runtime script — bumps logo height and strips brightness/invert filters when an upload\'s naturalOrientation does not match its slot',
+    known_hashes: [
+      'a11eb188d1835d9466290b22e4dc542e' // initial version — gated filter strip on URL having `variant=`, missed bare-URL footer/header blobs
+    ],
+    force: false
+  },
+  {
     file: 'index.html',
     // Intentionally NOT in syncGroup: 'ssrMigration'. Agents edit index.html
     // frequently (e.g. <title>, favicon, analytics), so a customer-modified
@@ -210,7 +218,8 @@ const SYNC_MANIFEST = [
       'f2faa351e9111fb14ed707d0d55e7ce7', // before static main entry restored for CSS hoisting
       '9170b78302b5d16948b51b7acdae6d72', // before airoShareToken-strip script + same-origin referrer-policy
       '17827fb25e25787b2f7bd0fd7d5e0e37', // before airo-video-slots.js script tag + share-token rationale comments removed
-      'ba06ea07c92a093f90d70b2b52199652'  // before airo-video-slots.js script tag (corrects mis-hashed entry above)
+      'ba06ea07c92a093f90d70b2b52199652', // before airo-video-slots.js script tag (corrects mis-hashed entry above)
+      'f2329d6a7b9a53f769a160487908c3bd'  // before airo-logo-orientation.js script tag
     ],
     force: false
   },
