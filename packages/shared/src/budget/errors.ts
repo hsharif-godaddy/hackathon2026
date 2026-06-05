@@ -34,10 +34,12 @@ export class BudgetServiceError extends Error {
 }
 
 export class BudgetServiceUnavailableError extends BudgetServiceError {
-  constructor(message: string, cause?: Error) {
-    super(message, 0, '')
+  constructor(message: string, causeOrStatusCode?: Error | number, responseBody?: string) {
+    const statusCode: number = typeof causeOrStatusCode === 'number' ? causeOrStatusCode : 0
+    const body: string = responseBody ?? ''
+    super(message, statusCode, body)
     this.name = 'BudgetServiceUnavailableError'
-    if (cause) this.cause = cause
+    if (causeOrStatusCode instanceof Error) this.cause = causeOrStatusCode
   }
 }
 

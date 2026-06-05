@@ -382,6 +382,13 @@ export class BudgetServiceClient {
           text
         )
       }
+      if (response.status === 502 || response.status === 503 || response.status === 504) {
+        throw new BudgetServiceUnavailableError(
+          `Budget Service unavailable: ${response.status} ${method} ${path}`,
+          response.status,
+          text
+        )
+      }
       throw new BudgetServiceError(
         `Budget Service error: ${response.status} ${method} ${path}`,
         response.status,

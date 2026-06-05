@@ -551,6 +551,42 @@ describe('BudgetServiceClient', () => {
       }
     })
 
+    it('throws BudgetServiceUnavailableError on 502 with statusCode and responseBody', async () => {
+      const client = clientWith(mockFetchWithText(false, 502, 'Bad Gateway'))
+      try {
+        await client.getBudget('b-1')
+        expect.unreachable()
+      } catch (err) {
+        expect(err).toBeInstanceOf(BudgetServiceUnavailableError)
+        expect((err as BudgetServiceUnavailableError).statusCode).toBe(502)
+        expect((err as BudgetServiceUnavailableError).responseBody).toBe('Bad Gateway')
+      }
+    })
+
+    it('throws BudgetServiceUnavailableError on 503 with statusCode and responseBody', async () => {
+      const client = clientWith(mockFetchWithText(false, 503, 'Service Unavailable'))
+      try {
+        await client.getBudget('b-1')
+        expect.unreachable()
+      } catch (err) {
+        expect(err).toBeInstanceOf(BudgetServiceUnavailableError)
+        expect((err as BudgetServiceUnavailableError).statusCode).toBe(503)
+        expect((err as BudgetServiceUnavailableError).responseBody).toBe('Service Unavailable')
+      }
+    })
+
+    it('throws BudgetServiceUnavailableError on 504 with statusCode and responseBody', async () => {
+      const client = clientWith(mockFetchWithText(false, 504, 'Gateway Timeout'))
+      try {
+        await client.getBudget('b-1')
+        expect.unreachable()
+      } catch (err) {
+        expect(err).toBeInstanceOf(BudgetServiceUnavailableError)
+        expect((err as BudgetServiceUnavailableError).statusCode).toBe(504)
+        expect((err as BudgetServiceUnavailableError).responseBody).toBe('Gateway Timeout')
+      }
+    })
+
     it('throws BudgetServiceTimeoutError on TypeError with abort message', async () => {
       const fetchMock = vi
         .fn()
