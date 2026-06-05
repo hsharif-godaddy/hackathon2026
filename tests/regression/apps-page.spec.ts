@@ -225,22 +225,33 @@ test.describe('Apps Page & Navigation', () => {
     const deletedCardLocator = page.locator(`[data-testid="app-card-edit-button"][aria-label="${escapedLabel}"]`);
     const matchingBefore = await deletedCardLocator.count();
 
+    // The delete confirmation UI is gated by the appbuilder-app-delete-modal
+    // switchboard flag: when enabled the app renders a confirmation modal, and
+    // when off (the default without the Switchboard grant) it renders an inline
+    // confirmation overlay on the card. Read the flag from gasket-data so we
+    // assert against whichever path production actually serves.
+    const deleteModalEnabled = await page.evaluate(
+      () => (window as unknown as { gasketData?: { switchboard?: Record<string, unknown> } }).gasketData?.switchboard?.['appbuilder-app-delete-modal'] === true,
+    );
+    const confirmationTestId = deleteModalEnabled ? 'delete-project-confirmation-modal' : 'inline-confirmation';
+    const confirmButtonTestId = deleteModalEnabled ? 'delete-project-confirm-button' : 'confirm-button';
+
     await dismissBanners(page);
     await page.getByTestId('app-card-menu-button').first().click();
     await page.getByTestId('app-card-delete-button').waitFor({ state: 'visible', timeout: 10000 });
     await dismissBanners(page);
     await page.getByTestId('app-card-delete-button').click();
 
-    // Verify confirmation dialog
-    await expect(page.getByTestId('inline-confirmation')).toBeVisible();
+    // Verify confirmation UI
+    await expect(page.getByTestId(confirmationTestId)).toBeVisible();
 
     // Delete and wait for response
     const deletePromise = page.waitForResponse('**/api/sites/*');
-    await page.getByTestId('confirm-button').click();
+    await page.getByTestId(confirmButtonTestId).click();
     await deletePromise;
 
     // Verify deletion
-    await expect(page.getByTestId('inline-confirmation')).not.toBeVisible();
+    await expect(page.getByTestId(confirmationTestId)).not.toBeVisible();
     await expect(deletedCardLocator).toHaveCount(matchingBefore - 1, { timeout: 10000 });
     console.log(`  ✓ App deleted (card "${deletedCardLabel}" removed from grid)`);
 

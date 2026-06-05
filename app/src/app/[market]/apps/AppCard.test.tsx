@@ -7,6 +7,7 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
+import { SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL } from '@/config/switchboard-flags';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { SiteStatus } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
@@ -495,7 +496,36 @@ describe('AppCard', () => {
   });
 
   describe('handles delete confirmation flow', () => {
-    it('should show confirmation alert when delete is clicked', async () => {
+    beforeEach(() => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
+        return flag === SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL;
+      });
+    });
+
+    it('should show inline confirmation when delete modal flag is disabled', async () => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
+        if (flag === SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL) return false;
+        return true;
+      });
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_apps_menu_delete')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('builder_apps_menu_delete'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('inline-confirmation')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('delete-project-confirmation-modal')).not.toBeInTheDocument();
+    });
+
+    it('should show confirmation modal when delete is clicked', async () => {
       const { user } = renderWithProviders(<AppCard site={mockSite} />);
 
       const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
@@ -508,10 +538,16 @@ describe('AppCard', () => {
       const deleteItem = screen.getByText('builder_apps_menu_delete');
       await user.click(deleteItem);
 
-      expect(screen.getByText('builder_apps_alert_delete')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTestId('delete-project-confirmation-modal')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('mock-modal')).toHaveAttribute(
+        'aria-label',
+        'Delete “Test Application”'
+      );
     });
 
-    it('should hide confirmation alert when cancel is clicked', async () => {
+    it('should hide confirmation modal when cancel is clicked', async () => {
       const { user } = renderWithProviders(<AppCard site={mockSite} />);
 
       const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
@@ -527,7 +563,7 @@ describe('AppCard', () => {
       const cancelButton = screen.getByRole('button', { name: 'builder_common_cancel' });
       await user.click(cancelButton);
 
-      expect(screen.queryByText('builder_apps_alert_delete')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('delete-project-confirmation-modal')).not.toBeInTheDocument();
     });
 
     it('should call deleteSite when confirm is clicked', async () => {

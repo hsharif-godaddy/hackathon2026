@@ -24,9 +24,11 @@ import text from '@ux/text'
 import TextInput from '@ux/text-input'
 
 import AppThumbnail from '@/app/[market]/apps/AppThumbnail'
+import DeleteProjectConfirmationModal from '@/app/[market]/apps/components/DeleteProjectConfirmationModal'
 import { transferEventProps } from '@/app/[market]/apps/components/transfer-constants'
 import TransferInitiateDialog from '@/app/[market]/apps/components/TransferInitiateDialog'
 import UnpublishConfirmationModal from '@/components/layout/UnpublishConfirmationModal'
+import { SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL } from '@/config/switchboard-flags'
 import { useAppRename } from '@/hooks/useAppRename'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -74,6 +76,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
   const [cancelTransferError, setCancelTransferError] = useState<string | null>(null)
   const [activeTransfer, setActiveTransfer] = useState<ActiveTransfer | null>(null)
   const [copied, setCopied] = useState(false)
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [isUnpublishModalOpen, setIsUnpublishModalOpen] = useState(false)
   const [transferValidating, setTransferValidating] = useState(false)
   const [transferBlockedReason, setTransferBlockedReason] = useState<string | null>(null)
@@ -85,6 +88,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
   const fetchAllSites = useSitesStore((state) => state.fetchAllSites)
   const refreshSites = useSitesStore((state) => state.refreshSites)
   const { mutate: renameApp, isPending: isRenamePending } = useAppRename()
+  const isDeleteModalEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL) === true
   const isUnpublishEnabled = useSwitchboard('appbuilder-unpublish')
   const isPreviewHeaderEnabled = useSwitchboard('appbuilder-preview-header') === true
   const { data: subscription } = useSubscription()
@@ -121,6 +125,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
     try {
       const success = await deleteSite(siteId)
       if (success) {
+        setIsDeleteModalOpen(false)
         setAlertState({ siteId: null, type: null, message: '' })
       }
     } catch (error) {
@@ -216,6 +221,14 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
       type: 'delete',
       message: <FormattedMessage id='builder_apps_alert_delete' values={{ siteName: siteName || t('builder_apps_alert_delete_untitled') }} />
     })
+  }
+
+  const handleDeleteClick = () => {
+    if (isDeleteModalEnabled) {
+      setIsDeleteModalOpen(true)
+    } else {
+      showDeleteAlert(site.id, site.name || t('builder_apps_alert_delete_untitled'))
+    }
   }
 
   const showCancelTransferAlert = () => {
@@ -446,7 +459,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
           {transferAllowed && !hasActiveTransfer && transferMenuItem}
           <MenuSeparator />
           <MenuItem
-            onClick={() => showDeleteAlert(site.id, site.name || t('builder_apps_alert_delete_untitled'))}
+            onClick={handleDeleteClick}
             data-eid={generateClickEID('apps.app.delete')}
             data-testid="app-card-delete-button"
             aria-label={t('builder_apps_menu_delete', { siteName: site.name || t('builder_apps_alert_delete_untitled') })}
@@ -705,6 +718,15 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
             </Box>
           </Box>
         </Modal>
+      )}
+
+      {isDeleteModalEnabled && isDeleteModalOpen && (
+        <DeleteProjectConfirmationModal
+          projectName={site.name || t('builder_apps_alert_delete_untitled')}
+          onClose={() => setIsDeleteModalOpen(false)}
+          onConfirm={() => handleDeleteSite(site.id)}
+          isLoading={actionLoading === site.id}
+        />
       )}
 
       {isUnpublishModalOpen && (
