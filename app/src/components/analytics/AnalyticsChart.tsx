@@ -59,52 +59,49 @@ export function AnalyticsChart({ data, label, embedded, fetched = false }: Analy
   }
 
   const chartContent = (
-    <ResponsiveContainer width="100%" height={260} minHeight={200}>
+    <ResponsiveContainer width="100%" height={260} minHeight={200} className="px-2">
       <AreaChart
-          data={chartData}
-          margin={{
-            top: 10,
-            right: 20,
-            bottom: 20,
-            left: 0
-          }}
-        >
-          <defs>
-            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.2} />
-              <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.02} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="hsl(var(--muted-border))"
-            vertical={false}
-          />
-          <XAxis
-            dataKey="date"
-            stroke="hsl(var(--muted-foreground))"
-            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
-            tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
-          />
-          <YAxis
-            stroke="hsl(var(--muted-foreground))"
-            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
-            tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
-            tickFormatter={formatChartValue}
-          />
-          <Tooltip content={<ChartTooltip valueName={chartLabel} />} />
-          <Area
-            type="monotone"
-            dataKey="value"
-            stroke="var(--color-ai)"
-            strokeWidth={3}
-            fill={`url(#${gradientId})`}
-            fillOpacity={0.6}
-            dot={{ fill: 'var(--color-ai)', r: 5, stroke: 'hsl(var(--background))', strokeWidth: 2 }}
-            activeDot={{ r: 7, stroke: 'var(--color-ai)', strokeWidth: 2, fill: 'hsl(var(--background))' }}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+        data={chartData}
+        margin={{ top: 8, right: 12, bottom: 0, left: 0 }}
+      >
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.2} />
+            <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid
+          strokeDasharray="3 3"
+          stroke="hsl(var(--muted-border))"
+          vertical={false}
+        />
+        <XAxis
+          dataKey="date"
+          height={20}
+          stroke="hsl(var(--muted-foreground))"
+          tick={{ className: 'text-xs tabular-nums' }}
+          tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
+        />
+        <YAxis
+          width="auto"
+          stroke="hsl(var(--muted-foreground))"
+          tick={{ className: 'text-xs tabular-nums' }}
+          tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
+          tickFormatter={formatChartValue}
+        />
+        <Tooltip content={<ChartTooltip valueName={chartLabel} />} />
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke="var(--color-ai)"
+          strokeWidth={3}
+          fill={`url(#${gradientId})`}
+          fillOpacity={0.6}
+          dot={{ fill: 'var(--color-ai)', r: 5, stroke: 'hsl(var(--background))', strokeWidth: 2 }}
+          activeDot={{ r: 7, stroke: 'var(--color-ai)', strokeWidth: 2, fill: 'hsl(var(--background))' }}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
   )
 
   if (embedded) return chartContent
@@ -115,4 +112,3 @@ export function AnalyticsChart({ data, label, embedded, fetched = false }: Analy
     </AnalyticsCard>
   )
 }
-

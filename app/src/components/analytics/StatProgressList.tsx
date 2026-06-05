@@ -30,6 +30,17 @@ interface StatProgressListProps {
   fetched?: boolean
 }
 
+function columns(hasIcons: boolean, showPercent: boolean): string {
+  return [
+    'max-content',
+    ...(hasIcons ? ['max-content'] : []),
+    'minmax(0,1fr)',
+    'minmax(40px,1fr)',
+    'max-content',
+    ...(showPercent ? ['max-content'] : []),
+  ].join(' ')
+}
+
 /**
  * Flighty-inspired horizontal progress bar list
  *
@@ -64,6 +75,8 @@ export function StatProgressList({
   const displayItems = items.slice(0, maxItems)
   const maxValue = Math.max(...displayItems.map((d) => d.value), 1)
   const totalValue = displayItems.reduce((sum, d) => sum + d.value, 0)
+  const hasIcons = displayItems.some((d) => d.icon)
+  const gridTemplateColumns = columns(hasIcons, showPercent)
 
   return (
     <AnalyticsCard
@@ -72,8 +85,10 @@ export function StatProgressList({
         {tooltip && (<InfoTooltip content={tooltip}/>)}
       </>}
     >
-      {/* Items */}
-      <div className="flex flex-col gap-2.5 mt-2">
+      <div
+        className="grid gap-x-2"
+        style={{ gridTemplateColumns }}
+      >
         {displayItems.map((item, idx) => {
           const pct = totalValue > 0 ? (item.value / totalValue) * 100 : 0
           const barWidth = maxValue > 0 ? (item.value / maxValue) * 100 : 0
@@ -90,18 +105,24 @@ export function StatProgressList({
               }
               contentClassName="p-1 text-xs"
             >
-              <div className="group flex items-center gap-2 cursor-default">
-                <text.span className="!text-[10px] !font-bold !text-muted-foreground/50 !w-4 !text-right !tabular-nums !shrink-0">
+              <div
+                className="col-span-full grid grid-cols-subgrid gap-x-2 items-center cursor-default rounded-sm -mx-1 px-1 py-1 transition-colors hover:bg-[color-mix(in_srgb,var(--color-ai)_5%,transparent)]"
+              >
+                <text.span emphasis="passive" size={-2} className="text-right tabular-nums">
                   {idx + 1}
                 </text.span>
 
-                {item.icon && <span className="shrink-0 flex items-center">{item.icon}</span>}
+                {hasIcons && (
+                  <span className="flex items-center justify-center">
+                    {item.icon ?? null}
+                  </span>
+                )}
 
-                <text.span className="!text-xs !font-medium !truncate !min-w-0 !max-w-[50%] shrink">
+                <text.span as="label" size={-2} className="truncate min-w-0">
                   {item.label}
                 </text.span>
 
-                <div className="flex-1 h-[6px] rounded-full bg-muted/40 overflow-hidden min-w-[40px]">
+                <div className="h-[6px] rounded-full overflow-hidden min-w-0 bg-intents-ux-boxLowContrast-backgroundColor">
                   <div
                     className="h-full rounded-full transition-all duration-500 ease-out"
                     style={{
@@ -111,25 +132,23 @@ export function StatProgressList({
                   />
                 </div>
 
-                <div className="flex items-baseline gap-1.5 shrink-0 tabular-nums">
-                  <text.span className="!text-xs !font-bold" style={{ color: barColor }}>
-                    {item.value.toLocaleString()}
+                <text.span as="label" size={-2} className="text-right tabular-nums" style={{ color: barColor }}>
+                  {item.value.toLocaleString()}
+                </text.span>
+
+                {showPercent && (
+                  <text.span emphasis="passive" size={-2} className="tabular-nums">
+                    {pct.toFixed(0)}%
                   </text.span>
-                  {showPercent && (
-                    <text.span className="!text-[10px] !text-muted-foreground">
-                      {pct.toFixed(0)}%
-                    </text.span>
-                  )}
-                </div>
+                )}
               </div>
             </ContentTooltip>
           )
         })}
       </div>
 
-      {/* Show "+N more" if truncated */}
       {items.length > maxItems && (
-        <text.span className="!text-[10px] !text-muted-foreground !mt-2 !pl-[14px]">
+        <text.span emphasis="passive" size={-2}>
           {t('builder_analytics_more_items', { count: items.length - maxItems })}
         </text.span>
       )}

@@ -71,10 +71,10 @@ export function AnalyticsPieChart({ data, label = 'Distribution', tooltip, fetch
     const x = cx + radius * Math.cos(-midAngle * RADIAN)
     const y = cy + radius * Math.sin(-midAngle * RADIAN)
     const pct = `${((percent ?? 0) * 100).toFixed(0)}%`
-    const truncatedName = name && String(name).length > 10 ? `${String(name).slice(0, 10)}…` : (name ?? '')
+    const truncatedName = name && String(name).length > 6 ? `${String(name).slice(0, 6)}…` : (name ?? '')
     const labelText = truncatedName ? `${truncatedName} ${pct}` : pct
     return (
-      <text x={x} y={y} fill="hsl(var(--foreground))" fontSize={10} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central">
+      <text x={x} y={y} fill="currentColor" className="text-[10px] @[16rem]/chart:text-xs" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central">
         {labelText}
       </text>
     )
@@ -88,14 +88,19 @@ export function AnalyticsPieChart({ data, label = 'Distribution', tooltip, fetch
         {tooltip && (<InfoTooltip content={tooltip}/>)}
       </>}
     >
-      <ResponsiveContainer width="100%" height={200} minHeight={140}>
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+        minHeight={140}
+        className="@container/chart size-full"
+      >
         <PieChart>
           <Pie
             data={pieData}
             cx="50%"
             cy="50%"
-            innerRadius="30%"
-            outerRadius="50%"
+            innerRadius="45%"
+            outerRadius="65%"
             paddingAngle={3}
             dataKey="value"
             nameKey="name"
