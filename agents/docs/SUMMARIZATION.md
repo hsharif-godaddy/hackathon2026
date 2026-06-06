@@ -226,6 +226,19 @@ Triggered when `incrementalUpdateCount >= 5` to prevent quality degradation:
 | `last_full_summarization_at` | DATETIME | Timestamp of last full regeneration         |
 | `created_at`                 | DATETIME | Creation timestamp                          |
 
+## Skill Amnesia: What Summarization Cannot Fix
+
+Summarization compresses conversation history, which means evidence of previously applied skills (auth, Stripe, custom domain, etc.) can be lost after enough compression cycles. The result is the LLM re-scaffolding features that were already built.
+
+This is **not** addressed at the summarization layer — tuning prompts to reliably preserve skill evidence is non-deterministic and untestable. Instead, it is solved by two durable, deterministic layers that live outside the conversation database entirely:
+
+1. **`AppliedSkillsRegistry`** — a JSON file (`.airo/applied-skills.json`) that records which skills are installed in the app.
+2. **`computeState` contract** — after every successful skill tool call, a lightweight state patch is merged into `.airo/skills/<name>/state.json`, capturing the current configuration of that skill.
+
+Both are combined and injected as a structured XML `user` message (with `insertionOrder: 'after_history'`) at the start of every LLM turn. Because this message is generated fresh from disk each turn and never written to the conversation database, the summarizer never sees or compresses it.
+
+For implementation details and developer guidelines on `computeState`, see **"Skill Amnesia and the `computeState` Contract"** in [`agents/src/skills/README.md`](../src/skills/README.md).
+
 ## Initialization
 
 ```typescript

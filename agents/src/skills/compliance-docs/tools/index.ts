@@ -137,6 +137,17 @@ export const generatePrivacyPolicyTool: SkillToolDefinition = {
     }
   },
 
+  computeState(input: any, output: any) {
+    if (!output?.filePath || output?.error) return null;
+    return {
+      privacyPolicy: {
+        generated: true,
+        businessName: input.businessName,
+        email: input.email,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+  },
   config: {
     timeout: 30_000,
   },
@@ -210,6 +221,17 @@ export const generateTermsOfUseTool: SkillToolDefinition = {
     }
   },
 
+  computeState(input: any, output: any) {
+    if (!output?.filePath || output?.error) return null;
+    return {
+      termsOfUse: {
+        generated: true,
+        businessName: input.businessName,
+        domainName: input.domainName,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+  },
   config: {
     timeout: 30_000,
   },

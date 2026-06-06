@@ -214,6 +214,17 @@ After generating integration files, write a single dispatcher that routes `creat
 
 → Read `agents/src/skills/online-conferencing/templates/sections/04-dispatcher-examples.md` for code examples (single provider, all three, optional DEFAULT wrapper).
 
+Once `create-meeting.ts` is written, call `online-conferencing__confirmProviders` with the providers **actually implemented** in the dispatcher and the wiring pattern used:
+
+```typescript
+online-conferencing__confirmProviders({
+  providers: ["google", "zoom"],   // only providers whose integration files were generated
+  wiringPattern: "single-default", // omit when only one provider
+})
+```
+
+This records the completed configuration so the agent knows what is already set up on re-entry. Call it only after the dispatcher is written — not at planning time — because intent without implementation is not state.
+
 ---
 
 ## Step 5: Persist Meeting Metadata

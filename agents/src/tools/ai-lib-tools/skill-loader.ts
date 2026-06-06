@@ -1,9 +1,10 @@
 import { createTool, type Tool, type AgentContext } from '@airo/ai-lib';
 import { z } from 'zod';
-import { SkillLoaderTool } from '../skill-loader-tool.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
-import { skillToolManager } from '../skill-tool-manager.js';
+import { appliedSkillsRegistry } from '../applied-skills-registry.js';
 import { logger } from '../../logging/index.js';
+import { SkillLoaderTool } from '../skill-loader-tool.js';
+import { skillToolManager } from '../skill-tool-manager.js';
 
 /**
  * Unified Skill Management Tool for AI-Lib
@@ -294,6 +295,8 @@ export const skillAITool: Tool = createTool(
         response.postInstallNotes = result.postInstallNotes;
         response.message = `${response.message}\n\nIMPORTANT: ${result.postInstallNotes}`;
       }
+
+      appliedSkillsRegistry.recordInstall(input.skill, app.path);
 
       return response;
     }

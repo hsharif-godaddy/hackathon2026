@@ -83,6 +83,7 @@ import {
 import { computeDebugTurnStats } from '../../utils/debug-turn-stats.js'
 import { interactiveSubAgentManager } from '../../agents/interactive-sub-agent-manager.js'
 import { AppRepository } from '../../database/repositories/index.js'
+import { buildAppliedSkillsContextMessage } from '../applied-skills-context.js'
 
 /** Short timeout for awaiting the classifier on an errored turn — the user is
  *  already seeing a failure, so don't delay terminal events for a slow classifier.
@@ -972,9 +973,12 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         return [] as ConversationMessage[]
       }),
     ])
+
     const dynamicDataMessage = buildDynamicDataMessage(metadata)
 
-    const extraAfterHistory = [ragContextMessage, todoContextMessage, memoryContextMessage, dynamicDataMessage]
+    const appliedSkillsMessage = await buildAppliedSkillsContextMessage(appId)
+
+    const extraAfterHistory = [ragContextMessage, todoContextMessage, memoryContextMessage, dynamicDataMessage, appliedSkillsMessage]
       .filter((m): m is NonNullable<typeof m> => m != null)
       .map(m => ({ role: m.role, content: m.content, ...(m.cachePoint && { cachePoint: m.cachePoint }) }))
 

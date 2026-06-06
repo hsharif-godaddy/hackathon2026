@@ -290,6 +290,15 @@ export const setupWidgetTool: SkillToolDefinition = {
         'The widget will NOT appear until this is done.',
     };
   },
+  computeState(input: any, output: any) {
+    if (!output?.brandId) return null;
+    return {
+      accountId: output.brandId,
+      embeddableId: output.embeddableId,
+      ...(input.color && { color: input.color }),
+      configuredAt: new Date().toISOString(),
+    };
+  },
   config: { requiresApp: true, timeout: 30_000 },
 };
 
@@ -378,6 +387,13 @@ export const updateWidgetConfigTool: SkillToolDefinition = {
 
     logger.info('inbox.skill.update.success', { appId, brandId, embeddableId, updated: Object.keys(embeddablePatch) });
     return { brandId, embeddableId, updated: Object.keys(embeddablePatch), configWritten: configPath };
+  },
+  computeState(input: any, output: any) {
+    if (!output?.brandId) return null;
+    return {
+      ...(input.color && { color: input.color }),
+      ...(input.position && { position: input.position }),
+    };
   },
   config: { requiresApp: true, timeout: 15_000 },
 };

@@ -106,7 +106,8 @@ function buildProvisioningUnavailableResult(error: StripeServiceError) {
     stripeProvisioningUnavailable: true,
     retryAfterSeconds: STRIPE_PROVISIONING_RETRY_SECONDS,
     message:
-      "Stripe isn't ready for your project yet. I'm still getting it set up — try again in a little while.",
+      'Stripe is still being provisioned for this Airo Builder deployment. ' +
+      'Tell the user we will turn it on shortly and they should try again later.',
     upstreamCode: error.code,
     upstreamStatus: error.status,
   };
@@ -226,6 +227,12 @@ export const setupTool: SkillToolDefinition = {
     requiresApp: true,
     timeout: SETUP_TIMEOUT_MS,
   },
+  computeState(input: SetupInput, output: any) {
+    if (!output?.success) return null;
+    return {
+      provisioned: true,
+    };
+  },
   async execute(input: SetupInput, context?: ToolContext) {
     const startedAtMs = Date.now();
     const appId = getAppIdFromContext(context);
@@ -315,6 +322,13 @@ export const statusTool: SkillToolDefinition = {
   config: {
     requiresApp: true,
     timeout: 30000,
+  },
+  computeState(_input: unknown, output: any) {
+    if (!output?.success || !output?.hasStripe) return null;
+    return {
+      provisioned: true,
+      claimStatus: output.claimStatus,
+    };
   },
   async execute(_input: unknown, context?: ToolContext) {
     const appId = getAppIdFromContext(context);

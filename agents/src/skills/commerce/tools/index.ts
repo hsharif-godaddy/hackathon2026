@@ -357,7 +357,7 @@ export const commerceStoreGetTool: SkillToolDefinition = {
       logDispatchError('commerce_store_get', err)
       return `commerce__commerce_store_get error: ${formatToolError(err)}`
     }
-  },
+  }
 }
 
 export const commerceStoreChannelsGetTool: SkillToolDefinition = {

@@ -101,6 +101,7 @@ import {
 } from './context-builders.js'
 import { interactiveSubAgentManager } from '../agents/interactive-sub-agent-manager.js'
 import { buildSharedPostStreamValidator } from './post-stream-validator.js'
+import { buildAppliedSkillsContextMessage } from './applied-skills-context.js'
 import { buildPinnedSkillsContextMessages } from './pinned-skills-context.js'
 import {
   runStartGitHook, runStartAssessment, runMessageEndHooks,
@@ -810,6 +811,19 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               content: dynamicDataMessage.content,
               insertionOrder: dynamicDataMessage.insertionOrder
             })
+          }
+
+          // Inject applied-skills context so the LLM always knows which skills
+          // have been applied, even after conversation history is compressed by
+          // the summarisation pipeline (skill amnesia fix).
+          const appliedSkillsMsg = await buildAppliedSkillsContextMessage(appId);
+          if (appliedSkillsMsg) {
+            logger.debug('websocket.context.provider.applied_skills', {
+              message: 'Applied skills context',
+              appId,
+              appliedSkillsMsg: appliedSkillsMsg.content
+            })
+            allMessages.push(appliedSkillsMsg);
           }
 
           // Append pinned-skill mode context (deep-build, etc.) so pinned skill

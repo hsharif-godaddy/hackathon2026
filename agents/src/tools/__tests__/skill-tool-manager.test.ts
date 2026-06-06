@@ -2,8 +2,14 @@
  * Unit tests for SkillToolManager
  */
 
+import { buildAllSkillTools } from '@airo/ai-skills';
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+
 import { SkillToolManager } from '../skill-tool-manager.js';
+
+vi.mock('../../database/repositories/index.js', () => ({
+  appRepository: { findById: vi.fn().mockReturnValue(null) },
+}));
 
 vi.mock('../../workspace/index.js', () => ({
   createForWorkspace: vi.fn(function () { return null; }),
@@ -65,6 +71,12 @@ describe('SkillToolManager', () => {
       // Should not throw or duplicate tools
       const tools = manager.getAllTools();
       expect(Object.keys(tools).length).toBe(3);
+    });
+
+    it('passes onStateError to buildAllSkillTools so state-write failures are observable', async () => {
+      const calls = vi.mocked(buildAllSkillTools).mock.calls;
+      const options = calls[calls.length - 1]?.[1];
+      expect(typeof options?.onStateError).toBe('function');
     });
   });
 

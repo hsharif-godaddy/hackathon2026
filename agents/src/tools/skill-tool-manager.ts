@@ -17,6 +17,8 @@ import { ConversationSkillState, buildAllSkillTools, buildSkillToolName, type Sk
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { appRepository } from '../database/repositories/index.js';
+import { appliedSkillsRegistry } from './applied-skills-registry.js';
 import { createForWorkspace } from '../workspace/index.js';
 import type { WorkspaceFiles } from '../workspace/files.js';
 import { DevSupervisorError } from '../services/DevSupervisorClient.js';
@@ -123,7 +125,21 @@ export class SkillToolManager {
     }
 
     try {
-      this.toolRegistry = await buildAllSkillTools(this.skillsDir);
+      this.toolRegistry = await buildAllSkillTools(this.skillsDir, {
+        onStateComputed: async (skillName, appId, statePatch) => {
+          if (!appId) return;
+          const appPath = appRepository.findById(appId)?.path;
+          if (!appPath) return;
+          await appliedSkillsRegistry.mergeSkillState(skillName, appPath, statePatch);
+        },
+        onStateError: (skillName, toolName, error) => {
+          logger.warn('skill.state.write_failed', {
+            skillName,
+            toolName,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        },
+      });
       this.initialized = true;
 
       // Populate the reverse map from the static skill→tools mapping built by

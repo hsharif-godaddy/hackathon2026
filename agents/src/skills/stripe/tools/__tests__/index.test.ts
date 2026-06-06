@@ -114,7 +114,7 @@ describe('stripe skill tools', () => {
         upstreamCode: 'STRIPE_CREATE_FAILED',
         upstreamStatus: 502,
       });
-      expect((result as { message: string }).message).toContain('your project');
+      expect((result as { message: string }).message).toContain('this Airo Builder deployment');
       expect(mockLoggerWarn).toHaveBeenCalledWith(
         'skill.stripe.setup.provisioning_unavailable',
         expect.objectContaining({ appId: 'app-1', upstreamStatus: 502 }),
@@ -319,6 +319,63 @@ describe('stripe skill tools', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+  });
+
+  describe('setupTool.computeState', () => {
+    it('is defined on the tool', function defined() {
+      expect(setupTool.computeState).toBeDefined();
+    });
+
+    it('returns { provisioned: true } on a successful output', function successState() {
+      const state = setupTool.computeState!({ email: 'a@b.c', country: 'US' }, { success: true, sandboxId: 's' });
+      expect(state).toEqual({ provisioned: true });
+    });
+
+    it('returns null when output.success is false', function failState() {
+      const state = setupTool.computeState!({ email: 'a@b.c', country: 'US' }, { success: false });
+      expect(state).toBeNull();
+    });
+
+    it('returns null when output is a degrade shape (no success field)', function degradeState() {
+      const state = setupTool.computeState!({ email: 'a@b.c', country: 'US' }, { stripeProvisioningUnavailable: true });
+      expect(state).toBeNull();
+    });
+
+    it('returns null when output is undefined', function undefinedState() {
+      const state = setupTool.computeState!({ email: 'a@b.c', country: 'US' }, undefined);
+      expect(state).toBeNull();
+    });
+  });
+
+  describe('statusTool.computeState', () => {
+    it('is defined on the tool', function defined() {
+      expect(statusTool.computeState).toBeDefined();
+    });
+
+    it('returns { provisioned: true, claimStatus } when hasStripe is true', function withStripe() {
+      const state = statusTool.computeState!({}, { success: true, hasStripe: true, sandboxId: 's', claimStatus: 'provisioned' });
+      expect(state).toEqual({ provisioned: true, claimStatus: 'provisioned' });
+    });
+
+    it('reflects the current claimStatus (e.g. live)', function liveStatus() {
+      const state = statusTool.computeState!({}, { success: true, hasStripe: true, sandboxId: 's', claimStatus: 'live' });
+      expect(state).toEqual({ provisioned: true, claimStatus: 'live' });
+    });
+
+    it('returns null when hasStripe is false', function noStripe() {
+      const state = statusTool.computeState!({}, { success: true, hasStripe: false });
+      expect(state).toBeNull();
+    });
+
+    it('returns null when output.success is false', function failState() {
+      const state = statusTool.computeState!({}, { success: false });
+      expect(state).toBeNull();
+    });
+
+    it('returns null when output is undefined', function undefinedState() {
+      const state = statusTool.computeState!({}, undefined);
+      expect(state).toBeNull();
     });
   });
 

@@ -33,6 +33,11 @@ export const listTablesTool: SkillToolDefinition = {
 
   parameters: z.object({}),
 
+  computeState(_input, output) {
+    if (!output?.success) return null;
+    return { applied: true };
+  },
+
   async execute(_input, context) {
     const appId = context?.metadata?.appId as string;
 
@@ -87,6 +92,11 @@ export const getSchemaTool: SkillToolDefinition = {
   parameters: z.object({
     tableName: z.string().describe('Name of the table'),
   }),
+
+  computeState(_input, output) {
+    if (!output?.success) return null;
+    return { applied: true };
+  },
 
   async execute(input, context) {
     const appId = context?.metadata?.appId as string;
@@ -157,6 +167,11 @@ export const getTableDataTool: SkillToolDefinition = {
       .describe('Number of rows per page (default: 25, max: 1000)'),
   }),
 
+  computeState(_input, output) {
+    if (!output?.success) return null;
+    return { applied: true };
+  },
+
   async execute(input, context) {
     const appId = context?.metadata?.appId as string;
 
@@ -226,6 +241,11 @@ export const insertRowTool: SkillToolDefinition = {
       .describe('Column-value pairs for the new row'),
   }),
 
+  computeState(_input, output) {
+    if (!output?.success) return null;
+    return { applied: true };
+  },
+
   async execute(input, context) {
     const appId = context?.metadata?.appId as string;
 
@@ -293,6 +313,11 @@ export const updateRowTool: SkillToolDefinition = {
       .describe('Column-value pairs to update'),
   }),
 
+  computeState(_input, output) {
+    if (!output?.success) return null;
+    return { applied: true };
+  },
+
   async execute(input, context) {
     const appId = context?.metadata?.appId as string;
 
@@ -355,6 +380,11 @@ export const deleteRowTool: SkillToolDefinition = {
       .refine((obj) => Object.keys(obj).length > 0, { message: 'primaryKey must not be empty' })
       .describe('Primary key column-value pairs for WHERE clause'),
   }),
+
+  computeState(_input, output) {
+    if (!output?.success) return null;
+    return { applied: true };
+  },
 
   async execute(input, context) {
     const appId = context?.metadata?.appId as string;

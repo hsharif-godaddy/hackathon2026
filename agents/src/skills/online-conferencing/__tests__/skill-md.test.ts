@@ -72,8 +72,9 @@ describe('online-conferencing skill.md', () => {
       expect(existsSync(join(SKILL_DIR, 'templates/server'))).toBe(false);
     });
 
-    it('has no tools/ directory (guidance-only — no custom runtime tools)', () => {
-      expect(existsSync(join(SKILL_DIR, 'tools'))).toBe(false);
+    it('has tools/ directory with confirmProviders tool for state capture', () => {
+      expect(existsSync(join(SKILL_DIR, 'tools'))).toBe(true);
+      expect(existsSync(join(SKILL_DIR, 'tools/index.ts'))).toBe(true);
     });
 
     it.each([

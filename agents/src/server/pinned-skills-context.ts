@@ -17,6 +17,20 @@ export interface PinnedContextMessage {
   insertionOrder: 'before_history';
 }
 
+
+/**
+ * Shape used for per-turn applied-skills context messages. Matches ai-transport's ContextMessage.
+ *
+ * `insertionOrder` is locked to `'after_history'`
+ */
+export interface AppliedSkillsContextMessage {
+  role: 'user';
+  content: string;
+  insertionOrder: 'after_history';
+  cachePoint?: { type: 'ephemeral' };
+}
+
+
 /**
  * Build one context message per pinned skill for the given conversation.
  * Each message labels the content as pinned mode context so the model

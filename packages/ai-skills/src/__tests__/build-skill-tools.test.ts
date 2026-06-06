@@ -325,6 +325,241 @@ describe('registerSkillTools', () => {
     })
   })
 
+  describe('computeState integration', () => {
+    it('calls computeState with the tool input and output after successful execution', async () => {
+      const computeStateFn = vi.fn().mockReturnValue(null)
+      const onStateComputed = vi.fn().mockResolvedValue(undefined)
+      const toolDef: SkillToolDefinition = {
+        name: 'doWork',
+        description: 'Does work',
+        parameters: z.object({ value: z.string() }),
+        execute: vi.fn().mockResolvedValue({ success: true, result: 'done' }),
+        computeState: computeStateFn,
+      }
+
+      const registry = registerSkillTools('mySkill', [toolDef], undefined, { onStateComputed })
+      const executeMethod = (registry.tools['mySkill__doWork'] as any).execute
+
+      await executeMethod({ value: 'hello' }, { experimental_context: { metadata: { appId: 'app-1' } } })
+
+      expect(computeStateFn).toHaveBeenCalledWith({ value: 'hello' }, { success: true, result: 'done' })
+    })
+
+    it('calls onStateComputed with skillName, appId, and patch when computeState returns non-null', async () => {
+      const onStateComputed = vi.fn().mockResolvedValue(undefined)
+      const toolDef: SkillToolDefinition = {
+        name: 'configure',
+        description: 'Configure something',
+        parameters: z.object({}),
+        execute: vi.fn().mockResolvedValue({ success: true }),
+        computeState: () => ({ provider: 'google', configuredAt: '2024-01-01' }),
+      }
+
+      const registry = registerSkillTools('auth', [toolDef], undefined, { onStateComputed })
+      const executeMethod = (registry.tools['auth__configure'] as any).execute
+
+      await executeMethod({}, { experimental_context: { metadata: { appId: 'app-42' } } })
+
+      expect(onStateComputed).toHaveBeenCalledOnce()
+      expect(onStateComputed).toHaveBeenCalledWith(
+        'auth',
+        'app-42',
+        { provider: 'google', configuredAt: '2024-01-01' }
+      )
+    })
+
+    it('does not call onStateComputed when computeState returns null', async () => {
+      const onStateComputed = vi.fn()
+      const toolDef: SkillToolDefinition = {
+        name: 'tryConfig',
+        description: 'Tries to configure',
+        parameters: z.object({}),
+        execute: vi.fn().mockResolvedValue({ error: 'something went wrong' }),
+        computeState: (_input, output) => output?.error ? null : { configured: true },
+      }
+
+      const registry = registerSkillTools('auth', [toolDef], undefined, { onStateComputed })
+      const executeMethod = (registry.tools['auth__tryConfig'] as any).execute
+
+      await executeMethod({}, { experimental_context: { metadata: { appId: 'app-1' } } })
+
+      expect(onStateComputed).not.toHaveBeenCalled()
+    })
+
+    it('does not call onStateComputed when no computeState is defined on the tool', async () => {
+      const onStateComputed = vi.fn()
+      const toolDef: SkillToolDefinition = {
+        name: 'simpleAction',
+        description: 'Simple action',
+        parameters: z.object({}),
+        execute: vi.fn().mockResolvedValue({ success: true }),
+        // no computeState
+      }
+
+      const registry = registerSkillTools('auth', [toolDef], undefined, { onStateComputed })
+      const executeMethod = (registry.tools['auth__simpleAction'] as any).execute
+
+      await executeMethod({}, { experimental_context: { metadata: { appId: 'app-1' } } })
+
+      expect(onStateComputed).not.toHaveBeenCalled()
+    })
+
+    it('does not call onStateComputed when no options are provided', async () => {
+      const computeStateFn = vi.fn().mockReturnValue({ configured: true })
+      const toolDef: SkillToolDefinition = {
+        name: 'doWork',
+        description: 'Does work',
+        parameters: z.object({}),
+        execute: vi.fn().mockResolvedValue({ success: true }),
+        computeState: computeStateFn,
+      }
+
+      // No options passed — computeState is defined but onStateComputed is not
+      const registry = registerSkillTools('auth', [toolDef])
+      const executeMethod = (registry.tools['auth__doWork'] as any).execute
+
+      // Should not throw, state is simply not written
+      await expect(executeMethod({}, {})).resolves.toEqual({ success: true })
+      expect(computeStateFn).not.toHaveBeenCalled()
+    })
+
+    it('still returns tool output when computeState throws', async () => {
+      const onStateComputed = vi.fn().mockResolvedValue(undefined)
+      const toolDef: SkillToolDefinition = {
+        name: 'faultyState',
+        description: 'Tool with buggy computeState',
+        parameters: z.object({}),
+        execute: vi.fn().mockResolvedValue({ success: true, data: 'result' }),
+        computeState: () => { throw new Error('computeState bug') },
+      }
+
+      const registry = registerSkillTools('auth', [toolDef], undefined, { onStateComputed })
+      const executeMethod = (registry.tools['auth__faultyState'] as any).execute
+
+      const result = await executeMethod({}, { experimental_context: { metadata: { appId: 'app-1' } } })
+
+      expect(result).toEqual({ success: true, data: 'result' })
+      expect(onStateComputed).not.toHaveBeenCalled()
+    })
+
+    it('calls onStateError with skillName, prefixed tool name, and thrown error when computeState throws', async () => {
+      const err = new Error('computeState bug')
+      const onStateError = vi.fn()
+      const onStateComputed = vi.fn()
+      const toolDef: SkillToolDefinition = {
+        name: 'faultyState',
+        description: 'Tool with buggy computeState',
+        parameters: z.object({}),
+        execute: vi.fn().mockResolvedValue({ success: true }),
+        computeState: () => { throw err },
+      }
+
+      const registry = registerSkillTools('auth', [toolDef], undefined, { onStateComputed, onStateError })
+      const executeMethod = (registry.tools['auth__faultyState'] as any).execute
+
+      await executeMethod({}, { experimental_context: { metadata: { appId: 'app-1' } } })
+
+      expect(onStateError).toHaveBeenCalledOnce()
+      expect(onStateError).toHaveBeenCalledWith('auth', 'auth__faultyState', err)
+      expect(onStateComputed).not.toHaveBeenCalled()
+    })
+
+    it('still returns tool output when onStateComputed throws', async () => {
+      const onStateComputed = vi.fn().mockRejectedValue(new Error('disk full'))
+      const toolDef: SkillToolDefinition = {
+        name: 'writeFail',
+        description: 'Tool whose state write fails',
+        parameters: z.object({}),
+        execute: vi.fn().mockResolvedValue({ success: true }),
+        computeState: () => ({ key: 'value' }),
+      }
+
+      const registry = registerSkillTools('auth', [toolDef], undefined, { onStateComputed })
+      const executeMethod = (registry.tools['auth__writeFail'] as any).execute
+
+      const result = await executeMethod({}, { experimental_context: { metadata: { appId: 'app-1' } } })
+
+      expect(result).toEqual({ success: true })
+    })
+
+    it('calls onStateError with skillName, prefixed tool name, and thrown error when onStateComputed throws', async () => {
+      const err = new Error('disk full')
+      const onStateError = vi.fn()
+      const onStateComputed = vi.fn().mockRejectedValue(err)
+      const toolDef: SkillToolDefinition = {
+        name: 'writeFail',
+        description: 'Tool whose state write fails',
+        parameters: z.object({}),
+        execute: vi.fn().mockResolvedValue({ success: true }),
+        computeState: () => ({ key: 'value' }),
+      }
+
+      const registry = registerSkillTools('auth', [toolDef], undefined, { onStateComputed, onStateError })
+      const executeMethod = (registry.tools['auth__writeFail'] as any).execute
+
+      await executeMethod({}, { experimental_context: { metadata: { appId: 'app-1' } } })
+
+      expect(onStateError).toHaveBeenCalledOnce()
+      expect(onStateError).toHaveBeenCalledWith('auth', 'auth__writeFail', err)
+    })
+
+    it('does not call onStateError on a successful state write', async () => {
+      const onStateError = vi.fn()
+      const onStateComputed = vi.fn().mockResolvedValue(undefined)
+      const toolDef: SkillToolDefinition = {
+        name: 'configure',
+        description: 'Configure',
+        parameters: z.object({}),
+        execute: vi.fn().mockResolvedValue({ success: true }),
+        computeState: () => ({ provider: 'google' }),
+      }
+
+      const registry = registerSkillTools('auth', [toolDef], undefined, { onStateComputed, onStateError })
+      const executeMethod = (registry.tools['auth__configure'] as any).execute
+
+      await executeMethod({}, { experimental_context: { metadata: { appId: 'app-1' } } })
+
+      expect(onStateError).not.toHaveBeenCalled()
+    })
+
+    it('passes undefined appId to onStateComputed when context has no appId', async () => {
+      const onStateComputed = vi.fn().mockResolvedValue(undefined)
+      const toolDef: SkillToolDefinition = {
+        name: 'configure',
+        description: 'Configure',
+        parameters: z.object({}),
+        execute: vi.fn().mockResolvedValue({ success: true }),
+        computeState: () => ({ configured: true }),
+      }
+
+      const registry = registerSkillTools('auth', [toolDef], undefined, { onStateComputed })
+      const executeMethod = (registry.tools['auth__configure'] as any).execute
+
+      await executeMethod({}, { experimental_context: {} })
+
+      expect(onStateComputed).toHaveBeenCalledWith('auth', undefined, { configured: true })
+    })
+
+    it('does not call computeState when execute throws', async () => {
+      const computeStateFn = vi.fn()
+      const onStateComputed = vi.fn()
+      const toolDef: SkillToolDefinition = {
+        name: 'boom',
+        description: 'Tool that throws',
+        parameters: z.object({}),
+        execute: vi.fn().mockRejectedValue(new Error('tool exploded')),
+        computeState: computeStateFn,
+      }
+
+      const registry = registerSkillTools('auth', [toolDef], undefined, { onStateComputed })
+      const executeMethod = (registry.tools['auth__boom'] as any).execute
+
+      await expect(executeMethod({}, {})).rejects.toThrow('tool exploded')
+      expect(computeStateFn).not.toHaveBeenCalled()
+      expect(onStateComputed).not.toHaveBeenCalled()
+    })
+  })
+
   describe('edge cases', () => {
     it('should return unchanged registry for empty tool definitions', () => {
       const registry = registerSkillTools('emptySkill', [])

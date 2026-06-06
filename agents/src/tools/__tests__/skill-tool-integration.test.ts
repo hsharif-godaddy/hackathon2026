@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { SkillToolManager } from '../skill-tool-manager'
 
+vi.mock('../../database/repositories/index.js', () => ({
+  appRepository: { findById: vi.fn().mockReturnValue(null) },
+}));
+
 vi.mock('../../logging/index.js');
 vi.mock('../../workspace/index.js');
 

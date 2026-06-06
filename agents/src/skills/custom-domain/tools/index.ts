@@ -7,8 +7,8 @@ import { AppRepository } from '../../../database/repositories/AppRepository.js'
 import { Logger } from '../../../logging/index.js'
 import { customerIdFromContext } from '../../../memory/interfaces/scope.js'
 import { getActionService } from '../../../server/agent-runtime.js'
-import { validateDomainName } from '../../../utils/domain-validation.js'
 import { MemoryTool } from '../../../tools/memory-tool.js'
+import { validateDomainName } from '../../../utils/domain-validation.js'
 
 const logger = Logger.create({ component: 'domain-tool' })
 const memoryTool = new MemoryTool()
@@ -460,5 +460,12 @@ Rules:
         if (input.action === 'purchase') return purchase(input, context, appId)
         if (input.action === 'forward') return forward(input, context, appId)
         return attach(input, context, appId)
-    }
+    },
+    computeState(input: any, output: any) {
+        if (input.action !== 'attach') return null;
+        if (!output?.success || output?.widgetType || output?.requiresPublish) return null;
+        const domain = input?.domain?.trim();
+        if (!domain) return null;
+        return { connectedDomain: domain, status: 'active' };
+    },
 }

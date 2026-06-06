@@ -376,6 +376,237 @@ agents/src/skills/
         └── index.ts       # Tool definitions export file
 ```
 
+### Skill Amnesia and the `computeState` Contract
+
+#### The Problem
+
+As a conversation grows, the summarization pipeline compresses history to stay within LLM token limits. During this compression, evidence of which skills have already been applied — auth, Stripe, custom domain, etc. — gets lost.
+
+The result: the LLM forgets what it has already built. On the next turn it announces it is going to load the skill and scaffold the capability from scratch, re-doing work that was already done. This is **skill amnesia**.
+
+Fixing this at the summarization layer is non-deterministic. Tuning prompts to reliably preserve skill evidence across arbitrary conversation lengths is fragile and untestable.
+
+#### The Solution: Two Cooperating Durable Layers
+
+Both layers write to the app's `.airo/` directory and survive summarization entirely.
+
+**Layer 1 — Installed skills registry (`AppliedSkillsRegistry`)**
+
+Written to `.airo/applied-skills.json` whenever a skill's templates are installed via `skill install`. Records the skill name and `installedAt` timestamp. Data is scoped per app, not per conversation — the right question is "what is built in this app?", not "what happened in conversation X?".
+
+**Layer 2 — Per-skill current state (`computeState`)**
+
+An optional method on `SkillToolDefinition`:
+
+```typescript
+computeState?(input: TInput, output: TOutput): Record<string, unknown> | null | undefined
+```
+
+After every successful tool execution the framework calls `computeState(input, output)`. If it returns a non-null patch, the patch is **shallow-merged** into `.airo/skills/<skill-name>/state.json`. This file is the authoritative, mutable snapshot of the skill's current configuration — not a log of every past action.
+
+This design correctly handles modification scenarios. For example, when a user switches from GitHub OAuth to Google OAuth, the skill tool writes the new provider into state, overwriting the old entry. The LLM always sees the current configuration, never stale history.
+
+#### Injected into Every Turn as Structured XML
+
+Both layers are combined and injected as a `user` message (with `insertionOrder: 'after_history'`) at the start of each turn:
+
+```xml
+<applied_skills>
+  <skill name="stripe-v2" installed_at="2024-01-01T00:00:00.000Z">
+    <current_state>
+      {
+        "provisioned": true,
+        "webhookConfigured": true
+      }
+    </current_state>
+  </skill>
+  <skill name="database" installed_at="2024-01-02T00:00:00.000Z"></skill>
+</applied_skills>
+```
+
+This message is ephemeral — generated fresh each turn from disk, never persisted to the conversation database, and therefore never part of what the summarizer compresses.
+
+#### ⚠️ Developer Responsibility: Keep State Lightweight
+
+> **`computeState` is injected into every single LLM call. Every byte you write here burns real tokens, on every prompt, for the entire lifetime of the app.**
+
+The state file is a **current configuration snapshot**, not a history log or a debugging dump.
+
+**✅ Good — minimal, LLM-useful facts:**
+
+```typescript
+computeState(input, output) {
+  if (!output.success) return null;
+  return {
+    provisioned: true,
+    webhookConfigured: output.webhookId !== undefined,
+    priceId: input.priceId,
+  };
+}
+```
+
+**❌ Bad — verbose, log-like, redundant:**
+
+```typescript
+computeState(input, output) {
+  return {
+    lastInput: input,         // full request object every time
+    lastOutput: output,       // full response — could be huge
+    rawWebhookPayload: '...',  // never needed by the LLM
+    debugTrace: '...',
+  };
+}
+```
+
+Guidelines for what belongs in state:
+
+- **Include:** boolean flags (`provisioned`, `configured`), IDs the LLM needs to reference (`priceId`, `webhookId`), current configuration choices (`oauthProvider: 'google'`)
+- **Exclude:** raw API responses, full request/response payloads, arrays of historical events, debug data, anything the LLM cannot act on
+- **Aim for under 200 tokens per skill**; state from all installed skills accumulates
+
+#### Implementing `computeState` in a Tool
+
+```typescript
+import type { SkillToolDefinition } from '../../skill-tool-manager.js';
+import { z } from 'zod';
+
+export const provisionTool: SkillToolDefinition = {
+  name: 'provision',
+  description: 'Provision the Stripe integration for this app',
+
+  parameters: z.object({
+    priceId: z.string().describe('Stripe price ID for the subscription plan'),
+  }),
+
+  async execute(input, context) {
+    // ... perform provisioning ...
+    return { success: true, webhookId: 'whk_abc123' };
+  },
+
+  // Called automatically after every successful execute().
+  // Return null if the tool execution is not meaningful for state.
+  computeState(input, output) {
+    if (!output.success) return null;
+    return {
+      provisioned: true,
+      priceId: input.priceId,
+      webhookId: output.webhookId,
+    };
+  },
+};
+```
+
+The framework shallow-merges the returned patch into `.airo/skills/stripe-v2/state.json` after each successful call. A later call that changes `priceId` simply overwrites the old value — the file always reflects current configuration.
+
+If `computeState` throws or returns `null`/`undefined`, the existing state file is untouched and tool execution is unaffected (state errors are non-fatal, logged via `skill.state.write_failed`).
+
+#### Pattern: State-Capture Tools for Guidance-Only Skills
+
+Some skills are **guidance-only**: they generate all code from instructions at conversation time, have no reusable templates to install, and therefore never call `skill({ action: "install" })`. Because `skill install` is what normally writes an entry into `applied-skills.json`, the LLM context message for the next turn would never show these skills — their state file would be written to disk but silently ignored.
+
+**The solution: a dedicated state-capture tool.**
+
+A state-capture tool has no external side effects. Its sole job is to receive a snapshot of what was just implemented and persist it via `computeState`. The framework automatically registers the skill in `applied-skills.json` the first time `mergeSkillState` is called, so the developer does not need to call `skill install` manually.
+
+**Three design principles:**
+
+1. **No side effects in `execute`** — the tool just echoes back the input. All persistence happens in `computeState`.
+2. **Call it at a late, verifiable checkpoint** — invoke after the artifact (code, config) is actually written, not at planning time. "Intent without implementation is not state."
+3. **Keep parameters flat and minimal** — only the facts the LLM needs to avoid re-asking on re-entry (provider names, chosen pattern, key IDs). Never dump full API responses.
+
+**Reference implementation: `online-conferencing`**
+
+The `online-conferencing` skill generates provider integrations (Google Meet, Zoom, Teams) entirely from instructions. Once the dispatcher `create-meeting.ts` is written, the `confirmProviders` tool records which providers were actually implemented:
+
+```typescript
+// agents/src/skills/online-conferencing/tools/index.ts
+
+export const confirmProvidersTool: SkillToolDefinition = {
+  name: 'confirmProviders',
+  description:
+    'Call this after the create-meeting.ts dispatcher has been written, ' +
+    'with the providers actually implemented in the dispatcher and the wiring pattern used (only required when 2+ providers). ' +
+    'Records the completed configuration so the agent knows what is already set up in future conversations.',
+
+  parameters: z.object({
+    providers: z.array(z.enum(['google', 'zoom', 'teams'])).min(1),
+    wiringPattern: z.enum(['single-default', 'per-feature', 'user-picks', 'fallback-chain']).optional(),
+  }),
+
+  // No side effects — just echoes the input back.
+  execute(input) {
+    return {
+      confirmed: true,
+      providers: input.providers,
+      ...(input.wiringPattern ? { wiringPattern: input.wiringPattern } : {}),
+    };
+  },
+
+  // Persists only what the LLM needs on re-entry.
+  computeState(input, output) {
+    if (!output.confirmed) return null;
+    return {
+      providers: input.providers,
+      ...(input.wiringPattern ? { wiringPattern: input.wiringPattern } : {}),
+    };
+  },
+};
+```
+
+This produces a `state.json` like:
+
+```json
+{ "providers": ["google", "zoom"], "wiringPattern": "single-default" }
+```
+
+Which surfaces in the next turn's context message:
+
+```xml
+<skill name="online-conferencing" installed_at="2024-06-01T10:00:00.000Z">
+  <current_state>
+    {"providers":["google","zoom"],"wiringPattern":"single-default"}
+  </current_state>
+</skill>
+```
+
+The agent now knows on re-entry that both Google Meet and Zoom are already set up, and which wiring pattern was used, without the user needing to repeat themselves.
+
+**Auto-registration is transparent**
+
+The first call to `computeState` triggers `mergeSkillState` → `applyStatePatch`, which checks whether the skill already has an entry in `applied-skills.json`. If not, it calls `recordInstall` automatically. The developer does not need to call `skill install` or add any registration code.
+
+**Documenting the checkpoint in skill.md**
+
+The `skill.md` workflow must specify exactly when to call the tool — after the artifact exists, not before. From `online-conferencing/skill.md`:
+
+```markdown
+## Step 4: Create the Dispatcher (`create-meeting.ts`)
+
+Once `create-meeting.ts` is written, call `online-conferencing__confirmProviders` with the
+providers **actually implemented** in the dispatcher and the wiring pattern used:
+
+\`\`\`typescript
+online-conferencing__confirmProviders({
+  providers: ["google", "zoom"],   // only providers whose integration files were generated
+  wiringPattern: "single-default", // omit when only one provider
+})
+\`\`\`
+
+Call it only after the dispatcher is written — not at planning time — because
+intent without implementation is not state.
+```
+
+This wording is intentional: tying the tool invocation to a concrete, observable artifact (the dispatcher file) prevents the LLM from calling it speculatively at plan-confirmation time before any code exists.
+
+**Checklist for adding a state-capture tool to a guidance-only skill**
+
+- [ ] Create `tools/index.ts` exporting a tool with a descriptive name (e.g. `confirmProviders`, `recordConfig`)
+- [ ] `execute` echoes the input — no network calls, no file writes
+- [ ] `computeState` returns a flat, minimal patch (under ~100 tokens)
+- [ ] `skill.md` instructs the LLM to call the tool **after** the key artifact is written, with example call-site code
+- [ ] The tool description matches the `skill.md` checkpoint wording
+- [ ] Unit tests cover: `execute` return shape, `computeState` output, `null` guard on failed output, Zod schema rejections
+
 ### Tool Definition Interface
 
 Each tool must follow the `SkillToolDefinition` interface:
@@ -403,6 +634,16 @@ export interface SkillToolDefinition<TInput = any, TOutput = any> {
    * Receives validated input and optional context
    */
   execute: (input: TInput, context?: AgentContext) => Promise<TOutput> | TOutput;
+
+  /**
+   * Optional: Return a lightweight patch to merge into the skill's persistent state.
+   * Called automatically after every successful execute(). Return null/undefined to skip.
+   *
+   * IMPORTANT: This output is injected into every LLM call for the lifetime of the app.
+   * Keep it minimal — boolean flags, current config IDs, not raw API payloads or logs.
+   * Aim for under 200 tokens across all fields. See "Skill Amnesia" section above.
+   */
+  computeState?: (input: TInput, output: TOutput) => Record<string, unknown> | null | undefined;
 
   /** Optional: Tool-specific configuration */
   config?: {
