@@ -5,7 +5,7 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AssetInfo, AssetManifest } from '../../types/rebuild.js';
-import { AssetProcessingService } from '../AssetProcessingService.js';
+import { AssetProcessingService, dedupeImageVariants } from '../AssetProcessingService.js';
 
 describe('AssetProcessingService - analyzePageAssets filtering', () => {
   const createMockManifest = (): AssetManifest => ({
@@ -459,5 +459,112 @@ describe('AssetProcessingService - process merge', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('dedupeImageVariants', () => {
+  const img = (url: string, width: number | undefined, sourcePages: string[]): AssetInfo => ({
+    url,
+    localPath: '.source-site/assets/images/x.jpg',
+    type: 'image',
+    ...(width ? { dimensions: { width, height: width } } : {}),
+    sourcePages,
+  });
+
+  it('collapses CDN format variants of one source image, keeping highest-res + merged sourcePages', () => {
+    const out = dedupeImageVariants([
+      img('https://cdn.example.com/kitchen.jpg?format=original', 2500, ['https://site/']),
+      img('https://cdn.example.com/kitchen.jpg', 750, ['https://site/about']),
+      img('https://cdn.example.com/kitchen.jpg?format=1500w', 1500, ['https://site/']),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.dimensions?.width).toBe(2500); // kept the highest-resolution variant
+    expect(out[0]?.url).toBe('https://cdn.example.com/kitchen.jpg?format=original');
+    expect(out[0]?.sourcePages.sort()).toEqual(['https://site/', 'https://site/about']);
+  });
+
+  it('prefers the ?format=original variant when widths tie', () => {
+    const out = dedupeImageVariants([
+      img('https://cdn.example.com/logo.png?format=1500w', 1500, ['/']),
+      img('https://cdn.example.com/logo.png?format=original', 1500, ['/']),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.url).toBe('https://cdn.example.com/logo.png?format=original');
+  });
+
+  it('keeps genuinely different files (different pathname/extension) separate', () => {
+    const out = dedupeImageVariants([
+      img('https://cdn.example.com/logo.png?format=original', 1500, ['/']),
+      img('https://cdn.example.com/logo.jpg?format=original', 1500, ['/']),
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it('never collapses non-image assets even when paths match', () => {
+    const css = (url: string): AssetInfo => ({
+      url, localPath: '.source-site/assets/other/x.css', type: 'other', sourcePages: ['/'],
+    });
+    const out = dedupeImageVariants([
+      css('https://cdn.example.com/app.css?v=1'),
+      css('https://cdn.example.com/app.css?v=2'),
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it('keeps distinct images that share a path but differ by a non-variant query (e.g. ?id)', () => {
+    const out = dedupeImageVariants([
+      img('https://cdn.example.com/media.php?id=1', 800, ['https://site/a']),
+      img('https://cdn.example.com/media.php?id=2', 800, ['https://site/b']),
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it('collapses transform variants while preserving an identity query param', () => {
+    const out = dedupeImageVariants([
+      img('https://cdn.example.com/photo.jpg?id=7&format=original', 2000, ['https://site/a']),
+      img('https://cdn.example.com/photo.jpg?id=7&format=500w', 500, ['https://site/b']),
+      img('https://cdn.example.com/photo.jpg?id=8&format=original', 2000, ['https://site/c']),
+    ]);
+    // id=7's two format variants collapse to one; id=8 stays distinct → 2 total.
+    expect(out).toHaveLength(2);
+    const id7 = out.find(a => a.url.includes('id=7'));
+    expect(id7?.dimensions?.width).toBe(2000); // kept the ?format=original variant
+    expect(id7?.sourcePages.sort()).toEqual(['https://site/a', 'https://site/b']);
+  });
+
+  it('prefers ?format=original even when its width is unrecorded and a sibling is sized', () => {
+    const out = dedupeImageVariants([
+      img('https://cdn.example.com/hero.jpg?format=750w', 750, ['/']),
+      img('https://cdn.example.com/hero.jpg?format=original', undefined, ['/']),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.url).toBe('https://cdn.example.com/hero.jpg?format=original');
+  });
+
+  it('backfills content fields from the dropped variant but not its resolution-specific size', () => {
+    const out = dedupeImageVariants([
+      // higher-fidelity original, not yet analyzed (no description, no dimensions)
+      {
+        url: 'https://cdn.example.com/hero.jpg?format=original',
+        localPath: '.source-site/assets/images/a.jpg',
+        type: 'image',
+        sourcePages: ['/'],
+      },
+      // lower-res variant that was already analyzed
+      {
+        url: 'https://cdn.example.com/hero.jpg?format=500w',
+        localPath: '.source-site/assets/images/b.jpg',
+        type: 'image',
+        sourcePages: ['/'],
+        description: 'A hero kitchen',
+        altText: 'kitchen',
+        dimensions: { width: 500, height: 400 },
+      },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.url).toBe('https://cdn.example.com/hero.jpg?format=original'); // kept the original
+    expect(out[0]?.description).toBe('A hero kitchen'); // content backfilled
+    expect(out[0]?.altText).toBe('kitchen');
+    expect(out[0]?.dimensions).toBeUndefined(); // did NOT inherit the 500w variant's size
   });
 });

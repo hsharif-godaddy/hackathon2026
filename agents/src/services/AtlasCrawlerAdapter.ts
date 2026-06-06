@@ -441,6 +441,9 @@ export class AtlasCrawlerAdapter {
       jobId,
       hasScreenshots: !!result.screenshots,
       screenshotsCount: result.screenshots?.length ?? 0,
+      // AIROBUILD-2103: the /home payload carries 0 assets — they only arrive
+      // with the full crawl. This count is what proved the build-vs-crawl race.
+      assetCount: result.assets?.length ?? 0,
     });
 
     return result;

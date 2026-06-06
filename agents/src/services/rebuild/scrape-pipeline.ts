@@ -542,6 +542,10 @@ export class ScrapePipeline {
         await this.processHomepageAssets(appId, homePage, crawlOutput);
 
         const assetService = new AssetProcessingService(this.deps.appPath);
+        // Only otherAssets here (unlike the homepage-already-processed branch
+        // which merges the full crawl asset set): processHomepageAssets() above
+        // already processed this crawl's home assets non-merge so analyzePageAssets
+        // could run on them. Don't add home assets to this merge — already written.
         const { assetMap, otherAssets } = bucketAssetsForProcessing(crawlOutput.assets, homePage.url);
         if (otherAssets.length > 0) {
           await assetService.process(otherAssets, assetMap, { merge: true });
@@ -570,10 +574,14 @@ export class ScrapePipeline {
 
         const homePage = successfulPages.find(p => isRebuildHomepage(p.url, state.rootPath));
         const assetService = new AssetProcessingService(this.deps.appPath);
-        const { assetMap, otherAssets } = bucketAssetsForProcessing(crawlOutput.assets, homePage?.url ?? '');
-        if (otherAssets.length > 0) {
+        // AIROBUILD-2103: merge the full crawl asset set here, not just
+        // otherAssets. The homepage_ready pass only saw the (asset-thin) /home
+        // payload, so a homepage-exclusive asset would otherwise never be
+        // written. process() dedups by URL, so merging the full set is idempotent.
+        const { assetMap } = bucketAssetsForProcessing(crawlOutput.assets, homePage?.url ?? '');
+        if (crawlOutput.assets.length > 0) {
           try {
-            await assetService.process(otherAssets, assetMap, { merge: true });
+            await assetService.process(crawlOutput.assets, assetMap, { merge: true });
           } catch (error) {
             logger.error('rebuild-orchestration.inner-assets-process-failed', {
               appId,

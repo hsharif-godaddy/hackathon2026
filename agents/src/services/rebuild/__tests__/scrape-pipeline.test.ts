@@ -107,6 +107,38 @@ describe('ScrapePipeline.runAtlas — homepage-first path', () => {
     );
     expect(styleQuestionsCall).toBeDefined();
   });
+
+  it('re-merges homepage assets post-crawl so homepage-exclusive assets survive', async () => {
+    const { pipeline, process } = setupAtlasPipeline({
+      fullSitemapPages: [
+        sitemapEntry('https://example.com/', 'homepage'),
+        sitemapEntry('https://example.com/about', 'about'),
+      ],
+      fullPages: [
+        scrapedPage('https://example.com/', '<h1>Home</h1>'),
+        scrapedPage('https://example.com/about', '<h1>About</h1>'),
+      ],
+      // Homepage-ready callback is asset-thin (real Atlas /home behavior).
+      callbackAssets: [],
+      // Full crawl: one homepage-exclusive asset + one referenced by an inner page.
+      fullAssets: [
+        { url: 'home-hero.jpg', sourceUrl: 'https://example.com/' },
+        { url: 'shared-logo.png', sourceUrl: 'https://example.com/about' },
+      ],
+    });
+
+    await pipeline.run('test-app', 'https://example.com');
+
+    // The post-crawl merge (merge:true) must include the homepage-exclusive asset,
+    // not just the inner-page one.
+    const mergeCall = process.mock.calls.find(
+      (call: unknown[]) => (call[2] as { merge?: boolean } | undefined)?.merge === true,
+    );
+    expect(mergeCall).toBeDefined();
+    const mergedUrls = (mergeCall![0] as { url: string }[]).map(a => a.url);
+    expect(mergedUrls).toContain('home-hero.jpg');
+    expect(mergedUrls).toContain('shared-logo.png');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -156,6 +188,10 @@ interface SetupOpts {
   /** What the homepage-ready callback receives (defaults to first page / first sitemap entry). */
   callbackPages?: PageScrapeResult[];
   callbackSitemapPages?: SitemapPage[];
+  /** Assets in the full crawl output (post-crawl). Defaults to []. */
+  fullAssets?: { url: string; sourceUrl: string }[];
+  /** Assets in the homepage-ready callback payload. Defaults to [] (Atlas /home is asset-thin). */
+  callbackAssets?: { url: string; sourceUrl: string }[];
   /** Override workflow-state / persistence callbacks for race + failure tests. */
   getStatus?: ReturnType<typeof vi.fn>;
   saveState?: ReturnType<typeof vi.fn>;
@@ -171,7 +207,7 @@ function setupAtlasPipeline(opts: SetupOpts) {
       discoveredAt: '2026-01-01T00:00:00.000Z',
     },
     pages: opts.fullPages,
-    assets: [],
+    assets: opts.fullAssets ?? [],
     designTokenMetadata: {},
     navigation: [],
     footerNavigation: [],
@@ -186,6 +222,7 @@ function setupAtlasPipeline(opts: SetupOpts) {
       pages: opts.callbackSitemapPages ?? [opts.fullSitemapPages[0]],
       totalPages: (opts.callbackSitemapPages ?? [opts.fullSitemapPages[0]]).length,
     },
+    assets: opts.callbackAssets ?? [],
   };
 
   const crawlSite = vi.fn().mockImplementation(
@@ -210,11 +247,12 @@ function setupAtlasPipeline(opts: SetupOpts) {
     } as unknown as SiteAnalyzerAgent;
   });
 
+  const process = vi.fn().mockResolvedValue({
+    assets: [], totalAssets: 0, byType: { image: 0, font: 0, icon: 0, other: 0 }, generatedAt: '',
+  });
+  const analyzePageAssets = vi.fn().mockResolvedValue({ pageAssets: [], analyzedImageCount: 0 });
   vi.mocked(AssetProcessingService).mockImplementation(function () {
-    return {
-      process: vi.fn().mockResolvedValue({ assets: [], totalAssets: 0, byType: { image: 0, font: 0, icon: 0, other: 0 }, generatedAt: '' }),
-      analyzePageAssets: vi.fn().mockResolvedValue({ pageAssets: [], analyzedImageCount: 0 }),
-    } as unknown as AssetProcessingService;
+    return { process, analyzePageAssets } as unknown as AssetProcessingService;
   });
 
   const persistScrapedPages = opts.persistScrapedPages ?? vi.fn().mockResolvedValue(undefined);
@@ -237,7 +275,7 @@ function setupAtlasPipeline(opts: SetupOpts) {
   };
 
   const pipeline = new ScrapePipeline(deps);
-  return { pipeline, persistScrapedPages, saveState, saveSitemap, saveMetadata, getStatus };
+  return { pipeline, persistScrapedPages, saveState, saveSitemap, saveMetadata, getStatus, process };
 }
 
 describe('ScrapePipeline.runAtlas — finding 1: persist before advertising in sitemap', () => {

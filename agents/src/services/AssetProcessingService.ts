@@ -120,7 +120,7 @@ export class AssetProcessingService {
         }
       }
 
-      const processedAssets = [...byUrl.values()];
+      const processedAssets = dedupeImageVariants([...byUrl.values()]);
       const byType = {
         image: 0,
         font: 0,
@@ -1067,4 +1067,91 @@ Respond ONLY with valid JSON in this exact format:
       imagesAnalyzed: images.length
     });
   }
+}
+
+/**
+ * Image-CDN transform query params that select a *variant* of one source image
+ * rather than a different image. Stripped when computing the dedup key so e.g.
+ * Squarespace `?format=100w`, `?format=original`, and the bare URL all collapse —
+ * while identity params (`id`, `v`, signed-CDN tokens) are preserved so two
+ * genuinely different images served from one path are NOT merged.
+ */
+const IMAGE_VARIANT_QUERY_PARAMS = new Set([
+  'format', 'w', 'h', 'width', 'height', 'quality', 'q', 'dpr', 'fit', 'auto', 'fm',
+]);
+
+/**
+ * Collapse image variants that point at the same source file.
+ *
+ * AIROBUILD-2103: some image CDNs expose one source image as many URLs that
+ * differ only by transform query params — Squarespace's `?format=Nw` /
+ * `?format=original` / bare being the case this targets. Atlas normalizes most,
+ * but residual variants (e.g. a bare `<img src>` vs. its `?format=original`
+ * srcset sibling) can still reach the manifest as look-alike duplicates, which
+ * the rebuild prompt forwards to the LLM (and it fabricates galleries from the
+ * apparent multiplicity). Defense-in-depth net on top of Atlas normalization:
+ * group images by origin + pathname + any *non-variant* query params, keep the
+ * highest-fidelity entry, and union their `sourcePages`. Non-image assets are
+ * never collapsed.
+ *
+ * Only query-param variants are collapsed. Wix-style transforms live in the URL
+ * *path* (`/v1/fill/w_500,.../x.jpg`), so different Wix variants have different
+ * pathnames and are left to Atlas's upstream path normalization.
+ */
+export function dedupeImageVariants(assets: AssetInfo[]): AssetInfo[] {
+  const canonicalKey = (a: AssetInfo): string => {
+    if (a.type !== 'image') return `exact:${a.url}`;
+    try {
+      const u = new URL(a.url);
+      // Drop known transform params; keep identity params so distinct images
+      // sharing a path (`?id=1` vs `?id=2`) stay separate rather than collapsing
+      // and mis-merging their sourcePages.
+      const kept = [...u.searchParams.entries()]
+        .filter(([k]) => !IMAGE_VARIANT_QUERY_PARAMS.has(k.toLowerCase()))
+        .sort(([x], [y]) => x.localeCompare(y));
+      const query = kept.map(([k, v]) => `${k}=${v}`).join('&');
+      return `${u.origin}${u.pathname}${query ? `?${query}` : ''}`;
+    } catch {
+      return `exact:${a.url}`;
+    }
+  };
+  const width = (a: AssetInfo): number => a.dimensions?.width ?? 0;
+  const isOriginal = (a: AssetInfo): boolean => /[?&]format=original/.test(a.url);
+  const union = (a: string[] | undefined, b: string[] | undefined): string[] =>
+    [...new Set([...(a ?? []), ...(b ?? [])])];
+
+  // Pick the full-res source: an explicit `?format=original` wins outright (its
+  // recorded width is often absent, so a sized thumbnail must not outrank it);
+  // otherwise the larger recorded width; otherwise keep the first seen.
+  const preferred = (a: AssetInfo, b: AssetInfo): AssetInfo => {
+    if (isOriginal(a) !== isOriginal(b)) return isOriginal(a) ? a : b;
+    return width(a) >= width(b) ? a : b;
+  };
+
+  const byKey = new Map<string, AssetInfo>();
+  for (const asset of assets) {
+    const key = canonicalKey(asset);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, asset);
+      continue;
+    }
+    const keep = preferred(existing, asset);
+    const drop = keep === existing ? asset : existing;
+    // Carry over content-descriptive fields from the dropped variant when the
+    // kept one lacks them, so a prior analysis isn't discarded and re-run
+    // (mirrors the backfill process() does). These describe the image content
+    // and are resolution-independent. Deliberately NOT dimensions/fileSize: the
+    // dropped variant is a different resolution, so copying its size onto the
+    // kept (higher-res/original) entry would misreport it.
+    byKey.set(key, {
+      ...keep,
+      sourcePages: union(keep.sourcePages, drop.sourcePages),
+      ...(!keep.description && drop.description ? { description: drop.description } : {}),
+      ...(!keep.altText && drop.altText ? { altText: drop.altText } : {}),
+      ...(!keep.usageContext && drop.usageContext ? { usageContext: drop.usageContext } : {}),
+      ...(!keep.composition && drop.composition ? { composition: drop.composition } : {}),
+    });
+  }
+  return [...byKey.values()];
 }
