@@ -1,6 +1,6 @@
 import { hasBeenPublished as hasBeenPublishedShared, type PublishCheckableSite } from '@airo/shared';
 
-import { DomainStatus, DomainType, SiteStatus } from '@/lib/control-plane/types';
+import { DomainStatus, DomainType, LifecycleState, SiteStatus, type SiteVariant } from '@/lib/control-plane/types';
 
 type SiteWithOptionalStatus = { status?: SiteStatus } | null | undefined;
 
@@ -46,3 +46,19 @@ export function canAccessDomainManagement(site: PublishCheckableSite & DomainLis
   return hasBeenPublished(site) || hasCustomDomainAttachments(site);
 }
 
+type SiteWithLifecycle = {
+  variantsWithLifecycle?: SiteVariant[];
+} | null | undefined;
+
+/**
+ * True when the site's preview variant is not running (paused or archived).
+ * Used to hide preview-related UI on the Projects page when the app is not accessible.
+ */
+export function isPreviewHibernated(site: SiteWithLifecycle): boolean {
+  const variants = site?.variantsWithLifecycle;
+  if (!variants?.length) return false;
+
+  const preview = variants.find(v => v.variant === 'preview');
+  const state = preview?.lifecycle?.lifecycleState;
+  return state === LifecycleState.PAUSED || state === LifecycleState.ARCHIVED;
+}

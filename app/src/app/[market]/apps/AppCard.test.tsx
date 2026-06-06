@@ -9,7 +9,7 @@ import { screen, waitFor } from '@testing-library/react';
 
 import { SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL } from '@/config/switchboard-flags';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
-import { SiteStatus } from '@/lib/control-plane/types';
+import { LifecycleState, SiteStatus } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { createMockSite, mockInstrumentation, mockRouter } from '@/tests/mocks';
@@ -206,6 +206,87 @@ describe('AppCard', () => {
       await waitFor(() => {
         expect(screen.queryByText('builder_apps_menu_preview')).not.toBeInTheDocument();
       });
+    });
+
+    it('should not show preview menu item when app is hibernated (paused)', async () => {
+      const hibernatedSite = createMockSite({
+        status: SiteStatus.Running,
+        preview_url: 'https://preview.test',
+        variantsWithLifecycle: [
+          {
+            variant: 'preview',
+            status: 'inactive',
+            lifecycle: {
+              lifecycleState: LifecycleState.PAUSED,
+            },
+          },
+        ],
+      });
+      const { user } = renderWithProviders(<AppCard site={hibernatedSite} />);
+
+      const actionsMenuButton = screen.getByRole('button', { name: 'builder_apps_menu_actions' });
+      await user.click(actionsMenuButton);
+
+      await waitFor(() => {
+        expect(screen.queryByText('builder_apps_menu_preview')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should not show preview corner button when app is hibernated (paused)', () => {
+      const hibernatedSite = createMockSite({
+        status: SiteStatus.Running,
+        preview_url: 'https://preview.test',
+        variantsWithLifecycle: [
+          {
+            variant: 'preview',
+            status: 'inactive',
+            lifecycle: {
+              lifecycleState: LifecycleState.PAUSED,
+            },
+          },
+        ],
+      });
+      renderWithProviders(<AppCard site={hibernatedSite} />);
+
+      expect(screen.queryByTestId('app-card-preview-button')).not.toBeInTheDocument();
+    });
+
+    it('should not show preview corner button when app is archived (cold hibernation)', () => {
+      const archivedSite = createMockSite({
+        status: SiteStatus.Running,
+        preview_url: 'https://preview.test',
+        variantsWithLifecycle: [
+          {
+            variant: 'preview',
+            status: 'inactive',
+            lifecycle: {
+              lifecycleState: LifecycleState.ARCHIVED,
+            },
+          },
+        ],
+      });
+      renderWithProviders(<AppCard site={archivedSite} />);
+
+      expect(screen.queryByTestId('app-card-preview-button')).not.toBeInTheDocument();
+    });
+
+    it('should show preview corner button when app is running and not hibernated', () => {
+      const runningSite = createMockSite({
+        status: SiteStatus.Running,
+        preview_url: 'https://preview.test',
+        variantsWithLifecycle: [
+          {
+            variant: 'preview',
+            status: 'active',
+            lifecycle: {
+              lifecycleState: LifecycleState.RUNNING,
+            },
+          },
+        ],
+      });
+      renderWithProviders(<AppCard site={runningSite} />);
+
+      expect(screen.getByTestId('app-card-preview-button')).toBeInTheDocument();
     });
 
     it('should show settings menu item', async () => {

@@ -15,6 +15,7 @@ import type {
 export enum LifecycleState {
   RUNNING = 'running',
   PAUSED = 'paused',
+  ARCHIVED = 'archived',
   RELOADING = 'reloading',
   PROVISIONING = 'provisioning',
   DELETING = 'deleting',

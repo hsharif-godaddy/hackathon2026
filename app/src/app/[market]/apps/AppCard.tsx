@@ -43,7 +43,7 @@ import { useSitesStore } from '@/stores/useSitesStore'
 import { formatDate } from '@/utils/common'
 import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
 import { withPreviewParam } from '@/utils/previewUrl'
-import { hasBeenPublished } from '@/utils/site'
+import { hasBeenPublished, isPreviewHibernated } from '@/utils/site'
 
 interface AlertState {
   siteId: string | null
@@ -364,7 +364,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
       onClick={(e) => e.stopPropagation()}
       className="flex gap-1 items-center"
     >
-      {site.status === SiteStatus.Running && site.preview_url && (
+      {site.status === SiteStatus.Running && site.preview_url && !isPreviewHibernated(site) && (
         <Button
           design="control"
           size="sm"
@@ -425,7 +425,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
               </Box>
             </MenuItem>
           )}
-          {site.status === SiteStatus.Running && site.preview_url && (
+          {site.status === SiteStatus.Running && site.preview_url && !isPreviewHibernated(site) && (
             <MenuItem
               onClick={() => window.open(isPreviewHeaderEnabled ? withPreviewParam(site.preview_url) : site.preview_url, '_blank', 'noopener,noreferrer')}
               data-eid={generateClickEID('apps.app.view')}

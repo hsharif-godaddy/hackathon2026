@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { DomainStatus, DomainType, SiteStatus } from '@/lib/control-plane/types';
-import { canAccessDomainManagement, hasBeenPublished, hasCustomDomainAttachments, isSiteSuspended } from './site';
+import { DomainStatus, DomainType, LifecycleState, SiteStatus } from '@/lib/control-plane/types';
+import { canAccessDomainManagement, hasBeenPublished, hasCustomDomainAttachments, isPreviewHibernated, isSiteSuspended } from './site';
 
 describe('hasBeenPublished', () => {
   describe('with publish variant', () => {
@@ -246,5 +246,89 @@ describe('canAccessDomainManagement', () => {
       domains: [],
     };
     expect(canAccessDomainManagement(site)).toBe(false);
+  });
+});
+
+describe('isPreviewHibernated', () => {
+  it('should return true when preview variant is paused', () => {
+    const site = {
+      variantsWithLifecycle: [
+        {
+          variant: 'preview',
+          status: 'inactive',
+          lifecycle: {
+            lifecycleState: LifecycleState.PAUSED,
+          },
+        },
+      ],
+    };
+    expect(isPreviewHibernated(site)).toBe(true);
+  });
+
+  it('should return true when preview variant is archived (cold hibernation)', () => {
+    const site = {
+      variantsWithLifecycle: [
+        {
+          variant: 'preview',
+          status: 'inactive',
+          lifecycle: {
+            lifecycleState: LifecycleState.ARCHIVED,
+          },
+        },
+      ],
+    };
+    expect(isPreviewHibernated(site)).toBe(true);
+  });
+
+  it('should return false when preview variant is running', () => {
+    const site = {
+      variantsWithLifecycle: [
+        {
+          variant: 'preview',
+          status: 'active',
+          lifecycle: {
+            lifecycleState: LifecycleState.RUNNING,
+          },
+        },
+      ],
+    };
+    expect(isPreviewHibernated(site)).toBe(false);
+  });
+
+  it('should return false when no variantsWithLifecycle', () => {
+    expect(isPreviewHibernated({})).toBe(false);
+    expect(isPreviewHibernated({ variantsWithLifecycle: [] })).toBe(false);
+  });
+
+  it('should return false when site is null or undefined', () => {
+    expect(isPreviewHibernated(null)).toBe(false);
+    expect(isPreviewHibernated(undefined)).toBe(false);
+  });
+
+  it('should return false when only publish variant exists', () => {
+    const site = {
+      variantsWithLifecycle: [
+        {
+          variant: 'publish',
+          status: 'inactive',
+          lifecycle: {
+            lifecycleState: LifecycleState.PAUSED,
+          },
+        },
+      ],
+    };
+    expect(isPreviewHibernated(site)).toBe(false);
+  });
+
+  it('should return false when preview variant has no lifecycle property', () => {
+    const site = {
+      variantsWithLifecycle: [
+        {
+          variant: 'preview',
+          status: 'active',
+        },
+      ],
+    };
+    expect(isPreviewHibernated(site)).toBe(false);
   });
 });
