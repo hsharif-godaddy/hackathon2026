@@ -14,6 +14,12 @@ to guarantee**:
   element with the listed field names.
 - When `isFirstPage: false`, the prompt does NOT contain homepage-only
   setup language (project name, color scheme, redesign guidance).
+- When `designDirection: keep-similar` (a faithful clone), the prompt does
+  NOT push redesign-only flourishes — bento grids, a "Differentiation
+  Element", or "social proof below the fold" — that would invent sections the
+  source never had (AIROBUILD-2241). `preserveDesign` is derived from
+  `stylePreferences.designDirection` here, exactly as `RebuildPromptBuilder`
+  does in production.
 
 Running the eval also writes a `baseline.md` per fixture with the most recent
 generated prompt — useful for spot-checking what the agent actually produced.

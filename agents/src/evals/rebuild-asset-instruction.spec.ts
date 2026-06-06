@@ -68,7 +68,7 @@ describe('rebuild page prompt — imported-asset directive', () => {
     colorPreference: 'keep-original',
     typographyStyle: 'keep-original',
     layoutApproach: 'responsive',
-  } as StylePreferences, assetManifest, isFirstPage: false });
+  } as StylePreferences, assetManifest, isFirstPage: false, hasScreenshot: false });
 
   it('instructs the agent to use imported assets and not generate images', () => {
     expect(prompt).toContain('USE IMPORTED ASSETS');

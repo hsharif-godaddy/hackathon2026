@@ -36,10 +36,15 @@ export interface BuildUserPromptArgs {
   stylePreferences: StylePreferences;
   assetManifest: AssetManifest;
   isFirstPage: boolean;
+  /** Whether a homepage screenshot was actually attached to the LLM call.
+   * Drives whether the color/design blocks reference "the screenshot" or fall
+   * back to the extracted content, so we never point the model at an image
+   * that isn't there (loadHomepageScreenshot returns undefined on a miss). */
+  hasScreenshot: boolean;
 }
 
 export function buildUserPrompt(args: BuildUserPromptArgs): string {
-  const { siteMetadata, pageContent, stylePreferences, assetManifest, isFirstPage } = args;
+  const { siteMetadata, pageContent, stylePreferences, assetManifest, isFirstPage, hasScreenshot } = args;
 
   const categorizedAssets = categorizeAssets(assetManifest.assets);
   const assetsList = renderAssetList(assetManifest.assets);
@@ -50,8 +55,8 @@ export function buildUserPrompt(args: BuildUserPromptArgs): string {
   const fullContent = pageContent.sanitizedContent.substring(0, 4000);
   const extractedContent = extractKeyContent(pageContent.sanitizedContent);
 
-  const colorInstructions = isFirstPage ? buildColorInstructions(stylePreferences, siteMetadata) : '';
-  const designInstructions = isFirstPage ? buildDesignInstructions(stylePreferences, siteMetadata) : '';
+  const colorInstructions = isFirstPage ? buildColorInstructions(stylePreferences, siteMetadata, hasScreenshot) : '';
+  const designInstructions = isFirstPage ? buildDesignInstructions(stylePreferences, siteMetadata, hasScreenshot) : '';
   const typographyInstructions = buildTypographyInstructions(stylePreferences, siteMetadata);
 
   const siteType = siteMetadata.siteType ?? 'content';

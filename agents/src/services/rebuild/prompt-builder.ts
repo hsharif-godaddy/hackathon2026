@@ -12,6 +12,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { PagePromptAgent } from '../../agents/page-prompt-agent.js';
+import { shouldPreserveDesign } from '../../agents/page-prompt/style-instructions.js';
 import { Logger } from '../../logging/index.js';
 import {
   type AssetManifest,
@@ -199,7 +200,12 @@ export class RebuildPromptBuilder {
     isFirstPage: boolean,
     screenshotBase64: string | undefined,
   ): Promise<string> {
-    const promptAgent = new PagePromptAgent({ isFirstPage, useAtlasCrawler: this.useAtlas });
+    // "keep-similar" is a faithful clone — gate the system prompt onto the
+    // preserve fragment (no redesign/section-adding brief). Derived from the
+    // same predicate the user-prompt design block keys off, so the two stay
+    // in sync.
+    const preserveDesign = shouldPreserveDesign(stylePreferences);
+    const promptAgent = new PagePromptAgent({ isFirstPage, useAtlasCrawler: this.useAtlas, preserveDesign });
     await promptAgent.initialize();
     try {
       return await promptAgent.generate(

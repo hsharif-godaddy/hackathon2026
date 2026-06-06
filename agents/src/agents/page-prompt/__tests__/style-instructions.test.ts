@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { SiteMetadata, StylePreferences } from '../../../types/rebuild.js';
-import { buildDesignInstructions, buildTypographyInstructions } from '../style-instructions.js';
+import { buildColorInstructions, buildDesignInstructions, buildTypographyInstructions, shouldPreserveDesign } from '../style-instructions.js';
 
 const baseMetadata: SiteMetadata = {
   sourceUrl: 'https://example.com',
@@ -92,14 +92,36 @@ describe('buildTypographyInstructions', () => {
   });
 });
 
+describe('shouldPreserveDesign', () => {
+  // Guards the single predicate the whole fix hinges on (AIROBUILD-2241): an
+  // inverted comparison here silently reintroduces the bug. The production
+  // caller (RebuildPromptBuilder) and the eval both derive preserveDesign from
+  // this function.
+  it('is true only for keep-similar (a faithful clone)', () => {
+    expect(shouldPreserveDesign(keepOriginalPrefs)).toBe(true);
+  });
+
+  it('is false for every redesign direction', () => {
+    for (const designDirection of ['modernize', 'simplify', 'bold'] as const) {
+      expect(shouldPreserveDesign({ ...keepOriginalPrefs, designDirection })).toBe(false);
+    }
+  });
+
+  it('ignores colorPreference (structure and color are independent axes)', () => {
+    // "bold layout, keep colors" must still be a redesign on the design axis.
+    expect(shouldPreserveDesign({ ...keepOriginalPrefs, designDirection: 'bold', colorPreference: 'keep-original' })).toBe(false);
+    expect(shouldPreserveDesign({ ...keepOriginalPrefs, colorPreference: 'suggest-new' })).toBe(true);
+  });
+});
+
 describe('buildDesignInstructions', () => {
   it('does NOT instruct avoiding specific font families in keep-similar mode', () => {
-    const result = buildDesignInstructions(keepOriginalPrefs, baseMetadata);
+    const result = buildDesignInstructions(keepOriginalPrefs, baseMetadata, true);
     expect(result).not.toMatch(/AVOID:.*Inter|AVOID:.*Roboto|AVOID:.*Arial/i);
   });
 
   it('includes TYPOGRAPHY DIRECTION cross-reference when fonts are detected', () => {
-    const result = buildDesignInstructions(keepOriginalPrefs, baseMetadata);
+    const result = buildDesignInstructions(keepOriginalPrefs, baseMetadata, true);
     expect(result).toContain('See TYPOGRAPHY DIRECTION section');
   });
 
@@ -108,8 +130,83 @@ describe('buildDesignInstructions', () => {
       ...baseMetadata,
       typography: { headingFonts: [], bodyFonts: [] },
     };
-    const result = buildDesignInstructions(keepOriginalPrefs, noFonts);
+    const result = buildDesignInstructions(keepOriginalPrefs, noFonts, true);
     expect(result).not.toContain('See TYPOGRAPHY DIRECTION section');
+  });
+
+  it('emits the PRESERVE heading for keep-similar, not a redesign brief', () => {
+    const result = buildDesignInstructions(keepOriginalPrefs, baseMetadata, true);
+    // Anchor on the literal heading so a reword can't pass on loose keywords.
+    expect(result).toContain('DESIGN DIRECTION (Preserve Source Design)');
+    expect(result).not.toMatch(/Full Redesign Guidance|Let Airo Decide/i);
+  });
+
+  it('forbids adding sections the source does not have (keep-similar)', () => {
+    const result = buildDesignInstructions(keepOriginalPrefs, baseMetadata, true);
+    expect(result).toMatch(/ONLY the sections that exist|do not add sections/i);
+  });
+
+  it('references the screenshot as primary reference when one is attached', () => {
+    const result = buildDesignInstructions(keepOriginalPrefs, baseMetadata, true);
+    expect(result).toMatch(/attached homepage screenshot as the PRIMARY reference/i);
+  });
+
+  it('does NOT reference a screenshot when none is attached (falls back to extracted content)', () => {
+    const result = buildDesignInstructions(keepOriginalPrefs, baseMetadata, false);
+    expect(result).not.toMatch(/screenshot/i);
+    expect(result).toMatch(/extracted page content/i);
+  });
+
+  it('omits the "reads as" style fragment when designStyle is empty', () => {
+    const noStyle: SiteMetadata = { ...baseMetadata, designStyle: '' };
+    const result = buildDesignInstructions(keepOriginalPrefs, noStyle, false);
+    expect(result).not.toContain('reads as');
+    expect(result).not.toContain('()');
+  });
+
+  it('still emits a redesign directive for explicit non-keep choices (bold)', () => {
+    const boldPrefs: StylePreferences = { ...keepOriginalPrefs, designDirection: 'bold' };
+    const result = buildDesignInstructions(boldPrefs, baseMetadata, true);
+    expect(result).toMatch(/DESIGN DIRECTION \(Bold\)/i);
+    expect(result).not.toMatch(/Preserve Source Design/i);
+  });
+});
+
+describe('buildColorInstructions', () => {
+  it('preserves the detected source palette for keep-original (no "Airo must pick")', () => {
+    const result = buildColorInstructions(keepOriginalPrefs, baseMetadata, true);
+    expect(result).toMatch(/Preserve Source Colors|KEEP the source/i);
+    expect(result).toContain('#000');
+    expect(result).not.toMatch(/YOU must (select|pick)|Airo's Choice|Let Airo Decide/i);
+  });
+
+  it('renders "(none detected)" for roles missing from a partial palette', () => {
+    // baseMetadata has primary #000 only — secondary/accent are empty.
+    const result = buildColorInstructions(keepOriginalPrefs, baseMetadata, true);
+    expect(result).toContain('Primary: #000');
+    expect(result).toContain('Secondary: (none detected)');
+    expect(result).toContain('Accent: (none detected)');
+  });
+
+  it('cross-references the screenshot only when one is attached', () => {
+    expect(buildColorInstructions(keepOriginalPrefs, baseMetadata, true)).toMatch(/screenshot/i);
+    expect(buildColorInstructions(keepOriginalPrefs, baseMetadata, false)).not.toMatch(/screenshot/i);
+  });
+
+  it('falls back to brand-derived colors when no palette detected', () => {
+    const noColors: SiteMetadata = {
+      ...baseMetadata,
+      colorPalette: { primary: [], secondary: [], accent: [] },
+    };
+    const result = buildColorInstructions(keepOriginalPrefs, noColors, true);
+    expect(result).toMatch(/no palette was reliably detected|Derive/i);
+    expect(result).not.toContain('undefined');
+  });
+
+  it('emits a fresh-scheme directive for suggest-new', () => {
+    const suggestPrefs: StylePreferences = { ...keepOriginalPrefs, colorPreference: 'suggest-new' };
+    const result = buildColorInstructions(suggestPrefs, baseMetadata, true);
+    expect(result).toMatch(/Fresh Color Scheme|new color scheme/i);
   });
 });
 

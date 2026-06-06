@@ -7,4 +7,5 @@ When a homepage screenshot is attached, use it as the PRIMARY reference for layo
 - Note how content sections are arranged (grid, cards, stacked, alternating, full-bleed)
 - Note the footer structure (columns, density, placement of links vs contact info)
 - Replicate the layout faithfully — don't invent a new arrangement
+- **Match the section count and order in the screenshot. Do NOT add sections the source doesn't show** (galleries, testimonials, about blocks, extra CTA bands, stat/feature grids). A sparse homepage stays sparse.
 - Include specific layout instructions like "full-width hero with text overlaid on left, image right" or "3-column feature grid below a centered headline"

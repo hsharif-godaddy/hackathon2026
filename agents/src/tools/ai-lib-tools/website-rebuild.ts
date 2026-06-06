@@ -15,7 +15,11 @@ const logger = Logger.create({ component: 'website-rebuild-tool' })
 const appRepo = new AppRepository()
 
 /**
- * Default style preferences - all set to "Let Airo Decide"
+ * Default style preferences for a deterministic rebuild: preserve the source
+ * faithfully (keep its design, colors, and fonts). This is a clone tool, so
+ * preservation — not redesign — is the right default. These values drive the
+ * preserve branches in style-instructions.ts and select design-preserve.md
+ * over the redesign brief; an explicit redesign requires a non-"keep" choice.
  */
 const DEFAULT_STYLE_PREFERENCES: StylePreferences = {
   designDirection: 'keep-similar',
@@ -117,7 +121,7 @@ This tool starts the website rebuild process:
         pagesScraped: completedState.scrapingProgress.completed
       })
 
-      // Apply default style preferences (Let Airo Decide for everything)
+      // Apply default style preferences (preserve the source — keep design, colors, fonts)
       await service.submitStylePreferences(appId, DEFAULT_STYLE_PREFERENCES)
 
       // Generate homepage prompt

@@ -15,7 +15,7 @@ import { readFile, writeFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { PagePromptAgent } from '@airo/agents/page-prompt-agent';
+import { PagePromptAgent, shouldPreserveDesign } from '@airo/agents/page-prompt-agent';
 import type {
   AssetManifest,
   PageContent,
@@ -83,6 +83,37 @@ const CONTRACTS: Record<string, Contract[]> = {
         const brand = f.generateArgs.siteMetadata.sitePurpose.split(/[—\-:]/)[0]?.trim();
         return !!brand && p.includes(brand);
       },
+    },
+    {
+      // AIROBUILD-2241: keep-similar is a faithful clone, so the generated
+      // prompt must not direct BUILDING a section the sparse source lacks
+      // (three nav links, one paragraph, no screenshot). We inspect section
+      // HEADINGS only — the agent structures the page it wants built as
+      // `## <Section>`, whereas any echo of the preserve guidance's negative
+      // examples ("avoid bento mosaics") lands in prose, not a heading. So this
+      // catches real over-generation without false-failing on paraphrased
+      // guidance (which a verbatim word blocklist would, since "bento",
+      // "gallery", "testimonials" etc. all appear in the guidance we feed in).
+      description: 'Preserve mode: no invented content-section headings (gallery / our work / testimonials / …)',
+      check: (p) => {
+        const headings = p
+          .split('\n')
+          .filter((line) => /^#{1,4}\s/.test(line))
+          .map((line) => line.toLowerCase());
+        return !headings.some((h) =>
+          /\b(our work|gallery|portfolio|testimonial|reviews?|services? grid|stats|metrics|case stud)/.test(h)
+        );
+      },
+    },
+    {
+      // Defense in depth: vocabulary that lives ONLY in the redesign brief
+      // (design-redesign.md / the old user block), never in the preserve
+      // guidance — so its presence means the wrong fragment leaked in. Safe to
+      // blocklist verbatim. "Differentiation" matches design-redesign.md's
+      // `**Differentiation:**` heading (the phrase "Differentiation Element"
+      // was removed from the user block in this PR).
+      description: 'Preserve mode: redesign-brief vocabulary did not leak (Differentiation / social proof)',
+      check: (p) => !/Differentiation|social proof/i.test(p),
     },
   ],
   'with-carousel': [
@@ -196,9 +227,14 @@ function summarizeDiff(baseline: string | null, prompt: string): string {
 async function runFixture(name: string, updateBaseline: boolean): Promise<FixtureResult> {
   const fixture = await loadFixture(name);
 
+  // Mirror RebuildPromptBuilder.runPagePromptAgent: derive preserveDesign from
+  // the same shared predicate production uses, so the eval can't drift from the
+  // real wiring.
+  const preserveDesign = shouldPreserveDesign(fixture.generateArgs.stylePreferences);
   const agent = new PagePromptAgent({
     isFirstPage: fixture.agentOptions.isFirstPage,
     useAtlasCrawler: fixture.agentOptions.useAtlasCrawler,
+    preserveDesign,
   });
   await agent.initialize();
   const prompt = await agent.generate(

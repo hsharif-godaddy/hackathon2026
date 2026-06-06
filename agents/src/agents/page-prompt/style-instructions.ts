@@ -3,26 +3,54 @@
  * by the user's intake-form choice and surfaces guidance the LLM should
  * follow when generating the rebuild prompt.
  *
- * "Let Airo Decide" branches inline a redesign template; explicit choices
- * (suggest-new, simplify, modernize, bold, custom) emit a focused directive.
+ * Two independent axes:
+ *   - designDirection (structure/layout): `keep-similar` preserves the source
+ *     faithfully (clone); `modernize` / `simplify` / `bold` emit a focused
+ *     redesign directive.
+ *   - colorPreference (palette): `keep-original` preserves the detected
+ *     palette; `suggest-new` picks a fresh scheme; `custom` uses user hexes.
+ *
+ * The axes move independently — e.g. "bold layout, keep colors" is valid — so
+ * each block keys off its own preference. `shouldPreserveDesign` exposes the
+ * structure-axis predicate that also gates the system-prompt fragment
+ * (design-preserve.md vs design-redesign.md) in page-prompt-agent.ts.
  */
 import type { SiteMetadata, StylePreferences, TypographyScaleEntry } from '../../types/rebuild.js';
 
-export function buildColorInstructions(prefs: StylePreferences, metadata: SiteMetadata): string {
+/**
+ * The structure-axis "is this a faithful clone?" predicate. Single source of
+ * truth for both the system-prompt fragment selection (page-prompt-agent.ts)
+ * and the user-prompt design block below, so the two can't silently diverge.
+ * Keyed on designDirection only — color preservation is a separate axis.
+ */
+export function shouldPreserveDesign(prefs: StylePreferences): boolean {
+  return prefs.designDirection === 'keep-similar';
+}
+
+export function buildColorInstructions(prefs: StylePreferences, metadata: SiteMetadata, hasScreenshot: boolean): string {
   if (prefs.colorPreference === 'keep-original') {
-    return `COLOR DIRECTION (Airo's Choice - YOU must pick specific colors):
-Since the user chose "Let Airo Decide" for colors, YOU must select an appropriate color scheme.
-Based on the site purpose "${metadata.sitePurpose}" and brand voice "${metadata.brandVoice}",
-choose colors that create the right emotional impact. Do NOT tell the develop agent to "choose colors" -
-instead, specify exact hex codes in your prompt.
-
-Consider:
-- The existing colors: ${metadata.colorPalette.primary.join(', ') || 'none detected'} (you may keep, modernize, or change these)
-- The target audience: ${metadata.targetAudience}
-- The brand voice: ${metadata.brandVoice}
-
-Pick specific colors and include them in your prompt like:
-"Use [color name] (#hexcode) as the primary color with [accent color] (#hexcode) for buttons and highlights."`;
+    const { primary, secondary, accent } = metadata.colorPalette;
+    const detected = [...primary, ...secondary, ...accent];
+    // No palette detected — let the agent derive one from brand/purpose rather
+    // than emit empty "Primary: none" bullets the develop agent can't act on.
+    if (detected.length === 0) {
+      const anchor = hasScreenshot
+        ? 'Stay close to what the homepage screenshot shows — do NOT introduce a bold new scheme.'
+        : 'Keep the palette restrained and consistent with the source — do NOT introduce a bold new scheme.';
+      return `COLOR DIRECTION (Preserve Source Colors):
+The user wants to keep the original color scheme, but no palette was reliably detected from the source.
+Derive a restrained palette that fits the site purpose "${metadata.sitePurpose}" and brand voice "${metadata.brandVoice}",
+and specify exact hex codes in your prompt. ${anchor}`;
+    }
+    const crossCheck = hasScreenshot
+      ? ' Cross-check against the homepage screenshot so the rebuilt colors match what the source actually shows.'
+      : '';
+    return `COLOR DIRECTION (Preserve Source Colors):
+The user wants to KEEP the source site's color scheme. Reuse the detected palette — do NOT substitute a new scheme.
+- Primary: ${primary.join(', ') || '(none detected)'}
+- Secondary: ${secondary.join(', ') || '(none detected)'}
+- Accent: ${accent.join(', ') || '(none detected)'}
+Specify these exact hex codes in your prompt. If a role wasn't detected, derive it from the colors above (e.g. a darker/lighter shade) rather than inventing an unrelated color.${crossCheck}`;
   }
 
   if (prefs.colorPreference === 'suggest-new') {
@@ -43,48 +71,30 @@ Use the user's specified colors:
   return '';
 }
 
-export function buildDesignInstructions(prefs: StylePreferences, metadata: SiteMetadata): string {
-  if (prefs.designDirection === 'keep-similar') {
-    return `DESIGN DIRECTION (Airo's Choice - Full Redesign Guidance):
-Since the user chose "Let Airo Decide" for design, YOU must create a distinctive, high-quality design direction.
+export function buildDesignInstructions(prefs: StylePreferences, metadata: SiteMetadata, hasScreenshot: boolean): string {
+  if (shouldPreserveDesign(prefs)) {
+    // Reference line + the trailing "as seen in…" clause both depend on
+    // whether a screenshot was actually attached (loadHomepageScreenshot
+    // returns undefined on a miss), so we don't tell the model to consult an
+    // image that isn't there. The structural-fidelity bullets work off the
+    // extracted content either way.
+    const primaryReference = hasScreenshot
+      ? '**Use the attached homepage screenshot as the PRIMARY reference** for layout, section order, and composition.'
+      : '**Use the extracted page content and structure (above) as your reference** for layout, section order, and composition.';
+    const heroSource = hasScreenshot ? 'as seen in the screenshot' : 'as reflected in the extracted content';
+    return `DESIGN DIRECTION (Preserve Source Design):
+The user wants to keep the design SIMILAR to the source. This is a clone, not a redesign — reproduce the source site's look, feel, and structure faithfully.
 
-**CRITICAL: Include this full design guidance in your output prompt:**
+${primaryReference}
 
-FRONTEND AESTHETICS DIRECTION:
-Create a distinctive design that avoids generic "AI slop" aesthetics.
+Structural fidelity (CRITICAL — this is what "keep similar" means):
+- Build ONLY the sections that exist in the source. Do NOT add sections the source doesn't have (no invented project galleries, testimonials, "about" blocks, stats/feature grids, or extra CTA bands).
+- Match the source's section order and count. If the source homepage is just a header, a hero, and a footer, build exactly that — nothing more.
+- Preserve the source's hero composition, navigation style, and footer structure ${heroSource}.
 
-Typography Direction:
-- Use fonts appropriate for "${metadata.brandVoice}" brand voice
-- Specify the typography mood (e.g., "friendly but professional", "bold and confident", "elegant and refined")${metadata.typography.headingFonts.length > 0 || metadata.typography.bodyFonts.length > 0 ? '\n- See TYPOGRAPHY DIRECTION section for specific font guidance' : ''}
-
-Color Application:
-- Commit to a cohesive aesthetic with dominant colors and sharp accents
-- AVOID: Purple gradients on white, generic blue/gray corporate schemes
-- Include emotional intent with the colors you specify
-
-Layout Requirements (CRITICAL - these prevent generic AI output):
-- DO NOT use standard icon grids for features/services
-- DO NOT use empty-right hero compositions (text left, nothing right)
-- DO NOT use centered-text-on-colored-band CTAs
-- DO use: staggered layouts, bento grids, asymmetric compositions, full-bleed imagery
-
-Section-Specific Guidance:
-- Hero: Visual balance required - if text is left, add graphic/product shot right. Include social proof below fold.
-- Features: Show, don't list - use inline examples or screenshots, NOT icon cards
-- CTA: Asymmetric or integrated approaches, NOT centered-on-band
-- Footer: Maintain design quality - not an afterthought
-
-Differentiation Element (include ONE):
-- Oversized typography that breaks the grid
-- Bento-style layout with varied card sizes
-- Diagonal or curved section breaks
-- Bold use of asymmetric whitespace
-- Unexpected color application
-
-Consistency Requirements:
-- Footer and CTA MUST match hero quality
-- Don't get safer/more generic as page progresses
-- Maintain energy and intentionality throughout`;
+Aesthetic fidelity:
+- Stay consistent with the source's visual style${metadata.designStyle ? ` (it reads as "${metadata.designStyle}")` : ''} — its spacing, density, and imagery treatment.
+- Keep production quality and polish — clean and intentional, not generic "AI slop" — but do NOT introduce distinctive "redesign" flourishes (oversized grid-breaking type, bento mosaics, diagonal section breaks, etc.) unless the source itself uses them.${metadata.typography.headingFonts.length > 0 || metadata.typography.bodyFonts.length > 0 ? '\n- See TYPOGRAPHY DIRECTION section for specific font guidance' : ''}`;
   }
 
   if (prefs.designDirection === 'modernize') {

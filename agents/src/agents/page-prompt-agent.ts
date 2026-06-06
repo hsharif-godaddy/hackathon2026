@@ -13,6 +13,11 @@ import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import type { AssetManifest, PageContent, SiteMetadata, StylePreferences } from '../types/rebuild.js'
 import { buildUserPrompt } from './page-prompt/user-prompt-builder.js'
 import { processScreenshot } from './page-prompt/screenshot-processing.js'
+import { shouldPreserveDesign } from './page-prompt/style-instructions.js'
+
+// Re-exported so callers (RebuildPromptBuilder, the rebuild-prompts eval) derive
+// preserveDesign from the same predicate the user-prompt design block uses.
+export { shouldPreserveDesign }
 
 const logger = Logger.create({ component: 'page-prompt-agent' })
 
@@ -28,9 +33,19 @@ export interface PagePromptSystemPromptOptions {
    * should load. Future fidelity dials will likely supplant this single boolean
    * with per-dimension toggles. */
   useAtlasCrawler: boolean;
+  /** True when the design direction is "keep-similar" (a faithful clone).
+   * Selects design-preserve.md (reproduce the source, don't add sections) over
+   * design-redesign.md (the distinctive "Let Airo Decide" redesign brief).
+   *
+   * Must equal the user-prompt design block's branch in style-instructions.ts.
+   * That coupling is enforced at the call sites, not here: both the production
+   * caller (RebuildPromptBuilder) and the eval derive this from the same
+   * `shouldPreserveDesign(stylePreferences)` predicate that the user-prompt
+   * block keys off. Keep new callers on that helper. */
+  preserveDesign: boolean;
 }
 
-function selectSystemPromptFiles(opts: PagePromptSystemPromptOptions): string[] {
+export function selectSystemPromptFiles(opts: PagePromptSystemPromptOptions): string[] {
   return [
     'base.md',
     // visual-reference applies only when a homepage screenshot may be attached
@@ -40,7 +55,13 @@ function selectSystemPromptFiles(opts: PagePromptSystemPromptOptions): string[] 
     ...(opts.useAtlasCrawler ? ['preserve-interactive-patterns.md', 'preserve-forms.md'] : []),
     opts.isFirstPage ? 'homepage-setup.md' : 'inner-page-note.md',
     'asset-integration.md',
-    ...(opts.isFirstPage ? ['homepage-structure.md', 'design-redesign.md', 'output-format-homepage.md'] : ['output-format-inner-page.md']),
+    // The redesign brief (design-redesign.md) actively tells the model to add
+    // bento grids, differentiation flourishes, and "social proof" sections — on
+    // a faithful clone that fabricates sections the source never had. Load the
+    // preserve fragment instead when keeping the source design.
+    ...(opts.isFirstPage
+      ? ['homepage-structure.md', opts.preserveDesign ? 'design-preserve.md' : 'design-redesign.md', 'output-format-homepage.md']
+      : ['output-format-inner-page.md']),
   ];
 }
 
@@ -54,8 +75,8 @@ async function buildPagePromptSystemPrompt(opts: PagePromptSystemPromptOptions):
 }
 
 
-export async function createPagePromptAgent(isFirstPage: boolean = true, useAtlasCrawler: boolean = false): Promise<AgentConfig> {
-  const systemPrompt = await buildPagePromptSystemPrompt({ isFirstPage, useAtlasCrawler })
+export async function createPagePromptAgent(isFirstPage: boolean, useAtlasCrawler: boolean, preserveDesign: boolean): Promise<AgentConfig> {
+  const systemPrompt = await buildPagePromptSystemPrompt({ isFirstPage, useAtlasCrawler, preserveDesign })
   const { model, modelName } = await getAgentModelWithName('full')
 
   return {
@@ -81,20 +102,25 @@ export async function createPagePromptAgent(isFirstPage: boolean = true, useAtla
   }
 }
 
-export async function createPagePromptAgentFactory(options?: {
+export async function createPagePromptAgentFactory(options: {
   stateManager?: SessionStateManager
   isFirstPage?: boolean
   useAtlasCrawler?: boolean
+  // Required: a clone (keep-similar) vs a redesign must be an explicit decision —
+  // a silent default here would re-introduce AIROBUILD-2241 by gluing the wrong
+  // system fragment to the user-prompt block. Derive via shouldPreserveDesign.
+  preserveDesign: boolean
 }) {
   const factory = createAgentFactory()
-  const isFirstPage = options?.isFirstPage ?? true
-  const useAtlasCrawler = options?.useAtlasCrawler ?? false
+  const isFirstPage = options.isFirstPage ?? true
+  const useAtlasCrawler = options.useAtlasCrawler ?? false
+  const preserveDesign = options.preserveDesign
 
-  const stateManager = options?.stateManager || createSessionStateManager({
+  const stateManager = options.stateManager || createSessionStateManager({
     defaultAgentId: 'page-prompt'
   })
 
-  const pagePromptConfig = await createPagePromptAgent(isFirstPage, useAtlasCrawler)
+  const pagePromptConfig = await createPagePromptAgent(isFirstPage, useAtlasCrawler, preserveDesign)
 
   const agents = factory.defineAgents({
     'page-prompt': pagePromptConfig
@@ -112,16 +138,22 @@ export class PagePromptAgent {
   private factory: Awaited<ReturnType<typeof createPagePromptAgentFactory>> | null = null
   private useAtlasCrawler: boolean
   private isFirstPage: boolean
+  private preserveDesign: boolean
 
-  constructor(options?: { stateManager?: SessionStateManager; isFirstPage?: boolean; useAtlasCrawler?: boolean }) {
-    this.isFirstPage = options?.isFirstPage ?? true
-    this.useAtlasCrawler = options?.useAtlasCrawler ?? false
+  // preserveDesign is required (not defaulted): callers must explicitly decide
+  // clone vs redesign — see shouldPreserveDesign. A silent default would let a
+  // future redesign caller glue the preserve system fragment to a redesign
+  // user-prompt block (AIROBUILD-2241).
+  constructor(options: { stateManager?: SessionStateManager; isFirstPage?: boolean; useAtlasCrawler?: boolean; preserveDesign: boolean }) {
+    this.isFirstPage = options.isFirstPage ?? true
+    this.useAtlasCrawler = options.useAtlasCrawler ?? false
+    this.preserveDesign = options.preserveDesign
   }
 
   async initialize(): Promise<void> {
-    logger.info('page-prompt-agent.initialization.start', { isFirstPage: this.isFirstPage })
-    this.factory = await createPagePromptAgentFactory({ isFirstPage: this.isFirstPage, useAtlasCrawler: this.useAtlasCrawler })
-    logger.info('page-prompt-agent.initialization.complete', { isFirstPage: this.isFirstPage })
+    logger.info('page-prompt-agent.initialization.start', { isFirstPage: this.isFirstPage, preserveDesign: this.preserveDesign })
+    this.factory = await createPagePromptAgentFactory({ isFirstPage: this.isFirstPage, useAtlasCrawler: this.useAtlasCrawler, preserveDesign: this.preserveDesign })
+    logger.info('page-prompt-agent.initialization.complete', { isFirstPage: this.isFirstPage, preserveDesign: this.preserveDesign })
   }
 
   getAgent() {
@@ -140,9 +172,14 @@ export class PagePromptAgent {
     screenshotBase64?: string
   ): Promise<string> {
     const agent = this.getAgent()
-    const prompt = buildUserPrompt({ siteMetadata, pageContent, stylePreferences, assetManifest, isFirstPage })
+    // Process the screenshot first so the prompt can reflect whether an image
+    // was actually attached: processScreenshot returns [] on a parse failure
+    // even when screenshotBase64 is set, and files.length is the true signal
+    // of what the model receives.
     const files = await processScreenshot(screenshotBase64)
-    const result = await agent.generate(prompt, files.length > 0 ? { files } : {})
+    const hasScreenshot = files.length > 0
+    const prompt = buildUserPrompt({ siteMetadata, pageContent, stylePreferences, assetManifest, isFirstPage, hasScreenshot })
+    const result = await agent.generate(prompt, hasScreenshot ? { files } : {})
     return result.content
   }
 
