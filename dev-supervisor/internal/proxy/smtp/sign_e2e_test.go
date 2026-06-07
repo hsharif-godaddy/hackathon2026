@@ -54,13 +54,14 @@ func TestSMTPProxy_JWSSigning_E2E(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
+	// Recipient on a different domain to avoid triggering same-domain fallback.
 	require.NoError(t, client.Mail("sender@example.com", nil))
-	require.NoError(t, client.Rcpt("recipient@example.com", nil))
+	require.NoError(t, client.Rcpt("recipient@example.net", nil))
 
 	w, err := client.Data()
 	require.NoError(t, err)
 	msgBody := "From: sender@example.com\r\n" +
-		"To: recipient@example.com\r\n" +
+		"To: recipient@example.net\r\n" +
 		"Subject: signed test\r\n" +
 		"\r\n" +
 		"hello\r\n"
@@ -127,8 +128,9 @@ func TestSMTPProxy_NoSigner_NoHeaders(t *testing.T) {
 	client, err := gosmtp.Dial(proxy.Addr())
 	require.NoError(t, err)
 	defer client.Close()
+	// Recipient on a different domain to avoid triggering same-domain fallback.
 	require.NoError(t, client.Mail("sender@example.com", nil))
-	require.NoError(t, client.Rcpt("rcpt@example.com", nil))
+	require.NoError(t, client.Rcpt("rcpt@example.net", nil))
 	w, err := client.Data()
 	require.NoError(t, err)
 	_, err = w.Write([]byte("From: sender@example.com\r\nSubject: t\r\n\r\nbody\r\n"))

@@ -182,18 +182,14 @@ func (id Identity) IsAllowedSender(addr string) bool {
 //
 // The local-part is AppID, falling back to "unknown" when AppID is empty.
 func (id Identity) CanonicalSender() string {
-	local := strings.TrimSpace(id.AppID)
-	if local == "" {
-		local = "unknown"
+	if domain := normalizeDomain(id.PrimaryDomain); domain != "" {
+		local := strings.TrimSpace(id.AppID)
+		if local == "" {
+			local = "unknown"
+		}
+		return local + "@" + domain
 	}
-	domain := normalizeDomain(id.PrimaryDomain)
-	if domain == "" {
-		domain = normalizeDomain(id.DefaultDomain)
-	}
-	if domain == "" {
-		domain = "airoapp.ai"
-	}
-	return local + "@" + domain
+	return id.DefaultDomainSender()
 }
 
 // EnforceSender returns the From address the proxy should use given a
@@ -208,6 +204,48 @@ func (id Identity) EnforceSender(claimed string) (string, bool) {
 		return claimed, false
 	}
 	return id.CanonicalSender(), true
+}
+
+// HasSameDomainConflict reports whether resolvedFrom shares a domain with
+// any address in recipients. When true, callers should fall back the From
+// to DefaultDomainSender() — some mail security filters like ProofPoint
+// quarantine messages arriving from an external relay that claim a From
+// on a domain the recipient's org owns.
+//
+// The DefaultDomain itself is exempt: if the From is already on the
+// platform domain, no fallback is needed — the platform domain is not
+// owned by any recipient's org, so inbound filters won't treat it as
+// impersonation.
+func (id Identity) HasSameDomainConflict(resolvedFrom string, recipients []string) bool {
+	_, fromDomain := localAndDomain(resolvedFrom)
+	if fromDomain == "" {
+		return false
+	}
+	if domainMatches(fromDomain, id.DefaultDomain) {
+		return false
+	}
+	for _, rcpt := range recipients {
+		_, rcptDomain := localAndDomain(rcpt)
+		if rcptDomain != "" && domainMatches(fromDomain, rcptDomain) {
+			return true
+		}
+	}
+	return false
+}
+
+// DefaultDomainSender returns "<AppID>@<DefaultDomain>" regardless of
+// PrimaryDomain. Used by same-domain fallback to ensure the From is on
+// the platform domain.
+func (id Identity) DefaultDomainSender() string {
+	local := strings.TrimSpace(id.AppID)
+	if local == "" {
+		local = "unknown"
+	}
+	domain := normalizeDomain(id.DefaultDomain)
+	if domain == "" {
+		domain = "airoapp.ai"
+	}
+	return local + "@" + domain
 }
 
 // localAndDomain parses an RFC 5322 address and returns its local-part

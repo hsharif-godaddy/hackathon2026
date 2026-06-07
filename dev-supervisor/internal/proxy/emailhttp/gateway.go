@@ -418,6 +418,27 @@ func (g *Gateway) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Same-domain fallback: if the resolved From shares a domain with any
+	// recipient, fall back to the platform domain. Some mail security
+	// filters like ProofPoint quarantine messages arriving from an
+	// external relay that claim a From on the recipient's own domain
+	// (seen as impersonation).
+	allRecipients := make([]string, 0, len(req.To)+len(req.CC)+len(req.BCC))
+	allRecipients = append(allRecipients, req.To...)
+	allRecipients = append(allRecipients, req.CC...)
+	allRecipients = append(allRecipients, req.BCC...)
+
+	if id.HasSameDomainConflict(from, allRecipients) {
+		originalFrom := from
+		from = id.DefaultDomainSender()
+		slog.Info("email_gateway.same_domain_fallback",
+			"original_from", originalFrom,
+			"fallback_from", from,
+			"app_id", id.AppID,
+		)
+		fromSource = "same_domain_fallback"
+	}
+
 	attachments, err := decodeAttachments(req.Attachments)
 	if err != nil {
 		// Decode failures are caller-fixable (malformed base64 or oversized

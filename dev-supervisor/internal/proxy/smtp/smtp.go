@@ -337,6 +337,22 @@ func (s *proxySession) Data(r io.Reader) error {
 
 	enforced := enforceMessageFrom(data, s.identity)
 
+	// Same-domain fallback: check the RFC 5322 From header (not the
+	// envelope From) because impersonation filters like ProofPoint key
+	// on the visible header, and the two surfaces can diverge after
+	// independent enforcement in Mail() vs enforceMessageFrom().
+	headerFrom := extractHeaderFrom(enforced)
+	if s.identity.HasSameDomainConflict(headerFrom, s.to) {
+		fallback := s.identity.DefaultDomainSender()
+		enforced = rewriteFromHeader(enforced, fallback)
+		slog.Info("smtp.same_domain_fallback",
+			"original_from", headerFrom,
+			"fallback_from", fallback,
+			"app_id", s.identity.AppID,
+		)
+		s.from = fallback
+	}
+
 	modifiedData := injectHeaders(enforced, s.backend.customHeaders)
 
 	// JWS sign for relay trust. The signer's body_hash claim covers
@@ -577,6 +593,17 @@ func isFromHeaderLine(line []byte) bool {
 		return false
 	}
 	return bytes.EqualFold(bytes.TrimRight(name, " \t"), []byte("From"))
+}
+
+// extractHeaderFrom parses the RFC 5322 From header from message bytes.
+// Returns the first From value, or "" if the message cannot be parsed or
+// has no From header.
+func extractHeaderFrom(data []byte) string {
+	msg, err := mail.ReadMessage(bytes.NewReader(data))
+	if err != nil {
+		return ""
+	}
+	return msg.Header.Get("From")
 }
 
 // injectHeaders is a thin wrapper around email.InjectHeaders kept here

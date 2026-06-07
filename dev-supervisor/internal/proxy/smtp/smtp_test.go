@@ -140,7 +140,10 @@ func TestSMTPProxyE2E(t *testing.T) {
 		t.Fatalf("Failed to send MAIL FROM: %v", mailErr)
 	}
 
-	if rcptErr := client.Rcpt("recipient@example.com", nil); rcptErr != nil {
+	// Recipient on a different domain than the sender to avoid triggering
+	// the same-domain fallback (tested separately in
+	// TestSMTPProxySameDomainFallback_KeysOnHeaderFrom).
+	if rcptErr := client.Rcpt("recipient@example.net", nil); rcptErr != nil {
 		t.Fatalf("Failed to send RCPT TO: %v", rcptErr)
 	}
 
@@ -150,7 +153,7 @@ func TestSMTPProxyE2E(t *testing.T) {
 	}
 
 	message := "From: sender@example.com\r\n" +
-		"To: recipient@example.com\r\n" +
+		"To: recipient@example.net\r\n" +
 		"Subject: Test Email\r\n" +
 		"\r\n" +
 		"This is a test email body.\r\n"
@@ -169,8 +172,8 @@ func TestSMTPProxyE2E(t *testing.T) {
 			t.Errorf("Expected from 'sender@example.com', got '%s'", email.from)
 		}
 
-		if len(email.to) != 1 || email.to[0] != "recipient@example.com" {
-			t.Errorf("Expected to 'recipient@example.com', got %v", email.to)
+		if len(email.to) != 1 || email.to[0] != "recipient@example.net" {
+			t.Errorf("Expected to 'recipient@example.net', got %v", email.to)
 		}
 
 		emailStr := string(email.data)
@@ -398,6 +401,88 @@ func TestSMTPProxyAllowedClaimPassesThrough(t *testing.T) {
 		emailStr := string(received.data)
 		if !strings.Contains(emailStr, `From: "Acme Support" <support@acme.com>`) {
 			t.Errorf("display-name + address should pass through unchanged, got:\n%s", emailStr)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for email")
+	}
+}
+
+// TestSMTPProxySameDomainFallback_KeysOnHeaderFrom verifies that the
+// same-domain check uses the RFC 5322 From header, not the envelope.
+// Scenario: envelope is on the platform domain (exempt from fallback)
+// but the header From is on the customer's custom domain — same domain
+// as the recipient. The fallback must fire based on the header.
+func TestSMTPProxySameDomainFallback_KeysOnHeaderFrom(t *testing.T) {
+	mockBackend := &mockSMTPBackend{receivedEmails: make(chan *mockEmail, 1)}
+	mockServer := gosmtp.NewServer(mockBackend)
+	mockServer.Addr = "127.0.0.1:0"
+	mockServer.Domain = "test.local"
+	mockServer.AllowInsecureAuth = true
+	mockListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	mockAddr := mockListener.Addr().String()
+	go func() { _ = mockServer.Serve(mockListener) }()
+	time.Sleep(200 * time.Millisecond)
+
+	identity := email.Identity{
+		AppID:           "abc1234567",
+		AttachedDomains: []string{"acme.com"},
+		PrimaryDomain:   "acme.com",
+		DefaultDomain:   "test-airoapp.ai",
+	}
+	proxy := smtp.NewForTesting("127.0.0.1:0", mockAddr, make(map[string]string), identity)
+	if startErr := proxy.Start(); startErr != nil {
+		t.Fatalf("start: %v", startErr)
+	}
+	defer func() { _ = proxy.Stop() }()
+	defer mockServer.Close()
+	time.Sleep(200 * time.Millisecond)
+
+	client, err := gosmtp.Dial(proxy.Addr())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer client.Close()
+
+	// Envelope From is on the platform domain (exempt from fallback on
+	// its own), but the header From is on the custom domain — same as
+	// the recipient.
+	if mailErr := client.Mail("abc1234567@test-airoapp.ai", nil); mailErr != nil {
+		t.Fatalf("mail: %v", mailErr)
+	}
+	if rcptErr := client.Rcpt("john@acme.com", nil); rcptErr != nil {
+		t.Fatalf("rcpt: %v", rcptErr)
+	}
+	w, err := client.Data()
+	if err != nil {
+		t.Fatalf("data: %v", err)
+	}
+	message := "From: support@acme.com\r\n" +
+		"To: john@acme.com\r\n" +
+		"Subject: Same-domain test\r\n" +
+		"\r\n" +
+		"Hello.\r\n"
+	if _, writeErr := w.Write([]byte(message)); writeErr != nil {
+		t.Fatalf("write: %v", writeErr)
+	}
+	if closeErr := w.Close(); closeErr != nil {
+		t.Fatalf("close: %v", closeErr)
+	}
+
+	select {
+	case received := <-mockBackend.receivedEmails:
+		// Both envelope and header should be rewritten to platform domain.
+		if received.from != "abc1234567@test-airoapp.ai" {
+			t.Errorf("envelope From = %q, want %q", received.from, "abc1234567@test-airoapp.ai")
+		}
+		emailStr := string(received.data)
+		if !strings.Contains(emailStr, "From: abc1234567@test-airoapp.ai") {
+			t.Errorf("header From not rewritten to platform domain, got:\n%s", emailStr)
+		}
+		if strings.Contains(emailStr, "From: support@acme.com") {
+			t.Errorf("original header From leaked through:\n%s", emailStr)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timeout waiting for email")

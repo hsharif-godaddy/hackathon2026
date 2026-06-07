@@ -618,3 +618,143 @@ func TestIdentity_EnforceSenderConsistency(t *testing.T) {
 		})
 	}
 }
+
+func TestIdentity_DefaultDomainSender(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		id   email.Identity
+		want string
+	}{
+		{
+			name: "uses DefaultDomain ignoring PrimaryDomain",
+			id: email.Identity{
+				AppID:         "abc1234567",
+				PrimaryDomain: "acme.com",
+				DefaultDomain: "airoapp.ai",
+			},
+			want: "abc1234567@airoapp.ai",
+		},
+		{
+			name: "empty AppID falls back to unknown",
+			id:   email.Identity{DefaultDomain: "airoapp.ai"},
+			want: "unknown@airoapp.ai",
+		},
+		{
+			name: "empty DefaultDomain falls back to hard default",
+			id:   email.Identity{AppID: "abc1234567"},
+			want: "abc1234567@airoapp.ai",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := tc.id.DefaultDomainSender()
+			if got != tc.want {
+				t.Errorf("DefaultDomainSender() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIdentity_HasSameDomainConflict(t *testing.T) {
+	t.Parallel()
+
+	baseID := email.Identity{
+		AppID:           "abc1234567",
+		AttachedDomains: []string{"acme.com"},
+		PrimaryDomain:   "acme.com",
+		DefaultDomain:   "airoapp.ai",
+	}
+
+	cases := []struct {
+		name       string
+		id         email.Identity
+		from       string
+		recipients []string
+		want       bool
+	}{
+		{
+			name:       "no overlap — no conflict",
+			id:         baseID,
+			from:       "abc1234567@acme.com",
+			recipients: []string{"buyer@gmail.com"},
+			want:       false,
+		},
+		{
+			name:       "one recipient on same domain — conflict",
+			id:         baseID,
+			from:       "abc1234567@acme.com",
+			recipients: []string{"john@acme.com"},
+			want:       true,
+		},
+		{
+			name:       "mixed recipients — one match triggers conflict",
+			id:         baseID,
+			from:       "abc1234567@acme.com",
+			recipients: []string{"buyer@gmail.com", "admin@acme.com"},
+			want:       true,
+		},
+		{
+			name:       "from already on DefaultDomain — no conflict even if recipient matches",
+			id:         baseID,
+			from:       "abc1234567@airoapp.ai",
+			recipients: []string{"someone@airoapp.ai"},
+			want:       false,
+		},
+		{
+			name:       "case-insensitive domain match — conflict",
+			id:         baseID,
+			from:       "abc1234567@ACME.COM",
+			recipients: []string{"user@acme.com"},
+			want:       true,
+		},
+		{
+			name:       "from with display name — conflict detected",
+			id:         baseID,
+			from:       `"Acme App" <abc1234567@acme.com>`,
+			recipients: []string{"john@acme.com"},
+			want:       true,
+		},
+		{
+			name:       "recipient with display name — conflict detected",
+			id:         baseID,
+			from:       "abc1234567@acme.com",
+			recipients: []string{`"John Smith" <john@acme.com>`},
+			want:       true,
+		},
+		{
+			name:       "empty recipients — no conflict",
+			id:         baseID,
+			from:       "abc1234567@acme.com",
+			recipients: nil,
+			want:       false,
+		},
+		{
+			name:       "malformed from — no conflict",
+			id:         baseID,
+			from:       "not-an-email",
+			recipients: []string{"john@acme.com"},
+			want:       false,
+		},
+		{
+			name:       "subdomain does not match parent — no conflict",
+			id:         baseID,
+			from:       "abc1234567@acme.com",
+			recipients: []string{"user@sub.acme.com"},
+			want:       false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := tc.id.HasSameDomainConflict(tc.from, tc.recipients)
+			if got != tc.want {
+				t.Errorf("HasSameDomainConflict() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
