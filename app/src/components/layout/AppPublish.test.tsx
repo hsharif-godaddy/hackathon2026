@@ -161,6 +161,17 @@ vi.mock('@/hooks/useSecretsDiff', () => ({
   useSecretsDiff: () => ({ refetch: vi.fn() }),
 }));
 
+const mockComplianceGateState = vi.hoisted(() => ({
+  isBlocked: false,
+  blockReason: null as string | null,
+}));
+vi.mock('@/hooks/usePublishComplianceGate', () => ({
+  usePublishComplianceGate: () => ({
+    isBlocked: mockComplianceGateState.isBlocked,
+    blockReason: mockComplianceGateState.blockReason,
+  }),
+}));
+
 vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: () => ({ data: null }),
 }));
@@ -273,6 +284,8 @@ describe('AppPublish', () => {
     for (const key of Object.keys(mockSwitchboardOverrides)) {
       delete mockSwitchboardOverrides[key];
     }
+    mockComplianceGateState.isBlocked = false;
+    mockComplianceGateState.blockReason = null;
   });
 
   it('should render nothing when pathname is not the develop page', function notDevelopPage() {
@@ -1543,6 +1556,86 @@ describe('AppPublish', () => {
       await waitFor(() => {
         expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('publish.attempted analytics', () => {
+    async function openPopoverAndClickPublish(user: ReturnType<typeof renderWithProviders>['user']) {
+      const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+      await user.click(trigger);
+      await waitFor(() => {
+        expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+      });
+      const publishButtons = screen.getAllByRole('button', { name: 'builder_publish_button' });
+      const innerPublishButton = publishButtons.find((btn) => btn.id !== 'tour-publish-button');
+      expect(innerPublishButton).toBeDefined();
+      await user.click(innerPublishButton!);
+    }
+
+    it('disables the inner publish button when compliance is blocked (analytics at line 346 is a race-condition guard)', async function complianceBlocked() {
+      // When isPublishComplianceBlocked is true, isButtonDisabled is also true,
+      // so the inner publish button cannot be clicked from the UI. The
+      // publish.attempted at AppPublish.tsx:346 fires only in a race condition
+      // where the compliance state changes after the user initiates the flow;
+      // the key verifiable property is that the button is disabled and a
+      // compliance alert is shown.
+      mockComplianceGateState.isBlocked = true;
+      mockComplianceGateState.blockReason = 'site_suspended';
+
+      const { user } = renderWithProviders(<AppPublish />);
+
+      const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+      await user.click(trigger);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+      });
+
+      const publishButtons = screen.getAllByRole('button', { name: 'builder_publish_button' });
+      const innerPublishButton = publishButtons.find((btn) => btn.id !== 'tour-publish-button');
+      expect(innerPublishButton).toBeDefined();
+      // Button must be disabled when compliance is blocked
+      expect(innerPublishButton).toBeDisabled();
+      // Gate must never run (blocked earlier in handleDeploy)
+      expect(mockRunGate).not.toHaveBeenCalled();
+    });
+
+    it('fires publish.attempted with blockedReason=gate_blocked when gate returns proceed:false', async function gateBlocked() {
+      mockRunGate.mockResolvedValueOnce({ proceed: false });
+
+      const { user } = renderWithProviders(<AppPublish />);
+      await openPopoverAndClickPublish(user);
+
+      await waitFor(() => {
+        expect(vi.mocked(shipAnalyticsLog)).toHaveBeenCalledWith(
+          'publish.attempted',
+          expect.objectContaining({
+            appId: 'app-123',
+            blockedReason: 'gate_blocked',
+            trigger: 'ui',
+          }),
+        );
+      });
+      expect(mockMutateAsync).not.toHaveBeenCalled();
+    });
+
+    it('fires publish.attempted without blockedReason when all gates pass', async function gatesPassed() {
+      mockRunGate.mockResolvedValueOnce({ proceed: true });
+
+      const { user } = renderWithProviders(<AppPublish />);
+      await openPopoverAndClickPublish(user);
+
+      await waitFor(() => {
+        expect(vi.mocked(shipAnalyticsLog)).toHaveBeenCalledWith(
+          'publish.attempted',
+          expect.objectContaining({ appId: 'app-123', trigger: 'ui' }),
+        );
+      });
+      // Confirm the gates-passed call does NOT carry a blockedReason
+      const gatesPassedCall = vi.mocked(shipAnalyticsLog).mock.calls.find(
+        ([event, data]) => event === 'publish.attempted' && !data.blockedReason,
+      );
+      expect(gatesPassedCall).toBeDefined();
     });
   });
 });

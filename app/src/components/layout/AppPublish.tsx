@@ -53,7 +53,7 @@ import { useSiteStore } from '@/stores/useSiteStore';
 import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversationStore';
 import { getPlanDisplayLabelKey } from '@/utils/credits';
 import { isAiroSubdomain, resolveSiteFqdn } from '@/utils/domain';
-import { generateClickEID, logAiroHQEvent, logClickEvent } from '@/utils/instrumentation';
+import { generateClickEID, logAiroHQEvent, logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
 import { timeAgo } from '@/utils/time';
 
@@ -344,6 +344,11 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
     if (isPublishComplianceBlocked) {
       logger.warn('app-publish.deploy.blocked-compliance', { appId: currentAppId, publishComplianceBlockReason });
+      // Record the blocked attempt before returning so true attempt rate is measurable
+      try {
+        shipAnalyticsLog('publish.attempted', { appId: currentAppId, blockedReason: publishComplianceBlockReason, trigger: 'ui' })
+        logImpressionEvent('develop.publish.attempt', { appId: currentAppId, blockedReason: publishComplianceBlockReason, trigger: 'ui' })()
+      } catch (e) { logger.warn('app-publish.analytics.failed', { appId: currentAppId, error: e instanceof Error ? e.message : String(e) }) }
       return;
     }
 
@@ -378,6 +383,11 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     try {
       const gateResult = await runGate();
       if (!gateResult.proceed) {
+        // Gate (paywall / DNS conflict) blocked the publish — record as a blocked attempt
+        try {
+          shipAnalyticsLog('publish.attempted', { appId: currentAppId, blockedReason: 'gate_blocked', trigger: 'ui' })
+          logImpressionEvent('develop.publish.attempt', { appId: currentAppId, blockedReason: 'gate_blocked', trigger: 'ui' })()
+        } catch (e) { logger.warn('app-publish.analytics.failed', { appId: currentAppId, error: e instanceof Error ? e.message : String(e) }) }
         return;
       }
       if (gateResult.consent !== undefined) {
@@ -386,6 +396,14 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
       clearPublishStatus(currentAppId);
       setIsPublishing(currentAppId, true);
+
+      // publish.attempt: fires when user passes all gates
+      try {
+        shipAnalyticsLog('publish.attempted', { appId: currentAppId, commitHash: mostRecentDeployment?.gitHash, trigger: 'ui' })
+        logImpressionEvent('develop.publish.attempt', { appId: currentAppId, trigger: 'ui' })()
+      } catch (e) {
+        logger.warn('app-publish.analytics.failed', { appId: currentAppId, error: e instanceof Error ? e.message : String(e) })
+      }
 
       await publishMutation.mutateAsync({
         appId: currentAppId,

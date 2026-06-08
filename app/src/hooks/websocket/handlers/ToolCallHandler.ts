@@ -10,7 +10,7 @@ export class ToolCallHandler implements MessageHandler {
       context.actions.flushToolDeltaBufferImmediate()
       const tool = data.data.tool as any
       context.actions.addToolCallSegment(mapToolCall(tool))
-      handleToolCallSideEffects(tool)
+      handleToolCallSideEffects(tool, context.currentAppId)
     }
   }
 }

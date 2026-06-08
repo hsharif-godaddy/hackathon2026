@@ -18,6 +18,11 @@ declare global {
  * (e.g. split chunks) reads the same appId when merging `custom_properties`.
  */
 let currentAppId: string | null = null;
+let currentEntryPoint: string | null = null;
+let currentPlanType: string | null = null;
+let currentCreationSource: string | null = null;
+let currentIntentCategory: string | null = null;
+let currentBusinessName: string | null = null;
 
 const WINDOW_INSTRUMENTATION_APP_ID = '__airoInstrumentationAppId';
 
@@ -42,7 +47,7 @@ function readGlobalInstrumentationAppId(): string | null {
   return null;
 }
 
-function normalizedAppId(value: string | null | undefined): string | undefined {
+export function normalizedAppId(value: string | null | undefined): string | undefined {
   if (value == null || value === '') {
     return undefined;
   }
@@ -58,6 +63,11 @@ function normalizedAppId(value: string | null | undefined): string | undefined {
  *
  * @param {string | null} appId - The appId to set, or null to clear
  */
+export function getInstrumentationAppId(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  return normalizedAppId(readGlobalInstrumentationAppId());
+}
+
 export const setInstrumentationAppId = (appId: string | null): void => {
   if (typeof window === 'undefined') {
     logger.warn('instrumentation.setAppId.server-side', {
@@ -71,20 +81,130 @@ export const setInstrumentationAppId = (appId: string | null): void => {
   (window as unknown as Record<string, unknown>)[WINDOW_INSTRUMENTATION_APP_ID] = currentAppId;
 };
 
+// Sets the entry point merged into CSP events; pass null to clear on unmount.
+export const setInstrumentationEntryPoint = (entryPoint: string | null): void => {
+  if (typeof window === 'undefined') {
+    logger.warn('instrumentation.setEntryPoint.server-side', {
+      message: 'setInstrumentationEntryPoint called on server - this may cause cross-request state leakage',
+      entryPoint,
+    });
+    return;
+  }
+  currentEntryPoint = entryPoint;
+};
+
+export function getInstrumentationEntryPoint(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  return currentEntryPoint ?? undefined;
+}
+
+// Sets the plan_type merged into CSP events; pass null to clear on unmount.
+export const setInstrumentationPlanType = (plan: string | null): void => {
+  if (typeof window === 'undefined') {
+    logger.warn('instrumentation.setPlanType.server-side', {
+      message: 'setInstrumentationPlanType called on server - this may cause cross-request state leakage',
+      plan,
+    });
+    return;
+  }
+  currentPlanType = plan;
+};
+
+export function getInstrumentationPlanType(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  return currentPlanType ?? undefined;
+}
+
+// Sets the creation_source merged into CSP events; pass null to clear on unmount.
+export const setInstrumentationCreationSource = (source: string | null): void => {
+  if (typeof window === 'undefined') {
+    logger.warn('instrumentation.setCreationSource.server-side', {
+      message: 'setInstrumentationCreationSource called on server - this may cause cross-request state leakage',
+      source,
+    });
+    return;
+  }
+  currentCreationSource = source;
+};
+
+export function getInstrumentationCreationSource(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  return currentCreationSource ?? undefined;
+}
+
+// Sets intent_category: 'new_build' | 'rebuild' | 'edit'; overridden dynamically during the session. Pass null to clear on unmount.
+export const setInstrumentationIntentCategory = (category: string | null): void => {
+  if (typeof window === 'undefined') {
+    logger.warn('instrumentation.setIntentCategory.server-side', {
+      message: 'setInstrumentationIntentCategory called on server - this may cause cross-request state leakage',
+      category,
+    });
+    return;
+  }
+  currentIntentCategory = category;
+};
+
+export function getInstrumentationIntentCategory(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  return currentIntentCategory ?? undefined;
+}
+
+// Sets business_name merged into CSP events when setProjectName tool completes.
+export const setInstrumentationBusinessName = (name: string | null): void => {
+  if (typeof window === 'undefined') {
+    logger.warn('instrumentation.setBusinessName.server-side', {
+      message: 'setInstrumentationBusinessName called on server - this may cause cross-request state leakage',
+      name,
+    });
+    return;
+  }
+  currentBusinessName = name;
+};
+
+export function getInstrumentationBusinessName(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  return currentBusinessName ?? undefined;
+}
+
 /**
- * Merges custom properties with appId if available
- * @param {Record<string, boolean | string | number>} customProperties - Original custom properties
- * @returns {Record<string, boolean | string | number>} Merged custom properties with appId if applicable
+ * Returns the current session's instrumentation context fields as a flat object with
+ * only the fields that have a value (no undefined entries).
+ *
+ * Used by both analytics channels (CSP via mergeContext, ES via mergeAnalyticsContext)
+ * so new context fields only need to be added here — both channels pick them up automatically.
+ *
+ * Pass `callerIntentCategory` so per-event values are not overridden by the session-level
+ * baseline (e.g. a 'rebuild' event must not have its intent_category replaced by 'edit').
  */
-const mergeCustomPropertiesWithAppId = (customProperties?: Record<string, boolean | string | number>): Record<string, boolean | string | number> => {
+export function getSharedInstrumentationContext(callerIntentCategory?: unknown): Record<string, string> {
+  const entryPoint = getInstrumentationEntryPoint();
+  const planType = getInstrumentationPlanType();
+  const creationSource = getInstrumentationCreationSource();
+  const intentCategory = getInstrumentationIntentCategory();
+  const businessName = getInstrumentationBusinessName();
+
+  return {
+    ...(entryPoint && { entry_point: entryPoint }),
+    ...(planType && { plan_type: planType }),
+    ...(creationSource && { creation_source: creationSource }),
+    // Caller-provided intent_category wins — per-event values must not be overridden by session baseline
+    ...(!callerIntentCategory && intentCategory && { intent_category: intentCategory }),
+    ...(businessName && { business_name: businessName }),
+  };
+}
+
+const splitAppIdContext = (
+  customProperties?: Record<string, boolean | string | number>
+): {
+  baseProperties: Record<string, boolean | string | number>;
+  effectiveAppId: string | null;
+} => {
   const raw = customProperties ?? {};
   const { appId: callerAppIdCandidate, ...rest } = raw;
   const callerAppId = normalizedAppId(
     typeof callerAppIdCandidate === 'string' ? callerAppIdCandidate : undefined
   );
-  const baseProperties = rest as Record<string, boolean | string | number>;
-
-  const moduleAppId = normalizedAppId(readGlobalInstrumentationAppId());
+  const moduleAppId = getInstrumentationAppId();
 
   if (moduleAppId && callerAppId && moduleAppId !== callerAppId) {
     logger.warn('instrumentation.mergeCustomProperties.conflict', {
@@ -94,7 +214,15 @@ const mergeCustomPropertiesWithAppId = (customProperties?: Record<string, boolea
     });
   }
 
-  const effectiveAppId = moduleAppId ?? callerAppId;
+  return {
+    baseProperties: rest as Record<string, boolean | string | number>,
+    effectiveAppId: moduleAppId ?? callerAppId,
+  };
+};
+
+const mergeCustomPropertiesWithAppId = (customProperties?: Record<string, boolean | string | number>): Record<string, boolean | string | number> => {
+  const { baseProperties, effectiveAppId } = splitAppIdContext(customProperties);
+
   if (!effectiveAppId) {
     return baseProperties;
   }
@@ -102,6 +230,23 @@ const mergeCustomPropertiesWithAppId = (customProperties?: Record<string, boolea
   return {
     ...baseProperties,
     appId: effectiveAppId,
+  };
+};
+
+const mergeContext = (customProperties?: Record<string, boolean | string | number>): Record<string, boolean | string | number> => {
+  const { baseProperties, effectiveAppId } = splitAppIdContext(customProperties);
+  const sessionId = typeof window !== 'undefined' ? (sessionStorage.getItem('log_session_id') ?? undefined) : undefined;
+  const ctx = getSharedInstrumentationContext(baseProperties.intent_category);
+
+  if (!effectiveAppId && !sessionId && !Object.keys(ctx).length) {
+    return baseProperties;
+  }
+
+  return {
+    ...baseProperties,
+    ...(effectiveAppId && { appId: effectiveAppId }),
+    ...(sessionId && { log_session_id: sessionId }),
+    ...ctx,
   };
 };
 
@@ -200,7 +345,7 @@ export const logClickEvent = (eid: string, customProperties?: Record<string, boo
     return;
   }
   try {
-    const mergedProperties = mergeCustomPropertiesWithAppId(customProperties);
+    const mergedProperties = mergeContext(customProperties);
     const fullClickEid = generateClickEID(eid);
     const eventData: ElementChannelEvent = {
       schema: 'add_click',
@@ -245,7 +390,7 @@ export const logActionEvent = ({
     return;
   }
   try {
-    const mergedProperties = mergeCustomPropertiesWithAppId(customProperties);
+    const mergedProperties = mergeContext(customProperties);
     const fullEid = `${DEFAULT_AREA}.${product}.${section}.${widget}.${action}`;
 
     const eventData: ElementChannelEvent = {
@@ -290,7 +435,7 @@ export const logImpressionEvent = (eid: string, customProperties?: Record<string
   }
   try {
     const fullEid = `${DEFAULT_AREA}.${product}.${section}.${widget}.impression`;
-    const mergedProperties = mergeCustomPropertiesWithAppId(customProperties);
+    const mergedProperties = mergeContext(customProperties);
     const eventData: EventImpressionData = {
       schema: 'add_impression',
       targets: ['fullstory'],

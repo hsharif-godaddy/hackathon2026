@@ -82,6 +82,8 @@ vi.mock('@/stores/useSiteStore', () => ({
   }),
 }));
 
+import { shipAnalyticsLog } from '@/lib/logging';
+import { logImpressionEvent } from '@/utils/instrumentation';
 import { useDeploymentsQuery } from './useDeploymentsQuery';
 
 function createMockResponse(data: any, status = 200) {
@@ -235,6 +237,41 @@ describe('useDeploymentsQuery', function useDeploymentsQueryTests() {
   // The retry predicate is the load-bearing fix preventing React Query from
   // re-firing polls while the SSO modal is still open. If a future refactor
   // drops one of the instanceof checks we need a direct test to catch it.
+  describe('deployment status analytics', function deploymentStatusAnalyticsTests() {
+    it('logs ES and FullStory events when deployment fails', async function publishFailed() {
+      mockGetPublishState.mockReturnValue({
+        deploymentInProgressId: 'dep-failed',
+        firstPublishDeployPending: true,
+      });
+
+      const failedDeployment = {
+        id: 'dep-failed',
+        status: DeploymentStatus.FAILED,
+        gitHash: 'abc123',
+        metadata: { errorMessage: 'build timeout' },
+      };
+      mockAppFetch.mockResolvedValue(createMockResponse([failedDeployment]));
+
+      renderHookWithProviders(() =>
+        useDeploymentsQuery({ appId: 'app-123' })
+      );
+
+      await waitFor(() => {
+        expect(shipAnalyticsLog).toHaveBeenCalledWith('publish.failed', expect.objectContaining({
+          appId: 'app-123',
+          deploymentId: 'dep-failed',
+          commitHash: 'abc123',
+          failureReason: 'build timeout',
+        }));
+      });
+
+      expect(logImpressionEvent).toHaveBeenCalledWith('develop.publish.failed', {
+        appId: 'app-123',
+        failureReason: 'build timeout',
+      });
+    });
+  });
+
   describe('retry predicate', function retryPredicateTests() {
     it('does not retry when fetch returns 401 (auth flow drives the modal)', async function noRetryOnAuthExpired() {
       mockGetPublishState.mockReturnValue({

@@ -7,7 +7,7 @@
  */
 
 import { shipAnalyticsLog } from '@/lib/logging'
-import { logActionEvent, logImpressionEvent } from '@/utils/instrumentation'
+import { logActionEvent, logImpressionEvent, setInstrumentationIntentCategory } from '@/utils/instrumentation'
 
 let active = false
 let questionReceived = false
@@ -40,6 +40,7 @@ export function trackHandoff(): void {
   handoffSeen = true
 
   shipAnalyticsLog('funnel.initial_build.handoff', { appId: funnelAppId })
+  logImpressionEvent('develop.generation.triggered', { appId: funnelAppId ?? '' })()
 }
 
 export function trackBuildComplete(commitHash: string): void {
@@ -48,6 +49,17 @@ export function trackBuildComplete(commitHash: string): void {
 
   shipAnalyticsLog('funnel.initial_build.complete', { appId: funnelAppId, commitHash })
   logActionEvent({ eid: 'develop.firstBuild.complete', action: 'load', customProperties: { appId: funnelAppId ?? '' } })()
+
+  // Initial build done — switch intent baseline from 'new_build' to 'edit' for the rest
+  // of this session. Persisting to sessionStorage fixes toolSideEffects restore after rebuilds.
+  if (funnelAppId) {
+    try {
+      sessionStorage.setItem(`intent-category-${funnelAppId}`, 'edit')
+    } catch {
+      // Safari private mode / quota exceeded — non-fatal; in-memory state still correct
+    }
+    setInstrumentationIntentCategory('edit')
+  }
 }
 
 export function trackPostInteraction(): void {

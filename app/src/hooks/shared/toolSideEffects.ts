@@ -8,15 +8,26 @@
 
 import { extractLogosFromToolResult, getLogoDisplayUrl } from '@/app/[market]/develop/components/widgets/logo-utils'
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
+import { trackFromToolResult } from '@/hooks/shared/contextGatheringTracker'
 import { trackHandoff, trackQuestionReceived } from '@/hooks/shared/initialBuildFunnel'
 import { BRAND_DATA_UPDATED_EVENT } from '@/hooks/useBrandData'
+import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { type FileOperationType, useCodeSyncStore } from '@/stores/useCodeSyncStore'
+import { useGitStore } from '@/stores/useGitStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
-import { logImpressionEvent } from '@/utils/instrumentation'
+import { logImpressionEvent, setInstrumentationBusinessName, setInstrumentationIntentCategory } from '@/utils/instrumentation'
+import { readIntentCategoryFromSession } from '@/utils/traffic-signals'
 
 const BRAND_UPDATE_TOOLS = new Set(['colorScheme', 'fontTheme', 'setProjectName', 'brandBook'])
+
+const REBUILD_INTENT_PATTERN = /\b(rebuild|redesign|start\s+over|redo|recreate)\b/i
+
+// Eagerly detects rebuild intent from the user message to set intent_category before the stream starts.
+export function detectRebuildIntent(message: string): boolean {
+  return REBUILD_INTENT_PATTERN.test(message)
+}
 
 function isBrandMemorySet(tool: { name: string; input?: any }): boolean {
   if (tool.name !== 'memorySet') return false
@@ -62,7 +73,29 @@ function getOperationType(toolName: string, input?: any): FileOperationType | nu
  * Handle side effects when a tool_call event arrives.
  * Marks files as streaming in CodeSyncStore.
  */
-export function handleToolCallSideEffects(tool: { name: string; input?: any }): void {
+export function handleToolCallSideEffects(tool: { name: string; input?: any }, appId: string | null): void {
+  if (tool.name === 'websiteRebuild') {
+    setInstrumentationIntentCategory('rebuild')
+    try {
+      // Capture prior artifact identifier so analytics can link "before" state to rebuild
+      const priorCommitHash = appId ? useGitStore.getState().getSelectedCommitHash(appId) : null
+      shipAnalyticsLog('funnel.rebuild.started', {
+        appId,
+        ...(priorCommitHash && { priorArtifactHash: priorCommitHash }),
+      })
+      logImpressionEvent('develop.rebuild.started', {
+        appId: appId ?? '',
+        ...(priorCommitHash && { priorArtifactHash: priorCommitHash }),
+      })()
+    } catch (err) {
+      logger.warn('toolSideEffects.rebuild.analytics.failed', {
+        appId,
+        toolName: tool.name,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
   if (!FILE_OPERATION_TOOLS.has(tool.name)) return
 
   const filePaths = extractFilePaths(tool.name, tool.input)
@@ -87,6 +120,16 @@ export async function handleToolResultSideEffects(
   appId: string | null,
 ): Promise<void> {
   const hasError = tool.error || tool.is_error
+
+  try {
+    trackFromToolResult(tool, appId, !!hasError)
+  } catch (err) {
+    logger.warn('toolSideEffects.contextGathering.track.failed', {
+      appId,
+      toolName: tool.name,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
 
   // File operation tracking
   if (FILE_OPERATION_TOOLS.has(tool.name)) {
@@ -213,6 +256,16 @@ export async function handleToolResultSideEffects(
     } else if (tool.name === 'media-logo__edit_logo') {
       logImpressionEvent('develop.brand.logo_edit', brandEidProps)()
     }
+  }
+
+  // Restore baseline intent_category after rebuild completes so it never goes empty.
+  if (tool.name === 'websiteRebuild' && !hasError) {
+    setInstrumentationIntentCategory(readIntentCategoryFromSession(appId ?? '') ?? 'edit')
+  }
+
+  // Business context — captured from setProjectName, appears on all subsequent events
+  if (tool.name === 'setProjectName' && !hasError && tool.input?.name) {
+    setInstrumentationBusinessName(tool.input.name)
   }
 
   // Initial build funnel: question received / handoff

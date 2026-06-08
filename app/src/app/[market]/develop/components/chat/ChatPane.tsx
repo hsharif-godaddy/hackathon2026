@@ -59,6 +59,7 @@ import { createPostPublishPreLaunchAssistantMessage } from '@/lib/post-publish-p
 import { logger } from '@/lib/request-context';
 import { appService } from '@/services/AppService';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { useGitStore } from '@/stores/useGitStore'
 import { useSiteStore } from '@/stores/useSiteStore';
 import {
   useActiveStream,
@@ -87,7 +88,7 @@ import {
   UPLOAD_TIMEOUT_SECONDS,
   validateForStaging,
 } from '@/utils/file-upload-validation';
-import { logAiroHQEvent } from '@/utils/instrumentation';
+import { getInstrumentationIntentCategory, logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation';
 import { postMessageToIframe } from '@/utils/postMessage';
 
 // Lazy-load features that are conditionally rendered or behind user interaction
@@ -994,6 +995,21 @@ function ChatPaneInner({
         }
         if (safeBuildErrorContext) {
           handleClearBuildErrorContext();
+        }
+      }
+
+      if (getInstrumentationIntentCategory() === 'edit') {
+        try {
+          const currentArtifactHash = appId ? useGitStore.getState().getSelectedCommitHash(appId) : null
+          const editPayload = {
+            appId: appId ?? '',
+            promptLength: outboundContent.length,
+            ...(currentArtifactHash && { artifactHash: currentArtifactHash }),
+          }
+          logImpressionEvent('develop.edit.triggered', editPayload)()
+          shipAnalyticsLog('funnel.edit.triggered', editPayload)
+        } catch (analyticsError) {
+          logger.warn('chat-pane.edit-triggered.analytics-failed', { appId, error: analyticsError })
         }
       }
     },

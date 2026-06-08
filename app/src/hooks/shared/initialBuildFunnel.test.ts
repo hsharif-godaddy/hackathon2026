@@ -7,10 +7,11 @@ vi.mock('@/lib/logging', () => ({
 vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: vi.fn(function () { return vi.fn(); }),
   logActionEvent: vi.fn(function () { return vi.fn(); }),
+  setInstrumentationIntentCategory: vi.fn(),
 }))
 
 import { shipAnalyticsLog } from '@/lib/logging'
-import { logActionEvent, logImpressionEvent } from '@/utils/instrumentation'
+import { logActionEvent, logImpressionEvent, setInstrumentationIntentCategory } from '@/utils/instrumentation'
 import {
   activateInitialBuildFunnel,
   isInitialBuildComplete,
@@ -25,12 +26,14 @@ import {
 const mockShip = vi.mocked(shipAnalyticsLog)
 const mockImpression = vi.mocked(logImpressionEvent)
 const mockAction = vi.mocked(logActionEvent)
+const mockSetIntentCategory = vi.mocked(setInstrumentationIntentCategory)
 
 beforeEach(() => {
   resetInitialBuildFunnel()
   mockShip.mockClear()
   mockImpression.mockClear()
   mockAction.mockClear()
+  mockSetIntentCategory.mockClear()
 })
 
 afterEach(() => {
@@ -118,6 +121,7 @@ describe('trackBuildComplete', () => {
     trackBuildComplete('abc123')
     expect(mockShip).not.toHaveBeenCalled()
     expect(mockAction).not.toHaveBeenCalled()
+    expect(mockSetIntentCategory).not.toHaveBeenCalled()
   })
 
   it('fires shipAnalyticsLog + logActionEvent exactly once', () => {
@@ -140,6 +144,31 @@ describe('trackBuildComplete', () => {
       customProperties: { appId: 'app-1' },
     })
     expect(isInitialBuildComplete()).toBe(true)
+  })
+
+  it('transitions intent_category module state to edit', () => {
+    activateInitialBuildFunnel('app-1')
+    mockSetIntentCategory.mockClear()
+
+    trackBuildComplete('abc123')
+
+    expect(mockSetIntentCategory).toHaveBeenCalledTimes(1)
+    expect(mockSetIntentCategory).toHaveBeenCalledWith('edit')
+  })
+
+  it('does not transition intent_category when funnel is inactive', () => {
+    trackBuildComplete('abc123')
+    expect(mockSetIntentCategory).not.toHaveBeenCalled()
+  })
+
+  it('transitions intent_category only once even if called twice', () => {
+    activateInitialBuildFunnel('app-1')
+    mockSetIntentCategory.mockClear()
+
+    trackBuildComplete('abc123')
+    trackBuildComplete('def456')
+
+    expect(mockSetIntentCategory).toHaveBeenCalledTimes(1)
   })
 })
 

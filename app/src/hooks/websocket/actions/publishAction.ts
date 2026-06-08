@@ -16,7 +16,8 @@ import {
 } from '@/hooks/useAppDetails'
 import { appFetch, AuthDismissedError, authPreflight } from '@/lib/gasket-config'
 import { regenerateToken } from '@/lib/jwt-regeneration'
-import { type AiroSubscription,DeploymentStatus } from '@/lib/mgmt-airo/types'
+import { shipAnalyticsLog } from '@/lib/logging'
+import { type AiroSubscription, DeploymentStatus } from '@/lib/mgmt-airo/types'
 import { ClientPaywallProvider } from '@/lib/paywall/client-provider'
 import { checkPaywallEligibility, PaywallAction } from '@/lib/paywall/core'
 import { PAYWALL_ITC, PaywallDenialReason } from '@/lib/paywall/shared'
@@ -24,10 +25,9 @@ import { logger } from '@/lib/request-context'
 import {
   getPublishComplianceBlockReason,
   isPublishBlockedByComplianceRules,
-  PublishComplianceBlockReason,
 } from '@/lib/subscription'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { logAiroHQEvent } from '@/utils/instrumentation'
+import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import { hasBeenPublished } from '@/utils/site'
 import type { ClientActionExecutor } from './types'
 
@@ -80,6 +80,17 @@ export const publishAction: ClientActionExecutor = async (params) => {
     const { hasAccess, reason, details } = await checkPaywallEligibility(provider, appId, PaywallAction.Publish)
     if (!hasAccess) {
       logger.warn('publish-action.access-denied', { appId, reason })
+
+      // Record the blocked attempt so publish attempt rate can be calculated accurately
+      try {
+        shipAnalyticsLog('publish.attempted', { appId, blockedReason: 'paywall_denied', trigger: 'agent' })
+        logImpressionEvent('develop.publish.attempt', { appId, blockedReason: 'paywall_denied', trigger: 'agent' })()
+      } catch (analyticsError) {
+        logger.warn('publish-action.blocked-paywall.analytics-failed', {
+          appId,
+          error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError),
+        })
+      }
 
       try {
         const store = useDevelopPageStore.getState()
@@ -153,11 +164,45 @@ export const publishAction: ClientActionExecutor = async (params) => {
     if (isPublishBlockedByComplianceRules(appDetails, subscription, complianceFlag)) {
       const blockReason = getPublishComplianceBlockReason(appDetails, subscription, complianceFlag)
       logger.warn('publish-action.blocked-compliance', { appId, blockReason })
+      try {
+        shipAnalyticsLog('publish.attempted', { appId, blockedReason: blockReason, trigger: 'agent' })
+        logImpressionEvent('develop.publish.attempt', { appId, blockedReason: blockReason, trigger: 'agent' })()
+      } catch (analyticsError) {
+        logger.warn('publish-action.blocked-compliance.analytics-failed', {
+          appId,
+          error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError),
+        })
+      }
       throw new Error('Publish blocked: compliance suspension')
     }
 
     const preflightFailure = await authPreflight(3)
-    if (preflightFailure) throw new Error('Authentication required')
+    if (preflightFailure) {
+      try {
+        shipAnalyticsLog('publish.attempted', { appId, blockedReason: 'auth_required', trigger: 'agent' })
+        logImpressionEvent('develop.publish.attempt', { appId, blockedReason: 'auth_required', trigger: 'agent' })()
+      } catch (analyticsError) {
+        logger.warn('publish-action.blocked-auth-required.analytics-failed', {
+          appId,
+          error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError),
+        })
+      }
+      throw new Error('Authentication required')
+    }
+
+    // publish.attempt fires when the user has passed all gates and the actual publish is about to start.
+    // commitHash is the current HEAD — the artifact identifier for this publish attempt.
+    try {
+      const currentCommitHash = appDetails?.gitHash ?? appDetails?.git_hash
+      shipAnalyticsLog('publish.attempted', { appId, commitHash: currentCommitHash, trigger: 'agent' })
+      logImpressionEvent('develop.publish.attempt', { appId, trigger: 'agent' })()
+    } catch (attemptError) {
+      // Non-critical — log but don't block the publish
+      logger.warn('websocket.client-action.publish.attempt-analytics-failed', {
+        appId,
+        error: attemptError instanceof Error ? attemptError.message : String(attemptError),
+      })
+    }
 
     // Log publish analytics event (matches UI behavior)
     try {

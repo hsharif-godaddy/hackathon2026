@@ -99,12 +99,37 @@ export function createMockSite(overrides: Partial<SiteInfo> = {}): SiteInfo {
  */
 export function mockInstrumentation() {
   return {
-    logImpressionEvent: vi.fn(() => vi.fn()),
-    logClickEvent: vi.fn(() => vi.fn()),
+    normalizedAppId: (value: string | null | undefined): string | undefined => {
+      if (value == null || value === '') {
+        return undefined;
+      }
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+        return undefined;
+      }
+      if (!/^[A-Za-z0-9_-]{8,128}$/.test(value)) {
+        return undefined;
+      }
+      return value;
+    },
+    logImpressionEvent: vi.fn(function () { return vi.fn(); }),
+    logAiroHQEvent: vi.fn(function () { return vi.fn(); }),
+    logClickEvent: vi.fn(function () { return vi.fn(); }),
     logActionEvent: vi.fn(() => vi.fn()),
     generateClickEID: vi.fn((event: string) => `appbuilder.${event}.click`),
-    logAiroHQEvent: vi.fn(() => vi.fn()),
+    fireConversionEvent: vi.fn(),
+    getInstrumentationAppId: vi.fn(() => undefined),
     setInstrumentationAppId: vi.fn(),
+    getInstrumentationEntryPoint: vi.fn(() => undefined),
+    setInstrumentationEntryPoint: vi.fn(),
+    getInstrumentationPlanType: vi.fn(() => undefined),
+    setInstrumentationPlanType: vi.fn(),
+    getInstrumentationCreationSource: vi.fn(() => undefined),
+    setInstrumentationCreationSource: vi.fn(),
+    getInstrumentationIntentCategory: vi.fn(() => undefined),
+    setInstrumentationIntentCategory: vi.fn(),
+    getInstrumentationBusinessName: vi.fn(() => undefined),
+    setInstrumentationBusinessName: vi.fn(),
+    getSharedInstrumentationContext: vi.fn(() => ({})),
   };
 }
 

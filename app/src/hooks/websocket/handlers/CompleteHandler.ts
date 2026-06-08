@@ -10,8 +10,11 @@ import {
   trackInitialBuildComplete,
   updateSiteTimestamp,
 } from '@/hooks/shared/completionSideEffects'
+import { isInitialBuildComplete, isInitialBuildFunnelActive } from '@/hooks/shared/initialBuildFunnel'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+import { setInstrumentationIntentCategory } from '@/utils/instrumentation'
+import { readIntentCategoryFromSession } from '@/utils/traffic-signals'
 import type { LifecycleHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
 function commitHashFromComplete(data: WebSocketMessage): string | undefined {
@@ -70,6 +73,11 @@ export class CompleteHandler implements MessageHandler {
     trackInitialBuildComplete(commitHash)
 
     if (appId) {
+      setInstrumentationIntentCategory(
+        isInitialBuildFunnelActive() && !isInitialBuildComplete()
+          ? 'new_build'
+          : (readIntentCategoryFromSession(appId) ?? 'edit'),
+      )
       invalidateMediaManifestIfNeeded(appId)
 
       if (commitHash) {

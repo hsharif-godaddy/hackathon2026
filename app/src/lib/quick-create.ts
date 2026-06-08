@@ -47,12 +47,21 @@ export function extractApiError(errorData: ApiErrorData): Error {
   return error
 }
 
+export interface QuickCreateSessionOptions {
+  uploadedFiles?: Array<{ name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean; zipRaw?: ArrayBuffer }>
+  entryPoint?: string
+  creationSource?: string
+  /** Defaults to 'new_build'. Pass a different value for non-standard creation flows (e.g. app import). */
+  intentCategory?: string
+}
+
 export function setQuickCreateSessionFlags(
   siteId: string,
   prompt: string,
   templateId?: string,
-  uploadedFiles?: Array<{ name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean; zipRaw?: ArrayBuffer }>,
-): void {
+  options: QuickCreateSessionOptions = {},
+) {
+  const { uploadedFiles, entryPoint, creationSource, intentCategory = 'new_build' } = options
   sessionStorage.setItem(`name-registration-pending-${siteId}`, 'true')
   sessionStorage.setItem(`initial-prompt-pending-${siteId}`, 'true')
   sessionStorage.setItem(`in-creation-flow-${siteId}`, 'true')
@@ -64,6 +73,13 @@ export function setQuickCreateSessionFlags(
     const serializable = uploadedFiles.map(({ zipRaw: _, ...rest }) => rest)
     sessionStorage.setItem(`initial-upload-files-${siteId}`, JSON.stringify(serializable))
   }
+  if (entryPoint) {
+    sessionStorage.setItem(`entry-point-${siteId}`, entryPoint)
+  }
+  if (creationSource) {
+    sessionStorage.setItem(`creation-source-${siteId}`, creationSource)
+  }
+  sessionStorage.setItem(`intent-category-${siteId}`, intentCategory)
 }
 
 export function getStoredUploadedFiles(

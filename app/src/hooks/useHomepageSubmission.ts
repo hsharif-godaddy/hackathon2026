@@ -21,6 +21,7 @@ import { buildDevelopUrl, extractApiError, fetchQuickCreate, type QuickCreateRes
 import { logger } from '@/lib/request-context'
 import { validateAndClampPrompt } from '@/lib/waf-validation'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
+import { resolveCreationSource, resolveEntryPoint } from '@/utils/traffic-signals'
 
 type SubmitSource = 'example' | 'text'
 
@@ -166,16 +167,16 @@ export function useHomepageSubmission() {
           const options =
             depth === 25
               ? {
-                  kind: 'action' as const,
-                  eid: 'homepage.depth.start',
-                  action: 'scroll' as const,
-                }
+                kind: 'action' as const,
+                eid: 'homepage.depth.start',
+                action: 'scroll' as const,
+              }
               : depth === 100
                 ? {
-                    kind: 'action' as const,
-                    eid: 'homepage.depth.complete',
-                    action: 'scroll' as const,
-                  }
+                  kind: 'action' as const,
+                  eid: 'homepage.depth.complete',
+                  action: 'scroll' as const,
+                }
                 : undefined
 
           logAnalytics('homepage.scroll.milestone', { depth, msFromPageLoad, promptHasContent }, options)
@@ -188,6 +189,8 @@ export function useHomepageSubmission() {
     return () => window.removeEventListener('scroll', updateScrollMilestones)
   }, [logAnalytics])
 
+  const locationParam = searchParams.get('location')
+  const itcParam = searchParams.get('itc')
   const siteLocationParam = searchParams.get('site_location')
   const initialPromptParam = searchParams.get('initialPrompt')
   const fqdnParam = searchParams.get('fqdn')
@@ -351,7 +354,15 @@ export function useHomepageSubmission() {
       const siteData: QuickCreateResponse = await createSiteResponse.json()
       logger.info('page.site.quick-create.success', { message: 'Site record created instantly', siteId: siteData.id, type: siteData.type })
 
-      setQuickCreateSessionFlags(siteData.id, promptToUse, selectedTemplate, uploadedFiles)
+      const primaryUploadedFile = uploadedFiles.find(f => f.isUiKit)
+        ?? uploadedFiles.find(f => f.isZip)
+        ?? uploadedFiles[0]
+        ?? null
+      setQuickCreateSessionFlags(siteData.id, promptToUse, selectedTemplate, {
+        uploadedFiles,
+        entryPoint: resolveEntryPoint([locationParam, itcParam, siteLocationParam], 'aab_homepage'),
+        creationSource: resolveCreationSource(primaryUploadedFile, selectedTemplate, submitSourceRef.current),
+      })
 
       const filesToStore = uploadedFiles
         .filter(f => f.zipRaw)

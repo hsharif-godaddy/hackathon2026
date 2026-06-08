@@ -865,10 +865,33 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   useEffect(() => {
     if (shouldReplaceJobRoute(appId, isJobId, realAppId)) {
       const jobId = appId
-      sessionStorage.setItem(`initial-job-id-${realAppId}`, jobId)
-      const initialPromptText = sessionStorage.getItem(`initial-prompt-text-${jobId}`)
-      if (initialPromptText) {
-        sessionStorage.setItem(`initial-prompt-text-${realAppId}`, initialPromptText)
+      try {
+        sessionStorage.setItem(`initial-job-id-${realAppId}`, jobId)
+        const initialPromptText = sessionStorage.getItem(`initial-prompt-text-${jobId}`)
+        if (initialPromptText) {
+          sessionStorage.setItem(`initial-prompt-text-${realAppId}`, initialPromptText)
+        }
+        // Copy all analytics context fields directly under the real app ID so they
+        // survive after applyMarkInitialPromptSentEffects removes the initial-job-id
+        // marker. Without this, readCreationSourceFromSession / readIntentCategoryFromSession
+        // lose their job-id fallback and useInstrumentationPrimer resets those fields to
+        // null/'edit' on any searchParams re-run after the marker is gone.
+        const contextKeys = [
+          'entry-point',
+          'creation-source',
+          'intent-category',
+          'in-creation-flow',
+        ] as const
+        for (const key of contextKeys) {
+          const value = sessionStorage.getItem(`${key}-${jobId}`)
+          if (value != null && sessionStorage.getItem(`${key}-${realAppId}`) == null) {
+            sessionStorage.setItem(`${key}-${realAppId}`, value)
+          }
+        }
+      } catch (e) {
+        // Safari private mode / quota exceeded — analytics context loss is acceptable;
+        // navigation must proceed regardless.
+        logger.warn('initialization.job-url-flip.session-storage-failed', { jobId, realAppId, error: e })
       }
       router.replace(`/develop/${realAppId}`, { scroll: false })
     }

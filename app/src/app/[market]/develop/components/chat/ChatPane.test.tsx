@@ -9,6 +9,7 @@ import Growl from '@ux/growl';
 
 import { ChatTab } from '@/app/[market]/develop/components/types';
 import { getFileUploadAgent } from '@/lib/file-agent';
+import { mockInstrumentation } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import { MAX_TOTAL_ASSETS } from '@/utils/file-upload-validation';
 import ChatPane from './ChatPane';
@@ -252,11 +253,7 @@ vi.mock('@/components/providers/AuthProvider', () => ({
   useAuthContext: () => mockAuthContextState,
 }));
 
-vi.mock('@/utils/instrumentation', () => ({
-  logAiroHQEvent: vi.fn(function () { return vi.fn(); }),
-  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
-  logClickEvent: vi.fn(function () { return vi.fn(); }),
-}));
+vi.mock('@/utils/instrumentation', () => mockInstrumentation());
 
 vi.mock('@/utils/postMessage', () => ({
   postMessageToIframe: vi.fn(),

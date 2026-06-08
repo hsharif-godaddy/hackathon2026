@@ -22,10 +22,52 @@
  * ```
  */
 
+import { logger } from '@/lib/request-context';
+import { getInstrumentationAppId, getSharedInstrumentationContext, normalizedAppId } from '@/utils/instrumentation';
 import { ClientLogBuffer } from './client-log-buffer';
 
 export { ClientLogBuffer };
 export type { ClientLogBufferConfig } from './client-log-buffer';
+
+/**
+ * Merges instrumentation context into analytics payloads (Elasticsearch channel).
+ *
+ * appId precedence:
+ *  1. Module value (getInstrumentationAppId) — UUID-rejected at write time
+ *  2. Caller-supplied data.appId — normalized here; UUID → dropped
+ *  Conflict → module value wins + warning logged.
+ *
+ * Context fields (entry_point, plan_type, etc.) come from getSharedInstrumentationContext,
+ * which is also used by the CSP channel — both channels stay in sync automatically.
+ */
+export function mergeAnalyticsContext(data: Record<string, unknown>): Record<string, unknown> {
+  const moduleAppId = getInstrumentationAppId();
+
+  // Normalize caller-supplied appId the same way mergeContext does — UUID → dropped
+  const rawCallerAppId = data.appId;
+  const callerAppId = typeof rawCallerAppId === 'string' ? normalizedAppId(rawCallerAppId) : undefined;
+
+  if (moduleAppId && callerAppId && moduleAppId !== callerAppId) {
+    logger.warn('logging.mergeAnalyticsContext.appId.conflict', {
+      message: 'appId in data differs from instrumentation appId; using instrumentation appId',
+      callerAppId,
+      currentAppId: moduleAppId,
+    });
+  }
+
+  const effectiveAppId = moduleAppId ?? callerAppId;
+  const { appId: _appId, ...rest } = data;
+
+  const sessionId = ClientLogBuffer.getSessionId();
+  const ctx = getSharedInstrumentationContext(rest.intent_category);
+
+  return {
+    ...rest,
+    ...(effectiveAppId && { appId: effectiveAppId }),
+    ...(sessionId && { log_session_id: sessionId }),
+    ...ctx,
+  };
+}
 
 /**
  * Ship an analytics log via the batched ClientLogBuffer
@@ -59,7 +101,7 @@ export function shipAnalyticsLog(event: string, data: Record<string, unknown>): 
     level: 'info',
     event,
     data: {
-      ...data,
+      ...mergeAnalyticsContext(data),
       source: 'analytics' // Mark as analytics event for filtering
     }
   });

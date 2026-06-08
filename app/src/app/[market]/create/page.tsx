@@ -12,6 +12,7 @@ import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { createSiteAndRedirect } from '@/lib/site-creation'
 import { useAuthUIStore } from '@/stores/useAuthUIStore'
+import { resolveEntryPoint } from '@/utils/traffic-signals'
 
 function CreatePageContent() {
   const router = useRouter()
@@ -75,6 +76,10 @@ function CreatePageContent() {
         prompt: trimmedPrompt,
         source: 'create-page',
         templateId: template || undefined,
+        entryPoint: resolveEntryPoint(
+          [searchParams.get('location'), searchParams.get(ITC_QUERY_PARAM), searchParams.get('site_location')],
+          'create_route',
+        ),
         onAuthRequired: (prompt) => {
           // API returned 401 - user not authenticated or token expired
           logger.info('create_page.auth_required', {

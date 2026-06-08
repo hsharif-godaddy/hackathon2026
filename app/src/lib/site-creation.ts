@@ -7,7 +7,8 @@ export interface CreateSiteOptions {
   prompt: string
   templateId?: string
   productId?: string
-  source?: string // Analytics source tracking (e.g., 'homepage', 'create-page')
+  source?: string
+  entryPoint?: string
   onAuthRequired?: (prompt: string) => void
   onError?: (error: string) => void
   onSuccess?: (siteId: string, siteType: string) => void
@@ -21,7 +22,7 @@ export async function createSiteAndRedirect(
   options: CreateSiteOptions,
   router: Router
 ): Promise<void> {
-  const { prompt, templateId, productId, source = 'unknown', onAuthRequired, onError, onSuccess } = options
+  const { prompt, templateId, productId, source = 'unknown', entryPoint = 'create_route', onAuthRequired, onError, onSuccess } = options
 
   try {
     const normalizedPrompt = prompt.trim()
@@ -79,7 +80,10 @@ export async function createSiteAndRedirect(
       source,
     })
 
-    setQuickCreateSessionFlags(siteData.id, normalizedPrompt, templateId)
+    setQuickCreateSessionFlags(siteData.id, normalizedPrompt, templateId, {
+      entryPoint,
+      creationSource: 'partner_handoff',
+    })
 
     onSuccess?.(siteData.id, siteData.type)
 

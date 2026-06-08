@@ -6,12 +6,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fireConversionEvent,
   generateClickEID,
+  getInstrumentationAppId,
+  getInstrumentationBusinessName,
+  getInstrumentationCreationSource,
+  getInstrumentationEntryPoint,
+  getInstrumentationIntentCategory,
+  getInstrumentationPlanType,
   logActionEvent,
   logAiroHQEvent,
   logClickEvent,
   logImpressionEvent,
   parseEID,
   setInstrumentationAppId,
+  setInstrumentationBusinessName,
+  setInstrumentationCreationSource,
+  setInstrumentationEntryPoint,
+  setInstrumentationIntentCategory,
+  setInstrumentationPlanType,
 } from './instrumentation';
 
 // Mock the logger
@@ -40,6 +51,15 @@ const VALID_APP_ID_12 = 'callr78901';
 const VALID_APP_ID_13 = 'sameap1234';
 const VALID_APP_ID_14 = 'server1234';
 
+function resetInstrumentationContext(): void {
+  setInstrumentationAppId(null);
+  setInstrumentationEntryPoint(null);
+  setInstrumentationPlanType(null);
+  setInstrumentationCreationSource(null);
+  setInstrumentationIntentCategory(null);
+  setInstrumentationBusinessName(null);
+}
+
 describe('instrumentation utilities', () => {
   let mockDataLayer: any[];
 
@@ -49,8 +69,8 @@ describe('instrumentation utilities', () => {
     global.window = {
       _expDataLayer: mockDataLayer,
     } as any;
-    // Clear any stored appId between tests
-    setInstrumentationAppId(null);
+    // Clear develop-page context between tests
+    resetInstrumentationContext();
   });
 
   describe('parseEID', () => {
@@ -667,8 +687,8 @@ describe('instrumentation utilities', () => {
     });
   });
 
-  describe('appId management', () => {
-    it('should set and get appId correctly', () => {
+  describe('develop context management', () => {
+    it('should set and get appId correctly', function appIdLifecycle() {
       logClickEvent('test.section.widget')();
       expect(mockDataLayer[0].data.traffic?.customProperties?.appId).toBeUndefined();
 
@@ -685,7 +705,109 @@ describe('instrumentation utilities', () => {
       expect(mockDataLayer[3].data.traffic?.customProperties?.appId).toBeUndefined();
     });
 
-    it('should omit UUID-style app IDs from instrumentation', () => {
+    it('should merge all develop context fields into events', function mergeAllContext() {
+      setInstrumentationAppId(VALID_APP_ID_1);
+      setInstrumentationEntryPoint('aab_homepage');
+      setInstrumentationPlanType('freemium');
+      setInstrumentationCreationSource('free_text');
+      setInstrumentationIntentCategory('new_build');
+      setInstrumentationBusinessName('Acme Co');
+
+      logClickEvent('test.section.widget', { userId: 'user123' })();
+
+      expect(mockDataLayer[0].data.traffic?.customProperties).toEqual({
+        userId: 'user123',
+        appId: VALID_APP_ID_1,
+        entry_point: 'aab_homepage',
+        plan_type: 'freemium',
+        creation_source: 'free_text',
+        intent_category: 'new_build',
+        business_name: 'Acme Co',
+      });
+    });
+
+    it('should merge appId only into AiroHQ events', function airohqAppIdOnly() {
+      setInstrumentationAppId(VALID_APP_ID_1);
+      setInstrumentationEntryPoint('aab_homepage');
+      setInstrumentationPlanType('freemium');
+      setInstrumentationCreationSource('free_text');
+      setInstrumentationIntentCategory('new_build');
+      setInstrumentationBusinessName('Acme Co');
+
+      logAiroHQEvent({ category: 'click', recommendation_task: 'builder_develop_prompt_submit' })();
+
+      expect(mockDataLayer[0].data.custom_properties).toEqual({
+        ai_agent_id: 'app-builder',
+        agent_conversation_id: undefined,
+        recommendation_id: undefined,
+        recommendation_task: 'builder_develop_prompt_submit',
+        recommendation_type: undefined,
+        ventureID: undefined,
+        appId: VALID_APP_ID_1,
+      });
+    });
+
+    it('should merge context fields without appId when only context is set', function contextWithoutAppId() {
+      setInstrumentationEntryPoint('direct_nav');
+      setInstrumentationCreationSource('example_selected');
+
+      logImpressionEvent('test.section.widget')();
+
+      expect(mockDataLayer[0].data.custom_properties).toEqual({
+        entry_point: 'direct_nav',
+        creation_source: 'example_selected',
+      });
+    });
+
+    it('should expose getters for develop context fields', function getters() {
+      setInstrumentationAppId(VALID_APP_ID_2);
+      setInstrumentationEntryPoint('gd_nav_airo');
+      setInstrumentationPlanType('paid');
+      setInstrumentationCreationSource('ui_kit_import');
+      setInstrumentationIntentCategory('rebuild');
+      setInstrumentationBusinessName('My Biz');
+
+      expect(getInstrumentationAppId()).toBe(VALID_APP_ID_2);
+      expect(getInstrumentationEntryPoint()).toBe('gd_nav_airo');
+      expect(getInstrumentationPlanType()).toBe('paid');
+      expect(getInstrumentationCreationSource()).toBe('ui_kit_import');
+      expect(getInstrumentationIntentCategory()).toBe('rebuild');
+      expect(getInstrumentationBusinessName()).toBe('My Biz');
+    });
+
+    it('should clear context fields when set to null', function clearContext() {
+      setInstrumentationEntryPoint('aab_homepage');
+      setInstrumentationPlanType('freemium');
+      setInstrumentationCreationSource('free_text');
+      setInstrumentationIntentCategory('new_build');
+      setInstrumentationBusinessName('Acme Co');
+
+      resetInstrumentationContext();
+
+      expect(getInstrumentationEntryPoint()).toBeUndefined();
+      expect(getInstrumentationPlanType()).toBeUndefined();
+      expect(getInstrumentationCreationSource()).toBeUndefined();
+      expect(getInstrumentationIntentCategory()).toBeUndefined();
+      expect(getInstrumentationBusinessName()).toBeUndefined();
+    });
+
+    it('should prefer caller intent_category over module baseline', function callerIntentCategory() {
+      setInstrumentationIntentCategory('new_build');
+
+      logClickEvent('test.section.widget', { intent_category: 'edit' })();
+
+      expect(mockDataLayer[0].data.traffic?.customProperties?.intent_category).toBe('edit');
+    });
+
+    it('should use module intent_category when caller omits it', function moduleIntentCategory() {
+      setInstrumentationIntentCategory('rebuild');
+
+      logClickEvent('test.section.widget')();
+
+      expect(mockDataLayer[0].data.traffic?.customProperties?.intent_category).toBe('rebuild');
+    });
+
+    it('should omit UUID-style app IDs from instrumentation', function omitUuidAppId() {
       const uuidAppId = '550e8400-e29b-41d4-a716-446655440000';
       setInstrumentationAppId(uuidAppId);
       
@@ -704,21 +826,27 @@ describe('instrumentation utilities', () => {
       expect(mockDataLayer[0].data.traffic?.customProperties?.appId).toBeUndefined();
     });
 
-    it('should persist appId across multiple events', () => {
+    it('should persist develop context across multiple event types', function persistContext() {
       setInstrumentationAppId(VALID_APP_ID_9);
+      setInstrumentationEntryPoint('aab_homepage');
+      setInstrumentationCreationSource('free_text');
 
-      // Multiple different event types should all include the same appId
       logClickEvent('test.click.widget')();
       logActionEvent({ eid: 'test.action.widget', action: 'hover' })();
       logImpressionEvent('test.impression.widget')();
 
       expect(mockDataLayer).toHaveLength(3);
-      expect(mockDataLayer[0].data.traffic?.customProperties?.appId).toBe(VALID_APP_ID_9);
-      expect(mockDataLayer[1].data.traffic?.customProperties?.appId).toBe(VALID_APP_ID_9);
-      expect(mockDataLayer[2].data.custom_properties?.appId).toBe(VALID_APP_ID_9);
+      for (const event of mockDataLayer) {
+        const props = event.data.traffic?.customProperties ?? event.data.custom_properties;
+        expect(props).toEqual({
+          appId: VALID_APP_ID_9,
+          entry_point: 'aab_homepage',
+          creation_source: 'free_text',
+        });
+      }
     });
 
-    it('should use module appId when customProperties appId is not exactly 10 chars', () => {
+    it('should use module appId when customProperties appId is not exactly 10 chars', function invalidCallerAppId() {
       setInstrumentationAppId(VALID_APP_ID_10);
 
       const uuidLike = '550e8400-e29b-41d4-a716-446655440000';
@@ -769,24 +897,41 @@ describe('instrumentation utilities', () => {
       expect(logger.warn).not.toHaveBeenCalled();
     });
 
-    it('should handle server-side calls gracefully', () => {
-      // Mock server-side environment
+    it('should handle server-side calls gracefully', function serverSideSetters() {
       const originalWindow = global.window;
       delete (global as any).window;
 
-      // Should not crash and should not set appId
       setInstrumentationAppId(VALID_APP_ID_14);
+      setInstrumentationEntryPoint('aab_homepage');
+      setInstrumentationPlanType('freemium');
+      setInstrumentationCreationSource('free_text');
+      setInstrumentationIntentCategory('new_build');
+      setInstrumentationBusinessName('Acme Co');
 
-      // Should warn about server-side usage
       expect(logger.warn).toHaveBeenCalledWith(
         'instrumentation.setAppId.server-side',
         expect.objectContaining({
           message: 'setInstrumentationAppId called on server - this may cause cross-request state leakage',
-          appId: VALID_APP_ID_14
+          appId: VALID_APP_ID_14,
         })
       );
+      expect(logger.warn).toHaveBeenCalledWith(
+        'instrumentation.setEntryPoint.server-side',
+        expect.objectContaining({ entryPoint: 'aab_homepage' })
+      );
+      expect(logger.warn).toHaveBeenCalledWith(
+        'instrumentation.setPlanType.server-side',
+        expect.objectContaining({ plan: 'freemium' })
+      );
+      expect(logger.warn).toHaveBeenCalledWith(
+        'instrumentation.setCreationSource.server-side',
+        expect.objectContaining({ source: 'free_text' })
+      );
+      expect(logger.warn).toHaveBeenCalledWith(
+        'instrumentation.setIntentCategory.server-side',
+        expect.objectContaining({ category: 'new_build' })
+      );
 
-      // Restore window
       global.window = originalWindow;
     });
   });

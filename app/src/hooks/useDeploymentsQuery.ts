@@ -261,6 +261,7 @@ export function useDeploymentsQuery({
           appId,
           domain: currentSiteData?.name,
           deploymentId: deploymentInProgressId,
+          commitHash: deploymentInProgress.gitHash,
           isFirstPublish,
         });
 
@@ -339,11 +340,21 @@ export function useDeploymentsQuery({
       } else if (deploymentInProgress.status === DeploymentStatus.FAILED) {
         setFirstPublishDeployPending(appId, false);
         const currentSiteData = getSite(appId);
+        const failureReason = deploymentInProgress.metadata?.errorMessage
+          ?? deploymentInProgress.job?.errorMessage
+          ?? 'unknown'
         shipAnalyticsLog('publish.failed', {
           appId,
           domain: currentSiteData?.name,
-          deploymentId: deploymentInProgressId
+          deploymentId: deploymentInProgressId,
+          commitHash: deploymentInProgress.gitHash,
+          failureReason,
         });
+
+        logImpressionEvent('develop.publish.failed', {
+          appId,
+          failureReason: String(failureReason).substring(0, 200),
+        })();
       }
 
       // Clear deployment tracking

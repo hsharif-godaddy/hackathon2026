@@ -69,8 +69,13 @@ vi.mock('@/config/dynamic-api', () => ({
   },
 }))
 
+vi.mock('@/lib/logging', () => ({
+  shipAnalyticsLog: vi.fn(),
+}))
+
 vi.mock('@/utils/instrumentation', () => ({
   logAiroHQEvent: vi.fn(),
+  logImpressionEvent: vi.fn(() => vi.fn()),
 }))
 
 vi.mock('@/utils/site', () => ({
@@ -79,14 +84,16 @@ vi.mock('@/utils/site', () => ({
 
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
-import { appFetch } from '@/lib/gasket-config'
+import { appFetch, authPreflight } from '@/lib/gasket-config'
 import { regenerateToken } from '@/lib/jwt-regeneration'
+import { shipAnalyticsLog } from '@/lib/logging'
 import { DeploymentStatus } from '@/lib/mgmt-airo/types'
 import { checkPaywallEligibility } from '@/lib/paywall/core'
+import { PublishComplianceBlockReason } from '@/lib/subscription'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { SubscriptionStatus, SubscriptionSuspendReason } from '@/types/credits'
-import { logAiroHQEvent } from '@/utils/instrumentation'
+import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import { hasBeenPublished } from '@/utils/site'
 
 describe('publishAction', () => {
@@ -95,6 +102,8 @@ describe('publishAction', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(authPreflight).mockResolvedValue(null)
+    vi.mocked(shipAnalyticsLog).mockImplementation(() => {})
 
     // Default store actions
     mockStoreActions = {
@@ -193,6 +202,7 @@ describe('publishAction', () => {
 
     // Default analytics logging - mock to return a function
     vi.mocked(logAiroHQEvent).mockReturnValue(() => {})
+    vi.mocked(logImpressionEvent).mockReturnValue(() => {})
 
     // Default: simulate successful deployment completion via store subscription.
     // useDeploymentsQuery already polls mgmt-airo; publishAction subscribes to the
@@ -1311,6 +1321,138 @@ describe('publishAction', () => {
   })
 
   describe('analytics tracking', () => {
+    it('should log publish.attempted when gates pass', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123' }
+
+      vi.mocked(mockQueryClient.fetchQuery).mockResolvedValue({
+        id: 'app-123',
+        name: 'Test Site',
+        status: SiteStatus.Running,
+        variants: ['publish'],
+        gitHash: 'gate-pass-hash',
+      })
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          commitHash: 'abc123',
+          deployment: { deploymentId: 'deploy-123' },
+        }),
+      } as Response)
+
+      await publishAction(params, context)
+
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('publish.attempted', {
+        appId: 'app-123',
+        commitHash: 'gate-pass-hash',
+        trigger: 'agent',
+      })
+      expect(logImpressionEvent).toHaveBeenCalledWith('develop.publish.attempt', {
+        appId: 'app-123',
+        trigger: 'agent',
+      })
+    })
+
+    it('should log publish.attempted with blockedReason when paywall denies access', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123' }
+
+      vi.mocked(checkPaywallEligibility).mockResolvedValue({
+        hasAccess: false,
+        reason: 'Airo Plus subscription required',
+        details: {
+          hasSubscription: false,
+          hasEntitlements: false,
+          hasMatchingProject: false,
+        },
+      })
+
+      await expect(publishAction(params, context)).rejects.toThrow('Airo Plus subscription required')
+
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('publish.attempted', {
+        appId: 'app-123',
+        blockedReason: 'paywall_denied',
+        trigger: 'agent',
+      })
+      expect(logImpressionEvent).toHaveBeenCalledWith('develop.publish.attempt', {
+        appId: 'app-123',
+        blockedReason: 'paywall_denied',
+        trigger: 'agent',
+      })
+    })
+
+    it('should log publish.attempted with blockedReason when compliance blocks publish', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123' }
+
+      vi.mocked(mockQueryClient.fetchQuery).mockResolvedValue({
+        id: 'app-123',
+        status: SiteStatus.Suspended,
+        variants: ['preview'],
+      })
+
+      await expect(publishAction(params, context)).rejects.toThrow(
+        'Publish blocked: compliance suspension'
+      )
+
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('publish.attempted', {
+        appId: 'app-123',
+        blockedReason: PublishComplianceBlockReason.SiteSuspended,
+        trigger: 'agent',
+      })
+      expect(logImpressionEvent).toHaveBeenCalledWith('develop.publish.attempt', {
+        appId: 'app-123',
+        blockedReason: PublishComplianceBlockReason.SiteSuspended,
+        trigger: 'agent',
+      })
+    })
+
+    it('should log publish.attempted with auth_required when auth preflight fails', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123' }
+
+      vi.mocked(authPreflight).mockResolvedValue({ ok: false } as Response)
+
+      await expect(publishAction(params, context)).rejects.toThrow('Authentication required')
+
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('publish.attempted', {
+        appId: 'app-123',
+        blockedReason: 'auth_required',
+        trigger: 'agent',
+      })
+      expect(logImpressionEvent).toHaveBeenCalledWith('develop.publish.attempt', {
+        appId: 'app-123',
+        blockedReason: 'auth_required',
+        trigger: 'agent',
+      })
+      expect(global.fetch).not.toHaveBeenCalledWith(
+        expect.stringContaining('/publish'),
+        expect.anything()
+      )
+    })
+
+    it('should continue publish if publish.attempted analytics fails', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123' }
+
+      vi.mocked(shipAnalyticsLog).mockImplementation(function throwOnGatePassAttempt(event: string) {
+        if (event === 'publish.attempted') {
+          throw new Error('Attempt analytics error')
+        }
+      })
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          commitHash: 'abc123',
+          deployment: { deploymentId: 'deploy-123' },
+        }),
+      } as Response)
+
+      await expect(publishAction(params, context)).resolves.toBeDefined()
+    })
+
     it('should log analytics event for first-time publish', async () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123' }

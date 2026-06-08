@@ -10,6 +10,7 @@ import type { FeedbackValue } from '@/lib/feedback-client'
 import { submitFeedback } from '@/lib/feedback-client'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useGitStore } from '@/stores/useGitStore'
 import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 
 export default function AppGenerationFeedbackBanner() {
@@ -53,6 +54,8 @@ export default function AppGenerationFeedbackBanner() {
     logClickEvent(`appGeneration.feedback.${feedback}`)()
     setSubmitting(true)
 
+    const commitHash = appId ? useGitStore.getState().getSelectedCommitHash(appId) : null
+
     // Trace IDs are best-effort: when the complete event carried them the
     // feedback event stitches to the Langfuse trace; when it didn't (e.g.
     // OTel instrumentation not configured locally) we still capture the
@@ -82,6 +85,7 @@ export default function AppGenerationFeedbackBanner() {
     shipAnalyticsLog('appGeneration.feedback.submit', {
       appId,
       feedback,
+      ...(commitHash && { artifactHash: commitHash }),
       ...(traceIds?.traceId && { traceId: traceIds.traceId }),
       ...(traceIds?.observationId && { observationId: traceIds.observationId }),
       outcome: ok ? 'success' : 'failure',

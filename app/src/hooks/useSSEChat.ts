@@ -31,7 +31,8 @@ import {
   useStreamingConversationStore,
 } from '@/stores/useStreamingConversationStore'
 import type { StructuredError } from '@/types/errors'
-import { logImpressionEvent } from '@/utils/instrumentation'
+import { logImpressionEvent, setInstrumentationIntentCategory } from '@/utils/instrumentation'
+import { readIntentCategoryFromSession } from '@/utils/traffic-signals'
 import { resolveMessageDefaults } from './resolveMessageDefaults'
 import {
   checkNewPageCreation,
@@ -49,8 +50,9 @@ import {
   trackToolResult,
   updateSiteTimestamp,
 } from './shared/completionSideEffects'
+import { isInitialBuildComplete, isInitialBuildFunnelActive } from './shared/initialBuildFunnel'
 import { mapToolCall, mapToolResult, mapToolStart } from './shared/toolMappers'
-import { handleToolCallSideEffects, handleToolResultSideEffects } from './shared/toolSideEffects'
+import { detectRebuildIntent, handleToolCallSideEffects, handleToolResultSideEffects } from './shared/toolSideEffects'
 import { handleToolStartSideEffects } from './shared/toolStartSideEffects'
 import { buildValidationToolCallFromEvent } from './shared/validationToolCallBuilder'
 import { handleVideoNotification } from './shared/videoNotification'
@@ -446,7 +448,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 if (tool) {
                   flushStoreUpdateBufferImmediate()
                   bufferStoreUpdate(() => store.addToolCallSegment(mapToolCall(tool)))
-                  handleToolCallSideEffects(tool)
+                  handleToolCallSideEffects(tool, store.currentAppId)
                 }
               } else if (type === 'tool_result') {
                 const tool = (event.data as any)?.tool ?? (event.data as any)?.data?.tool
@@ -517,6 +519,16 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 maybeShowFeedbackBanner()
                 trackCompletion(!!completeData?.usage)
                 trackInitialBuildComplete(commitHash)
+
+                // Reset intent_category from sessionStorage after stream ends.
+                // Clears stale eager 'rebuild' if websiteRebuild wasn't called; no-op if already restored.
+                if (activeAppId) {
+                  setInstrumentationIntentCategory(
+                    isInitialBuildFunnelActive() && !isInitialBuildComplete()
+                      ? 'new_build'
+                      : (readIntentCategoryFromSession(activeAppId) ?? 'edit'),
+                  )
+                }
 
                 if (activeAppId) {
                   invalidateMediaManifestIfNeeded(activeAppId)
@@ -972,6 +984,11 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     const referencedFiles = options.customContext?.referencedFiles as Array<{ path: string; content: string }> | undefined
     const origin = getMessageOriginForAuthType(tokenAuthTypeRef.current)
     store.startNewStream(options.content, options.selectedAssets, referencedFiles, origin, options.uploadedFileName)
+
+    // Eager rebuild intent for tool impressions this turn; skip during initial build.
+    if (hasText && !isInitialBuildFunnelActive() && detectRebuildIntent(options.content)) {
+      setInstrumentationIntentCategory('rebuild')
+    }
 
     // Reset APP_NOT_FOUND retry state so a new user prompt starts with a
     // clean 30-second window. The resolved outbound payload is cached after

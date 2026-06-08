@@ -53,7 +53,7 @@ import { useHivemind } from '@/hooks/useHivemind'
 import { useImageReadiness } from '@/hooks/useImageReadiness'
 import { useInboxAccount } from '@/hooks/useInboxAccount'
 import { usePaywallDeeplinkWithStore } from '@/hooks/usePaywallDeeplinkWithStore'
-import { prefetchSubscription } from '@/hooks/useSubscription'
+import { prefetchSubscription, useSubscription } from '@/hooks/useSubscription'
 import { useIsRenewalPolling } from '@/hooks/useSubscriptionRenewal'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useSyncResponsiveState } from '@/hooks/useSyncResponsiveState'
@@ -70,7 +70,7 @@ import {
   markAutoSwitchedLogoDesignerPreview,
   markLogoDesignerApp,
 } from '@/lib/logo-designer-preview-switch-storage'
-import { PAYWALL_ITC } from '@/lib/paywall/shared'
+import { getEffectivePlan, PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
 import { claimTodoListHandoff, releaseTodoListHandoff } from '@/lib/todo-list-handoff-dedupe'
 import { cn } from '@/lib/utils'
@@ -96,8 +96,9 @@ import {
 import { useTodoListStore } from '@/stores/useTodoListStore'
 import type { RuntimeErrorData } from '@/types/runtime-error'
 import { registerTrackEventBus } from '@/utils/eventBus'
-import { logAiroHQEvent, logClickEvent, logImpressionEvent, setInstrumentationAppId } from '@/utils/instrumentation'
+import { logAiroHQEvent, logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
+import { useInstrumentationPrimer } from '../hooks/useInstrumentationPrimer'
 
 registerTrackEventBus()
 
@@ -130,19 +131,10 @@ function DevelopPageContent() {
   const router = useRouter()
   const appId = useAppIdFromParams()
   const isJobId = searchParams.get('type') === 'job'
+  const { data: subscription } = useSubscription()
+  const planType = getEffectivePlan(subscription?.plan, subscription?.hadAiroPlus) ?? null
 
-  // Only set once the route carries a real app id (job creation URLs use a UUID in :id until replace)
-  useLayoutEffect(() => {
-    if (appId && !isJobId) {
-      setInstrumentationAppId(appId);
-    } else {
-      setInstrumentationAppId(null);
-    }
-
-    return () => {
-      setInstrumentationAppId(null);
-    };
-  }, [appId, isJobId]);
+  useInstrumentationPrimer({ appId, isJobId, planType, searchParams });
 
   const queryClient = useQueryClient()
   useEffect(() => {

@@ -57,6 +57,9 @@ import {
   useStreamingConversationStore,
   useWebSocketState,
 } from '@/stores/useStreamingConversationStore'
+import { setInstrumentationIntentCategory } from '@/utils/instrumentation'
+import { isInitialBuildFunnelActive } from './shared/initialBuildFunnel'
+import { detectRebuildIntent } from './shared/toolSideEffects'
 import { useBudgetUpdate } from './useBudgetUpdate'
 import { useGrantContext } from './useGrantContext'
 import { useWebSocketHelpers } from './websocket'
@@ -384,6 +387,10 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
       }
 
       useStreamingConversationStore.getState().setIsLoading(true)
+
+      if (!isInitialBuildFunnelActive() && Boolean(options.content?.trim()) && detectRebuildIntent(options.content)) {
+        setInstrumentationIntentCategory('rebuild')
+      }
 
       const defaults = await resolveMessageDefaults({
           modelOverride: options.modelOverride,

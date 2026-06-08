@@ -176,6 +176,30 @@ describe('setQuickCreateSessionFlags', () => {
 
     expect(sessionStorage.getItem('initial-template-site-1')).toBeNull()
   })
+
+  it('defaults intent-category to new_build', () => {
+    setQuickCreateSessionFlags('site-1', 'test')
+
+    expect(sessionStorage.getItem('intent-category-site-1')).toBe('new_build')
+  })
+
+  it('accepts a custom intentCategory', () => {
+    setQuickCreateSessionFlags('site-1', 'test', undefined, { intentCategory: 'edit' })
+
+    expect(sessionStorage.getItem('intent-category-site-1')).toBe('edit')
+  })
+
+  it('stores pre-resolved entry point in session', () => {
+    setQuickCreateSessionFlags('site-1', 'test', undefined, { entryPoint: 'venture' })
+
+    expect(sessionStorage.getItem('entry-point-site-1')).toBe('venture')
+  })
+
+  it('does not store entry point when omitted', () => {
+    setQuickCreateSessionFlags('site-1', 'test')
+
+    expect(sessionStorage.getItem('entry-point-site-1')).toBeNull()
+  })
 })
 
 describe('setQuickCreateSessionFlags (multi-file)', () => {
@@ -186,7 +210,7 @@ describe('setQuickCreateSessionFlags (multi-file)', () => {
       { name: 'a.txt', content: 'hi', isDesignMd: false, zipRaw: new ArrayBuffer(10) },
       { name: 'b.png', content: '', isDesignMd: false, isImage: true, zipRaw: new ArrayBuffer(20) },
     ]
-    setQuickCreateSessionFlags('site-1', 'build me a site', undefined, files)
+    setQuickCreateSessionFlags('site-1', 'build me a site', undefined, { uploadedFiles: files })
     const stored = JSON.parse(sessionStorage.getItem('initial-upload-files-site-1')!)
     expect(stored).toHaveLength(2)
     expect(stored[0]).toEqual({ name: 'a.txt', content: 'hi', isDesignMd: false })
@@ -195,7 +219,7 @@ describe('setQuickCreateSessionFlags (multi-file)', () => {
   })
 
   it('does not write key when files array is empty', () => {
-    setQuickCreateSessionFlags('site-1', 'prompt', undefined, [])
+    setQuickCreateSessionFlags('site-1', 'prompt', undefined, { uploadedFiles: [] })
     expect(sessionStorage.getItem('initial-upload-files-site-1')).toBeNull()
   })
 })

@@ -10,6 +10,7 @@ import {
   clearController,
   getController,
 } from '@/services/websocket/controllerRegistry';
+import { mockInstrumentation } from '@/tests/mocks';
 
 const mockSetWebSocketState = vi.fn()
 const mockSetError = vi.fn()
@@ -266,9 +267,7 @@ vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: vi.fn(function () { return (id: string) => id; })
 }));
 
-vi.mock('@/utils/instrumentation', () => ({
-  logImpressionEvent: vi.fn(function () { return vi.fn(); })
-}));
+vi.mock('@/utils/instrumentation', () => mockInstrumentation());
 
 vi.mock('../config/dynamic-api', () => ({
   dynamicApiConfigService: {

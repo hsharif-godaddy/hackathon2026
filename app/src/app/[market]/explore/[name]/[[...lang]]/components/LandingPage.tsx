@@ -1,6 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import Box from '@ux/box'
 import Spinner from '@ux/spinner'
@@ -20,6 +20,7 @@ import { buildDevelopUrl, extractApiError, fetchQuickCreate, type QuickCreateRes
 import { logger } from '@/lib/request-context'
 import { useAuthUIStore } from '@/stores/useAuthUIStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
+import { resolveEntryPoint } from '@/utils/traffic-signals'
 import LandingHero from './LandingHero'
 import SectionRenderer from './SectionRenderer'
 import { LandingPageData } from './types'
@@ -34,6 +35,7 @@ interface LandingPageProps {
 
 function LandingPageContent({ data }: LandingPageProps) {
   const t = useTranslations();
+  const searchParams = useSearchParams()
   const [promptText, setPromptText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
@@ -157,7 +159,14 @@ function LandingPageContent({ data }: LandingPageProps) {
         landingSlug: slug
       })
 
-      setQuickCreateSessionFlags(siteData.id, promptToUse)
+      // Landing page is always free text — no template or file upload path here
+      setQuickCreateSessionFlags(siteData.id, promptToUse, undefined, {
+        entryPoint: resolveEntryPoint(
+          [searchParams.get('location'), searchParams.get('itc'), searchParams.get('site_location')],
+          'aab_landing_page',
+        ),
+        creationSource: 'free_text',
+      })
 
       router.push(buildDevelopUrl(siteData.id, siteData.type))
     } catch (err) {
