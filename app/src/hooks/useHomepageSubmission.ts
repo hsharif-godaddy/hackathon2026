@@ -424,7 +424,7 @@ export function useHomepageSubmission() {
 
     const savedPrompt = localStorage.getItem('airo-pending-prompt')
 
-    if (savedPrompt && !promptText) {
+    if (savedPrompt && (!promptText || promptText.trim() === savedPrompt.trim())) {
       logger.info('homepage.prompt.restore', { message: 'Restoring saved prompt after login' })
       const validated = validateAndClampPrompt(savedPrompt)
       setPromptText(validated.text)
