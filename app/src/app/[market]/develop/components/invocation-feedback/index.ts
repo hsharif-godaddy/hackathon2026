@@ -13,3 +13,4 @@ export { default as InvocationFeedbackControls } from './InvocationFeedbackContr
 export { default as InvocationFeedbackOtherForm } from './InvocationFeedbackOtherForm';
 export { default as InvocationFeedbackPanel } from './InvocationFeedbackPanel';
 export type { FeedbackReason, InvocationFeedbackVote } from './types';
+export { invocationFeedbackVoteFromMetadata } from './types';

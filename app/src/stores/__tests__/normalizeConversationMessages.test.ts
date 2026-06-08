@@ -187,6 +187,19 @@ describe('normalizeConversationMessages', () => {
     expect(normalized[0].commitHash).toBeUndefined()
   })
 
+  it('should preserve feedback metadata from persisted agent messages', () => {
+    const [message] = normalizeConversationMessages([
+      {
+        id: 'msg-3',
+        sender: 'assistant',
+        content: 'Thanks',
+        createdAt: Date.now(),
+        metadata: { feedback: 'positive', agentId: 'develop' },
+      },
+    ])
+    expect(message.metadata?.feedback).toBe('positive')
+  })
+
   it('preserves wire-format completed status and widget result for askQuestion on reload', () => {
     const widgetData = {
       type: 'ask-question',

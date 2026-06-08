@@ -14,11 +14,19 @@ import { renderWithProviders } from '@/tests/test-utils';
 import StreamingIntegratedResponse from './StreamingIntegratedResponse';
 
 const mockLogImpressionEvent = vi.fn();
+const mockResponseMetadata = vi.fn();
 
 vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: (eid: string, customProperties?: Record<string, boolean | string | number>) => {
     mockLogImpressionEvent(eid, customProperties);
     return () => {};
+  },
+}));
+
+vi.mock('@/app/[market]/develop/components/ResponseMetadata', () => ({
+  default: (props: Record<string, unknown>) => {
+    mockResponseMetadata(props);
+    return <div data-testid="response-metadata-stub" />;
   },
 }));
 
@@ -816,6 +824,103 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
       );
 
       expect(screen.getByRole('button', { name: 'Show 2 actions' })).toBeInTheDocument();
+    });
+  });
+
+  describe('response metadata', function responseMetadata() {
+    it('passes message metadata to ResponseMetadata for persisted feedback', function messageMetadataProp() {
+      mockResponseMetadata.mockClear();
+      const startTime = new Date('2026-01-01T00:00:00.000Z');
+
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={{
+            id: 'msg-complete-1',
+            role: 'assistant',
+            content: 'All done',
+            timestamp: new Date('2026-01-01T00:01:00.000Z'),
+            metadata: { feedback: 'negative' },
+          }}
+          startTime={startTime}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByTestId('response-metadata-stub')).toBeInTheDocument();
+      expect(mockResponseMetadata).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageId: 'msg-complete-1',
+          messageMetadata: { feedback: 'negative' },
+        })
+      );
+    });
+
+    it('passes segment-derived content when message.content is empty', function segmentDerivedContent() {
+      mockResponseMetadata.mockClear();
+      const startTime = new Date('2026-01-01T00:00:00.000Z');
+
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={{
+            id: 'msg-segments-1',
+            role: 'assistant',
+            content: '',
+            timestamp: new Date('2026-01-01T00:01:00.000Z'),
+            segments: [
+              {
+                id: 'seg-text-1',
+                type: 'text',
+                content: 'Built from segments.',
+                timestamp: new Date(),
+              },
+            ],
+          }}
+          startTime={startTime}
+          streamingState="idle"
+        />
+      );
+
+      expect(mockResponseMetadata).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageId: 'msg-segments-1',
+          content: 'Built from segments.',
+        })
+      );
+      expect(mockResponseMetadata.mock.calls[0]?.[0]).not.toHaveProperty('isMessageContentEmpty');
+    });
+
+    it('passes empty content when the response has no text segments', function noTextSegments() {
+      mockResponseMetadata.mockClear();
+      const startTime = new Date('2026-01-01T00:00:00.000Z');
+
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={{
+            id: 'msg-tools-only-1',
+            role: 'assistant',
+            content: '',
+            timestamp: new Date('2026-01-01T00:01:00.000Z'),
+            segments: [
+              {
+                id: 'seg-1',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'read1', name: 'fileRead', input: {}, status: 'completed' },
+              },
+            ],
+          }}
+          startTime={startTime}
+          streamingState="idle"
+        />
+      );
+
+      expect(mockResponseMetadata).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageId: 'msg-tools-only-1',
+          content: '',
+        })
+      );
     });
   });
 });

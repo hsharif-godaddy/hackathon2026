@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import type { Router as RouterType } from 'express';
+import { z } from 'zod';
 import { Logger } from '../../logging/index.js';
 import { getConversationLifecycleStore, getMessageStore } from '../../memory/adapters/index.js';
 import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
@@ -11,6 +12,12 @@ const router: RouterType = Router();
 const logger = Logger.create({ component: 'conversations-routes' });
 const lifecycle = getConversationLifecycleStore();
 const messages = getMessageStore();
+
+const patchMessageMetadataSchema = z.object({
+  metadata: z.object({
+    feedback: z.enum(['positive', 'negative']).nullable(),
+  }),
+});
 
 /**
  * GET /api/conversations
@@ -180,6 +187,64 @@ router.get('/api/conversations/:id/messages/paginated', validateConversationOwne
     return res.status(500).json({ error: 'Failed to fetch messages' });
   }
 });
+
+/**
+ * PATCH /api/conversations/:id/messages/:messageId
+ * Merge metadata onto a persisted conversation message (e.g. per-message thumbs up/down state).
+ * SECURITY: Conversation ownership validation prevents cross-tenant message access
+ */
+router.patch(
+  '/api/conversations/:id/messages/:messageId',
+  validateConversationOwnership(),
+  async (req: Request, res: Response) => {
+    try {
+      const authReq = req as ConversationRequest;
+      const conversationId = authReq.conversation!.id;
+      const messageId = req.params.messageId;
+
+      const parsed = patchMessageMetadataSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: 'Invalid request body',
+          details: parsed.error.flatten(),
+        });
+      }
+
+      if (!messageId) {
+        logger.warn('conversations.message.metadata.update.missing_message_id', {
+          conversationId,
+        });
+        return res.status(400).json({ error: 'messageId is required' });
+      }
+
+      const message = await messages.getMessageById(messageId);
+      if (!message || message.conversationId !== conversationId) {
+        return res.status(404).json({ error: 'Message not found' });
+      }
+
+      await messages.updateMessageMetadata(messageId, parsed.data.metadata);
+
+      logger.info('conversations.message.metadata.updated', {
+        conversationId,
+        messageId,
+        feedback: parsed.data.metadata.feedback,
+      });
+
+      return res.json({
+        success: true,
+        messageId,
+        metadata: parsed.data.metadata,
+      });
+    } catch (error) {
+      logger.error('conversations.message.metadata.update.error', {
+        conversationId: req.params.id,
+        messageId: req.params.messageId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return res.status(500).json({ error: 'Failed to update message metadata' });
+    }
+  }
+);
 
 /**
  * PATCH /api/conversations/:id/tools/:toolId

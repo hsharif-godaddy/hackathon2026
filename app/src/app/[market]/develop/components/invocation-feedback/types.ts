@@ -5,6 +5,8 @@
 
 export type InvocationFeedbackVote = 'negative' | 'positive' | null;
 
+export { parseMessageFeedbackMetadata as invocationFeedbackVoteFromMetadata } from '@/lib/message-metadata-client';
+
 export type FeedbackReason =
   | 'not_factually_correct'
   | 'not_relevant'

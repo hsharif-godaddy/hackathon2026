@@ -18,8 +18,10 @@ import {
   type SubmitFeedbackResult,
 } from '@/lib/feedback-client';
 import { shipAnalyticsLog } from '@/lib/logging';
+import { patchMessageFeedbackMetadata } from '@/lib/message-metadata-client';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore';
 import { logClickEvent } from '@/utils/instrumentation';
 import { getScrollParent } from './getScrollParent';
 import {
@@ -57,6 +59,8 @@ function targetLevelFromFlow(
 export interface InvocationFeedbackProviderProps {
   appId: string | null;
   messageId: string;
+  /** Persisted `metadata.feedback` from the agent message (hydrates thumbs up/down state on reload). */
+  initialFeedback?: InvocationFeedbackVote;
   traceIds?: InvocationFeedbackTraceIds | null;
   /** Per-message (ResponseMetadata) vs agent-work chat banner. */
   flow?: InvocationFeedbackFlow;
@@ -96,6 +100,7 @@ export function useInvocationFeedback(): InvocationFeedbackContextValue {
 export function InvocationFeedbackProvider({
   appId,
   messageId,
+  initialFeedback = null,
   traceIds,
   flow = 'per-message',
   agentTargetId,
@@ -107,8 +112,9 @@ export function InvocationFeedbackProvider({
   const showResponseFeedbackThanksBannerTemporarily = useDevelopPageStore(
     (state) => state.showResponseFeedbackThanksBannerTemporarily
   );
+  const mergeMessageMetadata = useStreamingConversationStore((state) => state.mergeMessageMetadata);
 
-  const [feedback, setFeedback] = useState<InvocationFeedbackVote>(null);
+  const [feedback, setFeedback] = useState<InvocationFeedbackVote>(initialFeedback);
   const [isNegativeFeedbackOpen, setIsNegativeFeedbackOpen] = useState(false);
   const [negativeFeedbackReason, setNegativeFeedbackReason] = useState<FeedbackReason | null>(null);
   const [otherFeedback, setOtherFeedback] = useState('');
@@ -120,6 +126,50 @@ export function InvocationFeedbackProvider({
     setNegativeFeedbackReason(null);
     setOtherFeedback('');
   }, []);
+
+  useEffect(
+    function syncInitialFeedback() {
+      setFeedback(initialFeedback);
+    },
+    [initialFeedback]
+  );
+
+  const persistMessageFeedbackMetadata = useCallback(
+    async function persistMessageFeedbackMetadata(
+      feedbackValue: InvocationFeedbackVote
+    ): Promise<boolean> {
+      if (flow !== 'per-message' || !appId) {
+        return true;
+      }
+
+      const result = await patchMessageFeedbackMetadata({
+        appId,
+        messageId,
+        feedback: feedbackValue,
+      });
+
+      if (!result.ok) {
+        logger.warn('invocation_feedback.message_metadata.failure', {
+          appId,
+          messageId,
+          feedback: feedbackValue,
+          ...(result.reason && { failureReason: result.reason }),
+        });
+        if (result.reason === 'missing_conversation_id') {
+          onSubmitFailed?.('missing_conversation_id');
+        } else if (result.reason === 'missing_app_id') {
+          onSubmitFailed?.('no_app_id');
+        } else if (result.reason === 'http_error' || result.reason === 'network_error') {
+          onSubmitFailed?.(result.reason);
+        }
+        return false;
+      }
+
+      mergeMessageMetadata(messageId, { feedback: feedbackValue });
+      return true;
+    },
+    [appId, flow, mergeMessageMetadata, messageId, onSubmitFailed]
+  );
 
   const persistFeedback = useCallback(
     async function persistFeedback(
@@ -165,8 +215,7 @@ export function InvocationFeedbackProvider({
             : (traceIds?.observationId ?? messageId);
       const trimmedOther = otherFeedbackText?.trim();
 
-      const hasDetailedFeedback =
-        analyticsReason !== 'other' || Boolean(trimmedOther);
+      const hasDetailedFeedback = analyticsReason !== 'other' || Boolean(trimmedOther);
 
       const schemaPayload =
         feedbackValue === 'negative' && analyticsReason
@@ -258,6 +307,12 @@ export function InvocationFeedbackProvider({
 
   const completePositiveFeedback = useCallback(
     async function completePositiveFeedback() {
+      const metadataSaved = await persistMessageFeedbackMetadata('positive');
+      if (!metadataSaved) {
+        setFeedback(null);
+        return;
+      }
+
       const result = await persistFeedback('positive');
       if (!result.ok) {
         setFeedback(null);
@@ -268,18 +323,26 @@ export function InvocationFeedbackProvider({
       }
       onSubmitted?.();
     },
-    [onSubmitted, persistFeedback, showResponseFeedbackThanksBannerTemporarily, thanksMode]
+    [
+      onSubmitted,
+      persistFeedback,
+      persistMessageFeedbackMetadata,
+      showResponseFeedbackThanksBannerTemporarily,
+      thanksMode,
+    ]
   );
 
   const completeNegativeFeedback = useCallback(
     async function completeNegativeFeedback(reason: FeedbackReason, otherFeedbackText?: string) {
       const trimmedOther = otherFeedbackText?.trim();
+      const metadataSaved = await persistMessageFeedbackMetadata('negative');
+      if (!metadataSaved) {
+        setFeedback(null);
+        clearNegativeFeedbackDraft();
+        return;
+      }
 
-      const result = await persistFeedback(
-        'negative',
-        reason,
-        trimmedOther || undefined
-      );
+      const result = await persistFeedback('negative', reason, trimmedOther || undefined);
       if (!result.ok) {
         setFeedback(null);
         clearNegativeFeedbackDraft();
@@ -295,6 +358,7 @@ export function InvocationFeedbackProvider({
       clearNegativeFeedbackDraft,
       onSubmitted,
       persistFeedback,
+      persistMessageFeedbackMetadata,
       showResponseFeedbackThanksBannerTemporarily,
       thanksMode,
     ]
@@ -351,6 +415,20 @@ export function InvocationFeedbackProvider({
     [isNegativeFeedbackOpen]
   );
 
+  const clearPersistedFeedback = useCallback(
+    async function clearPersistedFeedback(previousVote: InvocationFeedbackVote) {
+      const metadataSaved = await persistMessageFeedbackMetadata(null);
+      if (!metadataSaved) {
+        setFeedback(previousVote);
+        return;
+      }
+      setFeedback(null);
+      setIsNegativeFeedbackOpen(false);
+      clearNegativeFeedbackDraft();
+    },
+    [clearNegativeFeedbackDraft, persistMessageFeedbackMetadata]
+  );
+
   const togglePositive = useCallback(
     function togglePositive() {
       logClickEvent(
@@ -360,14 +438,14 @@ export function InvocationFeedbackProvider({
       clearNegativeFeedbackDraft();
 
       if (feedback === 'positive') {
-        setFeedback(null);
+        void clearPersistedFeedback('positive');
         return;
       }
 
       setFeedback('positive');
       void completePositiveFeedback();
     },
-    [clearNegativeFeedbackDraft, completePositiveFeedback, feedback, flow]
+    [clearNegativeFeedbackDraft, clearPersistedFeedback, completePositiveFeedback, feedback, flow]
   );
 
   const toggleNegative = useCallback(
@@ -387,11 +465,15 @@ export function InvocationFeedbackProvider({
         return;
       }
 
-      setIsNegativeFeedbackOpen(false);
-      clearNegativeFeedbackDraft();
-      setFeedback(null);
+      void clearPersistedFeedback('negative');
     },
-    [clearNegativeFeedbackDraft, feedback, flow]
+    [
+      clearNegativeFeedbackDraft,
+      clearPersistedFeedback,
+      feedback,
+      flow,
+      persistMessageFeedbackMetadata,
+    ]
   );
 
   const handleReasonSelect = useCallback(

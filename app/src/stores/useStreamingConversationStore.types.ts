@@ -143,6 +143,7 @@ export interface ChatMessage {
     displayAs?: string
     validationStatus?: ValidationStatus
     pinnedSkill?: string             // Server-pushed: name of the conversation's pinned orchestrator skill (e.g. 'deep-build'). Drives mode-specific UI like the build overlay copy.
+    feedback?: 'positive' | 'negative' | null // Per-message thumbs feedback persisted on the agent message
     [key: string]: unknown
   }
 }
@@ -302,6 +303,7 @@ export interface StreamingConversationState {
   // === UTILITY ACTIONS ===
 
   addCompletedMessage: (message: ChatMessage) => void
+  mergeMessageMetadata: (messageId: string, metadataUpdates: Record<string, unknown>) => void
   clearMessages: () => void
   cleanup: () => void
 

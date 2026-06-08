@@ -42,8 +42,10 @@ export default function InvocationFeedbackControls() {
           onClick={togglePositive}
           icon={
             <motion.div
-              layout
-              transition={{ layout: { type: 'tween', duration: 0.22, ease: 'easeOut' } }}
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.5 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
               className={clsx(
                 feedback === 'positive'
                   ? 'col-start-2 justify-self-center'

@@ -13,6 +13,8 @@ import ResponseMetadata from './ResponseMetadata';
 
 const mockShowThanksBanner = vi.fn();
 const mockSubmitFeedback = vi.fn();
+const mockPatchMessageFeedbackMetadata = vi.fn();
+const mockMergeMessageMetadata = vi.fn();
 
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(function () { return true; }),
@@ -42,8 +44,23 @@ vi.mock('@/lib/feedback-client', () => ({
   submitFeedback: (...args: unknown[]) => mockSubmitFeedback(...args),
 }));
 
+vi.mock('@/lib/message-metadata-client', async function messageMetadataClient() {
+  const actual = await vi.importActual<typeof import('@/lib/message-metadata-client')>(
+    '@/lib/message-metadata-client'
+  );
+  return {
+    ...actual,
+    patchMessageFeedbackMetadata: (...args: unknown[]) => mockPatchMessageFeedbackMetadata(...args),
+  };
+});
+
 vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
+}));
+
+vi.mock('@/stores/useStreamingConversationStore', () => ({
+  useStreamingConversationStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({ mergeMessageMetadata: mockMergeMessageMetadata }),
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
@@ -54,12 +71,26 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
     }),
 }));
 
+vi.mock('@ux/growl', () => ({
+  default: Object.assign(
+    function Growl() {
+      return null;
+    },
+    {
+      addGrowlMessage: vi.fn(),
+    }
+  ),
+}));
+
+import Growl from '@ux/growl';
+
 function renderMetadata(
   props: {
     duration?: number;
     content?: string;
     usedFreeGrants?: boolean;
     messageId?: string;
+    messageMetadata?: Record<string, unknown>;
     traceIds?: { traceId?: string; observationId?: string; agentName?: string } | null;
     onUndo?: () => void;
     onRestore?: () => void;
@@ -71,6 +102,7 @@ function renderMetadata(
       content={props.content ?? 'Test content'}
       usedFreeGrants={props.usedFreeGrants}
       messageId={props.messageId ?? 'msg-test-1'}
+      messageMetadata={props.messageMetadata}
       traceIds={props.traceIds ?? null}
       onUndo={props.onUndo}
       onRestore={props.onRestore}
@@ -111,6 +143,7 @@ describe('ResponseMetadata', function responseMetadataTests() {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSubmitFeedback.mockResolvedValue({ ok: true });
+    mockPatchMessageFeedbackMetadata.mockResolvedValue({ ok: true });
     vi.mocked(useSwitchboard).mockReturnValue(true);
   });
 
@@ -134,6 +167,29 @@ describe('ResponseMetadata', function responseMetadataTests() {
 
       expect(getThumbsUpButton()).toBeInTheDocument();
       expect(getThumbsDownButton()).toBeInTheDocument();
+    });
+
+    it('should hide thumbs feedback when content is empty', function emptyContent() {
+      renderMetadata({ content: '' });
+
+      expect(
+        screen.queryByRole('button', { name: /This response was helpful/i })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /builder_chat_response_feedback_negative/i })
+      ).not.toBeInTheDocument();
+      expect(getCopyButton()).toBeInTheDocument();
+    });
+
+    it('should hide thumbs feedback when content is whitespace only', function whitespaceContent() {
+      renderMetadata({ content: '   \n\t  ' });
+
+      expect(
+        screen.queryByRole('button', { name: /This response was helpful/i })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /builder_chat_response_feedback_negative/i })
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -250,6 +306,37 @@ describe('ResponseMetadata', function responseMetadataTests() {
   });
 
   describe('feedback actions', function feedbackActionTests() {
+    it('should hydrate thumbs up from persisted message metadata', function hydratePositive() {
+      renderMetadata({ messageMetadata: { feedback: 'positive' } });
+
+      expect(getThumbsUpButton()).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /builder_chat_response_feedback_negative/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it('should show growl when metadata PATCH fails after thumbs up', async function patchFailureGrowl() {
+      mockPatchMessageFeedbackMetadata.mockResolvedValue({ ok: false, reason: 'http_error' });
+      const { user } = renderMetadata({ messageId: 'msg-growl-1' });
+
+      await user.click(getThumbsUpButton());
+
+      await waitFor(function waitGrowl() {
+        expect(Growl.addGrowlMessage).toHaveBeenCalledWith({
+          id: 'response-feedback-save-failed-msg-growl-1',
+          title: 'Failed to save the feedback',
+          children: 'We were unable to save your feedback. Please try again.',
+          emphasis: 'critical',
+          lifetime: 3000,
+        });
+      });
+      expect(
+        screen.getByRole('button', { name: /builder_chat_response_feedback_negative/i })
+      ).toBeInTheDocument();
+      expect(mockSubmitFeedback).not.toHaveBeenCalled();
+      expect(mockMergeMessageMetadata).not.toHaveBeenCalled();
+    });
+
     it('should render feedback action buttons with tracking ids', function feedbackButtons() {
       renderMetadata();
 
@@ -283,9 +370,13 @@ describe('ResponseMetadata', function responseMetadataTests() {
       await user.click(getThumbsDownButton());
 
       expect(getThumbsDownButton()).toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: /This response was helpful/i })
-      ).not.toBeInTheDocument();
+      // The thumbs-up motion.div has an exit animation, so AnimatePresence
+      // keeps the button mounted until it finishes — wait for unmount.
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('button', { name: /This response was helpful/i })
+        ).not.toBeInTheDocument();
+      });
     });
 
     it('should show filled black thumbs up icon when positive feedback is selected', async function positiveFilledIcon() {

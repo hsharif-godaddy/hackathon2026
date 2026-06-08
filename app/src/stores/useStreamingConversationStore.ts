@@ -905,6 +905,33 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     }))
   },
 
+  mergeMessageMetadata: (messageId, metadataUpdates) => {
+    set((state) => {
+      const mergeInto = (list: ChatMessage[]) =>
+        list.map((message) =>
+          message.id === messageId
+            ? { ...message, metadata: { ...message.metadata, ...metadataUpdates } }
+            : message
+        );
+
+      const updatedMessages = mergeInto(state.messages);
+      const appId = state.currentAppId;
+      const cached = appId ? state.appChatHistory[appId] : undefined;
+
+      return {
+        messages: updatedMessages,
+        ...(appId && cached
+          ? {
+              appChatHistory: {
+                ...state.appChatHistory,
+                [appId]: { ...cached, messages: mergeInto(cached.messages) },
+              },
+            }
+          : {}),
+      };
+    });
+  },
+
   clearMessages: () => {
     set({
       messages: [],

@@ -352,6 +352,7 @@ export default function StreamingIntegratedResponse({
           content={getFullResponseText()}
           usedFreeGrants={message.usedFreeGrants}
           messageId={message.id}
+          messageMetadata={message.metadata}
           traceIds={traceIdsFromMessage(message)}
           onUndo={onUndo}
           onRestore={onRestore}

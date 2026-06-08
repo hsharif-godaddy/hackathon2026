@@ -1215,4 +1215,63 @@ describe('useStreamingConversationStore', function packageTests() {
       expect(useStreamingConversationStore.getState().currentAgentName).toBeNull();
     });
   });
+
+  describe('#mergeMessageMetadata', function mergeMessageMetadataTests() {
+    it('should merge metadata into the matching message and app chat cache', function merge() {
+      const store = useStreamingConversationStore.getState();
+      const message: ChatMessage = {
+        id: 'msg-feedback-1',
+        role: 'assistant',
+        content: 'Done',
+        timestamp: new Date('2026-01-01T00:00:00.000Z'),
+        metadata: { agentId: 'develop' },
+      };
+
+      act(() => {
+        store.setCurrentAppId('app-merge-1');
+        store.persistHistory({
+          appId: 'app-merge-1',
+          messages: [message],
+          mode: 'replace',
+        });
+        store.mergeMessageMetadata('msg-feedback-1', { feedback: 'positive' });
+      });
+
+      const state = useStreamingConversationStore.getState();
+      expect(state.messages[0].metadata?.feedback).toBe('positive');
+      expect(state.messages[0].metadata?.agentId).toBe('develop');
+      expect(state.appChatHistory['app-merge-1']?.messages[0].metadata?.feedback).toBe('positive');
+    });
+
+    it('should leave unrelated messages unchanged', function unrelated() {
+      const store = useStreamingConversationStore.getState();
+
+      act(() => {
+        store.setCurrentAppId('app-merge-2');
+        store.persistHistory({
+          appId: 'app-merge-2',
+          messages: [
+            {
+              id: 'msg-a',
+              role: 'assistant',
+              content: 'A',
+              timestamp: new Date(),
+            },
+            {
+              id: 'msg-b',
+              role: 'assistant',
+              content: 'B',
+              timestamp: new Date(),
+            },
+          ],
+          mode: 'replace',
+        });
+        store.mergeMessageMetadata('msg-b', { feedback: 'negative' });
+      });
+
+      const state = useStreamingConversationStore.getState();
+      expect(state.messages[0].metadata?.feedback).toBeUndefined();
+      expect(state.messages[1].metadata?.feedback).toBe('negative');
+    });
+  });
 });
