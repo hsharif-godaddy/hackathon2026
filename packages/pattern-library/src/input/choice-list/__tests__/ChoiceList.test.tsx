@@ -456,6 +456,38 @@ describe('ChoiceList', () => {
       expect(container.querySelector('.airo-input-choice-list--multi-step')).toBeInTheDocument();
     });
 
+    it('does not play the slide animation on initial mount', () => {
+      // The first step must appear without a horizontal slide so a surface
+      // mounted directly into a multi-step ChoiceList (e.g. swapped into an
+      // input slot) does not slide in sideways. The slide is reserved for
+      // forward/back step transitions.
+      const { container } = renderTwoStep();
+      const step = container.querySelector('.airo-input-choice-list__step');
+      expect(step).not.toHaveClass('airo-input-choice-list__step--enter-forward');
+      expect(step).not.toHaveClass('airo-input-choice-list__step--enter-back');
+    });
+
+    it('plays the forward slide after advancing a step', async () => {
+      const user = userEvent.setup();
+      const { container } = renderTwoStep();
+
+      await user.click(screen.getByRole('option', { name: /Modern/ }));
+
+      const step = container.querySelector('.airo-input-choice-list__step');
+      expect(step).toHaveClass('airo-input-choice-list__step--enter-forward');
+    });
+
+    it('plays the back slide after navigating to the previous step', async () => {
+      const user = userEvent.setup();
+      const { container } = renderTwoStep();
+
+      await user.click(screen.getByRole('option', { name: /Modern/ }));
+      await user.click(screen.getByRole('button', { name: 'Previous step' }));
+
+      const step = container.querySelector('.airo-input-choice-list__step');
+      expect(step).toHaveClass('airo-input-choice-list__step--enter-back');
+    });
+
     it('advances to the next step when the user makes a selection', async () => {
       const user = userEvent.setup();
       renderTwoStep();

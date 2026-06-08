@@ -234,6 +234,127 @@ describe('InputActionsPanel', () => {
       expect(screen.queryByText('Full menu page')).not.toBeInTheDocument()
       expect(screen.queryByText('Location & hours page')).not.toBeInTheDocument()
     })
+
+    describe('choicelist prompt swap (choiceSwapEnabled)', () => {
+      // NBA suggestions with no askQuestion source/toolResult → the surface is
+      // an ordinary "continue building" list, hoisted via `defaultCollapsible`
+      // (the `nba:` branch) rather than the askQuestion renderer.
+      const nbaSuggestions = {
+        question: 'What next?',
+        suggestions: [{ text: 'Add a contact page' }, { text: 'Add a gallery' }],
+      }
+
+      it('hoists the choicelist surface up and does not render it inline', async () => {
+        const onChoiceSurfaceChange = vi.fn()
+        renderWithProviders(
+          <InputActionsPanel
+            choiceSwapEnabled
+            onChoiceSurfaceChange={onChoiceSurfaceChange}
+          />,
+        )
+
+        await waitFor(() => expect(onChoiceSurfaceChange).toHaveBeenCalled())
+        const lastCall = onChoiceSurfaceChange.mock.calls.at(-1)!
+        expect(lastCall[0]).not.toBeNull() // a non-null surface node
+        expect(lastCall[1]).toContain('askq:') // per-turn key
+        // The choicelist is rendered by ChatInput's swap slot, not inline here.
+        expect(screen.queryByText('Change the color scheme')).not.toBeInTheDocument()
+      })
+
+      it('hoists the NBA/next-action default collapsible with an nba: key and a dismiss-X', async () => {
+        vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(nbaSuggestions)
+        const onChoiceSurfaceChange = vi.fn()
+        renderWithProviders(
+          <InputActionsPanel choiceSwapEnabled onChoiceSurfaceChange={onChoiceSurfaceChange} />,
+        )
+
+        await waitFor(() => expect(onChoiceSurfaceChange).toHaveBeenCalled())
+        const hoisted = onChoiceSurfaceChange.mock.calls.at(-1)!
+        expect(hoisted[0]).not.toBeNull()
+        expect(hoisted[1]).toContain('nba:')
+
+        // Render the hoisted surface the way ChatInput's PromptStage slot would:
+        // the default collapsible carries the NBA options and a header dismiss-X.
+        renderWithProviders(hoisted[0])
+        expect(screen.getByText('Add a contact page')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
+      })
+
+      it('un-hoists the surface (reports null) when the hoisted dismiss-X is clicked', async () => {
+        vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(nbaSuggestions)
+        const onChoiceSurfaceChange = vi.fn()
+        const { user } = renderWithProviders(
+          <InputActionsPanel choiceSwapEnabled onChoiceSurfaceChange={onChoiceSurfaceChange} />,
+        )
+
+        await waitFor(() => expect(onChoiceSurfaceChange).toHaveBeenCalled())
+        const hoisted = onChoiceSurfaceChange.mock.calls.at(-1)![0]
+        expect(hoisted).not.toBeNull()
+
+        // Mount the hoisted node and click its header X. That is wired to
+        // collapseChoiceFromSlot → setContinueBuildingExpanded(false), which
+        // un-hoists the surface so the panel re-reports null (PromptBox returns).
+        renderWithProviders(hoisted)
+        onChoiceSurfaceChange.mockClear()
+        await user.click(screen.getByRole('button', { name: 'Close' }))
+        await waitFor(() => expect(onChoiceSurfaceChange).toHaveBeenLastCalledWith(null, null))
+      })
+
+      it('re-publishes the hoisted node when suggestion text changes at the same count', async () => {
+        vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(nbaSuggestions)
+        const onChoiceSurfaceChange = vi.fn()
+        const { rerender } = renderWithProviders(
+          <InputActionsPanel choiceSwapEnabled onChoiceSurfaceChange={onChoiceSurfaceChange} />,
+        )
+        await waitFor(() => expect(onChoiceSurfaceChange).toHaveBeenCalled())
+        const before = onChoiceSurfaceChange.mock.calls.length
+
+        // Same option count (2), different text → the signature must change so
+        // the slot re-publishes the fresh node (guards the JSON.stringify term).
+        vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue({
+          question: 'What next?',
+          suggestions: [{ text: 'Add a blog' }, { text: 'Add a store' }],
+        })
+        rerender(<InputActionsPanel choiceSwapEnabled onChoiceSurfaceChange={onChoiceSurfaceChange} />)
+
+        await waitFor(() =>
+          expect(onChoiceSurfaceChange.mock.calls.length).toBeGreaterThan(before),
+        )
+        expect(onChoiceSurfaceChange.mock.calls.at(-1)![0]).not.toBeNull()
+      })
+
+      it('hoists the next-action surface with a next: key', async () => {
+        // No askQuestion, no NBAs, no pending plan items → the "continue
+        // building" next-action branch is the active surface.
+        vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(null)
+        vi.mocked(TodoListStore.useCurrentList).mockReturnValue(null)
+        vi.mocked(useNextActionsModule.useNextActions).mockReturnValue({
+          data: { suggestions: [{ text: 'Publish the site' }, { text: 'Add analytics' }] },
+          isLoading: false,
+          isError: false,
+        } as unknown as ReturnType<typeof useNextActionsModule.useNextActions>)
+
+        const onChoiceSurfaceChange = vi.fn()
+        renderWithProviders(
+          <InputActionsPanel choiceSwapEnabled onChoiceSurfaceChange={onChoiceSurfaceChange} />,
+        )
+
+        await waitFor(() => expect(onChoiceSurfaceChange).toHaveBeenCalled())
+        const hoisted = onChoiceSurfaceChange.mock.calls.at(-1)!
+        expect(hoisted[0]).not.toBeNull()
+        expect(hoisted[1]).toContain('next:')
+      })
+
+      it('does not hoist (renders inline) when the flag is off', () => {
+        const onChoiceSurfaceChange = vi.fn()
+        renderWithProviders(
+          <InputActionsPanel onChoiceSurfaceChange={onChoiceSurfaceChange} />,
+        )
+
+        expect(onChoiceSurfaceChange).not.toHaveBeenCalled()
+        expect(screen.getByText('Change the color scheme')).toBeInTheDocument()
+      })
+    })
   })
 
   describe('color scheme suggestions with duplicate filtering', () => {

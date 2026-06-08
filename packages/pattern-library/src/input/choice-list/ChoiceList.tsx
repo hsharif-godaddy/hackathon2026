@@ -1064,6 +1064,37 @@ function ChoiceListFooter({
 // ---------------------------------------------------------------------------
 
 /**
+ * Wrapper for a single multi-step panel that owns its slide-in animation.
+ *
+ * The enter class is decided **once, at mount** (via the `useState`
+ * initializer) and never recomputed. This matters because the slot is keyed
+ * by step id: navigating forward/back remounts it (so `animateOnMount` is read
+ * fresh and the slide plays), while a same-step parent re-render keeps it
+ * mounted. If the enter class were derived from a prop/ref read on every
+ * render, flipping that value mid-life would add the `animation` property to a
+ * live element and replay (or truncate) the slide. Capturing it at mount makes
+ * the animation a pure function of the mount event.
+ */
+function MultiStepSlot({
+  direction,
+  animateOnMount,
+  children,
+}: {
+  direction: 'forward' | 'back';
+  animateOnMount: boolean;
+  children: ReactNode;
+}) {
+  const [enterClass] = useState<string | null>(() =>
+    animateOnMount
+      ? direction === 'forward'
+        ? 'airo-input-choice-list__step--enter-forward'
+        : 'airo-input-choice-list__step--enter-back'
+      : null,
+  );
+  return <div className={classnames('airo-input-choice-list__step', enterClass)}>{children}</div>;
+}
+
+/**
  * `ChoiceList` renders an AI-generated set of options for the user to pick
  * from. Option rows render without card chrome — the consumer owns the outer
  * surface. Single-select steps use **`@ux/listbox`** **`as="listbox"`** with
@@ -1160,6 +1191,15 @@ function ChoiceListRoot({
   const [stepIndex, setStepIndex] = useState(0);
   const selectionsRef = useRef<Record<string, string | string[] | null>>({});
   const [direction, setDirection] = useState<'forward' | 'back'>('forward');
+  // The per-step slide animation represents a step *transition* (forward/back),
+  // so it must not play on the choicelist's first appearance. Otherwise a
+  // surface that mounts directly into a multi-step ChoiceList — e.g. an
+  // askQuestion swapped into an input slot, where the slot already animates a
+  // vertical reveal — slides in sideways on top of that reveal, reading as a
+  // diagonal "from the corner" entrance instead of a clean full-width one.
+  // Tracks whether a step has been rendered yet; only navigation triggers the
+  // slide. Resets to false on remount (a fresh swap-in), so re-entry is clean.
+  const hasRenderedStepRef = useRef(false);
   const [multiChecked, setMultiChecked] = useState<string[]>([]);
   const [otherDraft, setOtherDraft] = useState('');
   const [otherChecked, setOtherChecked] = useState(false);
@@ -1427,6 +1467,13 @@ function ChoiceListRoot({
     onActiveStepChangeRef.current?.(activeStepId, stepIndex);
   }, [isMultiStep, activeStepId, stepIndex]);
 
+  // Mark the first multi-step render complete so the slide plays only on
+  // subsequent step transitions, never on initial appearance. See the
+  // `hasRenderedStepRef` declaration above.
+  useEffect(() => {
+    if (isMultiStep) hasRenderedStepRef.current = true;
+  }, [isMultiStep]);
+
   // -- Multi-step wrapper with slide transition --
   const stepKey = isMultiStep && activeStep ? activeStep.id : undefined;
   const collectedIds = useMemo(() => new Set(collected.map((c) => c.id)), [collected]);
@@ -1450,14 +1497,10 @@ function ChoiceListRoot({
       ) : null}
       {isMultiStep ? (
         <>
-          <div
+          <MultiStepSlot
             key={stepKey}
-            className={classnames(
-              'airo-input-choice-list__step',
-              direction === 'forward'
-                ? 'airo-input-choice-list__step--enter-forward'
-                : 'airo-input-choice-list__step--enter-back',
-            )}
+            direction={direction}
+            animateOnMount={hasRenderedStepRef.current}
           >
             {isMultiSelect ? (
               <MultiSelectOptionPanel
@@ -1498,7 +1541,7 @@ function ChoiceListRoot({
                 onOtherDraftChange={allowOther ? setOtherDraft : undefined}
               />
             )}
-          </div>
+          </MultiStepSlot>
           <ChoiceListFooter
             currentStep={effectiveCurrentStep}
             totalSteps={effectiveTotalSteps}

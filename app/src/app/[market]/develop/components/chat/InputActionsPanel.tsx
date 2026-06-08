@@ -1,7 +1,7 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
-import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Thinker } from '@airo-ux/pattern-library/chat/thinker'
 import { ChoiceList } from '@airo-ux/pattern-library/input/choice-list'
@@ -62,6 +62,20 @@ type InputActionsPanelProps = {
   activeFontThemeSuggest?: ActiveFontThemeSuggest | null
   /** External trigger to collapse the panel (e.g., when chat input grows) */
   shouldCollapse?: boolean
+  /**
+   * When true, the active choicelist surface is hoisted up to ChatInput (via
+   * {@link onChoiceSurfaceChange}) so it can be swapped INTO the PromptBox slot
+   * instead of rendered inline above it. Gated by the
+   * `airo-builder-chat-choice-swap` Switchboard flag. Default false →
+   * byte-identical to the pre-swap behavior.
+   */
+  choiceSwapEnabled?: boolean
+  /**
+   * Reports the active choicelist surface (or null when none is active) and a
+   * stable key identifying the turn, so ChatInput can render it inside the
+   * PromptStage swap slot. Only fired when {@link choiceSwapEnabled}.
+   */
+  onChoiceSurfaceChange?: (node: ReactNode | null, surfaceKey: string | null) => void
 }
 
 function isAskQuestionToolResult(toolResult: unknown): boolean {
@@ -999,6 +1013,8 @@ function InputActionsPanelThemeSelection({
   activeColorSchemeSuggest = null,
   activeFontThemeSuggest = null,
   shouldCollapse = false,
+  choiceSwapEnabled = false,
+  onChoiceSurfaceChange,
 }: InputActionsPanelProps) {
   const t = useTranslations()
   const thinkerLabel = useThinkerLabel()
@@ -1110,6 +1126,70 @@ function InputActionsPanelThemeSelection({
   const showAnySuggest = showColor || showFont
   const isPreviewMode = viewMode === ViewMode.PREVIEW || viewMode === ViewMode.EDIT
   const isAskQuestionActive = isAskQuestionNBA(nbaData) && !!nbaData?.toolResult && !askQuestionCompleted
+
+  // ── PromptBox swap (flag: airo-builder-chat-choice-swap) ─────────────────
+  // A "choicelist surface" is the body that renders a ChoiceList/AskQuestion —
+  // NOT the color/font preview panels (which take over the whole collapsible)
+  // nor the plan-only PlanOptionsList. These are exactly the conditions under
+  // which `continueBuildingTodoBody` renders a choicelist.
+  const isChoiceSurfaceActive =
+    !showColor &&
+    !showFont &&
+    (isAskQuestionActive ||
+      nbaSuggestions.length > 0 ||
+      (!hasPendingPlanItems && nextActionSuggestions.length > 0))
+  const choiceSwapActive = choiceSwapEnabled && isChoiceSurfaceActive
+  // Stable per-turn key: changes when the agent presents a different surface.
+  const choiceSurfaceKey = isAskQuestionActive
+    ? `askq:${nbaData?.question ?? ''}`
+    : nbaSuggestions.length > 0
+      ? `nba:${nbaData?.question ?? ''}:${nbaSuggestions.length}`
+      : `next:${nextActionSuggestions.length}`
+  // The choicelist occupies the input slot (is "hoisted" up to ChatInput) while
+  // it is expanded. The header X collapses it (expanded → false): it then drops
+  // out of the slot and renders inline above the PromptBox as a normal
+  // collapsible. Expanding again (the chevron) swaps it back into the slot.
+  const hoistChoice = choiceSwapActive && continueBuildingExpanded
+  const collapseChoiceFromSlot = useCallback(() => {
+    setContinueBuildingExpanded(false)
+  }, [])
+  // Holds the latest hoisted node so the publish effect can read the current
+  // JSX without putting the (always-new) element in its dependency array.
+  // Assigned during render below, once the collapsible nodes exist.
+  const choiceSurfaceNodeRef = useRef<ReactNode>(null)
+  // Re-publish only when something that changes the hoisted node changes, or
+  // when it stops/starts being hoisted — not on every parent re-render, which
+  // would loop. We fold in the *values* the published collapsible closes over
+  // (not just counts), so an equal-count change still re-publishes: NBA /
+  // next-action suggestion text, the plan-progress counter rendered in the
+  // default collapsible's header, the async rebuild-pages data, and isMobile
+  // (PlanOptionsList orientation). Each is derived from stable store/query
+  // data, so it only changes when the underlying surface actually changes.
+  const choiceSurfaceSignature = hoistChoice
+    ? [
+        choiceSurfaceKey,
+        currentAskQuestionText ?? '',
+        isProcessing,
+        isMobile,
+        JSON.stringify(nbaSuggestions.map(s => s.text)),
+        JSON.stringify(nextActionSuggestions.map(s => s.text)),
+        `${completedCount}/${totalItems}`,
+        rebuildPagesData?.availablePages?.length ?? 0,
+      ].join('|')
+    : null
+  useLayoutEffect(() => {
+    if (!choiceSwapEnabled) return
+    onChoiceSurfaceChange?.(
+      hoistChoice ? choiceSurfaceNodeRef.current : null,
+      hoistChoice ? choiceSurfaceKey : null,
+    )
+  }, [choiceSwapEnabled, hoistChoice, choiceSurfaceKey, choiceSurfaceSignature, onChoiceSurfaceChange])
+  // Tell ChatInput to drop the hoisted surface on unmount so the PromptBox
+  // swaps back in if the panel disappears entirely.
+  useEffect(() => {
+    if (!choiceSwapEnabled) return
+    return () => onChoiceSurfaceChange?.(null, null)
+  }, [choiceSwapEnabled, onChoiceSurfaceChange])
 
   // Prepend the current applied theme to the suggestions if it exists, filtering duplicates by name
   const palettesWithCurrent = useMemo(
@@ -1629,10 +1709,52 @@ function InputActionsPanelThemeSelection({
     </div>
   )
 
+  // The two choicelist-bearing collapsibles, extracted so the same node is used
+  // both for inline rendering (swap off) and for hoisting into ChatInput's
+  // PromptStage slot (swap on). Built unconditionally — only one is ever
+  // rendered, and they are cheap element descriptors.
+  // While hoisted into the input slot the header shows a dismiss (X) that
+  // collapses the choicelist back out of the slot (revealing the PromptBox);
+  // when rendered inline it falls back to the normal collapse chevron.
+  const slotDismiss = hoistChoice ? collapseChoiceFromSlot : undefined
+  const askQuestionCollapsible = (
+    <CollapsibleChatInputSection
+      title={<span className="text-foreground">{currentAskQuestionText || nbaData?.question}</span>}
+      expanded={continueBuildingExpanded}
+      onExpandedChange={setContinueBuildingExpanded}
+      onDismiss={slotDismiss}
+      dismissLabel={t('builder_common_close', undefined, 'Close')}
+      data-testid="collapsible-section-continue-building"
+    >
+      {continueBuildingTodoBody}
+    </CollapsibleChatInputSection>
+  )
+  const defaultCollapsible = (
+    <CollapsibleChatInputSection
+      title={continueBuildingTitle}
+      expanded={continueBuildingExpanded}
+      onExpandedChange={setContinueBuildingExpanded}
+      headerRight={progressButton}
+      onDismiss={slotDismiss}
+      dismissLabel={t('builder_common_close', undefined, 'Close')}
+      data-testid="collapsible-section-continue-building"
+    >
+      {continueBuildingTodoBody}
+    </CollapsibleChatInputSection>
+  )
+  // Publish the active choicelist surface to ChatInput (read by the layout
+  // effect above). Assigned during render so the effect always sees the latest
+  // node; null when it is not hoisted into the slot.
+  choiceSurfaceNodeRef.current = hoistChoice
+    ? isAskQuestionActive
+      ? askQuestionCollapsible
+      : defaultCollapsible
+    : null
+
   // ── Mode B: Agent idle, has data ─────────────────────────────────────────
   return (
     <>
-      {(hasCombinedItems || hasPlan || showAnySuggest || hasRebuildPages || isAskQuestionActive) && (
+      {(hasCombinedItems || hasPlan || showAnySuggest || hasRebuildPages || isAskQuestionActive) && !hoistChoice && (
         <>
           {showColor && activeColorSchemeSuggest ? (
             <ThemePreviewInputPanel
@@ -1679,24 +1801,9 @@ function InputActionsPanelThemeSelection({
               )}
             </FontThemePreviewInputPanel>
           ) : isAskQuestionActive ? (
-            <CollapsibleChatInputSection
-              title={<span className="text-foreground">{currentAskQuestionText || nbaData.question}</span>}
-              expanded={continueBuildingExpanded}
-              onExpandedChange={setContinueBuildingExpanded}
-              data-testid="collapsible-section-continue-building"
-            >
-              {continueBuildingTodoBody}
-            </CollapsibleChatInputSection>
+            askQuestionCollapsible
           ) : (
-            <CollapsibleChatInputSection
-              title={continueBuildingTitle}
-              expanded={continueBuildingExpanded}
-              onExpandedChange={setContinueBuildingExpanded}
-              headerRight={progressButton}
-              data-testid="collapsible-section-continue-building"
-            >
-              {continueBuildingTodoBody}
-            </CollapsibleChatInputSection>
+            defaultCollapsible
           )}
           <div className="-mx-1 mb-1 border-b border-border" />
         </>
@@ -1718,6 +1825,8 @@ export default function InputActionsPanel({
   activeColorSchemeSuggest = null,
   activeFontThemeSuggest = null,
   shouldCollapse = false,
+  choiceSwapEnabled = false,
+  onChoiceSurfaceChange,
 }: InputActionsPanelProps) {
   const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
   const isFontSelectionChatEnabled = useSwitchboard('airo-builder-font-selection-chat')
@@ -1727,6 +1836,8 @@ export default function InputActionsPanel({
         activeColorSchemeSuggest={activeColorSchemeSuggest}
         activeFontThemeSuggest={activeFontThemeSuggest}
         shouldCollapse={shouldCollapse}
+        choiceSwapEnabled={choiceSwapEnabled}
+        onChoiceSurfaceChange={onChoiceSurfaceChange}
       />
     )
   }

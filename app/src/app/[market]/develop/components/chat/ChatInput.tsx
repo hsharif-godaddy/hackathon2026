@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useIntl } from 'react-intl'
 import { PromptBox, type PromptBoxHandle } from '@airo-ux/pattern-library/input/prompt-box'
+import { PromptStage } from '@airo-ux/pattern-library/input/prompt-stage'
 import { FloatingFooter } from '@airo-ux/pattern-library/surfaces/floating-footer'
 import Button from '@ux/button'
 import Chip from '@ux/chip'
@@ -21,6 +22,7 @@ import type { AiEditContext } from '@/app/[market]/develop/components/types'
 import type { ActiveColorSchemeSuggest } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
 import type { ActiveFontThemeSuggest } from '@/app/[market]/develop/components/utils/findLatestFontThemeSuggest'
 import { EXPERIMENT_IDS } from '@/config/experiments'
+import { SWITCHBOARD_AIRO_BUILDER_CHAT_CHOICE_SWAP } from '@/config/switchboard-flags'
 import { useHivemind } from '@/hooks/useHivemind'
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -164,6 +166,9 @@ export default function ChatInput({
   const isChatGaugeEnabledBySwitchboard = useSwitchboard('appbuilder-chat-gauge');
   const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans');
   const isMultilineCollapseEnabled = useSwitchboard('airo-builder-chat-collapse-multiline-input');
+  // When on, a choicelist surface reported by InputActionsPanel replaces the
+  // PromptBox in the input slot (animated via PromptStage). Skip reveals the box.
+  const isChoiceSwapEnabled = useSwitchboard(SWITCHBOARD_AIRO_BUILDER_CHAT_CHOICE_SWAP) ?? false;
   const attachmentSlotsUsed = selectedAssets.length + stagedFiles.length
   const canAddAsset = attachmentSlotsUsed < maxAssets;
 
@@ -174,6 +179,24 @@ export default function ChatInput({
   const textBeforeListeningRef = useRef('')
   const promptBoxRef = useRef<PromptBoxHandle>(null)
   const composerCardRef = useRef<HTMLDivElement>(null)
+
+  // ── PromptBox ↔ ChoiceList swap (flag: airo-builder-chat-choice-swap) ──────
+  // InputActionsPanel reports its active choicelist surface here ONLY while it
+  // is expanded in the input slot. Collapsing it (the header X) is handled
+  // inside the panel, which then reports null — so the PromptBox returns and the
+  // collapsed choicelist renders above it.
+  const [choiceSurface, setChoiceSurface] = useState<{ node: ReactNode; key: string } | null>(null)
+  const handleChoiceSurfaceChange = useCallback((node: ReactNode | null, key: string | null) => {
+    setChoiceSurface(node != null && key != null ? { node, key } : null)
+  }, [])
+  const showChoice = isChoiceSwapEnabled && choiceSurface != null
+  // When the choicelist collapses out of the slot, focus the composer so the
+  // user can type immediately.
+  const prevShowChoiceRef = useRef(showChoice)
+  useEffect(() => {
+    if (prevShowChoiceRef.current && !showChoice) promptBoxRef.current?.focus()
+    prevShowChoiceRef.current = showChoice
+  }, [showChoice])
   const [isFileDragOver, setIsFileDragOver] = useState(false)
   const [shouldCollapseUI, setShouldCollapseUI] = useState(false)
   const previousLinesRef = useRef(0)
@@ -602,7 +625,10 @@ export default function ChatInput({
       btn.id = 'chat-send-button'
       btn.toggleAttribute('disabled', submitGated || isPromptDisabled || Boolean(isBudgetExceeded))
     }
-  }, [isStreaming, isAwaitingStream, onStopGeneration, submitGated, isPromptDisabled, isBudgetExceeded])
+    // showChoice: when the choicelist swaps back to the PromptBox, the action
+    // button remounts and must be re-tagged (findPromptBoxActionButton no-ops
+    // while the box is unmounted).
+  }, [isStreaming, isAwaitingStream, onStopGeneration, submitGated, isPromptDisabled, isBudgetExceeded, showChoice])
 
   return (
     <div className="px-2 sm:px-3 md:px-0 mt-1 mt-auto pb-1">
@@ -626,6 +652,8 @@ export default function ChatInput({
               activeColorSchemeSuggest={activeColorSchemeSuggest}
               activeFontThemeSuggest={activeFontThemeSuggest}
               shouldCollapse={isMultilineCollapseEnabled ? shouldCollapseUI : false}
+              choiceSwapEnabled={isChoiceSwapEnabled}
+              onChoiceSurfaceChange={handleChoiceSurfaceChange}
             />
           ) : null}
 
@@ -708,6 +736,8 @@ export default function ChatInput({
             </div>
           )}
 
+          {(() => {
+          const promptBox = (
           <PromptBox
             ref={promptBoxRef}
             appearance="borderless"
@@ -771,6 +801,18 @@ export default function ChatInput({
               />
             ) : null}
           />
+          )
+          // Flag off: render the PromptBox exactly as before (no stage wrapper).
+          if (!isChoiceSwapEnabled) return promptBox
+          return (
+            <PromptStage
+              slotKey={showChoice ? 'choices' : 'prompt'}
+              data-testid="chat-input-stage"
+            >
+              {showChoice ? choiceSurface!.node : promptBox}
+            </PromptStage>
+          )
+          })()}
         </FloatingFooter>
       </div>
     </div>

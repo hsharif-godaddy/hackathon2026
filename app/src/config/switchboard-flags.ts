@@ -10,3 +10,9 @@ export const SWITCHBOARD_APPBUILDER_DEBUG_DRAWER = 'appbuilder-debug-drawer';
 export const SWITCHBOARD_APPBUILDER_SSE_TRANSPORT = 'app-builder-sse-transport';
 export const SWITCHBOARD_APPBUILDER_UPLOADED_IMAGE_DELETION =
   'appbuilder-uploaded-image-deletion';
+/**
+ * Swap the free-text PromptBox out for the choicelist when the agent presents a
+ * choicelist surface in the chat input; collapsing the surface (header X)
+ * returns the PromptBox. Default off.
+ */
+export const SWITCHBOARD_AIRO_BUILDER_CHAT_CHOICE_SWAP = 'airo-builder-chat-choice-swap';

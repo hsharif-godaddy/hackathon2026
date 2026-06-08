@@ -100,4 +100,30 @@ describe('CollapsibleChatInputSection', () => {
     )
     expect(screen.queryByText('B')).not.toBeInTheDocument()
   })
+
+  describe('dismiss (X) instead of collapse chevron', () => {
+    it('renders a dismiss button (no collapse toggle) when onDismiss is set', () => {
+      render(
+        <CollapsibleChatInputSection title="What do you think?" onDismiss={vi.fn()} dismissLabel="Dismiss">
+          <div>Body</div>
+        </CollapsibleChatInputSection>
+      )
+      // Dismiss button present; the collapse toggle (aria-expanded) is gone.
+      expect(screen.getByRole('button', { name: 'Dismiss' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { expanded: true })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { expanded: false })).not.toBeInTheDocument()
+    })
+
+    it('calls onDismiss when the X is clicked', async () => {
+      const user = userEvent.setup()
+      const onDismiss = vi.fn()
+      render(
+        <CollapsibleChatInputSection title="T" onDismiss={onDismiss} dismissLabel="Dismiss">
+          <div>Body</div>
+        </CollapsibleChatInputSection>
+      )
+      await user.click(screen.getByRole('button', { name: 'Dismiss' }))
+      expect(onDismiss).toHaveBeenCalledTimes(1)
+    })
+  })
 })
