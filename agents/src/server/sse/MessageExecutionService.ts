@@ -169,6 +169,7 @@ interface LifecycleContext {
     bmsBudgetId?: string
     useAtlasCrawler?: boolean
     debugStatsEnabled?: boolean
+    marketingCampaignsEnabled?: boolean
   }
   isInitialPrompt?: boolean
 }
@@ -1691,6 +1692,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         authType,
         ...(agentCtx?.useTestBudget !== undefined && { useTestBudget: agentCtx.useTestBudget }),
         ...(agentCtx?.useAtlasCrawler && { useAtlasCrawler: true }),
+        ...(agentCtx?.marketingCampaignsEnabled && { marketingCampaignsEnabled: true }),
       },
       ...(contextAttachments.length > 0 && { contextAttachments }),
       todoListContext, isActionRequest, customContext,

@@ -30,7 +30,8 @@ export const skillAITool: Tool = createTool(
       const pinned = conversationId
         ? new Set(skillToolManager.getPinnedSkills(conversationId))
         : undefined;
-      const result = await skillLoader.listSkills({ pinned });
+      const contextMetadata = context?.metadata as Record<string, unknown> | undefined;
+      const result = await skillLoader.listSkills({ pinned, contextMetadata });
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to list skills');
@@ -38,8 +39,8 @@ export const skillAITool: Tool = createTool(
 
       return {
         skills: result.skills,
-        count: result.skills?.length || 0,
-        message: `Found ${result.skills?.length || 0} available skills. Review descriptions to find the right skill for your task.`
+        count: result.skills?.length ?? 0,
+        message: `Found ${result.skills?.length ?? 0} available skills. Review descriptions to find the right skill for your task.`
       };
     }
 
@@ -50,7 +51,8 @@ export const skillAITool: Tool = createTool(
 
     // Load action - load instructions AND activate skill tools
     if (input.action === 'load') {
-      const result = await skillLoader.loadSkill({ skill: input.skill });
+      const contextMetadata = context?.metadata as Record<string, unknown> | undefined;
+      const result = await skillLoader.loadSkill({ skill: input.skill, contextMetadata });
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to load skill');

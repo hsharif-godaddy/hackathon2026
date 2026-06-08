@@ -312,8 +312,8 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       {
         agentName: 'marketing',
         description: skills.isEnabled('social')
-          ? 'SEO optimization, marketing strategy, and social media (Facebook, Instagram publishing, connecting social accounts, creating social posts)'
-          : 'SEO optimization and marketing strategy for websites',
+          ? 'SEO optimization, marketing strategy, marketing campaigns, promotions, and social media (Facebook, Instagram publishing, connecting social accounts, creating social posts)'
+          : 'SEO optimization, marketing strategy, and marketing campaigns for websites',
       },
     ],
 

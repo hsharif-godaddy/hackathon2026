@@ -19,6 +19,7 @@ const SecretsPanel = dynamic(() => import('@/app/[market]/develop/components/set
 // Uses SettingsLoadingState as its either RemoteModulePage or is complex to create a skeleton
 const BackupsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/BackupsPanel'), { loading: () => <SettingsLoadingState fullPage /> })
 const MarketingPanel = dynamic(() => import('@/app/[market]/develop/components/settings/MarketingPanel'), { loading: () => <SettingsLoadingState fullPage />  })
+const CampaignsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/CampaignsPanel'), { loading: () => <SettingsLoadingState fullPage />  })
 
 // Uses default skeleton as its matching the structure
 const SecurityPanel = dynamic(() => import('@/app/[market]/develop/components/settings/SecurityPanel'), { loading: () => <PanelSkeleton /> })
@@ -37,6 +38,7 @@ export default function SettingsView() {
   const isSecretsEnabled = useSwitchboard('appbuilder-settings-secrets');
   const isSocialEnabled = useSwitchboard('appbuilder-settings-social');
   const isMarketingEnabled = useSwitchboard('appbuilder-settings-marketing');
+  const isCampaignsEnabled = useSwitchboard('appbuilder-marketing-campaigns');
 
   const sectionSkeleton = <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={activeSettingsSection} />
 
@@ -69,6 +71,9 @@ export default function SettingsView() {
       case SettingsSection.MARKETING:
         if (isMarketingEnabled === undefined) return sectionSkeleton;
         return isMarketingEnabled ? <MarketingPanel /> : null;
+      case SettingsSection.CAMPAIGNS:
+        if (isCampaignsEnabled === undefined) return sectionSkeleton;
+        return isCampaignsEnabled ? <CampaignsPanel /> : null;
       case SettingsSection.FEEDBACK:
       default:
         if (isProjectEnabled === undefined) return sectionSkeleton;

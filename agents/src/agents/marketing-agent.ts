@@ -21,6 +21,7 @@ async function buildMarketingSystemPrompt(): Promise<string> {
   const paths = getModularPromptPaths(import.meta.url)
 
   // Get available skills list with whenToUse guidance
+  // Skills with switchboardFlag (e.g. marketing-campaigns) are excluded when contextMetadata is absent
   const skillLoader = new SkillLoaderTool()
   const skillsResult = await skillLoader.listSkills()
   const skillsSection = skillsResult.success && skillsResult.skills?.length
@@ -49,11 +50,10 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
   const baseTools = {
     seoAnalysis: allAILibTools.seoAnalysis,
     readFile: allAILibTools.readFile,
-    str_replace_based_edit_tool: allAILibTools.str_replace_based_edit_tool,
-    todoList: allAILibTools.todoList,
     directoryListing: allAILibTools.directoryListing,
     grepSearch: allAILibTools.grepSearch,
     suggestedResponse: allAILibTools.suggestedResponse,
+    askQuestion: allAILibTools.askQuestion,
     skill: allAILibTools.skill,
     media: allAILibTools.media,
   }

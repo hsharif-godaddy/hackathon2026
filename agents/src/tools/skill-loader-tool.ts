@@ -15,6 +15,8 @@ import { regenerateEntryApiRegistrations } from '../utils/entry-api-sync.js';
 export interface SkillLoaderOptions {
   /** Name of the skill to load (e.g., 'blog', 'commerce-storefront') */
   skill: string;
+  /** Per-request context metadata for switchboard flag checking */
+  contextMetadata?: Record<string, unknown>;
 }
 
 /**
@@ -131,6 +133,8 @@ export interface SkillListItem {
   description: string;
   whenToUse?: string;
   enablementId?: string;
+  /** Per-request switchboard flag name from context.metadata (e.g. 'marketingCampaignsEnabled') */
+  switchboardFlag?: string;
   /** Trigger phrases shown in the system-prompt intent map. Each phrase routes to this skill's name. */
   intents?: string[];
   /** True when this skill is pinned for the current conversation. */
@@ -291,6 +295,17 @@ export class SkillLoaderTool {
       const loadEnablementId = typeof frontmatter.enablementId === 'string' ? frontmatter.enablementId : undefined;
       if (loadEnablementId && !skills.isEnabled(loadEnablementId)) {
         this.logger.warn('skill.load.feature_disabled', { skill, enablementId: loadEnablementId });
+        return {
+          success: false,
+          skill,
+          error: `Skill '${skill}' is not available.`
+        };
+      }
+
+      // Check switchboardFlag via per-request context metadata
+      const loadSwitchboardFlag = typeof frontmatter.switchboardFlag === 'string' ? frontmatter.switchboardFlag : undefined;
+      if (loadSwitchboardFlag && !options.contextMetadata?.[loadSwitchboardFlag]) {
+        this.logger.info('skill.load.switchboard_disabled', { skill, switchboardFlag: loadSwitchboardFlag });
         return {
           success: false,
           skill,
@@ -627,7 +642,7 @@ export class SkillLoaderTool {
    * List all available skills with their descriptions from YAML frontmatter
    * Only reads the frontmatter, not the full skill.md content
    */
-  async listSkills(options?: { pinned?: Set<string> }): Promise<{ success: boolean; skills?: SkillListItem[]; error?: string }> {
+  async listSkills(options?: { pinned?: Set<string>; contextMetadata?: Record<string, unknown> }): Promise<{ success: boolean; skills?: SkillListItem[]; error?: string }> {
     this.logger.info('skill.list.start', {});
 
     try {
@@ -641,6 +656,7 @@ export class SkillLoaderTool {
         let description = '';
         let whenToUse: string | undefined;
         let enablementId: string | undefined;
+        let switchboardFlag: string | undefined;
         let intents: string[] | undefined;
 
         try {
@@ -655,6 +671,7 @@ export class SkillLoaderTool {
             whenToUse = data.whenToUse.trim();
           }
           enablementId = typeof data.enablementId === 'string' ? data.enablementId : undefined;
+          switchboardFlag = typeof data.switchboardFlag === 'string' ? data.switchboardFlag : undefined;
 
           if (Array.isArray(data.intents)) {
             const filtered = data.intents.filter((entry: unknown): entry is string => {
@@ -693,6 +710,15 @@ export class SkillLoaderTool {
               return null; // Skip this skill - feature is disabled
             }
           }
+
+          // If switchboardFlag is provided, check context.metadata for per-request gating
+          if (switchboardFlag && !options?.contextMetadata?.[switchboardFlag]) {
+            this.logger.debug('skill.list.switchboard_disabled', {
+              skill: skillName,
+              switchboardFlag
+            });
+            return null;
+          }
         } catch (error) {
           // If skill.md is missing or has no frontmatter, use directory name
           this.logger.debug('skill.list.frontmatter_missing', {
@@ -710,6 +736,9 @@ export class SkillLoaderTool {
         }
         if (enablementId) {
           skillItem.enablementId = enablementId;
+        }
+        if (switchboardFlag) {
+          skillItem.switchboardFlag = switchboardFlag;
         }
         if (options?.pinned?.has(skillItem.name)) {
           skillItem.pinned = true;
