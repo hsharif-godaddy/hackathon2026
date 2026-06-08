@@ -1,0 +1,56 @@
+metadata:
+  name: Skill Loader - CallMeBot
+  version: 1.0.0
+
+cases:
+  # --- Positive: callmebot skill should load ---
+
+  - id: setup-callmebot
+    prompt: 'I want to set up CallMeBot for notifications'
+    expectedSkill: callmebot
+    tags: [positive]
+    rationale: Direct mention of CallMeBot — clearest signal
+
+  - id: add-callmebot
+    prompt: 'Add CallMeBot to my app'
+    expectedSkill: callmebot
+    tags: [positive]
+    rationale: Explicit CallMeBot integration request
+
+  - id: callmebot-api
+    prompt: 'How do I use the CallMeBot API?'
+    expectedSkill: callmebot
+    tags: [positive]
+    rationale: Asking about CallMeBot API usage
+
+  - id: callmebot-whatsapp
+    prompt: 'I want to send notifications with CallMeBot WhatsApp'
+    expectedSkill: callmebot
+    tags: [positive]
+    rationale: CallMeBot mentioned by name with WhatsApp context
+
+  # --- Negative: should NOT load callmebot skill ---
+
+  - id: generic-whatsapp
+    prompt: 'Add a WhatsApp chat button to my site'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Generic WhatsApp feature — no CallMeBot mention
+
+  - id: whatsapp-notifications
+    prompt: 'I want to send WhatsApp notifications to my users'
+    expectedSkill: null
+    tags: [negative]
+    rationale: WhatsApp notifications without mentioning CallMeBot — could be Twilio or other provider
+
+  - id: whatsapp-api
+    prompt: 'How do I integrate a WhatsApp API?'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Generic WhatsApp API question — no CallMeBot keyword
+
+  - id: sms-notifications
+    prompt: 'Add SMS notifications to my app'
+    expectedSkill: null
+    tags: [negative]
+    rationale: SMS is a different channel entirely
