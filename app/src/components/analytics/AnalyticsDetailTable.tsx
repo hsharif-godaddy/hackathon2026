@@ -1,9 +1,40 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import text from '@ux/text'
 
 import { AnalyticsCard } from '@/components/analytics/AnalyticsCard'
 import { InfoTooltip } from '@/components/ui/InfoTooltip'
 import { useTranslations } from '@/hooks/useTranslations'
+
+interface AnalyticsDetailTableBarCellProps {
+  barPct: number
+  barColor?: string
+  children: ReactNode
+}
+
+function barBackground(color: string, pct: number): CSSProperties['background'] {
+  const tint = `color-mix(in srgb, ${color} 8%, transparent)`
+
+  return `linear-gradient(
+    90deg,
+    ${tint} ${pct}%,
+    transparent ${pct}%
+  )`
+}
+
+export function AnalyticsDetailTableBarCell({
+  barPct,
+  barColor = 'var(--color-ai)',
+  children,
+}: AnalyticsDetailTableBarCellProps) {
+  return (
+    <div
+      className="flex-1 min-w-0 px-1 py-0.5 rounded-sm"
+      style={{ background: barBackground(barColor, barPct) }}
+    >
+      {children}
+    </div>
+  )
+}
 
 interface ColumnDef<T> {
   key: keyof T

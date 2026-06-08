@@ -15,7 +15,7 @@ import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { usePublishedUrl } from '@/app/[market]/develop/hooks/usePublishedUrl'
 import { AnalyticsCard } from '@/components/analytics/AnalyticsCard'
 import { AnalyticsChart } from '@/components/analytics/AnalyticsChart'
-import { AnalyticsDetailTable } from '@/components/analytics/AnalyticsDetailTable'
+import { AnalyticsDetailTable, AnalyticsDetailTableBarCell } from '@/components/analytics/AnalyticsDetailTable'
 import { AnalyticsMultiAreaChart } from '@/components/analytics/AnalyticsMultiAreaChart'
 import {
   AnalyticsPeriodPicker,
@@ -707,18 +707,14 @@ export default function RUM() {
                     const barPct = (row.visitors / maxVisitors) * 100
                     return (
                       <div className="flex items-center gap-2 min-w-0">
-                        <div className="relative flex-1 min-w-0">
-                          <div
-                            className="absolute inset-y-0 left-0 rounded-r-sm opacity-[0.08]"
-                            style={{ width: `${barPct}%`, background: 'var(--color-chart-cyan)' }}
-                          />
-                          <span className="relative inline-flex items-center gap-1.5 px-1 py-0.5">
+                        <AnalyticsDetailTableBarCell barPct={barPct} barColor="var(--color-chart-cyan)">
+                          <span className="inline-flex items-center gap-1.5">
                             {row.countryCode && (
                               <span role="img" aria-label={row.country} className="text-sm leading-none shrink-0">{countryCodeToFlag(row.countryCode)}</span>
                             )}
                             <span className="text-xs font-semibold">{row.country}</span>
                           </span>
-                        </div>
+                        </AnalyticsDetailTableBarCell>
                       </div>
                     )
                   }},
@@ -817,15 +813,11 @@ export default function RUM() {
                     const barPct = (row.pageViews / maxVisits) * 100
                     return (
                       <div className="flex items-center gap-2 min-w-0">
-                        <div className="relative flex-1 min-w-0">
-                          <div
-                            className="absolute inset-y-0 left-0 rounded-r-sm opacity-[0.08]"
-                            style={{ width: `${barPct}%`, background: 'var(--color-ai)' }}
-                          />
-                          <span className="relative text-xs font-medium truncate block px-1 py-0.5 max-w-[200px]" title={String(v)}>
+                        <AnalyticsDetailTableBarCell barPct={barPct}>
+                          <span className="text-xs font-medium truncate block max-w-[200px]" title={String(v)}>
                             {String(v)}
                           </span>
-                        </div>
+                        </AnalyticsDetailTableBarCell>
                       </div>
                     )
                   }},
@@ -970,15 +962,11 @@ export default function RUM() {
                     const barPct = (row.clicks / maxClicks) * 100
                     return (
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="relative flex-1 min-w-0">
-                          <div
-                            className="absolute inset-y-0 left-0 rounded-r-sm opacity-[0.08]"
-                            style={{ width: `${barPct}%`, background: 'var(--color-ai)' }}
-                          />
-                          <span className="relative text-xs font-medium truncate block px-1 py-0.5" title={name}>
+                        <AnalyticsDetailTableBarCell barPct={barPct}>
+                          <span className="text-xs font-medium truncate block" title={name}>
                             {name}
                           </span>
-                        </div>
+                        </AnalyticsDetailTableBarCell>
                       </div>
                     )
                   }},
@@ -1023,15 +1011,9 @@ export default function RUM() {
                     const barPct = (row.totalViews / maxViews) * 100
                     return (
                       <div className="flex items-center gap-2 min-w-0">
-                        <div className="relative flex-1 min-w-0">
-                          <div
-                            className="absolute inset-y-0 left-0 rounded-r-sm opacity-[0.08]"
-                            style={{ width: `${barPct}%`, background: 'var(--color-ai)' }}
-                          />
-                          <span className="relative block px-1 py-0.5">
-                            <PageBadge value={String(v)} />
-                          </span>
-                        </div>
+                        <AnalyticsDetailTableBarCell barPct={barPct}>
+                          <PageBadge value={String(v)} />
+                        </AnalyticsDetailTableBarCell>
                       </div>
                     )
                   }},
