@@ -17,6 +17,7 @@ import { shipAnalyticsLog } from '@/lib/logging';
 import { canUpgradePlan, isPaidPlanForGrants, PAYWALL_ITC } from '@/lib/paywall/shared';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { usePaywallStore } from '@/stores/usePaywallStore';
 import { getPlanFromSubscription } from '@/utils/credits';
 import { logClickEvent } from '@/utils/instrumentation';
 
@@ -31,7 +32,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
   const pathname = usePathname();
   const isDevelopPage = pathname?.includes('/develop/');
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
-  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal);
+  const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal);
 
   const featureEnabled = useSwitchboard('appbuilder-airoplus-upgrade-button');
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility();
@@ -48,8 +49,8 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
 
   const handleUpgradeClick = () => {
     logClickEvent(`${location}.header.upgrade_popover`, clickContext)();
-    setOpen(false);
     openUpgradeModal('header.upgrade_button', PAYWALL_ITC.UPGRADE);
+    setOpen(false);
     shipAnalyticsLog('header.upgrade_button.clicked', {
       appId: currentAppId,
       location,

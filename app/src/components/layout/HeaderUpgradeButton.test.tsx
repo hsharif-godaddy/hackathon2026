@@ -42,6 +42,11 @@ vi.mock('@/hooks/useBreakpoints', () => ({
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => selector({
     currentAppId: 'test-app-id',
+  }),
+}));
+
+vi.mock('@/stores/usePaywallStore', () => ({
+  usePaywallStore: (selector: any) => selector({
     openUpgradeModal: mockOpenUpgradeModal,
   }),
 }));

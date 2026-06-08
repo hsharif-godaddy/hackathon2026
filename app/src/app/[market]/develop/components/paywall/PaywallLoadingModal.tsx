@@ -3,7 +3,6 @@
 import { useEffect, useRef } from 'react'
 import Box from '@ux/box'
 import Modal from '@ux/modal'
-import Skeleton from '@ux/skeleton'
 import Spinner from '@ux/spinner'
 
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -19,45 +18,41 @@ interface PaywallLoadingModalProps {
   variant?: PaywallLoadingModalVariant
   source?: string
   component?: string
+  focusLock?: boolean
 }
 
-function SkeletonPlanCard() {
+
+function SkeletonPlanBox() {
   return (
     <div
       data-testid="skeleton-plan-card"
-      className="flex flex-col p-8 w-full gap-3 border border-intents-ux-box-borderColor rounded-2xl"
+      className="grid rounded-lg border border-[rgb(214,214,214)] bg-white"
+      style={{ padding: '24px 24px 0' }}
     >
-      <Skeleton size="lg" width="120px" height="28px" />
-      <Skeleton size="md" width="180px" height="24px" className="mt-1" />
-      <Skeleton size="md" width="140px" height="20px" />
-      <Skeleton size="lg" width="160px" height="48px" className="my-2" />
-      <Skeleton size="sm" width="240px" height="20px" />
-      <Skeleton size="sm" width="200px" height="16px" />
-      <Skeleton size="lg" width="100%" height="48px" className="my-3" />
-      <Skeleton size="sm" width="80%" height="20px" />
-      <Skeleton size="sm" width="80%" height="20px" />
-      <Skeleton size="sm" width="80%" height="20px" />
-      <Skeleton size="sm" width="80%" height="20px" />
-      <Skeleton size="sm" width="80%" height="20px" />
+      <div className="skeleton-shimmer" style={{ width: '50%', height: '96px', margin: '16px 0' }} />
+      <div className="skeleton-shimmer" style={{ width: '66%', height: '40px', margin: '16px 0' }} />
+      <div className="skeleton-shimmer" style={{ width: '50%', height: '56px', margin: '16px 0' }} />
+      <div className="skeleton-shimmer" style={{ width: '100%', height: '32px', margin: '16px 0 8px' }} />
+      <div className="skeleton-shimmer" style={{ width: '100%', height: '24px', margin: '8px 0 0' }} />
+      <div className="skeleton-shimmer-dark" style={{ width: '100%', height: '56px', margin: '48px 0' }} />
+      <div className="skeleton-shimmer" style={{ width: '50%', height: '40px', margin: '8px 0' }} />
+      <div className="skeleton-shimmer" style={{ width: '100%', height: '24px', margin: '8px 0' }} />
+      <div className="skeleton-shimmer" style={{ width: '100%', height: '24px', margin: '8px 0' }} />
     </div>
   )
 }
 
 /**
- * Loading skeleton shown while CDS/UPP loads.
- * HigherPlans variant uses the same @ux/modal props as UPP's Shell component
- * (id='upgrade-modal', stretch, title='').
- *
- * Renders to document.body (default @ux/modal behavior), NOT into
- * #UpgradeLibraryPortal. Portal reuse was investigated and causes a crash:
- * two React trees managing the same DOM element with uncoordinated cleanup
- * during CDS's LoadingComponent-to-RemoteMyComponent swap.
+ * Loading skeleton matching UPP's NearStar PlanBox skeleton exactly.
+ * Computed styles captured from live UPP DOM in test env (2026-06-05).
+ * Renders to document.body via @ux/modal, NOT into #UpgradeLibraryPortal.
  */
 export function PaywallLoadingModal({
   onClose,
   variant = PaywallLoadingModalVariant.Default,
   source,
   component,
+  focusLock,
 }: PaywallLoadingModalProps) {
   const hasLoggedRef = useRef(false)
 
@@ -79,20 +74,12 @@ export function PaywallLoadingModal({
         title=""
         onClose={onClose}
         stretch
+        focusLock={focusLock}
       >
-        <div
-          className="flex flex-col items-center w-full mx-auto max-w-[1280px] px-4 sm:px-6 py-10"
-        >
-          <Skeleton size="lg" width="min(340px, 100%)" height="36px" />
-          <Skeleton size="md" width="min(420px, 100%)" height="20px" className="mt-3" />
-          <Skeleton size="md" width="min(280px, 100%)" height="40px" className="mt-4 rounded-full" />
-          <div
-            className="w-full mt-10 grid grid-cols-1 sm:grid-cols-3 gap-4"
-          >
-            <SkeletonPlanCard />
-            <SkeletonPlanCard />
-            <SkeletonPlanCard />
-          </div>
+        <div className="grid grid-cols-3 gap-x-4" style={{ padding: '12px 0 40px' }}>
+          <SkeletonPlanBox />
+          <SkeletonPlanBox />
+          <SkeletonPlanBox />
         </div>
       </Modal>
     )
@@ -103,6 +90,7 @@ export function PaywallLoadingModal({
       title=""
       onClose={onClose}
       centered
+      focusLock={focusLock}
     >
       <Box className="flex items-center justify-center py-8 min-h-48 min-w-48">
         <Spinner size="lg" />

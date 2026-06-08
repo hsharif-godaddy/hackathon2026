@@ -8,6 +8,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useUpgradePurchase } from '@/hooks/useUpgradePurchase'
 import { getItcOverride } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 import { SubscriptionPlan } from '@/types/credits'
 import { resetFocusOnModalClose } from '@/utils/focus'
 import { logImpressionEvent } from '@/utils/instrumentation'
@@ -17,6 +18,7 @@ import { D2P_OFFER_GROUP_IDS, UPGRADE_PRODUCT_IDS } from './constants'
 import { PaywallErrorFallback } from './PaywallErrorFallback'
 
 const COMPONENT_NAME = 'DirectToPaidContainer'
+const NullLoadingComponent = () => null
 
 interface DirectToPaidContainerProps {
   onClose: () => void
@@ -39,6 +41,20 @@ interface D2PPurchaseResult {
 const isValidSubscriptionPlan = (value: string | undefined): value is SubscriptionPlan =>
   !!value && Object.values(SubscriptionPlan).includes(value as SubscriptionPlan)
 
+interface ParsedD2PResult {
+  planAfterPurchase: SubscriptionPlan | undefined
+  subscriptionId: string | undefined
+}
+
+function parseD2PResult(purchaseResult: D2PPurchaseResult): ParsedD2PResult {
+  const item = purchaseResult?.purchaseData?.items?.[0]
+  const extracted = item?.productPackageId?.split('.').pop()
+  return {
+    planAfterPurchase: isValidSubscriptionPlan(extracted) ? extracted : undefined,
+    subscriptionId: item?.subscriptionId?.toString(),
+  }
+}
+
 /**
  * Container component for Direct-to-Paid purchase flow
  *
@@ -54,6 +70,7 @@ const DirectToPaidContainer = ({
   const gasketData = useGasketData()
   const { handlePurchaseSuccess } = useUpgradePurchase()
   const umdFallback = useSwitchboard(PAYWALL_UMD_FALLBACK) ?? false
+  const setPaywallLoading = usePaywallStore((state) => state.setPaywallLoading)
 
   const productId = UPGRADE_PRODUCT_IDS.AIRO_BUILDER
 
@@ -78,15 +95,16 @@ const DirectToPaidContainer = ({
     }
   }, [source, productId])
 
-  // Called when D2P component loads successfully
   const handleLoadSuccess = useCallback(() => {
+    document.body.removeAttribute('data-paywall-loading')
+    setPaywallLoading(false)
     shipAnalyticsLog('paywall.d2p-load.success', {
       source,
       productId,
       component: COMPONENT_NAME,
     })
     logImpressionEvent('paywall.d2p-load.success')()
-  }, [source, productId])
+  }, [source, productId, setPaywallLoading])
 
   // Called when user clicks a CTA button
   const handleCtaClick = useCallback((planId: string, ctaType: string) => {
@@ -123,85 +141,49 @@ const DirectToPaidContainer = ({
     onError?.(error)
   }, [source, productId, onError])
 
-  // Called on purchase success - D2P passes a single purchase result object
   const handlePurchaseSuccessCallback = useCallback((purchaseResult: D2PPurchaseResult) => {
-    // Extract plan type from productPackageId (e.g., "uuid.professional" -> "professional")
-    const item = purchaseResult?.purchaseData?.items?.[0]
-    const productPackageId = item?.productPackageId
-    const extracted = productPackageId?.split('.').pop()
-    const planAfterPurchase = isValidSubscriptionPlan(extracted) ? extracted : undefined
-    const subscriptionId = item?.subscriptionId?.toString()
+    const { planAfterPurchase, subscriptionId } = parseD2PResult(purchaseResult)
 
-    // Close the D2P modal so the polling modal can be shown
     handleClose()
 
     logImpressionEvent('plan.purchase.success')()
-    shipAnalyticsLog('airobuilder.purchase.d2p', {
-      source,
-      productId,
-      toPlan: planAfterPurchase,
-      subscriptionId,
-    })
+    shipAnalyticsLog('airobuilder.purchase.d2p', { source, productId, toPlan: planAfterPurchase, subscriptionId })
 
     if (planAfterPurchase) {
       logImpressionEvent(`plan.purchase_${planAfterPurchase}.success`)()
-      shipAnalyticsLog(`plan.purchase_${planAfterPurchase}.d2p`, {
-        source,
-        productId,
-        toPlan: planAfterPurchase,
-      })
+      shipAnalyticsLog(`plan.purchase_${planAfterPurchase}.d2p`, { source, productId, toPlan: planAfterPurchase })
     }
 
-    // For D2P, we're going from no subscription to a new subscription
-    // Poll for the subscription to be created
     if (!planAfterPurchase) {
-      shipAnalyticsLog('airobuilder.d2p.polling-skipped', {
-        source,
-        productId,
-        reason: 'plan_not_found_in_purchase_response',
-      })
+      shipAnalyticsLog('airobuilder.d2p.polling-skipped', { source, productId, reason: 'plan_not_found_in_purchase_response' })
       return
     }
 
     handlePurchaseSuccess(
-      undefined, // No plan before purchase
+      undefined,
       planAfterPurchase,
-      undefined, // No downgraded plan
-      true, // This is an upgrade (new subscription)
+      undefined,
+      true,
       source,
       productId,
       subscriptionId,
-      undefined // No initial creditsMax (D2P has no prior grant, grant polling skipped)
+      undefined,
     ).then(({ planAfterPurchase: polledPlan, updated, grantUpdated }) => {
       if (updated && polledPlan) {
         logImpressionEvent(`plan.d2p_${polledPlan}.success`)()
-        shipAnalyticsLog('airobuilder.d2p.success', {
-          source,
-          productId,
-          toPlan: polledPlan,
-          grantUpdated,
-        })
+        shipAnalyticsLog('airobuilder.d2p.success', { source, productId, toPlan: polledPlan, grantUpdated })
       }
-
       if (!updated) {
-        shipAnalyticsLog('airobuilder.d2p.polling-timeout', {
-          source,
-          productId,
-          planAfterPurchase,
-        })
+        shipAnalyticsLog('airobuilder.d2p.polling-timeout', { source, productId, planAfterPurchase })
       }
     }).catch((error) => {
-      shipAnalyticsLog('airobuilder.d2p.polling-error', {
-        source,
-        productId,
-        error: error instanceof Error ? error.message : String(error),
-      })
+      shipAnalyticsLog('airobuilder.d2p.polling-error', { source, productId, error: error instanceof Error ? error.message : String(error) })
       onError?.(error instanceof Error ? error : new Error(String(error)))
     })
   }, [source, productId, handlePurchaseSuccess, handleClose, onError])
 
-  // Called on general errors (not checkout-specific)
   const handleError = useCallback((error: Error) => {
+    setPaywallLoading(false)
     shipAnalyticsLog('paywall.d2p.error', {
       source,
       productId,
@@ -209,10 +191,10 @@ const DirectToPaidContainer = ({
       component: COMPONENT_NAME,
     })
     onError?.(error)
-  }, [source, productId, onError])
+  }, [source, productId, onError, setPaywallLoading])
 
-  // Called when CDS fails to load
   const handleLoadError = useCallback((error: Error) => {
+    setPaywallLoading(false)
     shipAnalyticsLog('paywall.cds.load.error', {
       source,
       productId,
@@ -221,9 +203,7 @@ const DirectToPaidContainer = ({
       component: COMPONENT_NAME,
     })
     onError?.(error)
-  }, [source, productId, onError])
-
-  const LoadingComponent = useCallback(() => null, [])
+  }, [source, productId, onError, setPaywallLoading])
 
   return (
     <ErrorBoundary
@@ -242,6 +222,7 @@ const DirectToPaidContainer = ({
         type={umdFallback ? CDS_TYPE_UMD : CDS_TYPE_ESM}
         {...(!umdFallback && { loaderMode: 'esm'})}
         subType='DirectToPaid'
+        LoadingComponent={NullLoadingComponent}
         offerGroupId={D2P_OFFER_GROUP_IDS.AIRO_BUILDER_LINEUP}
         productId={productId}
         cds={gasketData?.cds}
@@ -259,7 +240,6 @@ const DirectToPaidContainer = ({
         onClose={handleClose}
         // CDS loader callbacks
         onLoadError={handleLoadError}
-        LoadingComponent={LoadingComponent}
         renderErrorFallback={(error) => (
           <PaywallErrorFallback
             error={error}

@@ -15,6 +15,7 @@ import { shipAnalyticsLog } from '@/lib/logging'
 import { AiroSubscription } from '@/lib/mgmt-airo/types';
 import { isPlanUpgrade } from '@/lib/paywall/shared'
 import { invalidatePlanQueries } from '@/lib/query-utils'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 import { GrantType, SubscriptionPlan } from '@/types/credits'
 import { resetFocusOnModalClose } from '@/utils/focus'
 import { logImpressionEvent } from '@/utils/instrumentation'
@@ -24,6 +25,19 @@ import { UPGRADE_PRODUCT_IDS } from './constants'
 import { PaywallErrorFallback } from './PaywallErrorFallback'
 
 const COMPONENT_NAME = 'HigherPlansUpgradeContainer'
+const NullLoadingComponent = () => null
+
+type RenewalType = 'same_plan' | 'downgrade_plan' | null
+
+function detectRenewal(
+  planBefore: SubscriptionPlan | undefined,
+  planAfter: SubscriptionPlan | undefined,
+  downgradedPlan: SubscriptionPlan | undefined,
+): RenewalType {
+  if (planBefore && planAfter && planBefore === planAfter) return 'same_plan'
+  if (planBefore && downgradedPlan && planAfter && downgradedPlan === planAfter) return 'downgrade_plan'
+  return null
+}
 
 interface HigherPlansUpgradeContainerProps {
   onClose: () => void
@@ -51,6 +65,7 @@ const HigherPlansUpgradeContainer = ({
   const shopperId = getUserInfo()?.shopperId
   const { handlePurchaseSuccess } = useUpgradePurchase()
   const umdFallback = useSwitchboard(PAYWALL_UMD_FALLBACK) ?? false
+  const setPaywallLoading = usePaywallStore((state) => state.setPaywallLoading)
 
   const { data: subscription } = useSubscription()
   const productId = UPGRADE_PRODUCT_IDS.AIRO_BUILDER
@@ -99,7 +114,7 @@ const HigherPlansUpgradeContainer = ({
   const handleSuccess = useCallback(({ planType }: { planType?: SubscriptionPlan }) => {
     const cachedData = queryClient.getQueryData<{ active?: AiroSubscription }>(['subscriptions'])
     const planBeforePurchase = cachedData?.active?.plan
-    const downgradedPlan = cachedData?.active?.downgradedPlan;
+    const downgradedPlan = cachedData?.active?.downgradedPlan
     const planAfterPurchase = planType
 
     logImpressionEvent('plan.purchase.success')()
@@ -110,31 +125,18 @@ const HigherPlansUpgradeContainer = ({
       shipAnalyticsLog(`plan.purchase_${planType}.in-app`, { source, productId, fromPlan: planBeforePurchase, toPlan: planAfterPurchase })
     }
 
-    // Renewal: same plan before and after - no polling needed since plan won't change
-    if (planBeforePurchase && planAfterPurchase && planBeforePurchase === planAfterPurchase) {
-      shipAnalyticsLog('paid_plan.renewal.success', { source, productId, plan: planAfterPurchase })
+    const renewal = detectRenewal(planBeforePurchase, planAfterPurchase, downgradedPlan)
+    if (renewal) {
+      const event = renewal === 'same_plan' ? 'paid_plan.renewal.success' : 'paid_plan.renewal_downgrade.success'
+      shipAnalyticsLog(event, { source, productId, plan: planAfterPurchase })
       invalidatePlanQueries(queryClient)
       onSuccessClick?.()
       resetFocusOnModalClose()
       return
     }
 
-    // Renewal of the scheduled downgrade plan - no polling needed since plan won't change
-    if (planBeforePurchase && downgradedPlan && planAfterPurchase && downgradedPlan === planAfterPurchase) {
-      shipAnalyticsLog('paid_plan.renewal_downgrade.success', { source, productId, plan: planAfterPurchase })
-      invalidatePlanQueries(queryClient)
-      onSuccessClick?.()
-      resetFocusOnModalClose()
-      return
-    }
-
-    // Determine if this is an upgrade or downgrade
-    // - Upgrade: plan changes immediately, poll until subscription.plan changes
-    // - Downgrade: scheduled for term end, poll until downgradedAt/downgradedPlan are set
     const isUpgrade = isPlanUpgrade(planBeforePurchase, planAfterPurchase)
 
-    // Fire and forget - don't await. The polling modal will show via useIsUpgradePolling()
-    // and the mutation's onSettled will handle query invalidation.
     handlePurchaseSuccess(
       planBeforePurchase,
       planAfterPurchase,
@@ -143,33 +145,33 @@ const HigherPlansUpgradeContainer = ({
       source,
       productId,
       isUpgrade ? subscriptionId : undefined,
-      isUpgrade ? initialCreditsMaxRef.current : undefined
+      isUpgrade ? initialCreditsMaxRef.current : undefined,
     ).then(({ planAfterPurchase: polledPlan, updated, grantUpdated }) => {
       const changeType = isUpgrade ? 'upgrade' : 'downgrade'
 
       if (updated && polledPlan) {
         logImpressionEvent(`plan.${changeType}_${polledPlan}.success`)()
-        shipAnalyticsLog(`airoplus.${changeType}.success`, {
-          source,
-          productId,
-          fromPlan: planBeforePurchase,
-          toPlan: polledPlan,
-          grantUpdated,
-        })
+        shipAnalyticsLog(`airoplus.${changeType}.success`, { source, productId, fromPlan: planBeforePurchase, toPlan: polledPlan, grantUpdated })
       }
 
       if (!updated) {
-        shipAnalyticsLog(`airoplus.${changeType}.polling-timeout`, {
-          source,
-          productId,
-          planBeforePurchase,
-          planAfterPurchase,
-        })
+        shipAnalyticsLog(`airoplus.${changeType}.polling-timeout`, { source, productId, planBeforePurchase, planAfterPurchase })
       }
     })
   }, [source, productId, queryClient, handlePurchaseSuccess, subscriptionId, onSuccessClick])
 
+  const handleLoadSuccess = useCallback(() => {
+    document.body.removeAttribute('data-paywall-loading')
+    setPaywallLoading(false)
+    shipAnalyticsLog('paywall.higherPlans.load.success', {
+      source,
+      productId,
+      component: COMPONENT_NAME,
+    })
+  }, [source, productId, setPaywallLoading])
+
   const handleError = useCallback((error: Error) => {
+    setPaywallLoading(false)
     shipAnalyticsLog('paywall.cds.load.error', {
       source,
       productId,
@@ -178,7 +180,7 @@ const HigherPlansUpgradeContainer = ({
       component: COMPONENT_NAME,
     })
     onError?.(error)
-  }, [source, productId, onError])
+  }, [source, productId, onError, setPaywallLoading])
 
   const handleClose = useCallback(() => {
     onClose()
@@ -189,8 +191,6 @@ const HigherPlansUpgradeContainer = ({
     onSuccessClick?.()
     resetFocusOnModalClose()
   }, [onSuccessClick])
-
-  const LoadingComponent = useCallback(() => null, [])
 
   return (
     <ErrorBoundary
@@ -209,6 +209,7 @@ const HigherPlansUpgradeContainer = ({
         type={umdFallback ? CDS_TYPE_UMD : CDS_TYPE_ESM}
         {...(!umdFallback && { loaderMode: 'esm'})}
         subType='UniversalUpgrade'
+        LoadingComponent={NullLoadingComponent}
         productNamespace='airobuildr' // spelling of airobuildr is correct
         allowPaidToPaidModal
         cds={gasketData?.cds}
@@ -224,8 +225,8 @@ const HigherPlansUpgradeContainer = ({
         upgradeDowngradeCallback={handleSuccess}
         onPostUpgradeSuccessClick={handleSuccessClick}
         errorCallback={onErrorClick}
+        onLoadSuccess={handleLoadSuccess}
         onLoadError={handleError}
-        LoadingComponent={LoadingComponent}
         renderErrorFallback={(error) => (
           <PaywallErrorFallback
             error={error}

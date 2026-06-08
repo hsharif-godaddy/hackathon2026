@@ -50,6 +50,7 @@ import {
   PAYWALL_TYPE,
   type PaywallType,
 } from "@/lib/paywall/shared";
+import { usePaywallStore } from "@/stores/usePaywallStore";
 import { useSites } from "@/stores/useSitesStore";
 import type { CreditGrant } from "@/types/credits";
 import {
@@ -135,10 +136,16 @@ function ManagePlanContent() {
   const gasketData = useGasketData();
   const locale = gasketData?.intl?.locale;
   const rootDomain = getRootDomain() || "godaddy.com";
-  const [showPaywallModal, setShowPaywallModal] = useState(false);
-  const [paywallSource, setPaywallSource] = useState<string | null>(null);
-  const [paywallType, setPaywallType] = useState<PaywallType>("upgrade");
-  const [paywallItc, setPaywallItc] = useState<string | null>(null);
+  const showUpgradeModal = usePaywallStore((state) => state.showUpgradeModal);
+  const upgradeModalSource = usePaywallStore((state) => state.upgradeModalSource);
+  const upgradeModalItc = usePaywallStore((state) => state.upgradeModalItc);
+  const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal);
+  const closeUpgradeModal = usePaywallStore((state) => state.closeUpgradeModal);
+  const showCreditsModal = usePaywallStore((state) => state.showCreditsModal);
+  const creditsModalSource = usePaywallStore((state) => state.creditsModalSource);
+  const creditsModalItc = usePaywallStore((state) => state.creditsModalItc);
+  const openCreditsModal = usePaywallStore((state) => state.openCreditsModal);
+  const closeCreditsModal = usePaywallStore((state) => state.closeCreditsModal);
   const [showSwitchToFreeModal, setShowSwitchToFreeModal] = useState(false);
   const [isDowngradeAlertDismissed, setIsDowngradeAlertDismissed] =
     useState(false);
@@ -158,21 +165,19 @@ function ManagePlanContent() {
   const isUnpublishEnabled = useSwitchboard("appbuilder-unpublish");
   const isSuspendedBannerEnabled = useSwitchboard("appbuilder-suspended-nonpayment-banner");
 
+  const paywallLoading = usePaywallStore((state) => state.paywallLoading);
   const openPaywall = useCallback(
     (source: string, type: PaywallType = "upgrade", itc?: string) => {
-      setPaywallSource(source);
-      setPaywallType(type);
-      setPaywallItc(itc ?? null);
-      setShowPaywallModal(true);
+      if (paywallLoading) return
+      if (type === PAYWALL_TYPE.UPGRADE) {
+        openUpgradeModal(source, itc)
+      } else {
+        openCreditsModal(source, itc)
+      }
       shipAnalyticsLog(`${source}.shown`, { paywallType: type });
     },
-    []
+    [paywallLoading, openUpgradeModal, openCreditsModal]
   );
-
-  const closePaywall = () => {
-    setShowPaywallModal(false);
-    setPaywallItc(null);
-  };
 
   useEffect(function logPageView() {
     logImpressionEvent("manage_plan.page.view")();
@@ -278,7 +283,7 @@ function ManagePlanContent() {
   const activeGrant = getActiveGrant(grants);
 
   const currentPlan = getPlanFromSubscription(subscription);
-  const paywallSourceId = paywallSource ?? "manage_plan";
+  const paywallSourceId = upgradeModalSource ?? creditsModalSource ?? "manage_plan";
 
   const isPaidPlan = isPaidPlanForGrants(currentPlan);
   const planLabelKey = getPlanDisplayLabelKey(currentPlan);
@@ -340,64 +345,62 @@ function ManagePlanContent() {
   return (
     <>
       {/* Upgrade Modal (for plan upgrades) */}
-      {showPaywallModal && paywallType === "upgrade" && (
+      {showUpgradeModal && (
         <UpgradeContainer
-          source={paywallSourceId}
-          itc={paywallItc ?? undefined}
-          onSuccessClick={closePaywall}
+          source={upgradeModalSource ?? paywallSourceId}
+          itc={upgradeModalItc ?? undefined}
+          onSuccessClick={closeUpgradeModal}
           onClose={() => {
-            closePaywall();
+            closeUpgradeModal();
             shipAnalyticsLog(`${paywallSourceId}.dismissed`, {});
           }}
           onErrorClick={() => {
-            closePaywall();
+            closeUpgradeModal();
             shipAnalyticsLog(`${paywallSourceId}.error`, {});
           }}
         />
       )}
 
       {/* Credits Modal (for credits purchase) */}
-      {showPaywallModal &&
-        paywallType === "credits" &&
+      {showCreditsModal &&
         builderEntitlementId &&
         subscription?.id && (
           <CreditsUpgradeContainer
-            source={paywallSourceId}
+            source={creditsModalSource ?? paywallSourceId}
             entitlementId={builderEntitlementId}
             subscriptionId={subscription.id}
             initialGrantCount={grants.length}
-            itc={paywallItc ?? undefined}
+            itc={creditsModalItc ?? undefined}
             onSuccess={() => {
-              closePaywall();
+              closeCreditsModal();
             }}
             onClose={() => {
-              closePaywall();
+              closeCreditsModal();
               shipAnalyticsLog(`${paywallSourceId}.dismissed`, {});
             }}
             onErrorClick={() => {
-              closePaywall();
+              closeCreditsModal();
               shipAnalyticsLog(`${paywallSourceId}.error`, {});
             }}
           />
         )}
 
       {/* Fallback: Show upgrade modal for credits when entitlementId is missing */}
-      {showPaywallModal &&
-        paywallType === "credits" &&
+      {showCreditsModal &&
         !builderEntitlementId && (
           <CreditsPaywallFallback
-            source={paywallSourceId}
+            source={creditsModalSource ?? paywallSourceId}
             subscriptionId={subscription?.id}
-            itc={paywallItc ?? undefined}
+            itc={creditsModalItc ?? undefined}
             onSuccessClick={() => {
-              closePaywall();
+              closeCreditsModal();
             }}
             onClose={() => {
-              closePaywall();
+              closeCreditsModal();
               shipAnalyticsLog(`${paywallSourceId}.dismissed`, {});
             }}
             onErrorClick={() => {
-              closePaywall();
+              closeCreditsModal();
               shipAnalyticsLog(`${paywallSourceId}.error`, {});
             }}
           />

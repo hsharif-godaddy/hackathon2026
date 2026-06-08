@@ -18,6 +18,7 @@ import { DomainStatus, DomainType } from "@/lib/control-plane/types";
 import { shipAnalyticsLog } from '@/lib/logging';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { useDevelopPageStore } from "@/stores/useDevelopPageStore";
+import { usePaywallStore } from "@/stores/usePaywallStore";
 import { useSiteStore } from "@/stores/useSiteStore";
 import RidingArrow from '@/svgs/riding-arrow';
 import { generateClickEID } from '@/utils/instrumentation';
@@ -51,7 +52,7 @@ export default function DomainPanel() {
   });
 
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility();
-  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal);
+  const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal);
 
   const { handlePublish, isPublishDisabled, publishState } = usePublishForDomain(currentAppId, site);
   const canManageDomains = canAccessDomainManagement(site);

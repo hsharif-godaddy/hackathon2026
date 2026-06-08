@@ -128,6 +128,7 @@ vi.mock('./cdsLoader', async () => {
     upgradeDowngradeCallback: (params: { planType?: SubscriptionPlan }) => void;
     onPostUpgradeSuccessClick?: () => void;
     errorCallback?: () => void;
+    onLoadSuccess?: () => void;
     onLoadError?: (error: Error) => void;
   }) => {
     React.useEffect(() => { componentLoaderMountCount++ }, []);
@@ -170,6 +171,12 @@ vi.mock('./cdsLoader', async () => {
           Error
         </button>
         <button
+          data-testid="load-success-button"
+          onClick={props.onLoadSuccess}
+        >
+          Load Success
+        </button>
+        <button
           data-testid="on-error-button"
           onClick={() => props.onLoadError?.(new Error('Test error'))}
         >
@@ -202,6 +209,7 @@ vi.mock('./PaywallLoadingModal', () => ({
 import { useCreditGrants } from '@/hooks/useCreditGrants';
 import { useSubscription } from '@/hooks/useSubscription';
 import { shipAnalyticsLog } from '@/lib/logging';
+import { usePaywallStore } from '@/stores/usePaywallStore';
 import { resetFocusOnModalClose } from '@/utils/focus';
 import { logImpressionEvent } from '@/utils/instrumentation';
 
@@ -209,6 +217,7 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
   beforeEach(function setup() {
     vi.clearAllMocks();
     componentLoaderMountCount = 0;
+    usePaywallStore.setState({ paywallLoading: false });
     vi.mocked(useSubscription).mockReturnValue({
       data: { id: 'test-subscription-123', builderEntitlementId: 'test-entitlement-123', plan: SubscriptionPlan.Professional },
       isLoading: false,
@@ -743,6 +752,45 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
     expect(mockOnSuccessClick).not.toHaveBeenCalled();
   });
 
+  describe('paywallLoading lifecycle', function paywallLoadingTests() {
+    it('onLoadSuccess clears paywallLoading and ships analytics', function onLoadSuccessClearsLoading() {
+      usePaywallStore.setState({ paywallLoading: true });
+
+      renderWithProviders(
+        <HigherPlansUpgradeContainer onClose={mockOnClose} source="test-source" />
+      );
+
+      fireEvent.click(screen.getByTestId('load-success-button'));
+
+      expect(usePaywallStore.getState().paywallLoading).toBe(false);
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('paywall.higherPlans.load.success', expect.objectContaining({
+        source: 'test-source',
+        component: 'HigherPlansUpgradeContainer',
+      }));
+    });
+
+    it('onLoadError clears paywallLoading and calls onError', function onLoadErrorClearsLoading() {
+      usePaywallStore.setState({ paywallLoading: true });
+
+      renderWithProviders(
+        <HigherPlansUpgradeContainer onClose={mockOnClose} onError={mockOnError} source="test-source" />
+      );
+
+      fireEvent.click(screen.getByTestId('on-error-button'));
+
+      expect(usePaywallStore.getState().paywallLoading).toBe(false);
+      expect(mockOnError).toHaveBeenCalledWith(expect.any(Error));
+    });
+
+    it('renders modal on mount (no null LoadingComponent override)', function noLoadingComponent() {
+      renderWithProviders(
+        <HigherPlansUpgradeContainer onClose={mockOnClose} source="test-source" />
+      );
+
+      expect(screen.getByTestId('higher-plans-modal')).toBeInTheDocument();
+    });
+  });
+
   describe('currentPlan stability during purchase polling', function currentPlanStabilityTests() {
     it('does not change currentPlan when subscription updates after mount', function stableCurrentPlanOnRerender() {
       const { rerender } = renderWithProviders(
@@ -856,5 +904,86 @@ describe('HigherPlansUpgradeContainer', function higherPlansUpgradeContainerTest
       expect(screen.getByTestId('current-plan')).toHaveTextContent('starter');
       expect(componentLoaderMountCount).toBe(1);
     });
+  });
+
+  it('logs polling timeout when handlePurchaseSuccess resolves with updated=false', async function logsPollingTimeout() {
+    mockHandlePurchaseSuccess.mockResolvedValue({ planAfterPurchase: undefined, updated: false, grantUpdated: false });
+
+    renderWithProviders(
+      <HigherPlansUpgradeContainer
+        onClose={mockOnClose}
+        source="test-source"
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('upgrade-button'));
+
+    await vi.waitFor(() => {
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('airoplus.upgrade.polling-timeout', expect.objectContaining({
+        source: 'test-source',
+        planBeforePurchase: 'professional',
+        planAfterPurchase: SubscriptionPlan.Ultimate,
+      }));
+    });
+  });
+
+  it('self-heals initialCreditsMaxRef when grants load after mount', function selfHealsCreditsMax() {
+    // Start with no grants data
+    vi.mocked(useCreditGrants).mockReturnValue({
+      data: undefined,
+      source: undefined,
+      isLoading: true,
+      isFetching: true,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as ReturnType<typeof useCreditGrants>);
+
+    const { rerender } = renderWithProviders(
+      <HigherPlansUpgradeContainer
+        onClose={mockOnClose}
+        source="test-source"
+      />
+    );
+
+    // Now grants arrive
+    vi.mocked(useCreditGrants).mockReturnValue({
+      data: [
+        {
+          id: 'late-grant',
+          type: 'plan-monthly',
+          isAvailable: true,
+          creditsMax: 750,
+          subscriptionId: 'test-subscription-123',
+        },
+      ],
+      source: undefined,
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as ReturnType<typeof useCreditGrants>);
+
+    rerender(
+      <HigherPlansUpgradeContainer
+        onClose={mockOnClose}
+        source="test-source"
+      />
+    );
+
+    // Trigger upgrade to verify self-healed value is used
+    fireEvent.click(screen.getByTestId('upgrade-button'));
+
+    expect(mockHandlePurchaseSuccess).toHaveBeenCalledWith(
+      'professional',
+      SubscriptionPlan.Ultimate,
+      undefined,
+      true,
+      'test-source',
+      expect.any(String),
+      'test-subscription-123',
+      750, // self-healed creditsMax
+    );
   });
 });

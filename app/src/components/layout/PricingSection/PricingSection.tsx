@@ -29,7 +29,7 @@ import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { PLAN_PUBLISH_LIMITS } from '@/lib/publish-limit'
 import { logger } from '@/lib/request-context'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 import { SubscriptionPlan } from '@/types/credits'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
 
@@ -86,7 +86,7 @@ const ULTIMATE_FEATURES: PlanFeature[] = [
 export default function PricingSection({ onPricingViewEnd }: PricingSectionProps) {
   const t = useTranslations();
   const { data: pricingData, isLoading } = usePricingOffers()
-  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
+  const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal)
   const isUpgradePolling = useIsUpgradePolling()
 
   const { isAuthenticated, isLoading: authIsLoading } = useAuthContext()

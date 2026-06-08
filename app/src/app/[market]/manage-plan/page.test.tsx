@@ -7,6 +7,7 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
+import { usePaywallStore } from '@/stores/usePaywallStore';
 import { mockRouter } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import type { CreditGrant } from '@/types/credits';
@@ -197,6 +198,7 @@ describe('ManagePlan', function managePlanTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
     mockReplace.mockClear();
+    usePaywallStore.setState({ paywallLoading: false, showUpgradeModal: false, upgradeModalSource: null, showCreditsModal: false, creditsModalSource: null });
     mockUseSites.mockReturnValue({ sites: [], isLoading: false, error: null });
     // Reset switchboard flags
     Object.keys(mockSwitchboardFlags).forEach((key) => delete mockSwitchboardFlags[key]);

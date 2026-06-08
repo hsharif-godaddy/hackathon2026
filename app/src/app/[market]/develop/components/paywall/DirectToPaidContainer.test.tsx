@@ -4,8 +4,9 @@
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 
+import { usePaywallStore } from '@/stores/usePaywallStore';
 import { renderWithProviders } from '@/tests/test-utils';
 
 vi.mock('@/hooks/useGasketData', () => ({
@@ -42,7 +43,7 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 }));
 
 vi.mock('./cdsLoader', () => ({
-  ComponentLoader: ({ onClose, source, subType, offerGroupId, type, loaderMode, deps }: any) => (
+  ComponentLoader: ({ onClose, onLoadSuccess, onLoadError, onError, onCtaClick, onCheckoutStart, onCheckoutError, onPurchaseSuccess, source, subType, offerGroupId, type, loaderMode, deps }: any) => (
     <div data-testid="component-loader">
       <span data-testid="type">{type}</span>
       <span data-testid="loader-mode">{loaderMode || ''}</span>
@@ -51,6 +52,14 @@ vi.mock('./cdsLoader', () => ({
       <span data-testid="source">{source}</span>
       <span data-testid="has-deps">{deps ? 'true' : 'false'}</span>
       <button data-testid="close-btn" onClick={onClose}>Close</button>
+      <button data-testid="load-success-btn" onClick={onLoadSuccess}>Load Success</button>
+      <button data-testid="load-error-btn" onClick={() => onLoadError?.(new Error('Test load error'))}>Load Error</button>
+      <button data-testid="error-btn" onClick={() => onError?.(new Error('Test error'))}>Error</button>
+      <button data-testid="cta-click-btn" onClick={() => onCtaClick?.('plan-123', 'buy')}>CTA Click</button>
+      <button data-testid="checkout-start-btn" onClick={() => onCheckoutStart?.('basket-456')}>Checkout Start</button>
+      <button data-testid="checkout-error-btn" onClick={() => onCheckoutError?.(new Error('checkout failed'))}>Checkout Error</button>
+      <button data-testid="purchase-success-btn" onClick={() => onPurchaseSuccess?.({ purchaseData: { items: [{ subscriptionId: 12345, productPackageId: 'uuid.professional', label: 'Pro' }] } })}>Purchase Success</button>
+      <button data-testid="purchase-no-plan-btn" onClick={() => onPurchaseSuccess?.({ purchaseData: { items: [{}] } })}>Purchase No Plan</button>
     </div>
   ),
 }));
@@ -84,6 +93,7 @@ import DirectToPaidContainer from './DirectToPaidContainer';
 describe('DirectToPaidContainer', function directToPaidContainerTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    usePaywallStore.setState({ paywallLoading: false });
   });
 
   it('should render ComponentLoader with DirectToPaid subType', function renderD2P() {
@@ -163,5 +173,125 @@ describe('DirectToPaidContainer', function directToPaidContainerTests() {
     expect(screen.getByTestId('has-deps')).toHaveTextContent('false');
 
     vi.mocked(mod.useSwitchboard).mockReturnValue(false);
+  });
+
+  describe('D2P callbacks', function d2pCallbackTests() {
+    it('logs cta click analytics', function logsCta() {
+      renderWithProviders(
+        <DirectToPaidContainer onClose={vi.fn()} source="test" />
+      );
+
+      fireEvent.click(screen.getByTestId('cta-click-btn'));
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('paywall.d2p-cta.click', expect.objectContaining({
+        source: 'test',
+        planId: 'plan-123',
+        ctaType: 'buy',
+      }));
+    });
+
+    it('logs checkout start analytics', function logsCheckoutStart() {
+      renderWithProviders(
+        <DirectToPaidContainer onClose={vi.fn()} source="test" />
+      );
+
+      fireEvent.click(screen.getByTestId('checkout-start-btn'));
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('paywall.d2p-checkout.start', expect.objectContaining({
+        basketId: 'basket-456',
+      }));
+    });
+
+    it('logs checkout error and calls onError', function logsCheckoutError() {
+      const onError = vi.fn();
+      renderWithProviders(
+        <DirectToPaidContainer onClose={vi.fn()} onError={onError} source="test" />
+      );
+
+      fireEvent.click(screen.getByTestId('checkout-error-btn'));
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('paywall.d2p-checkout.error', expect.objectContaining({
+        error: 'checkout failed',
+      }));
+      expect(onError).toHaveBeenCalledWith(expect.any(Error));
+    });
+
+    it('handles purchase success with valid plan and polls', async function handlesPurchaseSuccess() {
+      const onClose = vi.fn();
+      renderWithProviders(
+        <DirectToPaidContainer onClose={onClose} source="test" />
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('purchase-success-btn'));
+      });
+
+      expect(onClose).toHaveBeenCalled();
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('airobuilder.purchase.d2p', expect.objectContaining({
+        toPlan: 'professional',
+      }));
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('plan.purchase_professional.d2p', expect.objectContaining({
+        toPlan: 'professional',
+      }));
+    });
+
+    it('skips polling when plan not found in purchase response', async function skipsPollWhenNoPlan() {
+      const onClose = vi.fn();
+      renderWithProviders(
+        <DirectToPaidContainer onClose={onClose} source="test" />
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('purchase-no-plan-btn'));
+      });
+
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('airobuilder.d2p.polling-skipped', expect.objectContaining({
+        reason: 'plan_not_found_in_purchase_response',
+      }));
+    });
+  });
+
+  describe('paywallLoading lifecycle', function paywallLoadingTests() {
+    it('onLoadSuccess clears paywallLoading and ships analytics', function onLoadSuccessClearsLoading() {
+      usePaywallStore.setState({ paywallLoading: true });
+
+      renderWithProviders(
+        <DirectToPaidContainer onClose={vi.fn()} source="test-source" />
+      );
+
+      fireEvent.click(screen.getByTestId('load-success-btn'));
+
+      expect(usePaywallStore.getState().paywallLoading).toBe(false);
+      expect(shipAnalyticsLog).toHaveBeenCalledWith('paywall.d2p-load.success', expect.objectContaining({
+        source: 'test-source',
+        component: 'DirectToPaidContainer',
+      }));
+    });
+
+    it('onLoadError clears paywallLoading and calls onError', function onLoadErrorClearsLoading() {
+      const mockOnError = vi.fn();
+      usePaywallStore.setState({ paywallLoading: true });
+
+      renderWithProviders(
+        <DirectToPaidContainer onClose={vi.fn()} onError={mockOnError} source="test-source" />
+      );
+
+      fireEvent.click(screen.getByTestId('load-error-btn'));
+
+      expect(usePaywallStore.getState().paywallLoading).toBe(false);
+      expect(mockOnError).toHaveBeenCalledWith(expect.any(Error));
+    });
+
+    it('onError clears paywallLoading and calls onError', function onErrorClearsLoading() {
+      const mockOnError = vi.fn();
+      usePaywallStore.setState({ paywallLoading: true });
+
+      renderWithProviders(
+        <DirectToPaidContainer onClose={vi.fn()} onError={mockOnError} source="test-source" />
+      );
+
+      fireEvent.click(screen.getByTestId('error-btn'));
+
+      expect(usePaywallStore.getState().paywallLoading).toBe(false);
+      expect(mockOnError).toHaveBeenCalledWith(expect.any(Error));
+    });
+
   });
 });

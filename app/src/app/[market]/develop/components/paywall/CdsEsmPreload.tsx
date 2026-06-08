@@ -19,41 +19,55 @@ declare global {
 
 const UPP_TYPE = 'godaddyUnifiedPlansAndPricingLibraryEsm'
 const LOCAL_DEV_URL = 'http://localhost:9000'
-export const IMPORT_MAP_POLL_INTERVAL_MS = 200
-export const IMPORT_MAP_TIMEOUT_MS = 10000
+const IMPORT_MAP_POLL_INTERVAL_MS = 200
+const IMPORT_MAP_TIMEOUT_MS = 10000
 const WARM_CACHE_IMPORT_TIMEOUT_MS = 15000
+
+function getVersionOverride(): string | null {
+  if (typeof window === 'undefined') return null
+
+  const lsRaw = localStorage.getItem('cdsVersion')
+  if (lsRaw) {
+    try {
+      const parsed = JSON.parse(lsRaw)?.[UPP_TYPE]
+      if (parsed) return parsed
+    } catch { /* ignore malformed JSON */ }
+  }
+
+  const qsVal = new URLSearchParams(window.location.search).get('cdsVersion')
+  if (qsVal) {
+    const [type, version] = qsVal.split('--')
+    if (type === UPP_TYPE) return version
+  }
+
+  return null
+}
+
+function buildEntryUrl(
+  cdnBaseUrl: string,
+  entry: string,
+  versionOverride: string | null,
+): string {
+  if (versionOverride === 'local') {
+    const localEntry = entry.replace(/^[^.]+\./, 'local.')
+    return `${LOCAL_DEV_URL}/esm/${UPP_TYPE}/${localEntry}`
+  }
+
+  if (versionOverride) {
+    const overrideEntry = entry.replace(/^[^.]+\./, `${versionOverride}.`)
+    return `${cdnBaseUrl}/esm/${UPP_TYPE}/${overrideEntry}`
+  }
+
+  return `${cdnBaseUrl}/esm/${UPP_TYPE}/${entry}`
+}
 
 export function getUppEntryUrl(registry: Record<string, unknown>): string | null {
   try {
     const config = registry[UPP_TYPE] as { js?: string; cdnBaseUrl?: string } | undefined
     if (!config?.js || !config?.cdnBaseUrl) return null
 
-    let versionOverride: string | null = null
-    if (typeof window !== 'undefined') {
-      const lsRaw = localStorage.getItem('cdsVersion')
-      if (lsRaw) {
-        try { versionOverride = JSON.parse(lsRaw)?.[UPP_TYPE] ?? null } catch { /* ignore malformed JSON */ }
-      }
-      if (!versionOverride) {
-        const qsVal = new URLSearchParams(window.location.search).get('cdsVersion')
-        if (qsVal) {
-          const [type, version] = qsVal.split('--')
-          if (type === UPP_TYPE) versionOverride = version
-        }
-      }
-    }
-
-    if (versionOverride === 'local') {
-      const localEntry = config.js.replace(/^[^.]+\./, 'local.')
-      return `${LOCAL_DEV_URL}/esm/${UPP_TYPE}/${localEntry}`
-    }
-
-    if (versionOverride) {
-      const overrideEntry = config.js.replace(/^[^.]+\./, `${versionOverride}.`)
-      return `${config.cdnBaseUrl}/esm/${UPP_TYPE}/${overrideEntry}`
-    }
-
-    return `${config.cdnBaseUrl}/esm/${UPP_TYPE}/${config.js}`
+    const versionOverride = getVersionOverride()
+    return buildEntryUrl(config.cdnBaseUrl, config.js, versionOverride)
   } catch {
     return null
   }

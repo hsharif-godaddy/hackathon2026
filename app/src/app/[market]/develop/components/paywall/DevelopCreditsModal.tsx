@@ -6,7 +6,7 @@ import { useCreditGrants } from '@/hooks/useCreditGrants'
 import { useIsCreditPolling } from '@/hooks/useCreditPurchase'
 import { useSubscriptionWithPolling } from '@/hooks/useSubscriptionWithPolling'
 import { shipAnalyticsLog } from '@/lib/logging'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 import CreditsUpgradeContainer from './CreditsUpgradeContainer'
 import { GrantPollingModal } from './GrantPollingModal'
 
@@ -23,10 +23,10 @@ interface DevelopCreditsModalProps {
  * to re-initialize and flash a loading spinner.
  */
 export const DevelopCreditsModal = memo(function DevelopCreditsModal({ appId }: DevelopCreditsModalProps) {
-  const showCreditsModal = useDevelopPageStore((state) => state.showCreditsModal)
-  const creditsModalSource = useDevelopPageStore((state) => state.creditsModalSource)
-  const creditsModalItc = useDevelopPageStore((state) => state.creditsModalItc)
-  const closeCreditsModal = useDevelopPageStore((state) => state.closeCreditsModal)
+  const showCreditsModal = usePaywallStore((state) => state.showCreditsModal)
+  const creditsModalSource = usePaywallStore((state) => state.creditsModalSource)
+  const creditsModalItc = usePaywallStore((state) => state.creditsModalItc)
+  const closeCreditsModal = usePaywallStore((state) => state.closeCreditsModal)
 
   const {
     subscription,

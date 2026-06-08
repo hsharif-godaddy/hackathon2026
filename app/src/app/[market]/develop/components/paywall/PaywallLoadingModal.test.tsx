@@ -101,9 +101,6 @@ describe('PaywallLoadingModal', function paywallLoadingModalTests() {
 
       const skeletonCards = screen.getAllByTestId('skeleton-plan-card')
       expect(skeletonCards).toHaveLength(3)
-
-      const skeletonElements = screen.getAllByTestId('skeleton')
-      expect(skeletonElements.length).toBeGreaterThan(0)
     })
 
     it('should call onClose when close button is clicked', function closeHigherPlansModal() {

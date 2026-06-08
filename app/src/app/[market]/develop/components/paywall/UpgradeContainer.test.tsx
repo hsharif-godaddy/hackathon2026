@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 
 import { EXPERIMENT_IDS } from '@/config/experiments';
 import { useIsInCohort } from '@/hooks/useHivemind';
@@ -28,10 +28,11 @@ vi.mock('@/hooks/useSubscription', () => ({
 }));
 
 vi.mock('./HigherPlansUpgradeContainer', () => ({
-  default: (props: { source?: string; recommendedPlan?: string }) => (
+  default: (props: { source?: string; recommendedPlan?: string; onSuccessClick?: () => void }) => (
     <div data-testid="higher-plans-upgrade">
       <span data-testid="recommended-plan">{props.recommendedPlan ?? ''}</span>
       <span data-testid="higher-plans-source">{props.source ?? ''}</span>
+      <button data-testid="success-click-btn" onClick={props.onSuccessClick}>Success</button>
     </div>
   ),
 }));
@@ -57,6 +58,14 @@ vi.mock('./PaywallLoadingModal', () => ({
   },
 }));
 
+vi.mock('./PaywallErrorModal', () => ({
+  PaywallErrorModal: ({ onClose }: any) => (
+    <div data-testid="paywall-error-modal">
+      <button data-testid="error-close" onClick={onClose}>Close</button>
+    </div>
+  ),
+}));
+
 vi.mock('@/utils/focus', () => ({
   resetFocusOnModalClose: vi.fn(),
 }));
@@ -74,12 +83,14 @@ vi.mock('@/lib/logging', () => ({
 }));
 
 import { shipAnalyticsLog } from '@/lib/logging';
+import { usePaywallStore } from '@/stores/usePaywallStore';
 import { logImpressionEvent } from '@/utils/instrumentation';
 import UpgradeContainer from './UpgradeContainer';
 
 describe('UpgradeContainer', function upgradeContainerTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    usePaywallStore.setState({ paywallLoading: false });
   });
 
   it('should render HigherPlansUpgradeContainer with Professional plan by default', function renderHigherPlans() {
@@ -203,6 +214,7 @@ describe('UpgradeContainer', function upgradeContainerTests() {
     it('should render loading modal while subscription is loading', async function loadingWhileSubscriptionLoading() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
       vi.mocked(useSwitchboard).mockReturnValue(true);
+      usePaywallStore.setState({ paywallLoading: true });
       vi.mocked(useSubscription).mockReturnValue({
         data: undefined,
         subscriptions: [],
@@ -221,5 +233,75 @@ describe('UpgradeContainer', function upgradeContainerTests() {
       expect(container.querySelector('[data-testid="direct-to-paid"]')).not.toBeInTheDocument();
       expect(container.querySelector('[data-testid="higher-plans-upgrade"]')).not.toBeInTheDocument();
     });
+
+  });
+
+  it('calls onSuccessClick when HigherPlansUpgradeContainer fires success', function callsOnSuccessClick() {
+    vi.mocked(useSubscription).mockReturnValue({
+      data: { id: 'sub-123', builderEntitlementId: 'ent-123' },
+      isLoading: false,
+      isError: false,
+    } as ReturnType<typeof useSubscription>);
+
+    const onSuccessClick = vi.fn();
+    renderWithProviders(
+      <UpgradeContainer source="test" onClose={vi.fn()} onSuccessClick={onSuccessClick} />
+    );
+
+    screen.getByTestId('success-click-btn').click();
+    expect(onSuccessClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onClose and resetFocusOnModalClose from loading modal close', async function loadingModalClose() {
+    const { resetFocusOnModalClose } = await import('@/utils/focus');
+    usePaywallStore.setState({ paywallLoading: true });
+    vi.mocked(useSubscription).mockReturnValue({
+      data: undefined,
+      subscriptions: [],
+      isLoading: true,
+      isFetching: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as any);
+
+    const onClose = vi.fn();
+    renderWithProviders(
+      <UpgradeContainer source="test" onClose={onClose} />
+    );
+
+    screen.getByTestId('loading-close').click();
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(resetFocusOnModalClose).toHaveBeenCalled();
+  });
+
+  it('clears timeout on unmount when paywallLoading is true', function clearsTimeoutOnUnmount() {
+    usePaywallStore.setState({ paywallLoading: true });
+
+    const { unmount } = renderWithProviders(
+      <UpgradeContainer source="test" onClose={vi.fn()} />
+    );
+
+    expect(() => unmount()).not.toThrow();
+  });
+
+  it('shows error modal and unmounts CDS containers after 20s timeout', function showsErrorOnTimeout() {
+    vi.useFakeTimers();
+    usePaywallStore.setState({ paywallLoading: true });
+
+    const { container } = renderWithProviders(
+      <UpgradeContainer source="test" onClose={vi.fn()} />
+    );
+
+    expect(container.querySelector('[data-testid="paywall-loading-modal"]')).toBeInTheDocument();
+
+    act(() => { vi.advanceTimersByTime(20000); });
+
+    expect(container.querySelector('[data-testid="paywall-error-modal"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-testid="paywall-loading-modal"]')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-testid="higher-plans-upgrade"]')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-testid="direct-to-paid"]')).not.toBeInTheDocument();
+
+    vi.useRealTimers();
   });
 });

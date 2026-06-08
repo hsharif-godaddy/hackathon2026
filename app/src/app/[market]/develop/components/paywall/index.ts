@@ -9,6 +9,7 @@ export { default as HigherPlansUpgradeContainer } from './HigherPlansUpgradeCont
 export { PaywallErrorFallback } from './PaywallErrorFallback'
 export { PaywallErrorModal } from './PaywallErrorModal'
 export { PaywallLoadingModal, PaywallLoadingModalVariant } from './PaywallLoadingModal'
+export { PollingModal } from './PollingModal'
 export { RenewalPollingModal } from './RenewalPollingModal'
 export { default as UpgradeContainer } from './UpgradeContainer'
 export { UpgradePollingModal } from './UpgradePollingModal'

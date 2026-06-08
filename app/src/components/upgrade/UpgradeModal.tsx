@@ -2,17 +2,17 @@
 
 import { UpgradeContainer } from '@/app/[market]/develop/components/paywall'
 import { shipAnalyticsLog } from '@/lib/logging'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 
 interface UpgradeModalProps {
   analyticsData?: Record<string, unknown>
 }
 
 export function UpgradeModal({ analyticsData = {} }: UpgradeModalProps) {
-  const showUpgradeModal = useDevelopPageStore((state) => state.showUpgradeModal)
-  const upgradeModalSource = useDevelopPageStore((state) => state.upgradeModalSource)
-  const upgradeModalItc = useDevelopPageStore((state) => state.upgradeModalItc)
-  const closeUpgradeModal = useDevelopPageStore((state) => state.closeUpgradeModal)
+  const showUpgradeModal = usePaywallStore((state) => state.showUpgradeModal)
+  const upgradeModalSource = usePaywallStore((state) => state.upgradeModalSource)
+  const upgradeModalItc = usePaywallStore((state) => state.upgradeModalItc)
+  const closeUpgradeModal = usePaywallStore((state) => state.closeUpgradeModal)
   const source = upgradeModalSource ?? 'unknown'
 
   if (!showUpgradeModal) {

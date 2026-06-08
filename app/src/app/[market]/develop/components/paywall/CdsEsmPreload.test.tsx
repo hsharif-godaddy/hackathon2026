@@ -171,4 +171,38 @@ describe('CdsEsmPreload', () => {
     })
     await waitFor(() => expect(container.firstChild).toBeNull())
   })
+
+  it('logs registry.missing when UPP config is absent', () => {
+    mockGasketData.mockReturnValue({
+      cds: { registry: {} },
+      intl: { locale: 'en-US' },
+    })
+
+    render(<CdsEsmPreload />)
+
+    expect(mockLoggerWarn).toHaveBeenCalledWith('paywall.cds.preload.registry.missing', {})
+    expect(mockShipAnalyticsLog).toHaveBeenCalledWith('paywall.cds.preload.registry.missing', {
+      component: 'CdsEsmPreload',
+    })
+  })
+
+  it('clears interval when import map is ready before timeout', async () => {
+    vi.useFakeTimers()
+    window.__CDS_IMPORT_MAP_SETUP__ = true
+    window.__CDS_IMPORT_MAP_PROMISE__ = Promise.resolve()
+
+    render(<CdsEsmPreload />)
+
+    await act(async () => {
+      vi.advanceTimersByTime(200)
+    })
+
+    // After detecting import map, further timers should not fire the timeout log
+    await act(async () => {
+      vi.advanceTimersByTime(15000)
+    })
+
+    // Timeout log should NOT fire since interval was cleared first
+    expect(mockLoggerWarn).not.toHaveBeenCalledWith('paywall.cds.preload.importMap.timeout', {})
+  })
 })

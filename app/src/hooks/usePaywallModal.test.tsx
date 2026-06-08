@@ -16,8 +16,8 @@ const mockGetSite = vi.fn(function () { return { name: 'Test Site' }; });
 vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }));
-vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: vi.fn(function (selector) {
+vi.mock('@/stores/usePaywallStore', () => ({
+  usePaywallStore: vi.fn(function (selector) {
     const state = {
       openUpgradeModal: mockOpenUpgradeModal,
     };

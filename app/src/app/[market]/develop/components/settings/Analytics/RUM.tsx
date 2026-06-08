@@ -44,7 +44,7 @@ import type {
   TopPageRow,
 } from '@/lib/insights/clickhouse-types'
 import { isProfessionalOrAbove, PAYWALL_ITC } from '@/lib/paywall/shared'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 import { SubscriptionPlan } from '@/types/credits'
 import { getPlanFromSubscription } from '@/utils/credits'
 
@@ -110,7 +110,7 @@ export default function RUM() {
   const { data: subscription } = useSubscription()
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : SubscriptionPlan.None
   const isPro = isProfessionalOrAbove(currentPlan)
-  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
+  const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal)
   const handleMetricUpgrade = () => openUpgradeModal('analytics.metric_card', PAYWALL_ITC.UPGRADE)
   const handleInnerBannerUpgrade = () => openUpgradeModal('analytics.inner_banner', PAYWALL_ITC.UPGRADE)
 

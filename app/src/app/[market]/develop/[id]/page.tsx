@@ -78,6 +78,7 @@ import { appService, gitHistoryFailureHttpStatus } from '@/services/AppService'
 import { todoListService } from '@/services/TodoListService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 import { useSecurityQuickFixHandoffStore } from '@/stores/useSecurityQuickFixHandoffStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { useSiteStore } from '@/stores/useSiteStore'
@@ -347,11 +348,11 @@ function DevelopPageContent() {
   const site = useDevelopPageStore((state) => state.site);
   const isAssetManagerOpen = useDevelopPageStore((state) => state.isAssetManagerOpen);
   const setIsAssetManagerOpen = useDevelopPageStore((state) => state.setIsAssetManagerOpen);
-  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal);
-  const upgradeModalSource = useDevelopPageStore((state) => state.upgradeModalSource);
-  const closeUpgradeModal = useDevelopPageStore((state) => state.closeUpgradeModal);
-  const creditsModalSource = useDevelopPageStore((state) => state.creditsModalSource);
-  const closeCreditsModal = useDevelopPageStore((state) => state.closeCreditsModal);
+  const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal);
+  const upgradeModalSource = usePaywallStore((state) => state.upgradeModalSource);
+  const closeUpgradeModal = usePaywallStore((state) => state.closeUpgradeModal);
+  const creditsModalSource = usePaywallStore((state) => state.creditsModalSource);
+  const closeCreditsModal = usePaywallStore((state) => state.closeCreditsModal);
   const isUpgradePolling = useIsUpgradePolling();
   const isRenewalPolling = useIsRenewalPolling();
   const publishLimitModalState = useDevelopPageStore((state) =>

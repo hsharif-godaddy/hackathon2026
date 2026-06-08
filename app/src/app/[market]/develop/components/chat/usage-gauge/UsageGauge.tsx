@@ -10,7 +10,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { Popover, PopoverAnchor, PopoverContent } from '@/lib/shadcn/popover'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 import { SubscriptionPlan } from '@/types/credits'
 import { getPlanFromSubscription, getTotalCreditsFromGrants } from '@/utils/credits'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
@@ -37,8 +37,8 @@ export default memo(function UsageGauge({ appId }: UsageGaugeProps) {
   const [open, setOpen] = useState(false)
   const previousPercentageRef = useRef<number | null>(null)
 
-  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
-  const openCreditsModal = useDevelopPageStore((state) => state.openCreditsModal)
+  const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal)
+  const openCreditsModal = usePaywallStore((state) => state.openCreditsModal)
 
   const { data: subscription, isLoading: isSubscriptionLoading } = useSubscription()
   const { data: grants, isLoading: isGrantsLoading } = useCreditGrants({

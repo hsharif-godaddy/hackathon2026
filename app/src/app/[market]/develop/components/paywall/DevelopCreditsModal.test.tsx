@@ -6,7 +6,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { usePaywallStore } from '@/stores/usePaywallStore';
 import { renderWithProviders } from '@/tests/test-utils';
 import { DevelopCreditsModal } from './DevelopCreditsModal';
 
@@ -71,7 +71,7 @@ function setCreditsModalState(overrides: Partial<{
   creditsModalSource: string | null;
   creditsModalItc: string | null;
 }> = {}) {
-  useDevelopPageStore.setState({
+  usePaywallStore.setState({
     showCreditsModal: true,
     creditsModalSource: 'usage_gauge.buy_credits',
     creditsModalItc: null,
@@ -83,7 +83,7 @@ function setCreditsModalState(overrides: Partial<{
 describe('DevelopCreditsModal', function developCreditsModalTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
-    useDevelopPageStore.setState({
+    usePaywallStore.setState({
       showCreditsModal: false,
       creditsModalSource: null,
       creditsModalItc: null,
@@ -181,7 +181,7 @@ describe('DevelopCreditsModal', function developCreditsModalTests() {
 
   describe('does not render CreditsUpgradeContainer when conditions are not met', function noRenderTests() {
     it('should not render when showCreditsModal is false', async function noModal() {
-      useDevelopPageStore.setState({
+      usePaywallStore.setState({
         showCreditsModal: false,
         creditsModalSource: null,
         creditsModalItc: null,
@@ -352,7 +352,7 @@ describe('DevelopCreditsModal', function developCreditsModalTests() {
       vi.mocked(useIsCreditPolling).mockReturnValue(true);
 
       // Credits modal is closed but polling is ongoing (post-purchase)
-      useDevelopPageStore.setState({
+      usePaywallStore.setState({
         showCreditsModal: false,
         creditsModalSource: null,
         creditsModalItc: null,

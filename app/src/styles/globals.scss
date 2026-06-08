@@ -345,6 +345,22 @@
   }
 }
 
+body[data-paywall-loading] #UpgradeLibraryPortal {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body[data-paywall-loading] .ux-disrupt-backdrop:has(#upgrade-modal) {
+  background-color: rgba(243, 243, 243, 0.8) !important;
+}
+
+body[data-paywall-loading] .ux-disrupt-backdrop:has(#upgrade-modal) > .ux-disrupt-content {
+  border-radius: 16px;
+  border: 1px solid rgb(212, 219, 224);
+  overflow: hidden;
+}
+
 /* getFeedbackModalPortal() appends this div to body once and never removes it.
    Pin it to the viewport so @ux/disrupt's backdrop fills correctly, and make the
    empty shell passthrough so it doesn't block clicks after the modal closes. */
@@ -635,6 +651,28 @@ body:has(#UpgradeLibraryPortal .ux-modal) .tooltip[role="tooltip"] {
 
   .animate-gradient {
     animation: gradient 8s linear infinite;
+  }
+
+  @keyframes paywall-skeleton-shimmer {
+    0% { background-position: 100% 100%; opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { background-position: -50% -50%; opacity: 0.6; }
+  }
+
+  .skeleton-shimmer,
+  .skeleton-shimmer-dark {
+    background-size: 400% 400%;
+    background-repeat: no-repeat;
+    animation: paywall-skeleton-shimmer 3s ease infinite;
+    border-radius: 4px;
+  }
+
+  .skeleton-shimmer {
+    background: linear-gradient(150deg, rgba(245,247,248,0) 20%, #fff 35%, rgba(245,247,248,0) 50%, rgba(245,247,248,0) 55%, #fff 65%, rgba(245,247,248,0) 75%), rgb(245, 247, 248);
+  }
+
+  .skeleton-shimmer-dark {
+    background: linear-gradient(150deg, rgba(245,247,248,0) 20%, #fff 35%, rgba(245,247,248,0) 50%, rgba(245,247,248,0) 55%, #fff 65%, rgba(245,247,248,0) 75%), rgb(237, 238, 239);
   }
 
   /* Screen reader only utility */

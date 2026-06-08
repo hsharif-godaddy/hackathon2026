@@ -11,6 +11,7 @@ import { getErrorMessage } from '@/lib/errors'
 import { getItcOverride } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 import { resetFocusOnModalClose } from '@/utils/focus'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { CDS_TYPE_ESM, CDS_TYPE_UMD, PAYWALL_UMD_FALLBACK } from './cdsConfig'
@@ -60,6 +61,7 @@ const CreditsUpgradeContainer = ({
   const shopperId = getUserInfo()?.shopperId
   const { handlePurchaseSuccess, invalidateQueries } = useCreditPurchase()
   const umdFallback = useSwitchboard(PAYWALL_UMD_FALLBACK) ?? false
+  const setPaywallLoading = usePaywallStore((state) => state.setPaywallLoading)
   const hasLoggedImpressionRef = useRef(false)
 
   useEffect(() => {
@@ -110,6 +112,7 @@ const CreditsUpgradeContainer = ({
   }, [source, subscriptionId, initialGrantCount, handlePurchaseSuccess, invalidateQueries, onSuccess])
 
   const handleError = useCallback((error: Error) => {
+    setPaywallLoading(false)
     shipAnalyticsLog('paywall.cds.load.error', {
       source,
       productId: UPGRADE_PRODUCT_IDS.AIRO_BUILDER_CREDITS,
@@ -118,7 +121,15 @@ const CreditsUpgradeContainer = ({
       component: COMPONENT_NAME,
     })
     onError?.(error)
-  }, [source, onError])
+  }, [source, onError, setPaywallLoading])
+
+  const handleLoadSuccess = useCallback(() => {
+    setPaywallLoading(false)
+    shipAnalyticsLog('paywall.credits.load.success', {
+      source,
+      component: COMPONENT_NAME,
+    })
+  }, [source, setPaywallLoading])
 
   const handleClose = useCallback(() => {
     onClose()
@@ -176,6 +187,7 @@ const CreditsUpgradeContainer = ({
         onSuccess={handleSuccess}
         onClose={handleClose}
         onErrorClick={onErrorClick}
+        onLoadSuccess={handleLoadSuccess}
         onLoadError={handleError}
         LoadingComponent={LoadingComponent}
         renderErrorFallback={renderErrorFallback}

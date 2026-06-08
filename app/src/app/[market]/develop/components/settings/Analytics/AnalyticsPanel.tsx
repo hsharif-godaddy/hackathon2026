@@ -17,7 +17,7 @@ import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { isStarterOrAbove, PAYWALL_ITC } from '@/lib/paywall/shared'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 import { SubscriptionPlan } from '@/types/credits'
 import { getPlanFromSubscription } from '@/utils/credits'
@@ -104,7 +104,7 @@ export default function AnalyticsPanel() {
           ctaLabel={t('builder_upgrade_button')}
           onCtaClick={() => {
             logClickEvent('settings.analytics.panel_upgrade')()
-            useDevelopPageStore.getState().openUpgradeModal('analytics.panel', PAYWALL_ITC.UPGRADE)
+            usePaywallStore.getState().openUpgradeModal('analytics.panel', PAYWALL_ITC.UPGRADE)
           }}
           ctaIcon={<DiamondIcon />}
         />

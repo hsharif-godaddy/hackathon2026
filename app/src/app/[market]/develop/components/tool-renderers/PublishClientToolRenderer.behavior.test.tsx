@@ -16,10 +16,14 @@ let mockPaywallResult = { showPaywall: false, isLoading: false, isError: false, 
 const mockDevelopStore: {
   currentAppId: string | null;
   requestPublishPopoverOpen: typeof mockRequestPublishPopoverOpen;
-  openUpgradeModal: typeof mockOpenUpgradeModal;
 } = {
   currentAppId: 'app-123',
   requestPublishPopoverOpen: mockRequestPublishPopoverOpen,
+};
+
+const mockPaywallStore: {
+  openUpgradeModal: typeof mockOpenUpgradeModal;
+} = {
   openUpgradeModal: mockOpenUpgradeModal,
 };
 
@@ -37,6 +41,10 @@ vi.mock('@/lib/paywall/shared', () => ({
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: (state: typeof mockDevelopStore) => unknown) => selector(mockDevelopStore),
+}));
+
+vi.mock('@/stores/usePaywallStore', () => ({
+  usePaywallStore: (selector: (state: typeof mockPaywallStore) => unknown) => selector(mockPaywallStore),
 }));
 
 vi.mock('@/lib/request-context', () => ({

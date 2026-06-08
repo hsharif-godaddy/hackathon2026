@@ -250,15 +250,6 @@ interface DevelopPageStore {
   // Asset Manager UI
   isAssetManagerOpen: boolean
 
-  // Upgrade Modal UI
-  showUpgradeModal: boolean
-  upgradeModalSource: string | null
-  upgradeModalItc: string | null
-
-  // Credits Modal UI
-  showCreditsModal: boolean
-  creditsModalSource: string | null
-  creditsModalItc: string | null
 
   // Publish status UI (per-app state keyed by appId)
   publishStates: Record<string, {
@@ -356,13 +347,6 @@ interface DevelopPageStore {
   // Asset Manager actions
   setIsAssetManagerOpen: (open: boolean) => void
 
-  // Upgrade Modal actions
-  openUpgradeModal: (source: string, itc?: string) => void
-  closeUpgradeModal: () => void
-
-  // Credits Modal actions
-  openCreditsModal: (source: string, itc?: string) => void
-  closeCreditsModal: () => void
 
   // Publish status actions (per-app)
   setIsPublishing: (appId: string, isPublishing: boolean) => void
@@ -495,15 +479,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     // Asset Manager state
     isAssetManagerOpen: false,
 
-    // Upgrade Modal state
-    showUpgradeModal: false,
-    upgradeModalSource: null,
-    upgradeModalItc: null,
-
-    // Credits Modal state
-    showCreditsModal: false,
-    creditsModalSource: null,
-    creditsModalItc: null,
 
     // Publish status state (per-app, keyed by appId)
     publishStates: {},
@@ -819,29 +794,6 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       state.isAssetManagerOpen = open
     }),
 
-    // Upgrade Modal actions
-    openUpgradeModal: (source: string, itc?: string) => set((state) => {
-      state.showUpgradeModal = true
-      state.upgradeModalSource = source
-      state.upgradeModalItc = itc ?? null
-    }),
-    closeUpgradeModal: () => set((state) => {
-      state.showUpgradeModal = false
-      state.upgradeModalSource = null
-      state.upgradeModalItc = null
-    }),
-
-    // Credits Modal actions
-    openCreditsModal: (source: string, itc?: string) => set((state) => {
-      state.showCreditsModal = true
-      state.creditsModalSource = source
-      state.creditsModalItc = itc ?? null
-    }),
-    closeCreditsModal: () => set((state) => {
-      state.showCreditsModal = false
-      state.creditsModalSource = null
-      state.creditsModalItc = null
-    }),
 
     // Publish status actions (per-app)
     getPublishState: (appId: string) => {
@@ -1279,3 +1231,4 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     { name: 'DevelopPageStore' }
   )
 )
+

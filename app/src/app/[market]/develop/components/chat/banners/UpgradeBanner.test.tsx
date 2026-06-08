@@ -56,8 +56,8 @@ vi.mock('@/hooks/useSubscription', () => ({
   }; }),
 }));
 
-vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: (selector: any) => selector({ openUpgradeModal: mockOpenUpgradeModal }),
+vi.mock('@/stores/usePaywallStore', () => ({
+  usePaywallStore: (selector: any) => selector({ openUpgradeModal: mockOpenUpgradeModal }),
 }));
 
 vi.mock('@/lib/logging', () => ({

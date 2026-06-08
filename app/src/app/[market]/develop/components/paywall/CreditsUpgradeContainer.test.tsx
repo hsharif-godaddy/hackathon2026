@@ -72,7 +72,7 @@ vi.mock('./cdsLoader', () => ({
         <span data-testid="entitlement-id">{props.entitlementId}</span>
         <span data-testid="sub-type">{props.subType}</span>
         <span data-testid="source">{props.source}</span>
-        <div data-testid="loading-component">{props.LoadingComponent}</div>
+        <div data-testid="loading-component">{typeof props.LoadingComponent === 'function' ? <props.LoadingComponent /> : props.LoadingComponent}</div>
         <button data-testid="close-button" onClick={props.onClose}>Close</button>
         <button
           data-testid="success-button"
@@ -81,6 +81,10 @@ vi.mock('./cdsLoader', () => ({
           Success
         </button>
         <button data-testid="error-button" onClick={props.onErrorClick}>Error</button>
+        <button data-testid="load-error-button" onClick={() => props.onLoadError?.(new Error('Load failed'))}>Load Error</button>
+        <button data-testid="render-error-fallback-button" onClick={() => { /* just verifies prop is a function */ }}>
+          {props.renderErrorFallback ? 'has-fallback' : 'no-fallback'}
+        </button>
       </div>
     );
   },
@@ -393,5 +397,45 @@ describe('CreditsUpgradeContainer', function creditsUpgradeContainerTests() {
       // Component returns null when entitlementId is missing
       expect(container.firstChild).toBeNull();
     });
+  });
+
+  it('calls onError when load error occurs', function callsOnErrorOnLoadError() {
+    const mockOnError = vi.fn();
+    renderWithProviders(
+      <CreditsUpgradeContainer
+        onClose={mockOnClose}
+        entitlementId="ent-123"
+        onError={mockOnError}
+        source="test"
+      />
+    );
+
+    screen.getByTestId('load-error-button').click();
+    expect(mockOnError).toHaveBeenCalledWith(expect.any(Error));
+  });
+
+  it('renders LoadingComponent callback', function rendersLoadingComponent() {
+    renderWithProviders(
+      <CreditsUpgradeContainer
+        onClose={mockOnClose}
+        entitlementId="ent-123"
+        source="test"
+      />
+    );
+
+    expect(screen.getByTestId('loading-component')).toBeInTheDocument();
+    expect(screen.getByTestId('paywall-loading-modal')).toBeInTheDocument();
+  });
+
+  it('passes renderErrorFallback to ComponentLoader', function passesRenderErrorFallback() {
+    renderWithProviders(
+      <CreditsUpgradeContainer
+        onClose={mockOnClose}
+        entitlementId="ent-123"
+        source="test"
+      />
+    );
+
+    expect(screen.getByTestId('render-error-fallback-button')).toHaveTextContent('has-fallback');
   });
 });

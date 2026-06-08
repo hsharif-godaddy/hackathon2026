@@ -153,8 +153,8 @@ vi.mock('@/lib/request-context', () => ({
   },
 }))
 
-vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: (selector: (state: { openUpgradeModal: typeof mockOpenUpgradeModal }) => unknown) => {
+vi.mock('@/stores/usePaywallStore', () => ({
+  usePaywallStore: (selector: (state: { openUpgradeModal: typeof mockOpenUpgradeModal }) => unknown) => {
     const state = { openUpgradeModal: mockOpenUpgradeModal }
     return selector(state)
   },

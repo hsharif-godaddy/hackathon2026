@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 import { UpgradeModal } from './UpgradeModal'
 
 const mockShipAnalyticsLog = vi.fn()
@@ -39,10 +39,11 @@ vi.mock('@/app/[market]/develop/components/paywall', () => ({
 }))
 
 function resetStore() {
-  useDevelopPageStore.setState({
+  usePaywallStore.setState({
     showUpgradeModal: false,
     upgradeModalSource: null,
     upgradeModalItc: null,
+    paywallLoading: false,
   })
 }
 
@@ -59,7 +60,7 @@ describe('UpgradeModal', () => {
     })
 
     it('renders UpgradeContainer when showUpgradeModal is true', () => {
-      useDevelopPageStore.setState({ showUpgradeModal: true, upgradeModalSource: 'pricing_section.upgrade' })
+      usePaywallStore.setState({ showUpgradeModal: true, upgradeModalSource: 'pricing_section.upgrade' })
       render(<UpgradeModal />)
       expect(screen.getByTestId('upgrade-container')).toBeInTheDocument()
     })
@@ -67,25 +68,25 @@ describe('UpgradeModal', () => {
 
   describe('source and itc props', () => {
     it('passes upgradeModalSource to UpgradeContainer', () => {
-      useDevelopPageStore.setState({ showUpgradeModal: true, upgradeModalSource: 'publish.limit' })
+      usePaywallStore.setState({ showUpgradeModal: true, upgradeModalSource: 'publish.limit' })
       render(<UpgradeModal />)
       expect(screen.getByTestId('upgrade-container')).toHaveAttribute('data-source', 'publish.limit')
     })
 
     it('falls back to "unknown" source when upgradeModalSource is null', () => {
-      useDevelopPageStore.setState({ showUpgradeModal: true, upgradeModalSource: null })
+      usePaywallStore.setState({ showUpgradeModal: true, upgradeModalSource: null })
       render(<UpgradeModal />)
       expect(screen.getByTestId('upgrade-container')).toHaveAttribute('data-source', 'unknown')
     })
 
     it('passes upgradeModalItc to UpgradeContainer', () => {
-      useDevelopPageStore.setState({ showUpgradeModal: true, upgradeModalSource: 'pricing_section.upgrade', upgradeModalItc: 'itc-abc' })
+      usePaywallStore.setState({ showUpgradeModal: true, upgradeModalSource: 'pricing_section.upgrade', upgradeModalItc: 'itc-abc' })
       render(<UpgradeModal />)
       expect(screen.getByTestId('upgrade-container')).toHaveAttribute('data-itc', 'itc-abc')
     })
 
     it('passes empty itc when upgradeModalItc is null', () => {
-      useDevelopPageStore.setState({ showUpgradeModal: true, upgradeModalSource: 'pricing_section.upgrade', upgradeModalItc: null })
+      usePaywallStore.setState({ showUpgradeModal: true, upgradeModalSource: 'pricing_section.upgrade', upgradeModalItc: null })
       render(<UpgradeModal />)
       expect(screen.getByTestId('upgrade-container')).toHaveAttribute('data-itc', '')
     })
@@ -93,24 +94,24 @@ describe('UpgradeModal', () => {
 
   describe('onSuccessClick', () => {
     it('closes the modal', async () => {
-      useDevelopPageStore.setState({ showUpgradeModal: true, upgradeModalSource: 'pricing_section.upgrade' })
+      usePaywallStore.setState({ showUpgradeModal: true, upgradeModalSource: 'pricing_section.upgrade' })
       render(<UpgradeModal />)
       await userEvent.click(screen.getByRole('button', { name: 'success' }))
-      expect(useDevelopPageStore.getState().showUpgradeModal).toBe(false)
+      expect(usePaywallStore.getState().showUpgradeModal).toBe(false)
     })
   })
 
   describe('onClose', () => {
     it('closes the modal and logs "<source>.dismissed" with empty analyticsData by default', async () => {
-      useDevelopPageStore.setState({ showUpgradeModal: true, upgradeModalSource: 'pricing_section.upgrade' })
+      usePaywallStore.setState({ showUpgradeModal: true, upgradeModalSource: 'pricing_section.upgrade' })
       render(<UpgradeModal />)
       await userEvent.click(screen.getByRole('button', { name: 'close' }))
-      expect(useDevelopPageStore.getState().showUpgradeModal).toBe(false)
+      expect(usePaywallStore.getState().showUpgradeModal).toBe(false)
       expect(mockShipAnalyticsLog).toHaveBeenCalledWith('pricing_section.upgrade.dismissed', {})
     })
 
     it('forwards provided analyticsData to shipAnalyticsLog', async () => {
-      useDevelopPageStore.setState({ showUpgradeModal: true, upgradeModalSource: 'publish.limit' })
+      usePaywallStore.setState({ showUpgradeModal: true, upgradeModalSource: 'publish.limit' })
       render(<UpgradeModal analyticsData={{ appId: 'app-123' }} />)
       await userEvent.click(screen.getByRole('button', { name: 'close' }))
       expect(mockShipAnalyticsLog).toHaveBeenCalledWith('publish.limit.dismissed', { appId: 'app-123' })
@@ -119,15 +120,15 @@ describe('UpgradeModal', () => {
 
   describe('onErrorClick', () => {
     it('closes the modal and logs "<source>.error" with empty analyticsData by default', async () => {
-      useDevelopPageStore.setState({ showUpgradeModal: true, upgradeModalSource: 'pricing_section.upgrade' })
+      usePaywallStore.setState({ showUpgradeModal: true, upgradeModalSource: 'pricing_section.upgrade' })
       render(<UpgradeModal />)
       await userEvent.click(screen.getByRole('button', { name: 'error' }))
-      expect(useDevelopPageStore.getState().showUpgradeModal).toBe(false)
+      expect(usePaywallStore.getState().showUpgradeModal).toBe(false)
       expect(mockShipAnalyticsLog).toHaveBeenCalledWith('pricing_section.upgrade.error', {})
     })
 
     it('forwards provided analyticsData to shipAnalyticsLog', async () => {
-      useDevelopPageStore.setState({ showUpgradeModal: true, upgradeModalSource: 'publish.limit' })
+      usePaywallStore.setState({ showUpgradeModal: true, upgradeModalSource: 'publish.limit' })
       render(<UpgradeModal analyticsData={{ appId: 'app-456' }} />)
       await userEvent.click(screen.getByRole('button', { name: 'error' }))
       expect(mockShipAnalyticsLog).toHaveBeenCalledWith('publish.limit.error', { appId: 'app-456' })
@@ -140,7 +141,7 @@ describe('UpgradeModal', () => {
       expect(screen.queryByTestId('upgrade-container')).not.toBeInTheDocument()
 
       act(() => {
-        useDevelopPageStore.getState().openUpgradeModal('pricing_section.upgrade', 'itc-xyz')
+        usePaywallStore.getState().openUpgradeModal('pricing_section.upgrade', 'itc-xyz')
       })
 
       expect(screen.getByTestId('upgrade-container')).toBeInTheDocument()
@@ -149,7 +150,7 @@ describe('UpgradeModal', () => {
     })
 
     it('hides modal after success click clears store state', async () => {
-      useDevelopPageStore.getState().openUpgradeModal('pricing_section.upgrade')
+      usePaywallStore.getState().openUpgradeModal('pricing_section.upgrade')
       render(<UpgradeModal />)
       expect(screen.getByTestId('upgrade-container')).toBeInTheDocument()
 

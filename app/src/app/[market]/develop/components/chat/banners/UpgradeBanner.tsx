@@ -9,7 +9,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import ChatBanner from '@/lib/ChatBanner'
 import { canUpgradePlan, PAYWALL_ITC } from '@/lib/paywall/shared'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 import { getPlanFromSubscription } from '@/utils/credits'
 import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 
@@ -38,7 +38,7 @@ export default function UpgradeBanner({ onDismiss }: UpgradeBannerProps) {
   const [isDismissed, setIsDismissed] = useState(true)
   const [mounted, setMounted] = useState(false)
   const featureEnabled = useSwitchboard('appbuilder-airoplus-upgrade-banner')
-  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
+  const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal)
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility()
   const { data: subscription } = useSubscription()
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : undefined

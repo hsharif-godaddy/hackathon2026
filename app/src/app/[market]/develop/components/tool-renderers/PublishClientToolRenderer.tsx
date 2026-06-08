@@ -9,6 +9,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 
 /**
@@ -67,7 +68,7 @@ export default function PublishClientToolRenderer({
   const t = useTranslations()
   const currentAppId = useDevelopPageStore((state) => state.currentAppId)
   const requestPublishPopoverOpen = useDevelopPageStore((state) => state.requestPublishPopoverOpen)
-  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
+  const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal)
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility()
   const hasHandledRef = useRef(false)
   const lastLoggedErrorRef = useRef<string | null>(null)

@@ -12,6 +12,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { DomainStatus, DomainType } from '@/lib/control-plane/types'
 import { canUpgradePlan, PAYWALL_ITC } from '@/lib/paywall/shared'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 import { SubscriptionPlan } from '@/types/credits'
 import { getMonthlyPlanGrant, getPlanFromSubscription } from '@/utils/credits'
 import { logImpressionEvent } from '@/utils/instrumentation'
@@ -30,8 +31,8 @@ interface BudgetExceededBannerProps {
 export default function BudgetExceededBanner({ onClose }: BudgetExceededBannerProps) {
   const t = useTranslations()
   const intl = useIntl()
-  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
-  const openCreditsModal = useDevelopPageStore((state) => state.openCreditsModal)
+  const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal)
+  const openCreditsModal = usePaywallStore((state) => state.openCreditsModal)
 
   const { data: subscription, isLoading: isSubscriptionLoading } = useSubscription()
 

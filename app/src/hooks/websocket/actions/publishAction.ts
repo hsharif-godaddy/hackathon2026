@@ -27,6 +27,7 @@ import {
   isPublishBlockedByComplianceRules,
 } from '@/lib/subscription'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import { hasBeenPublished } from '@/utils/site'
 import type { ClientActionExecutor } from './types'
@@ -115,7 +116,7 @@ export const publishAction: ClientActionExecutor = async (params) => {
         } else {
           // Show paywall modal for other cases (no subscription, free plan, etc.)
           store.setShowPaywallModal(appId, true)
-          store.openUpgradeModal('publish', PAYWALL_ITC.PUBLISH)
+          usePaywallStore.getState().openUpgradeModal('publish', PAYWALL_ITC.PUBLISH)
         }
       } catch (storeError) {
         logger.warn('publish-action.modal-trigger-failed', {

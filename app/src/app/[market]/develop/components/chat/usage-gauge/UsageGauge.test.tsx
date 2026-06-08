@@ -71,8 +71,8 @@ vi.mock('@/hooks/useCreditGrants', () => ({
   }; }),
 }));
 
-vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: (selector: (state: {
+vi.mock('@/stores/usePaywallStore', () => ({
+  usePaywallStore: (selector: (state: {
     openUpgradeModal: typeof mockOpenUpgradeModal;
     openCreditsModal: typeof mockOpenCreditsModal;
   }) => unknown) => selector({

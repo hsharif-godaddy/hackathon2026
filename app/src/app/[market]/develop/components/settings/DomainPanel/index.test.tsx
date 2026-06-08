@@ -45,7 +45,11 @@ vi.mock('@/stores/useSiteStore', () => ({
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: (selector: any) => selector({
+  useDevelopPageStore: (selector: any) => selector({}),
+}));
+
+vi.mock('@/stores/usePaywallStore', () => ({
+  usePaywallStore: (selector: any) => selector({
     openUpgradeModal: mockOpenUpgradeModal,
   }),
 }));

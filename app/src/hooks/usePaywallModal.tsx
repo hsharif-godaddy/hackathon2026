@@ -8,7 +8,7 @@ import { regenerateToken } from '@/lib/jwt-regeneration'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 import { SubscriptionPlan } from '@/types/credits'
 import { usePaywallEligibility } from './usePaywallEligibility'
@@ -77,7 +77,7 @@ export function usePaywallModal({
   } | null>(null)
   const [hasCompletedPurchase, setHasCompletedPurchase] = useState(false)
   const queryClient = useQueryClient()
-  const openUpgradeModal = useDevelopPageStore((state) => state.openUpgradeModal)
+  const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal)
   const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility()
   const site = useSiteStore((state) => (appId ? state.getSite(appId) : null))
 

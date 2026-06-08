@@ -14,8 +14,8 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: (flag: string) => mockUseSwitchboard(flag),
 }))
 
-vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: (selector: (state: { openCreditsModal: typeof mockOpenCreditsModal }) => unknown) =>
+vi.mock('@/stores/usePaywallStore', () => ({
+  usePaywallStore: (selector: (state: { openCreditsModal: typeof mockOpenCreditsModal }) => unknown) =>
     selector({ openCreditsModal: mockOpenCreditsModal }),
 }))
 
