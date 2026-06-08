@@ -53,6 +53,7 @@ export interface DomainMutationDetails {
   message: string;
   domainSpecificError?: Record<string, string>;
   nestedCode?: string;
+  conflictingProduct?: string;
   tldValue?: string;
   conflictDetails?: {
     existingAppId: string;
@@ -212,6 +213,11 @@ export function useModifyDomains() {
           typeof conflictSource?.tld === 'string'
             ? conflictSource.tld
             : undefined;
+        const conflictingProduct =
+          effectiveNestedCode === 'DOMAIN_ALREADY_IN_USE' &&
+          typeof conflictSource?.conflictingProduct === 'string'
+            ? conflictSource.conflictingProduct
+            : undefined;
         const conflictDetails = airoConflictDetails ?? mwpConflictDetails;
         const errorMessage =
           (typeof details === 'object' ? (details?.message ?? details?.error?.message) : details) ||
@@ -236,6 +242,7 @@ export function useModifyDomains() {
           code: errorData.code,
           message: errorMessage,
           ...(effectiveNestedCode && { nestedCode: effectiveNestedCode }),
+          ...(conflictingProduct && { conflictingProduct }),
           ...(tldValue && { tldValue }),
           ...(conflictDetails && { conflictDetails }),
           ...(Object.keys(domainSpecificError).length > 0 && { domainSpecificError }),

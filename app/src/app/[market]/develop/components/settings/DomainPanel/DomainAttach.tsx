@@ -354,7 +354,12 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
           modifyDomainsMutation.error.details.nestedCode ?? modifyDomainsMutation.error.details.code,
           t,
           modifyDomainsMutation.error.details.message,
-          modifyDomainsMutation.error.details.tldValue ? { tld: modifyDomainsMutation.error.details.tldValue } : undefined
+          {
+            ...(modifyDomainsMutation.error.details.conflictingProduct && {
+              conflictingProduct: modifyDomainsMutation.error.details.conflictingProduct,
+            }),
+            ...(modifyDomainsMutation.error.details.tldValue && { tld: modifyDomainsMutation.error.details.tldValue }),
+          }
         );
       }
       return modifyDomainsMutation.error instanceof Error

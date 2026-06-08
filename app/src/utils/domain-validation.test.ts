@@ -351,6 +351,24 @@ describe('translateDomainApiError', () => {
       .toBe('builder_api_error_site_config_incomplete');
   });
 
+  it('should use product-specific key when conflictingProduct is present', () => {
+    const t = createMockTranslations();
+    expect(
+      translateDomainApiError(DomainApiErrorCode.DOMAIN_ALREADY_IN_USE, t, undefined, { conflictingProduct: 'Airo Builder' })
+    ).toBe('builder_domain_api_error_already_in_use');
+    expect(t).toHaveBeenCalledWith('builder_domain_api_error_already_in_use', { conflictingProduct: 'Airo Builder' }, undefined);
+  });
+
+  it('should fall back to placeholder-free key when conflictingProduct is absent', () => {
+    const t = createMockTranslations();
+    expect(
+      translateDomainApiError(DomainApiErrorCode.DOMAIN_ALREADY_IN_USE, t, undefined, {})
+    ).toBe('builder_domain_error_already_in_use');
+    expect(
+      translateDomainApiError(DomainApiErrorCode.DOMAIN_ALREADY_IN_USE, t)
+    ).toBe('builder_domain_error_already_in_use');
+  });
+
   it('should return fallback for unknown error codes', () => {
     const t = createMockTranslations();
     expect(translateDomainApiError('TOTALLY_UNKNOWN_CODE', t, 'Something went wrong'))

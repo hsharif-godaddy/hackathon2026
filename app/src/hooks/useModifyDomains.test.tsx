@@ -564,6 +564,41 @@ describe('useModifyDomains', () => {
     expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
   });
 
+  it('should extract conflicting product from nested DOMAIN_ALREADY_IN_USE details', async function extractsConflictingProduct() {
+    const error = await mutateAndGetError({
+      responseBody: {
+        code: 'DOMAIN_MODIFY_FAILED',
+        error: 'Failed to modify domains',
+        details: {
+          code: 'DOMAIN_ALREADY_IN_USE',
+          details: {
+            action: 'SELF_SERVICE',
+            allErrors: [
+              {
+                action: 'SELF_SERVICE',
+                canRetry: true,
+                code: 'DOMAIN_ALREADY_IN_USE',
+                conflictingProduct: 'Airo Builder',
+                fqdn: 'dbrace002.muaoto.plus',
+                message: "Domain 'dbrace002.muaoto.plus' is already configured for Airo Builder. Please disconnect it first.",
+                planId: 'AIROWAFCDNBasic',
+              },
+            ],
+            canRetry: true,
+            conflictingProduct: 'Airo Builder',
+            field: 'fqdn',
+            planId: 'AIROWAFCDNBasic',
+            value: 'dbrace002.muaoto.plus',
+          },
+          message: "Domain 'dbrace002.muaoto.plus' is already configured for Airo Builder. Please disconnect it first.",
+        },
+      },
+    });
+
+    expect(error.details.nestedCode).toBe('DOMAIN_ALREADY_IN_USE');
+    expect((error.details as { conflictingProduct?: string }).conflictingProduct).toBe('Airo Builder');
+  });
+
   it('should log parse failure when transferable MWP conflict is malformed', async function logsTransferableMwpParseFailure() {
     const error = await mutateAndGetError({
       responseBody: {

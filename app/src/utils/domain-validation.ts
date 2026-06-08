@@ -38,6 +38,23 @@ const DOMAIN_API_ERROR_DEFAULT_MESSAGES: Partial<Record<DomainApiErrorCode, stri
 };
 
 /**
+ * Resolve the i18n key for a domain API error code.
+ *
+ * DOMAIN_ALREADY_IN_USE's product-specific message interpolates
+ * {conflictingProduct}. When the API omits that field, fall back to the
+ * placeholder-free key so react-intl never renders a literal {conflictingProduct}.
+ */
+function resolveDomainApiErrorKey(
+  code: string,
+  variables?: Record<string, unknown>
+): string | undefined {
+  if (code === DomainApiErrorCode.DOMAIN_ALREADY_IN_USE && !variables?.conflictingProduct) {
+    return 'builder_domain_error_already_in_use';
+  }
+  return DOMAIN_API_ERROR_KEYS[code];
+}
+
+/**
  * Translate a domain API error code to a user-friendly message.
  *
  * Checks domain-specific codes first, then falls back to generic API error
@@ -50,7 +67,7 @@ export function translateDomainApiError(
   variables?: Record<string, unknown>
 ): string {
   if (code) {
-    const domainKey = DOMAIN_API_ERROR_KEYS[code];
+    const domainKey = resolveDomainApiErrorKey(code, variables);
     if (domainKey) {
       const defaultMessage = DOMAIN_API_ERROR_DEFAULT_MESSAGES[code as DomainApiErrorCode];
       return t(domainKey, variables, defaultMessage);
