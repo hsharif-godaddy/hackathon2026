@@ -244,7 +244,12 @@ Read `/src/pages/Blog.tsx` and update the `BlogHero` component with site-appropr
 4. Keep title short (1-3 words)
 5. Keep subtitle clear and actionable
 
-### Step 5: STOP - Confirm to User
+### Step 5: Set Up RSS
+
+**Set up an RSS feed automatically.** Load the `rss` skill and follow it via
+`skill({ action: "load", skill: "rss" })` (which no-ops if a feed already exists).
+
+### Step 6: STOP - Confirm to User
 
 **🛑 STOP HERE. DO NOT CONTINUE TO CREATE BLOG POSTS. 🛑**
 
@@ -268,6 +273,7 @@ Once the blog system is activated:
 - ✅ Blog link appears in site navigation
 - ✅ Content directory ready at `/src/content/blog/`
 - ✅ All blog components and pages are installed
+- ✅ RSS feed available at `/feed.xml`
 - ⚠️ Blog is currently empty (0 posts)
 
 **Important:** The blog system is now ready, but it has no content yet.

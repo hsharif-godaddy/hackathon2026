@@ -23,7 +23,7 @@ intents:
 - "Create an XML feed"
 - "Content feed"
 
-**Invocation:** User-request only. This skill is NOT loaded proactively or automatically. The agent loads it only when the user explicitly asks for an RSS/blog feed.
+**Invocation:** Loaded on direct user request, or chained automatically from the `blog` and `seo` skills. The prerequisite and existing-feed checks below always apply, so a redundant load is a safe no-op.
 
 ---
 

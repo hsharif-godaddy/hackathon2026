@@ -217,6 +217,10 @@ When doing a **deep marketing handoff** or the user asks for a written strategy 
 
 After the audit widget (or optional report), implement the recommendations:
 
+**RSS feed for blogs.** If the site has a blog (`src/lib/blog.ts` exists) but no
+feed yet (no `/feed.xml` in `src/server/entry.ts`), add one automatically as part
+of the SEO work via `skill({ action: "load", skill: "rss" })`.
+
 **Priority 1: Page titles and meta descriptions**
 
 Every page MUST have unique, SEO-optimized metadata. **Follow the existing pattern you discovered:**
