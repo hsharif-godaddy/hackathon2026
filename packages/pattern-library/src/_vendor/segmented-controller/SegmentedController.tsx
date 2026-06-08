@@ -23,7 +23,9 @@ import Tooltip from '@ux/tooltip';
 import classNames from 'classnames';
 import React, {
   createContext,
+  type MutableRefObject,
   type ReactNode,
+  type Ref,
   useCallback,
   useContext,
   useEffect,
@@ -119,7 +121,8 @@ export interface SegmentedControllerItemProps
  * ```
  */
 export function SegmentedControllerItem(props: SegmentedControllerItemProps) {
-  const { className, children, value, icon, ...rest } = props;
+  const { className, children, value, icon, ref: forwardedRef, ...rest } = props as
+    SegmentedControllerItemProps & { ref?: Ref<HTMLButtonElement | null> };
   const { collapseInactive, labelSize, selectedValue } = useContext(SegmentedControllerContext);
 
   const isSelected = selectedValue === value;
@@ -127,6 +130,22 @@ export function SegmentedControllerItem(props: SegmentedControllerItemProps) {
   const showLabel = !canCollapse || isSelected;
   const tooltipDisabled = !canCollapse || isSelected;
   const tooltipAnchorRef = useRef<HTMLButtonElement | null>(null);
+  // React 19 delivers a consumer-forwarded `ref` as a prop. This component also
+  // assigns its own `tooltipAnchorRef` to the underlying button (for tooltip
+  // positioning), so merge the two — otherwise the consumer ref would be
+  // silently clobbered. Radix `PopoverAnchor asChild` relies on this to anchor
+  // a popover to the button (see SettingsMenu in airo-app-builder).
+  const setAnchorRef = useCallback(
+    function setAnchorRef(node: HTMLButtonElement | null) {
+      tooltipAnchorRef.current = node;
+      if (typeof forwardedRef === 'function') {
+        forwardedRef(node);
+      } else if (forwardedRef) {
+        (forwardedRef as MutableRefObject<HTMLButtonElement | null>).current = node;
+      }
+    },
+    [forwardedRef],
+  );
   const [isTooltipOpen, setTooltipOpen] = useState(false);
 
   if (process.env.NODE_ENV !== 'production' && collapseInactive && icon === undefined) {
@@ -197,7 +216,7 @@ export function SegmentedControllerItem(props: SegmentedControllerItemProps) {
     <Flex
       as={RACToggleButton}
       {...rest}
-      ref={tooltipAnchorRef}
+      ref={setAnchorRef}
       id={value}
       alignItems="center"
       onBlur={handleBlur}
@@ -242,7 +261,12 @@ export function SegmentedControllerItem(props: SegmentedControllerItemProps) {
   return (
     <>
       {button}
-      <Tooltip anchorRef={tooltipAnchorRef} open={isTooltipOpen && !tooltipDisabled}>
+      <Tooltip
+        anchorRef={tooltipAnchorRef}
+        open={isTooltipOpen && !tooltipDisabled}
+        strategy="fixed"
+        portalElem={typeof document !== 'undefined' ? document.body : undefined}
+      >
         {children}
       </Tooltip>
     </>
@@ -478,6 +502,13 @@ export function SegmentedController(props: SegmentedControllerProps) {
           ref={containerRef}
           gap="0"
           padding="0"
+          // Only become a horizontal scroll/clip container when segments actually
+          // overflow. `overflow-x: auto` establishes a clipping box even with no
+          // scroll, which makes floating-ui's overflow detection (altBoundary)
+          // treat the content edge as the tooltip boundary — pushing the last
+          // segment's tooltip inward even when the viewport has room. Gating the
+          // overflow on real overflow keeps edge tooltips centered.
+          data-overflow={hasOverflow || undefined}
           className={styles.content}
           style={minWidth != null ? { minWidth: `${minWidth}px` } : undefined}
         >

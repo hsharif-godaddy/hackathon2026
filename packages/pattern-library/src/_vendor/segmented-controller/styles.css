@@ -146,6 +146,12 @@
     min-height: calc(2.5rem - 2px);
     padding-block: 0.125rem;
     padding-inline: 0.5rem;
+    /* Tighter icon↔label gap for md. Uses a literal 4px rather than a spacing
+       token: the consuming theme resolves the --sp-* scale larger than the
+       antares fallbacks (e.g. --sp-xs ~ 8px, --sp-sm ~ 16px here), so a token
+       would over-space the glyph↔label. Collapsed (icon-only) items still
+       override this to 0 below. */
+    gap: 4px;
   }
   & :where([data-size='lg'] .airo-vendor-segmented-controller__item) {
     min-height: calc(3.5rem - 2px);
@@ -253,11 +259,18 @@
     height: 100%;
     width: auto;
     align-items: stretch;
-    overflow-x: auto;
-    scrollbar-width: none;
 
-    &::-webkit-scrollbar {
-      display: none;
+    /* Only clip/scroll when segments actually overflow. A permanent
+       `overflow-x: auto` would establish a clipping box even when everything
+       fits, which floating-ui's overflow detection then treats as the tooltip
+       boundary — offsetting the last segment's tooltip. See SegmentedController.tsx. */
+    &:where([data-overflow]) {
+      overflow-x: auto;
+      scrollbar-width: none;
+
+      &::-webkit-scrollbar {
+        display: none;
+      }
     }
   }
 
