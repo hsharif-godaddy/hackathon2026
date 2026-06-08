@@ -62,47 +62,74 @@ export async function deleteApp(page: Page, appId: string): Promise<boolean> {
 }
 
 /**
- * Delete all apps matching a prefix
+ * Delete all apps matching a prefix. Best-effort: attempts every match, then
+ * throws with a per-site summary if any DELETE failed (or if the GET listing
+ * failed). Callers wrap this in try/catch so one prefix's failure doesn't
+ * skip the rest, and the thrown message converts what used to be silent
+ * orphan accumulation into a debuggable per-run error.
  */
 export async function deleteAppsWithPrefix(page: Page, prefix: string): Promise<number> {
   const result = await page.evaluate(async (prefixValue) => {
-    try {
-      const response = await fetch('/api/sites');
-      if (!response.ok) return { deletedCount: 0, error: `API error: ${response.status}` };
-
-      const sites = await response.json() as SiteInfo[];
-      if (!Array.isArray(sites) || sites.length === 0) return { deletedCount: 0 };
-
-      const toDelete = sites.filter((site) => {
-        const searchFields = [site.name, site.initial_prompt].filter(Boolean).join(' ');
-        return searchFields.includes(prefixValue);
-      });
-
-      let deletedCount = 0;
-      for (const site of toDelete) {
-        const deleteResponse = await fetch(`/api/sites/${site.id}`, { method: 'DELETE' });
-        if (deleteResponse.ok) {
-          deletedCount++;
-        }
-      }
-
-      return { deletedCount };
-    } catch (err) {
-      return { deletedCount: 0, error: String(err) };
+    const response = await fetch('/api/sites');
+    if (!response.ok) {
+      const body = await response.text();
+      return {
+        listError: `GET /api/sites returned HTTP ${response.status}: ${body.slice(0, 200)}`,
+      };
     }
+
+    const parsed = await response.json() as unknown;
+    if (!Array.isArray(parsed)) {
+      return {
+        listError: `GET /api/sites returned non-array body: ${JSON.stringify(parsed).slice(0, 200)}`,
+      };
+    }
+    const sites = parsed as SiteInfo[];
+    if (sites.length === 0) {
+      return { deletedCount: 0, deleteErrors: [] as string[] };
+    }
+
+    const toDelete = sites.filter((site) => {
+      const searchFields = [site.name, site.initial_prompt].filter(Boolean).join(' ');
+      return searchFields.includes(prefixValue);
+    });
+
+    let deletedCount = 0;
+    const deleteErrors: string[] = [];
+    for (const site of toDelete) {
+      const deleteResponse = await fetch(`/api/sites/${site.id}`, { method: 'DELETE' });
+      if (deleteResponse.ok) {
+        deletedCount++;
+      } else {
+        const body = await deleteResponse.text();
+        deleteErrors.push(`${site.id}: HTTP ${deleteResponse.status} — ${body.slice(0, 200)}`);
+      }
+    }
+
+    return { deletedCount, deleteErrors };
   }, prefix);
 
-  if (result.error) {
-    console.log(`Could not delete apps with prefix '${prefix}': ${result.error}`);
-  } else if (result.deletedCount > 0) {
-    console.log(`Deleted ${result.deletedCount} app(s) with prefix: ${prefix}`);
-  } else {
+  if ('listError' in result) {
+    throw new Error(`deleteAppsWithPrefix('${prefix}') failed to list sites: ${result.listError}`);
+  }
+
+  const { deletedCount, deleteErrors } = result;
+  if (deletedCount > 0) {
+    console.log(`Deleted ${deletedCount} app(s) with prefix: ${prefix}`);
+  } else if (deleteErrors.length === 0) {
     // Log the zero case so a mistyped SPEC_PREFIXES entry is distinguishable
     // from "cleanup ran and matched nothing" when investigating orphans.
     console.log(`No apps matched prefix: ${prefix}`);
   }
 
-  return result.deletedCount;
+  if (deleteErrors.length > 0) {
+    throw new Error(
+      `deleteAppsWithPrefix('${prefix}'): ${deleteErrors.length} delete(s) failed ` +
+      `(${deletedCount} succeeded). Failures: ${deleteErrors.join('; ')}`,
+    );
+  }
+
+  return deletedCount;
 }
 
 /**

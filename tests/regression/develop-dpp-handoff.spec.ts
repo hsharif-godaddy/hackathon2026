@@ -174,7 +174,11 @@ test.describe.skip('Develop — DPP cold redirect → no re-send on reload', () 
 
   test.afterEach(async ({ page }, testInfo) => {
     if (!E2E_NO_DELETE) {
-      await deleteAppsWithPrefix(page, getSpecPrefix(SPEC_NAME)).catch(() => {})
+      try {
+        await deleteAppsWithPrefix(page, getSpecPrefix(SPEC_NAME))
+      } catch (err) {
+        console.error(`  Cleanup of prefix '${SPEC_NAME}' failed:`, err)
+      }
     }
     await logTestResult(page, testInfo)
   })

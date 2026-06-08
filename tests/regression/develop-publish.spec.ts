@@ -445,20 +445,15 @@ test.describe('Publish Flow', () => {
     }
 
     console.log('🧹 Cleanup...');
-    try {
-      await page.goto('/apps');
-      // Per-prefix try/catch so one prefix failing (e.g., transient 401)
-      // doesn't skip cleanup of the remaining ones — important here because
-      // SPEC_PREFIXES has 3 entries and orphans on any of them accumulate.
-      for (const name of SPEC_PREFIXES) {
-        try {
-          await deleteAppsWithPrefix(page, getSpecPrefix(name));
-        } catch (err) {
-          console.error(`  Cleanup of prefix '${name}' failed:`, err);
-        }
+    // Per-prefix try/catch so one prefix failing (e.g., transient 401)
+    // doesn't skip cleanup of the remaining ones — important here because
+    // SPEC_PREFIXES has 3 entries and orphans on any of them accumulate.
+    for (const name of SPEC_PREFIXES) {
+      try {
+        await deleteAppsWithPrefix(page, getSpecPrefix(name));
+      } catch (err) {
+        console.error(`  Cleanup of prefix '${name}' failed:`, err);
       }
-    } catch (err) {
-      console.error('  Cleanup failed:', err);
     }
   });
 });

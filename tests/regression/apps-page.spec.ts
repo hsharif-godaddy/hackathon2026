@@ -550,17 +550,12 @@ test.describe('Apps Page & Navigation', () => {
     }
 
     console.log('🧹 Cleanup...');
-    try {
-      await page.goto('/apps');
-      for (const name of SPEC_PREFIXES) {
-        try {
-          await deleteAppsWithPrefix(page, getSpecPrefix(name));
-        } catch (err) {
-          console.error(`  Cleanup of prefix '${name}' failed:`, err);
-        }
+    for (const name of SPEC_PREFIXES) {
+      try {
+        await deleteAppsWithPrefix(page, getSpecPrefix(name));
+      } catch (err) {
+        console.error(`  Cleanup of prefix '${name}' failed:`, err);
       }
-    } catch (err) {
-      console.error('  Cleanup failed:', err);
     }
   });
 });

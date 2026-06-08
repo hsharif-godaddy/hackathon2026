@@ -336,17 +336,12 @@ test.describe("My Feature", () => {
   });
 
   test.afterEach(async ({ page }) => {
-    try {
-      await page.goto("/apps");
-      for (const name of SPEC_PREFIXES) {
-        try {
-          await deleteAppsWithPrefix(page, getSpecPrefix(name));
-        } catch (err) {
-          console.error(`  Cleanup of prefix '${name}' failed:`, err);
-        }
+    for (const name of SPEC_PREFIXES) {
+      try {
+        await deleteAppsWithPrefix(page, getSpecPrefix(name));
+      } catch (err) {
+        console.error(`  Cleanup of prefix '${name}' failed:`, err);
       }
-    } catch (err) {
-      console.error("  Cleanup failed:", err);
     }
   });
 });
