@@ -79,6 +79,7 @@ keys/jwt-public.pem
 proxy-logs/
 
 .claude/settings.local.json
+.claude/*.lock
 .superpowers/
 
 # Git worktrees

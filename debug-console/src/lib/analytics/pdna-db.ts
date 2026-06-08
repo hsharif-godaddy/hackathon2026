@@ -15,13 +15,19 @@ const EXCLUDED_CUSTOMER_IDS = [
 // population has different usage patterns and skews the overall numbers.
 export type PdnaTlaFilter = 'non-tla' | 'tla' | 'all';
 
-function buildBaseFilters(tla: PdnaTlaFilter = 'non-tla'): Array<Record<string, unknown>> {
+// Optional subscription-plan filter. An empty array means "no plan filter"
+// (all plans). A non-empty list restricts every PDNA metric to docs whose
+// `airo_subscription_plan` is in the list.
+export type PdnaPlanFilter = string[];
+
+function buildBaseFilters(tla: PdnaTlaFilter = 'non-tla', planFilter: PdnaPlanFilter = []): Array<Record<string, unknown>> {
     const filters: Array<Record<string, unknown>> = [
         { bool: { must_not: [{ terms: { customer_id: EXCLUDED_CUSTOMER_IDS } }] } },
     ];
     if (tla === 'non-tla') filters.unshift({ term: { tla_flag: false } });
     else if (tla === 'tla') filters.unshift({ term: { tla_flag: true } });
     // 'all' → no tla_flag filter
+    if (planFilter.length > 0) filters.push({ terms: { 'airo_subscription_plan.keyword': planFilter } });
     return filters;
 }
 
@@ -39,7 +45,7 @@ async function getLatestSnapshotDate(): Promise<string | null> {
     return (result.aggregations?.latest as { value_as_string?: string })?.value_as_string ?? null;
 }
 
-export async function getPdnaSnapshot(tla: PdnaTlaFilter = 'non-tla') {
+export async function getPdnaSnapshot(tla: PdnaTlaFilter = 'non-tla', planFilter: PdnaPlanFilter = []) {
     if (!pdnaClient) return null;
 
     let snapshotDate: string | null;
@@ -54,7 +60,7 @@ export async function getPdnaSnapshot(tla: PdnaTlaFilter = 'non-tla') {
     // Use ES date math to cover the full day of the latest snapshot
     const filter: Record<string, unknown>[] = [
         { range: { summary_timestamp: { gte: `${snapshotDate}||/d`, lt: `${snapshotDate}||/d+1d` } } },
-        ...buildBaseFilters(tla),
+        ...buildBaseFilters(tla, planFilter),
     ];
 
     // One year of history for chart histograms. The UI filters the returned
@@ -293,6 +299,47 @@ export async function getPdnaSnapshot(tla: PdnaTlaFilter = 'non-tla') {
                             },
                         },
                     },
+                    // Same custom-domain cohort as above, additionally
+                    // restricted to apps that are currently published
+                    // (publish_flag=true) — the strongest "live customer
+                    // site" signal.
+                    apps_custom_domain_published_by_day: {
+                        filter: {
+                            bool: {
+                                must: [
+                                    { exists: { field: 'primary_domain_name' } },
+                                    { term: { publish_flag: true } },
+                                    { range: { app_create_utc_ts: { gte: oneYearAgo } } },
+                                ],
+                                must_not: [{ wildcard: { 'primary_domain_name.keyword': '*.airoapp.ai' } }],
+                            },
+                        },
+                        aggs: {
+                            by_day: {
+                                date_histogram: { field: 'app_create_utc_ts', calendar_interval: '1d' },
+                            },
+                        },
+                    },
+                    apps_custom_domain_published_by_day_by_plan: {
+                        filter: {
+                            bool: {
+                                must: [
+                                    { exists: { field: 'primary_domain_name' } },
+                                    { term: { publish_flag: true } },
+                                    { range: { app_create_utc_ts: { gte: oneYearAgo } } },
+                                ],
+                                must_not: [{ wildcard: { 'primary_domain_name.keyword': '*.airoapp.ai' } }],
+                            },
+                        },
+                        aggs: {
+                            by_day: {
+                                date_histogram: { field: 'app_create_utc_ts', calendar_interval: '1d' },
+                                aggs: {
+                                    by_plan: { terms: { field: 'airo_subscription_plan.keyword', size: 10, missing: '__unknown__' } },
+                                },
+                            },
+                        },
+                    },
                     unique_customers_by_day: {
                         filter: { range: { app_create_utc_ts: { gte: oneYearAgo } } },
                         aggs: {
@@ -408,12 +455,14 @@ export async function getPdnaSnapshot(tla: PdnaTlaFilter = 'non-tla') {
     const everPublishedDailyByPlan = extractPlanDaily(aggs.ever_published_by_day_by_plan, b => b.doc_count);
     const appsHibernatedDailyByPlan = extractPlanDaily(aggs.apps_hibernated_by_day_by_plan, b => b.doc_count);
     const appsCustomDomainDailyByPlan = extractPlanDaily(aggs.apps_custom_domain_by_day_by_plan, b => b.doc_count);
+    const appsCustomDomainPublishedDailyByPlan = extractPlanDaily(aggs.apps_custom_domain_published_by_day_by_plan, b => b.doc_count);
     const subscriptionsDailyByPlan = extractPlanDaily(aggs.subscriptions_created_by_day_by_plan, b => b.unique_subscriptions?.value ?? 0);
     const appsDeletedDaily = extractDailyBuckets(aggs.apps_deleted_by_day, b => b.doc_count).map(d => ({ date: d.date, deleted: d.value }));
     const appsPublishedDaily = extractDailyBuckets(aggs.apps_published_by_day, b => b.doc_count).map(d => ({ date: d.date, published: d.value }));
     const everPublishedDaily = extractDailyBuckets(aggs.ever_published_by_day, b => b.doc_count).map(d => ({ date: d.date, everPublished: d.value }));
     const appsHibernatedDaily = extractDailyBuckets(aggs.apps_hibernated_by_day, b => b.doc_count).map(d => ({ date: d.date, hibernated: d.value }));
     const appsCustomDomainDaily = extractDailyBuckets(aggs.apps_custom_domain_by_day, b => b.doc_count).map(d => ({ date: d.date, customDomain: d.value }));
+    const appsCustomDomainPublishedDaily = extractDailyBuckets(aggs.apps_custom_domain_published_by_day, b => b.doc_count).map(d => ({ date: d.date, customDomain: d.value }));
 
     // Per-cohort median time-to-publish (hours). Each bucket has p50 nested.
     type TtpBucket = { key_as_string: string; p50?: { values?: Record<string, number | null> } };
@@ -473,6 +522,8 @@ export async function getPdnaSnapshot(tla: PdnaTlaFilter = 'non-tla') {
         appsHibernatedDailyByPlan,
         appsCustomDomainDaily,
         appsCustomDomainDailyByPlan,
+        appsCustomDomainPublishedDaily,
+        appsCustomDomainPublishedDailyByPlan,
         uniqueCustomersDaily,
         subscriptionsDaily,
         subscriptionsDailyByPlan,
@@ -497,7 +548,7 @@ const METRIC_FIELDS: Record<PdnaHourlyMetric, string> = {
  * hour; `unique_customers` returns a cardinality of distinct customers
  * whose apps were created in that hour.
  */
-export async function getPdnaHourlyStats(date: string, metric: PdnaHourlyMetric, tla: PdnaTlaFilter = 'non-tla'): Promise<{ date: string; hourly_stats: Array<{ hour: number; value: number }> } | null> {
+export async function getPdnaHourlyStats(date: string, metric: PdnaHourlyMetric, tla: PdnaTlaFilter = 'non-tla', planFilter: PdnaPlanFilter = []): Promise<{ date: string; hourly_stats: Array<{ hour: number; value: number }> } | null> {
     if (!pdnaClient) return null;
 
     const snapshotDate = await getLatestSnapshotDate();
@@ -512,7 +563,7 @@ export async function getPdnaHourlyStats(date: string, metric: PdnaHourlyMetric,
     const filter: Record<string, unknown>[] = [
         { range: { summary_timestamp: { gte: `${snapshotDate}||/d`, lt: `${snapshotDate}||/d+1d` } } },
         { range: { [field]: { gte: startOfDay.toISOString(), lte: endOfDay.toISOString() } } },
-        ...buildBaseFilters(tla),
+        ...buildBaseFilters(tla, planFilter),
     ];
 
     const result = await pdnaClient.search({

@@ -17,6 +17,11 @@ import type { C1Period } from '@/lib/c1-analytics-server';
 import type { CloudflareBucketInterval, CloudflareOverview } from '@/lib/analytics/cloudflare-db';
 import { getDateRangeError, isDateRangeValid } from '@/lib/analytics/date-range';
 
+// Subscription-plan options for the PDNA plan multiselect. When every plan
+// is selected (the default) the UI sends no `plans` param, so the snapshot
+// is unfiltered by plan.
+const PDNA_PLAN_OPTIONS = ['free', 'starter', 'professional', 'ultimate'] as const;
+
 interface ErrorTypeStats {
   total: number;
   daily_stats: Array<{ date: string; errors: number; apps: number }>;
@@ -392,6 +397,8 @@ interface PdnaSnapshot {
   appsHibernatedDailyByPlan: Array<{ date: string; byPlan: Record<string, number> }>;
   appsCustomDomainDaily: Array<{ date: string; customDomain: number }>;
   appsCustomDomainDailyByPlan: Array<{ date: string; byPlan: Record<string, number> }>;
+  appsCustomDomainPublishedDaily: Array<{ date: string; customDomain: number }>;
+  appsCustomDomainPublishedDailyByPlan: Array<{ date: string; byPlan: Record<string, number> }>;
   uniqueCustomersDaily: Array<{ date: string; uniqueCustomers: number }>;
   subscriptionsDaily: Array<{ date: string; subscriptions: number }>;
   subscriptionsDailyByPlan: Array<{ date: string; byPlan: Record<string, number> }>;
@@ -417,6 +424,17 @@ function AnalyticsContent() {
   // Flows into every PDNA query + hourly drilldown.
   type TlaFilter = 'non-tla' | 'tla' | 'all';
   const [pdnaTlaFilter, setPdnaTlaFilter] = useState<TlaFilter>('non-tla');
+
+  // Subscription-plan multiselect. Defaults to every plan selected, which
+  // the request layer treats as "no filter". A strict subset restricts
+  // every PDNA query + hourly drilldown to the selected plans.
+  const [pdnaPlanFilter, setPdnaPlanFilter] = useState<string[]>([...PDNA_PLAN_OPTIONS]);
+  // `plans` query param: empty (no filter) when all or none are selected,
+  // otherwise the comma-joined subset.
+  const pdnaPlansParam = useMemo(() => {
+    if (pdnaPlanFilter.length === 0 || pdnaPlanFilter.length === PDNA_PLAN_OPTIONS.length) return '';
+    return pdnaPlanFilter.join(',');
+  }, [pdnaPlanFilter]);
 
   // Chart size mode for the PDNA chart grid. Small = default 2-col,
   // Large = 2x minimum so fewer fit per row, Full = single column.
@@ -673,6 +691,21 @@ function AnalyticsContent() {
     return pdnaSnapshot.appsCustomDomainDaily.filter((day) => day.date >= startDate && day.date <= endDate);
   }, [pdnaSnapshot, pdnaDatePreset, pdnaCustomStart, pdnaCustomEnd]);
 
+  const pdnaCustomDomainPublishedInRange = useMemo(() => {
+    if (!pdnaSnapshot) return [];
+    let startDate: string;
+    let endDate: string;
+    if (pdnaDatePreset === 'custom' && pdnaCustomStart && pdnaCustomEnd && isDateRangeValid(pdnaCustomStart, pdnaCustomEnd)) {
+      startDate = pdnaCustomStart;
+      endDate = pdnaCustomEnd;
+    } else {
+      const range = getDateRange(pdnaDatePreset);
+      startDate = formatDateInput(range.start);
+      endDate = formatDateInput(range.end);
+    }
+    return pdnaSnapshot.appsCustomDomainPublishedDaily.filter((day) => day.date >= startDate && day.date <= endDate);
+  }, [pdnaSnapshot, pdnaDatePreset, pdnaCustomStart, pdnaCustomEnd]);
+
   const pdnaEverPublishedInRange = useMemo(() => {
     if (!pdnaSnapshot) return [];
     let startDate: string;
@@ -741,6 +774,10 @@ function AnalyticsContent() {
     () => buildStackedByPlan(pdnaSnapshot?.appsCustomDomainDailyByPlan, pdnaCustomDomainInRange),
     [buildStackedByPlan, pdnaSnapshot, pdnaCustomDomainInRange],
   );
+  const pdnaCustomDomainPublishedStackedByPlan = useMemo(
+    () => buildStackedByPlan(pdnaSnapshot?.appsCustomDomainPublishedDailyByPlan, pdnaCustomDomainPublishedInRange),
+    [buildStackedByPlan, pdnaSnapshot, pdnaCustomDomainPublishedInRange],
+  );
   const pdnaSubscriptionsStackedByPlan = useMemo(
     () => buildStackedByPlan(pdnaSnapshot?.subscriptionsDailyByPlan, pdnaSubscriptionsInRange),
     [buildStackedByPlan, pdnaSnapshot, pdnaSubscriptionsInRange],
@@ -794,12 +831,14 @@ function AnalyticsContent() {
       everPublished: indicesOf(pdnaEverPublishedInRange),
       hibernated: indicesOf(pdnaAppsHibernatedInRange),
       customDomain: indicesOf(pdnaCustomDomainInRange),
+      customDomainPublished: indicesOf(pdnaCustomDomainPublishedInRange),
       subscriptions: indicesOf(pdnaSubscriptionsInRange),
       timeToPublish: indicesOf(pdnaTimeToPublishInRange),
     };
   }, [
     pdnaAppsCreatedInRange, pdnaAppsDeletedInRange, pdnaUniqueCustomersInRange,
     pdnaEverPublishedInRange, pdnaAppsHibernatedInRange, pdnaCustomDomainInRange,
+    pdnaCustomDomainPublishedInRange,
     pdnaSubscriptionsInRange, pdnaTimeToPublishInRange,
   ]);
 
@@ -928,7 +967,7 @@ function AnalyticsContent() {
     setPdnaSnapshot(null);
     setPdnaHourlyMetric(null);
     setPdnaHourlyData(null);
-    fetch(`/api/analytics?action=pdna-snapshot&tla=${encodeURIComponent(pdnaTlaFilter)}`)
+    fetch(`/api/analytics?action=pdna-snapshot&tla=${encodeURIComponent(pdnaTlaFilter)}${pdnaPlansParam ? `&plans=${encodeURIComponent(pdnaPlansParam)}` : ''}`)
       .then(async (res) => {
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
@@ -942,7 +981,7 @@ function AnalyticsContent() {
         setPdnaError(err instanceof Error ? err.message : 'Failed to fetch PDNA data');
       })
       .finally(() => setPdnaLoading(false));
-  }, [activeTab, pdnaTlaFilter]);
+  }, [activeTab, pdnaTlaFilter, pdnaPlansParam]);
 
   // Fetch Cloudflare overview when the Cloudflare tab is active. Re-runs
   // whenever the preset or custom range changes.
@@ -1065,7 +1104,7 @@ function AnalyticsContent() {
     // instead of flashing the previous day's bars during the fetch.
     setPdnaHourlyData(null);
     try {
-      const res = await fetch(`/api/analytics?action=hourly-pdna&date=${encodeURIComponent(date)}&metric=${metric}&tla=${encodeURIComponent(pdnaTlaFilter)}`);
+      const res = await fetch(`/api/analytics?action=hourly-pdna&date=${encodeURIComponent(date)}&metric=${metric}&tla=${encodeURIComponent(pdnaTlaFilter)}${pdnaPlansParam ? `&plans=${encodeURIComponent(pdnaPlansParam)}` : ''}`);
       if (res.ok) {
         setPdnaHourlyData(await res.json());
       }
@@ -1241,6 +1280,47 @@ function AnalyticsContent() {
                     reading: 'Default Non-TLA keeps the numbers focused on real usage. Switch to TLA to see internal test volume; switch to All for total fleet.',
                   }} color="#1d4ed8" />
                 </div>
+                {/* Plan multiselect — drives every PDNA metric. All selected
+                    (default) = no plan filter. */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '0.4rem',
+                  backgroundColor: 'rgba(255,255,255,0.97)',
+                  padding: '0.3rem 0.5rem',
+                  borderRadius: '10px',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                }}>
+                  <span style={{ fontSize: '0.62rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Plan</span>
+                  {PDNA_PLAN_OPTIONS.map(plan => {
+                    const selected = pdnaPlanFilter.includes(plan);
+                    return (
+                      <button
+                        key={plan}
+                        title={`Toggle ${plan} apps`}
+                        onClick={() => setPdnaPlanFilter(prev => (
+                          prev.includes(plan) ? prev.filter(p => p !== plan) : [...prev, plan]
+                        ))}
+                        style={{
+                          padding: '0.3rem 0.65rem',
+                          backgroundColor: selected ? '#1d4ed8' : '#f3f4f6',
+                          color: selected ? 'white' : '#374151',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '0.72rem',
+                          fontWeight: 500,
+                          textTransform: 'capitalize',
+                        }}
+                      >
+                        {plan}
+                      </button>
+                    );
+                  })}
+                  <HelpBadge info={{
+                    what: 'Filters every chart & pill in this section by subscription plan (airo_subscription_plan).',
+                    how: 'Toggle plans on/off. With all (or none) selected, no plan filter is applied. A strict subset restricts the ES query to terms(airo_subscription_plan.keyword) in the selected set.',
+                    reading: 'Use to isolate a single tier (e.g. just ultimate) or compare a subset. Note: apps with an unknown/missing plan are excluded whenever a subset is active.',
+                  }} color="#1d4ed8" />
+                </div>
                 {/* Chart-size toggle — changes the grid column width and
                     chart height for all PDNA charts. Small is the default. */}
                 <div style={{
@@ -1276,6 +1356,165 @@ function AnalyticsContent() {
                   ))}
                 </div>
               </div>
+
+              {/* Snapshot summary (headline totals at snapshot time), rendered
+                  as a single prose block. All counts come from the most recent
+                  daily snapshot, scoped by the TLA & Plan filters; the selected
+                  date range only affects the charts below. */}
+              {pdnaLoading ? (
+                <div style={{ backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: '10px', padding: '1rem', textAlign: 'center', marginBottom: '1rem' }}>
+                  <span style={{ color: '#64748b', fontSize: '0.8rem' }}>Loading PDNA snapshot…</span>
+                </div>
+              ) : pdnaError ? (
+                <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '10px', padding: '1rem', borderLeft: '4px solid #ef4444', marginBottom: '1rem' }}>
+                  <p style={{ margin: 0, color: '#dc2626', fontWeight: 600, fontSize: '0.8rem' }}>PDNA error: {pdnaError}</p>
+                </div>
+              ) : pdnaSnapshot ? (
+                (() => {
+                  // Consolidated snapshot summary. These are point-in-time
+                  // fleet totals from the latest daily PDNA dump — governed by
+                  // the TLA & Plan filters but NOT the date range (that only
+                  // scopes the charts below). Grouped into App / Published /
+                  // Subscriptions / Plans / Cell lines; headline numbers are
+                  // dark-bold, secondary numbers + percentages are muted so the
+                  // eye lands on what matters.
+                  const s = pdnaSnapshot;
+                  const ttp = s.timeToPublishHours;
+                  // Abbreviate values over 10K as e.g. "12.3K" (one decimal,
+                  // trailing-zero trimmed); smaller values print in full with
+                  // thousands separators.
+                  const num = (n: number) => {
+                    if (Math.abs(n) <= 10_000) return n.toLocaleString();
+                    return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}K`;
+                  };
+                  const hrs = (n: number | null, digits = 0) => (n != null ? `${n.toFixed(digits)}h` : '—');
+                  // Active apps = those without an app_delete_utc_ts. `deleted`
+                  // (exists app_delete_utc_ts) and active partition the fleet,
+                  // so active = total − deleted exactly.
+                  const activeApps = Math.max(0, s.totalApps - s.deletedCount);
+                  const pct = (n: number) => (s.totalApps > 0 ? Math.round((n / s.totalApps) * 1000) / 10 : 0);
+                  // Render the snapshot date (YYYY-MM-DD) as e.g. "June 06, 2026".
+                  // Parse as UTC so the day doesn't shift in negative timezones.
+                  const formatLongDate = (iso: string) => {
+                    const d = new Date(`${iso}T00:00:00Z`);
+                    return Number.isNaN(d.getTime())
+                      ? iso
+                      : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: '2-digit', timeZone: 'UTC' });
+                  };
+                  // Headline figure — dark, bold, monospace.
+                  const B: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+                    <strong style={{ color: '#0f172a', fontFamily: 'monospace', fontWeight: 700 }}>{children}</strong>
+                  );
+                  // Secondary figure — muted, lighter weight.
+                  const M: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+                    <span style={{ color: '#64748b', fontFamily: 'monospace', fontWeight: 600 }}>{children}</span>
+                  );
+                  // Inline percentage — muted, in parentheses, de-emphasised vs the count.
+                  const Pct: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+                    <span style={{ color: '#94a3b8', fontWeight: 500 }}> ({children}%)</span>
+                  );
+                  const LABEL_W = '7.5rem';
+                  const GroupLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+                    <span style={{ display: 'inline-block', minWidth: LABEL_W, textIndent: 0, fontSize: '0.7rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{children}:</span>
+                  );
+                  const statusEntries = Object.entries(s.statuses).sort((a, b) => b[1] - a[1]);
+                  // Plan mix follows tier order (free → ultimate) to match the
+                  // chart legends; unknown tiers fall through alphabetically.
+                  const planRank = (p: string) => {
+                    const i = (PDNA_PLAN_OPTIONS as readonly string[]).indexOf(p);
+                    return i === -1 ? PDNA_PLAN_OPTIONS.length : i;
+                  };
+                  const planEntries = Object.entries(s.subscriptionPlans).sort(
+                    (a, b) => planRank(a[0]) - planRank(b[0]) || a[0].localeCompare(b[0]),
+                  );
+                  // Cell labels look like `<cellId>-prod-<dc>-<region…>`, e.g.
+                  // `c40-prod-sxb1-eu-central` → cellId=c40, dc=sxb1. Group cells
+                  // by datacenter; anything that doesn't match falls back to its
+                  // raw cell_id under an "other" bucket.
+                  const dcGroups = new Map<string, Array<[string, number]>>();
+                  for (const [raw, count] of Object.entries(s.cells)) {
+                    const m = raw.match(/^([^-]+)-prod-([^-]+)-/);
+                    const dc = m ? m[2] : 'other';
+                    const cellId = m ? m[1] : raw;
+                    const arr = dcGroups.get(dc) ?? [];
+                    arr.push([cellId, count]);
+                    dcGroups.set(dc, arr);
+                  }
+                  const dcEntries = Array.from(dcGroups.entries())
+                    .map(([dc, cells]) => ({
+                      dc,
+                      cells: cells.sort((a, b) => b[1] - a[1]),
+                      total: cells.reduce((sum, [, c]) => sum + c, 0),
+                    }))
+                    .sort((a, b) => b.total - a.total);
+                  const rowStyle: React.CSSProperties = { margin: 0, paddingLeft: LABEL_W, textIndent: `-${LABEL_W}` };
+                  return (
+                    <div style={{
+                      backgroundColor: 'rgba(255,255,255,0.97)',
+                      padding: '0.85rem 1rem',
+                      borderRadius: '10px',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+                      marginBottom: '0.75rem',
+                      fontSize: '0.8rem',
+                      lineHeight: 1.7,
+                      color: '#475569',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                        <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Snapshot summary</span>
+                        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>till <B>{formatLongDate(s.snapshotDate)}</B> · PDNA snapshot</span>
+                        <HelpBadge info={{
+                          what: 'Point-in-time fleet totals from the most recent daily PDNA snapshot.',
+                          how: 'Counts/rates over the latest summary_timestamp dump, scoped by the TLA & Plan filters. Rates are vs Total Apps.',
+                          reading: 'Reflects the TLA & Plan filters but NOT the date range (which only scopes the charts below). PDNA usually lags 3–4 days.',
+                        }} color="#1d4ed8" />
+                      </div>
+                      <p style={{ ...rowStyle, marginBottom: '0.3rem' }}>
+                        <GroupLabel>Apps</GroupLabel>
+                        <B>{num(s.totalApps)}</B> ever created, <B>{num(activeApps)}</B> active<Pct>{pct(activeApps)}</Pct>, <M>{num(s.hibernatedCount)}</M> hibernated<Pct>{s.hibernationRate}</Pct>, <M>{num(s.deletedCount)}</M> deleted<Pct>{pct(s.deletedCount)}</Pct>.
+                      </p>
+                      <p style={{ ...rowStyle, marginBottom: '0.3rem' }}>
+                        <GroupLabel>Publish</GroupLabel>
+                        <B>{num(s.everPublishedCount)}</B> ever published<Pct>{s.everPublishedRate}</Pct>, <B>{num(s.publishedCount)}</B> currently published<Pct>{s.publishRate}</Pct>, <B>{num(s.customDomainCount)}</B> with a custom domain<Pct>{s.customDomainRate}</Pct>. Time-to-publish <B>{hrs(ttp.p50, 1)}</B> p50 <M>({hrs(ttp.p90)} p90, {hrs(ttp.p99)} p99)</M>.
+                      </p>
+                      <p style={{ ...rowStyle, marginBottom: '0.3rem' }}>
+                        <GroupLabel>Subscriptions</GroupLabel>
+                        <B>{num(s.totalSubscriptions)}</B> total
+                        {statusEntries.length > 0 && (
+                          <> (<M>{statusEntries.map(([st, c], i) => (
+                            <React.Fragment key={st}>{i > 0 ? ', ' : ''}{num(c)} {st}</React.Fragment>
+                          ))}</M>)</>
+                        )}
+                        , <M>{num(s.downgradesCount)}</M> downgrades pending.
+                      </p>
+                      {planEntries.length > 0 && (
+                        <p style={{ ...rowStyle, marginBottom: '0.3rem' }}>
+                          <GroupLabel>Plans</GroupLabel>
+                          {planEntries.map(([plan, c], i) => (
+                            <React.Fragment key={plan}>{i > 0 ? ', ' : ''}{plan} <M>{num(c)}</M></React.Fragment>
+                          ))}
+                        </p>
+                      )}
+                      {dcEntries.length > 0 && (
+                        <p style={rowStyle}>
+                          <GroupLabel>Cell</GroupLabel>
+                          {dcEntries.map((g, i) => (
+                            <React.Fragment key={g.dc}>
+                              {i > 0 ? ', ' : ''}
+                              {g.dc} <M>{num(g.total)}</M> (
+                              {g.cells.map(([cellId, c], j) => (
+                                <React.Fragment key={cellId}>{j > 0 ? ', ' : ''}{cellId}: <M>{num(c)}</M></React.Fragment>
+                              ))}
+                              )
+                            </React.Fragment>
+                          ))}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()
+              ) : null}
+
+              {/* Date range scopes the charts below (not the snapshot summary). */}
               <DateRangeSelector
                 presets={['7d', '14d', '30d', '90d', '6mo', '1yr', 'custom'] as const}
                 value={pdnaDatePreset}
@@ -1286,108 +1525,6 @@ function AnalyticsContent() {
                 onCustomEndChange={setPdnaCustomEnd}
                 onCustomApply={() => { /* PDNA memoized filters react to state */ }}
               />
-
-              {/* Summary pills (headline totals at snapshot time). Each shows a
-                  1-line explanation so non-engineer viewers understand what the
-                  number represents. All counts come from the most recent daily
-                  snapshot; the selected date range only affects the charts. */}
-              {pdnaLoading ? (
-                <div style={{ backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: '10px', padding: '1rem', textAlign: 'center', marginBottom: '1rem' }}>
-                  <span style={{ color: '#64748b', fontSize: '0.8rem' }}>Loading PDNA snapshot…</span>
-                </div>
-              ) : pdnaError ? (
-                <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: '10px', padding: '1rem', borderLeft: '4px solid #ef4444', marginBottom: '1rem' }}>
-                  <p style={{ margin: 0, color: '#dc2626', fontWeight: 600, fontSize: '0.8rem' }}>PDNA error: {pdnaError}</p>
-                </div>
-              ) : pdnaSnapshot ? (
-                <>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-                    gap: '0.6rem',
-                    marginBottom: '0.75rem',
-                  }}>
-                    {[
-                      { label: 'Snapshot Date', value: pdnaSnapshot.snapshotDate, color: '#475569', desc: 'Latest daily PDNA dump', help: { what: 'Date of the most recent complete PDNA snapshot used for every number on this page.', how: 'max(summary_timestamp) across the index, then filtered to that day.', reading: 'PDNA snapshots usually lag 3–4 days. If this date is older than ~4 days, the upstream pipeline may be stalled.' } },
-                      { label: 'Total Apps', value: pdnaSnapshot.totalApps.toLocaleString(), color: '#1d4ed8', desc: 'Non-TLA apps in snapshot', help: { what: 'All apps currently provisioned, excluding TLA/internal tenants.', how: 'value_count(app_id) in the latest snapshot with tla_flag=false (and a fixed excluded-customer list).', reading: 'This is the denominator for most rates on this page.' } },
-                      { label: 'Published', value: `${pdnaSnapshot.publishedCount.toLocaleString()} (${pdnaSnapshot.publishRate}%)`, color: '#0d9488', desc: 'Live on public URL right now', help: { what: 'Apps currently live (publish_flag=true).', how: 'filter { publish_flag=true } / Total Apps.', reading: 'Point-in-time — may dip when users hibernate. See "Ever Published" for lifetime reach.' } },
-                      { label: 'Ever Published', value: `${pdnaSnapshot.everPublishedCount.toLocaleString()} (${pdnaSnapshot.everPublishedRate}%)`, color: '#0369a1', desc: 'Reached publish at least once', help: { what: 'Apps that reached first-publish at any point (even if later hibernated).', how: 'filter { first_publish_utc_ts exists } / Total Apps.', reading: 'Truer product-value signal than "Published" — customers who made it to the goal once.' } },
-                      { label: 'Hibernated', value: `${pdnaSnapshot.hibernatedCount.toLocaleString()} (${pdnaSnapshot.hibernationRate}%)`, color: '#be185d', desc: 'Paused / dormant apps', help: { what: 'Apps currently hibernated (resource-parked to save cost).', how: 'filter { hibernation_flag=true } / Total Apps.', reading: 'High hibernation rate is normal for long-tail; watch the ratio vs Ever Published.' } },
-                      { label: 'Deleted', value: pdnaSnapshot.deletedCount.toLocaleString(), color: '#dc2626', desc: 'Have app_delete_utc_ts', help: { what: 'Apps marked for deletion (app_delete_utc_ts populated).', how: 'filter { exists: app_delete_utc_ts }.', reading: 'Raw count; PDNA keeps the doc around for bookkeeping.' } },
-                      { label: 'Custom Domain', value: `${pdnaSnapshot.customDomainCount.toLocaleString()} (${pdnaSnapshot.customDomainRate}%)`, color: '#ea580c', desc: 'Real domain (not *.airoapp.ai)', help: { what: 'Apps with a customer-owned domain attached — strong value-achieved signal.', how: 'filter { primary_domain_name exists AND NOT matches *.airoapp.ai }.', reading: '~50% of currently-published apps have one. High correlation with "reached the goal".' } },
-                      { label: 'Subscriptions', value: pdnaSnapshot.totalSubscriptions.toLocaleString(), color: '#7c3aed', desc: 'Distinct airo_subscription_id', help: { what: 'Unique subscriptions backing all apps in the snapshot.', how: 'cardinality(airo_subscription_id).', reading: 'Less than Total Apps — many apps share a subscription.' } },
-                      { label: 'Downgrades Pending', value: pdnaSnapshot.downgradesCount.toLocaleString(), color: '#f59e0b', desc: 'Subs with a downgrade queued', help: { what: 'Subscriptions with a scheduled/recorded downgrade.', how: 'filter { airo_subscription_downgrade_utc_ts exists } → cardinality(airo_subscription_id).', reading: 'Lead indicator for churn / plan-tier shifts at next renewal.' } },
-                      { label: 'Time-to-Publish p50', value: pdnaSnapshot.timeToPublishHours.p50 != null ? `${pdnaSnapshot.timeToPublishHours.p50.toFixed(1)} h` : '—', color: '#0ea5e9', desc: 'Median first-publish latency', help: { what: 'Median hours from app_create_utc_ts to first_publish_utc_ts (across all ever-published apps).', how: 'percentiles(50) on runtime field: (first_publish_utc_ts - app_create_utc_ts) / hour.', reading: `Fast users publish within hours. p90 is ${pdnaSnapshot.timeToPublishHours.p90?.toFixed(0) ?? '—'}h, p99 ${pdnaSnapshot.timeToPublishHours.p99?.toFixed(0) ?? '—'}h. Outliers are typically stalled drafts.` } },
-                      ...Object.entries(pdnaSnapshot.statuses).map(([status, count]) => ({
-                        label: `Sub · ${status.charAt(0).toUpperCase() + status.slice(1)}`,
-                        value: count.toLocaleString(),
-                        color: status === 'active' ? '#16a34a' : status === 'cancelled' ? '#dc2626' : '#d97706',
-                        desc: `Distinct subs, status=${status}`,
-                        help: { what: `Distinct subscriptions currently in status "${status}".`, how: `terms(airo_subscription_status) → cardinality(airo_subscription_id) per bucket.`, reading: 'Sum across Active / Cancelled / Suspended should approximate Total Subscriptions.' },
-                      })),
-                    ].map(({ label, value, color, help }) => (
-                      <div key={label} style={{
-                        backgroundColor: 'rgba(255,255,255,0.97)',
-                        padding: '0.6rem 0.8rem',
-                        borderRadius: '10px',
-                        boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.35rem' }}>
-                          <span style={{ fontSize: '0.58rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
-                          {help && <HelpBadge info={help} color={color} />}
-                        </div>
-                        <div style={{ fontSize: '0.95rem', fontWeight: 700, color, fontFamily: 'monospace', marginTop: '0.15rem' }}>{value}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Subscription plan mix — uses airo_subscription_plan (not token_budget_id). */}
-                  {Object.keys(pdnaSnapshot.subscriptionPlans).length > 0 && (
-                    <div style={{
-                      backgroundColor: 'rgba(255,255,255,0.97)',
-                      padding: '0.5rem 0.8rem',
-                      borderRadius: '10px',
-                      boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
-                      marginBottom: '0.5rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '1rem',
-                      flexWrap: 'wrap',
-                    }}>
-                      <span style={{ fontSize: '0.62rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Subscription plans</span>
-                      {Object.entries(pdnaSnapshot.subscriptionPlans).sort((a, b) => b[1] - a[1]).map(([plan, count]) => (
-                        <span key={plan} style={{ fontSize: '0.75rem', color: '#374151' }}>
-                          <strong style={{ fontFamily: 'monospace' }}>{plan}</strong>: {count.toLocaleString()}
-                        </span>
-                      ))}
-                      <HelpBadge info={{ what: 'Distinct subscriptions by plan tier.', how: 'terms(airo_subscription_plan.keyword) → cardinality(airo_subscription_id) per bucket.', reading: 'Free-tier dominant is expected; paid-tier shifts indicate revenue movement.' }} color="#64748b" />
-                    </div>
-                  )}
-
-                  {/* Cell distribution — shows how apps are routed across cells. */}
-                  {Object.keys(pdnaSnapshot.cells).length > 0 && (
-                    <div style={{
-                      backgroundColor: 'rgba(255,255,255,0.97)',
-                      padding: '0.5rem 0.8rem',
-                      borderRadius: '10px',
-                      boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
-                      marginBottom: '0.75rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '1rem',
-                      flexWrap: 'wrap',
-                    }}>
-                      <span style={{ fontSize: '0.62rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Cell distribution</span>
-                      {Object.entries(pdnaSnapshot.cells).sort((a, b) => b[1] - a[1]).map(([cell, count]) => (
-                        <span key={cell} style={{ fontSize: '0.75rem', color: '#374151' }}>
-                          <strong style={{ fontFamily: 'monospace' }}>{cell}</strong>: {count.toLocaleString()}
-                        </span>
-                      ))}
-                      <HelpBadge info={{ what: 'Count of apps per Nomad cell (region + capacity shard).', how: 'terms(cell_id) — doc_count is per app (one PDNA doc per app).', reading: 'Uneven distribution can signal a cell hitting capacity or a placement-policy change.' }} color="#64748b" />
-                    </div>
-                  )}
-                </>
-              ) : null}
 
               <div style={{
                 display: 'grid',
@@ -1603,6 +1740,32 @@ function AnalyticsContent() {
               return <ChartEmptyState message={pdnaError || 'No PDNA custom-domain data'} />;
             })()}
 
+            {/* Apps with Custom Domain + Published Chart (same cohort as #6,
+                additionally restricted to publish_flag=true — the strongest
+                "live customer site" signal). */}
+            {(() => {
+              if (pdnaLoading) return <ChartLoadingState />;
+              if (pdnaCustomDomainPublishedInRange.length > 0) {
+                const total = pdnaCustomDomainPublishedInRange.reduce((s, d) => s + d.customDomain, 0);
+                return (
+                  <EChartsMiniChart group="pdna" size={pdnaChartSize} zoomStart={pdnaZoomStart} zoomEnd={pdnaZoomEnd} onZoomChange={onPdnaZoomChange}
+                    title="Custom Domain + Published by Plan"
+                    chartNumber={7}
+                    help={{ what: 'Apps from creation-date cohort X that have a real domain attached AND are currently published (publish_flag=true), split by subscription plan.', how: 'date_histogram(app_create_utc_ts, 1d) filtered to primary_domain_name exists AND NOT *.airoapp.ai AND publish_flag=true, with terms(airo_subscription_plan.keyword) sub-agg.', reading: 'Strongest "live customer site" signal — a custom domain on a published app. Plan mix skews most heavily paid here.' }}
+                    value={`Total: ${total.toLocaleString()}`}
+                    valueColor="#c2410c"
+                    data={buildDailyChartData(pdnaCustomDomainPublishedInRange, s => s.customDomain, (d, s) => `${formatShortDay(d)}: ${s.customDomain} published w/ custom domain`, formatShortDay)}
+                    barColor="#c2410c"
+                    barColorLight="#fdba74"
+                    stackedSeries={pdnaCustomDomainPublishedStackedByPlan ?? undefined}
+                    markAverage
+                    weekendIndices={pdnaWeekendIndices.customDomainPublished}
+                  />
+                );
+              }
+              return <ChartEmptyState message={pdnaError || 'No PDNA published custom-domain data'} />;
+            })()}
+
             {/* Subscriptions Chart (unique subscriptions created per day — from
                 airo_subscription_create_utc_ts). */}
             {(() => {
@@ -1612,7 +1775,7 @@ function AnalyticsContent() {
                 return (
                   <EChartsMiniChart group="pdna" size={pdnaChartSize} zoomStart={pdnaZoomStart} zoomEnd={pdnaZoomEnd} onZoomChange={onPdnaZoomChange}
                     title="Subscriptions Created by Plan"
-                    chartNumber={7}
+                    chartNumber={8}
                     help={{ what: 'New distinct subscriptions per day, split by plan tier (by airo_subscription_create_utc_ts).', how: 'date_histogram(airo_subscription_create_utc_ts, 1d) with terms(airo_subscription_plan.keyword) sub-agg, each bucketed with cardinality(airo_subscription_id).', reading: 'Acquisition signal at the subscription level, with plan composition. Paid-tier share is the monetization signal.' }}
                     value={`Total: ${total.toLocaleString()}`}
                     valueColor="#7c3aed"
@@ -1637,7 +1800,7 @@ function AnalyticsContent() {
                 return (
                   <EChartsMiniChart group="pdna" size={pdnaChartSize} zoomStart={pdnaZoomStart} zoomEnd={pdnaZoomEnd} onZoomChange={onPdnaZoomChange}
                     title="Time-to-Publish p50 (hours)"
-                    chartNumber={8}
+                    chartNumber={9}
                     help={{ what: 'Median hours from app-creation to first-publish, per creation-date cohort.', how: 'For each day: percentiles(50) of (first_publish_utc_ts − app_create_utc_ts) / hour, over apps in that cohort that ever published.', reading: `Lower = faster. Flat is healthy. Spikes in recent cohorts = onboarding friction. Global medians: p50=${pdnaSnapshot?.timeToPublishHours.p50?.toFixed(1) ?? '—'}h, p90=${pdnaSnapshot?.timeToPublishHours.p90?.toFixed(0) ?? '—'}h, p99=${pdnaSnapshot?.timeToPublishHours.p99?.toFixed(0) ?? '—'}h.` }}
                     value={`Avg p50: ${avgMedian.toFixed(1)} h`}
                     valueColor="#0ea5e9"

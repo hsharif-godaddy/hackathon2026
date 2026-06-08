@@ -4,12 +4,22 @@ import { getCloudflareAppTraffic, getCloudflareOverview, type CloudflareBucketIn
 import { getDateRangeError } from '@/lib/analytics/date-range';
 import { getDirectBudgetErrorStats, getDirectClientErrorStats, getDirectHourlyBudgetErrorStats, getDirectHourlyClientErrorStats, getDirectHourlyUiAuthEventStats, getDirectLast1HourBudgetErrors, getDirectLast1HourClientErrors, getDirectLast1HourUiAuthEvents, getDirectRollingHourlyBudgetErrors, getDirectRollingHourlyClientErrors, getDirectRollingHourlyUiAuthEvents, getDirectUiAuthEventStats } from '@/lib/analytics/katana-client-errors';
 import { getDirectHourlyPublishStats, getDirectHourlySummarizationStats, getDirectHourlyWebsocketErrorStats, getDirectLast1HourPublish, getDirectLast1HourSummarizations, getDirectLast1HourWebsocketErrors, getDirectPublishStats, getDirectRollingHourlyPublish, getDirectRollingHourlySummarizations, getDirectRollingHourlyWebsocketErrors, getDirectSummarizationStats, getDirectWebsocketErrorStats } from '@/lib/analytics/loki-events';
-import { getPdnaHourlyStats, getPdnaSnapshot, type PdnaHourlyMetric, type PdnaTlaFilter } from '@/lib/analytics/pdna-db';
+import { getPdnaHourlyStats, getPdnaSnapshot, type PdnaHourlyMetric, type PdnaPlanFilter, type PdnaTlaFilter } from '@/lib/analytics/pdna-db';
 import { withAuth } from '@/lib/api-auth';
 
 function parseTla(value: string | null): PdnaTlaFilter {
   if (value === 'tla' || value === 'all') return value;
   return 'non-tla';
+}
+
+// Allowed subscription plans for the optional plan filter. Anything not in
+// this set is dropped so the value can't be used to inject arbitrary terms
+// into the ES query.
+const ALLOWED_PLANS = new Set(['free', 'starter', 'professional', 'ultimate']);
+
+function parsePlans(value: string | null): PdnaPlanFilter {
+  if (!value) return [];
+  return value.split(',').map(s => s.trim()).filter(p => ALLOWED_PLANS.has(p));
 }
 
 function parseCloudflareInterval(value: string | null): CloudflareBucketInterval {
@@ -160,7 +170,8 @@ export const GET = withAuth(async (request, _auth) => {
 
       case 'pdna-snapshot': {
         const tla = parseTla(searchParams.get('tla'));
-        const snapshot = await getPdnaSnapshot(tla);
+        const plans = parsePlans(searchParams.get('plans'));
+        const snapshot = await getPdnaSnapshot(tla, plans);
         if (!snapshot) return NextResponse.json({ error: 'PDNA not configured or no data available' }, { status: 503 });
         return NextResponse.json(snapshot);
       }
@@ -169,11 +180,12 @@ export const GET = withAuth(async (request, _auth) => {
         const date = searchParams.get('date');
         const metric = searchParams.get('metric') as PdnaHourlyMetric | null;
         const tla = parseTla(searchParams.get('tla'));
+        const plans = parsePlans(searchParams.get('plans'));
         if (!date) return NextResponse.json({ error: 'date parameter required' }, { status: 400 });
         if (!metric || !['created', 'deleted', 'unique_customers'].includes(metric)) {
           return NextResponse.json({ error: 'metric parameter required (created|deleted|unique_customers)' }, { status: 400 });
         }
-        const hourly = await getPdnaHourlyStats(date, metric, tla);
+        const hourly = await getPdnaHourlyStats(date, metric, tla, plans);
         if (!hourly) return NextResponse.json({ error: 'PDNA not configured or no data available' }, { status: 503 });
         return NextResponse.json(hourly);
       }

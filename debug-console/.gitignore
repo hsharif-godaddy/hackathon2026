@@ -14,3 +14,7 @@ next-env.d.ts
 
 # scratch dir for local research dumps (LF comparison, etc.)
 .research/
+
+# script I/O: PDNA input snapshot + generated artifacts (keep the dir, ignore contents)
+scripts/output/*
+!scripts/output/.gitkeep
