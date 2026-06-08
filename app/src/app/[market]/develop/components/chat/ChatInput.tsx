@@ -9,6 +9,7 @@ import Button from '@ux/button'
 import Chip from '@ux/chip'
 import CodeIcon from '@ux/icon/code'
 import MicIcon from '@ux/icon/mic'
+import StopIcon from '@ux/icon/stop'
 
 import AssetInline, { AssetMode } from '@/app/[market]/develop/components/chat/AssetInline'
 import { AssetManagerItem, MediaType } from '@/app/[market]/develop/components/chat/AssetTypes'
@@ -792,9 +793,9 @@ export default function ChatInput({
                 }}
                 onMouseDown={(e) => e.preventDefault()}
                 disabled={(Boolean(isDisabled) && !isStreaming) || Boolean(isBudgetExceeded)}
-                design="tertiary"
+                design={isListening ? 'critical' : 'tertiary'}
                 active={isListening}
-                icon={<MicIcon />}
+                icon={isListening ? <StopIcon /> : <MicIcon />}
                 size="sm"
                 aria-label={isListening ? t('builder_homepage_hero_stop_listening', undefined, 'Stop listening') : t('builder_chatinput_start_listening', undefined, 'Start listening')}
                 aria-pressed={isListening}

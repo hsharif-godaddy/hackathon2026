@@ -210,12 +210,11 @@
   min-width: 0;
 }
 
-/* Mic + send/stop flush together (no gutter between). */
 .airo-input-prompt-box__toolbar-end {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 0;
+  gap: calc(var(--airo-input-prompt-box-density) * 0.5);
   flex-shrink: 0;
   min-width: 0;
 }

@@ -112,6 +112,18 @@ describe('PromptBox', () => {
       expect(wrapper).not.toHaveAttribute('data-partial');
     });
 
+    it('renders Button with design="primary" in send state', () => {
+      const { container } = renderBox({ pending: false });
+      const button = container.querySelector('.airo-input-prompt-box__action .ux-button');
+      expect(button).toHaveClass('ux-button-primary');
+    });
+
+    it('renders Button with design="critical" in stop state', () => {
+      const { container } = renderBox({ pending: true });
+      const button = container.querySelector('.airo-input-prompt-box__action .ux-button');
+      expect(button).toHaveClass('ux-button-critical');
+    });
+
     it('exposes the placeholder via aria-placeholder on the textbox', () => {
       renderBox({ placeholder: 'Type here…' });
       expect(getEditor()).toHaveAttribute('aria-placeholder', 'Type here…');

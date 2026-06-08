@@ -1221,6 +1221,21 @@ describe('ChatInput', () => {
   });
 
   describe('speech recognition', () => {
+    it('should render mic button without critical design when not listening', function micDefault() {
+      renderWithProviders(<ChatInput {...defaultProps} />);
+
+      const micButton = screen.getByRole('button', { name: 'builder_chatinput_start_listening' });
+      expect(micButton).not.toHaveClass('ux-button-critical');
+    });
+
+    it('should render mic button with critical design when listening', function micCritical() {
+      mockSpeechRecognition.isListening = true;
+      renderWithProviders(<ChatInput {...defaultProps} />);
+
+      const micButton = screen.getByRole('button', { name: 'builder_homepage_hero_stop_listening' });
+      expect(micButton).toHaveClass('ux-button-critical');
+    });
+
     it('should disable textarea when listening', function disableTextareaWhileListening() {
       mockSpeechRecognition.isListening = true;
       renderWithProviders(<ChatInput {...defaultProps} inputValue="Test" />);

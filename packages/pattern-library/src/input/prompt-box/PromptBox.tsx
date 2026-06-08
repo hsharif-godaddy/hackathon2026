@@ -818,7 +818,7 @@ function PromptBoxRoot(
       data-partial={pending ? undefined : 'componentAiro'}
     >
       <Button
-        design="primary"
+        design={pending ? 'critical' : 'primary'}
         size="small"
         icon={<AsyncIcon icon={pending ? 'stop' : 'arrow-up'} />}
         aria-label={pending ? stopLabel : submitLabel}
