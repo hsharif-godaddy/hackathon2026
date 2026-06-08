@@ -151,6 +151,7 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
       tasks: workspace.tasks,
       gitUtils,
       logger: contextLogger,
+      runtime: workspace.runtime,
     };
 
     // Execute strategy - Phase 1: Prepare build artifact

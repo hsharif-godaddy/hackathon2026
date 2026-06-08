@@ -2,6 +2,7 @@ import type { DevSupervisorClient, PublishRequest, PublishResponse } from '../..
 import type { GitUtils } from '../../../../utils/git.js';
 import type { ILogger } from '../../../../logging/types.js';
 import type { WorkspaceTasks } from '../../../../workspace/tasks.js';
+import type { WorkspaceRuntime } from '../../../../workspace/runtime.js';
 
 export type DeploymentStrategy = 'default' | 'paas';
 
@@ -12,6 +13,7 @@ export interface PublishContext {
   tasks: WorkspaceTasks;
   gitUtils: GitUtils;
   logger: ILogger;
+  runtime?: WorkspaceRuntime;
 }
 
 export interface BuildResult {

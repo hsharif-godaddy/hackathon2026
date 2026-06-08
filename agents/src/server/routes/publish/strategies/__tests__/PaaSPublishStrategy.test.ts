@@ -21,34 +21,34 @@ function buildPreflightStdout(
   return `${airo}\n---airo-preflight-sep---\n${pkg}`;
 }
 
+/** Default mock runtime status: process running and healthy */
+function mockRuntimeRunning() {
+  return {
+    state: 'running' as const,
+    pid: 1234,
+    health: { status: 'healthy' as const, message: 'OK', consecutiveFailures: 0, consecutiveSuccesses: 1 },
+    restarts: { total: 0, recent: 0, windowSeconds: 300, maxRestarts: 5 },
+  };
+}
+
 /**
  * Route mocked runCommandSync calls to responses based on a command substring match.
  */
 function installExecRouter(
   mockTasks: { runCommandSync: ReturnType<typeof vi.fn> },
   opts: {
-    previewStatus?: string;
-    previewExitCode?: number;
-    previewThrows?: Error;
     airoConfig?: object | null;
     packageJson?: object | null;
     preflightExitCode?: number;
   } = {}
 ): void {
   const {
-    previewStatus = '200',
-    previewExitCode = 0,
-    previewThrows,
     airoConfig = { runtime: { serve: { command: 'npm start' } } },
     packageJson = { scripts: { start: 'node server.js' } },
     preflightExitCode = 0,
   } = opts;
 
   mockTasks.runCommandSync.mockImplementation(async function (args: { command: string }) {
-    if (args.command.includes('curl')) {
-      if (previewThrows) throw previewThrows;
-      return { stdout: previewStatus, exitCode: previewExitCode, stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
-    }
     if (args.command.includes('airo-preflight-sep')) {
       return {
         stdout: buildPreflightStdout(airoConfig, packageJson),
@@ -77,6 +77,9 @@ describe('PaaSPublishStrategy', () => {
     warn: ReturnType<typeof vi.fn>;
     error: ReturnType<typeof vi.fn>;
   };
+  let mockRuntime: {
+    status: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     strategy = new PaaSPublishStrategy();
@@ -98,6 +101,10 @@ describe('PaaSPublishStrategy', () => {
       error: vi.fn(),
     };
 
+    mockRuntime = {
+      status: vi.fn().mockResolvedValue(mockRuntimeRunning()),
+    };
+
     mockContext = {
       appId: 'test-app-id',
       appPath: '/tmp/test-app',
@@ -105,6 +112,7 @@ describe('PaaSPublishStrategy', () => {
       tasks: mockTasks as any,
       gitUtils: mockGitUtils as any,
       logger: mockLogger as any,
+      runtime: mockRuntime as any,
     };
   });
 
@@ -179,8 +187,8 @@ describe('PaaSPublishStrategy', () => {
   });
 
   describe('preview health check', () => {
-    it('should proceed when HTTP returns 200', async () => {
-      installExecRouter(mockTasks, { previewStatus: '200' });
+    it('should proceed when process is running', async () => {
+      installExecRouter(mockTasks);
 
       const result = await strategy.prepareBuild(mockContext);
 
@@ -191,38 +199,73 @@ describe('PaaSPublishStrategy', () => {
       );
       expect(mockLogger.info).toHaveBeenCalledWith(
         'route.publish.paas.preview-check.result',
-        { statusCode: 200, success: true }
+        { state: 'running', healthStatus: 'healthy' }
       );
     });
 
-    it('should proceed when HTTP returns 301 (3xx)', async () => {
-      installExecRouter(mockTasks, { previewStatus: '301' });
+    it('should proceed when process is stopped (idle-stopped by start-on-request)', async () => {
+      mockRuntime.status.mockResolvedValue({
+        ...mockRuntimeRunning(),
+        state: 'stopped',
+      });
+      installExecRouter(mockTasks);
 
       const result = await strategy.prepareBuild(mockContext);
-
       expect(result.commitHash).toMatch(/^[a-f0-9]{12}$/);
     });
 
-    it('should throw PreviewNotRunningError when HTTP returns 404', async () => {
-      installExecRouter(mockTasks, { previewStatus: '404' });
+    it('should proceed when process is starting', async () => {
+      mockRuntime.status.mockResolvedValue({
+        ...mockRuntimeRunning(),
+        state: 'starting',
+      });
+      installExecRouter(mockTasks);
 
-      await expect(strategy.prepareBuild(mockContext)).rejects.toThrow(PreviewNotRunningError);
+      const result = await strategy.prepareBuild(mockContext);
+      expect(result.commitHash).toMatch(/^[a-f0-9]{12}$/);
     });
 
-    it('should throw PreviewNotRunningError when HTTP returns 500', async () => {
-      installExecRouter(mockTasks, { previewStatus: '500' });
+    it('should throw PreviewNotRunningError when process is in error state', async () => {
+      mockRuntime.status.mockResolvedValue({
+        ...mockRuntimeRunning(),
+        state: 'error',
+        lastError: 'segfault',
+      });
+      installExecRouter(mockTasks);
 
-      await expect(strategy.prepareBuild(mockContext)).rejects.toThrow(PreviewNotRunningError);
+      const error = await strategy.prepareBuild(mockContext).catch((e) => e);
+      expect(error).toBeInstanceOf(PreviewNotRunningError);
+      expect((error as PreviewNotRunningError).details).toContain('error state');
     });
 
-    it('should throw PreviewNotRunningError when curl fails (connection refused)', async () => {
-      installExecRouter(mockTasks, { previewStatus: '000', previewExitCode: 7 });
+    it('should throw PreviewNotRunningError when process is running but health is unhealthy', async () => {
+      mockRuntime.status.mockResolvedValue({
+        ...mockRuntimeRunning(),
+        state: 'running',
+        health: { status: 'unhealthy', message: 'HTTP 503', consecutiveFailures: 3, consecutiveSuccesses: 0 },
+      });
+      installExecRouter(mockTasks);
 
-      await expect(strategy.prepareBuild(mockContext)).rejects.toThrow(PreviewNotRunningError);
+      const error = await strategy.prepareBuild(mockContext).catch((e) => e);
+      expect(error).toBeInstanceOf(PreviewNotRunningError);
+      expect((error as PreviewNotRunningError).details).toContain('health check reports');
     });
 
-    it('should throw PreviewNotRunningError with isSystemError when exec throws', async () => {
-      installExecRouter(mockTasks, { previewThrows: new Error('Connection refused') });
+    it('should proceed when process is running and health is disabled', async () => {
+      mockRuntime.status.mockResolvedValue({
+        ...mockRuntimeRunning(),
+        state: 'running',
+        health: { status: 'disabled', message: '', consecutiveFailures: 0, consecutiveSuccesses: 0 },
+      });
+      installExecRouter(mockTasks);
+
+      const result = await strategy.prepareBuild(mockContext);
+      expect(result.commitHash).toMatch(/^[a-f0-9]{12}$/);
+    });
+
+    it('should throw PreviewNotRunningError with isSystemError when runtime.status() throws', async () => {
+      mockRuntime.status.mockRejectedValue(new Error('Socket connection refused'));
+      installExecRouter(mockTasks);
 
       const error = await strategy.prepareBuild(mockContext).catch((e) => e);
       expect(error).toBeInstanceOf(PreviewNotRunningError);
@@ -230,8 +273,17 @@ describe('PaaSPublishStrategy', () => {
 
       expect(mockLogger.error).toHaveBeenCalledWith(
         'route.publish.paas.preview-check.failed',
-        expect.objectContaining({ error: 'Connection refused' })
+        expect.objectContaining({ error: 'Socket connection refused' })
       );
+    });
+
+    it('should throw PreviewNotRunningError when runtime is not available', async () => {
+      installExecRouter(mockTasks);
+      mockContext.runtime = undefined;
+
+      const error = await strategy.prepareBuild(mockContext).catch((e) => e);
+      expect(error).toBeInstanceOf(PreviewNotRunningError);
+      expect((error as PreviewNotRunningError).isSystemError).toBe(true);
     });
   });
 
@@ -315,9 +367,6 @@ describe('PaaSPublishStrategy', () => {
 
     it('treats malformed JSON the same as missing', async () => {
       mockTasks.runCommandSync.mockImplementation(async function (args: { command: string }) {
-        if (args.command.includes('curl')) {
-          return { stdout: '200', exitCode: 0, stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
-        }
         if (args.command.includes('airo-preflight-sep')) {
           return { stdout: '{not json\n---airo-preflight-sep---\nalso not json', exitCode: 0, stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
         }
@@ -385,9 +434,6 @@ describe('PaaSPublishStrategy', () => {
 
     it('skips preflight and allows publish to continue when exec itself fails', async () => {
       mockTasks.runCommandSync.mockImplementation(async function (args: { command: string }) {
-        if (args.command.includes('curl')) {
-          return { stdout: '200', exitCode: 0, stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
-        }
         if (args.command.includes('airo-preflight-sep')) {
           return { stdout: '', exitCode: 1, stderr: 'supervisor: dial tcp: connection refused', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
         }

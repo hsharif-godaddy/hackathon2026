@@ -237,37 +237,52 @@ export class PaaSPublishStrategy implements PublishStrategy {
   }
 
   /**
-   * Ensure preview HTTP server is responding before allowing publish.
-   * Uses curl via runCommandSync to verify the HTTP server responds with 2xx/3xx.
-   * Note: $FRONTEND_DOMAIN is resolved inside the Preview container where it's defined.
+   * Verify the preview container is in a publishable state.
+   * Queries the dev-supervisor's process status API via Unix socket.
+   *
+   * Only rejects on `error` state (a real crash). `stopped` is normal when
+   * the app was idle-stopped by start-on-request after the idle timeout —
+   * the files are still on disk for archiving, and the publish container
+   * runs its own health check after deployment.
    */
   private async ensurePreviewRunning(context: PublishContext): Promise<void> {
-    const { logger, tasks } = context;
+    const { logger, runtime } = context;
 
     logger.info(`route.publish.${this.key}.preview-check.begin`, {});
 
     try {
-      const result = await tasks.runCommandSync({
-        command: 'curl -s -o /dev/null -w "%{http_code}" --max-time 5 https://$FRONTEND_DOMAIN',
-        timeoutSeconds: 10,
-      });
-
-      const statusCode = parseInt(result.stdout?.trim() || '0', 10);
-      logger.info(`route.publish.${this.key}.preview-check.result`, {
-        statusCode,
-        success: result.exitCode === 0,
-      });
-
-      // Accept 2xx and 3xx status codes
-      if (statusCode >= 200 && statusCode < 400) {
-        return;
+      if (!runtime) {
+        throw new PreviewNotRunningError('Preview is not healthy', 'unknown', 'Runtime not available', true);
       }
 
-      throw new PreviewNotRunningError(
-        'Preview is not healthy',
-        'unknown',
-        `HTTP ${statusCode} from preview server`
-      );
+      const status = await runtime.status();
+      logger.info(`route.publish.${this.key}.preview-check.result`, {
+        state: status.state,
+        healthStatus: status.health.status,
+      });
+
+      // Only reject on error state — the process crashed or failed to start.
+      // stopped/starting/stopping are all acceptable: the app may have been
+      // idle-stopped (start-on-request), and files are on disk for archiving.
+      if (status.state === 'error') {
+        throw new PreviewNotRunningError(
+          'Preview is not healthy',
+          status.state,
+          `Process in error state: ${status.lastError ?? 'unknown'}`,
+        );
+      }
+
+      // If running and health monitor reports unhealthy, the app is up but
+      // not serving — reject so the user can investigate before publishing.
+      if (status.state === 'running' && status.health.status === 'unhealthy') {
+        throw new PreviewNotRunningError(
+          'Preview is not healthy',
+          status.state,
+          `Process running but health check reports: ${status.health.message}`,
+        );
+      }
+
+      return;
     } catch (error) {
       if (error instanceof PreviewNotRunningError) {
         throw error;
