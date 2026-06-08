@@ -1584,7 +1584,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       appId,
       siteId,
       conversation: { conversationId },
-      metadata: { authType },
+      metadata: {
+        authType,
+        ...(agentCtx?.customerId && { customerId: agentCtx.customerId }),
+      },
     }
     // Keep ephemeral turn-only context out of initial user-message history; the
     // persistence layer remains the final save-only boundary for all callers.

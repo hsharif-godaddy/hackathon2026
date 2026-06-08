@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Message, SearchFilter, MessageInput, ContentInput } from '@gd-asm/asm-client';
+import type { Message, SearchFilter, MessageInput, ContentInput, StatsInput } from '@gd-asm/asm-client';
 import { logger } from '../../../logging/index.js';
 import type { ConversationMessage, ToolCall, MessageSegment } from '../../../database/schema.js';
 import type {
@@ -253,21 +253,79 @@ export class AsmMessageStore implements MessageStore {
     return firstMessage.slice(0, TITLE_MAX_LENGTH - 3) + '...';
   }
 
+  /**
+   * Dual-write entry point. The dual-write layer owns SQLite (the source of
+   * truth) and only ever hands us already-finalized messages, so this skips the
+   * in-progress buffer / flush lifecycle entirely and writes the complete
+   * message straight to Venus. Ordering is guaranteed by the dual-write layer's
+   * own serial mirror chain, so no per-conversation locking is needed here.
+   */
+  async mirrorCompleteMessage(
+    conversationId: string,
+    message: ConversationMessage,
+    participantContext?: ParticipantContext
+  ): Promise<void> {
+    const isIncomplete = message.metadata?.incomplete === true;
+    if (
+      !message.content &&
+      !message.toolCalls?.length &&
+      !message.segments?.length &&
+      !isIncomplete
+    ) {
+      return;
+    }
+    const asmMessage: ConversationMessage = {
+      ...message,
+      id: randomUUID(),
+      metadata: { ...message.metadata, sqliteMessageId: message.id },
+    };
+    await this.dispatchToAsm(conversationId, asmMessage, participantContext);
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  private async flushMessageToAsm(conversationId: string, message: ConversationMessage, participantContext?: ParticipantContext): Promise<void> {
+  // Standalone-mode primary path: buffer → accumulate → flush on completion.
+  // Caches the flushed message so reads (getMessageById) can serve it before it
+  // round-trips through Venus.
+  private async flushMessageToAsm(
+    conversationId: string,
+    message: ConversationMessage,
+    participantContext?: ParticipantContext
+  ): Promise<void> {
     if (!message.content && !message.toolCalls?.length && !message.segments?.length) {
       return;
     }
 
+    const lastFlushedId = await this.dispatchToAsm(conversationId, message, participantContext);
+
+    if (lastFlushedId) {
+      if (this.flushedMessages.size >= FLUSHED_CACHE_MAX_SIZE) {
+        const oldest = this.flushedMessages.keys().next().value;
+        if (oldest) this.flushedMessages.delete(oldest);
+      }
+      this.flushedMessages.set(message.id, message);
+    }
+  }
+
+  // Maps a complete message to Venus inputs and writes them, advancing the
+  // per-conversation responseTo chain. Returns the id of the last input written
+  // (undefined if nothing was sent). Shared by the standalone flush path and the
+  // dual-write mirror path.
+  private async dispatchToAsm(
+    conversationId: string,
+    message: ConversationMessage,
+    participantContext?: ParticipantContext
+  ): Promise<string | undefined> {
     if (!this.lastMessageIdByConversation.has(conversationId)) {
       await this.seedLastMessageId(conversationId);
     }
 
-    const responseTo = this.lastMessageIdByConversation.get(conversationId);
-    const asmMessages = mapConversationMessageToAsmInputs(message, responseTo ? [responseTo] : undefined, participantContext);
+    const lastId = this.lastMessageIdByConversation.get(conversationId);
+    const responseTo = lastId ? [lastId] : undefined;
+
+    const asmMessages = mapConversationMessageToAsmInputs(message, responseTo, participantContext);
 
     let lastFlushedId: string | undefined;
     for (const asmMsg of asmMessages) {
@@ -301,12 +359,8 @@ export class AsmMessageStore implements MessageStore {
 
     if (lastFlushedId) {
       this.lastMessageIdByConversation.set(conversationId, lastFlushedId);
-      if (this.flushedMessages.size >= FLUSHED_CACHE_MAX_SIZE) {
-        const oldest = this.flushedMessages.keys().next().value;
-        if (oldest) this.flushedMessages.delete(oldest);
-      }
-      this.flushedMessages.set(message.id, message);
     }
+    return lastFlushedId;
   }
 
   private async seedLastMessageId(conversationId: string): Promise<void> {
@@ -358,6 +412,7 @@ export class AsmMessageStore implements MessageStore {
 
 function aggregateToolMessages(chain: Message[]): Message[] {
   const result: Message[] = [];
+  let lastTailSourceId: string | undefined;
 
   for (const msg of chain) {
     const hasText = msg.contents?.some((c) => 'text' in c) ?? false;
@@ -368,13 +423,22 @@ function aggregateToolMessages(chain: Message[]): Message[] {
 
     if (isAgent && isToolOnly && result.length > 0) {
       const prev = result[result.length - 1]!;
-      if (prev.participant.type === 'AGENT') {
+      const sameTurn = Array.isArray(msg.responseTo)
+        && lastTailSourceId !== undefined
+        && msg.responseTo.includes(lastTailSourceId);
+      const prevMeta = prev.metadata as Record<string, unknown> | undefined;
+      const prevIsMergeable = prev.participant.type === 'AGENT'
+        && (prev.contents?.length ?? 0) > 0
+        && prevMeta?.incomplete !== true;
+      if (sameTurn && prevIsMergeable) {
         prev.contents = [...(prev.contents ?? []), ...(msg.contents ?? [])];
+        lastTailSourceId = msg.id;
         continue;
       }
     }
 
     result.push({ ...msg, contents: [...(msg.contents ?? [])] });
+    lastTailSourceId = msg.id;
   }
 
   return result;
@@ -407,9 +471,11 @@ function extractToolCalls(contents?: Message['contents']): ToolCall[] {
       });
     } else if ('toolRequestId' in c && 'result' in c) {
       const res = c as { toolRequestId: string; toolName: string; result: unknown; failed?: boolean };
+      const { result, error } = unwrapToolResult(res.result, res.failed);
       const existing = requests.get(res.toolRequestId);
       if (existing) {
-        existing.toolResult = res.result;
+        existing.toolResult = result;
+        existing.error = error;
         existing.status = res.failed ? 'error' : 'success';
         if (!existing.toolName || existing.toolName === 'unknown') {
           existing.toolName = res.toolName || existing.toolName;
@@ -419,7 +485,8 @@ function extractToolCalls(contents?: Message['contents']): ToolCall[] {
           id: res.toolRequestId,
           toolName: res.toolName || 'unknown',
           toolArgs: {},
-          toolResult: res.result,
+          toolResult: result,
+          error,
           status: res.failed ? 'error' : 'success',
         });
       }
@@ -427,6 +494,20 @@ function extractToolCalls(contents?: Message['contents']): ToolCall[] {
   }
 
   return [...requests.values()];
+}
+
+// On write we wrap a failed tool's payload as `{ error, result? }` so the
+// debugger-relevant error text survives the round-trip; on read, peel that
+// envelope back so callers see `tc.error` and `tc.toolResult` separately.
+function unwrapToolResult(raw: unknown, failed: boolean | undefined): { result: unknown; error?: string } {
+  if (!failed || raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { result: raw };
+  }
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.error !== 'string') {
+    return { result: raw };
+  }
+  return { result: obj.result, error: obj.error };
 }
 
 // ---------------------------------------------------------------------------
@@ -442,13 +523,22 @@ function mapConversationMessageToAsmInputs(
     segments: _segments,
     contextAttachments: _ctx,
     finalResult: _finalResult,
+    socketId: _socketId,
+    userId: _userId,
+    agentName: _agentName,
+    inputTokens: _inputTokens,
+    outputTokens: _outputTokens,
+    latency: _latency,
+    stopReason: _stopReason,
     ...safeMetadata
   } = msg.metadata ?? {};
   const baseMetadata: Record<string, unknown> = {
     ...safeMetadata,
-    conversationId: msg.conversationId,
   };
   if (msg.messageType) baseMetadata.messageType = msg.messageType;
+  if (msg.origin) baseMetadata.origin = msg.origin;
+  if (msg.contextAttachments) baseMetadata.contextAttachments = msg.contextAttachments;
+  const stats = extractStatsFromMetadata(msg.metadata);
   if (msg.segments) {
     baseMetadata.segments = msg.segments.map((s) => {
       const tc = extractSegmentToolCall(s);
@@ -469,73 +559,83 @@ function mapConversationMessageToAsmInputs(
     ? { withCustomer: { id: participantContext?.customerId ?? 'unknown' } }
     : { withAgent: { id: participantContext?.agentId ?? 'airo-agent', name: 'airo-agent' } };
 
-  const results: MessageInput[] = [];
+  const contents: ContentInput[] = [];
 
   if (msg.content) {
-    results.push({
-      id: msg.id,
-      contents: [{ withTextContent: { text: msg.content } }],
-      participant,
-      responseTo,
-      metadata: baseMetadata,
-      messageCreatedAt: msg.createdAt,
-    });
+    contents.push({ withTextContent: { text: msg.content } });
   }
 
   if (msg.toolCalls) {
-    for (const tc of msg.toolCalls) {
-      const toolName = tc.toolName;
-      const toolArgs = tc.toolArgs;
-      const toolResult = tc.toolResult;
-
-      const contents: ContentInput[] = [
-        {
-          withToolRequestContent: {
-            toolRequestId: tc.id,
-            toolName,
-            parameters: ensureJsonObject(truncatePayload(toolArgs, MAX_TOOL_ARG_LENGTH)),
-          },
+    for (const rawTc of msg.toolCalls) {
+      const tc = normalizeToolCall(rawTc);
+      contents.push({
+        withToolRequestContent: {
+          toolRequestId: tc.id,
+          toolName: tc.toolName,
+          parameters: ensureJsonObject(truncatePayload(tc.toolArgs, MAX_TOOL_ARG_LENGTH)),
         },
-      ];
+      });
       if (tc.status !== 'running') {
+        // For failed tool calls, prefer the error string (more useful to debuggers
+        // than an empty result) and stash it so the round-trip can restore tc.error.
+        const failed = tc.status === 'error';
+        const resultPayload = failed && tc.error
+          ? { error: tc.error, ...(tc.toolResult != null ? { result: tc.toolResult } : {}) }
+          : (tc.toolResult ?? null);
         contents.push({
           withToolResultContent: {
             toolRequestId: tc.id,
-            toolName,
-            result: ensureJsonObject(truncatePayload(toolResult ?? null, MAX_TOOL_RESULT_LENGTH)),
-            failed: tc.status === 'error',
+            toolName: tc.toolName,
+            result: ensureJsonObject(truncatePayload(resultPayload, MAX_TOOL_RESULT_LENGTH)),
+            failed,
           },
         });
       }
-
-      const prevId = results.length > 0 ? results[results.length - 1]!.id : undefined;
-      const tcResponseTo = prevId ? [prevId] : responseTo;
-
-      results.push({
-        id: tc.id,
-        contents,
-        participant,
-        responseTo: tcResponseTo,
-        metadata: { conversationId: msg.conversationId, toolName },
-        messageCreatedAt: msg.createdAt,
-      });
     }
   }
 
-  if (results.length === 0) {
-    logger.error('asm.message.empty_contents', {
-      messageId: msg.id,
-      conversationId: msg.conversationId,
-      sender: msg.sender,
-      messageType: msg.messageType,
-    });
+  const results: MessageInput[] = [];
+
+  if (contents.length > 0) {
     results.push({
       id: msg.id,
-      contents: [],
+      contents,
       participant,
       responseTo,
       metadata: baseMetadata,
       messageCreatedAt: msg.createdAt,
+      ...(stats ? { stats } : {}),
+    });
+  }
+
+  // If no content and no tool calls, produce a placeholder. For incomplete turns
+  // (errored / disconnected before any LLM output) the placeholder preserves the
+  // record of the attempt; otherwise we still log and emit (kept for parity with
+  // prior behavior — empty messages are unexpected outside the incomplete path).
+  if (results.length === 0) {
+    const incomplete = msg.metadata?.incomplete === true;
+    if (!incomplete) {
+      logger.error('asm.message.empty_contents', {
+        messageId: msg.id,
+        conversationId: msg.conversationId,
+        sender: msg.sender,
+        messageType: msg.messageType,
+      });
+    }
+    const outcomeLabel = typeof msg.metadata?.outcome === 'string' ? msg.metadata.outcome : 'incomplete';
+    const placeholderText = incomplete
+      ? `[turn ${outcomeLabel} before agent response]`
+      : '';
+    results.push({
+      id: msg.id,
+      contents: placeholderText
+        ? [{ withTextContent: { text: placeholderText } }]
+        : [],
+      participant,
+      responseTo,
+      metadata: baseMetadata,
+      messageCreatedAt: msg.createdAt,
+      ...(stats ? { stats } : {}),
     });
   }
 
@@ -543,7 +643,7 @@ function mapConversationMessageToAsmInputs(
 }
 
 const ASM_INTERNAL_METADATA_KEYS = new Set([
-  'conversationId', 'messageType', 'segments', 'contextAttachments', 'toolName',
+  'conversationId', 'messageType', 'segments', 'contextAttachments', 'toolName', 'origin',
 ]);
 
 function mapAsmMessageToConversationMessage(asmMsg: Message, conversationId: string): ConversationMessage {
@@ -563,8 +663,21 @@ function mapAsmMessageToConversationMessage(asmMsg: Message, conversationId: str
     if (Object.keys(publicMetadata).length === 0) publicMetadata = undefined;
   }
 
+  // Surface stats back into metadata so callers that read tokens/latency/stopReason
+  // off the SQLite shape continue to work after a round-trip through ASM.
+  if (asmMsg.stats) {
+    const statsMeta = statsToMetadata(asmMsg.stats);
+    if (statsMeta) {
+      publicMetadata = { ...(publicMetadata ?? {}), ...statsMeta };
+    }
+  }
+
   const rawSegments = rawMetadata?.segments as MessageSegment[] | undefined;
   const segments = rawSegments ? normalizeStoredSegments(rawSegments) : undefined;
+  const storedOrigin = rawMetadata?.origin;
+  const origin: 'support' | 'customer' = storedOrigin === 'support' || storedOrigin === 'customer'
+    ? storedOrigin
+    : sender === 'user' ? 'customer' : 'support';
 
   return {
     id: asmMsg.id,
@@ -576,12 +689,8 @@ function mapAsmMessageToConversationMessage(asmMsg: Message, conversationId: str
     segments,
     contextAttachments: rawMetadata?.contextAttachments as ConversationMessage['contextAttachments'],
     metadata: publicMetadata,
-    origin: sender === 'user' ? 'customer' : 'support',
-    createdAt: asmMsg.messageCreatedAt instanceof Date
-      ? asmMsg.messageCreatedAt
-      : asmMsg.createdAt instanceof Date
-        ? asmMsg.createdAt
-        : new Date(asmMsg.createdAt as unknown as string),
+    origin,
+    createdAt: toDate(asmMsg.messageCreatedAt) ?? toDate(asmMsg.createdAt) ?? new Date(),
   };
 }
 
@@ -590,20 +699,23 @@ function normalizeStoredSegments(segments: MessageSegment[]): MessageSegment[] {
     if (s.type !== 'tool_call') return s;
     const tc = extractSegmentToolCall(s);
     if (!tc) return s;
-    const raw = tc as unknown as Record<string, unknown>;
-    const normalized: ToolCall = {
-      id: (raw.id as string) ?? 'unknown',
-      toolName: (raw.toolName ?? raw.tool_name ?? raw.name ?? 'unknown') as string,
-      toolArgs: raw.toolArgs ?? raw.tool_args ?? raw.input ?? {},
-      toolResult: raw.toolResult ?? raw.tool_result ?? raw.result ?? raw.output,
-      error: raw.error as string | undefined,
-      startTime: (raw.startTime ?? raw.start_time) as number | undefined,
-      endTime: (raw.endTime ?? raw.end_time) as number | undefined,
-      durationMs: (raw.durationMs ?? raw.duration_ms ?? raw.duration) as number | undefined,
-      status: normalizeToolStatus(raw),
-    };
-    return { ...s, tool_call: normalized };
+    return { ...s, tool_call: normalizeToolCall(tc) };
   });
+}
+
+function normalizeToolCall(tc: ToolCall): ToolCall {
+  const raw = tc as unknown as Record<string, unknown>;
+  return {
+    id: (raw.id as string) ?? 'unknown',
+    toolName: (raw.toolName ?? raw.tool_name ?? raw.name ?? 'unknown') as string,
+    toolArgs: raw.toolArgs ?? raw.tool_args ?? raw.input ?? {},
+    toolResult: raw.toolResult ?? raw.tool_result ?? raw.result ?? raw.output,
+    error: raw.error as string | undefined,
+    startTime: (raw.startTime ?? raw.start_time) as number | undefined,
+    endTime: (raw.endTime ?? raw.end_time) as number | undefined,
+    durationMs: (raw.durationMs ?? raw.duration_ms ?? raw.duration) as number | undefined,
+    status: normalizeToolStatus(raw),
+  };
 }
 
 function normalizeToolStatus(raw: Record<string, unknown>): 'running' | 'success' | 'error' {
@@ -647,6 +759,10 @@ function mapAsmMessageToHistoryMessage(asmMsg: Message, conversationId: string):
   const text = getTextFromContents(asmMsg.contents) ?? '';
   const metadata = asmMsg.metadata as Record<string, unknown> | undefined;
   const segments = metadata?.segments as MessageSegment[] | undefined;
+  const storedOrigin = metadata?.origin;
+  const origin: 'support' | 'customer' = storedOrigin === 'support' || storedOrigin === 'customer'
+    ? storedOrigin
+    : sender === 'user' ? 'customer' : 'support';
 
   return {
     id: asmMsg.id,
@@ -660,11 +776,73 @@ function mapAsmMessageToHistoryMessage(asmMsg: Message, conversationId: string):
       tool_call: s.tool_call,
       timestamp: new Date(s.timestamp),
     })),
-    origin: sender === 'user' ? 'customer' : 'support',
-    createdAt: asmMsg.messageCreatedAt instanceof Date
-      ? asmMsg.messageCreatedAt
-      : asmMsg.createdAt instanceof Date
-        ? asmMsg.createdAt
-        : new Date(asmMsg.createdAt as unknown as string),
+    origin,
+    createdAt: toDate(asmMsg.messageCreatedAt) ?? toDate(asmMsg.createdAt) ?? new Date(),
   };
+}
+
+// Defensive: package may return Date or ISO string depending on transport.
+function toDate(value: unknown): Date | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (value instanceof Date) return value;
+  if (typeof value === 'string' || typeof value === 'number') {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? undefined : d;
+  }
+  return undefined;
+}
+
+// Map known SQLite metadata keys (token counts, latency, stop reason) into the
+// StatsInput shape so Venus can surface them. Not all messages carry stats —
+// returns undefined when nothing is set so we don't send empty objects.
+function extractStatsFromMetadata(metadata: Record<string, unknown> | undefined): StatsInput | undefined {
+  if (!metadata) return undefined;
+  const inputTokens = numericMetadata(metadata, ['inputTokens', 'tokensIn', 'promptTokens']);
+  const outputTokens = numericMetadata(metadata, ['outputTokens', 'tokensOut', 'completionTokens']);
+  const latency = numericMetadata(metadata, ['latency', 'latencyMs', 'durationMs']);
+  const stopReason = stringMetadata(metadata, ['stopReason', 'finishReason']);
+
+  const hasTokens = inputTokens !== undefined && outputTokens !== undefined;
+  if (!hasTokens && latency === undefined && !stopReason) return undefined;
+
+  const stats: StatsInput = {};
+  if (latency !== undefined) stats.latency = latency;
+  if (hasTokens || stopReason) {
+    stats.modelUsage = {};
+    if (hasTokens) {
+      stats.modelUsage.tokens = { input: inputTokens, output: outputTokens };
+    }
+    if (stopReason) stats.modelUsage.stopReason = stopReason;
+  }
+  return stats;
+}
+
+function statsToMetadata(stats: NonNullable<Message['stats']>): Record<string, unknown> | undefined {
+  const result: Record<string, unknown> = {};
+  if (typeof stats.latency === 'number') result.latency = stats.latency;
+  const tokens = stats.modelUsage?.tokens;
+  if (tokens && typeof tokens.input === 'number' && typeof tokens.output === 'number') {
+    result.inputTokens = tokens.input;
+    result.outputTokens = tokens.output;
+  }
+  if (typeof stats.modelUsage?.stopReason === 'string') {
+    result.stopReason = stats.modelUsage.stopReason;
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function numericMetadata(metadata: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function stringMetadata(metadata: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  return undefined;
 }

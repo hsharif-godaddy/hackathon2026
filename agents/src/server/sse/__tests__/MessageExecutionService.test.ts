@@ -1396,6 +1396,30 @@ describe('MessageExecutionService', () => {
       expect(mockResolveRebuildBuildPagePrompt).not.toHaveBeenCalled()
     })
 
+    it('passes customerId from lifecycle context into persistence metadata', async () => {
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        authType: 'basic',
+        lifecycleContext: {
+          agentContext: {
+            customerId: '11111111-1111-4111-8111-111111111111',
+          },
+        },
+      })
+
+      const continueContext = deps.conversationPersistence.continueConversation.mock.calls[0][2]
+      expect(continueContext.metadata).toEqual(expect.objectContaining({
+        authType: 'basic',
+        customerId: '11111111-1111-4111-8111-111111111111',
+      }))
+
+      const startContext = deps.conversationPersistence.startAgentTurn.mock.calls[0][1]
+      expect(startContext.metadata).toEqual(expect.objectContaining({
+        authType: 'basic',
+        customerId: '11111111-1111-4111-8111-111111111111',
+      }))
+    })
+
     it('calls startAgentTurn to create in-progress placeholder', async () => {
       await service.execute(DEFAULT_PARAMS)
 

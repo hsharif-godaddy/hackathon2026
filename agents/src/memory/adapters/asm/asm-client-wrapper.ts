@@ -4,6 +4,7 @@ import type {
   Conversation,
   MessageInput,
   MutationResponse,
+  ParticipantInput,
   SearchFilter,
   SearchOutputV2,
   UpdateConversationLabelsInput,
@@ -47,6 +48,15 @@ export class AsmClientWrapper {
 
   async updateLabels(input: UpdateConversationLabelsInput): Promise<MutationResponse | null> {
     return this.withRetry(() => this.client.updateConversationLabels(input));
+  }
+
+  async addParticipants(
+    conversationId: string,
+    participants: ParticipantInput[],
+  ): Promise<MutationResponse | null> {
+    return this.withRetry(() =>
+      this.client.addConversationParticipants(conversationId, participants),
+    );
   }
 
   // SDK signature: searchConversationsV2(filter, first, last, after, before)
@@ -95,7 +105,7 @@ export class AsmClientWrapper {
   }
 }
 
-function extractHttpStatus(err: unknown): number | undefined {
+export function extractHttpStatus(err: unknown): number | undefined {
   if (!err || typeof err !== 'object') return undefined;
   const anyErr = err as Record<string, unknown>;
 

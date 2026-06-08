@@ -365,6 +365,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       metadata: {
         socketId: context.socketId,
         agentName: context.agentName,
+        agentId: context.agentName,
         appId: context.appId,
         inProgress: true,
         ...(commitHash && { commitHash })
@@ -715,6 +716,10 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           finalResult: result,
           streamingEvents: streamingEvents.length,
           inProgress: false,
+          incomplete: false,
+          outcome: 'complete',
+          error: undefined,
+          errorTimestamp: undefined,
           usedFreeGrants,
           ...traceIds,
           ...(commitHash && { commitHash })
@@ -918,7 +923,8 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
             error: error.message,
             errorTimestamp: new Date().toISOString(),
             inProgress: false,
-            incomplete: true
+            incomplete: true,
+            outcome: 'error'
           })
           contextLogger.info('conversation.agent_response.error_state_saved', {
             messageId: activeConversation.agentMessageId
@@ -971,7 +977,9 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
           });
 
           await this.messageStore.updateMessageMetadata(activeConversation.agentMessageId, {
-            inProgress: false
+            inProgress: false,
+            incomplete: true,
+            outcome: 'disconnected'
           });
         }
       } catch (error) {

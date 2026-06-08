@@ -1,22 +1,39 @@
 import { ASMClient } from '@gd-asm/asm-client';
 import { getS2SToken, isS2SAuthEnabled } from '@airo/ai-lib';
-import type { ConversationLifecycleStore, MessageStore, ConversationTokenStore } from '../../interfaces/conversation-store.js';
+import type {
+  ConversationLifecycleStore,
+  MessageStore,
+  ConversationTokenStore,
+} from '../../interfaces/conversation-store.js';
 import { AsmClientWrapper } from './asm-client-wrapper.js';
 import { AsmConversationLifecycleStore } from './asm-conversation-store.js';
 import { AsmMessageStore } from './asm-message-store.js';
 import { AsmConversationTokenStore } from './asm-token-store.js';
+
+const ASM_GRAPHQL_PATH = '/v1/conversation/graphql';
 
 let clientWrapper: AsmClientWrapper | undefined;
 let lifecycleStore: ConversationLifecycleStore | undefined;
 let messageStore: MessageStore | undefined;
 let tokenStore: ConversationTokenStore | undefined;
 
+function getAsmBaseUrl(): string {
+  const baseUrl = process.env.ASM_BASE_URL || process.env.GODADDY_API_BASE_URL;
+  if (!baseUrl) {
+    throw new Error('No ASM base URL configured. Set ASM_BASE_URL or GODADDY_API_BASE_URL.');
+  }
+
+  if (baseUrl.includes(ASM_GRAPHQL_PATH)) {
+    return baseUrl;
+  }
+
+  // Stage and prod only provide the GoDaddy API base URL, so append ASM's GraphQL path when it is missing.
+  return `${baseUrl.replace(/\/$/, '')}${ASM_GRAPHQL_PATH}`;
+}
+
 function getClientWrapper(): AsmClientWrapper {
   if (!clientWrapper) {
-    const baseUrl = process.env.ASM_BASE_URL;
-    if (!baseUrl) {
-      throw new Error('ASM_BASE_URL environment variable is required when USE_ASM_MEMORY=true');
-    }
+    const baseUrl = getAsmBaseUrl();
     const asmClient = new ASMClient(baseUrl, {
       jwtTokenProvider: {
         getToken: async () => {
@@ -32,6 +49,7 @@ function getClientWrapper(): AsmClientWrapper {
           return token;
         },
       },
+      settings: { timeout: 30_000 },
     });
     clientWrapper = new AsmClientWrapper(asmClient);
   }

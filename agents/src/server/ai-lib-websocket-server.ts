@@ -79,6 +79,7 @@ import { jwtAuthMiddleware, buildAgentContext, type AgentContext } from './middl
 import { getAgentConfig } from '../services/features.js'
 import { runWithModelOverride, getActiveModelOverride } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../profiles/index.js'
+import { runWithAgentContext } from '../lib/agent-context-storage.js'
 import { persistHandoffAgent } from './develop-variant.js'
 import { createAgentRouter } from './agent-router.js'
 import { getPersistedAgentIdForApp } from './persisted-agent.js'
@@ -1255,7 +1256,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
 
         if (agentContext) {
-          // Inject JWT-based permissions and auth info into context metadata for tool access
+          // Inject JWT-based permissions and auth info into context metadata for tool access.
+          // customerId is injected here (symmetric with SSE in MessageExecutionService) so it
+          // is available to persistence on the JWT path, before contextProvider runs.
           rawContext.metadata = {
             ...metadata,
             permissions: {
@@ -1265,6 +1268,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             },
             isE2S: agentContext.isE2S ?? false,
             authType: agentContext.authType,
+            ...(agentContext.customerId && { customerId: agentContext.customerId }),
           }
         }
 
@@ -2604,10 +2608,18 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           await execute()
         }
 
-        if (profile) {
-          await runWithProfile(profile, executeWithModelOverride)
+        const executeWithProfile = async () => {
+          if (profile) {
+            await runWithProfile(profile, executeWithModelOverride)
+          } else {
+            await executeWithModelOverride()
+          }
+        }
+
+        if (agentContext) {
+          await runWithAgentContext(agentContext, executeWithProfile)
         } else {
-          await executeWithModelOverride()
+          await executeWithProfile()
         }
       }
     }

@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AsmMessageStore } from '../asm-message-store.js';
 import type { AsmClientWrapper } from '../asm-client-wrapper.js';
+import type { ConversationMessage } from '../../../../database/schema.js';
 import type { Message } from '@gd-asm/asm-client';
+import { ParticipantType } from '@gd-asm/asm-client';
 
 describe('AsmMessageStore', function storeTests() {
   let mockClient: {
@@ -14,8 +16,8 @@ describe('AsmMessageStore', function storeTests() {
   function makeAsmMessage(id: string, text: string, participantType: string, responseTo?: string[]): Message {
     return {
       id,
-      createdAt: '2024-01-01T00:00:00Z',
-      messageCreatedAt: '2024-01-01T00:00:00Z',
+      createdAt: new Date('2024-01-01T00:00:00Z'),
+      messageCreatedAt: new Date('2024-01-01T00:00:00Z'),
       contents: [{ text }],
       participant: { id: participantType.toLowerCase(), type: participantType as 'USER' | 'AGENT' },
       responseTo,
@@ -23,17 +25,29 @@ describe('AsmMessageStore', function storeTests() {
     } as unknown as Message;
   }
 
-  function makeConversationResponse(messages: Message[]) {
+  function makeConversationResponse(messages: ReadonlyArray<{ id: string }>) {
     return {
       id: 'conv-1',
       status: 'ACTIVE',
-      createdAt: '2024-01-01T00:00:00Z',
+      createdAt: new Date('2024-01-01T00:00:00Z'),
       updatedAt: '2024-01-01T00:00:00Z',
       labels: {},
       messages: {
         edges: messages.map((m) => ({ cursor: m.id, node: m })),
         pageInfo: { hasNextPage: false, hasPreviousPage: false },
       },
+    };
+  }
+
+  function makeConversationMessage(overrides: Partial<ConversationMessage>): ConversationMessage {
+    return {
+      id: 'sqlite-id',
+      conversationId: 'conv-1',
+      sender: 'agent',
+      content: 'hello',
+      origin: 'support',
+      createdAt: new Date('2024-01-01T00:00:00Z'),
+      ...overrides,
     };
   }
 
@@ -63,6 +77,66 @@ describe('AsmMessageStore', function storeTests() {
   it('should flush user messages immediately', async function userImmediate() {
     await store.addMessage('conv-1', 'user', 'hello');
     expect(mockClient.addMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it('mirrorCompleteMessage should write under a fresh ASM id and stash the SQLite id in metadata', async function mirrorCompleteWritesId() {
+    await store.mirrorCompleteMessage(
+      'conv-1',
+      makeConversationMessage({ id: 'sqlite-nanoid', sender: 'user', content: 'hello' }),
+      { customerId: '11111111-1111-4111-8111-111111111111' }
+    );
+
+    const asmMsg = mockClient.addMessages.mock.calls[0][1][0];
+    // Fresh ASM id — not the SQLite id; the SQLite id rides in metadata.
+    expect(asmMsg.id).not.toBe('sqlite-nanoid');
+    expect(asmMsg.metadata.sqliteMessageId).toBe('sqlite-nanoid');
+    expect(asmMsg.participant.withCustomer.id).toBe('11111111-1111-4111-8111-111111111111');
+  });
+
+  it('mirrorCompleteMessage should append a fresh id per write and never self-reference on re-mirror', async function reMirrorFreshId() {
+    const msg = makeConversationMessage({ id: 'sqlite-X', sender: 'agent', content: 'answer' });
+    await store.mirrorCompleteMessage('conv-1', msg);
+    // Re-mirror the same SQLite row (e.g. a post-finalize commitHash patch).
+    await store.mirrorCompleteMessage('conv-1', { ...msg, metadata: { commitHash: 'abc123' } });
+
+    const sent = mockClient.addMessages.mock.calls.map((c) => c[1][0]);
+    expect(sent).toHaveLength(2);
+    // Distinct fresh ASM ids, neither equal to the SQLite id.
+    expect(sent[0].id).not.toBe('sqlite-X');
+    expect(sent[1].id).not.toBe('sqlite-X');
+    expect(sent[0].id).not.toBe(sent[1].id);
+    // Both correlate back to the same SQLite row.
+    expect(sent[0].metadata.sqliteMessageId).toBe('sqlite-X');
+    expect(sent[1].metadata.sqliteMessageId).toBe('sqlite-X');
+    // The re-mirror chains onto the first write, NOT onto itself.
+    expect(sent[1].responseTo).toEqual([sent[0].id]);
+    expect(sent[1].responseTo).not.toEqual([sent[1].id]);
+  });
+
+  it('mirrorCompleteMessage should emit a placeholder for an incomplete turn with no content', async function mirrorCompleteIncompletePlaceholder() {
+    await store.mirrorCompleteMessage(
+      'conv-1',
+      makeConversationMessage({
+        id: 'agent-incomplete',
+        sender: 'agent',
+        content: '',
+        metadata: { inProgress: false, incomplete: true, outcome: 'disconnected' },
+      })
+    );
+
+    expect(mockClient.addMessages).toHaveBeenCalledTimes(1);
+    const sent = mockClient.addMessages.mock.calls[0][1][0];
+    expect(sent.contents).toHaveLength(1);
+    expect(sent.contents[0].withTextContent.text).toBe('[turn disconnected before agent response]');
+  });
+
+  it('mirrorCompleteMessage should skip a genuinely empty, non-incomplete message', async function mirrorCompleteSkipsEmpty() {
+    await store.mirrorCompleteMessage(
+      'conv-1',
+      makeConversationMessage({ id: 'agent-empty', sender: 'agent', content: '' })
+    );
+
+    expect(mockClient.addMessages).not.toHaveBeenCalled();
   });
 
   it('should set responseTo on subsequent messages', async function responseToTracking() {
@@ -164,7 +238,7 @@ describe('AsmMessageStore', function storeTests() {
     mockClient.getConversation.mockResolvedValue({
       id: 'conv-1',
       status: 'ACTIVE',
-      createdAt: '2024-01-01T00:00:00Z',
+      createdAt: new Date('2024-01-01T00:00:00Z'),
       updatedAt: '2024-01-01T00:00:00Z',
       messages: {
         edges: [{ cursor: 'existing-msg', node: makeAsmMessage('existing-msg', 'old', 'USER') }],
@@ -187,13 +261,13 @@ describe('AsmMessageStore', function storeTests() {
     const agentText = makeAsmMessage('a1', 'thinking...', 'AGENT');
     const toolOnly: Message = {
       id: 'a2',
-      createdAt: '2024-01-01T00:00:01Z',
-      messageCreatedAt: '2024-01-01T00:00:01Z',
+      createdAt: new Date('2024-01-01T00:00:01Z'),
+      messageCreatedAt: new Date('2024-01-01T00:00:01Z'),
       contents: [
         { toolRequestId: 'tr1', toolName: 'readFile', parameters: { path: '/tmp' } },
         { toolRequestId: 'tr1', toolName: 'readFile', result: { content: 'data' }, failed: false },
       ],
-      participant: { id: 'agent', type: 'AGENT' },
+      participant: { id: 'agent', type: ParticipantType.Agent },
       responseTo: ['a1'],
       metadata: { conversationId: 'conv-1' },
     } as unknown as Message;
@@ -206,17 +280,97 @@ describe('AsmMessageStore', function storeTests() {
     expect(messages[0].toolCalls![0].status).toBe('success');
   });
 
+  it('should not bleed a new turn\'s tool calls into a prior disconnected-turn placeholder', async function noCrossTurnBleed() {
+    // Turn 1 disconnects, leaving an incomplete-turn text placeholder. The conversation's
+    // responseTo pointer advances through the placeholder, so turn 2's first (tool-only)
+    // agent message chains directly from it. The placeholder must act as a turn boundary:
+    // its tool calls stay on their own message, not folded into the placeholder.
+    const userMsg = makeAsmMessage('u1', 'do the thing', 'USER');
+    const placeholder: Message = {
+      id: 'placeholder',
+      createdAt: new Date('2024-01-01T00:00:01Z'),
+      messageCreatedAt: new Date('2024-01-01T00:00:01Z'),
+      contents: [{ text: '[turn errored before agent response]' }],
+      participant: { id: 'agent', type: ParticipantType.Agent },
+      responseTo: ['u1'],
+      metadata: { conversationId: 'conv-1', incomplete: true, outcome: 'errored' },
+    } as unknown as Message;
+    const resumedTool: Message = {
+      id: 'resumed-tool',
+      createdAt: new Date('2024-01-01T00:00:02Z'),
+      messageCreatedAt: new Date('2024-01-01T00:00:02Z'),
+      contents: [
+        { toolRequestId: 'tc-9', toolName: 'writeFile', parameters: { path: '/x' } },
+        { toolRequestId: 'tc-9', toolName: 'writeFile', result: { ok: true }, failed: false },
+      ],
+      participant: { id: 'agent', type: ParticipantType.Agent },
+      responseTo: ['placeholder'],
+      metadata: { conversationId: 'conv-1' },
+    } as unknown as Message;
+    mockClient.getConversation.mockResolvedValue(makeConversationResponse([userMsg, placeholder, resumedTool]));
+
+    const messages = await store.getMessages('conv-1');
+
+    expect(messages).toHaveLength(3);
+    const placeholderMsg = messages.find((m) => m.content === '[turn errored before agent response]');
+    expect(placeholderMsg).toBeDefined();
+    expect(placeholderMsg!.toolCalls).toBeUndefined();
+    const toolMsg = messages.find((m) => m.id === 'resumed-tool');
+    expect(toolMsg).toBeDefined();
+    expect(toolMsg!.toolCalls).toHaveLength(1);
+    expect(toolMsg!.toolCalls![0].id).toBe('tc-9');
+  });
+
+  it('should not merge a new turn\'s tool calls into a prior empty-contents agent stub', async function noBleedIntoEmptyStub() {
+    // The empty (non-incomplete) placeholder path produces an agent message with no
+    // contents. It still carries a responseTo pointer, so the next turn's tool-only
+    // message chains from it — but an empty stub is not a substantive response and
+    // must not absorb a later turn's tool calls.
+    const userMsg = makeAsmMessage('u1', 'do the thing', 'USER');
+    const emptyStub: Message = {
+      id: 'empty-stub',
+      createdAt: new Date('2024-01-01T00:00:01Z'),
+      messageCreatedAt: new Date('2024-01-01T00:00:01Z'),
+      contents: [],
+      participant: { id: 'agent', type: ParticipantType.Agent },
+      responseTo: ['u1'],
+      metadata: { conversationId: 'conv-1' },
+    } as unknown as Message;
+    const resumedTool: Message = {
+      id: 'resumed-tool',
+      createdAt: new Date('2024-01-01T00:00:02Z'),
+      messageCreatedAt: new Date('2024-01-01T00:00:02Z'),
+      contents: [
+        { toolRequestId: 'tc-7', toolName: 'readFile', parameters: { path: '/y' } },
+        { toolRequestId: 'tc-7', toolName: 'readFile', result: { ok: true }, failed: false },
+      ],
+      participant: { id: 'agent', type: ParticipantType.Agent },
+      responseTo: ['empty-stub'],
+      metadata: { conversationId: 'conv-1' },
+    } as unknown as Message;
+    mockClient.getConversation.mockResolvedValue(makeConversationResponse([userMsg, emptyStub, resumedTool]));
+
+    const messages = await store.getMessages('conv-1');
+
+    const toolMsg = messages.find((m) => m.id === 'resumed-tool');
+    expect(toolMsg).toBeDefined();
+    expect(toolMsg!.toolCalls).toHaveLength(1);
+    expect(toolMsg!.toolCalls![0].id).toBe('tc-7');
+    const stub = messages.find((m) => m.id === 'empty-stub');
+    expect(stub?.toolCalls).toBeUndefined();
+  });
+
   it('should default toolName to "unknown" when ASM content has empty toolName', async function missingToolName() {
     const msg: Message = {
       id: 'a1',
-      createdAt: '2024-01-01T00:00:00Z',
-      messageCreatedAt: '2024-01-01T00:00:00Z',
+      createdAt: new Date('2024-01-01T00:00:00Z'),
+      messageCreatedAt: new Date('2024-01-01T00:00:00Z'),
       contents: [
         { text: 'hi' },
         { toolRequestId: 'tr-1', toolName: '', parameters: {} },
         { toolRequestId: 'tr-1', toolName: '', result: { ok: true }, failed: false },
       ],
-      participant: { id: 'agent', type: 'AGENT' },
+      participant: { id: 'agent', type: ParticipantType.Agent },
       metadata: { conversationId: 'conv-1' },
     } as unknown as Message;
     mockClient.getConversation.mockResolvedValue(makeConversationResponse([msg]));
@@ -228,13 +382,13 @@ describe('AsmMessageStore', function storeTests() {
   it('should handle extractToolCalls with ToolResultContent arriving without prior ToolRequestContent', async function orphanResult() {
     const msg: Message = {
       id: 'a1',
-      createdAt: '2024-01-01T00:00:00Z',
-      messageCreatedAt: '2024-01-01T00:00:00Z',
+      createdAt: new Date('2024-01-01T00:00:00Z'),
+      messageCreatedAt: new Date('2024-01-01T00:00:00Z'),
       contents: [
         { text: 'done' },
         { toolRequestId: 'tr-orphan', toolName: 'exec', result: { output: 'ok' }, failed: false },
       ],
-      participant: { id: 'agent', type: 'AGENT' },
+      participant: { id: 'agent', type: ParticipantType.Agent },
       metadata: { conversationId: 'conv-1' },
     } as unknown as Message;
     mockClient.getConversation.mockResolvedValue(makeConversationResponse([msg]));
@@ -248,23 +402,23 @@ describe('AsmMessageStore', function storeTests() {
   it('should normalize legacy snake_case segment tool calls on read', async function segmentNormalize() {
     const msg: Message = {
       id: 'a1',
-      createdAt: '2024-01-01T00:00:00Z',
-      messageCreatedAt: '2024-01-01T00:00:00Z',
+      createdAt: new Date('2024-01-01T00:00:00Z'),
+      messageCreatedAt: new Date('2024-01-01T00:00:00Z'),
       contents: [{ text: 'done' }],
-      participant: { id: 'agent', type: 'AGENT' },
+      participant: { id: 'agent', type: ParticipantType.Agent },
       metadata: {
         conversationId: 'conv-1',
         segments: [
           {
             id: 'seg-1',
             type: 'tool_call',
-            timestamp: '2024-01-01T00:00:00Z',
+            timestamp: new Date('2024-01-01T00:00:00Z'),
             tool_call: { id: 'tc-1', tool_name: 'writeFile', tool_args: { path: '/tmp' }, status: 'completed' },
           },
           {
             id: 'seg-2',
             type: 'tool_call',
-            timestamp: '2024-01-01T00:00:01Z',
+            timestamp: new Date('2024-01-01T00:00:01Z'),
             toolCall: { id: 'tc-2', name: 'readFile', input: { path: '/src' }, result: { data: 'x' } },
           },
         ],
@@ -285,10 +439,10 @@ describe('AsmMessageStore', function storeTests() {
   it('should not leak internal metadata keys onto public message', async function metadataStrip() {
     const msg: Message = {
       id: 'a1',
-      createdAt: '2024-01-01T00:00:00Z',
-      messageCreatedAt: '2024-01-01T00:00:00Z',
+      createdAt: new Date('2024-01-01T00:00:00Z'),
+      messageCreatedAt: new Date('2024-01-01T00:00:00Z'),
       contents: [{ text: 'hi' }],
-      participant: { id: 'user', type: 'USER' },
+      participant: { id: 'user', type: ParticipantType.User },
       metadata: { conversationId: 'conv-1', messageType: 'status', segments: [], contextAttachments: [], customField: 'kept' },
     } as unknown as Message;
     mockClient.getConversation.mockResolvedValue(makeConversationResponse([msg]));
@@ -307,7 +461,7 @@ describe('AsmMessageStore', function storeTests() {
       .mockResolvedValueOnce({
         id: 'conv-1',
         status: 'ACTIVE',
-        createdAt: '2024-01-01T00:00:00Z',
+        createdAt: new Date('2024-01-01T00:00:00Z'),
         updatedAt: '2024-01-01T00:00:00Z',
         messages: {
           edges: [{ cursor: 'm2', node: m2 }, { cursor: 'm3', node: m3 }],
@@ -317,7 +471,7 @@ describe('AsmMessageStore', function storeTests() {
       .mockResolvedValueOnce({
         id: 'conv-1',
         status: 'ACTIVE',
-        createdAt: '2024-01-01T00:00:00Z',
+        createdAt: new Date('2024-01-01T00:00:00Z'),
         updatedAt: '2024-01-01T00:00:00Z',
         messages: {
           edges: [{ cursor: 'm1', node: m1 }],
@@ -339,7 +493,7 @@ describe('AsmMessageStore', function storeTests() {
     mockClient.getConversation.mockResolvedValue({
       id: 'conv-1',
       status: 'ACTIVE',
-      createdAt: '2024-01-01T00:00:00Z',
+      createdAt: new Date('2024-01-01T00:00:00Z'),
       updatedAt: '2024-01-01T00:00:00Z',
       messages: {
         edges: [{ cursor: 'm1', node: m1 }],
@@ -379,7 +533,7 @@ describe('AsmMessageStore', function storeTests() {
     expect(storedSegments[0].toolCall).toBeUndefined();
   });
 
-  it('should round-trip tool calls through split-on-write and merge-on-read', async function roundTrip() {
+  it('should batch text + tool calls into a single Venus message and round-trip on read', async function roundTrip() {
     const toolCalls = [
       { id: 'tc-1', toolName: 'readFile', toolArgs: { path: '/tmp/foo' }, toolResult: { content: 'data' }, status: 'success' as const },
       { id: 'tc-2', toolName: 'writeFile', toolArgs: { path: '/tmp/bar', content: 'x' }, toolResult: { success: true }, status: 'success' as const },
@@ -388,50 +542,33 @@ describe('AsmMessageStore', function storeTests() {
     await store.addMessage('conv-1', 'agent', 'Here are the results:', { toolCalls });
 
     const allCalls = mockClient.addMessages.mock.calls;
-    expect(allCalls.length).toBe(3);
+    expect(allCalls.length).toBe(1);
 
-    const textMsg = allCalls[0][1][0];
-    expect(textMsg.contents[0].withTextContent.text).toBe('Here are the results:');
+    const sent = allCalls[0][1][0];
+    expect(sent.contents).toHaveLength(5);
+    expect(sent.contents[0].withTextContent.text).toBe('Here are the results:');
+    expect(sent.contents[1].withToolRequestContent.toolRequestId).toBe('tc-1');
+    expect(sent.contents[1].withToolRequestContent.toolName).toBe('readFile');
+    expect(sent.contents[2].withToolResultContent.toolRequestId).toBe('tc-1');
+    expect(sent.contents[2].withToolResultContent.failed).toBe(false);
+    expect(sent.contents[3].withToolRequestContent.toolRequestId).toBe('tc-2');
+    expect(sent.contents[3].withToolRequestContent.toolName).toBe('writeFile');
+    expect(sent.contents[4].withToolResultContent.toolRequestId).toBe('tc-2');
 
-    const tc1Msg = allCalls[1][1][0];
-    expect(tc1Msg.contents[0].withToolRequestContent.toolName).toBe('readFile');
-    expect(tc1Msg.contents[1].withToolResultContent.toolName).toBe('readFile');
-
-    const tc2Msg = allCalls[2][1][0];
-    expect(tc2Msg.contents[0].withToolRequestContent.toolName).toBe('writeFile');
-
-    const asmMessages: Message[] = [
+    const asmMessages = [
       {
-        id: textMsg.id,
-        createdAt: '2024-01-01T00:00:00Z',
-        messageCreatedAt: '2024-01-01T00:00:00Z',
-        contents: [{ text: 'Here are the results:' }],
-        participant: { id: 'agent', type: 'AGENT' },
+        id: sent.id,
+        createdAt: new Date('2024-01-01T00:00:00Z'),
+        messageCreatedAt: new Date('2024-01-01T00:00:00Z'),
+        contents: [
+          { typename: 'TextContent', text: 'Here are the results:' },
+          { typename: 'ToolRequestContent', toolRequestId: 'tc-1', toolName: 'readFile', parameters: { path: '/tmp/foo' } },
+          { typename: 'ToolResultContent', toolRequestId: 'tc-1', toolName: 'readFile', result: { content: 'data' }, failed: false },
+          { typename: 'ToolRequestContent', toolRequestId: 'tc-2', toolName: 'writeFile', parameters: { path: '/tmp/bar', content: 'x' } },
+          { typename: 'ToolResultContent', toolRequestId: 'tc-2', toolName: 'writeFile', result: { success: true }, failed: false },
+        ],
+        participant: { id: 'agent', type: ParticipantType.Agent },
         metadata: { conversationId: 'conv-1' },
-      } as unknown as Message,
-      {
-        id: tc1Msg.id,
-        createdAt: '2024-01-01T00:00:01Z',
-        messageCreatedAt: '2024-01-01T00:00:01Z',
-        contents: [
-          { toolRequestId: 'tc-1', toolName: 'readFile', parameters: { path: '/tmp/foo' } },
-          { toolRequestId: 'tc-1', toolName: 'readFile', result: { content: 'data' }, failed: false },
-        ],
-        participant: { id: 'agent', type: 'AGENT' },
-        responseTo: [textMsg.id],
-        metadata: { conversationId: 'conv-1', toolName: 'readFile' },
-      } as unknown as Message,
-      {
-        id: tc2Msg.id,
-        createdAt: '2024-01-01T00:00:02Z',
-        messageCreatedAt: '2024-01-01T00:00:02Z',
-        contents: [
-          { toolRequestId: 'tc-2', toolName: 'writeFile', parameters: { path: '/tmp/bar', content: 'x' } },
-          { toolRequestId: 'tc-2', toolName: 'writeFile', result: { success: true }, failed: false },
-        ],
-        participant: { id: 'agent', type: 'AGENT' },
-        responseTo: [tc1Msg.id],
-        metadata: { conversationId: 'conv-1', toolName: 'writeFile' },
       } as unknown as Message,
     ];
 
@@ -447,5 +584,266 @@ describe('AsmMessageStore', function storeTests() {
     expect(messages[0].toolCalls![0].status).toBe('success');
     expect(messages[0].toolCalls![1].toolName).toBe('writeFile');
     expect(messages[0].toolCalls![1].status).toBe('success');
+  });
+
+  it('should normalize legacy {name, input, status: completed} tool calls before flushing', async function legacyToolCallShape() {
+    // Regression: handoff-emitting agent turns are finalized via the
+    // startAgentTurn previous-turn cleanup path, which only sets
+    // metadata.inProgress=false and never runs the canonical normalizer in
+    // completeConversation. The buffered toolCalls then carry the LLM-native
+    // {name, input, status: 'completed'} shape. Without normalization on flush
+    // the GraphQL payload omits toolName and Venus rejects the mutation,
+    // dropping the whole turn (the buffer is deleted before the flush attempt).
+    const msg = await store.addMessage('conv-1', 'agent', '', {
+      metadata: { inProgress: true },
+    });
+    await store.updateMessage(msg.id, {
+      toolCalls: [
+        { id: 'tc-1', name: 'setProjectName', input: { name: 'Green Roots' }, result: 'ok', status: 'completed' },
+        { id: 'tc-2', name: 'handoff', input: { targetAgent: 'develop' }, result: { success: true }, status: 'completed' },
+      ] as unknown as Parameters<typeof store.updateMessage>[1]['toolCalls'],
+    });
+    await store.updateMessageMetadata(msg.id, { inProgress: false });
+
+    expect(mockClient.addMessages).toHaveBeenCalledTimes(1);
+    const sent = mockClient.addMessages.mock.calls[0][1][0];
+    expect(sent.contents[0].withToolRequestContent.toolName).toBe('setProjectName');
+    expect(sent.contents[0].withToolRequestContent.parameters).toEqual({ name: 'Green Roots' });
+    expect(sent.contents[1].withToolResultContent.toolName).toBe('setProjectName');
+    expect(sent.contents[1].withToolResultContent.failed).toBe(false);
+    expect(sent.contents[2].withToolRequestContent.toolName).toBe('handoff');
+    expect(sent.contents[2].withToolRequestContent.parameters).toEqual({ targetAgent: 'develop' });
+    expect(sent.contents[3].withToolResultContent.toolName).toBe('handoff');
+  });
+
+  it('should reconstruct tool calls from a legacy fanned-out fixture (backward compat)', async function legacyFanOutRoundTrip() {
+    // Simulates conversations written by the pre-batch code: one text-only AGENT
+    // message followed by per-tool AGENT messages chained via responseTo.
+    // aggregateToolMessages + extractToolCalls must still surface the full tool list.
+    const asmMessages = [
+      {
+        id: 'agent-text',
+        createdAt: new Date('2024-01-01T00:00:00Z'),
+        messageCreatedAt: new Date('2024-01-01T00:00:00Z'),
+        contents: [{ typename: 'TextContent', text: 'thinking...' }],
+        participant: { id: 'agent', type: ParticipantType.Agent },
+        metadata: { conversationId: 'conv-1' },
+      },
+      {
+        id: 'agent-tool-1',
+        createdAt: new Date('2024-01-01T00:00:01Z'),
+        messageCreatedAt: new Date('2024-01-01T00:00:01Z'),
+        contents: [
+          { typename: 'ToolRequestContent', toolRequestId: 'tc-1', toolName: 'readFile', parameters: { path: '/tmp/foo' } },
+          { typename: 'ToolResultContent', toolRequestId: 'tc-1', toolName: 'readFile', result: { content: 'data' }, failed: false },
+        ],
+        participant: { id: 'agent', type: ParticipantType.Agent },
+        responseTo: ['agent-text'],
+        metadata: { conversationId: 'conv-1', toolName: 'readFile' },
+      },
+      {
+        id: 'agent-tool-2',
+        createdAt: new Date('2024-01-01T00:00:02Z'),
+        messageCreatedAt: new Date('2024-01-01T00:00:02Z'),
+        contents: [
+          { typename: 'ToolRequestContent', toolRequestId: 'tc-2', toolName: 'writeFile', parameters: { path: '/tmp/bar' } },
+          { typename: 'ToolResultContent', toolRequestId: 'tc-2', toolName: 'writeFile', result: { ok: true }, failed: false },
+        ],
+        participant: { id: 'agent', type: ParticipantType.Agent },
+        responseTo: ['agent-tool-1'],
+        metadata: { conversationId: 'conv-1', toolName: 'writeFile' },
+      },
+    ];
+
+    mockClient.getConversation.mockResolvedValue(makeConversationResponse(asmMessages));
+    const messages = await store.getMessages('conv-1');
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0].content).toBe('thinking...');
+    expect(messages[0].toolCalls).toHaveLength(2);
+    const byId = new Map(messages[0].toolCalls!.map((tc) => [tc.id, tc]));
+    expect(byId.get('tc-1')?.toolName).toBe('readFile');
+    expect(byId.get('tc-1')?.toolResult).toEqual({ content: 'data' });
+    expect(byId.get('tc-2')?.toolName).toBe('writeFile');
+    expect(byId.get('tc-2')?.toolResult).toEqual({ ok: true });
+  });
+
+  it('should skip purely empty agent messages on finalize', async function skipEmptyHealthy() {
+    const msg = await store.addMessage('conv-1', 'agent', '', {
+      metadata: { inProgress: true },
+    });
+    await store.updateMessage(msg.id, { metadata: { inProgress: false } });
+
+    expect(mockClient.addMessages).not.toHaveBeenCalled();
+  });
+
+  it('should mirror user messages with a UUID customerId in the participant payload', async function mirrorWhenUuidCustomerId() {
+    const customerId = '11111111-1111-4111-8111-111111111111';
+    await store.addMessage('conv-1', 'user', 'hello', {
+      customerId,
+    });
+
+    expect(mockClient.addMessages).toHaveBeenCalledTimes(1);
+    const sent = mockClient.addMessages.mock.calls[0]![1][0];
+    expect(sent.participant.withCustomer.id).toBe(customerId);
+  });
+
+  it('should preserve tc.error round-trip for failed tool calls', async function toolErrorRoundTrip() {
+    const toolCalls = [
+      {
+        id: 'tc-fail',
+        toolName: 'readFile',
+        toolArgs: { path: '/missing' },
+        toolResult: undefined,
+        error: 'ENOENT: no such file',
+        status: 'error' as const,
+      },
+    ];
+
+    await store.addMessage('conv-1', 'agent', 'I tried to read it:', { toolCalls });
+
+    const allCalls = mockClient.addMessages.mock.calls;
+    expect(allCalls.length).toBe(1);
+
+    const sent = allCalls[0]![1][0];
+    expect(sent.contents[0].withTextContent.text).toBe('I tried to read it:');
+    const resultContent = sent.contents.find(
+      (c: { withToolResultContent?: unknown }) => c.withToolResultContent
+    ).withToolResultContent;
+    expect(resultContent.failed).toBe(true);
+    expect(resultContent.result.error).toBe('ENOENT: no such file');
+
+    const asmMessages = [
+      {
+        id: sent.id,
+        createdAt: new Date('2024-01-01T00:00:00Z'),
+        messageCreatedAt: new Date('2024-01-01T00:00:00Z'),
+        contents: [
+          { typename: 'TextContent', text: 'I tried to read it:' },
+          { typename: 'ToolRequestContent', toolRequestId: 'tc-fail', toolName: 'readFile', parameters: { path: '/missing' } },
+          { typename: 'ToolResultContent', toolRequestId: 'tc-fail', toolName: 'readFile', result: { error: 'ENOENT: no such file' }, failed: true },
+        ],
+        participant: { id: 'agent', type: ParticipantType.Agent },
+        metadata: { conversationId: 'conv-1' },
+      },
+    ];
+
+    mockClient.getConversation.mockResolvedValue(makeConversationResponse(asmMessages));
+    const messages = await store.getMessages('conv-1');
+    expect(messages).toHaveLength(1);
+    expect(messages[0].toolCalls).toHaveLength(1);
+    expect(messages[0].toolCalls![0].status).toBe('error');
+    expect(messages[0].toolCalls![0].error).toBe('ENOENT: no such file');
+    expect(messages[0].toolCalls![0].toolResult).toBeUndefined();
+  });
+
+  it('should preserve origin on round-trip and not duplicate it into public metadata', async function originRoundTrip() {
+    await store.addMessage('conv-1', 'user', 'support reply', { origin: 'support' });
+    const sent = mockClient.addMessages.mock.calls[0]![1][0];
+    expect(sent.metadata.origin).toBe('support');
+
+    const asmMessages = [
+      {
+        id: sent.id,
+        createdAt: new Date('2024-01-01T00:00:00Z'),
+        messageCreatedAt: new Date('2024-01-01T00:00:00Z'),
+        contents: [{ typename: 'TextContent', text: 'support reply' }],
+        participant: { id: 'user', type: ParticipantType.User },
+        metadata: { conversationId: 'conv-1', origin: 'support' },
+      },
+    ];
+    mockClient.getConversation.mockResolvedValue(makeConversationResponse(asmMessages));
+    const messages = await store.getMessages('conv-1');
+    expect(messages).toHaveLength(1);
+    expect(messages[0].origin).toBe('support');
+    expect(messages[0].metadata?.origin).toBeUndefined();
+  });
+
+  it('should surface the ASM message id (= original SQLite id) on getMessagesForHistory', async function historyIdsAreSqlite() {
+    const asmMessages = [
+      {
+        id: 'sqlite-id-1',
+        createdAt: new Date('2024-01-01T00:00:00Z'),
+        messageCreatedAt: new Date('2024-01-01T00:00:00Z'),
+        contents: [{ typename: 'TextContent', text: 'first' }],
+        participant: { id: 'user', type: ParticipantType.User },
+        metadata: { conversationId: 'conv-1' },
+      },
+      {
+        id: 'sqlite-id-2',
+        createdAt: new Date('2024-01-01T00:00:01Z'),
+        messageCreatedAt: new Date('2024-01-01T00:00:01Z'),
+        contents: [{ typename: 'TextContent', text: 'second' }],
+        participant: { id: 'agent', type: ParticipantType.Agent },
+        responseTo: ['sqlite-id-1'],
+        metadata: { conversationId: 'conv-1' },
+      },
+    ];
+    mockClient.getConversation.mockResolvedValue(makeConversationResponse(asmMessages));
+
+    const history = await store.getMessagesForHistory('conv-1');
+    expect(history).toHaveLength(2);
+    expect(history[0].id).toBe('sqlite-id-1');
+    expect(history[1].id).toBe('sqlite-id-2');
+  });
+
+  it('should buffer streaming chunks and flush once on finalize', async function streamingChunksDoNotFlush() {
+    // Standalone mode accumulates streaming updates in the in-progress buffer and
+    // flushes only when the turn is finalized (inProgress: false).
+    const msg = await store.addMessage('conv-1', 'agent', '', {
+      metadata: { inProgress: true },
+    });
+    await store.updateMessage(msg.id, { content: 'chunk-1' });
+    await store.updateMessage(msg.id, { content: 'chunk-1 chunk-2' });
+    expect(mockClient.addMessages).not.toHaveBeenCalled();
+
+    await store.updateMessage(msg.id, {
+      content: 'final',
+      metadata: { inProgress: false, outcome: 'complete' },
+    });
+    expect(mockClient.addMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it('should round-trip stats from metadata into AsmStatsInput and back into metadata', async function statsRoundTrip() {
+    await store.addMessage('conv-1', 'agent', 'answer', {
+      metadata: {
+        inputTokens: 120,
+        outputTokens: 45,
+        latency: 850,
+        stopReason: 'end_turn',
+      },
+    });
+
+    const sent = mockClient.addMessages.mock.calls[0]![1][0];
+    expect(sent.stats).toBeDefined();
+    expect(sent.stats.latency).toBe(850);
+    expect(sent.stats.modelUsage.tokens).toEqual({ input: 120, output: 45 });
+    expect(sent.stats.modelUsage.stopReason).toBe('end_turn');
+
+    const asmMessages = [
+      {
+        id: sent.id,
+        createdAt: new Date('2024-01-01T00:00:00Z'),
+        messageCreatedAt: new Date('2024-01-01T00:00:00Z'),
+        contents: [{ typename: 'TextContent', text: 'answer' }],
+        participant: { id: 'agent', type: ParticipantType.Agent },
+        metadata: { conversationId: 'conv-1' },
+        stats: {
+          latency: 850,
+          modelUsage: {
+            tokens: { input: 120, output: 45 },
+            stopReason: 'end_turn',
+          },
+        },
+      },
+    ];
+    mockClient.getConversation.mockResolvedValue(makeConversationResponse(asmMessages));
+    const messages = await store.getMessages('conv-1');
+    expect(messages[0].metadata).toMatchObject({
+      latency: 850,
+      inputTokens: 120,
+      outputTokens: 45,
+      stopReason: 'end_turn',
+    });
   });
 });

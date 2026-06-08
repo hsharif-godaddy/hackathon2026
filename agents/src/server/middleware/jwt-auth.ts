@@ -11,6 +11,7 @@ import { validateJWTAgentConfig } from '../../lib/jwks-config.js';
 import { auth, AuthType } from '../../services/features.js';
 import { logger } from '../../logging/index.js';
 import { ClassifierMode } from '../../agents/assessment-agent/types.js';
+import { runWithAgentContext } from '../../lib/agent-context-storage.js';
 
 export type { ProductType };
 
@@ -58,6 +59,7 @@ export interface AgentContext {
   useAtlasCrawler?: boolean; // Route rebuild scraping through Atlas REST API instead of legacy WebsiteScraperDriver (switchboard: appbuilder-atlas-crawler)
   debugStatsEnabled?: boolean; // Allow per-LLM-call debug stats events to flow to this client (switchboard: appbuilder-debug-drawer)
   marketingCampaignsEnabled?: boolean; // Enable Marketing Campaigns feature (switchboard: appbuilder-marketing-campaigns)
+  asmDualWriteEnabled?: boolean; // Mirror SQLite writes to ASM (switchboard: appbuilder-asm-dual-write)
   exp: number;
   iat: number;
 }
@@ -99,6 +101,7 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     useAtlasCrawler: (raw.useAtlasCrawler as boolean) ?? false,
     debugStatsEnabled: (raw.debugStatsEnabled as boolean) ?? false,
     marketingCampaignsEnabled: (raw.marketingCampaignsEnabled as boolean) ?? false,
+    asmDualWriteEnabled: (raw.asmDualWriteEnabled as boolean) ?? false,
     exp: (raw.exp as number) || 0,
     iat: (raw.iat as number) || 0,
   };
@@ -191,10 +194,11 @@ export class JWTAuthMiddleware {
           modelSelectorEnabled: true,
           agentProfileSelectorEnabled: true,
           agentProfile: tokenClaims.agentProfile as string | undefined,
+          asmDualWriteEnabled: (tokenClaims.asmDualWriteEnabled as boolean) ?? false,
           exp: now + 3600,
           iat: now
         };
-        next();
+        runWithAgentContext((req as AuthenticatedRequest).agentContext!, () => next());
         return;
       }
 
@@ -252,7 +256,7 @@ export class JWTAuthMiddleware {
 
         (req as AuthenticatedRequest).agentContext = agentContext;
 
-        next();
+        runWithAgentContext(agentContext, () => next());
         return;
       }
 

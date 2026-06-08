@@ -52,6 +52,7 @@ describe('buildAgentContext', function suite() {
       useAtlasCrawler: true,
       debugStatsEnabled: false,
       marketingCampaignsEnabled: false,
+      asmDualWriteEnabled: false,
       exp: 1700000000,
       iat: 1699999000,
     });

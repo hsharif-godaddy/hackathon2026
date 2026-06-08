@@ -11,6 +11,7 @@ describe('AsmConversationLifecycleStore', function storeTests() {
     searchConversations: ReturnType<typeof vi.fn>;
     closeConversation: ReturnType<typeof vi.fn>;
     updateLabels: ReturnType<typeof vi.fn>;
+    addParticipants: ReturnType<typeof vi.fn>;
     addMessages: ReturnType<typeof vi.fn>;
   };
   let store: AsmConversationLifecycleStore;
@@ -30,12 +31,13 @@ describe('AsmConversationLifecycleStore', function storeTests() {
       searchConversations: vi.fn().mockResolvedValue({ conversationIds: [], pageInfo: {} }),
       closeConversation: vi.fn().mockResolvedValue({ success: true, id: 'c1' }),
       updateLabels: vi.fn().mockResolvedValue({ success: true, id: 'c1' }),
+      addParticipants: vi.fn().mockResolvedValue({ success: true, id: 'c1' }),
       addMessages: vi.fn().mockResolvedValue({ success: true, id: 'c1' }),
     };
     store = new AsmConversationLifecycleStore(mockClient as unknown as AsmClientWrapper, 'svc-1');
   });
 
-  it('should create a conversation with correct labels', async function createConv() {
+  it('should create a conversation with correct labels and system+agent participants', async function createConv() {
     const result = await store.create(scope, 'agent-1', 'My Title');
     expect(result.appId).toBe('app-1');
     expect(result.agentId).toBe('agent-1');
@@ -50,6 +52,35 @@ describe('AsmConversationLifecycleStore', function storeTests() {
         }),
       })
     );
+    // agentId is still tracked via the label (source of truth); the agent is also
+    // recorded as a participant for enrichment.
+    const participants = mockClient.createConversation.mock.calls[0][0].participants;
+    expect(participants).toEqual(expect.arrayContaining([
+      { withSystem: { id: 'svc-1' } },
+      { withAgent: { id: 'agent-1', name: 'agent-1' } },
+    ]));
+    // 'cust-1' is not a UUID — withCustomer is skipped to avoid Venus rejection.
+    expect(participants.some((p: { withCustomer?: unknown }) => p.withCustomer)).toBe(false);
+  });
+
+  it('should add the customer participant when customerId is a UUID', async function createWithUuidCustomer() {
+    const uuidScope: WorkspaceScope = {
+      kind: 'resolved',
+      appId: 'app-1',
+      customerId: '11111111-1111-4111-8111-111111111111',
+    };
+    await store.create(uuidScope, 'agent-1', 'My Title');
+    const participants = mockClient.createConversation.mock.calls[0][0].participants;
+    expect(participants).toEqual(expect.arrayContaining([
+      { withCustomer: { id: '11111111-1111-4111-8111-111111111111' } },
+    ]));
+  });
+
+  it('should not add a customer participant for local scopes', async function createLocalScope() {
+    const localScope = { kind: 'local', appId: 'app-1' } as unknown as WorkspaceScope;
+    await store.create(localScope, 'agent-1', 'My Title');
+    const participants = mockClient.createConversation.mock.calls[0][0].participants;
+    expect(participants.some((p: { withCustomer?: unknown }) => p.withCustomer)).toBe(false);
   });
 
   it('should return null from getById when conversation not found', async function getByIdNull() {
@@ -87,6 +118,19 @@ describe('AsmConversationLifecycleStore', function storeTests() {
       conversationId: 'c1',
       labels: { title: 'New Title' },
     });
+  });
+
+  it('should update the agentId label and also record the agent as a participant', async function updateAgent() {
+    await store.updateAgentId('c1', 'marketing');
+    // Label is the source of truth — overwritten, so find/read resolve the current agent.
+    expect(mockClient.updateLabels).toHaveBeenCalledWith({
+      conversationId: 'c1',
+      labels: { agentId: 'marketing' },
+    });
+    // Participant record is also appended (enrichment).
+    expect(mockClient.addParticipants).toHaveBeenCalledWith('c1', [
+      { withAgent: { id: 'marketing', name: 'marketing' } },
+    ]);
   });
 
   it('should close conversation on delete', async function deleteConv() {

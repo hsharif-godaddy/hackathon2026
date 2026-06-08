@@ -6,41 +6,56 @@ vi.mock('@airo/ai-lib', () => ({
 }));
 
 vi.mock('@gd-asm/asm-client', () => ({
-  ASMClient: vi.fn().mockImplementation(function (_baseUrl: string, opts: { jwtTokenProvider: { getToken: () => Promise<string> } }) { return {
-    _opts: opts,
-  }; }),
+  ASMClient: vi.fn().mockImplementation(function (
+    _baseUrl: string,
+    opts: { jwtTokenProvider: { getToken: () => Promise<string> } }
+  ) {
+    return {
+      _opts: opts,
+    };
+  }),
 }));
 
 vi.mock('../asm-client-wrapper.js', () => ({
-  AsmClientWrapper: vi.fn().mockImplementation(function (_client: unknown) { return {
-    _type: 'wrapper',
-    _client,
-  }; }),
+  AsmClientWrapper: vi.fn().mockImplementation(function (_client: unknown) {
+    return {
+      _type: 'wrapper',
+      _client,
+    };
+  }),
 }));
 
 vi.mock('../asm-conversation-store.js', () => ({
-  AsmConversationLifecycleStore: vi.fn().mockImplementation(function (_client: unknown, _serviceId: string) { return {
-    _type: 'lifecycle',
-  }; }),
+  AsmConversationLifecycleStore: vi.fn().mockImplementation(function (
+    _client: unknown,
+    _serviceId: string
+  ) {
+    return {
+      _type: 'lifecycle',
+    };
+  }),
   LABEL_APP_ID: 'appId',
   LABEL_CUSTOMER_ID: 'customerId',
-  LABEL_AGENT_ID: 'agentId',
   LABEL_TITLE: 'title',
   labelFilter: vi.fn(),
 }));
 
 vi.mock('../asm-message-store.js', () => ({
-  AsmMessageStore: vi.fn().mockImplementation(function () { return {
-    _type: 'message',
-    registerMessageAddedHook: vi.fn(),
-  }; }),
+  AsmMessageStore: vi.fn().mockImplementation(function () {
+    return {
+      _type: 'message',
+      registerMessageAddedHook: vi.fn(),
+    };
+  }),
 }));
 
 vi.mock('../asm-token-store.js', () => ({
-  AsmConversationTokenStore: vi.fn().mockImplementation(function () { return {
-    _type: 'token',
-    recordMessageTimestamp: vi.fn(),
-  }; }),
+  AsmConversationTokenStore: vi.fn().mockImplementation(function () {
+    return {
+      _type: 'token',
+      recordMessageTimestamp: vi.fn(),
+    };
+  }),
 }));
 
 describe('asm/index auth wiring', function asmIndexTests() {
@@ -57,10 +72,47 @@ describe('asm/index auth wiring', function asmIndexTests() {
     process.env = originalEnv;
   });
 
-  it('should throw if ASM_BASE_URL is not set', async function missingBaseUrl() {
+  it('throws when no ASM base URL is configured', async function noBaseUrl() {
     delete process.env.ASM_BASE_URL;
+    delete process.env.GODADDY_API_BASE_URL;
     const { getAsmConversationLifecycleStore } = await import('../index.js');
-    expect(() => getAsmConversationLifecycleStore()).toThrow('ASM_BASE_URL');
+
+    const { ASMClient } = await import('@gd-asm/asm-client');
+    expect(() => getAsmConversationLifecycleStore()).toThrow('No ASM base URL configured');
+    expect(ASMClient).not.toHaveBeenCalled();
+  });
+
+  it('appends ASM GraphQL path to GODADDY_API_BASE_URL when ASM_BASE_URL is unset', async function apiBaseUrlFallback() {
+    delete process.env.ASM_BASE_URL;
+    process.env.GODADDY_API_BASE_URL = 'https://api.test-godaddy.com';
+    const { getAsmConversationLifecycleStore } = await import('../index.js');
+    getAsmConversationLifecycleStore();
+
+    const { ASMClient } = await import('@gd-asm/asm-client');
+    const clientCall = vi.mocked(ASMClient).mock.calls[0]! as unknown[];
+    expect(clientCall[0]).toBe('https://api.test-godaddy.com/v1/conversation/graphql');
+  });
+
+  it('lets ASM_BASE_URL override GODADDY_API_BASE_URL and appends ASM GraphQL path', async function envOverride() {
+    process.env.ASM_BASE_URL = 'https://asm.override.example.com';
+    process.env.GODADDY_API_BASE_URL = 'https://api.test-godaddy.com';
+    const { getAsmConversationLifecycleStore } = await import('../index.js');
+    getAsmConversationLifecycleStore();
+
+    const { ASMClient } = await import('@gd-asm/asm-client');
+    const clientCall = vi.mocked(ASMClient).mock.calls[0]! as unknown[];
+    expect(clientCall[0]).toBe('https://asm.override.example.com/v1/conversation/graphql');
+  });
+
+  it('does not append ASM GraphQL path when it is already present', async function fullAsmBaseUrl() {
+    process.env.ASM_BASE_URL = 'https://asm.override.example.com/v1/conversation/graphql';
+    process.env.GODADDY_API_BASE_URL = 'https://api.test-godaddy.com';
+    const { getAsmConversationLifecycleStore } = await import('../index.js');
+    getAsmConversationLifecycleStore();
+
+    const { ASMClient } = await import('@gd-asm/asm-client');
+    const clientCall = vi.mocked(ASMClient).mock.calls[0]! as unknown[];
+    expect(clientCall[0]).toBe('https://asm.override.example.com/v1/conversation/graphql');
   });
 
   it('should use S2S token when S2S auth is enabled', async function s2sAuth() {
@@ -104,17 +156,25 @@ describe('asm/index auth wiring', function asmIndexTests() {
     const { ASMClient } = await import('@gd-asm/asm-client');
     const clientCall = vi.mocked(ASMClient).mock.calls[0]! as unknown[];
     const opts = clientCall[1] as { jwtTokenProvider: { getToken: () => Promise<string> } };
-    await expect(opts.jwtTokenProvider.getToken()).rejects.toThrow('No ASM authentication configured');
+    await expect(opts.jwtTokenProvider.getToken()).rejects.toThrow(
+      'No ASM authentication configured'
+    );
   });
 
   it('should wire messageAdded hook from message store to token store', async function hookWiring() {
     const { getAsmMessageStore } = await import('../index.js');
-    const msgStore = getAsmMessageStore() as unknown as { registerMessageAddedHook: ReturnType<typeof vi.fn> };
+    const msgStore = getAsmMessageStore() as unknown as {
+      registerMessageAddedHook: ReturnType<typeof vi.fn>;
+    };
     expect(msgStore.registerMessageAddedHook).toHaveBeenCalledTimes(1);
 
-    const hookFn = msgStore.registerMessageAddedHook.mock.calls[0]![0] as (msg: { createdAt: Date }) => void;
+    const hookFn = msgStore.registerMessageAddedHook.mock.calls[0]![0] as (msg: {
+      createdAt: Date;
+    }) => void;
     const { AsmConversationTokenStore } = await import('../asm-token-store.js');
-    const tokenStoreInstance = vi.mocked(AsmConversationTokenStore).mock.results[0]!.value as { recordMessageTimestamp: ReturnType<typeof vi.fn> };
+    const tokenStoreInstance = vi.mocked(AsmConversationTokenStore).mock.results[0]!.value as {
+      recordMessageTimestamp: ReturnType<typeof vi.fn>;
+    };
 
     const testDate = new Date('2024-06-15T12:00:00Z');
     hookFn({ createdAt: testDate });

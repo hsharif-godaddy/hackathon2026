@@ -149,4 +149,12 @@ describe('AsmClientWrapper', function wrapperTests() {
     expect(result).toEqual({ id: 'c1' });
     expect(mockAsmClient.getConversation).toHaveBeenCalledTimes(2);
   });
+
+  it('should delegate addParticipants to addConversationParticipants', async function addParticipants() {
+    const addSpy = vi.fn().mockResolvedValue({ success: true, id: 'c1' });
+    (mockAsmClient as unknown as { addConversationParticipants: typeof addSpy }).addConversationParticipants = addSpy;
+    const participants = [{ withAgent: { id: 'develop', name: 'develop' } }];
+    await wrapper.addParticipants('c1', participants as never);
+    expect(addSpy).toHaveBeenCalledWith('c1', participants);
+  });
 });

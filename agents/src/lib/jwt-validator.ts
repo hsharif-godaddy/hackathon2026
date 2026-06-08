@@ -56,6 +56,7 @@ export interface JWTClaims {
   useAtlasCrawler?: boolean;
   debugStatsEnabled?: boolean;
   marketingCampaignsEnabled?: boolean;
+  asmDualWriteEnabled?: boolean;
 }
 
 export interface ValidationResult {

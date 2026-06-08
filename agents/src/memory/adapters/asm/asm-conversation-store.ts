@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { Conversation as AsmConversationResponse, SearchFilter, FilterCondition } from '@gd-asm/asm-client';
+import { validate as validateUuid } from 'uuid';
+import type { Conversation as AsmConversationResponse, SearchFilter, FilterCondition, ParticipantInput } from '@gd-asm/asm-client';
 import { FilterOperator, PrincipalType, Scope, TimeInterval } from '@gd-asm/asm-client';
 import { logger } from '../../../logging/index.js';
 import type { Conversation } from '../../../database/schema.js';
-import type { ConversationLifecycleStore } from '../../interfaces/conversation-store.js';
+import type { ConversationLifecycleStore } from '../../interfaces/index.js';
 import type { WorkspaceScope } from '../../interfaces/scope.js';
 import type { AsmClientWrapper } from './asm-client-wrapper.js';
 
@@ -43,13 +44,25 @@ export class AsmConversationLifecycleStore implements ConversationLifecycleStore
       labels[LABEL_TITLE] = title;
     }
 
+    // Record the agent (and customer, when its id is a UUID) as ASM participants
+    // for richer conversation metadata. This is enrichment only — agentId is
+    // still tracked via LABEL_AGENT_ID above, which find/read/update rely on, so
+    // the participant list never drives agent resolution.
+    const participants: ParticipantInput[] = [
+      { withSystem: { id: this.serviceId } },
+      { withAgent: { id: agentId, name: agentId } },
+    ];
+    // Venus rejects CUSTOMER participants whose id isn't a UUID. Local scopes have
+    // no customerId; resolved scopes still guard since the value isn't always a UUID.
+    if (scope.kind === 'resolved' && validateUuid(scope.customerId)) {
+      participants.push({ withCustomer: { id: scope.customerId } });
+    }
+
     await this.client.createConversation({
       id: conversationId,
       labels,
       context: {},
-      participants: [
-        { withSystem: { id: this.serviceId } },
-      ],
+      participants,
       messages: [],
       // No ASM enrichment — we manage titles via labels/updateTitle().
       // The SDK only exposes RUNNING_SUMMARY and COMPOSITE_SENTIMENT; the old
@@ -164,6 +177,8 @@ export class AsmConversationLifecycleStore implements ConversationLifecycleStore
   }
 
   async updateAgentId(conversationId: string, agentId: string): Promise<void> {
+    // The label is the source of truth for the current agent (overwritten each
+    // time); find/read resolve agentId from it.
     const resp = await this.client.updateLabels({
       conversationId,
       labels: { [LABEL_AGENT_ID]: agentId },
@@ -173,6 +188,18 @@ export class AsmConversationLifecycleStore implements ConversationLifecycleStore
         conversationId,
         agentId,
         message: resp.message,
+      });
+    }
+    // Also append the agent as a participant so ASM keeps the full participation
+    // record across handoffs. Best-effort enrichment — it never drives resolution.
+    const participantResp = await this.client.addParticipants(conversationId, [
+      { withAgent: { id: agentId, name: agentId } },
+    ]);
+    if (participantResp && !participantResp.success) {
+      logger.warn('asm.conversation.updateAgentId_participant_failed', {
+        conversationId,
+        agentId,
+        message: participantResp.message,
       });
     }
   }

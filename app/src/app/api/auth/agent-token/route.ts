@@ -247,11 +247,12 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let useAtlasCrawler = false;
     let debugStatsEnabled = false;
     let marketingCampaignsEnabled = false;
+    let asmDualWriteEnabled = false;
 
     if (siteValidationCacheHit) {
       // Cache hit: skip site validation, run paywall + switchboard + subscription lookup in parallel
       const parallelStart = Date.now();
-      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, debugDrawerResult, marketingCampaignsResult] = await Promise.allSettled([
+      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, debugDrawerResult, marketingCampaignsResult, asmDualWriteResult] = await Promise.allSettled([
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
           body.siteId,
@@ -273,6 +274,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-atlas-crawler', request),
         checkSwitchboardFlag('appbuilder-debug-drawer', request),
         checkSwitchboardFlag('appbuilder-marketing-campaigns', request),
+        checkSwitchboardFlag('appbuilder-asm-dual-write', request),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -300,10 +302,11 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       useAtlasCrawler = resolveBooleanFlag(useAtlasCrawlerResult, 'agent-token.atlas-crawler-flag-check-failed', body.siteId, user.customerId);
       debugStatsEnabled = resolveBooleanFlag(debugDrawerResult, 'agent-token.debug-drawer-flag-check-failed', body.siteId, user.customerId);
       marketingCampaignsEnabled = resolveBooleanFlag(marketingCampaignsResult, 'agent-token.marketing-campaigns-flag-check-failed', body.siteId, user.customerId);
+      asmDualWriteEnabled = resolveBooleanFlag(asmDualWriteResult, 'agent-token.asm-dual-write-flag-check-failed', body.siteId, user.customerId);
     } else {
       // Cache miss: run site validation, paywall, switchboard, and subscription lookup all in parallel
       const parallelStart = Date.now();
-      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, debugDrawerResult, marketingCampaignsResult] = await Promise.allSettled([
+      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, debugDrawerResult, marketingCampaignsResult, asmDualWriteResult] = await Promise.allSettled([
         validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct),
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
@@ -326,6 +329,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-atlas-crawler', request),
         checkSwitchboardFlag('appbuilder-debug-drawer', request),
         checkSwitchboardFlag('appbuilder-marketing-campaigns', request),
+        checkSwitchboardFlag('appbuilder-asm-dual-write', request),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -362,6 +366,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       useAtlasCrawler = resolveBooleanFlag(useAtlasCrawlerResult, 'agent-token.atlas-crawler-flag-check-failed', body.siteId, user.customerId);
       debugStatsEnabled = resolveBooleanFlag(debugDrawerResult, 'agent-token.debug-drawer-flag-check-failed', body.siteId, user.customerId);
       marketingCampaignsEnabled = resolveBooleanFlag(marketingCampaignsResult, 'agent-token.marketing-campaigns-flag-check-failed', body.siteId, user.customerId);
+      asmDualWriteEnabled = resolveBooleanFlag(asmDualWriteResult, 'agent-token.asm-dual-write-flag-check-failed', body.siteId, user.customerId);
     }
 
     const hivemindCohorts = await fetchHivemindCohorts(request);
@@ -575,6 +580,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       useAtlasCrawler,
       debugStatsEnabled,
       marketingCampaignsEnabled,
+      asmDualWriteEnabled,
     };
 
     const result = body.expiresInSeconds

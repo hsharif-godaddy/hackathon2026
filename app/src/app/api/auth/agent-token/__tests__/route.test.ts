@@ -254,7 +254,7 @@ describe('agent-token', function packageTests() {
 
         debugStatsEnabled: false,
         marketingCampaignsEnabled: false,
-
+        asmDualWriteEnabled: false,
       });
     });
 
@@ -399,7 +399,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(expiresInSeconds);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, customerId: 'customer-789', canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, bmsBudgetId: undefined, enableAssessmentAgent: false, enableAssessmentOverride: false, assessmentClassifier: undefined, product: 'AiroAppBuilder', modelSelectorEnabled: false, modelOverride: undefined, agentProfileSelectorEnabled: false, agentProfile: undefined, costAttributionDryRun: false, useAtlasCrawler: false, debugStatsEnabled: false, marketingCampaignsEnabled: false },
+          { siteId: MOCK_SITE_ID, customerId: 'customer-789', canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, bmsBudgetId: undefined, enableAssessmentAgent: false, enableAssessmentOverride: false, assessmentClassifier: undefined, product: 'AiroAppBuilder', modelSelectorEnabled: false, modelOverride: undefined, agentProfileSelectorEnabled: false, agentProfile: undefined, costAttributionDryRun: false, useAtlasCrawler: false, debugStatsEnabled: false, marketingCampaignsEnabled: false, asmDualWriteEnabled: false },
           expiresInSeconds
         );
         expect(mockJWTService.getToken).not.toHaveBeenCalled();
@@ -490,8 +490,8 @@ describe('agent-token', function packageTests() {
           useAtlasCrawler: false,
 
           debugStatsEnabled: false,
-        marketingCampaignsEnabled: false,
-
+          marketingCampaignsEnabled: false,
+          asmDualWriteEnabled: false,
         });
       });
 
@@ -538,6 +538,7 @@ describe('agent-token', function packageTests() {
 
           debugStatsEnabled: false,
         marketingCampaignsEnabled: false,
+          asmDualWriteEnabled: false,
 
         });
       });
@@ -568,6 +569,27 @@ describe('agent-token', function packageTests() {
     });
 
     describe('switchboard flags', function switchboardTests() {
+      it('should pass asmDualWriteEnabled flag from switchboard', async function asmDualWriteFlag() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'user-jwt-token'
+        });
+
+        mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+        mockCheckSwitchboardFlag.mockImplementation((flag: string) =>
+          Promise.resolve(flag === 'appbuilder-asm-dual-write')
+        );
+
+        const request = createMockRequest({ siteId: MOCK_SITE_ID });
+        const response = await POST(request);
+
+        expect(response.status).toBe(200);
+        expect(mockJWTService.getToken).toHaveBeenCalledWith(
+          expect.objectContaining({ asmDualWriteEnabled: true })
+        );
+      });
+
       it('should pass useTestBudget flag from switchboard', async function testBudgetFlag() {
         mockAuthenticateCustomer.mockResolvedValue({
           isAuthenticated: true,

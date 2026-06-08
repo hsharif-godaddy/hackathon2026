@@ -461,6 +461,21 @@ describe('AgentsMessagePersistence', function packageTests() {
       }))
     })
 
+    it('should clear stale incomplete/error metadata from a prior disconnect or error', async function clearsStaleFailureMetadata() {
+      // Simulates the recovery-after-failure case: handleDisconnection or handleConversationError
+      // already stamped { incomplete: true, outcome: 'disconnected'|'error', error, errorTimestamp }.
+      // The shallow merge in the repository would otherwise leave those fields on a successfully
+      // completed message. The success update must explicitly overwrite/clear them.
+      seedActiveConversation('test-socket', 'agent-msg-id')
+      await persistence.completeConversation('conv-123', [chunk('hi')], {}, makeContext())
+
+      const [, payload] = mockUpdateMessage.mock.calls[0] as [string, { metadata: Record<string, unknown> }]
+      expect(payload.metadata.incomplete).toBe(false)
+      expect(payload.metadata.outcome).toBe('complete')
+      expect(payload.metadata).toHaveProperty('error', undefined)
+      expect(payload.metadata).toHaveProperty('errorTimestamp', undefined)
+    })
+
     it('should call addMessage as fallback when no agentMessageId exists', async function callsAddAsFallback() {
       // Do NOT seed activeConversations — no agentMessageId
       await persistence.completeConversation('conv-123', [chunk('hi')], {}, makeContext())
@@ -541,7 +556,7 @@ describe('AgentsMessagePersistence', function packageTests() {
   describe('#handleDisconnection – cleanup', function disconnectionCleanupTests() {
     it('should clear inProgress flag when agent message is in progress', async function clearsInProgress() {
       seedActiveConversation('test-socket', 'agent-msg-123')
-      
+
       mockGetMessageById.mockResolvedValueOnce({
         id: 'agent-msg-123',
         sender: 'agent',
@@ -553,7 +568,9 @@ describe('AgentsMessagePersistence', function packageTests() {
 
       expect(mockGetMessageById).toHaveBeenCalledWith('agent-msg-123')
       expect(mockUpdateMessageMetadata).toHaveBeenCalledWith('agent-msg-123', {
-        inProgress: false
+        inProgress: false,
+        incomplete: true,
+        outcome: 'disconnected'
       })
       expect(mockLoggerModule.info).toHaveBeenCalledWith(
         'websocket.disconnection.clearing_inprogress',
@@ -567,7 +584,7 @@ describe('AgentsMessagePersistence', function packageTests() {
 
     it('should not update when message has inProgress: false', async function skipWhenNotInProgress() {
       seedActiveConversation('test-socket', 'agent-msg-123')
-      
+
       mockGetMessageById.mockResolvedValueOnce({
         id: 'agent-msg-123',
         sender: 'agent',
@@ -583,7 +600,7 @@ describe('AgentsMessagePersistence', function packageTests() {
 
     it('should not update when message has no inProgress metadata', async function skipWhenNoMetadata() {
       seedActiveConversation('test-socket', 'agent-msg-123')
-      
+
       mockGetMessageById.mockResolvedValueOnce({
         id: 'agent-msg-123',
         sender: 'agent',
@@ -607,7 +624,7 @@ describe('AgentsMessagePersistence', function packageTests() {
 
     it('should handle errors gracefully and log them', async function handleErrors() {
       seedActiveConversation('test-socket', 'agent-msg-123')
-      
+
       mockGetMessageById.mockRejectedValueOnce(new Error('Database unavailable'))
 
       await persistence.handleDisconnection('test-socket', ['conv-123'])
