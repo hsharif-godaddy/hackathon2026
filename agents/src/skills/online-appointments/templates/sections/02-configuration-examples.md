@@ -45,8 +45,8 @@ checkout API — GoDaddy derives the actual checkout currency from the SKU's pri
 2. `lib/appointments` exports `formatMoney(amount, currency, locale?)` which uses
    `Intl.NumberFormat` and respects the currency's correct number of fraction digits
    (cents for USD/EUR, none for JPY, three for KWD).
-3. Other payment providers (Stripe, etc.) **do** accept currency on session creation, so
-   the field stays on the typed contract for provider portability.
+3. The `currency` field stays on the typed contract for display validation — callers can
+   verify the configured currency matches what the merchant's GoDaddy Commerce SKUs are priced in.
 
 The examples below stay within the validated schema. Sections that need additional fields
 (free-first, class packages) call out the schema extension explicitly.

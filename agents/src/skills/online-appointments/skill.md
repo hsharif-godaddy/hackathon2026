@@ -7,7 +7,7 @@ dependencies:
   - date-fns-tz
   - zod
 intents:
-  - booking/appointments/scheduling/reservation/time slots
+  - booking/appointments/scheduling/reservation/time slots/class booking/book a spot/waitlist/classes
 ---
 
 # Online Appointments Skill
