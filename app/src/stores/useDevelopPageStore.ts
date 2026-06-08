@@ -205,6 +205,9 @@ interface DevelopPageStore {
   activeSettingsSection: SettingsSection
   chatTabsInitializedForPathname: string | null
 
+  // View-mode URL sync guard (initialized from URL in useView)
+  viewInitializedForPathname: string | null
+
   // UI loading indicators
   isRestarting: boolean
   hasUnsavedChanges: boolean
@@ -316,6 +319,7 @@ interface DevelopPageStore {
   setActiveChatTab: (tab: ChatTab) => void
   setActiveSettingsSection: (section: SettingsSection) => void
   markChatTabsInitialized: (pathname: string) => void
+  markViewInitialized: (pathname: string) => void
 
   // Feedback modal actions
   openFeedbackModal: (feedbackId: string, origin?: string, initialStep?: FeedbackCategory) => void
@@ -449,6 +453,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     activeChatTab: ChatTab.CHAT,
     activeSettingsSection: SettingsSection.PROJECT,
     chatTabsInitializedForPathname: null,
+    viewInitializedForPathname: null,
 
     // Feedback modal state
     openFeedbackId: null,
@@ -636,6 +641,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
       }
     }),
     markChatTabsInitialized: (pathname) => set((state) => { state.chatTabsInitializedForPathname = pathname }),
+    markViewInitialized: (pathname) => set((state) => { state.viewInitializedForPathname = pathname }),
 
     // Feedback modal actions
     openFeedbackModal: (feedbackId: string, origin?: string, initialStep?: FeedbackCategory) => {

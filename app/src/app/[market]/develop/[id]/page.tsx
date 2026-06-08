@@ -59,6 +59,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useSyncResponsiveState } from '@/hooks/useSyncResponsiveState'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase'
+import { useView, type ViewAvailability } from '@/hooks/useView'
 import { useVisitedTabs } from '@/hooks/useVisitedTabs'
 import { agentFetch } from '@/lib/agent-fetch'
 import { JourneyTracker } from '@/lib/journeyTracker'
@@ -235,6 +236,19 @@ function DevelopPageContent() {
     setInboxBrandId(brandId)
     setInboxAccountId(accountId)
   }, [brandId, accountId, isLoadingAccount, accountError, setInboxBrandId, setInboxAccountId])
+
+  // Deep-link the Inbox view via ?view=inbox (see useView).
+  const isInboxEnabled = useSwitchboard('app-builder-inbox-button')
+  const getViewAvailability = useCallback(
+    (mode: ViewMode): ViewAvailability => {
+      if (mode === ViewMode.INBOX) {
+        return { available: Boolean(isInboxEnabled && brandId), resolving: isLoadingAccount }
+      }
+      return { available: true, resolving: false }
+    },
+    [isInboxEnabled, brandId, isLoadingAccount]
+  )
+  useView({ getViewAvailability })
 
   // Eval snapshot capture - captures screenshot on first build completion
   const { triggerEvalSnapshot, handleEvalViewportScreenshot } = useEvalSnapshotCapture({ appId })
