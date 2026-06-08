@@ -604,8 +604,8 @@ describe('Files Router - Path Traversal Security', () => {
   });
 
   describe('POST /files/upload - Multer Error Handling', () => {
-    it('should return 400 when file exceeds 10MB size limit', async () => {
-      const largeBuffer = Buffer.alloc(11 * 1024 * 1024);
+    it('should return 400 when file exceeds 25MB size limit', async () => {
+      const largeBuffer = Buffer.alloc(26 * 1024 * 1024);
 
       const response = await request(app)
         .post('/files/upload')
@@ -614,7 +614,7 @@ describe('Files Router - Path Traversal Security', () => {
         .set('Authorization', 'Bearer valid-token');
 
       expect(response.status).toBe(400);
-      expect(response.body.error).toContain('10MB');
+      expect(response.body.error).toContain('25MB');
     });
 
     it('should return 400 when more than 5 files are uploaded', async () => {

@@ -59,7 +59,7 @@ describe('uploadChatFiles', () => {
   })
 
   it('returns batchLevelError on validation failure without calling fetch', async () => {
-    const big = new File([new ArrayBuffer(11 * 1024 * 1024)], 'huge.jpg', { type: 'image/jpeg' })
+    const big = new File([new ArrayBuffer(26 * 1024 * 1024)], 'huge.jpg', { type: 'image/jpeg' })
     const result = await uploadChatFiles('app-1', [big], t)
     expect(result.files).toEqual([])
     expect(result.batchLevelError).toBeTruthy()

@@ -3,6 +3,11 @@ import request from 'supertest';
 import express from 'express';
 import sharp from 'sharp';
 
+// Mock rate limiter to avoid 429s when running many tests
+vi.mock('express-rate-limit', () => ({
+  default: () => (req: any, res: any, next: any) => next(),
+}));
+
 // Mock the app-ownership middleware to bypass authentication
 vi.mock('../../middleware/app-ownership.js', () => ({
   validateAppOwnership: vi.fn(function (req, res, next) { return next(); }),
@@ -254,7 +259,7 @@ describe('POST /media/:appId/slots/:slotName/upload', () => {
 // Helper to build a minimal valid JPEG buffer
 async function makeJpeg() {
   return sharp({
-    create: { width: 10, height: 10, channels: 3, background: { r: 100, g: 100, b: 100 } },
+    create: { width: 100, height: 100, channels: 3, background: { r: 100, g: 100, b: 100 } },
   })
     .jpeg()
     .toBuffer();
@@ -273,6 +278,145 @@ function makeSlot(currentUrl: string, uploadSources?: Record<string, string>) {
     ...(uploadSources ? { uploadSources } : {}),
   };
 }
+
+describe('POST /media/:appId/slots/:slotName/upload — image processing', () => {
+  let app: express.Application;
+
+  beforeAll(async () => {
+    const { default: mediaRouter } = await import('../media.js');
+    app = express();
+    app.use('/media', mediaRouter);
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should accept GIF uploads without sharp processing (preserves animation)', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js');
+    vi.mocked(mediaManifestService.getSlot).mockResolvedValue({
+      success: true,
+      slot: makeSlot('https://example.com/old.gif'),
+    });
+    vi.mocked(mediaManifestService.updateSlotWithUpload).mockResolvedValue({
+      success: true,
+      slot: makeSlot('/airo-assets/uploads/hero-abc.gif'),
+    });
+
+    // Minimal valid GIF (GIF89a header)
+    const gifBuffer = Buffer.from(
+      'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+      'base64'
+    );
+
+    const response = await request(app)
+      .post('/media/test-app/slots/hero/upload')
+      .attach('image', gifBuffer, { filename: 'anim.gif', contentType: 'image/gif' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.uploadedUrl).toContain('.gif');
+  });
+
+  it('should return 400 for corrupt/undecodable images (not 500)', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js');
+    vi.mocked(mediaManifestService.getSlot).mockResolvedValue({
+      success: true,
+      slot: makeSlot('https://example.com/old.jpg'),
+    });
+
+    // Valid JPEG magic bytes but corrupt payload
+    const corruptJpeg = Buffer.concat([
+      Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]),
+      Buffer.alloc(100, 0x00),
+    ]);
+
+    const response = await request(app)
+      .post('/media/test-app/slots/hero/upload')
+      .attach('image', corruptJpeg, { filename: 'corrupt.jpg', contentType: 'image/jpeg' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('could not be processed');
+  });
+
+  it('should return 400 for corrupt WebP (not 500)', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js');
+    vi.mocked(mediaManifestService.getSlot).mockResolvedValue({
+      success: true,
+      slot: makeSlot('https://example.com/old.webp'),
+    });
+
+    // Valid WebP magic bytes (RIFF....WEBP) but corrupt payload
+    const corruptWebp = Buffer.concat([
+      Buffer.from([0x52, 0x49, 0x46, 0x46]), // RIFF
+      Buffer.from([0x00, 0x00, 0x00, 0x00]), // file size (doesn't matter)
+      Buffer.from([0x57, 0x45, 0x42, 0x50]), // WEBP
+      Buffer.alloc(100, 0x00),
+    ]);
+
+    const response = await request(app)
+      .post('/media/test-app/slots/hero/upload')
+      .attach('image', corruptWebp, { filename: 'corrupt.webp', contentType: 'image/webp' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('could not be processed');
+  });
+
+  it('should accept small images (sub-50px) without rejecting', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js');
+    vi.mocked(mediaManifestService.getSlot).mockResolvedValue({
+      success: true,
+      slot: makeSlot('https://example.com/old.jpg'),
+    });
+    vi.mocked(mediaManifestService.updateSlotWithUpload).mockResolvedValue({
+      success: true,
+      slot: makeSlot('/airo-assets/uploads/icon-abc.jpg'),
+    });
+
+    // 10x10 image — below old 50px minimum
+    const smallImage = await sharp({
+      create: { width: 10, height: 10, channels: 3, background: { r: 200, g: 200, b: 200 } },
+    }).jpeg().toBuffer();
+
+    const response = await request(app)
+      .post('/media/test-app/slots/icon/upload')
+      .attach('image', smallImage, { filename: 'icon.jpg', contentType: 'image/jpeg' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+  });
+
+  it('should pass processed dimensions to updateSlotWithUpload', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js');
+    vi.mocked(mediaManifestService.getSlot).mockResolvedValue({
+      success: true,
+      slot: makeSlot('https://example.com/old.jpg'),
+    });
+    vi.mocked(mediaManifestService.updateSlotWithUpload).mockResolvedValue({
+      success: true,
+      slot: makeSlot('/airo-assets/uploads/hero-abc.jpg'),
+    });
+
+    // 5000x3000 image — should be resized to fit within 3840px
+    const largeImage = await sharp({
+      create: { width: 5000, height: 3000, channels: 3, background: { r: 50, g: 50, b: 50 } },
+    }).jpeg().toBuffer();
+
+    const response = await request(app)
+      .post('/media/test-app/slots/hero/upload')
+      .attach('image', largeImage, { filename: 'hero.jpg', contentType: 'image/jpeg' });
+
+    expect(response.status).toBe(200);
+    expect(mediaManifestService.updateSlotWithUpload).toHaveBeenCalledWith(
+      'test-app',
+      'hero',
+      expect.any(String),
+      expect.objectContaining({
+        dimensions: { width: 3840, height: expect.any(Number) },
+      })
+    );
+  });
+});
 
 describe('POST /media/:appId/slots/:slotName/upload — overwriteFilename', () => {
   let app: express.Application;

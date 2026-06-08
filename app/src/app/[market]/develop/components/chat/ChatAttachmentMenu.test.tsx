@@ -196,7 +196,7 @@ describe('ChatAttachmentMenu', () => {
   it('should call onUploadError when validation fails (oversized file)', async () => {
     const onUploadError = vi.fn();
     const onStageFiles = vi.fn();
-    const bigBuffer = new ArrayBuffer(11 * 1024 * 1024);
+    const bigBuffer = new ArrayBuffer(26 * 1024 * 1024);
     const hugeFile = new File([bigBuffer], 'huge.jpg', { type: 'image/jpeg' });
 
     const { user } = renderWithProviders(

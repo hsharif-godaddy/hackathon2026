@@ -144,7 +144,6 @@
     "@vercel/otel": "^2.1.2",
     "@xstate/react": "^6.1.0",
     "axios": "^1.16.0",
-    "browser-image-compression": "^2.0.2",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
     "concurrently": "^9.2.1",

@@ -988,9 +988,9 @@ router.post(
         ext = ALLOWED_VIDEO_TYPES[matchingFile.mimeType ?? ''] || 'mp4';
       } else {
         const processed = await imageProcessingService.processImage(fileBuffer, {
-          maxWidth: 2048,
-          maxHeight: 2048,
-          quality: 85,
+          maxWidth: 3840,
+          maxHeight: 3840,
+          quality: 90,
         });
         outputBuffer = processed.buffer;
         ext = processed.format === 'jpeg' ? 'jpg' : processed.format;
@@ -1190,10 +1190,39 @@ router.post(
         });
       }
 
-      // Write the uploaded buffer directly — the client already compresses to
-      // 1MB / 2048px and strips EXIF via browser-image-compression (canvas).
-      // Re-encoding through sharp would cause double lossy compression for
-      // JPEGs with no additional benefit.
+      // Single compression pass (Sharp/MozJPEG).
+      // GIFs and animated WebPs skip processing to preserve animation.
+      let outputBuffer: Buffer;
+      let processedDimensions: { width: number; height: number } | undefined;
+      const skipProcessing = isVideoUpload
+        || file.mimetype === IMAGE_MIME_TYPE.GIF
+        || (file.mimetype === IMAGE_MIME_TYPE.WEBP && ((await sharp(file.buffer).metadata().catch(() => ({ pages: 1 }))).pages ?? 1) > 1);
+
+      if (!skipProcessing) {
+        try {
+          const processed = await imageProcessingService.processImage(file.buffer, {
+            maxWidth: 3840,
+            maxHeight: 3840,
+            minWidth: 1,
+            minHeight: 1,
+            quality: 90,
+          });
+          outputBuffer = processed.buffer;
+          processedDimensions = { width: processed.width, height: processed.height };
+        } catch (processErr) {
+          logger.warn('route.media.upload.image_processing_failed', {
+            appId,
+            slotName,
+            error: processErr instanceof Error ? processErr.message : String(processErr),
+          });
+          return res.status(400).json({
+            success: false,
+            error: 'Image could not be processed. File may be corrupt or unsupported.',
+          });
+        }
+      } else {
+        outputBuffer = file.buffer;
+      }
 
       // If overwriteFilename is provided (editing a local upload), reuse the
       // existing filename so the file is overwritten in place instead of
@@ -1228,7 +1257,7 @@ router.post(
           .replace(/[^a-zA-Z0-9-]/g, '');
         const hash = crypto
           .createHash('sha256')
-          .update(file.buffer)
+          .update(outputBuffer)
           .digest('hex')
           .slice(0, 8);
         const ext = ALLOWED_MEDIA_TYPES[file.mimetype];
@@ -1271,7 +1300,7 @@ router.post(
 
       // Atomic write: write to temp file first, then rename
       const tempPath = `${filePath}.tmp.${Date.now()}`;
-      await fs.writeFile(tempPath, file.buffer);
+      await fs.writeFile(tempPath, outputBuffer);
       await fs.rename(tempPath, filePath);
 
       // Build the URL (using airo-assets proxy pattern)
@@ -1287,7 +1316,7 @@ router.post(
             const chatFilePath = await fileUploadService.findUploadedFilePath(appId, chatFilename);
             if (chatFilePath) {
               const chatTempPath = `${chatFilePath}.tmp.${Date.now()}`;
-              await fs.writeFile(chatTempPath, file.buffer);
+              await fs.writeFile(chatTempPath, outputBuffer);
               await fs.rename(chatTempPath, chatFilePath);
               logger.debug('route.media.upload.overwrite_chat_copy_updated', {
                 appId,
@@ -1354,7 +1383,7 @@ router.post(
                 if (!resolvedSibling.startsWith(resolvedMediaDir + path.sep)) continue;
                 try {
                   const siblingTempPath = `${siblingFilePath}.tmp.${Date.now()}`;
-                  await fs.writeFile(siblingTempPath, file.buffer);
+                  await fs.writeFile(siblingTempPath, outputBuffer);
                   await fs.rename(siblingTempPath, siblingFilePath);
                   logger.debug('route.media.upload.cross_slot_overwrite', {
                     appId,
@@ -1404,7 +1433,7 @@ router.post(
           );
           if (chatFilePath) {
             const chatTempPath = `${chatFilePath}.tmp.${Date.now()}`;
-            await fs.writeFile(chatTempPath, file.buffer);
+            await fs.writeFile(chatTempPath, outputBuffer);
             await fs.rename(chatTempPath, chatFilePath);
             chatUploadFilename = chatFilenameOverwrite;
             logger.debug('route.media.upload.chat_overwrite_updated', {
@@ -1423,7 +1452,10 @@ router.post(
         }
       } else {
         try {
-          const chatResult = await fileUploadService.processUpload(appId, [file]);
+          // Pass the processed buffer so the chat copy stores the compressed
+          // version (smaller on disk) rather than the raw original.
+          const compressedFile = { ...file, buffer: outputBuffer, size: outputBuffer.length };
+          const chatResult = await fileUploadService.processUpload(appId, [compressedFile]);
           if (chatResult.files?.length > 0) {
             chatUploadFilename = chatResult.files[0]?.filename;
           }
@@ -1435,29 +1467,12 @@ router.post(
         }
       }
 
-      let dimensions: { width: number; height: number } | undefined;
-      if (!isVideoUpload) {
-        try {
-          const meta = await sharp(file.buffer).metadata();
-          if (meta.width && meta.height) {
-            dimensions = { width: meta.width, height: meta.height };
-          }
-        } catch (metaErr) {
-          logger.debug('route.media.upload.metadata_read_failed', {
-            appId,
-            slotName,
-            error: metaErr instanceof Error ? metaErr.message : String(metaErr),
-          });
-        }
-      }
-
       // Update manifest: new URL becomes current, old current goes to alternatives.
-      // Pass chatUploadFilename so the slot tracks which chat upload produced this URL.
       const updateResult = await mediaManifestService.updateSlotWithUpload(
         appId,
         slotName,
         uploadedUrl,
-        { sourceFilename: chatUploadFilename, isVideo: isVideoUpload, dimensions }
+        { sourceFilename: chatUploadFilename, isVideo: isVideoUpload, dimensions: processedDimensions }
       );
 
       if (!updateResult.success) {

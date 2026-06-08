@@ -104,13 +104,13 @@ describe('FileUploadButton', () => {
     });
   });
 
-  it('should reject files exceeding 10MB with error message', async () => {
+  it('should reject files exceeding 25MB with error message', async () => {
     const mockOnUploadError = vi.fn();
     renderWithProviders(<FileUploadButton appId="test-app" onFilesUploaded={() => {}} onUploadError={mockOnUploadError} />);
 
     const fileInput = screen.getByTestId('file-input') as HTMLInputElement;
     const largeFile = new File(['x'.repeat(100)], 'huge.png', { type: 'image/png' });
-    Object.defineProperty(largeFile, 'size', { value: 11 * 1024 * 1024 });
+    Object.defineProperty(largeFile, 'size', { value: 26 * 1024 * 1024 });
 
     fireEvent.change(fileInput, { target: { files: [largeFile] } });
 
@@ -128,8 +128,8 @@ describe('FileUploadButton', () => {
     const fileInput = screen.getByTestId('file-input') as HTMLInputElement;
     const largeA = new File(['a'], 'big1.png', { type: 'image/png' });
     const largeB = new File(['b'], 'big2.png', { type: 'image/png' });
-    Object.defineProperty(largeA, 'size', { value: 11 * 1024 * 1024 });
-    Object.defineProperty(largeB, 'size', { value: 15 * 1024 * 1024 });
+    Object.defineProperty(largeA, 'size', { value: 26 * 1024 * 1024 });
+    Object.defineProperty(largeB, 'size', { value: 30 * 1024 * 1024 });
 
     fireEvent.change(fileInput, { target: { files: [largeA, largeB] } });
 

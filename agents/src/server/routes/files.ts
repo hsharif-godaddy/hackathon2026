@@ -97,7 +97,7 @@ async function persistUploadsToDocs(
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024,
+    fileSize: 25 * 1024 * 1024,
     files: 5
   }
 })
@@ -172,7 +172,7 @@ function handleMulterError(err: Error, req: Request, res: Response, next: NextFu
       field: err.field
     })
     if (err.code === 'LIMIT_FILE_SIZE') {
-      res.status(400).json({ error: 'File size exceeds 10MB limit' })
+      res.status(400).json({ error: 'File size exceeds 25MB limit' })
       return
     }
     if (err.code === 'LIMIT_FILE_COUNT') {
