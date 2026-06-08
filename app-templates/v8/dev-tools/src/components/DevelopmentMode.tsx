@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { safePostMessage, isOriginAllowed } from '../utils/postMessage'
 import { send } from '../utils/eventBus'
 import { captureAndResizeScreenshot, captureViewportScreenshot } from '../utils/screenshot'
+import { showSelectionOverlay } from '../utils/selection-overlay'
 import { useEditMode } from "../hooks/useEditMode";
 import ElementHoverBar from "./ElementHoverBar";
 import { setTranslations } from "../utils/translations";
@@ -678,6 +679,372 @@ export default function DevelopmentMode() {
       })
     }
 
+    // ── Scroll-to-media timing ────────────────────────────────────────────────
+    // Single animation-settle constant used for all carousel/scroll waits.
+    const ANIMATION_SETTLE_MS = 400
+
+    // Generation token: incremented on every new scrollToMediaSlot call.
+    // In-flight timers check this to avoid highlighting for a stale request.
+    let scrollGeneration = 0
+
+    /**
+     * For state-driven carousels (React state + AnimatePresence) that only render
+     * the active slide's image: find a sibling image from the same directory, locate
+     * nearby navigation dots/buttons, and click through them until our target appears.
+     * Returns true if a carousel was found and navigation was attempted.
+     */
+    function navigateStateDrivenCarousel(slotPath: string, imagePattern: string, videoPattern: string, gen: number): boolean {
+      // Determine the "group prefix" — e.g. "pages/about/portrait-2" → "/airo-assets/images/pages/about/"
+      const parts = slotPath.split('/')
+      const groupPrefix = `/airo-assets/images/${parts.slice(0, -1).join('/')}/`
+
+      // Find a currently-visible image from the same group
+      const siblingImg = Array.from(document.querySelectorAll<HTMLImageElement>('img')).find((img) => {
+        const src = img.src || img.getAttribute('src') || ''
+        return src.includes(groupPrefix) && !src.includes(imagePattern)
+      }) || null
+
+      if (!siblingImg) {
+        return false
+      }
+
+
+      // Walk up from the sibling to find the carousel container (look for navigation buttons)
+      let carouselContainer: HTMLElement | null = null
+      let ancestor: HTMLElement | null = siblingImg.parentElement
+      for (let depth = 0; depth < 10 && ancestor && ancestor !== document.body; depth++) {
+        // Look for a container that has slide-navigation buttons
+        const dots = ancestor.querySelectorAll('button[aria-label^="Slide"]')
+        if (dots.length > 1) {
+          carouselContainer = ancestor
+          break
+        }
+        // Also look for "Previous"/"Next" button patterns
+        const prevNext = ancestor.querySelectorAll('button[aria-label="Previous"], button[aria-label="Next"]')
+        if (prevNext.length >= 2) {
+          carouselContainer = ancestor
+          break
+        }
+        ancestor = ancestor.parentElement
+      }
+
+      if (!carouselContainer) {
+        return false
+      }
+
+      // Find dot buttons (prefer aria-label="Slide N" pattern)
+      const dots = Array.from(carouselContainer.querySelectorAll<HTMLButtonElement>('button[aria-label^="Slide"]'))
+
+      if (dots.length > 0) {
+        // Click each dot sequentially until our target image appears
+        clickDotsSequentially(dots, 0, imagePattern, videoPattern, slotPath, gen)
+        return true
+      }
+
+      // Fallback: use Next button repeatedly
+      const nextBtn = carouselContainer.querySelector<HTMLButtonElement>('button[aria-label="Next"]')
+      if (nextBtn) {
+        clickNextRepeatedly(nextBtn, 0, 10, imagePattern, videoPattern, slotPath, gen)
+        return true
+      }
+
+      return false
+    }
+
+    /** Click dot buttons one by one until the target image appears in the DOM */
+    function clickDotsSequentially(
+      dots: HTMLButtonElement[], dotIndex: number,
+      imagePattern: string, videoPattern: string, slotPath: string, gen: number
+    ) {
+      if (dotIndex >= dots.length) {
+        // Exhausted all dots without finding target — send terminal result
+        if (window.parent !== window) {
+          send({ type: 'MEDIA_SLOT_SCROLL_RESULT', slotPath, totalMatches: 0, currentIndex: -1 })
+        }
+        return
+      }
+
+      dots[dotIndex].click()
+
+      // Wait for animation, then check if target appeared
+      setTimeout(() => {
+        if (gen !== scrollGeneration) return
+        const found = findTargetElement(imagePattern, videoPattern)
+        if (found) {
+          highlightElement(found, slotPath, 1, 0, gen)
+        } else {
+          clickDotsSequentially(dots, dotIndex + 1, imagePattern, videoPattern, slotPath, gen)
+        }
+      }, ANIMATION_SETTLE_MS)
+    }
+
+    /** Click Next button repeatedly until target appears or max attempts reached */
+    function clickNextRepeatedly(
+      btn: HTMLButtonElement, attempt: number, maxAttempts: number,
+      imagePattern: string, videoPattern: string, slotPath: string, gen: number
+    ) {
+      if (attempt >= maxAttempts) {
+        // Exhausted max attempts without finding target — send terminal result
+        if (window.parent !== window) {
+          send({ type: 'MEDIA_SLOT_SCROLL_RESULT', slotPath, totalMatches: 0, currentIndex: -1 })
+        }
+        return
+      }
+
+      btn.click()
+      setTimeout(() => {
+        if (gen !== scrollGeneration) return
+        const found = findTargetElement(imagePattern, videoPattern)
+        if (found) {
+          highlightElement(found, slotPath, 1, 0, gen)
+        } else {
+          clickNextRepeatedly(btn, attempt + 1, maxAttempts, imagePattern, videoPattern, slotPath, gen)
+        }
+      }, ANIMATION_SETTLE_MS)
+    }
+
+    /** Check if the target image/video is currently in the DOM */
+    function findTargetElement(imagePattern: string, videoPattern: string): HTMLElement | null {
+      for (const img of document.querySelectorAll<HTMLImageElement>('img')) {
+        if (img.getAttribute('data-airo-video-patched')) continue
+        const src = img.src || img.getAttribute('src') || ''
+        if (src.includes(imagePattern) || src.includes(videoPattern)) {
+          return img
+        }
+      }
+      for (const video of document.querySelectorAll<HTMLVideoElement>('video')) {
+        const src = video.src || video.getAttribute('src') || ''
+        if (src.includes(imagePattern) || src.includes(videoPattern)) {
+          return video
+        }
+      }
+      return null
+    }
+
+    /** Scroll to element, show overlay and toolbar */
+    function highlightElement(el: HTMLElement, slotPath: string, totalMatches = 1, currentIndex = 0, gen?: number) {
+      // Stale request guard: if a newer scroll was triggered, bail out
+      if (gen !== undefined && gen !== scrollGeneration) return
+      // Report to parent
+      if (window.parent !== window) {
+        send({ type: 'MEDIA_SLOT_SCROLL_RESULT', slotPath, totalMatches, currentIndex })
+      }
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setTimeout(() => {
+        if (gen !== undefined && gen !== scrollGeneration) return
+        showSelectionOverlay(el)
+        // Synthetic click triggers ElementHoverBar via useImageHoverDetection.
+        // bubbles:false prevents the event from reaching <a> wrappers (SPA navigation),
+        // but document capture-phase listeners (useImageHoverDetection) still fire.
+        el.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true }))
+      }, ANIMATION_SETTLE_MS)
+    }
+
+    /**
+     * Scroll to a media slot element in the preview and highlight it.
+     * Handles: <img>, <video>, data-slot video siblings, background-image elements,
+     * and elements inside carousels (navigates to the correct slide first).
+     */
+    function scrollToMediaSlot(slotPath: string, index: number) {
+      // Increment generation to invalidate any in-flight timers from prior calls
+      const gen = ++scrollGeneration
+      const imagePattern = `/airo-assets/images/${slotPath}`
+      const videoPattern = `/airo-assets/videos/${slotPath}`
+
+      // Collect all DOM elements that display this media slot
+      const matches: HTMLElement[] = []
+
+      // 1. <img> elements matching the slot URL pattern
+      document.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
+        const src = img.src || img.getAttribute('src') || ''
+        if (src.includes(imagePattern) || src.includes(videoPattern)) {
+          // Skip hidden images that have been replaced by video siblings
+          if (!img.getAttribute('data-airo-video-patched')) {
+            matches.push(img)
+          }
+        }
+      })
+
+      // 2. <video> elements (both direct and data-slot siblings, and bg-videos)
+      document.querySelectorAll<HTMLVideoElement>('video').forEach((video) => {
+        const src = video.src || video.getAttribute('src') || ''
+        const dataSlot = video.getAttribute('data-slot')
+        if (src.includes(imagePattern) || src.includes(videoPattern) || dataSlot === slotPath) {
+          matches.push(video)
+        }
+      })
+
+      // 3. Elements with background-image matching the slot
+      document.querySelectorAll<HTMLElement>('[style*="background"], [data-airo-video-bg-patched]').forEach((el) => {
+        const bgPatched = el.getAttribute('data-airo-video-bg-patched')
+        if (bgPatched === slotPath) {
+          matches.push(el)
+          return
+        }
+        const bgImage = window.getComputedStyle(el).backgroundImage
+        if (bgImage && (bgImage.includes(imagePattern) || bgImage.includes(videoPattern))) {
+          matches.push(el)
+        }
+      })
+
+      // Also scan common structural elements for CSS-class-based backgrounds
+      document.querySelectorAll<HTMLElement>('section, div, header, main').forEach((el) => {
+        if (matches.includes(el)) return
+        const bgImage = window.getComputedStyle(el).backgroundImage
+        if (bgImage && bgImage !== 'none' && (bgImage.includes(imagePattern) || bgImage.includes(videoPattern))) {
+          matches.push(el)
+        }
+      })
+
+      if (matches.length === 0) {
+        // The element isn't in the DOM. Two possible reasons:
+        // 1. Page still loading after navigation (retry once)
+        // 2. State-driven carousel (AnimatePresence) only renders the active slide
+        //
+        // Don't send MEDIA_SLOT_SCROLL_RESULT yet — async carousel/retry will
+        // send the definitive result (avoids a brief "0 of 0" flash).
+        //
+        // For case 2: find a "sibling" image from the same directory (e.g. another
+        // pages/about/* image) and click carousel navigation dots near it until
+        // our target appears.
+        if (index >= 0) {
+          // First retry: try navigating a state-driven carousel
+          const navigated = navigateStateDrivenCarousel(slotPath, imagePattern, videoPattern, gen)
+          if (!navigated) {
+            // No sibling carousel found — just retry after delay (case 1)
+            setTimeout(() => {
+              if (gen !== scrollGeneration) return
+              scrollToMediaSlot(slotPath, -1)
+            }, ANIMATION_SETTLE_MS)
+          }
+        } else {
+          // Final retry also found nothing — send terminal "not found" result
+          if (window.parent !== window) {
+            send({ type: 'MEDIA_SLOT_SCROLL_RESULT', slotPath, totalMatches: 0, currentIndex: -1 })
+          }
+        }
+        return
+      }
+
+      // Report count back to parent (only when we found matches —
+      // the 0-match case is handled by carousel exhaustion or retry)
+      if (window.parent !== window) {
+        send({
+          type: 'MEDIA_SLOT_SCROLL_RESULT',
+          slotPath,
+          totalMatches: matches.length,
+          currentIndex: index,
+        })
+      }
+
+      // Clamp index to valid range (use 0 for retry attempts where index is -1)
+      const targetIndex = Math.max(0, Math.min(index < 0 ? 0 : index, matches.length - 1))
+      const targetEl = matches[targetIndex]
+
+      // Handle carousel: if the element is inside an Embla carousel, navigate to its slide
+      const isInCarousel = activateCarouselSlide(targetEl)
+
+      // Scroll into view after a delay (longer for carousels to let animation settle)
+      setTimeout(() => {
+        if (gen !== scrollGeneration) return
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+
+        // Apply the selection overlay and trigger toolbar after scrolling settles
+        setTimeout(() => {
+          if (gen !== scrollGeneration) return
+          showSelectionOverlay(targetEl)
+          // Synthetic click triggers ElementHoverBar via useImageHoverDetection.
+          // bubbles:false prevents the event from reaching <a> wrappers (SPA navigation),
+          // but document capture-phase listeners (useImageHoverDetection) still fire.
+          targetEl.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true }))
+        }, ANIMATION_SETTLE_MS)
+      }, isInCarousel ? ANIMATION_SETTLE_MS : 100)
+    }
+
+    /**
+     * If the target element is inside an Embla carousel, programmatically
+     * navigate the carousel to the slide containing this element.
+     * Returns true if the element was inside a carousel.
+     * Uses direct transform manipulation — no click simulation.
+     */
+    function activateCarouselSlide(el: HTMLElement): boolean {
+      // DOM structure (from carousel.tsx):
+      //   <div role="region" aria-roledescription="carousel">  ← root
+      //     <div class="overflow-hidden" ref={carouselRef}>    ← viewport (Embla attaches here)
+      //       <div class="flex">                               ← container (slides parent)
+      //         <div>slide 1</div>                             ← CarouselItem (direct child)
+      //           <div><img .../></div>                        ← nested content
+
+
+      // Find the carousel viewport by walking UP from the element looking for
+      // overflow:hidden that has a direct flex child (Embla's structure)
+      let viewport: HTMLElement | null = null
+      let container: HTMLElement | null = null
+      let ancestor: HTMLElement | null = el.parentElement
+
+      while (ancestor && ancestor !== document.body) {
+        const style = window.getComputedStyle(ancestor)
+        const overflow = style.overflow
+        const overflowX = style.overflowX
+        if (overflow === 'hidden' || overflowX === 'hidden') {
+          // Check if first child element is a flex container (Embla's scroll container)
+          const firstChild = ancestor.firstElementChild as HTMLElement | null
+          if (firstChild && window.getComputedStyle(firstChild).display === 'flex') {
+            viewport = ancestor
+            container = firstChild
+            break
+          }
+        }
+        ancestor = ancestor.parentElement
+      }
+
+      if (!viewport || !container) {
+        return false
+      }
+
+      // Find which DIRECT child of the container holds our target element
+      const slides = Array.from(container.children) as HTMLElement[]
+      let slideIndex = -1
+      for (let i = 0; i < slides.length; i++) {
+        if (slides[i] === el || slides[i].contains(el)) {
+          slideIndex = i
+          break
+        }
+      }
+
+
+      if (slideIndex < 0) {
+        return false
+      }
+
+      // Calculate transform by measuring actual slide positions.
+      // Reset transform momentarily to get accurate measurements,
+      // since getBoundingClientRect is affected by the current transform.
+      // Note: we don't restore previous values — Embla's JS will reclaim
+      // transform control on the next user interaction (drag, resize).
+      container.style.transition = 'none'
+      container.style.transform = 'translate3d(0px, 0px, 0px)'
+      // Force reflow so measurements are accurate
+      void container.offsetHeight
+
+      // Now measure the target slide's offset from the container's left edge
+      const targetSlide = slides[slideIndex]
+      const containerRect = container.getBoundingClientRect()
+      const slideRect = targetSlide.getBoundingClientRect()
+      const targetX = -(slideRect.left - containerRect.left)
+
+      // Apply transform with smooth transition (Embla uses CSS transforms internally)
+      container.style.transition = `transform ${ANIMATION_SETTLE_MS}ms ease-out`
+      container.style.transform = `translate3d(${targetX}px, 0px, 0px)`
+
+      // Clean up transition property after animation
+      setTimeout(() => {
+        if (container) container.style.transition = ''
+      }, ANIMATION_SETTLE_MS)
+
+      return true
+    }
+
     // Track visible area of all observed sections for accurate detection
     const sectionVisibility = new Map<Element, { ratio: number; visibleArea: number }>()
 
@@ -1060,6 +1427,8 @@ export default function DevelopmentMode() {
           } catch (fontError) {
             console.error('[DevTools] Font revert failed:', fontError)
           }
+        } else if (event.data?.type === 'SCROLL_TO_MEDIA_SLOT' && event.data.slotPath) {
+          scrollToMediaSlot(event.data.slotPath, event.data.index ?? 0)
         }
       } catch (error) {
         console.error('[DevTools] Message handler error:', error, 'Message type:', event.data?.type)

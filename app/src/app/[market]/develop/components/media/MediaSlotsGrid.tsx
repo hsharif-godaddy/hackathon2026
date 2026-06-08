@@ -9,6 +9,10 @@ import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { generateClickEID } from '@/utils/instrumentation'
+import { postMessageToIframe } from '@/utils/postMessage'
+
+/** Wait for SPA route transition before sending scroll message to iframe */
+const NAV_SETTLE_DELAY_MS = 600
 
 interface MediaSlotsGridProps {
   manifest: Record<string, MediaSlot> | null
@@ -19,6 +23,32 @@ interface MediaSlotsGridProps {
   onSelectSlot: (slotName: string) => void
   /** Increment to bust browser cache for upload thumbnails (e.g. after an overwrite edit) */
   thumbnailBustKey?: number
+}
+
+/**
+ * Derive the preview route from a media slot path.
+ * Slot paths encode their page: "pages/home/hero" → "/", "pages/about/hero" → "/about",
+ * "projects/foo" → "/projects". Returns null for layout/logo slots (present on all pages).
+ */
+/** @internal Exported for testing */
+export function getRouteForSlot(slotPath: string): string | null {
+  if (slotPath.startsWith('pages/home/')) return '/'
+  if (slotPath.startsWith('pages/')) {
+    // "pages/about/hero" → "/about", "pages/blog/post/hero" → "/blog/post"
+    const parts = slotPath.split('/')
+    // Slots always have at least 3 segments (pages/<route>/<slotName>).
+    // A 2-segment "pages/x" would be malformed — treat as home.
+    if (parts.length < 3) return '/'
+    // Everything between "pages/" and the last segment (the slot name) is the route
+    return `/${parts.slice(1, -1).join('/')}`
+  }
+  // Component-level slots like "projects/foo" map to "/<first-segment>"
+  if (!slotPath.startsWith('logo/') && !slotPath.startsWith('layouts/') && !slotPath.startsWith('components/')) {
+    const parts = slotPath.split('/')
+    return `/${parts[0]}`
+  }
+  // Logo/layout slots are on every page — no navigation needed
+  return null
 }
 
 export function MediaSlotsGrid({
@@ -32,6 +62,26 @@ export function MediaSlotsGrid({
 }: MediaSlotsGridProps) {
   const t = useTranslations()
   const previewBaseUrl = useServerPollingStore((state) => state.getServerState(appId))?.url || null
+
+  function scrollPreviewToSlot(name: string) {
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+    if (!iframe) return
+    const targetRoute = getRouteForSlot(name)
+
+    if (targetRoute) {
+      // Navigate without scrollPosition so the iframe doesn't scroll to top
+      // when already on the correct page. SCROLL_TO_MEDIA_SLOT handles positioning.
+      postMessageToIframe(iframe, {
+        type: 'RESTORE_STATE_AFTER_REFRESH',
+        url: targetRoute,
+      })
+      setTimeout(() => {
+        postMessageToIframe(iframe, { type: 'SCROLL_TO_MEDIA_SLOT', slotPath: name, index: 0 })
+      }, NAV_SETTLE_DELAY_MS)
+    } else {
+      postMessageToIframe(iframe, { type: 'SCROLL_TO_MEDIA_SLOT', slotPath: name, index: 0 })
+    }
+  }
 
   if (isLoading) {
     return (
@@ -84,7 +134,10 @@ export function MediaSlotsGrid({
           <button
             type="button"
             key={name}
-            onClick={() => onSelectSlot(name)}
+            onClick={() => {
+              scrollPreviewToSlot(name)
+              onSelectSlot(name)
+            }}
             className="flex flex-col gap-0.5 text-start group hover:cursor-pointer"
             data-eid={generateClickEID("develop.media_panel.slot")}
           >

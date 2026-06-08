@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
 import { renderWithProviders } from '@/tests/test-utils';
-import { MediaSlotsGrid } from './MediaSlotsGrid';
+import { getRouteForSlot, MediaSlotsGrid } from './MediaSlotsGrid';
 
 const mockAppId = 'app-123';
 
@@ -88,5 +88,36 @@ describe('MediaSlotsGrid', () => {
     const { container } = renderWithProviders(<MediaSlotsGrid {...defaultProps} />);
     const img = container.querySelector('img[alt="Slot 2"]') as HTMLImageElement;
     expect(img.src).toContain('https://preview.example.com/airo-assets/uploads/img2.jpg');
+  });
+});
+
+describe('getRouteForSlot', () => {
+  it('maps pages/home/* to /', () => {
+    expect(getRouteForSlot('pages/home/hero')).toBe('/');
+    expect(getRouteForSlot('pages/home/gallery-1')).toBe('/');
+  });
+
+  it('maps pages/about/* to /about', () => {
+    expect(getRouteForSlot('pages/about/hero')).toBe('/about');
+    expect(getRouteForSlot('pages/about/portrait-3')).toBe('/about');
+  });
+
+  it('maps nested page paths correctly', () => {
+    expect(getRouteForSlot('pages/blog/post/hero')).toBe('/blog/post');
+    expect(getRouteForSlot('pages/services/web/banner')).toBe('/services/web');
+  });
+
+  it('maps component-level slots to first segment', () => {
+    expect(getRouteForSlot('projects/gallery-1')).toBe('/projects');
+  });
+
+  it('returns null for logo/layout/component slots', () => {
+    expect(getRouteForSlot('logo/main')).toBeNull();
+    expect(getRouteForSlot('layouts/header-bg')).toBeNull();
+    expect(getRouteForSlot('components/footer-logo')).toBeNull();
+  });
+
+  it('treats malformed 2-segment pages/ path as home', () => {
+    expect(getRouteForSlot('pages/x')).toBe('/');
   });
 });

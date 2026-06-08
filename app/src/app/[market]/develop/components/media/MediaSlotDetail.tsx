@@ -28,6 +28,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { logger } from '@/lib/request-context'
+import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { fetchAsDataUrl } from '@/utils/image'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
@@ -80,6 +81,43 @@ const GETTY_LOAD_MORE_COUNT = 9
 
 // null = any (no filter applied)
 type SearchOrientation = 'horizontal' | 'vertical' | null
+
+/** Small cycling control shown when a media slot appears in multiple places in the preview */
+function MediaSlotInstanceCycler({ slotName }: { slotName: string }) {
+  const totalMatches = useMediaSlotDialogStore((s) => s.mediaScrollTotalMatches)
+  const currentIndex = useMediaSlotDialogStore((s) => s.mediaScrollCurrentIndex)
+
+  if (totalMatches <= 1) return null
+
+  const handleCycle = (newIndex: number) => {
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+    if (iframe) {
+      postMessageToIframe(iframe, { type: 'SCROLL_TO_MEDIA_SLOT', slotPath: slotName, index: newIndex })
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 mt-1 text-xs text-intents-ux-textSubtle-textColor">
+      <span>{currentIndex + 1} of {totalMatches} instances</span>
+      <button
+        type="button"
+        onClick={() => handleCycle((currentIndex - 1 + totalMatches) % totalMatches)}
+        className="px-1.5 py-0.5 rounded hover:bg-intents-ux-box-backgroundColor transition-colors"
+        aria-label="Previous instance"
+      >
+        ‹
+      </button>
+      <button
+        type="button"
+        onClick={() => handleCycle((currentIndex + 1) % totalMatches)}
+        className="px-1.5 py-0.5 rounded hover:bg-intents-ux-box-backgroundColor transition-colors"
+        aria-label="Next instance"
+      >
+        ›
+      </button>
+    </div>
+  )
+}
 
 export function MediaSlotDetail({
   appId,
@@ -763,6 +801,7 @@ export function MediaSlotDetail({
               <h3 className="font-semibold text-lg">
                 {formatSlotName(slotName)}
               </h3>
+              <MediaSlotInstanceCycler slotName={slotName} />
 
               <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                 {slot.mediaType && slot.mediaType !== 'image' && (

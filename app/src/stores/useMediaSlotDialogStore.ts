@@ -30,6 +30,13 @@ interface MediaSlotDialogState {
   openEditorForSlot: string | null;
 
   /**
+   * Scroll-to-media state: how many DOM elements match the active slot,
+   * and which one is currently scrolled to.
+   */
+  mediaScrollTotalMatches: number;
+  mediaScrollCurrentIndex: number;
+
+  /**
    * Navigate the media panel to a specific slot (or `__GRID__` for the
    * grid view). Snapshots the active chat tab + mobileMode synchronously
    * — call BEFORE `setActiveChatTab(MEDIAS)` so the source tab is
@@ -41,6 +48,8 @@ interface MediaSlotDialogState {
   clearMediaReturnState: () => void;
   /** Clear the editor slot (consumed by MediaPanel) */
   clearEditorSlot: () => void;
+  /** Update scroll-to-media match count from the preview iframe response */
+  setMediaScrollResult: (totalMatches: number, currentIndex: number) => void;
 }
 
 export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
@@ -48,6 +57,8 @@ export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
   mediaReturnTab: null,
   mediaReturnMobileMode: null,
   openEditorForSlot: null,
+  mediaScrollTotalMatches: 0,
+  mediaScrollCurrentIndex: 0,
 
   navigateToSlot: (slotName: string, options?: { openEditor?: boolean }) => {
     // Snapshot source tab for back-breadcrumb. `openEditor` is real-slot only.
@@ -58,11 +69,13 @@ export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
       mediaReturnMobileMode: develop.mobileMode,
       openEditorForSlot:
         slotName !== '__GRID__' && options?.openEditor ? slotName : null,
+      mediaScrollTotalMatches: 0,
+      mediaScrollCurrentIndex: 0,
     });
   },
 
   clearPanelSlot: () => {
-    set({ panelSlotName: null });
+    set({ panelSlotName: null, mediaScrollTotalMatches: 0, mediaScrollCurrentIndex: 0 });
   },
 
   clearMediaReturnState: () => {
@@ -71,5 +84,9 @@ export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
 
   clearEditorSlot: () => {
     set({ openEditorForSlot: null });
+  },
+
+  setMediaScrollResult: (totalMatches: number, currentIndex: number) => {
+    set({ mediaScrollTotalMatches: totalMatches, mediaScrollCurrentIndex: currentIndex });
   },
 }));

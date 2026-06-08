@@ -96,6 +96,7 @@ const REGISTERED_TYPES: readonly BusEventType[] = [
   'SPEECH_START',
   'SPEECH_STOP',
   'AUTO_IMPORT_MEDIA_SLOT',
+  'MEDIA_SLOT_SCROLL_RESULT',
 ] as const
 
 function getPreviewIframe(): HTMLIFrameElement | null {
@@ -471,6 +472,10 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
       const cur = d()
       if (!cur.appId) return
       void cur.handleAutoImportMediaSlot(m.imageUrl, m.devContext, m.imageAlt, m.imageType, m.openEditor)
+    })
+
+    on('MEDIA_SLOT_SCROLL_RESULT', (m) => {
+      useMediaSlotDialogStore.getState().setMediaScrollResult(m.totalMatches, m.currentIndex)
     })
 
     const handleMessage = (event: MessageEvent): void => {

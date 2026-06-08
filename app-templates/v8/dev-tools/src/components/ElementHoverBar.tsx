@@ -4,6 +4,7 @@ import { generatePreciseSelector, extractDevContext, getElementClassName } from 
 import { isTouchDevice } from "../utils/device";
 import {
   showSelectionOverlay,
+  clearSelectionOverlay,
   addNumberedOverlay,
   removeNumberedOverlay,
   getNextSelectionNumber,
@@ -225,6 +226,8 @@ export default function ElementHoverBar({
       if (target.closest(".edit-mode-hover-bar")) return;
       if (element.contains(target)) return;
       if (target.closest("[data-dev-tools]") || target.closest("[data-airo-dev-tools]")) return;
+      // Clear scroll-to-media selection overlay on click outside
+      clearSelectionOverlay();
       setToolbarMode(false);
       setQuickEditMode(false);
       fix.reset();

@@ -220,7 +220,11 @@ export function useImageHoverDetection(
           slotPath: anchor.slotPath,
           isVideo: anchor.isVideo,
         });
-        setToolbarMode(false);
+        // Show toolbar immediately on hover only for media-slot images;
+        // non-slot images (e.g. decorative) still require a click.
+        if (anchor.isMediaSlot) {
+          setToolbarMode(true);
+        }
       }, delay);
     };
 

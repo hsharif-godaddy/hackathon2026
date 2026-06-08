@@ -122,6 +122,7 @@ export interface BusEventMap {
   VIEWPORT_SCREENSHOT_RESPONSE: { screenshot: string };
   OPEN_MEDIA_SLOT_DIALOG: { slotName: string };
   OPEN_IMAGE_EDITOR: { slotName: string };
+  MEDIA_SLOT_SCROLL_RESULT: { slotPath: string; totalMatches: number; currentIndex: number };
   AUTO_IMPORT_MEDIA_SLOT: {
     imageUrl: string;
     devContext?: BusDevContext;

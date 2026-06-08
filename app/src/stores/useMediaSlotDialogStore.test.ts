@@ -61,5 +61,35 @@ describe('useMediaSlotDialogStore', () => {
 
       expect(useMediaSlotDialogStore.getState().openEditorForSlot).toBeNull()
     })
+
+    it('resets scroll state when navigating to a new slot', () => {
+      useMediaSlotDialogStore.setState({
+        mediaScrollTotalMatches: 5,
+        mediaScrollCurrentIndex: 2,
+      })
+
+      useMediaSlotDialogStore.getState().navigateToSlot('new-slot')
+
+      const state = useMediaSlotDialogStore.getState()
+      expect(state.mediaScrollTotalMatches).toBe(0)
+      expect(state.mediaScrollCurrentIndex).toBe(0)
+    })
+  })
+
+  describe('clearPanelSlot', () => {
+    it('resets scroll state when clearing panel', () => {
+      useMediaSlotDialogStore.setState({
+        panelSlotName: 'some-slot',
+        mediaScrollTotalMatches: 3,
+        mediaScrollCurrentIndex: 1,
+      })
+
+      useMediaSlotDialogStore.getState().clearPanelSlot()
+
+      const state = useMediaSlotDialogStore.getState()
+      expect(state.panelSlotName).toBeNull()
+      expect(state.mediaScrollTotalMatches).toBe(0)
+      expect(state.mediaScrollCurrentIndex).toBe(0)
+    })
   })
 })
