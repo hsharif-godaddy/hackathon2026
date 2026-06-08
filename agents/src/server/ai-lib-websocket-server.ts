@@ -109,7 +109,7 @@ import {
 } from './message-lifecycle.js'
 import { ClientActionService, type IClientActionService } from '../services/ClientActionService.js'
 import { hasUnbuiltRebuildPages } from '../tools/ai-lib-tools/rebuild-page-selector.js'
-import { type AssessmentOutcome, AssessmentTaskType } from '../agents/assessment-agent/index.js'
+import { type AssessmentOutcome, AssessmentTaskType, ClassifierMode } from '../agents/assessment-agent/index.js'
 import { withTimeout } from '../utils/promise-utils.js'
 import {
   executeAssessment,
@@ -1620,12 +1620,19 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const enableAssessmentOverride = agentContext?.enableAssessmentOverride
         const assessmentClassifier = agentContext?.assessmentClassifier
 
+        // LR classifier is only available for BMS users. If the flag requests LR but BMS is
+        // not enabled, fall back to undefined (resolves to CosineSimilarity in classify()).
+        const effectiveClassifierMode: ClassifierMode | undefined = assessmentClassifier === ClassifierMode.LogisticRegression && !budgetServiceEnabled
+          ? undefined
+          : assessmentClassifier
+
         logger.info('assessment.feature_flag', {
           appId: siteId,
           socketId,
           enableAssessmentAgent,
           enableAssessmentOverride,
           assessmentClassifier,
+          effectiveClassifierMode,
           budgetServiceEnabled,
           budgetServiceFlagFromJwt: agentContext?.budgetServiceEnabled === true,
           isEmployeeSession,
@@ -1671,7 +1678,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               isInitialPrompt,
               previousUserMessage,
               previousAssessmentTaskType,
-              classifierMode: assessmentClassifier,
+              classifierMode: effectiveClassifierMode,
             })
           } catch (err) {
             // Assessment failed - log with context and clean up tracking state

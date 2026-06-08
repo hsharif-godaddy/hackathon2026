@@ -59,7 +59,8 @@ import { checkCorrelationIdRace, safeProcessBudgetReport } from '../budget-repor
 import { parseChunkTimeoutMs, runWithModelOverride, buildTokenUsage } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../../profiles/index.js'
 import { guardAllowedOverrideModel, resolveOverride } from '../model-override.js'
-import type { AssessmentOutcome, ClassifierMode } from '../../agents/assessment-agent/index.js'
+import type { AssessmentOutcome } from '../../agents/assessment-agent/index.js'
+import { ClassifierMode } from '../../agents/assessment-agent/index.js'
 import { PARALLEL_ASSESSMENT_TIMEOUT_MS } from '../assessment-executor.js'
 import { createAgentContext, emitConversationStart } from '@godaddy/agent-otel-sdk'
 import {
@@ -1540,6 +1541,22 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     const enableAssessmentAgent = !!agentCtx?.enableAssessmentAgent
     const enableAssessmentOverride = !!agentCtx?.enableAssessmentOverride
 
+    // LR classifier is only available for BMS users. If the flag requests LR but BMS is
+    // not enabled, fall back to undefined (resolves to CosineSimilarity in classify()).
+    const effectiveClassifierMode: ClassifierMode | undefined = agentCtx?.assessmentClassifier === ClassifierMode.LogisticRegression && agentCtx?.budgetServiceEnabled !== true
+      ? undefined
+      : agentCtx?.assessmentClassifier
+
+    logger.info('assessment.feature_flag', {
+      appId,
+      sessionKey: sseSessionKey(conversationId),
+      enableAssessmentAgent,
+      enableAssessmentOverride,
+      assessmentClassifier: agentCtx?.assessmentClassifier,
+      effectiveClassifierMode,
+      budgetServiceEnabled: agentCtx?.budgetServiceEnabled,
+    })
+
     // Run message-start hooks (git branch + assessment classification).
     // Failures are logged inside the helpers; neither throws out of here.
     //
@@ -1558,7 +1575,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         isInitialPrompt: !!lifecycleContext?.isInitialPrompt,
         enableAssessmentAgent,
         enableAssessmentOverride,
-        classifierMode: agentCtx?.assessmentClassifier,
+        classifierMode: effectiveClassifierMode,
       })
       await runStartGitHook(this.deps.lifecycle, {
         appId, conversationId, sessionKey: sseSocketId, message: content,

@@ -720,6 +720,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
         agentContext: {
           enableAssessmentAgent: agentContext?.enableAssessmentAgent,
           enableAssessmentOverride: agentContext?.enableAssessmentOverride,
+          assessmentClassifier: agentContext?.assessmentClassifier,
           modelOverride: agentContext?.modelOverride,
           modelSelectorEnabled: agentContext?.modelSelectorEnabled,
           agentProfile: agentContext?.agentProfile,
