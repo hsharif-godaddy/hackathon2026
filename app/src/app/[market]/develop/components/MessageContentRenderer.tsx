@@ -4,6 +4,7 @@ import React, { useRef } from 'react'
 import { Thinker } from '@airo-ux/pattern-library/chat/thinker'
 
 import ActionToolGroupRenderer from '@/app/[market]/develop/components/ActionToolGroupRenderer'
+import ThinkingTip from '@/app/[market]/develop/components/chat/ThinkingTip'
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
 import MarkdownRenderer from '@/app/[market]/develop/components/MarkdownRenderer'
 import MessageToolCallsRenderer from '@/app/[market]/develop/components/MessageToolCallsRenderer'
@@ -83,7 +84,10 @@ function MessageContentRenderer({ blocks, isActiveStream = false, isLastAssistan
       })}
 
       {showThinking && (
-        <Thinker label={thinkerLabel} />
+        <>
+          <Thinker label={thinkerLabel} />
+          <ThinkingTip />
+        </>
       )}
     </div>
   )

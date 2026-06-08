@@ -13,6 +13,11 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/develop/mock',
 }));
 
+vi.mock('@/hooks/useSwitchboard', () => ({
+  default: vi.fn(() => false),
+  useSwitchboard: vi.fn(() => false),
+}));
+
 const {
   mockSelectCommit,
   mockSetSelectedCommitHash,

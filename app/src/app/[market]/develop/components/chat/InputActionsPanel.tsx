@@ -12,6 +12,7 @@ import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatC
 import CollapsibleChatInputSection, { CollapseChevron } from '@/app/[market]/develop/components/chat/CollapsibleChatInputSection'
 import FontThemePreviewInputPanel from '@/app/[market]/develop/components/chat/FontThemePreviewInputPanel'
 import ThemePreviewInputPanel from '@/app/[market]/develop/components/chat/ThemePreviewInputPanel'
+import ThinkingTip from '@/app/[market]/develop/components/chat/ThinkingTip'
 import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
 import AskQuestionToolRenderer from '@/app/[market]/develop/components/tool-renderers/AskQuestionToolRenderer'
@@ -364,6 +365,9 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
               </svg>
             </button>
           )}
+        </div>
+        <div className="w-full px-1">
+          <ThinkingTip />
         </div>
 
         <AnimatePresence initial={false}>
@@ -1542,6 +1546,9 @@ function InputActionsPanelThemeSelection({
               <CollapseChevron expanded={fullPlanExpanded} />
             </button>
           )}
+        </div>
+        <div className="w-full px-1">
+          <ThinkingTip />
         </div>
 
         {/* Nested plan details when expanded (hide when applying theme) */}
