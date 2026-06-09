@@ -31,3 +31,17 @@ export interface ConversationMessagesResponse {
   until: IsoDateTimeString | undefined
   children: ThreadedMessagePageChildren | undefined
 }
+
+export interface SendReplyRequest {
+  brandId: UuidString
+  conversationId: IntString
+  body?: string
+  attachments?: Array<{ id: number } | string>
+  parentMessageId?: IntString
+  isInternalNote?: boolean
+  clientId?: string
+}
+
+export interface SendReplyResponse {
+  message: Message
+}

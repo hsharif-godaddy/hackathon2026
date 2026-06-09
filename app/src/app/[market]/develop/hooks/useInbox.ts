@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { queryKeys } from '@/lib/inbox/constants/queryKeys'
 import { ThreadedMessagePageChildren } from '@/lib/inbox/http/response/core'
@@ -9,7 +9,7 @@ import { IntString, IsoDateTimeString, UuidString } from '@/types/inbox/local/co
 import { Message } from '@/types/inbox/local/message'
 import { RemoteConversation } from '@/types/inbox/remote/conversation'
 import { RemoteMessage } from '@/types/inbox/remote/message'
-import { ConversationMessagesRequest, ConversationMessagesResponse, ConversationsRequest, ConversationsResponse } from '@/types/inbox/remote/reamaze'
+import { ConversationMessagesRequest, ConversationMessagesResponse, ConversationsRequest, ConversationsResponse, SendReplyRequest, SendReplyResponse } from '@/types/inbox/remote/reamaze'
 
 async function getInboxConversations(params: ConversationsRequest): Promise<ConversationsResponse> {
   if (!params.brandId) {
@@ -226,5 +226,42 @@ export function useInboxConversationMessages(
       return failureCount < 3
     },
     enabled: !!conversationId, // Only run query if conversationId is provided
+  })
+}
+
+export async function sendInboxReply(params: SendReplyRequest): Promise<SendReplyResponse> {
+  if (!params.brandId) {
+    throw new Error('Brand ID is required')
+  }
+  if (!params.conversationId) {
+    throw new Error('Conversation ID is required')
+  }
+
+  const response = await fetch('/api/inbox/messages', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}))
+    throw new Error(data.error || `Failed to send reply: ${response.status}`)
+  }
+
+  return response.json() as Promise<SendReplyResponse>
+}
+
+export function useSendInboxReply(brandId: UuidString, conversationId: IntString) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (params: Omit<SendReplyRequest, 'brandId' | 'conversationId'>) =>
+      sendInboxReply({ ...params, brandId, conversationId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.inboxConversationMessages(conversationId, brandId),
+      })
+    },
   })
 }
