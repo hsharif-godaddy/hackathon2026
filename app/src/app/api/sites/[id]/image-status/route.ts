@@ -8,12 +8,13 @@ import {
   customerHasAccount,
   withCustomerAuth
 } from '@/lib/customer-auth';
+import { extractKatanaVersion } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/sites/[id]/image-status - Get image status for an app
-export const GET = withCustomerAuth(async (_request: NextRequest, authContext: CustomerAuthContext, { params }: { params: Promise<{ id: string }> }) => {
+export const GET = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext, { params }: { params: Promise<{ id: string }> }) => {
   const { id: siteId } = await params;
 
   try {
@@ -34,8 +35,10 @@ export const GET = withCustomerAuth(async (_request: NextRequest, authContext: C
       return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
     }
 
+    const katanaVersion = extractKatanaVersion(request.headers);
+
     return NextResponse.json(
-      await getControlPlaneAdapter().getImageStatus(siteId, authContext.jwt)
+      await getControlPlaneAdapter().getImageStatus(siteId, authContext.jwt, katanaVersion)
     );
   } catch (error) {
     logger.error('image-status.error', {

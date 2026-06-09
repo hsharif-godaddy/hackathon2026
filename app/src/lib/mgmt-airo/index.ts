@@ -5,6 +5,7 @@
  */
 
 export { AiroMgmtClient } from './client';
+export { extractKatanaVersion, KATANA_VERSION_HEADER } from './katana-version';
 export type {
   AiroApiError,
   AiroApiErrorV2,

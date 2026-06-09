@@ -786,6 +786,9 @@ body:has(.ios-fixed-container) {
 }
 
 :root {
+  /* Height reserved by the dark-release banner (DarkReleaseBanner sets this to its height
+     while shown); full-height page roots subtract it via calc(). Default 0 = no banner. */
+  --dark-release-banner-h: 0px;
   --sidebar: hsl(0 0% 98%);
   --sidebar-foreground: hsl(240 5.3% 26.1%);
   --sidebar-primary: hsl(240 5.9% 10%);

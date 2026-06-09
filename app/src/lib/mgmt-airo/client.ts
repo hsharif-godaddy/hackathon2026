@@ -2,6 +2,7 @@ import { context as otelContext, propagation } from '@opentelemetry/api';
 
 import { logger } from '@/lib/request-context';
 import { extractCustomerId as extractCustomerIdFromJWT } from '@/lib/utils/jwt-utils';
+import { KATANA_VERSION_HEADER } from './katana-version';
 import {
   type AiroApiError,
   type AiroApiErrorV2,
@@ -130,10 +131,10 @@ export class AiroMgmtClient {
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
     path: string,
     body?: any,
-    options: { retryOn404?: boolean; logEvent?: string; noCache?: boolean } = {}
+    options: { retryOn404?: boolean; logEvent?: string; noCache?: boolean; extraHeaders?: Record<string, string> } = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const { retryOn404 = false, logEvent = 'api.request', noCache = false } = options;
+    const { retryOn404 = false, logEvent = 'api.request', noCache = false, extraHeaders } = options;
 
     // Start timing for this specific API call
     const apiCallStart = Date.now();
@@ -156,6 +157,12 @@ export class AiroMgmtClient {
           propagation.inject(otelContext.active(), headers);
         } catch {
           // Ignore propagation errors
+        }
+
+        // Forward caller-supplied headers (e.g. x-katana-version for dark-release
+        // targeting) after trace propagation so an explicit value is never clobbered.
+        if (extraHeaders) {
+          Object.assign(headers, extraHeaders);
         }
 
         const response = await fetch(url, {
@@ -536,14 +543,23 @@ export class AiroMgmtClient {
   }
 
   /**
+   * Build the optional `x-katana-version` header map used to target a specific Katana
+   * artifact (dark-release). Returns `undefined` when no version is supplied so the
+   * header is omitted entirely.
+   */
+  private katanaVersionHeaders(katanaVersion?: string): Record<string, string> | undefined {
+    return katanaVersion ? { [KATANA_VERSION_HEADER]: katanaVersion } : undefined;
+  }
+
+  /**
    * Create a new subscription with app (signup/provision workflow)
    */
-  async signup(payload: AiroSignupPayload): Promise<AiroSignupResponse> {
+  async signup(payload: AiroSignupPayload, katanaVersion?: string): Promise<AiroSignupResponse> {
     return this.request<AiroSignupResponse>(
       'POST',
       '/api/airo/v1/signup',
       payload,
-      { logEvent: 'mgmt-airo.signup' }
+      { logEvent: 'mgmt-airo.signup', extraHeaders: this.katanaVersionHeaders(katanaVersion) }
     );
   }
 
@@ -553,13 +569,14 @@ export class AiroMgmtClient {
   async createApp(
     subscriptionId: string,
     systemId: string,
-    payload: AiroCreateAppPayload
+    payload: AiroCreateAppPayload,
+    katanaVersion?: string
   ): Promise<AiroCreateAppResponse> {
     return this.request<AiroCreateAppResponse>(
       'POST',
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps`,
       payload,
-      { logEvent: 'mgmt-airo.create-app' }
+      { logEvent: 'mgmt-airo.create-app', extraHeaders: this.katanaVersionHeaders(katanaVersion) }
     );
   }
 
@@ -1340,13 +1357,14 @@ export class AiroMgmtClient {
   async getImageStatus(
     subscriptionId: string,
     systemId: string,
-    appId: string
+    appId: string,
+    katanaVersion?: string
   ): Promise<AiroImageStatusResponse> {
     return this.request<AiroImageStatusResponse>(
       'GET',
       `/api/airo/v1/subscriptions/${subscriptionId}/systems/${systemId}/apps/${appId}/image-status`,
       undefined,
-      { logEvent: 'mgmt-airo.get-image-status', noCache: true }
+      { logEvent: 'mgmt-airo.get-image-status', noCache: true, extraHeaders: this.katanaVersionHeaders(katanaVersion) }
     );
   }
 

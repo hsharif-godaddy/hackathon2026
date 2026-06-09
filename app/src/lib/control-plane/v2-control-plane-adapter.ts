@@ -1,5 +1,5 @@
 import { isBudgetServiceExperimentTreatment } from '@/lib/budget-service-experiment';
-import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, AiroMgmtClient, getOwnerProductFromProductId } from '@/lib/mgmt-airo';
+import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, AiroMgmtClient, extractKatanaVersion, getOwnerProductFromProductId } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { getDatacenterFromMarketId } from '@/lib/utils/dc-mapping';
@@ -95,6 +95,9 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
   async createSite(params: CreateSiteParams): Promise<CreateSiteResult> {
     try {
       const client = this.createClient(params.jwt);
+      // Forward x-katana-version (header or cookie) to signup/createApp so a dark-released
+      // request chain targets the intended artifact. Supporting lookups are left untouched.
+      const katanaVersion = params.headers ? extractKatanaVersion(params.headers) : undefined;
       const explicitDatacenter =
         typeof params.datacenter === 'string' ? params.datacenter.trim() : '';
       const resolvedDatacenter =
@@ -167,7 +170,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
           },
           datacenter: resolvedDatacenter,
           ...(params.fqdn && { fqdn: params.fqdn })
-        });
+        }, katanaVersion);
 
         logger.info('v2-control-plane.create-site.createApp.success', {
           jobId: response.statusJobId,
@@ -221,7 +224,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         bmsActive,
         ...(params.itc && { itc: params.itc }),
         ...(params.fqdn && { fqdn: params.fqdn }),
-      });
+      }, katanaVersion);
 
       logger.info('v2-control-plane.create-site.signup.success', {
         jobId: response.statusJobId,
@@ -1026,7 +1029,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
     }
   }
 
-  async getImageStatus(siteId: string, jwt: string): Promise<ImageStatusResponse> {
+  async getImageStatus(siteId: string, jwt: string, katanaVersion?: string): Promise<ImageStatusResponse> {
     try {
       const site = await this.getSite(siteId, jwt);
 
@@ -1039,7 +1042,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       }
 
       const client = this.createClient(jwt);
-      const result = await client.getImageStatus(site.subscription_id, site.system_id, siteId);
+      const result = await client.getImageStatus(site.subscription_id, site.system_id, siteId, katanaVersion);
 
       logger.info('v2-control-plane.get-image-status.success', {
         siteId,

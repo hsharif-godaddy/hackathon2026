@@ -28,6 +28,14 @@ on:
         description: 'Artifact ID to promote (numeric only, from Katana UI)'
         required: true
         type: string
+      strategy:
+        description: 'Promotion strategy (dark_release deploys at 0% traffic; reach it via x-katana-version)'
+        required: false
+        default: 'simple'
+        type: choice
+        options:
+          - 'simple'
+          - 'dark_release'
       skip_e2e:
         description: 'Skip E2E tests (used by release manager which triggers E2E separately)'
         required: false
@@ -145,7 +153,11 @@ jobs:
           app: ${{ steps.katana-app.outputs.app }}
           environment: ${{ steps.resolve.outputs.TARGET_ENV }}
           artifact_id: ${{ inputs.artifact_id }}
-          retain_previous_count: 1
+          strategy: ${{ inputs.strategy }}
+          # dark_release: cap at 12 dark artifacts (current + 11 retained); ttl demotes each after 24h.
+          # simple/canary: keep 1 warm standby for rollback; no ttl.
+          retain_previous_count: ${{ inputs.strategy == 'dark_release' && '11' || '1' }}
+          ttl: ${{ inputs.strategy == 'dark_release' && '86400' || '' }}
 
       - name: Promotion Success
         if: success()
@@ -156,6 +168,8 @@ jobs:
           NAMESPACE: ${{ steps.katana-app.outputs.namespace }}
           APP: ${{ steps.katana-app.outputs.app }}
           ACTOR: ${{ github.actor }}
+          STRATEGY: ${{ inputs.strategy }}
+          CUSTOM_URL: ${{ steps.promote.outputs.promoted_artifact_custom_url }}
         run: |
           echo "✅ Successfully promoted artifact"
           echo "Component: $COMPONENT"
@@ -174,6 +188,26 @@ jobs:
             printf '\n```\n\n'
           } >> $GITHUB_STEP_SUMMARY
 
+          if [ "$STRATEGY" = "dark_release" ]; then
+            # The x-katana-version selector is the artifact's version/tag, NOT the numeric
+            # artifact id — read the authoritative value the action put in the custom URL so
+            # the URL, header, and cookie all reference the same selector.
+            SELECTOR=$(printf '%s' "$CUSTOM_URL" | sed -n 's/.*[?&]x-katana-version=\([^&]*\).*/\1/p')
+            {
+              printf '## 🌑 Dark release — 0%% traffic\n\n'
+              printf 'This artifact takes **no live traffic**. Reach it explicitly:\n\n'
+              if [ -n "$CUSTOM_URL" ]; then
+                printf '**Browser** (sets a persistent `x_katana_version` cookie + redirects):\n\n%s\n\n' "$CUSTOM_URL"
+              fi
+              if [ -n "$SELECTOR" ]; then
+                printf '**Direct (API / curl)** — send the selector on each request:\n```\n'
+                printf 'Header: x-katana-version: %s\n' "$SELECTOR"
+                printf 'Cookie: x_katana_version=%s\n' "$SELECTOR"
+                printf '```\n'
+              fi
+            } >> $GITHUB_STEP_SUMMARY
+          fi
+
   slack-notify:
     name: Send Slack Notification
     if: always()
@@ -190,6 +224,7 @@ jobs:
         *Component:* ${{ inputs.component }}
         *Environment:* ${{ inputs.environment }}
         *Artifact ID:* ${{ inputs.artifact_id }}
+        *Strategy:* ${{ inputs.strategy }}
         *Actor:* ${{ github.actor }}
       footer: 'airo-app-builder'
 

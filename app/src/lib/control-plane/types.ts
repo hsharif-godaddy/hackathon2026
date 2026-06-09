@@ -349,9 +349,10 @@ export interface IControlPlaneAdapter {
    *
    * @param siteId - Site identifier
    * @param jwt - Customer JWT token
+   * @param katanaVersion - Optional x-katana-version selector forwarded to the image-status call
    * @returns Image status response
    */
-  getImageStatus(siteId: string, jwt: string): Promise<ImageStatusResponse>;
+  getImageStatus(siteId: string, jwt: string, katanaVersion?: string): Promise<ImageStatusResponse>;
 
   /**
    * Reload images for an app

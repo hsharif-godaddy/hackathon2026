@@ -9,6 +9,7 @@ import { makeLayout } from '@godaddy/gasket-next/layout';
 import GlobalSsoLogin from "@/components/auth/GlobalSsoLogin";
 import ReturningUserCookieSync from "@/components/auth/ReturningUserCookieSync";
 import SsoDebugTools from "@/components/auth/SsoDebugTools";
+import DarkReleaseBanner from "@/components/dark-release/DarkReleaseBanner";
 import AuthProvider from "@/components/providers/AuthProvider";
 import FullStoryProvider from "@/components/providers/FullStoryProvider";
 import { QueryClientProvider } from "@/components/providers/QueryClientProvider";
@@ -196,7 +197,8 @@ async function MarketLayout({
             <AuthProvider>
               <JourneyTrackerAuth key="market-journey-tracker-auth" />
               <SubscriptionCacheProvider key="market-subscription-cache">
-                <main className="flex-1 relative min-h-dvh" key="market-main">
+                <DarkReleaseBanner key="market-dark-release-banner" />
+                <main className="flex-1 relative min-h-[calc(100dvh-var(--dark-release-banner-h,0px))]" key="market-main">
                   {children}
                 </main>
                 <GlobalSsoLogin key="market-global-sso-login" />

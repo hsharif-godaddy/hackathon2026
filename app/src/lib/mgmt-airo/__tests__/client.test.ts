@@ -518,6 +518,52 @@ describe('AiroMgmtClient', () => {
     });
   });
 
+  describe('x-katana-version forwarding', () => {
+    const signupPayload: AiroSignupPayload = {
+      datacenter: 'sxb1',
+      isTrial: true,
+      productId: 'aab-v1',
+      initialPrompt: 'Create a test app',
+      appConfigs: [{
+        templateName: 'default',
+        environments: ['dev'],
+        variables: { title: 'Test App', initialPrompt: 'Create a test app' }
+      }]
+    };
+    const createAppPayload: AiroCreateAppPayload = {
+      appTemplateName: 'default',
+      environments: ['dev'],
+      variables: { title: 'Test App', initialPrompt: 'Create a test app' }
+    };
+
+    it('adds the x-katana-version header to signup when a version is provided', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ statusJobId: 'job-1' }) });
+      await client.signup(signupPayload, 'art-123');
+      expect(mockFetch.mock.calls[0][1].headers['x-katana-version']).toBe('art-123');
+    });
+
+    it('adds the x-katana-version header to createApp when a version is provided', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ statusJobId: 'job-2' }) });
+      await client.createApp('sub-123', 'sys-456', createAppPayload, 'art-456');
+      expect(mockFetch.mock.calls[0][1].headers['x-katana-version']).toBe('art-456');
+    });
+
+    it('adds the x-katana-version header to getImageStatus when a version is provided', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ appId: 'app-789', status: 'ready' }) });
+      await client.getImageStatus('sub-123', 'sys-456', 'app-789', 'art-789');
+      expect(mockFetch.mock.calls[0][0]).toBe(
+        'https://mgmt.test.com/api/airo/v1/subscriptions/sub-123/systems/sys-456/apps/app-789/image-status'
+      );
+      expect(mockFetch.mock.calls[0][1].headers['x-katana-version']).toBe('art-789');
+    });
+
+    it('omits the x-katana-version header when no version is provided', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ statusJobId: 'job-3' }) });
+      await client.signup(signupPayload);
+      expect(mockFetch.mock.calls[0][1].headers['x-katana-version']).toBeUndefined();
+    });
+  });
+
   describe('updateApp', () => {
     it('should update app details', async () => {
       const updatePayload: AiroUpdateAppPayload = {

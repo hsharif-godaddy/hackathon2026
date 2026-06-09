@@ -157,6 +157,45 @@ describe('V2ControlPlaneAdapter', () => {
       delete process.env.ALWAYS_NEW_SUBSCRIPTION;
     });
 
+    it('forwards x-katana-version to createApp but not to the subscription/system lookups', async () => {
+      process.env.ALWAYS_NEW_SUBSCRIPTION = 'false';
+
+      // getActiveSubscription
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ id: 'existing-sub-123', status: 'active' }]
+      });
+      // getSystems
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ systemId: 'sys-456', subscriptionId: 'existing-sub-123' }]
+      });
+      // createApp
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ statusJobId: MOCK_JOB_ID, appId: MOCK_APP_ID })
+      });
+
+      await adapter.createSite({
+        accountId: MOCK_ACCOUNT_ID,
+        prompt: MOCK_PROMPT,
+        jwt: MOCK_JWT,
+        headers: new Headers({ 'x-katana-version': 'art-123' })
+      });
+
+      const createAppCall = mockFetch.mock.calls.find(([url]) => typeof url === 'string' && url.includes('/apps'));
+      expect(createAppCall![1].headers['x-katana-version']).toBe('art-123');
+
+      // Supporting lookups must NOT carry the selector (scoped strictly to the named calls).
+      const lookupCalls = mockFetch.mock.calls.filter(([url]) => typeof url === 'string' && !url.includes('/apps'));
+      expect(lookupCalls.length).toBeGreaterThan(0);
+      for (const [, options] of lookupCalls) {
+        expect(options.headers['x-katana-version']).toBeUndefined();
+      }
+
+      delete process.env.ALWAYS_NEW_SUBSCRIPTION;
+    });
+
     it('should pass datacenter in createApp call for existing subscription', async () => {
       process.env.ALWAYS_NEW_SUBSCRIPTION = 'false';
       process.env.MGMT_AIRO_DATACENTER = 'p3';
@@ -2061,6 +2100,41 @@ describe('V2ControlPlaneAdapter', () => {
       );
       expect(imageStatusCall).toBeDefined();
       expect(imageStatusCall![0]).toContain(`/apps/${MOCK_APP_ID}/image-status`);
+    });
+
+    it('forwards x-katana-version to the image-status call but not to the getSite lookup', async () => {
+      // getSite lookup
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: { title: 'App' },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+      // image-status call
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ appId: MOCK_APP_ID, status: 'current' })
+      });
+
+      await adapter.getImageStatus(MOCK_APP_ID, MOCK_JWT, 'art-789');
+
+      const imageStatusCall = mockFetch.mock.calls.find(c => String(c[0]).includes('/image-status'));
+      expect(imageStatusCall![1].headers['x-katana-version']).toBe('art-789');
+
+      const lookupCalls = mockFetch.mock.calls.filter(c => !String(c[0]).includes('/image-status'));
+      expect(lookupCalls.length).toBeGreaterThan(0);
+      for (const [, options] of lookupCalls) {
+        expect(options.headers['x-katana-version']).toBeUndefined();
+      }
     });
 
     it('should throw when site is not found', async () => {

@@ -1228,7 +1228,7 @@ function DevelopPageContent() {
 
   if (init.siteNotFound) {
     return (
-      <div className="h-screen flex flex-col">
+      <div className="h-[calc(100dvh-var(--dark-release-banner-h,0px))] flex flex-col">
         <DevelopHeader onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })} />
         <AppNotFound />
       </div>

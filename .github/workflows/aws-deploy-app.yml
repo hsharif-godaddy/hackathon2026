@@ -18,6 +18,14 @@ on:
         required: false
         type: string
         default: ''
+      strategy:
+        description: 'Promotion strategy (dark_release deploys at 0% traffic; reach it via x-katana-version)'
+        required: false
+        default: 'simple'
+        type: choice
+        options:
+          - 'simple'
+          - 'dark_release'
 
   # Allow triggering from other workflows (e.g. deploy-test-e2e)
   workflow_call:
@@ -31,6 +39,11 @@ on:
         required: false
         type: string
         default: ''
+      strategy:
+        description: 'Promotion strategy passed through to katana-promote-artifact (simple | dark_release)'
+        required: false
+        type: string
+        default: 'simple'
 
 run-name: '[APP - ${{ inputs.DEPLOY_TO_ENV }}] branch: ${{ github.ref_name }} | actor: ${{ github.actor }}'
 
@@ -138,6 +151,7 @@ jobs:
 
       # Promote the published artifact to the selected environment with the katana-promote-artifact GitHub Action
       - name: Promote to ${{ inputs.DEPLOY_TO_ENV }} Environment
+        id: promote
         if: ${{ inputs.DEPLOY_TO_ENV != 'NA' }}
         uses: gdcorp-actions/katana-promote-artifact@606ea83db07cdbf1729450e6482f2d02d953b23e # v1
         with:
@@ -145,17 +159,46 @@ jobs:
           app: ${{ steps.katana-app.outputs.app }}
           environment: ${{ inputs.DEPLOY_TO_ENV }}
           artifact_id: ${{ steps.katana-publish.outputs.artifact_id }}
+          strategy: ${{ inputs.strategy }}
+          # dark_release: cap at 12 dark artifacts (current + 11 retained); ttl demotes each after 24h.
+          # simple/canary: keep 1 warm standby for rollback; no ttl.
+          retain_previous_count: ${{ inputs.strategy == 'dark_release' && '11' || '1' }}
+          ttl: ${{ inputs.strategy == 'dark_release' && '86400' || '' }}
 
       # Publish summary
       - name: Publish Summary
+        env:
+          STRATEGY: ${{ inputs.strategy }}
+          CUSTOM_URL: ${{ steps.promote.outputs.promoted_artifact_custom_url }}
         run: |
           {
             printf '**Build Summary:**\n\n```\n'
             echo "Artifact ID: ${{ steps.katana-publish.outputs.artifact_id }}"
             echo "Deployed to: ${{ inputs.DEPLOY_TO_ENV }}"
+            echo "Strategy: ${{ inputs.strategy }}"
             echo "Image: ${{ steps.katana-publish.outputs.image_uri }}"
             echo "Commit: ${{ inputs.sha || github.sha }}"
             echo "Branch: ${{ github.ref_name }}"
             echo "Actor: ${{ github.actor }}"
             printf '\n```\n\n'
           } >> $GITHUB_STEP_SUMMARY
+
+          if [ "$STRATEGY" = "dark_release" ]; then
+            # The x-katana-version selector is the artifact's version/tag, NOT the numeric
+            # artifact id — read the authoritative value the action put in the custom URL so
+            # the URL, header, and cookie all reference the same selector.
+            SELECTOR=$(printf '%s' "$CUSTOM_URL" | sed -n 's/.*[?&]x-katana-version=\([^&]*\).*/\1/p')
+            {
+              printf '## 🌑 Dark release — 0%% traffic\n\n'
+              printf 'This artifact takes **no live traffic**. Reach it explicitly:\n\n'
+              if [ -n "$CUSTOM_URL" ]; then
+                printf '**Browser** (sets a persistent `x_katana_version` cookie + redirects):\n\n%s\n\n' "$CUSTOM_URL"
+              fi
+              if [ -n "$SELECTOR" ]; then
+                printf '**Direct (API / curl)** — send the selector on each request:\n```\n'
+                printf 'Header: x-katana-version: %s\n' "$SELECTOR"
+                printf 'Cookie: x_katana_version=%s\n' "$SELECTOR"
+                printf '```\n'
+              fi
+            } >> $GITHUB_STEP_SUMMARY
+          fi
