@@ -111,7 +111,7 @@ describe('inbox skill tools', () => {
     it('returns alreadyConfigured when both brand and account exist in memory', async () => {
       mockMemoryGet.mockImplementation(function (_appId: string, key: string) {
         if (key === 'integrations.inbox.accountId') {
-          return Promise.resolve({ exists: true, value: 'https://account.reamaze.io' });
+          return Promise.resolve({ exists: true, value: 'https://account.conversations.godaddy.com' });
         }
         if (key === 'integrations.inbox.brandId') {
           return Promise.resolve({ exists: true, value: 'a1b2c3d4-0000-4000-8000-000000000001' });
@@ -142,7 +142,7 @@ describe('inbox skill tools', () => {
         success: true,
         data: {
           accounts: [
-            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000001', accountUrl: 'https://account.reamaze.io', name: 'My Account', ventureId: 'v1', aabAppId: 'app-123' },
+            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000001', accountUrl: 'https://account.conversations.godaddy.com', name: 'My Account', ventureId: 'v1', aabAppId: 'app-123' },
           ],
           unlinkedEntitlements: [],
         },
@@ -158,7 +158,7 @@ describe('inbox skill tools', () => {
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
         'integrations.inbox.accountId',
-        'https://account.reamaze.io',
+        'https://account.conversations.godaddy.com',
       );
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
@@ -182,8 +182,8 @@ describe('inbox skill tools', () => {
         success: true,
         data: {
           accounts: [
-            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000001', accountUrl: 'https://account1.reamaze.io', name: 'My Account', ventureId: 'v1', aabAppId: 'app-123' },
-            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000002', accountUrl: 'https://account2.reamaze.io', name: 'Other', ventureId: 'v2', aabAppId: 'other-app' },
+            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000001', accountUrl: 'https://account.conversations.godaddy.com', name: 'My Account', ventureId: 'v1', aabAppId: 'app-123' },
+            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000002', accountUrl: 'https://account.conversations.godaddy.com', name: 'Other', ventureId: 'v2', aabAppId: 'other-app' },
           ],
           unlinkedEntitlements: [],
         },
@@ -196,7 +196,7 @@ describe('inbox skill tools', () => {
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
         'integrations.inbox.accountId',
-        'https://account1.reamaze.io',
+        'https://account.conversations.godaddy.com',
       );
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
@@ -211,7 +211,7 @@ describe('inbox skill tools', () => {
         success: true,
         data: {
           accounts: [
-            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000002', accountUrl: 'https://account2.reamaze.io', name: 'Other', ventureId: 'v2', aabAppId: 'other-app' },
+            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000002', accountUrl: 'https://account.conversations.godaddy.com', name: 'Other', ventureId: 'v2', aabAppId: 'other-app' },
           ],
           unlinkedEntitlements: [
             { entitlementId: 'ent-1', name: 'Basic Plan', plan: 'basic', createdAt: '2025-01-01' },
@@ -220,7 +220,7 @@ describe('inbox skill tools', () => {
       });
       mockActivateAccount.mockResolvedValue({
         success: true,
-        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', accountUrl: 'https://account3.reamaze.io', ventureId: 'v3', aabAppId: 'app-123' },
+        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', accountUrl: 'https://account.conversations.godaddy.com', ventureId: 'v3', aabAppId: 'app-123' },
       });
 
       const result = await discoverAccountTool.execute({}, context);
@@ -231,7 +231,7 @@ describe('inbox skill tools', () => {
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
         'integrations.inbox.accountId',
-        'https://account3.reamaze.io',
+        'https://account.conversations.godaddy.com',
       );
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
@@ -264,8 +264,8 @@ describe('inbox skill tools', () => {
         success: true,
         data: {
           accounts: [
-            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000004', accountUrl: 'https://account4.reamaze.io', name: 'Free Account', ventureId: 'v1', aabAppId: null },
-            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000005', accountUrl: 'https://account5.reamaze.io', name: 'Linked', ventureId: 'v2', aabAppId: 'other-app' },
+            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000004', accountUrl: 'https://account.conversations.godaddy.com', name: 'Free Account', ventureId: 'v1', aabAppId: null },
+            { brandUrl: 'a1b2c3d4-0000-4000-8000-000000000005', accountUrl: 'https://account.conversations.godaddy.com', name: 'Linked', ventureId: 'v2', aabAppId: 'other-app' },
           ],
           unlinkedEntitlements: [
             { entitlementId: 'ent-1', name: 'Basic Plan', plan: 'basic', createdAt: '2025-01-01' },
@@ -274,7 +274,7 @@ describe('inbox skill tools', () => {
       });
       mockActivateAccount.mockResolvedValue({
         success: true,
-        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', accountUrl: 'https://account3.reamaze.io', ventureId: 'v3', aabAppId: 'app-123' },
+        data: { name: 'New Account', brandUrl: 'a1b2c3d4-0000-4000-8000-000000000003', accountUrl: 'https://account.conversations.godaddy.com', ventureId: 'v3', aabAppId: 'app-123' },
       });
 
       const result = await discoverAccountTool.execute({}, context);

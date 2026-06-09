@@ -158,6 +158,19 @@ After `setup_form` succeeds, **generate a form component** tailored to the user'
 2. The body includes `user.email` at minimum
 3. It handles loading, success, and error states
 4. **EVERY form field that is rendered MUST be read in the submit handler and included in the payload.** No exceptions. If a field appears in the UI, its value must appear in either `user` (email/name) or `conversation.data` (everything else). Never render a field without wiring it into the submission.
+5. **Include a honeypot field.** A hidden text input that real users never see. The submit handler must NOT include it in the POST body — the server route drops submissions silently when it is non-empty.
+
+```tsx
+{/* Honeypot — positioned off-screen, never included in POST body */}
+<input
+  type="text"
+  name="_gotcha"
+  tabIndex={-1}
+  autoComplete="off"
+  style={{ position: "absolute", left: "-9999px" }}
+  aria-hidden="true"
+/>
+```
 
 Example — a checkbox labeled "Existing customer" must be read and included:
 
@@ -219,4 +232,5 @@ The server route handles injecting `category_id` and `__gd_type: "contact"`, res
 - **Removing the cookie consent check.** The Airo Inbox script sets third-party cookies and must not load until the visitor opts in.
 - **Writing widget visual settings to memory.** Don't — the backend is the source of truth. The only things we store are the pointer IDs.
 - **Stuffing extra form fields into the message body.** Never do `[${topic}] ${message}` or similar concatenation. Dropdowns, radios, and other structured fields go in `conversation.data` as separate keys (using the field's label as the key) — only the free-text message belongs in `messages_attributes[0].body`.
+- **Omitting the honeypot field or including it in the POST body.** The `_gotcha` input must exist in the HTML but must never be read or sent in the submit handler. If it is populated (by a bot) and included in the body, the server will silently drop the submission.
 - **Rendering a form field without wiring it into the submission payload.** Every field in the form UI MUST be read in the submit handler and included in `conversation.data`. If you add a checkbox, dropdown, or any other input, you must also add the code to read its value and send it. A field that only exists in the UI is a bug.

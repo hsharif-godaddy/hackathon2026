@@ -527,9 +527,10 @@ export const setupFormTool: SkillToolDefinition = {
     }
 
     const config: ContactFormConfig = { brandId, categoryId };
+    const configJson = JSON.stringify(config, null, 2) + '\n';
     try {
       await mkdir(dirname(configPath), { recursive: true });
-      await writeFile(configPath, JSON.stringify(config, null, 2) + '\n');
+      await writeFile(configPath, configJson);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       return { error: `Failed to write contact form config: ${message}` };
@@ -563,6 +564,16 @@ export const setupFormTool: SkillToolDefinition = {
           error: message,
         });
       }
+    }
+
+    // Also write to dist/ so the published bundle (which runs from dist/) can find it.
+    // The SSR build uses emptyOutDir:false so this file survives the build.
+    const distConfigPath = join(app.path, 'dist', 'contact-form.config.json');
+    try {
+      await mkdir(dirname(distConfigPath), { recursive: true });
+      await writeFile(distConfigPath, configJson);
+    } catch {
+      // dist/ may not exist yet (first setup before first build) — not fatal
     }
 
     logger.info('inbox.skill.setup_form.success', { appId, brandId, categoryId });
