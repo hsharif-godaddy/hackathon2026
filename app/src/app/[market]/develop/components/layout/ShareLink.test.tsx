@@ -474,30 +474,7 @@ describe('ShareLink', () => {
       expect(screen.getByText('builder_share_link_preview_latest')).toBeInTheDocument();
     });
 
-    it('shows access level dropdown when share links enabled', async () => {
-      renderWithProviders(<ShareLink />);
-      await openPopover();
-
-      expect(screen.getByTestId('share-link-access-level')).toBeInTheDocument();
-    });
-
-    it('hides access level dropdown when share links disabled', async () => {
-      switchboardFlags.set('appbuilder-share-links', false);
-
-      renderWithProviders(<ShareLink />);
-      await openPopover();
-
-      expect(screen.queryByTestId('share-link-access-level')).not.toBeInTheDocument();
-    });
-
-    it('shows private preview URL when link type is private', async () => {
-      renderWithProviders(<ShareLink />);
-      await openPopover();
-
-      expect(getShareInput()).toHaveValue('https://preview.example.com');
-    });
-
-    it('shows share URL when token exists and link type is public', async () => {
+    it('shows share URL when token exists', async () => {
       mockUseShareTokens.mockReturnValue({
         data: [{
           token: 'active-token',
@@ -511,18 +488,15 @@ describe('ShareLink', () => {
         refetch: vi.fn(),
       });
 
-      const { user } = renderWithProviders(<ShareLink />);
+      renderWithProviders(<ShareLink />);
       await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
 
       await waitFor(() => {
         expect(getShareInput()).toHaveValue('https://share.example.com/abc');
       });
     });
 
-    it('shows loading spinner when tokens are loading in public mode', async () => {
+    it('shows loading spinner when no active token yet', async () => {
       mockUseShareTokens.mockReturnValue({
         data: [],
         isLoading: true,
@@ -530,11 +504,8 @@ describe('ShareLink', () => {
         refetch: vi.fn(),
       });
 
-      const { user } = renderWithProviders(<ShareLink />);
+      renderWithProviders(<ShareLink />);
       await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
 
       await waitFor(() => {
         expect(screen.getByTestId('share-link-preview-loading')).toBeInTheDocument();
@@ -548,11 +519,8 @@ describe('ShareLink', () => {
         isError: false,
       });
 
-      const { user } = renderWithProviders(<ShareLink />);
+      renderWithProviders(<ShareLink />);
       await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
 
       await waitFor(() => {
         expect(screen.getByTestId('share-link-preview-loading')).toBeInTheDocument();
@@ -567,11 +535,8 @@ describe('ShareLink', () => {
         refetch: vi.fn(),
       });
 
-      const { user } = renderWithProviders(<ShareLink />);
+      renderWithProviders(<ShareLink />);
       await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
 
       await waitFor(() => {
         expect(screen.getByTestId('share-link-error-state')).toBeInTheDocument();
@@ -582,11 +547,8 @@ describe('ShareLink', () => {
     it('shows error state when token creation fails', async () => {
       mockMutateAsync.mockRejectedValue(new Error('Creation failed'));
 
-      const { user } = renderWithProviders(<ShareLink />);
+      renderWithProviders(<ShareLink />);
       await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
 
       await waitFor(() => {
         expect(screen.getByTestId('share-link-error-state')).toBeInTheDocument();
@@ -594,96 +556,7 @@ describe('ShareLink', () => {
       });
     });
 
-    it('shows QR code on desktop in private mode', async () => {
-      renderWithProviders(<ShareLink />);
-      await openPopover();
-
-      expect(screen.getByTestId('share-link-qr')).toBeInTheDocument();
-    });
-
-    it('hides QR code on mobile', async () => {
-      setupStore({ isMobile: true });
-
-      renderWithProviders(<ShareLink />);
-      await openPopover();
-
-      expect(screen.queryByTestId('share-link-qr')).not.toBeInTheDocument();
-    });
-
-    it('hides QR code during loading state in public mode', async () => {
-      mockUseShareTokens.mockReturnValue({
-        data: [],
-        isLoading: true,
-        isError: false,
-        refetch: vi.fn(),
-      });
-
-      const { user } = renderWithProviders(<ShareLink />);
-      await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
-
-      await waitFor(() => {
-        expect(screen.queryByTestId('share-link-qr')).not.toBeInTheDocument();
-      });
-    });
-
-    it('hides QR code during error state in public mode', async () => {
-      mockUseShareTokens.mockReturnValue({
-        data: [],
-        isLoading: false,
-        isError: true,
-        refetch: vi.fn(),
-      });
-
-      const { user } = renderWithProviders(<ShareLink />);
-      await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
-
-      await waitFor(() => {
-        expect(screen.queryByTestId('share-link-qr')).not.toBeInTheDocument();
-      });
-    });
-  });
-
-  describe('Access Level Dropdown', () => {
-    it('defaults to private link type', async () => {
-      renderWithProviders(<ShareLink />);
-      await openPopover();
-
-      const trigger = screen.getByTestId('share-link-access-level-trigger');
-      expect(trigger).toHaveTextContent('builder_share_link_access_private_label');
-    });
-
-    it('opens dropdown on trigger click', async () => {
-      const { user } = renderWithProviders(<ShareLink />);
-      await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('share-link-access-level-public')).toBeInTheDocument();
-        expect(screen.getByTestId('share-link-access-level-private')).toBeInTheDocument();
-      });
-    });
-
-    it('switches to public on option click', async () => {
-      const { user } = renderWithProviders(<ShareLink />);
-      await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
-
-      await waitFor(() => {
-        const trigger = screen.getByTestId('share-link-access-level-trigger');
-        expect(trigger).toHaveTextContent('builder_share_link_access_public_label');
-      });
-    });
-
-    it('shows share URL after switching to public', async () => {
+    it('shows QR code on desktop when token is active', async () => {
       mockUseShareTokens.mockReturnValue({
         data: [{
           token: 'active-token',
@@ -697,39 +570,80 @@ describe('ShareLink', () => {
         refetch: vi.fn(),
       });
 
-      const { user } = renderWithProviders(<ShareLink />);
+      renderWithProviders(<ShareLink />);
       await openPopover();
 
-      expect(getShareInput()).toHaveValue('https://preview.example.com');
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
-
       await waitFor(() => {
-        expect(getShareInput()).toHaveValue('https://share.example.com/abc');
+        expect(screen.getByTestId('share-link-qr')).toBeInTheDocument();
       });
     });
 
-    it('logs tab_switch event on link type change', async () => {
-      const { user } = renderWithProviders(<ShareLink />);
+    it('hides QR code on mobile', async () => {
+      setupStore({ isMobile: true });
+
+      renderWithProviders(<ShareLink />);
       await openPopover();
 
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
+      expect(screen.queryByTestId('share-link-qr')).not.toBeInTheDocument();
+    });
 
-      expect(mockLogClickEvent).toHaveBeenCalledWith(
-        'develop.share_link.tab_switch',
-        expect.objectContaining({ tab: 'public' })
-      );
+    it('hides QR code during loading state', async () => {
+      mockUseShareTokens.mockReturnValue({
+        data: [],
+        isLoading: true,
+        isError: false,
+        refetch: vi.fn(),
+      });
+
+      renderWithProviders(<ShareLink />);
+      await openPopover();
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('share-link-qr')).not.toBeInTheDocument();
+      });
+    });
+
+    it('hides QR code during error state', async () => {
+      mockUseShareTokens.mockReturnValue({
+        data: [],
+        isLoading: false,
+        isError: true,
+        refetch: vi.fn(),
+      });
+
+      renderWithProviders(<ShareLink />);
+      await openPopover();
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('share-link-qr')).not.toBeInTheDocument();
+      });
     });
   });
 
+
   describe('Copy Functionality', () => {
+    beforeEach(() => {
+      mockUseShareTokens.mockReturnValue({
+        data: [{
+          token: 'active-token',
+          appId: 'app-123',
+          shareUrl: 'https://share.example.com/abc',
+          expiresAt: FUTURE,
+          createdAt: new Date().toISOString(),
+        }],
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      });
+    });
+
     it('copies URL to clipboard on copy button click', async () => {
       const { user } = renderWithProviders(<ShareLink />);
       await openPopover();
 
-      expect(getShareInput()).toHaveValue('https://preview.example.com');
+      await waitFor(() => {
+        expect(getShareInput()).toHaveValue('https://share.example.com/abc');
+      });
 
       await user.click(screen.getByTestId('share-link-copy'));
 
@@ -742,10 +656,11 @@ describe('ShareLink', () => {
       const { user } = renderWithProviders(<ShareLink />);
       await openPopover();
 
-      const copyButton = screen.getByTestId('share-link-copy');
-      expect(copyButton).toHaveAttribute('aria-label', 'builder_share_link_copy');
+      await waitFor(() => {
+        expect(screen.getByTestId('share-link-copy')).toHaveAttribute('aria-label', 'builder_share_link_copy');
+      });
 
-      await user.click(copyButton);
+      await user.click(screen.getByTestId('share-link-copy'));
 
       await waitFor(() => {
         expect(screen.getByTestId('share-link-copy')).toHaveAttribute('aria-label', 'builder_share_link_copied');
@@ -756,12 +671,16 @@ describe('ShareLink', () => {
       const { user } = renderWithProviders(<ShareLink />);
       await openPopover();
 
+      await waitFor(() => {
+        expect(getShareInput()).toHaveValue('https://share.example.com/abc');
+      });
+
       await user.click(screen.getByTestId('share-link-copy'));
 
       await waitFor(() => {
         expect(mockLogClickEvent).toHaveBeenCalledWith(
           'develop.share_link.copy',
-          expect.objectContaining({ type: 'private' })
+          expect.objectContaining({ type: 'preview' })
         );
       });
     });
@@ -769,33 +688,47 @@ describe('ShareLink', () => {
 
   describe('Open Functionality', () => {
     it('opens URL in new tab on open button click', async () => {
+      mockUseShareTokens.mockReturnValue({
+        data: [{
+          token: 'active-token',
+          appId: 'app-123',
+          shareUrl: 'https://share.example.com/abc',
+          expiresAt: FUTURE,
+          createdAt: new Date().toISOString(),
+        }],
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      });
       const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
 
       const { user } = renderWithProviders(<ShareLink />);
       await openPopover();
 
+      await waitFor(() => {
+        expect(getShareInput()).toHaveValue('https://share.example.com/abc');
+      });
+
       await user.click(screen.getByTestId('share-link-open'));
 
       expect(mockOpen).toHaveBeenCalledWith(
-        'https://preview.example.com',
+        'https://share.example.com/abc',
         '_blank',
         'noopener,noreferrer'
       );
       mockOpen.mockRestore();
     });
 
-    it('does nothing when displayUrl is empty', async () => {
-      setupStore({ site: { preview_url: null, published_url: null } });
+    it('does nothing when displayUrl is empty on published segment', async () => {
+      setupStore({ site: { preview_url: null, published_url: '' } });
       mockHasBeenPublished.mockReturnValue(true);
       const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
 
       renderWithProviders(<ShareLink />);
       await openPopover();
 
-      switchToSegment('preview');
-
       await waitFor(() => {
-        expect(screen.getByTestId('share-link-preview-content')).toBeInTheDocument();
+        expect(screen.getByTestId('share-link-published-content')).toBeInTheDocument();
       });
 
       fireEvent.click(screen.getByTestId('share-link-open'));
@@ -806,12 +739,9 @@ describe('ShareLink', () => {
   });
 
   describe('Token Auto-Creation', () => {
-    it('creates token automatically when switching to public preview mode', async () => {
-      const { user } = renderWithProviders(<ShareLink />);
+    it('creates token automatically when popover opens on preview segment', async () => {
+      renderWithProviders(<ShareLink />);
       await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
 
       await waitFor(() => {
         expect(mockMutateAsync).toHaveBeenCalledWith({ appId: 'app-123', expiresInDays: 7 });
@@ -832,12 +762,12 @@ describe('ShareLink', () => {
         refetch: vi.fn(),
       });
 
-      const { user } = renderWithProviders(<ShareLink />);
+      renderWithProviders(<ShareLink />);
       await openPopover();
 
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
-
+      await waitFor(() => {
+        expect(screen.getByTestId('share-link-preview-content')).toBeInTheDocument();
+      });
       expect(mockMutateAsync).not.toHaveBeenCalled();
     });
 
@@ -847,6 +777,9 @@ describe('ShareLink', () => {
       renderWithProviders(<ShareLink />);
       await openPopover();
 
+      await waitFor(() => {
+        expect(screen.getByTestId('share-link-preview-content')).toBeInTheDocument();
+      });
       expect(mockMutateAsync).not.toHaveBeenCalled();
     });
 
@@ -880,11 +813,8 @@ describe('ShareLink', () => {
     it('logs warning on creation failure', async () => {
       mockMutateAsync.mockRejectedValue(new Error('Network error'));
 
-      const { user } = renderWithProviders(<ShareLink />);
+      renderWithProviders(<ShareLink />);
       await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
 
       await waitFor(() => {
         expect(mockLogger.warn).toHaveBeenCalledWith(
@@ -896,6 +826,23 @@ describe('ShareLink', () => {
   });
 
   describe('Preview Header URL Wrapping', () => {
+    const shareUrl = 'https://share.example.com/abc';
+
+    beforeEach(() => {
+      mockUseShareTokens.mockReturnValue({
+        data: [{
+          token: 'active-token',
+          appId: 'app-123',
+          shareUrl,
+          expiresAt: FUTURE,
+          createdAt: new Date().toISOString(),
+        }],
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      });
+    });
+
     it('appends airoPreview param when preview-header flag is enabled', async () => {
       switchboardFlags.set('appbuilder-preview-header', true);
       const mockOpen = vi.spyOn(window, 'open').mockImplementation(() => null);
@@ -903,11 +850,15 @@ describe('ShareLink', () => {
       const { user } = renderWithProviders(<ShareLink />);
       await openPopover();
 
+      await waitFor(() => {
+        expect(getShareInput()).toHaveValue(shareUrl);
+      });
+
       await user.click(screen.getByTestId('share-link-open'));
 
-      expect(mockWithPreviewParam).toHaveBeenCalledWith('https://preview.example.com');
+      expect(mockWithPreviewParam).toHaveBeenCalledWith(shareUrl);
       expect(mockOpen).toHaveBeenCalledWith(
-        'https://preview.example.com?airoPreview=1',
+        `${shareUrl}?airoPreview=1`,
         '_blank',
         'noopener,noreferrer'
       );
@@ -921,11 +872,15 @@ describe('ShareLink', () => {
       const { user } = renderWithProviders(<ShareLink />);
       await openPopover();
 
+      await waitFor(() => {
+        expect(getShareInput()).toHaveValue(shareUrl);
+      });
+
       await user.click(screen.getByTestId('share-link-open'));
 
       expect(mockWithPreviewParam).not.toHaveBeenCalled();
       expect(mockOpen).toHaveBeenCalledWith(
-        'https://preview.example.com',
+        shareUrl,
         '_blank',
         'noopener,noreferrer'
       );
@@ -952,8 +907,8 @@ describe('ShareLink', () => {
     });
   });
 
-  describe('Token Expiry Status', () => {
-    it('shows expiry badge when public token has expiresAt', async () => {
+  describe('Token Expiry Label', () => {
+    it('shows shareable link label with expiry when active token exists', async () => {
       mockUseShareTokens.mockReturnValue({
         data: [{
           token: 'active-token',
@@ -967,25 +922,15 @@ describe('ShareLink', () => {
         refetch: vi.fn(),
       });
 
-      const { user } = renderWithProviders(<ShareLink />);
-      await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('share-link-token-expiry')).toBeInTheDocument();
-      });
-    });
-
-    it('does not show expiry badge in private mode', async () => {
       renderWithProviders(<ShareLink />);
       await openPopover();
 
-      expect(screen.queryByTestId('share-link-token-expiry')).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTestId('share-link-access-info')).toBeInTheDocument();
+      });
     });
 
-    it('triggers auto-create when expired token is discovered on switching back to preview', async () => {
+    it('triggers auto-create when expired token is discovered on switching to preview', async () => {
       const expiredAt = Date.now() - 1000;
       mockHasBeenPublished.mockReturnValue(true);
       mockUseShareTokens.mockReturnValue({
@@ -1001,7 +946,7 @@ describe('ShareLink', () => {
         refetch: vi.fn(),
       });
 
-      const { user } = renderWithProviders(<ShareLink />);
+      renderWithProviders(<ShareLink />);
       await openPopover();
 
       switchToSegment('preview');
@@ -1009,14 +954,9 @@ describe('ShareLink', () => {
         expect(screen.getByTestId('share-link-preview-content')).toBeInTheDocument();
       });
 
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
-
       await waitFor(() => {
         expect(mockMutateAsync).toHaveBeenCalledWith({ appId: 'app-123', expiresInDays: 7 });
       });
-
-      expect(screen.queryByTestId('share-link-qr')).not.toBeInTheDocument();
     });
   });
 
@@ -1034,11 +974,8 @@ describe('ShareLink', () => {
         refetch: vi.fn(),
       });
 
-      const { user } = renderWithProviders(<ShareLink />);
+      renderWithProviders(<ShareLink />);
       await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
 
       await waitFor(() => {
         expect(getShareInput().value).toContain('airoShareToken=fallback-token');
@@ -1059,9 +996,6 @@ describe('ShareLink', () => {
       const { user } = renderWithProviders(<ShareLink />);
       await openPopover();
 
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
-
       await waitFor(() => {
         expect(screen.getByTestId('share-link-error-state')).toBeInTheDocument();
       });
@@ -1080,9 +1014,6 @@ describe('ShareLink', () => {
 
       const { user } = renderWithProviders(<ShareLink />);
       await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
 
       await waitFor(() => {
         expect(screen.getByTestId('share-link-error-state')).toBeInTheDocument();
@@ -1111,11 +1042,8 @@ describe('ShareLink', () => {
       });
       mockMutateAsync.mockRejectedValue(new ShareTokenError('Conflict', 409));
 
-      const { user } = renderWithProviders(<ShareLink />);
+      renderWithProviders(<ShareLink />);
       await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
 
       await waitFor(() => {
         expect(mockRefetch).toHaveBeenCalled();
@@ -1135,11 +1063,8 @@ describe('ShareLink', () => {
       });
       mockMutateAsync.mockRejectedValue(new ShareTokenError('Conflict', 409));
 
-      const { user } = renderWithProviders(<ShareLink />);
+      renderWithProviders(<ShareLink />);
       await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
 
       await waitFor(() => {
         expect(mockRefetch).toHaveBeenCalled();
@@ -1153,8 +1078,25 @@ describe('ShareLink', () => {
 
   describe('State Reset', () => {
     it('resets copied state when popover reopens', async () => {
+      mockUseShareTokens.mockReturnValue({
+        data: [{
+          token: 'active-token',
+          appId: 'app-123',
+          shareUrl: 'https://share.example.com/abc',
+          expiresAt: FUTURE,
+          createdAt: new Date().toISOString(),
+        }],
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      });
+
       const { user } = renderWithProviders(<ShareLink />);
       await openPopover();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('share-link-copy')).toHaveAttribute('aria-label', 'builder_share_link_copy');
+      });
 
       await user.click(screen.getByTestId('share-link-copy'));
 
@@ -1167,54 +1109,6 @@ describe('ShareLink', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('share-link-copy')).toHaveAttribute('aria-label', 'builder_share_link_copy');
-      });
-    });
-
-    it('preserves public link type when switching segments within the same session', async () => {
-      mockHasBeenPublished.mockReturnValue(true);
-
-      const { user } = renderWithProviders(<ShareLink />);
-      await openPopover();
-
-      switchToSegment('preview');
-      await waitFor(() => {
-        expect(screen.getByTestId('share-link-preview-content')).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('share-link-access-level-trigger')).toHaveTextContent('builder_share_link_access_public_label');
-      });
-
-      switchToSegment('published');
-      await waitFor(() => {
-        expect(screen.getByTestId('share-link-published-content')).toBeInTheDocument();
-      });
-
-      switchToSegment('preview');
-      await waitFor(() => {
-        expect(screen.getByTestId('share-link-access-level-trigger')).toHaveTextContent('builder_share_link_access_public_label');
-      });
-    });
-
-    it('resets to private link type when popover reopens', async () => {
-      const { user } = renderWithProviders(<ShareLink />);
-      await openPopover();
-
-      await user.click(screen.getByTestId('share-link-access-level-trigger'));
-      await user.click(screen.getByTestId('share-link-access-level-public'));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('share-link-access-level-trigger')).toHaveTextContent('builder_share_link_access_public_label');
-      });
-
-      fireEvent.click(screen.getByTestId('share-link-button'));
-      fireEvent.click(screen.getByTestId('share-link-button'));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('share-link-access-level-trigger')).toHaveTextContent('builder_share_link_access_private_label');
       });
     });
   });

@@ -11,11 +11,8 @@ import Button from '@ux/button';
 import FieldFrame from '@ux/field-frame';
 import AlertIcon from '@ux/icon/alert';
 import CheckmarkIcon from '@ux/icon/checkmark';
-import ChevronDownIcon from '@ux/icon/chevron-down';
-import ClockIcon from '@ux/icon/clock';
 import CopyIcon from '@ux/icon/copy';
 import LinkIcon from '@ux/icon/link';
-import LockedIcon from '@ux/icon/locked';
 import ShowIcon from '@ux/icon/show';
 import WindowNewIcon from '@ux/icon/window-new';
 import WorldIcon from '@ux/icon/world';
@@ -43,26 +40,10 @@ import { withPreviewParam } from '@/utils/previewUrl';
 import { hasBeenPublished } from '@/utils/site';
 
 type SegmentId = 'published' | 'preview';
-type PreviewLinkType = 'public' | 'private';
 
 const PUBLIC_LINK_DAYS = 7;
 
 type TranslateFn = (key: string, values?: Record<string, unknown>) => string;
-
-function getPreviewLinkOptions(t: TranslateFn) {
-  return [
-    {
-      value: 'private' as const,
-      label: t('builder_share_link_access_private_label'),
-      icon: LockedIcon,
-    },
-    {
-      value: 'public' as const,
-      label: t('builder_share_link_access_public_label'),
-      icon: WorldIcon,
-    },
-  ];
-}
 
 /**
  * Pick the URL we copy to the clipboard for a given share token.
@@ -77,12 +58,13 @@ function resolveShareUrl(
   return token.shareUrl ?? `${origin}?airoShareToken=${token.token}`;
 }
 
-interface HelperTextProps {
+interface StatusTextProps {
   children: string;
+  centered?: boolean;
 }
 
-function HelperText({ children }: HelperTextProps) {
-  return <text.p size={-1} text={children} />;
+function StatusText({ children, centered }: StatusTextProps) {
+  return <text.p size={-1} text={children} className={cn(centered && 'text-center')} />;
 }
 
 function LoadingSpinner({ testId }: { testId?: string }) {
@@ -158,8 +140,7 @@ function QRSection({ url, caption }: QRSectionProps) {
   }, [url]);
 
   return (
-    <div className="flex items-center gap-1 mt-1">
-      <text.span as="caption" size={-1} emphasis="passive" className="text-center" text={caption} />
+    <div className="flex flex-col items-center gap-1 border border-border p-2 rounded-md">
       <QRCodeSVG
         value={qrUrl}
         size={128}
@@ -167,6 +148,7 @@ function QRSection({ url, caption }: QRSectionProps) {
         className="shrink-0"
         data-testid="share-link-qr"
       />
+      <text.span as="caption" size={-1} emphasis="passive" className="text-center" text={caption} />
     </div>
   );
 }
@@ -188,126 +170,9 @@ function formatTimeRemaining(expiresAt: number, t: TranslateFn, now: number = Da
   return t('builder_share_link_expires_mins', { count: Math.max(1, Math.floor(remaining / MS_PER_MINUTE)) });
 }
 
-interface TokenExpiryStatusProps {
-  expiresAt: number;
-  onExpired?: () => void;
-  t: TranslateFn;
-}
-
-function TokenExpiryStatus({ expiresAt, onExpired, t }: TokenExpiryStatusProps) {
-  const [now, setNow] = useState(Date.now);
-
-  useEffect(() => {
-    if (expiresAt - Date.now() <= 0) {
-      onExpired?.();
-      return;
-    }
-
-    let id: ReturnType<typeof setTimeout>;
-
-    function tick() {
-      const current = Date.now();
-      setNow(current);
-      const remaining = expiresAt - current;
-      if (remaining <= 0) {
-        onExpired?.();
-        return;
-      }
-      const cadence = remaining >= MS_PER_DAY ? MS_PER_HOUR : MS_PER_MINUTE;
-      id = setTimeout(tick, Math.min(remaining, cadence));
-    }
-
-    const firstRemaining = expiresAt - Date.now();
-    const firstCadence = firstRemaining >= MS_PER_DAY ? MS_PER_HOUR : MS_PER_MINUTE;
-    id = setTimeout(tick, Math.min(firstRemaining, firstCadence));
-    return () => clearTimeout(id);
-  }, [expiresAt, onExpired]);
-
-  const label = formatTimeRemaining(expiresAt, t, now);
-  if (!label) return null;
-
-  return (
-    <div
-      className="flex items-center gap-1 rounded-md bg-intents-ux-boxLowContrast-backgroundColor px-2 py-1"
-      data-testid="share-link-token-expiry"
-    >
-      <ClockIcon className="size-2.5 shrink-0 opacity-60" />
-      <text.span size={-1} text={label} />
-    </div>
-  );
-}
-
-interface PreviewLinkDropdownProps {
-  value: PreviewLinkType;
-  onChange: (value: PreviewLinkType) => void;
-  t: TranslateFn;
-}
-
-function PreviewLinkDropdown({ value, onChange, t }: PreviewLinkDropdownProps) {
-  const [open, setOpen] = useState(false);
-  const options = getPreviewLinkOptions(t);
-  const selected = options.find((option) => option.value === value)
-    ?? options[0];
-
-  function optionClick(optionValue: PreviewLinkType) {
-    return function selectOption() {
-      onChange(optionValue);
-      setOpen(false);
-    };
-  }
-
-  return (
-    <div className="w-full" data-testid="share-link-access-level">
-      <text.span as="label" size={-2} text={t('builder_share_link_who_can_access')} />
-      <Popover open={open} onOpenChange={setOpen} modal={false}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className={cn(
-              'flex w-full items-center gap-1 rounded-md border border-border mt-0.5 px-2 py-1',
-              'text-left text-sm hover:bg-intents-ux-boxHighContrast-backgroundColor/10',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            )}
-            aria-expanded={open}
-            data-testid="share-link-access-level-trigger"
-          >
-            <selected.icon className="size-2.5 shrink-0" />
-            <text.span size={-1} className="flex-1" text={selected.label} />
-            <ChevronDownIcon className="size-2.5 shrink-0 opacity-60" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          className="w-[var(--radix-popover-trigger-width)] rounded-md p-1"
-          onOpenAutoFocus={(event) => event.preventDefault()}
-        >
-          {options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              className={cn(
-                'flex w-full items-center gap-1 rounded-md p-1 text-left transition-colors',
-                'hover:bg-intents-ux-boxLowContrast-backgroundColor',
-                'focus:outline-none focus-visible:bg-intents-ux-boxLowContrast-backgroundColor',
-                value === option.value && 'bg-intents-ux-boxHighContrast-backgroundColor/5',
-              )}
-              onClick={optionClick(option.value)}
-              data-testid={`share-link-access-level-${option.value}`}
-            >
-              <option.icon className="size-2.5 shrink-0" />
-              <text.span size={-1} text={option.label} className="flex-1 min-w-0" />
-              {value === option.value && <CheckmarkIcon className="size-2.5 shrink-0" />}
-            </button>
-          ))}
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
-}
-
 interface PublishedContentProps {
   url: string;
-  helperText: string;
+  status: string;
   isLoading: boolean;
   copied: boolean;
   onCopy: () => void;
@@ -318,17 +183,17 @@ interface PublishedContentProps {
 
 function ContentWrapper({ testId, children }: { testId: string; children: React.ReactNode }) {
   return (
-    <div data-testid={testId} className="flex w-full min-w-0 flex-col gap-1">
+    <div data-testid={testId} className="flex w-full min-w-0 flex-col gap-2">
       {children}
     </div>
   );
 }
 
-function PublishedContent({ url, helperText, isLoading, copied, onCopy, onOpen, showQR, t }: PublishedContentProps) {
+function PublishedContent({ url, status, isLoading, copied, onCopy, onOpen, showQR, t }: PublishedContentProps) {
   return (
     <ContentWrapper testId="share-link-published-content">
-      <HelperText>{helperText}</HelperText>
-      <hr className="w-full my-1" />
+      <StatusText centered>{status}</StatusText>
+      <hr className="w-full" />
 
       {isLoading ? (
         <LoadingSpinner testId="share-link-published-loading" />
@@ -352,9 +217,8 @@ function PublishedContent({ url, helperText, isLoading, copied, onCopy, onOpen, 
 }
 
 interface PreviewContentProps {
-  helperText: string;
-  linkType: PreviewLinkType;
-  onLinkTypeChange: (value: PreviewLinkType) => void;
+  status: string;
+  centered?: boolean;
   url: string;
   copied: boolean;
   onCopy: () => void;
@@ -363,17 +227,59 @@ interface PreviewContentProps {
   isError: boolean;
   errorMessage: string;
   onRetry: () => void;
-  isShareLinksEnabled: boolean;
   showQR: boolean;
   tokenExpiresAt: number | undefined;
   onTokenExpired?: () => void;
   t: TranslateFn;
 }
 
+function ShareAccessInfo({ expiresAt, onExpired, t }: { expiresAt?: number; onExpired?: () => void; t: TranslateFn }) {
+  const [now, setNow] = useState(Date.now);
+  const onExpiredRef = useRef(onExpired);
+  onExpiredRef.current = onExpired;
+
+  useEffect(() => {
+    if (!expiresAt) return;
+    if (expiresAt - Date.now() <= 0) {
+      onExpiredRef.current?.();
+      return;
+    }
+
+    let id: ReturnType<typeof setTimeout>;
+
+    function tick() {
+      const currentTime = Date.now();
+      if (!expiresAt || expiresAt - currentTime <= 0) {
+        onExpiredRef.current?.();
+        return;
+      }
+      setNow(currentTime);
+      const remaining = expiresAt - currentTime;
+      const cadence = remaining >= MS_PER_DAY ? MS_PER_HOUR : MS_PER_MINUTE;
+      id = setTimeout(tick, Math.min(remaining, cadence));
+    }
+
+    const remaining = expiresAt - Date.now();
+    const cadence = remaining >= MS_PER_DAY ? MS_PER_HOUR : MS_PER_MINUTE;
+    id = setTimeout(tick, Math.min(remaining, cadence));
+    return () => clearTimeout(id);
+  }, [expiresAt]);
+
+  const expiryText = expiresAt ? formatTimeRemaining(expiresAt, t, now) : null;
+  if (!expiryText) return null;
+
+  return (
+    <text.span emphasis="passive" data-testid="share-link-access-info" className="!leading-tight">
+      <text.span size={-1} text={t('builder_share_link_anyone_can_access')} />
+      <text.span size={-1} text=" · " aria-hidden="true" />
+      <text.span size={-1} text={expiryText} />
+    </text.span>
+  );
+}
+
 function PreviewContent({
-  helperText,
-  linkType,
-  onLinkTypeChange,
+  status,
+  centered,
   url,
   copied,
   onCopy,
@@ -382,7 +288,6 @@ function PreviewContent({
   isError,
   errorMessage,
   onRetry,
-  isShareLinksEnabled,
   showQR,
   tokenExpiresAt,
   onTokenExpired,
@@ -390,12 +295,8 @@ function PreviewContent({
 }: PreviewContentProps) {
   return (
     <ContentWrapper testId="share-link-preview-content">
-      <HelperText>{helperText}</HelperText>
-      {isShareLinksEnabled && <PreviewLinkDropdown value={linkType} onChange={onLinkTypeChange} t={t} />}
-      {linkType === 'public' && tokenExpiresAt && (
-        <TokenExpiryStatus expiresAt={tokenExpiresAt} onExpired={onTokenExpired} t={t} />
-      )}
-      <hr className="w-full my-1" />
+      <StatusText centered={centered}>{status}</StatusText>
+      <hr className="w-full" />
 
       {isLoading && <LoadingSpinner testId="share-link-preview-loading" />}
 
@@ -417,16 +318,19 @@ function PreviewContent({
 
       {!isLoading && !isError && (
         <>
-          <UrlActionsSection
-            inputId="preview-url"
-            url={url}
-            copied={copied}
-            onCopy={onCopy}
-            onOpen={onOpen}
-            copyLabel={t('builder_share_link_copy')}
-            copiedLabel={t('builder_share_link_copied')}
-            openLabel={t('builder_common_open_new_tab')}
-          />
+          <div className="flex flex-col gap-0.5">
+            <UrlActionsSection
+              inputId="preview-url"
+              url={url}
+              copied={copied}
+              onCopy={onCopy}
+              onOpen={onOpen}
+              copyLabel={t('builder_share_link_copy')}
+              copiedLabel={t('builder_share_link_copied')}
+              openLabel={t('builder_common_open_new_tab')}
+            />
+            <ShareAccessInfo expiresAt={tokenExpiresAt} onExpired={onTokenExpired} t={t} />
+          </div>
           {url && showQR && <QRSection url={url} caption={t('builder_share_link_qr_text')} />}
         </>
       )}
@@ -444,7 +348,6 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
   const [open, setOpen] = useState(false);
   const [segment, setSegment] = useState<SegmentId>('preview');
-  const [previewLinkType, setPreviewLinkType] = useState<PreviewLinkType>('private');
   const [copied, setCopied] = useState(false);
   const [createError, setCreateError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -483,7 +386,6 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
       setCreateError(false);
       setRetryCount(0);
       setTokenExpired(false);
-      setPreviewLinkType('private');
       setSegment(isPublished ? 'published' : 'preview');
     }
     prevOpenRef.current = open;
@@ -492,7 +394,7 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
   const [tokenExpired, setTokenExpired] = useState(false);
   useEffect(() => {
     if (tokenExpired) setTokenExpired(false);
-  }, [tokens]);  
+  }, [tokens]);
   const activeToken = useMemo(
     () => {
       if (tokenExpired) return undefined;
@@ -501,16 +403,15 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
     [tokens, tokenExpired]
   );
 
-  const sessionUrl = previewUrl ?? '';
   const shareUrl = activeToken ? resolveShareUrl(activeToken) : '';
 
   const isPublishedSection = isPublished && segment === 'published';
-  const isPreviewPublic = previewLinkType === 'public';
 
   const displayUrl = useMemo(() => {
     if (isPublishedSection) return publishedUrl ?? '';
-    return isPreviewPublic ? shareUrl : sessionUrl;
-  }, [isPublishedSection, publishedUrl, isPreviewPublic, shareUrl, sessionUrl]);
+    if (!isShareLinksEnabled) return previewUrl ?? '';
+    return shareUrl;
+  }, [isPublishedSection, publishedUrl, isShareLinksEnabled, previewUrl, shareUrl]);
 
   const { changesSincePublish, isLoading: isSyncLoading, isError: isSyncError } =
     usePublishSyncState({
@@ -519,8 +420,8 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
     });
 
   const isDisabled = !previewUrl && !isPublished;
-  const isPreviewError = isPreviewPublic && (isTokensError || createError);
-  const isPreviewLoading = isPreviewPublic && !isPreviewError && !activeToken;
+  const isPreviewError = isTokensError || createError;
+  const isPreviewLoading = isShareLinksEnabled && !!appId && !isPreviewError && !activeToken;
 
   const logEvent = (eventName: string, payload?: Record<string, unknown>) => {
     try {
@@ -534,7 +435,7 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
   };
 
   useEffect(() => {
-    if (!open || !isPreviewPublic || !isShareLinksEnabled || !appId || isPublishedSection) return;
+    if (!open || !isShareLinksEnabled || !appId || isPublishedSection) return;
     if (isTokensError || createError) return;
     if (activeToken || isTokensLoading || createToken.isPending) return;
 
@@ -572,7 +473,7 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
     createLink();
 
     return () => { cancelled = true; };
-  }, [open, isPreviewPublic, isShareLinksEnabled, appId, isPublishedSection, activeToken, isTokensLoading, createToken.isPending, createToken.mutateAsync, refetchTokens, retryCount]);
+  }, [open, isShareLinksEnabled, appId, isPublishedSection, activeToken, isTokensLoading, createToken.isPending, createToken.mutateAsync, refetchTokens, retryCount]);
 
   const handleRetry = () => {
     setCreateError(false);
@@ -591,7 +492,7 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
       setCopied(true);
       if (copiedTimeoutRef.current) clearTimeout(copiedTimeoutRef.current);
       copiedTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
-      logEvent(`${location}.share_link.copy`, { type: isPublishedSection ? 'published' : previewLinkType });
+      logEvent(`${location}.share_link.copy`, { type: isPublishedSection ? 'published' : 'preview' });
     } catch (err) {
       logger.warn('share-link.copy.failure', {
         message: err instanceof Error ? err.message : 'Clipboard API unavailable',
@@ -601,18 +502,11 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
 
   const handleOpen = () => {
     if (!displayUrl) return;
-    logEvent(`${location}.share_link.open_url`, { type: isPublishedSection ? 'published' : previewLinkType });
+    logEvent(`${location}.share_link.open_url`, { type: isPublishedSection ? 'published' : 'preview' });
     const openUrl = !isPublishedSection && isPreviewHeaderEnabled
       ? withPreviewParam(displayUrl)
       : displayUrl;
     window.open(openUrl, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleLinkTypeChange = (value: PreviewLinkType) => {
-    setPreviewLinkType(value);
-    setCopied(false);
-    setCreateError(false);
-    logEvent(`${location}.share_link.tab_switch`, { tab: value });
   };
 
   const handleSegmentChange = (value: string) => {
@@ -621,14 +515,14 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
     logEvent(`${location}.share_link.tab_switch`, { tab: value });
   };
 
-  const getPublishedSyncText = (): string => {
+  const getPublishedStatus = (): string => {
     if (isSyncLoading) return '\u2026';
     if (isSyncError) return t('builder_share_link_published_last_version');
     if (changesSincePublish === 0) return t('builder_share_link_published_in_sync');
     return t('builder_share_link_published_stale', { count: changesSincePublish });
   };
 
-  const getPreviewHelperText = (): string => {
+  const getPreviewStatus = (): string => {
     if (!isPublished) return t('builder_share_link_preview_latest');
     if (isSyncLoading) return '\u2026';
     if (isSyncError || changesSincePublish > 0) return t('builder_share_link_preview_unpublished');
@@ -642,9 +536,8 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
 
   const previewContent = (
     <PreviewContent
-      helperText={getPreviewHelperText()}
-      linkType={previewLinkType}
-      onLinkTypeChange={handleLinkTypeChange}
+      status={getPreviewStatus()}
+      centered={isPublished}
       url={displayUrl}
       copied={copied}
       onCopy={handleCopy}
@@ -653,7 +546,6 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
       isError={isPreviewError}
       errorMessage={getPreviewErrorMessage()}
       onRetry={handleRetry}
-      isShareLinksEnabled={isShareLinksEnabled}
       showQR={!isMobile}
       tokenExpiresAt={activeToken?.expiresAt}
       onTokenExpired={() => setTokenExpired(true)}
@@ -685,7 +577,7 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="flex w-[320px] min-w-0 flex-col gap-0.5 px-3 py-2"
+        className="flex w-[320px] min-w-0 flex-col gap-0.5 p-2"
         data-testid="share-link-popover"
       >
         {!isPublished && (
@@ -698,7 +590,7 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
               value={segment}
               onSelectionChange={handleSegmentChange}
               data-testid="share-link-segment"
-              className={cn('mt-1.5 mb-1.5 self-start', isPublished && 'mt-0')}
+              className={cn('mt-1.5 mb-1.5 self-center', isPublished && 'mt-0')}
             >
               <SegmentedControllerItem
                 value="published"
@@ -717,7 +609,7 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
             {segment === 'published' ? (
               <PublishedContent
                 url={publishedUrl ?? ''}
-                helperText={getPublishedSyncText()}
+                status={getPublishedStatus()}
                 isLoading={isSyncLoading}
                 copied={copied}
                 onCopy={handleCopy}

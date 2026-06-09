@@ -5,6 +5,7 @@ import type { App, UpdateAppRequest } from '../schema.js';
 import { createForWorkspace } from '../../workspace/index.js';
 import { Logger } from '../../logging/index.js';
 import { getErrorMessage } from '../../utils/error.js';
+import { stripShareToken } from '../../utils/share-token.js';
 
 /**
  * Parameters for registering or updating an app
@@ -97,7 +98,8 @@ export class AppRepository {
    * ```
    */
   async registerOrUpdateApp(params: RegisterAppParams): Promise<RegisterAppResult> {
-    const { siteId, name, appPath, port, initialPrompt, previewUrl, socketPath, publishSupervisorPath, subscriptionId, customerId } = params;
+    const { siteId, name, appPath, port, initialPrompt, previewUrl: rawPreviewUrl, socketPath, publishSupervisorPath, subscriptionId, customerId } = params;
+    const previewUrl = rawPreviewUrl !== undefined ? stripShareToken(rawPreviewUrl) : undefined;
 
     const sanitizedSiteId = siteId.trim();
     const sanitizedName = name?.trim();

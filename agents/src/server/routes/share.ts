@@ -108,7 +108,19 @@ function extractCellPrefix(previewUrl: string): string | null {
  * diagnose why the BFF URL isn't being used.
  */
 function buildShareUrl(appId: string, baseUrl: string, token: string): string {
-  const legacy = `${baseUrl}?airoShareToken=${token}`;
+  // Build legacy URL using URL API to prevent double-token when baseUrl
+  // already contains an airoShareToken (stale DB entry).
+  let legacy: string;
+  try {
+    const normalized = /^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`;
+    const parsed = new URL(normalized);
+    parsed.searchParams.set('airoShareToken', token);
+    legacy = parsed.toString();
+  } catch {
+    // hostname-only or otherwise unparseable — strip any existing token via regex, then concat
+    const stripped = baseUrl.replace(/[?&]airoShareToken=[^&]*/g, '').replace(/\?$/, '');
+    legacy = `${stripped}?airoShareToken=${token}`;
+  }
 
   const cellPrefix = extractCellPrefix(baseUrl);
   if (!cellPrefix) {

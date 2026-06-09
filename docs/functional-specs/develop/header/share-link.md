@@ -1,18 +1,18 @@
 # Share Link
 
 **Author:** Rahul Rahate - Director, User Experience | Elena Nelmes - Lead UX Engineer
-**Date last updated:** 2026-06-05
-**Version:** Current (v3.1)
+**Date last updated:** 2026-06-08
+**Version:** Current (v4.0)
 
 ## Overview
 
-A header button (link icon) that consolidates ways to access the app. Uses a segmented controller to switch between Published and Preview segments (when published), and an access-level dropdown within the Preview segment to control Public vs Private preview access.
+A header button (link icon) that consolidates ways to access the app. Uses a segmented controller to switch between Published and Preview segments (when published). The Preview segment always shows a shareable 7-day token link — no access-level dropdown.
 
 **Tooltip:** `builder_share_link_tooltip`
 
 **Component:** `app/src/app/[market]/develop/components/layout/ShareLink.tsx`
 
-**Feature Flag:** `appbuilder-share-links` (gates the Public access-level option and share token creation)
+**Feature Flag:** `appbuilder-share-links` (gates share token creation)
 
 ## Segment Structure
 
@@ -21,127 +21,71 @@ Uses `SegmentedController` from `@airo-ux/pattern-library` for segment switching
 | Segment | Icon | Shown When | Description |
 |---------|------|------------|-------------|
 | **Published** | WorldIcon | Site has been published | Live production URL with sync status |
-| **Preview** | ShowIcon | Always (default when not published) | Preview URL with optional public/private access |
+| **Preview** | ShowIcon | Always (default when not published) | Shareable preview link (7-day token) |
 
 **Default segment:** Published (if published), otherwise Preview only (no segmented controller shown)
 
 **Segment order:** Published → Preview
 
-## Access Level Dropdown (Preview segment)
+## Preview Link Behavior
 
-Within the Preview segment, a dropdown (`PreviewLinkDropdown`) controls whether the preview link is private (session-only) or public (shareable 7-day token). Only shown when `appbuilder-share-links` flag is enabled.
-
-| Option | Icon | Label i18n Key |
-|--------|------|----------------|
-| **Private** | LockedIcon | `builder_share_link_access_private_label` |
-| **Public** | WorldIcon | `builder_share_link_access_public_label` |
-
-**Default:** Private (resets each time the popover opens)
-
-### Access Level Behavior
+The Preview segment always shows a token-based shareable link. A 7-day token is automatically created when the popover opens on the Preview segment. No access-level dropdown; the link is always shareable by anyone with the URL.
 
 | Action | Result |
 |--------|--------|
-| Select "Public" | Token created (if none exists), URL switches to token URL |
-| Select "Private" | URL switches to session URL, token NOT deleted |
-| Token expires (popover closed) | Next time user selects "Public", auto-creates a new token |
-| Token expires (popover open) | `TokenExpiryStatus` fires `onExpired` → `tokenExpired` flag set → spinner shown → new token auto-created |
+| Popover opens on Preview segment | Token auto-created (if none active) |
+| Token expires (popover closed) | Next open triggers new token creation |
+| Token expires (popover open) | `ShareAccessInfo` fires `onExpired` → spinner shown → new token auto-created |
 | 409 conflict on create | Refetch tokens (another tab may have created one) |
-
-**Note:** Switching to Private does NOT delete or invalidate the token. The token remains valid until expiry. This is intentional — the user may want to temporarily hide the link without invalidating URLs already shared.
 
 ### Token Expiry Auto-Recreation
 
-When a public token expires while the popover is open with "Public" selected, the component automatically creates a replacement token. The flow is:
+When a token expires while the popover is open on the Preview segment, the component automatically creates a replacement token. The flow is:
 
-1. `TokenExpiryStatus` countdown reaches zero → calls `onExpired` callback
+1. `ShareAccessInfo` timer reaches zero → calls `onExpired` callback
 2. Parent sets `tokenExpired` state flag → `activeToken` becomes `undefined`
 3. `shareUrl` clears, loading spinner appears
 4. Auto-create effect detects no active token → mints new 7-day token
 5. New token arrives in React Query cache → `tokenExpired` flag clears (via `useEffect` on `tokens`)
-6. New token URL and countdown appear
+6. New token URL and expiry label appear
 
 The `tokenExpired` flag is reset when the `tokens` data changes (new token created) and when the popover opens.
 
-### Dropdown Display
+### Share Access Info
 
-The dropdown trigger and menu options both show the **icon and label** only (single line, compact). No helper/description text.
-
-### Token Expiry Countdown
-
-When "Public" is selected and an active token exists, a separate `TokenExpiryStatus` info banner appears between the dropdown and the divider. Rendered as a subtle rounded container with a `ClockIcon` and the countdown text, visually distinct from the dropdown to make it clear this is a status about the link, not part of the access-level selector.
-
-**Props:** `expiresAt` (timestamp), `onExpired` (callback when countdown reaches zero), `t` (translation function)
-
-| State | Expiry status shown |
-|-------|---------------------|
-| Private selected | Hidden (component not rendered) |
-| Public selected, no token yet | Hidden (spinner shown instead) |
-| Public selected, active token | "Expires in X days/hours/mins" |
-| Public selected, token expired | Component fires `onExpired`, returns null → auto-recreation begins |
-
-**Countdown format:**
+When an active token exists, a `ShareAccessInfo` renders below the URL input showing "Anyone with the link can access · Link expires in N [days/hours/mins]". Returns `null` when there is no valid expiry to display.
 
 | Time Remaining | Format | i18n Key |
 |----------------|--------|----------|
-| >= 24 hours | "Expires in {count} days" | `builder_share_link_expires_days` (ICU plural) |
-| >= 1 hour | "Expires in {count} hours" | `builder_share_link_expires_hours` (ICU plural) |
-| < 1 hour | "Expires in {count} mins" | `builder_share_link_expires_mins` (ICU plural) |
+| >= 24 hours | "{count} days" | `builder_share_link_expires_days` (ICU plural) |
+| >= 1 hour | "{count} hours" | `builder_share_link_expires_hours` (ICU plural) |
+| < 1 hour | "{count} mins" | `builder_share_link_expires_mins` (ICU plural) |
 | Expired | Fires `onExpired`, returns null | — |
 
 **Update frequency:** Every hour when >= 1 day remaining, every minute otherwise.
 
-**Expiry detection:** The interval tick checks `Date.now() >= expiresAt` and immediately calls `onExpired` + clears the interval. If the component mounts with an already-expired timestamp, `onExpired` fires on mount.
+**Expiry detection:** The timer tick checks `Date.now() >= expiresAt` and immediately calls `onExpired` + clears the timeout. If the component mounts with an already-expired timestamp, `onExpired` fires on mount.
 
 ## Wireframes
 
-### Before Publish (No Segments) - Private (Default)
+### Before Publish (No Segments)
 
 ```
 ┌─────────────────────────────────────────────┐
 │                                             │
 │  Preview                                    │
-│  (preview status helper text)               │
-│                                             │
-│  Access level                               │
-│  ┌────────────────────────────────────────┐ │
-│  │ [lock] Private                     v   │ │
-│  └────────────────────────────────────────┘ │
+│  (preview status text)                      │
 │  ─────────────────────────────────────────  │
-│                                             │
 │  ┌─────────────────────────────┬────┬────┐  │
-│  │ https://preview.app.com/... │copy│open│  │
+│  │ https://share.airo.../abc   │copy│open│  │
 │  └─────────────────────────────┴────┴────┘  │
+│  Anyone with the link can access ·          │
+│  Link expires in 6 days                     │
 │                                             │
 │  (QR code section)                          │
 │                                             │
 └─────────────────────────────────────────────┘
     Width: 320px
-```
-
-### Before Publish - Public Access Selected
-
-```
-┌─────────────────────────────────────────────┐
-│                                             │
-│  Preview                                    │
-│  (preview status helper text)               │
-│                                             │
-│  Access level                               │
-│  ┌────────────────────────────────────────┐ │
-│  │ [world] Public                     v   │ │
-│  └────────────────────────────────────────┘ │
-│  ┌────────────────────────────────────────┐ │
-│  │ [clock] Public access expires in 6 d   │ │
-│  └────────────────────────────────────────┘ │
-│  ─────────────────────────────────────────  │
-│  ┌─────────────────────────────┬────┬────┐  │
-│  │ https://share.airo.../abc   │copy│open│  │
-│  └─────────────────────────────┴────┴────┘  │
-│                                             │
-│  (QR code section)                          │
-│                                             │
-└─────────────────────────────────────────────┘
 ```
 
 ### Before Publish - Loading (Creating Token)
@@ -150,12 +94,7 @@ When "Public" is selected and an active token exists, a separate `TokenExpirySta
 ┌─────────────────────────────────────────────┐
 │                                             │
 │  Preview                                    │
-│  (preview status helper text)               │
-│                                             │
-│  Access level                               │
-│  ┌────────────────────────────────────────┐ │
-│  │ [world] Public                     v   │ │
-│  └────────────────────────────────────────┘ │
+│  (preview status text)                      │
 │  ─────────────────────────────────────────  │
 │                                             │
 │              (spinner)                      │
@@ -171,7 +110,7 @@ When "Public" is selected and an active token exists, a separate `TokenExpirySta
 │  │ [world] Published │ [eye] Preview    │   │
 │  └───────────────────┴──────────────────┘   │
 │                                             │
-│  (published sync status helper text)        │
+│       (published sync status text)          │
 │  ─────────────────────────────────────────  │
 │  ┌─────────────────────────────┬────┬────┐  │
 │  │ https://myapp.example.com   │copy│open│  │
@@ -190,34 +129,26 @@ When "Public" is selected and an active token exists, a separate `TokenExpirySta
 │  │ [world] Published │ [eye] Preview    │   │
 │  └───────────────────┴──────────────────┘   │
 │                                             │
-│  (preview status helper text)               │
-│                                             │
-│  Access level                               │
-│  ┌────────────────────────────────────────┐ │
-│  │ [lock] Private                     v   │ │
-│  └────────────────────────────────────────┘ │
+│         (preview status text)               │
 │  ─────────────────────────────────────────  │
 │  ┌─────────────────────────────┬────┬────┐  │
-│  │ https://preview.app.com/... │copy│open│  │
+│  │ https://share.airo.../abc   │copy│open│  │
 │  └─────────────────────────────┴────┴────┘  │
+│  Anyone with the link can access ·          │
+│  Link expires in 6 days                     │
 │                                             │
 │  (QR code section)                          │
 │                                             │
 └─────────────────────────────────────────────┘
 ```
 
-### Error State (Public Token Creation/Load Failed)
+### Error State (Token Creation/Load Failed)
 
 ```
 ┌─────────────────────────────────────────────┐
-
-│  (header / segments as appropriate)         │
-│  (helper text)                              │
 │                                             │
-│  Access level                               │
-│  ┌────────────────────────────────────────┐ │
-│  │ [world] Public                     v   │ │
-│  └────────────────────────────────────────┘ │
+│  (header / segments as appropriate)         │
+│  (status text)                              │
 │  ─────────────────────────────────────────  │
 │                                             │
 │  [!] Failed to create link. Try again       │
@@ -227,15 +158,13 @@ When "Public" is selected and an active token exists, a separate `TokenExpirySta
 
 ## Behavior Summary
 
-| State | Segmented Controller | Helper Text | Access Dropdown | URL in Input |
-|-------|---------------------|-------------|-----------------|--------------|
-| Before publish, private | Hidden | Latest preview | Shown (if flag) | Session URL |
-| Before publish, public | Hidden | Latest preview | Shown (if flag) | Token URL |
-| After publish, Published segment | Shown | Sync status | Hidden | Published URL |
-| After publish, Preview segment, private | Shown | Sync-aware preview status | Shown (if flag) | Session URL |
-| After publish, Preview segment, public | Shown | Sync-aware preview status | Shown (if flag) | Token URL |
+| State | Segmented Controller | Status Text | URL in Input |
+|-------|---------------------|-------------|--------------|
+| Before publish | Hidden | Latest preview | Token URL |
+| After publish, Published segment | Shown | Sync status (centered) | Published URL |
+| After publish, Preview segment | Shown | Sync-aware preview status (centered) | Token URL |
 
-## Helper Text Logic
+## Status Text Logic
 
 ### Published Segment
 
@@ -253,6 +182,8 @@ When "Public" is selected and an active token exists, a separate `TokenExpirySta
 | Published + out of sync or error | `builder_share_link_preview_unpublished` |
 | Published + in sync | `builder_share_link_preview_matches` |
 
+**Text alignment:** Centered when the app has been published (both segments show centered text), left-aligned before publish.
+
 ## QR Code Section
 
 - **Visible** on desktop only (hidden when `isMobile` is true)
@@ -264,24 +195,24 @@ When "Public" is selected and an active token exists, a separate `TokenExpirySta
 ### Layout
 
 ```
-┌─────────────────────────────────────┐
-│                      ┌───────────┐  │  
-│   Scan to view on a  │  QR Code  │  │
-│     mobile device    │  128x128  │  │
-│                      └───────────┘  │
-└─────────────────────────────────────┘
+┌─────────────────────────────────┐
+│          ┌───────────┐          │
+│          │  QR Code  │          │
+│          │  128x128  │          │
+│          └───────────┘          │
+│ Scan to view on a mobile device │
+└─────────────────────────────────┘
 ```
 
-- Caption text above QR code, centered
-- QR code centered below caption
+- QR code, centered
+- Caption text below QR code, centered
 
 ## Link Types
 
-| Link Type | Access Level | Auth Required | TTL | Purpose |
-|-----------|-------------|---------------|-----|---------|
-| Session preview | Private | Yes (GoDaddy SSO) | SSO session (~12h JWT) | Only accessible by logged-in owner |
-| Public preview | Public | No (token) | 7 days (auto-recreated on expiry) | Temporary shareable link for anyone |
-| Published | N/A | No | Permanent | Public production site |
+| Link Type | Auth Required | TTL | Purpose |
+|-----------|---------------|-----|---------|
+| Preview (token) | No (token in URL) | 7 days (auto-recreated on expiry) | Shareable preview link for anyone |
+| Published | No | Permanent | Public production site |
 
 ## States
 
@@ -305,13 +236,12 @@ When "Public" is selected and an active token exists, a separate `TokenExpirySta
 |--------|--------|
 | Click trigger icon | Opens/closes popover (logs `share_link.open` only on open) |
 | Click segment | Switches segment content, resets copied state |
-| Change access level | Switches URL, resets copied/error state, creates token if public + no active token |
 | Click Copy button | Copies URL to clipboard, shows checkmark for 2s |
 | Click Open button | Opens URL in new tab (appends `?airoPreview=1` for preview URLs when `appbuilder-preview-header` flag is on) |
 | Click outside popover | Closes popover |
 | Press Escape | Closes popover |
-| Popover opens | Resets all state (copied, error, retry count, tokenExpired, access level → private, segment → published if published) |
-| Token expires while open | Expiry banner disappears, spinner shows, new token auto-created, fresh URL and countdown appear |
+| Popover opens | Resets all state (copied, error, retry count, tokenExpired, segment → published if published) |
+| Token expires while open | Access info disappears, spinner shows, new token auto-created, fresh URL and access info reappear |
 
 ## Data Dependencies
 
@@ -330,9 +260,9 @@ When "Public" is selected and an active token exists, a separate `TokenExpirySta
 | Event | Trigger | Payload |
 |-------|---------|---------|
 | `{location}.share_link.open` | Popover opened | `{ appId }` |
-| `{location}.share_link.tab_switch` | Segment or access level changed | `{ appId, tab }` |
-| `{location}.share_link.copy` | URL copied | `{ appId, type: 'published' \| 'public' \| 'private' }` |
-| `{location}.share_link.open_url` | Open in new tab clicked | `{ appId, type: 'published' \| 'public' \| 'private' }` |
+| `{location}.share_link.tab_switch` | Segment changed | `{ appId, tab }` |
+| `{location}.share_link.copy` | URL copied | `{ appId, type: 'published' \| 'preview' }` |
+| `{location}.share_link.open_url` | Open in new tab clicked | `{ appId, type: 'published' \| 'preview' }` |
 | `{location}.share_link.retry` | Retry clicked after error | `{ appId }` |
 
 `{location}` defaults to `'develop'`, passed as prop.
@@ -344,7 +274,6 @@ When "Public" is selected and an active token exists, a separate `TokenExpirySta
 | Trigger button | `aria-label` (tooltip text), `aria-expanded`, `aria-haspopup="dialog"` |
 | Popover | Focus trapped, keyboard dismissible (Escape) |
 | Segmented controller | `aria-label` for the controller group |
-| Access level dropdown | `aria-expanded` on trigger button |
 | Copy button | Focus visible, tooltip label changes to "Copied" |
 | Open in new tab | `target="_blank"` with `rel="noopener noreferrer"` |
 
@@ -367,23 +296,21 @@ When "Public" is selected and an active token exists, a separate `TokenExpirySta
 - [ ] Segment switching works correctly
 - [ ] Copied state resets on segment switch
 
-### Access Level Dropdown
+### Preview Content
 
-- [ ] Dropdown hidden when `appbuilder-share-links` flag is off
-- [ ] Dropdown shown when flag is on
-- [ ] Defaults to Private each time popover opens
-- [ ] Selecting Public creates token if none active
-- [ ] Selecting Private switches to session URL
-- [ ] Token URL shown when Public is selected
-- [ ] Session URL shown when Private is selected
+- [ ] Token auto-created when popover opens on Preview segment
+- [ ] Token URL shown when active token exists
 - [ ] Loading spinner shown during token creation
 - [ ] Error state shown with retry on token creation failure
+- [ ] Error state shown when token list fetch fails
+- [ ] Retry button refetches tokens or retries creation
+- [ ] 409 conflict triggers token refetch instead of error
 
 ### Token Expiry
 
-- [ ] Countdown shows when Public selected and active token exists
-- [ ] Countdown hidden when Private selected
-- [ ] Countdown updates at correct frequency (hourly for days, minutely for hours/mins)
+- [ ] Access info shows when active token exists
+- [ ] Access info hidden during loading/error
+- [ ] Timer updates at correct frequency (hourly for days, minutely for hours/mins)
 - [ ] Token expiry while popover open triggers auto-recreation (spinner → new token)
 - [ ] `tokenExpired` flag clears when new token data arrives
 - [ ] `tokenExpired` flag resets on popover open
@@ -406,16 +333,9 @@ When "Public" is selected and an active token exists, a separate `TokenExpirySta
 
 ### Published Segment
 
-- [ ] Shows sync status helper text
+- [ ] Shows sync status text
 - [ ] Shows published URL in input
 - [ ] Handles sync error gracefully
-
-### Error Handling
-
-- [ ] Error state shown when token list fetch fails
-- [ ] Error state shown when token creation fails
-- [ ] Retry button refetches tokens or retries creation
-- [ ] 409 conflict triggers token refetch instead of error
 
 ## i18n Keys
 
@@ -426,18 +346,15 @@ When "Public" is selected and an active token exists, a separate `TokenExpirySta
 | `builder_share_link_segment_label` | Segmented controller aria-label |
 | `builder_common_published` | Published segment label |
 | `builder_common_preview` | Preview segment label |
-| `builder_share_link_who_can_access` | Access dropdown label |
-| `builder_share_link_access_private_label` | Private option label |
-| `builder_share_link_access_public_label` | Public option label |
-| `builder_share_link_expires_days` | "Public access expires in {count, plural, one {# day} other {# days}}" |
-| `builder_share_link_expires_hours` | "Public access expires in {count, plural, one {# hour} other {# hours}}" |
-| `builder_share_link_expires_mins` | "Public access expires in {count, plural, one {# min} other {# mins}}" |
-| `builder_share_link_published_last_version` | Sync error helper text |
-| `builder_share_link_published_in_sync` | In sync helper text |
-| `builder_share_link_published_stale` | Out of sync helper text (`{count}` changes) |
-| `builder_share_link_preview_latest` | Preview helper when not published |
-| `builder_share_link_preview_unpublished` | Preview helper when out of sync |
-| `builder_share_link_preview_matches` | Preview helper when in sync |
+| `builder_share_link_expires_days` | "Link expires in {count, plural, one {# day} other {# days}}" |
+| `builder_share_link_expires_hours` | "Link expires in {count, plural, one {# hour} other {# hours}}" |
+| `builder_share_link_expires_mins` | "Link expires in {count, plural, one {# min} other {# mins}}" |
+| `builder_share_link_published_last_version` | Sync error status text |
+| `builder_share_link_published_in_sync` | In sync status text |
+| `builder_share_link_published_stale` | Out of sync status text (`{count}` changes) |
+| `builder_share_link_preview_latest` | Preview status when not published |
+| `builder_share_link_preview_unpublished` | Preview status when out of sync |
+| `builder_share_link_preview_matches` | Preview status when in sync |
 | `builder_share_link_copy` | Copy button label |
 | `builder_share_link_copied` | Copied button label |
 | `builder_common_open_new_tab` | Open in new tab button label |
@@ -455,11 +372,7 @@ When "Public" is selected and an active token exists, a separate `TokenExpirySta
 | `share-link-segment` | Segmented controller |
 | `share-link-published-content` | Published segment content wrapper |
 | `share-link-preview-content` | Preview segment content wrapper |
-| `share-link-access-level` | Access level dropdown wrapper |
-| `share-link-access-level-trigger` | Access level dropdown trigger button |
-| `share-link-access-level-private` | Private dropdown option |
-| `share-link-access-level-public` | Public dropdown option |
-| `share-link-token-expiry` | Token expiry countdown (separate element below dropdown) |
+| `share-link-access-info` | Access scope and token expiry info |
 | `share-link-input` | URL input field frame |
 | `share-link-copy` | Copy button |
 | `share-link-open` | Open in new tab button |
@@ -468,15 +381,14 @@ When "Public" is selected and an active token exists, a separate `TokenExpirySta
 | `share-link-preview-loading` | Preview segment loading spinner |
 | `share-link-error-state` | Error state container |
 
-## Key Changes from Original Spec
+## Key Changes from v3.1
 
-1. **Segmented controller replaces ButtonGroup** — uses `@airo-ux/pattern-library` `SegmentedController` instead of `ButtonGroup`
-2. **Access level dropdown replaces "Make public/private" toggle** — dropdown with icon, label, and description per option instead of inline text link
-3. **Trigger icon is link icon** — `LinkIcon` instead of window icon
-4. **Helper text is sync-aware** — shows publish sync status instead of "Share while I'm online" / countdown
-5. **Countdown is a separate status element** — `TokenExpiryStatus` renders "Expires in X days/hours/mins" between the dropdown and divider when a public token is active; dropdown trigger shows only icon + label
-6. **QR code layout simplified** — caption text + QR code, no phone icon, no gray background
-7. **i18n key namespace is `builder_share_link_*`** — not `builder_view_share_*`
-8. **data-testid namespace is `share-link-*`** — not `header-view-share-*`
-9. **Analytics event namespace is `{location}.share_link.*`** — parameterized location, not hardcoded `develop.header.view_share.*`
-10. **QR hidden on mobile** — `isMobile` check hides QR code section
+1. **Removed access-level dropdown** — no more Private/Public toggle; preview is always a shareable token link
+2. **Removed `PreviewLinkDropdown` component** — along with `LockedIcon`, `ChevronDownIcon` imports
+3. **Removed `TokenExpiryStatus` component** — replaced by `ShareAccessInfo` that renders access scope and expiry text
+4. **Token auto-creates on popover open** — no longer gated behind selecting "Public"
+5. **Analytics events simplified** — copy/open type is `'preview'` (not `'public'`/`'private'`)
+6. **Status text alignment** — centered when published (both segments), left-aligned before publish
+7. **Removed test IDs** — `share-link-access-level`, `share-link-access-level-trigger`, `share-link-access-level-private`, `share-link-access-level-public`, `share-link-token-expiry`
+8. **New test ID** — `share-link-access-info` for the access/expiry info
+9. **New i18n key** — `builder_share_link_anyone_can_access` for the access scope label in `ShareAccessInfo`

@@ -234,9 +234,26 @@ describe('share BFF URL emission (POST /apps/:id/share)', () => {
     const res = await request(app).post(`/apps/${TEST_APP_ID}/share`).send({});
 
     expect(res.status).toBe(201);
+    // URL API normalizes path to include trailing slash
     expect(res.body.shareUrl).toBe(
-      `https://${TEST_APP_ID}.preview.test-godaddy.com?airoShareToken=${TEST_TOKEN}`,
+      `https://${TEST_APP_ID}.preview.test-godaddy.com/?airoShareToken=${TEST_TOKEN}`,
     );
+  });
+
+  it('produces a single airoShareToken even when stored previewUrl already contains one', async () => {
+    // Regression: stale token-bearing URL round-tripped into the DB
+    mockAppRepo.findById.mockReturnValue(
+      appOf(`https://local.gasket.dev-godaddy.com:5001/?airoShareToken=staleToken`),
+    );
+
+    const app = await mountShareApp();
+    const res = await request(app).post(`/apps/${TEST_APP_ID}/share`).send({});
+
+    expect(res.status).toBe(201);
+    const tokenCount = (res.body.shareUrl.match(/airoShareToken/g) ?? []).length;
+    expect(tokenCount).toBe(1);
+    expect(res.body.shareUrl).toContain(`airoShareToken=${TEST_TOKEN}`);
+    expect(res.body.shareUrl).not.toContain('staleToken');
   });
 
   it('returns 400 when app has no preview URL configured', async () => {
@@ -305,7 +322,8 @@ describe('share BFF URL emission (POST /apps/:id/share)', () => {
 
     expect(res.status).toBe(201);
     // Must be legacy form, not BFF (which would be undecodeable)
-    expect(res.body.shareUrl).toBe(`${previewWithCell}?airoShareToken=${TEST_TOKEN}`);
+    // URL API normalizes path to include trailing slash
+    expect(res.body.shareUrl).toBe(`${previewWithCell}/?airoShareToken=${TEST_TOKEN}`);
     expect(res.body.shareUrl).not.toContain('/share/');
   });
 });
@@ -373,8 +391,9 @@ describe('share BFF URL emission (GET /apps/:id/share)', () => {
     const app = await mountShareApp();
     const res = await request(app).get(`/apps/${TEST_APP_ID}/share`);
 
+    // URL API normalizes path to include trailing slash
     expect(res.body.tokens[0].shareUrl).toBe(
-      `https://${TEST_APP_ID}.preview.test-godaddy.com?airoShareToken=${TEST_TOKEN}`,
+      `https://${TEST_APP_ID}.preview.test-godaddy.com/?airoShareToken=${TEST_TOKEN}`,
     );
   });
 
@@ -422,8 +441,9 @@ describe('share BFF URL emission (GET /apps/:id/share)', () => {
     const res = await request(app).get(`/apps/${uuidAppId}/share`);
 
     expect(res.status).toBe(200);
+    // URL API normalizes path to include trailing slash
     expect(res.body.tokens[0].shareUrl).toBe(
-      `${previewWithCell}?airoShareToken=${TEST_TOKEN}`,
+      `${previewWithCell}/?airoShareToken=${TEST_TOKEN}`,
     );
     expect(res.body.tokens[0].shareUrl).not.toContain('/share/');
   });

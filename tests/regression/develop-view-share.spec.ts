@@ -4,8 +4,7 @@
  * Tests the Share Link popover in the header:
  * 1. Popover opens/closes with share-link-* test IDs
  * 2. Preview segment shows URL input with copy/open actions
- * 3. Published segment shown after publish with segmented controller
- * 4. Public access level shows share token URL (feature flagged)
+ * 3. Preview auto-creates share token and shows expiry label (feature flagged)
  */
 import { test, expect } from '../helpers/test-fixtures';
 
@@ -121,13 +120,13 @@ test.describe('Share Link', () => {
     await newPage.close();
   });
 
-  test('Public access level shows share token URL', async ({ page }) => {
+  test('Preview auto-creates share token and shows expiry label', async ({ page }) => {
     console.log('Creating test app...');
     await page.goto('/');
 
     const promptInput = page.getByTestId('homepage-prompt-input');
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
-    await promptInput.fill(`${getSpecPrefix('share-link-public')} Simple hello world page`);
+    await promptInput.fill(`${getSpecPrefix('share-link-token')} Simple hello world page`);
 
     await page.locator('[data-eid*="homepage.prompt.submit"]').click();
     await handleSsoLogin(page);
@@ -137,7 +136,7 @@ test.describe('Share Link', () => {
     await waitForChatInput(page);
     await dismissOverlays(page);
 
-    console.log('App created, testing public access level...');
+    console.log('App created, testing token auto-creation...');
 
     const shareButton = page.getByTestId('share-link-button');
     await shareButton.click();
@@ -145,29 +144,20 @@ test.describe('Share Link', () => {
     const popover = page.getByTestId('share-link-popover');
     await expect(popover).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
-    // Check if access level dropdown is visible (requires appbuilder-share-links flag)
-    const accessLevel = page.getByTestId('share-link-access-level');
-    const accessVisible = await accessLevel.isVisible().catch(() => false);
-
-    if (!accessVisible) {
-      console.log('  - Access level dropdown not visible (feature flag may be disabled)');
-      test.skip();
-      return;
-    }
-
-    console.log('  - Access level dropdown is visible');
-
-    // Switch to Public access
-    const trigger = page.getByTestId('share-link-access-level-trigger');
-    await trigger.click();
-
-    const publicOption = page.getByTestId('share-link-access-level-public');
-    await expect(publicOption).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    await publicOption.click();
-
-    // Wait for token creation — spinner should show then resolve
+    // Token auto-creates on popover open (requires appbuilder-share-links flag)
     const previewLoading = page.getByTestId('share-link-preview-loading');
     const loadingVisible = await previewLoading.isVisible().catch(() => false);
+
+    if (!loadingVisible) {
+      const urlInput = page.getByTestId('share-link-input');
+      const inputVisible = await urlInput.isVisible().catch(() => false);
+      if (!inputVisible) {
+        console.log('  - Share links feature flag may be disabled');
+        test.skip();
+        return;
+      }
+    }
+
     if (loadingVisible) {
       await expect(previewLoading).not.toBeVisible({ timeout: LONG_TIMEOUT });
       console.log('  - Loading spinner resolved');
@@ -182,14 +172,13 @@ test.describe('Share Link', () => {
     } else {
       const urlInput = page.getByTestId('share-link-input');
       await expect(urlInput).toBeVisible();
-
-      const tokenExpiry = page.getByTestId('share-link-token-expiry');
-      const expiryVisible = await tokenExpiry.isVisible().catch(() => false);
-      if (expiryVisible) {
-        console.log('  - Token expiry countdown is visible');
-      }
-
       console.log('  - Share token URL is displayed');
+
+      const expiryLabel = page.getByTestId('share-link-access-info');
+      const expiryVisible = await expiryLabel.isVisible().catch(() => false);
+      if (expiryVisible) {
+        console.log('  - Token expiry label is visible');
+      }
     }
   });
 });

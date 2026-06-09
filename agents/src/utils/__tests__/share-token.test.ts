@@ -1,15 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../database/repositories/index.js', () => ({
-  shareTokenRepository: {
-    findByAppId: vi.fn(),
+const { mockFindByAppId } = vi.hoisted(() => ({
+  mockFindByAppId: vi.fn(),
+}))
+
+vi.mock('../../database/repositories/ShareTokenRepository.js', () => ({
+  ShareTokenRepository: class MockShareTokenRepository {
+    findByAppId = mockFindByAppId
   },
 }))
 
-import { shareTokenRepository } from '../../database/repositories/index.js'
-import { resolveAppBaseUrl } from '../share-token.js'
-
-const mockFindByAppId = vi.mocked(shareTokenRepository.findByAppId)
+import { resolveAppBaseUrl, stripShareToken } from '../share-token.js'
 
 const PREVIEW_URL = 'https://abc1234567.preview.c40.airoapp.ai/'
 const APP_ID = 'abc1234567'
@@ -89,5 +90,41 @@ describe('resolveAppBaseUrl', function resolveTests() {
     expect(result).toContain('airoShareToken=newtoken')
     expect(result).not.toContain('oldtoken')
     expect((result.match(/airoShareToken/g) ?? []).length).toBe(1)
+  })
+})
+
+describe('stripShareToken', function stripTests() {
+  it('removes airoShareToken from a URL', function removes() {
+    const url = 'https://abc.preview.c40.airoapp.ai/?airoShareToken=xyz123'
+    expect(stripShareToken(url)).toBe('https://abc.preview.c40.airoapp.ai/')
+  })
+
+  it('returns the URL unchanged when no token is present', function unchanged() {
+    const url = 'https://abc.preview.c40.airoapp.ai/'
+    expect(stripShareToken(url)).toBe(url)
+  })
+
+  it('preserves other query params', function preserves() {
+    const url = 'https://abc.preview.c40.airoapp.ai/?foo=bar&airoShareToken=xyz&baz=qux'
+    const result = stripShareToken(url)
+    expect(result).toContain('foo=bar')
+    expect(result).toContain('baz=qux')
+    expect(result).not.toContain('airoShareToken')
+  })
+
+  it('returns hostname-only input unchanged when no token', function hostnameOnly() {
+    const url = 'abc.preview.c40.airoapp.ai'
+    expect(stripShareToken(url)).toBe(url)
+  })
+
+  it('returns invalid/empty input unchanged', function invalid() {
+    expect(stripShareToken('')).toBe('')
+  })
+
+  it('handles local dev URLs with ports', function localDev() {
+    const url = 'https://local.gasket.dev-godaddy.com:5001/?airoShareToken=ZuNQV-5im52f'
+    const result = stripShareToken(url)
+    expect(result).toBe('https://local.gasket.dev-godaddy.com:5001/')
+    expect(result).not.toContain('airoShareToken')
   })
 })

@@ -11,6 +11,22 @@ import { type AppStatusType } from '@/stores/useAppStore'
 import { type ServerStatusType } from '@/stores/useServerStore'
 import { useSiteStore } from '@/stores/useSiteStore'
 
+function stripShareToken(url: string | undefined): string | undefined {
+  if (!url) return url
+  try {
+    const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`
+    const parsed = new URL(normalized)
+    if (!parsed.searchParams.has('airoShareToken')) return url
+    parsed.searchParams.delete('airoShareToken')
+    if (!/^https?:\/\//i.test(url)) {
+      return parsed.toString().replace(/^https:\/\//, '')
+    }
+    return parsed.toString()
+  } catch {
+    return url
+  }
+}
+
 export interface App {
   id: string
   name: string
@@ -999,7 +1015,7 @@ export class AppService {
         siteId: appId,
         name: site.name || `App ${appId}`,
         initialPrompt: site.initial_prompt,
-        previewUrl: site.preview_url,
+        previewUrl: stripShareToken(site.preview_url),
         subscriptionId: prefixedSubscriptionId,
         customerId: site.account_id
       }
@@ -1088,7 +1104,7 @@ export class AppService {
           siteId: appId,
           name: freshSite.name,
           initialPrompt: freshSite.initial_prompt,
-          previewUrl: freshSite.preview_url,
+          previewUrl: stripShareToken(freshSite.preview_url),
           subscriptionId: prefixedSubscriptionId,
           customerId: freshSite.account_id
         })
