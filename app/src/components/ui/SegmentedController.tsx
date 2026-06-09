@@ -7,6 +7,7 @@ import {
   Children,
   type ComponentPropsWithoutRef,
   createContext,
+  forwardRef,
   type KeyboardEvent,
   type ReactNode,
   useCallback,
@@ -40,9 +41,9 @@ export interface SegmentedControllerProps<TValue extends string = string> {
   wrapperProps?: SegmentedControllerWrapperProps;
 }
 
-export interface SegmentedControllerItemProps {
+export interface SegmentedControllerItemProps
+  extends Omit<ComponentPropsWithoutRef<'button'>, 'children' | 'value' | 'onClick' | 'onKeyDown'> {
   children: ReactNode;
-  className?: string;
   value: string;
 }
 
@@ -62,37 +63,41 @@ function useSegmentedControllerContext(component: string): SegmentedControllerCo
   return ctx;
 }
 
-export function SegmentedControllerItem({ children, className, value }: SegmentedControllerItemProps) {
-  const { onRadioKeyDown, onSelectionChange, value: selected } = useSegmentedControllerContext(
-    'SegmentedControllerItem',
-  );
-  const isSelected = selected === value;
+export const SegmentedControllerItem = forwardRef<HTMLButtonElement, SegmentedControllerItemProps>(
+  function SegmentedControllerItem({ children, className, value, ...rest }, ref) {
+    const { onRadioKeyDown, onSelectionChange, value: selected } = useSegmentedControllerContext(
+      'SegmentedControllerItem',
+    );
+    const isSelected = selected === value;
 
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={isSelected}
-      tabIndex={isSelected ? 0 : -1}
-      data-segment-value={value}
-      onKeyDown={function keyDown(e) {
-        onRadioKeyDown(e, value);
-      }}
-      onClick={function selectSegment() {
-        onSelectionChange(value);
-      }}
-      className={cn(
-        'shrink-0 rounded-2xl border border-solid px-1.5 py-0.5 transition-colors cursor-pointer',
-        isSelected
-          ? 'border-ai bg-intents-ux-actionControlChosen-backgroundColor text-intents-ux-actionControlChosen-foregroundColor'
-          : 'border-intents-ux-actionControl-borderColor bg-transparent text-intents-ux-actionControl-foregroundColor hover:bg-intents-ux-actionControlHovered-backgroundColor',
-        className,
-      )}
-    >
-      <text.span as="action" size={-1} className="flex gap-1 items-center">{children}</text.span>
-    </button>
-  );
-}
+    return (
+      <button
+        ref={ref}
+        type="button"
+        role="radio"
+        aria-checked={isSelected}
+        tabIndex={isSelected ? 0 : -1}
+        data-segment-value={value}
+        onKeyDown={function keyDown(e) {
+          onRadioKeyDown(e, value);
+        }}
+        onClick={function selectSegment() {
+          onSelectionChange(value);
+        }}
+        className={cn(
+          'shrink-0 rounded-2xl border border-solid px-1.5 py-0.5 transition-colors cursor-pointer',
+          isSelected
+            ? 'border-ai bg-intents-ux-actionControlChosen-backgroundColor text-intents-ux-actionControlChosen-foregroundColor'
+            : 'border-intents-ux-actionControl-borderColor bg-transparent text-intents-ux-actionControl-foregroundColor hover:bg-intents-ux-actionControlHovered-backgroundColor',
+          className,
+        )}
+        {...rest}
+      >
+        <text.span as="action" size={-1} className="flex gap-1 items-center">{children}</text.span>
+      </button>
+    );
+  },
+);
 
 interface SegmentedScrollChevronProps {
   ariaLabel: string;

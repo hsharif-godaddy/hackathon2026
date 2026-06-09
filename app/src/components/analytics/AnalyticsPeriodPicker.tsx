@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
+import Flyout from '@ux/flyout'
 import CalendarIcon from '@ux/icon/calendar'
 import text from '@ux/text'
 
@@ -56,9 +57,12 @@ const dateInputClass =
 
 export function AnalyticsPeriodPicker({ value, onChange, showLast15Days = false }: AnalyticsPeriodPickerProps) {
   const t = useTranslations()
+  const customFlyoutId = useId()
+  const customAnchorRef = useRef<HTMLButtonElement>(null)
   const todayIso = useMemo(() => isoDateUtc(new Date()), [])
   const [segmentValue, setSegmentValue] = useState<AnalyticsPeriodPreset>(value.preset)
-  const [customOpen, setCustomOpen] = useState(value.preset === 'custom')
+  // Opens on Custom click only — not when parent already has preset 'custom' (RUM starts at preset '7').
+  const [customOpen, setCustomOpen] = useState(false)
   const [draftFrom, setDraftFrom] = useState(value.customFromDate)
   const [draftTo, setDraftTo] = useState(value.customToDate)
 
@@ -66,7 +70,9 @@ export function AnalyticsPeriodPicker({ value, onChange, showLast15Days = false 
     setSegmentValue(value.preset)
     setDraftFrom(value.customFromDate)
     setDraftTo(value.customToDate)
-    setCustomOpen(value.preset === 'custom')
+    if (value.preset !== 'custom') {
+      setCustomOpen(false)
+    }
   }, [value.preset, value.customFromDate, value.customToDate])
 
   const canApply = Boolean(draftFrom && draftTo && draftFrom <= draftTo)
@@ -77,11 +83,8 @@ export function AnalyticsPeriodPicker({ value, onChange, showLast15Days = false 
 
     if (next === 'custom') {
       setCustomOpen(true)
-      if (value.preset !== 'custom') {
-        const { fromDate, toDate } = defaultCustomDateRange()
-        setDraftFrom(fromDate)
-        setDraftTo(toDate)
-      }
+      setDraftFrom(value.customFromDate)
+      setDraftTo(value.customToDate)
       return
     }
 
@@ -93,6 +96,15 @@ export function AnalyticsPeriodPicker({ value, onChange, showLast15Days = false 
     })
   }, [onChange, value])
 
+  const closeCustomFlyout = useCallback(() => {
+    setCustomOpen(false)
+    setDraftFrom(value.customFromDate)
+    setDraftTo(value.customToDate)
+    if (segmentValue === 'custom' && value.preset !== 'custom') {
+      setSegmentValue(value.preset)
+    }
+  }, [segmentValue, value.customFromDate, value.customToDate, value.preset])
+
   const handleApply = useCallback(() => {
     if (!canApply) return
     onChange({
@@ -100,73 +112,93 @@ export function AnalyticsPeriodPicker({ value, onChange, showLast15Days = false 
       customFromDate: draftFrom,
       customToDate: draftTo,
     })
+    setCustomOpen(false)
   }, [canApply, draftFrom, draftTo, onChange])
 
   return (
-    <Box orientation="vertical" gap="sm" className="items-end w-full max-w-full">
-      <SegmentedController
-        radiogroupProps={{ 'aria-label': t('builder_analytics_select_period') }}
-        value={segmentValue}
-        onSelectionChange={handlePresetChange}
-        className="shrink-0 max-w-full"
-      >
-        <SegmentedControllerItem value="7">{t('builder_analytics_last_7_days')}</SegmentedControllerItem>
-        {showLast15Days && (
-          <SegmentedControllerItem value="15">{t('builder_analytics_last_15_days')}</SegmentedControllerItem>
-        )}
-        <SegmentedControllerItem value="30">{t('builder_analytics_last_30_days')}</SegmentedControllerItem>
-        <SegmentedControllerItem value="custom">
-          <CalendarIcon width={14} height={14} />
-          {t('builder_analytics_period_custom')}
-        </SegmentedControllerItem>
-      </SegmentedController>
+    <Box orientation="vertical" className="items-end w-full max-w-full">
+      <div className="flex w-full max-w-full justify-end">
+        <SegmentedController
+          radiogroupProps={{ 'aria-label': t('builder_analytics_select_period') }}
+          value={segmentValue}
+          onSelectionChange={handlePresetChange}
+          className="shrink-0 max-w-full"
+        >
+          <SegmentedControllerItem value="7">{t('builder_analytics_last_7_days')}</SegmentedControllerItem>
+          {showLast15Days && (
+            <SegmentedControllerItem value="15">{t('builder_analytics_last_15_days')}</SegmentedControllerItem>
+          )}
+          <SegmentedControllerItem value="30">{t('builder_analytics_last_30_days')}</SegmentedControllerItem>
+          <SegmentedControllerItem
+            ref={customAnchorRef}
+            value="custom"
+            aria-expanded={customOpen}
+            aria-haspopup="dialog"
+            data-testid="analytics-period-custom-trigger"
+          >
+            <CalendarIcon width={14} height={14} />
+            {t('builder_analytics_period_custom')}
+          </SegmentedControllerItem>
+        </SegmentedController>
+      </div>
 
       {customOpen && segmentValue === 'custom' && (
-        <Box
-          orientation="vertical"
-          gap="sm"
-          className="w-full min-w-[280px] max-w-[400px] rounded-lg border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor p-3 shadow-sm"
+        <Flyout
+          anchorRef={customAnchorRef}
+          id={customFlyoutId}
+          placement="bottom-end"
+          portalElem={document.body}
+          role="dialog"
+          aria-label={t('builder_analytics_period_custom')}
+          onClose={closeCustomFlyout}
         >
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-2">
-            <label className="flex min-w-0 flex-col gap-1">
-              <text.span size={-1} emphasis="passive">{t('builder_analytics_period_from')}</text.span>
-              <input
-                type="date"
-                id="analytics-from-date"
-                className={dateInputClass}
-                value={draftFrom}
-                max={draftTo || todayIso}
-                onChange={(e) => {
-                  const fromDate = e.target.value
-                  setDraftFrom(fromDate)
-                  if (draftTo && fromDate > draftTo) setDraftTo(fromDate)
-                }}
-              />
-            </label>
-            <label className="flex min-w-0 flex-col gap-1">
-              <text.span size={-1} emphasis="passive">{t('builder_analytics_period_to')}</text.span>
-              <input
-                type="date"
-                id="analytics-to-date"
-                className={dateInputClass}
-                value={draftTo}
-                min={draftFrom}
-                max={todayIso}
-                onChange={(e) => setDraftTo(e.target.value)}
-              />
-            </label>
-          </div>
-          <text.p size={-2} emphasis="passive">
-            {t('builder_analytics_period_custom_hint')}
-          </text.p>
-          <Button
-            design="primary"
-            size="sm"
-            text={t('builder_analytics_period_apply')}
-            disabled={!canApply}
-            onClick={handleApply}
-          />
-        </Box>
+          <Box
+            orientation="vertical"
+            gap="sm"
+            className="w-full min-w-[280px] max-w-[400px] p-3"
+            data-testid="analytics-period-custom-flyout"
+          >
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-2">
+              <label className="flex min-w-0 flex-col gap-1">
+                <text.span size={-1} emphasis="passive">{t('builder_analytics_period_from')}</text.span>
+                <input
+                  type="date"
+                  id="analytics-from-date"
+                  className={dateInputClass}
+                  value={draftFrom}
+                  max={draftTo || todayIso}
+                  onChange={(e) => {
+                    const fromDate = e.target.value
+                    setDraftFrom(fromDate)
+                    if (draftTo && fromDate > draftTo) setDraftTo(fromDate)
+                  }}
+                />
+              </label>
+              <label className="flex min-w-0 flex-col gap-1">
+                <text.span size={-1} emphasis="passive">{t('builder_analytics_period_to')}</text.span>
+                <input
+                  type="date"
+                  id="analytics-to-date"
+                  className={dateInputClass}
+                  value={draftTo}
+                  min={draftFrom}
+                  max={todayIso}
+                  onChange={(e) => setDraftTo(e.target.value)}
+                />
+              </label>
+            </div>
+            <text.p size={-2} emphasis="passive">
+              {t('builder_analytics_period_custom_hint')}
+            </text.p>
+            <Button
+              design="primary"
+              size="sm"
+              text={t('builder_analytics_period_apply')}
+              disabled={!canApply}
+              onClick={handleApply}
+            />
+          </Box>
+        </Flyout>
       )}
     </Box>
   )
