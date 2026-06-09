@@ -395,14 +395,7 @@ export default function DomainPurchaseWidget({
     return null;
   }
 
-  const rawDomains = searchResult?.domains || [];
-  const domains = [...rawDomains].sort((a, b) => {
-    const aExact = a.isExactMatch ?? false;
-    const bExact = b.isExactMatch ?? false;
-    if (aExact && !bExact) return -1;
-    if (!aExact && bExact) return 1;
-    return 0;
-  });
+  const domains = searchResult?.domains || [];
   const hasResults = domains.length > 0;
   const isEmpty = !isSearching && searchQuery.length >= 2 && !hasResults;
   const needsBrandName = !searchQuery || searchQuery.length < 2;
@@ -547,7 +540,7 @@ export default function DomainPurchaseWidget({
           </text.p>
         )}
 
-        {/* Domain List - exact match first, highlighted with subtle color */}
+        {/* Domain List - order from /api/domains/search; exact match row highlighted when isExactMatch */}
         {hasResults && (
           <Box orientation="vertical" gap="sm">
             {domains.slice(0, 6).map((domain, index) => {
