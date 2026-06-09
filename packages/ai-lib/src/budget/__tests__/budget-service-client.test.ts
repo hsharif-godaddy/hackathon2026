@@ -620,17 +620,55 @@ describe('BudgetServiceClient', () => {
       await expect(client.getBudget('b-1')).rejects.toThrow(BudgetServiceTimeoutError)
     })
 
-    it('throws BudgetServiceTimeoutError when getToken hangs beyond timeout', async () => {
+    it('throws BudgetServiceTimeoutError when getToken always hangs (exhausts retries)', async () => {
       const fetchMock = mockFetchWithText(true, 200, VALID_BUDGET_RESPONSE)
       const client = new BudgetServiceClient({
         ...TEST_CONFIG,
         getToken: () => new Promise(() => {}), // never resolves
         tokenTimeoutMs: 50,
+        tokenMaxRetries: 0, // no retries — fail immediately
         fetch: fetchMock,
       })
 
       await expect(client.getBudget('b-1')).rejects.toThrow(BudgetServiceTimeoutError)
       await expect(client.getBudget('b-1')).rejects.toThrow('token retrieval timed out')
+    })
+
+    it('retries getBudget when getToken times out on first attempt', async () => {
+      let callCount = 0
+      const fetchMock = mockFetchWithText(true, 200, VALID_BUDGET_RESPONSE)
+      const client = new BudgetServiceClient({
+        ...TEST_CONFIG,
+        getToken: () => {
+          callCount++
+          if (callCount === 1) return new Promise(() => {}) // hang on first call
+          return Promise.resolve('test-s2s-token')
+        },
+        tokenTimeoutMs: 50,
+        fetch: fetchMock,
+      })
+
+      const result = await client.getBudget('b-1')
+      expect(result.budgetId).toBe('b-1')
+      expect(callCount).toBe(2)
+    })
+
+    it('throws after exhausting token retries on getBudget', async () => {
+      let callCount = 0
+      const fetchMock = mockFetchWithText(true, 200, VALID_BUDGET_RESPONSE)
+      const client = new BudgetServiceClient({
+        ...TEST_CONFIG,
+        getToken: () => {
+          callCount++
+          return new Promise(() => {}) // always hangs
+        },
+        tokenTimeoutMs: 50,
+        tokenMaxRetries: 2,
+        fetch: fetchMock,
+      })
+
+      await expect(client.getBudget('b-1')).rejects.toThrow(BudgetServiceTimeoutError)
+      expect(callCount).toBe(3) // 1 initial + 2 retries
     })
 
     it('retries createReport when getToken times out', async () => {

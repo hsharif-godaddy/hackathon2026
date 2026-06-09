@@ -3,6 +3,8 @@
  *
  * Auth: IAM S2S JWT via getS2SToken (gd-auth-client).
  * createReport retries up to 3 times on transient failures (critical path for reconciliation).
+ * Token retrieval retries up to tokenMaxRetries times on timeout before propagating the error,
+ * with exponential backoff — guards against slow IAM/SSO responses.
  */
 
 import { z } from 'zod'
@@ -39,13 +41,15 @@ export interface BudgetServiceClientConfig {
   reportTimeoutMs?: number
   reportMaxRetries?: number
   tokenTimeoutMs?: number
+  tokenMaxRetries?: number
   fetch?: typeof globalThis.fetch
 }
 
 const DEFAULT_GET_BUDGET_TIMEOUT = 3000
 const DEFAULT_REPORT_TIMEOUT = 5000
 const DEFAULT_REPORT_MAX_RETRIES = 3
-const DEFAULT_TOKEN_TIMEOUT = 2000
+const DEFAULT_TOKEN_TIMEOUT = 5000
+const DEFAULT_TOKEN_MAX_RETRIES = 2
 
 // ── Response schemas ──
 // .passthrough() tolerates BMS adding fields without client changes.
@@ -175,6 +179,7 @@ export class BudgetServiceClient {
   private readonly reportTimeoutMs: number
   private readonly reportMaxRetries: number
   private readonly tokenTimeoutMs: number
+  private readonly tokenMaxRetries: number
   private readonly fetch: typeof globalThis.fetch
 
   constructor(config: BudgetServiceClientConfig) {
@@ -196,6 +201,7 @@ export class BudgetServiceClient {
     this.reportTimeoutMs = config.reportTimeoutMs ?? DEFAULT_REPORT_TIMEOUT
     this.reportMaxRetries = config.reportMaxRetries ?? DEFAULT_REPORT_MAX_RETRIES
     this.tokenTimeoutMs = config.tokenTimeoutMs ?? DEFAULT_TOKEN_TIMEOUT
+    this.tokenMaxRetries = config.tokenMaxRetries ?? DEFAULT_TOKEN_MAX_RETRIES
     this.fetch = config.fetch ?? globalThis.fetch
   }
 
@@ -306,6 +312,30 @@ export class BudgetServiceClient {
     return validateResponse(schema, data, label)
   }
 
+  // Worst case under sustained IAM slowness: (tokenMaxRetries+1) × (reportMaxRetries+1) × tokenTimeoutMs (~60s).
+  private async getTokenWithRetry(): Promise<string> {
+    let lastErr: unknown
+    for (let attempt = 0; attempt <= this.tokenMaxRetries; attempt++) {
+      try {
+        return await Promise.race([
+          this.getToken(),
+          new Promise<never>((_, reject) => {
+            const timer = setTimeout(
+              () => reject(new BudgetServiceTimeoutError('Budget Service token retrieval timed out')),
+              this.tokenTimeoutMs
+            )
+            if (typeof timer === 'object' && 'unref' in timer) timer.unref()
+          }),
+        ])
+      } catch (err) {
+        if (!(err instanceof BudgetServiceTimeoutError) || attempt === this.tokenMaxRetries) throw err
+        lastErr = err
+        await new Promise((r) => setTimeout(r, 100 * (1 << attempt))) // 100ms, 200ms
+      }
+    }
+    throw lastErr // unreachable, satisfies TS
+  }
+
   private async request(
     method: 'GET' | 'POST' | 'PATCH',
     path: string,
@@ -313,16 +343,7 @@ export class BudgetServiceClient {
     timeoutMs?: number
   ): Promise<unknown> {
     const url = `${this.baseUrl}${path}`
-    const token = await Promise.race([
-      this.getToken(),
-      new Promise<never>((_, reject) => {
-        const timer = setTimeout(
-          () => reject(new BudgetServiceTimeoutError('Budget Service token retrieval timed out')),
-          this.tokenTimeoutMs
-        )
-        if (typeof timer === 'object' && 'unref' in timer) timer.unref()
-      }),
-    ])
+    const token = await this.getTokenWithRetry()
     const init: RequestInit = {
       method,
       headers: {
