@@ -1,7 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const { mockGetS2SToken, mockResolveEnv } = vi.hoisted(() => ({
+  mockGetS2SToken: vi.fn(),
+  mockResolveEnv: vi.fn(),
+}));
 
 vi.mock('@airo/ai-lib', () => ({
-  getS2SToken: vi.fn().mockResolvedValue('test-s2s-token'),
+  getS2SToken: mockGetS2SToken,
 }));
 
 vi.mock('../../logging/index.js', () => ({
@@ -13,7 +18,7 @@ vi.mock('../../logging/index.js', () => ({
 }));
 
 vi.mock('../../utils/gd-env.js', () => ({
-  resolveEnv: vi.fn().mockReturnValue('dev'),
+  resolveEnv: mockResolveEnv,
 }));
 
 const mockFetch = vi.fn();
@@ -24,6 +29,13 @@ import { complianceService } from '../ComplianceService.js';
 describe('ComplianceService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockResolveEnv.mockReturnValue('dev');
+    mockGetS2SToken.mockResolvedValue('test-s2s-token');
+    delete process.env.COMPLIANCE_API_URL;
+  });
+
+  afterEach(() => {
+    delete process.env.COMPLIANCE_API_URL;
   });
 
   describe('generateDocument', () => {
@@ -202,6 +214,76 @@ describe('ComplianceService', () => {
           appId: 'app-001',
         }),
       ).rejects.toThrow();
+    });
+
+    it('throws and normalizes a generic network error', async () => {
+      mockFetch.mockRejectedValue(new Error('network down'));
+
+      await expect(
+        complianceService.generateDocument({
+          documentType: 'privacy-policy',
+          businessName: 'Test',
+          email: 'test@example.com',
+          children: false,
+          customerId: 'cust-123',
+        }),
+      ).rejects.toThrow('network down');
+    });
+
+    it('propagates a non-Error rejection as an Error', async () => {
+      mockFetch.mockRejectedValue('boom');
+
+      await expect(
+        complianceService.generateDocument({
+          documentType: 'privacy-policy',
+          businessName: 'Test',
+          email: 'test@example.com',
+          children: false,
+          customerId: 'cust-123',
+        }),
+      ).rejects.toThrow('boom');
+    });
+
+    it('prefers COMPLIANCE_API_URL override when set', async () => {
+      process.env.COMPLIANCE_API_URL = 'https://compliance-override.example.test';
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ documentType: 'privacy-policy', markdown: '# Privacy Policy' }),
+      });
+
+      await complianceService.generateDocument({
+        documentType: 'privacy-policy',
+        businessName: 'Test Business',
+        email: 'test@example.com',
+        children: false,
+        customerId: 'cust-123',
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://compliance-override.example.test/api/document/generate',
+        expect.any(Object),
+      );
+    });
+
+    it('resolves the prod base URL when env is prod', async () => {
+      mockResolveEnv.mockReturnValue('prod');
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ documentType: 'privacy-policy', markdown: '# Privacy Policy' }),
+      });
+
+      await complianceService.generateDocument({
+        documentType: 'privacy-policy',
+        businessName: 'Test Business',
+        email: 'test@example.com',
+        children: false,
+        customerId: 'cust-123',
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://compliance-agent.mvci.api.godaddy.com/api/document/generate',
+        expect.any(Object),
+      );
     });
   });
 });

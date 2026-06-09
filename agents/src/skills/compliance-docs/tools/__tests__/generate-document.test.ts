@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const { mockMemorySet } = vi.hoisted(() => ({
+  mockMemorySet: vi.fn().mockResolvedValue({ success: true }),
+}));
+
 vi.mock('../../../../logging/index.js', () => ({
   logger: {
     info: vi.fn(),
@@ -9,6 +13,11 @@ vi.mock('../../../../logging/index.js', () => ({
 }));
 
 vi.mock('../../../../services/ComplianceService.js', () => ({
+  DocumentType: {
+    PrivacyPolicy: 'privacy-policy',
+    TermsOfUse: 'terms-of-use',
+  },
+  complianceDocStatusMemoryKey: (documentType: string) => `compliance.document.${documentType}.generated`,
   complianceService: {
     generateDocument: vi.fn(),
   },
@@ -17,6 +26,12 @@ vi.mock('../../../../services/ComplianceService.js', () => ({
 vi.mock('../../../../database/repositories/index.js', () => ({
   appRepository: {
     findById: vi.fn(),
+  },
+}));
+
+vi.mock('../../../../database/repositories/MemoryRepository.js', () => ({
+  MemoryRepository: class {
+    set = mockMemorySet;
   },
 }));
 

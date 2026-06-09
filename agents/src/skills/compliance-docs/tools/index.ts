@@ -3,8 +3,28 @@ import { writeFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { logger } from '../../../logging/index.js';
 import type { SkillToolDefinition } from '@airo/ai-skills';
-import { complianceService } from '../../../services/ComplianceService.js';
+import { DocumentType, complianceService, complianceDocStatusMemoryKey } from '../../../services/ComplianceService.js';
 import { appRepository } from '../../../database/repositories/index.js';
+import { MemoryRepository } from '../../../database/repositories/MemoryRepository.js';
+
+const memoryRepository = new MemoryRepository();
+
+/**
+ * Record that a compliance document was generated for an app. This per-app
+ * memory marker is what the publish flow reads (O(1)) to decide whether to
+ * report document status — best-effort, so a marker write failure never fails
+ * the generation the user just performed.
+ */
+async function markComplianceDocGenerated(appId: string, documentType: DocumentType): Promise<void> {
+  const result = await memoryRepository.set(appId, complianceDocStatusMemoryKey(documentType), true);
+  if (!result.success) {
+    logger.warn('skills.compliance-docs.tools.markGenerated.failed', {
+      appId,
+      documentType,
+      error: result.error,
+    });
+  }
+}
 
 const US_STATES = [
   'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California',
@@ -120,7 +140,7 @@ export const generatePrivacyPolicyTool: SkillToolDefinition = {
 
     try {
       const result = await complianceService.generateDocument({
-        documentType: 'privacy-policy',
+        documentType: DocumentType.PrivacyPolicy,
         businessName: input.businessName,
         email: input.email,
         children: input.children,
@@ -131,6 +151,8 @@ export const generatePrivacyPolicyTool: SkillToolDefinition = {
       const pagePath = join(appPath, 'src', 'pages', 'privacy.tsx');
       await mkdir(dirname(pagePath), { recursive: true });
       await writeFile(pagePath, buildPageComponent(result.markdown, 'Privacy'));
+
+      await markComplianceDocGenerated(appId, DocumentType.PrivacyPolicy);
 
       logger.info('skills.compliance-docs.tools.generate_privacy_policy.success', {
         markdownLength: result.markdown.length,
@@ -213,18 +235,20 @@ export const generateTermsOfUseTool: SkillToolDefinition = {
 
     try {
       const result = await complianceService.generateDocument({
-        documentType: 'terms-of-use',
+        documentType: DocumentType.TermsOfUse,
         businessName: input.businessName,
         domainName: input.domainName,
         children: input.children,
         jurisdiction: input.jurisdiction,
         customerId,
-        appId
+        appId,
       });
 
       const pagePath = join(appPath, 'src', 'pages', 'terms.tsx');
       await mkdir(dirname(pagePath), { recursive: true });
       await writeFile(pagePath, buildPageComponent(result.markdown, 'Terms'));
+
+      await markComplianceDocGenerated(appId, DocumentType.TermsOfUse);
 
       logger.info('skills.compliance-docs.tools.generate_terms_of_use.success', {
         markdownLength: result.markdown.length,

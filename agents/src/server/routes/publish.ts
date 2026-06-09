@@ -16,6 +16,7 @@ import { getPublishStrategy, BuildError, PreviewNotRunningError, MissingStartCom
 import type { PublishContext } from './publish/strategies/index.js';
 import { getGitHookService } from '../agent-runtime.js';
 import { logPublishedSeoAudit } from '../../services/seo-audit.js';
+import { reportPublishedComplianceStatus } from '../../services/compliance-publish-report.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
@@ -320,6 +321,21 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
       });
     } else {
       contextLogger.info('seo.validation.skipped', { reason: 'no-published-url' });
+    }
+
+    // Compliance document status — fire-and-forget after response; never blocks
+    // publish. Reports the published/deleted state of any compliance docs the
+    // app generated. Requires a real customerId (the AppRepository default of
+    // 'not-provided' is treated as absent — the compliance API is keyed by it).
+    const customerId = app.customerId?.trim();
+    if (customerId && customerId !== 'not-provided') {
+      reportPublishedComplianceStatus(id, customerId, workspace, contextLogger).catch((err) => {
+        contextLogger.warn('compliance.publishReport.exception', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    } else {
+      contextLogger.info('compliance.publishReport.skipped', { reason: 'no-customer-id' });
     }
     return;
   } catch (error) {

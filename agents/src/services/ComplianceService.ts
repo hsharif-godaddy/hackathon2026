@@ -5,8 +5,24 @@ import { validate as validateUuid } from 'uuid';
 import { logger } from '../logging/index.js';
 import { resolveEnv } from '../utils/gd-env.js';
 
+export enum DocumentType {
+  PrivacyPolicy = 'privacy-policy',
+  TermsOfUse = 'terms-of-use',
+}
+
+/**
+ * Memory (per-app KV) key marking that a compliance document of the given type
+ * has been generated for an app. Written by the compliance-docs skill tool on
+ * successful generation and read at publish time to decide whether to report
+ * document status — an O(1) indexed lookup that stays flat regardless of
+ * conversation length (unlike scanning persisted tool calls).
+ */
+export function complianceDocStatusMemoryKey(documentType: DocumentType): string {
+  return `compliance.document.${documentType}.generated`;
+}
+
 export interface PrivacyPolicyInput {
-  documentType: 'privacy-policy';
+  documentType: DocumentType.PrivacyPolicy;
   businessName: string;
   email: string;
   children: boolean;
@@ -15,7 +31,7 @@ export interface PrivacyPolicyInput {
 }
 
 export interface TermsOfUseInput {
-  documentType: 'terms-of-use';
+  documentType: DocumentType.TermsOfUse;
   businessName: string;
   domainName: string;
   children: boolean;
@@ -27,7 +43,7 @@ export interface TermsOfUseInput {
 export type GenerateDocumentInput = PrivacyPolicyInput | TermsOfUseInput;
 
 export interface GenerateDocumentResult {
-  documentType: 'privacy-policy' | 'terms-of-use';
+  documentType: DocumentType;
   markdown: string;
 }
 
@@ -42,7 +58,15 @@ function getComplianceApiBaseUrl(): string {
   return complianceUrls[resolveEnv()];
 }
 
-const LOG_EVENTS = {
+const LOG_DOCUMENT_STATUS_EVENTS = {
+  begin: 'compliance.reportDocumentStatus.begin',
+  success: 'compliance.reportDocumentStatus.success',
+  apiError: 'compliance.reportDocumentStatus.apiError',
+  timeout: 'compliance.reportDocumentStatus.timeout',
+  error: 'compliance.reportDocumentStatus.error',
+} as const;
+
+const LOG_GENERATE_DOCUMENT_EVENTS = {
   begin: 'compliance.generateDocument.begin',
   success: 'compliance.generateDocument.success',
   apiError: 'compliance.generateDocument.apiError',
@@ -52,6 +76,70 @@ const LOG_EVENTS = {
 
 class ComplianceService {
   private readonly appKey = 'airo-app-builder';
+
+  async reportDocumentStatus(customerId: string, appId: string, documentType: DocumentType, published?: boolean, version?: string): Promise<void> {
+    const baseUrl = getComplianceApiBaseUrl();
+    const url = `${baseUrl}/api/document/status`;
+
+    try {
+      const token = await getS2SToken();
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+        'x-app-key': this.appKey,
+        'x-app-id': appId,
+        'x-customer-id': customerId,
+      };
+
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          documentType,
+          published,
+          version,
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+
+        logger.error(LOG_DOCUMENT_STATUS_EVENTS.apiError, {
+          status: response.status,
+          error: errorText.slice(0, 500),
+          customerId,
+          documentType,
+        });
+
+        throw new Error(`Compliance API error: ${response.status} ${errorText.slice(0, 500)}`);
+      }
+
+      logger.info(LOG_DOCUMENT_STATUS_EVENTS.success, {
+        customerId,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'TimeoutError') {
+        logger.error(LOG_DOCUMENT_STATUS_EVENTS.timeout, { timeoutMs: 30_000, customerId, documentType, appId });
+        throw error;
+      }
+
+      if (error instanceof Error && error.message.startsWith('Compliance API error:')) {
+        throw error;
+      }
+
+      logger.error(LOG_DOCUMENT_STATUS_EVENTS.error, {
+        error: error instanceof Error ? error.message : String(error),
+        customerId,
+        documentType,
+      });
+
+      const normalizedError = error instanceof Error ? error : new Error(String(error), { cause: error });
+      throw normalizedError;
+    }
+  }
 
   /**
    * Resolve a UUID-shaped customerId for the compliance API. In local dev or
@@ -90,6 +178,7 @@ class ComplianceService {
 
   async generateDocument(input: GenerateDocumentInput): Promise<GenerateDocumentResult> {
     const { customerId: inputCustomerId, appId, ...body } = input;
+    let { children } = input;
     // The compliance API requires a UUID-shaped customerId. Local dev seeds
     // (e.g. `local-user-001`) aren't UUIDs, so locally we substitute the nil
     // UUID to keep the flow runnable. In any hosted environment we refuse —
@@ -101,12 +190,14 @@ class ComplianceService {
     const baseUrl = getComplianceApiBaseUrl();
     const url = `${baseUrl}/api/document/generate`;
 
-    logger.info(LOG_EVENTS.begin, {
+    logger.info(LOG_GENERATE_DOCUMENT_EVENTS.begin, {
       documentType: input.documentType,
       businessName: input.businessName,
       customerId,
       appId,
     });
+
+    children = Boolean(children); // Ensure children is a boolean value
 
     try {
       const token = await getS2SToken();
@@ -123,14 +214,17 @@ class ComplianceService {
       const response = await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          ...body,
+          children,
+        }),
         signal: AbortSignal.timeout(30_000),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
 
-        logger.error(LOG_EVENTS.apiError, {
+        logger.error(LOG_GENERATE_DOCUMENT_EVENTS.apiError, {
           status: response.status,
           error: errorText.slice(0, 500),
           customerId,
@@ -142,7 +236,7 @@ class ComplianceService {
 
       const result = (await response.json()) as GenerateDocumentResult;
 
-      logger.info(LOG_EVENTS.success, {
+      logger.info(LOG_GENERATE_DOCUMENT_EVENTS.success, {
         documentType: result.documentType,
         markdownLength: result.markdown.length,
         customerId,
@@ -151,7 +245,7 @@ class ComplianceService {
       return result;
     } catch (error) {
       if (error instanceof DOMException && error.name === 'TimeoutError') {
-        logger.error(LOG_EVENTS.timeout, { timeoutMs: 30_000, customerId, documentType: input.documentType });
+        logger.error(LOG_GENERATE_DOCUMENT_EVENTS.timeout, { timeoutMs: 30_000, customerId, documentType: input.documentType });
         throw error;
       }
 
@@ -159,7 +253,7 @@ class ComplianceService {
         throw error;
       }
 
-      logger.error(LOG_EVENTS.error, {
+      logger.error(LOG_GENERATE_DOCUMENT_EVENTS.error, {
         error: error instanceof Error ? error.message : String(error),
         customerId,
         documentType: input.documentType,
