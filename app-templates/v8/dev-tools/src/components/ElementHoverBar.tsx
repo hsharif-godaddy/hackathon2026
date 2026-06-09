@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { type BusAiEditContextPayload, send } from "../utils/eventBus";
 import { generatePreciseSelector, extractDevContext, getElementClassName } from "../utils/element-helpers";
-import { isTouchDevice } from "../utils/device";
 import {
   showSelectionOverlay,
   clearSelectionOverlay,
@@ -176,19 +175,6 @@ export default function ElementHoverBar({
     // a fresh object every render, so depending on `fix` would re-run this
     // effect every render and close the toolbar before it's visible.
   }, [element, fix.reset]);
-
-  // Auto-open toolbar on mobile (skip the click requirement)
-  useEffect(() => {
-    if (isTouchDevice()) {
-      // Small delay to let the component render first
-      const timer = setTimeout(() => {
-        toolbarElementRef.current = element;
-        toolbarHoveredElementRef.current = hoveredElement;
-        setToolbarMode(true);
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [element, hoveredElement]);
 
   // Notify parent when toolbar or quick edit is active so it can freeze the element
   useEffect(() => {

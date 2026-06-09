@@ -21,6 +21,42 @@ function fireClick(target: HTMLElement): void {
   });
 }
 
+function fireMouseOver(target: HTMLElement): void {
+  act(() => {
+    target.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+  });
+}
+
+describe('useImageHoverDetection hover path', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    cleanup();
+    document.body.innerHTML = '';
+    vi.useRealTimers();
+  });
+
+  it('shows outline target on hover without opening the toolbar', () => {
+    const h1 = document.createElement('h1');
+    h1.textContent = 'Hello';
+    document.body.appendChild(h1);
+
+    const editingRef = makeEditingRef();
+    const { result } = renderHook(() => useImageHoverDetection(true, editingRef));
+
+    fireMouseOver(h1);
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(result.current.hoveredElement?.element).toBe(h1);
+    expect(result.current.toolbarMode).toBe(false);
+  });
+});
+
 describe('useImageHoverDetection click path', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
@@ -135,5 +171,74 @@ describe('useImageHoverDetection click path', () => {
 
     expect(result.current.hoveredElement).toBeNull();
     expect(result.current.toolbarMode).toBe(false);
+  });
+});
+
+describe('useImageHoverDetection toolbar dismiss', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  afterEach(() => {
+    cleanup();
+    document.body.innerHTML = '';
+    vi.restoreAllMocks();
+  });
+
+  it('keeps the toolbar open on in-document mouseout while toolbar is open', () => {
+    const h1 = document.createElement('h1');
+    h1.textContent = 'Title';
+    const p = document.createElement('p');
+    p.textContent = 'Body';
+    document.body.append(h1, p);
+
+    const editingRef = makeEditingRef();
+    const { result } = renderHook(() => useImageHoverDetection(true, editingRef));
+
+    fireClick(p);
+    act(() => {
+      p.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: h1 }));
+    });
+
+    expect(result.current.toolbarMode).toBe(true);
+    expect(result.current.hoveredElement?.element).toBe(p);
+  });
+
+  it('dismisses the toolbar when the pointer leaves the document', () => {
+    const p = document.createElement('p');
+    p.textContent = 'Body';
+    document.body.appendChild(p);
+
+    const editingRef = makeEditingRef();
+    const { result } = renderHook(() => useImageHoverDetection(true, editingRef));
+
+    fireClick(p);
+    act(() => {
+      p.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: null }));
+    });
+
+    expect(result.current.toolbarMode).toBe(false);
+    expect(result.current.hoveredElement).toBeNull();
+  });
+
+  it('dismisses the toolbar when the document becomes hidden', () => {
+    const p = document.createElement('p');
+    p.textContent = 'Body';
+    document.body.appendChild(p);
+
+    const visibilitySpy = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+
+    const editingRef = makeEditingRef();
+    const { result } = renderHook(() => useImageHoverDetection(true, editingRef));
+
+    fireClick(p);
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(result.current.toolbarMode).toBe(false);
+    expect(result.current.hoveredElement).toBeNull();
+
+    visibilitySpy.mockRestore();
   });
 });

@@ -17,13 +17,15 @@ export default function DevelopmentMode() {
   const [quickEditActive, setQuickEditActive] = useState(false)
   const frozenElementRef = useRef(hoveredElement)
 
-  // Keep the frozen ref up to date whenever we're not in quick edit mode
+  // Keep the frozen ref up to date whenever hover/toolbar state changes, except
+  // during quick-edit input where the anchor must stay on the clicked element.
   if (!quickEditActive && hoveredElement) {
     frozenElementRef.current = hoveredElement
   }
 
-  // Freeze guards hover drift during quick-edit; click-driven changes (toolbarMode=true) always pierce through.
-  const effectiveElement = (quickEditActive && !toolbarMode) ? frozenElementRef.current : hoveredElement
+  // Freeze the anchor while the toolbar or quick-edit UI is open so hover drift
+  // over nearby elements does not retarget the bar mid-interaction.
+  const effectiveElement = (toolbarMode || quickEditActive) ? frozenElementRef.current : hoveredElement
 
   // Visual context capture for AI assistance
   useEffect(() => {

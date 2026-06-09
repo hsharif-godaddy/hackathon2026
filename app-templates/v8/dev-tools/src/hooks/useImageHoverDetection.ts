@@ -76,6 +76,13 @@ function resolveHoverableAnchor(target: HTMLElement): HoveredElement | null {
   return null;
 }
 
+function pointerLeftDocument(relatedTarget: EventTarget | null): boolean {
+  if (!relatedTarget || !(relatedTarget instanceof Node)) {
+    return true;
+  }
+  return !document.documentElement.contains(relatedTarget);
+}
+
 /**
  * Hook for detecting when the user hovers over an image element.
  * Provides the hovered image state and mouse handlers for the ImageHoverBar.
@@ -89,11 +96,20 @@ export function useImageHoverDetection(
   // toolbarMode lives here (not in ElementHoverBar) so that a click can update
   // hoveredElement and toolbarMode atomically inside one flushSync — making
   // first-click bar appearance deterministic regardless of hover-timer races.
-  const [toolbarMode, setToolbarMode] = useState(false);
+  const [toolbarMode, setToolbarModeState] = useState(false);
+  const toolbarModeRef = useRef(false);
   const hoveredImageRef = useRef<HoveredImage | null>(null);
   const hoveredElementRef = useRef<HoveredElement | null>(null);
   const showBarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideBarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Ref must update in the same tick as state — not in useEffect (runs after paint)
+  // or even useLayoutEffect (still after the setState call returns). Event handlers
+  // and flushSync commits read toolbarModeRef immediately after setToolbarMode.
+  const setToolbarMode = useCallback((value: boolean) => {
+    toolbarModeRef.current = value;
+    setToolbarModeState(value);
+  }, []);
 
   const updateHoveredElement = useCallback((value: HoveredElement | null) => {
     hoveredElementRef.current = value;
@@ -111,6 +127,19 @@ export function useImageHoverDetection(
       updateHoveredElement(null);
     }
   }, []);
+
+  const clearToolbarAnchor = useCallback(() => {
+    if (hideBarTimerRef.current) {
+      clearTimeout(hideBarTimerRef.current);
+      hideBarTimerRef.current = null;
+    }
+    if (showBarTimerRef.current) {
+      clearTimeout(showBarTimerRef.current);
+      showBarTimerRef.current = null;
+    }
+    updateHoveredImage(null);
+    setToolbarMode(false);
+  }, [updateHoveredImage, setToolbarMode]);
 
   useEffect(() => {
     if (!isEditModeActive) return;
@@ -138,6 +167,10 @@ export function useImageHoverDetection(
       }
 
       if (editingStateRef.current?.editingElement?.contains(target)) return;
+
+      // Toolbar is click-anchored; ignore hover retargeting while it is open so
+      // moving toward the bar over a nearby element does not steal the toolbar.
+      if (toolbarModeRef.current) return;
 
       // If we're already tracking an element, handle bubbling:
       const tracked = hoveredElementRef.current?.element;
@@ -220,15 +253,22 @@ export function useImageHoverDetection(
           slotPath: anchor.slotPath,
           isVideo: anchor.isVideo,
         });
-        // Show toolbar immediately on hover only for media-slot images;
-        // non-slot images (e.g. decorative) still require a click.
-        if (anchor.isMediaSlot) {
-          setToolbarMode(true);
-        }
+        // Hover shows outline only; toolbar opens on click.
+        setToolbarMode(false);
       }, delay);
     };
 
     const handleMouseOut = (e: MouseEvent) => {
+      if (toolbarModeRef.current) {
+        // Keep the bar open for in-document moves (e.g. toward the toolbar over a
+        // neighbor element), but dismiss when the pointer leaves the document
+        // (iframe edge, tab switch without bar mouseleave, etc.).
+        if (pointerLeftDocument(e.relatedTarget)) {
+          clearToolbarAnchor();
+        }
+        return;
+      }
+
       const relatedTarget = e.relatedTarget as HTMLElement | null;
       if (relatedTarget?.closest(".edit-mode-hover-bar")) return;
 
@@ -340,19 +380,27 @@ export function useImageHoverDetection(
       });
     };
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden" && toolbarModeRef.current) {
+        clearToolbarAnchor();
+      }
+    };
+
     document.addEventListener("mouseover", handleMouseOver);
     document.addEventListener("mouseout", handleMouseOut);
     document.addEventListener("mousedown", handleMouseDown, true);
     document.addEventListener("click", handleClick, true);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       document.removeEventListener("mouseover", handleMouseOver);
       document.removeEventListener("mouseout", handleMouseOut);
       document.removeEventListener("mousedown", handleMouseDown, true);
       document.removeEventListener("click", handleClick, true);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (showBarTimerRef.current) clearTimeout(showBarTimerRef.current);
       if (hideBarTimerRef.current) clearTimeout(hideBarTimerRef.current);
     };
-  }, [isEditModeActive, editingStateRef, updateHoveredImage, updateHoveredElement]);
+  }, [isEditModeActive, editingStateRef, updateHoveredImage, updateHoveredElement, setToolbarMode, clearToolbarAnchor]);
 
   const handleBarMouseEnter = useCallback(() => {
     if (hideBarTimerRef.current) {
@@ -362,12 +410,8 @@ export function useImageHoverDetection(
   }, []);
 
   const handleBarMouseLeave = useCallback(() => {
-    hideBarTimerRef.current = setTimeout(() => {
-      updateHoveredImage(null);
-      updateHoveredElement(null);
-      setToolbarMode(false);
-    }, 300);
-  }, [updateHoveredImage, updateHoveredElement]);
+    hideBarTimerRef.current = setTimeout(clearToolbarAnchor, 300);
+  }, [clearToolbarAnchor]);
 
   return {
     hoveredImage,
