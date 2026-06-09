@@ -3319,7 +3319,7 @@ describe('BusinessContext Enrichment', () => {
 
     expect(callArgs).toBeDefined()
     expect(callArgs.businessContext).toBeDefined()
-    expect(callArgs.businessContext.schemaId).toBe('urn:shared:user:business-context:/airo-app-builder/v1')
+    expect(callArgs.businessContext.schemaId).toBe('urn:shared:user:business-context:/airo-app-builder/v2')
     expect(callArgs.businessContext.data.appId).toBe('test-app-id-123')
 
     server.close()

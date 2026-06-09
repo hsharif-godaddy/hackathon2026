@@ -25,14 +25,13 @@ import { context as otelContext, trace } from '@opentelemetry/api';
 import { createAgentContext, emitUserFeedback } from '@godaddy/agent-otel-sdk';
 import { createUserFeedback } from '@godaddy/agent-observability-events';
 import { createTraceContext } from '@signals/otel-sdk';
+import { BUSINESS_CONTEXT_SCHEMA_ID } from '@airo/ai-transport';
 import { z } from 'zod';
 
 import { Logger } from '../../logging/index.js';
 import { validateAppOwnershipFromBody } from '../middleware/app-ownership.js';
 
 const logger = Logger.create({ component: 'feedback-routes' });
-
-const BUSINESS_CONTEXT_SCHEMA_ID = 'urn:shared:user:business-context:/airo-app-builder/v1';
 
 // OTel requires traceId to be 32 hex chars and spanId to be 16, and treats
 // all-zero values as the INVALID sentinel. Anything else poisons the span

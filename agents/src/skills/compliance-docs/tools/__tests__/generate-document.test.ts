@@ -102,6 +102,7 @@ describe('generate_privacy_policy tool', () => {
       email: 'test@example.com',
       children: false,
       customerId: 'cust-abc',
+      appId: 'app-123',
     });
   });
 
@@ -196,6 +197,7 @@ describe('generate_terms_of_use tool', () => {
       children: false,
       jurisdiction: 'Texas',
       customerId: 'cust-abc',
+      appId: 'app-123',
     });
   });
 

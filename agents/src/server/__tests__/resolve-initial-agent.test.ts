@@ -1,10 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as profiles from '../../profiles/index.js'
 import { resolveInitialAgentId } from '../resolve-initial-agent.js'
-import {
-  getRegisteredInitialV3ModularAgentIds,
-  setRegisteredInitialV3ModularAgentIds,
-} from '../../agents/registered-initial-modular-agent-ids.js'
 import { setRegisteredInitialNamedVariantIds } from '../../agents/registered-initial-named-variant-ids.js'
 import { logger } from '../../logging/index.js'
 import type { ProfileData } from '../../profiles/types.js'
@@ -15,13 +11,11 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
 
   beforeEach(function setup() {
     resolveProfileSpy = vi.spyOn(profiles, 'resolveProfile')
-    setRegisteredInitialV3ModularAgentIds(new Set())
     setRegisteredInitialNamedVariantIds(new Map())
   })
 
   afterEach(function teardown() {
     resolveProfileSpy.mockRestore()
-    setRegisteredInitialV3ModularAgentIds(new Set())
     setRegisteredInitialNamedVariantIds(new Map())
   })
 
@@ -78,17 +72,8 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
       return resolveInitialAgentId({ appId: 'app_new', jwtAgentProfile: p.name, getTemplateIds: noTemplates })
     }
 
-    it('routes to initial-v3-<profile> when the modular variant is registered', function modularRegistered() {
-      setRegisteredInitialV3ModularAgentIds(new Set(['initial-v3-exp']))
-      expect(withJwtProfile(profile({ name: 'exp', properties: { 'initial.modularPromptFiles': 'identity.md' } }))).toBe('initial-v3-exp')
-    })
-
-    it('falls back to initial-v3 and errors (deploy defect) when the modular variant failed to register', function modularMissing() {
-      const errorSpy = vi.spyOn(logger, 'error').mockImplementation(function () {})
-      expect(getRegisteredInitialV3ModularAgentIds().has('initial-v3-broken')).toBe(false)
-      expect(withJwtProfile(profile({ name: 'broken', properties: { 'initial.modularPromptFiles': 'identity.md' } }))).toBe('initial-v3')
-      expect(errorSpy).toHaveBeenCalledWith('agent_router.initial_modular_variant_unregistered', expect.objectContaining({ profileName: 'broken', variantId: 'initial-v3-broken', fallbackAgentId: 'initial-v3' }))
-      errorSpy.mockRestore()
+    it('routes to base initial-v3 when modularPromptFiles is configured (variants flattened)', function modularFlattened() {
+      expect(withJwtProfile(profile({ name: 'exp', properties: { 'initial.modularPromptFiles': 'identity.md' } }))).toBe('initial-v3')
     })
 
     it('looks up the trimmed promptVersion for named variants (padded value resolves)', function paddedNamedVariant() {
@@ -96,9 +81,8 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
       expect(withJwtProfile(profile({ name: 'enhancer', properties: { 'initial.promptVersion': '  prompt-enhancer  ' } }))).toBe('initial-prompt-enhancer')
     })
 
-    it('prefers the modular branch over promptVersion 3.0', function modularBeatsV3() {
-      setRegisteredInitialV3ModularAgentIds(new Set(['initial-v3-both']))
-      expect(withJwtProfile(profile({ name: 'both', properties: { 'initial.modularPromptFiles': 'identity.md', 'initial.promptVersion': '3.0' } }))).toBe('initial-v3-both')
+    it('prefers the modular branch over promptVersion 3.0 (both resolve to initial-v3)', function modularBeatsV3() {
+      expect(withJwtProfile(profile({ name: 'both', properties: { 'initial.modularPromptFiles': 'identity.md', 'initial.promptVersion': '3.0' } }))).toBe('initial-v3')
     })
 
     it('routes to initial-v3 for promptVersion 3.0', function v3Only() {

@@ -24,6 +24,25 @@ vi.mock('../../tools/skill-loader-tool.js', () => ({
 
 const fileCalls: string[] = [];
 
+/**
+ * Build the initial agent config and, when `system` is a per-turn resolver
+ * (the modular v3 path — see #4346), invoke it so the prompt builder's
+ * `file()` calls land in `fileCalls`. For 1.0/2.0 the prompt is built eagerly
+ * during createInitialAgent, so the resolver branch is a no-op there.
+ *
+ * Call this INSIDE runWithProfile for profile-driven tests — the v3 resolver
+ * reads `initial.modularPromptFiles` from the active profile at invocation.
+ */
+async function loadInitialPromptFiles(
+  templateId?: string,
+  promptVersion?: string,
+): Promise<void> {
+  const config = await createInitialAgent(undefined, templateId, promptVersion);
+  if (typeof config.system === 'function') {
+    await (config.system as (ctx: Record<string, unknown>) => Promise<string>)({});
+  }
+}
+
 vi.mock('../../utils/model-selection.js', () => ({
   getAgentModelWithName: vi.fn().mockResolvedValue({
     model: { generate: vi.fn(), streamGenerate: vi.fn() },
@@ -389,7 +408,7 @@ describe('initial-agent', function initialAgentTests() {
     });
 
     it('should load v3.0 in modular mode with all 8 modules', async function modularLoading() {
-      await createInitialAgent(undefined, undefined, '3.0');
+      await loadInitialPromptFiles(undefined, '3.0');
 
       const fileNames = fileCalls.map(p => p.split('/').pop());
       const expectedModules = [
@@ -406,7 +425,7 @@ describe('initial-agent', function initialAgentTests() {
     });
 
     it('should append shared files after modules in v3.0', async function modularSharedOrder() {
-      await createInitialAgent(undefined, undefined, '3.0');
+      await loadInitialPromptFiles(undefined, '3.0');
 
       const fileNames = fileCalls.map(p => p.split('/').pop());
       const lastModuleIdx = fileNames.lastIndexOf('examples.md');
@@ -427,7 +446,7 @@ describe('initial-agent', function initialAgentTests() {
       };
 
       await runWithProfile(profile, async () => {
-        await createInitialAgent(undefined, undefined, '3.0');
+        await loadInitialPromptFiles(undefined, '3.0');
       });
 
       const fileNames = fileCalls.map(p => p.split('/').pop());
@@ -450,7 +469,7 @@ describe('initial-agent', function initialAgentTests() {
       };
 
       await runWithProfile(profile, async () => {
-        await createInitialAgent(undefined, undefined, '3.0');
+        await loadInitialPromptFiles(undefined, '3.0');
       });
 
       const fileNames = fileCalls.map(p => p.split('/').pop());

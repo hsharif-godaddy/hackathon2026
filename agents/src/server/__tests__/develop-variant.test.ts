@@ -23,23 +23,19 @@ describe('develop-variant', function developVariantTests() {
     })
   })
 
-  describe('concreteDevelopForProfile', function map() {
-    it('maps base develop to develop-<profile> when the profile has develop/skill flags', function maps() {
-      expect(concreteDevelopForProfile('develop', profile({ name: 'experimental', properties: { 'skill.inbox.enabled': true } }))).toBe('develop-experimental')
+  describe('concreteDevelopForProfile (pass-through after variant flattening #4346)', function map() {
+    it('returns base develop unchanged even when the profile has develop/skill flags', function noMap() {
+      expect(concreteDevelopForProfile('develop', profile({ name: 'experimental', properties: { 'skill.inbox.enabled': true } }))).toBe('develop')
     })
-    it('leaves base develop unchanged when the profile has no develop/skill flags', function noFlags() {
+    it('returns base develop unchanged when the profile has no develop/skill flags', function noFlags() {
       expect(concreteDevelopForProfile('develop', profile({ name: 'ds', properties: { 'initial.promptVersion': 'design-system' } }))).toBe('develop')
     })
-    it('leaves base develop unchanged when there is no profile', function noProfile() {
+    it('returns base develop unchanged when there is no profile', function noProfile() {
       expect(concreteDevelopForProfile('develop', null)).toBe('develop')
-    })
-    it('passes through a concrete develop variant unchanged', function concrete() {
-      expect(concreteDevelopForProfile('develop-experimental', profile({ name: 'experimental', properties: { 'skill.inbox.enabled': true } }))).toBe('develop-experimental')
     })
     it('passes through non-develop agents unchanged', function others() {
       const p = profile({ name: 'experimental', properties: { 'skill.inbox.enabled': true } })
       expect(concreteDevelopForProfile('initial', p)).toBe('initial')
-      expect(concreteDevelopForProfile('initial-v3-design-system', p)).toBe('initial-v3-design-system')
       expect(concreteDevelopForProfile('marketing', p)).toBe('marketing')
     })
   })
@@ -49,14 +45,14 @@ describe('develop-variant', function developVariantTests() {
       return { updateAgentId: vi.fn().mockResolvedValue(undefined) }
     }
 
-    it('persists develop-<profile> for the active (flagged) profile and returns it', async function flagged() {
+    it('persists base develop unchanged even when active profile has develop/skill flags (variants flattened)', async function flagged() {
       const s = store()
       const returned = await runWithProfile(
         profile({ name: 'experimental', properties: { 'skill.inbox.enabled': true } }),
         () => persistHandoffAgent(s, 'conv-1', 'develop'),
       )
-      expect(s.updateAgentId).toHaveBeenCalledWith('conv-1', 'develop-experimental')
-      expect(returned).toBe('develop-experimental')
+      expect(s.updateAgentId).toHaveBeenCalledWith('conv-1', 'develop')
+      expect(returned).toBe('develop')
     })
 
     it('persists base develop when the active profile has no develop/skill flags', async function noFlags() {

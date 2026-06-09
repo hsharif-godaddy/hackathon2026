@@ -4,6 +4,7 @@ import {
   type BeforeToolExecutionHook,
   type AfterToolExecutionHook,
   type AgentContext,
+  type ResolverContext,
   createPromptBuilder,
   createHandoffTool,
   createSessionStateManager,
@@ -19,7 +20,7 @@ import { skillToolManager } from '../tools/skill-tool-manager.js'
 import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getPersistentAssetPaths } from '../utils/persistent-assets.js'
 import { skills } from '../services/features.js'
-import { profileFlag } from '../profiles/profile-accessor.js'
+import { profileFlag, activeProfileName } from '../profiles/profile-accessor.js'
 import { readFile } from 'node:fs/promises'
 
 /**
@@ -32,7 +33,8 @@ import { readFile } from 'node:fs/promises'
  */
 const beforeToolExecution: BeforeToolExecutionHook = async (toolName: string, args: unknown, context?: AgentContext): Promise<unknown> => {
   const appId = context?.metadata?.appId as string
-  const contextLogger = appId ? log.withContext({ appId, agentId: 'develop' }) : logger
+  const profile = activeProfileName() ?? undefined
+  const contextLogger = appId ? log.withContext({ appId, agentId: 'develop', ...(profile && { profile }) }) : logger
 
   contextLogger.info('develop_agent.tool.execution.start', {
     toolName
@@ -52,7 +54,8 @@ const afterToolExecution: AfterToolExecutionHook = async (
   context?: AgentContext
 ): Promise<unknown> => {
   const appId = context?.metadata?.appId as string
-  const contextLogger = appId ? log.withContext({ appId, agentId: 'develop' }) : logger
+  const profile = activeProfileName() ?? undefined
+  const contextLogger = appId ? log.withContext({ appId, agentId: 'develop', ...(profile && { profile }) }) : logger
 
   contextLogger.info('develop_agent.tool.execution.complete', {
     toolName
@@ -136,15 +139,18 @@ function shouldLoadBehavior(modelName: string | undefined, behavior: BehaviorPro
   return behavior.modelFilters.some(filter => normalizedModelName.includes(filter))
 }
 
-async function buildDevelopSystemPrompt(_appPath?: string, modelName?: string): Promise<string> {
+async function buildDevelopSystemPrompt(
+  _appPath?: string,
+  modelName?: string,
+  options?: { market?: string },
+): Promise<string> {
   const promptBuilder = createPromptBuilder();
 
   // Get modular prompt paths using helper utility
   const paths = getModularPromptPaths(import.meta.url);
 
-  // Get available skills list with whenToUse guidance
   const skillLoader = new SkillLoaderTool();
-  const skillsResult = await skillLoader.listSkills();
+  const skillsResult = await skillLoader.listSkills({ market: options?.market });
   const skillsSection = skillsResult.success && skillsResult.skills?.length
     ? buildSkillsPromptSection(skillsResult.skills)
     : '';
@@ -180,6 +186,10 @@ async function buildDevelopSystemPrompt(_appPath?: string, modelName?: string): 
 
   if (profileFlag('develop.promptOptimization', true)) {
     promptBuilder.file(paths.getAgentFile('develop', 'prompt-optimization.md'))
+  }
+
+  if (profileFlag('develop.suggestedResponse', false)) {
+    promptBuilder.file(paths.getAgentFile('develop', 'suggested-response.md'))
   }
 
   promptBuilder
@@ -240,66 +250,80 @@ function shouldStopAfterSuggestMode(result: unknown): boolean {
 }
 
 /**
- * Create the Develop Agent configuration
+ * Create the Develop Agent configuration. A single agent serves every profile;
+ * profile-driven differences are resolved per turn via callable `system` and
+ * `activeTools`. profileFlag() works inside resolvers because both transports
+ * wrap LLM execution in runWithProfile().
  */
 export async function createDevelopAgent(options?: { appPath?: string }): Promise<AgentConfig> {
   const appPath = options?.appPath || process.cwd()
   const { model, modelName } = await getAgentModelWithName('full') // Use full model for complex development tasks
-  const systemPrompt = await buildDevelopSystemPrompt(appPath, modelName)
+
+  const baseTools = {
+    // Core development tools
+    directoryListing: allAILibTools.directoryListing,
+    terminalCommand: allAILibTools.terminalCommand,
+    str_replace_based_edit_tool: allAILibTools.str_replace_based_edit_tool,
+    readFile: allAILibTools.readFile,
+    grepSearch: allAILibTools.grepSearch,
+
+    // Planning tools
+    todoList: allAILibTools.todoList,
+
+    // Project setup
+    setProjectName: allAILibTools.setProjectName,
+
+    // Skills system
+    skill: allAILibTools.skill,
+
+    // Server management
+    serverRestart: allAILibTools.serverRestart,
+    viewLogs: allAILibTools.viewLogs,
+
+    // Specialized development tools
+    httpCheck: allAILibTools.httpCheck,
+    media: allAILibTools.media,
+    qrCode: allAILibTools.qrCode,
+    websiteScraper: allAILibTools.websiteScraper,
+
+    // Color scheme + font theme tools
+    colorScheme: allAILibTools.colorScheme,
+    fontTheme: allAILibTools.fontTheme,
+
+    // UI kit reference loader
+    loadUiKit: allAILibTools.loadUiKit,
+
+    // Rebuild tools
+    rebuildPageSelector: allAILibTools.rebuildPageSelector,
+
+    // Profile-gated — visibility controlled by the activeTools resolver below.
+    askQuestion: allAILibTools.askQuestion,
+    suggestedResponse: allAILibTools.suggestedResponse,
+
+    // Secrets management (for API keys, credentials)
+    requestSecrets: allAILibTools.requestSecrets,
+
+    // Campaign persistence (called after building campaign assets received via marketing handoff)
+    campaignCreate: allAILibTools.campaignCreate,
+  }
 
   return {
     id: 'develop',
     name: 'AI Developer',
-    system: systemPrompt,
+    system: async (ctx: ResolverContext): Promise<string> =>
+      buildDevelopSystemPrompt(appPath, modelName, { market: ctx.market }),
     model,
     modelName,
-    tools: {
-      // Core development tools
-      directoryListing: allAILibTools.directoryListing,
-      terminalCommand: allAILibTools.terminalCommand,
-      str_replace_based_edit_tool: allAILibTools.str_replace_based_edit_tool,
-      readFile: allAILibTools.readFile,
-      grepSearch: allAILibTools.grepSearch,
-
-      // Planning tools
-      todoList: allAILibTools.todoList,
-
-      // Project setup
-      setProjectName: allAILibTools.setProjectName,
-
-      // Skills system
-      skill: allAILibTools.skill,
-
-      // Server management
-      serverRestart: allAILibTools.serverRestart,
-      //serverStatus: allAILibTools.serverStatus,
-      viewLogs: allAILibTools.viewLogs,
-
-      // Specialized development tools
-      httpCheck: allAILibTools.httpCheck,
-      media: allAILibTools.media,
-      qrCode: allAILibTools.qrCode,
-      websiteScraper: allAILibTools.websiteScraper,
-
-      // Color scheme tool
-      colorScheme: allAILibTools.colorScheme,
-
-      // Font theme tool
-      fontTheme: allAILibTools.fontTheme,
-
-      // UI kit reference loader
-      loadUiKit: allAILibTools.loadUiKit,
-
-      // Rebuild tools
-      rebuildPageSelector: allAILibTools.rebuildPageSelector,
-
-      // User interaction
-      ...(profileFlag('develop.promptOptimization', true) ? { askQuestion: allAILibTools.askQuestion } : {}),
-
-      // Secrets management (for API keys, credentials)
-      requestSecrets: allAILibTools.requestSecrets,
-
-      // Handoff and conversation control tools will be added by the factory when needed
+    tools: baseTools,
+    activeTools: async (): Promise<string[]> => {
+      const allow = new Set(Object.keys(baseTools))
+      if (!profileFlag('develop.promptOptimization', true)) {
+        allow.delete('askQuestion')
+      }
+      if (!profileFlag('develop.suggestedResponse', false)) {
+        allow.delete('suggestedResponse')
+      }
+      return Array.from(allow)
     },
 
     // Tool execution hooks
@@ -322,8 +346,8 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     maxOutputTokens: 32000,
     timeout: { stepMs: 600_000 },
 
-    // Custom stop conditions
-    ...(profileFlag('develop.promptOptimization', true) ? { stopAfterTools: ['askQuestion'] } : {}),
+    // Union across profiles — entries are inert when their tool isn't active.
+    stopAfterTools: ['askQuestion'],
     stopWhen: [shouldStopAfterSuggestMode],
 
     // Enable prompt caching for cost savings and performance
@@ -331,7 +355,8 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     enablePromptCaching: true,
 
     metadata: {
-      systemForModel: (nextModelName: string) => buildDevelopSystemPrompt(appPath, nextModelName),
+      systemForModel: (nextModelName: string, ctx?: ResolverContext) =>
+        buildDevelopSystemPrompt(appPath, nextModelName, { market: ctx?.market }),
       contextPreferences: {
         includeAppContext: true,
         includeVisualContext: true,

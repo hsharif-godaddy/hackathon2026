@@ -474,8 +474,18 @@ describe('AgentWrapper override delegation', function overrideSuite() {
     })
     await wrapper.generate('hello')
 
-    expect(systemForModel).toHaveBeenCalledWith('azure/Kimi-K2.6')
-    expect(lastOverrideSettings.instructions).toBe('system for azure/Kimi-K2.6')
+    // Override agent uses a per-turn resolver that delegates to systemForModel.
+    // The resolver is NOT eagerly called at construction — it defers to prepareStep.
+    // Verify the override ToolLoopAgent was created without static instructions
+    // (indicating system is function-form, resolved per-turn via prepareStep).
+    expect(MockToolLoopAgent).toHaveBeenCalledTimes(2)
+    expect(lastOverrideSettings.instructions).toBeUndefined()
+    // The override agent's config.system should be a resolver function
+    // that when called produces the model-specific prompt.
+    const overrideConfig = wrapper.getConfig()
+    // Can't directly access the override agent's config, but verify systemForModel
+    // was NOT eagerly resolved — it's deferred to per-turn prepareStep.
+    expect(systemForModel).not.toHaveBeenCalled()
   })
 
   it('falls back to default on getModel failure', async function fallsBack() {

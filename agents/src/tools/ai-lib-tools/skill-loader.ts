@@ -23,6 +23,7 @@ export const skillAITool: Tool = createTool(
   async (input, context?: AgentContext) => {
     const skillLoader = new SkillLoaderTool();
     const appRepo = new AppRepository();
+    const market = typeof context?.metadata?.market === 'string' ? context.metadata.market : undefined;
 
     // List action - show all available skills
     if (input.action === 'list') {
@@ -31,7 +32,7 @@ export const skillAITool: Tool = createTool(
         ? new Set(skillToolManager.getPinnedSkills(conversationId))
         : undefined;
       const contextMetadata = context?.metadata as Record<string, unknown> | undefined;
-      const result = await skillLoader.listSkills({ pinned, contextMetadata });
+      const result = await skillLoader.listSkills({ pinned, market, contextMetadata });
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to list skills');
@@ -51,8 +52,15 @@ export const skillAITool: Tool = createTool(
 
     // Load action - load instructions AND activate skill tools
     if (input.action === 'load') {
+      if (input.skill === 'marketing-campaigns' && !context?.metadata?.marketingCampaignsEnabled) {
+        return {
+          success: false,
+          error: "Marketing campaigns feature is not enabled for this account. Tell the user this feature isn't available yet and do NOT attempt to create a campaign manually. Stop here.",
+        };
+      }
+
       const contextMetadata = context?.metadata as Record<string, unknown> | undefined;
-      const result = await skillLoader.loadSkill({ skill: input.skill, contextMetadata });
+      const result = await skillLoader.loadSkill({ skill: input.skill, market, contextMetadata });
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to load skill');
@@ -110,6 +118,18 @@ export const skillAITool: Tool = createTool(
       const conversationId = context?.metadata?.conversationId as string | undefined;
       if (!conversationId) {
         throw new Error('Conversation ID not found in context. Pin action requires conversation context.');
+      }
+      // Enforce the same market gating loadSkill applies — otherwise a caller
+      // outside the allowlisted markets could pin a market-restricted skill
+      // even though listSkills hides it from them.
+      if (!(await skillLoader.isSkillAvailableInMarket(input.skill, market))) {
+        logger.warn('skill.pin.market_restricted', { skill: input.skill, requestMarket: market });
+        return {
+          success: false,
+          skill: input.skill,
+          pinned: false,
+          message: `Skill '${input.skill}' is not available in your market.`
+        };
       }
       const pinAppId = context?.metadata?.appId as string | undefined;
       const pinResult = skillToolManager.pinSkill(conversationId, input.skill, pinAppId);
@@ -193,13 +213,24 @@ export const skillAITool: Tool = createTool(
         throw new Error('App ID not found in context. Install action requires app context.');
       }
 
+      // Enforce the same market gating loadSkill applies — otherwise a caller
+      // outside the allowlisted markets could install a market-restricted
+      // skill (e.g. region-specific legal templates) even though listSkills
+      // hides it from them.
+      if (!(await skillLoader.isSkillAvailableInMarket(input.skill, market))) {
+        logger.warn('skill.install.market_restricted', { skill: input.skill, requestMarket: market });
+        throw new Error(`Skill '${input.skill}' is not available in your market.`);
+      }
+
       // Look up app path
       const app = appRepo.findById(appId);
       if (!app) {
         throw new Error(`App not found: ${appId}`);
       }
 
-      // Install templates directly
+      // Install templates directly. Skill dependencies (recursed internally) inherit
+      // the parent skill's market grant — no per-dep re-check needed since deps are
+      // bundled with the skill and share its market restriction.
       const result = await skillLoader.installTemplates({
         skill: input.skill,
         appPath: app.path,

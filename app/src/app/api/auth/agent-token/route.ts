@@ -24,6 +24,7 @@ import {
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser, withCustomerAuth } from '@/lib/customer-auth';
 import { getJWTService } from '@/lib/jwt-service';
+import { resolveMarketId } from '@/lib/market/resolve-market';
 import { AIRO_OWNER_PRODUCTS, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { checkPaywallEligibility, PaywallAction } from '@/lib/paywall/core';
 import { ServerPaywallProvider } from '@/lib/paywall/server-provider';
@@ -248,6 +249,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let debugStatsEnabled = false;
     let marketingCampaignsEnabled = false;
     let asmDualWriteEnabled = false;
+
+    const { visitorMarket: market } = await resolveMarketId(request);
 
     if (siteValidationCacheHit) {
       // Cache hit: skip site validation, run paywall + switchboard + subscription lookup in parallel
@@ -559,6 +562,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       customerId: user.customerId,
       ...(visitorIdFromCookie && { visitorId: visitorIdFromCookie }),
       ...(trafficSessionId && { trafficSessionId }),
+      ...(market && { market }),
       canDownload,
       canPublish,
       canPurchaseDomain,

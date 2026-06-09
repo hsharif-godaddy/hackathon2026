@@ -36,12 +36,16 @@ describe('ComplianceService', () => {
         }),
       });
 
+      // Valid UUID is forwarded unchanged (non-UUID values fall back to the
+      // zero UUID — see the dedicated fallback test below).
+      const validCustomerId = '123e4567-e89b-12d3-a456-426614174000';
       const result = await complianceService.generateDocument({
         documentType: 'privacy-policy',
         businessName: 'Test Business',
         email: 'test@example.com',
         children: false,
-        customerId: 'cust-123',
+        customerId: validCustomerId,
+        appId: 'app-001',
       });
 
       expect(result).toEqual({
@@ -57,7 +61,8 @@ describe('ComplianceService', () => {
             'Content-Type': 'application/json',
             Authorization: 'Bearer test-s2s-token',
             'x-app-key': 'airo-app-builder',
-            'x-customer-id': 'cust-123',
+            'x-app-id': 'app-001',
+            'x-customer-id': validCustomerId,
           }),
           body: JSON.stringify({
             documentType: 'privacy-policy',
@@ -67,6 +72,64 @@ describe('ComplianceService', () => {
           }),
         }),
       );
+    });
+
+    it('falls back to the zero UUID when customerId is not a valid UUID and we are running locally', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          documentType: 'privacy-policy',
+          markdown: '# Privacy Policy',
+        }),
+      });
+
+      // Vitest sets NODE_ENV='test', which the resolver treats as local — so
+      // a non-UUID customerId is substituted with the nil UUID instead of
+      // throwing. Hosted environments take the reject path (next test).
+      await complianceService.generateDocument({
+        documentType: 'privacy-policy',
+        businessName: 'Test Business',
+        email: 'test@example.com',
+        children: false,
+        customerId: 'local-user-001',
+        appId: 'app-001',
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://compliance-agent.mvci.api.dev-godaddy.com/api/document/generate',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'x-customer-id': '00000000-0000-0000-0000-000000000000',
+          }),
+        }),
+      );
+    });
+
+    it('rejects non-UUID customerId in hosted environments', async () => {
+      // Pretend we are running in a hosted container (no `local.*` GASKET_ENV
+      // and NODE_ENV is something other than 'test'). The service must refuse
+      // to substitute the nil UUID — silently mis-attributing generated legal
+      // docs to a placeholder customer is a worse failure mode than throwing.
+      const originalGasket = process.env.GASKET_ENV;
+      const originalNodeEnv = process.env.NODE_ENV;
+      process.env.GASKET_ENV = 'dev-private';
+      process.env.NODE_ENV = 'production';
+      try {
+        await expect(
+          complianceService.generateDocument({
+            documentType: 'privacy-policy',
+            businessName: 'Test Business',
+            email: 'test@example.com',
+            children: false,
+            customerId: 'local-user-001',
+            appId: 'app-001',
+          }),
+        ).rejects.toThrow('customerId must be a UUID');
+        expect(mockFetch).not.toHaveBeenCalled();
+      } finally {
+        if (originalGasket === undefined) delete process.env.GASKET_ENV; else process.env.GASKET_ENV = originalGasket;
+        if (originalNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = originalNodeEnv;
+      }
     });
 
     it('generates a terms of use with correct request shape', async () => {
@@ -85,6 +148,7 @@ describe('ComplianceService', () => {
         children: false,
         jurisdiction: 'California',
         customerId: 'cust-456',
+        appId: 'app-002',
       });
 
       expect(result).toEqual({
@@ -120,6 +184,7 @@ describe('ComplianceService', () => {
           email: 'test@example.com',
           children: false,
           customerId: 'cust-123',
+          appId: 'app-001',
         }),
       ).rejects.toThrow('Compliance API error: 400');
     });
@@ -134,6 +199,7 @@ describe('ComplianceService', () => {
           email: 'test@example.com',
           children: false,
           customerId: 'cust-123',
+          appId: 'app-001',
         }),
       ).rejects.toThrow();
     });

@@ -18,14 +18,15 @@ vi.mock('../../../logging/index.js', () => ({
 }));
 
 // Hoisted mocks for use inside vi.mock factories
-const { mockRunHook, mockRegisterSkill, mockUnloadSkill, mockLoadSkill, mockListSkills, mockInstallTemplates, mockFindById } = vi.hoisted(() => ({
+const { mockRunHook, mockRegisterSkill, mockUnloadSkill, mockLoadSkill, mockListSkills, mockInstallTemplates, mockFindById, mockIsSkillAvailableInMarket } = vi.hoisted(() => ({
   mockRunHook: vi.fn().mockResolvedValue(undefined),
   mockRegisterSkill: vi.fn().mockReturnValue({ success: true, tools: ['test__tool1'] }),
   mockUnloadSkill: vi.fn().mockReturnValue(true),
   mockLoadSkill: vi.fn().mockResolvedValue({ success: true, skill: 'test-skill', instructions: 'test instructions' }),
   mockListSkills: vi.fn().mockResolvedValue({ success: true, skills: [] }),
   mockInstallTemplates: vi.fn().mockResolvedValue({ success: true, skill: 'test-skill', filesInstalled: 1, installedFiles: ['file.ts'] }),
-  mockFindById: vi.fn().mockReturnValue({ path: '/tmp/apps/test-app' })
+  mockFindById: vi.fn().mockReturnValue({ path: '/tmp/apps/test-app' }),
+  mockIsSkillAvailableInMarket: vi.fn().mockResolvedValue(true)
 }));
 
 vi.mock('../../skill-tool-manager.js', () => ({
@@ -42,7 +43,8 @@ vi.mock('../../skill-loader-tool.js', () => ({
   SkillLoaderTool: vi.fn().mockImplementation(function () { return {
     loadSkill: mockLoadSkill,
     listSkills: mockListSkills,
-    installTemplates: mockInstallTemplates
+    installTemplates: mockInstallTemplates,
+    isSkillAvailableInMarket: mockIsSkillAvailableInMarket
   }; })
 }));
 
@@ -108,6 +110,60 @@ describe('skillAITool hooks', () => {
         appId: 'app-456'
       }));
     });
+
+    it('should forward market from context metadata to loadSkill', async () => {
+      const contextWithMarket = {
+        metadata: {
+          conversationId: 'conv-123',
+          appId: 'app-456',
+          market: 'en-US',
+        }
+      };
+
+      await executeTool({ action: 'load', skill: 'authentication' }, contextWithMarket);
+
+      expect(mockLoadSkill).toHaveBeenCalledWith(
+        expect.objectContaining({ skill: 'authentication', market: 'en-US' })
+      );
+    });
+
+    it('should pass undefined market to loadSkill when context has no market', async () => {
+      await executeTool({ action: 'load', skill: 'authentication' }, mockContext);
+
+      expect(mockLoadSkill).toHaveBeenCalledWith(
+        expect.objectContaining({ skill: 'authentication', market: undefined })
+      );
+    });
+
+    it('should reject marketing-campaigns load when marketingCampaignsEnabled is false', async () => {
+      const context = {
+        metadata: { conversationId: 'conv-123', appId: 'app-456', marketingCampaignsEnabled: false }
+      };
+
+      const result = await executeTool({ action: 'load', skill: 'marketing-campaigns' }, context);
+
+      expect(result).toEqual(expect.objectContaining({ success: false }));
+      expect(mockLoadSkill).not.toHaveBeenCalled();
+    });
+
+    it('should reject marketing-campaigns load when marketingCampaignsEnabled is absent', async () => {
+      const result = await executeTool({ action: 'load', skill: 'marketing-campaigns' }, mockContext);
+
+      expect(result).toEqual(expect.objectContaining({ success: false }));
+      expect(mockLoadSkill).not.toHaveBeenCalled();
+    });
+
+    it('should allow marketing-campaigns load when marketingCampaignsEnabled is true', async () => {
+      const context = {
+        metadata: { conversationId: 'conv-123', appId: 'app-456', marketingCampaignsEnabled: true }
+      };
+
+      await executeTool({ action: 'load', skill: 'marketing-campaigns' }, context);
+
+      expect(mockLoadSkill).toHaveBeenCalledWith(
+        expect.objectContaining({ skill: 'marketing-campaigns' })
+      );
+    });
   });
 
   describe('unload action', () => {
@@ -146,6 +202,76 @@ describe('skillAITool hooks', () => {
       await executeTool({ action: 'list' }, mockContext);
 
       expect(mockRunHook).not.toHaveBeenCalled();
+    });
+
+    it('should forward market from context metadata to listSkills', async () => {
+      const contextWithMarket = {
+        metadata: {
+          conversationId: 'conv-123',
+          appId: 'app-456',
+          market: 'en-US',
+        }
+      };
+
+      await executeTool({ action: 'list' }, contextWithMarket);
+
+      expect(mockListSkills).toHaveBeenCalledWith(
+        expect.objectContaining({ market: 'en-US' })
+      );
+    });
+
+    it('should pass undefined market when context has no market', async () => {
+      await executeTool({ action: 'list' }, mockContext);
+
+      expect(mockListSkills).toHaveBeenCalledWith(
+        expect.objectContaining({ market: undefined })
+      );
+    });
+
+    it('should pass undefined market when context metadata market is not a string', async () => {
+      const contextWithBadMarket = {
+        metadata: {
+          conversationId: 'conv-123',
+          appId: 'app-456',
+          market: 42,
+        }
+      };
+
+      await executeTool({ action: 'list' }, contextWithBadMarket);
+
+      expect(mockListSkills).toHaveBeenCalledWith(
+        expect.objectContaining({ market: undefined })
+      );
+    });
+  });
+
+  describe('pin action - market rejection', () => {
+    it('should reject pin when isSkillAvailableInMarket returns false', async () => {
+      mockIsSkillAvailableInMarket.mockResolvedValueOnce(false);
+
+      const context = {
+        metadata: { conversationId: 'conv-123', appId: 'app-456', market: 'ja-JP' }
+      };
+
+      const result = await executeTool({ action: 'pin', skill: 'compliance-docs' }, context);
+
+      expect(result).toEqual(expect.objectContaining({
+        success: false,
+        message: expect.stringContaining('not available in your market'),
+      }));
+    });
+  });
+
+  describe('install action - market rejection', () => {
+    it('should throw when isSkillAvailableInMarket returns false', async () => {
+      mockIsSkillAvailableInMarket.mockResolvedValueOnce(false);
+
+      const context = {
+        metadata: { conversationId: 'conv-123', appId: 'app-456', market: 'ja-JP' }
+      };
+
+      await expect(executeTool({ action: 'install', skill: 'compliance-docs' }, context))
+        .rejects.toThrow('not available in your market');
     });
   });
 });

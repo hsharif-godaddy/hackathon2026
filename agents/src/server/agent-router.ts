@@ -1,7 +1,5 @@
-import { resolveProfile } from '../profiles/index.js'
 import { errorFields, logger } from '../logging/index.js'
 import { resolveInitialAgentId } from './resolve-initial-agent.js'
-import { concreteDevelopForProfile } from './develop-variant.js'
 
 interface AgentRouterDeps {
   /**
@@ -56,6 +54,11 @@ export function createAgentRouter(deps: AgentRouterDeps) {
     // WS handles it upstream and returns before the router is consulted.
     if (manualAgentOverride) return manualAgentOverride
 
+    // Per-profile develop variants were flattened (#4346): a single `develop`
+    // agent serves every profile and resolves prompt/tool differences per turn
+    // via callable `system`/`activeTools`. The router returns the plain agent
+    // id — no `develop-<profile>` rerouting.
+
     // Fire-and-forget: warm the ephemeral session so subsequent messages on this
     // socket resolve from session state without re-reading the store. Stores the
     // concrete agent id verbatim. Self-correcting on any failure — if switchAgent
@@ -69,23 +72,6 @@ export function createAgentRouter(deps: AgentRouterDeps) {
       }).catch(error => {
         logger.warn(errorEvent, { sessionId: s.sessionId, appId, agentId: agentToStore, ...errorFields(error) })
       })
-    }
-
-    // Map a base `develop` agent to the profile-specific variant for the active
-    // JWT profile. Profiles with develop/skill flags but no initial variant (e.g.
-    // `experimental`) start on base `initial` and hand off to base `develop`, so
-    // the factory never wires an initial→develop-<profile> handoff for them — this
-    // read-time mapping is the authoritative path to their `develop-<profile>`
-    // agent (warm session, cold reload, and legacy `develop` rows alike). Concrete
-    // ids (`develop-<name>`, `initial*`, `marketing`) pass through unchanged.
-    function developVariant(agentId: string): string {
-      if (agentId !== 'develop') return agentId
-      const profile = resolveProfile({
-        agentProfileSelectorEnabled: false,
-        perProjectProfile: undefined,
-        jwtAgentProfile: agentContext?.agentProfile,
-      })
-      return concreteDevelopForProfile(agentId, profile)
     }
 
     // The concrete initial agent to FREEZE for a brand-new app. The caller persists
@@ -107,9 +93,8 @@ export function createAgentRouter(deps: AgentRouterDeps) {
       const sessionAppId = stateManager.getSessionMetadata?.(sessionId)?.appId as string | undefined
 
       if (currentAgent && sessionAppId === appId) {
-        const resolved = developVariant(currentAgent)
-        logger.debug('agent_router.session_agent', { sessionId, appId, currentAgent, resolved })
-        return resolved
+        logger.debug('agent_router.session_agent', { sessionId, appId, currentAgent })
+        return currentAgent
       }
 
       if (currentAgent && sessionAppId && sessionAppId !== appId) {
@@ -142,10 +127,9 @@ export function createAgentRouter(deps: AgentRouterDeps) {
       return hasMessages ? 'develop' : freezeInitialAgent()
     }
     if (persistedAgent) {
-      const resolved = developVariant(persistedAgent)
-      if (session) rehydrateSession(session, resolved, 'agent_router.session_rehydrate_error')
-      logger.info('agent_router.persisted_agent', { appId, agentId: resolved })
-      return resolved
+      if (session) rehydrateSession(session, persistedAgent, 'agent_router.session_rehydrate_error')
+      logger.info('agent_router.persisted_agent', { appId, agentId: persistedAgent })
+      return persistedAgent
     }
 
     // 3. Brand-new app: resolve and freeze the concrete initial agent.

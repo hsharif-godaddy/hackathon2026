@@ -209,48 +209,51 @@ describe('marketing-agent', function marketingAgentTests() {
   });
 
   describe('#systemPrompt', function promptTests() {
-    it('should load system prompt from modular files', async function loadPrompt() {
+    // `system` is now a per-turn resolver (see #4346). Materialize it by
+    // invoking the resolver with an empty ResolverContext, mirroring how
+    // AgentWrapper calls it inside prepareCall.
+    async function resolveSystem(): Promise<string> {
       const config = await createMarketingAgent();
-      const systemPrompt = config.system;
+      expect(config.system).toBeTypeOf('function');
+      return (config.system as (ctx: Record<string, unknown>) => Promise<string>)({});
+    }
+
+    it('should load system prompt from modular files', async function loadPrompt() {
+      const systemPrompt = await resolveSystem();
 
       expect(systemPrompt).toBeTypeOf('string');
       expect(systemPrompt.length).toBeGreaterThan(0);
     });
 
     it('should include marketing agent core identity', async function coreIdentity() {
-      const config = await createMarketingAgent();
-      const systemPrompt = config.system;
+      const systemPrompt = await resolveSystem();
 
       expect(systemPrompt).toContain('Airo Marketer');
     });
 
     it('should reference SEO analysis capabilities', async function seoCapabilities() {
-      const config = await createMarketingAgent();
-      const systemPrompt = config.system;
+      const systemPrompt = await resolveSystem();
 
       expect(systemPrompt).toContain('SEO');
       expect(systemPrompt).toContain('search engine optimization');
     });
 
     it('should include handoff workflow', async function handoffWorkflow() {
-      const config = await createMarketingAgent();
-      const systemPrompt = config.system;
+      const systemPrompt = await resolveSystem();
 
       expect(systemPrompt).toContain('handoff');
       expect(systemPrompt).toContain('develop agent');
     });
 
     it('should emphasize strategic analysis over coding', async function strategicFocus() {
-      const config = await createMarketingAgent();
-      const systemPrompt = config.system;
+      const systemPrompt = await resolveSystem();
 
       expect(systemPrompt).toContain('NEVER edit code files');
       expect(systemPrompt).toContain('strategist');
     });
 
     it('should include AEO and GEO considerations', async function modernSEO() {
-      const config = await createMarketingAgent();
-      const systemPrompt = config.system;
+      const systemPrompt = await resolveSystem();
 
       expect(systemPrompt).toContain('Answer Engine Optimization');
       expect(systemPrompt).toContain('AI assistants');

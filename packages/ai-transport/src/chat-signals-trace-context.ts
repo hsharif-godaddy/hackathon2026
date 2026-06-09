@@ -2,7 +2,14 @@ import { context as otelContext, type Context } from '@opentelemetry/api'
 import { createTraceContext } from '@signals/otel-sdk'
 import { getSignalsContext, type SignalsContext } from '@signals/sdk'
 
-const BUSINESS_CONTEXT_SCHEMA_ID = 'urn:shared:user:business-context:/airo-app-builder/v1'
+/**
+ * Shared schema id for the airo-app-builder BusinessContext attached to OTel
+ * traces. Re-exported for transport adapters that extend the inherited
+ * BusinessContext (see agents service WS + SSE BusinessContext extension blocks).
+ * Bump in lockstep with the schema registry — every site that constructs a
+ * BusinessContext for this product must reference the same version literal.
+ */
+export const BUSINESS_CONTEXT_SCHEMA_ID = 'urn:shared:user:business-context:/airo-app-builder/v2'
 
 export type ChatSignalsTraceLogPrefix = 'websocket' | 'sse'
 

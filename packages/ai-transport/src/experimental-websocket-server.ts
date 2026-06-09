@@ -39,7 +39,7 @@ import { PersistenceSubscriber } from './subscribers/persistence-subscriber.js'
 import { ConnectionStateManager, type ConnectionStateData } from './connection-state-manager.js'
 import { ConnectionRecoveryManager } from './connection-recovery-manager.js'
 import { executeAgentLoop, AgentNotFoundError } from './agent-execution-loop.js'
-import { context as otelContext, trace } from '@opentelemetry/api'
+import { context as otelContext, trace, type Context } from '@opentelemetry/api'
 import { buildChatSignalsTraceContext, type JwtAgentContextSubset } from './chat-signals-trace-context.js'
 import { inferProviderFromModelName, type ChatLlmProvider } from './infer-llm-provider.js'
 import { createAgentInvocation, emitTurnError } from './agent-invocation.js'
@@ -633,14 +633,28 @@ export class WebSocketServer {
       })
 
       socket.on('chat_message', async (data: ChatMessage) => {
+        // Build trace context BEFORE running messageMiddleware so the middleware
+        // (which extends BusinessContext with profile/market in the agents
+        // service) inherits the appId-bearing context built here. Running the
+        // middleware outside the trace scope leaves
+        // getBusinessContext(otelContext.active()) returning undefined and the
+        // extension never makes it into spans. See agents/CLAUDE.md
+        // "Observability" and packages/ai-transport/CLAUDE.md (transport
+        // symmetry rule) — SSE already establishes traceCtx before its
+        // equivalent extension in MessageExecutionService.
+        const traceCtx = this.buildChatTraceContext(socket, data)
+        const runWithinTrace = (): Promise<void> =>
+          otelContext.with(traceCtx, () => this.handleChatMessageWithinTrace(socket, data))
         if (this.config.messageMiddleware) {
-          await this.config.messageMiddleware(
-            socketId,
-            data.context as Record<string, unknown> | undefined,
-            () => this.handleChatMessage(socket, data)
+          await otelContext.with(traceCtx, () =>
+            this.config.messageMiddleware!(
+              socketId,
+              data.context as Record<string, unknown> | undefined,
+              runWithinTrace
+            )
           )
         } else {
-          await this.handleChatMessage(socket, data)
+          await runWithinTrace()
         }
       })
 
@@ -1961,27 +1975,19 @@ export class WebSocketServer {
   }
 
   /**
-   * Handle incoming chat messages with handoff support
-   * Serializes message processing per socket to prevent concurrent race conditions
+   * Build the Signals/OTel trace context for a single chat message.
+   * Extracted from handleChatMessage so the chat_message handler can establish
+   * the trace context BEFORE invoking messageMiddleware, letting the middleware
+   * inherit the appId-bearing BusinessContext when extending it.
    */
-  private async handleChatMessage(socket: any, data: ChatMessage): Promise<void> {
+  private buildChatTraceContext(socket: any, data: ChatMessage): Context {
     const socketId = socket.id
-
-    // Diagnostic: Log that message was received
-    this.logger.info('chat_message.received', {
-      socketId,
-      messageLength: data.message?.length ?? 0,
-      hasContext: !!data.context,
-      conversationId: (data.context as any)?.conversation?.conversationId
-    })
-
-    // Build trace context early so all events (including conversation_start) share the same trace ID.
     const appId = extractAppIdFromMessageContext(data.context)
     const handshakeHeaders = socket.handshake?.headers as
       | Record<string, string | string[] | undefined>
       | undefined
     const jwtAgentCtx = socket.handshake?.auth?.agentContext as JwtAgentContextSubset | undefined
-    const traceCtx = buildChatSignalsTraceContext({
+    return buildChatSignalsTraceContext({
       ...(handshakeHeaders !== undefined && { headers: handshakeHeaders }),
       ...(jwtAgentCtx != null && { jwtAgentContext: jwtAgentCtx }),
       ...(appId !== undefined && appId.length > 0 && { appId }),
@@ -1989,15 +1995,41 @@ export class WebSocketServer {
       logFields: { socketId },
       logger: { warn: (event, fields) => this.logger.warn(event, fields) },
     })
+  }
 
-    return otelContext.with(traceCtx, () =>
-      this.stateManager.queueMessage(socketId, () => this.handleChatMessageInternal(socket, data))
-    ).catch((err: unknown) => {
-      this.logger.error('websocket.chat_message.queue_failed', {
-        socketId,
-        error: err instanceof Error ? err.message : String(err),
-      })
+  /**
+   * Run the message-handling pipeline assuming the trace context is already
+   * active on the call stack. Used by the chat_message handler after it
+   * establishes traceCtx via otelContext.with().
+   */
+  private async handleChatMessageWithinTrace(socket: any, data: ChatMessage): Promise<void> {
+    const socketId = socket.id
+
+    this.logger.info('chat_message.received', {
+      socketId,
+      messageLength: data.message?.length ?? 0,
+      hasContext: !!data.context,
+      conversationId: (data.context as any)?.conversation?.conversationId
     })
+
+    return this.stateManager
+      .queueMessage(socketId, () => this.handleChatMessageInternal(socket, data))
+      .catch((err: unknown) => {
+        this.logger.error('websocket.chat_message.queue_failed', {
+          socketId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      })
+  }
+
+  /**
+   * Handle incoming chat messages with handoff support.
+   * Serializes message processing per socket to prevent concurrent race conditions.
+   * Used by the legacy `chat` event which has no messageMiddleware seam.
+   */
+  private async handleChatMessage(socket: any, data: ChatMessage): Promise<void> {
+    const traceCtx = this.buildChatTraceContext(socket, data)
+    return otelContext.with(traceCtx, () => this.handleChatMessageWithinTrace(socket, data))
   }
 
   /**

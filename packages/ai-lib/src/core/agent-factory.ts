@@ -16,7 +16,7 @@ import type {
   ModelMessage,
   SystemModelMessage
 } from 'ai'
-import type { GlobalAgentConfig, AgentContext, ProcessedFile, AgentConfig } from './types.js'
+import type { GlobalAgentConfig, AgentContext, ProcessedFile, AgentConfig, ResolverContext } from './types.js'
 import type { PipelineContextMessage, ContextPipeline } from './context-pipeline.js'
 import { createDefaultPipeline } from './context-normalization.js'
 import { createDuplicateResponseStopCondition } from './duplicate-detection.js'
@@ -270,6 +270,19 @@ function detectToolNativeProvider(tool: unknown): string | undefined {
   return dot > 0 ? t.id.slice(0, dot) : undefined
 }
 
+interface ResolvedTurnState {
+  system?: string
+  activeTools?: string[]
+}
+// Symbol-keyed so the slot can't collide with any caller-supplied AgentContext field.
+const RESOLVED_TURN_STATE = Symbol('airo.resolvedTurnState')
+
+function readResolvedTurnState(experimentalContext: unknown): ResolvedTurnState | undefined {
+  if (experimentalContext === null || typeof experimentalContext !== 'object') return undefined
+  const slot = (experimentalContext as Record<PropertyKey, unknown>)[RESOLVED_TURN_STATE]
+  return (slot && typeof slot === 'object') ? slot as ResolvedTurnState : undefined
+}
+
 export class AgentWrapper {
   // Using explicit empty call options type instead of 'any' to avoid 'as never' casts
   // The second and third generics remain 'any' as they're provider-internal types
@@ -337,13 +350,15 @@ export class AgentWrapper {
 
     const telemetryHooks = this.createTelemetryHooks(config.logger)
 
-    // Apply prompt caching to system prompt if enabled
-    let systemPrompt: string | SystemModelMessage | SystemModelMessage[] | undefined = config.system
-    if (config.enablePromptCaching && config.system) {
+    // Apply prompt caching to system prompt if enabled. Resolver-form `system`
+    // is materialized per-turn via prepareStep — skip constructor instructions.
+    const staticSystem = typeof config.system === 'string' ? config.system : undefined
+    let systemPrompt: string | SystemModelMessage | SystemModelMessage[] | undefined = staticSystem
+    if (config.enablePromptCaching && staticSystem) {
       const cachingStrategy = typeof config.enablePromptCaching === 'object'
         ? config.enablePromptCaching
         : {}
-      systemPrompt = addCacheControlToSystemPrompt(config.system, config.model, cachingStrategy)
+      systemPrompt = addCacheControlToSystemPrompt(staticSystem, config.model, cachingStrategy)
     }
 
     // Create the ToolLoopAgent
@@ -376,8 +391,56 @@ export class AgentWrapper {
 
         this.turnCount++
 
-        const executionContext = callOptions.executionContext as Record<string, any> | undefined
+        const executionContext = callOptions.executionContext as
+          { metadata?: Record<string, unknown> } | undefined
         this.currentConversationId = executionContext?.metadata?.conversationId as string | undefined
+
+        // Resolve callable system / activeTools once per turn. Outputs flow to
+        // prepareStep via experimental_context (see below) — not via instance
+        // fields, which would race across concurrent generate() calls.
+        //
+        // Fail-closed contract: a resolver throw aborts the turn. Letting the
+        // turn proceed silently would either run with no system prompt
+        // (resolver-form `system` is excluded from constructor `instructions`)
+        // or run with the full tools map (skipping the profile intersection,
+        // re-exposing tools the profile means to disable). Both are worse than
+        // a hard failure the caller can surface and retry.
+        const resolved: ResolvedTurnState = {}
+        if (typeof this.config.system === 'function' || typeof this.config.activeTools === 'function') {
+          const metadata = executionContext?.metadata
+          const resolverCtx: ResolverContext = {
+            ...(typeof metadata?.profileName === 'string' ? { profileName: metadata.profileName } : {}),
+            ...(typeof metadata?.market === 'string' ? { market: metadata.market } : {}),
+          }
+          if (typeof this.config.system === 'function') {
+            try {
+              resolved.system = await this.config.system(resolverCtx)
+            } catch (error) {
+              logger.error('agent.system_resolver.failure', {
+                agentName: this.config.name,
+                error: error instanceof Error ? error.message : String(error),
+              })
+              throw error instanceof Error
+                ? error
+                : new Error(`system resolver failed: ${String(error)}`)
+            }
+          }
+          if (typeof this.config.activeTools === 'function') {
+            try {
+              resolved.activeTools = await this.config.activeTools(resolverCtx)
+            } catch (error) {
+              logger.error('agent.active_tools_resolver.failure', {
+                agentName: this.config.name,
+                error: error instanceof Error ? error.message : String(error),
+              })
+              throw error instanceof Error
+                ? error
+                : new Error(`activeTools resolver failed: ${String(error)}`)
+            }
+          }
+        } else if (Array.isArray(this.config.activeTools)) {
+          resolved.activeTools = this.config.activeTools
+        }
 
         // Call onSkillsLoad callback to inject skill context messages before the pipeline.
         // Retries up to 3 times on failure/empty return, then gives up for that conversation.
@@ -431,8 +494,15 @@ export class AgentWrapper {
           hasSystemPrompt: !!this.config.system,
         })
 
-        if (callOptions.executionContext) {
-          ;(preparedCall as typeof preparedCall & { experimental_context?: unknown }).experimental_context = callOptions.executionContext
+        // When the agent has resolver outputs to thread, attach them to a copy
+        // of executionContext under the symbol-keyed slot. Otherwise pass the
+        // caller's executionContext through unchanged.
+        const hasResolvedState = resolved.system !== undefined || resolved.activeTools !== undefined
+        const stepEnvelope = hasResolvedState
+          ? { ...(callOptions.executionContext ?? {}), [RESOLVED_TURN_STATE]: resolved }
+          : callOptions.executionContext
+        if (stepEnvelope !== undefined) {
+          ;(preparedCall as typeof preparedCall & { experimental_context?: unknown }).experimental_context = stepEnvelope
         }
 
         // Compute base tool names once per run (everything except skill tools).
@@ -687,9 +757,10 @@ export class AgentWrapper {
       }
     }
 
-    const prepareStep: PrepareStepFunction = async ({ stepNumber, messages }) => {
+    const prepareStep: PrepareStepFunction = async ({ stepNumber, messages, experimental_context }) => {
       // Track current step number for use in onStepFinish
       this.currentStepNumber = stepNumber
+      const resolved = readResolvedTurnState(experimental_context)
 
       safeLog('info', 'agent.step.begin', {
         agentName,
@@ -697,7 +768,6 @@ export class AgentWrapper {
         messageCount: messages.length
       }, 'agent.step.begin.log_failed')
 
-      // Build the result object, accumulating optional fields
       const result: Record<string, unknown> = {}
 
       // Build activeTools from cached base names + current active skills.
@@ -706,13 +776,42 @@ export class AgentWrapper {
       // miss on that step is the cost of making new tools available. Cleanup
       // only runs in prepareCall, so tools are never removed mid-run, avoiding
       // unnecessary cache invalidation.
-      if (this.currentBaseToolNames && this.skillToolProvider && this.currentConversationId) {
+      // Fall back to the tools map when there's no skillToolProvider — without
+      // one, prepareCall doesn't populate currentBaseToolNames.
+      const baseFromMap = this.currentBaseToolNames
+        ?? (this.config.tools ? Object.keys(this.config.tools) : undefined)
+      const resolvedActiveTools = resolved?.activeTools
+        ?? (Array.isArray(this.config.activeTools) ? this.config.activeTools : undefined)
+      // Intersection (not union): a profile that disables a tool must not see
+      // it reappear because it's still in the constructor tools map.
+      const candidateBaseTools = baseFromMap && resolvedActiveTools
+        ? baseFromMap.filter(name => new Set(resolvedActiveTools).has(name))
+        : baseFromMap
+      if (candidateBaseTools && this.skillToolProvider && this.currentConversationId) {
         const activeSkillTools = this.skillToolProvider.getActiveToolNames(this.currentConversationId)
-        // Type cast needed: AI SDK expects keyof TOOLS but we have runtime string arrays
-        // from baseToolNames and activeSkillTools that match tool keys at runtime
-        result.activeTools = [...this.currentBaseToolNames, ...activeSkillTools] as any
+        result.activeTools = [...candidateBaseTools, ...activeSkillTools]
+      } else if (candidateBaseTools && resolvedActiveTools) {
+        result.activeTools = candidateBaseTools
       } else if (this.currentBaseToolNames) {
-        result.activeTools = this.currentBaseToolNames as any
+        result.activeTools = this.currentBaseToolNames
+      }
+
+      // Wrap the resolved system with cache-control so prompt caching still
+      // applies when the prompt comes through prepareStep instead of `instructions`.
+      const resolvedSystem = resolved?.system
+      if (resolvedSystem !== undefined) {
+        if (this.config.enablePromptCaching) {
+          const cachingStrategy = typeof this.config.enablePromptCaching === 'object'
+            ? this.config.enablePromptCaching
+            : {}
+          result.system = addCacheControlToSystemPrompt(
+            resolvedSystem,
+            this.config.model,
+            cachingStrategy,
+          )
+        } else {
+          result.system = resolvedSystem
+        }
       }
 
       // Advance the cache breakpoint on steps 1+ so newly added messages
@@ -890,11 +989,14 @@ export class AgentWrapper {
     try {
       const model = await getModel(modelName)
       const systemForModel = this.config.metadata?.systemForModel
-      const system = typeof systemForModel === 'function'
-        ? await systemForModel(modelName)
+      // Keep system as a per-turn resolver so ResolverContext (market, profile)
+      // is available on every call — a static string would bake the first turn's
+      // context and silently drop market-restricted skills on subsequent turns.
+      const system: AgentConfig['system'] = typeof systemForModel === 'function'
+        ? (ctx: ResolverContext): Promise<string> => systemForModel(modelName, ctx)
         : this.config.system
       const created = new AgentWrapper(
-        { ...this.config, model, modelName, system },
+        { ...this.config, model, modelName, ...(system != null && { system }) },
         this.skillToolProvider
       )
       this.overrideAgents.set(modelName, created)

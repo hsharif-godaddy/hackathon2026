@@ -33,6 +33,45 @@ A skill must be removable, disable-able, and renamable without editing code outs
 
 The "Quick intent map" injected into agent system prompts is built dynamically from each skill's `intents` frontmatter by `buildSkillsPromptSection()` in `agents/src/tools/skill-loader-tool.ts`. Disabled skills (filtered by `enablementId`) drop out of the map automatically.
 
+### Feature Gating
+
+Skills can be gated behind feature flags or restricted to specific markets. These mechanisms ensure only intended audiences see and can use a skill.
+
+#### Enablement Flags
+
+The `enablementId` frontmatter field gates skill availability based on feature flags:
+
+```yaml
+---
+name: my-skill
+description: Beta feature
+enablementId: my-beta-feature
+---
+```
+
+When `enablementId` is set, the skill is only listed and loadable if the feature flag is enabled for the current user's profile. Use this for gradual rollouts or A/B testing new skills.
+
+#### Market Gating
+
+Skills can restrict availability to specific markets/locales using the `markets` frontmatter field:
+
+```yaml
+---
+name: compliance-docs
+description: Generate legal documents for US businesses
+markets:
+  - en-US
+---
+```
+
+**Behaviour:**
+- Skills with `markets` set are only listed and loadable when the agent execution context includes a matching market (`context.metadata.market`).
+- If the request market is absent or not in the allowlist, `listSkills` omits the skill and `loadSkill` returns `{ success: false, error: "Skill '...' is not available in your market." }`.
+- Skills with no `markets` field are unrestricted and always available.
+- Multiple markets can be listed: `markets: [en-US, en-CA, en-GB]`.
+
+**When to use:** Apply `markets` when skill content, legal requirements, or tool behaviour is specific to a country or region — for example, legal document generation that assumes US law and US states, or payment integrations that only work in certain markets.
+
 ## Architecture
 
 ### Directory Structure
@@ -166,6 +205,7 @@ intents:
 - `whenToUse` (optional) — guidance to the LLM after a skill is being considered.
 - `intents` (optional) — array of short trigger phrases (slash-separated synonyms allowed in a single entry). Each phrase becomes one entry in the system-prompt "Quick intent map" routing to this skill. Add intents only when this skill should be discoverable from a user's first-message wording. See "Self-Containment Rule" — routing data lives here, not in shared code.
 - `enablementId` (optional) — feature flag gating skill availability.
+- `markets` (optional) — array of BCP-47 locale strings (e.g., `["en-US", "en-CA"]`) that restricts the skill to specific markets. When set, the skill is only listed and loadable when the request's market matches one of the listed values. When the request market is absent or not in the list, the skill is excluded from `listSkills` results and `loadSkill` returns an error. Skills with no `markets` field are available in all markets.
 - `dependencies` / `devDependencies` (optional) — npm packages installed when the skill is loaded.
 - `skill-deps` (optional) — other skills this skill depends on.
 - `post-install-notes` (optional) — text surfaced to the agent after install.

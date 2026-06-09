@@ -11,6 +11,7 @@ import {
   createWebSocketServer,
   hasNonIdempotentTools,
   recordTokenUsageObservability,
+  BUSINESS_CONTEXT_SCHEMA_ID,
   type MessageProvider,
   type ContextProvider,
   type ConversationMessage,
@@ -37,6 +38,7 @@ import {
 } from '@airo/ai-lib/budget'
 import { context as otelContext } from '@opentelemetry/api'
 import { createAgentContext } from '@godaddy/agent-otel-sdk'
+import { getBusinessContext, setBusinessContext } from '@signals/otel-sdk'
 import { checkCorrelationIdRace, safeProcessBudgetReport, type BudgetReportResult } from './budget-report-handler.js'
 import { auth, AuthType, BYPASS_SITE_IDS } from '../services/features.js'
 import { getTemplateIds } from '../agents/template-registry.js'
@@ -1127,7 +1129,8 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         const agentContext = socket?.handshake?.auth?.agentContext
         // NOTE: client-sent `data.agentId/agentName` is intentionally NOT forwarded.
         // The `/agent` override was already handled above; post-create routing is
-        // driven solely by the frozen `conversations.agentId`.
+        // driven solely by the frozen `conversations.agentId`. Market filtering
+        // happens per-turn in AgentContextPipeline, not here.
         return wsAgentRouter({
           appId,
           templateId: metadata?.templateId,
@@ -1260,7 +1263,9 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         }
 
         if (agentContext) {
-          // Inject JWT-based permissions and auth info into context metadata for tool access.
+          // Inject JWT-based permissions, auth info, and validated claims into
+          // context metadata — overwrites any client-supplied values to prevent
+          // spoofing of server-controlled gates (market, marketingCampaignsEnabled).
           // customerId is injected here (symmetric with SSE in MessageExecutionService) so it
           // is available to persistence on the JWT path, before contextProvider runs.
           rawContext.metadata = {
@@ -1272,6 +1277,12 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             },
             isE2S: agentContext.isE2S ?? false,
             authType: agentContext.authType,
+            // Set market unconditionally from JWT — when the claim is absent
+            // (pre-rollout token or BFF resolution failure) this yields undefined,
+            // which makes skill gating fail closed. Never fall back to the
+            // client-supplied metadata.market.
+            market: agentContext.market,
+            marketingCampaignsEnabled: agentContext.marketingCampaignsEnabled ?? false,
             ...(agentContext.customerId && { customerId: agentContext.customerId }),
           }
         }
@@ -2581,13 +2592,19 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       ) => {
         const socket = getSocket(socketId)
         const agentContext = socket?.handshake?.auth?.agentContext
+        const ctxMetadata = (context && typeof context === 'object'
+          ? (context as { metadata?: Record<string, unknown> }).metadata
+          : undefined) ?? {}
+        const perProjectProfile = typeof ctxMetadata.agentProfile === 'string' ? ctxMetadata.agentProfile : undefined
+        const perProjectModel = typeof ctxMetadata.modelOverride === 'string' ? ctxMetadata.modelOverride : undefined
+        const messageMarket = typeof ctxMetadata.market === 'string' ? ctxMetadata.market : undefined
 
         // Profile comes from the JWT only — the BFF-resolved switchboard/hivemind
         // profile is the sole source. There is no per-message client profile (the
         // ProfileSelector was removed); model override below keeps its own path.
         const profile = resolveProfile({
-          agentProfileSelectorEnabled: false,
-          perProjectProfile: undefined,
+          agentProfileSelectorEnabled: !!agentContext?.agentProfileSelectorEnabled,
+          ...(perProjectProfile !== undefined && { perProjectProfile }),
           jwtAgentProfile: agentContext?.agentProfile as string | undefined,
         })
 
@@ -2597,7 +2614,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         const effectiveOverride = resolveOverride({
           modelSelectorEnabled: !!agentContext?.modelSelectorEnabled,
-          perProjectModel: (context as any)?.metadata?.modelOverride as string | undefined,
+          ...(perProjectModel !== undefined && { perProjectModel }),
           jwtModelOverride: agentContext?.modelOverride as string | undefined,
         })
 
@@ -2619,11 +2636,37 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
           await execute()
         }
 
+        // Extend BusinessContext with profile + market when set so they ride
+        // through every child createAgentContext / span as `business_data_*` in
+        // Langfuse trace metadata. The parent BusinessContext (appId etc.) set
+        // by buildChatSignalsTraceContext is preserved by merging. The schema
+        // at BUSINESS_CONTEXT_SCHEMA_ID must list these fields before they
+        // actually surface in Langfuse.
+        const profileTag = profile?.name
+        const marketTag = messageMarket && messageMarket.length > 0 ? messageMarket : undefined
+        const extendedCtx = (profileTag || marketTag)
+          ? (() => {
+              const inherited = getBusinessContext(otelContext.active())
+              return setBusinessContext(otelContext.active(), {
+                schemaId: inherited?.schemaId ?? BUSINESS_CONTEXT_SCHEMA_ID,
+                data: {
+                  ...(inherited?.data ?? {}),
+                  ...(profileTag && { profile: profileTag }),
+                  ...(marketTag && { market: marketTag }),
+                },
+              })
+            })()
+          : undefined
+
+        const runner = extendedCtx
+          ? () => otelContext.with(extendedCtx, executeWithModelOverride)
+          : executeWithModelOverride
+
         const executeWithProfile = async () => {
           if (profile) {
-            await runWithProfile(profile, executeWithModelOverride)
+            await runWithProfile(profile, runner)
           } else {
-            await executeWithModelOverride()
+            await runner()
           }
         }
 

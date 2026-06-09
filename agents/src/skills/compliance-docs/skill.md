@@ -3,6 +3,8 @@ name: compliance-docs
 description: Generate legal compliance pages (Privacy Policy, Terms of Use).
 whenToUse: User wants to add, create, or generate a privacy policy, terms of use, or legal pages — either by name (phrases like "add a privacy policy", "add a terms of use", "generate terms of use", "I need legal pages", "create a ToU page") OR by path (any request to build/create a page at `/privacy`, `/privacy-policy`, `/terms`, `/terms-of-use`, or `/tos`, including path-only build requests from the preview's "page doesn't exist" popup that arrive as messages like `"The page at path /privacy doesn't exist yet, please build it with appropriate content."`).
 enablementId: complianceDocs
+markets:
+  - en-US
 intents:
   - privacy policy/terms of use/legal pages/ToU/privacy page/terms page
 ---

@@ -89,9 +89,7 @@ describe('Agent Handoff Callback', () => {
       expect(mockConversationRepo.updateAgentId).toHaveBeenCalledTimes(1)
     })
 
-    it('persists develop-<profile> when the active profile carries develop/skill flags', async () => {
-      // Exercises the wired write seam: under runWithProfile, the handoff to base
-      // develop must be mapped to the profile variant before persistence.
+    it('persists base develop even when the active profile carries develop/skill flags (variants flattened #4346)', async () => {
       const callback = createCallback(mockConversationRepo)
 
       await runWithProfile(
@@ -99,7 +97,7 @@ describe('Agent Handoff Callback', () => {
         () => callback('conv-123', 'initial', 'develop', 'app-456'),
       )
 
-      expect(mockConversationRepo.updateAgentId).toHaveBeenCalledWith('conv-123', 'develop-experimental')
+      expect(mockConversationRepo.updateAgentId).toHaveBeenCalledWith('conv-123', 'develop')
     })
 
     it('persists base develop when the active profile has no develop/skill flags', async () => {

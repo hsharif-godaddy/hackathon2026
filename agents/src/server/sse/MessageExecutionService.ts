@@ -28,6 +28,7 @@ import {
   readTextStreamFallback,
   recordTokenUsageObservability,
   TOOL_VALIDATION_ERROR_TYPE,
+  BUSINESS_CONTEXT_SCHEMA_ID,
 } from '@airo/ai-transport'
 import type { ResponseMetadata, ResolveToolMetadata } from '@airo/ai-transport'
 import { BudgetExceededError, classifyError } from '@airo/ai-common'
@@ -64,6 +65,7 @@ import type { AssessmentOutcome } from '../../agents/assessment-agent/index.js'
 import { ClassifierMode } from '../../agents/assessment-agent/index.js'
 import { PARALLEL_ASSESSMENT_TIMEOUT_MS } from '../assessment-executor.js'
 import { createAgentContext, emitConversationStart } from '@godaddy/agent-otel-sdk'
+import { getBusinessContext, setBusinessContext } from '@signals/otel-sdk'
 import {
   buildContextAttachments,
   type BuildContextAttachmentAsset,
@@ -171,6 +173,7 @@ interface LifecycleContext {
     bmsBudgetId?: string
     useAtlasCrawler?: boolean
     debugStatsEnabled?: boolean
+    market?: string
     marketingCampaignsEnabled?: boolean
   }
   isInitialPrompt?: boolean
@@ -1699,7 +1702,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         ...(agentCtx?.bmsBudgetId && !bmsBudgetId && { bmsBudgetId: agentCtx.bmsBudgetId }),
         ...(budgetSessionId && { budgetSessionId }),
         ...(uploadedFileName && { uploadedFileName }),
-        ...(market && { market }),
+        ...((agentCtx?.market ?? market) && { market: agentCtx?.market ?? market }),
         ...(userTimezone && { userTimezone }),
         permissions: {
           canDownload: agentCtx?.canDownload ?? false,
@@ -1708,6 +1711,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         },
         isE2S: agentCtx?.isE2S ?? false,
         authType,
+        marketingCampaignsEnabled: agentCtx?.marketingCampaignsEnabled ?? false,
         ...(agentCtx?.useTestBudget !== undefined && { useTestBudget: agentCtx.useTestBudget }),
         ...(agentCtx?.useAtlasCrawler && { useAtlasCrawler: true }),
         ...(agentCtx?.marketingCampaignsEnabled && { marketingCampaignsEnabled: true }),
@@ -2025,9 +2029,35 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         return runLoop()
       }
 
+      // Extend BusinessContext with profile + market when set so they ride
+      // through every child createAgentContext / span as `business_data_*` in
+      // Langfuse trace metadata. The parent BusinessContext (appId etc.) set
+      // by buildChatSignalsTraceContext is preserved by merging. The schema
+      // at BUSINESS_CONTEXT_SCHEMA_ID must list these fields before they
+      // actually surface in Langfuse.
+      const profileTag = profile?.name
+      const marketTag = typeof market === 'string' && market.length > 0 ? market : undefined
+      const extendedCtx = (profileTag || marketTag)
+        ? (() => {
+            const inherited = getBusinessContext(otelContext.active())
+            return setBusinessContext(otelContext.active(), {
+              schemaId: inherited?.schemaId ?? BUSINESS_CONTEXT_SCHEMA_ID,
+              data: {
+                ...(inherited?.data ?? {}),
+                ...(profileTag && { profile: profileTag }),
+                ...(marketTag && { market: marketTag }),
+              },
+            })
+          })()
+        : undefined
+
+      const runner = extendedCtx
+        ? () => otelContext.with(extendedCtx, runWithOverride)
+        : runWithOverride
+
       const loopResult = profile
-        ? await runWithProfile(profile, runWithOverride)
-        : await runWithOverride()
+        ? await runWithProfile(profile, runner)
+        : await runner()
 
       const finalAgentName = loopResult.finalAgentName
       // A chunk_timeout soft-commit aborts the controller but is NOT a turn

@@ -1,6 +1,7 @@
 import {
   createAgentFactory,
   type AgentConfig,
+  type ResolverContext,
   createPromptBuilder,
   createHandoffTool,
   type SessionStateManager,
@@ -16,14 +17,12 @@ import { SkillLoaderTool, buildSkillsPromptSection } from '../tools/skill-loader
 
 const logger = Logger.create({ component: 'marketing-agent' })
 
-async function buildMarketingSystemPrompt(): Promise<string> {
+async function buildMarketingSystemPrompt(options?: { market?: string }): Promise<string> {
   const promptBuilder = createPromptBuilder()
   const paths = getModularPromptPaths(import.meta.url)
 
-  // Get available skills list with whenToUse guidance
-  // Skills with switchboardFlag (e.g. marketing-campaigns) are excluded when contextMetadata is absent
   const skillLoader = new SkillLoaderTool()
-  const skillsResult = await skillLoader.listSkills()
+  const skillsResult = await skillLoader.listSkills({ market: options?.market })
   const skillsSection = skillsResult.success && skillsResult.skills?.length
     ? buildSkillsPromptSection(skillsResult.skills)
     : ''
@@ -34,7 +33,6 @@ async function buildMarketingSystemPrompt(): Promise<string> {
     .file(paths.getSharedFile('communication.md'))
     .file(paths.getSharedFile('security.md'))
 
-  // Skills section at end of prompt for emphasis
   if (skillsSection) {
     promptBuilder.text(`\n${skillsSection}\n`)
   }
@@ -43,7 +41,6 @@ async function buildMarketingSystemPrompt(): Promise<string> {
 }
 
 export async function createMarketingAgent(): Promise<AgentConfig> {
-  const systemPrompt = await buildMarketingSystemPrompt()
   const { model, modelName } = await getAgentModelWithName('full')
   const isSocialEnabled = skills.isEnabled('social')
 
@@ -68,7 +65,8 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
   return {
     id: 'marketing',
     name: 'Airo Marketer',
-    system: systemPrompt,
+    system: async (ctx: ResolverContext): Promise<string> =>
+      buildMarketingSystemPrompt({ market: ctx.market }),
     model,
     modelName,
     tools: {

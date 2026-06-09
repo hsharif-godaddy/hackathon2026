@@ -124,9 +124,19 @@ describe('develop-agent', function developAgentTests() {
         expect(config.enablePromptCaching).toBe(true);
       });
 
+    // The system prompt is now built lazily by a resolver in createDevelopAgent.
+    // To inspect which prompt files are loaded, we have to invoke the resolver
+    // — that's what the AgentWrapper does once per turn inside prepareCall.
+    async function fireSystemResolver(config: Awaited<ReturnType<typeof createDevelopAgent>>) {
+      if (typeof config.system === 'function') {
+        await config.system({});
+      }
+    }
+
     it('should include Claude behavior guidance for Claude-family models',
       async function claudeBehavior() {
-        await createDevelopAgent();
+        const config = await createDevelopAgent();
+        await fireSystemResolver(config);
 
         expect(mockPromptBuilders[0].files.some((path: string) => path.endsWith('claude-behavior.md'))).toBe(true);
       });
@@ -138,7 +148,8 @@ describe('develop-agent', function developAgentTests() {
           modelName: 'azure/Kimi-K2.6'
         });
 
-        await createDevelopAgent();
+        const config = await createDevelopAgent();
+        await fireSystemResolver(config);
 
         expect(mockPromptBuilders[0].files.some((path: string) => path.endsWith('claude-behavior.md'))).toBe(false);
       });
@@ -150,14 +161,16 @@ describe('develop-agent', function developAgentTests() {
           modelName: 'azure/Kimi-K2.6'
         });
 
-        await createDevelopAgent();
+        const config = await createDevelopAgent();
+        await fireSystemResolver(config);
 
         expect(mockPromptBuilders[0].files.some((path: string) => path.endsWith('kimi-behavior.md'))).toBe(true);
       });
 
     it('should omit Kimi behavior guidance for Claude models',
       async function claudeModel() {
-        await createDevelopAgent();
+        const config = await createDevelopAgent();
+        await fireSystemResolver(config);
 
         expect(mockPromptBuilders[0].files.some((path: string) => path.endsWith('kimi-behavior.md'))).toBe(false);
       });
@@ -165,6 +178,9 @@ describe('develop-agent', function developAgentTests() {
     it('should include Kimi behavior guidance for runtime model overrides',
       async function modelOverride() {
         const config = await createDevelopAgent();
+        // Fire the lazy resolver to materialize the first builder, then trigger
+        // the model-override path which uses systemForModel.
+        await fireSystemResolver(config);
 
         await (config.metadata?.systemForModel as (modelName: string) => Promise<string>)('azure/Kimi-K2.6');
 
@@ -178,7 +194,8 @@ describe('develop-agent', function developAgentTests() {
           modelName: 'azure/Kimi-K2.6-thinking'
         });
 
-        await createDevelopAgent();
+        const config = await createDevelopAgent();
+        await fireSystemResolver(config);
 
         expect(mockPromptBuilders[0].files.some((path: string) => path.endsWith('kimi-behavior.md'))).toBe(true);
       });

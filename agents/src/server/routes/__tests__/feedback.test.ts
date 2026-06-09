@@ -121,7 +121,7 @@ describe('feedback route', () => {
     expect(createTraceContext).toHaveBeenCalledWith(
       expect.objectContaining({
         businessContext: {
-          schemaId: 'urn:shared:user:business-context:/airo-app-builder/v1',
+          schemaId: 'urn:shared:user:business-context:/airo-app-builder/v2',
           data: { appId: APP_ID },
         },
       }),
@@ -281,7 +281,7 @@ describe('feedback route', () => {
     expect(createTraceContext).toHaveBeenCalledWith(
       expect.objectContaining({
         businessContext: {
-          schemaId: 'urn:shared:user:business-context:/airo-app-builder/v1',
+          schemaId: 'urn:shared:user:business-context:/airo-app-builder/v2',
           data: { appId: APP_ID },
         },
       }),

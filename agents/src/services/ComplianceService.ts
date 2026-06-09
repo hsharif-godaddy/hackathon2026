@@ -1,5 +1,7 @@
 import { getS2SToken } from '@airo/ai-lib';
 
+import { validate as validateUuid } from 'uuid';
+
 import { logger } from '../logging/index.js';
 import { resolveEnv } from '../utils/gd-env.js';
 
@@ -9,6 +11,7 @@ export interface PrivacyPolicyInput {
   email: string;
   children: boolean;
   customerId: string;
+  appId: string;
 }
 
 export interface TermsOfUseInput {
@@ -18,6 +21,7 @@ export interface TermsOfUseInput {
   children: boolean;
   jurisdiction: string;
   customerId: string;
+  appId: string;
 }
 
 export type GenerateDocumentInput = PrivacyPolicyInput | TermsOfUseInput;
@@ -49,8 +53,51 @@ const LOG_EVENTS = {
 class ComplianceService {
   private readonly appKey = 'airo-app-builder';
 
+  /**
+   * Resolve a UUID-shaped customerId for the compliance API. In local dev or
+   * the unit-test runner we substitute the nil UUID for non-UUID seed users
+   * (e.g. `local-user-001`) so the flow stays runnable; everywhere else a
+   * non-UUID is a hard error to avoid mis-attributing generated legal docs.
+   */
+  private async resolveCustomerId(
+    inputCustomerId: string,
+    documentType: GenerateDocumentInput['documentType'],
+    appId: string,
+  ): Promise<string> {
+    if (validateUuid(inputCustomerId)) {
+      return inputCustomerId;
+    }
+    const gasket = process.env.GASKET_ENV ?? '';
+    const nodeEnv = process.env.NODE_ENV ?? '';
+    const isLocalOrTestRunner = gasket.startsWith('local') || nodeEnv === 'test';
+    if (!isLocalOrTestRunner) {
+      logger.error('compliance.generateDocument.customerId.invalid', {
+        documentType,
+        appId,
+        reason: 'invalid_uuid',
+        gasketEnv: gasket,
+      });
+      throw new Error('customerId must be a UUID');
+    }
+    logger.warn('compliance.generateDocument.customerId.localFallback', {
+      documentType,
+      appId,
+      reason: 'invalid_uuid',
+      gasketEnv: gasket,
+    });
+    return '00000000-0000-0000-0000-000000000000';
+  }
+
   async generateDocument(input: GenerateDocumentInput): Promise<GenerateDocumentResult> {
-    const { customerId, ...body } = input;
+    const { customerId: inputCustomerId, appId, ...body } = input;
+    // The compliance API requires a UUID-shaped customerId. Local dev seeds
+    // (e.g. `local-user-001`) aren't UUIDs, so locally we substitute the nil
+    // UUID to keep the flow runnable. In any hosted environment we refuse —
+    // a non-UUID customerId reaching this point would silently mis-attribute
+    // generated legal documents and is something to fix upstream, not paper
+    // over here. Matches the gasket+NODE_ENV gate used elsewhere
+    // (knowb-driver.ts:127-132).
+    const customerId = await this.resolveCustomerId(inputCustomerId, input.documentType, appId);
     const baseUrl = getComplianceApiBaseUrl();
     const url = `${baseUrl}/api/document/generate`;
 
@@ -58,6 +105,7 @@ class ComplianceService {
       documentType: input.documentType,
       businessName: input.businessName,
       customerId,
+      appId,
     });
 
     try {
@@ -68,6 +116,7 @@ class ComplianceService {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,
         'x-app-key': this.appKey,
+        'x-app-id': appId,
         'x-customer-id': customerId,
       };
 

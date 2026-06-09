@@ -1,10 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as profiles from '../../profiles/index.js'
 import { createAgentRouter } from '../agent-router.js'
-import {
-  getRegisteredInitialV3ModularAgentIds,
-  setRegisteredInitialV3ModularAgentIds,
-} from '../../agents/registered-initial-modular-agent-ids.js'
 import { setRegisteredInitialNamedVariantIds } from '../../agents/registered-initial-named-variant-ids.js'
 import { logger } from '../../logging/index.js'
 import type { ProfileData } from '../../profiles/types.js'
@@ -19,13 +15,11 @@ describe('agent-router', function agentRouterTests() {
 
   beforeEach(function setup() {
     resolveProfileSpy = vi.spyOn(profiles, 'resolveProfile')
-    setRegisteredInitialV3ModularAgentIds(new Set())
     setRegisteredInitialNamedVariantIds(new Map())
   })
 
   afterEach(function teardown() {
     resolveProfileSpy.mockRestore()
-    setRegisteredInitialV3ModularAgentIds(new Set())
     setRegisteredInitialNamedVariantIds(new Map())
   })
 
@@ -36,46 +30,22 @@ describe('agent-router', function agentRouterTests() {
     }
   }
 
-  it('routes to initial-v3-<profile> when modular prompt override is registered', async function modularRegistered() {
+  it('routes to initial-v3 when modular prompt files are configured (no per-profile variant)', async function modularRoute() {
     resolveProfileSpy.mockReturnValue(profile({
       name: 'exp',
       properties: { 'initial.modularPromptFiles': 'identity.md' },
     }))
-    setRegisteredInitialV3ModularAgentIds(new Set(['initial-v3-exp']))
 
     const id = await resolveAgent({
       appId: 'app_new',
       agentContext: { agentProfile: 'exp' },
     })
-    expect(id).toBe('initial-v3-exp')
-  })
-
-  it('falls back to initial-v3 and errors when modular variant failed to register at startup', async function modularMissing() {
-    const errorSpy = vi.spyOn(logger, 'error').mockImplementation(function () {})
-    resolveProfileSpy.mockReturnValue(profile({
-      name: 'broken',
-      properties: { 'initial.modularPromptFiles': 'identity.md' },
-    }))
-    expect(getRegisteredInitialV3ModularAgentIds().has('initial-v3-broken')).toBe(false)
-
-    const id = await resolveAgent({
-      appId: 'app_new',
-      agentContext: { agentProfile: 'broken' },
-    })
+    // initial-v3-{profile} variants are gone — the base initial-v3 reads
+    // modularPromptFiles from the active profile per turn.
     expect(id).toBe('initial-v3')
-    expect(errorSpy).toHaveBeenCalledWith(
-      'agent_router.initial_modular_variant_unregistered',
-      expect.objectContaining({
-        appId: 'app_new',
-        profileName: 'broken',
-        variantId: 'initial-v3-broken',
-        fallbackAgentId: 'initial-v3',
-      }),
-    )
-    errorSpy.mockRestore()
   })
 
-  it('prefers modular branch over promptVersion 3.0 when both are set', async function modularBeatsV3() {
+  it('routes to initial-v3 when both modularPromptFiles and promptVersion 3.0 are set', async function modularPlusV3() {
     resolveProfileSpy.mockReturnValue(profile({
       name: 'both',
       properties: {
@@ -83,13 +53,12 @@ describe('agent-router', function agentRouterTests() {
         'initial.promptVersion': '3.0',
       },
     }))
-    setRegisteredInitialV3ModularAgentIds(new Set(['initial-v3-both']))
 
     const id = await resolveAgent({
       appId: 'app_new',
       agentContext: { agentProfile: 'both' },
     })
-    expect(id).toBe('initial-v3-both')
+    expect(id).toBe('initial-v3')
   })
 
   it('routes to initial-v3 when only promptVersion 3.0 is set', async function v3Only() {
@@ -220,9 +189,7 @@ describe('agent-router', function agentRouterTests() {
       return { sessionId: 'sock-1', stateManager }
     }
 
-    it('maps a session base develop to develop-<profile> when the profile carries develop.* flags', async function sessionDevelopVariant() {
-      // Profiles with develop/skill flags but no initial variant (e.g. experimental)
-      // hand off to base develop; the read-time mapping resolves the variant.
+    it('returns develop when session is develop, regardless of profile flags (variants flattened)', async function sessionToDevelop() {
       resolveProfileSpy.mockReturnValue(profile({
         name: 'expdev',
         properties: { 'develop.promptOptimization': true },
@@ -233,7 +200,9 @@ describe('agent-router', function agentRouterTests() {
         agentContext: { agentProfile: 'expdev' },
         session: sessionWithAgent('develop'),
       })
-      expect(id).toBe('develop-expdev')
+      // Profile-driven prompt/tool gating now happens per-turn inside the
+      // single `develop` agent's resolvers — no per-profile variant routing.
+      expect(id).toBe('develop')
     })
 
     it('returns base develop verbatim when the profile has no develop/skill flags', async function sessionDevelopPlain() {
@@ -250,8 +219,11 @@ describe('agent-router', function agentRouterTests() {
       expect(id).toBe('develop')
     })
 
-    it('returns base develop verbatim when no profile resolves (null)', async function sessionDevelopNullProfile() {
-      resolveProfileSpy.mockReturnValue(null)
+    it('returns develop when session is develop and profile has skill.* flags (variants flattened)', async function sessionDevelopWithSkillFlags() {
+      resolveProfileSpy.mockReturnValue(profile({
+        name: 'skillonly',
+        properties: { 'skill.inbox.enabled': true },
+      }))
 
       const id = await resolveAgent({
         appId,
@@ -260,21 +232,14 @@ describe('agent-router', function agentRouterTests() {
       expect(id).toBe('develop')
     })
 
-    it('returns a session develop variant verbatim', async function sessionDevelopVariantVerbatim() {
-      const id = await resolveAgent({
-        appId,
-        agentContext: { agentProfile: 'expdev' },
-        session: sessionWithAgent('develop-expdev'),
-      })
-      expect(id).toBe('develop-expdev')
-    })
+    it('returns base develop verbatim when no profile resolves (null)', async function sessionDevelopNullProfile() {
+      resolveProfileSpy.mockReturnValue(null)
 
-    it('returns a session initial variant verbatim', async function sessionInitialVariantVerbatim() {
       const id = await resolveAgent({
         appId,
-        session: sessionWithAgent('initial-v3-exp'),
+        session: sessionWithAgent('develop'),
       })
-      expect(id).toBe('initial-v3-exp')
+      expect(id).toBe('develop')
     })
 
     it('clears the session and ignores the stale agent when the session is bound to a different app', async function sessionAppChanged() {
@@ -333,26 +298,7 @@ describe('agent-router', function agentRouterTests() {
       expect(id).toBe('initial-v3-exp')
     })
 
-    it('returns a persisted develop variant verbatim (no per-message re-resolution)', async function persistedDevelopVariant() {
-      // A profile with develop.* flags must NOT re-route a stored concrete id —
-      // the develop variant was frozen at handoff.
-      resolveProfileSpy.mockReturnValue(profile({
-        name: 'expdev',
-        properties: { 'develop.promptOptimization': true },
-      }))
-      const resolve = createAgentRouter({
-        hasMessagesForApp: () => true,
-        getTemplateIds: () => [],
-        getPersistedAgentForApp: async () => 'develop-expdev',
-      })
-
-      const id = await resolve({ appId, agentContext: { agentProfile: 'expdev' } })
-      expect(id).toBe('develop-expdev')
-    })
-
-    it('maps a persisted base develop to develop-<profile> when the profile carries develop.* flags (legacy rows)', async function persistedDevelopMaps() {
-      // Legacy apps (and experimental, which has no initial variant) store base
-      // develop; the read-time mapping resolves the variant for the active profile.
+    it('returns persisted develop verbatim even when profile has develop.* flags (variants flattened)', async function persistedDevelopVariant() {
       resolveProfileSpy.mockReturnValue(profile({
         name: 'expdev',
         properties: { 'develop.promptOptimization': true },
@@ -363,8 +309,11 @@ describe('agent-router', function agentRouterTests() {
         getPersistedAgentForApp: async () => 'develop',
       })
 
+      // Per-profile develop variants were flattened (#4346): profile-driven
+      // prompt/tool gating happens per turn inside the single `develop` agent,
+      // so the router returns the persisted id unchanged.
       const id = await resolve({ appId, agentContext: { agentProfile: 'expdev' } })
-      expect(id).toBe('develop-expdev')
+      expect(id).toBe('develop')
     })
 
     it('returns persisted base develop verbatim when the profile has no develop/skill flags', async function persistedDevelopPlain() {
@@ -550,7 +499,7 @@ describe('agent-router', function agentRouterTests() {
     expect(getPersistedAgentForApp).not.toHaveBeenCalled()
   })
 
-  it('router prefers modular branch when both modularPromptFiles and promptVersion 2.0 are set', async function modularBeatsV2InRouter() {
+  it('routes to initial-v3 when modularPromptFiles is set even if promptVersion is 2.0', async function modularBeatsV2InRouter() {
     resolveProfileSpy.mockReturnValue(profile({
       name: 'mixed',
       properties: {
@@ -558,12 +507,18 @@ describe('agent-router', function agentRouterTests() {
         'initial.promptVersion': '2.0',
       },
     }))
-    setRegisteredInitialV3ModularAgentIds(new Set(['initial-v3-mixed']))
 
     const id = await resolveAgent({
       appId: 'app_new',
       agentContext: { agentProfile: 'mixed' },
     })
-    expect(id).toBe('initial-v3-mixed')
+    // modularPromptFiles wins over promptVersion 2.0 — the modular branch
+    // routes to base initial-v3 (no per-profile variant exists anymore).
+    expect(id).toBe('initial-v3')
   })
+
+  // Per-profile variant routing was removed — develop-{profile} and
+  // initial-v3-{profile} no longer exist. Profile-driven prompt and tool
+  // gating happens per turn inside the agent's resolvers (see agents/CLAUDE.md
+  // and develop-agent.ts / initial-agent.ts).
 })

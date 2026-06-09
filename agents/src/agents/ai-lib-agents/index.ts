@@ -29,10 +29,7 @@ import { skillToolManager } from '../../tools/skill-tool-manager.js'
 import { errorFields, logger } from '../../logging/index.js'
 import { getProfileRegistry, runWithProfile, profileValue } from '../../profiles/index.js'
 import { AgentContextPipeline } from './agent-context-pipeline.js'
-import { setRegisteredInitialV3ModularAgentIds } from '../registered-initial-modular-agent-ids.js'
 import { setRegisteredInitialNamedVariantIds } from '../registered-initial-named-variant-ids.js'
-import { profileDefinesCustomModularPromptFiles } from '../modular-prompt-files.js'
-import { resolveInitialVariantForProfileHandoff } from './initial-variant-resolution.js'
 
 /**
  * Agent metadata for discovery and management
@@ -71,29 +68,6 @@ export async function createUnifiedAgentFactory(options?: {
 
   const developConfig = await createDevelopAgent()
 
-  // Pre-build develop variants for profiles that have develop.* or skill.* properties.
-  // profileFlag() reads from AsyncLocalStorage, so we wrap each build in runWithProfile
-  // so the flags resolve correctly at construction time.
-  const profileDevelopConfigs: Record<string, AgentConfig> = {}
-  for (const [name, profile] of getProfileRegistry()) {
-    const hasDevelopFlags = Object.keys(profile.properties).some(k =>
-      k.startsWith('develop.') || k.startsWith('skill.')
-    )
-    if (!hasDevelopFlags) continue
-
-    try {
-      const config = await runWithProfile(profile, () => createDevelopAgent())
-      config.id = `develop-${name}`
-      config.name = `AI Developer (${name})`
-      profileDevelopConfigs[config.id] = config
-    } catch (error) {
-      logger.error('agent_factory.profile_develop_variant_failed', {
-        profileName: name,
-        ...errorFields(error),
-      })
-    }
-  }
-
   const debugConfig = await createDebugAgent()
   const marketingConfig = await createMarketingAgent()
   const initialConfig = await createInitialAgent(stateManager)
@@ -104,26 +78,6 @@ export async function createUnifiedAgentFactory(options?: {
   const initialV3Config = await createInitialAgent(stateManager, undefined, '3.0')
   initialV3Config.id = 'initial-v3'
   initialV3Config.name = 'Initial (v3.0)'
-
-  // Profile-specific modular prompt lists (endgame / Hivemind experiments)
-  const profileInitialV3ModularConfigs: Record<string, AgentConfig> = {}
-  for (const [name, profile] of getProfileRegistry()) {
-    if (!profileDefinesCustomModularPromptFiles(profile)) continue
-    try {
-      const config = await runWithProfile(profile, () =>
-        createInitialAgent(stateManager, undefined, '3.0'))
-      config.id = `initial-v3-${name}`
-      config.name = `Initial (v3.0 · ${name})`
-      profileInitialV3ModularConfigs[config.id] = config
-    } catch (error) {
-      const variantId = `initial-v3-${name}`
-      logger.error('agent_factory.profile_initial_modular_variant_failed', {
-        profileName: name,
-        variantId,
-        ...errorFields(error),
-      })
-    }
-  }
 
   // Pre-create template-specific initial agent variants
   const templateInitialConfigs: Record<string, AgentConfig> = {}
@@ -190,14 +144,10 @@ export async function createUnifiedAgentFactory(options?: {
     defaultAgentId: 'develop'
   })
 
-  // Add handoff tools to agent configs BEFORE defining
   developConfig.tools = {
     ...(developConfig.tools || {}),
     handoff: developHandoffTool
   }
-  // Stop execution after handoff, suggestedResponse, or secrets request tool is called
-  // requestSecrets: Agent stops so secrets can be saved (auto or manual) before continuing
-  // Merge with any profile-gated stopAfterTools (e.g., askQuestion) set in develop-agent.ts
   const skillStopAfterTools = skillToolManager.getStopAfterToolNames()
   developConfig.stopAfterTools = [
     ...(developConfig.stopAfterTools ?? []),
@@ -206,17 +156,6 @@ export async function createUnifiedAgentFactory(options?: {
     'requestSecrets',
     ...skillStopAfterTools,
   ]
-
-  for (const config of Object.values(profileDevelopConfigs)) {
-    config.tools = { ...(config.tools || {}), handoff: developHandoffTool }
-    config.stopAfterTools = [
-      ...(config.stopAfterTools ?? []),
-      'handoff',
-      'suggestedResponse',
-      'requestSecrets',
-      ...skillStopAfterTools,
-    ]
-  }
 
   const marketingHandoffTool = createHandoffTool({
     sourceAgentId: 'marketing',
@@ -231,66 +170,12 @@ export async function createUnifiedAgentFactory(options?: {
   // Stop execution after handoff tool is called
   marketingConfig.stopAfterTools = ['handoff', 'seoAnalysis', ...skillStopAfterTools, 'suggestedResponse', 'askQuestion']
 
-  // For initial agent variants tied to profiles with develop flags, update the handoff
-  // to target the develop variant instead of the default 'develop' agent.
-  // This ensures the handoff continuation runs on the profile-specific develop agent.
-  // NOTE: This mutates the shared initialV2Config/initialV3Config. If two profiles share
-  // the same promptVersion AND both have develop.* flags, the last one wins. To support
-  // that case, clone the initial config per profile before mutating.
-  for (const [name, profile] of getProfileRegistry()) {
-    const hasDevelopFlags = Object.keys(profile.properties).some(k =>
-      k.startsWith('develop.') || k.startsWith('skill.')
-    )
-    if (!hasDevelopFlags) continue
-
-    const promptVersion = runWithProfile(profile, () => profileValue('initial.promptVersion', '' as string))
-    const modularVariantId = `initial-v3-${name}`
-    const modularVariantBuilt = profileInitialV3ModularConfigs[modularVariantId]
-    if (promptVersion === '2.0' && modularVariantBuilt) {
-      logger.warn('agent_factory.profile_initial_modular_and_prompt_v2', {
-        profileName: name,
-        variantId: modularVariantId,
-        message:
-          'Handoff wiring uses initial v2 while the router may select the modular v3 variant; avoid both on one profile.',
-      })
-    }
-    const initialVariantConfig = resolveInitialVariantForProfileHandoff({
-      promptVersion,
-      profileName: name,
-      profileInitialV3ModularConfigs,
-      namedVariantInitialConfigs,
-      initialV2Config,
-      initialV3Config,
-    })
-    if (!initialVariantConfig) continue
-    if (!initialVariantConfig.id) {
-      logger.error('agent_factory.initial_variant_missing_id', { profileName: name })
-      continue
-    }
-
-    const developVariantId = `develop-${name}`
-    const variantHandoffTool = createHandoffTool({
-      sourceAgentId: initialVariantConfig.id,
-      validTargets: [developVariantId],
-      stateManager
-    })
-    initialVariantConfig.tools = { ...(initialVariantConfig.tools || {}), handoff: variantHandoffTool }
-  }
-
-  // Create shared pipeline for context assembly
   const contextPipeline = new AgentContextPipeline()
   developConfig.contextPipeline = contextPipeline
-  for (const config of Object.values(profileDevelopConfigs)) {
-    config.contextPipeline = contextPipeline
-  }
   marketingConfig.contextPipeline = contextPipeline
   initialConfig.contextPipeline = contextPipeline
   initialV2Config.contextPipeline = contextPipeline
   initialV3Config.contextPipeline = contextPipeline
-
-  for (const config of Object.values(profileInitialV3ModularConfigs)) {
-    config.contextPipeline = contextPipeline
-  }
 
   for (const config of Object.values(templateInitialConfigs)) {
     config.contextPipeline = contextPipeline
@@ -305,10 +190,8 @@ export async function createUnifiedAgentFactory(options?: {
     initial: initialConfig,
     'initial-v2': initialV2Config,
     'initial-v3': initialV3Config,
-    ...profileInitialV3ModularConfigs,
     ...namedVariantInitialConfigs,
     develop: developConfig,
-    ...profileDevelopConfigs,
     marketing: marketingConfig,
     debug: debugConfig,
     ...templateInitialConfigs,
@@ -317,8 +200,6 @@ export async function createUnifiedAgentFactory(options?: {
   // Now define agents with handoff tools already included
   const agents = factory.defineAgents(agentDefinitions)
 
-  // After agents exist in the factory — avoids routing to variant ids before defineAgents completes
-  setRegisteredInitialV3ModularAgentIds(new Set(Object.keys(profileInitialV3ModularConfigs)))
   setRegisteredInitialNamedVariantIds(namedVariantByVersion)
 
   return { factory, agents, stateManager }

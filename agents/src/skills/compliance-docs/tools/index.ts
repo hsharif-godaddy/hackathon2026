@@ -58,11 +58,21 @@ import remarkGfm from 'remark-gfm';
 
 const markdown = \`${escaped}\`;
 
+const components = {
+  h1: (props: React.HTMLAttributes<HTMLHeadingElement>) => <h1 className="text-2xl font-bold mt-8 mb-4" {...props} />,
+  h2: (props: React.HTMLAttributes<HTMLHeadingElement>) => <h2 className="text-xl font-bold mt-8 mb-3" {...props} />,
+  h3: (props: React.HTMLAttributes<HTMLHeadingElement>) => <h3 className="text-lg font-bold mt-6 mb-2" {...props} />,
+  p: (props: React.HTMLAttributes<HTMLParagraphElement>) => <p className="my-4 leading-relaxed" {...props} />,
+  ul: (props: React.HTMLAttributes<HTMLUListElement>) => <ul className="my-4 ml-6 list-disc" {...props} />,
+  ol: (props: React.HTMLAttributes<HTMLOListElement>) => <ol className="my-4 ml-6 list-decimal" {...props} />,
+  li: (props: React.HTMLAttributes<HTMLLIElement>) => <li className="my-1" {...props} />,
+};
+
 export default function ${title}Page() {
   return (
     <div className="container mx-auto px-4 py-12 max-w-4xl">
-      <article className="prose prose-neutral max-w-none">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
+      <article className="max-w-none">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>{markdown}</ReactMarkdown>
       </article>
     </div>
   );
@@ -81,6 +91,15 @@ export const generatePrivacyPolicyTool: SkillToolDefinition = {
 
   async execute(input: PrivacyPolicyInput, context?: unknown) {
     const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
+
+    if (!appId) {
+      // Don't dump the full input object — it carries email (PII). Match the
+      // shape of the .start log site below.
+      logger.error('skills.compliance-docs.tools.generate_privacy_policy.noAppId', {
+        businessName: input.businessName,
+      });
+      return { error: 'Unable to determine app identity for document generation' };
+    }
 
     logger.info('skills.compliance-docs.tools.generate_privacy_policy.start', {
       businessName: input.businessName,
@@ -106,6 +125,7 @@ export const generatePrivacyPolicyTool: SkillToolDefinition = {
         email: input.email,
         children: input.children,
         customerId,
+        appId,
       });
 
       const pagePath = join(appPath, 'src', 'pages', 'privacy.tsx');
@@ -165,6 +185,15 @@ export const generateTermsOfUseTool: SkillToolDefinition = {
   async execute(input: TermsOfUseInput, context?: unknown) {
     const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
 
+    if (!appId) {
+      // Don't dump the full input object — it carries email (PII). Match the
+      // shape of the .start log site below.
+      logger.error('skills.compliance-docs.tools.generate_terms_of_use.noAppId', {
+        businessName: input.businessName,
+      });
+      return { error: 'Unable to determine app identity for document generation' };
+    }
+
     logger.info('skills.compliance-docs.tools.generate_terms_of_use.start', {
       businessName: input.businessName,
       appId,
@@ -190,6 +219,7 @@ export const generateTermsOfUseTool: SkillToolDefinition = {
         children: input.children,
         jurisdiction: input.jurisdiction,
         customerId,
+        appId
       });
 
       const pagePath = join(appPath, 'src', 'pages', 'terms.tsx');

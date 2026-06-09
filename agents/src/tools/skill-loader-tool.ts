@@ -15,6 +15,12 @@ import { regenerateEntryApiRegistrations } from '../utils/entry-api-sync.js';
 export interface SkillLoaderOptions {
   /** Name of the skill to load (e.g., 'blog', 'commerce-storefront') */
   skill: string;
+  /**
+   * BCP-47 market/locale string (e.g., 'en-US'). When provided, skills with a
+   * `markets` frontmatter allowlist are only loaded if this value is included.
+   * When absent, market-restricted skills are rejected.
+   */
+  market?: string;
   /** Per-request context metadata for switchboard flag checking */
   contextMetadata?: Record<string, unknown>;
 }
@@ -139,6 +145,11 @@ export interface SkillListItem {
   intents?: string[];
   /** True when this skill is pinned for the current conversation. */
   pinned?: boolean;
+  /**
+   * BCP-47 market allowlist from skill frontmatter. Absent means unrestricted.
+   * A skill in this list is only shown/loaded when the request market matches.
+   */
+  markets?: string[];
 }
 
 export function escapeXml(text: string): string {
@@ -188,14 +199,114 @@ ${skillEntries}
  * Tool for dynamically loading skill instructions and templates
  * Skills provide contextual knowledge and code templates that can be loaded on-demand
  */
+/**
+ * Parsed frontmatter for a single skill, cached per-process to keep per-turn
+ * listSkills() cheap (no disk I/O after the first hit). The set of skills is
+ * baked into the deploy and doesn't change at runtime — stale entries can
+ * only happen if a skill.md is edited mid-process. Call `clearFrontmatterCache()`
+ * when that matters (e.g., tests).
+ */
+interface SkillFrontmatter {
+  name: string;
+  description: string;
+  whenToUse: string | undefined;
+  enablementId: string | undefined;
+  switchboardFlag: string | undefined;
+  intents: string[] | undefined;
+  skillMarkets: string[] | undefined;
+}
+
 export class SkillLoaderTool {
   private readonly logger = logger.child({ module: 'SkillLoaderTool' });
   private readonly skillsDir: string;
+  private readonly frontmatterCache = new Map<string, SkillFrontmatter | null>();
 
   constructor() {
     // Get skills directory relative to this file
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
     this.skillsDir = path.resolve(currentDir, '..', 'skills');
+  }
+
+  /** Drop all cached skill frontmatter. Use in tests or after editing skill.md files. */
+  clearFrontmatterCache(): void {
+    this.frontmatterCache.clear();
+  }
+
+  /**
+   * Check whether a skill is available for a given request market based on its
+   * frontmatter `markets` allowlist. Returns true when the skill has no
+   * allowlist (unrestricted) or the request market is in the allowlist; false
+   * otherwise. Used by pin/install paths to enforce the same gating as
+   * listSkills/loadSkill so a non-en-US caller can't bypass list filtering by
+   * naming a market-restricted skill directly.
+   */
+  async isSkillAvailableInMarket(skillName: string, market: string | undefined): Promise<boolean> {
+    const fm = await this.getSkillFrontmatter(skillName);
+    // When frontmatter is null (file missing or transient read error) AND a
+    // market is required by the caller, fail closed — we cannot confirm the
+    // skill is unrestricted without reading its metadata.
+    if (!fm && market) return false;
+    const allow = fm?.skillMarkets;
+    if (!allow || allow.length === 0) return true;
+    if (!market) return false;
+    return allow.includes(market);
+  }
+
+  /**
+   * Read + parse a skill's frontmatter, caching the result per-process.
+   * Returns null when skill.md is missing or has no usable frontmatter — the
+   * null is also cached so we don't retry the read every turn.
+   */
+  private async getSkillFrontmatter(skillName: string): Promise<SkillFrontmatter | null> {
+    const cached = this.frontmatterCache.get(skillName);
+    if (cached !== undefined) return cached;
+
+    try {
+      const skillFile = this.getSkillPath(skillName, 'skill.md');
+      const skillContent = await fs.readFile(skillFile, 'utf-8');
+      const { data } = matter(skillContent);
+
+      const intentsRaw = Array.isArray(data.intents) ? data.intents : undefined;
+      const intents = intentsRaw
+        ? intentsRaw.filter((entry: unknown): entry is string => {
+            if (typeof entry === 'string' && entry.trim().length > 0) return true;
+            this.logger.warn('skill.frontmatter.invalid_intent_entry', {
+              skill: skillName,
+              entry: typeof entry === 'string' ? entry : String(entry),
+            });
+            return false;
+          })
+        : undefined;
+
+      const fm: SkillFrontmatter = {
+        name: typeof data.name === 'string' && data.name ? data.name : skillName,
+        description: typeof data.description === 'string' ? data.description : '',
+        whenToUse: typeof data.whenToUse === 'string' && data.whenToUse.trim()
+          ? data.whenToUse.trim()
+          : undefined,
+        enablementId: typeof data.enablementId === 'string' ? data.enablementId : undefined,
+        switchboardFlag: typeof data.switchboardFlag === 'string' ? data.switchboardFlag : undefined,
+        intents: intents && intents.length > 0 ? intents : undefined,
+        skillMarkets: Array.isArray(data.markets)
+          ? (data.markets as unknown[]).filter((m): m is string => typeof m === 'string')
+          : undefined,
+      };
+      this.frontmatterCache.set(skillName, fm);
+      return fm;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      this.logger.debug('skill.frontmatter.read_failed', {
+        skill: skillName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Only cache null for missing files (ENOENT). Transient errors
+      // (EMFILE, EIO, etc.) should retry on the next turn rather than
+      // permanently treating the skill as unrestricted.
+      if (code === 'ENOENT') {
+        this.frontmatterCache.set(skillName, null);
+      }
+      return null;
+    }
   }
 
   /**
@@ -300,6 +411,22 @@ export class SkillLoaderTool {
           skill,
           error: `Skill '${skill}' is not available.`
         };
+      }
+
+      // Check market restriction
+      const loadMarkets = Array.isArray(frontmatter.markets)
+        ? (frontmatter.markets as unknown[]).filter((m): m is string => typeof m === 'string')
+        : undefined;
+      if (loadMarkets && loadMarkets.length > 0) {
+        const { market } = options;
+        if (!market || !loadMarkets.includes(market)) {
+          this.logger.warn('skill.load.market_restricted', { skill, loadMarkets, requestMarket: market });
+          return {
+            success: false,
+            skill,
+            error: `Skill '${skill}' is not available in your market.`,
+          };
+        }
       }
 
       // Check switchboardFlag via per-request context metadata
@@ -642,89 +769,77 @@ export class SkillLoaderTool {
    * List all available skills with their descriptions from YAML frontmatter
    * Only reads the frontmatter, not the full skill.md content
    */
-  async listSkills(options?: { pinned?: Set<string>; contextMetadata?: Record<string, unknown> }): Promise<{ success: boolean; skills?: SkillListItem[]; error?: string }> {
+  async listSkills(options?: { pinned?: Set<string>; market?: string; contextMetadata?: Record<string, unknown> }): Promise<{ success: boolean; skills?: SkillListItem[]; error?: string }> {
     this.logger.info('skill.list.start', {});
 
     try {
       const entries = await fs.readdir(this.skillsDir, { withFileTypes: true });
       const skillDirs = entries.filter(entry => entry.isDirectory());
 
-      // Load metadata from YAML frontmatter in skill.md
+      // Load metadata from frontmatter, hitting the per-process cache so per-turn
+      // listSkills() doesn't re-read skill.md on every request.
       const skillPromises = skillDirs.map(async (entry): Promise<SkillListItem | null> => {
         const skillName = entry.name;
-        let name = skillName;
-        let description = '';
-        let whenToUse: string | undefined;
-        let enablementId: string | undefined;
-        let switchboardFlag: string | undefined;
-        let intents: string[] | undefined;
+        const fm = await this.getSkillFrontmatter(skillName);
 
-        try {
-          const skillFile = this.getSkillPath(skillName, 'skill.md');
-          const skillContent = await fs.readFile(skillFile, 'utf-8');
-          const { data } = matter(skillContent);
+        // When frontmatter is unreadable (transient error) and a market is
+        // required, fail closed — exclude the skill rather than including an
+        // unrestricted entry. Mirrors isSkillAvailableInMarket's guard.
+        if (!fm && options?.market) {
+          this.logger.debug('skill.list.frontmatter_unavailable', { skill: skillName, market: options.market });
+          return null;
+        }
 
-          // Extract name, description, whenToUse, and enablementId from YAML frontmatter
-          name = data.name || skillName;
-          description = data.description || '';
-          if (typeof data.whenToUse === 'string' && data.whenToUse.trim()) {
-            whenToUse = data.whenToUse.trim();
-          }
-          enablementId = typeof data.enablementId === 'string' ? data.enablementId : undefined;
-          switchboardFlag = typeof data.switchboardFlag === 'string' ? data.switchboardFlag : undefined;
+        const name = fm?.name ?? skillName;
+        const description = fm?.description ?? '';
+        const whenToUse = fm?.whenToUse;
+        const enablementId = fm?.enablementId;
+        const intents = fm?.intents;
+        const skillMarkets = fm?.skillMarkets;
+        const switchboardFlag = fm?.switchboardFlag;
 
-          if (Array.isArray(data.intents)) {
-            const filtered = data.intents.filter((entry: unknown): entry is string => {
-              if (typeof entry === 'string' && entry.trim().length > 0) {
-                return true;
-              }
-              this.logger.warn('skill.list.invalid_intent_entry', {
-                skill: skillName,
-                entry: typeof entry === 'string' ? entry : String(entry)
-              });
-              return false;
-            });
-            if (filtered.length > 0) {
-              intents = filtered;
-            }
-          }
+        // If enablementId is provided, check if the feature is enabled
+        if (enablementId) {
+          const features = getFeatures();
 
-          // If enablementId is provided, check if the feature is enabled
-          if (enablementId) {
-            const features = getFeatures();
-
-            // Warn if enablementId doesn't exist in any known configuration (typo detection)
-            if (!(enablementId in features.enabledSkills) && !skills.isProfileGated(enablementId)) {
-              this.logger.warn('skill.list.unknown_feature_flag', {
-                skill: skillName,
-                enablementId,
-                message: `Skill references unknown feature flag '${enablementId}'. Check features.ts configuration or add to profileGatedSkills.`
-              });
-            }
-
-            if (!skills.isEnabled(enablementId)) {
-              this.logger.debug('skill.list.feature_disabled', {
-                skill: skillName,
-                enablementId
-              });
-              return null; // Skip this skill - feature is disabled
-            }
-          }
-
-          // If switchboardFlag is provided, check context.metadata for per-request gating
-          if (switchboardFlag && !options?.contextMetadata?.[switchboardFlag]) {
-            this.logger.debug('skill.list.switchboard_disabled', {
+          // Warn if enablementId doesn't exist in any known configuration (typo detection)
+          if (!(enablementId in features.enabledSkills) && !skills.isProfileGated(enablementId)) {
+            this.logger.warn('skill.list.unknown_feature_flag', {
               skill: skillName,
-              switchboardFlag
+              enablementId,
+              message: `Skill references unknown feature flag '${enablementId}'. Check features.ts configuration or add to profileGatedSkills.`
+            });
+          }
+
+          if (!skills.isEnabled(enablementId)) {
+            this.logger.debug('skill.list.feature_disabled', {
+              skill: skillName,
+              enablementId
+            });
+            return null; // Skip this skill - feature is disabled
+          }
+        }
+
+        // If markets is set, only include this skill when the request market matches
+        if (skillMarkets && skillMarkets.length > 0) {
+          const market = options?.market;
+          if (!market || !skillMarkets.includes(market)) {
+            this.logger.debug('skill.list.market_restricted', {
+              skill: skillName,
+              skillMarkets,
+              requestMarket: market,
             });
             return null;
           }
-        } catch (error) {
-          // If skill.md is missing or has no frontmatter, use directory name
-          this.logger.debug('skill.list.frontmatter_missing', {
+        }
+
+        // If switchboardFlag is provided, check context.metadata for per-request gating
+        if (switchboardFlag && !options?.contextMetadata?.[switchboardFlag]) {
+          this.logger.debug('skill.list.switchboard_disabled', {
             skill: skillName,
-            error: error instanceof Error ? error.message : String(error)
+            switchboardFlag
           });
+          return null;
         }
 
         const skillItem: SkillListItem = { name, description };
@@ -736,6 +851,9 @@ export class SkillLoaderTool {
         }
         if (enablementId) {
           skillItem.enablementId = enablementId;
+        }
+        if (skillMarkets && skillMarkets.length > 0) {
+          skillItem.markets = skillMarkets;
         }
         if (switchboardFlag) {
           skillItem.switchboardFlag = switchboardFlag;
@@ -1017,4 +1135,5 @@ export class SkillLoaderTool {
 
     return templates;
   }
+
 }

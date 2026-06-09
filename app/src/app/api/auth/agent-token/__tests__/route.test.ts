@@ -109,6 +109,15 @@ vi.mock('../../../../../../gasket', function mockGasketModule() {
 });
 
 /**
+ * Mock market resolution — returns visitorMarket: 'en-US' by default.
+ */
+vi.mock('@/lib/market/resolve-market', function mockResolveMarketModule() {
+  return {
+    resolveMarketId: vi.fn().mockResolvedValue({ marketId: 'en-US', visitorMarket: 'en-US', source: 'visitor-market' }),
+  };
+});
+
+/**
  * Mock logger
  */
 vi.mock('@/lib/request-context', function mockRequestContextModule() {
@@ -231,6 +240,7 @@ describe('agent-token', function packageTests() {
       expect(mockJWTService.getToken).toHaveBeenCalledWith({
         siteId: MOCK_SITE_ID,
         customerId: 'customer-789',
+        market: 'en-US',
         canDownload: false,
         canPublish: false,
         canPurchaseDomain: false,
@@ -399,7 +409,7 @@ describe('agent-token', function packageTests() {
         expect(response.status).toBe(200);
         expect(data.expiresInSeconds).toBe(expiresInSeconds);
         expect(mockJWTService.createToken).toHaveBeenCalledWith(
-          { siteId: MOCK_SITE_ID, customerId: 'customer-789', canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, bmsBudgetId: undefined, enableAssessmentAgent: false, enableAssessmentOverride: false, assessmentClassifier: undefined, product: 'AiroAppBuilder', modelSelectorEnabled: false, modelOverride: undefined, agentProfileSelectorEnabled: false, agentProfile: undefined, costAttributionDryRun: false, useAtlasCrawler: false, debugStatsEnabled: false, marketingCampaignsEnabled: false, asmDualWriteEnabled: false },
+          { siteId: MOCK_SITE_ID, customerId: 'customer-789', market: 'en-US', canDownload: false, canPublish: false, canPurchaseDomain: false, authType: 'basic', isE2S: false, useTestBudget: false, budgetServiceEnabled: false, subscriptionId: undefined, bmsBudgetId: undefined, enableAssessmentAgent: false, enableAssessmentOverride: false, assessmentClassifier: undefined, product: 'AiroAppBuilder', modelSelectorEnabled: false, modelOverride: undefined, agentProfileSelectorEnabled: false, agentProfile: undefined, costAttributionDryRun: false, useAtlasCrawler: false, debugStatsEnabled: false, marketingCampaignsEnabled: false, asmDualWriteEnabled: false },
           expiresInSeconds
         );
         expect(mockJWTService.getToken).not.toHaveBeenCalled();
@@ -468,6 +478,7 @@ describe('agent-token', function packageTests() {
         expect(mockJWTService.getToken).toHaveBeenCalledWith({
           siteId: MOCK_SITE_ID,
           customerId: 'customer-789',
+          market: 'en-US',
           canDownload: false,
           canPublish: false,
           canPurchaseDomain: false,
@@ -515,6 +526,7 @@ describe('agent-token', function packageTests() {
         expect(mockJWTService.getToken).toHaveBeenCalledWith({
           siteId: MOCK_SITE_ID,
           customerId: 'customer-789',
+          market: 'en-US',
           canDownload: false,
           canPublish: false,
           canPurchaseDomain: false,

@@ -240,7 +240,16 @@ export async function createInitialAgent(
     throw new Error(`Unknown template: ${templateId}`)
   }
 
-  const { systemPrompt, preflightTools } = await buildInitialSystemPrompt(templateId, promptVersion)
+  // Base modular initial-v3 reads `initial.modularPromptFiles` from the active
+  // profile per turn — keep `system` as a resolver. Templates and named
+  // variants are static.
+  const trimmedVersionForResolver = promptVersion?.trim() ?? ''
+  const useSystemResolver = !templateId && trimmedVersionForResolver === '3.0'
+  const built = useSystemResolver
+    ? { systemPrompt: undefined as string | undefined, preflightTools: [] as string[] }
+    : await buildInitialSystemPrompt(templateId, promptVersion)
+  const staticSystemPrompt = built.systemPrompt
+  const preflightTools = built.preflightTools
   const { model, modelName } = await getAgentModelWithName('fast')
 
   // Named manifest variants (e.g. prompt-enhancer) live at
@@ -337,7 +346,9 @@ export async function createInitialAgent(
   return {
     id: agentId,
     name: agentName,
-    system: systemPrompt,
+    system: useSystemResolver
+      ? async (): Promise<string> => (await buildInitialSystemPrompt(undefined, '3.0')).systemPrompt
+      : staticSystemPrompt,
     model,
     modelName,
     tools,

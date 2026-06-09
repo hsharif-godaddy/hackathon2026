@@ -1099,4 +1099,162 @@ enablementId: my-enabled
       expect(failures, `Skill frontmatter failures:\n${failures.join('\n')}`).toHaveLength(0);
     });
   });
+
+  describe('#listSkills and #loadSkill - market gating', function marketGatingTests() {
+    let tool: SkillLoaderTool;
+    let tempDir: string;
+    let skillsDir: string;
+
+    beforeEach(async () => {
+      tool = new SkillLoaderTool();
+      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'skill-market-test-'));
+      skillsDir = path.join(tempDir, 'skills');
+      await fs.mkdir(skillsDir, { recursive: true });
+      (tool as any).skillsDir = skillsDir;
+    });
+
+    afterEach(async () => {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    async function createSkillFile(skillName: string, content: string): Promise<void> {
+      const skillDir = path.join(skillsDir, skillName);
+      await fs.mkdir(skillDir, { recursive: true });
+      await fs.writeFile(path.join(skillDir, 'skill.md'), content);
+    }
+
+    it('listSkills includes a market-restricted skill when market matches', async function listIncludesMatch() {
+      await createSkillFile('us-only', `---
+name: us-only
+description: US only skill
+markets:
+  - en-US
+---
+# US Only
+`);
+
+      const result = await tool.listSkills({ market: 'en-US' });
+      expect(result.success).toBe(true);
+      expect(result.skills).toHaveLength(1);
+      expect(result.skills![0].name).toBe('us-only');
+    });
+
+    it('listSkills excludes a market-restricted skill when market does not match', async function listExcludesNoMatch() {
+      await createSkillFile('us-only', `---
+name: us-only
+description: US only skill
+markets:
+  - en-US
+---
+# US Only
+`);
+
+      const result = await tool.listSkills({ market: 'de-DE' });
+      expect(result.success).toBe(true);
+      expect(result.skills).toHaveLength(0);
+    });
+
+    it('listSkills excludes a market-restricted skill when market is absent', async function listExcludesNoMarket() {
+      await createSkillFile('us-only', `---
+name: us-only
+description: US only skill
+markets:
+  - en-US
+---
+# US Only
+`);
+
+      const result = await tool.listSkills();
+      expect(result.success).toBe(true);
+      expect(result.skills).toHaveLength(0);
+    });
+
+    it('listSkills includes an unrestricted skill regardless of market', async function listIncludesUnrestricted() {
+      await createSkillFile('open-skill', `---
+name: open-skill
+description: Unrestricted skill
+---
+# Open Skill
+`);
+
+      const result = await tool.listSkills({ market: 'de-DE' });
+      expect(result.success).toBe(true);
+      expect(result.skills).toHaveLength(1);
+      expect(result.skills![0].name).toBe('open-skill');
+    });
+
+    it('listSkills includes an unrestricted skill when market is absent', async function listIncludesUnrestrictedNoMarket() {
+      await createSkillFile('open-skill', `---
+name: open-skill
+description: Unrestricted skill
+---
+# Open Skill
+`);
+
+      const result = await tool.listSkills();
+      expect(result.success).toBe(true);
+      expect(result.skills).toHaveLength(1);
+    });
+
+    it('loadSkill succeeds when market matches restriction', async function loadSucceedsMatch() {
+      await createSkillFile('us-only', `---
+name: us-only
+description: US only skill
+markets:
+  - en-US
+---
+# US Only
+`);
+
+      const result = await tool.loadSkill({ skill: 'us-only', market: 'en-US' });
+      expect(result.success).toBe(true);
+      expect(result.instructions).toContain('# US Only');
+    });
+
+    it('loadSkill fails when market does not match restriction', async function loadFailsNoMatch() {
+      await createSkillFile('us-only', `---
+name: us-only
+description: US only skill
+markets:
+  - en-US
+---
+# US Only
+`);
+
+      const result = await tool.loadSkill({ skill: 'us-only', market: 'de-DE' });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('not available in your market');
+    });
+
+    it('loadSkill fails when no market is provided for a restricted skill', async function loadFailsNoMarket() {
+      await createSkillFile('us-only', `---
+name: us-only
+description: US only skill
+markets:
+  - en-US
+---
+# US Only
+`);
+
+      const result = await tool.loadSkill({ skill: 'us-only' });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('not available in your market');
+    });
+
+    it('loadSkill succeeds for an unrestricted skill with no market argument', async function loadUnrestrictedNoMarket() {
+      await createSkillFile('open-skill', `---
+name: open-skill
+description: Unrestricted skill
+---
+# Open Skill
+`);
+
+      const result = await tool.loadSkill({ skill: 'open-skill' });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  // #getDistinctMarkets was removed — market filtering happens per-turn via
+  // AgentContextPipeline calling listSkills({ market }), so the startup-time
+  // distinct-markets scan is no longer needed.
 });

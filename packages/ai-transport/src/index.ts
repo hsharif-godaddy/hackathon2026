@@ -162,7 +162,10 @@ export { getCurrentTraceIds } from './otel-trace-ids.js'
 export type { TraceIds } from './otel-trace-ids.js'
 
 // Signals + OTEL trace context for chat transports (WS handshake, SSE request)
-export { buildChatSignalsTraceContext } from './chat-signals-trace-context.js'
+export {
+  buildChatSignalsTraceContext,
+  BUSINESS_CONTEXT_SCHEMA_ID,
+} from './chat-signals-trace-context.js'
 export type {
   ChatSignalsTraceLogPrefix,
   ChatSignalsTraceLogger,

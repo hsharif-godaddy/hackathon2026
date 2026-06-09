@@ -738,6 +738,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           bmsBudgetId: agentContext?.bmsBudgetId,
           useAtlasCrawler: agentContext?.useAtlasCrawler,
           debugStatsEnabled: agentContext?.debugStatsEnabled,
+          market: agentContext?.market,
           marketingCampaignsEnabled: agentContext?.marketingCampaignsEnabled,
         },
         isInitialPrompt,

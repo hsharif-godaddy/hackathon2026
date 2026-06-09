@@ -3,9 +3,7 @@ import type { ProfileData } from '../profiles/index.js'
 
 /**
  * True when a profile carries develop-phase behavior — any `develop.*` or
- * `skill.*` property. The agent factory builds a dedicated `develop-<name>`
- * agent for exactly these profiles (see `ai-lib-agents/index.ts`), so this is
- * also the invariant that guarantees `develop-<name>` is a registered agent.
+ * `skill.*` property.
  */
 export function profileHasDevelopFlags(profile: ProfileData | null | undefined): boolean {
   if (!profile) return false
@@ -13,22 +11,12 @@ export function profileHasDevelopFlags(profile: ProfileData | null | undefined):
 }
 
 /**
- * Map the base `develop` agent to its profile-specific variant `develop-<name>`
- * when the profile carries develop/skill flags. Any other agent id (a concrete
- * `develop-<name>`, an `initial*` agent, `marketing`, …) passes through unchanged.
- *
- * Why this exists: profiles that have develop/skill flags but NO initial variant
- * (e.g. `experimental`) start on base `initial`, which hands off to base
- * `develop` — so the factory never wires an `initial→develop-<profile>` handoff
- * for them. This mapping is therefore the authoritative way the base `develop`
- * agent becomes the profile variant. Applied (a) at read time in the router so a
- * stored/handed-off `develop` resolves to the variant for the active JWT profile,
- * and (b) at the handoff write seam so the stored id is concrete for metrics.
+ * Per-profile develop variants were flattened (#4346) — the single `develop`
+ * agent handles all profiles via per-turn resolvers. This function is now a
+ * pass-through; it remains exported so existing call sites compile without
+ * churn but no longer maps to `develop-<profile>`.
  */
-export function concreteDevelopForProfile(agentId: string, profile: ProfileData | null | undefined): string {
-  if (agentId === 'develop' && profileHasDevelopFlags(profile)) {
-    return `develop-${profile!.name}`
-  }
+export function concreteDevelopForProfile(agentId: string, _profile: ProfileData | null | undefined): string {
   return agentId
 }
 

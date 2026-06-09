@@ -69,6 +69,19 @@ export interface GlobalAgentConfig {
 }
 
 /**
+ * Per-turn context passed to AgentConfig resolvers (system, activeTools).
+ * Inputs are deterministic so Anthropic-side prompt cache hits when the same
+ * context shows up again. Add fields when a new dimension truly changes the
+ * resolver output — not as a free-form bag.
+ */
+export interface ResolverContext {
+  /** Resolved profile name for this turn, when one was selected. */
+  readonly profileName?: string
+  /** BCP-47 market/locale carried on the request, when set. */
+  readonly market?: string
+}
+
+/**
  * Configuration for a single agent (modern AgentFactory)
  */
 export interface AgentConfig {
@@ -76,14 +89,31 @@ export interface AgentConfig {
   id?: string
   /** Human-readable name of the agent */
   name: string
-  /** System prompt for the agent */
-  system?: string
+  /**
+   * System prompt for the agent. Either a static string or a per-turn resolver.
+   * When a resolver is supplied, it runs once per turn (in prepareCall) and the
+   * result is applied via the AI SDK's prepareStep `system` override. Resolver
+   * output should be deterministic for a given ResolverContext so prompt
+   * caching keeps hitting.
+   */
+  system?: string | ((ctx: ResolverContext) => string | Promise<string>)
   /** Model to use (must be LanguageModel instance) */
   model: LanguageModel
   /** Original model name used for token cost calculations */
   modelName?: string
-  /** Tools available to this agent */
+  /**
+   * Tools available to this agent. The map should be the union of every tool
+   * the agent might use across configurations; per-turn visibility is controlled
+   * via `activeTools`. The LLM only sees tools listed in the resolved activeTools
+   * set, so union'd tools that aren't currently active can never be called.
+   */
   tools?: Record<string, unknown>
+  /**
+   * Per-turn filter over tools. When provided, only tools whose name is in the
+   * resolved set are exposed to the LLM for this turn. Use this to express
+   * profile- or request-driven tool gating without rebuilding the agent.
+   */
+  activeTools?: string[] | ((ctx: ResolverContext) => string[] | Promise<string[]>)
   /** Temperature for generation (0-1) */
   temperature?: number
   /** Maximum tokens to generate */
@@ -92,7 +122,14 @@ export interface AgentConfig {
   stopWhen?: Array<(result: unknown) => boolean>
   /** Maximum steps for agentic reasoning */
   maxSteps?: number
-  /** Stop after specific tool calls */
+  /**
+   * Stop after specific tool calls. This list is fixed at construction time —
+   * the AI SDK's prepareStep cannot override stop conditions per turn. To
+   * support profile- or request-driven gating, union all possibly-stopping
+   * tool names here: a stop condition only fires when the tool actually
+   * executes, and tools not in the resolved `activeTools` set can never
+   * execute, so unused entries are inert.
+   */
   stopAfterTools?: string[]
   /** Explicit provider-specific options. These are passed through as provided; model defaults are set on model definitions. */
   providerOptions?: Record<string, unknown>
