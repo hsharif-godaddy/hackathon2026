@@ -19,6 +19,20 @@ interface SiteInfo {
  */
 const E2E_PREFIX_MARKER = '[e2e:';
 
+/**
+ * Length of a real V2 app ID (nanoId format). Job IDs are shorter (~7
+ * chars). Used by `waitForJobResolution` to detect when a quick-create
+ * job has resolved to a real app. Must match APP_ID_LENGTH in
+ * `app/src/lib/control-plane/v2-control-plane-adapter.ts`.
+ */
+const APP_ID_LENGTH = 10;
+
+/** Default poll interval for `waitForJobResolution`. Matches the front-end's `useSiteCreationStore.pollingIntervalMs`. */
+const JOB_RESOLUTION_POLL_INTERVAL_MS = 5000;
+
+/** Default timeout for `waitForJobResolution`. Typical job→app transition is <30s; 2 min gives generous headroom for slow dev/test env. */
+const JOB_RESOLUTION_TIMEOUT_MS = 120_000;
+
 interface DeploymentPollResult {
   success: boolean;
   deploymentId: string;
@@ -40,27 +54,177 @@ export async function getExistingAppId(page: Page): Promise<string | null> {
 }
 
 /**
- * Delete an app by ID via the API
+ * Poll `GET /api/sites?site_id=<jobId>` until the response's `id` flips
+ * from the short job ID (~7 chars) to a real V2 app ID (`APP_ID_LENGTH`
+ * chars) — i.e. the moment mgmt-airo finishes provisioning and binds the
+ * job to a site row. Returns the resolved app ID.
+ *
+ * Contract source: `app/src/lib/control-plane/v2-control-plane-adapter.ts`
+ * `jobIdLookup` returns a SiteInfo whose `id` carries the job ID until the
+ * provision completes, then flips to the real app ID. The front-end uses
+ * the same length-based detection in `useSiteCreationStore.ts`
+ * (`finalSiteData.id.length <= 8` → still a job).
+ *
+ * Throws on timeout or non-200 — callers should not catch and retry; a
+ * stuck job is a real failure worth surfacing.
  */
-export async function deleteApp(page: Page, appId: string): Promise<boolean> {
-  if (!appId) return false;
+export async function waitForJobResolution(
+  page: Page,
+  jobId: string,
+  opts: { timeoutMs?: number; pollIntervalMs?: number } = {},
+): Promise<string> {
+  const timeoutMs = opts.timeoutMs ?? JOB_RESOLUTION_TIMEOUT_MS;
+  const pollIntervalMs = opts.pollIntervalMs ?? JOB_RESOLUTION_POLL_INTERVAL_MS;
+  const startedAt = Date.now();
+
+  while (true) {
+    const elapsed = Date.now() - startedAt;
+    if (elapsed >= timeoutMs) {
+      throw new Error(
+        `waitForJobResolution(${jobId}) timed out after ${Math.round(elapsed / 1000)}s ` +
+        `waiting for job→app resolution (still job-shaped ID).`,
+      );
+    }
+
+    const result = await page.evaluate(async (id) => {
+      const response = await fetch(`/api/sites?site_id=${encodeURIComponent(id)}`);
+      const body = await response.text();
+      return { ok: response.ok, status: response.status, body };
+    }, jobId);
+
+    if (!result.ok) {
+      throw new Error(
+        `waitForJobResolution(${jobId}) failed: HTTP ${result.status} — ${result.body.slice(0, 500)}`,
+      );
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(result.body);
+    } catch {
+      throw new Error(
+        `waitForJobResolution(${jobId}) returned non-JSON body: ${result.body.slice(0, 200)}`,
+      );
+    }
+
+    const siteInfo = parsed as { id?: unknown };
+    const currentId = typeof siteInfo.id === 'string' ? siteInfo.id : '';
+
+    if (currentId.length === APP_ID_LENGTH) {
+      console.log(
+        `✓ Job ${jobId} resolved to app ${currentId} after ${Math.round(elapsed / 1000)}s`,
+      );
+      return currentId;
+    }
+
+    await page.waitForTimeout(pollIntervalMs);
+  }
+}
+
+/**
+ * Create a site via `POST /api/sites/quick-create` (BFF source:
+ * `app/src/app/api/sites/quick-create/route.ts`) and return the real app
+ * ID, polling job→app resolution if the BFF returns `type: 'job'`.
+ *
+ * Used by e2e specs that don't exercise the create UI — they need a
+ * fresh app to drive develop/chat/publish flows without paying the cost
+ * of clicking through the home-page create card every time.
+ *
+ * The `prompt` should be salted with `getSpecPrefix(...)` from
+ * `tests/helpers/constants.ts` so the eviction guard and prefix-based
+ * cleanup can identify and reclaim the app.
+ */
+export async function createSiteViaApi(page: Page, prompt: string): Promise<string> {
+  const result = await page.evaluate(async (p) => {
+    const response = await fetch('/api/sites/quick-create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: p }),
+    });
+    const body = await response.text();
+    return { ok: response.ok, status: response.status, body };
+  }, prompt);
+
+  if (!result.ok) {
+    throw new Error(
+      `createSiteViaApi failed: HTTP ${result.status} — ${result.body.slice(0, 500)}`,
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.body);
+  } catch {
+    throw new Error(
+      `createSiteViaApi returned non-JSON body: ${result.body.slice(0, 200)}`,
+    );
+  }
+
+  const data = parsed as { id?: unknown; type?: unknown };
+  if (typeof data.id !== 'string' || !data.id) {
+    throw new Error(
+      `createSiteViaApi response missing 'id': ${result.body.slice(0, 200)}`,
+    );
+  }
+
+  if (data.type === 'job') {
+    return waitForJobResolution(page, data.id);
+  }
+
+  if (data.type === 'site') {
+    console.log(`✓ Created app ${data.id} (immediate site)`);
+    return data.id;
+  }
+
+  throw new Error(
+    `createSiteViaApi response has unexpected type='${String(data.type)}': ${result.body.slice(0, 200)}`,
+  );
+}
+
+/**
+ * Delete an app by ID via the API. Throws on any failure so afterEach
+ * cleanup surfaces real auth/network errors instead of silently swallowing
+ * them — a swallowed delete leaves orphans that accumulate toward the
+ * MAX_TEST_APPS cap and break future runs.
+ *
+ * BFF contract: `DELETE /api/sites/[id]` returns `{ success: true, message }`
+ * on success (see `app/src/app/api/sites/[id]/route.ts`).
+ */
+export async function deleteApp(page: Page, appId: string): Promise<void> {
+  if (!appId) throw new Error('deleteApp: appId is required');
 
   const result = await page.evaluate(async (id) => {
     const response = await fetch(`/api/sites/${id}`, { method: 'DELETE' });
-    if (response.ok) {
-      const data = await response.json();
-      return data.success === true;
-    }
-    return false;
+    const body = await response.text();
+    return { ok: response.ok, status: response.status, body };
   }, appId);
 
-  if (result) {
-    console.log(`✓ Deleted app: ${appId}`);
-  } else {
-    console.log(`⚠ Could not delete app: ${appId}`);
+  if (!result.ok) {
+    throw new Error(
+      `deleteApp(${appId}) failed: HTTP ${result.status} — ${result.body.slice(0, 500)}`,
+    );
   }
 
-  return result;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.body);
+  } catch {
+    throw new Error(
+      `deleteApp(${appId}) returned 200 with non-JSON body: ${result.body.slice(0, 200)}`,
+    );
+  }
+
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    (parsed as { success?: unknown }).success !== true
+  ) {
+    throw new Error(
+      `deleteApp(${appId}) returned 200 but body did not signal success: ${result.body.slice(0, 200)}`,
+    );
+  }
+
+  console.log(`✓ Deleted app: ${appId}`);
 }
 
 /**

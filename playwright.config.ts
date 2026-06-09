@@ -33,8 +33,11 @@ const launchOptions = LNA_DISABLED_ENVS.includes(envName)
 /**
  * Playwright E2E Test Configuration
  *
- * Two test suites:
+ * Three test suites:
  * - e2e: Consolidated single-app critical path test (fast, ~10 min)
+ * - e2e-v2: Split + parallel-safe successor to e2e (4 files, ~5–10 min).
+ *           Currently shipped alongside e2e; CI will flip to e2e-v2 in a
+ *           follow-up PR, then the legacy e2e project is removed.
  * - regression: Full test suite with individual feature specs (thorough, ~30+ min)
  *
  * Environment selection (resolves baseURL + credentials). The --env flag is
@@ -46,9 +49,12 @@ const launchOptions = LNA_DISABLED_ENVS.includes(envName)
  *   PLAYWRIGHT_ENV=prod npx playwright test --project=e2e --headed
  *
  * Project selection:
- *   --project=e2e          fast critical path only
+ *   --project=e2e          fast critical path only (legacy, single worker)
+ *   --project=e2e-v2       split + parallel-safe successor (4 workers via
+ *                          PLAYWRIGHT_E2E_WORKERS, set automatically by
+ *                          scripts/e2e.sh)
  *   --project=regression   full regression suite
- *   (no --project)         both
+ *   (no --project)         all three
  *
  * PLAYWRIGHT_BASE_URL still wins if set (e.g. for one-off URLs not in the
  * environments map in tests/helpers/constants.ts).
@@ -63,18 +69,23 @@ export default defineConfig({
   /* Retry failed tests once in CI for flakiness tolerance */
   retries: process.env.CI ? 1 : 0,
   /**
-   * Single worker to ensure serial execution.
-   * Required because:
+   * Default 1 worker preserves today's behavior for the legacy `e2e` and
+   * `regression` projects, where:
    * 1. All tests share the same test account credentials
    * 2. Tests create/delete apps which affects global state
    * 3. SSO session state is shared across tests
    *
-   * TODO: For parallel execution, implement:
-   * - Separate test accounts per worker
-   * - Proper test isolation with spec-prefixed app cleanup
-   * - Worker-scoped authentication contexts
+   * The `e2e-v2` project is parallel-safe — each spec creates its own app
+   * via the `quick-create` API and uses a fresh browser context per test,
+   * so multiple workers don't collide. `scripts/e2e.sh` sets
+   * `PLAYWRIGHT_E2E_WORKERS=4` automatically when invoked with
+   * `--project=e2e-v2`. The override applies process-wide; if a single
+   * invocation also runs `e2e` or `regression`, fall back to 1 worker
+   * via `--workers=1` or run those projects separately.
    */
-  workers: 1,
+  workers: process.env.PLAYWRIGHT_E2E_WORKERS
+    ? parseInt(process.env.PLAYWRIGHT_E2E_WORKERS, 10)
+    : 1,
   /* Global timeout for tests - site creation can take up to 5 minutes */
   timeout: 420000, // 7 minutes
   /* Expect timeout for assertions */
@@ -121,6 +132,41 @@ export default defineConfig({
       name: 'e2e',
       testDir: './tests/e2e',
       use: { ...devices['Desktop Chrome'], ...(launchOptions && { launchOptions }) },
+    },
+    /**
+     * e2e-v2: split + parallel-safe successor to the `e2e` project. Runs
+     * the 4-file shape under `tests/e2e-v2/`. Workers default to 1
+     * (matching the rest of the suite); `scripts/e2e.sh` sets
+     * `PLAYWRIGHT_E2E_WORKERS=4` only when invoked with
+     * `--project=e2e-v2`, which is the parallel-safe configuration.
+     *
+     * Authentication: each spec's hooks (`beforeAll` / `afterAll`) and each
+     * test's `beforeEach` call `loginIfNeeded` directly — there is no shared
+     * storageState. We tried the storageState model (auth once, reuse the
+     * cookie jar) and it failed against GoDaddy SSO: the saved JWT was
+     * syntactically valid but Gasket's pluginAuth rejected it on the first
+     * `/develop/<id>` navigation, bouncing every test to SSO. The
+     * un-exercised JWT was missing live VAT / customer-context grants that
+     * only get minted by an interactive login flow. Per-test live login is
+     * the proven pattern (see airohq/airo-ai-automation venture-agent for
+     * prior art) and trades ~30–60 s of added wall-clock at workers=4 for
+     * reliability.
+     *
+     * `create-flow.spec.ts` deliberately tests the cold-start SSO flow
+     * itself; nothing in this project assumes pre-authentication.
+     *
+     * The legacy `e2e` project above is unchanged and continues to be the
+     * canonical CI signal until a follow-up PR flips the workflow to
+     * `--project=e2e-v2` and a third PR removes the legacy project +
+     * `tests/e2e/e2e.spec.ts`.
+     */
+    {
+      name: 'e2e-v2',
+      testDir: './tests/e2e-v2',
+      use: {
+        ...devices['Desktop Chrome'],
+        ...(launchOptions && { launchOptions }),
+      },
     },
     {
       name: 'regression',

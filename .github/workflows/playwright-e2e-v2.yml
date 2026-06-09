@@ -1,0 +1,226 @@
+name: E2E v2 Tests (preview)
+
+# Preview workflow for the split + parallel-safe `tests/e2e-v2/` project.
+# Runs alongside the canonical `playwright-e2e.yml` while we validate the
+# new shape under realistic CI timing without touching the existing signal.
+#
+# Differences vs. playwright-e2e.yml (intentional, while in preview):
+#   - workflow_dispatch only (no schedule) — manual smoke until we trust it
+#   - single env (`test`) — validate shape end-to-end before extending
+#   - dedicated AWS secret `/test/airo-app-builder-user-v2` — keeps the
+#     legacy CI shopper free for the existing nightly cron's load
+#   - no shards / matrix — e2e-v2 already runs its 4 specs in 4 parallel
+#     workers in-process via `PLAYWRIGHT_E2E_WORKERS=4`
+#   - no merge-reports / Slack — the dispatcher reads the run artifact
+#     directly while iterating
+#
+# Once 5+ consecutive runs are green here, the canonical workflow's
+# `--project=e2e` flips to `--project=e2e-v2` (Phase 2 of the refactor in
+# `tests/e2e/REFACTOR_PLAN.md`) and this preview workflow is removed.
+
+run-name: "E2E v2 Tests - ${{ inputs.environment || 'test' }} (by ${{ github.actor }})"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to test against'
+        required: true
+        default: 'test'
+        type: choice
+        options:
+          - test
+  # TEMP: pre-merge testing trigger — REMOVE before merging to main.
+  # `workflow_dispatch` isn't usable from the GitHub API until this file
+  # lands on the default branch (the API returns HTTP 404 with the
+  # branch ref otherwise). The push trigger lets us validate the v2
+  # workflow on the PR branch before flipping CI to it. Once this PR
+  # merges, drop this block so the workflow only runs on explicit dispatch.
+  push:
+    branches: [refactor/e2e-split-and-quick-create]
+
+# Serialize per-env so two manual dispatches against the same env don't
+# race over the same shopper account's app quota. `cancel-in-progress: false`
+# queues instead of cancelling — interrupting a running suite mid-publish
+# leaves orphan deployments.
+concurrency:
+  group: e2e-v2-${{ inputs.environment || 'test' }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test:
+    timeout-minutes: 60
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: Determine test environment and URL
+        id: env-config
+        env:
+          INPUT_ENVIRONMENT: ${{ inputs.environment || 'test' }}
+        run: |
+          ENV="$INPUT_ENVIRONMENT"
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+
+          case "$ENV" in
+            test)
+              echo "base_url=https://airo-builder.test-godaddy.com" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "❌ Unknown environment: $ENV"
+              exit 1
+              ;;
+          esac
+
+          echo "✅ Test environment: $ENV"
+
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Get Artifactory Token
+        id: jfrog
+        uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c # v5.0.0
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+        with:
+          oidc-provider-name: github
+
+      - name: Setup Artifactory Creds
+        env:
+          OIDC_TOKEN: ${{ steps.jfrog.outputs.oidc-token }}
+        run: |
+          echo "::add-mask::$OIDC_TOKEN"
+          echo "ARTIFACTORY_NPM_TOKEN=${OIDC_TOKEN}" >> $GITHUB_ENV
+
+      - name: Configure pnpm registry
+        run: |
+          echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" > .npmrc
+          echo "//gdartifactory1.jfrog.io/artifactory/api/npm/:_authToken=${{ env.ARTIFACTORY_NPM_TOKEN }}" >> .npmrc
+
+      - name: Get e2e-v2 test credentials from Secrets Manager
+        id: get-credentials
+        run: |
+          set -e
+          # Dedicated v2 shopper so the canonical e2e cron's account isn't
+          # competing with this preview's app quota.
+          echo "Retrieving e2e-v2 test credentials from Secrets Manager..."
+          CREDENTIALS=$(aws secretsmanager get-secret-value --secret-id "/test/airo-app-builder-user-v2" --query 'SecretString' --output text --region us-west-2)
+
+          # Same {"<email>": "<password>"} schema as the legacy secret —
+          # keep the keys[0]/.[] extraction pattern so future rotation can
+          # re-use the existing tooling.
+          USERNAME=$(echo $CREDENTIALS | jq -r 'keys[0]')
+          PASSWORD=$(echo $CREDENTIALS | jq -r '.[]')
+          echo "Extracted username: ${USERNAME}"
+
+          if [ "$USERNAME" = "null" ] || [ "$PASSWORD" = "null" ] || [ -z "$USERNAME" ] || [ -z "$PASSWORD" ]; then
+            echo "❌ Failed to extract valid credentials from /test/airo-app-builder-user-v2"
+            exit 1
+          fi
+
+          echo "::add-mask::$USERNAME"
+          echo "::add-mask::$PASSWORD"
+          echo "username=$USERNAME" >> $GITHUB_OUTPUT
+          echo "password=$PASSWORD" >> $GITHUB_OUTPUT
+          echo "✅ Test credentials retrieved successfully"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+
+      - name: Enable Corepack and configure pnpm
+        run: |
+          npm install -g corepack@latest
+
+          corepack enable
+          EXPECTED_VERSION=$(node -p "
+            const pm = require('./package.json').packageManager || '';
+            const match = pm.match(/^pnpm@(.+?)(\+|$)/);
+            if (!match) { console.error('Cannot parse packageManager:', pm); process.exit(1); }
+            match[1];
+          ")
+          corepack prepare "pnpm@${EXPECTED_VERSION}" --activate
+          ACTUAL_VERSION=$(pnpm --version)
+          if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "ERROR: pnpm version mismatch! Expected: $EXPECTED_VERSION, Actual: $ACTUAL_VERSION"
+            exit 1
+          fi
+          echo "pnpm version $ACTUAL_VERSION matches expected version"
+
+      - name: Locate pnpm store
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          echo "Installing workspace dependencies with pnpm..."
+          pnpm install --frozen-lockfile
+
+      - name: Install Playwright Browsers
+        run: |
+          if npx playwright list | grep -q "chromium.*installed"; then
+            echo "✅ Chromium already installed, skipping download"
+          else
+            echo "📥 Installing Chromium browser..."
+            npx playwright install chromium
+            echo "✅ Chromium browser installed successfully"
+          fi
+          echo "ℹ️ Skipping system dependencies installation (assuming self-hosted runner has required deps)"
+
+      - name: Run Playwright tests (e2e-v2)
+        env:
+          CI: true
+          # tests/helpers/constants.ts getCredentials() reads env-specific
+          # variables based on PLAYWRIGHT_ENV. Only TEST_* needs to be set
+          # while this preview targets the test env exclusively, but exporting
+          # all four pairs costs nothing and avoids surprises if someone
+          # extends the inputs.environment choice list later.
+          DEV_USERNAME: ${{ steps.get-credentials.outputs.username }}
+          DEV_PASSWORD: ${{ steps.get-credentials.outputs.password }}
+          PRE_TEST_USERNAME: ${{ steps.get-credentials.outputs.username }}
+          PRE_TEST_PASSWORD: ${{ steps.get-credentials.outputs.password }}
+          TEST_USERNAME: ${{ steps.get-credentials.outputs.username }}
+          TEST_PASSWORD: ${{ steps.get-credentials.outputs.password }}
+          PROD_USERNAME: ${{ steps.get-credentials.outputs.username }}
+          PROD_PASSWORD: ${{ steps.get-credentials.outputs.password }}
+          PLAYWRIGHT_BASE_URL: ${{ steps.env-config.outputs.base_url }}
+          PLAYWRIGHT_ENV: ${{ steps.env-config.outputs.environment }}
+          TEST_ENVIRONMENT: ${{ steps.env-config.outputs.environment }}
+          # `scripts/e2e.sh` sets this when invoked with --project=e2e-v2;
+          # we invoke playwright directly here so set it explicitly. 4 maps
+          # to the 4 spec files; bumping past that doesn't help (each spec
+          # is a single worker — they parallelize across files, not within).
+          PLAYWRIGHT_E2E_WORKERS: '4'
+        run: |
+          echo "Running --project=e2e-v2 against $PLAYWRIGHT_ENV"
+          npx playwright test --project=e2e-v2
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: e2e-v2-test-results
+          path: test-results/
+          retention-days: 30
+
+      - name: Upload Playwright HTML report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: e2e-v2-playwright-report
+          path: playwright-report/
+          retention-days: 30

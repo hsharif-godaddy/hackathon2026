@@ -182,11 +182,15 @@ export async function dismissOverlays(page: Page): Promise<void> {
 
   // "Projects" popover auto-opens on the authenticated homepage when the
   // user has existing apps. It overlays the prompt area and blocks
-  // submission. Only the homepage renders this button, so skip the
-  // SHORT_TIMEOUT wait entirely on every other page (develop, apps, etc.)
-  // — the wait was burning 2s on every call from a non-homepage test.
+  // submission. The same chrome (with the same Projects trigger) renders
+  // on the develop page too, and the popover state survives a homepage →
+  // /develop/<id> navigation when the spec went through `loginIfNeeded` on
+  // the homepage first — so develop tests find the popover overlaying the
+  // chat-send-button and gating waits time out against a hidden element.
+  // Skip the SHORT_TIMEOUT cost on routes that definitely don't render the
+  // button (e.g. `/apps`); run it on `/` and `/develop/<id>`.
   const pathname = new URL(page.url()).pathname;
-  if (pathname === '/' || pathname === '') {
+  if (pathname === '/' || pathname === '' || pathname.startsWith('/develop/')) {
     const projectsBtn = page.getByRole('button', { name: 'Projects' });
     const projectsVisible = await projectsBtn
       .waitFor({ state: 'visible', timeout: SHORT_TIMEOUT })

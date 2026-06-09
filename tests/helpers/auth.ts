@@ -384,7 +384,13 @@ export async function verifyAuthenticated(page: Page): Promise<void> {
     await page.keyboard.press('Escape');
     await page.waitForTimeout(200);
     await menuTrigger.click({ force: true });
-    await expect(page.getByRole('button', { name: /sign out/i })).toBeVisible({ timeout: 0 });
+    // Give the popover up to 2 s to render after the click before failing
+    // the iteration. With `timeout: 0`, the next iteration's Escape would
+    // race the popover-open animation and close it before Sign Out paints
+    // — observed deterministically when develop-ui's beforeAll added an
+    // earlier SSO login from the same shopper, which made the popover
+    // settle slightly slower than it used to.
+    await expect(page.getByRole('button', { name: /sign out/i })).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: DEFAULT_TIMEOUT });
 
   await page.keyboard.press('Escape');

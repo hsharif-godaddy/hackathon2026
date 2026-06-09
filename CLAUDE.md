@@ -122,7 +122,7 @@ Translation keys are validated during pre-commit (blocks on missing keys). Fetch
 
 ## E2E Test Maintenance
 
-**When modifying UI components, always check if E2E tests reference affected `data-testid` attributes, selectors, or user flows.** E2E tests live in `tests/e2e/` (critical-path single-flow test) and `tests/regression/` (full per-feature suite) and run against the real app. If you add, rename, or remove a `data-testid`, change a component's DOM structure, or alter a user interaction flow (e.g., confirmation dialogs, navigation), update the corresponding E2E tests to match. Grep for the test ID in `tests/e2e/` and `tests/regression/` to find affected specs.
+**When modifying UI components, always check if E2E tests reference affected `data-testid` attributes, selectors, or user flows.** E2E tests live in `tests/e2e/` (legacy critical-path single-flow test), `tests/e2e-v2/` (split + parallel-safe successor — 4 spec files: `create-flow`, `develop-ui`, `chat-send`, `publish-and-domain`), and `tests/regression/` (full per-feature suite). All three run against the real app. If you add, rename, or remove a `data-testid`, change a component's DOM structure, or alter a user interaction flow (e.g., confirmation dialogs, navigation), update the corresponding E2E tests to match. **Migration overlap: until the legacy `tests/e2e/e2e.spec.ts` is removed, UI changes must be reflected in BOTH `tests/e2e/` AND the matching `tests/e2e-v2/*.spec.ts` file.** Grep for the test ID in `tests/e2e/`, `tests/e2e-v2/`, and `tests/regression/` to find affected specs.
 
 ## PR Checklist
 
@@ -131,7 +131,7 @@ Translation keys are validated during pre-commit (blocks on missing keys). Fetch
 - [ ] `pnpm build` passes
 - [ ] Changes tested
 - [ ] Backward compatibility verified
-- [ ] **UI changes:** E2E tests in `tests/e2e/` and `tests/regression/` updated if `data-testid` or user flows changed
+- [ ] **UI changes:** E2E tests in `tests/e2e/`, `tests/e2e-v2/`, and `tests/regression/` updated if `data-testid` or user flows changed (during the e2e/e2e-v2 overlap, both must be kept in sync)
 - [ ] **dev-supervisor only:** `make check` passes
 
 ## Engineering Guidelines

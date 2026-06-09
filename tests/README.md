@@ -11,6 +11,9 @@ pnpm install
 # Run E2E critical path test (fast, ~10 min)
 pnpm test:e2e --project=e2e
 
+# Run the split + parallel-safe successor (~5–10 min, 4 workers)
+pnpm test:e2e --project=e2e-v2
+
 # Run full regression suite (~30+ min)
 pnpm test:e2e --project=regression
 
@@ -89,7 +92,12 @@ env-specific vars automatically.
 ```
 tests/
   e2e/
-    e2e.spec.ts                      # Consolidated single-app critical path
+    e2e.spec.ts                      # Consolidated single-app critical path (legacy, single worker)
+  e2e-v2/                            # Split + parallel-safe successor (see "E2E v2" below)
+    create-flow.spec.ts              # Homepage submit → SSO → develop redirect (1 test, serial)
+    develop-ui.spec.ts               # Read-only develop-page UI checks (parallel within file)
+    chat-send.spec.ts                # Chat send via Enter + send-button (serial within file)
+    publish-and-domain.spec.ts       # Auto-publish + custom domain + reload (serial within file)
   regression/
     authentication.spec.ts           # Login/logout, session, protected routes
     apps-page.spec.ts                # Apps listing, navigation, homepage validation
@@ -135,6 +143,57 @@ Use this for: post-deploy validation, CI, quick smoke checks. Brand Book lives
 in the regression suite (`develop-brand-book.spec.ts`) because it's gated by
 the `appbuilder-brandbook` switchboard flag and isn't enabled for every prod
 account.
+
+### E2E v2 (Split + Parallel)
+
+Same coverage as the legacy E2E suite, split into 4 spec files under
+`tests/e2e-v2/` that can run with file-level parallelism. Every spec
+except `create-flow.spec.ts` creates its app via `POST /api/sites/quick-create`
+(see `createSiteViaApi` in `helpers/api.ts`) and skips the homepage UI +
+SSO redirect cost.
+
+| File | Coverage | Concurrency | App strategy |
+| --- | --- | --- | --- |
+| `create-flow.spec.ts` | Homepage submit → SSO → develop redirect | serial, 1 worker | UI-create per test, deleted by ID |
+| `develop-ui.spec.ts` | Read-only develop-page UI (header, preview controls, chat input states, edit mode, code view, publish-button state, manual feedback) | parallel within file | one shared app, API-create in `beforeAll` |
+| `chat-send.spec.ts` | Chat send via Enter + send-button | serial within file | one shared app, API-create in `beforeAll` |
+| `publish-and-domain.spec.ts` | Auto-publish verification, custom-domain attach/disconnect, page-reload recovery | serial within file | one shared app + auto-publish wait in `beforeAll` |
+
+> **INVARIANT — `develop-ui.spec.ts` is read-only.** Tests in that file
+> share one server-side app across parallel browser contexts (different
+> SSO sessions, same app row). Allowed: navigating, reading, opening
+> modals (Escape-close), clearing the chat input. Forbidden: sending
+> chat messages, publishing, attaching domains, archiving. New tests
+> added there must verify they don't mutate persistent state, or move to
+> a file that owns its own app.
+
+`scripts/e2e.sh` exports `PLAYWRIGHT_E2E_WORKERS=4` automatically when
+`--project=e2e-v2` is passed. Override with
+`PLAYWRIGHT_E2E_WORKERS=N pnpm test:e2e --project=e2e-v2 --env=...` (or
+the `./scripts/e2e.sh` form) to force a different worker count — useful
+for reproducing parallel-only flakes serially.
+
+```bash
+# All four files in parallel (4 workers)
+pnpm test:e2e --project=e2e-v2 --env=dev
+
+# One file
+pnpm test:e2e --project=e2e-v2 --env=dev tests/e2e-v2/develop-ui.spec.ts
+
+# One test inside a file
+pnpm test:e2e --project=e2e-v2 --env=dev -g "Edit mode toggle"
+
+# Force serial for debugging
+PLAYWRIGHT_E2E_WORKERS=1 pnpm test:e2e --project=e2e-v2 --env=dev
+```
+
+> **Migration overlap.** `tests/e2e-v2/` ships **alongside** the legacy
+> `tests/e2e/e2e.spec.ts`. CI still runs the legacy `e2e` project as the
+> canonical signal until a follow-up PR flips it to `e2e-v2`; the legacy
+> file is removed in a third PR after the new shape stabilizes (~1–2
+> weeks of green CI). **During this overlap, any UI change with
+> `data-testid` impact must be reflected in BOTH `tests/e2e/e2e.spec.ts`
+> AND the relevant `tests/e2e-v2/*.spec.ts`.**
 
 ### Regression (Full Suite)
 
@@ -292,7 +351,12 @@ pnpm exec playwright show-trace test-results/*/trace.zip
 4. Handle coachmark/overlay dismissal
 5. Clean up created apps in `afterEach`
 6. Use helpers for common operations
-7. If the feature is critical, add it as a step in `tests/e2e/e2e.spec.ts`
+7. If the feature is critical, add it to **both** `tests/e2e/e2e.spec.ts` (as a step) **and** the relevant `tests/e2e-v2/*.spec.ts` while the migration overlap is in effect. Decision tree for which v2 file:
+   - Tests the homepage UI flow itself? → extend `tests/e2e-v2/create-flow.spec.ts`
+   - Read-only verification of develop-page UI, no app state changes? → add to `tests/e2e-v2/develop-ui.spec.ts` (must satisfy the no-mutation invariant)
+   - Sends chat messages or otherwise mutates transcript? → add to `tests/e2e-v2/chat-send.spec.ts`
+   - Touches publish, deploy, or domain state? → add to `tests/e2e-v2/publish-and-domain.spec.ts`
+   - None of the above? → new file in `tests/e2e-v2/`, follow the same `beforeAll` API-create + `afterAll` ID-delete pattern
 
 ### Example
 

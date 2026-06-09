@@ -39,6 +39,7 @@ messages-*
 # Playwright Test Artifacts
 test-results/
 playwright-report/
+tests/.auth/
 *.png
 !blog/public/images/*.png
 !docs/**/*.png

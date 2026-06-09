@@ -41,6 +41,20 @@ validate_env() {
 
 ARGS=()
 NO_DELETE_EXPLICIT=""
+SAW_E2E_V2_PROJECT=""
+SAW_OTHER_PROJECT=""
+
+# Classify a --project value: "e2e-v2" sets SAW_E2E_V2_PROJECT; any other
+# non-empty value (e2e, regression, e2e-v2-setup, ...) sets SAW_OTHER_PROJECT.
+# Used below to keep PLAYWRIGHT_E2E_WORKERS=4 confined to runs that target
+# e2e-v2 exclusively.
+classify_project() {
+  case "$1" in
+    e2e-v2) SAW_E2E_V2_PROJECT=true ;;
+    "") ;;
+    *) SAW_OTHER_PROJECT=true ;;
+  esac
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -68,12 +82,33 @@ while [[ $# -gt 0 ]]; do
       NO_DELETE_EXPLICIT=true
       shift
       ;;
+    --project=*)
+      classify_project "${1#*=}"
+      ARGS+=("$1")
+      shift
+      ;;
+    --project)
+      classify_project "${2:-}"
+      ARGS+=("$1")
+      shift
+      ;;
     *)
       ARGS+=("$1")
       shift
       ;;
   esac
 done
+
+# Parallel-safe `e2e-v2` runs at 4 workers; legacy `e2e` and `regression`
+# stay at 1 (single shopper account, single SSO session). Only set workers=4
+# when this run targets e2e-v2 *exclusively* — a mixed invocation like
+# `--project=e2e --project=e2e-v2` would otherwise let the legacy single-worker
+# projects race each other on the shared shopper account. Caller can still
+# override via `PLAYWRIGHT_E2E_WORKERS=N ./scripts/e2e.sh ...`.
+if [[ -n "$SAW_E2E_V2_PROJECT" && -z "$SAW_OTHER_PROJECT" && -z "${PLAYWRIGHT_E2E_WORKERS:-}" ]]; then
+  export PLAYWRIGHT_E2E_WORKERS=4
+  echo "ℹ️  Setting PLAYWRIGHT_E2E_WORKERS=4 for --project=e2e-v2 (override with PLAYWRIGHT_E2E_WORKERS=N)." >&2
+fi
 
 # Default --no-delete ON for local/dev envs so devs iterating against their
 # own backend don't have their apps deleted between runs. Only applies when
