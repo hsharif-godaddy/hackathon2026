@@ -32,6 +32,20 @@ describe('github-config', function configTests() {
       }))).toBe('http://example.com');
     });
 
+    it('extracts first value from multi-value x-forwarded-proto', function multiProto() {
+      expect(publicOrigin(mockRequest({
+        host: 'airo-builder.test-godaddy.com',
+        'x-forwarded-proto': 'https,https',
+      }))).toBe('https://airo-builder.test-godaddy.com');
+    });
+
+    it('trims whitespace from x-forwarded-proto values', function trimProto() {
+      expect(publicOrigin(mockRequest({
+        host: 'example.com',
+        'x-forwarded-proto': ' https , http ',
+      }))).toBe('https://example.com');
+    });
+
     it('defaults to localhost:3000 when no host header', function defaultHost() {
       expect(publicOrigin(mockRequest())).toBe('https://localhost:3000');
     });

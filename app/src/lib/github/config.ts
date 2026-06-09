@@ -45,7 +45,7 @@ export function get(): GitHubAppConfig {
  */
 export function publicOrigin(request: NextRequest): string {
   const host = request.headers.get('host') ?? 'localhost:3000';
-  const proto = request.headers.get('x-forwarded-proto') ?? 'https';
+  const proto = (request.headers.get('x-forwarded-proto') ?? 'https').split(',')[0].trim();
   return `${proto}://${host}`;
 }
 
