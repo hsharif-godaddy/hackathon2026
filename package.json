@@ -14,7 +14,6 @@
     "dev:app": "pnpm --filter website dev",
     "storybook": "pnpm --filter @airo-ux/pattern-library storybook",
     "storybook:build": "pnpm --filter @airo-ux/pattern-library storybook:build",
-    "prewarm": "pnpm --filter website prewarm",
     "build": "turbo run build --filter=@airo/shared --filter=@airo-ux/pattern-library --filter=@airo/ai-common --filter=@airo/ai-grants --filter=@airo/ai-lib --filter=@airo/ai-transport --filter=@airo/ai-skills --filter=@airo/agents --filter=website",
     "build:all": "turbo run build",
     "typecheck": "turbo run typecheck",

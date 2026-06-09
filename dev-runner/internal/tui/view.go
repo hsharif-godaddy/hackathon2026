@@ -90,6 +90,10 @@ func (m Model) View() tea.View {
 			content = m.overlayModal(base, m.renderProbeCustomRun())
 		case m.probeEnvEditForm != nil:
 			content = m.overlayModal(base, m.renderProbeEnvEdit())
+		case m.prewarmPickerForm != nil:
+			content = m.overlayModal(base, m.renderPrewarmPicker())
+		case m.prewarmRunning || m.prewarmErr != nil:
+			content = m.overlayModal(base, m.renderPrewarming())
 		default:
 			content = base
 		}

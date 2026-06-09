@@ -21,6 +21,10 @@ type Server struct {
 	TemplateSetup *setup.TemplateSetup
 	JWT           *auth.JWTService
 
+	// imagePrewarmer warms the Docker image cache (defaults to DockerManager;
+	// overridden in handler tests).
+	imagePrewarmer imagePrewarmer
+
 	// retryDelay returns how long to wait before the given attempt (1-indexed).
 	// Defaults to exponential backoff (registerBaseDelay..registerMaxDelay).
 	// Override in tests to eliminate real delays.
@@ -34,6 +38,7 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService, ssoMW *auth.SSOMiddlew
 		TemplateSetup: setup.NewTemplateSetup(),
 		JWT:           jwtService,
 	}
+	srv.imagePrewarmer = srv.DockerManager
 
 	r := mux.NewRouter()
 
@@ -147,6 +152,7 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService, ssoMW *auth.SSOMiddlew
 	// Debug endpoints for error injection
 	r.HandleFunc("/api/_debug/inject-error", srv.InjectError).Methods("POST")
 	r.HandleFunc("/api/_debug/clear-error", srv.ClearError).Methods("POST")
+	r.HandleFunc("/api/_debug/prewarm-images", srv.PrewarmImages).Methods("POST")
 
 	return r
 }

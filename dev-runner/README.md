@@ -102,6 +102,25 @@ On startup, dev-runner runs a comprehensive set of preflight checks before launc
 | `m`                 | Toggle mouse capture (on/off shown in status bar) |
 | `q`                 | Quit (with confirmation dialog)                   |
 | `Ctrl+C`            | Quit immediately (no confirmation)                |
+| `w`                 | Open prewarm picker (PhaseRunning only)           |
+
+## Prewarm
+
+Speeds up local app creation by warming the two slow paths:
+
+- **API routes** — GETs the app's routes to force Next.js dev compilation.
+- **Docker images** — asks local-control-plane to build `aab-template-v8` and
+  `aab-publish`, warming the layer cache so the per-app build is a cache hit.
+
+Two ways to trigger (it never runs on a plain `dev-runner` start):
+
+- Press **`w`** on the running dashboard → multi-select popup (both on by default).
+- `dev-runner prewarm [--api] [--docker]` — boots the dev env and auto-runs
+  prewarm once all services are healthy.
+
+The Docker warm calls `POST /api/_debug/prewarm-images` on local-control-plane,
+which is loopback-guarded and reuses the same `docker buildx` invocation the
+per-app create path uses (so the cache key matches).
 
 ## Configuration
 

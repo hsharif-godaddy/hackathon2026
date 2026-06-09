@@ -138,6 +138,14 @@ func (m *Manager) ensureImages() error {
 	return m.buildPublishImage(projectRoot, version)
 }
 
+// PrewarmImages builds the template + publish images, warming the Docker layer
+// cache so a subsequent per-app Up()->ensureImages() is a cache hit. It runs
+// the identical buildx invocation ensureImages() uses, guaranteeing the same
+// cache key.
+func (m *Manager) PrewarmImages() error {
+	return m.ensureImages()
+}
+
 func (m *Manager) buildImage(imageName, projectRoot, version string) error {
 	slog.Info("docker.image.build", "image", imageName)
 	start := time.Now()

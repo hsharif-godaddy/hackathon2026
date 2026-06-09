@@ -27,6 +27,7 @@ make tidy     # go mod tidy
   - `checks/` - Individual check implementations
   - `fixers/` - Auto-fix implementations
 - `internal/process/` - Process lifecycle, output scanning
+- `internal/prewarm/` - route + docker-image warming used by the `w` keybinding and the `dev-runner prewarm` subcommand. Docker work is delegated to local-control-plane's loopback-guarded `/api/_debug/prewarm-images` (no internal Go deps; cache-key parity preserved).
 - `internal/tui/` - Bubble Tea model, views, styles
 
 ## Preflight Check/Fixer Pattern

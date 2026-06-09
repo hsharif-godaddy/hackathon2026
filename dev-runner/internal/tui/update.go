@@ -11,6 +11,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
 	"github.com/airo-ai-builder/dev-runner/internal/probe"
@@ -120,6 +121,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshPanes()
 		m.refreshPreflightViewport()
 		m.refreshHookViewport()
+		m.refreshPrewarmViewport()
 		m.resizeForms()
 		m.fixProgress.SetWidth(max(min(msg.Width-10, 60), 1))
 		return m, nil
@@ -127,7 +129,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case spinner.TickMsg:
 		if m.phase == PhasePreflightChecking || m.phase == PhasePreflightFixing || m.phase == PhasePreflightVerifying ||
 			m.phase == PhasePreflightCleaning ||
-			m.e2ePickerStep == E2EPickerStepLoading || m.probeDiscoveryLoading {
+			m.e2ePickerStep == E2EPickerStepLoading || m.probeDiscoveryLoading ||
+			m.prewarmRunning {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			cmds = append(cmds, cmd)
@@ -176,6 +179,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Mutations on the picker form must happen here, where m is mutable.
 		if m.phase == PhasePreflightCleanPicker {
 			cmds = append(cmds, m.initCleanPicker())
+		}
+
+	case prewarmLineMsg:
+		// Live progress: append the streamed line, refresh the scrollable tail
+		// (auto-follows to the bottom), and keep listening.
+		m.prewarmOutput += string(msg) + "\n"
+		m.refreshPrewarmViewport()
+		cmds = append(cmds, waitForPrewarm(m.prewarmCh))
+
+	case prewarmDoneMsg:
+		m.prewarmRunning = false
+		m.prewarmErr = msg.Err
+		m.prewarmCh = nil
+		if msg.Err == nil {
+			// Success: clear overlay immediately.
+			m.prewarmOutput = ""
+		} else {
+			// Failure: keep the overlay and lay out the final tail at the
+			// current size so the user can scroll the full, un-truncated log.
+			m.refreshPrewarmViewport()
 		}
 
 	case cleanDoneMsg:
@@ -284,6 +307,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, tea.Tick(interval, func(_ time.Time) tea.Msg {
 				return healthCheckCmd(idx, hc, gen)()
 			}))
+		}
+		if m.prewarmOnHealthy != nil && !m.prewarmAutoFired && m.allHealthCheckedHealthy() {
+			m.prewarmAutoFired = true
+			cmds = append(cmds, m.runPrewarm(*m.prewarmOnHealthy))
 		}
 
 	case tickMsg:
@@ -730,6 +757,26 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.updateProbeEnvEdit(msg)
 	}
 
+	// Prewarm picker intercepts all keys while open.
+	if m.prewarmPickerForm != nil {
+		return m.updatePrewarmPicker(msg)
+	}
+	// While prewarm is running, the only interaction is scrolling the
+	// streamed-output tail; everything else is swallowed.
+	if m.prewarmRunning {
+		return m.scrollPrewarmViewport(msg)
+	}
+	// After a prewarm failure, Enter/Esc dismisses the result overlay and
+	// scroll keys page through the captured log.
+	if m.prewarmErr != nil {
+		if msg.String() == "enter" || msg.String() == "esc" {
+			m.prewarmErr = nil
+			m.prewarmOutput = ""
+			return nil
+		}
+		return m.scrollPrewarmViewport(msg)
+	}
+
 	// When the Probe tab is active and the runner is idle, keys are handled by
 	// the view-content display or the navigation menu.
 	// Tab/ShiftTab are excluded so they always reach the tab-cycling handler.
@@ -819,6 +866,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.mouseEnabled = !m.mouseEnabled
 	case key.Matches(msg, m.keys.Settings):
 		return m.openSettings()
+	case key.Matches(msg, m.keys.Prewarm):
+		if m.phase == PhaseRunning {
+			return m.openPrewarmPicker()
+		}
 	case key.Matches(msg, m.keys.Follow):
 		pane := m.activePanePtr()
 		if pane != nil {
@@ -1162,6 +1213,44 @@ func (m *Model) refreshHookViewport() {
 	} else {
 		m.hookViewport.SetYOffset(savedOffset)
 	}
+}
+
+// refreshPrewarmViewport rebuilds the prewarm progress viewport from
+// prewarmOutput and re-sizes it to the current terminal. Mirrors
+// refreshHookViewport: content is rebuilt from the source string each call and
+// the viewport auto-follows the tail until the user scrolls up. The viewport
+// soft-wraps, so long lines (e.g. health-check URLs) wrap instead of being
+// truncated to an ellipsis. Only the streamed log lines live here; the spinner
+// header and dismissal hint are drawn around it by renderPrewarming.
+func (m *Model) refreshPrewarmViewport() {
+	if !m.ready {
+		return
+	}
+	w, h := m.prewarmModalSize()
+
+	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Background(modalBg)
+	content := dim.Render(strings.TrimRight(m.prewarmOutput, "\n"))
+
+	savedOffset := m.prewarmViewport.YOffset()
+	m.prewarmViewport.SetWidth(w)
+	m.prewarmViewport.SetHeight(h)
+	m.prewarmViewport.SetContent(content)
+	if m.prewarmAutoFollow {
+		m.prewarmViewport.GotoBottom()
+	} else {
+		m.prewarmViewport.SetYOffset(savedOffset)
+	}
+}
+
+// scrollPrewarmViewport forwards a key to the prewarm output viewport and
+// re-derives auto-follow: scrolling up off the bottom pins the view (so a
+// streaming run doesn't yank it back down), and scrolling back to the bottom
+// re-arms tailing. Mirrors the hook/preflight auto-follow toggles.
+func (m *Model) scrollPrewarmViewport(msg tea.KeyPressMsg) tea.Cmd {
+	vp, cmd := m.prewarmViewport.Update(msg)
+	m.prewarmViewport = vp
+	m.prewarmAutoFollow = m.prewarmViewport.AtBottom()
+	return cmd
 }
 
 func (m *Model) activePanePtr() *Pane {

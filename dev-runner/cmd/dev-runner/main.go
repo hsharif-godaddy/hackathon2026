@@ -10,6 +10,7 @@ import (
 
 	"github.com/airo-ai-builder/dev-runner/internal/clean"
 	"github.com/airo-ai-builder/dev-runner/internal/config"
+	"github.com/airo-ai-builder/dev-runner/internal/prewarm"
 	"github.com/airo-ai-builder/dev-runner/internal/tui"
 )
 
@@ -34,8 +35,14 @@ const cleanUsage = "Usage: dev-runner clean [--all|--build|--runtime|--env|--nod
 	"  --yes alone (or non-interactive): legacy scope (build + runtime + env).\n"
 
 const devUsage = "Usage: dev-runner [--clean | --clean-all]\n" +
+	"       dev-runner prewarm [--api] [--docker]\n" +
 	"  --clean      open the clean picker before preflight\n" +
-	"  --clean-all  remove every group (build + runtime + env + node_modules) before preflight\n"
+	"  --clean-all  remove every group (build + runtime + env + node_modules) before preflight\n" +
+	"  prewarm      boot the dev env and auto-warm routes/images once healthy\n"
+
+const prewarmUsage = "Usage: dev-runner prewarm [--api] [--docker]\n" +
+	"  Boots the dev environment, then auto-runs prewarm once all services are healthy.\n" +
+	"  No task flags → both API routes and Docker images.\n"
 
 // cleanMode describes how the dev startup path should treat clean state.
 type cleanMode int
@@ -98,6 +105,33 @@ func main() {
 		return
 	}
 
+	if len(os.Args) > 1 && os.Args[1] == "prewarm" {
+		sel, err := parsePrewarmFlags(os.Args[2:])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n%s", err, prewarmUsage)
+			os.Exit(1)
+		}
+
+		configPath := filepath.Join(projectRoot, configFileName)
+		if localPath := filepath.Join(projectRoot, localConfigFileName); fileExists(localPath) {
+			configPath = localPath
+		}
+		cfg, err := config.Load(configPath, projectRoot)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+			fmt.Fprintf(os.Stderr, "\nExpected config file at: %s\n", configPath)
+			fmt.Fprintf(os.Stderr, "See dev-runner/README.md for config format.\n")
+			os.Exit(1)
+		}
+
+		model := tui.NewModel(cfg, projectRoot, false, false, false, &sel)
+		if _, err := tea.NewProgram(model).Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	mode, err := parseDevFlags(os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n%s", err, devUsage)
@@ -118,7 +152,7 @@ func main() {
 
 	// --clean-all runs through the TUI cleaning phase (rather than synchronously
 	// before tea.NewProgram) so the output isn't wiped by the alt-screen.
-	model := tui.NewModel(cfg, projectRoot, mode == cleanModePicker, mode == cleanModeAll, false)
+	model := tui.NewModel(cfg, projectRoot, mode == cleanModePicker, mode == cleanModeAll, false, nil)
 
 	p := tea.NewProgram(model)
 
@@ -189,6 +223,29 @@ func parseDevFlags(args []string) (cleanMode, error) {
 	return mode, nil
 }
 
+// parsePrewarmFlags parses the `dev-runner prewarm` task flags. Task flags are
+// additive; with none, both tasks run.
+func parsePrewarmFlags(args []string) (prewarm.Selection, error) {
+	var sel prewarm.Selection
+	var anyFlag bool
+	for _, a := range args {
+		switch a {
+		case "--api":
+			sel.API = true
+			anyFlag = true
+		case "--docker":
+			sel.Docker = true
+			anyFlag = true
+		default:
+			return prewarm.Selection{}, fmt.Errorf("unknown flag %q", a)
+		}
+	}
+	if !anyFlag {
+		sel = prewarm.Selection{API: true, Docker: true}
+	}
+	return sel, nil
+}
+
 // runCleanTUI loads the dev-runner config and launches the TUI in
 // clean-only mode: the picker opens, on completion the program quits
 // instead of advancing into preflight/hooks/processes.
@@ -206,7 +263,7 @@ func runCleanTUI(projectRoot string) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	model := tui.NewModel(cfg, projectRoot, false, false, true)
+	model := tui.NewModel(cfg, projectRoot, false, false, true, nil)
 	p := tea.NewProgram(model)
 	final, err := p.Run()
 	if err != nil {

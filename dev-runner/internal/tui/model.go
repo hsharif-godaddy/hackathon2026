@@ -24,6 +24,7 @@ import (
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
 	"github.com/airo-ai-builder/dev-runner/internal/preflight/checks"
 	"github.com/airo-ai-builder/dev-runner/internal/preflight/fixers"
+	"github.com/airo-ai-builder/dev-runner/internal/prewarm"
 	"github.com/airo-ai-builder/dev-runner/internal/probe"
 	"github.com/airo-ai-builder/dev-runner/internal/process"
 	"github.com/airo-ai-builder/dev-runner/internal/sso"
@@ -106,6 +107,16 @@ type preflightAutoAdvanceMsg struct{}
 type cleanDoneMsg struct {
 	Output string
 	Err    error
+}
+
+// prewarmLineMsg carries one line of streamed prewarm output from the warming
+// goroutine to the TUI, so the dialog shows live progress while it runs.
+type prewarmLineMsg string
+
+// prewarmDoneMsg is emitted once the goroutine running a prewarm finishes.
+// Output is streamed via prewarmLineMsg, so only the terminal error remains.
+type prewarmDoneMsg struct {
+	Err error
 }
 
 // cleanPickerOpenMsg requests that the clean picker form be opened. Init()
@@ -197,6 +208,18 @@ type Model struct {
 	cleanErr               error
 	cleanOnly              bool
 
+	// prewarm picker + run state (overlay during PhaseRunning)
+	prewarmPickerForm  *huh.Form
+	prewarmPickerValue *[]int // indices into prewarmGroups
+	prewarmRunning     bool
+	prewarmOutput      string
+	prewarmErr         error
+	prewarmCh          chan tea.Msg       // live progress stream from the warming goroutine
+	prewarmViewport    viewport.Model     // scrollable, soft-wrapping tail of prewarm output
+	prewarmAutoFollow  bool               // false once the user scrolls up; re-armed at bottom
+	prewarmOnHealthy   *prewarm.Selection // non-nil => auto-fire once all healthy
+	prewarmAutoFired   bool
+
 	// Inline env form state (huh-based)
 	envForm        *huh.Form
 	envFormBuilder *envFormBuilder
@@ -271,7 +294,7 @@ type Model struct {
 //     completion the program quits instead of advancing into preflight.
 //     Used by `pnpm run clean` so users get the same picker UI as the
 //     dev-time flows without launching a dev session.
-func NewModel(cfg *config.Config, projectRoot string, openCleanPicker, cleanAllAtStartup, cleanOnly bool) Model {
+func NewModel(cfg *config.Config, projectRoot string, openCleanPicker, cleanAllAtStartup, cleanOnly bool, prewarmOnHealthy *prewarm.Selection) Model {
 	mgr := process.NewManager(cfg.Processes, projectRoot)
 
 	panes := make([]Pane, len(cfg.Processes))
@@ -337,6 +360,9 @@ func NewModel(cfg *config.Config, projectRoot string, openCleanPicker, cleanAllA
 		devSettingsPreset:      "free-trial",
 		controlPlaneBaseURL:    controlPlaneBaseURL(cfg),
 		authType:               controlPlaneAuthType(projectRoot),
+		prewarmOnHealthy:       prewarmOnHealthy,
+		prewarmViewport:        newSoftWrapViewport(80, 24),
+		prewarmAutoFollow:      true,
 		e2eRunner:              e2eRunner,
 		e2ePane:                e2ePane,
 		probeRunner:            probeRunner,
@@ -633,6 +659,37 @@ func controlPlaneBaseURL(cfg *config.Config) string {
 		}
 	}
 	return "http://localhost:4100"
+}
+
+// allHealthCheckedHealthy reports whether every process that defines a health
+// check currently reports healthy. Processes without a health check are
+// ignored. False when no process has reported yet.
+func (m Model) allHealthCheckedHealthy() bool {
+	any := false
+	for i, p := range m.config.Processes {
+		if p.HealthCheck == nil {
+			continue
+		}
+		any = true
+		h := m.manager.Processes[i].Healthy
+		if h == nil || !*h {
+			return false
+		}
+	}
+	return any
+}
+
+// appBaseURL extracts scheme+host from the App process health check, or
+// defaults to the standard local Gasket proxy URL.
+func appBaseURL(cfg *config.Config) string {
+	for _, p := range cfg.Processes {
+		if p.Name == "App" && p.HealthCheck != nil {
+			if parsed, err := url.Parse(p.HealthCheck.URL); err == nil {
+				return parsed.Scheme + "://" + parsed.Host
+			}
+		}
+	}
+	return "https://local.gasket.dev-godaddy.com:8443"
 }
 
 func controlPlaneAuthType(projectRoot string) string {

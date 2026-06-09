@@ -43,7 +43,7 @@ var (
 				Border(lipgloss.DoubleBorder()).
 				BorderForeground(lipgloss.Color("62")).
 				Padding(1, 3).
-				Background(lipgloss.Color("235"))
+				Background(modalBg)
 
 	searchBarStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("229")).

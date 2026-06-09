@@ -14,6 +14,52 @@ const modalBoxMaxWidth = 60
 // DoubleBorder (2) + Padding(1, 3) (6) = 8 columns.
 const modalBoxChrome = 8
 
+// Dedicated caps for the prewarm progress overlay. The shared form cap
+// (modalBoxMaxWidth = 60) is deliberately narrow for short form fields, but a
+// streaming log tail wants far more room — long URLs were being truncated to
+// an ellipsis. Both values are *rendered box* dimensions (border + padding
+// included) so the box never runs past the terminal edge.
+const (
+	prewarmBoxMaxWidth  = 100
+	prewarmBoxMaxHeight = 18
+	// prewarmBoxVChrome is the vertical space the box reserves around the
+	// scrollable viewport: DoubleBorder top+bottom (2) + Padding top+bottom
+	// (2) + header line (1) + blank spacer after header (1) + blank spacer
+	// before footer (1) + footer hint line (1) = 8 rows.
+	prewarmBoxVChrome = 8
+)
+
+// prewarmModalSize returns the interior (viewport) width/height for the
+// prewarm progress overlay, derived from the terminal size and clamped so the
+// box stays on screen and never collapses on tiny terminals. Mirrors
+// modalWidth but with the wider/taller prewarm caps and a height budget.
+func (m *Model) prewarmModalSize() (width, height int) {
+	// Width: fill the terminal minus a small margin, capped at
+	// prewarmBoxMaxWidth, then strip the horizontal chrome. Floor at 30 so a
+	// narrow terminal still shows readable (soft-wrapped) text.
+	box := m.width - 8
+	if m.width <= 0 || box > prewarmBoxMaxWidth {
+		box = prewarmBoxMaxWidth
+	}
+	width = box - modalBoxChrome
+	if width < 30 {
+		width = 30
+	}
+
+	// Height: roughly half the terminal, capped at prewarmBoxMaxHeight, then
+	// strip the vertical chrome. Floor at 4 visible rows so the viewport stays
+	// usable on short terminals.
+	hbox := m.height / 2
+	if m.height <= 0 || hbox > prewarmBoxMaxHeight {
+		hbox = prewarmBoxMaxHeight
+	}
+	height = hbox - prewarmBoxVChrome
+	if height < 4 {
+		height = 4
+	}
+	return width, height
+}
+
 // modalFormKeymap is huh's default keymap with Esc bound to Quit so modals
 // are dismissable. ctrl+c is intentionally omitted — the global key handler
 // intercepts ctrl+c before huh sees it, so binding it here would produce
@@ -52,6 +98,7 @@ func (m *Model) applyModalForm(f *huh.Form) *huh.Form {
 	}
 	f.WithKeyMap(modalFormKeymap)
 	f.WithWidth(m.modalWidth())
+	f.WithTheme(huh.ThemeFunc(modalTheme))
 	return f
 }
 
@@ -71,7 +118,7 @@ func (m *Model) resizeForms() {
 	for _, f := range []*huh.Form{m.envForm, m.fixSelectorForm, m.cleanPickerForm} {
 		m.applyInlineForm(f)
 	}
-	for _, f := range []*huh.Form{m.devSettingsForm, m.quitConfirmForm, m.settingsForm, m.e2ePickerForm, m.probePickerForm, m.probeCustomRunForm, m.probeEnvEditForm} {
+	for _, f := range []*huh.Form{m.devSettingsForm, m.quitConfirmForm, m.settingsForm, m.e2ePickerForm, m.probePickerForm, m.probeCustomRunForm, m.probeEnvEditForm, m.prewarmPickerForm} {
 		m.applyModalForm(f)
 	}
 }
@@ -87,12 +134,18 @@ func stepForm(f *huh.Form, msg tea.Msg) (*huh.Form, tea.Cmd) {
 	return f, cmd
 }
 
+// prewarmPickerActive reports whether the prewarm picker overlay is open.
+func (m Model) prewarmPickerActive() bool {
+	return m.prewarmPickerForm != nil
+}
+
 // anyModalOpen reports whether any overlay form is active. Used to gate
 // background interaction (viewport scroll, mouse click hint, etc.) so the
 // user cannot interact with the underlying UI while a modal is visible.
 func (m Model) anyModalOpen() bool {
 	return m.settingsForm != nil || m.devSettingsForm != nil || m.quitConfirmForm != nil ||
-		m.e2ePickerActive() || m.probePickerActive() || m.probeCustomRunActive() || m.probeEnvEditActive()
+		m.e2ePickerActive() || m.probePickerActive() || m.probeCustomRunActive() || m.probeEnvEditActive() ||
+		m.prewarmPickerActive() || m.prewarmRunning || m.prewarmErr != nil
 }
 
 // forwardToActiveForm routes any tea.Msg to the currently-open form's
@@ -125,6 +178,8 @@ func (m *Model) forwardToActiveForm(msg tea.Msg) tea.Cmd {
 		return m.updateProbeCustomRun(msg)
 	case m.probeEnvEditForm != nil:
 		return m.updateProbeEnvEdit(msg)
+	case m.prewarmPickerForm != nil:
+		return m.updatePrewarmPicker(msg)
 	}
 	return nil
 }
