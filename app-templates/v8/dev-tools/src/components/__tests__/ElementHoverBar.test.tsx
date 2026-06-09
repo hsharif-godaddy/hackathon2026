@@ -2,9 +2,23 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { createElement } from 'react';
 import type { HoveredElement } from '../../hooks/useImageHoverDetection';
+import { safePostMessage } from '../../utils/postMessage';
+
+type ImageHoveredElement = Extract<HoveredElement, { type: 'image' }>;
+
+const textFixMock = vi.hoisted(() => ({
+  request: vi.fn(),
+  accept: vi.fn(),
+  reject: vi.fn(),
+  reset: vi.fn(),
+}));
+
+const formatOverrideControlsMock = vi.hoisted(() => ({
+  render: vi.fn(),
+}));
 
 vi.mock('../../utils/postMessage', () => ({
   safePostMessage: vi.fn(),
@@ -28,6 +42,7 @@ vi.mock('../../utils/element-detection', () => ({
   isClickable: vi.fn(() => false),
   isTextElement: vi.fn(() => false),
   isTextBlockElement: vi.fn(() => false),
+  isListElement: vi.fn(() => false),
 }));
 
 vi.mock('../../utils/selection-overlay', () => ({
@@ -44,10 +59,10 @@ vi.mock('../../utils/popover-coordinator', () => ({
 vi.mock('../../hooks/useTextFix', () => ({
   useTextFix: vi.fn(() => ({
     state: { status: 'idle' },
-    request: vi.fn(),
-    accept: vi.fn(),
-    reject: vi.fn(),
-    reset: vi.fn(),
+    request: textFixMock.request,
+    accept: textFixMock.accept,
+    reject: textFixMock.reject,
+    reset: textFixMock.reset,
   })),
 }));
 
@@ -59,6 +74,12 @@ vi.mock('../BoldButton', () => ({ default: () => null }));
 vi.mock('../ItalicButton', () => ({ default: () => null }));
 vi.mock('../TextColorButton', () => ({ default: () => null }));
 vi.mock('../TextSizeStepperButton', () => ({ default: () => null }));
+vi.mock('../FormatOverrideControls', () => ({
+  default: (props: unknown) => {
+    formatOverrideControlsMock.render(props);
+    return <button title="Bound format controls" />;
+  },
+}));
 
 import ElementHoverBar from '../ElementHoverBar';
 
@@ -71,6 +92,21 @@ function makeImageElement(attrs: Record<string, string> = {}): HTMLElement {
   } as DOMRect));
   document.body.appendChild(img);
   return img;
+}
+
+function makeImageHover(
+  element: HTMLElement,
+  overrides: Partial<Omit<ImageHoveredElement, 'type' | 'element'>> = {},
+): ImageHoveredElement {
+  return {
+    type: 'image',
+    element,
+    imageUrl: 'https://commerce-cdn.example.com/product-1.jpg',
+    isMediaSlot: false,
+    slotPath: null,
+    isVideo: false,
+    ...overrides,
+  };
 }
 
 // toolbarMode is owned by useImageHoverDetection in production, but for unit
@@ -88,106 +124,169 @@ function renderHoverBar(hoveredElement: HoveredElement) {
   );
 }
 
+function openToolbar(element: HTMLElement): void {
+  fireEvent.click(element);
+}
+
 beforeEach(() => {
   cleanup();
   vi.clearAllMocks();
   document.body.innerHTML = '';
   vi.unstubAllEnvs();
+  vi.stubGlobal('ResizeObserver', class ResizeObserver {
+    observe = vi.fn();
+    disconnect = vi.fn();
+  });
 });
 
 describe('ElementHoverBar - Commerce product image gating', () => {
-  it('shows Replace/Modify for images on non-Commerce apps', () => {
+  it('shows Replace/Modify for images on non-Commerce apps', async () => {
     vi.stubEnv('VITE_GODADDY_STORE_ID', '');
 
     const img = makeImageElement();
-    const hovered: HoveredElement = {
-      type: 'image',
-      element: img,
-      imageUrl: 'https://commerce-cdn.example.com/product-1.jpg',
-      isMediaSlot: false,
-      slotPath: null,
-    };
+    const hovered = makeImageHover(img);
 
     renderHoverBar(hovered);
 
-    expect(screen.queryByTitle('Replace image')).not.toBeNull();
-    expect(screen.queryByTitle('Modify image')).not.toBeNull();
+    openToolbar(img);
+
+    expect(await screen.findByTitle('Replace image')).not.toBeNull();
+    expect(await screen.findByTitle('Modify image')).not.toBeNull();
   });
 
   it('hides Replace/Modify for Commerce product images (no data-dev-id, not a media slot)', () => {
     vi.stubEnv('VITE_GODADDY_STORE_ID', 'store-123');
 
     const img = makeImageElement(); // No data-dev-id
-    const hovered: HoveredElement = {
-      type: 'image',
-      element: img,
-      imageUrl: 'https://commerce-cdn.example.com/product-1.jpg',
-      isMediaSlot: false,
-      slotPath: null,
-    };
+    const hovered = makeImageHover(img);
 
     renderHoverBar(hovered);
+    openToolbar(img);
 
     expect(screen.queryByTitle('Replace image')).toBeNull();
     expect(screen.queryByTitle('Modify image')).toBeNull();
   });
 
-  it('shows Replace/Modify for Commerce app images that ARE media slots', () => {
+  it('shows Replace/Modify for Commerce app images that ARE media slots', async () => {
     vi.stubEnv('VITE_GODADDY_STORE_ID', 'store-123');
 
     const img = makeImageElement();
-    const hovered: HoveredElement = {
-      type: 'image',
-      element: img,
+    const hovered = makeImageHover(img, {
       imageUrl: '/airo-assets/images/hero.jpg',
       isMediaSlot: true,
       slotPath: 'hero',
-    };
+    });
 
     renderHoverBar(hovered);
+    openToolbar(img);
 
-    expect(screen.queryByTitle('Replace image')).not.toBeNull();
-    expect(screen.queryByTitle('Modify image')).not.toBeNull();
+    expect(await screen.findByTitle('Replace image')).not.toBeNull();
+    expect(await screen.findByTitle('Modify image')).not.toBeNull();
   });
 
-  it('shows Replace/Modify for Commerce app images with data-dev-id (user source code)', () => {
+  it('shows Replace/Modify for Commerce app images with data-dev-id (user source code)', async () => {
     vi.stubEnv('VITE_GODADDY_STORE_ID', 'store-123');
 
     const img = makeImageElement({ 'data-dev-id': 'src/pages/index.tsx:15' });
-    const hovered: HoveredElement = {
-      type: 'image',
-      element: img,
+    const hovered = makeImageHover(img, {
       imageUrl: 'https://example.com/banner.jpg',
-      isMediaSlot: false,
-      slotPath: null,
-    };
+    });
 
     renderHoverBar(hovered);
+    openToolbar(img);
 
-    expect(screen.queryByTitle('Replace image')).not.toBeNull();
-    expect(screen.queryByTitle('Modify image')).not.toBeNull();
+    expect(await screen.findByTitle('Replace image')).not.toBeNull();
+    expect(await screen.findByTitle('Modify image')).not.toBeNull();
   });
 
-  it('still shows Reference and Edit with AI for Commerce product images', () => {
+  it('still shows Reference and Edit with AI for Commerce product images', async () => {
     vi.stubEnv('VITE_GODADDY_STORE_ID', 'store-123');
 
     const img = makeImageElement();
-    const hovered: HoveredElement = {
-      type: 'image',
-      element: img,
-      imageUrl: 'https://commerce-cdn.example.com/product-1.jpg',
-      isMediaSlot: false,
-      slotPath: null,
-    };
+    const hovered = makeImageHover(img);
 
     renderHoverBar(hovered);
+    openToolbar(img);
 
-    expect(screen.queryByTitle('Add as reference')).not.toBeNull();
-    expect(screen.queryByTitle('Edit with AI')).not.toBeNull();
+    expect(await screen.findByTitle('Add as reference')).not.toBeNull();
+    expect(await screen.findByTitle('Edit with AI')).not.toBeNull();
   });
 });
 
-import { safePostMessage } from '../../utils/postMessage';
+describe('ElementHoverBar - bound text formatting gating', () => {
+  it('shows bound format controls for eligible bound text', async () => {
+    const detection = await import('../../utils/element-detection');
+    vi.mocked(detection.isTextElement).mockReturnValue(true);
+
+    const h1 = document.createElement('h1');
+    h1.textContent = 'Title';
+    h1.setAttribute('data-dev-id', 'abc123');
+    h1.setAttribute('data-dev-line', '7');
+    h1.setAttribute('data-dev-file', '/app/src/pages/index.tsx');
+    h1.setAttribute('data-dev-bound-text', 'true');
+    h1.setAttribute('data-dev-bound-source-kind', 'bound-expression');
+    h1.setAttribute('data-dev-bound-expression-hash', `sha256:${'a'.repeat(64)}`);
+    h1.getBoundingClientRect = vi.fn(() => ({
+      top: 100, left: 100, width: 200, height: 50, right: 300, bottom: 150, x: 100, y: 100, toJSON: () => {},
+    } as DOMRect));
+    document.body.appendChild(h1);
+
+    renderHoverBar({ type: 'content', element: h1 });
+    openToolbar(h1);
+
+    expect(await screen.findByTitle('Bound format controls')).not.toBeNull();
+  });
+
+  it('uses ancestor bound format controls for children inside bound text', async () => {
+    const detection = await import('../../utils/element-detection');
+    vi.mocked(detection.isTextElement).mockReturnValue(true);
+
+    const h1 = document.createElement('h1');
+    h1.setAttribute('data-dev-id', 'abc123');
+    h1.setAttribute('data-dev-line', '7');
+    h1.setAttribute('data-dev-file', '/app/src/pages/index.tsx');
+    h1.setAttribute('data-dev-bound-text', 'true');
+    h1.setAttribute('data-dev-bound-source-kind', 'bound-expression');
+    h1.setAttribute('data-dev-bound-expression-hash', `sha256:${'a'.repeat(64)}`);
+
+    const child = document.createElement('span');
+    child.textContent = 'Title';
+    child.getBoundingClientRect = vi.fn(() => ({
+      top: 100, left: 100, width: 200, height: 50, right: 300, bottom: 150, x: 100, y: 100, toJSON: () => {},
+    } as DOMRect));
+    h1.appendChild(child);
+    document.body.appendChild(h1);
+
+    renderHoverBar({ type: 'content', element: child });
+    openToolbar(child);
+
+    expect(await screen.findByTitle('Bound format controls')).not.toBeNull();
+    expect(formatOverrideControlsMock.render).toHaveBeenCalledWith(expect.objectContaining({ selectedElement: h1 }));
+  });
+
+  it('blocks bound format controls for loop-rendered bound text', async () => {
+    const first = document.createElement('li');
+    const second = document.createElement('li');
+    for (const li of [first, second]) {
+      li.textContent = 'Product';
+      li.setAttribute('data-dev-id', 'loopid');
+      li.setAttribute('data-dev-line', '9');
+      li.setAttribute('data-dev-file', '/app/src/pages/index.tsx');
+      li.setAttribute('data-dev-bound-text', 'true');
+      li.setAttribute('data-dev-bound-source-kind', 'content-key-template');
+      li.getBoundingClientRect = vi.fn(() => ({
+        top: 100, left: 100, width: 200, height: 50, right: 300, bottom: 150, x: 100, y: 100, toJSON: () => {},
+      } as DOMRect));
+      document.body.appendChild(li);
+    }
+
+    renderHoverBar({ type: 'content', element: first });
+    openToolbar(first);
+
+    expect(await screen.findByTitle('Add as reference')).not.toBeNull();
+    expect(screen.queryByTitle('Bound format controls')).toBeNull();
+  });
+});
 
 const trackCalls = () =>
   vi.mocked(safePostMessage).mock.calls.filter(
@@ -204,18 +303,16 @@ function makeTextHover(): HoveredElement {
     top: 100, left: 100, width: 200, height: 30, right: 300, bottom: 130, x: 100, y: 100, toJSON: () => {},
   } as DOMRect));
   document.body.appendChild(p);
-  return { type: 'text', element: p } as HoveredElement;
+  return { type: 'content', element: p };
 }
 
 describe('ElementHoverBar - tracking', () => {
   it('fires toolbar-view impression with surface=image when toolbar opens on an image', () => {
     vi.stubEnv('VITE_GODADDY_STORE_ID', '');
     const img = makeImageElement();
-    const hovered: HoveredElement = {
-      type: 'image', element: img, imageUrl: 'x', isMediaSlot: false, slotPath: null,
-    };
+    const hovered = makeImageHover(img, { imageUrl: 'x' });
     renderHoverBar(hovered);
-    fireEvent.click(img);
+    openToolbar(img);
     expect(findTrackCall('devtools.toolbar.view')).toEqual([
       window.parent,
       { type: 'TRACK_EVENT', kind: 'impression', eid: 'devtools.toolbar.view', properties: { surface: 'image' } },
@@ -225,7 +322,7 @@ describe('ElementHoverBar - tracking', () => {
   it('fires toolbar-view impression with surface=text when toolbar opens on a text element', () => {
     const hovered = makeTextHover();
     renderHoverBar(hovered);
-    fireEvent.click(hovered.element);
+    openToolbar(hovered.element);
     expect(findTrackCall('devtools.toolbar.view')).toEqual([
       window.parent,
       { type: 'TRACK_EVENT', kind: 'impression', eid: 'devtools.toolbar.view', properties: { surface: 'text' } },
@@ -235,11 +332,9 @@ describe('ElementHoverBar - tracking', () => {
   it('fires replace_image click when Replace is clicked', () => {
     vi.stubEnv('VITE_GODADDY_STORE_ID', '');
     const img = makeImageElement();
-    const hovered: HoveredElement = {
-      type: 'image', element: img, imageUrl: 'https://x/y.jpg', isMediaSlot: false, slotPath: null,
-    };
+    const hovered = makeImageHover(img, { imageUrl: 'https://x/y.jpg' });
     renderHoverBar(hovered);
-    fireEvent.click(img);
+    openToolbar(img);
     fireEvent.click(screen.getByTitle('Replace image'));
     expect(findTrackCall('devtools.toolbar.replace_image')).toBeTruthy();
   });
@@ -247,11 +342,9 @@ describe('ElementHoverBar - tracking', () => {
   it('fires modify_image click when Modify is clicked', () => {
     vi.stubEnv('VITE_GODADDY_STORE_ID', '');
     const img = makeImageElement();
-    const hovered: HoveredElement = {
-      type: 'image', element: img, imageUrl: 'https://x/y.jpg', isMediaSlot: false, slotPath: null,
-    };
+    const hovered = makeImageHover(img, { imageUrl: 'https://x/y.jpg' });
     renderHoverBar(hovered);
-    fireEvent.click(img);
+    openToolbar(img);
     fireEvent.click(screen.getByTitle('Modify image'));
     expect(findTrackCall('devtools.toolbar.modify_image')).toBeTruthy();
   });
@@ -259,11 +352,9 @@ describe('ElementHoverBar - tracking', () => {
   it('fires multi_select_add click when Reference is clicked', () => {
     vi.stubEnv('VITE_GODADDY_STORE_ID', '');
     const img = makeImageElement();
-    const hovered: HoveredElement = {
-      type: 'image', element: img, imageUrl: 'https://x/y.jpg', isMediaSlot: false, slotPath: null,
-    };
+    const hovered = makeImageHover(img, { imageUrl: 'https://x/y.jpg' });
     renderHoverBar(hovered);
-    fireEvent.click(img);
+    openToolbar(img);
     fireEvent.click(screen.getByTitle('Add as reference'));
     expect(findTrackCall('devtools.toolbar.multi_select_add')).toBeTruthy();
   });
@@ -271,11 +362,9 @@ describe('ElementHoverBar - tracking', () => {
   it('fires sparkles click when Edit with AI is clicked', () => {
     vi.stubEnv('VITE_GODADDY_STORE_ID', '');
     const img = makeImageElement();
-    const hovered: HoveredElement = {
-      type: 'image', element: img, imageUrl: 'https://x/y.jpg', isMediaSlot: false, slotPath: null,
-    };
+    const hovered = makeImageHover(img, { imageUrl: 'https://x/y.jpg' });
     renderHoverBar(hovered);
-    fireEvent.click(img);
+    openToolbar(img);
     fireEvent.click(screen.getByTitle('Edit with AI'));
     expect(findTrackCall('devtools.toolbar.sparkles')).toBeTruthy();
   });

@@ -1,12 +1,22 @@
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { transformSync } from '@babel/core';
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import jsxSourceMapper from '../index.js';
+import { isFormatBoundTextRuntimeAvailable } from '../format-bound-text.js';
 
-function transform(code: string, filename = '/app/src/pages/index.tsx') {
+const tempRoots: string[] = [];
+
+function transform(
+  code: string,
+  filename = '/app/src/pages/index.tsx',
+  pluginOptions: Record<string, unknown> = { formatBoundTextRuntime: true },
+) {
   const result = transformSync(code, {
     filename,
     parserOpts: { plugins: ['jsx'] },
-    plugins: [jsxSourceMapper],
+    plugins: [[jsxSourceMapper, pluginOptions]],
     configFile: false,
     babelrc: false,
   });
@@ -15,6 +25,34 @@ function transform(code: string, filename = '/app/src/pages/index.tsx') {
   }
   return result.code;
 }
+
+function createTempRoot(): string {
+  const root = join(tmpdir(), `source-mapper-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  mkdirSync(root, { recursive: true });
+  tempRoots.push(root);
+  return root;
+}
+
+function write(root: string, file: string, content = ''): void {
+  const path = join(root, file);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content, 'utf8');
+}
+
+function seedFormatBoundTextRuntime(root: string): void {
+  write(root, 'format-overrides-plugin.ts');
+  write(root, 'src/components/FormattedBoundText.tsx');
+  write(root, 'src/lib/format-overrides.ts');
+  write(root, 'src/lib/format-overrides-store.ts');
+  write(root, 'vite.config.ts', 'import { formatOverridesPlugin } from "./format-overrides-plugin";\n');
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  for (const root of tempRoots.splice(0)) {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 describe('jsxSourceMapper — data-dev-dynamic', () => {
   it('should mark elements with variable expressions', () => {
@@ -534,5 +572,183 @@ describe('jsxSourceMapper — data-dev-id', () => {
     expect(secondH1Line).toBeDefined();
     // Different source lines — UI uses this to distinguish from loop-rendering
     expect(firstH1Line).not.toBe(secondH1Line);
+  });
+});
+
+describe('jsxSourceMapper — bound text format overrides', () => {
+  it('does not instrument the format override runtime component', () => {
+    const output = transform(`
+      export function FormattedBoundText({ children }) {
+        return <span data-airo-formatted-bound-text="true">{children}</span>;
+      }
+    `, '/app/src/components/FormattedBoundText.tsx');
+
+    expect(output).not.toContain('import { FormattedBoundText } from "@/components/FormattedBoundText";');
+    expect(output).not.toContain('data-dev-bound-text');
+    expect(output).not.toContain('data-dev-id');
+  });
+
+  it('wraps eligible generic bound text with FormattedBoundText', () => {
+    const output = transform(`
+      const user = { name: 'Ada' };
+      export default () => <h1>{user.name}</h1>;
+    `);
+
+    expect(output).toContain('import { FormattedBoundText } from "@/components/FormattedBoundText";');
+    expect(output).toContain('data-dev-bound-text="true"');
+    expect(output).toContain('data-dev-bound-source-kind="bound-expression"');
+    expect(output).toContain('data-dev-bound-expression-hash="sha256:');
+    expect(output).toContain('<FormattedBoundText');
+    expect(output).toContain('devId=');
+    expect(output).toContain('sourceKind: "bound-expression"');
+    expect(output).toContain('{user.name}');
+  });
+
+  it('wraps eligible motion text elements with FormattedBoundText', () => {
+    const output = transform(`
+      const user = { name: 'Ada' };
+      export default () => <motion.h1>{user.name}</motion.h1>;
+    `);
+
+    expect(output).toContain('import { FormattedBoundText } from "@/components/FormattedBoundText";');
+    expect(output).toContain('data-dev-bound-text="true"');
+    expect(output).toContain('data-dev-bound-source-kind="bound-expression"');
+    expect(output).toContain('<FormattedBoundText');
+    expect(output).toContain('tagName: "h1"');
+  });
+
+  it('does not emit FormattedBoundText imports when the runtime files are absent', () => {
+    const root = createTempRoot();
+    const output = transform(
+      `
+        const user = { name: 'Ada' };
+        export default () => <h1>{user.name}</h1>;
+      `,
+      join(root, 'src/pages/index.tsx'),
+      {},
+    );
+
+    expect(output).not.toContain('import { FormattedBoundText } from "@/components/FormattedBoundText";');
+    expect(output).not.toContain('<FormattedBoundText');
+    expect(output).toContain('data-dev-dynamic="true"');
+  });
+
+  it('emits FormattedBoundText wrappers when the runtime and Vite plugin are installed', () => {
+    const root = createTempRoot();
+    seedFormatBoundTextRuntime(root);
+
+    const output = transform(
+      `
+        const user = { name: 'Ada' };
+        export default () => <h1>{user.name}</h1>;
+      `,
+      join(root, 'src/pages/index.tsx'),
+      {},
+    );
+
+    expect(output).toContain('import { FormattedBoundText } from "@/components/FormattedBoundText";');
+    expect(output).toContain('<FormattedBoundText');
+  });
+
+  it('warns and skips format wrapping when the Vite config cannot be read', () => {
+    const root = createTempRoot();
+    write(root, 'format-overrides-plugin.ts');
+    write(root, 'src/components/FormattedBoundText.tsx');
+    write(root, 'src/lib/format-overrides.ts');
+    write(root, 'src/lib/format-overrides-store.ts');
+    mkdirSync(join(root, 'vite.config.ts'));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(isFormatBoundTextRuntimeAvailable(join(root, 'src/pages/index.tsx'))).toBe(false);
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[source-mapper] Unable to read Vite config while checking format override runtime',
+      expect.objectContaining({ configFile: join(root, 'vite.config.ts') }),
+    );
+  });
+
+  it('does not infer runtime availability from cwd when the filename has no src segment', () => {
+    const root = createTempRoot();
+    seedFormatBoundTextRuntime(root);
+    const originalCwd = process.cwd();
+
+    try {
+      process.chdir(root);
+      expect(isFormatBoundTextRuntimeAvailable(join(root, 'pages/index.tsx'))).toBe(false);
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  it('uses content-key guards for recognized virtual content fields', () => {
+    const output = transform(`
+      import { home } from 'virtual:content';
+      export default () => <h1>{home.hero.title}</h1>;
+    `);
+
+    expect(output).toContain('data-dev-content-key="home.hero.title"');
+    expect(output).toContain('data-dev-bound-source-kind="content-key"');
+    expect(output).toContain('contentKey: "home.hero.title"');
+    expect(output).toContain('expressionHash: null');
+  });
+
+  it('does not wrap loop-rendered content-template expressions in v1', () => {
+    const output = transform(`
+      import { products } from 'virtual:content';
+      export default () => <ul>{products.map((p) => <li>{p.name}</li>)}</ul>;
+    `);
+
+    expect(output).toContain('data-dev-content-key-template="products[].name"');
+    expect(output).not.toContain('data-dev-bound-text="true"');
+    expect(output).not.toContain('<FormattedBoundText');
+  });
+
+  it('does not wrap generic expressions inside non-content .map() output in v1', () => {
+    const output = transform(`
+      const items = [{ name: 'Ada' }];
+      export default () => <ul>{items.map((item) => <li>{item.name}</li>)}</ul>;
+    `);
+
+    expect(output).not.toContain('data-dev-bound-text="true"');
+    expect(output).not.toContain('<FormattedBoundText');
+  });
+
+  it('does not wrap unsupported tags or mixed children', () => {
+    const unsupported = transform(`const user = { name: 'Ada' }; export default () => <button>{user.name}</button>;`);
+    const mixed = transform(`const user = { name: 'Ada' }; export default () => <h1>Hello {user.name}</h1>;`);
+
+    expect(unsupported).not.toContain('<FormattedBoundText');
+    expect(mixed).not.toContain('<FormattedBoundText');
+  });
+
+  it('does not wrap direct JSX or fragment expression children', () => {
+    const elementExpression = transform(`export default () => <h1>{<span>Ada</span>}</h1>;`);
+    const fragmentExpression = transform(`export default () => <h1>{<>Ada</>}</h1>;`);
+
+    expect(elementExpression).not.toContain('<FormattedBoundText');
+    expect(fragmentExpression).not.toContain('<FormattedBoundText');
+  });
+
+  it('injects the wrapper in production while omitting dev-only data attributes', () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const output = transform(`
+        const user = { name: 'Ada' };
+        export default () => <h1>{user.name}</h1>;
+      `);
+
+      expect(output).toContain('<FormattedBoundText');
+      expect(output).not.toContain('data-dev-bound-text');
+      expect(output).not.toContain('data-dev-id');
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+  });
+
+  it('does not double-wrap already wrapped bound text', () => {
+    const first = transform(`const user = { name: 'Ada' }; export default () => <h1>{user.name}</h1>;`);
+    const second = transform(first);
+
+    expect((second.match(/<FormattedBoundText/g) ?? []).length).toBe(1);
   });
 });

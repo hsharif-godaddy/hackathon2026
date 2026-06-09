@@ -213,6 +213,22 @@ export class GitUtils {
   }
 
   /**
+   * Commit only the provided pathspecs.
+   *
+   * `git commit -- <path>` commits the named paths without sweeping unrelated
+   * staged entries into the commit. This is useful for scoped sidecar writes
+   * that must coexist with an agent turn that may already have staged files.
+   */
+  async commitFiles(
+    repoPath: string,
+    message: string,
+    files: string[],
+    options: GitCommandOptions = {}
+  ): Promise<GitCommandResult> {
+    return this.executeGitCommand(['commit', '-m', message, '--', ...files], repoPath, options);
+  }
+
+  /**
    * Amend the current HEAD commit message
    */
   async amendCommitMessage(

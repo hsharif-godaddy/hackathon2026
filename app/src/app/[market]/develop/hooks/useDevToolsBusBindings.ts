@@ -20,7 +20,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type { RuntimeErrorData } from '@/types/runtime-error'
-import type { BusEventType } from '@/utils/eventBus'
+import type { BusEventType, BusFormatOverrideUpdatePayload } from '@/utils/eventBus'
 import { dispatch as dispatchBusEvent, off, on } from '@/utils/eventBus'
 import { postMessageToIframe } from '@/utils/postMessage'
 
@@ -44,6 +44,7 @@ export interface DevToolsBusBindingsDeps {
   sendTextUpdate: (data: unknown) => void
   sendTextFix: (data: unknown) => void
   sendStyleUpdate: (data: unknown) => void
+  sendFormatOverrideUpdate: (data: BusFormatOverrideUpdatePayload) => void
   sendUserRequestedFix: (errorData: RuntimeErrorData) => void
   sendEditModeMessage: (enabled: boolean) => void
   isEditModeEnabled: boolean
@@ -71,6 +72,7 @@ const REGISTERED_TYPES: readonly BusEventType[] = [
   'TEXT_FIX_ACCEPTED',
   'TEXT_FIX_REJECTED',
   'STYLE_UPDATED',
+  'FORMAT_OVERRIDE_UPDATED',
   'EDIT_WITH_AI',
   'REMOVE_SELECTION_FROM_PREVIEW',
   'CLEAR_AI_EDIT_CONTEXT',
@@ -152,6 +154,12 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
       const cur = d()
       logger.info('develop-page.style-updated-from-iframe', { appId: cur.appId })
       cur.sendStyleUpdate(m.data)
+    })
+
+    on('FORMAT_OVERRIDE_UPDATED', (m) => {
+      const cur = d()
+      logger.info('develop-page.format-override-from-iframe', { appId: cur.appId })
+      cur.sendFormatOverrideUpdate(m.data)
     })
 
     on('EDIT_WITH_AI', (m) => {

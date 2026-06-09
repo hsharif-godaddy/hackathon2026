@@ -121,6 +121,54 @@ export interface StyleUpdateData {
   }
 }
 
+export interface FormatOverrideTarget {
+  file: string
+  tagName: string
+  sourceKind: 'bound-expression' | 'content-key' | 'content-key-template'
+  contentKey?: string | null
+  contentKeyTemplate?: string | null
+  expressionHash?: string | null
+}
+
+export interface FormatOverrideUpdateData {
+  commitId?: string
+  devId: string
+  target: FormatOverrideTarget
+  marks: {
+    bold?: boolean
+    italic?: boolean
+    color?: string | null
+  }
+}
+
+export type FormatOverrideUpdateResult =
+  | { success: true; commitHash?: string; removed?: boolean }
+  | { success: false; error: string }
+
+const FORMAT_OVERRIDE_UPDATE_FALLBACK_ERROR = 'Format override update failed'
+
+function parseFormatOverrideUpdateResult(value: unknown): FormatOverrideUpdateResult {
+  if (!value || typeof value !== 'object') {
+    return { success: false, error: FORMAT_OVERRIDE_UPDATE_FALLBACK_ERROR }
+  }
+
+  const data = value as Record<string, unknown>
+  if (data.success === true) {
+    return {
+      success: true,
+      ...(typeof data.commitHash === 'string' ? { commitHash: data.commitHash } : {}),
+      ...(typeof data.removed === 'boolean' ? { removed: data.removed } : {}),
+    }
+  }
+
+  return {
+    success: false,
+    error: typeof data.error === 'string' && data.error
+      ? data.error
+      : FORMAT_OVERRIDE_UPDATE_FALLBACK_ERROR,
+  }
+}
+
 export interface ImageReplaceData {
   elementInfo: {
     tagName: string
@@ -615,6 +663,33 @@ export class AppService {
   }
 
   /**
+   * Persist bound-text format overrides through the agents sidecar route.
+   */
+  async updateFormatOverride(appId: string, data: FormatOverrideUpdateData): Promise<FormatOverrideUpdateResult> {
+    const apiUrl = await buildDynamicApiUrl('format-overrides', appId)
+    const response = await agentFetch(apiUrl, {
+      siteId: appId,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        devId: data.devId,
+        target: data.target,
+        marks: data.marks,
+      })
+    })
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => null) as { error?: unknown } | null
+      const message = typeof errorBody?.error === 'string'
+        ? errorBody.error
+        : `Failed to send format override update to API: ${response.status}`
+      throw new Error(message)
+    }
+
+    return parseFormatOverrideUpdateResult(await response.json())
+  }
+
+  /**
    * Replace image using AST-based approach
    * Returns success:true if AST replacement worked, or fallbackRequired:true if LLM should handle it
    */
@@ -1043,4 +1118,3 @@ export class AppService {
 
 // Export a singleton instance for convenience
 export const appService = AppService.getInstance()
-

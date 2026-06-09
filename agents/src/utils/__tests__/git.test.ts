@@ -100,6 +100,25 @@ describe('GitUtils', () => {
   });
 
   describe('commitTree', () => {
+    it('should commit only the provided pathspec when files are specified', async () => {
+      mockTasks.runCommandSync.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        executionTimeMs: 0,
+        taskId: 't',
+      });
+
+      await gitUtils.commitFiles('/app', 'Update format overrides', ['format-overrides/pages/index.json']);
+
+      const callArgs = mockTasks.runCommandSync.mock.calls[0][0];
+      expect(callArgs.command).toContain('commit');
+      expect(callArgs.command).toContain('Update format overrides');
+      expect(callArgs.command).toContain('--');
+      expect(callArgs.command).toContain('format-overrides/pages/index.json');
+    });
+
     it('should create orphan commit when no parent specified', async () => {
       mockTasks.runCommandSync.mockResolvedValueOnce({
         exitCode: 0,

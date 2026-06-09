@@ -1,11 +1,13 @@
 import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { URL } from "node:url";
 import sourceMapperPlugin from "./source-mapper/src/index";
 import { devToolsPlugin } from "./dev-tools/src/vite-plugin";
 import { fullStoryPlugin } from "./fullstory-plugin";
 import { errorInterceptorPlugin } from "./dev-tools/src/vite-error-interceptor";
 import { mediaVersionsPlugin } from "./dev-tools/src/vite-media-versions-plugin";
+import { formatOverridesPlugin } from "./format-overrides-plugin";
 
 function extractHostname(value: string): string {
 	try {
@@ -70,9 +72,10 @@ export default defineConfig(({ mode, isSsrBuild }) => ({
 			babel: {
 				plugins: [sourceMapperPlugin],
 			},
-		}),
-		apiDevPlugin(),
-		...(mode === "development"
+			}),
+			apiDevPlugin(),
+			formatOverridesPlugin(__dirname),
+			...(mode === "development"
 			? [
 					devToolsPlugin() as Plugin,
 					fullStoryPlugin(),

@@ -28,6 +28,8 @@ import TextColorButton from "./TextColorButton";
 import TextSizeStepperButton from "./TextSizeStepperButton";
 import FontFamilyButton from "./FontFamilyButton";
 import { nextOpenMenu, type HoverBarMenuId } from "../utils/popover-coordinator";
+import FormatOverrideControls from "./FormatOverrideControls";
+import { findFormatOverrideElement, isLoopRenderedElement } from "../utils/formatOverrideMessages";
 
 
 const OUTLINE_PAD = 8;
@@ -475,11 +477,10 @@ export default function ElementHoverBar({
   // Bold/Italic: show for any text-bearing element (less strict than isTextEditable
   // which also rejects data-dev-dynamic — we only need class toggle, not text editing).
   // Suppress for loop-rendered elements (multiple DOM nodes from one source element).
-  const devId = element.getAttribute("data-dev-id");
-  const devLine = element.getAttribute("data-dev-line");
-  const isLoopRendered = !!devId && !!devLine &&
-    document.querySelectorAll(`[data-dev-id="${devId}"][data-dev-line="${devLine}"]`).length > 1;
-  const elementIsText = !isImage && !isLoopRendered && isTextElement(element) && !!element.textContent?.trim();
+  const isLoopRendered = isLoopRenderedElement(element);
+  const boundFormatElement = !isImage ? findFormatOverrideElement(element) : null;
+  const isBoundTextFormatEligible = !!boundFormatElement && !!boundFormatElement.textContent?.trim();
+  const elementIsText = !isImage && !isLoopRendered && !isBoundTextFormatEligible && isTextElement(element) && !!element.textContent?.trim();
   const targetEl = toolbarElementRef.current || element;
   // Fix is available on any text element with non-trivial text content. The
   // agent prompt handles HTML preservation, and the commit always goes
@@ -545,6 +546,9 @@ export default function ElementHoverBar({
             />
           )}
         </>
+      )}
+      {isBoundTextFormatEligible && (
+        <FormatOverrideControls selectedElement={boundFormatElement} colorMenu={menuController("color")} />
       )}
       {elementIsText && (
         <>

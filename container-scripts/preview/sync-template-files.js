@@ -295,11 +295,106 @@ const SYNC_MANIFEST = [
       '29998491ae42daa36a849f98768adcf7', // 7f6cf57d0 - prod mode refactor
       'e2afec2400ba08ac1e3e1578ab6cb057', // 8b205e08b - hooks and stores introduction
       '4999ddbeb0b0fa89df23daf9cd01eacb', // 451020eac - initial v8 template vite.config.ts shape
+      '0b084d614be1adbd00b598bf21dc62a8', // AIROBUILD-1971 - before explicit node:url URL import
+      '6bba47a7ed3c240b76ec90cc589a47f4', // AIROBUILD-1971 - before motion/react optimizeDeps include
       'bb713c7973458231b47f8d6571b72bb0', // d3b2c3339 - before motion/react optimizeDeps fix
       'c01551a9385c3e0891f2cc2cc3479c69'  // 7500c74c7 - motion/react added to dedupe+optimizeDeps (dedupe removed as ineffective)
     ],
     force: false,
     syncGroup: 'ssrMigration'
+  },
+  {
+    file: 'format-overrides-plugin.ts',
+    description: 'Vite virtual module plugin for format override sidecars',
+    known_hashes: [
+      'f6d9e6a1425628bba1a2c6d2a99ec9c9', // AIROBUILD-1971 - before production sidecar warnings
+      'f312fbeda3c4be4cad4d8cd6f07a9604', // AIROBUILD-1971 - before live HMR sidecar updates
+      '2a8bedad0f2423a8b65e928cfcf2913d'  // AIROBUILD-1971 - before structured sidecar invalid events
+    ],
+    force: false,
+  },
+  {
+    file: 'src/vite-env.d.ts',
+    description: 'Vite type declarations for platform virtual modules',
+    known_hashes: [
+      '7067a198d32f878907c1c1476ef8c4f2'  // before virtual:format-overrides declaration
+    ],
+    force: false,
+    syncGroup: 'formatOverrides'
+  },
+  {
+    file: 'src/lib/format-overrides.ts',
+    description: 'Runtime helpers for format override sidecars',
+    known_hashes: [
+      'b467b38e7ee355129ffdda65e4bfc224'  // AIROBUILD-1971 - before malformed entry warnings
+    ],
+    force: false,
+    syncGroup: 'formatOverrides'
+  },
+  {
+    file: 'src/lib/format-overrides-store.ts',
+    description: 'Runtime store for live format override sidecar updates',
+    known_hashes: [
+      '1775188ecb837fa4f642610b4a177d52'  // AIROBUILD-1971 - before void unsubscribe cleanup
+    ],
+    force: false,
+    syncGroup: 'formatOverrides'
+  },
+  {
+    file: 'src/components/FormattedBoundText.tsx',
+    description: 'Runtime component that applies format override sidecars to bound text',
+    known_hashes: [
+      '3dd3cd453d8c1e0354b864a857f3bd93', // AIROBUILD-1971 - before live sidecar store subscription
+      'fb7ef5c531e762b5a5446ef930453c0f'  // AIROBUILD-1971 - before alias import restoration
+    ],
+    force: false,
+    syncGroup: 'formatOverrides'
+  },
+  {
+    file: 'vitest.config.ts',
+    description: 'Vitest configuration for v8 template tests',
+    known_hashes: [
+      'd832224628a9e29c7b6bfe7c03179799'  // before virtual:format-overrides test alias
+    ],
+    force: false
+  },
+  {
+    file: 'src/test/format-overrides-module.ts',
+    description: 'Vitest fixture for the format override virtual module',
+    known_hashes: [],
+    force: false
+  },
+  {
+    file: 'src/components/__tests__/FormattedBoundText.test.tsx',
+    description: 'Runtime coverage for bound text format overrides',
+    known_hashes: [
+      '028e8f56834d0efac20bbcf10cf54ad9'  // AIROBUILD-1971 - before live sidecar store coverage
+    ],
+    force: false
+  },
+  {
+    file: 'src/lib/__tests__/format-overrides.test.ts',
+    description: 'Runtime coverage for format override sidecar helpers',
+    known_hashes: [
+      '7ac6044f02d4d17120c9c835a2b65d5d'  // AIROBUILD-1971 - before malformed and guard table coverage
+    ],
+    force: false
+  },
+  {
+    file: 'src/lib/__tests__/format-overrides-plugin.test.ts',
+    description: 'Runtime coverage for the format override sidecar Vite plugin',
+    known_hashes: [
+      '47e805d8c84be1b9f3a8acb547c23f2b', // AIROBUILD-1971 - before production warning coverage
+      '40caf12163b55d0bd9fb9a1d86a44135', // AIROBUILD-1971 - before live sidecar HMR coverage
+      '44dc9087a0d69e0abff0bbf3518c9146'  // AIROBUILD-1971 - before structured invalid sidecar coverage
+    ],
+    force: false
+  },
+  {
+    file: 'src/lib/__tests__/format-overrides-store.test.ts',
+    description: 'Runtime coverage for the live format override sidecar store',
+    known_hashes: [],
+    force: false
   },
   {
     file: 'src/components/ui/sonner.tsx',
@@ -917,6 +1012,8 @@ export const MIGRATIONS = [
       const entryPath = join(customerDir, 'src/server/entry.ts');
       const apiDir = join(customerDir, 'src/server/api');
       const entryServerPath = join(customerDir, 'src/entry-server.tsx');
+      const configurePath = join(customerDir, 'src/server/configure.js');
+      const vitePluginReferenced = isVitePluginApiRoutesReferenced(customerDir);
 
       // SSR foundation must exist on disk before we touch any of the other
       // files. entry-server.tsx is the render entry that entry.ts imports at
@@ -928,6 +1025,15 @@ export const MIGRATIONS = [
       if (!existsSync(entryPath) || !existsSync(apiDir)) {
         console.log('  ⏭️  src/server/entry.ts or src/server/api not present');
         return { status: 'skipped', reason: 'server_entry_or_api_missing' };
+      }
+
+      if (existsSync(configurePath) && vitePluginReferenced) {
+        console.log('  ⚠️  vite-plugin-api-routes still referenced while configure.js is present; skipping SSR migration');
+        return {
+          status: 'skipped',
+          reason: 'legacy_vite_plugin_active',
+          extra: { vitePluginApiRoutesPreserved: true },
+        };
       }
 
       let anyChanges = false;
@@ -998,12 +1104,16 @@ export const MIGRATIONS = [
           // source still imports it. A customer-modified vite.config.* that we
           // left un-synced (hash miss) may still reference the plugin; deleting
           // the dep would crash vite startup with `Cannot find package
-          // 'vite-plugin-api-routes'`. Skip the filesystem scan entirely when
-          // the dep isn't even in package.json — the fully-migrated hot path.
+          // 'vite-plugin-api-routes'`. The source reference remains authoritative
+          // even if package.json is already missing the dep from an earlier
+          // partial migration.
           const depPresent =
             !!(pkg.dependencies && 'vite-plugin-api-routes' in pkg.dependencies) ||
             !!(pkg.devDependencies && 'vite-plugin-api-routes' in pkg.devDependencies);
-          if (depPresent && !isVitePluginApiRoutesReferenced(customerDir)) {
+          if (vitePluginReferenced) {
+            vitePluginPreserved = true;
+            console.log('  ⚠️  vite-plugin-api-routes still referenced in source; preserving legacy plugin state');
+          } else if (depPresent) {
             if (pkg.dependencies && 'vite-plugin-api-routes' in pkg.dependencies) {
               delete pkg.dependencies['vite-plugin-api-routes'];
               changed = true;
@@ -1014,72 +1124,71 @@ export const MIGRATIONS = [
               changed = true;
               console.log('  Removed devDependencies.vite-plugin-api-routes');
             }
-          } else if (depPresent) {
-            vitePluginPreserved = true;
-            console.log('  ⚠️  vite-plugin-api-routes still referenced in source; preserving dep');
           }
-          if (pkg.devDependencies && 'esbuild' in pkg.devDependencies) {
-            delete pkg.devDependencies.esbuild;
-            changed = true;
-            console.log('  Removed devDependencies.esbuild');
-          }
-          if (pkg.scripts && 'bundle' in pkg.scripts) {
-            // Only strip the legacy `node bundle.js` / `node dist/bundle.js`
-            // step. A customer / agent may have repurposed the `bundle` key
-            // for unrelated tooling (e.g. "webpack --config webpack.prod.js"
-            // or "node src/bundle/index.js"); deleting that would silently
-            // destroy their build. Anchor to the exact legacy forms — a
-            // `\bnode\b.*\bbundle\b` pattern false-positive-matches paths
-            // like `src/bundle/index.js` because `/` is a word boundary.
-            if (/^node\s+(?:\.\/)?(?:dist\/)?bundle(?:\.js)?$/.test(pkg.scripts.bundle.trim())) {
-              delete pkg.scripts.bundle;
+          if (!vitePluginReferenced) {
+            if (pkg.devDependencies && 'esbuild' in pkg.devDependencies) {
+              delete pkg.devDependencies.esbuild;
               changed = true;
-              console.log('  Removed scripts.bundle (legacy node bundle.js step)');
-            } else {
-              console.log(`  ⚠️  scripts.bundle is customised (${pkg.scripts.bundle}); leaving as-is`);
+              console.log('  Removed devDependencies.esbuild');
             }
-          }
-          if (
-            pkg.scripts &&
-            'build:vite' in pkg.scripts &&
-            pkg.scripts['build:vite'] === pkg.scripts.build
-          ) {
-            delete pkg.scripts['build:vite'];
-            changed = true;
-            console.log('  Removed redundant scripts["build:vite"]');
-          }
-
-          const build = pkg.scripts?.build;
-          if (build) {
-            if (!build.includes('--ssr')) {
-              // Normalize legacy pipelines like `vite build && node bundle.js`
-              // or `vite build && node dist/bundle.js`. Only replace when the
-              // result is exactly `vite build` - anything else is customized
-              // and must be left alone so we don't clobber customer logic.
-              const normalized = build
-                .replace(/&&\s*node\s+bundle(?:\.js)?\s*/g, '')
-                .replace(/&&\s*node\s+dist\/bundle(?:\.js)?\s*/g, '')
-                .trim()
-                .replace(/\s*&&\s*$/, '');
-              if (normalized === 'vite build') {
-                // Land --ssr unconditionally: a legacy App.tsx (e.g.
-                // module-top-level createBrowserRouter) will crashloop the
-                // publish container on SSR bundle import, but the develop
-                // agent can diagnose and rewrite App.tsx on demand. Gating
-                // --ssr on App.tsx shape here would leave variants we
-                // don't auto-rewrite (stripe-skilled apps with
-                // CartProvider etc.) on CSR indefinitely with no forcing
-                // function. Preferring loud, fixable failure over silent
-                // stagnation.
-                pkg.scripts.build = 'vite build && vite build --ssr src/server/entry.ts';
+            if (pkg.scripts && 'bundle' in pkg.scripts) {
+              // Only strip the legacy `node bundle.js` / `node dist/bundle.js`
+              // step. A customer / agent may have repurposed the `bundle` key
+              // for unrelated tooling (e.g. "webpack --config webpack.prod.js"
+              // or "node src/bundle/index.js"); deleting that would silently
+              // destroy their build. Anchor to the exact legacy forms — a
+              // `\bnode\b.*\bbundle\b` pattern false-positive-matches paths
+              // like `src/bundle/index.js` because `/` is a word boundary.
+              if (/^node\s+(?:\.\/)?(?:dist\/)?bundle(?:\.js)?$/.test(pkg.scripts.bundle.trim())) {
+                delete pkg.scripts.bundle;
                 changed = true;
-                console.log('  Updated scripts.build to include SSR build');
+                console.log('  Removed scripts.bundle (legacy node bundle.js step)');
               } else {
-                // Customized pipeline: dep cleanup above still ran (safe
-                // regardless of build pipeline). Build script + configure.js
-                // are preserved. isSsrInstalled() will return false and
-                // downstream HTML migrations will correctly skip.
-                console.log(`  ⚠️  scripts.build is customized (${build}); leaving as-is`);
+                console.log(`  ⚠️  scripts.bundle is customised (${pkg.scripts.bundle}); leaving as-is`);
+              }
+            }
+            if (
+              pkg.scripts &&
+              'build:vite' in pkg.scripts &&
+              pkg.scripts['build:vite'] === pkg.scripts.build
+            ) {
+              delete pkg.scripts['build:vite'];
+              changed = true;
+              console.log('  Removed redundant scripts["build:vite"]');
+            }
+
+            const build = pkg.scripts?.build;
+            if (build) {
+              if (!build.includes('--ssr')) {
+                // Normalize legacy pipelines like `vite build && node bundle.js`
+                // or `vite build && node dist/bundle.js`. Only replace when the
+                // result is exactly `vite build` - anything else is customized
+                // and must be left alone so we don't clobber customer logic.
+                const normalized = build
+                  .replace(/&&\s*node\s+bundle(?:\.js)?\s*/g, '')
+                  .replace(/&&\s*node\s+dist\/bundle(?:\.js)?\s*/g, '')
+                  .trim()
+                  .replace(/\s*&&\s*$/, '');
+                if (normalized === 'vite build') {
+                  // Land --ssr unconditionally: a legacy App.tsx (e.g.
+                  // module-top-level createBrowserRouter) will crashloop the
+                  // publish container on SSR bundle import, but the develop
+                  // agent can diagnose and rewrite App.tsx on demand. Gating
+                  // --ssr on App.tsx shape here would leave variants we
+                  // don't auto-rewrite (stripe-skilled apps with
+                  // CartProvider etc.) on CSR indefinitely with no forcing
+                  // function. Preferring loud, fixable failure over silent
+                  // stagnation.
+                  pkg.scripts.build = 'vite build && vite build --ssr src/server/entry.ts';
+                  changed = true;
+                  console.log('  Updated scripts.build to include SSR build');
+                } else {
+                  // Customized pipeline: dep cleanup above still ran (safe
+                  // regardless of build pipeline). Build script + configure.js
+                  // are preserved. isSsrInstalled() will return false and
+                  // downstream HTML migrations will correctly skip.
+                  console.log(`  ⚠️  scripts.build is customized (${build}); leaving as-is`);
+                }
               }
             }
           }
@@ -1111,7 +1220,6 @@ export const MIGRATIONS = [
       //     build --ssr. Build-script normalisation above already strips
       //     `&& node bundle.js` from scripts.build.
       if (entryHasMarkers && buildHasSsr && !vitePluginPreserved) {
-        const configurePath = join(customerDir, 'src/server/configure.js');
         if (existsSync(configurePath)) {
           unlinkSync(configurePath);
           anyChanges = true;
@@ -1470,7 +1578,7 @@ export function runMigrations(baseDir, customerDir, syncedFiles) {
   }
 }
 
-function sync(baseDir, customerDir) {
+export function syncTemplateFiles(baseDir, customerDir) {
   console.log('=== Template File Sync ===');
   console.log(`Base template: ${baseDir}`);
   console.log(`Customer app:  ${customerDir}`);
@@ -1575,11 +1683,6 @@ function sync(baseDir, customerDir) {
 const isEntrypoint = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 
 if (isEntrypoint) {
-  // Disabled: migrate-to-ssr-entry deletes configure.js while vite-plugin-api-routes
-  // is still active, crashing Vite on restart. See docs/INC-configure-js-deletion-bug.md.
-  // Re-enable once the affected cohort is cleared and a safe migration path is in place.
-  process.exit(0);
-
   const args = process.argv.slice(2);
 
   if (args.length !== 2) {
@@ -1591,9 +1694,8 @@ if (isEntrypoint) {
   }
 
   const [baseDir, customerDir] = args;
-
   try {
-    sync(baseDir, customerDir);
+    syncTemplateFiles(baseDir, customerDir);
   } catch (error) {
     // Pass the Error object so Node formats the full stack, not just the
     // message - the migration.<id>.failed event already captures the

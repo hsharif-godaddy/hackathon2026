@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import { createElement as reactCreateElement } from 'react';
+import { createElement as reactCreateElement, useState } from 'react';
 import TextColorButton from '../TextColorButton';
 
 vi.mock('../../utils/postMessage', () => ({
@@ -63,6 +63,20 @@ function makeParagraph(className = ''): HTMLElement {
   return paragraph;
 }
 
+function ControlledTextColorButton({ selectedElement }: { selectedElement: HTMLElement | null }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return reactCreateElement(TextColorButton, {
+    selectedElement,
+    isOpen,
+    onOpenChange: setIsOpen,
+  });
+}
+
+function renderTextColorButton(selectedElement: HTMLElement | null) {
+  return render(reactCreateElement(ControlledTextColorButton, { selectedElement }));
+}
+
 beforeEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -73,18 +87,18 @@ describe('TextColorButton', () => {
   describe('rendering', () => {
     it('renders the toolbar button', () => {
       const paragraph = makeParagraph();
-      render(reactCreateElement(TextColorButton, { selectedElement: paragraph }));
+      renderTextColorButton(paragraph);
       expect(screen.getByRole('button', { name: 'Text color' })).not.toBeNull();
     });
 
     it('does not show the color picker by default', () => {
       const paragraph = makeParagraph();
-      render(reactCreateElement(TextColorButton, { selectedElement: paragraph }));
+      renderTextColorButton(paragraph);
       expect(screen.queryByTestId('color-picker')).toBeNull();
     });
 
     it('renders with null selectedElement without crashing', () => {
-      const { container } = render(reactCreateElement(TextColorButton, { selectedElement: null }));
+      const { container } = renderTextColorButton(null);
       expect(container.firstChild).not.toBeNull();
     });
   });
@@ -92,14 +106,14 @@ describe('TextColorButton', () => {
   describe('menu toggle', () => {
     it('opens the color picker when the toolbar button is clicked', () => {
       const paragraph = makeParagraph();
-      render(reactCreateElement(TextColorButton, { selectedElement: paragraph }));
+      renderTextColorButton(paragraph);
       fireEvent.click(screen.getByRole('button', { name: 'Text color' }));
       expect(screen.getByTestId('color-picker')).not.toBeNull();
     });
 
     it('closes the color picker when the toolbar button is clicked again', () => {
       const paragraph = makeParagraph();
-      render(reactCreateElement(TextColorButton, { selectedElement: paragraph }));
+      renderTextColorButton(paragraph);
       fireEvent.click(screen.getByRole('button', { name: 'Text color' }));
       fireEvent.click(screen.getByRole('button', { name: 'Text color' }));
       expect(screen.queryByTestId('color-picker')).toBeNull();
@@ -109,7 +123,7 @@ describe('TextColorButton', () => {
   describe('color preview', () => {
     it('updates element style.color on preview without posting a message', () => {
       const paragraph = makeParagraph();
-      render(reactCreateElement(TextColorButton, { selectedElement: paragraph }));
+      renderTextColorButton(paragraph);
       fireEvent.click(screen.getByRole('button', { name: 'Text color' }));
       fireEvent.click(screen.getByRole('button', { name: 'preview color' }));
       expect(paragraph.style.color).toBe('rgb(255, 0, 0)');
@@ -120,7 +134,7 @@ describe('TextColorButton', () => {
   describe('color commit', () => {
     it('fires devtools.toolbar.text_color click track event on commit (not on preview)', () => {
       const paragraph = makeParagraph();
-      render(reactCreateElement(TextColorButton, { selectedElement: paragraph }));
+      renderTextColorButton(paragraph);
       fireEvent.click(screen.getByRole('button', { name: 'Text color' }));
       const trackCalls = () =>
         vi.mocked(safePostMessage).mock.calls.filter(
@@ -136,7 +150,7 @@ describe('TextColorButton', () => {
 
     it('updates element style.color on commit', () => {
       const paragraph = makeParagraph();
-      render(reactCreateElement(TextColorButton, { selectedElement: paragraph }));
+      renderTextColorButton(paragraph);
       fireEvent.click(screen.getByRole('button', { name: 'Text color' }));
       fireEvent.click(screen.getByRole('button', { name: 'commit color' }));
       expect(paragraph.style.color).toBe('rgb(255, 0, 0)');
@@ -144,7 +158,7 @@ describe('TextColorButton', () => {
 
     it('posts UPDATED with property "color" and the committed hex value', () => {
       const paragraph = makeParagraph();
-      render(reactCreateElement(TextColorButton, { selectedElement: paragraph }));
+      renderTextColorButton(paragraph);
       fireEvent.click(screen.getByRole('button', { name: 'Text color' }));
       fireEvent.click(screen.getByRole('button', { name: 'commit color' }));
       expect(safePostMessage).toHaveBeenCalledWith(
@@ -161,14 +175,14 @@ describe('TextColorButton', () => {
 
     it('registers a style edit listener for rollback', () => {
       const paragraph = makeParagraph();
-      render(reactCreateElement(TextColorButton, { selectedElement: paragraph }));
+      renderTextColorButton(paragraph);
       fireEvent.click(screen.getByRole('button', { name: 'Text color' }));
       fireEvent.click(screen.getByRole('button', { name: 'commit color' }));
       expect(addStyleEditListener).toHaveBeenCalledOnce();
     });
 
     it('does not post when selectedElement is null', () => {
-      render(reactCreateElement(TextColorButton, { selectedElement: null }));
+      renderTextColorButton(null);
       fireEvent.click(screen.getByRole('button', { name: 'Text color' }));
       fireEvent.click(screen.getByRole('button', { name: 'commit color' }));
       expect(safePostMessage).not.toHaveBeenCalled();
@@ -186,7 +200,7 @@ describe('TextColorButton', () => {
       const paragraph = makeParagraph();
       paragraph.style.color = 'rgb(0, 128, 0)';
 
-      render(reactCreateElement(TextColorButton, { selectedElement: paragraph }));
+      renderTextColorButton(paragraph);
       fireEvent.click(screen.getByRole('button', { name: 'Text color' }));
       fireEvent.click(screen.getByRole('button', { name: 'commit color' }));
 
@@ -203,7 +217,7 @@ describe('TextColorButton', () => {
       const paragraph = makeParagraph();
       paragraph.style.transition = 'opacity 300ms';
 
-      render(reactCreateElement(TextColorButton, { selectedElement: paragraph }));
+      renderTextColorButton(paragraph);
 
       fireEvent.click(screen.getByRole('button', { name: 'Text color' }));
       expect(paragraph.style.transition).toBe('color 200ms ease');
@@ -220,11 +234,11 @@ describe('TextColorButton', () => {
 
       const paragraphB = makeParagraph();
 
-      const { rerender } = render(reactCreateElement(TextColorButton, { selectedElement: paragraphA }));
+      const { rerender } = renderTextColorButton(paragraphA);
       fireEvent.click(screen.getByRole('button', { name: 'Text color' }));
       expect(paragraphA.style.transition).toBe('color 200ms ease');
 
-      rerender(reactCreateElement(TextColorButton, { selectedElement: paragraphB }));
+      rerender(reactCreateElement(ControlledTextColorButton, { selectedElement: paragraphB }));
       expect(paragraphA.style.transition).toBe('opacity 300ms');
     });
 
@@ -239,17 +253,17 @@ describe('TextColorButton', () => {
       // Give B a distinct initial color so the assertion is non-trivial.
       paragraphB.style.color = 'rgb(0, 0, 255)';
 
-      const { rerender } = render(reactCreateElement(TextColorButton, { selectedElement: paragraphA }));
+      const { rerender } = renderTextColorButton(paragraphA);
 
       // Open picker for A and commit — lastCommittedColorRef becomes '#ff0000'.
       fireEvent.click(screen.getByRole('button', { name: 'Text color' }));
       fireEvent.click(screen.getByRole('button', { name: 'commit color' }));
 
       // A→B: cleanup for A fires and must clear lastCommittedColorRef.
-      rerender(reactCreateElement(TextColorButton, { selectedElement: paragraphB }));
+      rerender(reactCreateElement(ControlledTextColorButton, { selectedElement: paragraphB }));
 
       // B→C: cleanup for B fires — would stamp A's '#ff0000' onto B if ref wasn't cleared.
-      rerender(reactCreateElement(TextColorButton, { selectedElement: paragraphC }));
+      rerender(reactCreateElement(ControlledTextColorButton, { selectedElement: paragraphC }));
 
       expect(paragraphB.style.color).toBe('rgb(0, 0, 255)');
     });

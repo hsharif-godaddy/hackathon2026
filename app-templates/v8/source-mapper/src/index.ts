@@ -1,8 +1,18 @@
 import type { PluginObj, PluginPass, types, NodePath } from '@babel/core';
 import type { JSXElement, Program, ImportDeclaration, CallExpression, Expression } from '@babel/types';
+import {
+  buildGuardExpression,
+  ensureFormattedBoundTextImport,
+  getIntrinsicTextTagName,
+  hashExpression,
+  isFormatBoundTextRuntimeAvailable,
+  type BoundTextCandidate,
+} from './format-bound-text.js';
 
 interface PluginOptions {
   excludePaths?: string[];
+  formatBoundTextRuntime?: boolean;
+  formatBoundTextRoot?: string;
 }
 
 interface AncestorFrame {
@@ -16,7 +26,11 @@ type PluginState = PluginPass & {
   contentBindings: Set<string>;
   mapStack: IterationFrame[];
   mapFrames: WeakMap<CallExpression, IterationFrame>;
+  genericMapDepth: number;
+  genericMapFrames: WeakSet<CallExpression>;
   ancestorStack: AncestorFrame[];
+  programPath: NodePath<Program> | null;
+  formatBoundTextRuntimeAvailable: boolean;
 };
 
 interface IterationFrame {
@@ -129,6 +143,14 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
     return { paramName: first.name, pathBase: chain.join('.') };
   }
 
+  function isAnyMapCall(node: CallExpression): boolean {
+    return t.isMemberExpression(node.callee) &&
+      !node.callee.computed &&
+      t.isIdentifier(node.callee.property, { name: 'map' }) &&
+      node.arguments.length > 0 &&
+      (t.isArrowFunctionExpression(node.arguments[0]) || t.isFunctionExpression(node.arguments[0]));
+  }
+
   // Given a child expression, try to resolve a content key.
   // Returns either `"site.brand"` (static path) or `"products[].name"` (template)
   // or null when it can't be statically attributed.
@@ -150,15 +172,40 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
     return null;
   }
 
-  // Pick the sole meaningful expression child (using the same filter as the
-  // mixed-child gate so JSX comments don't cause inconsistent counting).
-  function pickSoleExpressionChild(jsxElement: JSXElement): Expression | null {
+  function pickSoleExpressionContainer(jsxElement: JSXElement): types.JSXExpressionContainer | null {
     const meaningful = jsxElement.children.filter(isMeaningfulChild);
     if (meaningful.length !== 1) return null;
     const child = meaningful[0];
     if (!t.isJSXExpressionContainer(child)) return null;
     if (t.isJSXEmptyExpression(child.expression)) return null;
-    return child.expression as Expression;
+    if (t.isJSXElement(child.expression) || t.isJSXFragment(child.expression)) return null;
+    return child;
+  }
+
+  function isFormattedBoundTextElement(jsxElement: JSXElement): boolean {
+    return t.isJSXIdentifier(jsxElement.openingElement.name) &&
+      jsxElement.openingElement.name.name === 'FormattedBoundText';
+  }
+
+  function hasFormattedBoundTextChild(jsxElement: JSXElement): boolean {
+    return jsxElement.children.some((child) => t.isJSXElement(child) && isFormattedBoundTextElement(child));
+  }
+
+  function isStaticLiteralExpression(expression: Expression): boolean {
+    return t.isStringLiteral(expression) ||
+      t.isNumericLiteral(expression) ||
+      t.isBooleanLiteral(expression) ||
+      t.isNullLiteral(expression) ||
+      (t.isTemplateLiteral(expression) && expression.expressions.length === 0);
+  }
+
+  function hasDynamicChildExpression(jsxElement: JSXElement): boolean {
+    return jsxElement.children.some(child =>
+      t.isJSXExpressionContainer(child) &&
+      !t.isJSXEmptyExpression(child.expression) &&
+      !t.isStringLiteral(child.expression) &&
+      !(t.isTemplateLiteral(child.expression) && child.expression.expressions.length === 0)
+    );
   }
 
   return {
@@ -169,7 +216,17 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
           state.contentBindings = new Set();
           state.mapStack = [];
           state.mapFrames = new WeakMap();
+          state.genericMapDepth = 0;
+          state.genericMapFrames = new WeakSet();
           state.ancestorStack = [];
+          state.programPath = _path;
+          state.formatBoundTextRuntimeAvailable = isFormatBoundTextRuntimeAvailable(
+            state.filename || state.file.opts.filename || undefined,
+            {
+              enabled: state.opts?.formatBoundTextRuntime,
+              rootDir: state.opts?.formatBoundTextRoot,
+            },
+          );
         },
       },
 
@@ -186,6 +243,11 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
 
       CallExpression: {
         enter(path: NodePath<CallExpression>, state: PluginState) {
+          if (isAnyMapCall(path.node)) {
+            state.genericMapFrames.add(path.node);
+            state.genericMapDepth += 1;
+          }
+
           const frame = analyzeMapCall(path.node, state);
           if (frame) {
             state.mapFrames.set(path.node, frame);
@@ -193,6 +255,10 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
           }
         },
         exit(path: NodePath<CallExpression>, state: PluginState) {
+          if (state.genericMapFrames.has(path.node)) {
+            state.genericMapDepth -= 1;
+          }
+
           if (state.mapFrames.has(path.node)) {
             state.mapStack.pop();
           }
@@ -201,47 +267,52 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
 
       JSXElement: {
         enter(path: NodePath<JSXElement>, state: PluginState) {
-          // Skip in production
-          if (process.env.NODE_ENV === 'production') {
-            return;
-          }
-
+          const isDevBuild = process.env.NODE_ENV !== 'production';
           const openingElement = path.node.openingElement;
-          const tagName = getJsxTagName(openingElement);
+          const rawTagName = getJsxTagName(openingElement);
+          const textTagName = getIntrinsicTextTagName(openingElement, t);
 
           // Track this element in the ancestor stack for structural ID computation
           const parentFrame = state.ancestorStack[state.ancestorStack.length - 1];
           let siblingIndex = 0;
           if (parentFrame) {
-            siblingIndex = parentFrame.sameTagChildCount.get(tagName) || 0;
-            parentFrame.sameTagChildCount.set(tagName, siblingIndex + 1);
+            siblingIndex = parentFrame.sameTagChildCount.get(rawTagName) || 0;
+            parentFrame.sameTagChildCount.set(rawTagName, siblingIndex + 1);
           }
 
           // Push frame for this element's children
-          state.ancestorStack.push({ tagName, ownIndex: siblingIndex, sameTagChildCount: new Map() });
+          state.ancestorStack.push({ tagName: rawTagName, ownIndex: siblingIndex, sameTagChildCount: new Map() });
 
           // Get source information
           const fileName = state.filename || state.file.opts.filename || 'unknown';
+          const normalizedFileName = normalizeFileName(fileName);
 
           // Default excluded paths (component libraries)
           const defaultExcludePaths = [
             'components/ui/',
             '/components/ui/',
             'src/components/ui/',
-            '/src/components/ui/'
+            '/src/components/ui/',
+            'src/components/FormattedBoundText.tsx',
+            '/src/components/FormattedBoundText.tsx',
           ];
 
           const excludePaths = state.opts?.excludePaths || defaultExcludePaths;
+          const fileNameForExclusion = fileName.replace(/\\/g, '/');
 
           // Skip if file is in excluded paths (component libraries)
-          if (excludePaths.some(excludePath => fileName.includes(excludePath))) {
+          if (excludePaths.some(excludePath => fileNameForExclusion.includes(excludePath))) {
+            return;
+          }
+
+          if (isFormattedBoundTextElement(path.node)) {
             return;
           }
 
           // Pre-pass: when the element has mixed children AND one or more of
           // them is a content-rooted expression (e.g., `<span>{home.a} · {home.b}</span>`),
           // wrap each content expression in a single-child <span data-dev-content-key="...">.
-          if (isNativeTagParent(openingElement)) {
+          if (isDevBuild && isNativeTagParent(openingElement)) {
             const meaningfulCount = path.node.children.filter(isMeaningfulChild).length;
             if (meaningfulCount >= 2) {
               for (let i = 0; i < path.node.children.length; i++) {
@@ -272,8 +343,51 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
           }
 
           // Content key attribution
-          const expression = pickSoleExpressionChild(path.node);
+          const expressionContainer = pickSoleExpressionContainer(path.node);
+          const expression = expressionContainer?.expression as Expression | undefined;
           const contentKey = expression ? resolveContentKey(expression, state) : null;
+          const hasDynamic = hasDynamicChildExpression(path.node);
+          const lineNumber = openingElement.loc ? openingElement.loc.start.line : 0;
+
+          // Compute structural ID from ancestor chain
+          const ancestorChain = state.ancestorStack.slice(0, -1).map(f => `${f.tagName}#${f.ownIndex}`).join('>');
+          const structuralKey = `${normalizedFileName}:${ancestorChain}${ancestorChain ? '>' : ''}${rawTagName}#${siblingIndex}`;
+          const devId = hashStructuralKey(structuralKey);
+          const sourceKind = contentKey
+            ? contentKey.includes('[]') ? 'content-key-template' : 'content-key'
+            : 'bound-expression';
+          const candidate: BoundTextCandidate | null =
+            textTagName &&
+            expression &&
+            !isStaticLiteralExpression(expression) &&
+            state.formatBoundTextRuntimeAvailable &&
+            state.genericMapDepth === 0
+              ? {
+                  devId,
+                  file: normalizedFileName,
+                  tagName: textTagName,
+                  sourceKind,
+                  contentKey: sourceKind === 'content-key' ? contentKey : null,
+                  contentKeyTemplate: sourceKind === 'content-key-template' ? contentKey : null,
+                  expressionHash: sourceKind === 'bound-expression' ? hashExpression(expression) : null,
+                }
+              : null;
+
+          if (candidate && expressionContainer && !hasFormattedBoundTextChild(path.node)) {
+            const wrapper = t.jsxElement(
+              t.jsxOpeningElement(t.jsxIdentifier('FormattedBoundText'), [
+                t.jsxAttribute(t.jsxIdentifier('devId'), t.stringLiteral(candidate.devId)),
+                t.jsxAttribute(t.jsxIdentifier('guard'), buildGuardExpression(candidate, t)),
+              ], false),
+              t.jsxClosingElement(t.jsxIdentifier('FormattedBoundText')),
+              [t.jsxExpressionContainer(expression as Expression)],
+              false,
+            );
+            path.node.children = path.node.children.map((child) => child === expressionContainer ? wrapper : child);
+            if (state.programPath) ensureFormattedBoundTextImport(state.programPath, t);
+          }
+
+          if (!isDevBuild) return;
 
           if (contentKey) {
             const attrName = contentKey.includes('[]')
@@ -285,13 +399,6 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
               );
             }
           } else {
-            const hasDynamic = path.node.children.some(child =>
-              t.isJSXExpressionContainer(child) &&
-              !t.isJSXEmptyExpression(child.expression) &&
-              !t.isStringLiteral(child.expression) &&
-              !(t.isTemplateLiteral(child.expression) && child.expression.expressions.length === 0)
-            );
-
             if (hasDynamic && !hasAttr(openingElement.attributes, 'data-dev-dynamic')) {
               openingElement.attributes.push(
                 t.jsxAttribute(
@@ -302,17 +409,22 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
             }
           }
 
+          if (candidate) {
+            openingElement.attributes.push(
+              t.jsxAttribute(t.jsxIdentifier('data-dev-bound-text'), t.stringLiteral('true')),
+              t.jsxAttribute(t.jsxIdentifier('data-dev-bound-source-kind'), t.stringLiteral(candidate.sourceKind)),
+            );
+            if (candidate.expressionHash) {
+              openingElement.attributes.push(
+                t.jsxAttribute(t.jsxIdentifier('data-dev-bound-expression-hash'), t.stringLiteral(candidate.expressionHash)),
+              );
+            }
+          }
+
           // Skip if already attributed
           if (hasAttr(openingElement.attributes, 'data-dev-file')) {
             return;
           }
-
-          const lineNumber = openingElement.loc ? openingElement.loc.start.line : 0;
-
-          // Compute structural ID from ancestor chain
-          const ancestorChain = state.ancestorStack.slice(0, -1).map(f => `${f.tagName}#${f.ownIndex}`).join('>');
-          const structuralKey = `${normalizeFileName(fileName)}:${ancestorChain}${ancestorChain ? '>' : ''}${tagName}#${siblingIndex}`;
-          const devId = hashStructuralKey(structuralKey);
 
           // Add source attributes
           openingElement.attributes.push(
@@ -332,7 +444,6 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
         },
 
         exit(_path: NodePath<JSXElement>, state: PluginState) {
-          if (process.env.NODE_ENV === 'production') return;
           state.ancestorStack.pop();
         },
       },

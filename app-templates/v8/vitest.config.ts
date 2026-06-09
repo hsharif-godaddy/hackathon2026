@@ -32,6 +32,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      'virtual:format-overrides': path.resolve(__dirname, './src/test/format-overrides-module.ts'),
       '@/': path.resolve(__dirname, './src/'),
       '@/components': path.resolve(__dirname, './src/components'),
       '@/lib': path.resolve(__dirname, './src/lib'),

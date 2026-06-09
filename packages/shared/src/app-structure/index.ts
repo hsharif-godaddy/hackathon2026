@@ -7,6 +7,7 @@
 export const APP_DIRECTORIES = [
   'src',
   'public',
+  'format-overrides',
 ] as const
 
 export const APP_CONFIG_FILES = [

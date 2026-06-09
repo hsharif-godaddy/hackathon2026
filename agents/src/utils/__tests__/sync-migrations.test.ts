@@ -644,6 +644,32 @@ describe('sync-template-files migrations', () => {
       expect(existsSync(join(dir, 'src/server/configure.js'))).toBe(true);
     });
 
+    it('preserves configure.js when vite-plugin-api-routes is referenced but the dep is already missing', () => {
+      setupBareAppWith({
+        entry: MARKED_ENTRY,
+        packageJson: {
+          scripts: { build: 'vite build' },
+          dependencies: {},
+          devDependencies: { esbuild: '^0.20.0' },
+        },
+      });
+      writeFileSync(
+        join(dir, 'vite.config.ts'),
+        `import apiRoutes from 'vite-plugin-api-routes';\nexport default { plugins: [apiRoutes()] };\n`,
+        'utf8',
+      );
+
+      const result = migration.run(dir, new Set());
+
+      expect(existsSync(join(dir, 'src/server/configure.js'))).toBe(true);
+      expect(resultStatus(result)).toBe('skipped');
+      expect(typeof result === 'object' && result?.reason).toBe('legacy_vite_plugin_active');
+      expect(typeof result === 'object' && result?.extra).toEqual({ vitePluginApiRoutesPreserved: true });
+      const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+      expect(pkg.scripts.build).toBe('vite build');
+      expect(pkg.devDependencies.esbuild).toBe('^0.20.0');
+    });
+
     it('customised-build app: migrate applies, then HTML migrations skip because isSsrInstalled=false', () => {
       // Task 7: on a customized-build app, migrate-to-ssr-entry finishes as
       // 'applied' (the safe writes ran — dep cleanup, marker injection), but
@@ -1549,6 +1575,42 @@ export default app;
       const events = parseMigrationEvents(consoleLogSpy);
       const applied = events.find((e) => e.event === 'migration.migrate-to-ssr-entry.applied');
       expect(applied?.vitePluginApiRoutesPreserved).toBe(true);
+    });
+
+    it('restores vite-plugin-api-routes dep before skipping SSR migration for legacy configure.js apps', () => {
+      mkdirSync(join(dir, 'src/server/api/health'), { recursive: true });
+      writeFileSync(join(dir, 'src/server/entry.ts'), MARKED_ENTRY, 'utf8');
+      writeFileSync(join(dir, 'src/server/api/health/GET.ts'), 'export default () => {};', 'utf8');
+      writeFileSync(join(dir, 'src/entry-server.tsx'), 'export function render() {}', 'utf8');
+      writeFileSync(join(dir, 'src/server/configure.js'), 'export default function configure() {}\n', 'utf8');
+      writeFileSync(join(dir, 'vite.config.ts'),
+        `import apiRoutes from 'vite-plugin-api-routes';\nexport default { plugins: [apiRoutes()] };\n`, 'utf8');
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({
+        scripts: { build: 'vite build' },
+        dependencies: {},
+        devDependencies: { esbuild: '^0.20.0' },
+      }, null, 2) + '\n', 'utf8');
+
+      runMigrations(TEMPLATE_DIR, dir, new Set());
+
+      const events = parseMigrationEvents(consoleLogSpy);
+      expect(events).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          event: 'migration.restore-vite-plugin-api-routes-dep.applied',
+          migrationId: 'restore-vite-plugin-api-routes-dep',
+        }),
+        expect.objectContaining({
+          event: 'migration.migrate-to-ssr-entry.skipped',
+          migrationId: 'migrate-to-ssr-entry',
+          reason: 'legacy_vite_plugin_active',
+          vitePluginApiRoutesPreserved: true,
+        }),
+      ]));
+      const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+      expect(pkg.scripts.build).toBe('vite build');
+      expect(pkg.devDependencies.esbuild).toBe('^0.20.0');
+      expect(pkg.devDependencies['vite-plugin-api-routes']).toBe('1.2.6');
+      expect(existsSync(join(dir, 'src/server/configure.js'))).toBe(true);
     });
 
     it('omits changed on skipped events', () => {

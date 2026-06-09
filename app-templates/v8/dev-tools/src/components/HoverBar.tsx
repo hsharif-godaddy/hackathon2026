@@ -92,6 +92,7 @@ export function HoverBarButton({
     <Tooltip content={title} disabled={suppressTooltip}>
       <button
         type="button"
+        title={title}
         // aria-disabled (not the native `disabled` attribute): some browsers
         // — Firefox most notably — suppress all pointer events on natively-
         // disabled buttons, which means the explanatory tooltip never fires.

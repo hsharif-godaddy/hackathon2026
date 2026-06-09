@@ -141,6 +141,10 @@ function countOccurrences(content: string, needle: string): number {
   return content.split(needle).length - 1;
 }
 
+function md5(content: string): string {
+  return createHash('md5').update(content).digest('hex');
+}
+
 function treeHash(root: string): string {
   const hash = createHash('sha256');
 
@@ -1096,5 +1100,123 @@ describe.skip('sync-template-files black-box migration harness', () => {
     expect(await git(customerDir, ['rev-parse', 'HEAD'])).not.toBe(baselineHead);
     expect(await git(customerDir, ['status', '--short'])).toBe('');
     expect(readJson(join(customerDir, 'package.json')).scripts.build).toBe('vite build && vite build --ssr src/server/entry.ts');
+  });
+});
+
+describe('sync-template-files entrypoint', () => {
+  it('syncs the format override manifest group for an existing app', async () => {
+    const customerDir = tempDir('sync-template-entrypoint-format-overrides-');
+    const currentPlugin = readFileSync(join(baseTemplateDir, 'format-overrides-plugin.ts'), 'utf8');
+    const previousPlugin = currentPlugin
+      .replace(
+        [
+          'function warnInvalidSidecar(scope: string, reason: string): void {',
+          '  console.warn(JSON.stringify({',
+          "    event: 'format-overrides.sidecar.invalid',",
+          '    scope,',
+          '    reason,',
+          '  }))',
+          '}',
+        ].join('\n'),
+        [
+          'function warnInvalidSidecar(scope: string, reason: string): void {',
+          '  console.warn(`[format-overrides] Ignoring ${scope}: ${reason}`)',
+          '}',
+        ].join('\n'),
+      )
+      .replace("export const FORMAT_OVERRIDES_UPDATE_EVENT = 'format-overrides:update'\n", '')
+      .replace(
+        [
+          'function invalidateFormatOverridesModule(server: ViteDevServer, root: string): void {',
+          '  const module = server.moduleGraph.getModuleById(RESOLVED_FORMAT_OVERRIDES_MODULE_ID)',
+          '  if (module) server.moduleGraph.invalidateModule(module)',
+          '  server.ws.send(FORMAT_OVERRIDES_UPDATE_EVENT, readSidecarBundle(root))',
+          '}',
+        ].join('\n'),
+        [
+          'function invalidateFormatOverridesModule(server: ViteDevServer): void {',
+          '  const module = server.moduleGraph.getModuleById(RESOLVED_FORMAT_OVERRIDES_MODULE_ID)',
+          '  if (module) server.moduleGraph.invalidateModule(module)',
+          '  // V1 uses a full reload after sidecar writes. Module-level HMR can replace this later.',
+          "  server.ws.send({ type: 'full-reload' })",
+          '}',
+        ].join('\n'),
+      )
+      .replaceAll('invalidateFormatOverridesModule(server, root)', 'invalidateFormatOverridesModule(server)');
+    const currentBoundText = readFileSync(join(baseTemplateDir, 'src/components/FormattedBoundText.tsx'), 'utf8');
+    const previousBoundText = currentBoundText
+      .replace("\nimport { useFormatOverrideBundle } from '@/lib/format-overrides-store'", '')
+      .replace(
+        'import {\n  buildFormatOverrideStyle,',
+        "import formatOverrideBundle from 'virtual:format-overrides'\n\nimport {\n  buildFormatOverrideStyle,",
+      )
+      .replace('  const formatOverrideBundle = useFormatOverrideBundle()\n', '');
+    const currentViteEnv = readFileSync(join(baseTemplateDir, 'src/vite-env.d.ts'), 'utf8');
+    const previousViteEnv = currentViteEnv.replace(
+      /\ndeclare module 'virtual:format-overrides' \{[\s\S]*?\n\}\n?$/,
+      '',
+    );
+
+    expect(md5(previousPlugin)).toBe('f312fbeda3c4be4cad4d8cd6f07a9604');
+    expect(md5(previousBoundText)).toBe('3dd3cd453d8c1e0354b864a857f3bd93');
+    expect(md5(previousViteEnv)).toBe('7067a198d32f878907c1c1476ef8c4f2');
+    writeFile(customerDir, 'format-overrides-plugin.ts', previousPlugin);
+    writeFile(customerDir, 'src/components/FormattedBoundText.tsx', previousBoundText);
+    writeFile(customerDir, 'src/vite-env.d.ts', previousViteEnv);
+
+    const result = await runSync(customerDir);
+
+    expect(result.exitCode).toBe(0);
+    expectNoStderr(result.stderr);
+    expect(readFileSync(join(customerDir, 'format-overrides-plugin.ts'), 'utf8')).toBe(
+      readFileSync(join(baseTemplateDir, 'format-overrides-plugin.ts'), 'utf8'),
+    );
+    expect(readFileSync(join(customerDir, 'src/components/FormattedBoundText.tsx'), 'utf8')).toBe(
+      readFileSync(join(baseTemplateDir, 'src/components/FormattedBoundText.tsx'), 'utf8'),
+    );
+    expect(readFileSync(join(customerDir, 'src/lib/format-overrides-store.ts'), 'utf8')).toBe(
+      readFileSync(join(baseTemplateDir, 'src/lib/format-overrides-store.ts'), 'utf8'),
+    );
+    expect(result.stdout).toContain('Checking: format-overrides-plugin.ts');
+    expect(result.stdout).toContain('✅ Synced: format-overrides-plugin.ts');
+    expect(result.stdout).toContain('=== Running Migrations ===');
+    expect(parseJsonEvents(result.stdout)).not.toContainEqual({
+      event: 'sync.migrations.skipped',
+      reason: 'entrypoint_disabled',
+    });
+    expect(parseMigrationEvents(result.stdout).map((event) => event.event)).toContain(
+      'migration.seed-entry-server-tsx.skipped',
+    );
+  });
+
+  it('keeps the Vite plugin available when a modified vite-env blocks the format runtime group', async () => {
+    const customerDir = tempDir('sync-template-entrypoint-format-overrides-blocked-');
+    writeFile(customerDir, 'src/vite-env.d.ts', '/// <reference types="vite/client" />\n// customer modified\n');
+
+    const result = await runSync(customerDir);
+    const events = parseJsonEvents(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expectNoStderr(result.stderr);
+    expect(readFileSync(join(customerDir, 'format-overrides-plugin.ts'), 'utf8')).toBe(
+      readFileSync(join(baseTemplateDir, 'format-overrides-plugin.ts'), 'utf8'),
+    );
+    expect(existsSync(join(customerDir, 'src/components/FormattedBoundText.tsx'))).toBe(false);
+    expect(existsSync(join(customerDir, 'src/lib/format-overrides.ts'))).toBe(false);
+    expect(existsSync(join(customerDir, 'src/lib/format-overrides-store.ts'))).toBe(false);
+    expect(events).toContainEqual(expect.objectContaining({
+      event: 'sync.file.blocked',
+      file: 'src/vite-env.d.ts',
+      syncGroup: 'formatOverrides',
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      event: 'sync.file.blocked',
+      file: 'src/components/FormattedBoundText.tsx',
+      syncGroup: 'formatOverrides',
+    }));
+    expect(events).not.toContainEqual(expect.objectContaining({
+      event: 'sync.file.blocked',
+      file: 'format-overrides-plugin.ts',
+    }));
   });
 });

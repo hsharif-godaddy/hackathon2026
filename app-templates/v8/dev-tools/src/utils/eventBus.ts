@@ -86,6 +86,28 @@ export interface BusStyleUpdatePayload {
   elementInfo: BusElementInfo;
 }
 
+export interface BusFormatOverrideTarget {
+  file: string;
+  tagName: string;
+  sourceKind: "bound-expression" | "content-key" | "content-key-template";
+  contentKey: string | null;
+  contentKeyTemplate: string | null;
+  expressionHash: string | null;
+}
+
+export interface BusFormatOverrideMarks {
+  bold?: boolean;
+  italic?: boolean;
+  color?: string | null;
+}
+
+export interface BusFormatOverrideUpdatePayload {
+  commitId?: string;
+  devId: string;
+  target: BusFormatOverrideTarget;
+  marks: BusFormatOverrideMarks;
+}
+
 export interface BusVisualContextPayload {
   page?: string;
   scroll_position?: { x: number; y: number };
@@ -108,6 +130,7 @@ export interface BusEventMap {
   TEXT_FIX_ACCEPTED: { data: { oldLength: number; newLength: number } };
   TEXT_FIX_REJECTED: { data: { oldLength: number; newLength: number } };
   STYLE_UPDATED: { data: BusStyleUpdatePayload };
+  FORMAT_OVERRIDE_UPDATED: { data: BusFormatOverrideUpdatePayload };
   EDIT_WITH_AI: { data: BusAiEditContextPayload };
   REMOVE_SELECTION_FROM_PREVIEW: { data: { number: number } };
   CLEAR_AI_EDIT_CONTEXT: object;

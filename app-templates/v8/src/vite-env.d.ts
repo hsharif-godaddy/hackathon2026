@@ -14,3 +14,10 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+declare module 'virtual:format-overrides' {
+  import type { FormatOverrideBundle } from '@/lib/format-overrides'
+
+  const bundle: FormatOverrideBundle
+  export default bundle
+}

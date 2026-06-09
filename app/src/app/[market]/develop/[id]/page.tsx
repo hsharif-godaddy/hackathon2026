@@ -76,7 +76,7 @@ import { getEffectivePlan, PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
 import { claimTodoListHandoff, releaseTodoListHandoff } from '@/lib/todo-list-handoff-dedupe'
 import { cn } from '@/lib/utils'
-import { appService, gitHistoryFailureHttpStatus } from '@/services/AppService'
+import { appService, type FormatOverrideUpdateData, gitHistoryFailureHttpStatus } from '@/services/AppService'
 import { todoListService } from '@/services/TodoListService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
@@ -98,9 +98,14 @@ import {
 } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
 import type { RuntimeErrorData } from '@/types/runtime-error'
-import { registerTrackEventBus } from '@/utils/eventBus'
+import { type BusFormatOverrideUpdatePayload, registerTrackEventBus } from '@/utils/eventBus'
 import { logAiroHQEvent, logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
+import {
+  buildFormatOverrideReplyMessage,
+  parseFormatOverrideUpdateData,
+  readFormatOverrideCommitId,
+} from './formatOverrideBridge'
 import { useInstrumentationPrimer } from '../hooks/useInstrumentationPrimer'
 
 registerTrackEventBus()
@@ -1020,6 +1025,48 @@ function DevelopPageContent() {
     }
   }, [appId])
 
+  const sendFormatOverrideUpdate = useCallback(async (data: BusFormatOverrideUpdatePayload) => {
+    if (!appId) return
+
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement | null
+    const formatData: FormatOverrideUpdateData | null = parseFormatOverrideUpdateData(data)
+
+    if (!formatData) {
+      logger.warn('develop-page.format-override.malformed', { appId })
+      if (iframe) {
+        const commitId = readFormatOverrideCommitId(data)
+        postMessageToIframe(iframe, buildFormatOverrideReplyMessage(commitId, {
+          success: false,
+          error: 'malformed payload',
+        }))
+      }
+      return
+    }
+
+    const commitId = formatData.commitId
+
+    logger.info('develop-page.format-override.begin', {
+      appId,
+      devId: formatData.devId,
+      sourceKind: formatData.target.sourceKind,
+    })
+
+    try {
+      const result = await appService.updateFormatOverride(appId, formatData)
+      logger.info('develop-page.format-override.complete', { appId, success: result.success })
+      if (iframe) postMessageToIframe(iframe, buildFormatOverrideReplyMessage(commitId, result))
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      logger.error('develop-page.format-override.error', { appId, error: errorMessage })
+      if (iframe) {
+        postMessageToIframe(iframe, buildFormatOverrideReplyMessage(commitId, {
+          success: false,
+          error: errorMessage,
+        }))
+      }
+    }
+  }, [appId])
+
   // Listen for file edit tool completions to show preview
   useEffect(() => {
     if (!appId || !activeStream) return
@@ -1071,6 +1118,7 @@ function DevelopPageContent() {
     sendTextUpdate,
     sendTextFix,
     sendStyleUpdate,
+    sendFormatOverrideUpdate,
     sendUserRequestedFix,
     sendEditModeMessage,
     isEditModeEnabled,
