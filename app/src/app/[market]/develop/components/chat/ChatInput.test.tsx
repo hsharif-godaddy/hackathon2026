@@ -90,6 +90,14 @@ vi.mock('@/app/[market]/develop/components/chat/InputActionsPanel', () => ({
   default: mockInputActionsPanel,
 }));
 
+// Spy on the multi-page rebuild queue driver. It must mount from ChatInput (which
+// always renders), NOT from the chat-plans-gated InputActionsPanel — otherwise the
+// queue strands when chat-plans is off (the selector card enqueues regardless).
+const mockRebuildBuildQueueDriver = vi.hoisted(() => vi.fn());
+vi.mock('@/app/[market]/develop/hooks/useRebuildBuildQueueDriver', () => ({
+  useRebuildBuildQueueDriver: mockRebuildBuildQueueDriver,
+}));
+
 describe('ChatInput', () => {
   const defaultProps = {
     inputValue: '',
@@ -117,6 +125,17 @@ describe('ChatInput', () => {
     renderWithProviders(<ChatInput {...defaultProps} />);
 
     expect(screen.getByRole('textbox')).toBeInTheDocument();
+  });
+
+  it('mounts the rebuild queue driver even when airo-builder-chat-plans is off', () => {
+    // Regression: the driver used to mount inside InputActionsPanel, which only
+    // renders when chat-plans is on. The selector card enqueues regardless of the
+    // flag, so with chat-plans off a batch would enqueue into a void and hang.
+    // beforeEach leaves airo-builder-chat-plans → false, and InputActionsPanel is
+    // mocked to null, so a driver call here proves ChatInput mounts it directly.
+    renderWithProviders(<ChatInput {...defaultProps} />);
+
+    expect(mockRebuildBuildQueueDriver).toHaveBeenCalled();
   });
 
   describe('choicelist prompt swap (airo-builder-chat-choice-swap)', () => {

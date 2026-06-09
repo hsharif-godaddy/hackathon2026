@@ -22,6 +22,7 @@ import { useChatHistoryNavigation } from '@/app/[market]/develop/components/chat
 import type { AiEditContext } from '@/app/[market]/develop/components/types'
 import type { ActiveColorSchemeSuggest } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
 import type { ActiveFontThemeSuggest } from '@/app/[market]/develop/components/utils/findLatestFontThemeSuggest'
+import { useRebuildBuildQueueDriver } from '@/app/[market]/develop/hooks/useRebuildBuildQueueDriver'
 import { EXPERIMENT_IDS } from '@/config/experiments'
 import { SWITCHBOARD_AIRO_BUILDER_CHAT_CHOICE_SWAP } from '@/config/switchboard-flags'
 import { useHivemind } from '@/hooks/useHivemind'
@@ -162,6 +163,12 @@ export default function ChatInput({
   activeFontThemeSuggest = null,
 }: ChatInputProps) {
   const t = useTranslations();
+  // Drives the sequential multi-page rebuild queue (Slice 2). Mounted here — not in
+  // InputActionsPanel — because that panel only renders when airo-builder-chat-plans
+  // is on, whereas the selector card enqueues regardless of the flag. ChatInput
+  // always renders (mobile XOR desktop, inside ChatContext), so the queue is always
+  // driven; the selector card only enqueues, never sends.
+  useRebuildBuildQueueDriver();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
   const { locale } = useIntl();
   const isChatGaugeEnabledBySwitchboard = useSwitchboard('appbuilder-chat-gauge');

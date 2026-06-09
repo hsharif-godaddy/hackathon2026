@@ -1,14 +1,15 @@
 'use client'
 
-import { CheckCircle, ChevronDown, FileCode, FileText, Hammer } from 'lucide-react'
+import { CheckCircle, FileCode, FileText, Hammer } from 'lucide-react'
 import { useState } from 'react'
 import Alert from '@ux/alert'
 import Box from '@ux/box'
 import Button from '@ux/button'
+import Checkbox from '@ux/checkbox'
 import text from '@ux/text'
 
-import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
+import { REBUILD_BATCH_CAP, useRebuildBuildQueue } from '@/app/[market]/develop/hooks/useRebuildBuildQueue'
 import type { PageInfo } from '@/app/[market]/develop/hooks/useRebuildPages'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
@@ -36,12 +37,31 @@ export default function RebuildPageSelectorToolRenderer({
   size = 'regular'
 }: DefaultToolRendererProps) {
   const t = useTranslations()
-  const sendUserMessage = useSendUserMessage()
   const isStreaming = useIsActivelyStreaming()
   const isLoading = useIsLoading()
   const isProcessing = isStreaming || isLoading
-  const [selectedPage, setSelectedPage] = useState<string>('')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const enqueue = useRebuildBuildQueue((s) => s.enqueue)
+  const queueStatus = useRebuildBuildQueue((s) => s.status)
+  const queueCursor = useRebuildBuildQueue((s) => s.cursor)
+  const queueTotal = useRebuildBuildQueue((s) => s.slugs.length)
+  const stopQueue = useRebuildBuildQueue((s) => s.stop)
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false)
+
+  function toggle(slug: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(slug)) next.delete(slug)
+      else if (next.size < REBUILD_BATCH_CAP) next.add(slug)
+      return next
+    })
+  }
+
+  function handleBuildSelected() {
+    if (selected.size === 0 || isProcessing) return
+    enqueue([...selected])
+    setSelected(new Set())
+  }
 
   // Only render on the last assistant message
   if (!isLastAssistantMessage) {
@@ -151,21 +171,6 @@ export default function RebuildPageSelectorToolRenderer({
   const unbuiltPages = availablePages.filter(p => !p.isBuilt)
   const builtPages = availablePages.filter(p => p.isBuilt)
 
-  // Set default selection if not set
-  if (!selectedPage && unbuiltPages.length > 0) {
-    setSelectedPage(unbuiltPages[0].slug)
-  }
-
-  function handleBuildPage() {
-    if (!selectedPage || isProcessing || !sendUserMessage) return
-
-    // Send a message to trigger the build. rebuildBuildPageSlug lets the server
-    // build this page deterministically from the scraped source (AIROBUILD-2104)
-    // instead of relying on the agent to choose the rebuild tool; the friendly
-    // text remains the visible chat bubble.
-    sendUserMessage(`Build the ${selectedPage} page`, { isActionRequest: true, rebuildBuildPageSlug: selectedPage })
-  }
-
   // All pages built
   if (size === "regular" && (allPagesBuilt || unbuiltPages.length === 0)) {
     return (
@@ -188,37 +193,50 @@ export default function RebuildPageSelectorToolRenderer({
   return (
     <Box gap="sm">
 
-      {/* Page selector and build button */}
-      <Box orientation="horizontal" gap="sm" blockAlignChildren="center" className="flex-wrap">
-        {/* Dropdown */}
-        <div className="relative flex-1 min-w-[200px]">
-          <select
-            value={selectedPage}
-            onChange={(e) => setSelectedPage(e.target.value)}
-            disabled={isProcessing}
-            className="w-full appearance-none rounded-md border border-border bg-background py-1 pl-2 pr-8 text-sm focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
-          >
-            {unbuiltPages.map((page) => (
-              <option key={page.slug} value={page.slug}>
-                {page.title}
-              </option>
-            ))}
-          </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-muted-foreground">
-            <ChevronDown />
-          </div>
-        </div>
-
-        {/* Build button */}
-        <Button
-          text={t('builder_rebuild_build_page')}
-          design="secondary"
-          className="suggestion-button rounded-md font-normal"
-          size="sm"
-          disabled={!selectedPage || isProcessing}
-          onClick={handleBuildPage}
-        />
-      </Box>
+      {/* Page multi-select and build actions */}
+      {queueStatus === 'running' ? (
+        <Box orientation="horizontal" gap="sm" blockAlignChildren="center">
+          <text.p size={-1}>
+            {t('builder_rebuild_building_progress', { current: queueCursor + 1, total: queueTotal })}
+          </text.p>
+          <Button text={t('builder_rebuild_stop')} design="tertiary" size="sm" onClick={stopQueue} />
+        </Box>
+      ) : (
+        <Box gap="sm">
+          {/* Select-all is offered only when every unbuilt page fits in one batch
+              (<= cap). Above the cap a "select all" can't honor the cap, and the
+              per-checkbox guard below already prevents over-selection — so we hide
+              it rather than offer a partial "select first N". */}
+          {unbuiltPages.length > 1 && unbuiltPages.length <= REBUILD_BATCH_CAP && (
+            <Button
+              text={t('builder_rebuild_select_all')}
+              design="inline"
+              size="sm"
+              disabled={isProcessing}
+              onClick={() => setSelected(new Set(unbuiltPages.map((p) => p.slug)))}
+            />
+          )}
+          {unbuiltPages.map((p) => (
+            <Checkbox
+              key={p.slug}
+              id={`rebuild-page-${p.slug}`}
+              name={`rebuild-page-${p.slug}`}
+              label={p.title}
+              checked={selected.has(p.slug)}
+              disabled={isProcessing || (!selected.has(p.slug) && selected.size >= REBUILD_BATCH_CAP)}
+              onChange={() => toggle(p.slug)}
+            />
+          ))}
+          <Button
+            text={t('builder_rebuild_build_n_pages', { count: selected.size })}
+            design="secondary"
+            size="sm"
+            className="suggestion-button rounded-md font-normal"
+            disabled={selected.size === 0 || isProcessing}
+            onClick={handleBuildSelected}
+          />
+        </Box>
+      )}
 
       {/* Built pages list */}
       {size === "regular" && builtPages.length > 0 && (
