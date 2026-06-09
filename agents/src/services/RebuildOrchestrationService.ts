@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readFile } from 'node:fs/promises';
+import { access, mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { Logger } from '../logging/index.js';
@@ -6,12 +6,15 @@ import type { PageScrapeResult } from '../tools/ai-lib-tools/drivers/website-scr
 import {
   type AssetManifest,
   type NavigationItem,
+  type RebuildIntakeChoices,
   type RebuildWorkflowState,
   type SiteMetadata,
   type SourceSiteData,
   type SitemapData,
   type StylePreferences,
 } from '../types/rebuild.js';
+import { defaultIntakeChoices } from './rebuild/intake-defaults.js';
+import { selectUpfrontBuildSlugs } from './rebuild/scope-estimates.js';
 import { rebuildUrlToSlug } from '../utils/rebuild-utils.js';
 import { extractNavigationFromHtml, PagePersistenceService, type SavePageInput } from './rebuild/page-persistence.js';
 import { RebuildPromptBuilder, type BuildPageResult } from './rebuild/prompt-builder.js';
@@ -55,47 +58,21 @@ export class RebuildOrchestrationService {
   }
 
   /**
-   * Start the rebuild workflow
-   * 
-   * @param appId - Application ID
-   * @param sourceUrl - URL of site to rebuild
-   * @returns Promise resolving to initial workflow state
+   * Prepare rebuild workflow and wait for user intake before scraping.
+   */
+  async beginRebuild(appId: string, sourceUrl: string): Promise<RebuildWorkflowState> {
+    logger.info('rebuild-orchestration.begin', { appId, sourceUrl });
+    return this.initializeWorkflow(appId, sourceUrl, 'awaiting_intake');
+  }
+
+  /**
+   * Start the rebuild workflow immediately (legacy path when intake form is off).
    */
   async startRebuild(appId: string, sourceUrl: string): Promise<RebuildWorkflowState> {
     try {
-      logger.info('rebuild-orchestration.start', {
-        appId,
-        sourceUrl
-      });
-
-      await mkdir(this.sourceSiteDir, { recursive: true });
-      await mkdir(path.join(this.sourceSiteDir, 'pages'), { recursive: true });
-      await mkdir(path.join(this.sourceSiteDir, 'screenshots'), { recursive: true });
-
-      const state: RebuildWorkflowState = {
-        appId,
-        sourceUrl,
-        rootPath: SitemapDiscoveryService.extractPathPrefix(sourceUrl),
-        status: 'scraping',
-        scrapingProgress: {
-          total: 0,
-          completed: 0
-        },
-        pagesBuilt: [],
-        currentPage: null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      await this.saveState(state);
-
-      this.scrapeAndAnalyze(appId, sourceUrl).catch(error => {
-        logger.error('rebuild-orchestration.background-error', {
-          appId,
-          error: error instanceof Error ? error.message : String(error)
-        });
-      });
-
+      logger.info('rebuild-orchestration.start', { appId, sourceUrl });
+      const state = await this.initializeWorkflow(appId, sourceUrl, 'scraping');
+      this.kickoffScrape(appId, sourceUrl);
       return state;
     } catch (error) {
       logger.error('rebuild-orchestration.start-error', {
@@ -105,6 +82,83 @@ export class RebuildOrchestrationService {
       });
       throw error;
     }
+  }
+
+  /**
+   * Apply intake choices and start scraping.
+   */
+  async submitIntake(appId: string, choices: RebuildIntakeChoices): Promise<RebuildWorkflowState> {
+    try {
+      const state = await this.getStatus(appId);
+      if (state.status !== 'awaiting_intake') {
+        throw new Error(`Cannot submit intake while status is ${state.status}`);
+      }
+
+      state.rebuildScope = choices.scope;
+      state.stylePreferences = choices.stylePreferences;
+      state.intakeCompleted = true;
+      state.intakeSubmittedAt = new Date().toISOString();
+      state.status = 'scraping';
+      state.updatedAt = new Date().toISOString();
+      await this.saveState(state);
+
+      logger.info('rebuild-orchestration.intake-submitted', {
+        appId,
+        scope: choices.scope,
+        designDirection: choices.stylePreferences.designDirection,
+      });
+
+      this.kickoffScrape(appId, state.sourceUrl);
+      return state;
+    } catch (error) {
+      logger.error('rebuild-orchestration.intake-error', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  /** Apply default intake and start scrape (timeout / dismiss fallback). */
+  async submitDefaultIntake(appId: string): Promise<RebuildWorkflowState> {
+    return this.submitIntake(appId, defaultIntakeChoices());
+  }
+
+  private async initializeWorkflow(
+    appId: string,
+    sourceUrl: string,
+    status: RebuildWorkflowState['status'],
+  ): Promise<RebuildWorkflowState> {
+    await mkdir(this.sourceSiteDir, { recursive: true });
+    await mkdir(path.join(this.sourceSiteDir, 'pages'), { recursive: true });
+    await mkdir(path.join(this.sourceSiteDir, 'screenshots'), { recursive: true });
+
+    const state: RebuildWorkflowState = {
+      appId,
+      sourceUrl,
+      rootPath: SitemapDiscoveryService.extractPathPrefix(sourceUrl),
+      status,
+      scrapingProgress: {
+        total: 0,
+        completed: 0,
+      },
+      pagesBuilt: [],
+      currentPage: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await this.saveState(state);
+    return state;
+  }
+
+  private kickoffScrape(appId: string, sourceUrl: string): void {
+    this.scrapeAndAnalyze(appId, sourceUrl).catch(error => {
+      logger.error('rebuild-orchestration.background-error', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
 
   private async persistOneScrapedPage(
@@ -251,6 +305,66 @@ export class RebuildOrchestrationService {
       });
       throw error;
     }
+  }
+
+  /**
+   * Slugs to build in the first pass for the current scope (homepage first).
+   */
+  async getUpfrontBuildSlugs(appId: string): Promise<string[]> {
+    const state = await this.getStatus(appId);
+    const sitemapPath = path.join(this.sourceSiteDir, 'sitemap.json');
+    try {
+      await access(sitemapPath);
+    } catch {
+      logger.warn('rebuild-orchestration.upfront-slugs-sitemap-missing', { appId });
+      return ['homepage'];
+    }
+
+    let sitemap: SitemapData;
+    try {
+      sitemap = JSON.parse(await readFile(sitemapPath, 'utf-8'));
+    } catch (error) {
+      logger.error('rebuild-orchestration.upfront-slugs-sitemap-parse-failed', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return ['homepage'];
+    }
+
+    const slugs = selectUpfrontBuildSlugs(
+      sitemap.pages.filter(page => page.scraped),
+      state.rootPath ?? '/',
+      state,
+    );
+    if (slugs.length > 0) {
+      return slugs;
+    }
+    return ['homepage'];
+  }
+
+  /**
+   * Resolve upfront plan slugs and generate the homepage handoff prompt only.
+   * Inner-page prompts are generated on demand when the upfront queue dispatches
+   * rebuildPageSelector (avoids duplicate PagePromptAgent runs).
+   */
+  async buildUpfrontPagePrompts(appId: string): Promise<{ slugs: string[]; homepagePrompt: string }> {
+    const slugs = await this.getUpfrontBuildSlugs(appId);
+    logger.info('rebuild-orchestration.upfront-build-start', { appId, slugs, count: slugs.length });
+
+    const homepageSlug = slugs.includes('homepage') ? 'homepage' : (slugs[0] ?? 'homepage');
+    const homepagePrompt = await this.buildPage(appId, homepageSlug);
+
+    if (!homepagePrompt) {
+      logger.warn('rebuild-orchestration.upfront-build-empty-homepage-prompt', { appId, slugs });
+    }
+
+    logger.info('rebuild-orchestration.upfront-build-prompts-ready', {
+      appId,
+      slugs,
+      homepagePromptLength: homepagePrompt.length,
+    });
+
+    return { slugs, homepagePrompt };
   }
 
   /**

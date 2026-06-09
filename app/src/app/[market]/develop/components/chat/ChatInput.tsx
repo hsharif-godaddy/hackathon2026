@@ -164,7 +164,7 @@ export default function ChatInput({
   activeFontThemeSuggest = null,
 }: ChatInputProps) {
   const t = useTranslations();
-  // Drives the sequential multi-page rebuild queue (Slice 2). Mounted here — not in
+  // Drives the sequential multi-page rebuild queue. Mounted here — not in
   // InputActionsPanel — because that panel only renders when airo-builder-chat-plans
   // is on, whereas the selector card enqueues regardless of the flag. ChatInput
   // always renders (mobile XOR desktop, inside ChatContext), so the queue is always

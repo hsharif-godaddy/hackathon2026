@@ -17,6 +17,7 @@ import { type FileOperationType, useCodeSyncStore } from '@/stores/useCodeSyncSt
 import { useGitStore } from '@/stores/useGitStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
+import { useUpfrontRebuildBuildQueueStore } from '@/stores/useUpfrontRebuildBuildQueueStore'
 import { logImpressionEvent, setInstrumentationBusinessName, setInstrumentationIntentCategory } from '@/utils/instrumentation'
 import { readIntentCategoryFromSession } from '@/utils/traffic-signals'
 
@@ -275,6 +276,41 @@ export async function handleToolResultSideEffects(
     }
     if (tool.name === 'handoff') {
       trackHandoff()
+    }
+    if (tool.name === 'websiteRebuild' && appId) {
+      try {
+        const raw = tool.output ?? tool.result
+        const resultObj = typeof raw === 'string' ? JSON.parse(raw) : raw
+        const upfrontBuildSlugs = Array.isArray(resultObj?.upfrontBuildSlugs)
+          ? resultObj.upfrontBuildSlugs.filter((slug: unknown): slug is string => typeof slug === 'string' && slug.length > 0)
+          : []
+        const upfrontPlanSlugs = Array.isArray(resultObj?.upfrontPlanSlugs)
+          ? resultObj.upfrontPlanSlugs.filter((slug: unknown): slug is string => typeof slug === 'string' && slug.length > 0)
+          : []
+        // Outer gate: multi-page upfront plan, or legacy follow-up slugs without a plan list.
+        // Inner setPlan accepts any non-empty upfrontPlanSlugs (homepage-only plans skip seeding).
+        if (upfrontPlanSlugs.length > 1 || upfrontBuildSlugs.length > 0) {
+          const queue = useUpfrontRebuildBuildQueueStore.getState()
+          if (upfrontPlanSlugs.length > 0) {
+            queue.setPlan(appId, upfrontPlanSlugs, upfrontBuildSlugs)
+          } else {
+            queue.enqueue(appId, upfrontBuildSlugs)
+          }
+          const streamState = useStreamingConversationStore.getState()
+          if (
+            streamState.streamingState === 'streaming' &&
+            streamState.activeStream &&
+            !streamState.activeStream.isComplete
+          ) {
+            queue.markProcessing(appId)
+          }
+        }
+      } catch (error) {
+        logger.warn('toolSideEffects.websiteRebuild.upfrontQueueFailed', {
+          appId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
     }
   }
 

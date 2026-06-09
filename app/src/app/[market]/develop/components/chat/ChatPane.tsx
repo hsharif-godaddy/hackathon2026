@@ -38,6 +38,7 @@ import { isColorSuggestPanelVisible } from '@/app/[market]/develop/components/ut
 import { findLatestColorSchemeSuggest } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest';
 import { findLatestFontThemeSuggest } from '@/app/[market]/develop/components/utils/findLatestFontThemeSuggest';
 import { isFontSuggestPanelVisible } from '@/app/[market]/develop/components/utils/fontSuggestPanelVisibility';
+import { useUpfrontRebuildBuildQueue } from '@/app/[market]/develop/hooks/useUpfrontRebuildBuildQueue';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE } from '@/config/switchboard-flags';
 import { trackPostInteraction } from '@/hooks/shared/initialBuildFunnel';
@@ -1046,6 +1047,8 @@ function ChatPaneInner({
     }),
     [handleSendMessage]
   );
+
+  useUpfrontRebuildBuildQueue(appId, isStreaming || isLoading, handleSendMessage);
 
   // Handle asset selection from AssetManager
   const handleAssetSelect = useCallback(

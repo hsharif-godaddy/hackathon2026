@@ -28,10 +28,11 @@ import { AssetProcessingService } from '../AssetProcessingService.js';
 import { AtlasCrawlerAdapter, type AtlasCrawlOutput } from '../AtlasCrawlerAdapter.js';
 import { SitemapDiscoveryService, type SitemapDiscoveryResult } from '../SitemapDiscoveryService.js';
 
-const logger = Logger.create({ component: 'rebuild-orchestration-service' });
+import { capDiscoveredPages, resolveMaxPagesToScrape } from './scope-estimates.js';
 
-/** Default page cap. Atlas + legacy both honor it. */
-export const MAX_PAGES_TO_SCRAPE = 20;
+export { MAX_PAGES_TO_SCRAPE } from './scope-estimates.js';
+
+const logger = Logger.create({ component: 'rebuild-orchestration-service' });
 
 /** Statuses where the user has progressed past style-question selection. The
  *  homepage-first callback must never regress these back to 'style_questions'
@@ -164,13 +165,14 @@ export class ScrapePipeline {
       const state = await this.deps.getStatus(appId);
 
       let discoveryResult: SitemapDiscoveryResult;
+      const maxPages = resolveMaxPagesToScrape(state);
       if (SitemapDiscoveryService.hasPathBeyondRoot(sourceUrl)) {
         logger.info('rebuild-orchestration.sub-path-mode', { appId, sourceUrl, pathPrefix: state.rootPath });
-        const sitemapService = new SitemapDiscoveryService(sourceUrl, MAX_PAGES_TO_SCRAPE);
+        const sitemapService = new SitemapDiscoveryService(sourceUrl, maxPages);
         discoveryResult = await sitemapService.crawlFromPath(state.rootPath);
       } else {
         logger.info('rebuild-orchestration.root-mode', { appId, sourceUrl });
-        const sitemapService = new SitemapDiscoveryService(sourceUrl, MAX_PAGES_TO_SCRAPE);
+        const sitemapService = new SitemapDiscoveryService(sourceUrl, maxPages);
         discoveryResult = await sitemapService.discover();
       }
 
@@ -189,7 +191,7 @@ export class ScrapePipeline {
       for (const page of nonBlogPages) {
         slugMap.set(rebuildUrlToSlug(page.url, state.rootPath), page);
       }
-      const pagesToScrape = [...slugMap.values()];
+      const pagesToScrape = capDiscoveredPages([...slugMap.values()], state.rootPath, maxPages);
 
       if (pagesToScrape.length < nonBlogPages.length) {
         logger.info('rebuild-orchestration.slug-dedup', {
@@ -365,6 +367,7 @@ export class ScrapePipeline {
       }
 
       state.status = 'style_questions';
+      state.scrapeSettled = true;
       state.updatedAt = new Date().toISOString();
       await this.deps.saveState(state);
 
@@ -455,7 +458,7 @@ export class ScrapePipeline {
       };
 
       const crawlOutput = await adapter.crawlSite(sourceUrl, {
-        maxPages: MAX_PAGES_TO_SCRAPE,
+        maxPages: resolveMaxPagesToScrape(state),
         rootPath: state.rootPath,
       }, { onHomepageReady });
 
@@ -552,6 +555,7 @@ export class ScrapePipeline {
         }
 
         state.status = 'style_questions';
+        state.scrapeSettled = true;
         state.updatedAt = new Date().toISOString();
         await this.deps.saveState(state);
       } else {
@@ -603,6 +607,7 @@ export class ScrapePipeline {
         const freshState = await this.deps.getStatus(appId);
         freshState.scrapingProgress.total = successfulPages.length;
         freshState.scrapingProgress.completed = completedPages;
+        freshState.scrapeSettled = true;
         freshState.updatedAt = new Date().toISOString();
         await this.deps.saveState(freshState);
       }

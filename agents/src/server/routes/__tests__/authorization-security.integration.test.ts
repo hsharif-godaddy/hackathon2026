@@ -413,6 +413,25 @@ describe('Cross-Tenant Authorization Security - Integration Tests', () => {
 
       expect(response.status).not.toBe(403);
     });
+
+    it('should reject cross-tenant access to rebuild status', async () => {
+      const response = await request(app)
+        .get(`/apps/${siteB_id}/rebuild/status`)
+        .set('Authorization', `Bearer ${siteA_token}`);
+
+      expect(response.status).toBe(403);
+      expect(response.body).toHaveProperty('error', 'Access denied');
+    });
+
+    it('should reject cross-tenant access to rebuild intake', async () => {
+      const response = await request(app)
+        .post(`/apps/${siteB_id}/rebuild/intake`)
+        .set('Authorization', `Bearer ${siteA_token}`)
+        .send({ scope: 'homepage_only', stylePreferences: { designDirection: 'keep-similar' } });
+
+      expect(response.status).toBe(403);
+      expect(response.body).toHaveProperty('error', 'Access denied');
+    });
   });
 
   describe('Next Actions Router - /apps/:id/next-actions', () => {

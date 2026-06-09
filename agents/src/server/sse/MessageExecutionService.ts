@@ -172,6 +172,7 @@ interface LifecycleContext {
     subscriptionId?: string
     bmsBudgetId?: string
     useAtlasCrawler?: boolean
+    rebuildIntakeFormEnabled?: boolean
     debugStatsEnabled?: boolean
     market?: string
     marketingCampaignsEnabled?: boolean
@@ -1714,6 +1715,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         marketingCampaignsEnabled: agentCtx?.marketingCampaignsEnabled ?? false,
         ...(agentCtx?.useTestBudget !== undefined && { useTestBudget: agentCtx.useTestBudget }),
         ...(agentCtx?.useAtlasCrawler && { useAtlasCrawler: true }),
+        ...(agentCtx?.rebuildIntakeFormEnabled && { rebuildIntakeFormEnabled: true }),
         ...(agentCtx?.marketingCampaignsEnabled && { marketingCampaignsEnabled: true }),
       },
       ...(contextAttachments.length > 0 && { contextAttachments }),

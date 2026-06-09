@@ -17,9 +17,31 @@ import parser from "@babel/parser";
 import traverse from "@babel/traverse";
 import * as t from "@babel/types";
 
+const REBUILD_INTAKE_DEFAULTS_PATH = new URL(
+  "../app/src/lib/translations/rebuild-intake-defaults.ts",
+  import.meta.url,
+);
+
 const API_URL =
   "https://api.i18n.int.gdcorp.tools/api/v2/package/market/en-US/%40airo-app-builder%2Faab";
 const API_TIMEOUT_MS = 10000;
+
+/**
+ * Keys listed in rebuild-intake-defaults.ts have English dev fallbacks via
+ * defaultMessageForRebuildIntakeKey() until published to @airo-app-builder/aab.
+ * @returns {Set<string>}
+ */
+function loadRebuildIntakeFallbackKeys() {
+  try {
+    const content = readFileSync(REBUILD_INTAKE_DEFAULTS_PATH, "utf-8");
+    return new Set(
+      [...content.matchAll(/\n\s+(builder_[a-z0-9_]+):/g)].map((match) => match[1]),
+    );
+  } catch (error) {
+    console.warn(`Warning: Could not load rebuild-intake-defaults.ts: ${error.message}`);
+    return new Set();
+  }
+}
 
 /**
  * Get list of staged files from git
@@ -116,8 +138,11 @@ function extractKeysFromCode(code, filePath) {
         const { node } = path;
 
         // Check for t() calls
+        const isTranslateCall =
+          t.isIdentifier(node.callee) &&
+          (node.callee.name === "t" || node.callee.name === "tr");
         if (
-          t.isIdentifier(node.callee, { name: "t" }) &&
+          isTranslateCall &&
           node.arguments.length > 0 &&
           t.isStringLiteral(node.arguments[0])
         ) {
@@ -306,6 +331,10 @@ async function main() {
   }
 
   const extractedKeys = extractKeysFromFiles(appFiles);
+
+  for (const key of loadRebuildIntakeFallbackKeys()) {
+    availableKeys.add(key);
+  }
 
   const missingKeys = findMissingKeys(extractedKeys, availableKeys);
 

@@ -57,6 +57,7 @@ export interface AgentContext {
   agentProfile?: string; // Active agent profile identifier
   agentProfileSelectorEnabled?: boolean; // Allow per-project agent profile selection from frontend
   useAtlasCrawler?: boolean; // Route rebuild scraping through Atlas REST API instead of legacy WebsiteScraperDriver (switchboard: appbuilder-atlas-crawler)
+  rebuildIntakeFormEnabled?: boolean; // Initial-rebuild intake form before scraping (switchboard: appbuilder-rebuild-intake-form)
   debugStatsEnabled?: boolean; // Allow per-LLM-call debug stats events to flow to this client (switchboard: appbuilder-debug-drawer)
   marketingCampaignsEnabled?: boolean; // Enable Marketing Campaigns feature (switchboard: appbuilder-marketing-campaigns)
   market?: string; // BCP-47 market/locale from token mint (BFF-resolved from URL)
@@ -100,6 +101,7 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     agentProfile: raw.agentProfile as string | undefined,
     agentProfileSelectorEnabled: (raw.agentProfileSelectorEnabled as boolean) ?? false,
     useAtlasCrawler: (raw.useAtlasCrawler as boolean) ?? false,
+    rebuildIntakeFormEnabled: (raw.rebuildIntakeFormEnabled as boolean) ?? false,
     debugStatsEnabled: (raw.debugStatsEnabled as boolean) ?? false,
     marketingCampaignsEnabled: (raw.marketingCampaignsEnabled as boolean) ?? false,
     market: typeof raw.market === 'string' && raw.market.length > 0 ? raw.market : undefined,

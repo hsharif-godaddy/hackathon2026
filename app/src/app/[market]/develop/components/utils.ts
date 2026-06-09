@@ -295,3 +295,83 @@ function pagePathToRoute(filePath: string): string | null {
 
   return '/' + fileName
 }
+
+const MIN_SUBSTANTIVE_PAGE_CONTENT_CHARS = 100
+
+function pagePathToRebuildSlug(filePath: string): string | null {
+  const match = filePath.match(PAGE_FILE_PATTERN)
+  if (!match) return null
+
+  const fileName = match[1].toLowerCase()
+  if (fileName === 'index') return 'homepage'
+  if (EXCLUDED_PAGE_NAMES.has(fileName)) return null
+  if (fileName.includes('[') || fileName.includes(']')) return null
+
+  return fileName
+}
+
+function extractSubstantivePagePathsFromToolCall(tc: ToolCall): string[] {
+  const input = tc.input
+  if (!input) return []
+
+  switch (tc.name) {
+    case 'str_replace_based_edit_tool':
+    case 'textEditor': {
+      const path = input.path
+      if (typeof path !== 'string' || !isPageFile(path)) return []
+      if (input.command === 'create') {
+        return extractSubstantivePageContentLength(input) >= MIN_SUBSTANTIVE_PAGE_CONTENT_CHARS ? [path] : []
+      }
+      return []
+    }
+
+    case 'create_file':
+    case 'write_file': {
+      const path = input.path ?? input.file_path
+      if (typeof path !== 'string' || !isPageFile(path)) return []
+      return extractSubstantivePageContentLength(input) >= MIN_SUBSTANTIVE_PAGE_CONTENT_CHARS ? [path] : []
+    }
+
+    case 'fileEdit': {
+      if (!Array.isArray(input.operations)) return []
+      return (input.operations as Array<Record<string, unknown>>)
+        .filter((op): op is Record<string, unknown> & { path: string } => {
+          if (typeof op.path !== 'string' || !isPageFile(op.path)) return false
+          const mode = op.type ?? op.mode
+          if (mode !== 'create') return false
+          return extractSubstantivePageContentLength(op) >= MIN_SUBSTANTIVE_PAGE_CONTENT_CHARS
+        })
+        .map(op => op.path)
+    }
+
+    default:
+      return []
+  }
+}
+
+function extractSubstantivePageContentLength(input: Record<string, unknown>): number {
+  for (const key of ['file_text', 'new_str', 'new_string', 'content']) {
+    const value = input[key]
+    if (typeof value === 'string') return value.length
+  }
+  return 0
+}
+
+/**
+ * Rebuild slugs the develop agent substantively implemented in a completed turn.
+ * Ignores blank route shells (small create payloads) so the upfront build queue
+ * can still dispatch source-based prompts afterward.
+ */
+export function extractDevelopBuiltSlugsFromToolCalls(toolCalls: ToolCall[]): string[] {
+  const slugs = new Set<string>()
+
+  for (const tc of toolCalls) {
+    if (tc.status !== 'completed' || tc.error) continue
+    for (const pagePath of extractSubstantivePagePathsFromToolCall(tc)) {
+      const slug = pagePathToRebuildSlug(pagePath)
+      if (slug) slugs.add(slug)
+    }
+  }
+
+  return [...slugs]
+}

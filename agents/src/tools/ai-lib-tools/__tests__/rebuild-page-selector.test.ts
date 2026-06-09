@@ -93,7 +93,7 @@ describe('rebuildPageSelector', () => {
       expect(mockBuildPage).not.toHaveBeenCalled();
     });
 
-    it('returns failure when the page has already been built', async () => {
+    it('re-delivers the prompt when the page prompt was already generated', async () => {
       setWorkspace({
         workflowState: { pagesBuilt: ['homepage', 'about'] },
         sitemap: { pages: [{ slug: 'about', scraped: true }] },
@@ -101,9 +101,9 @@ describe('rebuildPageSelector', () => {
 
       const result: any = await run({ mode: 'build', pageSlug: 'about' });
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Page already built: about');
-      expect(mockBuildPage).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(result.pagePrompt).toBe('SOURCE PAGE PROMPT');
+      expect(mockBuildPage).toHaveBeenCalledWith('app1', 'about');
     });
   });
 

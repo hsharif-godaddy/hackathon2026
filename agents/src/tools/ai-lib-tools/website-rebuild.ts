@@ -4,29 +4,17 @@ import { z } from 'zod'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { Logger } from '../../logging/index.js'
 import { RebuildOrchestrationService } from '../../services/RebuildOrchestrationService.js'
+import { DEFAULT_STYLE_PREFERENCES } from '../../services/rebuild/intake-defaults.js'
 import {
   asRebuildError,
   type RebuildWorkflowState,
-  type StylePreferences,
   WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE
 } from '../../types/rebuild.js'
+import { waitForIntake } from './wait-for-intake.js'
+import { waitForScrapeCompletion } from './wait-for-scrape-completion.js'
 
 const logger = Logger.create({ component: 'website-rebuild-tool' })
 const appRepo = new AppRepository()
-
-/**
- * Default style preferences for a deterministic rebuild: preserve the source
- * faithfully (keep its design, colors, and fonts). This is a clone tool, so
- * preservation — not redesign — is the right default. These values drive the
- * preserve branches in style-instructions.ts and select design-preserve.md
- * over the redesign brief; an explicit redesign requires a non-"keep" choice.
- */
-const DEFAULT_STYLE_PREFERENCES: StylePreferences = {
-  designDirection: 'keep-similar',
-  colorPreference: 'keep-original',
-  typographyStyle: 'keep-original',
-  layoutApproach: 'responsive'
-}
 
 /**
  * Poll for rebuild completion with timeout
@@ -36,30 +24,21 @@ async function waitForCompletion(
   appId: string,
   maxWaitMs: number = 300000
 ): Promise<RebuildWorkflowState> {
-  const startTime = Date.now()
-  let pollIteration = 0
+  return waitForScrapeCompletion(service, appId, maxWaitMs)
+}
 
-  while (Date.now() - startTime < maxWaitMs) {
-    const state = await service.getStatus(appId)
-
-    if (state.status === 'style_questions' || state.status === 'complete') {
-      return state
+async function ensureStylePreferencesReady(
+  service: RebuildOrchestrationService,
+  appId: string,
+  completedState: RebuildWorkflowState,
+): Promise<void> {
+  if (completedState.stylePreferences) {
+    if (completedState.status === 'style_questions') {
+      await service.submitStylePreferences(appId, completedState.stylePreferences)
     }
-
-    if (state.status === 'error') {
-      throw asRebuildError({
-        message: state.error || 'Rebuild failed',
-        code: state.errorCode,
-        userMessage: state.userMessage
-      })
-    }
-
-    const pollMs = pollIteration < 18 ? 400 : 1500
-    pollIteration++
-    await new Promise(resolve => setTimeout(resolve, pollMs))
+    return
   }
-
-  throw new Error('Rebuild timed out waiting for completion')
+  await service.submitStylePreferences(appId, DEFAULT_STYLE_PREFERENCES)
 }
 
 export const websiteRebuildAITool: Tool = createTool(
@@ -94,49 +73,61 @@ This tool starts the website rebuild process:
       throw new Error('App ID is required for website rebuild')
     }
 
-    logger.info('websiteRebuild.start', {
-      appId,
-      url: input.url,
-      hasStateManager: !!stateManager,
-      hasSocketId: !!socketId
-    })
-
     const app = await appRepo.findById(appId)
     if (!app) {
       throw new Error(`App not found: ${appId}`)
     }
 
+    const rebuildIntakeFormEnabled =
+      context?.metadata?.rebuildIntakeFormEnabled === true && !app.initialBuildComplete
+
+    logger.info('websiteRebuild.start', {
+      appId,
+      url: input.url,
+      hasStateManager: !!stateManager,
+      hasSocketId: !!socketId,
+      rebuildIntakeFormEnabled,
+      initialBuildComplete: !!app.initialBuildComplete,
+    })
+
     const useAtlasCrawler = context?.metadata?.useAtlasCrawler === true
     const service = new RebuildOrchestrationService(app.path, { useAtlasCrawler })
 
-    // Start the rebuild process
-    const initialState = await service.startRebuild(appId, input.url)
+    const initialState = rebuildIntakeFormEnabled
+      ? await service.beginRebuild(appId, input.url)
+      : await service.startRebuild(appId, input.url)
+
+    let intakeTimedOut = false
 
     try {
-      // Wait for scraping to complete
+      if (rebuildIntakeFormEnabled) {
+        const intakeResult = await waitForIntake(service, appId)
+        intakeTimedOut = intakeResult.intakeTimedOut
+      }
+
       const completedState = await waitForCompletion(service, appId)
 
       logger.info('websiteRebuild.scraping-complete', {
         appId,
-        pagesScraped: completedState.scrapingProgress.completed
+        pagesScraped: completedState.scrapingProgress.completed,
+        rebuildScope: completedState.rebuildScope,
       })
 
-      // Apply default style preferences (preserve the source — keep design, colors, fonts)
-      await service.submitStylePreferences(appId, DEFAULT_STYLE_PREFERENCES)
+      await ensureStylePreferencesReady(service, appId, completedState)
 
-      // Generate homepage prompt
-      const homepagePrompt = await service.buildPage(appId, 'homepage')
+      const { slugs, homepagePrompt } = await service.buildUpfrontPagePrompts(appId)
+      const upfrontBuildSlugs = slugs.slice(1)
 
-      // Get asset manifest for display
       const assetManifest = await service.getAssetManifest()
 
       logger.info('websiteRebuild.prompt-generated', {
         appId,
         promptLength: homepagePrompt.length,
-        assetsFound: assetManifest?.totalAssets || 0
+        assetsFound: assetManifest?.totalAssets || 0,
+        upfrontBuildCount: slugs.length,
+        additionalPageSlugs: upfrontBuildSlugs,
       })
 
-      // Trigger handoff to develop agent with the generated prompt
       if (stateManager && socketId) {
         logger.info('websiteRebuild.triggering-handoff', {
           appId,
@@ -163,10 +154,11 @@ This tool starts the website rebuild process:
         })
       }
 
-      // Return success with the generated prompt for tool renderer display
       return {
         success: true,
-        message: `Website analyzed successfully. Handing off to developer to build your homepage.`,
+        message: slugs.length > 1
+          ? `Website analyzed successfully. Handing off to developer to build ${slugs.length} pages.`
+          : `Website analyzed successfully. Handing off to developer to build your homepage.`,
         sourceUrl: input.url,
         pagesFound: completedState.scrapingProgress.total,
         pagesScraped: completedState.scrapingProgress.completed,
@@ -180,7 +172,11 @@ This tool starts the website rebuild process:
           dimensions: a.dimensions
         })) || [],
         homepagePrompt,
-        handoffTriggered: !!(stateManager && socketId)
+        upfrontPlanSlugs: slugs,
+        upfrontBuildSlugs,
+        upfrontBuildCount: slugs.length,
+        handoffTriggered: !!(stateManager && socketId),
+        intakeTimedOut,
       }
     } catch (error) {
       const rebuildError = asRebuildError(error)

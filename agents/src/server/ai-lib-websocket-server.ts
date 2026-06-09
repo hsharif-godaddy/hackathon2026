@@ -643,6 +643,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 agentsAppContext.metadata.useAtlasCrawler = true
               }
 
+              if (agentContext?.rebuildIntakeFormEnabled) {
+                agentsAppContext.metadata.rebuildIntakeFormEnabled = true
+              }
+
               if (agentContext?.marketingCampaignsEnabled) {
                 agentsAppContext.metadata.marketingCampaignsEnabled = true
               }

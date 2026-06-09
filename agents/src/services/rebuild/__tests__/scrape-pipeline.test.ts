@@ -2,10 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { SiteAnalyzerAgent } from '../../../agents/site-analyzer-agent.js';
 import type { PageScrapeResult } from '../../../tools/ai-lib-tools/drivers/website-scraper-driver.js';
+import { WebsiteScraperDriver } from '../../../tools/ai-lib-tools/drivers/website-scraper-driver.js';
 import type { RebuildWorkflowState, SitemapData, SitemapPage } from '../../../types/rebuild.js';
 import { AssetProcessingService } from '../../AssetProcessingService.js';
 import { AtlasCrawlerAdapter } from '../../AtlasCrawlerAdapter.js';
+import { SitemapDiscoveryService } from '../../SitemapDiscoveryService.js';
 import { bucketAssetsForProcessing, ScrapePipeline } from '../scrape-pipeline.js';
+import { getScopeEstimate } from '../scope-estimates.js';
 
 // Static imports + vi.mocked() (not dynamic await import + resetModules): the
 // hoisted vi.mock applies to these imports deterministically, so the mocks are
@@ -14,6 +17,113 @@ import { bucketAssetsForProcessing, ScrapePipeline } from '../scrape-pipeline.js
 vi.mock('../../AtlasCrawlerAdapter.js', () => ({ AtlasCrawlerAdapter: vi.fn() }));
 vi.mock('../../../agents/site-analyzer-agent.js', () => ({ SiteAnalyzerAgent: vi.fn() }));
 vi.mock('../../AssetProcessingService.js', () => ({ AssetProcessingService: vi.fn() }));
+vi.mock('../../SitemapDiscoveryService.js', () => {
+  const SitemapDiscoveryService = vi.fn();
+  (SitemapDiscoveryService as { hasPathBeyondRoot: ReturnType<typeof vi.fn> }).hasPathBeyondRoot =
+    vi.fn(() => false);
+  return { SitemapDiscoveryService };
+});
+vi.mock('../../../tools/ai-lib-tools/drivers/website-scraper-driver.js', () => ({
+  WebsiteScraperDriver: vi.fn(),
+}));
+
+describe('ScrapePipeline.runLegacy — scope to maxPages wiring', () => {
+  const discoveredPages = [
+    { url: 'https://example.com/', priority: 1, source: 'crawl' as const },
+    { url: 'https://example.com/about', priority: 0.8, source: 'crawl' as const },
+    { url: 'https://example.com/contact', priority: 0.7, source: 'crawl' as const },
+    { url: 'https://example.com/services', priority: 0.6, source: 'crawl' as const },
+    { url: 'https://example.com/blog', priority: 0.5, source: 'crawl' as const },
+    { url: 'https://example.com/team', priority: 0.4, source: 'crawl' as const },
+  ];
+
+  it.each(['homepage_only', 'small', 'large'] as const)(
+    'passes scope cap %s into discovery and page selection',
+    async function scopeCap(scope) {
+      const maxPages = getScopeEstimate(scope).maxPagesToScrape;
+      const discover = vi.fn().mockResolvedValue({
+        success: true,
+        pages: discoveredPages,
+        totalPages: discoveredPages.length,
+      });
+      vi.mocked(SitemapDiscoveryService).mockImplementation(function () {
+        return { discover } as unknown as SitemapDiscoveryService;
+      });
+
+      const scrapeMultiplePages = vi.fn().mockResolvedValue({
+        success: true,
+        totalPages: maxPages,
+        successfulPages: maxPages,
+        failedPages: 0,
+        pages: discoveredPages.slice(0, maxPages).map(page => ({
+          url: page.url,
+          success: true,
+          sanitizedContent: '<html></html>',
+          html: '<html></html>',
+        })),
+        assets: [],
+      });
+      vi.mocked(WebsiteScraperDriver).mockImplementation(function () {
+        return { scrapeMultiplePages } as unknown as WebsiteScraperDriver;
+      });
+
+      const analyze = vi.fn().mockResolvedValue({
+        sourceUrl: 'https://example.com',
+        sitePurpose: 'Test',
+        targetAudience: 'Testers',
+        brandVoice: 'Professional',
+        designStyle: 'Modern',
+        colorPalette: { primary: [], secondary: [], accent: [] },
+        typography: { headingFonts: [], bodyFonts: [] },
+        scrapedAt: '2026-01-01T00:00:00.000Z',
+        version: '1',
+      });
+      vi.mocked(SiteAnalyzerAgent).mockImplementation(function () {
+        return {
+          initialize: vi.fn().mockResolvedValue(undefined),
+          analyze,
+          cleanup: vi.fn().mockResolvedValue(undefined),
+        } as unknown as SiteAnalyzerAgent;
+      });
+      vi.mocked(AssetProcessingService).mockImplementation(function () {
+        return {
+          process: vi.fn().mockResolvedValue({
+            assets: [], totalAssets: 0, byType: { image: 0, font: 0, icon: 0, other: 0 }, generatedAt: '',
+          }),
+          analyzePageAssets: vi.fn().mockResolvedValue({ pageAssets: [], analyzedImageCount: 0 }),
+        } as unknown as AssetProcessingService;
+      });
+
+      const saveState = vi.fn().mockResolvedValue(undefined);
+      const getStatus = vi.fn().mockResolvedValue({
+        ...baseState(),
+        rebuildScope: scope,
+      });
+
+      const pipeline = new ScrapePipeline({
+        appPath: '/tmp/test-app',
+        useAtlas: false,
+        scraperReason: 'default-legacy',
+        jwtFlag: false,
+        envOverride: false,
+        getStatus,
+        saveState,
+        saveSitemap: vi.fn().mockResolvedValue(undefined),
+        saveMetadata: vi.fn().mockResolvedValue(undefined),
+        persistScrapedPages: vi.fn().mockResolvedValue(undefined),
+      });
+
+      await pipeline.run('test-app', 'https://example.com');
+
+      const expectedCount = Math.min(maxPages, discoveredPages.length);
+      expect(vi.mocked(SitemapDiscoveryService).mock.calls[0]?.[1]).toBe(maxPages);
+      expect(scrapeMultiplePages.mock.calls[0]?.[0].urls).toHaveLength(expectedCount);
+      expect(saveState.mock.calls.some(
+        (call: unknown[]) => (call[0] as RebuildWorkflowState).scrapingProgress.total === expectedCount,
+      )).toBe(true);
+    },
+  );
+});
 
 describe('bucketAssetsForProcessing', () => {
   const homePageUrl = 'https://example.com/';

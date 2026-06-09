@@ -72,6 +72,15 @@ After a flag **exists** in Switchboard, typical steps are:
 
 **Naming:** use the `appbuilder-` prefix (e.g. `appbuilder-my-feature`). This is the dominant convention in the codebase. The `app-builder-` and `airo-builder-` prefixes appear on a handful of older flags but are not intentional distinctions - don't introduce new flags with those prefixes.
 
+### Flags wired through the agent JWT
+
+Some flags are evaluated in `app/src/app/api/auth/agent-token/route.ts` and passed to the agents service on the JWT (grep `resolveBooleanFlag` in that file). Examples:
+
+| Flag | JWT claim | Notes |
+| ---- | --------- | ----- |
+| `appbuilder-atlas-crawler` | `useAtlasCrawler` | Atlas vs external scrape backend |
+| `appbuilder-rebuild-intake-form` | `rebuildIntakeFormEnabled` | Intake UI before first rebuild scrape only (`!initialBuildComplete` on agents) |
+
 ## Switchboard admin and new flags
 
 Create and manage flags for the Airo App Builder application at:

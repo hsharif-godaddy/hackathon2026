@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ToolCall } from '@/stores/useStreamingConversationStore';
-import { extractNewPageRoute } from './utils';
+import { extractDevelopBuiltSlugsFromToolCalls, extractNewPageRoute } from './utils';
 
 function toolCall(overrides: Partial<ToolCall> & Pick<ToolCall, 'name' | 'input'>): ToolCall {
   return {
@@ -390,5 +390,154 @@ describe('extractNewPageRoute', function extract() {
 
       expect(result).toBeNull()
     })
+  })
+})
+
+describe('extractDevelopBuiltSlugsFromToolCalls', function developBuiltSlugs() {
+  it('returns slug for substantive page creates', function substantiveCreate() {
+    const content = 'x'.repeat(120)
+    const result = extractDevelopBuiltSlugsFromToolCalls([
+      toolCall({
+        name: 'textEditor',
+        input: { command: 'create', path: 'src/pages/menu.tsx', file_text: content },
+      }),
+    ])
+
+    expect(result).toEqual(['menu'])
+  })
+
+  it('ignores blank route shell creates', function blankShell() {
+    const result = extractDevelopBuiltSlugsFromToolCalls([
+      toolCall({
+        name: 'textEditor',
+        input: { command: 'create', path: 'src/pages/menu.tsx', file_text: 'export default function Menu() { return null }' },
+      }),
+    ])
+
+    expect(result).toEqual([])
+  })
+
+  it('maps index.tsx to homepage slug', function homepageSlug() {
+    const content = 'x'.repeat(120)
+    const result = extractDevelopBuiltSlugsFromToolCalls([
+      toolCall({
+        name: 'textEditor',
+        input: { command: 'create', path: 'src/pages/index.tsx', file_text: content },
+      }),
+    ])
+
+    expect(result).toEqual(['homepage'])
+  })
+
+  it('ignores str_replace edits on page files', function strReplaceIgnored() {
+    const content = 'x'.repeat(120)
+    const result = extractDevelopBuiltSlugsFromToolCalls([
+      toolCall({
+        name: 'textEditor',
+        input: { command: 'str_replace', path: 'src/pages/contact.tsx', new_str: content },
+      }),
+    ])
+
+    expect(result).toEqual([])
+  })
+
+  it('returns slug for str_replace_based_edit_tool create', function nativeCreate() {
+    const content = 'x'.repeat(120)
+    const result = extractDevelopBuiltSlugsFromToolCalls([
+      toolCall({
+        name: 'str_replace_based_edit_tool',
+        input: { command: 'create', path: 'src/pages/about.tsx', file_text: content },
+      }),
+    ])
+
+    expect(result).toEqual(['about'])
+  })
+
+  it('returns slug for create_file with substantive content', function createFile() {
+    const content = 'x'.repeat(120)
+    const result = extractDevelopBuiltSlugsFromToolCalls([
+      toolCall({
+        name: 'create_file',
+        input: { path: 'src/pages/services.tsx', content },
+      }),
+    ])
+
+    expect(result).toEqual(['services'])
+  })
+
+  it('returns slug for write_file with substantive content', function writeFile() {
+    const content = 'x'.repeat(120)
+    const result = extractDevelopBuiltSlugsFromToolCalls([
+      toolCall({
+        name: 'write_file',
+        input: { file_path: 'src/pages/gallery.tsx', content },
+      }),
+    ])
+
+    expect(result).toEqual(['gallery'])
+  })
+
+  it('returns slug for fileEdit create operations only', function fileEditCreate() {
+    const content = 'x'.repeat(120)
+    const result = extractDevelopBuiltSlugsFromToolCalls([
+      toolCall({
+        name: 'fileEdit',
+        input: {
+          operations: [
+            { type: 'create', path: 'src/pages/team.tsx', content },
+            { type: 'edit', path: 'src/pages/about.tsx', new_string: content },
+          ],
+        },
+      }),
+    ])
+
+    expect(result).toEqual(['team'])
+  })
+
+  it('skips tool calls that errored or did not complete', function statusGuard() {
+    const content = 'x'.repeat(120)
+    const result = extractDevelopBuiltSlugsFromToolCalls([
+      toolCall({
+        name: 'textEditor',
+        status: 'running',
+        input: { command: 'create', path: 'src/pages/about.tsx', file_text: content },
+      }),
+      toolCall({
+        name: 'textEditor',
+        status: 'completed',
+        error: 'tool failed',
+        input: { command: 'create', path: 'src/pages/contact.tsx', file_text: content },
+      }),
+    ])
+
+    expect(result).toEqual([])
+  })
+
+  it('excludes dynamic route page files', function paramRouteExcluded() {
+    const content = 'x'.repeat(120)
+    const result = extractDevelopBuiltSlugsFromToolCalls([
+      toolCall({
+        name: 'textEditor',
+        input: { command: 'create', path: 'src/pages/blog/[slug].tsx', file_text: content },
+      }),
+    ])
+
+    expect(result).toEqual([])
+  })
+
+  it('excludes 404 and error page files', function excludedPageNames() {
+    const content = 'x'.repeat(120)
+    const result = extractDevelopBuiltSlugsFromToolCalls([
+      toolCall({
+        name: 'textEditor',
+        input: { command: 'create', path: 'src/pages/404.tsx', file_text: content },
+      }),
+      toolCall({
+        name: 'textEditor',
+        input: { command: 'create', path: 'src/pages/_error.tsx', file_text: content },
+      }),
+    ])
+
+    expect(result).toEqual([])
   })
 })

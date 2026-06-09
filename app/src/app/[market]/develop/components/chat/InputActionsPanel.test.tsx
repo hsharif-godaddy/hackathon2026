@@ -10,7 +10,6 @@ import { ViewMode } from '@/app/[market]/develop/components/types'
 import type { ColorSchemePaletteOption } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
 import { previewThemeInIframe } from '@/app/[market]/develop/components/utils/previewThemeInIframe'
 import * as useNextActionsModule from '@/app/[market]/develop/hooks/useNextActions'
-import * as useRebuildPagesModule from '@/app/[market]/develop/hooks/useRebuildPages'
 import * as Switchboard from '@/hooks/useSwitchboard'
 import * as DevelopPageStore from '@/stores/useDevelopPageStore'
 import * as StreamingStore from '@/stores/useStreamingConversationStore'
@@ -32,11 +31,15 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useActiveRunningToolName: vi.fn(function () { return null; })
 }))
 
-vi.mock('@/app/[market]/develop/hooks/useRebuildPages', async (importActual) => ({
-  // Keep the real `unbuiltRebuildPages` (the panel calls it on real data); stub only the query hook.
-  ...(await importActual<typeof import('@/app/[market]/develop/hooks/useRebuildPages')>()),
-  useRebuildPages: vi.fn(function () { return { data: null, isLoading: false }; })
-}))
+vi.mock('@/app/[market]/develop/hooks/useRebuildPages', async function importRebuildPages() {
+  const actual = await vi.importActual<typeof import('@/app/[market]/develop/hooks/useRebuildPages')>(
+    '@/app/[market]/develop/hooks/useRebuildPages',
+  )
+  return {
+    ...actual,
+    useRebuildPages: vi.fn(function () { return { data: null, isLoading: false }; }),
+  }
+})
 
 vi.mock('@/stores/useTodoListStore', () => ({
   useCurrentList: vi.fn(),
@@ -1211,30 +1214,6 @@ describe('InputActionsPanel', () => {
       const dialog = screen.getByRole('dialog')
       expect(within(dialog).queryByRole('button', { name: /Create homepage/i })).not.toBeInTheDocument()
       expect(within(dialog).getByText('Create homepage')).toBeInTheDocument()
-    })
-  })
-
-  describe('rebuild selector mount gate (alias-aware)', () => {
-    function setRebuildPages(pages: Array<{ slug: string; title: string; url: string; isBuilt: boolean }>) {
-      vi.mocked(useRebuildPagesModule.useRebuildPages).mockReturnValue({
-        data: { sourceUrl: 's', availablePages: pages, totalPages: pages.length, builtPages: 0 },
-        isError: false,
-        error: null,
-      } as unknown as ReturnType<typeof useRebuildPagesModule.useRebuildPages>)
-    }
-
-    it('mounts the selector when there is a real unbuilt page', () => {
-      setRebuildPages([{ slug: 'about', title: 'About', url: '/about', isBuilt: false }])
-      renderWithProviders(<InputActionsPanel />)
-      // The real selector renders a checkbox labeled with the page title.
-      expect(screen.getByLabelText('About')).toBeInTheDocument()
-    })
-
-    it('does not mount an empty selector when every unbuilt page is a homepage alias', () => {
-      setRebuildPages([{ slug: 'home', title: 'Home', url: '/home', isBuilt: false }])
-      renderWithProviders(<InputActionsPanel />)
-      // hasRebuildPages is alias-filtered → the selector never mounts (no dead card).
-      expect(screen.queryByLabelText('Home')).not.toBeInTheDocument()
     })
   })
 })

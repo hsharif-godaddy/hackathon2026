@@ -246,6 +246,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let agentProfile: string | undefined;
     let costAttributionDryRun = false;
     let useAtlasCrawler = false;
+    let rebuildIntakeFormEnabled = false;
     let debugStatsEnabled = false;
     let marketingCampaignsEnabled = false;
     let asmDualWriteEnabled = false;
@@ -255,7 +256,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     if (siteValidationCacheHit) {
       // Cache hit: skip site validation, run paywall + switchboard + subscription lookup in parallel
       const parallelStart = Date.now();
-      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, debugDrawerResult, marketingCampaignsResult, asmDualWriteResult] = await Promise.allSettled([
+      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, asmDualWriteResult] = await Promise.allSettled([
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
           body.siteId,
@@ -275,6 +276,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardValue('appbuilder-agent-profile', request),
         checkSwitchboardFlag('appbuilder-cost-attribution-dry-run', request),
         checkSwitchboardFlag('appbuilder-atlas-crawler', request),
+        checkSwitchboardFlag('appbuilder-rebuild-intake-form', request),
         checkSwitchboardFlag('appbuilder-debug-drawer', request),
         checkSwitchboardFlag('appbuilder-marketing-campaigns', request),
         checkSwitchboardFlag('appbuilder-asm-dual-write', request),
@@ -303,13 +305,14 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       agentProfile = rawAgentProfile && rawAgentProfile !== 'default' && rawAgentProfile !== 'hivemind' ? rawAgentProfile : undefined;
       costAttributionDryRun = resolveBooleanFlag(costAttributionDryRunResult, 'agent-token.cost-attribution-dry-run-flag-check-failed', body.siteId, user.customerId);
       useAtlasCrawler = resolveBooleanFlag(useAtlasCrawlerResult, 'agent-token.atlas-crawler-flag-check-failed', body.siteId, user.customerId);
+      rebuildIntakeFormEnabled = resolveBooleanFlag(rebuildIntakeFormResult, 'agent-token.rebuild-intake-form-flag-check-failed', body.siteId, user.customerId);
       debugStatsEnabled = resolveBooleanFlag(debugDrawerResult, 'agent-token.debug-drawer-flag-check-failed', body.siteId, user.customerId);
       marketingCampaignsEnabled = resolveBooleanFlag(marketingCampaignsResult, 'agent-token.marketing-campaigns-flag-check-failed', body.siteId, user.customerId);
       asmDualWriteEnabled = resolveBooleanFlag(asmDualWriteResult, 'agent-token.asm-dual-write-flag-check-failed', body.siteId, user.customerId);
     } else {
       // Cache miss: run site validation, paywall, switchboard, and subscription lookup all in parallel
       const parallelStart = Date.now();
-      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, debugDrawerResult, marketingCampaignsResult, asmDualWriteResult] = await Promise.allSettled([
+      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, asmDualWriteResult] = await Promise.allSettled([
         validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct),
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
@@ -330,6 +333,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardValue('appbuilder-agent-profile', request),
         checkSwitchboardFlag('appbuilder-cost-attribution-dry-run', request),
         checkSwitchboardFlag('appbuilder-atlas-crawler', request),
+        checkSwitchboardFlag('appbuilder-rebuild-intake-form', request),
         checkSwitchboardFlag('appbuilder-debug-drawer', request),
         checkSwitchboardFlag('appbuilder-marketing-campaigns', request),
         checkSwitchboardFlag('appbuilder-asm-dual-write', request),
@@ -367,6 +371,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       agentProfile = rawAgentProfile && rawAgentProfile !== 'default' && rawAgentProfile !== 'hivemind' ? rawAgentProfile : undefined;
       costAttributionDryRun = resolveBooleanFlag(costAttributionDryRunResult, 'agent-token.cost-attribution-dry-run-flag-check-failed', body.siteId, user.customerId);
       useAtlasCrawler = resolveBooleanFlag(useAtlasCrawlerResult, 'agent-token.atlas-crawler-flag-check-failed', body.siteId, user.customerId);
+      rebuildIntakeFormEnabled = resolveBooleanFlag(rebuildIntakeFormResult, 'agent-token.rebuild-intake-form-flag-check-failed', body.siteId, user.customerId);
       debugStatsEnabled = resolveBooleanFlag(debugDrawerResult, 'agent-token.debug-drawer-flag-check-failed', body.siteId, user.customerId);
       marketingCampaignsEnabled = resolveBooleanFlag(marketingCampaignsResult, 'agent-token.marketing-campaigns-flag-check-failed', body.siteId, user.customerId);
       asmDualWriteEnabled = resolveBooleanFlag(asmDualWriteResult, 'agent-token.asm-dual-write-flag-check-failed', body.siteId, user.customerId);
@@ -582,6 +587,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       agentProfile,
       costAttributionDryRun,
       useAtlasCrawler,
+      rebuildIntakeFormEnabled,
       debugStatsEnabled,
       marketingCampaignsEnabled,
       asmDualWriteEnabled,

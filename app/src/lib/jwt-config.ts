@@ -40,6 +40,7 @@ export interface JWTClaims {
   agentProfileSelectorEnabled?: boolean; // When true, allow per-project profile selection from frontend (switchboard: appbuilder-agent-profile-selector)
   costAttributionDryRun?: boolean; // When true, run cost attribution analysis and log results but skip BMS reconciliation (switchboard: appbuilder-cost-attribution-dry-run)
   useAtlasCrawler?: boolean; // When true, route rebuild scraping through the Atlas REST API instead of the external web-scraper API (switchboard: appbuilder-atlas-crawler)
+  rebuildIntakeFormEnabled?: boolean; // When true, show initial-rebuild intake form before scraping (switchboard: appbuilder-rebuild-intake-form)
   debugStatsEnabled?: boolean; // When true, agents service emits per-LLM-call debug_turn_stats events to this client (switchboard: appbuilder-debug-drawer)
   market?: string; // User's resolved market locale (e.g. 'en-US', 'es-MX') from gasket visitor
   marketingCampaignsEnabled?: boolean; // When true, enable Marketing Campaigns feature (switchboard: appbuilder-marketing-campaigns)

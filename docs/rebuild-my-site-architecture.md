@@ -103,6 +103,22 @@ scrapeAndAnalyze()   ← FORK POINT
 
 ## Workflow State Machine
 
+**Legacy path** (`startRebuild`): scrape begins immediately; style preferences may be auto-applied when the flag is off.
+
+**Intake path** (Switchboard `appbuilder-rebuild-intake-form`, first rebuild only — `!app.initialBuildComplete`): `beginRebuild()` → user submits scope/design via UI or agent timeout defaults → scrape runs with scope-capped page limits.
+
+```
+  beginRebuild()                    submitIntake() / submitDefaultIntake()
+        │                                      │
+        ▼                                      ▼
+ ┌─────────────────┐                    ┌──────────┐
+ │ awaiting_intake │───────────────────▶│ scraping │──▶ analyzing ──▶ …
+ └─────────────────┘                    └──────────┘
+        │                                      │
+        ▼                                      ▼
+   (UI in develop)                        style_questions → building → complete
+```
+
 ```
      startRebuild()          scrapeAndAnalyze()            submitStylePreferences()
           │                       │                              │
@@ -111,7 +127,7 @@ scrapeAndAnalyze()   ← FORK POINT
     │ scraping │─────────▶│ analyzing  │─────────────▶│ style_questions  │
     └──────────┘          └────────────┘              └──────────────────┘
           │                      │                              │
-          ▼                      ▼                              ▼ (auto-applied defaults)
+          ▼                      ▼                              ▼
     ┌──────────┐          ┌──────────┐                ┌──────────────────┐
     │  error   │          │  error   │                │    building      │
     └──────────┘          └──────────┘                └──────────────────┘
@@ -157,11 +173,13 @@ All data persisted to: `{appPath}/.source-site/`
 
 1. Validate app exists in `AppRepository`
 2. Create `RebuildOrchestrationService(app.path)`
-3. Call `startRebuild(appId, sourceUrl)` → creates dirs, saves initial state, kicks off background scrape
+3. If `rebuildIntakeFormEnabled` (JWT flag **and** `!app.initialBuildComplete`): `beginRebuild()` → `waitForIntake()` (poll status; 600s timeout applies defaults) → background scrape. Otherwise: `startRebuild()` → immediate scrape.
 4. Poll with `waitForCompletion()` (400ms fast → 1500ms slow, 5min timeout)
-5. Apply default style preferences (keep-similar, keep-original, responsive)
+5. When intake flag is off, apply default style preferences before homepage build; when on, preferences come from intake submission.
 6. Call `buildPage(appId, 'homepage')` → generates prompt via PagePromptAgent
 7. `stateManager.switchAgent(socketId, 'develop', homepagePrompt)` → handoff
+
+**Intake UI**: `RebuildIntakeForm` in develop chat (flag + tool running + `!initialBuildComplete`). Submits `POST /apps/:id/rebuild/intake`; estimates at `GET /apps/:id/rebuild/scope-estimates`.
 
 ### Phase 2: Scraping (Atlas Path)
 

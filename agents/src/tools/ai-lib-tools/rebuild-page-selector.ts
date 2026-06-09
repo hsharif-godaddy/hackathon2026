@@ -230,12 +230,12 @@ Tool returns: { success: true, pagePrompt: "Build an about page..." }`,
         }
       }
 
-      if (workflowState.pagesBuilt.includes(input.pageSlug)) {
-        return {
-          success: false,
-          error: `Page already built: ${input.pageSlug}`,
-          message: `The page "${input.pageSlug}" has already been built.`
-        }
+      const promptAlreadyGenerated = workflowState.pagesBuilt.includes(input.pageSlug)
+      if (promptAlreadyGenerated) {
+        logger.info('rebuildPageSelector.prompt-redelivery', {
+          appId,
+          pageSlug: input.pageSlug,
+        })
       }
 
       const service = new RebuildOrchestrationService(app.path)
@@ -249,7 +249,9 @@ Tool returns: { success: true, pagePrompt: "Build an about page..." }`,
 
       return {
         success: true,
-        message: `Generated build prompt for "${input.pageSlug}" page`,
+        message: promptAlreadyGenerated
+          ? `Re-delivered build prompt for "${input.pageSlug}" page`
+          : `Generated build prompt for "${input.pageSlug}" page`,
         pageSlug: input.pageSlug,
         pagePrompt,
         suggestedResponse: `I'll now build the ${input.pageSlug} page based on your original site.`

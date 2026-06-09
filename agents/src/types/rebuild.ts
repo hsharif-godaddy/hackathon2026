@@ -6,6 +6,26 @@
 
 import type { InteractivePattern } from '../services/interactive-pattern-detector.js';
 
+/** User-selected rebuild breadth for an initial rebuild */
+export type RebuildScope = 'homepage_only' | 'small' | 'large';
+
+export interface RebuildIntakeChoices {
+  scope: RebuildScope;
+  stylePreferences: StylePreferences;
+}
+
+export interface RebuildScopeEstimate {
+  scope: RebuildScope;
+  labelKey: string;
+  descriptionKey: string;
+  expectedMinutesMin: number;
+  expectedMinutesMax: number;
+  tokenCostMin: number;
+  tokenCostMax: number;
+  maxPagesToScrape: number;
+  maxPagesToBuildUpfront: number;
+}
+
 /**
  * Style preferences collected from user
  */
@@ -327,12 +347,25 @@ export interface RebuildWorkflowState {
   appId: string;
   sourceUrl: string;
   rootPath: string; // "/" for normal rebuilds, "/psycholand" for sub-path rebuilds
-  status: 'scraping' | 'analyzing' | 'style_questions' | 'building' | 'review' | 'complete' | 'error';
+  status:
+    | 'awaiting_intake'
+    | 'scraping'
+    | 'analyzing'
+    | 'style_questions'
+    | 'building'
+    | 'review'
+    | 'complete'
+    | 'error';
   scrapingProgress: {
     total: number;
     completed: number;
     currentPage?: string;
   };
+  /** True once the scrape pipeline finishes (even when inner pages fail to persist). */
+  scrapeSettled?: boolean;
+  rebuildScope?: RebuildScope;
+  intakeCompleted?: boolean;
+  intakeSubmittedAt?: string;
   stylePreferences?: StylePreferences;
   pagesBuilt: string[];
   currentPage: string | null;

@@ -1,6 +1,6 @@
 'use client'
 
-import { CheckCircle, FileCode, FileText, Globe, Hammer } from 'lucide-react'
+import { CheckCircle, Circle, FileCode, FileText, Globe, Hammer, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import Alert from '@ux/alert'
 import Box from '@ux/box'
@@ -10,10 +10,11 @@ import text from '@ux/text'
 
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import { REBUILD_BATCH_CAP, useRebuildBuildQueue } from '@/app/[market]/develop/hooks/useRebuildBuildQueue'
-import { type PageInfo, unbuiltRebuildPages } from '@/app/[market]/develop/hooks/useRebuildPages'
+import { manualRebuildSelectorPages,type PageInfo } from '@/app/[market]/develop/hooks/useRebuildPages'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
+import { useUpfrontRebuildBuildQueueStore } from '@/stores/useUpfrontRebuildBuildQueueStore'
 import ToolHeader from './ToolHeader'
 import ToolModal from './ToolModal'
 
@@ -25,9 +26,89 @@ interface WidgetData {
   builtPages: number
 }
 
+type PageDevelopStatus = 'complete' | 'building' | 'pending'
+
+function formatSlugTitle(slug: string): string {
+  return slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, ' ')
+}
+
+function resolvePageTitle(slug: string, availablePages: PageInfo[]): string {
+  return availablePages.find(page => page.slug === slug)?.title ?? formatSlugTitle(slug)
+}
+
+export function resolvePageDevelopStatus(
+  slug: string,
+  planSlugs: string[],
+  developCompletedSlugs: string[],
+  currentBuildSlug: string | null,
+  isProcessing: boolean,
+): PageDevelopStatus {
+  if (developCompletedSlugs.includes(slug)) return 'complete'
+  if (isProcessing && currentBuildSlug === slug) return 'building'
+  if (
+    isProcessing &&
+    slug === planSlugs[0] &&
+    !developCompletedSlugs.includes(slug) &&
+    !currentBuildSlug
+  ) {
+    return 'building'
+  }
+  return 'pending'
+}
+
+function RebuildPlanProgressList({
+  planSlugs,
+  availablePages,
+  developCompletedSlugs,
+  currentBuildSlug,
+  isProcessing,
+  compact,
+}: {
+  planSlugs: string[]
+  availablePages: PageInfo[]
+  developCompletedSlugs: string[]
+  currentBuildSlug: string | null
+  isProcessing: boolean
+  compact: boolean
+}) {
+  return (
+    <Box gap={compact ? 'sm' : 'md'} className={compact ? undefined : 'my-2'}>
+      {planSlugs.map(function renderPlanPage(slug) {
+        const status = resolvePageDevelopStatus(
+          slug,
+          planSlugs,
+          developCompletedSlugs,
+          currentBuildSlug,
+          isProcessing,
+        )
+        const title = resolvePageTitle(slug, availablePages)
+
+        return (
+          <Box
+            key={slug}
+            orientation="horizontal"
+            gap="sm"
+            blockAlignChildren="center"
+            data-testid={`rebuild-plan-page-${slug}`}
+            data-status={status}
+          >
+            {status === 'complete' && <CheckCircle className="w-3 h-3 shrink-0 text-success" />}
+            {status === 'building' && <Loader2 className="w-3 h-3 shrink-0 animate-spin" />}
+            {status === 'pending' && <Circle className="w-3 h-3 shrink-0 opacity-40" />}
+            <text.p size={compact ? -1 : 0} emphasis={status === 'pending' ? 'passive' : undefined}>
+              {title}
+            </text.p>
+          </Box>
+        )
+      })}
+    </Box>
+  )
+}
+
 /**
  * Custom renderer for rebuildPageSelector tool — shows available pages from the
- * user's source site and lets them pick which to rebuild next.
+ * user's source site and lets them pick which to rebuild next. During an upfront
+ * scoped plan, shows sequential progress instead of the manual multi-select UI.
  */
 export default function RebuildPageSelectorToolRenderer({
   toolName: _toolName,
@@ -47,51 +128,35 @@ export default function RebuildPageSelectorToolRenderer({
   const queueRunning = queueStatus === 'running'
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false)
 
-  // The panel (InputActionsPanel) only renders this selector when chat-plans AND a
-  // theme/font-selection panel are on. Only then should the stream card suppress
-  // itself to avoid a duplicate — in every other cohort (chat-plans off, or the
-  // legacy panel) the stream card is the ONLY host and must keep rendering.
   const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans')
   const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
   const isFontSelectionChatEnabled = useSwitchboard('airo-builder-font-selection-chat')
   const panelOwnsSelector =
     !!areChatPlansEnabled && (!!isThemeSelectionChatEnabled || !!isFontSelectionChatEnabled)
 
-  function toggle(slug: string) {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(slug)) next.delete(slug)
-      else if (next.size < REBUILD_BATCH_CAP) next.add(slug)
-      return next
-    })
-  }
-
-  function selectAll(pages: PageInfo[]) {
-    setSelected(new Set(pages.map((p) => p.slug)))
-  }
-
-  function handleBuildSelected() {
-    if (selected.size === 0 || isProcessing) return
-    enqueue([...selected])
-    setSelected(new Set())
-  }
+  const resultObj = result as any
+  const output = resultObj?.output || resultObj
+  const widget = output?.widget as { widgetType: string; widgetData: WidgetData } | undefined
+  const widgetData = widget?.widgetData
+  const planEntry = useUpfrontRebuildBuildQueueStore(state =>
+    widgetData?.appId ? state.queues[widgetData.appId] : undefined,
+  )
+  const planInProgress = useUpfrontRebuildBuildQueueStore(state =>
+    widgetData?.appId != null && state.isPlanInProgress(widgetData.appId),
+  )
 
   if (!isLastAssistantMessage) {
     return null
   }
 
-  const resultObj = result as any
-  const output = resultObj?.output || resultObj
-  const widget = output?.widget as { widgetType: string; widgetData: WidgetData } | undefined
-  const widgetData = widget?.widgetData
   const allPagesBuilt = output?.allPagesBuilt === true
   const pagePrompt = output?.pagePrompt as string | undefined
   const builtPageSlug = output?.pageSlug as string | undefined
   const errorMessage = output?.error as string | undefined
+  const planSlugs = planEntry?.planSlugs ?? []
 
-  // Build mode: a single page is being built — show compact prompt link
   if (pagePrompt && builtPageSlug) {
-    const pageTitle = builtPageSlug.charAt(0).toUpperCase() + builtPageSlug.slice(1).replace(/-/g, ' ')
+    const pageTitle = formatSlugTitle(builtPageSlug)
 
     return (
       <>
@@ -169,22 +234,52 @@ export default function RebuildPageSelectorToolRenderer({
     )
   }
 
+  const availablePages = widgetData?.availablePages ?? []
+
+  if (planSlugs.length > 1 && planInProgress) {
+    return (
+      <RebuildPlanProgressList
+        planSlugs={planSlugs}
+        availablePages={availablePages}
+        developCompletedSlugs={planEntry?.developCompletedSlugs ?? []}
+        currentBuildSlug={planEntry?.currentBuildSlug ?? null}
+        isProcessing={isProcessing}
+        compact={size === 'small'}
+      />
+    )
+  }
+
   if (!widgetData) {
     return null
   }
 
-  const availablePages = widgetData.availablePages || []
-  const unbuiltPages = unbuiltRebuildPages(availablePages)
+  const unbuiltPages = manualRebuildSelectorPages(availablePages, planEntry)
   const builtPages = availablePages.filter(p => p.isBuilt)
 
-  // In the chat stream (size="regular"), suppress the live selector ONLY when the
-  // panel is the one rendering it — otherwise the stream card is the sole host and
-  // hiding it would make the picker disappear entirely (chat-plans off, or legacy panel).
-  if (size === "regular" && panelOwnsSelector && unbuiltPages.length > 0) {
+  function toggle(slug: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(slug)) next.delete(slug)
+      else if (next.size < REBUILD_BATCH_CAP) next.add(slug)
+      return next
+    })
+  }
+
+  function selectAll(pages: PageInfo[]) {
+    setSelected(new Set(pages.map((p) => p.slug)))
+  }
+
+  function handleBuildSelected() {
+    if (selected.size === 0 || isProcessing) return
+    enqueue([...selected])
+    setSelected(new Set())
+  }
+
+  if (size === 'regular' && panelOwnsSelector && unbuiltPages.length > 0) {
     return null
   }
 
-  if (size === "regular" && (allPagesBuilt || unbuiltPages.length === 0)) {
+  if (size === 'regular' && (allPagesBuilt || unbuiltPages.length === 0)) {
     return (
       <Box gap="sm" className="my-2">
         <Alert emphasis="success">
@@ -202,23 +297,18 @@ export default function RebuildPageSelectorToolRenderer({
     )
   }
 
-  // Nothing real to offer (e.g. the panel mounts us but every unbuilt page was a
-  // homepage alias) — render nothing rather than an empty card with a dead CTA.
   if (unbuiltPages.length === 0) {
     return null
   }
 
   const allSelected = unbuiltPages.length > 0 && unbuiltPages.every(p => selected.has(p.slug))
   const controlsDisabled = isProcessing || queueRunning
-  // How many rows show before "show more". Independent of REBUILD_BATCH_CAP (which
-  // caps *selection*); they happen to share a value but neither derives from the other.
   const INITIAL_VISIBLE = 5
   const visiblePages = expanded ? unbuiltPages : unbuiltPages.slice(0, INITIAL_VISIBLE)
   const hiddenCount = unbuiltPages.length - INITIAL_VISIBLE
 
   return (
     <div className="my-2 rounded-lg border border-intents-ux-borderDefault-borderColor overflow-hidden text-xs [&_label]:text-xs mr-2">
-      {/* Card header */}
       <div className="px-3 py-2 bg-intents-ux-surfaceSecondary-surfaceColor border-b border-intents-ux-borderDefault-borderColor">
         <div className="flex items-start gap-1.5">
           <Globe className="w-3 h-3 text-intents-ux-contentSecondary-contentColor flex-shrink-0 mt-0.5" />
@@ -233,7 +323,6 @@ export default function RebuildPageSelectorToolRenderer({
         </div>
       </div>
 
-      {/* Page list */}
       <div className="px-3 py-2">
         {unbuiltPages.length > 1 && unbuiltPages.length <= REBUILD_BATCH_CAP && (
           <div className="mb-1.5">
@@ -275,7 +364,6 @@ export default function RebuildPageSelectorToolRenderer({
         )}
       </div>
 
-      {/* Footer: CTA + built pages */}
       <div className="px-3 py-2 border-t border-intents-ux-borderDefault-borderColor bg-intents-ux-surfaceSecondary-surfaceColor">
         <Button
           text={selected.size === 0
@@ -288,7 +376,7 @@ export default function RebuildPageSelectorToolRenderer({
           onClick={handleBuildSelected}
         />
 
-        {size === "regular" && builtPages.length > 0 && (
+        {size === 'regular' && builtPages.length > 0 && (
           <div className="mt-2 pt-2 border-t border-intents-ux-borderDefault-borderColor">
             <text.p size={-2} emphasis="passive" className="mb-1">
               {t('builder_rebuild_already_built')}

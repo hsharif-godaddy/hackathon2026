@@ -50,6 +50,7 @@ describe('buildAgentContext', function suite() {
       agentProfile: 'experimental',
       agentProfileSelectorEnabled: true,
       useAtlasCrawler: true,
+      rebuildIntakeFormEnabled: false,
       debugStatsEnabled: false,
       marketingCampaignsEnabled: false,
       asmDualWriteEnabled: false,
@@ -171,6 +172,7 @@ describe('buildAgentContext', function suite() {
       'agentProfileSelectorEnabled',
       'debugStatsEnabled',
       'useAtlasCrawler',
+      'rebuildIntakeFormEnabled',
     ] as const;
 
     const ctx = buildAgentContext({});

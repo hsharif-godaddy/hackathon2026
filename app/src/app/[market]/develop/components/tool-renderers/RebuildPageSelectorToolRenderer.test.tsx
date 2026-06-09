@@ -8,8 +8,9 @@ import { act, fireEvent, screen } from '@testing-library/react'
 
 import { REBUILD_BATCH_CAP, useRebuildBuildQueue } from '@/app/[market]/develop/hooks/useRebuildBuildQueue'
 import type { PageInfo } from '@/app/[market]/develop/hooks/useRebuildPages'
+import { useUpfrontRebuildBuildQueueStore } from '@/stores/useUpfrontRebuildBuildQueueStore'
 import { renderWithProviders } from '@/tests/test-utils'
-import RebuildPageSelectorToolRenderer from './RebuildPageSelectorToolRenderer'
+import RebuildPageSelectorToolRenderer, { resolvePageDevelopStatus } from './RebuildPageSelectorToolRenderer'
 
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (id: string, values?: Record<string, unknown>) => {
@@ -51,9 +52,30 @@ function renderSelector(availablePages: PageInfo[], size: 'regular' | 'small' = 
   )
 }
 
+describe('resolvePageDevelopStatus', function resolveStatus() {
+  const planSlugs = ['homepage', 'about', 'contact']
+
+  it('returns complete when slug is in developCompletedSlugs', function complete() {
+    expect(resolvePageDevelopStatus('about', planSlugs, ['about'], null, false)).toBe('complete')
+  })
+
+  it('returns building when processing current slug', function currentBuilding() {
+    expect(resolvePageDevelopStatus('contact', planSlugs, ['homepage'], 'contact', true)).toBe('building')
+  })
+
+  it('returns building for first plan slug during homepage handoff', function homepageHandoff() {
+    expect(resolvePageDevelopStatus('homepage', planSlugs, [], null, true)).toBe('building')
+  })
+
+  it('returns pending for untouched slugs', function pending() {
+    expect(resolvePageDevelopStatus('contact', planSlugs, ['homepage'], null, false)).toBe('pending')
+  })
+})
+
 describe('RebuildPageSelectorToolRenderer multi-select', () => {
   beforeEach(() => {
     useRebuildBuildQueue.getState().stop()
+    useUpfrontRebuildBuildQueueStore.setState({ queues: {} })
     for (const k of Object.keys(switchboardFlags)) delete switchboardFlags[k]
   })
 
@@ -158,5 +180,47 @@ describe('RebuildPageSelectorToolRenderer multi-select', () => {
     const { container } = renderSelector(pages(3), 'regular')
     expect(container).not.toBeEmptyDOMElement()
     expect(screen.getByLabelText('Page 0')).toBeInTheDocument()
+  })
+})
+
+describe('RebuildPageSelectorToolRenderer upfront plan progress', function planProgress() {
+  beforeEach(function reset() {
+    useUpfrontRebuildBuildQueueStore.setState({ queues: {} })
+  })
+
+  it('renders plan progress with status attributes during upfront build', function progressList() {
+    const appId = 'plan-app'
+    useUpfrontRebuildBuildQueueStore.getState().setPlan(appId, ['homepage', 'about', 'contact'], ['about', 'contact'])
+    useUpfrontRebuildBuildQueueStore.getState().markDevelopComplete(appId, 'homepage')
+    useUpfrontRebuildBuildQueueStore.getState().setCurrentBuild(appId, 'about')
+
+    renderWithProviders(
+      <RebuildPageSelectorToolRenderer
+        toolName="rebuildPageSelector"
+        toolStatus="completed"
+        isLastAssistantMessage
+        size="small"
+        result={{
+          widget: {
+            widgetType: 'rebuild-page-selector',
+            widgetData: {
+              appId,
+              sourceUrl: 's',
+              availablePages: [
+                { slug: 'homepage', title: 'Home', url: '/', isBuilt: true },
+                { slug: 'about', title: 'About', url: '/about', isBuilt: false },
+                { slug: 'contact', title: 'Contact', url: '/contact', isBuilt: false },
+              ],
+              totalPages: 3,
+              builtPages: 1,
+            },
+          },
+        }}
+      />,
+    )
+
+    expect(screen.getByTestId('rebuild-plan-page-homepage')).toHaveAttribute('data-status', 'complete')
+    expect(screen.getByTestId('rebuild-plan-page-about')).toHaveAttribute('data-status', 'pending')
+    expect(screen.getByTestId('rebuild-plan-page-contact')).toHaveAttribute('data-status', 'pending')
   })
 })

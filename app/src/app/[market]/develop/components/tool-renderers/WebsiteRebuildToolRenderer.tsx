@@ -7,7 +7,12 @@ import Button from '@ux/button'
 import Tag from '@ux/tag'
 import text from '@ux/text'
 
+import RebuildIntakeForm from '@/app/[market]/develop/components/rebuild/RebuildIntakeForm'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { defaultMessageForRebuildIntakeKey } from '@/lib/translations/rebuild-intake-defaults'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import ToolHeader from './ToolHeader'
@@ -29,9 +34,18 @@ export default function WebsiteRebuildToolRenderer({
   const t = useTranslations()
   const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false)
+  const appId = useStreamingConversationStore((s) => s.currentAppId)
+  const initialBuildComplete = useDevelopPageStore((s) => s.app?.initialBuildComplete)
+  const rebuildIntakeFormEnabled = useSwitchboard('appbuilder-rebuild-intake-form') === true
 
   // Extract data from input/result
   const sourceUrl = (input as any)?.url || (result as any)?.sourceUrl || ''
+  const showIntakeForm =
+    rebuildIntakeFormEnabled &&
+    !initialBuildComplete &&
+    toolStatus === 'running' &&
+    !!appId &&
+    !!sourceUrl
   const pagesFound = (result as any)?.pagesFound || 0
   const pagesScraped = (result as any)?.pagesScraped || 0
   const assetsFound = (result as any)?.assetsFound || 0
@@ -42,6 +56,7 @@ export default function WebsiteRebuildToolRenderer({
   const userMessage = (result as any)?.userMessage || t('builder_status_error')
   const isUserFacingError = (result as any)?.isUserFacingError === true
   const isSuccess = (result as any)?.success === true
+  const intakeTimedOut = (result as any)?.intakeTimedOut === true
 
   // Extract domain from URL for display
   const domain = (() => {
@@ -87,6 +102,18 @@ export default function WebsiteRebuildToolRenderer({
         hasDetails={hasDetails}
         onOpenModal={() => setIsModalOpen(true)}
       />
+
+      {showIntakeForm && <RebuildIntakeForm appId={appId} sourceUrl={sourceUrl} />}
+
+      {intakeTimedOut && (
+        <text.p size={-1} className="text-muted-foreground mt-1 ml-1">
+          {t(
+            'builder_rebuild_intake_timeout_notice',
+            undefined,
+            defaultMessageForRebuildIntakeKey('builder_rebuild_intake_timeout_notice'),
+          )}
+        </text.p>
+      )}
 
       {/* Summary info when complete */}
       {isComplete && (

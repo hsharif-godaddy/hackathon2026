@@ -20,6 +20,9 @@ const {
   mockTrackContextGathering,
   mockTrackQuestionReceived,
   mockTrackHandoff,
+  mockSetPlan,
+  mockEnqueue,
+  mockMarkProcessing,
 } = vi.hoisted(() => {
   const mockLogImpressionEventInner = vi.fn()
   return {
@@ -38,6 +41,9 @@ const {
     mockTrackContextGathering: vi.fn(),
     mockTrackQuestionReceived: vi.fn(),
     mockTrackHandoff: vi.fn(),
+    mockSetPlan: vi.fn(),
+    mockEnqueue: vi.fn(),
+    mockMarkProcessing: vi.fn(),
   }
 })
 
@@ -73,10 +79,27 @@ vi.mock('@/stores/useCodeSyncStore', () => ({
   },
 }))
 
+const mockStreamingState = vi.hoisted(() => ({
+  streamingState: 'idle' as string,
+  activeStream: null as { isComplete: boolean } | null,
+}))
+
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useStreamingConversationStore: {
     getState: vi.fn(() => ({
       markUpstreamError: mockMarkUpstreamError,
+      streamingState: mockStreamingState.streamingState,
+      activeStream: mockStreamingState.activeStream,
+    })),
+  },
+}))
+
+vi.mock('@/stores/useUpfrontRebuildBuildQueueStore', () => ({
+  useUpfrontRebuildBuildQueueStore: {
+    getState: vi.fn(() => ({
+      setPlan: mockSetPlan,
+      enqueue: mockEnqueue,
+      markProcessing: mockMarkProcessing,
     })),
   },
 }))
@@ -122,6 +145,8 @@ beforeEach(() => {
   mockGetSelectedCommitHash.mockReturnValue(null)
   mockReadIntentCategoryFromSession.mockReturnValue(undefined)
   mockLogImpressionEvent.mockReturnValue(mockLogImpressionEventInner)
+  mockStreamingState.streamingState = 'idle'
+  mockStreamingState.activeStream = null
 })
 
 describe('detectRebuildIntent', () => {
@@ -242,5 +267,76 @@ describe('handleToolResultSideEffects — post-rebuild intent restore', () => {
     await handleToolResultSideEffects({ name: 'fileEdit' }, 'app-1')
 
     expect(mockSetInstrumentationIntentCategory).not.toHaveBeenCalled()
+  })
+})
+
+describe('handleToolResultSideEffects — websiteRebuild upfront queue', () => {
+  it('seeds queue via setPlan when upfrontPlanSlugs are present', async () => {
+    await handleToolResultSideEffects({
+      name: 'websiteRebuild',
+      output: JSON.stringify({
+        upfrontPlanSlugs: ['homepage', 'about'],
+        upfrontBuildSlugs: ['about'],
+      }),
+    }, 'app-1')
+
+    expect(mockSetPlan).toHaveBeenCalledWith('app-1', ['homepage', 'about'], ['about'])
+    expect(mockEnqueue).not.toHaveBeenCalled()
+  })
+
+  it('falls back to enqueue when only upfrontBuildSlugs are present', async () => {
+    await handleToolResultSideEffects({
+      name: 'websiteRebuild',
+      output: JSON.stringify({
+        upfrontBuildSlugs: ['about', 'contact'],
+      }),
+    }, 'app-1')
+
+    expect(mockEnqueue).toHaveBeenCalledWith('app-1', ['about', 'contact'])
+    expect(mockSetPlan).not.toHaveBeenCalled()
+  })
+
+  it('marks processing when rebuild completes during an active stream', async () => {
+    mockStreamingState.streamingState = 'streaming'
+    mockStreamingState.activeStream = { isComplete: false }
+
+    await handleToolResultSideEffects({
+      name: 'websiteRebuild',
+      output: JSON.stringify({
+        upfrontPlanSlugs: ['homepage', 'about'],
+        upfrontBuildSlugs: ['about'],
+      }),
+    }, 'app-1')
+
+    expect(mockMarkProcessing).toHaveBeenCalledWith('app-1')
+  })
+
+  it('does not mark processing when active stream is already complete', async () => {
+    mockStreamingState.streamingState = 'streaming'
+    mockStreamingState.activeStream = { isComplete: true }
+
+    await handleToolResultSideEffects({
+      name: 'websiteRebuild',
+      output: JSON.stringify({
+        upfrontPlanSlugs: ['homepage', 'about'],
+        upfrontBuildSlugs: ['about'],
+      }),
+    }, 'app-1')
+
+    expect(mockMarkProcessing).not.toHaveBeenCalled()
+  })
+
+  it('logs warn when websiteRebuild output cannot be parsed', async () => {
+    await handleToolResultSideEffects({
+      name: 'websiteRebuild',
+      output: '{not-json',
+    }, 'app-1')
+
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      'toolSideEffects.websiteRebuild.upfrontQueueFailed',
+      expect.objectContaining({ appId: 'app-1' }),
+    )
+    expect(mockSetPlan).not.toHaveBeenCalled()
+    expect(mockEnqueue).not.toHaveBeenCalled()
   })
 })
