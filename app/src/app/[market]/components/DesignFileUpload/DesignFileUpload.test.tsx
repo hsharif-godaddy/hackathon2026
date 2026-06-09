@@ -6,9 +6,10 @@ import '@testing-library/jest-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { waitFor } from '@testing-library/react'
 
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { renderWithProviders } from '@/tests/test-utils'
 import DesignFileUpload from './DesignFileUpload'
-import type { UploadedDesignFile } from './types'
+import type { UploadedDesignFile } from '../types'
 
 const { mockProcessDesignFiles, mockLogImpressionEvent, mockImpressionThunk, mockGenerateClickEID } = vi.hoisted(() => {
   const mockImpressionThunk = vi.fn()
@@ -20,8 +21,7 @@ const { mockProcessDesignFiles, mockLogImpressionEvent, mockImpressionThunk, moc
   }
 })
 
-// The component statically imports MAX_FILES/MAX_TOTAL_BYTES and dynamically
-// imports processDesignFiles from this module; one mock covers both.
+// The component dynamically imports processDesignFiles from this module.
 vi.mock('./design-file-processing', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>
   return { ...actual, processDesignFiles: mockProcessDesignFiles }
@@ -92,5 +92,17 @@ describe('DesignFileUpload (picker path)', () => {
       expect(onError).toHaveBeenCalledWith('File too large')
     })
     expect(mockLogImpressionEvent).not.toHaveBeenCalled()
+  })
+
+  it('renders nothing when switchboard flag is disabled', () => {
+    vi.mocked(useSwitchboard).mockReturnValueOnce(false)
+
+    const { container } = renderWithProviders(
+      <DesignFileUpload
+        currentFilesRef={{ current: [] }}
+        onFilesChange={vi.fn()}
+      />,
+    )
+    expect(container.firstChild).toBeNull()
   })
 })

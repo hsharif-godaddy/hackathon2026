@@ -1,32 +1,20 @@
-import type { UploadedDesignFile } from './types'
+import { FileReadError, FileTooLargeError } from './errors'
+import { getExtension, isImageFileName } from './utils'
+import type { UploadedDesignFile } from '../types'
 
 export type TranslateFn = (key: string, values?: Record<string, string | number>) => string
 
-const MAX_TEXT_SIZE = 1 * 1024 * 1024
-const MAX_IMAGE_SIZE = 20 * 1024 * 1024
-const MAX_ZIP_SIZE = 10 * 1024 * 1024
-export const MAX_TOTAL_BYTES = 50 * 1024 * 1024
-export const MAX_FILES = 5
-const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']
+const MEGABYTE = 1024 * 1024
+const MAX_TEXT_SIZE = 1 * MEGABYTE   // 1 MB
+const MAX_IMAGE_SIZE = 20 * MEGABYTE // 20 MB
+const MAX_ZIP_SIZE = 10 * MEGABYTE   // 10 MB
+const MAX_TOTAL_BYTES = 50 * MEGABYTE // 50 MB
+const MAX_FILES = 5
 
 function formatSizeLabel(bytes: number): string {
-  return bytes >= 1024 * 1024
-    ? `${Math.round(bytes / (1024 * 1024))}MB`
+  return bytes >= MEGABYTE
+    ? `${Math.round(bytes / (MEGABYTE))}MB`
     : `${Math.round(bytes / 1024)}KB`
-}
-
-export class FileTooLargeError extends Error {
-  constructor(public readonly fileName: string, public readonly limit: number) {
-    super(`${fileName} exceeds limit`)
-    this.name = 'FileTooLargeError'
-  }
-}
-
-export class FileReadError extends Error {
-  constructor(public readonly fileName: string) {
-    super(`Failed to read ${fileName}`)
-    this.name = 'FileReadError'
-  }
 }
 
 function isDesignMdContent(content: string): boolean {
@@ -38,21 +26,21 @@ function isDesignMdContent(content: string): boolean {
   return /^colors:/m.test(frontmatter)
 }
 
-function getExtension(fileName: string): string {
-  return fileName.substring(fileName.lastIndexOf('.')).toLowerCase()
-}
-
 export async function processDesignFile(file: File): Promise<UploadedDesignFile> {
   const ext = getExtension(file.name)
-  const isImage = IMAGE_EXTENSIONS.includes(ext)
+  const isImage = isImageFileName(file.name)
   const isZipExt = ext === '.zip'
 
-  if (isZipExt) {
-    if (file.size > MAX_ZIP_SIZE) throw new FileTooLargeError(file.name, MAX_ZIP_SIZE)
-  } else if (isImage) {
-    if (file.size > MAX_IMAGE_SIZE) throw new FileTooLargeError(file.name, MAX_IMAGE_SIZE)
-  } else {
-    if (file.size > MAX_TEXT_SIZE) throw new FileTooLargeError(file.name, MAX_TEXT_SIZE)
+  if (isZipExt && file.size > MAX_ZIP_SIZE) {
+    throw new FileTooLargeError(file.name, MAX_ZIP_SIZE)
+  }
+
+  if (isImage && file.size > MAX_IMAGE_SIZE) {
+    throw new FileTooLargeError(file.name, MAX_IMAGE_SIZE)
+  }
+
+  if (!isZipExt && !isImage && file.size > MAX_TEXT_SIZE) {
+    throw new FileTooLargeError(file.name, MAX_TEXT_SIZE)
   }
 
   let buffer: ArrayBuffer
@@ -84,9 +72,9 @@ function computeCurrentBytes(files: UploadedDesignFile[]): number {
 export async function processDesignFiles(
   files: File[],
   currentFiles: UploadedDesignFile[],
-  maxFiles: number,
-  maxTotalBytes: number,
   t: TranslateFn,
+  maxFiles = MAX_FILES,
+  maxTotalBytes = MAX_TOTAL_BYTES,
 ): Promise<{ processed: UploadedDesignFile[]; errors: string[] }> {
   const processed: UploadedDesignFile[] = []
   const errors: string[] = []

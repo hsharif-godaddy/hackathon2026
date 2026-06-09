@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 
-import { MAX_FILES, MAX_TOTAL_BYTES, processDesignFiles } from '@/app/[market]/components/design-file-processing'
+import { processDesignFiles } from '@/app/[market]/components/DesignFileUpload'
 import type { UploadedDesignFile } from '@/app/[market]/components/types'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logActionEvent, logImpressionEvent } from '@/utils/instrumentation'
@@ -36,8 +36,8 @@ export function useDesignFileDrop({
   onFilesChange,
   onError,
   onProcessingFilesChange,
-  maxFiles = MAX_FILES,
-  maxTotalBytes = MAX_TOTAL_BYTES,
+  maxFiles,
+  maxTotalBytes,
   disabled = false,
 }: UseDesignFileDropOptions): UseDesignFileDropResult {
   const t = useTranslations()
@@ -92,7 +92,7 @@ export function useDesignFileDrop({
     onProcessingFilesChange?.(droppedFiles.map(f => f.name))
     onError(null)
 
-    processDesignFiles(droppedFiles, currentFilesRef.current ?? [], maxFiles, maxTotalBytes, t)
+    processDesignFiles(droppedFiles, currentFilesRef.current ?? [], t, maxFiles, maxTotalBytes)
       .then(({ processed, errors }) => {
         if (processed.length > 0) {
           const updated = [...(currentFilesRef.current ?? []), ...processed]

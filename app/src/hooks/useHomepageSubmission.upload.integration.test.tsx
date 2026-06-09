@@ -23,9 +23,8 @@ const mockProcessDesignFiles = vi.hoisted(() => vi.fn())
 const mockFetchQuickCreate = vi.hoisted(() => vi.fn())
 const mockRouterPush = vi.hoisted(() => vi.fn())
 
-// DesignFileUpload statically imports MAX_FILES/MAX_TOTAL_BYTES and dynamically
-// imports processDesignFiles from this module; one mock covers both.
-vi.mock('@/app/[market]/components/design-file-processing', async (importOriginal) => {
+// DesignFileUpload dynamically imports processDesignFiles from this module; mock it here.
+vi.mock('@/app/[market]/components/DesignFileUpload/design-file-processing', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>
   return { ...actual, processDesignFiles: mockProcessDesignFiles }
 })

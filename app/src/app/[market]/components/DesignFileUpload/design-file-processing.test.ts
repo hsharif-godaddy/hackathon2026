@@ -3,8 +3,9 @@
  */
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { FileReadError, FileTooLargeError, processDesignFile, processDesignFiles } from './design-file-processing'
-import type { UploadedDesignFile } from './types'
+import { processDesignFile, processDesignFiles } from './design-file-processing'
+import { FileTooLargeError } from './errors'
+import type { UploadedDesignFile } from '../types'
 
 // jsdom's File/Blob don't implement arrayBuffer() — polyfill via FileReader for these tests
 beforeAll(() => {
@@ -126,7 +127,7 @@ describe('processDesignFiles', () => {
       createFile('a.txt', 'aaa'),
       createFile('b.txt', 'bbb'),
     ]
-    const result = await processDesignFiles(files, [], 5, 20 * 1024 * 1024, t)
+    const result = await processDesignFiles(files, [], t, 5, 20 * 1024 * 1024)
     expect(result.processed).toHaveLength(2)
     expect(result.errors).toHaveLength(0)
   })
@@ -136,7 +137,7 @@ describe('processDesignFiles', () => {
       name: `existing-${i}.txt`, content: '', isDesignMd: false,
     }))
     const files = [createFile('a.txt', 'a'), createFile('b.txt', 'b')]
-    const result = await processDesignFiles(files, current, 5, 20 * 1024 * 1024, t)
+    const result = await processDesignFiles(files, current, t, 5, 20 * 1024 * 1024)
     expect(result.processed).toHaveLength(1)
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0]).toContain('Maximum')
@@ -148,7 +149,27 @@ describe('processDesignFiles', () => {
       name: 'existing.png', content: '', isDesignMd: false, isImage: true,
       zipRaw: new ArrayBuffer(10 * 1024 * 1024),
     }]
-    const result = await processDesignFiles([largeFile], current, 5, 20 * 1024 * 1024, t)
+    const result = await processDesignFiles([largeFile], current, t, 5, 20 * 1024 * 1024)
+    expect(result.processed).toHaveLength(0)
+    expect(result.errors[0]).toContain('size')
+  })
+
+  it('rejects the 6th file using the internal default of 5', async () => {
+    const current: UploadedDesignFile[] = Array.from({ length: 5 }, (_, i) => ({
+      name: `existing-${i}.txt`, content: '', isDesignMd: false,
+    }))
+    const result = await processDesignFiles([createFile('extra.txt', 'x')], current, t)
+    expect(result.processed).toHaveLength(0)
+    expect(result.errors[0]).toContain('Maximum')
+  })
+
+  it('rejects a file that would exceed the internal 50 MB total default', async () => {
+    const current: UploadedDesignFile[] = [{
+      name: 'big.png', content: '', isDesignMd: false, isImage: true,
+      zipRaw: new ArrayBuffer(40 * 1024 * 1024),
+    }]
+    const largeFile = createImageFile('another.png', 15 * 1024 * 1024)
+    const result = await processDesignFiles([largeFile], current, t)
     expect(result.processed).toHaveLength(0)
     expect(result.errors[0]).toContain('size')
   })
@@ -156,7 +177,7 @@ describe('processDesignFiles', () => {
   it('collects errors from individually failing files without stopping', async () => {
     const good = createFile('ok.txt', 'fine')
     const tooBig = createFile('bad.txt', 'x', 2 * 1024 * 1024)
-    const result = await processDesignFiles([tooBig, good], [], 5, 20 * 1024 * 1024, t)
+    const result = await processDesignFiles([tooBig, good], [], t, 5, 20 * 1024 * 1024)
     expect(result.processed).toHaveLength(1)
     expect(result.processed[0].name).toBe('ok.txt')
     expect(result.errors).toHaveLength(1)

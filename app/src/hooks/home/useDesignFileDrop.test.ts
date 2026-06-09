@@ -12,8 +12,8 @@ import { useDesignFileDrop } from './useDesignFileDrop'
 const { mockProcessDesignFiles } = vi.hoisted(() => ({
   mockProcessDesignFiles: vi.fn().mockResolvedValue({ processed: [], errors: [] }),
 }))
-vi.mock('@/app/[market]/components/design-file-processing', async (importOriginal) => {
-  const actual = await importOriginal() as Record<string, unknown>
+vi.mock('@/app/[market]/components/DesignFileUpload', async (importOriginal: () => Promise<Record<string, unknown>>) => {
+  const actual = await importOriginal()
   return {
     ...actual,
     processDesignFiles: mockProcessDesignFiles,
@@ -123,6 +123,19 @@ describe('useDesignFileDrop', () => {
     expect(result.current.isFileDragOver).toBe(true)
     act(() => { result.current.dragProps.onDrop(createDragEvent('drop')) })
     expect(result.current.isFileDragOver).toBe(false)
+  })
+
+  it('calls processDesignFiles with (files, currentFiles, t, maxFiles, maxTotalBytes)', async () => {
+    const { result } = renderDrop()
+    await act(async () => { result.current.dragProps.onDrop(createDragEvent('drop')) })
+
+    expect(mockProcessDesignFiles).toHaveBeenCalledWith(
+      expect.any(Array),   // files
+      expect.any(Array),   // currentFiles
+      expect.any(Function), // t — must be 3rd arg, not 1st
+      undefined,           // maxFiles (not passed in renderDrop)
+      undefined,           // maxTotalBytes (not passed in renderDrop)
+    )
   })
 
   it('calls onFilesChange with appended files on successful drop', async () => {
