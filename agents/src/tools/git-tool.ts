@@ -79,6 +79,8 @@ export interface GitToolOptions {
   autoMessage?: boolean;
   /** Preview operation without executing */
   dryRun?: boolean;
+  /** Explicit app ID — avoids path-based extraction when the caller already knows the ID */
+  appId?: string;
 }
 
 export interface GitToolResult {
@@ -113,6 +115,8 @@ export interface GitToolResult {
   currentBranch?: string;
   /** Error message if operation failed */
   error?: string;
+  /** Structured error code for programmatic branching */
+  errorCode?: 'AUTH_FAILED' | 'NETWORK_ERROR';
   /** Warning message */
   warning?: string;
 }
@@ -657,8 +661,7 @@ export class GitTool {
    */
   private async handleConfigureRemote(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
     try {
-      // Extract app ID from path
-      const appId = this.extractAppIdFromPath(appPath);
+      const appId = options.appId ?? this.extractAppIdFromPath(appPath);
       if (!appId) {
         return {
           success: false,
@@ -814,8 +817,7 @@ export class GitTool {
    */
   private async handlePull(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
     try {
-      // Extract app ID from path
-      const appId = this.extractAppIdFromPath(appPath);
+      const appId = options.appId ?? this.extractAppIdFromPath(appPath);
       if (!appId) {
         return {
           success: false,
@@ -1019,8 +1021,7 @@ export class GitTool {
   private async handlePush(appPath: string, options: GitToolOptions): Promise<GitToolResult> {
     let appId: string | null = null;
     try {
-      // Extract app ID from path
-      appId = this.extractAppIdFromPath(appPath);
+      appId = options.appId ?? this.extractAppIdFromPath(appPath);
       if (!appId) {
         return {
           success: false,
@@ -1629,7 +1630,7 @@ export class GitTool {
       const pushResult = await this.gitUtils.push(
         appPath,
         remoteName,
-        `${commitHash}:${branch}`,
+        `${commitHash}:refs/heads/${branch}`,
         { timeout: 120000 },
         true  // forcePush
       );
@@ -1643,18 +1644,19 @@ export class GitTool {
           result = {
             success: false,
             operation: 'push',
+            errorCode: 'AUTH_FAILED',
             error: 'GitHub authentication failed. Token may be expired or invalid.',
             output: pushResult.stdout
           };
           return result;
         }
 
-        // Check for network errors
         if (stderr.includes('could not resolve host') || stderr.includes('network') || stderr.includes('connection')) {
           this.logger.warn('git-tool.push.network-error', { appId, remoteName });
           result = {
             success: false,
             operation: 'push',
+            errorCode: 'NETWORK_ERROR',
             error: 'Network error: Unable to connect to remote repository.',
             output: pushResult.stdout
           };
@@ -1679,6 +1681,16 @@ export class GitTool {
         success: true,
         operation: 'push',
         output: `Successfully pushed to ${remoteName}/${branch}`
+      };
+      return result;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isAuth = msg.includes('token') || msg.includes('credentials') || msg.includes('authentication');
+      result = {
+        success: false,
+        operation: 'push',
+        error: msg,
+        ...(isAuth && { errorCode: 'AUTH_FAILED' as const }),
       };
       return result;
     } finally {

@@ -40,6 +40,7 @@ import { UpgradeModal } from '@/components/upgrade/UpgradeModal'
 import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-api'
 import { EXPERIMENT_IDS } from '@/config/experiments'
 import { WebSocketProvider } from '@/contexts/WebSocketContext'
+import { prefetchGitRemoteConfig } from '@/hooks/github/useGitRemoteConfig'
 import { activateInitialBuildFunnel } from '@/hooks/shared/initialBuildFunnel'
 import { useAotPreload } from '@/hooks/useAotPreload'
 import { useAppArchiveRestore } from '@/hooks/useAppArchiveRestore'
@@ -283,6 +284,7 @@ function DevelopPageContent() {
   const addAiEditContext = useAddAiEditContext()
   const isMultiElementSelect = useSwitchboard('appbuilder-multi-element-select')
   const isIntroTourEnabled = useSwitchboard('appbuilder-intro-tour')
+  const isGitHubSyncEnabled = useSwitchboard('appbuilder-github-sync')
   const autoSendInitialMessage = useAutoSendInitialMessage()
   const ws = useChatTransport({ enabled: imageReadiness.isReady })
   const isLoading = useIsLoading()
@@ -379,6 +381,12 @@ function DevelopPageContent() {
 
   usePaywallDeeplinkWithStore({ enabled: loadingPhase === 'ready' });
   useCreditsDeeplinkWithStore({ enabled: loadingPhase === 'ready' });
+
+  useEffect(() => {
+    if (isGitHubSyncEnabled && loadingPhase === 'ready' && appId) {
+      prefetchGitRemoteConfig(queryClient, appId)
+    }
+  }, [isGitHubSyncEnabled, loadingPhase, appId, queryClient])
 
   useEffect(() => {
     const openPublish = searchParams.get('openPublish')

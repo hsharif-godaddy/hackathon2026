@@ -506,6 +506,58 @@ describe('GitTool', () => {
     });
   });
 
+  describe('appId option priority', function appIdTests() {
+    it('uses options.appId for DB lookup instead of extracting from path', async function explicit() {
+      const { GitRemoteConfigRepository } = await import('../../database/repositories/GitRemoteConfigRepository.js');
+      const mockRepo = vi.mocked(GitRemoteConfigRepository).mock.results[0]?.value;
+      if (mockRepo) {
+        mockRepo.findByAppAndRemote.mockImplementation(function (appId: string) {
+          if (appId === 'real-id') return {
+            id: 1,
+            appId: 'real-id',
+            remoteName: 'origin',
+            provider: 'github',
+            repoUrl: 'https://github.com/user/repo.git',
+            defaultBranch: 'main',
+            syncEnabled: true,
+          };
+          return null;
+        });
+      }
+
+      const result = await gitTool.executeGitOperation('/customer-data/preview/app', {
+        operation: 'push',
+        appId: 'real-id',
+      });
+
+      expect(result.operation).toBe('push');
+      expect(mockRepo?.findByAppAndRemote).toHaveBeenCalledWith('real-id', 'origin');
+    });
+
+    it('falls back to extractAppIdFromPath when options.appId is not set', async function fallback() {
+      const { GitRemoteConfigRepository } = await import('../../database/repositories/GitRemoteConfigRepository.js');
+      const mockRepo = vi.mocked(GitRemoteConfigRepository).mock.results[0]?.value;
+      if (mockRepo) {
+        mockRepo.findByAppAndRemote.mockReturnValue({
+          id: 1,
+          appId: 'test-app-id',
+          remoteName: 'origin',
+          provider: 'github',
+          repoUrl: 'https://github.com/user/repo.git',
+          defaultBranch: 'main',
+          syncEnabled: true,
+        });
+      }
+
+      const result = await gitTool.executeGitOperation('/tmp/apps/test-app-id/app', {
+        operation: 'push',
+      });
+
+      expect(result.operation).toBe('push');
+      expect(mockRepo?.findByAppAndRemote).toHaveBeenCalledWith('test-app-id', 'origin');
+    });
+  });
+
   describe('Restore Operation', () => {
     const appPath = '/tmp/apps/test-app-id/app';
     const commitHash = 'abcdef1234567890abcdef1234567890abcdef12';

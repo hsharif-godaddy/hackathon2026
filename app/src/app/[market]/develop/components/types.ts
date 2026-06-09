@@ -122,6 +122,7 @@ export enum SettingsSection {
   CAMPAIGNS = 'campaigns',
   LOGS = 'logs',
   INBOX = 'inbox',
+  GITHUB = 'github',
   FEEDBACK = 'feedback'
 }
 

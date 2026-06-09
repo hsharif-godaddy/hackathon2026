@@ -54,6 +54,17 @@ export function getNomadAllocConfig(): Record<string, { VALUE: string }> | null 
  * @param defaultValue - Value to return if key doesn't exist, config is unavailable, or value is empty string
  * @returns The config value or the default value
  */
+/**
+ * Resets the memoized config so the next getNomadAllocConfig() call
+ * re-reads from the filesystem. Used after updateSecrets refreshes
+ * tokens — the on-disk config.json is updated asynchronously by
+ * the control plane worker.
+ */
+export function clearNomadConfigCache(): void {
+  cachedConfig = undefined;
+  negativeCacheExpiry = 0;
+}
+
 export function getNomadAllocConfigValue(key: string, defaultValue: string): string {
   const config = getNomadAllocConfig();
   const value = config?.[key]?.VALUE;

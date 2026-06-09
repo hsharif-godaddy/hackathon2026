@@ -13,6 +13,7 @@
  * different session-key shape.
  */
 import type { GitHookService } from '../services/git-hook-service.js'
+import { gitOpsService } from '../services/GitOpsService.js'
 import type {
   AssessmentAgent,
   AssessmentOutcome,
@@ -340,6 +341,11 @@ export async function runMessageEndHooks(
       appId, conversationId, sessionKey, reason,
       error: err instanceof Error ? err.message : String(err),
     })
+  }
+
+  // Fire-and-forget: trigger auto-push if sync_strategy is on_commit
+  if (commitHash && reason === 'complete') {
+    gitOpsService.triggerAutoSync(appId, 'on_commit').catch(() => {})
   }
 
   if (usedFreeGrants && reason === 'complete') {

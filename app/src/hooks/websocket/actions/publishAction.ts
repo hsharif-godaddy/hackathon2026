@@ -9,6 +9,7 @@ import { PublishDenialReason, PublishErrorCode, PublishUpgradeRequiredError } fr
 
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
+import { ensureFreshToken } from '@/hooks/github/useGitHubTokenHealth'
 import {
   appDetailsQueryKey,
   type AppDetailsResponse,
@@ -291,6 +292,8 @@ export const publishAction: ClientActionExecutor = async (params) => {
         error: syncError instanceof Error ? syncError.message : String(syncError),
       })
     }
+
+    await ensureFreshToken(appId, 'publish')
 
     // Regenerate JWT with fresh permissions before publish
     logger.info('websocket.client-action.publish.regenerate-token', { appId })

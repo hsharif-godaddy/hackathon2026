@@ -57,6 +57,23 @@ vi.mock('../ProjectSourceDetectionService.js', () => ({
   },
 }));
 
+vi.mock('../../database/repositories/GitRemoteConfigRepository.js', () => ({
+  GitRemoteConfigRepository: vi.fn().mockImplementation(function () { return {
+    findByAppId: vi.fn(),
+    update: vi.fn(),
+  }; }),
+}));
+
+vi.mock('../GitRemoteTokenManager.js', () => ({
+  GitRemoteTokenManager: {
+    isTokenExpired: vi.fn(function () { return false; }),
+  },
+}));
+
+vi.mock('../../utils/nomad-config.js', () => ({
+  clearNomadConfigCache: vi.fn(),
+}));
+
 vi.mock('../../workspace/index.js', () => ({
   createForWorkspace: vi.fn(function () { return {
     tasks: {},
@@ -80,12 +97,15 @@ vi.mock('../../logging/index.js', () => ({
 
 // Import after mocks
 import { AppRepository } from '../../database/repositories/AppRepository.js';
+import { GitRemoteConfigRepository } from '../../database/repositories/GitRemoteConfigRepository.js';
 import { ImportJobRepository } from '../../database/repositories/ImportJobRepository.js';
 import { GitTool } from '../../tools/git-tool.js';
 import { isSupportedProjectInContainer } from '../../server/middleware/git-import-validation.js';
 import { appRestartService } from '../AppRestartService.js';
 import { projectSourceDetectionService } from '../ProjectSourceDetectionService.js';
+import { clearNomadConfigCache } from '../../utils/nomad-config.js';
 import { createForWorkspace } from '../../workspace/index.js';
+import { GitRemoteTokenManager } from '../GitRemoteTokenManager.js';
 
 // Minimal bindable workspace stub: a no-op tasks handle plus a package.json
 // read that returns `{}`, enough for the availability guard and background job.
@@ -107,6 +127,10 @@ describe('GitOpsService', () => {
   };
   let mockGitTool: {
     executeGitOperation: Mock;
+  };
+  let mockGitRemoteConfigRepo: {
+    findByAppId: Mock;
+    update: Mock;
   };
 
   const testAppId = 'test-app-123';
@@ -135,8 +159,14 @@ describe('GitOpsService', () => {
       executeGitOperation: vi.fn(),
     };
 
+    mockGitRemoteConfigRepo = {
+      findByAppId: vi.fn().mockReturnValue([]),
+      update: vi.fn(),
+    };
+
     // Setup constructor mocks
     vi.mocked(AppRepository).mockImplementation(function () { return mockAppRepo as any; });
+    vi.mocked(GitRemoteConfigRepository).mockImplementation(function () { return mockGitRemoteConfigRepo as any; });
     vi.mocked(ImportJobRepository).mockImplementation(function () { return mockImportJobRepo as any; });
     vi.mocked(GitTool).mockImplementation(function () { return mockGitTool as any; });
 
@@ -818,6 +848,148 @@ describe('GitOpsService', () => {
         'pushing'
       );
       expect(mockImportJobRepo.markCompleted).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('triggerAutoSync', function autoSyncTests() {
+    it('skips silently when no remote config exists for app', async function noConfig() {
+      mockGitRemoteConfigRepo.findByAppId.mockReturnValue([]);
+
+      await service.triggerAutoSync(testAppId, 'on_commit');
+
+      expect(mockGitTool.executeGitOperation).not.toHaveBeenCalled();
+    });
+
+    it('skips when config exists but syncEnabled is false', async function disabled() {
+      mockGitRemoteConfigRepo.findByAppId.mockReturnValue([{
+        remoteName: 'origin',
+        defaultBranch: 'main',
+        syncEnabled: false,
+        syncStrategy: 'on_commit',
+      }]);
+
+      await service.triggerAutoSync(testAppId, 'on_commit');
+
+      expect(mockGitTool.executeGitOperation).not.toHaveBeenCalled();
+    });
+
+    it('skips when strategy does not match trigger', async function mismatch() {
+      mockGitRemoteConfigRepo.findByAppId.mockReturnValue([{
+        remoteName: 'origin',
+        defaultBranch: 'main',
+        syncEnabled: true,
+        syncStrategy: 'on_commit',
+      }]);
+
+      await service.triggerAutoSync(testAppId, 'on_publish');
+
+      expect(mockGitTool.executeGitOperation).not.toHaveBeenCalled();
+    });
+
+    it('executes push when strategy matches on_commit', async function matchCommit() {
+      mockGitRemoteConfigRepo.findByAppId.mockReturnValue([{
+        remoteName: 'origin',
+        defaultBranch: 'main',
+        syncEnabled: true,
+        syncStrategy: 'on_commit',
+      }]);
+      mockGitTool.executeGitOperation.mockResolvedValue({ success: true, operation: 'push' });
+
+      await service.triggerAutoSync(testAppId, 'on_commit');
+
+      expect(mockGitTool.executeGitOperation).toHaveBeenCalledWith(
+        testAppPath,
+        expect.objectContaining({ operation: 'push', appId: testAppId, remoteName: 'origin', branch: 'main' }),
+      );
+    });
+
+    it('executes push when strategy matches on_publish', async function matchPublish() {
+      mockGitRemoteConfigRepo.findByAppId.mockReturnValue([{
+        remoteName: 'origin',
+        defaultBranch: 'main',
+        syncEnabled: true,
+        syncStrategy: 'on_publish',
+      }]);
+      mockGitTool.executeGitOperation.mockResolvedValue({ success: true, operation: 'push' });
+
+      await service.triggerAutoSync(testAppId, 'on_publish');
+
+      expect(mockGitTool.executeGitOperation).toHaveBeenCalled();
+    });
+
+    it('logs error but does not downgrade strategy on AUTH_FAILED', async function authNoDowngrade() {
+      mockGitRemoteConfigRepo.findByAppId.mockReturnValue([{
+        id: 'config-1',
+        remoteName: 'origin',
+        defaultBranch: 'main',
+        syncEnabled: true,
+        syncStrategy: 'on_commit',
+      }]);
+      mockGitTool.executeGitOperation.mockResolvedValue({
+        success: false,
+        operation: 'push',
+        errorCode: 'AUTH_FAILED',
+        error: 'GitHub authentication failed.',
+      });
+
+      await service.triggerAutoSync(testAppId, 'on_commit');
+
+      expect(mockGitRemoteConfigRepo.update).not.toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'git-ops.auto-sync.auth-failed',
+        expect.objectContaining({ appId: testAppId }),
+      );
+    });
+
+    it('waits for token refresh when token is expired then proceeds', async function tokenRetry() {
+      vi.useFakeTimers();
+
+      vi.mocked(GitRemoteTokenManager.isTokenExpired)
+        .mockReturnValueOnce(true)   // initial check — expired
+        .mockReturnValueOnce(true)   // retry 0s — still expired
+        .mockReturnValueOnce(false); // retry 5s — refreshed
+
+      mockGitRemoteConfigRepo.findByAppId.mockReturnValue([{
+        remoteName: 'origin',
+        defaultBranch: 'main',
+        syncEnabled: true,
+        syncStrategy: 'on_commit',
+      }]);
+      mockGitTool.executeGitOperation.mockResolvedValue({ success: true, operation: 'push' });
+
+      const promise = service.triggerAutoSync(testAppId, 'on_commit');
+      await vi.advanceTimersByTimeAsync(5_000);
+      await promise;
+
+      expect(clearNomadConfigCache).toHaveBeenCalled();
+      expect(mockGitTool.executeGitOperation).toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('skips silently when app not found', async function noApp() {
+      mockGitRemoteConfigRepo.findByAppId.mockReturnValue([{
+        remoteName: 'origin',
+        defaultBranch: 'main',
+        syncEnabled: true,
+        syncStrategy: 'on_commit',
+      }]);
+      mockAppRepo.findById.mockReturnValue(null);
+
+      await expect(
+        service.triggerAutoSync(testAppId, 'on_commit')
+      ).resolves.toBeUndefined();
+      expect(mockGitTool.executeGitOperation).not.toHaveBeenCalled();
+    });
+
+    it('does not throw on unexpected errors', async function unexpected() {
+      mockGitRemoteConfigRepo.findByAppId.mockImplementation(function () {
+        throw new Error('database crashed');
+      });
+
+      await expect(
+        service.triggerAutoSync(testAppId, 'on_commit')
+      ).resolves.toBeUndefined();
     });
   });
 });

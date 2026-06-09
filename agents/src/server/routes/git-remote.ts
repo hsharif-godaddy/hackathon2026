@@ -9,6 +9,7 @@ import { validateGitSync } from '../middleware/git-import-validation.js';
 import { getErrorMessage } from '../../utils/error.js';
 import { isCapabilityEnabled } from '../../utils/capability-config.js';
 import { gitOpsService } from '../../services/GitOpsService.js';
+import { SYNC_STRATEGIES } from '../../types/git-remote.js';
 import { ImportJobStatus, type ValidationError } from '../../types/import.js';
 
 const router: Router = Router();
@@ -101,21 +102,50 @@ router.post(
   validateAppOwnership,
   async (req: Request, res: Response) => {
     const appId = req.params.id;
-    const { repoUrl, remoteName, branch } = req.body;
+    const { repoUrl, remoteName, branch, syncStrategy } = req.body;
 
     if (!appId) {
       res.status(400).json({ error: 'App ID is required' });
       return;
     }
 
+    if (syncStrategy && !SYNC_STRATEGIES.includes(syncStrategy)) {
+      res.status(400).json({
+        error: `syncStrategy must be one of: ${SYNC_STRATEGIES.join(', ')}`,
+      });
+      return;
+    }
+
+    // Strategy-only update: no repoUrl means just update the sync_strategy
+    if (!repoUrl && syncStrategy) {
+      try {
+        const existing = gitRemoteConfigRepo.findByAppAndRemote(appId, remoteName || 'origin');
+        if (!existing) {
+          res.status(404).json({ error: 'No remote configured for this app' });
+          return;
+        }
+        gitRemoteConfigRepo.update(existing.id, { syncStrategy });
+        logger.info('git-remote.configure.strategy-updated', { appId, syncStrategy });
+        res.json({ success: true, message: 'Sync strategy updated', syncStrategy });
+        return;
+      } catch (error) {
+        logger.error('git-remote.configure.strategy-update.error', {
+          appId,
+          error: getErrorMessage(error),
+        });
+        res.status(500).json({ error: 'Internal server error', message: getErrorMessage(error) });
+        return;
+      }
+    }
+
     logger.info('git-remote.configure.begin', {
       appId,
       repoUrl,
-      remoteName: remoteName || 'origin'
+      remoteName: remoteName || 'origin',
+      syncStrategy: syncStrategy || 'manual',
     });
 
     try {
-      // Validate required parameters
       if (!repoUrl) {
         res.status(400).json({
           error: 'Repository URL is required',
@@ -124,7 +154,6 @@ router.post(
         return;
       }
 
-      // Get app
       const app = appRepository.findById(appId);
       if (!app) {
         res.status(404).json({ error: 'App not found' });
@@ -142,9 +171,9 @@ router.post(
 
       const gitTool = new GitTool(workspace.tasks);
 
-      // Execute configure-remote operation
       const result = await gitTool.executeGitOperation(app.path, {
         operation: 'configure-remote',
+        appId,
         repoUrl,
         remoteName: remoteName || 'origin',
         branch: branch || 'main'
@@ -164,7 +193,18 @@ router.post(
         return;
       }
 
-      logger.info('git-remote.configure.success', { appId });
+      // Persist config (including sync_strategy) in the database
+      gitRemoteConfigRepo.upsert({
+        appId,
+        remoteName: remoteName || 'origin',
+        provider: 'github',
+        repoUrl,
+        defaultBranch: branch || 'main',
+        syncEnabled: true,
+        syncStrategy: syncStrategy || 'manual',
+      });
+
+      logger.info('git-remote.configure.success', { appId, syncStrategy: syncStrategy || 'manual' });
 
       res.json({
         success: true,
@@ -370,6 +410,7 @@ router.get(
           defaultBranch: config.defaultBranch,
           lastSyncAt: config.lastSyncAt,
           syncEnabled: config.syncEnabled,
+          syncStrategy: config.syncStrategy,
           createdAt: config.createdAt,
           updatedAt: config.updatedAt
         }))
@@ -384,6 +425,38 @@ router.get(
         error: 'Internal server error',
         message: getErrorMessage(error)
       });
+    }
+  }
+);
+
+/**
+ * DELETE /apps/:id/git/remote/configure
+ *
+ * Remove git remote configuration for an app.
+ * Called during disconnect to clean up the database entry.
+ */
+router.delete(
+  '/apps/:id/git/remote/configure',
+  requireGitRemoteSync,
+  validateAppOwnership,
+  async (req: Request, res: Response) => {
+    const appId = req.params.id;
+
+    if (!appId) {
+      res.status(400).json({ error: 'App ID is required' });
+      return;
+    }
+
+    try {
+      const count = gitRemoteConfigRepo.deleteByAppId(appId);
+      logger.info('git-remote.configure.deleted', { appId, count });
+      res.json({ success: true, deleted: count });
+    } catch (error) {
+      logger.error('git-remote.configure.delete.error', {
+        appId,
+        error: getErrorMessage(error),
+      });
+      res.status(500).json({ error: 'Internal server error' });
     }
   }
 );

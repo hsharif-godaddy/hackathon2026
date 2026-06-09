@@ -16,9 +16,17 @@ vi.mock('../../../database/repositories/AppRepository.js', () => ({
   }; }),
 }));
 
+const mockFindByAppAndRemote = vi.hoisted(() => vi.fn());
+const mockUpdate = vi.hoisted(() => vi.fn());
+const mockUpsert = vi.hoisted(() => vi.fn());
+const mockFindByAppIdConfig = vi.hoisted(() => vi.fn().mockReturnValue([]));
+
 vi.mock('../../../database/repositories/GitRemoteConfigRepository.js', () => ({
   GitRemoteConfigRepository: vi.fn().mockImplementation(function () { return {
-    findByAppId: vi.fn(),
+    findByAppId: mockFindByAppIdConfig,
+    findByAppAndRemote: mockFindByAppAndRemote,
+    update: mockUpdate,
+    upsert: mockUpsert,
   }; }),
 }));
 
@@ -483,6 +491,107 @@ describe('git-remote routes', function gitRemoteTests() {
 
       expect(response.status).toBe(503);
       expect(response.body.error).toBe('App container is not available');
+    });
+  });
+
+  describe('strategy-only update on /git/remote/configure', function strategyUpdateTests() {
+    beforeEach(() => {
+      process.env.ENABLE_GIT_REMOTE_SYNC = 'true';
+      app = createTestApp();
+    });
+
+    it('should update syncStrategy without repoUrl when remote exists', async function updateStrategy() {
+      mockFindByAppAndRemote.mockReturnValue({ id: 42, remoteName: 'origin' });
+
+      const response = await request(app)
+        .post('/apps/test-id/git/remote/configure')
+        .send({ syncStrategy: 'on_commit' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.syncStrategy).toBe('on_commit');
+      expect(mockUpdate).toHaveBeenCalledWith(42, { syncStrategy: 'on_commit' });
+    });
+
+    it('should return 404 when no remote configured for strategy-only update', async function noRemote() {
+      mockFindByAppAndRemote.mockReturnValue(null);
+
+      const response = await request(app)
+        .post('/apps/test-id/git/remote/configure')
+        .send({ syncStrategy: 'on_publish' });
+
+      expect(response.status).toBe(404);
+      expect(response.body.error).toBe('No remote configured for this app');
+    });
+
+    it('should reject invalid syncStrategy value', async function invalidStrategy() {
+      const response = await request(app)
+        .post('/apps/test-id/git/remote/configure')
+        .send({ syncStrategy: 'invalid' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('syncStrategy must be one of');
+    });
+
+    it('should accept on_publish as valid syncStrategy', async function publishStrategy() {
+      mockFindByAppAndRemote.mockReturnValue({ id: 10, remoteName: 'origin' });
+
+      const response = await request(app)
+        .post('/apps/test-id/git/remote/configure')
+        .send({ syncStrategy: 'on_publish' });
+
+      expect(response.status).toBe(200);
+      expect(mockUpdate).toHaveBeenCalledWith(10, { syncStrategy: 'on_publish' });
+    });
+
+    it('should accept manual as valid syncStrategy', async function manualStrategy() {
+      mockFindByAppAndRemote.mockReturnValue({ id: 10, remoteName: 'origin' });
+
+      const response = await request(app)
+        .post('/apps/test-id/git/remote/configure')
+        .send({ syncStrategy: 'manual' });
+
+      expect(response.status).toBe(200);
+      expect(mockUpdate).toHaveBeenCalledWith(10, { syncStrategy: 'manual' });
+    });
+  });
+
+  describe('syncStrategy in /git/remote/status response', function statusResponseTests() {
+    beforeEach(() => {
+      process.env.ENABLE_GIT_REMOTE_SYNC = 'true';
+      app = createTestApp();
+    });
+
+    it('should include syncStrategy in status response', async function includesStrategy() {
+      mockFindByAppIdConfig.mockReturnValue([{
+        id: 1,
+        remoteName: 'origin',
+        provider: 'github',
+        repoUrl: 'https://github.com/user/repo.git',
+        defaultBranch: 'main',
+        syncEnabled: true,
+        syncStrategy: 'on_commit',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }]);
+
+      const response = await request(app)
+        .get('/apps/test-id/git/remote/status');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.remotes).toHaveLength(1);
+      expect(response.body.remotes[0].syncStrategy).toBe('on_commit');
+    });
+
+    it('should return empty remotes when no config exists', async function emptyRemotes() {
+      mockFindByAppIdConfig.mockReturnValue([]);
+
+      const response = await request(app)
+        .get('/apps/test-id/git/remote/status');
+
+      expect(response.status).toBe(200);
+      expect(response.body.remotes).toHaveLength(0);
     });
   });
 });

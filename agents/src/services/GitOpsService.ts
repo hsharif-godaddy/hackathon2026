@@ -6,6 +6,7 @@
  */
 
 import { AppRepository } from '../database/repositories/AppRepository.js';
+import { GitRemoteConfigRepository } from '../database/repositories/GitRemoteConfigRepository.js';
 import { ImportJobRepository } from '../database/repositories/ImportJobRepository.js';
 import { ImportJobStatus, type ImportJob } from '../types/import.js';
 import { GitTool } from '../tools/git-tool.js';
@@ -18,9 +19,11 @@ import { modifyViteConfig } from './ViteConfigModifier.js';
 import { injectPortHandling } from './ExpressPortInjector.js';
 import { codeSyncFileCleanupService } from './CodeSyncFileCleanupService.js';
 import { projectSourceDetectionService } from './ProjectSourceDetectionService.js';
+import { GitRemoteTokenManager } from './GitRemoteTokenManager.js';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
 import { bytesToMB } from '../utils/container-metrics.js';
+import { clearNomadConfigCache } from '../utils/nomad-config.js';
 
 const logger = Logger.create({ component: 'git-ops-service' });
 
@@ -95,7 +98,7 @@ export interface GitOperationStartResult {
   jobId?: string;
   status?: ImportJobStatus;
   error?: string;
-  errorCode?: 'APP_NOT_FOUND' | 'CONTAINER_UNAVAILABLE' | 'JOB_IN_PROGRESS' | 'INTERNAL_ERROR';
+  errorCode?: 'APP_NOT_FOUND' | 'AUTH_FAILED' | 'CONTAINER_UNAVAILABLE' | 'JOB_IN_PROGRESS' | 'INTERNAL_ERROR';
   existingJobId?: string;
 }
 
@@ -111,6 +114,7 @@ export interface GitJobStatusResult {
 
 export class GitOpsService {
   private appRepository = new AppRepository();
+  private gitRemoteConfigRepo = new GitRemoteConfigRepository();
   private importJobRepo = new ImportJobRepository();
 
   /**
@@ -215,6 +219,93 @@ export class GitOpsService {
   }
 
   /**
+   * Fire-and-forget push triggered by sync_strategy.
+   * Silently skips if no remote is configured, sync is disabled,
+   * strategy doesn't match, or another job is already running.
+   */
+  async triggerAutoSync(appId: string, trigger: 'on_commit' | 'on_publish'): Promise<void> {
+    try {
+      const configs = this.gitRemoteConfigRepo.findByAppId(appId);
+      const config = configs.find(c => c.syncEnabled && c.syncStrategy === trigger);
+      if (!config) return;
+
+      logger.info('git-ops.auto-sync.triggered', {
+        appId,
+        trigger,
+        remoteName: config.remoteName,
+        branch: config.defaultBranch,
+      });
+
+      await this.waitForFreshToken(appId);
+
+      const app = this.appRepository.findById(appId);
+      if (!app) return;
+
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) return;
+
+      const gitTool = new GitTool(workspace.tasks);
+      const result = await gitTool.executeGitOperation(app.path, {
+        operation: 'push',
+        appId,
+        remoteName: config.remoteName,
+        branch: config.defaultBranch,
+      });
+
+      if (!result.success) {
+        if (result.errorCode === 'AUTH_FAILED') {
+          logger.error('git-ops.auto-sync.auth-failed', {
+            appId,
+            trigger,
+            remoteName: config.remoteName,
+          });
+        } else {
+          logger.warn('git-ops.auto-sync.skipped', {
+            appId,
+            trigger,
+            error: result.error,
+          });
+        }
+      }
+    } catch (err) {
+      logger.warn('git-ops.auto-sync.error', {
+        appId,
+        trigger,
+        error: getErrorMessage(err),
+      });
+    }
+  }
+
+  /**
+   * Wait for a non-expired token by clearing the memoized config cache
+   * and re-reading from disk with exponential backoff. The BFF proactively
+   * refreshes tokens via updateSecrets, which asynchronously updates
+   * alloc/config.json on disk.
+   */
+  private async waitForFreshToken(appId: string): Promise<void> {
+    if (!GitRemoteTokenManager.isTokenExpired(appId)) return;
+
+    const delays = [0, 5_000, 15_000, 30_000];
+    for (const delay of delays) {
+      if (delay > 0) {
+        logger.info('git-ops.auto-sync.token-expired-waiting', { appId, delayMs: delay });
+        await new Promise<void>(function wait(resolve) { setTimeout(resolve, delay); });
+      }
+      clearNomadConfigCache();
+      if (!GitRemoteTokenManager.isTokenExpired(appId)) {
+        logger.info('git-ops.auto-sync.token-refreshed', { appId });
+        return;
+      }
+    }
+
+    logger.error('git-ops.auto-sync.token-still-expired', {
+      appId,
+      totalWaitMs: 50_000,
+      hint: 'Token did not refresh within retry window. Push will proceed but may fail with AUTH_FAILED.',
+    });
+  }
+
+  /**
    * Execute git push in background
    */
   private async executePushInBackground(
@@ -252,6 +343,7 @@ export class GitOpsService {
 
       const result = await gitTool.executeGitOperation(appPath, {
         operation: 'push',
+        appId,
         remoteName: options.remoteName,
         branch: options.branch,
         forcePush: options.forcePush,
@@ -454,6 +546,7 @@ export class GitOpsService {
 
       const result = await gitTool.executeGitOperation(appPath, {
         operation: 'pull',
+        appId,
         remoteName: options.remoteName,
         branch: options.branch,
         token: options.token,

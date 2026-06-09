@@ -2,6 +2,9 @@
  * Git remote configuration and types
  */
 
+export const SYNC_STRATEGIES = ['on_commit', 'on_publish', 'manual'] as const;
+export type SyncStrategy = typeof SYNC_STRATEGIES[number];
+
 /**
  * Git remote configuration stored in database
  */
@@ -14,6 +17,7 @@ export interface GitRemoteConfig {
   defaultBranch: string;
   lastSyncAt: number | null;
   syncEnabled: boolean;
+  syncStrategy: SyncStrategy;
   createdAt: string;
   updatedAt: string;
 }
@@ -28,6 +32,7 @@ export interface CreateGitRemoteConfigParams {
   repoUrl: string;
   defaultBranch: string;
   syncEnabled?: boolean;
+  syncStrategy?: SyncStrategy;
 }
 
 /**
@@ -38,4 +43,5 @@ export interface UpdateGitRemoteConfigParams {
   defaultBranch?: string;
   lastSyncAt?: number;
   syncEnabled?: boolean;
+  syncStrategy?: SyncStrategy;
 }

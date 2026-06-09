@@ -95,6 +95,9 @@ export class GitRemoteConfigRepository {
         if (params.syncEnabled !== undefined) {
           updateParams.syncEnabled = params.syncEnabled;
         }
+        if (params.syncStrategy !== undefined) {
+          updateParams.syncStrategy = params.syncStrategy;
+        }
 
         return this.update(existing.id, updateParams);
       }
@@ -105,8 +108,8 @@ export class GitRemoteConfigRepository {
       this.db
         .prepare(
           `INSERT INTO git_remote_config
-           (id, app_id, remote_name, provider, repo_url, default_branch, sync_enabled)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
+           (id, app_id, remote_name, provider, repo_url, default_branch, sync_enabled, sync_strategy)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           id,
@@ -115,7 +118,8 @@ export class GitRemoteConfigRepository {
           params.provider,
           params.repoUrl,
           params.defaultBranch,
-          params.syncEnabled !== false ? 1 : 0
+          params.syncEnabled !== false ? 1 : 0,
+          params.syncStrategy ?? 'manual'
         );
 
       logger.info('git-remote.create.success', {
@@ -171,6 +175,11 @@ export class GitRemoteConfigRepository {
       if (params.syncEnabled !== undefined) {
         updates.push('sync_enabled = ?');
         values.push(params.syncEnabled ? 1 : 0);
+      }
+
+      if (params.syncStrategy !== undefined) {
+        updates.push('sync_strategy = ?');
+        values.push(params.syncStrategy);
       }
 
       if (updates.length === 0) {
@@ -276,6 +285,7 @@ export class GitRemoteConfigRepository {
       defaultBranch: row.default_branch,
       lastSyncAt: row.last_sync_at,
       syncEnabled: row.sync_enabled === 1,
+      syncStrategy: row.sync_strategy ?? 'manual',
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at)
     };

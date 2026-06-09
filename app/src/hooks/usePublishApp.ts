@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { dynamicApiConfigService } from '@/config/dynamic-api';
+import { ensureFreshToken } from '@/hooks/github/useGitHubTokenHealth';
 import {
   appDetailsQueryKey,
   type AppDetailsResponse,
@@ -288,6 +289,8 @@ export function usePublishApp() {
           });
         }
       }
+
+      await ensureFreshToken(appId, 'publish');
 
       // Regenerate JWT and fetch agent URL in parallel (independent lookups)
       logger.info('publish.regenerate-token', { appId });

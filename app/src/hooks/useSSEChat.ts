@@ -33,6 +33,7 @@ import {
 import type { StructuredError } from '@/types/errors'
 import { logImpressionEvent, setInstrumentationIntentCategory } from '@/utils/instrumentation'
 import { readIntentCategoryFromSession } from '@/utils/traffic-signals'
+import { ensureFreshToken } from './github/useGitHubTokenHealth'
 import { resolveMessageDefaults } from './resolveMessageDefaults'
 import {
   checkNewPageCreation,
@@ -491,6 +492,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 bufferStoreUpdate(() => store.addToolStartSegment(toolCall))
                 if (isTerminal) {
                   bufferStoreUpdate(() => store.addToolResultSegment(toolCall))
+                  if (store.currentAppId) ensureFreshToken(store.currentAppId, 'commit');
                 }
               } else if (type === 'complete') {
                 flushStoreUpdateBufferImmediate()

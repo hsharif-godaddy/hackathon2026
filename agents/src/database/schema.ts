@@ -7,7 +7,10 @@
 
 import type { Database } from 'better-sqlite3';
 import { Logger } from '../logging/index.js';
+import type { SyncStrategy } from '../types/git-remote.js';
 import { SocialPlatform, PostState } from '../types/social.js';
+
+export type { SyncStrategy };
 
 const logger = Logger.create({ service: 'database-schema' });
 
@@ -189,6 +192,7 @@ export interface GitRemoteConfig {
   defaultBranch: string;
   lastSyncAt: number | null;
   syncEnabled: boolean;
+  syncStrategy: SyncStrategy;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -597,6 +601,7 @@ function createGitRemoteConfigTable(db: Database): void {
       default_branch TEXT DEFAULT 'main',
       last_sync_at INTEGER,
       sync_enabled BOOLEAN DEFAULT TRUE,
+      sync_strategy TEXT NOT NULL DEFAULT 'manual' CHECK(sync_strategy IN ('on_commit', 'on_publish', 'manual')),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(app_id, remote_name),
@@ -1525,6 +1530,9 @@ function applyMigrations(db: Database): void {
   // Add purpose column to share_tokens for archive-snapshot share tokens
   migrateShareTokensPurpose(db);
 
+  // Add sync_strategy column to git_remote_config
+  migrateGitRemoteConfigSyncStrategy(db);
+
   // Strip oversized finalResult blobs from conversation_messages metadata
   stripFinalResultBloat(db);
 }
@@ -1842,6 +1850,15 @@ function migrateSummariesQualityTracking(db: Database): void {
       stack: err instanceof Error ? err.stack : undefined,
     });
     // Don't throw - migration failures shouldn't break app startup
+  }
+}
+
+function migrateGitRemoteConfigSyncStrategy(db: Database): void {
+  try {
+    db.exec(`ALTER TABLE git_remote_config ADD COLUMN sync_strategy TEXT NOT NULL DEFAULT 'manual' CHECK(sync_strategy IN ('on_commit', 'on_publish', 'manual'))`);
+    logger.info('database.migration.git-remote-sync-strategy.success');
+  } catch {
+    // Column already exists
   }
 }
 

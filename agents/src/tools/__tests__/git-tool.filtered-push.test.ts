@@ -176,11 +176,11 @@ describe("GitTool - Filtered Push with Allowlist", () => {
         "Sync: filtered commit (allowlist)"
       );
 
-      // Verify push was called with forcePush=true and correct refspec
+      // Verify push was called with forcePush=true and fully-qualified refspec
       expect(mockPush).toHaveBeenCalledWith(
         "/tmp/apps/test-app/app",
         "origin",
-        "def456commit:main",
+        "def456commit:refs/heads/main",
         { timeout: 120000 },
         true  // forcePush
       );

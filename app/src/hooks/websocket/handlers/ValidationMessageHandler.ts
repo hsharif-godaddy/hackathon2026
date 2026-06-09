@@ -1,3 +1,4 @@
+import { ensureFreshToken } from '@/hooks/github/useGitHubTokenHealth'
 import { buildValidationToolCallFromEvent } from '@/hooks/shared/validationToolCallBuilder'
 import type { DataHandlerContext, MessageHandler, WebSocketMessage } from './types'
 
@@ -9,6 +10,9 @@ export class ValidationMessageHandler implements MessageHandler {
     context.actions.addToolStartSegment(toolCall)
     if (isTerminal) {
       context.actions.addToolResultSegment(toolCall)
+      if (context.currentAppId) {
+        ensureFreshToken(context.currentAppId, 'commit');
+      }
     }
   }
 }

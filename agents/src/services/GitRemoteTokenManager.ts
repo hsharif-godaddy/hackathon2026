@@ -1,8 +1,13 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import type { WorkspaceTasks } from '../workspace/tasks.js';
 import { GitProviderFactory } from './git-providers/GitProviderFactory.js';
 import { Logger } from '../logging/index.js';
 import { getErrorMessage } from '../utils/error.js';
 import { getNomadAllocConfig } from '../utils/nomad-config.js';
+
+const TOKEN_REFRESH_BUFFER_SECONDS = 300;
 
 /**
  * Git Remote Token Manager
@@ -42,11 +47,17 @@ export class GitRemoteTokenManager {
     });
 
     try {
-      // Use provided token (PaaS pattern) or read from shared config (AiroAppBuilder pattern)
+      // Token resolution order:
+      // 1. Directly provided (PaaS pattern / BFF manual push)
+      // 2. /alloc/config.json (Nomad production)
+      // 3. APPS_BASE_DIR/<appId>/local/preview/config.json (local dev)
       let effectiveToken = token;
       if (!effectiveToken) {
         const nomadConfig = getNomadAllocConfig();
         effectiveToken = nomadConfig?.GITHUB_TOKEN?.VALUE as string | undefined;
+      }
+      if (!effectiveToken && appId) {
+        effectiveToken = this.readLocalDevToken(appId);
       }
 
       if (!effectiveToken) {
@@ -128,6 +139,55 @@ export class GitRemoteTokenManager {
         error: getErrorMessage(error)
       });
     }
+  }
+
+  /**
+   * Check whether the GitHub token for this app is expired (or about to expire).
+   * Callable before creating a GitTool/workspace — no WorkspaceTasks needed.
+   */
+  static isTokenExpired(appId: string): boolean {
+    const raw = GitRemoteTokenManager.readConfigValue(appId, 'GITHUB_TOKEN_EXPIRES_AT');
+    if (!raw) return true;
+    const expiresAt = Number(raw);
+    if (Number.isNaN(expiresAt)) return true;
+    return Math.floor(Date.now() / 1000) >= (expiresAt - TOKEN_REFRESH_BUFFER_SECONDS);
+  }
+
+  /**
+   * Read a value from the alloc/local-dev config.
+   * Production: getNomadAllocConfig()
+   * Local dev: APPS_BASE_DIR/<appId>/local/preview/config.json
+   */
+  private static readConfigValue(appId: string, key: string): string | undefined {
+    const nomadConfig = getNomadAllocConfig();
+    const nomadVal = nomadConfig?.[key]?.VALUE;
+    if (typeof nomadVal === 'string' && nomadVal) return nomadVal;
+
+    return GitRemoteTokenManager.readLocalDevConfigValue(appId, key);
+  }
+
+  private static readLocalDevConfigValue(appId: string, key: string): string | undefined {
+    if (process.env.NOMAD_ALLOC_DIR) return undefined;
+    if (/[/\\]|\.\./.test(appId)) return undefined;
+
+    const configPath = join(
+      process.env.APPS_BASE_DIR || '/tmp/airo-app-builder',
+      appId, 'local', 'preview', 'config.json'
+    );
+
+    if (!existsSync(configPath)) return undefined;
+
+    try {
+      const config = JSON.parse(readFileSync(configPath, 'utf-8')) as Record<string, { VALUE?: unknown }>;
+      const v = config[key]?.VALUE;
+      return typeof v === 'string' && v ? v : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private readLocalDevToken(appId: string): string | undefined {
+    return GitRemoteTokenManager.readLocalDevConfigValue(appId, 'GITHUB_TOKEN');
   }
 
   /**

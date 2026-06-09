@@ -30,6 +30,12 @@ export class DefaultPublishStrategy implements PublishStrategy {
     // 4. Create archive (auto-detect based on server.bundle.cjs)
     const archivePath = await this.createArchive(context, commitHash);
 
+    // Lazy import avoids pulling the full GitOpsService dependency tree
+    // into the publish strategy's static imports (breaks test mocks).
+    import('../../../../services/GitOpsService.js')
+      .then(({ GitOpsService }) => new GitOpsService().triggerAutoSync(context.appId, 'on_publish'))
+      .catch(() => {});
+
     return { commitHash, archivePath };
   }
 

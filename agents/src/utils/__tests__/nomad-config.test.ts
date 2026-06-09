@@ -265,6 +265,31 @@ describe('nomad-config', () => {
     });
   });
 
+  describe('clearNomadConfigCache', () => {
+    it('should force re-read from filesystem after cache is cleared', async () => {
+      vi.resetModules();
+      vi.mock('../../logging/index.js', mockLoggerFactory);
+
+      const configPath = join(testDir, 'config.json');
+      writeFileSync(configPath, JSON.stringify({ TOKEN: { VALUE: 'old-token' } }));
+
+      const { getNomadAllocConfig: getConfig, clearNomadConfigCache: clearCache } =
+        await import('../nomad-config.js');
+
+      expect(getConfig()?.TOKEN?.VALUE).toBe('old-token');
+
+      writeFileSync(configPath, JSON.stringify({ TOKEN: { VALUE: 'new-token' } }));
+
+      // Still returns memoized value
+      expect(getConfig()?.TOKEN?.VALUE).toBe('old-token');
+
+      clearCache();
+
+      // After clearing, re-reads from disk
+      expect(getConfig()?.TOKEN?.VALUE).toBe('new-token');
+    });
+  });
+
   describe('Edge cases', () => {
     it('should handle whitespace-only VALUE', async () => {
       vi.resetModules();

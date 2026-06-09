@@ -1,4 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+
+vi.mock('node:fs', () => ({
+  existsSync: vi.fn(function () { return false; }),
+  readFileSync: vi.fn(function () { return '{}'; }),
+}));
 
 vi.mock('../git-providers/GitProviderFactory.js', () => ({
   GitProviderFactory: {
@@ -27,6 +32,9 @@ vi.mock('../../utils/nomad-config.js', () => ({
   getNomadAllocConfig: vi.fn(function () { return null; }),
 }));
 
+import { existsSync, readFileSync } from 'node:fs';
+
+import { getNomadAllocConfig } from '../../utils/nomad-config.js';
 import { GitRemoteTokenManager } from '../GitRemoteTokenManager.js';
 
 describe('GitRemoteTokenManager', () => {
@@ -73,6 +81,166 @@ describe('GitRemoteTokenManager', () => {
           timeoutSeconds: 300,
         })
       );
+    });
+  });
+
+  describe('local dev token fallback', function localDevTokenTests() {
+    const repoUrl = 'https://github.com/user/repo.git';
+
+    afterEach(() => {
+      delete process.env.NOMAD_ALLOC_DIR;
+      delete process.env.APPS_BASE_DIR;
+    });
+
+    it('reads token from local config when no token and no nomad config', async function readsLocal() {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
+        GITHUB_TOKEN: { VALUE: 'local-dev-token' },
+      }));
+
+      await manager.configureGitCredentials('app-1', repoUrl);
+
+      expect(existsSync).toHaveBeenCalledWith(
+        expect.stringContaining('app-1/local/preview/config.json')
+      );
+      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips local config when NOMAD_ALLOC_DIR is set', async function skipsNomad() {
+      process.env.NOMAD_ALLOC_DIR = '/alloc';
+
+      await expect(
+        manager.configureGitCredentials('app-1', repoUrl)
+      ).rejects.toThrow('GitHub token not provided');
+
+      expect(existsSync).not.toHaveBeenCalled();
+    });
+
+    it('rejects appId with forward slash', async function rejectsSlash() {
+      await expect(
+        manager.configureGitCredentials('../etc/passwd', repoUrl)
+      ).rejects.toThrow('GitHub token not provided');
+
+      expect(existsSync).not.toHaveBeenCalled();
+    });
+
+    it('rejects appId with backslash', async function rejectsBackslash() {
+      await expect(
+        manager.configureGitCredentials('app\\evil', repoUrl)
+      ).rejects.toThrow('GitHub token not provided');
+
+      expect(existsSync).not.toHaveBeenCalled();
+    });
+
+    it('rejects appId with dot-dot traversal', async function rejectsDotDot() {
+      await expect(
+        manager.configureGitCredentials('..', repoUrl)
+      ).rejects.toThrow('GitHub token not provided');
+
+      expect(existsSync).not.toHaveBeenCalled();
+    });
+
+    it('returns undefined when config file does not exist', async function noFile() {
+      vi.mocked(existsSync).mockReturnValue(false);
+
+      await expect(
+        manager.configureGitCredentials('app-1', repoUrl)
+      ).rejects.toThrow('GitHub token not provided');
+    });
+
+    it('returns undefined when config JSON is malformed', async function malformed() {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue('not json');
+
+      await expect(
+        manager.configureGitCredentials('app-1', repoUrl)
+      ).rejects.toThrow('GitHub token not provided');
+    });
+
+    it('returns undefined when GITHUB_TOKEN.VALUE is not a string', async function notString() {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
+        GITHUB_TOKEN: { VALUE: 12345 },
+      }));
+
+      await expect(
+        manager.configureGitCredentials('app-1', repoUrl)
+      ).rejects.toThrow('GitHub token not provided');
+    });
+
+    it('returns undefined when GITHUB_TOKEN.VALUE is empty string', async function emptyString() {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
+        GITHUB_TOKEN: { VALUE: '' },
+      }));
+
+      await expect(
+        manager.configureGitCredentials('app-1', repoUrl)
+      ).rejects.toThrow('GitHub token not provided');
+    });
+
+    it('uses APPS_BASE_DIR env var when set', async function usesBaseDir() {
+      process.env.APPS_BASE_DIR = '/custom/base';
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
+        GITHUB_TOKEN: { VALUE: 'custom-base-token' },
+      }));
+
+      await manager.configureGitCredentials('app-1', repoUrl);
+
+      expect(existsSync).toHaveBeenCalledWith(
+        '/custom/base/app-1/local/preview/config.json'
+      );
+    });
+  });
+
+  describe('isTokenExpired', function expiryTests() {
+    afterEach(() => {
+      delete process.env.NOMAD_ALLOC_DIR;
+    });
+
+    it('returns true when no expiry value exists', function noExpiry() {
+      vi.mocked(getNomadAllocConfig).mockReturnValue(null);
+      vi.mocked(existsSync).mockReturnValue(false);
+
+      expect(GitRemoteTokenManager.isTokenExpired('app-1')).toBe(true);
+    });
+
+    it('returns true when expiry value is NaN', function nanExpiry() {
+      vi.mocked(getNomadAllocConfig).mockReturnValue({
+        GITHUB_TOKEN_EXPIRES_AT: { VALUE: 'not-a-number' },
+      });
+
+      expect(GitRemoteTokenManager.isTokenExpired('app-1')).toBe(true);
+    });
+
+    it('returns false when token is still valid beyond buffer', function valid() {
+      const futureEpoch = Math.floor(Date.now() / 1000) + 600;
+      vi.mocked(getNomadAllocConfig).mockReturnValue({
+        GITHUB_TOKEN_EXPIRES_AT: { VALUE: String(futureEpoch) },
+      });
+
+      expect(GitRemoteTokenManager.isTokenExpired('app-1')).toBe(false);
+    });
+
+    it('returns true when token expires within 300s buffer', function withinBuffer() {
+      const nearFuture = Math.floor(Date.now() / 1000) + 100;
+      vi.mocked(getNomadAllocConfig).mockReturnValue({
+        GITHUB_TOKEN_EXPIRES_AT: { VALUE: String(nearFuture) },
+      });
+
+      expect(GitRemoteTokenManager.isTokenExpired('app-1')).toBe(true);
+    });
+
+    it('reads from local dev config when nomad config returns null', function localDev() {
+      vi.mocked(getNomadAllocConfig).mockReturnValue(null);
+      vi.mocked(existsSync).mockReturnValue(true);
+      const futureEpoch = Math.floor(Date.now() / 1000) + 600;
+      vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
+        GITHUB_TOKEN_EXPIRES_AT: { VALUE: String(futureEpoch) },
+      }));
+
+      expect(GitRemoteTokenManager.isTokenExpired('app-1')).toBe(false);
     });
   });
 });
