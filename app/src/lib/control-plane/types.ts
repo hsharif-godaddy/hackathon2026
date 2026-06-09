@@ -136,6 +136,25 @@ export interface SiteDomain {
 }
 
 /**
+ * Pre-rendered screenshot URLs for one app variant (desktop/mobile).
+ * Mirrors the mgmt-airo `ScreenshotPair`; defined here to keep SiteInfo
+ * self-contained (same convention as SiteDomain vs AiroDomain).
+ */
+export interface SiteScreenshotPair {
+  desktop?: string;
+  mobile?: string;
+}
+
+/**
+ * Per-variant screenshot URLs carried through from mgmt-airo to the browser.
+ * Shape: { preview: { desktop, mobile }, publish: { desktop, mobile } }.
+ */
+export interface SiteScreenshots {
+  preview?: SiteScreenshotPair;
+  publish?: SiteScreenshotPair;
+}
+
+/**
  * Site information returned by control plane
  */
 export interface SiteInfo {
@@ -163,6 +182,7 @@ export interface SiteInfo {
   ownerProduct?: string; // V2 only: Owner product family (e.g., "AiroAppBuilder", "PaaSNodeJS")
   compositionId?: string; // V2 only: Composition type (e.g., "ai-builder", "node-app")
   cellId?: string; // V2 only: Cell identifier (e.g., "c35-prod-sxb1-eu-central-1" or "c36-prod-p3-us-west-2")
+  screenshots?: SiteScreenshots; // V2 only: Pre-rendered screenshot URLs from mgmt-hosting (preview/publish × desktop/mobile)
 }
 
 /**

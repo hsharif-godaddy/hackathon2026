@@ -59,6 +59,24 @@ export interface AiroSystem {
 }
 
 /**
+ * Pre-rendered screenshot URLs for one app variant (captured by mgmt-hosting,
+ * served via mgmt-airo). Each side is optional — a partial capture may omit one.
+ */
+export interface ScreenshotPair {
+  desktop?: string;
+  mobile?: string;
+}
+
+/**
+ * Screenshot URLs per app variant, as emitted by mgmt-hosting / mgmt-airo.
+ * Shape: { preview: { desktop, mobile }, publish: { desktop, mobile } }.
+ */
+export interface Screenshots {
+  preview?: ScreenshotPair;
+  publish?: ScreenshotPair;
+}
+
+/**
  * App response from mgmt-airo (summary from list endpoints)
  */
 export interface AiroApp {
@@ -95,6 +113,7 @@ export interface AiroApp {
     lastActivityTime?: string;
   }>;
   cellId?: string;
+  screenshots?: Screenshots;
 }
 
 /**

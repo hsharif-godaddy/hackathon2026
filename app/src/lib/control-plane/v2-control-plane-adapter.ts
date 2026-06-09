@@ -1309,6 +1309,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       variants: app.variants, // Simple string array ['preview', 'publish']
       variantsWithLifecycle: transformVariants(app.variantsWithLifecycle),
       cellId: app.cellId,
+      screenshots: app.screenshots, // Pre-rendered screenshot URLs from mgmt-hosting (preview/publish × desktop/mobile)
     };
   }
 

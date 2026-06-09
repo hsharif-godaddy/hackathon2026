@@ -217,6 +217,65 @@ describe('/api/sites', function sitesRouteTests() {
     });
   });
 
+  describe('GET /api/sites - screenshots passthrough', function screenshotsPassthroughTests() {
+    const screenshots = {
+      preview: { desktop: 'https://shots.example/preview-desktop.png', mobile: 'https://shots.example/preview-mobile.png' },
+      publish: { desktop: 'https://shots.example/publish-desktop.png' }
+    };
+
+    it('includes screenshots in the list response when the adapter provides them', async function listIncludesScreenshots() {
+      const { getControlPlaneAdapter } = await import('@/lib/control-plane');
+      const { GET } = await import('../route');
+
+      const mockSites = [
+        {
+          id: 'site-1',
+          name: 'Test Site 1',
+          status: 'running',
+          account_id: 'test-account',
+          screenshots,
+          created_at: new Date('2025-01-01T00:00:00.000Z'),
+          updated_at: new Date('2025-01-01T00:00:00.000Z')
+        }
+      ];
+
+      (getControlPlaneAdapter as any).mockReturnValue({
+        listSites: vi.fn().mockResolvedValue(mockSites)
+      });
+
+      const response = await GET(new NextRequest('http://localhost:3000/api/sites'));
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body[0].screenshots).toEqual(screenshots);
+    });
+
+    it('includes screenshots in the single-site response when the adapter provides them', async function singleIncludesScreenshots() {
+      const { getControlPlaneAdapter } = await import('@/lib/control-plane');
+      const { GET } = await import('../route');
+
+      const mockSite = {
+        id: 'site-1',
+        name: 'Test Site 1',
+        status: 'running',
+        account_id: 'test-account',
+        screenshots,
+        created_at: new Date('2025-01-01T00:00:00.000Z'),
+        updated_at: new Date('2025-01-01T00:00:00.000Z')
+      };
+
+      (getControlPlaneAdapter as any).mockReturnValue({
+        getSite: vi.fn().mockResolvedValue(mockSite)
+      });
+
+      const response = await GET(new NextRequest('http://localhost:3000/api/sites?site_id=site-1'));
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.screenshots).toEqual(screenshots);
+    });
+  });
+
   describe('GET /api/sites?site_id=X - Authentication Errors', function getSiteAuthTests() {
     it('should return 401 when adapter.getSite throws 401 error', async function test401FromGetSite() {
       const { getControlPlaneAdapter } = await import('@/lib/control-plane');

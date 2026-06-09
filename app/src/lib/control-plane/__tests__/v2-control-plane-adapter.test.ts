@@ -982,6 +982,60 @@ describe('V2ControlPlaneAdapter', () => {
     });
   });
 
+  describe('getSite - screenshots passthrough', () => {
+    const SCREENSHOTS = {
+      preview: { desktop: 'https://shots.example/preview-desktop.png', mobile: 'https://shots.example/preview-mobile.png' },
+      publish: { desktop: 'https://shots.example/publish-desktop.png' }
+    };
+
+    it('should carry mgmt-airo screenshots through mapAppToSiteInfo', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: { title: 'Shots App', initialPrompt: MOCK_PROMPT },
+            screenshots: SCREENSHOTS,
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+
+      expect(site?.screenshots).toEqual(SCREENSHOTS);
+      expect(site?.screenshots?.preview?.desktop).toBe(SCREENSHOTS.preview.desktop);
+      expect(site?.screenshots?.publish?.mobile).toBeUndefined();
+    });
+
+    it('should leave site.screenshots undefined when mgmt-airo omits the field', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [{
+            id: MOCK_APP_ID,
+            status: 'active',
+            systemId: MOCK_SYSTEM_ID,
+            subscriptionId: 'sub-123',
+            cellId: 'c4-dev-sxb1-eu-central-1',
+            variables: { title: 'No Shots App', initialPrompt: MOCK_PROMPT },
+            createdAt: '2025-10-02T10:30:00Z',
+            updatedAt: '2025-10-02T10:35:00Z'
+          }]
+        })
+      });
+
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+
+      expect(site?.screenshots).toBeUndefined();
+    });
+  });
+
   describe('getSite - Job ID Polling', () => {
     it('should handle in-progress job (no apps yet)', async () => {
       // Mock job endpoint - workflow in progress
