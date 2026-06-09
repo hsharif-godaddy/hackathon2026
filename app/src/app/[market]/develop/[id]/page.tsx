@@ -775,10 +775,10 @@ function DevelopPageContent() {
   // message that we forward to the agent here.
   const sendUserRequestedFix = useCallback((errorData: RuntimeErrorData) => {
     const { message, name, stack, componentStack, url, timestamp } = errorData
-    setInputValue(t('builder_develop_fix_runtime_error', undefined, 'Please analyze and fix this runtime error.'))
+    const promptText = t('builder_develop_fix_runtime_error', undefined, 'Please analyze and fix this runtime error.')
     scheduleMicrotask(() => {
       void ws.actions.send({
-        content: 'Please analyze and fix this runtime error.',
+        content: promptText,
         aiEditContext: null,
         isActionRequest: false,
         customContext: {
@@ -789,7 +789,7 @@ function DevelopPageContent() {
         }
       })
     })
-  }, [scheduleMicrotask, setInputValue, ws.actions, t])
+  }, [scheduleMicrotask, ws.actions, t])
 
   // Triggered from the builder-side PreviewError surface when vite is
   // crash-looping or the iframe failed to load. Mirrors sendUserRequestedFix
@@ -805,7 +805,6 @@ function DevelopPageContent() {
       undefined,
       "My preview isn't working — it's either not loading or failing to start. Please check the container logs and fix the issue."
     )
-    setInputValue(promptText)
     scheduleMicrotask(() => {
       void ws.actions.send({
         content: promptText,
@@ -819,7 +818,7 @@ function DevelopPageContent() {
         }
       })
     })
-  }, [scheduleMicrotask, setInputValue, ws.actions, t, appId])
+  }, [scheduleMicrotask, ws.actions, t, appId])
 
   const handleScreenshotUpload = useCallback(async (screenshotDataUrl: string) => {
     if (!appId) return

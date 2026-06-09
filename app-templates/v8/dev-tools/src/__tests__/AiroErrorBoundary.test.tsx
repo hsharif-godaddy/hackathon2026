@@ -4,7 +4,11 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
-import AiroErrorBoundary from '../AiroErrorBoundary';
+import AiroErrorBoundary, {
+  MAX_CONSECUTIVE_RECOVERY_RELOADS,
+  RENDER_RECOVERY_RELOAD_GRACE_MS,
+} from '../AiroErrorBoundary';
+import { reset as resetClaims } from '../error-claims';
 
 type Boundary = InstanceType<typeof AiroErrorBoundary>;
 
@@ -652,6 +656,321 @@ describe('AiroErrorBoundary dev-tools suppression', () => {
     const fixCall = postSpy.mock.calls.find(call => (call[0] as { type?: string })?.type === 'error-fix-request');
     expect(reportCall).not.toBeUndefined();
     expect(fixCall).toBeUndefined();
+  });
+});
+
+describe('AiroErrorBoundary captureGlobalErrors', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mockParentAvailable();
+    resetClaims();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('does NOT register global error/unhandledrejection listeners when captureGlobalErrors is false', () => {
+    // Asserting registration (rather than dispatching an ErrorEvent) keeps
+    // the test side-effect-free: with no handler installed, a dispatched
+    // ErrorEvent would surface as an unhandled error and pollute the run.
+    const addSpy = vi.spyOn(window, 'addEventListener');
+    render(
+      <AiroErrorBoundary captureGlobalErrors={false}>
+        <div>child</div>
+      </AiroErrorBoundary>,
+    );
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+
+    const registeredEvents = addSpy.mock.calls.map(call => call[0]);
+    expect(registeredEvents).not.toContain('error');
+    expect(registeredEvents).not.toContain('unhandledrejection');
+    expect(screen.getByText('child')).not.toBeNull();
+  });
+
+  it('DOES register global error/unhandledrejection listeners by default (captureGlobalErrors omitted)', () => {
+    // Guards the default: a regression flipping the default to false would
+    // silently disable global async capture for the root boundary.
+    const addSpy = vi.spyOn(window, 'addEventListener');
+    render(
+      <AiroErrorBoundary>
+        <div>child</div>
+      </AiroErrorBoundary>,
+    );
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+
+    const registeredEvents = addSpy.mock.calls.map(call => call[0]);
+    expect(registeredEvents).toContain('error');
+    expect(registeredEvents).toContain('unhandledrejection');
+  });
+
+  it('still catches route render errors via componentDidCatch when captureGlobalErrors is false', () => {
+    const postSpy = vi.fn();
+    Object.defineProperty(window, 'parent', {
+      configurable: true,
+      value: { postMessage: postSpy } as unknown as Window,
+    });
+    function Boom(): JSX.Element {
+      throw makeError(
+        'Error: route-render\n    at Page (http://localhost:3000/src/pages/Home.tsx:9:1)',
+        'route-render',
+      );
+    }
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(
+      <AiroErrorBoundary captureGlobalErrors={false}>
+        <Boom />
+      </AiroErrorBoundary>,
+    );
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+
+    // componentDidCatch is independent of window handlers, so the route
+    // render error still surfaces and forwards.
+    expect(screen.getByText('Something went wrong')).not.toBeNull();
+    const fixCall = postSpy.mock.calls.find(call => (call[0] as { type?: string })?.type === 'error-fix-request');
+    expect(fixCall).not.toBeUndefined();
+    errorSpy.mockRestore();
+  });
+
+  it('does not double-forward or double-overlay when the inner boundary claim is re-dispatched to a root boundary window handler', () => {
+    // Models the two-boundary topology: a ROOT boundary (default props,
+    // owns the window handler) and an INNER boundary (captureGlobalErrors
+    // false) whose route render error React 18 re-dispatches to window in
+    // the same frame. The shared error-claims registry must suppress the
+    // root's window-handler re-handling of that exact error.
+    const postSpy = vi.fn();
+    Object.defineProperty(window, 'parent', {
+      configurable: true,
+      value: { postMessage: postSpy } as unknown as Window,
+    });
+
+    const innerErr = makeError(
+      'Error: inner-route-render\n    at Page (http://localhost:3000/src/pages/Home.tsx:9:1)',
+      'inner-route-render',
+    );
+    function Boom(): JSX.Element {
+      throw innerErr;
+    }
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    render(
+      <>
+        <AiroErrorBoundary>
+          <div>root-child</div>
+        </AiroErrorBoundary>
+        <AiroErrorBoundary captureGlobalErrors={false}>
+          <Boom />
+        </AiroErrorBoundary>
+      </>,
+    );
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+
+    // Inner boundary caught the render error: one overlay, one forward.
+    expect(screen.getAllByText('Something went wrong')).toHaveLength(1);
+    expect(screen.getByText('root-child')).not.toBeNull();
+
+    // React 18 re-dispatches the same Error to window.onerror; the root
+    // boundary's global handler receives it.
+    act(() => {
+      window.dispatchEvent(new ErrorEvent('error', { error: innerErr, message: 'inner-route-render' }));
+    });
+
+    // Still exactly one overlay and one error-fix-request — the root's
+    // window handler short-circuited on the shared claim.
+    expect(screen.getAllByText('Something went wrong')).toHaveLength(1);
+    const fixCalls = postSpy.mock.calls.filter(call => (call[0] as { type?: string })?.type === 'error-fix-request');
+    expect(fixCalls.length).toBe(1);
+
+    errorSpy.mockRestore();
+  });
+});
+
+describe('AiroErrorBoundary render-error recovery reload', () => {
+  let reload: ReturnType<typeof vi.fn>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mockParentAvailable();
+    resetClaims();
+    sessionStorage.clear();
+    reload = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...window.location, reload },
+    });
+    // Render errors log to console.error via React; silence them.
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    sessionStorage.clear();
+  });
+
+  // Dispatch the parent's processing → idle transition that marks the end of
+  // an agent fix attempt. Two `act` blocks so the `isProcessing: true`
+  // setState flushes before the `false` message reads the prior value.
+  function finishAgentFix() {
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'AGENT_PROCESSING_STATE', isProcessing: true },
+          origin: 'http://localhost:3000',
+        }),
+      );
+    });
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'AGENT_PROCESSING_STATE', isProcessing: false },
+          origin: 'http://localhost:3000',
+        }),
+      );
+    });
+  }
+
+  function renderRenderError(message: string) {
+    function Boom(): JSX.Element {
+      throw makeError(
+        `Error: ${message}\n    at Boom (http://localhost:3000/src/Boom.tsx:2:3)`,
+        message,
+      );
+    }
+    render(
+      <AiroErrorBoundary>
+        <Boom />
+      </AiroErrorBoundary>,
+    );
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+  }
+
+  it('reloads the iframe after the agent finishes when a render-error overlay is stuck', () => {
+    renderRenderError('stuck-render');
+    finishAgentFix();
+    expect(reload).not.toHaveBeenCalled();
+    // Reload only fires after the grace window elapses.
+    act(() => {
+      vi.advanceTimersByTime(RENDER_RECOVERY_RELOAD_GRACE_MS);
+    });
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT reload if an HMR recovery clears the error during the grace window', () => {
+    function Boom(): JSX.Element {
+      throw makeError(
+        'Error: hmr-recovers\n    at Boom (http://localhost:3000/src/Boom.tsx:2:3)',
+        'hmr-recovers',
+      );
+    }
+    let instance: Boundary | null = null;
+    render(
+      <AiroErrorBoundary ref={(node) => { instance = node; }}>
+        <Boom />
+      </AiroErrorBoundary>,
+    );
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    finishAgentFix();
+    // HMR recovers before the grace window elapses.
+    act(() => {
+      (instance as unknown as { handleHotUpdate: () => void }).handleHotUpdate();
+    });
+    act(() => {
+      vi.advanceTimersByTime(RENDER_RECOVERY_RELOAD_GRACE_MS);
+    });
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('does NOT reload for async errors — the tree is still valid', () => {
+    render(
+      <AiroErrorBoundary>
+        <div>child</div>
+      </AiroErrorBoundary>,
+    );
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    const err = makeError(
+      'Error: user-async\n    at handler (http://localhost:3000/src/MyComp.tsx:5:3)',
+      'user-async',
+    );
+    act(() => {
+      window.dispatchEvent(new ErrorEvent('error', { error: err, message: 'user-async' }));
+    });
+    finishAgentFix();
+    act(() => {
+      vi.advanceTimersByTime(RENDER_RECOVERY_RELOAD_GRACE_MS);
+    });
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('caps consecutive automatic reloads for the same error so an unfixable crash cannot loop', () => {
+    renderRenderError('unfixable');
+    // The mocked reload leaves the component mounted in its error state, so
+    // each finished fix attempt re-evaluates the budget.
+    for (let attempt = 0; attempt < MAX_CONSECUTIVE_RECOVERY_RELOADS + 2; attempt++) {
+      finishAgentFix();
+      act(() => {
+        vi.advanceTimersByTime(RENDER_RECOVERY_RELOAD_GRACE_MS);
+      });
+    }
+    expect(reload).toHaveBeenCalledTimes(MAX_CONSECUTIVE_RECOVERY_RELOADS);
+  });
+
+  it('resets the reload budget when the user explicitly clicks Ask Airo to Fix', () => {
+    renderRenderError('retry-me');
+    for (let attempt = 0; attempt < MAX_CONSECUTIVE_RECOVERY_RELOADS; attempt++) {
+      finishAgentFix();
+      act(() => {
+        vi.advanceTimersByTime(RENDER_RECOVERY_RELOAD_GRACE_MS);
+      });
+    }
+    expect(reload).toHaveBeenCalledTimes(MAX_CONSECUTIVE_RECOVERY_RELOADS);
+
+    // An explicit user retry clears the budget so the overlay reloads again.
+    act(() => {
+      fireEvent.click(screen.getByText('Ask Airo to Fix Code'));
+    });
+    finishAgentFix();
+    act(() => {
+      vi.advanceTimersByTime(RENDER_RECOVERY_RELOAD_GRACE_MS);
+    });
+    expect(reload).toHaveBeenCalledTimes(MAX_CONSECUTIVE_RECOVERY_RELOADS + 1);
+  });
+
+  it('does not reload when the agent was never processing (no transition)', () => {
+    renderRenderError('no-transition');
+    // Only an idle broadcast, no preceding processing=true — not a fix
+    // completion, so no reload.
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'AGENT_PROCESSING_STATE', isProcessing: false },
+          origin: 'http://localhost:3000',
+        }),
+      );
+    });
+    act(() => {
+      vi.advanceTimersByTime(RENDER_RECOVERY_RELOAD_GRACE_MS);
+    });
+    expect(reload).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });
 

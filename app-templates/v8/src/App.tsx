@@ -38,11 +38,16 @@ const rootElement = (
 // in routes.tsx) preserves the agent's simple flat-route contract. The dev
 // boundary must live inside the route element so React Router doesn't replace it
 // with its default route error UI before our boundary can catch render errors.
+//
+// `captureGlobalErrors={false}`: the ROOT boundary in main.tsx owns the global
+// window.onerror/unhandledrejection handlers. This inner boundary only catches
+// route render errors via componentDidCatch — installing window handlers here
+// too would double-forward async errors and stack a second overlay.
 const routeTree: RouteObject[] = [
   {
     element:
       import.meta.env.MODE === 'development' ? (
-        <AiroErrorBoundary>{rootElement}</AiroErrorBoundary>
+        <AiroErrorBoundary captureGlobalErrors={false}>{rootElement}</AiroErrorBoundary>
       ) : (
         rootElement
       ),

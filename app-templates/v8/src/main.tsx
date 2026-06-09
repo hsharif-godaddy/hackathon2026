@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot, hydrateRoot } from 'react-dom/client';
 import { HelmetProvider } from '@dr.pogodin/react-helmet';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import AiroErrorBoundary from '../dev-tools/src/AiroErrorBoundary';
 import App from './App';
 import './styles/globals.css';
 
@@ -27,13 +28,31 @@ const queryClient = new QueryClient({
 const rootElement = document.getElementById('app');
 if (!rootElement) throw new Error('Root element not found');
 
+const providers = (
+  <HelmetProvider>
+    <QueryClientProvider client={queryClient}>
+      <App />
+    </QueryClientProvider>
+  </HelmetProvider>
+);
+
+// Root-level dev error boundary. The inner boundary in App.tsx lives
+// inside the route element (so it can catch route render errors before
+// React Router swaps in its own error UI), which leaves everything
+// OUTSIDE the router uncaught: provider crashes, errors in App itself,
+// and render errors in components mounted as siblings of <RouterProvider>
+// (e.g. an analytics loader calling useLocation() outside the router).
+// Those throw on first render before the inner boundary ever mounts, so
+// only an ancestor boundary above the providers can catch them. This
+// boundary also owns the global window.onerror/unhandledrejection
+// handlers (the inner one opts out via captureGlobalErrors={false}).
 const tree = (
   <StrictMode>
-    <HelmetProvider>
-      <QueryClientProvider client={queryClient}>
-        <App />
-      </QueryClientProvider>
-    </HelmetProvider>
+    {import.meta.env.MODE === 'development' ? (
+      <AiroErrorBoundary>{providers}</AiroErrorBoundary>
+    ) : (
+      providers
+    )}
   </StrictMode>
 );
 

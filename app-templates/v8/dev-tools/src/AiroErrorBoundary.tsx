@@ -6,9 +6,25 @@ import type { RuntimeErrorData } from './types';
 import MessageOverlay from './components/MessageOverlay';
 import Button from './components/Button';
 import { getCurrentCycleId } from './cycle-state';
+import { claim, isClaimed, reset as resetClaims } from './error-claims';
 
 interface Props {
   children: ReactNode;
+  /**
+   * Whether this boundary installs the global `window.onerror` /
+   * `unhandledrejection` handlers that surface async errors. Defaults to
+   * `true`.
+   *
+   * The template mounts two boundaries: a ROOT boundary (above the
+   * providers, in `main.tsx`) and an INNER one (inside the route element,
+   * in `App.tsx`). Global error events fire once on `window` regardless of
+   * subtree, so exactly one boundary must own them — otherwise an async
+   * error is forwarded twice and two overlays stack. The root boundary
+   * keeps the default (`true`) because it mounts reliably even when the
+   * app's first render throws; the inner boundary passes `false` and is
+   * left to catch only route render errors via `componentDidCatch`.
+   */
+  captureGlobalErrors?: boolean;
 }
 
 /**
@@ -57,6 +73,26 @@ const PROCESSING_STATE_SYNC_TIMEOUT_MS = 500;
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_STACK_LENGTH = 20000;
 
+// Grace window after the agent finishes a fix before we hard-reload the
+// iframe to recover a render-error overlay. A top-of-tree render crash
+// (e.g. a hook used outside its provider) replaces the whole tree with the
+// overlay, and React Fast Refresh can't hot-recover it — the fixed module
+// is swapped in but nothing re-renders the dead tree, so the overlay sticks.
+// The delay lets a `vite:afterUpdate` recovery win for the cases HMR *can*
+// handle (in-route edits), falling back to a reload only when it doesn't.
+export const RENDER_RECOVERY_RELOAD_GRACE_MS = 500;
+
+// Cap on consecutive automatic recovery reloads for the same error so an
+// unfixable top-level crash can't reload-loop and hammer the agent. An
+// explicit "Ask Airo to Fix" click resets the budget (the retry is
+// intentional), and a clean HMR recovery clears it (the environment healed).
+export const MAX_CONSECUTIVE_RECOVERY_RELOADS = 2;
+
+// sessionStorage key holding `{ signature, count }` so the reload budget
+// survives the reloads it triggers. sessionStorage (not localStorage) scopes
+// it to this preview tab/session and clears when the preview closes.
+const RECOVERY_RELOAD_STORAGE_KEY = 'airo-dev-recovery-reload';
+
 // The preview is considered "standalone" when it isn't embedded in the
 // builder iframe. In that case there's no parent to receive fix requests,
 // so the overlay offers a clipboard-copy affordance instead.
@@ -78,6 +114,12 @@ export default class AiroErrorBoundary extends Component<Props, State> {
   private unhandledRejectionHandler?: (event: PromiseRejectionEvent) => void;
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
   private copiedTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Pending grace-window timer before an automatic recovery reload. Held so
+   * it can be cancelled when an HMR `afterUpdate` recovers the overlay first
+   * and on unmount.
+   */
+  private recoveryReloadTimer: ReturnType<typeof setTimeout> | null = null;
   /**
    * Synchronous dedup flag. Set inside `componentDidCatch` and
    * `captureAsyncError` before `setState` queues its update, so React 18's
@@ -113,24 +155,31 @@ export default class AiroErrorBoundary extends Component<Props, State> {
     // handler throws, setTimeout callbacks, fetch rejections, etc. skip
     // `componentDidCatch` entirely. Capture those here so the overlay
     // still shows — otherwise the user sees a silently-broken app.
-    this.windowErrorHandler = (event: ErrorEvent) => {
-      // Resource-load failures (img/script 404) fire 'error' with
-      // `event.error === null` and `event.message === ''` — skip them.
-      if (!event.error && (!event.message || event.message.length === 0)) return;
-      const err = event.error instanceof Error
-        ? event.error
-        : new Error(event.message || 'Uncaught runtime error');
-      this.captureAsyncError(err);
-    };
-    this.unhandledRejectionHandler = (event: PromiseRejectionEvent) => {
-      const reason = event.reason;
-      const err = reason instanceof Error
-        ? reason
-        : new Error(typeof reason === 'string' ? reason : 'Unhandled promise rejection');
-      this.captureAsyncError(err);
-    };
-    window.addEventListener('error', this.windowErrorHandler);
-    window.addEventListener('unhandledrejection', this.unhandledRejectionHandler);
+    //
+    // `window` error events are global, not subtree-scoped, so only the
+    // boundary with `captureGlobalErrors !== false` (the root) installs
+    // these. The inner route boundary opts out to avoid double-forwarding
+    // and stacked overlays.
+    if (this.props.captureGlobalErrors !== false) {
+      this.windowErrorHandler = (event: ErrorEvent) => {
+        // Resource-load failures (img/script 404) fire 'error' with
+        // `event.error === null` and `event.message === ''` — skip them.
+        if (!event.error && (!event.message || event.message.length === 0)) return;
+        const err = event.error instanceof Error
+          ? event.error
+          : new Error(event.message || 'Uncaught runtime error');
+        this.captureAsyncError(err);
+      };
+      this.unhandledRejectionHandler = (event: PromiseRejectionEvent) => {
+        const reason = event.reason;
+        const err = reason instanceof Error
+          ? reason
+          : new Error(typeof reason === 'string' ? reason : 'Unhandled promise rejection');
+        this.captureAsyncError(err);
+      };
+      window.addEventListener('error', this.windowErrorHandler);
+      window.addEventListener('unhandledrejection', this.unhandledRejectionHandler);
+    }
 
     if (isStandalonePreview()) {
       // No parent → no agent, no broadcast to wait for. Show the overlay
@@ -147,6 +196,10 @@ export default class AiroErrorBoundary extends Component<Props, State> {
       if (!event.origin || !isOriginAllowed(event)) return;
       if (event.data?.type === 'AGENT_PROCESSING_STATE') {
         const nowProcessing = Boolean(event.data.isProcessing);
+        // Read the prior value before `setState` queues the update so we can
+        // detect the processing → idle transition that marks the end of a
+        // fix attempt.
+        const finishedProcessing = this.state.isAgentProcessing && !nowProcessing;
         // If processing ended while we had an outstanding "Ask Airo to Fix"
         // request, the agent either applied a fix (HMR or iframe reload
         // will clear us) or gave up. In the latter case the overlay
@@ -157,6 +210,13 @@ export default class AiroErrorBoundary extends Component<Props, State> {
           isFixing: nowProcessing ? prev.isFixing : false,
           hasProcessingStateSync: true,
         }));
+        // A render-error overlay can't be hot-recovered when the crash is at
+        // the top of the tree, so the fixed code never repaints. Once the
+        // agent finishes, reload the iframe to pick up the fix — gated behind
+        // a grace window (HMR may still recover) and a budget (no loops).
+        if (finishedProcessing) {
+          this.maybeScheduleRecoveryReload();
+        }
       }
     };
     window.addEventListener('message', this.agentProcessingMessageHandler);
@@ -203,6 +263,10 @@ export default class AiroErrorBoundary extends Component<Props, State> {
       clearTimeout(this.copiedTimer);
       this.copiedTimer = null;
     }
+    if (this.recoveryReloadTimer) {
+      clearTimeout(this.recoveryReloadTimer);
+      this.recoveryReloadTimer = null;
+    }
   }
 
   /**
@@ -245,12 +309,99 @@ export default class AiroErrorBoundary extends Component<Props, State> {
     // the instance.
     this.hasActiveError = false;
     this.platformErrors = new WeakSet<Error>();
+    // Drop cross-instance claims too: a claimed Error retained in a
+    // long-lived closure must not permanently suppress a genuinely new
+    // occurrence after a hot update. Mirrors the `platformErrors` reset.
+    resetClaims();
     if (this.state.error) {
+      // A live HMR recovery means the environment healed without a reload,
+      // so any pending recovery reload is moot and the budget resets.
+      if (this.recoveryReloadTimer !== null) {
+        clearTimeout(this.recoveryReloadTimer);
+        this.recoveryReloadTimer = null;
+      }
+      this.clearRecoveryReloadBudget();
       this.setState({ error: null, errorInfo: null, source: null, isFixing: false });
     }
   }
 
+  /**
+   * Stable identity for an error used to scope the recovery-reload budget.
+   * Name + message is enough to recognize "the same crash recurred after a
+   * reload" without depending on volatile stack frame offsets.
+   */
+  private static recoveryReloadSignature(error: Error): string {
+    return `${error.name}:${error.message}`;
+  }
+
+  /**
+   * Consecutive auto-reload count already spent on this error signature.
+   * Fails closed (returns the cap) when sessionStorage is unreadable so a
+   * storage failure disables auto-reload rather than risking a loop.
+   */
+  private recoveryReloadCount(signature: string): number {
+    try {
+      const raw = sessionStorage.getItem(RECOVERY_RELOAD_STORAGE_KEY);
+      if (!raw) return 0;
+      const parsed = JSON.parse(raw) as { signature?: string; count?: number };
+      return parsed.signature === signature && typeof parsed.count === 'number'
+        ? parsed.count
+        : 0;
+    } catch {
+      return MAX_CONSECUTIVE_RECOVERY_RELOADS;
+    }
+  }
+
+  private recordRecoveryReload(signature: string, count: number): void {
+    try {
+      sessionStorage.setItem(RECOVERY_RELOAD_STORAGE_KEY, JSON.stringify({ signature, count }));
+    } catch {
+      // sessionStorage unavailable — auto-reload is best-effort.
+    }
+  }
+
+  private clearRecoveryReloadBudget(): void {
+    try {
+      sessionStorage.removeItem(RECOVERY_RELOAD_STORAGE_KEY);
+    } catch {
+      // No-op when storage is unavailable.
+    }
+  }
+
+  /**
+   * Schedule an iframe reload to recover a stuck render-error overlay after
+   * the agent finishes a fix. Only render errors qualify: async errors keep a
+   * valid tree (a state reset suffices) and platform-suppressed errors can't
+   * be fixed by the agent. The grace window prefers an HMR recovery when one
+   * is in flight; the per-signature budget prevents reload loops on an
+   * error the agent can't actually fix.
+   */
+  private maybeScheduleRecoveryReload(): void {
+    const { error, source } = this.state;
+    if (source !== 'render' || !error) return;
+    if (this.recoveryReloadTimer !== null) return;
+
+    const signature = AiroErrorBoundary.recoveryReloadSignature(error);
+    const spent = this.recoveryReloadCount(signature);
+    if (spent >= MAX_CONSECUTIVE_RECOVERY_RELOADS) return;
+
+    this.recoveryReloadTimer = setTimeout(() => {
+      this.recoveryReloadTimer = null;
+      // HMR may have cleared the overlay during the grace window — if the
+      // render error is gone, the fix landed without needing a reload.
+      if (this.state.source !== 'render' || !this.state.error) return;
+      this.recordRecoveryReload(signature, spent + 1);
+      window.location.reload();
+    }, RENDER_RECOVERY_RELOAD_GRACE_MS);
+  }
+
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Claim across instances first: React 18 re-dispatches this exact
+    // Error to `window.onerror`, where the ROOT boundary's global handler
+    // would otherwise re-forward and re-overlay an error this boundary
+    // already owns. The shared registry suppresses that re-dispatch
+    // regardless of which boundary caught the render error.
+    claim(error);
     if (this.isDevToolsOriginError(error)) {
       console.error('[dev-tools internal render error, suppressed from overlay]', error, errorInfo);
       // Track by identity so React 18's same-frame re-dispatch to
@@ -277,6 +428,14 @@ export default class AiroErrorBoundary extends Component<Props, State> {
   }
 
   private captureAsyncError(error: Error) {
+    // Cross-instance short-circuit: a boundary's `componentDidCatch`
+    // (this one or another instance — e.g. the inner route boundary
+    // whose render error React 18 re-dispatches to this root boundary's
+    // global handler in the same frame) already claimed this exact Error.
+    // Skip entirely so we don't double-forward or stack a second overlay.
+    if (isClaimed(error)) {
+      return;
+    }
     // React 18 re-dispatches a boundary-caught render error to
     // window.onerror in the same frame with the same Error reference.
     // If we already handled it as a platform error in componentDidCatch,
@@ -420,6 +579,10 @@ export default class AiroErrorBoundary extends Component<Props, State> {
     const { error, errorInfo, isFixing } = this.state;
     if (isFixing || !error) return;
 
+    // An explicit retry is intentional — reset the auto-reload budget so the
+    // overlay reloads after this attempt finishes even if prior automatic
+    // reloads already hit the cap.
+    this.clearRecoveryReloadBudget();
     this.setState({ isFixing: true });
 
     // The user-requested fix path doesn't hit the runtime-error buffer

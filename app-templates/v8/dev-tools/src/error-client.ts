@@ -135,6 +135,22 @@ function sendCompileErrorToParent(parsed: ParsedViteError) {
 // the placeholder (processing) or upgrade to the actionable overlay (idle).
 const PROCESSING_STATE_SYNC_TIMEOUT_MS = 500;
 
+// Grace window before reloading to recover a blank preview after a compile
+// error clears. A parse error in an entry module (main/App/router) breaks the
+// initial import, so `createRoot().render()` in `main.tsx` never runs and the
+// app never mounts. When the fix lands, HMR swaps the fixed module but doesn't
+// re-run the root render — the overlay clears yet `#app` stays empty (black
+// screen). The grace lets a genuine HMR remount win before we hard-reload.
+export const RECOVERY_RELOAD_GRACE_MS = 500;
+
+// Cap on consecutive automatic recovery reloads so an unfixable parse error
+// can't reload-loop. Reset once the app is confirmed mounted again.
+export const MAX_CONSECUTIVE_RECOVERY_RELOADS = 2;
+
+// sessionStorage key holding `{ count }` so the budget survives the reloads it
+// triggers. Distinct from AiroErrorBoundary's render-error budget key.
+const RECOVERY_RELOAD_STORAGE_KEY = 'airo-dev-compile-recovery-reload';
+
 const isStandalonePreview = () => window.parent === window;
 
 let overlayElement: HTMLDivElement | null = null;
@@ -152,6 +168,12 @@ let isFixRequested = false;
 let copiedToClipboard = false;
 let processingSyncTimer: ReturnType<typeof setTimeout> | null = null;
 let processingStateHandler: ((event: MessageEvent) => void) | null = null;
+// True once a compile error has been shown this session. Gates the blank-
+// preview recovery reload so we never reload a preview that simply hasn't
+// painted yet (e.g. an empty route), only one that went blank after a
+// compile error broke the initial mount.
+let sawCompileError = false;
+let recoveryReloadTimer: ReturnType<typeof setTimeout> | null = null;
 
 function removeErrorOverlay() {
   if (overlayElement) {
@@ -190,10 +212,119 @@ export function resetErrorClientForTest() {
   clearCompileError();
   isAgentProcessing = false;
   hasProcessingSync = false;
+  sawCompileError = false;
+  if (recoveryReloadTimer !== null) {
+    clearTimeout(recoveryReloadTimer);
+    recoveryReloadTimer = null;
+  }
   if (processingStateHandler) {
     window.removeEventListener('message', processingStateHandler);
     processingStateHandler = null;
   }
+}
+
+/** The app is mounted when React has rendered children into `#app`. */
+function appHasMounted(): boolean {
+  const appEl = document.getElementById('app');
+  return appEl !== null && appEl.children.length > 0;
+}
+
+/**
+ * Consecutive recovery reloads already spent. Fails closed (returns the cap)
+ * when sessionStorage is unreadable so a storage failure disables auto-reload
+ * rather than risking a loop.
+ */
+function recoveryReloadCount(): number {
+  try {
+    const raw = sessionStorage.getItem(RECOVERY_RELOAD_STORAGE_KEY);
+    if (!raw) return 0;
+    const parsed = JSON.parse(raw) as { count?: number };
+    return typeof parsed.count === 'number' ? parsed.count : 0;
+  } catch (err) {
+    console.warn(
+      '[dev-tools] compile-error recovery reload disabled: failed to read sessionStorage budget',
+      err,
+    );
+    return MAX_CONSECUTIVE_RECOVERY_RELOADS;
+  }
+}
+
+function clearRecoveryReloadBudget(): void {
+  try {
+    sessionStorage.removeItem(RECOVERY_RELOAD_STORAGE_KEY);
+  } catch {
+    // best-effort
+  }
+}
+
+function clearRecoveryReloadBudgetAfterCleanMount(): void {
+  if (appHasMounted()) {
+    clearRecoveryReloadBudget();
+    return;
+  }
+  const appEl = document.getElementById('app');
+  if (!appEl) return;
+
+  const observer = new MutationObserver(function observe() {
+    if (!appHasMounted()) return;
+    observer.disconnect();
+    clearRecoveryReloadBudget();
+  });
+  observer.observe(appEl, { childList: true });
+  setTimeout(function timeout() {
+    observer.disconnect();
+  }, 30000);
+}
+
+/**
+ * After a compile error clears, the preview can be left blank: a parse error
+ * in an entry module breaks the initial mount, and the HMR update that
+ * applies the fix swaps the module without re-running `createRoot().render()`,
+ * so `#app` stays empty. Reload once the agent's turn is done and the app is
+ * confirmed still blank. Budget-guarded so an unfixable error can't loop.
+ *
+ * Only fires when embedded (an agent is present) and idle — never mid-edit
+ * (a reload would race a half-written fix) and never in standalone mode
+ * (no agent; the user refreshes manually).
+ */
+function maybeRecoverBlankPreview(): void {
+  if (isStandalonePreview()) return;
+  if (isAgentProcessing) return;
+  if (currentError) return;
+  if (recoveryReloadTimer !== null) return;
+  if (appHasMounted()) {
+    // The app is healthy, whether HMR recovered it in this session or a prior
+    // auto-reload remounted it before this module saw a new compile error.
+    // Reset recovery bookkeeping so later unrelated errors get a fresh budget.
+    sawCompileError = false;
+    clearRecoveryReloadBudget();
+    return;
+  }
+  if (!sawCompileError) return;
+  if (recoveryReloadCount() >= MAX_CONSECUTIVE_RECOVERY_RELOADS) return;
+  recoveryReloadTimer = setTimeout(() => {
+    recoveryReloadTimer = null;
+    // A new error appeared, or React mounted during the grace window — the
+    // overlay/HMR path owns those, so don't reload.
+    if (currentError) return;
+    if (appHasMounted()) {
+      sawCompileError = false;
+      clearRecoveryReloadBudget();
+      return;
+    }
+    try {
+      sessionStorage.setItem(
+        RECOVERY_RELOAD_STORAGE_KEY,
+        JSON.stringify({ count: recoveryReloadCount() + 1 }),
+      );
+    } catch (err) {
+      console.warn(
+        '[dev-tools] compile-error recovery reload budget write failed; reload-loop protection may be limited',
+        err,
+      );
+    }
+    window.location.reload();
+  }, RECOVERY_RELOAD_GRACE_MS);
 }
 
 function createOverlayButton(
@@ -364,6 +495,9 @@ function ensureProcessingStateListener() {
     // the user can retry from the re-shown overlay.
     if (!nowProcessing) isFixRequested = false;
     renderErrorOverlay();
+    // When the agent finishes, a parse error that broke the initial mount
+    // leaves the preview blank even though the overlay cleared. Recover it.
+    if (!nowProcessing) maybeRecoverBlankPreview();
   };
   window.addEventListener('message', processingStateHandler);
 }
@@ -389,6 +523,7 @@ export function presentCompileError(parsed: ParsedViteError) {
   currentError = parsed;
   isFixRequested = false;
   copiedToClipboard = false;
+  sawCompileError = true;
   sendCompileErrorToParent(parsed);
 
   if (isStandalonePreview()) {
@@ -459,6 +594,7 @@ async function copyErrorToClipboard(parsed: ParsedViteError) {
 // cycleId, so any stale entries from the prior page session are evicted
 // before the next render starts throwing.
 beginNewRenderCycle();
+clearRecoveryReloadBudgetAfterCleanMount();
 
 // Catch initial page load failures (import errors before HMR is connected).
 //
@@ -507,6 +643,10 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
     if (currentError || overlayElement) {
       clearCompileError();
     }
+    // The overlay is gone, but if the fix landed for a parse error that
+    // broke the initial mount, `#app` is still empty. Reload to remount
+    // (no-op while the agent is mid-edit; the grace + budget guard the rest).
+    maybeRecoverBlankPreview();
   };
 
   // Start a fresh render generation before each HMR update applies.
@@ -548,6 +688,10 @@ if (import.meta.env.MODE === 'development' && import.meta.hot) {
   // Clean up listeners on module disposal to prevent accumulation
   import.meta.hot.dispose(() => {
     clearCompileError();
+    if (recoveryReloadTimer !== null) {
+      clearTimeout(recoveryReloadTimer);
+      recoveryReloadTimer = null;
+    }
     if (processingStateHandler) {
       window.removeEventListener('message', processingStateHandler);
       processingStateHandler = null;
