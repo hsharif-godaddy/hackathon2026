@@ -34,7 +34,7 @@ import type { ActiveFontThemeSuggest } from '@/app/[market]/develop/components/u
 import { previewFontInIframe } from '@/app/[market]/develop/components/utils/previewFontInIframe'
 import { previewThemeInIframe } from '@/app/[market]/develop/components/utils/previewThemeInIframe'
 import { useNextActions } from '@/app/[market]/develop/hooks/useNextActions'
-import { useRebuildPages } from '@/app/[market]/develop/hooks/useRebuildPages'
+import { unbuiltRebuildPages, useRebuildPages } from '@/app/[market]/develop/hooks/useRebuildPages'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
@@ -1043,9 +1043,11 @@ function InputActionsPanelThemeSelection({
     ),
     [messages]
   )
-  const { data: rebuildPagesData, isError: isRebuildError, error: rebuildError } = useRebuildPages(appId, mayBeRebuildApp)
-  if (isRebuildError) logger.warn('input-actions-panel.rebuild-pages-error', { appId }, { error: rebuildError as Error })
-  const hasRebuildPages = rebuildPagesData?.availablePages?.some(p => !p.isBuilt) ?? false
+  const { data: rebuildPagesData, isError: isRebuildPagesError, error: rebuildPagesError } = useRebuildPages(appId, mayBeRebuildApp)
+  if (isRebuildPagesError) logger.warn('input-actions-panel.rebuild-pages-error', { appId }, { error: rebuildPagesError as Error })
+  // Mirror the selector's homepage-alias filter so an alias-only unbuilt set doesn't
+  // mount an empty, dead selector card.
+  const hasRebuildPages = rebuildPagesData ? unbuiltRebuildPages(rebuildPagesData.availablePages).length > 0 : false
 
   const items = currentList?.items ?? []
   const uncompletedItems = useMemo(() => items.filter(item => !item.completed), [items])
@@ -1693,15 +1695,6 @@ function InputActionsPanelThemeSelection({
         </div>
       ) : null}
 
-      {hasRebuildPages && rebuildPagesData && nbaData?.source !== 'askQuestion' && (
-        <RebuildPageSelectorToolRenderer
-          toolName="rebuildPageSelector"
-          toolStatus="completed"
-          result={{ widget: { widgetType: 'rebuild-page-selector', widgetData: { appId: appId!, ...rebuildPagesData } } }}
-          isLastAssistantMessage={true}
-          size="small"
-        />
-      )}
 
       {!isAskQuestionActive && nbaSuggestions.length === 0 && planPreviewItems.length > 0 && (
         <PlanOptionsList
@@ -1711,6 +1704,16 @@ function InputActionsPanelThemeSelection({
           listContainerRef={planPreviewShortcutsRef}
           onItemClick={handlePlanItemClickCallback}
           orientation={isMobile ? 'horizontal' : 'vertical'}
+        />
+      )}
+
+      {hasRebuildPages && rebuildPagesData && !isAskQuestionActive && (
+        <RebuildPageSelectorToolRenderer
+          toolName="rebuildPageSelector"
+          toolStatus="completed"
+          result={{ widget: { widgetType: 'rebuild-page-selector', widgetData: { appId: appId!, ...rebuildPagesData } } }}
+          isLastAssistantMessage={true}
+          size="small"
         />
       )}
     </div>
@@ -1837,6 +1840,9 @@ export default function InputActionsPanel({
 }: InputActionsPanelProps) {
   const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
   const isFontSelectionChatEnabled = useSwitchboard('airo-builder-font-selection-chat')
+  // NB: both the queue *driver* and the multi-page progress/Stop UI (RebuildQueueProgress)
+  // are mounted in ChatInput — always rendered, flag-independent — so the chat-plans-off
+  // cohort can still see/stop a running batch. Don't mount either here.
   if (isThemeSelectionChatEnabled || isFontSelectionChatEnabled) {
     return (
       <InputActionsPanelThemeSelection

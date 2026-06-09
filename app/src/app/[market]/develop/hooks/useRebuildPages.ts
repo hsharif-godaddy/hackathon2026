@@ -18,6 +18,20 @@ export interface RebuildPagesData {
   builtPages: number
 }
 
+/**
+ * Homepage aliases CMSes serve as a duplicate of `/` (Squarespace/Wix `/home`,
+ * legacy `/index`). Best-effort slug heuristic — it won't catch `home-1`,
+ * `index.html`, or locale-prefixed variants; proper source-side de-duplication is
+ * tracked in AIROBUILD-2255/2257. Shared so the selector renderer and the panel's
+ * mount gate agree on what counts as a real unbuilt page.
+ */
+export const HOMEPAGE_ALIAS_SLUGS = new Set(['home', 'index'])
+
+/** Pages worth offering in the selector: not yet built and not a homepage alias. */
+export function unbuiltRebuildPages(pages: PageInfo[]): PageInfo[] {
+  return pages.filter(p => !p.isBuilt && !HOMEPAGE_ALIAS_SLUGS.has(p.slug))
+}
+
 export function useRebuildPages(appId: string | undefined, hasRebuildSignal: boolean = true) {
   const activeStream = useActiveStream()
   const isStreamComplete = activeStream?.isComplete ?? true

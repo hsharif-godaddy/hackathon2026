@@ -17,6 +17,7 @@ import ChatAttachmentMenu from '@/app/[market]/develop/components/chat/ChatAttac
 import type { SendMessageOptions } from '@/app/[market]/develop/components/chat/ChatContext'
 import { DebugStatsToggleButton } from '@/app/[market]/develop/components/chat/DebugStatsDrawer'
 import InputActionsPanel from '@/app/[market]/develop/components/chat/InputActionsPanel'
+import RebuildQueueProgress from '@/app/[market]/develop/components/chat/RebuildQueueProgress'
 import UsageGauge from '@/app/[market]/develop/components/chat/usage-gauge/UsageGauge'
 import { useChatHistoryNavigation } from '@/app/[market]/develop/components/chat/useChatHistoryNavigation'
 import type { AiEditContext } from '@/app/[market]/develop/components/types'
@@ -655,6 +656,12 @@ export default function ChatInput({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {/* Multi-page rebuild progress/Stop. Mounted here — not in InputActionsPanel —
+              so it survives across the build AND shows regardless of chat-plans (the
+              driver runs flag-independently, so the chat-plans-off cohort can start a
+              batch and must be able to see/stop it). Renders nothing when idle. */}
+          <RebuildQueueProgress />
+
           {areChatPlansEnabled ? (
             <InputActionsPanel
               activeColorSchemeSuggest={activeColorSchemeSuggest}

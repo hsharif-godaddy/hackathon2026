@@ -98,6 +98,13 @@ vi.mock('@/app/[market]/develop/hooks/useRebuildBuildQueueDriver', () => ({
   useRebuildBuildQueueDriver: mockRebuildBuildQueueDriver,
 }));
 
+// Progress/Stop must mount flag-independently too: the driver runs for every cohort,
+// so a chat-plans-off user can start a batch and must be able to see/stop it.
+const mockRebuildQueueProgress = vi.hoisted(() => vi.fn(() => null));
+vi.mock('@/app/[market]/develop/components/chat/RebuildQueueProgress', () => ({
+  default: mockRebuildQueueProgress,
+}));
+
 describe('ChatInput', () => {
   const defaultProps = {
     inputValue: '',
@@ -136,6 +143,15 @@ describe('ChatInput', () => {
     renderWithProviders(<ChatInput {...defaultProps} />);
 
     expect(mockRebuildBuildQueueDriver).toHaveBeenCalled();
+  });
+
+  it('mounts RebuildQueueProgress even when airo-builder-chat-plans is off', () => {
+    // The progress/Stop affordance must reach the chat-plans-off cohort too — the
+    // driver runs for everyone, so those users can start a batch and need to stop it.
+    // beforeEach leaves chat-plans → false and InputActionsPanel is mocked to null.
+    renderWithProviders(<ChatInput {...defaultProps} />);
+
+    expect(mockRebuildQueueProgress).toHaveBeenCalled();
   });
 
   describe('choicelist prompt swap (airo-builder-chat-choice-swap)', () => {

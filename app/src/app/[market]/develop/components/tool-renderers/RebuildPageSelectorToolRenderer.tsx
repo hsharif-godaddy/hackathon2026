@@ -1,6 +1,6 @@
 'use client'
 
-import { CheckCircle, FileCode, FileText, Hammer } from 'lucide-react'
+import { CheckCircle, FileCode, FileText, Globe, Hammer } from 'lucide-react'
 import { useState } from 'react'
 import Alert from '@ux/alert'
 import Box from '@ux/box'
@@ -10,7 +10,8 @@ import text from '@ux/text'
 
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import { REBUILD_BATCH_CAP, useRebuildBuildQueue } from '@/app/[market]/develop/hooks/useRebuildBuildQueue'
-import type { PageInfo } from '@/app/[market]/develop/hooks/useRebuildPages'
+import { type PageInfo, unbuiltRebuildPages } from '@/app/[market]/develop/hooks/useRebuildPages'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 import ToolHeader from './ToolHeader'
@@ -25,9 +26,8 @@ interface WidgetData {
 }
 
 /**
- * Custom renderer for rebuildPageSelector tool
- *
- * Shows available pages from a scraped website and allows building them.
+ * Custom renderer for rebuildPageSelector tool — shows available pages from the
+ * user's source site and lets them pick which to rebuild next.
  */
 export default function RebuildPageSelectorToolRenderer({
   toolName: _toolName,
@@ -41,12 +41,21 @@ export default function RebuildPageSelectorToolRenderer({
   const isLoading = useIsLoading()
   const isProcessing = isStreaming || isLoading
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [expanded, setExpanded] = useState(false)
   const enqueue = useRebuildBuildQueue((s) => s.enqueue)
   const queueStatus = useRebuildBuildQueue((s) => s.status)
-  const queueCursor = useRebuildBuildQueue((s) => s.cursor)
-  const queueTotal = useRebuildBuildQueue((s) => s.slugs.length)
-  const stopQueue = useRebuildBuildQueue((s) => s.stop)
+  const queueRunning = queueStatus === 'running'
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false)
+
+  // The panel (InputActionsPanel) only renders this selector when chat-plans AND a
+  // theme/font-selection panel are on. Only then should the stream card suppress
+  // itself to avoid a duplicate — in every other cohort (chat-plans off, or the
+  // legacy panel) the stream card is the ONLY host and must keep rendering.
+  const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans')
+  const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
+  const isFontSelectionChatEnabled = useSwitchboard('airo-builder-font-selection-chat')
+  const panelOwnsSelector =
+    !!areChatPlansEnabled && (!!isThemeSelectionChatEnabled || !!isFontSelectionChatEnabled)
 
   function toggle(slug: string) {
     setSelected((prev) => {
@@ -57,19 +66,20 @@ export default function RebuildPageSelectorToolRenderer({
     })
   }
 
+  function selectAll(pages: PageInfo[]) {
+    setSelected(new Set(pages.map((p) => p.slug)))
+  }
+
   function handleBuildSelected() {
     if (selected.size === 0 || isProcessing) return
     enqueue([...selected])
     setSelected(new Set())
   }
 
-  // Only render on the last assistant message
   if (!isLastAssistantMessage) {
     return null
   }
 
-  // Extract data from result — handle both standalone tool call ({output: {widget, ...}})
-  // and direct result ({widget, ...}) structures
   const resultObj = result as any
   const output = resultObj?.output || resultObj
   const widget = output?.widget as { widgetType: string; widgetData: WidgetData } | undefined
@@ -79,7 +89,7 @@ export default function RebuildPageSelectorToolRenderer({
   const builtPageSlug = output?.pageSlug as string | undefined
   const errorMessage = output?.error as string | undefined
 
-  // If this was a build mode call that returned a prompt, show minimal UI with prompt link
+  // Build mode: a single page is being built — show compact prompt link
   if (pagePrompt && builtPageSlug) {
     const pageTitle = builtPageSlug.charAt(0).toUpperCase() + builtPageSlug.slice(1).replace(/-/g, ' ')
 
@@ -103,7 +113,6 @@ export default function RebuildPageSelectorToolRenderer({
           </Box>
         </div>
 
-        {/* Prompt modal */}
         <ToolModal
           isOpen={isPromptModalOpen}
           onClose={() => setIsPromptModalOpen(false)}
@@ -129,7 +138,6 @@ export default function RebuildPageSelectorToolRenderer({
     )
   }
 
-  // Error state
   if (errorMessage) {
     return (
       <div>
@@ -148,7 +156,6 @@ export default function RebuildPageSelectorToolRenderer({
     )
   }
 
-  // Show loading state while running
   if (toolStatus === 'running') {
     return (
       <div>
@@ -162,16 +169,21 @@ export default function RebuildPageSelectorToolRenderer({
     )
   }
 
-  // No widget data
   if (!widgetData) {
     return null
   }
 
   const availablePages = widgetData.availablePages || []
-  const unbuiltPages = availablePages.filter(p => !p.isBuilt)
+  const unbuiltPages = unbuiltRebuildPages(availablePages)
   const builtPages = availablePages.filter(p => p.isBuilt)
 
-  // All pages built
+  // In the chat stream (size="regular"), suppress the live selector ONLY when the
+  // panel is the one rendering it — otherwise the stream card is the sole host and
+  // hiding it would make the picker disappear entirely (chat-plans off, or legacy panel).
+  if (size === "regular" && panelOwnsSelector && unbuiltPages.length > 0) {
+    return null
+  }
+
   if (size === "regular" && (allPagesBuilt || unbuiltPages.length === 0)) {
     return (
       <Box gap="sm" className="my-2">
@@ -190,73 +202,108 @@ export default function RebuildPageSelectorToolRenderer({
     )
   }
 
-  return (
-    <Box gap="sm">
+  // Nothing real to offer (e.g. the panel mounts us but every unbuilt page was a
+  // homepage alias) — render nothing rather than an empty card with a dead CTA.
+  if (unbuiltPages.length === 0) {
+    return null
+  }
 
-      {/* Page multi-select and build actions */}
-      {queueStatus === 'running' ? (
-        <Box orientation="horizontal" gap="sm" blockAlignChildren="center">
-          <text.p size={-1}>
-            {t('builder_rebuild_building_progress', { current: queueCursor + 1, total: queueTotal })}
-          </text.p>
-          <Button text={t('builder_rebuild_stop')} design="tertiary" size="sm" onClick={stopQueue} />
-        </Box>
-      ) : (
-        <Box gap="sm">
-          {/* Select-all is offered only when every unbuilt page fits in one batch
-              (<= cap). Above the cap a "select all" can't honor the cap, and the
-              per-checkbox guard below already prevents over-selection — so we hide
-              it rather than offer a partial "select first N". */}
-          {unbuiltPages.length > 1 && unbuiltPages.length <= REBUILD_BATCH_CAP && (
+  const allSelected = unbuiltPages.length > 0 && unbuiltPages.every(p => selected.has(p.slug))
+  const controlsDisabled = isProcessing || queueRunning
+  // How many rows show before "show more". Independent of REBUILD_BATCH_CAP (which
+  // caps *selection*); they happen to share a value but neither derives from the other.
+  const INITIAL_VISIBLE = 5
+  const visiblePages = expanded ? unbuiltPages : unbuiltPages.slice(0, INITIAL_VISIBLE)
+  const hiddenCount = unbuiltPages.length - INITIAL_VISIBLE
+
+  return (
+    <div className="my-2 rounded-lg border border-intents-ux-borderDefault-borderColor overflow-hidden text-xs [&_label]:text-xs mr-2">
+      {/* Card header */}
+      <div className="px-3 py-2 bg-intents-ux-surfaceSecondary-surfaceColor border-b border-intents-ux-borderDefault-borderColor">
+        <div className="flex items-start gap-1.5">
+          <Globe className="w-3 h-3 text-intents-ux-contentSecondary-contentColor flex-shrink-0 mt-0.5" />
+          <div>
+            <text.p size={-1} className="font-medium leading-tight">
+              {t('builder_rebuild_selector_title')}
+            </text.p>
+            <text.p size={-2} emphasis="passive">
+              {t('builder_rebuild_selector_subtitle', { count: unbuiltPages.length })}
+            </text.p>
+          </div>
+        </div>
+      </div>
+
+      {/* Page list */}
+      <div className="px-3 py-2">
+        {unbuiltPages.length > 1 && unbuiltPages.length <= REBUILD_BATCH_CAP && (
+          <div className="mb-1.5">
             <Button
-              text={t('builder_rebuild_select_all')}
+              text={allSelected ? t('builder_common_deselect_all') : t('builder_rebuild_select_all')}
               design="inline"
               size="sm"
-              disabled={isProcessing}
-              onClick={() => setSelected(new Set(unbuiltPages.map((p) => p.slug)))}
+              disabled={controlsDisabled}
+              onClick={() => allSelected ? setSelected(new Set()) : selectAll(unbuiltPages)}
             />
-          )}
-          {unbuiltPages.map((p) => (
+          </div>
+        )}
+
+        <div className="flex flex-col gap-1">
+          {visiblePages.map((p) => (
             <Checkbox
               key={p.slug}
               id={`rebuild-page-${p.slug}`}
               name={`rebuild-page-${p.slug}`}
               label={p.title}
               checked={selected.has(p.slug)}
-              disabled={isProcessing || (!selected.has(p.slug) && selected.size >= REBUILD_BATCH_CAP)}
+              disabled={controlsDisabled || (!selected.has(p.slug) && selected.size >= REBUILD_BATCH_CAP)}
               onChange={() => toggle(p.slug)}
             />
           ))}
-          <Button
-            text={t('builder_rebuild_build_n_pages', { count: selected.size })}
-            design="secondary"
-            size="sm"
-            className="suggestion-button rounded-md font-normal"
-            disabled={selected.size === 0 || isProcessing}
-            onClick={handleBuildSelected}
-          />
-        </Box>
-      )}
+        </div>
 
-      {/* Built pages list */}
-      {size === "regular" && builtPages.length > 0 && (
-        <Box gap="sm" className="mt-2">
-          <text.p size={-1} emphasis="passive">{t('builder_rebuild_already_built')}</text.p>
-          <Box orientation="horizontal" wrap gap="sm">
-            {builtPages.map((page) => (
-              <Box
-                key={page.slug}
-                orientation="horizontal"
-                gap="sm"
-                className="inline-flex items-center"
-              >
-                <CheckCircle className="w-3 h-3" />
-                <text.p size={-1}>{page.title}</text.p>
-              </Box>
-            ))}
-          </Box>
-        </Box>
-      )}
-    </Box>
+        {hiddenCount > 0 && (
+          <Button
+            text={expanded
+              ? t('builder_rebuild_show_fewer')
+              : t('builder_rebuild_show_more', { count: hiddenCount })}
+            design="inline"
+            size="sm"
+            disabled={controlsDisabled}
+            onClick={() => setExpanded(!expanded)}
+            className="mt-1.5"
+          />
+        )}
+      </div>
+
+      {/* Footer: CTA + built pages */}
+      <div className="px-3 py-2 border-t border-intents-ux-borderDefault-borderColor bg-intents-ux-surfaceSecondary-surfaceColor">
+        <Button
+          text={selected.size === 0
+            ? t('builder_rebuild_select_pages_cta')
+            : t('builder_rebuild_build_n_pages', { count: selected.size })}
+          design="primary"
+          size="sm"
+          className="w-full"
+          disabled={selected.size === 0 || controlsDisabled}
+          onClick={handleBuildSelected}
+        />
+
+        {size === "regular" && builtPages.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-intents-ux-borderDefault-borderColor">
+            <text.p size={-2} emphasis="passive" className="mb-1">
+              {t('builder_rebuild_already_built')}
+            </text.p>
+            <Box orientation="horizontal" wrap gap="sm">
+              {builtPages.map((page) => (
+                <span key={page.slug} className="inline-flex items-center gap-0.5 text-intents-ux-contentSecondary-contentColor">
+                  <CheckCircle className="w-2.5 h-2.5" />
+                  <text.span size={-2}>{page.title}</text.span>
+                </span>
+              ))}
+            </Box>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
