@@ -1,5 +1,7 @@
 import type { Page, APIRequestContext } from '@playwright/test';
+import { loginIfNeeded } from './auth';
 import { DEPLOYMENT_POLL_INTERVAL_MS, DEPLOYMENT_TIMEOUT_MS, MAX_TEST_APPS, TEST_APP_BUFFER } from './constants';
+import { dismissOverlays } from './ui';
 
 interface SiteInfo {
   id: string;
@@ -149,12 +151,40 @@ export async function deleteAppsWithPrefix(page: Page, prefix: string): Promise<
  *
  * No-op (returns 0) when below the threshold or when the GET fails — better
  * to let the test surface the real auth/network error than swallow it here.
+ *
+ * Authenticates first: reading /api/sites and issuing DELETEs both require a
+ * signed-in session. Callers invoke this from `beforeEach` immediately after a
+ * fresh `page.goto('/')`, where the browser profile is clean and no SSO has run
+ * yet — so without logging in here, /api/sites returns 401, the guard no-ops,
+ * and orphaned e2e apps accumulate every run until the account trips the
+ * mgmt-airo cap and app creation starts failing. `loginIfNeeded` is idempotent
+ * (a fast no-op when already signed in), so this is safe for already-authed
+ * callers too.
  */
 export async function evictOldestE2eAppsToFitLimit(
   page: Page,
   opts: { threshold?: number } = {},
 ): Promise<number> {
   const threshold = opts.threshold ?? (MAX_TEST_APPS - TEST_APP_BUFFER);
+
+  // Ensure an authenticated session before touching /api/sites. dismissOverlays
+  // clears the Projects popover that can otherwise cover the user-menu trigger
+  // loginIfNeeded clicks. A login failure leaves the guard a no-op (the test
+  // body does its own login) rather than aborting the run, matching the
+  // best-effort contract the call sites rely on via `.catch(() => {})`.
+  try {
+    await dismissOverlays(page);
+    await loginIfNeeded(page);
+    // loginIfNeeded's SSO redirect can leave the page on a post-login landing
+    // URL; re-navigate so the /api/sites fetch below runs from a stable
+    // app-origin page.
+    await page.goto('/');
+  } catch (err) {
+    console.log(
+      `⚠️ App-limit guard skipped: login failed (${err instanceof Error ? err.message : String(err)})`,
+    );
+    return 0;
+  }
 
   const result = await page.evaluate(async ({ thresholdValue, marker }) => {
     try {
