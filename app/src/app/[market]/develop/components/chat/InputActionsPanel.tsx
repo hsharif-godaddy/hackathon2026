@@ -1024,7 +1024,9 @@ function InputActionsPanelThemeSelection({
   const thinkerLabel = useThinkerLabel()
   const queryClient = useQueryClient()
   const sendUserMessage = useSendUserMessage()
-  const nbaData = useLatestNBAs()
+  const nbaDataRaw = useLatestNBAs()
+  const [askQuestionDismissed, setAskQuestionDismissed] = useState(false)
+  const nbaData = askQuestionDismissed ? null : nbaDataRaw
   const currentList = useCurrentList()
   const viewState = useViewState()
   const isStreaming = useIsActivelyStreaming()
@@ -1091,7 +1093,11 @@ function InputActionsPanelThemeSelection({
   const nbaChoiceShortcutsRef = useRef<HTMLDivElement>(null)
   const planPreviewShortcutsRef = useRef<HTMLDivElement>(null)
   const nextActionShortcutsRef = useRef<HTMLDivElement>(null)
-  useEffect(() => { setAskQuestionCompleted(false); setCurrentAskQuestionText(null) }, [nbaData?.toolResult])
+  useEffect(() => {
+    setAskQuestionCompleted(false)
+    setAskQuestionDismissed(false)
+    setCurrentAskQuestionText(null)
+  }, [nbaDataRaw?.toolResult])
   const hasPlan = !!currentList && items.length > 0
   const totalItems = items.length
   const completedCount = completedItems.length
@@ -1650,6 +1656,7 @@ function InputActionsPanelThemeSelection({
           result={nbaData.toolResult as Record<string, unknown>}
           isLastAssistantMessage={true}
           onComplete={() => setAskQuestionCompleted(true)}
+          onSkip={() => setAskQuestionDismissed(true)}
           onQuestionChange={setCurrentAskQuestionText}
           hideQuestion={true}
         />

@@ -570,7 +570,9 @@ describe('AskQuestionToolRenderer', () => {
     expect(msg.match(/Decide for me/g)?.length).toBe(2)
   })
 
-  it('skipping every step sends Skip without an action request', () => {
+  it('skipping every step dismisses without sending a chat message', () => {
+    const onComplete = vi.fn()
+    const onSkip = vi.fn()
     const result = makeResult([
       {
         question: 'Vibe?',
@@ -590,6 +592,8 @@ describe('AskQuestionToolRenderer', () => {
       <AskQuestionToolRenderer
         {...defaultProps}
         result={result}
+        onComplete={onComplete}
+        onSkip={onSkip}
       />,
     )
 
@@ -598,15 +602,13 @@ describe('AskQuestionToolRenderer', () => {
     const skip2 = screen.getByRole('button', { name: /^Skip$/i })
     fireEvent.click(skip2)
 
-    expect(mockSendUserMessage).toHaveBeenCalledTimes(1)
-    const [msg, options] = mockSendUserMessage.mock.calls[0]
-    expect(msg).not.toMatch(/__decide__/)
-    expect(msg).not.toMatch(/Decide for me/)
-    expect(msg).toBe('builder_tools_askquestion_skip')
-    expect(options).toEqual({ askQuestionSkipped: true })
+    expect(mockSendUserMessage).not.toHaveBeenCalled()
+    expect(onSkip).toHaveBeenCalledTimes(1)
+    expect(onComplete).toHaveBeenCalledTimes(1)
   })
 
-  it('skipping a single-step askQuestion sends Skip without an action request', () => {
+  it('skipping a single-step askQuestion dismisses without sending a chat message', () => {
+    const onSkip = vi.fn()
     const result = makeResult([
       makeQuestion('Do you like the design?', [
         { text: 'Yes, build the next page' },
@@ -617,15 +619,14 @@ describe('AskQuestionToolRenderer', () => {
       <AskQuestionToolRenderer
         {...defaultProps}
         result={result}
+        onSkip={onSkip}
       />,
     )
 
     fireEvent.click(screen.getByRole('button', { name: /^Skip$/i }))
 
-    expect(mockSendUserMessage).toHaveBeenCalledWith(
-      'builder_tools_askquestion_skip',
-      { askQuestionSkipped: true },
-    )
+    expect(mockSendUserMessage).not.toHaveBeenCalled()
+    expect(onSkip).toHaveBeenCalledTimes(1)
   })
 
   it('digit press on focused Other input does not trigger a ChoiceList pick', async () => {

@@ -11,8 +11,8 @@ interface SendMessageOptions {
    */
   isActionRequest?: boolean
   /**
-   * When true, the user skipped an askQuestion NBA. Dismisses NBA chips in the
-   * composer without telling the agent to execute the plan.
+   * When true, the user skipped an askQuestion NBA (legacy wire metadata).
+   * Dismisses NBA chips in the composer. Skip no longer auto-sends a user message.
    */
   askQuestionSkipped?: boolean
   /**

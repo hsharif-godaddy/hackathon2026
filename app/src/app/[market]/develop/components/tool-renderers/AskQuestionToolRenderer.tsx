@@ -109,10 +109,13 @@ export default function AskQuestionToolRenderer({
   error,
   isLastAssistantMessage,
   onComplete,
+  onSkip,
   onQuestionChange,
   hideQuestion,
 }: DefaultToolRendererProps & {
   onComplete?: () => void
+  /** Fired when the user skips all steps — dismisses UI only; no chat message is sent. */
+  onSkip?: () => void
   onQuestionChange?: (question: string) => void
   hideQuestion?: boolean
 }) {
@@ -151,8 +154,6 @@ export default function AskQuestionToolRenderer({
   // into the UI. The default keeps the chip readable in English while
   // translations catch up.
   const decideLabel = t('builder_tools_askquestion_decide_for_me', undefined, 'Decide for me')
-  // Sent when every step is skipped — must be non-empty (WebSocket rejects '').
-  const skipText = t('builder_tools_askquestion_skip', undefined, 'Skip')
   // `hideQuestion` only suppresses the title text inside each ChoiceList.Step —
   // it does NOT mean the renderer is inert. InputActionsPanel passes
   // `hideQuestion={true}` when hoisting this component into the composer card
@@ -313,7 +314,7 @@ export default function AskQuestionToolRenderer({
   }
 
   function handleCompleteSelections(selections: Record<string, string | string[] | null>) {
-    if (isProcessing || !sendUserMessage || submitted) return
+    if (isProcessing || submitted) return
     setSubmitted(true)
     pingUserActivity()
 
@@ -355,12 +356,13 @@ export default function AskQuestionToolRenderer({
             .join('\n\n')
     const trimmed = msg.trim()
     if (trimmed) {
+      if (!sendUserMessage) return
       sendUserMessage(trimmed, { isActionRequest: true })
     } else {
-      sendUserMessage(skipText, { askQuestionSkipped: true })
+      onSkip?.()
     }
 
-    if (onComplete) onComplete()
+    onComplete?.()
   }
 
   return (
