@@ -29,7 +29,7 @@ func TestExecPaths(t *testing.T) {
 	pathMap := makePathMap(paths)
 
 	// Must include exec-specific paths
-	assertPath(t, pathMap, "/app", "rwc")
+	assertPath(t, pathMap, "/app", "rwcx")
 	assertPath(t, pathMap, "/tmp", "rwc")
 	assertPath(t, pathMap, "/dist", "rwc")
 	assertPath(t, pathMap, "/local", "rwc")
@@ -37,8 +37,8 @@ func TestExecPaths(t *testing.T) {
 	assertPath(t, pathMap, "/git-repo", "rwc")
 	assertPath(t, pathMap, "/private", "rwc")
 	assertPath(t, pathMap, "/npm-cache", "rwc")
-	assertPath(t, pathMap, "/node_modules", "rx")
-	assertPath(t, pathMap, "/app/node_modules", "rx")
+	assertPath(t, pathMap, "/node_modules", "rwcx")
+	assertPath(t, pathMap, "/app/node_modules", "rwcx")
 	assertPath(t, pathMap, "/shared-storage/public/assets", "rwc")
 
 	// Must NOT include paths that child processes shouldn't access
@@ -64,13 +64,13 @@ func TestPreviewProcessPaths(t *testing.T) {
 	paths := sandbox.PreviewProcessPaths("/shared-storage")
 	pathMap := makePathMap(paths)
 
-	assertPath(t, pathMap, "/app", "rwc")
+	assertPath(t, pathMap, "/app", "rwcx")
 	assertPath(t, pathMap, "/tmp", "rwc")
 	assertPath(t, pathMap, "/local", "rwc")
 	assertPath(t, pathMap, "/home/agent", "rwc")
 	assertPath(t, pathMap, "/private", "rwc")
-	assertPath(t, pathMap, "/node_modules", "rx")
-	assertPath(t, pathMap, "/app/node_modules", "rx")
+	assertPath(t, pathMap, "/node_modules", "rwcx")
+	assertPath(t, pathMap, "/app/node_modules", "rwcx")
 	assertPath(t, pathMap, "/shared-storage/public/assets", "rwc")
 
 	// Publish-only paths and forbidden paths
@@ -89,14 +89,14 @@ func TestPublishProcessPaths(t *testing.T) {
 	paths := sandbox.PublishProcessPaths("/shared-storage")
 	pathMap := makePathMap(paths)
 
-	assertPath(t, pathMap, "/app", "rwc")
+	assertPath(t, pathMap, "/app", "rwcx")
 	assertPath(t, pathMap, "/tmp", "rwc")
 	assertPath(t, pathMap, "/local", "rwc")
 	assertPath(t, pathMap, "/home/agent", "rwc")
 	assertPath(t, pathMap, "/private", "rwc")
 	assertPath(t, pathMap, "/dist", "rwc")
 	assertPath(t, pathMap, "/publish", "rx")
-	assertPath(t, pathMap, "/app/node_modules", "rx")
+	assertPath(t, pathMap, "/app/node_modules", "rwcx")
 	assertPath(t, pathMap, "/shared-storage/public/assets", "rwc")
 
 	// Preview-only paths and forbidden paths
@@ -112,7 +112,7 @@ func TestProcessPaths_Dispatches(t *testing.T) {
 	t.Parallel()
 
 	preview := makePathMap(sandbox.ProcessPaths(sandbox.VariantPreview, ""))
-	assertPath(t, preview, "/node_modules", "rx")
+	assertPath(t, preview, "/node_modules", "rwcx")
 	assertNoPath(t, preview, "/publish")
 
 	publish := makePathMap(sandbox.ProcessPaths(sandbox.VariantPublish, ""))

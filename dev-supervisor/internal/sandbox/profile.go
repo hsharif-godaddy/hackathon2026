@@ -69,7 +69,7 @@ var ConnectTCPPorts = []uint16{80, 443, 53, 3306, 25, 2525}
 // sharedStorageDir is the SHARED_STORAGE_DIR env var value (e.g. "/shared-storage").
 func ExecPaths(sharedStorageDir string) []PathRule {
 	paths := []PathRule{
-		{Mode: "rwc", Path: "/app"},
+		{Mode: "rwcx", Path: "/app"},
 		{Mode: "rwc", Path: "/tmp"},
 		{Mode: "rwc", Path: "/dist"},
 		// NOMAD_TASK_DIR — git config, npm cache, and other tools write to $HOME which is /local.
@@ -83,8 +83,8 @@ func ExecPaths(sharedStorageDir string) []PathRule {
 		// Preview image stores dependencies at /node_modules (not /app/node_modules)
 		// and puts /node_modules/.bin on PATH (vite, tsc, etc.). Both paths listed
 		// for compatibility across image versions.
-		{Mode: "rx", Path: "/node_modules"},
-		{Mode: "rx", Path: "/app/node_modules"},
+		{Mode: "rwcx", Path: "/node_modules"},
+		{Mode: "rwcx", Path: "/app/node_modules"},
 	}
 	if sharedStorageDir != "" {
 		paths = append(paths, PathRule{Mode: "rwc", Path: filepath.Join(sharedStorageDir, "public", "assets")})
@@ -96,7 +96,7 @@ func ExecPaths(sharedStorageDir string) []PathRule {
 // managed app process (the customer's `npm run dev` or similar).
 func PreviewProcessPaths(sharedStorageDir string) []PathRule {
 	paths := []PathRule{
-		{Mode: "rwc", Path: "/app"},
+		{Mode: "rwcx", Path: "/app"},
 		{Mode: "rwc", Path: "/tmp"},
 		// NOMAD_TASK_DIR — HOME for the customer process; tools write configs/cache here.
 		{Mode: "rwc", Path: "/local"},
@@ -105,8 +105,8 @@ func PreviewProcessPaths(sharedStorageDir string) []PathRule {
 		// Preview image stores dependencies at /node_modules (not /app/node_modules)
 		// and puts /node_modules/.bin on PATH (vite, tsc, etc.). Both paths listed
 		// for compatibility across image versions.
-		{Mode: "rx", Path: "/node_modules"},
-		{Mode: "rx", Path: "/app/node_modules"},
+		{Mode: "rwcx", Path: "/node_modules"},
+		{Mode: "rwcx", Path: "/app/node_modules"},
 	}
 	if sharedStorageDir != "" {
 		paths = append(paths, PathRule{Mode: "rwc", Path: filepath.Join(sharedStorageDir, "public", "assets")})
@@ -119,7 +119,7 @@ func PreviewProcessPaths(sharedStorageDir string) []PathRule {
 // archive into /dist and execs the app from there.
 func PublishProcessPaths(sharedStorageDir string) []PathRule {
 	paths := []PathRule{
-		{Mode: "rwc", Path: "/app"},
+		{Mode: "rwcx", Path: "/app"},
 		{Mode: "rwc", Path: "/tmp"},
 		// NOMAD_TASK_DIR — HOME for the customer process; tools write configs/cache here.
 		{Mode: "rwc", Path: "/local"},
@@ -127,7 +127,7 @@ func PublishProcessPaths(sharedStorageDir string) []PathRule {
 		{Mode: "rwc", Path: "/private"},
 		{Mode: "rwc", Path: "/dist"},
 		{Mode: "rx", Path: "/publish"},
-		{Mode: "rx", Path: "/app/node_modules"},
+		{Mode: "rwcx", Path: "/app/node_modules"},
 	}
 	if sharedStorageDir != "" {
 		paths = append(paths, PathRule{Mode: "rwc", Path: filepath.Join(sharedStorageDir, "public", "assets")})

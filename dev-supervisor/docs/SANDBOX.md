@@ -44,20 +44,21 @@ Two profiles are used depending on the execution context. Profiles are defined i
 Used for commands from the AI agent (npm install, git operations, build commands, etc.).
 
 ```
-rwc: /app, /tmp, /dist, /local, /home/agent, /git-repo, /private, /npm-cache
-rx:  /node_modules, /app/node_modules
-rwc: $SHARED_STORAGE_DIR/public/assets (if SHARED_STORAGE_DIR set)
+rwcx: /app, /node_modules, /app/node_modules
+rwc:  /tmp, /dist, /local, /home/agent, /git-repo, /private, /npm-cache
+rwc:  $SHARED_STORAGE_DIR/public/assets (if SHARED_STORAGE_DIR set)
 
 Connect TCP: 80, 443, 53, 3306, 25, 2525
 Bind TCP:    none
 ```
 
 - `/exec` is a preview-container-only endpoint
+- `/app` has execute so dynamically-created `node_modules/.bin` scripts work for PaaS apps that `npm install` at runtime
 - `/dist` needed for publish builds invoked by the agent
 - `/local` — NOMAD_TASK_DIR, used as $HOME; git config, npm cache, and tools write here
 - `/git-repo` needed for git operations
 - `/npm-cache` is writable: `npm install <new-pkg>` needs to populate the cache for packages not already there
-- `/node_modules` is where the preview image stores dependencies; v8 template puts `/node_modules/.bin` on PATH (vite, tsc, etc.)
+- `/node_modules` writable+executable: PaaS apps may `npm install` at runtime; v8 template puts `/node_modules/.bin` on PATH
 - `/app/node_modules` — compatibility path for image versions that install deps inside `/app`
 - No bind ports (one-off commands don't run servers)
 
@@ -68,9 +69,9 @@ Two variants selected by `NOMAD_TASK_NAME`: `preview` gets the dev-server layout
 **Preview variant** — customer's dev server (e.g. `npm run dev`):
 
 ```
-rwc: /app, /tmp, /local, /home/agent, /private
-rx:  /node_modules, /app/node_modules
-rwc: $SHARED_STORAGE_DIR/public/assets (if SHARED_STORAGE_DIR set)
+rwcx: /app, /node_modules, /app/node_modules
+rwc:  /tmp, /local, /home/agent, /private
+rwc:  $SHARED_STORAGE_DIR/public/assets (if SHARED_STORAGE_DIR set)
 
 Connect TCP: 80, 443, 53, 3306, 25, 2525
 Bind TCP:    from ProcessStartRequest.Ports (dynamic)
@@ -79,9 +80,10 @@ Bind TCP:    from ProcessStartRequest.Ports (dynamic)
 **Publish variant** — publish entrypoint `/publish/run-app.sh`:
 
 ```
-rwc: /app, /tmp, /local, /home/agent, /private, /dist
-rx:  /publish, /app/node_modules
-rwc: $SHARED_STORAGE_DIR/public/assets (if SHARED_STORAGE_DIR set)
+rwcx: /app, /app/node_modules
+rwc:  /tmp, /local, /home/agent, /private, /dist
+rx:   /publish
+rwc:  $SHARED_STORAGE_DIR/public/assets (if SHARED_STORAGE_DIR set)
 
 Connect TCP: 80, 443, 53, 3306, 25, 2525
 Bind TCP:    from ProcessStartRequest.Ports (dynamic)
