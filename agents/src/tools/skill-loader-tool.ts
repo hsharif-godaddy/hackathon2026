@@ -314,9 +314,10 @@ export class SkillLoaderTool {
    * @private
    */
   private validateSkillName(skillName: string): boolean {
-    // Skill names must be alphanumeric, hyphens, or underscores only
-    // This prevents directory traversal attacks (../, /, etc.)
-    const validPattern = /^[a-zA-Z0-9_-]+$/;
+    // Allow one optional category/ prefix (e.g. payment/stripe).
+    // Each segment is alphanumeric, hyphens, or underscores only.
+    // This prevents directory traversal attacks (../, multiple slashes, etc.)
+    const validPattern = /^[a-zA-Z0-9_-]+(\/[a-zA-Z0-9_-]+)?$/;
     return validPattern.test(skillName);
   }
 
@@ -341,7 +342,7 @@ export class SkillLoaderTool {
    */
   private getSkillPath(skillName: string, subpath?: string): string {
     if (!this.validateSkillName(skillName)) {
-      throw new Error(`Invalid skill name '${skillName}'. Skill names must contain only letters, numbers, hyphens, and underscores.`);
+      throw new Error(`Invalid skill name '${skillName}'. Skill names must contain only letters, numbers, hyphens, and underscores, with an optional single category prefix (e.g. payment/stripe).`);
     }
     if (subpath) {
       return path.join(this.skillsDir, skillName, subpath);

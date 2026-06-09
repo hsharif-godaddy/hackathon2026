@@ -5,7 +5,6 @@ whenToUse: Store setup, product/catalog data, inventory, orders, Commerce-backed
 intents:
   - commerce/store setup/connect commerce/manage products/product data/catalog data/inventory/orders
   - online store/sell products/product catalog/storefront/shop/cart/checkout (load commerce first; then load commerce-storefront for UI)
-  - accept payments/buy-now/one-time payment/charge customers (load commerce first; then load commerce-one-time-payment for UI)
 ---
 
 # GoDaddy Commerce Skill
@@ -16,11 +15,11 @@ This skill requires an active AAB browser/WebSocket session because its MCP adap
 
 This skill is intentionally separate from Commerce UI skills:
 
-| Skill                       | Purpose                                                                         |
-| --------------------------- | ------------------------------------------------------------------------------- |
-| `commerce`                  | Store/catalog/product/inventory/channel/order operations through Commerce MCP   |
-| `commerce-storefront`       | Storefront UI templates: catalog, product detail, cart, checkout success/cancel |
-| `commerce-one-time-payment` | Simple buy-now / one-time checkout UI templates                                 |
+| Skill | Purpose |
+| --- | --- |
+| `commerce` | Store/catalog/product/inventory/channel/order operations through Commerce MCP |
+| `commerce-storefront` | Storefront UI templates: catalog, product detail, cart, checkout success/cancel |
+| `payment/commerce-one-time-payment` | Simple buy-now / one-time checkout UI templates |
 
 ## Absolute Rules
 
@@ -30,7 +29,7 @@ This skill is intentionally separate from Commerce UI skills:
 4. For mutating operations (create/update/delete products, prices, inventory, media, store setup), make sure the user's request implies the change. If the target store/product is ambiguous, ask a focused question before mutating.
 5. After Commerce data is ready, choose exactly one UI skill based on the user's prompt:
    - Full shop/catalog/cart/product-detail browsing flow → load `commerce-storefront`.
-   - Simple buy-now/payment/charge flow without cart browsing → load `commerce-one-time-payment`.
+   - Simple buy-now/payment/charge flow without cart browsing → load `payment/commerce-one-time-payment`.
    - Ambiguous UI request → ask whether they want a full shop/cart flow or a simple buy-now checkout.
 6. Do not invent bespoke product API routes, `useProducts` hooks, or static product catalogs for a Commerce-backed UI unless the user explicitly asks for non-Commerce/mock/static data.
 7. Do not expose internal tool or skill names to the user. Describe actions in plain language.
@@ -98,10 +97,10 @@ Examples of discovery queries:
 
 After Commerce data is resolved, select the UI skill from the user's original prompt and current request:
 
-| User intent                           | Load next                   | Examples                                                                                                                                           |
-| ------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Full storefront / shopping experience | `commerce-storefront`       | "shop page", "product catalog", "product detail page", "PDP", "cart", "storefront", "browse products", "checkout flow"                             |
-| Simple payment / buy-now experience   | `commerce-one-time-payment` | "accept payments", "charge customers", "one-time payment", "buy now", "payment page", "single product checkout", "deposit", "pay for this service" |
+| User intent | Load next | Examples |
+| --- | --- | --- |
+| Full storefront / shopping experience | `commerce-storefront` | "shop page", "product catalog", "product detail page", "PDP", "cart", "storefront", "browse products", "checkout flow" |
+| Simple payment / buy-now experience | `payment/commerce-one-time-payment` | "accept payments", "charge customers", "one-time payment", "buy now", "payment page", "single product checkout", "deposit", "pay for this service" |
 
 If the request is ambiguous after data discovery, ask a focused choice: full shop/cart flow or simple buy-now checkout. Do not default to storefront just because catalog data exists, and do not default to one-time payment just because checkout is mentioned in a storefront/cart context.
 

@@ -1,7 +1,8 @@
 ---
 name: stripe
 description: Add Stripe payment integration for one-time purchases and subscriptions. When platform provisioning is enabled for the shopper, Airo provisions a Stripe sandbox automatically; otherwise the user supplies their own Stripe keys.
-whenToUse: User explicitly mentions Stripe for payments. Phrases like "add Stripe", "Stripe checkout", "Stripe payments", "Stripe subscription". Only use this skill when the user specifically asks for Stripe — for general e-commerce backed by GoDaddy Commerce, load the `commerce` skill instead.
+whenToUse: Loaded by the payment router when the user explicitly requests Stripe.
+enablementId: stripe
 dependencies:
   - stripe@^20.2.0
 skill-deps:
@@ -9,8 +10,6 @@ skill-deps:
     templates: true
     instructions: false
     overwrite: false
-intents:
-  - Stripe (only when user explicitly says Stripe)
 ---
 
 # Stripe Payment Integration
@@ -38,19 +37,6 @@ Both flows install the **same** checkout templates; only key acquisition (Step 1
 
 7. **NEVER call `requestSecrets` for any `STRIPE_*` key** — keys are already in the env, pushed by `stripe__setup`. Calling `requestSecrets` here is always wrong.
 8. **Use `stripe__*` MCP tools for all agent-initiated Stripe writes** (create_product, create_price, etc.) — never terminal scripts.
-
----
-
-## Pre-Check: Existing Commerce?
-
-**🔴 If the app already has GoDaddy Commerce integrated, ASK:**
-
-> "This app already has GoDaddy Commerce. Do you want to:
->
-> 1. **Replace with Stripe** → I'll remove GoDaddy Commerce routes and use Stripe
-> 2. **Cancel** → Keep GoDaddy Commerce only"
-
-**⚠️ Mandatory STOP — wait for response.**
 
 ---
 
@@ -120,7 +106,7 @@ requestSecrets({
 ## Step 2: Install Templates
 
 ```typescript
-const result = await skill({ action: 'install', skill: 'stripe' });
+const result = await skill({ action: 'install', skill: 'payment/stripe' });
 ```
 
 **Installs:**

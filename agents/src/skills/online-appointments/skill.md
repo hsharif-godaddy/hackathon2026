@@ -329,7 +329,7 @@ or `'use client'` directives.
 
 ### Quick Setup Steps
 
-1. Install commerce skill: `skill({ action: 'install', skill: 'commerce-one-time-payment' })`
+1. Install commerce skill: `skill({ action: 'install', skill: 'payment/commerce-one-time-payment' })`
 2. Set `config.currency` to the same ISO 4217 code (e.g. `'EUR'`) the merchant's GoDaddy
    Commerce store SKUs are priced in. The store catalog is the source of truth at checkout
    time; this field drives display formatting on our side.

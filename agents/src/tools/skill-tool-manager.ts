@@ -751,7 +751,7 @@ export class SkillToolManager {
    * Validate skill name to prevent directory traversal
    */
   private validateSkillName(skillName: string): boolean {
-    const validPattern = /^[a-zA-Z0-9_-]+$/;
+    const validPattern = /^[a-zA-Z0-9_-]+(\/[a-zA-Z0-9_-]+)?$/;
     return validPattern.test(skillName);
   }
 }

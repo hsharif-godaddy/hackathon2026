@@ -831,7 +831,7 @@ intents:
       const phrases = [
         'online store', 'sell products', 'catalog data',
         'product catalog UI',
-        'buy-now',
+        'buy now', 'one-time payment',
         'members-only',
         'appointments',
         'set up blog',
@@ -843,7 +843,9 @@ intents:
         'AI chatbot',
         'buy domain', 'want domain', 'purchase domain',
         'search rankings', 'meta tags',
-        'only when user explicitly says Stripe',
+        // Payment router intents (replaces old stripe + commerce-one-time-payment intents)
+        'accept payments', 'charge customers',
+        'Stripe / Stripe checkout / Stripe payments',
         // Routing-time ordering hints for commerce sub-skills. Without
         // these the LLM may build storefront / one-time-payment UI before
         // Commerce MCP has verified/setup store data, producing UI wired to
@@ -851,7 +853,6 @@ intents:
         'storefront UI/shop page/product detail page/PDP',
         'build/update shop page/product catalog/product grid/load products from API',
         'product detail page/product page/PDP/product route',
-        'charge customers (load commerce first)',
       ];
       for (const phrase of phrases) {
         expect(section).toContain(phrase);
@@ -859,10 +860,10 @@ intents:
 
       // Each routed skill must have its own <skill name="..."> tag
       const routedSkills = [
-        'commerce', 'commerce-storefront', 'commerce-one-time-payment',
+        'commerce', 'commerce-storefront',
         'authentication', 'online-appointments', 'blog',
         'blog-writing', 'i18n', 'google-maps', 'email',
-        'database', 'ai-agent', 'stripe', 'custom-domain',
+        'database', 'ai-agent', 'payment', 'custom-domain',
         'seo',
       ];
       for (const skill of routedSkills) {
@@ -940,7 +941,7 @@ intents:
       const excludedBackendSkillFragments = [
         'commerce,',
         'commerce-storefront,',
-        'commerce-one-time-payment,',
+        'payment,',
         'authentication,',
         'database,',
         'email,',
@@ -949,8 +950,7 @@ intents:
         'blog-writing,',
         'i18n,',
         'google-maps,',
-        'ai-agent,',
-        'stripe.',
+        'ai-agent.',
       ];
       for (const fragment of excludedBackendSkillFragments) {
         expect(coreMd).toContain(fragment);

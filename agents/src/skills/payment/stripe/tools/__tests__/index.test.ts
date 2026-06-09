@@ -16,7 +16,7 @@ class MockStripeServiceError extends Error {
 const mockCreateSandbox = vi.fn();
 const mockGetStatus = vi.fn();
 
-vi.mock('../../../../services/StripeService.js', () => ({
+vi.mock('../../../../../services/StripeService.js', () => ({
   stripeService: {
     createSandbox: mockCreateSandbox,
     getStatus: mockGetStatus,
@@ -26,13 +26,13 @@ vi.mock('../../../../services/StripeService.js', () => ({
 
 const mockLoadStripeMcpTools = vi.fn();
 
-vi.mock('../../../../services/mcp/stripe-mcp-client.js', () => ({
+vi.mock('../../../../../services/mcp/stripe-mcp-client.js', () => ({
   loadStripeMcpTools: mockLoadStripeMcpTools,
 }));
 
 const mockRegisterDynamicTools = vi.fn();
 
-vi.mock('../../../../tools/skill-tool-manager.js', () => ({
+vi.mock('../../../../../tools/skill-tool-manager.js', () => ({
   skillToolManager: {
     registerDynamicTools: mockRegisterDynamicTools,
   },
@@ -40,7 +40,7 @@ vi.mock('../../../../tools/skill-tool-manager.js', () => ({
 
 const mockProfileFlag = vi.fn();
 
-vi.mock('../../../../profiles/profile-accessor.js', () => ({
+vi.mock('../../../../../profiles/profile-accessor.js', () => ({
   profileFlag: mockProfileFlag,
 }));
 
@@ -48,7 +48,7 @@ const mockLoggerInfo = vi.fn();
 const mockLoggerWarn = vi.fn();
 const mockLoggerError = vi.fn();
 
-vi.mock('../../../../logging/index.js', () => ({
+vi.mock('../../../../../logging/index.js', () => ({
   logger: {
     info: mockLoggerInfo,
     warn: mockLoggerWarn,
@@ -96,7 +96,7 @@ describe('stripe skill tools', () => {
         claimUrl: 'https://dashboard.stripe.com/fake-claim/cbsbx_fake_X',
         mcpToolsReadyNextTurn: true,
       });
-      expect(mockRegisterDynamicTools).toHaveBeenCalledWith('stripe', {
+      expect(mockRegisterDynamicTools).toHaveBeenCalledWith('payment/stripe', {
         products_create: expect.anything(),
       });
     });
@@ -168,7 +168,7 @@ describe('stripe skill tools', () => {
         expect(mockLoadStripeMcpTools).toHaveBeenCalledTimes(2);
 
         const result = await pending;
-        expect(mockRegisterDynamicTools).toHaveBeenCalledWith('stripe', { products_create: fakeTool });
+        expect(mockRegisterDynamicTools).toHaveBeenCalledWith('payment/stripe', { products_create: fakeTool });
         expect(mockLoggerInfo).toHaveBeenCalledWith(
           'skill.stripe.setup.mcp_tools_registered',
           expect.objectContaining({ appId: 'app-1', attempt: 1 }),
@@ -383,16 +383,16 @@ describe('stripe skill tools', () => {
     it('registers MCP tools when available', async () => {
       mockLoadStripeMcpTools.mockResolvedValue({ products_create: { description: 'p', execute: vi.fn() } });
 
-      await hooks.onLoad?.({ skillName: 'stripe', appId: 'app-1' });
+      await hooks.onLoad?.({ skillName: 'payment/stripe', appId: 'app-1' });
 
       expect(mockLoadStripeMcpTools).toHaveBeenCalledWith('app-1');
-      expect(mockRegisterDynamicTools).toHaveBeenCalledWith('stripe', expect.objectContaining({ products_create: expect.anything() }));
+      expect(mockRegisterDynamicTools).toHaveBeenCalledWith('payment/stripe', expect.objectContaining({ products_create: expect.anything() }));
     });
 
     it('skips registerDynamicTools when no MCP tools yet (pre-provisioning)', async () => {
       mockLoadStripeMcpTools.mockResolvedValue({});
 
-      await hooks.onLoad?.({ skillName: 'stripe', appId: 'app-1' });
+      await hooks.onLoad?.({ skillName: 'payment/stripe', appId: 'app-1' });
 
       expect(mockRegisterDynamicTools).not.toHaveBeenCalled();
     });
@@ -400,7 +400,7 @@ describe('stripe skill tools', () => {
     it('logs warn and skips when MCP load throws (non-fatal)', async () => {
       mockLoadStripeMcpTools.mockRejectedValueOnce(new Error('mcp unreachable'));
 
-      await expect(hooks.onLoad?.({ skillName: 'stripe', appId: 'app-1' })).resolves.toBeUndefined();
+      await expect(hooks.onLoad?.({ skillName: 'payment/stripe', appId: 'app-1' })).resolves.toBeUndefined();
 
       expect(mockLoggerWarn).toHaveBeenCalledWith(
         'skill.stripe.onload.mcp_load_failed',

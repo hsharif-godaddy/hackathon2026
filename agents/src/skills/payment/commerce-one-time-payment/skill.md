@@ -1,9 +1,7 @@
 ---
 name: commerce-one-time-payment
 description: Render a simple GoDaddy Commerce one-time checkout UI (products, checkout, success/cancel pages) using existing Commerce SKUs. UI only.
-whenToUse: Trigger when user wants simple payments or a buy-now checkout — "accept payments", "charge customers", "one-time service payment", "payment page", "buy now page", "single product checkout", "one-time payment". Backed by GoDaddy Commerce SKU data, not a full cart storefront. Load the `commerce` skill first to verify/setup store/catalog data, then use this skill for UI wiring.
-intents:
-  - accept payments/buy-now/one-time payment/charge customers (load commerce first)
+whenToUse: Loaded by the payment router when the user explicitly requests for GD payments.
 ---
 
 # GoDaddy Commerce One-Time Payment UI Skill
@@ -81,7 +79,7 @@ If the catalog is empty, stop and ask whether to run the Commerce management wor
 ## Step 1: Install One-Time Payment Templates
 
 ```typescript
-skill({ action: 'install', skill: 'commerce-one-time-payment' });
+skill({ action: 'install', skill: 'payment/commerce-one-time-payment' });
 ```
 
 Installs:

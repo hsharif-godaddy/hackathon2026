@@ -15,14 +15,14 @@
 import { z } from 'zod';
 import type { SkillToolDefinition } from '@airo/ai-skills';
 
-import { logger } from '../../../logging/index.js';
-import { profileFlag } from '../../../profiles/profile-accessor.js';
-import { stripeService, StripeServiceError } from '../../../services/StripeService.js';
-import { loadStripeMcpTools } from '../../../services/mcp/stripe-mcp-client.js';
-import { skillToolManager } from '../../../tools/skill-tool-manager.js';
+import { logger } from '../../../../logging/index.js';
+import { profileFlag } from '../../../../profiles/profile-accessor.js';
+import { stripeService, StripeServiceError } from '../../../../services/StripeService.js';
+import { loadStripeMcpTools } from '../../../../services/mcp/stripe-mcp-client.js';
+import { skillToolManager } from '../../../../tools/skill-tool-manager.js';
 
-/** The skill directory name — used for dynamic MCP-tool registration. */
-export const SKILL_NAME = 'stripe';
+/** The skill's full namespaced name — matches the key used in the registry. */
+export const SKILL_NAME = 'payment/stripe';
 
 /**
  * Per-shopper gate for the v2 platform-managed Stripe flow. Keeps the

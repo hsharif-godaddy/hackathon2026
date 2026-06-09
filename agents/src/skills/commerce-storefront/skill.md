@@ -27,7 +27,7 @@ This skill is **UI wiring only**:
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `commerce`                              | Store setup + catalog/product/pricing/inventory/media/orders through GoDaddy Commerce MCP                     |
 | `commerce-storefront`                   | Storefront UI (shop, product page, cart, checkout redirects)                                                  |
-| `commerce-one-time-payment`             | Simple one-time checkout UI (no storefront cart flow)                                                         |
+| `payment/commerce-one-time-payment`     | Simple one-time checkout UI (no storefront cart flow)                                                         |
 
 ## Absolute Rules
 

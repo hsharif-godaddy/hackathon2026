@@ -32,11 +32,14 @@ vi.mock('@airo/ai-skills', async () => {
       tools: {
         'blog__createPost': { description: 'Create a blog post' },
         'blog__listPosts': { description: 'List blog posts' },
-        'database__query': { description: 'Query database' }
+        'database__query': { description: 'Query database' },
+        'stripe__setup': { description: 'Set up Stripe sandbox' },
+        'stripe__status': { description: 'Check Stripe provisioning status' },
       },
       skillToTools: new Map([
         ['blog', ['createPost', 'listPosts']],
-        ['database', ['query']]
+        ['database', ['query']],
+        ['payment/stripe', ['setup', 'status']],
       ]),
       skillHooks: new Map([
         ['blog', { onInstall: mockOnInstallHook, onLoad: mockOnLoadHook }]
@@ -70,7 +73,7 @@ describe('SkillToolManager', () => {
       await manager.initialize();
       // Should not throw or duplicate tools
       const tools = manager.getAllTools();
-      expect(Object.keys(tools).length).toBe(3);
+      expect(Object.keys(tools).length).toBe(5);
     });
 
     it('passes onStateError to buildAllSkillTools so state-write failures are observable', async () => {
@@ -100,6 +103,13 @@ describe('SkillToolManager', () => {
           expect(result.error).not.toContain('Invalid skill name');
         }
       }
+    });
+
+    it('should activate category/subskill names and return prefixed tool names', function categorySubskill() {
+      const result = manager.registerSkill('payment/stripe', 'conv-123');
+      expect(result.success).toBe(true);
+      expect(result.tools).toContain('stripe__setup');
+      expect(result.tools).toContain('stripe__status');
     });
 
     it('should return tool names when activating a skill', () => {

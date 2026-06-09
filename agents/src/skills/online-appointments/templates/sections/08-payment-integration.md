@@ -3,7 +3,7 @@
 **PREREQUISITES: Install commerce skill first**
 
 ```typescript
-skill({ action: 'install', skill: 'commerce-one-time-payment' });
+skill({ action: 'install', skill: 'payment/commerce-one-time-payment' });
 ```
 
 This provides:

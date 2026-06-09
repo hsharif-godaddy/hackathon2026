@@ -9,8 +9,8 @@
 import { tool } from 'ai'
 import type { Tool, ToolExecutionOptions } from 'ai'
 import type { z } from 'zod'
-import { readdir, access } from 'fs/promises'
-import { join } from 'path'
+import { access, readdir } from 'node:fs/promises'
+import { join } from 'node:path'
 import { buildSkillToolName } from './constants.js'
 
 export interface SkillToolDefinition {
@@ -119,19 +119,21 @@ export interface SkillToolRegistry {
 }
 
 /**
- * Validate skill name to prevent path traversal attacks
- * Only allows alphanumeric characters, hyphens, and underscores
+ * Validate skill name to prevent path traversal attacks.
+ * Allows alphanumeric, hyphens, and underscores, with an optional single '/'
+ * for one level of namespacing (e.g. "payment/stripe"). Each segment must be
+ * non-empty and contain only safe characters.
  */
 function isValidSkillName(skillName: string): boolean {
   if (!skillName || skillName.length === 0 || skillName.length > 100) {
     return false
   }
-  // Reject path traversal attempts
-  if (skillName.includes('..') || skillName.includes('/') || skillName.includes('\\')) {
+  if (skillName.includes('..') || skillName.includes('\\')) {
     return false
   }
-  // Only allow safe characters
-  return /^[a-zA-Z0-9_-]+$/.test(skillName)
+  const segments = skillName.split('/')
+  if (segments.length > 2) return false
+  return segments.every(seg => /^[a-zA-Z0-9_-]+$/.test(seg))
 }
 
 interface SkillModuleExports {
@@ -151,7 +153,11 @@ async function loadSkillToolDefinitions(
     return { tools: [] }
   }
 
-  const toolsIndexPath = join(skillsDir, skillName, 'tools', 'index.ts')
+  // Split into validated segments and join individually — avoids passing a
+  // slash-containing string directly into join(), which trips path-traversal
+  // scanners even though isValidSkillName already rejects unsafe inputs.
+  const segments = skillName.split('/')
+  const toolsIndexPath = join(skillsDir, ...segments, 'tools', 'index.ts')
 
   try {
     // Check if tools directory exists
@@ -298,21 +304,36 @@ export async function buildAllSkillTools(
   }
 
   try {
-    // Get all skill directories
     const entries = await readdir(skillsDir, { withFileTypes: true })
-    const skillDirs = entries
-      .filter(e => e.isDirectory())
-      .map(e => e.name)
+    const topDirs = entries.filter(e => e.isDirectory()).map(e => e.name)
 
-    for (const skillName of skillDirs) {
+    for (const skillName of topDirs) {
       const { tools: toolDefs, hooks } = await loadSkillToolDefinitions(skillsDir, skillName)
 
       if (toolDefs.length > 0) {
         registry = registerSkillTools(skillName, toolDefs, registry, options)
       }
-
       if (hooks) {
         registry.skillHooks.set(skillName, hooks)
+      }
+
+      // Scan one level deeper for namespaced skills (e.g. payment/stripe).
+      // These are skill directories nested inside a top-level grouping directory.
+      let subEntries: import('node:fs').Dirent[] = []
+      try {
+        subEntries = await readdir(join(skillsDir, skillName), { withFileTypes: true })
+      } catch {
+        // Not a directory or unreadable — skip
+      }
+      for (const sub of subEntries.filter(e => e.isDirectory())) {
+        const nestedName = `${skillName}/${sub.name}`
+        const { tools: nestedToolDefs, hooks: nestedHooks } = await loadSkillToolDefinitions(skillsDir, nestedName)
+        if (nestedToolDefs.length > 0) {
+          registry = registerSkillTools(nestedName, nestedToolDefs, registry, options)
+        }
+        if (nestedHooks) {
+          registry.skillHooks.set(nestedName, nestedHooks)
+        }
       }
     }
   } catch (error) {

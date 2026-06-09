@@ -20,9 +20,9 @@
 
 import type { SkillHooks } from '@airo/ai-skills';
 
-import { logger } from '../../../logging/index.js';
-import { loadStripeMcpTools } from '../../../services/mcp/stripe-mcp-client.js';
-import { skillToolManager } from '../../../tools/skill-tool-manager.js';
+import { logger } from '../../../../logging/index.js';
+import { loadStripeMcpTools } from '../../../../services/mcp/stripe-mcp-client.js';
+import { skillToolManager } from '../../../../tools/skill-tool-manager.js';
 
 export { setupTool, statusTool } from './provisioning-tools.js';
 
