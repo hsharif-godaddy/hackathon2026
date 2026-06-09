@@ -1,0 +1,16 @@
+# Dataset and build artifacts
+dataset/
+node_modules/
+.playwright-browsers/
+package-lock.json
+
+# Environment files (contain secrets)
+.env
+.env.local
+
+# Test/temporary manifest files
+manifest.*.json
+!manifest.example.json
+
+judge.log
+.playwright-browsers/

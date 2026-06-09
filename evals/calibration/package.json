@@ -1,0 +1,26 @@
+{
+  "name": "@airo/evals-calibration",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dataset": "tsx src/index.ts",
+    "judge": "tsx src/judging/run.ts",
+    "metrics": "tsx src/judging/metrics.ts",
+    "postinstall": "PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers playwright install chromium",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1048.0",
+    "@aws-sdk/client-secrets-manager": "^3.1048.0",
+    "@aws-sdk/lib-dynamodb": "^3.1048.0",
+    "dotenv": "17.2.3",
+    "js-yaml": "^4.1.0",
+    "playwright": "1.59.1"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "22.19.18",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3"
+  }
+}
