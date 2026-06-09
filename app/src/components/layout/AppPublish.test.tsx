@@ -506,6 +506,63 @@ describe('AppPublish', () => {
     });
   });
 
+  it('should not show conversation warning when popover is opened by agent via nonce', async function agentInitiatedNoWarning() {
+    mockStreaming.streamingState = 'streaming';
+    mockDevelopStore.publishStates['app-123'] = { publishPopoverRequestNonce: 1 };
+
+    renderWithProviders(<AppPublish />);
+
+    await waitFor(() => {
+      expect(screen.queryByText('builder_publish_conversation_warning')).not.toBeInTheDocument();
+    });
+  });
+
+  it('should suppress conversation warning on manual reopen while agent publish is still in progress', async function agentPublishReopenNoWarning() {
+    mockStreaming.streamingState = 'streaming';
+    mockDevelopStore.publishStates['app-123'] = { publishPopoverRequestNonce: 1 };
+
+    const { user } = renderWithProviders(<AppPublish />);
+
+    // Close popover manually.
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    // Re-open manually while streaming is still active
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.queryByText('builder_publish_conversation_warning')).not.toBeInTheDocument();
+    });
+  });
+
+  it('should show conversation warning again after agent publish conversation ends and a new streaming session begins', async function resetAfterConversationEnd() {
+    mockStreaming.streamingState = 'streaming';
+    mockDevelopStore.publishStates['app-123'] = { publishPopoverRequestNonce: 1 };
+
+    const { rerender, user } = renderWithProviders(<AppPublish />);
+
+    // Agent-initiated publish suppresses the warning
+    await waitFor(() => {
+      expect(screen.queryByText('builder_publish_conversation_warning')).not.toBeInTheDocument();
+    });
+
+    // Conversation ends → flag resets
+    mockStreaming.streamingState = 'idle';
+    rerender(<AppPublish />);
+
+    // New streaming session starts (unrelated to publish)
+    mockStreaming.streamingState = 'streaming';
+    rerender(<AppPublish />);
+
+    // User opens the popover manually — warning should appear now
+    const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_conversation_warning')).toBeInTheDocument();
+    });
+  });
+
   it('should show unpublished domain helper for first-time publish', async function firstTimeCopy() {
     mockSiteStore.getSite.mockReturnValue(
       createMockSite({

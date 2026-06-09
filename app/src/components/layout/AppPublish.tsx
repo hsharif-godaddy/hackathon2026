@@ -153,6 +153,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
   const isUpgradePolling = useIsUpgradePolling();
   const [pendingOpenAfterUpgrade, setPendingOpenAfterUpgrade] = useState(false);
+  const [isAgentInitiatedPublish, setIsAgentInitiatedPublish] = useState(false);
   const { triggerAnalysis } = useTriggerSecurityAnalysis();
 
   const handlePaywallPurchaseSuccess = useCallback(async () => {
@@ -303,6 +304,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       setPublishResult(null);
       setOpen(false);
       setIsFixingBuildError(false);
+      setIsAgentInitiatedPublish(false);
     }
   }, [currentAppId, publishPopoverRequestNonce]);
 
@@ -326,8 +328,15 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     }
     if (publishPopoverRequestNonce <= lastHandled.nonce) return;
     lastHandledPublishPopoverRequestRef.current = { appId: currentAppId, nonce: publishPopoverRequestNonce };
+    setIsAgentInitiatedPublish(true);
     openPopover();
   }, [currentAppId, isChatToolbar, isMobile, openPopover, publishPopoverRequestNonce]);
+
+  useEffect(() => {
+    if (!isConversationInProgress) {
+      setIsAgentInitiatedPublish(false);
+    }
+  }, [isConversationInProgress]);
 
   useEffect(() => {
     if (!currentAppId || !showFirstPublishCongrats) return;
@@ -641,7 +650,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
   // Determine which status alert to show (priority order)
   const getPublishStatusAlert = () => {
-    if (isConversationInProgress) {
+    if (isConversationInProgress && !isAgentInitiatedPublish) {
       return (
         <Alert emphasis="warning">
           {t('builder_publish_conversation_warning')}
