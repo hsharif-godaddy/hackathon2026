@@ -1524,6 +1524,9 @@ function applyMigrations(db: Database): void {
 
   // Add purpose column to share_tokens for archive-snapshot share tokens
   migrateShareTokensPurpose(db);
+
+  // Strip oversized finalResult blobs from conversation_messages metadata
+  stripFinalResultBloat(db);
 }
 
 /**
@@ -1835,6 +1838,73 @@ function migrateSummariesQualityTracking(db: Database): void {
     });
   } catch (err) {
     logger.error('database.migration.summaries-quality-tracking.failed', {
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    // Don't throw - migration failures shouldn't break app startup
+  }
+}
+
+/**
+ * Migration: Strip oversized finalResult blobs from conversation_messages metadata.
+ *
+ * The writer previously stored the full AI SDK result object (steps, tool calls,
+ * tool results, file contents) in metadata.finalResult. Only finalResult.finishReason
+ * is ever read back. On busy databases this accumulated hundreds of MB that were
+ * loaded into memory on every context-rebuild, causing OOM crashes.
+ *
+ * This migration rewrites existing rows to keep only { finishReason } when present,
+ * or removes finalResult entirely when there is no finishReason to preserve.
+ *
+ * Idempotent: the length(> 100) guard skips rows that are already minimal.
+ */
+function stripFinalResultBloat(db: Database): void {
+  try {
+    const hasBloat = db.prepare(`
+      SELECT 1 FROM conversation_messages
+      WHERE metadata IS NOT NULL
+        AND json_type(metadata, '$.finalResult') = 'object'
+        AND length(json_extract(metadata, '$.finalResult')) > 100
+      LIMIT 1
+    `).get();
+
+    if (!hasBloat) {
+      logger.info('database.migration.strip-final-result.skipped', { reason: 'no oversized finalResult rows' });
+      return;
+    }
+
+    logger.info('database.migration.strip-final-result.start');
+
+    const migrate = db.transaction(() => {
+      const withFinishReason = db.prepare(`
+        UPDATE conversation_messages
+        SET metadata = json_set(
+          json_remove(metadata, '$.finalResult'),
+          '$.finalResult',
+          json_object('finishReason', json_extract(metadata, '$.finalResult.finishReason'))
+        )
+        WHERE metadata IS NOT NULL
+          AND json_type(metadata, '$.finalResult') = 'object'
+          AND json_extract(metadata, '$.finalResult.finishReason') IS NOT NULL
+          AND length(json_extract(metadata, '$.finalResult')) > 100
+      `).run();
+
+      const withoutFinishReason = db.prepare(`
+        UPDATE conversation_messages
+        SET metadata = json_remove(metadata, '$.finalResult')
+        WHERE metadata IS NOT NULL
+          AND json_type(metadata, '$.finalResult') = 'object'
+          AND json_extract(metadata, '$.finalResult.finishReason') IS NULL
+          AND length(json_extract(metadata, '$.finalResult')) > 100
+      `).run();
+
+      return { withFinishReason: withFinishReason.changes, withoutFinishReason: withoutFinishReason.changes };
+    });
+
+    const result = migrate();
+    logger.info('database.migration.strip-final-result.complete', result);
+  } catch (err) {
+    logger.error('database.migration.strip-final-result.failed', {
       error: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,
     });
