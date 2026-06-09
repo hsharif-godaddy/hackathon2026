@@ -178,7 +178,7 @@ function SocialConnectToolRenderer({
 
     // Determine which view to show
     let content
-    if (isFromHistory) {
+    if (isFromHistory || connectStatus !== 'pending') {
       content = (
         <SocialConnectionStatusMessage
           status={

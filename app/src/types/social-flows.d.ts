@@ -15,7 +15,7 @@ declare module '@social/social-flows' {
     market: string
     rootDomain: string
     sourceApp: string
-    businessName: string
+    businessName?: string
     onComplete: (arg: onCompletePayload | undefined) => void
     onConnection?: (arg: onConnectionPayload | undefined) => void
     modal?: boolean | null
@@ -28,4 +28,20 @@ declare module '@social/social-flows' {
   }
 
   export const FBConnectFlow: FunctionComponent<FBConnectFlowProps>
+
+  interface IGConnectFlowProps {
+    market: string
+    rootDomain: string
+    sourceApp: string
+    onComplete: (arg: onCompletePayload | undefined) => void
+    onConnection?: (arg: onConnectionPayload | undefined) => void
+    modal?: boolean | null
+    SignInInfoComponent?: object
+    SuccessInfoComponent?: object
+    signInRedirectOpts?: object
+    userTokenId?: string
+    vnextProps?: object
+  }
+
+  export const IGConnectFlow: FunctionComponent<IGConnectFlowProps>
 }

@@ -43,7 +43,7 @@ export function useLinkConnection() {
     },
     onSuccess: (_, { siteId }) => {
       queryClient.invalidateQueries({ queryKey: ['site-associations', siteId] })
-      queryClient.invalidateQueries({ queryKey: ['social-connections'] })
+      queryClient.invalidateQueries({ queryKey: ['social-connections'], refetchType: 'all' })
     },
   })
 }

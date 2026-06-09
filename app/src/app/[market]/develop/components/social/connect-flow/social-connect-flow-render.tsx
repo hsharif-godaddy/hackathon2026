@@ -248,17 +248,17 @@ export function getRenderConfig({
 
     case RenderState.OAuthPrompt: {
       const isFacebook = platform.toLowerCase() === SocialPlatform.FACEBOOK
+      const isInstagram = platform.toLowerCase() === SocialPlatform.INSTAGRAM
 
-      if (isFacebook && onSuccess) {
+      if ((isFacebook || isInstagram) && onSuccess) {
         return {
           icon: config.Icon,
           platformName: config.name,
           content: (
             <SocialFlowsConnectWidget
               appId={appId}
-              businessName=""
+              platform={platform.toLowerCase()}
               onSuccess={onSuccess}
-              skipLink
             />
           )
         }
