@@ -40,6 +40,7 @@ import { SSEClientActionService } from './SSEClientActionService.js'
 import { registerActionService, cleanupActionService, getActionService } from '../agent-runtime.js'
 import { sseSessionKey } from './session-key.js'
 import { resolveRebuildBuildPagePrompt } from '../rebuild-build-page-message.js'
+import { emitRebuildBuildPageToolLifecycle } from '../rebuild-build-page-tool-events.js'
 import { logger, errorFields } from '../../logging/index.js'
 import { getBudgetServiceClient } from '../../services/budget-service-instance.js'
 import {
@@ -1784,9 +1785,21 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       // continueConversation above, so the persisted/displayed user message
       // stays the original text; only the agent loop input is replaced. This is
       // the SSE-transport counterpart of the WS getEffectiveAgentMessage hook.
-      const agentContent = rebuildBuildPageSlug
-        ? (await resolveRebuildBuildPagePrompt({ metadata: { appId, rebuildBuildPageSlug } })) ?? content
-        : content
+      const rebuildResolution = rebuildBuildPageSlug
+        ? await resolveRebuildBuildPagePrompt({ metadata: { appId, rebuildBuildPageSlug } })
+        : undefined
+      const agentContent = rebuildResolution?.prompt ?? content
+      // Surface the deterministic rebuild as a real tool lifecycle (card + analytics).
+      // Wire-only: not persisted to conversation history (Slice 1 scope).
+      if (rebuildResolution) {
+        await emitRebuildBuildPageToolLifecycle(
+          rebuildResolution.confirmation,
+          (event) => this.publishNonTerminal(appId, conversationId, { conversationId, ...event }),
+        )
+        logger.info('rebuild.build_page.tool_lifecycle_emitted', {
+          appId, conversationId, pageSlug: rebuildResolution.confirmation.pageSlug,
+        })
+      }
 
       const runLoop = () => executeAgentLoop(resolvedAgentId, agentContent, {
         getAgent: (name) => this.deps.getAgent(name),

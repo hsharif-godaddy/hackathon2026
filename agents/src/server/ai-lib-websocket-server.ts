@@ -1388,7 +1388,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
       // prompt so the develop turn doesn't depend on the model choosing to call
       // rebuildPageSelector. Returns undefined for non-rebuild turns.
       getEffectiveAgentMessage: (_socketId: string, _message: string, context?: Record<string, unknown>) =>
-        resolveRebuildBuildPagePrompt(context),
+        resolveRebuildBuildPagePrompt(context).then((r) => r?.prompt),
 
       // Optional event handlers (persistence is now handled automatically)
       onMessageStart: async (socketId: string, message: string, agentName?: string, context?: Record<string, unknown>) => {

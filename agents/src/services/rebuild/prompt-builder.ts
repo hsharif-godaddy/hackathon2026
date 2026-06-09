@@ -25,6 +25,7 @@ import {
   type StylePreferences,
 } from '../../types/rebuild.js';
 import { normalizeAssetPath } from '../../utils/asset-paths.js';
+import { resolvePageTitle } from '../../utils/rebuild-utils.js';
 import { resizeForVision } from '../../utils/image-resize.js';
 import { AssetProcessingService } from '../AssetProcessingService.js';
 import type { PagePersistenceService } from './page-persistence.js';
@@ -36,6 +37,9 @@ export interface BuildPageResult {
   specPath?: string;
   specPatternCount: number;
   specFormCount: number;
+  sourceUrl: string;
+  pageTitle: string;
+  imageCount: number;
 }
 
 export class RebuildPromptBuilder {
@@ -138,7 +142,15 @@ export class RebuildPromptBuilder {
       specFormCount = spec.forms.length;
     }
 
-    return { prompt, specPath, specPatternCount, specFormCount };
+    return {
+      prompt,
+      specPath,
+      specPatternCount,
+      specFormCount,
+      sourceUrl: pageContent.url,
+      pageTitle: resolvePageTitle(pageContent.title, pageSlug),
+      imageCount: pageAssetManifest.byType.image,
+    };
   }
 
   private async analyzePageAssets(

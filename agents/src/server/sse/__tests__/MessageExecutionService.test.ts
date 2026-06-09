@@ -1349,7 +1349,15 @@ describe('MessageExecutionService', () => {
     })
 
     it('substitutes agent content with the source-built page prompt while persisting the original (rebuild Build Page)', async () => {
-      mockResolveRebuildBuildPagePrompt.mockResolvedValueOnce('SOURCE PAGE PROMPT')
+      mockResolveRebuildBuildPagePrompt.mockResolvedValueOnce({
+        prompt: 'SOURCE PAGE PROMPT',
+        confirmation: {
+          pageSlug: 'about',
+          pageTitle: 'About',
+          sourceUrl: 'https://example.com/about',
+          imageCount: 2,
+        },
+      })
       const streamGenerate = vi.fn().mockResolvedValue({
         textStream: (async function* () { yield 'ok' })(),
         baseStream: null,
@@ -4054,6 +4062,86 @@ describe('MessageExecutionService', () => {
         conversationId: 'conv_1',
         iterations: 10,
       })
+    })
+  })
+
+  describe('deterministic rebuild "Build Page" tool lifecycle', () => {
+    // mockResolveRebuildBuildPagePrompt is module-scoped and not reset in the
+    // outer beforeEach; restore the default (undefined → no rebuild) after each
+    // case so other suites that pass rebuildBuildPageSlug are unaffected.
+    afterEach(() => {
+      mockResolveRebuildBuildPagePrompt.mockReset()
+      mockResolveRebuildBuildPagePrompt.mockResolvedValue(undefined)
+    })
+
+    function rebuildToolCalls() {
+      return deps.eventChannel.publish.mock.calls.filter(
+        (c: any[]) => (c[1] as any)?.data?.tool?.name === 'rebuildBuildPage',
+      )
+    }
+
+    it('emits tool_start → tool_call → tool_result for a source-backed build', async () => {
+      mockResolveRebuildBuildPagePrompt.mockResolvedValue({
+        prompt: 'Build the About page from source',
+        confirmation: {
+          pageSlug: 'about',
+          pageTitle: 'About Us',
+          sourceUrl: 'https://example.com/about',
+          imageCount: 7,
+        },
+      })
+      const streamGenerate = vi.fn().mockResolvedValue({
+        textStream: (async function* () {})(),
+        baseStream: makeReadableStream([{ type: 'text-delta', text: 'ok' }]),
+        getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+      })
+      deps.getAgent.mockReturnValue({
+        streamGenerate,
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, rebuildBuildPageSlug: 'about' })
+
+      const calls = rebuildToolCalls()
+      expect(calls.map((c: any[]) => (c[1] as any).type)).toEqual([
+        'tool_start',
+        'tool_call',
+        'tool_result',
+      ])
+      const resultEvent = calls[calls.length - 1][1] as any
+      expect(resultEvent.data.tool.output).toEqual({
+        pageSlug: 'about',
+        pageTitle: 'About Us',
+        sourceUrl: 'https://example.com/about',
+        imageCount: 7,
+      })
+
+      // The agent loop must run on the source-built prompt, not the raw content.
+      expect(streamGenerate).toHaveBeenCalledWith(
+        'Build the About page from source',
+        expect.anything(),
+      )
+    })
+
+    it('emits no rebuild lifecycle and uses original content when source is missing', async () => {
+      // resolver returns undefined (default) → not source-backed
+      const streamGenerate = vi.fn().mockResolvedValue({
+        textStream: (async function* () {})(),
+        baseStream: makeReadableStream([{ type: 'text-delta', text: 'ok' }]),
+        getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+      })
+      deps.getAgent.mockReturnValue({
+        streamGenerate,
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, rebuildBuildPageSlug: 'about' })
+
+      expect(rebuildToolCalls()).toHaveLength(0)
+      // Falls back to the original user content.
+      expect(streamGenerate).toHaveBeenCalledWith('Hello', expect.anything())
     })
   })
 })

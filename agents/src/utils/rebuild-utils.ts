@@ -67,3 +67,19 @@ export function normalizeRebuildPageKey(pageUrl: string): string {
     return pageUrl;
   }
 }
+
+export function slugToTitle(slug: string): string {
+  return slug
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/** The sentinel value produced by extractTitle when no heading is found. */
+export const UNTITLED_PAGE_TITLE = 'Untitled Page';
+
+/** Pick a human title: the extracted page title, unless it's the generic
+ * fallback, in which case derive from the slug. */
+export function resolvePageTitle(extractedTitle: string | undefined, slug: string): string {
+  return (extractedTitle && extractedTitle !== UNTITLED_PAGE_TITLE) ? extractedTitle : slugToTitle(slug);
+}

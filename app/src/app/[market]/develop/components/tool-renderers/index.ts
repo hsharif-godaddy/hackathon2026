@@ -33,6 +33,7 @@ import MediaSlotToolRenderer from './MediaSlotToolRenderer'
 import PublishClientToolRenderer from './PublishClientToolRenderer'
 import QRCodeToolRenderer from './QRCodeToolRenderer'
 import ReadFileToolRenderer from './ReadFileToolRenderer'
+import RebuildBuildPageToolRenderer from './RebuildBuildPageToolRenderer'
 import RebuildPageSelectorToolRenderer from './RebuildPageSelectorToolRenderer'
 import SecretsToolRenderer from './SecretsToolRenderer'
 import SeoAuditToolRenderer from './SeoAuditToolRenderer'
@@ -120,6 +121,7 @@ export const toolRendererRegistry = {
   publishing__publish: PublishClientToolRenderer,
   websiteRebuild: WebsiteRebuildToolRenderer,
   rebuildPageSelector: RebuildPageSelectorToolRenderer,
+  rebuildBuildPage: RebuildBuildPageToolRenderer,
   'media-logo__generate_logo': LogoGeneratorToolRenderer,
   'media-logo__edit_logo': LogoGeneratorToolRenderer,
   'media-logo__offer_logo_actions': LogoActionsToolRenderer,
@@ -190,6 +192,7 @@ export {
   PublishClientToolRenderer,
   QRCodeToolRenderer,
   ReadFileToolRenderer,
+  RebuildBuildPageToolRenderer,
   RebuildPageSelectorToolRenderer,
   SecretsToolRenderer,
   SetProjectNameToolRenderer,

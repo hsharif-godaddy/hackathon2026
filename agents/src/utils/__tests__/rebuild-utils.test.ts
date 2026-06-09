@@ -5,6 +5,9 @@ import {
   isRebuildHomepage,
   normalizeRebuildPageKey,
   rebuildUrlToSlug,
+  resolvePageTitle,
+  slugToTitle,
+  UNTITLED_PAGE_TITLE,
 } from '../rebuild-utils.js';
 
 describe('isRebuildHomepage', () => {
@@ -154,5 +157,26 @@ describe('normalizeRebuildPageKey', () => {
     const key3 = normalizeRebuildPageKey('https://example.com/about?ref=1');
     expect(key1).toBe(key2);
     expect(key2).toBe(key3);
+  });
+});
+
+describe('slugToTitle', () => {
+  it('title-cases each hyphen-separated word', () => {
+    expect(slugToTitle('contact-us')).toBe('Contact Us');
+    expect(slugToTitle('about')).toBe('About');
+  });
+});
+
+describe('resolvePageTitle', () => {
+  it('passes through a real extracted title', () => {
+    expect(resolvePageTitle('Get in Touch', 'contact-us')).toBe('Get in Touch');
+  });
+
+  it('derives from the slug when the extracted title is the generic fallback', () => {
+    expect(resolvePageTitle(UNTITLED_PAGE_TITLE, 'contact-us')).toBe('Contact Us');
+  });
+
+  it('derives from the slug when no title was extracted', () => {
+    expect(resolvePageTitle(undefined, 'about-team')).toBe('About Team');
   });
 });

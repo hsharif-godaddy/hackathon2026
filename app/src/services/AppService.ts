@@ -702,7 +702,11 @@ export class AppService {
     const response = await agentFetch(apiUrl, { siteId: appId })
 
     if (!response.ok) {
-      throw new Error(`Failed to load file content: ${response.status}`)
+      // Attach the HTTP status so callers can distinguish an expected 404
+      // (file not written yet) from a real failure (500/network/auth).
+      const error = new Error(`Failed to load file content: ${response.status}`) as Error & { status?: number }
+      error.status = response.status
+      throw error
     }
 
     return response.json()

@@ -1,6 +1,7 @@
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { Logger } from '../logging/index.js';
 import { RebuildOrchestrationService } from '../services/RebuildOrchestrationService.js';
+import type { BuildPageResult } from '../services/rebuild/prompt-builder.js';
 
 const logger = Logger.create({ component: 'rebuild-build-page-message' });
 
@@ -8,17 +9,33 @@ const logger = Logger.create({ component: 'rebuild-build-page-message' });
 // constructing a fresh AppRepository on every rebuild-build message.
 const appRepo = new AppRepository();
 
+export interface RebuildBuildPageConfirmation {
+  pageSlug: string;
+  pageTitle: string;
+  sourceUrl: string;
+  imageCount: number;
+}
+
+export interface RebuildBuildPageResolution {
+  prompt: string;
+  confirmation: RebuildBuildPageConfirmation;
+}
+
 export interface RebuildBuildPageDeps {
   /** Resolve an app's filesystem path from its id (undefined if unknown). */
   findAppPath: (appId: string) => string | undefined;
-  /** Build the source-based prompt for a rebuild page and return it. */
-  buildPage: (appPath: string, appId: string, slug: string) => Promise<string>;
+  /** Build the source-based prompt for a rebuild page and return source metadata. */
+  buildPage: (
+    appPath: string,
+    appId: string,
+    slug: string,
+  ) => Promise<Pick<BuildPageResult, 'prompt' | 'sourceUrl' | 'pageTitle' | 'imageCount'>>;
 }
 
 const defaultDeps: RebuildBuildPageDeps = {
   findAppPath: appId => appRepo.findById(appId)?.path,
   buildPage: (appPath, appId, slug) =>
-    new RebuildOrchestrationService(appPath).buildPage(appId, slug),
+    new RebuildOrchestrationService(appPath).buildPageDetailed(appId, slug),
 };
 
 /**
@@ -37,7 +54,7 @@ const defaultDeps: RebuildBuildPageDeps = {
 export async function resolveRebuildBuildPagePrompt(
   context: Record<string, unknown> | undefined,
   deps: RebuildBuildPageDeps = defaultDeps
-): Promise<string | undefined> {
+): Promise<RebuildBuildPageResolution | undefined> {
   const metadata = (context as { metadata?: Record<string, unknown> } | undefined)?.metadata;
   const slug = metadata?.rebuildBuildPageSlug;
   if (typeof slug !== 'string' || slug.length === 0) return undefined;
@@ -60,15 +77,29 @@ export async function resolveRebuildBuildPagePrompt(
       return undefined;
     }
 
-    const pagePrompt = await deps.buildPage(appPath, appId, slug);
+    const built = await deps.buildPage(appPath, appId, slug);
     logger.info('rebuild.build_page.deterministic_substitution', {
       appId,
       slug,
-      promptLength: pagePrompt.length,
+      promptLength: built.prompt.length,
+      imageCount: built.imageCount,
     });
-    return pagePrompt;
+    return {
+      prompt: built.prompt,
+      confirmation: {
+        pageSlug: slug,
+        pageTitle: built.pageTitle,
+        sourceUrl: built.sourceUrl,
+        imageCount: built.imageCount,
+      },
+    };
   } catch (error) {
-    logger.warn('rebuild.build_page.substitution_failed', {
+    // error (not warn): a thrown buildPage is a genuine failed deterministic
+    // rebuild that silently degrades to the original user message (no card, no
+    // analytics). Logging at error makes it reachable in Sentry rather than
+    // blending into routine warns. The `substitution_skipped` cases above stay
+    // warn — they're expected absences (no slug / missing app), not failures.
+    logger.error('rebuild.build_page.substitution_failed', {
       appId,
       slug,
       error: error instanceof Error ? error.message : String(error),

@@ -5,7 +5,12 @@ import { resolveRebuildBuildPagePrompt, type RebuildBuildPageDeps } from '../reb
 function deps(overrides: Partial<RebuildBuildPageDeps> = {}): RebuildBuildPageDeps {
   return {
     findAppPath: vi.fn().mockReturnValue('/apps/app-1'),
-    buildPage: vi.fn().mockResolvedValue('SOURCE PAGE PROMPT'),
+    buildPage: vi.fn().mockResolvedValue({
+      prompt: 'SOURCE PAGE PROMPT',
+      sourceUrl: 'https://example.com/about',
+      pageTitle: 'About',
+      imageCount: 3,
+    }),
     ...overrides,
   };
 }
@@ -17,7 +22,7 @@ describe('resolveRebuildBuildPagePrompt', () => {
       { metadata: { appId: 'app-1', rebuildBuildPageSlug: 'about' } },
       d,
     );
-    expect(result).toBe('SOURCE PAGE PROMPT');
+    expect(result?.prompt).toBe('SOURCE PAGE PROMPT');
     expect(d.buildPage).toHaveBeenCalledWith('/apps/app-1', 'app-1', 'about');
   });
 
@@ -57,6 +62,51 @@ describe('resolveRebuildBuildPagePrompt', () => {
     const d = deps({ buildPage: vi.fn().mockRejectedValue(new Error('Page not found: about')) });
     const result = await resolveRebuildBuildPagePrompt(
       { metadata: { appId: 'app-1', rebuildBuildPageSlug: 'about' } },
+      d,
+    );
+    expect(result).toBeUndefined();
+  });
+});
+
+describe('resolveRebuildBuildPagePrompt confirmation', () => {
+  it('returns prompt + confirmation carrying source metadata from the build result', async () => {
+    const d = {
+      findAppPath: () => '/tmp/app',
+      buildPage: async () => ({
+        prompt: 'SOURCE PAGE PROMPT',
+        // pageTitle is the scraped title (not slug-derived) — it flows through verbatim
+        sourceUrl: 'https://example.com/contact-us',
+        pageTitle: 'Get in Touch',
+        imageCount: 5,
+      }),
+    };
+    const result = await resolveRebuildBuildPagePrompt(
+      { metadata: { appId: 'app123', rebuildBuildPageSlug: 'contact-us' } },
+      d,
+    );
+    expect(result).toEqual({
+      prompt: 'SOURCE PAGE PROMPT',
+      confirmation: {
+        pageSlug: 'contact-us',
+        pageTitle: 'Get in Touch',
+        sourceUrl: 'https://example.com/contact-us',
+        imageCount: 5,
+      },
+    });
+  });
+
+  it('returns undefined when the slug is absent', async () => {
+    const result = await resolveRebuildBuildPagePrompt({ metadata: { appId: 'app123' } });
+    expect(result).toBeUndefined();
+  });
+
+  it('returns undefined when the source build throws', async () => {
+    const d = {
+      findAppPath: () => '/tmp/app',
+      buildPage: async () => { throw new Error('source JSON missing'); },
+    };
+    const result = await resolveRebuildBuildPagePrompt(
+      { metadata: { appId: 'app123', rebuildBuildPageSlug: 'about' } },
       d,
     );
     expect(result).toBeUndefined();

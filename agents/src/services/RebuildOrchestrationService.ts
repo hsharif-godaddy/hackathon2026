@@ -14,7 +14,7 @@ import {
 } from '../types/rebuild.js';
 import { rebuildUrlToSlug } from '../utils/rebuild-utils.js';
 import { extractNavigationFromHtml, PagePersistenceService, type SavePageInput } from './rebuild/page-persistence.js';
-import { RebuildPromptBuilder } from './rebuild/prompt-builder.js';
+import { RebuildPromptBuilder, type BuildPageResult } from './rebuild/prompt-builder.js';
 import { ScrapePipeline } from './rebuild/scrape-pipeline.js';
 import { SitemapDiscoveryService } from './SitemapDiscoveryService.js';
 
@@ -261,9 +261,19 @@ export class RebuildOrchestrationService {
    * @returns Promise resolving to generated prompt
    */
   async buildPage(appId: string, pageSlug: string): Promise<string> {
+    return (await this.buildPageDetailed(appId, pageSlug)).prompt;
+  }
+
+  /**
+   * Like buildPage, but returns the full BuildPageResult (including source
+   * metadata) instead of just the prompt string. Used by callers that need
+   * sourceUrl / pageTitle / imageCount for confirmation UI.
+   *
+   * Emits the lifecycle marker before any I/O so the operator sees a
+   * build-page event even when the subsequent state load fails.
+   */
+  async buildPageDetailed(appId: string, pageSlug: string): Promise<BuildPageResult> {
     try {
-      // Emit the lifecycle marker before any I/O so the operator sees a
-      // build-page event even when the subsequent state load fails.
       logger.info('rebuild-orchestration.build-page', { appId, pageSlug });
       const state = await this.getStatus(appId);
       const builder = new RebuildPromptBuilder(
@@ -290,7 +300,7 @@ export class RebuildOrchestrationService {
           : {}),
       });
 
-      return result.prompt;
+      return result;
     } catch (error) {
       logger.error('rebuild-orchestration.build-page-error', {
         appId,

@@ -23,6 +23,7 @@ import {
   type SitemapData,
   type SourceSiteData,
 } from '../../types/rebuild.js';
+import { UNTITLED_PAGE_TITLE } from '../../utils/rebuild-utils.js';
 
 const logger = Logger.create({ component: 'rebuild-orchestration-service' });
 
@@ -213,7 +214,7 @@ export function extractTitle(content: string): string {
   if (titleMatch && titleMatch[1]) {
     return titleMatch[1].trim();
   }
-  return 'Untitled Page';
+  return UNTITLED_PAGE_TITLE;
 }
 
 /**
