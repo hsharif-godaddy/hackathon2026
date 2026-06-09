@@ -85,9 +85,10 @@ export const POST = withCustomerAuth(async (
 });
 
 /**
- * PATCH: Update sync strategy without reconfiguring the remote.
+ * PUT: Update sync strategy without reconfiguring the remote.
+ * PUT instead of PATCH because Akamai gateway blocks PATCH requests.
  */
-export const PATCH = withCustomerAuth(async (
+export const PUT = withCustomerAuth(async (
   request: NextRequest,
   authContext: CustomerAuthContext,
   { params }: { params: Promise<{ id: string }> },

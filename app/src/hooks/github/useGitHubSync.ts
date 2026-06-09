@@ -41,7 +41,7 @@ export function useGitHubUpdateStrategy() {
   return useMutation({
     mutationFn: async ({ appId, syncStrategy }: UpdateStrategyParams) => {
       const res = await appFetch(`/api/apps/${appId}/github/configure`, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ syncStrategy }),
       });

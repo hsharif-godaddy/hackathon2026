@@ -377,7 +377,7 @@ All routes are wrapped in `withCustomerAuth` and gated by `enforce()`.
 | GET    | `/api/github/branches`                  | Standard   | List branches for a repository                       |
 | POST   | `/api/github/disconnect`                | Level 3    | Revoke grant + delete tokens + remove agent config   |
 | POST   | `/api/apps/:id/github/configure`        | Standard   | Configure remote + strategy                          |
-| PATCH  | `/api/apps/:id/github/configure`        | Standard   | Update sync strategy only                            |
+| PUT    | `/api/apps/:id/github/configure`        | Standard   | Update sync strategy only (PUT not PATCH — Akamai blocks PATCH) |
 | GET    | `/api/apps/:id/github/token/status`     | Standard   | Check token expiry (300s buffer) without refreshing  |
 | POST   | `/api/apps/:id/github/token/refresh`    | Level 3    | Refresh expired token via GitHub API + updateSecrets |
 | POST   | `/api/apps/:id/git/push`                | Level 3    | Trigger manual push                                  |
