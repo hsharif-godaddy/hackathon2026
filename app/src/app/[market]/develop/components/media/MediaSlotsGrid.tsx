@@ -2,7 +2,7 @@
 
 import { Play } from 'lucide-react'
 
-import { formatSlotName } from '@/app/[market]/develop/components/media/MediaSlotDetail'
+import { formatSlotName, getPreviewOrigin } from '@/app/[market]/develop/components/media/MediaSlotDetail'
 import type { MediaSlot } from '@/app/[market]/develop/components/media/types'
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import { ChatTab } from '@/app/[market]/develop/components/types'
@@ -124,8 +124,8 @@ export function MediaSlotsGrid({
           ? displayUrl.startsWith('http://') || displayUrl.startsWith('https://')
             ? displayUrl
             : displayUrl.startsWith('/airo-assets/uploads/')
-              ? `${previewBaseUrl}${displayUrl}${thumbnailBustKey ? `?_t=${thumbnailBustKey}` : ''}`
-              : `${previewBaseUrl}${assetPrefix}${name}?src=${encodeURIComponent(displayUrl)}`
+              ? `${getPreviewOrigin(previewBaseUrl)}${displayUrl}${thumbnailBustKey ? `?_t=${thumbnailBustKey}` : ''}`
+              : `${getPreviewOrigin(previewBaseUrl)}${assetPrefix}${name}?src=${encodeURIComponent(displayUrl)}`
           : displayUrl
         // Video poster: use thumbnailUrl directly (always an absolute CDN URL)
         const posterUrl = isVideo && slot.thumbnailUrl ? slot.thumbnailUrl : undefined

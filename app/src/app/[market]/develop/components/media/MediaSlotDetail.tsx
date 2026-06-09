@@ -46,6 +46,12 @@ export function formatSlotName(slot: string): string {
     .join(' ')
 }
 
+/** Strip query string from previewBaseUrl — asset paths are auth-excluded and only need the origin. */
+export function getPreviewOrigin(previewBaseUrl: string): string {
+  try { return new URL(previewBaseUrl).origin }
+  catch { return previewBaseUrl.split('?')[0].split('#')[0].replace(/\/$/, '') }
+}
+
 export function getSlotImageUrl(
   slotName: string | null,
   imageUrl: string,
@@ -60,10 +66,10 @@ export function getSlotImageUrl(
     return imageUrl
   }
   if (imageUrl.startsWith('/airo-assets/uploads/')) {
-    return `${previewBaseUrl}${imageUrl}`
+    return `${getPreviewOrigin(previewBaseUrl)}${imageUrl}`
   }
   const assetPrefix = mediaType === 'video' ? '/airo-assets/videos/' : '/airo-assets/images/'
-  return `${previewBaseUrl}${assetPrefix}${slotName}?src=${encodeURIComponent(imageUrl)}`
+  return `${getPreviewOrigin(previewBaseUrl)}${assetPrefix}${slotName}?src=${encodeURIComponent(imageUrl)}`
 }
 
 interface MediaSlotDetailProps {
@@ -745,7 +751,7 @@ export function MediaSlotDetail({
         .filter(isUploadUrl)
         .map((url) => ({
           url,
-          displayUrl: previewBaseUrl ? `${previewBaseUrl}${url}?_t=${cacheBustTs}` : url,
+          displayUrl: previewBaseUrl ? `${getPreviewOrigin(previewBaseUrl)}${url}?_t=${cacheBustTs}` : url,
           sourceFilename: slot.uploadSources?.[url],
         }))
     : []
@@ -1110,7 +1116,7 @@ export function MediaSlotDetail({
                   <div className="grid grid-cols-3 gap-2">
                     {aiUrls.slice(0, aiDisplayedCount).map((url) => {
                       const isSelected = !selectedUploadFile && effectiveSelectedUrl === url
-                      const resolvedUrl = url.startsWith('http') ? url : previewBaseUrl ? `${previewBaseUrl}${url}` : url
+                      const resolvedUrl = url.startsWith('http') ? url : previewBaseUrl ? `${getPreviewOrigin(previewBaseUrl)}${url}` : url
                       return (
                         <button
                           key={url}

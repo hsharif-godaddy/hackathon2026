@@ -11,7 +11,7 @@ import { useIsEmbedded } from '@/hooks/useIsEmbedded';
 import { useMediaManifest } from '@/hooks/useMediaManifest';
 import { useMediaSlot } from '@/hooks/useMediaSlot';
 import { renderWithProviders } from '@/tests/test-utils';
-import { formatSlotName, MediaSlotDetail } from './MediaSlotDetail';
+import { formatSlotName, getPreviewOrigin, MediaSlotDetail } from './MediaSlotDetail';
 
 const mockAppId = 'app-123';
 const mockSlotName = 'hero/image';
@@ -461,5 +461,19 @@ describe('formatSlotName', () => {
 
   it('should handle single segment', () => {
     expect(formatSlotName('hero')).toBe('Hero');
+  });
+});
+
+describe('getPreviewOrigin', () => {
+  it('strips query string from preview URL', () => {
+    expect(getPreviewOrigin('https://xyz.preview.c37.airoapp.ai/?airoShareToken=abc')).toBe('https://xyz.preview.c37.airoapp.ai');
+  });
+
+  it('returns origin unchanged when no query string', () => {
+    expect(getPreviewOrigin('https://xyz.preview.c37.airoapp.ai')).toBe('https://xyz.preview.c37.airoapp.ai');
+  });
+
+  it('handles malformed URL gracefully', () => {
+    expect(getPreviewOrigin('not-a-url?foo=bar')).toBe('not-a-url');
   });
 });

@@ -1,4 +1,5 @@
 export {
+  getPreviewOrigin,
   getSlotImageUrl,
   MediaSlotDetail,
 } from '@/app/[market]/develop/components/media/MediaSlotDetail';
