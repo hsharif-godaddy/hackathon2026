@@ -570,7 +570,7 @@ describe('AskQuestionToolRenderer', () => {
     expect(msg.match(/Decide for me/g)?.length).toBe(2)
   })
 
-  it('skipping every step sends a canonical continue message', () => {
+  it('skipping every step sends Skip without an action request', () => {
     const result = makeResult([
       {
         question: 'Vibe?',
@@ -602,11 +602,11 @@ describe('AskQuestionToolRenderer', () => {
     const [msg, options] = mockSendUserMessage.mock.calls[0]
     expect(msg).not.toMatch(/__decide__/)
     expect(msg).not.toMatch(/Decide for me/)
-    expect(msg).toBe('builder_tools_askquestion_skip_continue')
-    expect(options).toEqual({ isActionRequest: true })
+    expect(msg).toBe('builder_tools_askquestion_skip')
+    expect(options).toEqual({ askQuestionSkipped: true })
   })
 
-  it('skipping a single-step askQuestion sends the canonical continue message', () => {
+  it('skipping a single-step askQuestion sends Skip without an action request', () => {
     const result = makeResult([
       makeQuestion('Do you like the design?', [
         { text: 'Yes, build the next page' },
@@ -623,8 +623,8 @@ describe('AskQuestionToolRenderer', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Skip$/i }))
 
     expect(mockSendUserMessage).toHaveBeenCalledWith(
-      'builder_tools_askquestion_skip_continue',
-      { isActionRequest: true },
+      'builder_tools_askquestion_skip',
+      { askQuestionSkipped: true },
     )
   })
 

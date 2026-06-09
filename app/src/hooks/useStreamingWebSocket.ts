@@ -94,6 +94,9 @@ export interface SendMessageOptions {
   /** Whether this is an action request (vs conversational) */
   isActionRequest?: boolean
 
+  /** User skipped an askQuestion NBA — dismiss chips without executing the plan */
+  askQuestionSkipped?: boolean
+
   /** Custom context for extensions */
   customContext?: CustomContext
 
@@ -406,6 +409,7 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
           selectedAssets: options.selectedAssets,
           todoListContext: options.todoListContext,
           isActionRequest: options.isActionRequest,
+          askQuestionSkipped: options.askQuestionSkipped,
           customContext: options.customContext,
           rebuildBuildPageSlug: options.rebuildBuildPageSlug,
           templateId: options.templateId,

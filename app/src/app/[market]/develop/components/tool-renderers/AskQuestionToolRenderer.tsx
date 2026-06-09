@@ -152,11 +152,7 @@ export default function AskQuestionToolRenderer({
   // translations catch up.
   const decideLabel = t('builder_tools_askquestion_decide_for_me', undefined, 'Decide for me')
   // Sent when every step is skipped — must be non-empty (WebSocket rejects '').
-  const skipContinueText = t(
-    'builder_tools_askquestion_skip_continue',
-    undefined,
-    'Continue with my plan',
-  )
+  const skipText = t('builder_tools_askquestion_skip', undefined, 'Skip')
   // `hideQuestion` only suppresses the title text inside each ChoiceList.Step —
   // it does NOT mean the renderer is inert. InputActionsPanel passes
   // `hideQuestion={true}` when hoisting this component into the composer card
@@ -357,7 +353,12 @@ export default function AskQuestionToolRenderer({
             .map((q, i) => `${i + 1}) ${q.question}\n${perQuestion[i]}`)
             .filter((_, i) => perQuestion[i])
             .join('\n\n')
-    sendUserMessage(msg.trim() || skipContinueText, { isActionRequest: true })
+    const trimmed = msg.trim()
+    if (trimmed) {
+      sendUserMessage(trimmed, { isActionRequest: true })
+    } else {
+      sendUserMessage(skipText, { askQuestionSkipped: true })
+    }
 
     if (onComplete) onComplete()
   }

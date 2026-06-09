@@ -100,10 +100,12 @@ function findLastAssistantIndex(messages: ChatMessage[]): number {
   return -1
 }
 
-function hasActionResponseAfter(messages: ChatMessage[], assistantIndex: number): boolean {
+function hasNbaResponseAfter(messages: ChatMessage[], assistantIndex: number): boolean {
   if (assistantIndex < 0) return false
   return messages.slice(assistantIndex + 1).some(
-    msg => msg.role === 'user' && msg.metadata?.isActionRequest === true
+    msg =>
+      msg.role === 'user' &&
+      (msg.metadata?.isActionRequest === true || msg.metadata?.askQuestionSkipped === true),
   )
 }
 
@@ -121,7 +123,7 @@ function extractLatestNBAFromMessages(messages: ChatMessage[]): LatestNBAData | 
     if (msg.role === 'assistant' && msg.toolCalls) {
       const nba = extractLatestNBAFromToolCalls(msg.toolCalls)
       if (nba) {
-        if (hasActionResponseAfter(messages, i)) return null
+        if (hasNbaResponseAfter(messages, i)) return null
         return nba
       }
       break
@@ -145,7 +147,7 @@ export function useLatestNBAs(): LatestNBAData | null {
     }
 
     const lastAssistantIndex = findLastAssistantIndex(messages)
-    const nbaConsumed = hasActionResponseAfter(messages, lastAssistantIndex)
+    const nbaConsumed = hasNbaResponseAfter(messages, lastAssistantIndex)
 
     // Check the completed active stream first (most recent)
     if (activeStream?.isComplete && activeStream.toolCalls) {

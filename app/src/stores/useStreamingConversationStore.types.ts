@@ -239,7 +239,14 @@ export interface StreamingConversationState {
   clearSubagentEvents: () => void
 
   // Stream lifecycle
-  startNewStream: (userMessage: string, selectedAssets?: any[], referencedFiles?: Array<{ path: string; content: string }>, origin?: MessageOrigin, uploadedFileName?: string) => void
+  startNewStream: (
+    userMessage: string,
+    selectedAssets?: any[],
+    referencedFiles?: Array<{ path: string; content: string }>,
+    origin?: MessageOrigin,
+    uploadedFileName?: string,
+    userMessageMetadata?: ChatMessage['metadata'],
+  ) => void
   appendToStream: (content: string) => void
   addToolToStream: (toolCall: ToolCall) => void
   updateToolInStream: (toolId: string, updates: Partial<ToolCall>) => void

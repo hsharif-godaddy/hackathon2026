@@ -11,6 +11,11 @@ interface SendMessageOptions {
    */
   isActionRequest?: boolean
   /**
+   * When true, the user skipped an askQuestion NBA. Dismisses NBA chips in the
+   * composer without telling the agent to execute the plan.
+   */
+  askQuestionSkipped?: boolean
+  /**
    * Context data sent to the agent but not displayed in the chat bubble.
    */
   customContext?: CustomContext

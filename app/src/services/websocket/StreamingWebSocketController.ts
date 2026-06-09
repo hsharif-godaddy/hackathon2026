@@ -452,6 +452,7 @@ export class StreamingWebSocketController extends EventEmitter {
     selectedAssets?: AssetManagerItem[]
     todoListContext?: TodoContext
     isActionRequest?: boolean
+    askQuestionSkipped?: boolean
     customContext?: CustomContext
     rebuildBuildPageSlug?: string
     templateId?: string
@@ -506,7 +507,20 @@ export class StreamingWebSocketController extends EventEmitter {
       // Create user message in store (Tier 2 - transcript data)
       // Extract referencedFiles from customContext if present
       const referencedFiles = params.customContext?.referencedFiles as Array<{ path: string; content: string }> | undefined
-      this.deps.getActions().startNewStream(content, params.selectedAssets, referencedFiles, this.sessionOrigin, params.uploadedFileName)
+      const userMessageMetadata =
+        params.askQuestionSkipped === true
+          ? { askQuestionSkipped: true }
+          : params.isActionRequest === true
+            ? { isActionRequest: true }
+            : undefined
+      this.deps.getActions().startNewStream(
+        content,
+        params.selectedAssets,
+        referencedFiles,
+        this.sessionOrigin,
+        params.uploadedFileName,
+        userMessageMetadata,
+      )
 
       const store = this.deps.getStoreState()
       const { buildErrorContext } = store

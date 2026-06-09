@@ -91,7 +91,14 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
   // === CORE STREAMING ACTIONS ===
 
-  startNewStream: (userMessage: string, selectedAssets?: any[], referencedFiles?: Array<{ path: string; content: string }>, origin?: MessageOrigin, uploadedFileName?: string) => {
+  startNewStream: (
+    userMessage: string,
+    selectedAssets?: any[],
+    referencedFiles?: Array<{ path: string; content: string }>,
+    origin?: MessageOrigin,
+    uploadedFileName?: string,
+    userMessageMetadata?: ChatMessage['metadata'],
+  ) => {
     const userMsgId = generateId()
     const assistantMsgId = generateId()
 
@@ -109,6 +116,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       ...(referencedFiles && referencedFiles.length > 0 && { referencedFiles }),
       ...(uploadedFileName && { uploadedFileName }),
       ...(origin && { origin }),
+      ...(userMessageMetadata && { metadata: userMessageMetadata }),
     }
 
     // Create new streaming message for assistant

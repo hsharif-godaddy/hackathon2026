@@ -983,7 +983,20 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     store.setIsLoading(true)
     const referencedFiles = options.customContext?.referencedFiles as Array<{ path: string; content: string }> | undefined
     const origin = getMessageOriginForAuthType(tokenAuthTypeRef.current)
-    store.startNewStream(options.content, options.selectedAssets, referencedFiles, origin, options.uploadedFileName)
+    const userMessageMetadata =
+      options.askQuestionSkipped === true
+        ? { askQuestionSkipped: true }
+        : options.isActionRequest === true
+          ? { isActionRequest: true }
+          : undefined
+    store.startNewStream(
+      options.content,
+      options.selectedAssets,
+      referencedFiles,
+      origin,
+      options.uploadedFileName,
+      userMessageMetadata,
+    )
 
     // Eager rebuild intent for tool impressions this turn; skip during initial build.
     if (hasText && !isInitialBuildFunnelActive() && detectRebuildIntent(options.content)) {

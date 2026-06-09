@@ -1194,7 +1194,7 @@ describe('useSSEChat', () => {
       await hook.result.current.actions.send({ content: 'hello' })
     })
 
-    expect(mockStartNewStream).toHaveBeenCalledWith('hello', undefined, undefined, 'customer', undefined)
+    expect(mockStartNewStream).toHaveBeenCalledWith('hello', undefined, undefined, 'customer', undefined, undefined)
     expect(mockSetIsLoading).toHaveBeenCalledWith(true)
   })
 
@@ -1209,7 +1209,7 @@ describe('useSSEChat', () => {
       await hook.result.current.actions.send({ content: 'hello from support' })
     })
 
-    expect(mockStartNewStream).toHaveBeenCalledWith('hello from support', undefined, undefined, 'support', undefined)
+    expect(mockStartNewStream).toHaveBeenCalledWith('hello from support', undefined, undefined, 'support', undefined, undefined)
   })
 
   it('sendMessage defaults to customer origin when auth type has not resolved', async () => {
@@ -1220,7 +1220,7 @@ describe('useSSEChat', () => {
       await hook.result.current.actions.send({ content: 'hello before auth resolves' })
     })
 
-    expect(mockStartNewStream).toHaveBeenCalledWith('hello before auth resolves', undefined, undefined, 'customer', undefined)
+    expect(mockStartNewStream).toHaveBeenCalledWith('hello before auth resolves', undefined, undefined, 'customer', undefined, undefined)
   })
 
   it('sendMessage uses latest auth type after auth context changes', async () => {
@@ -1234,7 +1234,7 @@ describe('useSSEChat', () => {
       await hook.result.current.actions.send({ content: 'hello after auth resolves' })
     })
 
-    expect(mockStartNewStream).toHaveBeenCalledWith('hello after auth resolves', undefined, undefined, 'support', undefined)
+    expect(mockStartNewStream).toHaveBeenCalledWith('hello after auth resolves', undefined, undefined, 'support', undefined, undefined)
   })
 
   it('sendMessage calls transport.sendMessage with correct params', async () => {
@@ -1266,6 +1266,7 @@ describe('useSSEChat', () => {
       undefined,
       'customer',
       'logo.png',
+      undefined,
     )
     expect(lastTransport.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
       aiEditContexts: [{ id: 'ctx-1' }],

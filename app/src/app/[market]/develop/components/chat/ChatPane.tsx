@@ -961,6 +961,7 @@ function ChatPaneInner({
           content: outboundContent,
           aiEditContext: { screenshot: null },
           isActionRequest: options?.isActionRequest,
+          askQuestionSkipped: options?.askQuestionSkipped,
           customContext: mergedCustomContext,
           rebuildBuildPageSlug: options?.rebuildBuildPageSlug,
         });

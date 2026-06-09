@@ -85,7 +85,14 @@ export interface MessageHandlerActions {
   setWebSocketState: (state: WebSocketStateUpdate) => void
   setStreamingState: (state: string) => void
   setIsLoading: (loading: boolean) => void
-  startNewStream: (content: string, selectedAssets?: any[], referencedFiles?: Array<{ path: string; content: string }>, origin?: MessageOrigin, uploadedFileName?: string) => void
+  startNewStream: (
+    content: string,
+    selectedAssets?: any[],
+    referencedFiles?: Array<{ path: string; content: string }>,
+    origin?: MessageOrigin,
+    uploadedFileName?: string,
+    userMessageMetadata?: Record<string, unknown>,
+  ) => void
   appendTextSegment: (content: string) => void
   addToolStartSegment: (toolCall: ToolCall) => void
   addToolCallSegment: (toolCall: ToolCall) => void

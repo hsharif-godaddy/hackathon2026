@@ -67,6 +67,13 @@ function makeActionUserMessage(content = 'Red'): ChatMessage {
   })
 }
 
+function makeSkippedAskQuestionUserMessage(content = 'Skip'): ChatMessage {
+  return makeUserMessage({
+    content,
+    metadata: { askQuestionSkipped: true },
+  })
+}
+
 function makeActiveStream(
   isComplete: boolean,
   toolCalls: ToolCall[] = []
@@ -517,7 +524,18 @@ describe('useLatestNBAs', () => {
       const tc = makeAskQuestionToolCall()
       mockMessages = [
         makeAssistantMessage([tc]),
-        makeActionUserMessage('Continue with my plan'),
+        makeActionUserMessage('Yes, build the next page'),
+      ]
+
+      const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current).toBeNull()
+    })
+
+    it('returns null after askQuestion when user skips the question', () => {
+      const tc = makeAskQuestionToolCall()
+      mockMessages = [
+        makeAssistantMessage([tc]),
+        makeSkippedAskQuestionUserMessage(),
       ]
 
       const { result } = renderHook(() => useLatestNBAs())
