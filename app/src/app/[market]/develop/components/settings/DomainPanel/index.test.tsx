@@ -3,6 +3,7 @@
  */
 import '@testing-library/jest-dom';
 
+import type { ComponentProps } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
@@ -14,30 +15,59 @@ import DomainPanel from './index';
 
 const mockOpenUpgradeModal = vi.fn();
 
+const domainPanelLayoutTestState = vi.hoisted(function hoistedLayoutState() {
+  return {
+    rootBoxGap: undefined as string | undefined,
+    appDetails: { domains: [] as Array<{ fqdn: string; domainType: string; status: string }> },
+    isAppDetailsFetched: true,
+  };
+});
+
+vi.mock('@ux/box', async function mockUxBox() {
+  const actual = await vi.importActual<typeof import('@ux/box')>('@ux/box');
+  const ActualBox = actual.default;
+
+  return {
+    default: function Box(props: ComponentProps<typeof ActualBox>) {
+      if (typeof props.className === 'string' && props.className.includes('@container')) {
+        domainPanelLayoutTestState.rootBoxGap = props.gap;
+      }
+      return <ActualBox {...props} />;
+    },
+  };
+});
+
+vi.mock('@/hooks/useDomainPolling', () => ({
+  useDomainPolling: vi.fn(() => ({
+    data: domainPanelLayoutTestState.appDetails,
+    isFetched: domainPanelLayoutTestState.isAppDetailsFetched,
+  })),
+}));
+
 vi.mock('@/hooks/usePaywallEligibility', () => ({
-  usePaywallEligibility: vi.fn(function () { return { showPaywall: false, isLoading: false }; }),
+  usePaywallEligibility: vi.fn(() => ({ showPaywall: false, isLoading: false })),
 }));
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(function () { return true; }),
+  useSwitchboard: vi.fn(() => (true)),
 }));
 
 vi.mock('@/hooks/useDomainDnsOwnership', () => ({
-  useDomainDnsOwnership: vi.fn(function () { return {
+  useDomainDnsOwnership: vi.fn(() => ({
     data: { isGdDomain: false },
     isLoading: false,
     isError: false,
-  }; }),
+  })),
 }));
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
-  useAppIdFromParams: vi.fn(function () { return 'test-app-123'; }),
+  useAppIdFromParams: vi.fn(() => 'test-app-123'),
 }));
 
 vi.mock('@/stores/useSiteStore', () => ({
-  useSiteStore: vi.fn(function (selector) {
+  useSiteStore: vi.fn((selector) => {
     const state = {
-      getSite: vi.fn(function () { return null; }),
+      getSite: vi.fn(() => null),
       loading: {},
     };
     return selector(state);
@@ -51,15 +81,16 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 vi.mock('@/stores/usePaywallStore', () => ({
   usePaywallStore: (selector: any) => selector({
     openUpgradeModal: mockOpenUpgradeModal,
+    domainJobsInProgress: {},
   }),
 }));
 
 vi.mock('./usePublishForDomain', () => ({
-  usePublishForDomain: vi.fn(function () { return {
+  usePublishForDomain: vi.fn(() => ({
     handlePublish: vi.fn(),
     isPublishDisabled: false,
     publishState: { isPublishing: false },
-  }; }),
+  })),
 }));
 
 vi.mock('@/utils/instrumentation', () => mockInstrumentation());
@@ -71,7 +102,45 @@ vi.mock('@/lib/logging', () => ({
 describe('DomainPanel', function domainPanelTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    domainPanelLayoutTestState.rootBoxGap = undefined;
+    domainPanelLayoutTestState.appDetails = { domains: [] };
+    domainPanelLayoutTestState.isAppDetailsFetched = true;
   });
+
+  function expectSectionOrder(firstText: string, secondText: string) {
+    const first = screen.getByText(firstText);
+    const second = screen.getByText(secondText);
+    expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  }
+
+  async function setupPublishedDomainPanel(switchboard: (feature: string) => boolean) {
+    const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+    const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+    const { useSiteStore } = await import('@/stores/useSiteStore');
+
+    vi.mocked(useSwitchboard).mockImplementation(switchboard);
+    vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
+    vi.mocked(useSiteStore).mockImplementation((selector: any) => {
+      const mockSite = createMockSite({ variants: ['publish'] });
+      const state = {
+        getSite: vi.fn(() => mockSite),
+        loading: {},
+      };
+      return selector(state);
+    });
+  }
+
+  function domainConnectFlags(connectEnabled: boolean) {
+    return function resolveSwitchboard(feature: string) {
+      if (feature === 'appbuilder-domain-connect') {
+        return connectEnabled;
+      }
+      if (feature === 'appbuilder-domain-attach' || feature === 'appbuilder-project-domain') {
+        return true;
+      }
+      return false;
+    };
+  }
 
   describe('loading states', function loadingTests() {
     it('should show skeleton when site is loading', async function siteLoading() {
@@ -79,9 +148,9 @@ describe('DomainPanel', function domainPanelTests() {
       const { useSiteStore } = await import('@/stores/useSiteStore');
 
       vi.mocked(useSwitchboard).mockReturnValue(true);
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const state = {
-          getSite: vi.fn(function () { return null; }),
+          getSite: vi.fn(() => null),
           loading: { 'test-app-123': true },
         };
         return selector(state);
@@ -113,10 +182,10 @@ describe('DomainPanel', function domainPanelTests() {
 
       vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false });
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({ variants: [] }); // No publish variant = not published
         const state = {
-          getSite: vi.fn(function () { return mockSite; }),
+          getSite: vi.fn(() => mockSite),
           loading: {},
         };
         return selector(state);
@@ -136,10 +205,10 @@ describe('DomainPanel', function domainPanelTests() {
 
       vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false });
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({ variants: [] });
         const state = {
-          getSite: vi.fn(function () { return mockSite; }),
+          getSite: vi.fn(() => mockSite),
           loading: {},
         };
         return selector(state);
@@ -160,10 +229,10 @@ describe('DomainPanel', function domainPanelTests() {
 
       vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false });
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({ variants: [] });
         const state = {
-          getSite: vi.fn(function () { return mockSite; }),
+          getSite: vi.fn(() => mockSite),
           loading: {},
         };
         return selector(state);
@@ -185,10 +254,10 @@ describe('DomainPanel', function domainPanelTests() {
 
       vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({ variants: [] }); // Not published
         const state = {
-          getSite: vi.fn(function () { return mockSite; }),
+          getSite: vi.fn(() => mockSite),
           loading: {},
         };
         return selector(state);
@@ -209,10 +278,10 @@ describe('DomainPanel', function domainPanelTests() {
 
       vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({ variants: [] });
         const state = {
-          getSite: vi.fn(function () { return mockSite; }),
+          getSite: vi.fn(() => mockSite),
           loading: {},
         };
         return selector(state);
@@ -237,10 +306,10 @@ describe('DomainPanel', function domainPanelTests() {
 
       vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({ variants: [] });
         const state = {
-          getSite: vi.fn(function () { return mockSite; }),
+          getSite: vi.fn(() => mockSite),
           loading: {},
         };
         return selector(state);
@@ -268,12 +337,12 @@ describe('DomainPanel', function domainPanelTests() {
 
       vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({
           variants: ['publish'], // Has publish variant = published
         });
         const state = {
-          getSite: vi.fn(function () { return mockSite; }),
+          getSite: vi.fn(() => mockSite),
           loading: {},
         };
         return selector(state);
@@ -293,7 +362,7 @@ describe('DomainPanel', function domainPanelTests() {
 
       vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false });
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({
           variantsWithLifecycle: [{ variant: 'publish', status: 'inactive' }],
           variants: [],
@@ -310,7 +379,7 @@ describe('DomainPanel', function domainPanelTests() {
           ],
         });
         const state = {
-          getSite: vi.fn(function () { return mockSite; }),
+          getSite: vi.fn(() => mockSite),
           loading: {},
         };
         return selector(state);
@@ -327,19 +396,19 @@ describe('DomainPanel', function domainPanelTests() {
       const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
       const { useSiteStore } = await import('@/stores/useSiteStore');
 
-      vi.mocked(useSwitchboard).mockImplementation(function (feature: string) {
+      vi.mocked(useSwitchboard).mockImplementation((feature: string) => {
         if (feature === 'appbuilder-project-domain') {
           return true;
         }
         return false;
       });
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({
           variants: ['publish'],
         });
         const state = {
-          getSite: vi.fn(function () { return mockSite; }),
+          getSite: vi.fn(() => mockSite),
           loading: {},
         };
         return selector(state);
@@ -364,12 +433,12 @@ describe('DomainPanel', function domainPanelTests() {
 
       vi.mocked(useSwitchboard).mockReturnValue(false);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({
           variants: ['publish'],
         });
         const state = {
-          getSite: vi.fn(function () { return mockSite; }),
+          getSite: vi.fn(() => mockSite),
           loading: {},
         };
         return selector(state);
@@ -388,10 +457,10 @@ describe('DomainPanel', function domainPanelTests() {
 
       vi.mocked(useSwitchboard).mockReturnValue(false);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false });
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({ variants: [] });
         const state = {
-          getSite: vi.fn(function () { return mockSite; }),
+          getSite: vi.fn(() => mockSite),
           loading: {},
         };
         return selector(state);
@@ -414,10 +483,10 @@ describe('DomainPanel', function domainPanelTests() {
 
       vi.mocked(useSwitchboard).mockReturnValue(false);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({ variants: ['publish'] });
         const state = {
-          getSite: vi.fn(function () { return mockSite; }),
+          getSite: vi.fn(() => mockSite),
           loading: {},
         };
         return selector(state);
@@ -443,10 +512,10 @@ describe('DomainPanel', function domainPanelTests() {
 
       vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const mockSite = createMockSite({ variants: ['publish'] });
         const state = {
-          getSite: vi.fn(function () { return mockSite; }),
+          getSite: vi.fn(() => mockSite),
           loading: {},
         };
         return selector(state);
@@ -476,6 +545,67 @@ describe('DomainPanel', function domainPanelTests() {
     });
   });
 
+  describe('appbuilder-domain-connect layout', function domainConnectLayoutTests() {
+    it('uses connect layout order, section divider, and larger gap when flag is on', async function connectLayoutOn() {
+      await setupPublishedDomainPanel(domainConnectFlags(true));
+
+      renderWithProviders(<DomainPanel />);
+
+      await waitFor(function waitForSections() {
+        expect(screen.getByText('builder_domain_attach_main_title')).toBeInTheDocument();
+        expect(screen.getByText('builder_project_domain_title')).toBeInTheDocument();
+      });
+
+      expectSectionOrder('builder_domain_attach_main_title', 'builder_project_domain_title');
+      expect(
+        document.querySelector('.border-t.border-intents-ux-boxLowContrast-borderColor.pt-6'),
+      ).toBeInTheDocument();
+      expect(domainPanelLayoutTestState.rootBoxGap).toBe('lg');
+    });
+
+    it('preserves legacy section order and smaller gap when flag is off without active custom domain', async function connectLayoutOffNoCustomDomain() {
+      await setupPublishedDomainPanel(domainConnectFlags(false));
+
+      renderWithProviders(<DomainPanel />);
+
+      await waitFor(function waitForSections() {
+        expect(screen.getByText('builder_custom_domain_title')).toBeInTheDocument();
+        expect(screen.getByText('builder_project_domain_title')).toBeInTheDocument();
+      });
+
+      expectSectionOrder('builder_project_domain_title', 'builder_custom_domain_title');
+      expect(
+        document.querySelector('.border-t.border-intents-ux-boxLowContrast-borderColor.pt-6'),
+      ).not.toBeInTheDocument();
+      expect(domainPanelLayoutTestState.rootBoxGap).toBe('sm');
+    });
+
+    it('preserves legacy section order when flag is off and an active custom domain exists', async function connectLayoutOffWithCustomDomain() {
+      domainPanelLayoutTestState.appDetails = {
+        domains: [{
+          fqdn: 'custom.example.com',
+          domainType: DomainType.CUSTOM,
+          status: DomainStatus.ACTIVE,
+        }],
+      };
+
+      await setupPublishedDomainPanel(domainConnectFlags(false));
+
+      renderWithProviders(<DomainPanel />);
+
+      await waitFor(function waitForSections() {
+        expect(screen.getByText('builder_custom_domain_title')).toBeInTheDocument();
+        expect(screen.getByText('builder_project_domain_title')).toBeInTheDocument();
+      });
+
+      expectSectionOrder('builder_custom_domain_title', 'builder_project_domain_title');
+      expect(
+        document.querySelector('.border-t.border-intents-ux-boxLowContrast-borderColor.pt-6'),
+      ).not.toBeInTheDocument();
+      expect(domainPanelLayoutTestState.rootBoxGap).toBe('sm');
+    });
+  });
+
   describe('no app id', function noAppIdTests() {
     it('should handle null app id gracefully', async function nullAppId() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');
@@ -486,9 +616,9 @@ describe('DomainPanel', function domainPanelTests() {
       vi.mocked(useAppIdFromParams).mockReturnValue(null);
       vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
         const state = {
-          getSite: vi.fn(function () { return null; }),
+          getSite: vi.fn(() => null),
           loading: {},
         };
         return selector(state);

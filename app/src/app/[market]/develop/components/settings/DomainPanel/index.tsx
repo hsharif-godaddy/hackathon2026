@@ -17,6 +17,7 @@ import { useTranslations } from '@/hooks/useTranslations';
 import { DomainStatus, DomainType } from "@/lib/control-plane/types";
 import { shipAnalyticsLog } from '@/lib/logging';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
+import { cn } from '@/lib/utils';
 import { useDevelopPageStore } from "@/stores/useDevelopPageStore";
 import { usePaywallStore } from "@/stores/usePaywallStore";
 import { useSiteStore } from "@/stores/useSiteStore";
@@ -28,6 +29,7 @@ import { usePublishForDomain } from './usePublishForDomain';
 export default function DomainPanel() {
   const t = useTranslations();
   const isDomainAttachEnabled = useSwitchboard('appbuilder-domain-attach');
+  const isDomainConnectEnabled = useSwitchboard('appbuilder-domain-connect');
   const isProjectDomainEnabled = useSwitchboard('appbuilder-project-domain');
   const domainFeaturesEnabled = isDomainAttachEnabled || isProjectDomainEnabled;
 
@@ -63,11 +65,10 @@ export default function DomainPanel() {
 
   // Use polling query as single source of truth for domain ordering
   const { data: appDetails, isFetched: isAppDetailsFetched } = useDomainPolling(currentAppId, { hasActiveJob: hasActiveDomainJob });
-
-  // Check if there's an active or pending custom domain to determine section order
   const hasActiveCustomDomain = appDetails?.domains?.some(
-    d => d.domainType !== DomainType.PREFIX &&
-      (d.status === DomainStatus.ACTIVE || d.status === DomainStatus.PENDING)
+    (d) =>
+      d.domainType !== DomainType.PREFIX &&
+      (d.status === DomainStatus.ACTIVE || d.status === DomainStatus.PENDING),
   ) ?? false;
 
   if (isSiteLoading || isPaywallLoading) {
@@ -126,15 +127,29 @@ export default function DomainPanel() {
   }
 
   return (
-    <Box gap="sm" className="@container">
+    <Box gap={isDomainConnectEnabled ? "lg" : "sm"} className="@container">
       {!isDomainAttachEnabled && !isProjectDomainEnabled && (
         <>
           <text.h1>{t('builder_domain_title')}</text.h1>
           <text.p>{t('builder_domain_coming_soon')}</text.p>
       </>
       )}
-      {/* Conditionally render sections based on custom domain connection status */}
-      {hasActiveCustomDomain ? (
+      {isDomainConnectEnabled ? (
+        <>
+          {isDomainAttachEnabled && <DomainAttach appDetails={appDetails} isAppDetailsFetched={isAppDetailsFetched} />}
+          {isProjectDomainEnabled && (
+            <Box
+              className={cn(
+                'w-full min-w-0',
+                isDomainAttachEnabled &&
+                  'border-t border-intents-ux-boxLowContrast-borderColor pt-6',
+              )}
+            >
+              <ProjectDomain />
+            </Box>
+          )}
+        </>
+      ) : hasActiveCustomDomain ? (
         <>
           {isDomainAttachEnabled && <DomainAttach appDetails={appDetails} isAppDetailsFetched={isAppDetailsFetched} />}
           {isProjectDomainEnabled && <ProjectDomain />}

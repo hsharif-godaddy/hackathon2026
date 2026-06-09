@@ -7,6 +7,7 @@ import EditIcon from '@ux/icon/edit';
 import LinkIcon from '@ux/icon/link';
 import MenuIcon from '@ux/icon/menu';
 import UnlinkIcon from '@ux/icon/unlink';
+import Radio from "@ux/radio";
 import Tag from "@ux/tag";
 import text from "@ux/text";
 
@@ -15,6 +16,7 @@ import { domainJobQueryKey, useDomainJobPolling } from '@/hooks/useDomainJobPoll
 import type { Domain } from '@/hooks/useDomainsQuery';
 import { useGasketConfig } from '@/hooks/useGasketConfig';
 import { DomainMutationError } from '@/hooks/useModifyDomains';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { DomainStatus } from '@/lib/control-plane/types';
 import type { AiroDomainErrorResponse } from '@/lib/mgmt-airo';
@@ -80,6 +82,9 @@ export default function DomainItem({
   isLoading = false,
   disableConnect = false,
   isCustomDomain = false,
+  radioMode = false,
+  isSelected = false,
+  onSelect,
   mutationError = null
 }: {
   domain: Domain;
@@ -91,9 +96,13 @@ export default function DomainItem({
   isLoading?: boolean;
   disableConnect?: boolean;
   isCustomDomain?: boolean;
+  radioMode?: boolean;
+  isSelected?: boolean;
+  onSelect?: (domainName: string) => void;
   mutationError?: Error | null;
 }) {
   const t = useTranslations();
+  const isDomainConnectEnabled = useSwitchboard('appbuilder-domain-connect');
   const queryClient = useQueryClient();
   const { config } = useGasketConfig();
   const [open, setOpen] = useState(false);
@@ -279,7 +288,16 @@ export default function DomainItem({
         inlineAlignChildren="center"
       >
         <Box orientation="horizontal" gap="md">
-          {isConnected && appDomain?.status === DomainStatus.ACTIVE ? (
+          {isDomainConnectEnabled && radioMode ? (
+            <Radio
+              id={`domain-radio-${domainName}`}
+              name="domain-selection"
+              value={domainName}
+              checked={isSelected}
+              label={domainName}
+              onChange={() => onSelect?.(domainName)}
+            />
+          ) : isConnected && appDomain?.status === DomainStatus.ACTIVE ? (
             <Button
               as="external"
               design="inline"
@@ -317,16 +335,50 @@ export default function DomainItem({
           <PopoverTrigger asChild>
             <Button design="minimal" size="sm" icon={<MenuIcon />} aria-label={t('builder_common_options', undefined, 'Options')} />
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-[280px] p-1">
+          <PopoverContent align="end" className={isDomainConnectEnabled ? "w-auto p-1" : "w-[280px] p-1"}>
             {showConfirmation ? (
               <DomainConnectConfirmation
                 onConfirm={handleConfirmConnect}
                 onCancel={handleCancelConnect}
                 isInternalOnly
               />
+            ) : isDomainConnectEnabled && radioMode ? (
+              <div className="flex w-max flex-col gap-0.5">
+                {isConnected && (
+                  <Button
+                    icon={<UnlinkIcon />}
+                    design={isDomainConnectEnabled ? "option" : "tertiary"}
+                    onClick={handleDisconnect}
+                    disabled={isLoading}
+                    data-eid={generateClickEID(
+                      `settings-domains.custom_domain.disconnect`,
+                    )}
+                    text={t("builder_domain_button_disconnect")}
+                    size="sm"
+                    stretch={!isDomainConnectEnabled}
+                    className={isDomainConnectEnabled ? "!justify-start whitespace-nowrap px-2" : "!justify-start"}
+                  />
+                )}
+                {!isCustomDomain && (
+                  <Button
+                    icon={<EditIcon />}
+                    design={isDomainConnectEnabled ? "option" : "tertiary"}
+                    onClick={() => setOpen(false)}
+                    data-eid={generateClickEID(
+                      `settings-domains.custom_domain.manage`,
+                    )}
+                    text={t("builder_domain_button_manage")}
+                    href={`https://dcc.godaddy.com/control/dnsmanagement?domainName=${domainName}`}
+                    external
+                    size="sm"
+                    stretch={!isDomainConnectEnabled}
+                    className={isDomainConnectEnabled ? "!justify-start whitespace-nowrap px-2" : "!justify-start"}
+                  />
+                )}
+              </div>
             ) : (
               <Box orientation="vertical" gap="sm" inlineAlignChildren="start">
-                {!isConnected ? (
+                {!isConnected && (
                   <Button
                     icon={<LinkIcon />}
                     design="tertiary"
@@ -340,7 +392,8 @@ export default function DomainItem({
                     stretch
                     className="!justify-start"
                   />
-                ) : (
+                )}
+                {isConnected && (
                   <Button
                     icon={<UnlinkIcon />}
                     design="tertiary"

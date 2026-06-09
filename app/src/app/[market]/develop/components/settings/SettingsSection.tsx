@@ -20,11 +20,28 @@ interface SettingsSectionProps {
   className?: string
   isCollapsible?: boolean
   defaultOpen?: boolean
+  useDomainConnectLayout?: boolean
 }
 
-export default function SettingsSection({ children, title, description, status, button, hideStatus, className, isCollapsible = false, defaultOpen = true }: SettingsSectionProps) {
+export default function SettingsSection({
+  children,
+  title,
+  description,
+  status,
+  button,
+  hideStatus,
+  className,
+  isCollapsible = false,
+  defaultOpen = true,
+  useDomainConnectLayout = false,
+}: SettingsSectionProps) {
   const titleLine = (
-    <Box gap="md" orientation="horizontal" blockAlignChildren="spaceBetween">
+    <Box
+      gap="md"
+      orientation="horizontal"
+      blockAlignChildren="spaceBetween"
+      className={cn(useDomainConnectLayout && "w-full")}
+    >
       {title && <text.h3 as="title">{title}</text.h3>}
       {status && !hideStatus && <SettingsSectionStatus status={status} />}
     </Box>
@@ -60,12 +77,16 @@ export default function SettingsSection({ children, title, description, status, 
   }
 
   return (
-    <Box gap="md" className={cn(className)}>
-      <div className="flex flex-col flex-1 @md:flex-row justify-between items-center @md:items-start gap-3 -mb-0.5">
-        <Box className="flex-1 w-full">
-          {titleLine}
-        </Box>
-      </div>
+    <Box gap="md" className={cn(className, 'min-w-0', useDomainConnectLayout && 'w-full')}>
+      {useDomainConnectLayout ? (
+        titleLine
+      ) : (
+        <div className="flex flex-col flex-1 @md:flex-row justify-between items-center @md:items-start gap-3 -mb-0.5">
+          <Box className="flex-1 w-full">
+            {titleLine}
+          </Box>
+        </div>
+      )}
       {content}
     </Box>
   )

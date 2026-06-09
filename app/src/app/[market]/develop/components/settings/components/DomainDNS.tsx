@@ -66,13 +66,23 @@ function DnsRecordCard({
   ttl: string | number;
 }) {
   const t = useTranslations();
+  const isDomainConnectEnabled = useSwitchboard('appbuilder-domain-connect');
 
   return (
     <Box
       orientation="vertical"
       className="p-2 rounded-md border border-intents-ux-border-subtle bg-intents-ux-box-backgroundColor"
     >
-      <text.p className="!font-semibold">{type}</text.p>
+      {isDomainConnectEnabled ? (
+        <Box gap="sm" orientation="horizontal" inlineAlignChildren="center">
+          <text.p>
+            <strong>{t('builder_domain_dns_table_type', undefined, 'Type')}:</strong>
+          </text.p>
+          <text.p>{type}</text.p>
+        </Box>
+      ) : (
+        <text.p className="!font-semibold">{type}</text.p>
+      )}
       <Box gap="sm" orientation="horizontal" inlineAlignChildren="center">
         <text.p>
           <strong>{t('builder_domain_dns_table_ttl')}:</strong>

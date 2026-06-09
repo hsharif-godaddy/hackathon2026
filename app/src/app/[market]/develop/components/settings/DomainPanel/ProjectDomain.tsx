@@ -12,6 +12,7 @@ import { Status } from "@/app/[market]/develop/components/types";
 import { useAppIdFromParams } from "@/app/[market]/develop/components/utils";
 import { useAppNameUpdate } from '@/hooks/useAppName';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { DomainStatus, DomainType } from "@/lib/control-plane/types";
 import { shipAnalyticsLog } from '@/lib/logging';
@@ -26,6 +27,7 @@ import { hasBeenPublished } from '@/utils/site';
 export default function ProjectDomain() {
   const t = useTranslations();
   const currentAppId = useAppIdFromParams();
+  const isDomainConnectEnabled = useSwitchboard('appbuilder-domain-connect');
 
   const site = useSiteStore((state) => {
     if (!currentAppId) return null;
@@ -284,7 +286,8 @@ export default function ProjectDomain() {
       title={t('builder_project_domain_title')}
       description={t('builder_project_domain_description')}
       status={getProjectDomainStatus()}
-      isCollapsible
+      isCollapsible={!isDomainConnectEnabled}
+      useDomainConnectLayout={isDomainConnectEnabled}
     >
       <Box orientation="vertical" gap="md" className="w-full" blockAlignChildren="start">
         <Box

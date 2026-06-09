@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { FormattedMessage } from 'react-intl';
 import Box from "@ux/box";
 import Button from "@ux/button";
 import Modal from "@ux/modal";
 import Skeleton from "@ux/skeleton";
+import Tabs from "@ux/tabs";
 import text from "@ux/text";
 import TextInput from "@ux/text-input";
 
@@ -16,17 +18,18 @@ import {
   DomainDisconnectConfirmationModal,
   DomainDisconnectSuccessAlert,
 } from '@/app/[market]/develop/components/widgets/DomainDisconnectConfirmationModal';
-import type { AppDetailsResponse } from '@/hooks/useAppDetails';
+import type { AppDetailsResponse, AppDomain } from '@/hooks/useAppDetails';
 import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
 import { clearDkimOnboardRecord, useDkimAutoOnboard } from '@/hooks/useDkimAutoOnboard';
 import { useDomainDnsOwnership } from '@/hooks/useDomainDnsOwnership';
-import { useDomainsQuery } from '@/hooks/useDomainsQuery';
+import { type Domain, useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainTransfer } from '@/hooks/useDomainTransfer';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
 import {
   type DomainMutationDetails,
   DomainMutationError,
+  type DomainToDelete,
   useModifyDomains
 } from '@/hooks/useModifyDomains';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
@@ -37,6 +40,7 @@ import { shipAnalyticsLog } from '@/lib/logging';
 import { DomainMode, DomainStatus } from '@/lib/mgmt-airo/types';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
+import { cn } from '@/lib/utils';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from "@/stores/useSiteStore";
 import {
@@ -48,9 +52,45 @@ import {
   validateDomain,
 } from '@/utils/domain';
 import { getDomainErrorMessage, translateDomainApiError } from '@/utils/domain-validation';
+import { domainsToDeleteForSwitch as buildDomainsToDeleteForSwitch } from '@/utils/domainAttachSwitch';
+import { countDomainListRows, isDomainJobStillInProgress } from '@/utils/domainAttachUi';
 import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
+
+const MAX_VISIBLE_DOMAIN_ROWS = 5;
+
+const DOMAIN_ATTACH_TAB_PANEL_CLASS = 'pt-3';
+const DOMAIN_ATTACH_TAB_PANELS_GRID_CLASS = 'grid w-full';
+const DOMAIN_ATTACH_TAB_PANEL_CELL_CLASS = 'col-start-1 row-start-1';
+
+function getDomainAttachTabPanelClass(isActive: boolean, extraClass?: string) {
+  return cn(
+    DOMAIN_ATTACH_TAB_PANEL_CELL_CLASS,
+    DOMAIN_ATTACH_TAB_PANEL_CLASS,
+    extraClass,
+    !isActive && 'pointer-events-none',
+  );
+}
+
+function getDomainAttachTabPanelStyle(isActive: boolean): CSSProperties | undefined {
+  return isActive ? undefined : { visibility: 'hidden' };
+}
+
+const DOMAIN_ATTACH_EXTERNAL_TRANSFER_URL = 'https://www.godaddy.com/domains/domain-transfer';
+
+const DOMAIN_ATTACH_TAB = {
+  CONNECT: 'connect',
+  BUY: 'buy',
+  EXTERNAL: 'external',
+} as const;
+
+type DomainAttachTab = typeof DOMAIN_ATTACH_TAB[keyof typeof DOMAIN_ATTACH_TAB];
+
+type CustomerDomainEntry = {
+  customerDomain: Domain;
+  connectedDomains: AppDomain[];
+};
 
 /**
  * Get error message from unknown error type
@@ -83,12 +123,16 @@ interface DomainAttachProps {
 export default function DomainAttach({ appDetails, isAppDetailsFetched }: DomainAttachProps) {
   const t = useTranslations();
   const currentAppId = useAppIdFromParams()
+  const isDomainConnectEnabled = useSwitchboard('appbuilder-domain-connect');
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const isDomainTransferEnabled = useSwitchboard('appbuilder-domain-transfer');
   const [customDomain, setCustomDomain] = useState('');
   const [customDomainError, setCustomDomainError] = useState<string | null>(null);
   const [debouncedDomain, setDebouncedDomain] = useState('');
   const [showAddConfirmation, setShowAddConfirmation] = useState(false);
+  const [showConnectSelectedConfirmation, setShowConnectSelectedConfirmation] = useState(false);
+  const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<DomainAttachTab>(DOMAIN_ATTACH_TAB.CONNECT);
   const [conflictData, setConflictData] = useState<DomainMutationDetails['conflictDetails'] | null>(null);
   const [disconnectTarget, setDisconnectTarget] = useState<string | null>(null);
   const [disconnectSuccessMessage, setDisconnectSuccessMessage] = useState<string | null>(null);
@@ -244,6 +288,48 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     !hideDomainDnsUntilOwnershipResolved &&
     treatAsExternal;
 
+  const domainJobInProgress = useDevelopPageStore(
+    (s) => (currentAppId ? s.domainJobsInProgress?.[currentAppId] : undefined),
+  );
+
+  const showConnectionTimingInfo = isDomainJobStillInProgress(
+    domainJobInProgress,
+    appDetails,
+    modifyDomainsMutation.isPending,
+    requiresManualDnsSetup,
+    pendingCustomerDomainForAttach,
+  );
+
+  useEffect(
+    function clearStaleDomainJobWhenComplete() {
+      if (!isDomainConnectEnabled || !currentAppId || !domainJobInProgress || !isAppDetailsFetched) {
+        return;
+      }
+      if (
+        isDomainJobStillInProgress(
+          domainJobInProgress,
+          appDetails,
+          modifyDomainsMutation.isPending,
+          requiresManualDnsSetup,
+          pendingCustomerDomainForAttach,
+        )
+      ) {
+        return;
+      }
+      useDevelopPageStore.getState().clearDomainJobInProgress(currentAppId);
+    },
+    [
+      isDomainConnectEnabled,
+      currentAppId,
+      domainJobInProgress,
+      isAppDetailsFetched,
+      appDetails,
+      modifyDomainsMutation.isPending,
+      requiresManualDnsSetup,
+      pendingCustomerDomainForAttach,
+    ],
+  );
+
   // Cleanup validation timeout on unmount
   useEffect(() => {
     return () => {
@@ -328,6 +414,36 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
    *
    * Returns error message from domain validation or undefined if valid
    */
+  function isDomainInUseConflict(error: unknown): boolean {
+    return (
+      error instanceof DomainMutationError &&
+      (
+        error.details?.nestedCode === 'DOMAIN_IN_USE_BY_OWN_APP' ||
+        error.details?.nestedCode === 'DOMAIN_ALREADY_IN_USE'
+      )
+    );
+  }
+
+  function getMutationErrorMessage(error: unknown): string | undefined {
+    if (!(error instanceof DomainMutationError)) {
+      return error instanceof Error
+        ? error.message
+        : t('builder_custom_domain_error_add_failed');
+    }
+
+    return translateDomainApiError(
+      error.details?.nestedCode ?? error.details?.code,
+      t,
+      error.details?.message,
+      {
+        ...(error.details?.conflictingProduct && {
+          conflictingProduct: error.details.conflictingProduct,
+        }),
+        ...(error.details?.tldValue && { tld: error.details.tldValue }),
+      },
+    );
+  }
+
   function getValidationErrorMessage(): string | undefined {
     if (isAiroDomainBlocked) {
       return t('builder_domain_error_fqdn_invalid');
@@ -339,9 +455,6 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
       if (modifyDomainsMutation.error instanceof DomainMutationError) {
         const { domainSpecificError } = modifyDomainsMutation.error.details;
         if (domainSpecificError) {
-          // If the error domain is rendered in a DomainItem row, it's already displayed
-          // there — don't duplicate it in the text input. This covers both disconnect
-          // errors and connect-via-menu errors on existing customer domains.
           const renderedDomains = new Set([
             ...domains.map((d) => normalizeFqdn(d.domain || d.name || '')).filter(Boolean),
             ...siteDomains.map((d) => normalizeFqdn(d.fqdn)).filter(Boolean),
@@ -350,21 +463,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
             return undefined;
           }
         }
-        return translateDomainApiError(
-          modifyDomainsMutation.error.details.nestedCode ?? modifyDomainsMutation.error.details.code,
-          t,
-          modifyDomainsMutation.error.details.message,
-          {
-            ...(modifyDomainsMutation.error.details.conflictingProduct && {
-              conflictingProduct: modifyDomainsMutation.error.details.conflictingProduct,
-            }),
-            ...(modifyDomainsMutation.error.details.tldValue && { tld: modifyDomainsMutation.error.details.tldValue }),
-          }
-        );
       }
-      return modifyDomainsMutation.error instanceof Error
-        ? modifyDomainsMutation.error.message
-        : t('builder_custom_domain_error_add_failed');
+      return getMutationErrorMessage(modifyDomainsMutation.error);
     }
     if (hasValidationError) {
       return t('builder_custom_domain_error_validation_failed');
@@ -372,11 +472,36 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     return undefined;
   }
 
+  function getConnectMutationErrorMessage(): string | undefined {
+    if (!modifyDomainsMutation.error) return undefined;
+    if (isDomainInUseConflict(modifyDomainsMutation.error) && conflictData) {
+      return undefined;
+    }
+    if (isDomainInUseConflict(modifyDomainsMutation.error)) {
+      return t(
+        'builder_domain_attach_connect_error',
+        undefined,
+        'Something went wrong connecting your domain. Please try again.',
+      );
+    }
+    return getMutationErrorMessage(modifyDomainsMutation.error);
+  }
+
+  function domainsToDeleteForSwitch(targetFqdn: string): DomainToDelete[] {
+    return buildDomainsToDeleteForSwitch(
+      appDetails?.domains,
+      targetFqdn,
+      isDomainConnectEnabled,
+    );
+  }
+
   /**
    * Handle connecting a domain to the application
    */
-  async function handleConnectDomain(domainName: string) {
-    if (!currentAppId) return;
+  async function handleConnectDomain(domainName: string): Promise<boolean> {
+    if (!currentAppId) return false;
+
+    const domainsToDelete = domainsToDeleteForSwitch(domainName);
 
     try {
       setCustomDomain('');
@@ -384,6 +509,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         siteId: currentAppId,
         payload: {
           domainsToCreate: [{ fqdn: domainName, primary: false }],
+          domainsToDelete,
           createCdn: true,
           isWildcardDomain: true,
         },
@@ -392,14 +518,12 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         appId: currentAppId,
         domainName
       });
+      return true;
     } catch (error) {
       if (
         isDomainTransferEnabled &&
+        isDomainInUseConflict(error) &&
         error instanceof DomainMutationError &&
-        (
-          error.details.nestedCode === 'DOMAIN_IN_USE_BY_OWN_APP' ||
-          error.details.nestedCode === 'DOMAIN_ALREADY_IN_USE'
-        ) &&
         error.details.conflictDetails
       ) {
         shipAnalyticsLog('domain.custom.connect.conflict', {
@@ -409,14 +533,14 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         });
         setConflictData(error.details.conflictDetails);
         modifyDomainsMutation.reset();
-        return;
+        return false;
       }
 
       logger.error('domain-attach.connect.failure', {
         message: 'Failed to connect domain',
         appId: currentAppId,
         domainName,
-        nestedCode: error instanceof DomainMutationError ? error.details.nestedCode : undefined,
+        nestedCode: error instanceof DomainMutationError ? error.details?.nestedCode : undefined,
         error: error instanceof Error ? error.message : String(error),
       });
       shipAnalyticsLog('domain.custom.connect.failed', {
@@ -424,6 +548,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         domainName,
         error: error instanceof Error ? error.message : String(error)
       });
+      setConflictData(null);
+      return false;
     }
   }
 
@@ -467,8 +593,6 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         t('builder_domain_disconnect_success', {}, 'Domain has been disconnected')
       );
 
-      // Clear the DKIM onboard record so re-attaching the domain triggers
-      // a fresh onboard call.
       if (currentAppId && domainName) {
         clearDkimOnboardRecord(currentAppId, domainName);
       }
@@ -602,24 +726,75 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   const availableCustomDomains = customDomains.filter(
     d => d.status !== DomainStatus.ACTIVE && d.status !== DomainStatus.PENDING
   );
-
-  // Check if there's already a custom domain in pending or active state
   const hasActiveOrPendingCustomDomain = customDomains.some(
-    (d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE
+    (d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE,
   );
-
-  const hasActiveOrPendingDomain = siteDomains
-    .filter((d) => d.domainType !== 'prefix')
-    .some((d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE);
+  const hasActiveOrPendingDomain = appDetails?.domains
+    ?.filter((d) => d.domainType !== 'prefix')
+    ?.some((d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE);
 
   const isPublished = hasBeenPublished(site);
 
-  const shouldDisableAddingDomain =
-    hasActiveOrPendingCustomDomain ||
-    hasActiveOrPendingDomain ||
-    !isPublished ||
-    modifyDomainsMutation.isPending;
+  const isDomainMutationBusy = !isPublished || modifyDomainsMutation.isPending;
   const isDomainDataReady = isDomainsFetched && isAppDetailsFetched;
+
+  const isSelectedDomainAlreadyConnected = Boolean(
+    selectedDomain &&
+    appDetails?.domains?.some(
+      (d) =>
+        d.domainType !== 'prefix' &&
+        normalizeFqdn(d.fqdn) === normalizeFqdn(selectedDomain) &&
+        (d.status === DomainStatus.ACTIVE || d.status === DomainStatus.PENDING),
+    ),
+  );
+
+  const isConnectSelectedDisabled =
+    !selectedDomain || isDomainMutationBusy || isSelectedDomainAlreadyConnected;
+
+  const connectMutationErrorMessage = getConnectMutationErrorMessage();
+
+  const isExternalDomainChecking = Boolean(
+    customDomain && (isValidatingDomain || customDomain !== debouncedDomain),
+  );
+
+  const externalDomainButtonText = isExternalDomainChecking
+    ? t('builder_custom_domain_button_checking')
+    : t('builder_domain_attach_external_button');
+
+  const isExternalDomainButtonDisabled = Boolean(
+    isDomainMutationBusy ||
+    !customDomain ||
+    customDomain.length === 0 ||
+    isAiroDomainBlocked ||
+    isValidatingDomain ||
+    hasValidationError ||
+    customDomain !== debouncedDomain ||
+    (validationData && !validationData.available),
+  );
+
+  function handleTabChange(tabId: string) {
+    if (tabId === DOMAIN_ATTACH_TAB.EXTERNAL && selectedDomain) {
+      setSelectedDomain(null);
+    }
+    setActiveTab(tabId as DomainAttachTab);
+  }
+
+  function handleConnectSelectedClick() {
+    if (!selectedDomain || isConnectSelectedDisabled) {
+      return;
+    }
+    setShowConnectSelectedConfirmation(true);
+  }
+
+  async function handleConfirmConnectSelected() {
+    if (!selectedDomain) {
+      return;
+    }
+    const connected = await handleConnectDomain(selectedDomain);
+    if (connected) {
+      setShowConnectSelectedConfirmation(false);
+    }
+  }
 
   const customDomainSectionStatus = useMemo(() => {
     const connectedDomains = siteDomains.filter((d) => d.domainType !== 'prefix');
@@ -648,218 +823,569 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     return undefined;
   }, [siteDomains, hasActiveDomainJob]);
 
+  const domainRowCount = useMemo(
+    function computeDomainRowCount() {
+      if (isLoading || error) {
+        return 0;
+      }
+      return countDomainListRows(
+        connectedCustomerDomains,
+        connectedCustomDomains,
+        availableCustomDomains,
+        availableCustomerDomains,
+      );
+    },
+    [
+      isLoading,
+      error,
+      connectedCustomerDomains,
+      connectedCustomDomains,
+      availableCustomDomains,
+      availableCustomerDomains,
+    ],
+  );
+
+  const isDomainListScrollable = domainRowCount > MAX_VISIBLE_DOMAIN_ROWS;
+
+  const hideConnectTab = isDomainDataReady && !error && domainRowCount === 0;
+
+  const effectiveActiveTab =
+    hideConnectTab && activeTab === DOMAIN_ATTACH_TAB.CONNECT
+      ? DOMAIN_ATTACH_TAB.BUY
+      : activeTab;
+
+  useEffect(function syncActiveTabWhenConnectHidden() {
+    if (hideConnectTab && activeTab === DOMAIN_ATTACH_TAB.CONNECT) {
+      setActiveTab(DOMAIN_ATTACH_TAB.BUY);
+    }
+  }, [hideConnectTab, activeTab]);
+
+  const domainAttachTabItems = useMemo(
+    function buildDomainAttachTabItems() {
+      const items = [
+        {
+          id: DOMAIN_ATTACH_TAB.CONNECT,
+          text: t('builder_domain_attach_tab_domains'),
+        },
+        {
+          id: DOMAIN_ATTACH_TAB.BUY,
+          text: t('builder_domain_attach_tab_buy'),
+        },
+        {
+          id: DOMAIN_ATTACH_TAB.EXTERNAL,
+          text: t('builder_domain_attach_tab_external'),
+        },
+      ];
+
+      if (hideConnectTab) {
+        return items.filter((item) => item.id !== DOMAIN_ATTACH_TAB.CONNECT);
+      }
+
+      return items;
+    },
+    [hideConnectTab, t],
+  );
+
+  const buyDomainUrl = `https://www.${getRootDomain()}/domains?itc=${encodeURIComponent(PAYWALL_ITC.ATTACH_DOMAIN)}`;
+
   return (
     <SettingsSection
-      title={t('builder_custom_domain_title')}
-      description={t('builder_custom_domain_description')}
+      title={t(isDomainConnectEnabled ? 'builder_domain_attach_main_title' : 'builder_custom_domain_title')}
+      description={t(isDomainConnectEnabled ? 'builder_domain_attach_main_description' : 'builder_custom_domain_description')}
       status={customDomainSectionStatus}
-      isCollapsible
+      useDomainConnectLayout={isDomainConnectEnabled}
     >
-      <Box orientation="vertical" gap="sm" className="w-full">
-        {hasActiveDomainJob && (
-          <text.p className="text-sm italic text-intents-ux-text-secondaryColor">
-            {t('builder_domain_connection_timing_info')}
-          </text.p>
-        )}
-        <Box gap="sm">
-          {isLoading && (
-            <>
-              {[1, 2, 3].map((i) => (
-                <div
-                  key={`skeleton-${i}`}
-                  className="bg-intents-ux-box-backgroundColor rounded-lg px-2 py-1"
+      <Box orientation="vertical" className="w-full">
+        {isDomainConnectEnabled ? (
+          <>
+            <Tabs
+              id="domain-attach-tabs"
+              design="underline"
+              selected={effectiveActiveTab}
+              onChange={handleTabChange}
+              items={domainAttachTabItems}
+              className="w-full"
+            />
+
+            <div className={DOMAIN_ATTACH_TAB_PANELS_GRID_CLASS}>
+              <Box
+                gap="sm"
+                className={getDomainAttachTabPanelClass(effectiveActiveTab === DOMAIN_ATTACH_TAB.CONNECT)}
+                style={getDomainAttachTabPanelStyle(effectiveActiveTab === DOMAIN_ATTACH_TAB.CONNECT)}
+                aria-hidden={effectiveActiveTab !== DOMAIN_ATTACH_TAB.CONNECT}
+              >
+                {showConnectionTimingInfo && (
+                  <text.p className="text-sm italic text-intents-ux-text-secondaryColor">
+                    {t('builder_domain_connection_timing_info')}
+                  </text.p>
+                )}
+                {isLoading && (
+                  <>
+                    {[1, 2, 3].map((i) => (
+                      <div
+                        key={`skeleton-${i}`}
+                        className="bg-intents-ux-box-backgroundColor rounded-lg px-2 py-1"
+                      >
+                        <Skeleton size="md" width="30%" />
+                      </div>
+                    ))}
+                  </>
+                )}
+                {error && (
+                  <text.p className="text-intents-ux-text-destructive">
+                    {getErrorMessage(error, t)}
+                  </text.p>
+                )}
+                {connectMutationErrorMessage && (
+                  <text.p className="text-intents-ux-text-destructive">
+                    {connectMutationErrorMessage}
+                  </text.p>
+                )}
+                <Box
+                  data-testid="domain-attach-list"
+                  orientation="vertical"
+                  gap="sm"
+                  className={cn(
+                    'min-w-0 overflow-x-hidden',
+                    isDomainListScrollable &&
+                      'max-h-[calc((5*3.5rem+4*0.5rem)*0.9)] overflow-y-auto pr-0.5',
+                  )}
                 >
-                  <Skeleton size="md" width="30%" />
-                </div>
-              ))}
-            </>
-          )}
-          {error && (
-            <text.p className="text-intents-ux-text-destructive">
-              {getErrorMessage(error, t)}
-            </text.p>
-          )}
-          {!isLoading && !error && domains.length === 0 && (
-            <text.p>{t('builder_custom_domain_no_domains')}</text.p>
-          )}
+                  {!isLoading && !error && connectedCustomerDomains.map((entry, index) => {
+                    const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
 
-          {/* Connected Customer Domains First */}
-          {!isLoading && !error && connectedCustomerDomains.map((entry, index) => {
-            const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
+                    return (
+                      <Box key={`connected-customer-domain-${index}-${domainName}`} gap="sm">
+                        {(() => {
+                          const rootAppDomain = entry.connectedDomains.find(
+                            (d) => normalizeFqdn(d.fqdn) === normalizeFqdn(domainName),
+                          );
+                          return (
+                            <DomainItem
+                              domain={entry.customerDomain}
+                              appDomain={rootAppDomain}
+                              siteId={currentAppId}
+                              appId={currentAppId}
+                              onConnect={handleConnectDomain}
+                              onDisconnect={handleDisconnectDomain}
+                              isLoading={modifyDomainsMutation.isPending}
+                              disableConnect={isDomainMutationBusy}
+                              radioMode
+                              isSelected={selectedDomain === domainName}
+                              onSelect={setSelectedDomain}
+                              mutationError={modifyDomainsMutation.error}
+                            />
+                          );
+                        })()}
 
-            return (
-              <Box key={`connected-customer-domain-${index}-${domainName}`} gap="sm">
-                {/* Root domain */}
-                {(() => {
-                  const rootAppDomain = entry.connectedDomains.find(
-                    (d) => normalizeFqdn(d.fqdn) === normalizeFqdn(domainName),
-                  );
-                  return (
+                        {entry.connectedDomains
+                          .filter((d) => normalizeFqdn(d.fqdn) !== normalizeFqdn(domainName))
+                          .map((subdomain, subIndex) => (
+                            <DomainItem
+                              key={`connected-subdomain-${index}-${subIndex}-${subdomain.fqdn}`}
+                              domain={{
+                                domain: subdomain.fqdn,
+                                name: subdomain.fqdn,
+                              }}
+                              appDomain={subdomain}
+                              siteId={currentAppId}
+                              appId={currentAppId}
+                              onConnect={handleConnectDomain}
+                              onDisconnect={handleDisconnectDomain}
+                              isLoading={modifyDomainsMutation.isPending}
+                              disableConnect={isDomainMutationBusy}
+                              isCustomDomain={true}
+                              radioMode
+                              isSelected={selectedDomain === subdomain.fqdn}
+                              onSelect={setSelectedDomain}
+                              mutationError={modifyDomainsMutation.error}
+                            />
+                          ))}
+                      </Box>
+                    );
+                  })}
+
+                  {!isLoading && !error && connectedCustomDomains.map((appDomain, index) => (
                     <DomainItem
-                      domain={entry.customerDomain}
-                      appDomain={rootAppDomain}
-                      appId={currentAppId}
-                      siteId={currentAppId}
-                      onConnect={handleConnectDomain}
-                      onDisconnect={handleDisconnectDomain}
-                      isLoading={modifyDomainsMutation.isPending}
-                      disableConnect={shouldDisableAddingDomain}
-                      mutationError={modifyDomainsMutation.error}
-                    />
-                  );
-                })()}
-
-                {/* Connected subdomains */}
-                {entry.connectedDomains
-                  .filter((d) => normalizeFqdn(d.fqdn) !== normalizeFqdn(domainName))
-                  .map((subdomain, subIndex) => (
-                    <DomainItem
-                      key={`connected-subdomain-${index}-${subIndex}-${subdomain.fqdn}`}
+                      key={`connected-custom-domain-${index}-${appDomain.fqdn}`}
                       domain={{
-                        domain: subdomain.fqdn,
-                        name: subdomain.fqdn,
+                        domain: appDomain.fqdn,
+                        name: appDomain.fqdn,
                       }}
-                      appDomain={subdomain}
-                      appId={currentAppId}
+                      appDomain={appDomain}
                       siteId={currentAppId}
+                      appId={currentAppId}
                       onConnect={handleConnectDomain}
                       onDisconnect={handleDisconnectDomain}
                       isLoading={modifyDomainsMutation.isPending}
-                      disableConnect={shouldDisableAddingDomain}
+                      disableConnect={isDomainMutationBusy}
                       isCustomDomain={true}
                       mutationError={modifyDomainsMutation.error}
                     />
                   ))}
+
+                  {!isLoading && !error && availableCustomDomains.map((appDomain, index) => (
+                    <DomainItem
+                      key={`available-custom-domain-${index}-${appDomain.fqdn}`}
+                      domain={{
+                        domain: appDomain.fqdn,
+                        name: appDomain.fqdn,
+                      }}
+                      appDomain={appDomain}
+                      siteId={currentAppId}
+                      appId={currentAppId}
+                      onConnect={handleConnectDomain}
+                      onDisconnect={handleDisconnectDomain}
+                      isLoading={modifyDomainsMutation.isPending}
+                      disableConnect={isDomainMutationBusy}
+                      isCustomDomain={true}
+                      mutationError={modifyDomainsMutation.error}
+                    />
+                  ))}
+
+                  {!isLoading && !error && availableCustomerDomains.map((entry, index) => {
+                    const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
+
+                    return (
+                      <DomainItem
+                        key={`available-customer-domain-${index}-${domainName}`}
+                        domain={entry.customerDomain}
+                        appDomain={undefined}
+                        siteId={currentAppId}
+                        appId={currentAppId}
+                        onConnect={handleConnectDomain}
+                        onDisconnect={handleDisconnectDomain}
+                        isLoading={modifyDomainsMutation.isPending}
+                        disableConnect={isDomainMutationBusy}
+                        radioMode
+                        isSelected={selectedDomain === domainName}
+                        onSelect={setSelectedDomain}
+                        mutationError={modifyDomainsMutation.error}
+                      />
+                    );
+                  })}
+                </Box>
+
+                {!isLoading && !error && (
+                  <Box orientation="horizontal" gap="sm" className="pt-1 flex-wrap">
+                    <Button
+                      text={t('builder_domain_button_connect')}
+                      design="primary"
+                      size="sm"
+                      disabled={isConnectSelectedDisabled}
+                      onClick={handleConnectSelectedClick}
+                      data-eid={generateClickEID(`settings.domains.connect_selected`)}
+                    />
+                  </Box>
+                )}
               </Box>
-            );
-          })}
 
-          {/* Connected Custom Domains */}
-          {!isLoading && !error && connectedCustomDomains.map((appDomain, index) => (
-            <DomainItem
-              key={`connected-custom-domain-${index}-${appDomain.fqdn}`}
-              domain={{
-                domain: appDomain.fqdn,
-                name: appDomain.fqdn,
-              }}
-              appDomain={appDomain}
-              appId={currentAppId}
-              siteId={currentAppId}
-              onConnect={handleConnectDomain}
-              onDisconnect={handleDisconnectDomain}
-              isLoading={modifyDomainsMutation.isPending}
-              disableConnect={shouldDisableAddingDomain}
-              isCustomDomain={true}
-              mutationError={modifyDomainsMutation.error}
-            />
-          ))}
+              <Box
+                orientation="vertical"
+                gap="sm"
+                inlineAlignChildren="start"
+                className={getDomainAttachTabPanelClass(effectiveActiveTab === DOMAIN_ATTACH_TAB.BUY)}
+                style={getDomainAttachTabPanelStyle(effectiveActiveTab === DOMAIN_ATTACH_TAB.BUY)}
+                aria-hidden={effectiveActiveTab !== DOMAIN_ATTACH_TAB.BUY}
+              >
+                <text.p className="text-intents-ux-text-secondaryColor">
+                  {t('builder_domain_attach_buy_description')}
+                </text.p>
+                <Button
+                  text={t('builder_domain_attach_buy_button')}
+                  design="secondary"
+                  as="external"
+                  size="sm"
+                  data-eid={generateClickEID(`settings.domains.buy_new_domain`)}
+                  href={buyDomainUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              </Box>
 
-          {showDomainDNS && (
-            <DomainDNS
-              domainDetails={pendingDomainDetails}
-            />
-          )}
+              <Box
+                orientation="vertical"
+                gap="sm"
+                inlineAlignChildren="start"
+                className={getDomainAttachTabPanelClass(
+                  effectiveActiveTab === DOMAIN_ATTACH_TAB.EXTERNAL,
+                  'w-full',
+                )}
+                style={getDomainAttachTabPanelStyle(effectiveActiveTab === DOMAIN_ATTACH_TAB.EXTERNAL)}
+                aria-hidden={effectiveActiveTab !== DOMAIN_ATTACH_TAB.EXTERNAL}
+              >
+                {!isDomainDataReady ? (
+                  <>
+                    {[1, 2].map((i) => (
+                      <div
+                        key={`external-skeleton-${i}`}
+                        className="bg-intents-ux-box-backgroundColor rounded-lg px-2 py-1 w-full"
+                      >
+                        <Skeleton size="md" width="60%" />
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <text.p className="text-intents-ux-text-secondaryColor">
+                      <FormattedMessage
+                        id="builder_domain_attach_external_description"
+                        values={{
+                          link: function transferLink(chunks) {
+                            return (
+                              <a
+                                href={DOMAIN_ATTACH_EXTERNAL_TRANSFER_URL}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline"
+                                data-eid={generateClickEID('settings.domains.transfer_to_godaddy')}
+                              >
+                                {chunks}
+                              </a>
+                            );
+                          },
+                        }}
+                      />
+                    </text.p>
+                    <TextInput
+                      className="w-full"
+                      id="custom-domain-slug"
+                      label={null}
+                      onChange={handleCustomDomainChange}
+                      placeholder={t('builder_custom_domain_input_help')}
+                      value={customDomain}
+                      disabled={isDomainMutationBusy}
+                      errorMessage={getValidationErrorMessage()}
+                    />
+                    <Button
+                      text={externalDomainButtonText}
+                      design="primary"
+                      onClick={() => setShowAddConfirmation(true)}
+                      disabled={isExternalDomainButtonDisabled}
+                      data-eid={generateClickEID(`settings.domains.add_domain`)}
+                      className="!hover:bg-transparent"
+                      size="sm"
+                    />
+                  </>
+                )}
+              </Box>
+            </div>
 
-          {/* Available Custom Domains (FAILED/ERROR/INACTIVE states) */}
-          {!isLoading && !error && availableCustomDomains.map((appDomain, index) => (
-            <DomainItem
-              key={`available-custom-domain-${index}-${appDomain.fqdn}`}
-              domain={{
-                domain: appDomain.fqdn,
-                name: appDomain.fqdn,
-              }}
-              appDomain={appDomain}
-              appId={currentAppId}
-              siteId={currentAppId}
-              onConnect={handleConnectDomain}
-              onDisconnect={handleDisconnectDomain}
-              isLoading={modifyDomainsMutation.isPending}
-              disableConnect={shouldDisableAddingDomain}
-              isCustomDomain={true}
-              mutationError={modifyDomainsMutation.error}
-            />
-          ))}
-
-          {/* Available Customer Domains */}
-          {!isLoading && !error && availableCustomerDomains.map((entry, index) => {
-            const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
-
-            return (
-              <DomainItem
-                key={`available-customer-domain-${index}-${domainName}`}
-                domain={entry.customerDomain}
-                appDomain={undefined}
-                appId={currentAppId}
-                siteId={currentAppId}
-                onConnect={handleConnectDomain}
-                onDisconnect={handleDisconnectDomain}
-                isLoading={modifyDomainsMutation.isPending}
-                disableConnect={shouldDisableAddingDomain}
-                mutationError={modifyDomainsMutation.error}
+            {showDomainDNS && (
+              <DomainDNS
+                domainDetails={pendingDomainDetails}
               />
-            );
-          })}
-
-          {/* Buy a New Domain Button */}
-          {!isLoading && !error && (
-            <Button
-              text={t('builder_custom_domain_button_buy')}
-              design="primary"
-              size="sm"
-              data-eid={generateClickEID(`settings.domains.buy_new_domain`)}
-              href={`https://www.${getRootDomain()}/domains?itc=${encodeURIComponent(PAYWALL_ITC.ATTACH_DOMAIN)}`}
-              external
-              className="self-start"
-            />
-          )}
-        </Box>
+            )}
+          </>
+        ) : (
+          <>
+            {hasActiveDomainJob && (
+              <text.p className="text-sm italic text-intents-ux-text-secondaryColor">
+                {t('builder_domain_connection_timing_info')}
+              </text.p>
+            )}
+            {isLoading && (
+              <>
+                {[1, 2, 3].map((i) => (
+                  <div
+                    key={`legacy-skeleton-${i}`}
+                    className="bg-intents-ux-box-backgroundColor rounded-lg px-2 py-1"
+                  >
+                    <Skeleton size="md" width="30%" />
+                  </div>
+                ))}
+              </>
+            )}
+            {error && (
+              <text.p className="text-intents-ux-text-destructive">
+                {getErrorMessage(error, t)}
+              </text.p>
+            )}
+            {!isLoading && !error && domains.length === 0 && (
+              <text.p>{t('builder_custom_domain_no_domains')}</text.p>
+            )}
+            <Box data-testid="domain-attach-list" orientation="vertical" gap="sm" className="min-w-0 overflow-x-hidden">
+              {!isLoading && !error && connectedCustomerDomains.map((entry, index) => {
+                const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
+                return (
+                  <Box key={`legacy-connected-customer-domain-${index}-${domainName}`} gap="sm">
+                    {(() => {
+                      const rootAppDomain = entry.connectedDomains.find(
+                        (d) => normalizeFqdn(d.fqdn) === normalizeFqdn(domainName),
+                      );
+                      return (
+                        <DomainItem
+                          domain={entry.customerDomain}
+                          appDomain={rootAppDomain}
+                          appId={currentAppId}
+                          siteId={currentAppId}
+                          onConnect={handleConnectDomain}
+                          onDisconnect={handleDisconnectDomain}
+                          isLoading={modifyDomainsMutation.isPending}
+                          disableConnect={isDomainMutationBusy}
+                          mutationError={modifyDomainsMutation.error}
+                        />
+                      );
+                    })()}
+                    {entry.connectedDomains
+                      .filter((d) => normalizeFqdn(d.fqdn) !== normalizeFqdn(domainName))
+                      .map((subdomain, subIndex) => (
+                        <DomainItem
+                          key={`legacy-connected-subdomain-${index}-${subIndex}-${subdomain.fqdn}`}
+                          domain={{ domain: subdomain.fqdn, name: subdomain.fqdn }}
+                          appDomain={subdomain}
+                          appId={currentAppId}
+                          siteId={currentAppId}
+                          onConnect={handleConnectDomain}
+                          onDisconnect={handleDisconnectDomain}
+                          isLoading={modifyDomainsMutation.isPending}
+                          disableConnect={isDomainMutationBusy}
+                          isCustomDomain={true}
+                          mutationError={modifyDomainsMutation.error}
+                        />
+                      ))}
+                  </Box>
+                );
+              })}
+              {!isLoading && !error && connectedCustomDomains.map((appDomain, index) => (
+                <DomainItem
+                  key={`legacy-connected-custom-domain-${index}-${appDomain.fqdn}`}
+                  domain={{ domain: appDomain.fqdn, name: appDomain.fqdn }}
+                  appDomain={appDomain}
+                  appId={currentAppId}
+                  siteId={currentAppId}
+                  onConnect={handleConnectDomain}
+                  onDisconnect={handleDisconnectDomain}
+                  isLoading={modifyDomainsMutation.isPending}
+                  disableConnect={isDomainMutationBusy}
+                  isCustomDomain={true}
+                  mutationError={modifyDomainsMutation.error}
+                />
+              ))}
+              {!isLoading && !error && availableCustomDomains.map((appDomain, index) => (
+                <DomainItem
+                  key={`legacy-available-custom-domain-${index}-${appDomain.fqdn}`}
+                  domain={{ domain: appDomain.fqdn, name: appDomain.fqdn }}
+                  appDomain={appDomain}
+                  appId={currentAppId}
+                  siteId={currentAppId}
+                  onConnect={handleConnectDomain}
+                  onDisconnect={handleDisconnectDomain}
+                  isLoading={modifyDomainsMutation.isPending}
+                  disableConnect={isDomainMutationBusy}
+                  isCustomDomain={true}
+                  mutationError={modifyDomainsMutation.error}
+                />
+              ))}
+              {!isLoading && !error && availableCustomerDomains.map((entry, index) => {
+                const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
+                return (
+                  <DomainItem
+                    key={`legacy-available-customer-domain-${index}-${domainName}`}
+                    domain={entry.customerDomain}
+                    appDomain={undefined}
+                    appId={currentAppId}
+                    siteId={currentAppId}
+                    onConnect={handleConnectDomain}
+                    onDisconnect={handleDisconnectDomain}
+                    isLoading={modifyDomainsMutation.isPending}
+                    disableConnect={isDomainMutationBusy}
+                    mutationError={modifyDomainsMutation.error}
+                  />
+                );
+              })}
+            </Box>
+            {!isLoading && !error && (
+              <Button
+                text={t('builder_custom_domain_button_buy')}
+                design="primary"
+                size="sm"
+                data-eid={generateClickEID(`settings.domains.buy_new_domain`)}
+                href={buyDomainUrl}
+                external
+                className="self-start"
+              />
+            )}
+            {isDomainDataReady && !hasActiveOrPendingCustomDomain && (
+              <>
+                <Box
+                  orientation="vertical"
+                  blockAlignChildren="start"
+                  gap="sm"
+                  inlineAlignChildren="start"
+                >
+                  <text.span as="label" text={t('builder_custom_domain_input_label')} />
+                  <TextInput
+                    className="w-full"
+                    id="custom-domain-slug"
+                    label={null}
+                    onChange={handleCustomDomainChange}
+                    helpMessage={t('builder_custom_domain_input_help')}
+                    value={customDomain}
+                    disabled={isDomainMutationBusy}
+                    errorMessage={getValidationErrorMessage()}
+                  />
+                </Box>
+                {customDomain && (
+                  <div>
+                    <Button
+                      text={isExternalDomainChecking
+                        ? t('builder_custom_domain_button_checking')
+                        : t('builder_custom_domain_button_add')
+                      }
+                      design="primary"
+                      onClick={() => setShowAddConfirmation(true)}
+                      disabled={isExternalDomainButtonDisabled}
+                      data-eid={generateClickEID(`settings.domains.add_domain`)}
+                      className="!hover:bg-transparent"
+                      size="sm"
+                    />
+                  </div>
+                )}
+              </>
+            )}
+            {showDomainDNS && (
+              <DomainDNS
+                domainDetails={pendingDomainDetails}
+              />
+            )}
+          </>
+        )}
       </Box>
 
-      {isDomainDataReady && !hasActiveOrPendingCustomDomain && (
-        <>
-          {/* Custom Domain Input */}
-          <Box
-            orientation="vertical"
-            blockAlignChildren="start"
-            gap="sm"
-            inlineAlignChildren="start"
-          >
-            <text.span as="label" text={t('builder_custom_domain_input_label')} />
-            <TextInput
-              className="w-full"
-              id="custom-domain-slug"
-              label={null}
-              onChange={handleCustomDomainChange}
-              helpMessage={t('builder_custom_domain_input_help')}
-              value={customDomain}
-              disabled={shouldDisableAddingDomain}
-              errorMessage={getValidationErrorMessage()}
-            />
-          </Box>
-          {customDomain && (
-            <div>
+      {showConnectSelectedConfirmation && selectedDomain && (
+        <Modal
+          onClose={() => setShowConnectSelectedConfirmation(false)}
+          title={t('builder_domain_connect_confirmation_title')}
+          centered
+        >
+          <Box className='text-center max-w-2xl mx-auto' gap='md' inlineAlignChildren='center'>
+            <text.span as="paragraph">
+              {t('builder_domain_connect_confirmation_description')}
+            </text.span>
+            {connectMutationErrorMessage && (
+              <text.p className="text-intents-ux-text-destructive">
+                {connectMutationErrorMessage}
+              </text.p>
+            )}
+            <Box orientation="horizontal" gap="md" className="justify-center">
               <Button
-                text={isValidatingDomain || (customDomain !== debouncedDomain)
-                  ? t('builder_custom_domain_button_checking')
-                  : t('builder_custom_domain_button_add')
-                }
                 design="primary"
-                onClick={() => setShowAddConfirmation(true)}
-                disabled={shouldDisableAddingDomain ||
-                  customDomain.length === 0 ||
-                  isAiroDomainBlocked ||
-                  isValidatingDomain ||
-                  hasValidationError ||
-                  (customDomain !== debouncedDomain) ||
-                  (validationData && !validationData.available)
-                }
-                data-eid={generateClickEID(`settings.domains.add_domain`)}
-                className="!hover:bg-transparent"
+                onClick={() => void handleConfirmConnectSelected()}
+                text={t('builder_custom_domain_modal_button_continue')}
+                data-eid={generateClickEID(`settings.domains.connect_continue`)}
                 size="sm"
               />
-            </div>
-          )}
-        </>
+              <Button
+                design="secondary"
+                onClick={() => setShowConnectSelectedConfirmation(false)}
+                text={t('builder_custom_domain_modal_button_cancel')}
+                data-eid={generateClickEID(`settings.domains.connect_cancel`)}
+                size="sm"
+              />
+            </Box>
+          </Box>
+        </Modal>
       )}
 
       {showAddConfirmation && (
@@ -871,7 +1397,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
             <Box orientation="horizontal" gap="md" className="justify-center">
               <Button
                 design="primary"
-                onClick={handleConfirmAdd}
+                onClick={() => void handleConfirmAdd()}
                 text={t('builder_custom_domain_modal_button_continue')}
                 data-eid={generateClickEID(`settings.domains.connect_continue`)}
                 size="sm"

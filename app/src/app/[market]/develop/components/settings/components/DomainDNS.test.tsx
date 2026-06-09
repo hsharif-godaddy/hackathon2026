@@ -12,7 +12,7 @@ import { renderWithProviders } from '@/tests/test-utils';
 
 
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(function () { return false; }),
+  useSwitchboard: vi.fn(() => (false)),
 }));
 
 beforeEach(() => {
@@ -78,8 +78,11 @@ describe('DomainDNS', () => {
 
   it('shows provisioning spinner when DCV enabled and certificateValidationCname is missing', async () => {
     const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-    vi.mocked(useSwitchboard).mockImplementation(function (feature: string) {
+    vi.mocked(useSwitchboard).mockImplementation((feature: string) => {
       if (feature === 'appbuilder-domain-dcv') {
+        return true;
+      }
+      if (feature === 'appbuilder-domain-connect') {
         return true;
       }
       return false;
@@ -94,17 +97,20 @@ describe('DomainDNS', () => {
 
   it('renders DNS cards with A record for root domain', async () => {
     const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-    vi.mocked(useSwitchboard).mockReturnValue(false);
+    vi.mocked(useSwitchboard).mockImplementation((feature: string) => feature === 'appbuilder-domain-connect');
 
     renderWithProviders(<DomainDNS domainDetails={baseDomain} />);
 
     expect(screen.getByText('1.2.3.4')).toBeInTheDocument();
     expect(screen.getByText('builder_domain_dns_instructions')).toBeInTheDocument();
+    expect(screen.getAllByText('Type:')).toHaveLength(2);
+    expect(screen.getByText('A')).toBeInTheDocument();
+    expect(screen.getByText('CNAME')).toBeInTheDocument();
   });
 
   it('renders copy buttons for record values', async () => {
     const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-    vi.mocked(useSwitchboard).mockReturnValue(false);
+    vi.mocked(useSwitchboard).mockImplementation((feature: string) => feature === 'appbuilder-domain-connect');
 
     renderWithProviders(<DomainDNS domainDetails={baseDomain} />);
 

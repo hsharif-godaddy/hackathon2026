@@ -4,6 +4,7 @@ import Box from '@ux/box';
 import Button from '@ux/button';
 import TextInput from '@ux/text-input';
 
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 
 export interface ExternalDomainInputProps {
@@ -49,6 +50,13 @@ export default function ExternalDomainInput({
   buttonClassName,
 }: ExternalDomainInputProps) {
   const t = useTranslations();
+  const isDomainConnectEnabled = useSwitchboard('appbuilder-domain-connect');
+
+  const isButtonChecking = Boolean(value) && (isValidating || !isValidationComplete);
+
+  const buttonText = isButtonChecking
+    ? t('builder_custom_domain_button_checking')
+    : t('builder_custom_domain_button_add');
 
   const isButtonDisabled =
     disabled ||
@@ -65,20 +73,17 @@ export default function ExternalDomainInput({
         id="external-domain-input"
         label={null}
         onChange={onChange}
-        helpMessage={t('builder_custom_domain_input_help')}
+        placeholder={isDomainConnectEnabled ? t('builder_custom_domain_input_help') : undefined}
+        helpMessage={isDomainConnectEnabled ? undefined : t('builder_custom_domain_input_help')}
         value={value ?? ''}
         visualSize="sm"
         disabled={disabled}
         errorMessage={errorMessage}
       />
 
-      {value && (
+      {(isDomainConnectEnabled || value) && (
         <Button
-          text={
-            isValidating || !isValidationComplete
-              ? t('builder_custom_domain_button_checking')
-              : t('builder_custom_domain_button_add')
-          }
+          text={buttonText}
           design="primary"
           size="sm"
           onClick={onAdd}

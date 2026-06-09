@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import DomainItem from '@/app/[market]/develop/components/settings/components/DomainItem';
 import type { AppDomain } from '@/hooks/useAppDetails';
@@ -35,9 +35,12 @@ vi.mock('@/hooks/useDomainJobPolling', () => ({
     ['domain-job', siteId, fqdn.trim().toLowerCase()] as const,
   useDomainJobPolling: (...args: unknown[]) => mockUseDomainJobPolling(...args),
 }));
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: vi.fn(() => true),
+}));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn(function (id: string) { return `${id}.click`; }),
+  generateClickEID: vi.fn((id: string) => `${id}.click`),
 }));
 
 vi.mock('@/lib/request-context', () => ({
@@ -49,7 +52,7 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 vi.mock('@/utils/domain-validation', () => ({
-  translateDomainApiError: vi.fn(function (_code: string, _t: unknown, fallback?: string) { return fallback ?? 'Translated error'; }),
+  translateDomainApiError: vi.fn((_code: string, _t: unknown, fallback?: string) => fallback ?? 'Translated error'),
 }));
 
 const baseDomain: Domain = {
@@ -210,6 +213,60 @@ describe('DomainItem', () => {
       await waitFor(() => {
         expect(screen.getByText(/builder_domain_error_please_retry/)).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('options menu', function optionsMenuTests() {
+    beforeEach(function mockResizeObserver() {
+      global.ResizeObserver = class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      } as typeof ResizeObserver;
+    });
+
+    it('shows disconnect in menu for connected domain with radioMode', function disconnectWithRadioMode() {
+      const onDisconnect = vi.fn();
+      const activeDomain: AppDomain = {
+        fqdn: 'example.com',
+        isPrimary: false,
+        status: DomainStatus.ACTIVE,
+      };
+
+      renderWithProviders(
+        <DomainItem
+          {...defaultProps}
+          appDomain={activeDomain}
+          onDisconnect={onDisconnect}
+          radioMode
+          isSelected={false}
+          onSelect={vi.fn()}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+
+      const disconnectButton = screen.getByRole('button', { name: 'builder_domain_button_disconnect' });
+      expect(disconnectButton).toBeInTheDocument();
+      fireEvent.click(disconnectButton);
+      expect(onDisconnect).toHaveBeenCalledWith('example.com');
+    });
+
+    it('hides connect in menu for available domain with radioMode', function noConnectWithRadioMode() {
+      renderWithProviders(
+        <DomainItem
+          {...defaultProps}
+          appDomain={undefined}
+          radioMode
+          isSelected={false}
+          onSelect={vi.fn()}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+
+      expect(screen.queryByRole('button', { name: 'builder_domain_button_connect' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'builder_domain_button_disconnect' })).not.toBeInTheDocument();
     });
   });
 

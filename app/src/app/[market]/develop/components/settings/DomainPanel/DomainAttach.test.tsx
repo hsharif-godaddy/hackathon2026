@@ -20,12 +20,27 @@ vi.mock('@ux/modal', () => ({
 
 // -- Hook mocks --
 
+const domainAttachSwitchboardTestState = vi.hoisted(function hoistedSwitchboardState() {
+  return {
+    domainConnectEnabled: true,
+    domainTransferEnabled: true,
+  };
+});
+
 vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: vi.fn(function () { return true; }),
+  useSwitchboard: vi.fn((feature: string) => {
+    if (feature === 'appbuilder-domain-connect') {
+      return domainAttachSwitchboardTestState.domainConnectEnabled;
+    }
+    if (feature === 'appbuilder-domain-transfer') {
+      return domainAttachSwitchboardTestState.domainTransferEnabled;
+    }
+    return true;
+  }),
 }));
 
 vi.mock('@/hooks/useAuth', () => ({
-  useAuth: vi.fn(function () { return { isAuthenticated: true, isLoading: false }; }),
+  useAuth: vi.fn(() => ({ isAuthenticated: true, isLoading: false })),
 }));
 
 vi.mock('@/hooks/useCloseOnReauth', () => ({
@@ -33,38 +48,38 @@ vi.mock('@/hooks/useCloseOnReauth', () => ({
 }));
 
 vi.mock('@/hooks/useDomainsQuery', () => ({
-  useDomainsQuery: vi.fn(function () { return {
+  useDomainsQuery: vi.fn(() => ({
     data: [],
     isLoading: false,
     error: null,
     isFetched: true,
-  }; }),
+  })),
 }));
 
 vi.mock('@/hooks/useCustomerDomainAttach', () => ({
-  useCustomerDomainAttach: vi.fn(function () { return {
+  useCustomerDomainAttach: vi.fn(() => ({
     pendingCustomerDomain: null,
     isPolling: false,
     hasExternalNameservers: false,
     requiresManualDnsSetup: false,
-  }; }),
+  })),
 }));
 
 vi.mock('@/hooks/useDomainValidationQuery', () => ({
-  useDomainValidationQuery: vi.fn(function () { return {
+  useDomainValidationQuery: vi.fn(() => ({
     data: null,
     isLoading: false,
     isError: false,
-  }; }),
+  })),
 }));
 
 vi.mock('@/hooks/useDomainDnsOwnership', () => ({
-  useDomainDnsOwnership: vi.fn(function () { return {
+  useDomainDnsOwnership: vi.fn(() => ({
     data: { isGdDomain: false },
     isPending: false,
     isLoading: false,
     isError: false,
-  }; }),
+  })),
 }));
 
 vi.mock('@/app/[market]/develop/components/settings/SettingsSection', () => ({
@@ -73,7 +88,11 @@ vi.mock('@/app/[market]/develop/components/settings/SettingsSection', () => ({
   },
 }));
 
-const { mockModifyDomainsMutation } = vi.hoisted(function hoisted() {
+const {
+  mockModifyDomainsMutation,
+  mockDomainJobsInProgress,
+  mockClearDomainJobInProgress,
+} = vi.hoisted(function hoisted() {
   return {
     mockModifyDomainsMutation: {
       mutateAsync: vi.fn(),
@@ -83,36 +102,53 @@ const { mockModifyDomainsMutation } = vi.hoisted(function hoisted() {
       error: null,
       isError: false,
     },
+    mockDomainJobsInProgress: {} as Record<string, { fqdn: string; startedAt: number }>,
+    mockClearDomainJobInProgress: vi.fn(function clearDomainJob(appId: string) {
+      delete mockDomainJobsInProgress[appId];
+    }),
   };
 });
 
-vi.mock('@/hooks/useModifyDomains', () => ({
-  useModifyDomains: vi.fn(function () { return mockModifyDomainsMutation; }),
-  DomainMutationError: class extends Error {},
-}));
+vi.mock('@/hooks/useModifyDomains', async function importActual() {
+  const actual = await vi.importActual<typeof import('@/hooks/useModifyDomains')>(
+    '@/hooks/useModifyDomains',
+  );
+  return {
+    ...actual,
+    useModifyDomains: vi.fn(() => mockModifyDomainsMutation),
+  };
+});
 
 // -- Component utility mocks --
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
-  useAppIdFromParams: vi.fn(function () { return 'test-app-123'; }),
+  useAppIdFromParams: vi.fn(() => 'test-app-123'),
 }));
 
 // -- Store mocks --
 
 vi.mock('@/stores/useSiteStore', () => ({
-  useSiteStore: vi.fn(function (selector: any) { return selector({
+  useSiteStore: vi.fn((selector: any) => selector({
     getSite: () => ({
       id: 'test-app-123',
       subscription_id: 'sub-123',
       variants: ['publish'],
     }),
-  }); }),
+  })),
 }));
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: vi.fn(function (selector: any) { return selector({
-    domainJobsInProgress: {},
-  }); }),
+  useDevelopPageStore: Object.assign(
+    vi.fn((selector: any) => selector({
+      domainJobsInProgress: mockDomainJobsInProgress,
+    })),
+    {
+      getState: () => ({
+        domainJobsInProgress: mockDomainJobsInProgress,
+        clearDomainJobInProgress: mockClearDomainJobInProgress,
+      }),
+    },
+  ),
 }));
 
 // -- Utility / logging mocks --
@@ -130,16 +166,16 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 vi.mock('@/utils/site', () => ({
-  hasBeenPublished: vi.fn(function () { return true; }),
+  hasBeenPublished: vi.fn(() => true),
 }));
 
 vi.mock('@/utils/domain-validation', () => ({
-  getDomainErrorMessage: vi.fn(function () { return undefined; }),
-  translateDomainApiError: vi.fn(function () { return 'Translated error'; }),
+  getDomainErrorMessage: vi.fn(() => undefined),
+  translateDomainApiError: vi.fn(() => 'Translated error'),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
-  generateClickEID: vi.fn(function (id: string) { return `${id}.click`; }),
+  generateClickEID: vi.fn((id: string) => `${id}.click`),
 }));
 
 // DomainItem child dependency
@@ -167,16 +203,67 @@ const appDetails = {
   domains: [pendingCustomerDomain],
 } as any;
 
+function selectDomainAttachTab(tabId: 'connect' | 'buy' | 'external') {
+  const tab = document.getElementById(tabId);
+  expect(tab).toBeTruthy();
+  fireEvent.pointerDown(tab!);
+}
+
 describe('DomainAttach', function domainAttachTests() {
   beforeEach(async function setup() {
     vi.clearAllMocks();
+    domainAttachSwitchboardTestState.domainConnectEnabled = true;
+    domainAttachSwitchboardTestState.domainTransferEnabled = true;
+    global.ResizeObserver = class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as typeof ResizeObserver;
     mockModifyDomainsMutation.error = null;
     mockModifyDomainsMutation.isError = false;
     mockModifyDomainsMutation.mutateAsync = vi.fn();
     mockModifyDomainsMutation.mutate = vi.fn();
     mockModifyDomainsMutation.reset = vi.fn();
+    const { useModifyDomains } = await import('@/hooks/useModifyDomains');
+    vi.mocked(useModifyDomains).mockReturnValue(mockModifyDomainsMutation as any);
     const { useAppIdFromParams } = await import('@/app/[market]/develop/components/utils');
     vi.mocked(useAppIdFromParams).mockReturnValue('test-app-123');
+    Object.keys(mockDomainJobsInProgress).forEach(function clearJob(appId) {
+      delete mockDomainJobsInProgress[appId];
+    });
+    mockClearDomainJobInProgress.mockClear();
+
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+  });
+
+  it('renders legacy domain attach UI when domain-connect flag is disabled', async function rendersLegacyUiWhenFlagOff() {
+    domainAttachSwitchboardTestState.domainConnectEnabled = false;
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForLegacyDomainAttach() {
+      expect(screen.getByTestId('domain-attach-list')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'builder_custom_domain_button_buy' })).toBeInTheDocument();
+    expect(screen.getByText('builder_custom_domain_input_label')).toBeInTheDocument();
   });
 
   it('renders DNS instructions when domain-dns-ownership errors', async function renderDnsOnOwnershipError() {
@@ -231,7 +318,7 @@ describe('DomainAttach', function domainAttachTests() {
     });
   });
 
-  it('hides custom domain input when non-customer custom domain is already active', async function hideInputForExistingCustomDomain() {
+  it('shows custom domain input when another domain is active and use other domain is opened', async function showInputForExistingCustomDomain() {
     const activeCustomDomain: AppDomain = {
       fqdn: 'external-only.com',
       isPrimary: false,
@@ -251,8 +338,12 @@ describe('DomainAttach', function domainAttachTests() {
       />
     );
 
-    await waitFor(function waitForCustomDomainInputToHide() {
-      expect(document.getElementById('custom-domain-slug')).toBeNull();
+    selectDomainAttachTab('external');
+
+    await waitFor(function waitForCustomDomainInput() {
+      const input = document.getElementById('custom-domain-slug');
+      expect(input).toBeTruthy();
+      expect(input).not.toBeDisabled();
     });
   });
 
@@ -264,8 +355,7 @@ describe('DomainAttach', function domainAttachTests() {
     async function transferableConflict(nestedCode, existingOwnerType) {
       const { DomainMutationError } = await import('@/hooks/useModifyDomains');
       const { useDomainValidationQuery } = await import('@/hooks/useDomainValidationQuery');
-      const conflictError = new DomainMutationError('Domain already in use');
-      (conflictError as any).details = {
+      const conflictError = new DomainMutationError({
         code: 'DOMAIN_MODIFY_FAILED',
         message: 'Domain already in use',
         nestedCode,
@@ -277,7 +367,7 @@ describe('DomainAttach', function domainAttachTests() {
           existingAppName: 'Other App',
           domain: 'example.com',
         },
-      };
+      });
 
       vi.mocked(useDomainValidationQuery).mockReturnValue({
         data: { available: true, errors: [] },
@@ -296,14 +386,16 @@ describe('DomainAttach', function domainAttachTests() {
         />
       );
 
+      selectDomainAttachTab('external');
+
       const input = document.getElementById('custom-domain-slug');
       expect(input).toBeTruthy();
       fireEvent.change(input!, { target: { value: 'example.com' } });
 
       await waitFor(function waitForAddButton() {
-        expect(screen.getByRole('button', { name: 'builder_custom_domain_button_add' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'builder_domain_attach_external_button' })).toBeInTheDocument();
       });
-      fireEvent.click(screen.getByRole('button', { name: 'builder_custom_domain_button_add' }));
+      fireEvent.click(screen.getByRole('button', { name: 'builder_domain_attach_external_button' }));
       fireEvent.click(screen.getByRole('button', { name: 'builder_custom_domain_modal_button_continue' }));
 
       await waitFor(function waitForConflictModal() {
@@ -324,12 +416,11 @@ describe('DomainAttach', function domainAttachTests() {
   it('falls through to generic error display for non-transferable DOMAIN_ALREADY_IN_USE', async function fallsThroughForNonTransferableMwp() {
     const { DomainMutationError } = await import('@/hooks/useModifyDomains');
     const { useDomainValidationQuery } = await import('@/hooks/useDomainValidationQuery');
-    const fallbackError = new DomainMutationError('Domain is already configured elsewhere');
-    (fallbackError as any).details = {
+    const fallbackError = new DomainMutationError({
       code: 'DOMAIN_ALREADY_IN_USE',
       message: 'Domain is already configured elsewhere',
       nestedCode: 'DOMAIN_ALREADY_IN_USE',
-    };
+    });
 
     vi.mocked(useDomainValidationQuery).mockReturnValue({
       data: { available: true, errors: [] },
@@ -351,14 +442,16 @@ describe('DomainAttach', function domainAttachTests() {
       />
     );
 
+    selectDomainAttachTab('external');
+
     const input = document.getElementById('custom-domain-slug');
     expect(input).toBeTruthy();
     fireEvent.change(input!, { target: { value: 'example.com' } });
 
     await waitFor(function waitForAddButton() {
-      expect(screen.getByRole('button', { name: 'builder_custom_domain_button_add' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'builder_domain_attach_external_button' })).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole('button', { name: 'builder_custom_domain_button_add' }));
+    fireEvent.click(screen.getByRole('button', { name: 'builder_domain_attach_external_button' }));
     fireEvent.click(screen.getByRole('button', { name: 'builder_custom_domain_modal_button_continue' }));
 
     await waitFor(function waitForFallbackError() {
@@ -565,6 +658,625 @@ describe('DomainAttach', function domainAttachTests() {
           }),
         );
       });
+    });
+  });
+
+  it('clears radio selection and disables Connect Domain when external domain tab is selected', async function clearsSelectionOnExternalTab() {
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [{ domain: 'available.com', name: 'available.com' }],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForAvailableDomain() {
+      expect(screen.getByLabelText('available.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText('available.com'));
+    expect(screen.getByRole('button', { name: 'builder_domain_button_connect' })).toBeEnabled();
+
+    selectDomainAttachTab('external');
+
+    expect(screen.getByLabelText('available.com', { hidden: true })).not.toBeVisible();
+    expect(screen.queryByRole('button', { name: 'builder_domain_button_connect', exact: true })).not.toBeInTheDocument();
+
+    selectDomainAttachTab('connect');
+    expect(screen.getByLabelText('available.com')).not.toBeChecked();
+    expect(screen.getByRole('button', { name: 'builder_domain_button_connect' })).toBeDisabled();
+  });
+
+  it('switches domains by disconnecting the active domain then connecting the selection', async function switchesActiveDomain() {
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [
+        { domain: 'connected.com', name: 'connected.com' },
+        { domain: 'other.com', name: 'other.com' },
+      ],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+
+    mockModifyDomainsMutation.mutateAsync = vi.fn().mockResolvedValue({
+      statusJobId: 'job-1',
+      status: 'pending',
+      message: 'ok',
+    });
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [{
+            fqdn: 'connected.com',
+            isPrimary: false,
+            status: DomainStatus.ACTIVE,
+            domainType: 'custom',
+          }],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForDomains() {
+      expect(screen.getByLabelText('other.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText('other.com'));
+    expect(screen.getByRole('button', { name: 'builder_domain_button_connect' })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'builder_domain_button_connect' }));
+    fireEvent.click(screen.getByRole('button', { name: 'builder_custom_domain_modal_button_continue' }));
+
+    await waitFor(function waitForSwitchMutation() {
+      expect(mockModifyDomainsMutation.mutateAsync).toHaveBeenCalledWith({
+        siteId: 'test-app-123',
+        payload: {
+          domainsToCreate: [{ fqdn: 'other.com', primary: false }],
+          domainsToDelete: [{ fqdn: 'connected.com' }],
+          createCdn: true,
+          isWildcardDomain: true,
+        },
+      });
+    });
+  });
+
+  it('disables Connect Domain when an active connected domain is selected', async function disablesConnectForActiveSelection() {
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [{ domain: 'connected.com', name: 'connected.com' }],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [{
+            fqdn: 'connected.com',
+            isPrimary: false,
+            status: DomainStatus.ACTIVE,
+            domainType: 'custom',
+          }],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForConnectedDomain() {
+      expect(screen.getByLabelText('connected.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText('connected.com'));
+    expect(screen.getByRole('button', { name: 'builder_domain_button_connect' })).toBeDisabled();
+  });
+
+  it('shows placeholder in external domain input and disabled connect button before input', async function externalDomainPlaceholderAndButton() {
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    selectDomainAttachTab('external');
+
+    await waitFor(function waitForExternalInput() {
+      expect(screen.getByPlaceholderText('builder_custom_domain_input_help')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('builder_domain_attach_external_description')).toBeInTheDocument();
+
+    const connectButton = screen.getByRole('button', { name: 'builder_domain_attach_external_button' });
+    expect(connectButton).toBeDisabled();
+    expect(screen.queryByText('builder_custom_domain_input_help')).not.toBeInTheDocument();
+  });
+
+  it('does not show connection timing info without an active domain job', async function noTimingInfoByDefault() {
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForDomainList() {
+      expect(screen.getByTestId('domain-attach-list')).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText('builder_domain_connection_timing_info'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not show connection timing info when domain job is stale with no pending domain', async function staleJobNoTimingInfo() {
+    mockDomainJobsInProgress['test-app-123'] = {
+      fqdn: 'myexample.com',
+      startedAt: Date.now(),
+    };
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForDomainList() {
+      expect(screen.getByTestId('domain-attach-list')).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText('builder_domain_connection_timing_info'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows connection timing info in connect tab when a domain job is in progress', async function connectTabTimingInfo() {
+    mockDomainJobsInProgress['test-app-123'] = {
+      fqdn: 'myexample.com',
+      startedAt: Date.now(),
+    };
+
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [{ domain: 'myexample.com', name: 'myexample.com' }],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [{
+            fqdn: 'myexample.com',
+            isPrimary: false,
+            status: DomainStatus.PENDING,
+            domainType: 'custom',
+          }],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForTimingInfo() {
+      expect(screen.getByText('builder_domain_connection_timing_info')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('domain-attach-list')).toBeInTheDocument();
+
+    selectDomainAttachTab('buy');
+
+    await waitFor(function waitForBuyTab() {
+      const timingInfo = screen.queryByText(
+        'builder_domain_connection_timing_info',
+        { hidden: true },
+      );
+      expect(timingInfo).toBeInTheDocument();
+      expect(timingInfo).not.toBeVisible();
+    });
+  });
+
+  it('shows buy tab description and purchase link', async function buyTabContent() {
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForBuyContent() {
+      expect(
+        screen.getByText('builder_domain_attach_buy_description'),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByRole('link', { name: 'builder_domain_attach_buy_button' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('tab', { name: 'builder_domain_attach_tab_domains' }),
+    ).not.toBeInTheDocument();
+    const domainList = screen.queryByTestId('domain-attach-list', { hidden: true });
+    expect(domainList).toBeInTheDocument();
+    expect(domainList).not.toBeVisible();
+  });
+
+  it('hides GoDaddy domains tab and defaults to buy tab when domain list is empty', async function hideConnectTabWhenEmpty() {
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForBuyTabDefault() {
+      expect(
+        screen.getByText('builder_domain_attach_buy_description'),
+      ).toBeVisible();
+    });
+    expect(
+      screen.queryByRole('tab', { name: 'builder_domain_attach_tab_domains' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'builder_domain_attach_tab_buy' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'builder_domain_attach_tab_external' })).toBeInTheDocument();
+  });
+
+  it('does not scroll domain list when five or fewer domain rows are shown', async function noScrollForShortList() {
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: Array.from({ length: 5 }, (_, index) => ({ domain: `domain-${index}.com` })),
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForDomainList() {
+      expect(screen.getByTestId('domain-attach-list')).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId('domain-attach-list')).not.toHaveClass('overflow-y-auto');
+  });
+
+  it('scrolls domain list when more than five domain rows are shown', async function scrollsLongList() {
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: Array.from({ length: 6 }, (_, index) => ({ domain: `domain-${index}.com` })),
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForDomainList() {
+      expect(screen.getByTestId('domain-attach-list')).toHaveClass('overflow-y-auto');
+    });
+  });
+
+  it('clears stale domain job from store when attach completes', async function clearStaleDomainJobWhenComplete() {
+    mockDomainJobsInProgress['test-app-123'] = {
+      fqdn: 'completed.com',
+      startedAt: Date.now(),
+    };
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [{
+            fqdn: 'completed.com',
+            isPrimary: false,
+            status: DomainStatus.ACTIVE,
+            domainType: 'custom',
+          }],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForJobClear() {
+      expect(mockClearDomainJobInProgress).toHaveBeenCalledWith('test-app-123');
+    });
+  });
+
+  it('disables Connect Domain without a radio selection', async function connectSelectedDisabledWithoutSelection() {
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [{ domain: 'available.com', name: 'available.com' }],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForAvailableDomain() {
+      expect(screen.getByLabelText('available.com')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('button', { name: 'builder_domain_button_connect' })).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText('available.com'));
+
+    expect(screen.getByRole('button', { name: 'builder_domain_button_connect' })).toBeEnabled();
+  });
+
+  it('closes connect confirmation without calling mutate when Cancel is clicked', async function connectModalCancel() {
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [{ domain: 'available.com', name: 'available.com' }],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForAvailableDomain() {
+      expect(screen.getByLabelText('available.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText('available.com'));
+    fireEvent.click(screen.getByRole('button', { name: 'builder_domain_button_connect' }));
+
+    await waitFor(function waitForConfirmation() {
+      expect(screen.getByText('builder_domain_connect_confirmation_description')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'builder_custom_domain_modal_button_cancel' }));
+
+    await waitFor(function waitForModalClose() {
+      expect(screen.queryByText('builder_domain_connect_confirmation_description')).not.toBeInTheDocument();
+    });
+    expect(mockModifyDomainsMutation.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('keeps connect confirmation open when connect mutation fails', async function connectMutationFailure() {
+    const { DomainMutationError } = await import('@/hooks/useModifyDomains');
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+    const connectError = new DomainMutationError({
+      code: 'DOMAIN_MODIFY_FAILED',
+      message: 'Connect failed',
+      nestedCode: 'UNKNOWN_ERROR',
+    });
+
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [{ domain: 'available.com', name: 'available.com' }],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+    mockModifyDomainsMutation.mutateAsync = vi.fn().mockRejectedValue(connectError);
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForAvailableDomain() {
+      expect(screen.getByLabelText('available.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText('available.com'));
+    fireEvent.click(screen.getByRole('button', { name: 'builder_domain_button_connect' }));
+    fireEvent.click(screen.getByRole('button', { name: 'builder_custom_domain_modal_button_continue' }));
+
+    await waitFor(function waitForMutationAttempt() {
+      expect(mockModifyDomainsMutation.mutateAsync).toHaveBeenCalled();
+    });
+    expect(screen.getByText('builder_domain_connect_confirmation_description')).toBeInTheDocument();
+  });
+
+  it('suppresses connect tab error banner when conflict modal handles the error', async function suppressBannerWhenConflictModalOpen() {
+    const { DomainMutationError } = await import('@/hooks/useModifyDomains');
+    const { useDomainValidationQuery } = await import('@/hooks/useDomainValidationQuery');
+    const conflictError = new DomainMutationError({
+      code: 'DOMAIN_MODIFY_FAILED',
+      message: 'Domain already in use',
+      nestedCode: 'DOMAIN_IN_USE_BY_OWN_APP',
+      conflictDetails: {
+        existingAppId: '1129971',
+        existingSystemId: '',
+        existingOwnerType: 'airoAppId',
+        existingOwnerId: '1129971',
+        existingAppName: 'Other App',
+        domain: 'example.com',
+      },
+    });
+
+    vi.mocked(useDomainValidationQuery).mockReturnValue({
+      data: { available: true, errors: [] },
+      isLoading: false,
+      isError: false,
+    } as any);
+    mockModifyDomainsMutation.mutateAsync = vi.fn().mockRejectedValue(conflictError);
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          ...appDetails,
+          domains: [],
+        }}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    selectDomainAttachTab('external');
+
+    const input = document.getElementById('custom-domain-slug');
+    expect(input).toBeTruthy();
+    fireEvent.change(input!, { target: { value: 'example.com' } });
+
+    await waitFor(function waitForAddButton() {
+      expect(screen.getByRole('button', { name: 'builder_domain_attach_external_button' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'builder_domain_attach_external_button' }));
+    fireEvent.click(screen.getByRole('button', { name: 'builder_custom_domain_modal_button_continue' }));
+
+    await waitFor(function waitForConflictModal() {
+      expect(screen.getByText('Move Domain')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('builder_domain_attach_connect_error')).not.toBeInTheDocument();
+  });
+
+  it('shows connect tab error banner for conflict when transfer flag is off', async function conflictBannerWhenTransferOff() {
+    const { DomainMutationError } = await import('@/hooks/useModifyDomains');
+    const { useModifyDomains } = await import('@/hooks/useModifyDomains');
+    domainAttachSwitchboardTestState.domainTransferEnabled = false;
+    const conflictError = new DomainMutationError({
+      code: 'DOMAIN_MODIFY_FAILED',
+      message: 'Domain already in use',
+      nestedCode: 'DOMAIN_IN_USE_BY_OWN_APP',
+    });
+
+    vi.mocked(useModifyDomains).mockReturnValue({
+      ...mockModifyDomainsMutation,
+      error: conflictError,
+      isError: true,
+    } as any);
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForConflictBanner() {
+      expect(
+        screen.getByText('Something went wrong connecting your domain. Please try again.'),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('shows connect tab mutation error banner when modify domains fails', async function connectTabMutationBanner() {
+    const { useModifyDomains } = await import('@/hooks/useModifyDomains');
+    const connectError = new Error('Connect failed');
+
+    vi.mocked(useModifyDomains).mockReturnValue({
+      ...mockModifyDomainsMutation,
+      error: connectError,
+      isError: true,
+    } as any);
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForBanner() {
+      expect(document.body.textContent).toContain('Connect failed');
     });
   });
 });
