@@ -17,9 +17,19 @@ vi.mock('@airo/shared/publish', () => ({
 // Mock dependencies BEFORE imports
 const mockFindById = vi.fn();
 
+const mockUpdatePublishedUrl = vi.fn();
 vi.mock('../../database/repositories/AppRepository.js', () => ({
   AppRepository: vi.fn().mockImplementation(function () { return {
-    findById: mockFindById
+    findById: mockFindById,
+    updatePublishedUrl: mockUpdatePublishedUrl,
+  }; })
+}));
+
+const mockMemorySet = vi.fn().mockResolvedValue({ success: true });
+vi.mock('../../database/repositories/MemoryRepository.js', () => ({
+  MemoryRepository: vi.fn().mockImplementation(function () { return {
+    get: vi.fn().mockResolvedValue({ success: true, exists: false }),
+    set: mockMemorySet,
   }; })
 }));
 
@@ -555,5 +565,141 @@ describe('Publish Route Authorization', () => {
 
       expect(response.body.error).toBe('App not found');
     });
+  });
+});
+
+describe('POST /apps/:id/publish-state', () => {
+  let app: Express;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as AuthenticatedRequest).agentContext = {
+        siteId: 'test-site',
+        canDownload: false,
+        canPublish: true,
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000)
+      };
+      next();
+    });
+    app.use('/', publishRouter);
+  });
+
+  it('should return 404 when app not found', async () => {
+    mockFindById.mockReturnValue(null);
+
+    const response = await request(app)
+      .post('/apps/test-app-id/publish-state')
+      .send({ publishedUrl: 'https://example.com' })
+      .expect(404);
+
+    expect(response.body.error).toBe('App not found');
+  });
+
+  it('should return 400 when neither publishedUrl nor domains provided', async () => {
+    mockFindById.mockReturnValue({ id: 'test-app-id' });
+
+    const response = await request(app)
+      .post('/apps/test-app-id/publish-state')
+      .send({})
+      .expect(400);
+
+    expect(response.body.error).toContain('At least one of');
+  });
+
+  it('should update publishedUrl when provided', async () => {
+    mockFindById.mockReturnValue({ id: 'test-app-id' });
+    mockUpdatePublishedUrl.mockReturnValue({ id: 'test-app-id', publishedUrl: 'https://example.com' });
+
+    await request(app)
+      .post('/apps/test-app-id/publish-state')
+      .send({ publishedUrl: 'https://example.com' })
+      .expect(200);
+
+    expect(mockUpdatePublishedUrl).toHaveBeenCalledWith('test-app-id', 'https://example.com');
+  });
+
+  it('should set publishedUrl to null for invalid URL', async () => {
+    mockFindById.mockReturnValue({ id: 'test-app-id' });
+    mockUpdatePublishedUrl.mockReturnValue({ id: 'test-app-id', publishedUrl: null });
+
+    await request(app)
+      .post('/apps/test-app-id/publish-state')
+      .send({ publishedUrl: 'not-a-url' })
+      .expect(200);
+
+    expect(mockUpdatePublishedUrl).toHaveBeenCalledWith('test-app-id', null);
+  });
+
+  it('should trim publishedUrl to null for empty string', async () => {
+    mockFindById.mockReturnValue({ id: 'test-app-id' });
+    mockUpdatePublishedUrl.mockReturnValue({ id: 'test-app-id', publishedUrl: null });
+
+    await request(app)
+      .post('/apps/test-app-id/publish-state')
+      .send({ publishedUrl: '   ' })
+      .expect(200);
+
+    expect(mockUpdatePublishedUrl).toHaveBeenCalledWith('test-app-id', null);
+  });
+
+  it('should update domains without touching publishedUrl', async () => {
+    mockFindById.mockReturnValue({ id: 'test-app-id' });
+
+    await request(app)
+      .post('/apps/test-app-id/publish-state')
+      .send({ domains: [{ fqdn: 'example.com', isPrimary: true, status: 'active' }] })
+      .expect(200);
+
+    expect(mockUpdatePublishedUrl).not.toHaveBeenCalled();
+    expect(mockMemorySet).toHaveBeenCalledWith('test-app-id', 'site.domains', [
+      { fqdn: 'example.com', isPrimary: true, status: 'active' },
+    ]);
+  });
+
+  it('should filter invalid domain entries', async () => {
+    mockFindById.mockReturnValue({ id: 'test-app-id' });
+
+    await request(app)
+      .post('/apps/test-app-id/publish-state')
+      .send({
+        domains: [
+          { fqdn: 'valid.com', isPrimary: false, status: 'active' },
+          { fqdn: '', isPrimary: false, status: 'active' },
+          { fqdn: 123, isPrimary: false, status: 'active' },
+        ]
+      })
+      .expect(200);
+
+    expect(mockMemorySet).toHaveBeenCalledWith('test-app-id', 'site.domains', [
+      { fqdn: 'valid.com', isPrimary: false, status: 'active' },
+    ]);
+  });
+
+  it('should reject when canPublish is false', async () => {
+    app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as AuthenticatedRequest).agentContext = {
+        siteId: 'test-site',
+        canDownload: false,
+        canPublish: false,
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000)
+      };
+      next();
+    });
+    app.use('/', publishRouter);
+
+    const response = await request(app)
+      .post('/apps/test-app-id/publish-state')
+      .send({ publishedUrl: 'https://example.com' })
+      .expect(403);
+
+    expect(response.body.error).toContain('not allowed');
   });
 });

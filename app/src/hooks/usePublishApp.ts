@@ -8,6 +8,8 @@ import {
 } from '@/hooks/useAppDetails';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
+import { agentFetch } from '@/lib/agent-fetch';
+import { DomainType } from '@/lib/control-plane/types';
 import { appFetch, AuthDismissedError, authPreflight } from '@/lib/gasket-config';
 import { regenerateToken } from '@/lib/jwt-regeneration';
 import type { AiroSubscription } from '@/lib/mgmt-airo/types';
@@ -102,6 +104,33 @@ async function handleLocalDevPublishSuccess(
     // Site now has variants: ['preview', 'publish'] computed from published_url
     // Show success alert
     setPublishSuccess(appId, true);
+
+    // Push publish state to agent so context is accurate on next chat message
+    void (async () => {
+      try {
+        const site = useSiteStore.getState().getSite(appId);
+        if (!site?.agent_url) return;
+        await agentFetch(`${site.agent_url}/apps/${appId}/publish-state`, {
+          siteId: appId,
+          method: 'POST',
+          body: JSON.stringify({
+            publishedUrl: site.published_url ?? null,
+            domains: (site.domains ?? [])
+              .filter(d => d.domainType !== DomainType.PREFIX)
+              .map(d => ({
+                fqdn: d.fqdn,
+                isPrimary: d.isPrimary,
+                status: d.status,
+              })),
+          }),
+        });
+      } catch (err) {
+        logger.warn('publish.local-dev.publish-state-push.failed', {
+          appId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    })();
   } catch (error) {
     logger.error('publish.local-dev.site-refetch.error', {
       appId,

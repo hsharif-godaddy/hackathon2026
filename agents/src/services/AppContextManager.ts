@@ -5,6 +5,7 @@ import { appContextEvents } from '../logging/events/index.js';
 import { SecretsManagementTool } from '../tools/secrets-management-tool.js';
 import { mediaManifestService, type MediaSlot } from './MediaManifestService.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
+import { MemoryRepository } from '../database/repositories/MemoryRepository.js';
 import { getKvMemoryStore } from '../memory/adapters/index.js';
 import type { KvMemoryStore } from '../memory/interfaces/index.js';
 import { customerIdFromContext, workspaceScopeFromAppId } from '../memory/interfaces/scope.js';
@@ -38,9 +39,11 @@ export interface AppContextResult {
  */
 export class AppContextManager {
   private appRepository: AppRepository;
+  private memoryRepository: MemoryRepository;
 
   constructor(private kvMemoryStore: KvMemoryStore = getKvMemoryStore()) {
     this.appRepository = new AppRepository();
+    this.memoryRepository = new MemoryRepository();
   }
 
   /**
@@ -582,11 +585,25 @@ Note: This is the current project context including dependencies and design syst
    * @param appId - The app ID
    * @returns Publish state info or null
    */
-  private async getPublishStateInfo(appId: string): Promise<{ publishedUrl: string | null } | null> {
+  private async getPublishStateInfo(appId: string): Promise<{
+    publishedUrl: string | null;
+    domains: Array<{ fqdn: string; isPrimary: boolean; status: string }>;
+  } | null> {
     try {
       const app = this.appRepository.findById(appId);
       if (!app) return null;
-      return { publishedUrl: app.publishedUrl || null };
+
+      let domains: Array<{ fqdn: string; isPrimary: boolean; status: string }> = [];
+      try {
+        const result = await this.memoryRepository.get(appId, 'site.domains');
+        if (result.success && result.exists && Array.isArray(result.value)) {
+          domains = result.value as Array<{ fqdn: string; isPrimary: boolean; status: string }>;
+        }
+      } catch {
+        // Domain lookup failure is non-fatal
+      }
+
+      return { publishedUrl: app.publishedUrl || null, domains };
     } catch (error) {
       logger.warn('app.context.publishState.failure', {
         appId,
@@ -601,13 +618,22 @@ Note: This is the current project context including dependencies and design syst
    * @param publishStateInfo - Publish state info or null
    * @returns Formatted publish state section, or null if no data
    */
-  private formatPublishStateSection(publishStateInfo: { publishedUrl: string | null } | null): string | null {
+  private formatPublishStateSection(publishStateInfo: {
+    publishedUrl: string | null;
+    domains: Array<{ fqdn: string; isPrimary: boolean; status: string }>;
+  } | null): string | null {
     if (!publishStateInfo) return null;
 
     const isPublished = !!publishStateInfo.publishedUrl;
     let section = `## App Status\n- Published: ${isPublished ? 'yes' : 'no'}`;
     if (publishStateInfo.publishedUrl) {
       section += `\n- URL: ${publishStateInfo.publishedUrl}`;
+    }
+    if (publishStateInfo.domains.length > 0) {
+      const domainList = publishStateInfo.domains
+        .map(d => `${d.fqdn}${d.isPrimary ? ' (primary)' : ''}, ${d.status}`)
+        .join('; ');
+      section += `\n- Custom domains: ${domainList}`;
     }
     return section;
   }

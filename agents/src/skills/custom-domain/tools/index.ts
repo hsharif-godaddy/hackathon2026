@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { SkillToolDefinition } from '@airo/ai-skills'
 
 import { AppRepository } from '../../../database/repositories/AppRepository.js'
+import { MemoryRepository } from '../../../database/repositories/MemoryRepository.js'
 import { Logger } from '../../../logging/index.js'
 import { customerIdFromContext } from '../../../memory/interfaces/scope.js'
 import { getActionService } from '../../../server/agent-runtime.js'
@@ -13,6 +14,7 @@ import { validateDomainName } from '../../../utils/domain-validation.js'
 const logger = Logger.create({ component: 'domain-tool' })
 const memoryTool = new MemoryTool()
 const appRepo = new AppRepository()
+const memoryRepo = new MemoryRepository()
 
 const DOMAIN_ATTACH_AGENT_EXPLAINER =
     'Connecting points the domain at this app. GoDaddy domains: DNS auto-updated. External: user updates DNS at registrar. If domain serves another site, attaching moves traffic here—confirm with user first.'
@@ -214,6 +216,23 @@ async function autoAttach(
 
         if (result.success) {
             logger.info('domain.attach.auto.success', { appId, domain })
+
+            // Persist domain state so agent context reflects the new domain
+            try {
+                const existingResult = await memoryRepo.get(appId, 'site.domains')
+                const existing = existingResult.success && existingResult.exists && Array.isArray(existingResult.value)
+                    ? existingResult.value as Array<{ fqdn: string; isPrimary: boolean; status: string }>
+                    : []
+                const updated = [...existing.filter(d => d.fqdn !== domain), { fqdn: domain, isPrimary: false, status: 'provisioning' }]
+                await memoryRepo.set(appId, 'site.domains', updated)
+            } catch (persistError) {
+                logger.warn('domain.attach.auto.state-persist-failed', {
+                    appId,
+                    domain,
+                    error: persistError instanceof Error ? persistError.message : String(persistError),
+                })
+            }
+
             return {
                 success: true,
                 message: `${domain} attached. DNS propagation may take a few minutes.`

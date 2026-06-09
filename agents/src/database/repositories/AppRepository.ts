@@ -564,6 +564,37 @@ export class AppRepository {
   }
 
   /**
+   * Update the published URL for an app
+   */
+  updatePublishedUrl(id: string, publishedUrl: string | null): App | null {
+    try {
+      const existing = this.findById(id);
+      if (!existing) return null;
+
+      const stmt = this.db.prepare(`
+        UPDATE apps
+        SET published_url = ?, updated_at = ?
+        WHERE id = ?
+      `);
+
+      stmt.run(publishedUrl, new Date().toISOString(), id);
+
+      this.logger.info('app.publishedUrl.updated', {
+        appId: id,
+        publishedUrl: publishedUrl ? publishedUrl.slice(0, 200) : null,
+      });
+
+      return this.findById(id)!;
+    } catch (error) {
+      this.logger.warn('app.publishedUrl.update.failed', {
+        appId: id,
+        error: getErrorMessage(error)
+      });
+      return null;
+    }
+  }
+
+  /**
    * Mark the initial build as complete (called when first git commit happens)
    */
   markInitialBuildComplete(id: string): App | null {

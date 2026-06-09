@@ -1,9 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { agentFetch } from '@/lib/agent-fetch';
+import { DomainType } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
 import { MWP_V2_APP_OWNER_TYPE } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { useSiteStore } from '@/stores/useSiteStore';
 import { normalizeFqdn } from '@/utils/domain';
 
 /**
@@ -266,6 +269,48 @@ export function useModifyDomains() {
           jobStatus: data.status,
         });
       }
+
+      // Push domain state to agent so context reflects the change
+      void (async () => {
+        try {
+          const site = useSiteStore.getState().getSite(variables.siteId);
+          if (!site?.agent_url) return;
+
+          const existingDomains = (site.domains ?? [])
+            .filter(d => d.domainType !== DomainType.PREFIX)
+            .map(d => ({
+              fqdn: d.fqdn,
+              isPrimary: d.isPrimary,
+              status: d.status,
+            }));
+          const newDomains = (variables.payload.domainsToCreate ?? []).map(d => ({
+            fqdn: d.fqdn.trim().toLowerCase(),
+            isPrimary: d.primary ?? false,
+            status: 'provisioning',
+          }));
+          const deletedFqdns = new Set(
+            (variables.payload.domainsToDelete ?? []).map(d => d.fqdn.trim().toLowerCase())
+          );
+          const newFqdns = new Set(newDomains.map(d => d.fqdn));
+          const mergedDomains = [
+            ...existingDomains.filter(d => !deletedFqdns.has(d.fqdn.toLowerCase()) && !newFqdns.has(d.fqdn.toLowerCase())),
+            ...newDomains,
+          ];
+
+          await agentFetch(`${site.agent_url}/apps/${variables.siteId}/publish-state`, {
+            siteId: variables.siteId,
+            method: 'POST',
+            body: JSON.stringify({
+              domains: mergedDomains,
+            }),
+          });
+        } catch (err) {
+          logger.warn('domain-operations.modify.publish-state-push.failed', {
+            appId: variables.siteId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      })();
     },
   });
 }

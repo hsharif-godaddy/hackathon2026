@@ -3,6 +3,14 @@ import { DevSupervisorError } from '../DevSupervisorClient.js';
 
 // Mock all external dependencies before importing the module under test
 vi.mock('../../database/repositories/AppRepository.js');
+vi.mock('../../database/repositories/MemoryRepository.js', () => {
+  return {
+    MemoryRepository: class MockMemoryRepository {
+      get = vi.fn().mockResolvedValue({ success: true, exists: false });
+      set = vi.fn().mockResolvedValue({ success: true });
+    },
+  };
+});
 vi.mock('../../tools/directory-listing.js');
 vi.mock('../../tools/app-plan-tool.js');
 vi.mock('../../logging/index.js', () => {
@@ -49,6 +57,7 @@ vi.mock('../../workspace/index.js', () => ({
 
 import { AppContextManager } from '../AppContextManager.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
+import { MemoryRepository } from '../../database/repositories/MemoryRepository.js';
 import { createForWorkspace } from '../../workspace/index.js';
 
 describe('AppContextManager publish state', () => {
@@ -68,19 +77,19 @@ describe('AppContextManager publish state', () => {
     it('should return publishedUrl when app has one', async () => {
       mockFindById.mockReturnValue({ publishedUrl: 'https://example.com' });
       const result = await (manager as any).getPublishStateInfo('app-123');
-      expect(result).toEqual({ publishedUrl: 'https://example.com' });
+      expect(result).toEqual({ publishedUrl: 'https://example.com', domains: [] });
     });
 
     it('should return publishedUrl null when app has no published_url', async () => {
       mockFindById.mockReturnValue({ publishedUrl: undefined });
       const result = await (manager as any).getPublishStateInfo('app-123');
-      expect(result).toEqual({ publishedUrl: null });
+      expect(result).toEqual({ publishedUrl: null, domains: [] });
     });
 
     it('should return publishedUrl null when app has empty string published_url', async () => {
       mockFindById.mockReturnValue({ publishedUrl: '' });
       const result = await (manager as any).getPublishStateInfo('app-123');
-      expect(result).toEqual({ publishedUrl: null });
+      expect(result).toEqual({ publishedUrl: null, domains: [] });
     });
 
     it('should return null when app not found', async () => {
@@ -94,17 +103,39 @@ describe('AppContextManager publish state', () => {
       const result = await (manager as any).getPublishStateInfo('app-123');
       expect(result).toBeNull();
     });
+
+    it('should return domains when memory repo has site.domains', async () => {
+      mockFindById.mockReturnValue({ publishedUrl: 'https://example.com' });
+      const domains = [{ fqdn: 'example.com', isPrimary: true, status: 'active' }];
+      (manager as any).memoryRepository.get.mockResolvedValueOnce({ success: true, exists: true, value: domains });
+      const result = await (manager as any).getPublishStateInfo('app-123');
+      expect(result).toEqual({ publishedUrl: 'https://example.com', domains });
+    });
+
+    it('should return empty domains when memory repo returns non-array value', async () => {
+      mockFindById.mockReturnValue({ publishedUrl: 'https://example.com' });
+      (manager as any).memoryRepository.get.mockResolvedValueOnce({ success: true, exists: true, value: 'invalid' });
+      const result = await (manager as any).getPublishStateInfo('app-123');
+      expect(result).toEqual({ publishedUrl: 'https://example.com', domains: [] });
+    });
+
+    it('should return empty domains when memory repo fails', async () => {
+      mockFindById.mockReturnValue({ publishedUrl: 'https://example.com' });
+      (manager as any).memoryRepository.get.mockRejectedValueOnce(new Error('db error'));
+      const result = await (manager as any).getPublishStateInfo('app-123');
+      expect(result).toEqual({ publishedUrl: 'https://example.com', domains: [] });
+    });
   });
 
   describe('formatPublishStateSection', () => {
     it('should format published app with URL', () => {
-      const result = (manager as any).formatPublishStateSection({ publishedUrl: 'https://example.com' });
+      const result = (manager as any).formatPublishStateSection({ publishedUrl: 'https://example.com', domains: [] });
       expect(result).toContain('Published: yes');
       expect(result).toContain('URL: https://example.com');
     });
 
     it('should format unpublished app', () => {
-      const result = (manager as any).formatPublishStateSection({ publishedUrl: null });
+      const result = (manager as any).formatPublishStateSection({ publishedUrl: null, domains: [] });
       expect(result).toContain('Published: no');
       expect(result).not.toContain('URL:');
     });
@@ -112,6 +143,19 @@ describe('AppContextManager publish state', () => {
     it('should return null when input is null', () => {
       const result = (manager as any).formatPublishStateSection(null);
       expect(result).toBeNull();
+    });
+
+    it('should include custom domains when present', () => {
+      const result = (manager as any).formatPublishStateSection({
+        publishedUrl: 'https://example.com',
+        domains: [
+          { fqdn: 'example.com', isPrimary: true, status: 'active' },
+          { fqdn: 'www.example.com', isPrimary: false, status: 'provisioning' },
+        ],
+      });
+      expect(result).toContain('Custom domains:');
+      expect(result).toContain('example.com (primary), active');
+      expect(result).toContain('www.example.com, provisioning');
     });
   });
 

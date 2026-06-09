@@ -4,6 +4,7 @@ import { PublishErrorCode } from '@airo/shared/publish';
 import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
 import { createForWorkspace } from '../../workspace/index.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
+import { MemoryRepository } from '../../database/repositories/MemoryRepository.js';
 import { GitUtils } from '../../utils/git.js';
 import { log } from '../../logging/index.js';
 import { Router } from 'express';
@@ -18,6 +19,7 @@ import { logPublishedSeoAudit } from '../../services/seo-audit.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
+const memoryRepository = new MemoryRepository();
 
 // SECURITY: Apply ownership validation to all publish routes
 // Prevents cross-tenant access to build artifacts and source archives
@@ -385,6 +387,12 @@ router.post('/apps/:id/unpublish', requirePermission('canPublish'), async (req, 
 
     const response: UnpublishResponse = await publishSupervisor.unpublish();
 
+    const updateResult = appRepository.updatePublishedUrl(id, null);
+    if (!updateResult) {
+      contextLogger.warn('route.unpublish.publishedUrl.clear-failed', {});
+    }
+    await memoryRepository.set(id, 'site.domains', []);
+
     contextLogger.info('route.unpublish.success', {
       status: response.status,
     });
@@ -395,6 +403,83 @@ router.post('/apps/:id/unpublish', requirePermission('canPublish'), async (req, 
     log.error(contextLogger, 'route.unpublish.error', error as Error, {});
     return res.status(500).json({
       error: 'Failed to unpublish',
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+interface PublishStateDomain {
+  fqdn: string;
+  isPrimary: boolean;
+  status: string;
+}
+
+interface PublishStateUpdateBody {
+  publishedUrl?: string | null;
+  domains?: PublishStateDomain[];
+}
+
+/**
+ * POST /apps/:id/publish-state
+ *
+ * Accepts a push of current publish and domain state from the UI/BFF.
+ * Persists to SQLite so the agent's per-turn context is accurate regardless
+ * of whether publish/domain changes happened via chat or the UI.
+ *
+ * Both fields are optional — callers can update just publishedUrl, just domains, or both.
+ * Omitted fields are left unchanged in the DB.
+ */
+router.post('/apps/:id/publish-state', requirePermission('canPublish'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    const contextLogger = log.forApp(id);
+
+    const app = appRepository.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    const body = req.body as PublishStateUpdateBody;
+
+    if (!('publishedUrl' in body) && !('domains' in body)) {
+      return res.status(400).json({ error: 'At least one of publishedUrl or domains is required' });
+    }
+
+    let publishedUrl: string | null | undefined;
+    if ('publishedUrl' in body) {
+      const rawUrl = typeof body.publishedUrl === 'string' ? body.publishedUrl.trim() : null;
+      publishedUrl = rawUrl && rawUrl.length < 2048 && /^https?:\/\//.test(rawUrl) ? rawUrl : null;
+      appRepository.updatePublishedUrl(id, publishedUrl);
+    }
+
+    if (Array.isArray(body.domains)) {
+      const domains: PublishStateDomain[] = body.domains
+        .filter(d => typeof d.fqdn === 'string' && d.fqdn.trim().length > 0 && d.fqdn.length < 256)
+        .slice(0, 50)
+        .map(d => ({
+          fqdn: d.fqdn.trim().toLowerCase(),
+          isPrimary: d.isPrimary ?? false,
+          status: d.status ?? 'active',
+        }));
+      await memoryRepository.set(id, 'site.domains', domains);
+    }
+
+    contextLogger.info('route.publishState.updated', {
+      publishedUrl: publishedUrl !== undefined ? (publishedUrl ? publishedUrl.slice(0, 200) : null) : 'unchanged',
+      domainCount: body.domains?.length,
+    });
+
+    return res.json({ success: true });
+  } catch (error) {
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : log.forAgent('publish-routes');
+    log.error(contextLogger, 'route.publishState.error', error as Error, {});
+    return res.status(500).json({
+      error: 'Failed to update publish state',
       details: error instanceof Error ? error.message : String(error),
     });
   }

@@ -119,4 +119,44 @@ describe('AppRepository publishedUrl', () => {
       expect(result?.publishedUrl).toBe('https://path-app.example.com');
     });
   });
+
+  describe('updatePublishedUrl', () => {
+    it('should update published_url and return updated app', () => {
+      const mockRun = vi.fn();
+      const mockGet = vi.fn()
+        .mockReturnValueOnce(baseRow) // findById check
+        .mockReturnValueOnce({ ...baseRow, published_url: 'https://new.example.com' }); // re-read
+      mockDb.prepare.mockReturnValue({ get: mockGet, run: mockRun });
+
+      const result = appRepository.updatePublishedUrl('app-123', 'https://new.example.com');
+      expect(mockRun).toHaveBeenCalledWith('https://new.example.com', expect.any(String), 'app-123');
+      expect(result?.publishedUrl).toBe('https://new.example.com');
+    });
+
+    it('should return null when app not found', () => {
+      mockDb.prepare.mockReturnValue({ get: vi.fn().mockReturnValue(undefined) });
+
+      const result = appRepository.updatePublishedUrl('nonexistent', 'https://x.com');
+      expect(result).toBeNull();
+    });
+
+    it('should set published_url to null (clear)', () => {
+      const mockRun = vi.fn();
+      const mockGet = vi.fn()
+        .mockReturnValueOnce({ ...baseRow, published_url: 'https://old.com' })
+        .mockReturnValueOnce({ ...baseRow, published_url: null });
+      mockDb.prepare.mockReturnValue({ get: mockGet, run: mockRun });
+
+      const result = appRepository.updatePublishedUrl('app-123', null);
+      expect(mockRun).toHaveBeenCalledWith(null, expect.any(String), 'app-123');
+      expect(result?.publishedUrl).toBeNull();
+    });
+
+    it('should return null and warn on db error', () => {
+      mockDb.prepare.mockImplementation(() => { throw new Error('db failure'); });
+
+      const result = appRepository.updatePublishedUrl('app-123', 'https://x.com');
+      expect(result).toBeNull();
+    });
+  });
 });

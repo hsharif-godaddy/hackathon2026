@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { getSwitchboardFlag } from '@/hooks/useSwitchboard';
+import { agentFetch } from '@/lib/agent-fetch';
+import { DomainType } from '@/lib/control-plane/types';
 import { appFetch, AuthDismissedError, AuthSessionExpiredError } from '@/lib/gasket-config';
 import { shipAnalyticsLog } from '@/lib/logging';
 import type { AiroDeployment } from '@/lib/mgmt-airo';
@@ -314,6 +316,33 @@ export function useDeploymentsQuery({
           .then(async function handleRefetchSuccess() {
             // Always clear publishing state on successful deployment
             setPublishSuccess(appId, true);
+
+            // Push publish state to agent so context is accurate on next chat message
+            void (async () => {
+              try {
+                const site = useSiteStore.getState().getSite(appId);
+                if (!site?.agent_url) return;
+                await agentFetch(`${site.agent_url}/apps/${appId}/publish-state`, {
+                  siteId: appId,
+                  method: 'POST',
+                  body: JSON.stringify({
+                    publishedUrl: site.published_url ?? null,
+                    domains: (site.domains ?? [])
+                      .filter(d => d.domainType !== DomainType.PREFIX)
+                      .map(d => ({
+                        fqdn: d.fqdn,
+                        isPrimary: d.isPrimary,
+                        status: d.status,
+                      })),
+                  }),
+                });
+              } catch (err) {
+                logger.warn('deployments-query.publish-state-push.failed', {
+                  appId,
+                  error: err instanceof Error ? err.message : String(err),
+                });
+              }
+            })();
 
             const isGoLiveEnabled = getSwitchboardFlag('appbuilder-go-live') === true;
             const userHasGoneLive = hasGoneLive(appId);

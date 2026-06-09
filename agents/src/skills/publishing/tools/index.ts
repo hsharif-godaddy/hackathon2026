@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { SkillToolDefinition } from '@airo/ai-skills';
 import { PublishDenialReason } from '@airo/shared/publish';
 import { AppRepository } from '../../../database/repositories/AppRepository.js';
+import { MemoryRepository } from '../../../database/repositories/MemoryRepository.js';
 import { logger } from '../../../logging/index.js';
 import { customerIdFromContext } from '../../../memory/interfaces/scope.js';
 import { getActionService } from '../../../server/agent-runtime.js';
@@ -13,10 +14,12 @@ import { executePublish } from '../../../tools/publish-client-tool.js';
 
 const memoryTool = new MemoryTool();
 const appRepo = new AppRepository();
+const memoryRepo = new MemoryRepository();
 
 interface SiteDomain {
   fqdn: string;
   domainType: string;
+  isPrimary?: boolean;
   status: string;
 }
 
@@ -122,6 +125,7 @@ export const publishTool: SkillToolDefinition = {
     let purchasedDomain: string | null = null;
     let autoAttachedDomain: string | null = null;
     let publishedUrl: string | undefined;
+    let siteDataDomains: SiteDomain[] | undefined;
     const domainAttachEnabled = (context?.metadata as any)?.permissions?.canPurchaseDomain ?? false;
 
     try {
@@ -134,6 +138,7 @@ export const publishTool: SkillToolDefinition = {
       if (siteDataResult.success && siteDataResult.result) {
         const siteData = siteDataResult.result as { publishedUrl?: string; domains?: SiteDomain[] };
         publishedUrl = siteData.publishedUrl;
+        siteDataDomains = siteData.domains;
 
         if (domainAttachEnabled) {
           const hasCustom = hasCustomDomain(siteData.domains);
@@ -269,6 +274,30 @@ export const publishTool: SkillToolDefinition = {
       logger.warn('skill.publishing.publish.site-data-failed', {
         appId,
         error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    // Persist publish state to SQLite so agent context is accurate on subsequent turns
+    try {
+      if (publishedUrl) {
+        appRepo.updatePublishedUrl(appId, publishedUrl);
+      }
+      if (siteDataDomains && siteDataDomains.length > 0) {
+        const customDomains = siteDataDomains
+          .filter(d => d.domainType !== 'prefix')
+          .map(d => ({
+            fqdn: d.fqdn,
+            isPrimary: d.isPrimary ?? false,
+            status: d.status,
+          }));
+        if (customDomains.length > 0) {
+          await memoryRepo.set(appId, 'site.domains', customDomains);
+        }
+      }
+    } catch (persistError) {
+      logger.warn('skill.publishing.publish.state-persist-failed', {
+        appId,
+        error: persistError instanceof Error ? persistError.message : String(persistError),
       });
     }
 

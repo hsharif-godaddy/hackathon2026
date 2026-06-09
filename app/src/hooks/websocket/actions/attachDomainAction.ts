@@ -5,10 +5,13 @@
  * This is triggered by agents to automatically attach a purchased domain after publish.
  */
 
+import { agentFetch } from '@/lib/agent-fetch'
+import { DomainType } from '@/lib/control-plane/types'
 import { validateDomainName } from '@/lib/domain-validation'
 import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
+import { useSiteStore } from '@/stores/useSiteStore'
 import type { ClientActionExecutor } from './types'
 
 export const attachDomainAction: ClientActionExecutor = async (params) => {
@@ -79,6 +82,33 @@ export const attachDomainAction: ClientActionExecutor = async (params) => {
             appId,
             domainName,
         })
+
+        // Push domain state to agent so context reflects the new domain
+        void (async () => {
+            try {
+                const site = useSiteStore.getState().getSite(appId)
+                if (!site?.agent_url) return
+                const existingDomains = (site.domains ?? [])
+                    .filter(d => d.domainType !== DomainType.PREFIX && d.fqdn.toLowerCase() !== domainName.toLowerCase())
+                    .map(d => ({
+                        fqdn: d.fqdn,
+                        isPrimary: d.isPrimary,
+                        status: d.status,
+                    }))
+                await agentFetch(`${site.agent_url}/apps/${appId}/publish-state`, {
+                    siteId: appId,
+                    method: 'POST',
+                    body: JSON.stringify({
+                        domains: [...existingDomains, { fqdn: domainName, isPrimary: false, status: 'provisioning' }],
+                    }),
+                })
+            } catch (err) {
+                logger.warn('attach-domain-action.publish-state-push.failed', {
+                    appId,
+                    error: err instanceof Error ? err.message : String(err),
+                })
+            }
+        })()
 
         return {
             success: true,
