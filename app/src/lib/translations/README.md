@@ -19,15 +19,27 @@ This web interface allows you to:
 
 Once translations are published through this UI, they will automatically become available to the application.
 
-**Note:** After publishing new translations, the cache will automatically refresh after **2-5 minutes** depending on the cache layer. For immediate updates, you can clear the server cache (see [Clear Server Translation Cache](#clear-server-translation-cache)).
+### Updating an Existing Translation
+
+Updating an existing string is a two-step flow in the web interface — you first create a new **version** of the string, then **promote** that version to be the current one. The app only serves the promoted (current) version.
+
+1. **Find the key.** Search for the existing translation key in the web interface.
+2. **Create a new version.** Click the key to expand it, then click **"Create new translation version"** and enter the updated string.
+3. **Promote it to current.** Hover over the new string's row, then click the **check (✓) icon**. This promotes the new version to be the current version.
+
+⚠️ **The update is not live until you promote it.** Creating a new version alone does not change what the app serves — without the promote step, the app keeps serving the previously-current version.
+
+**Note:** After publishing or promoting a translation, the cache will automatically refresh after **2-5 minutes** depending on the cache layer. For immediate updates, you can clear the server cache (see [Clear Server Translation Cache](#clear-server-translation-cache)).
 
 ---
 
 ## Table of Contents
 
+- [Managing Translations](#-managing-translations)
+  - [Updating an Existing Translation](#updating-an-existing-translation)
 - [Overview](#overview)
-- [Quick Reference](#quick-reference)
 - [Architecture](#architecture)
+- [Quick Reference](#quick-reference)
 - [Client-Side Translations](#client-side-translations)
   - [Using useTranslations()](#using-the-usetranslations-hook-recommended)
   - [Pluralization](#pluralization)
@@ -38,7 +50,12 @@ Once translations are published through this UI, they will automatically become 
 - [Available Translation Keys](#available-translation-keys)
 - [Best Practices](#best-practices)
 - [Advanced Topics](#advanced-topics)
-- [Troubleshooting](#troubleshooting)
+  - [Dynamic Locale Support](#dynamic-locale-support)
+  - [Clear Server Translation Cache](#clear-server-translation-cache)
+  - [Multiple Translation Packages](#multiple-translation-packages)
+- [Related Files](#related-files)
+- [Creating and Managing Translation Keys](#creating-and-managing-translation-keys)
+- [External Resources](#external-resources)
 
 ## Overview
 
