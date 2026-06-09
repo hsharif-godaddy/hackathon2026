@@ -7,7 +7,7 @@ vi.mock('../../logging/index.js', () => ({
 const mockExecuteAction = vi.fn();
 const mockClient = { executeAction: mockExecuteAction } as any;
 
-const { listEmbeddables, createEmbeddable, updateEmbeddable, listAccounts, activateAccount } =
+const { listEmbeddables, createEmbeddable, updateEmbeddable, listAccounts, activateAccount, listCategories, createCategory } =
   await import('../inbox-client.js');
 
 describe('inbox-client', () => {
@@ -391,6 +391,140 @@ describe('inbox-client', () => {
       if (result.success) {
         expect(result.data).toEqual(account);
       }
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // listCategories
+  // --------------------------------------------------------------------------
+
+  describe('listCategories', () => {
+    it('returns categories on success', async () => {
+      const categories = [{ id: 1, name: 'Support', channel_type: 1, status: 'enabled' }];
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 200, data: { categories } },
+      });
+
+      const result = await listCategories(mockClient, 'app-1', 'brand-1');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toEqual(categories);
+      }
+    });
+
+    it('defaults to empty array when categories field is missing', async () => {
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 200, data: {} },
+      });
+
+      const result = await listCategories(mockClient, 'app-1', 'brand-1');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toEqual([]);
+      }
+    });
+
+    it('passes brandId in params', async () => {
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 200, data: { categories: [] } },
+      });
+
+      await listCategories(mockClient, 'app-1', 'brand-1');
+
+      expect(mockExecuteAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({
+            operation: 'list_categories',
+            brandId: 'brand-1',
+          }),
+        }),
+      );
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // createCategory
+  // --------------------------------------------------------------------------
+
+  describe('createCategory', () => {
+    it('handles response with nested category field', async () => {
+      const category = { id: 42, name: 'Contact Form', channel_type: 1 };
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 201, data: { category } },
+      });
+
+      const result = await createCategory(mockClient, 'app-1', 'brand-1', {
+        name: 'Contact Form',
+        channel_type: 1,
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toEqual(category);
+      }
+    });
+
+    it('handles flat category response (no wrapper)', async () => {
+      const category = { id: 42, name: 'Contact Form', channel_type: 1 };
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 201, data: category },
+      });
+
+      const result = await createCategory(mockClient, 'app-1', 'brand-1', {
+        name: 'Contact Form',
+        channel_type: 1,
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.id).toBe(42);
+      }
+    });
+
+    it('returns error when response is missing category.id', async () => {
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 201, data: { name: 'No ID' } },
+      });
+
+      const result = await createCategory(mockClient, 'app-1', 'brand-1', {
+        name: 'Contact Form',
+        channel_type: 1,
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('missing category.id');
+      }
+    });
+
+    it('passes input wrapped in { category: input } as body', async () => {
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 201, data: { category: { id: 1, name: 'Contact Form', channel_type: 1 } } },
+      });
+
+      await createCategory(mockClient, 'app-1', 'brand-1', {
+        name: 'Contact Form',
+        channel_type: 1,
+      });
+
+      expect(mockExecuteAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({
+            operation: 'create_category',
+            brandId: 'brand-1',
+            body: { category: { name: 'Contact Form', channel_type: 1 } },
+          }),
+        }),
+      );
     });
   });
 });

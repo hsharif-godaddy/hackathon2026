@@ -15,7 +15,7 @@ import { logger } from '@/lib/request-context';
 import type { ClientActionExecutor } from './types';
 
 interface InboxParams {
-  operation: 'list_accounts' | 'activate_account' | 'list_embeddables' | 'create_embeddable' | 'update_embeddable';
+  operation: 'list_accounts' | 'activate_account' | 'list_embeddables' | 'create_embeddable' | 'update_embeddable' | 'list_categories' | 'create_category';
   brandId?: string;
   embeddableId?: number;
   body?: unknown;

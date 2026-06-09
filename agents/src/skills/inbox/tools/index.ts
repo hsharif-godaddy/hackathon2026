@@ -14,13 +14,13 @@
  */
 
 import { z } from 'zod';
-import { access } from 'fs/promises';
-import { join } from 'path';
+import { access, writeFile, readFile, mkdir } from 'fs/promises';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import type { SkillToolDefinition, SkillHooks } from '@airo/ai-skills';
 import { Logger } from '../../../logging/index.js';
 import { appRepository } from '../../../database/repositories/index.js';
 import { MemoryRepository } from '../../../database/repositories/MemoryRepository.js';
-import { SkillLoaderTool } from '../../../tools/skill-loader-tool.js';
 import { getActionService } from '../../../server/agent-runtime.js';
 import type { IClientActionService } from '../../../services/ClientActionService.js';
 import {
@@ -29,17 +29,32 @@ import {
   listEmbeddables,
   createEmbeddable,
   updateEmbeddable,
+  listCategories,
+  createCategory,
   type UpdateEmbeddableInput,
 } from '../../../services/inbox-client.js';
 import { readWidgetConfig, writeWidgetConfig } from './widget-config.js';
+import { createForWorkspace } from '../../../workspace/index.js';
+import { regenerateEntryApiRegistrations } from '../../../utils/entry-api-sync.js';
 
 const logger = Logger.create({ component: 'inbox.skill' });
 const memoryRepo = new MemoryRepository();
 
-// Memory keys — per-app pointers to Reamaze resources.
+// Memory keys — per-app pointers to backend resources.
 const MEM_ACCOUNT_ID = 'integrations.inbox.accountId';
 const MEM_BRAND_ID = 'integrations.inbox.brandId';
 const MEM_EMBEDDABLE_ID = 'integrations.inbox.embeddableId';
+const MEM_CATEGORY_ID = 'integrations.inbox.contactFormCategoryId';
+
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await access(p);
+    return true;
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw err;
+  }
+}
 
 // Tools receive socketId on context (ai-lib sets it at execution time, not on the
 // declared type — matches the pattern in agents/src/tools/ai-lib-tools/qr-code.ts:51).
@@ -78,7 +93,7 @@ export const discoverAccountTool: SkillToolDefinition = {
     'saves it to memory and returns it. Otherwise, auto-creates a new account from the ' +
     'first available entitlement. Returns alreadyConfigured or accountCreated on success, ' +
     'noAccounts if no entitlements are available. ' +
-    'After this succeeds, proceed directly to inbox__setup_widget.',
+    'After this succeeds, proceed to inbox__setup_widget (for chat) or inbox__ensure_email_channel (for contact form).',
 
   parameters: z.object({}),
   execute: async (_input: Record<string, never>, context?: ToolContext) => {
@@ -178,24 +193,24 @@ export const setupWidgetTool: SkillToolDefinition = {
     // 0. Auto-install templates if either file doesn't exist yet
     const widgetPath = join(app.path, 'src', 'components', 'InboxChatWidget.tsx');
     const configPath = join(app.path, 'src', 'lib', 'inboxChat.config.json');
-    const fileExists = async (p: string): Promise<boolean> => {
-      try {
-        await access(p);
-        return true;
-      } catch (err: unknown) {
-        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
-        throw err;
-      }
-    };
     const [widgetExists, configExists] = await Promise.all([
       fileExists(widgetPath),
       fileExists(configPath),
     ]);
     if (!widgetExists || !configExists) {
-      const skillLoader = new SkillLoaderTool();
-      const installResult = await skillLoader.installTemplates({ skill: 'inbox', appPath: app.path, appId });
-      if (!installResult.success) {
-        return { error: `Failed to auto-install inbox template: ${installResult.error}` };
+      try {
+        const chatTemplateDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'chat-templates');
+        const [widgetTemplate, configTemplate] = await Promise.all([
+          readFile(join(chatTemplateDir, 'components', 'InboxChatWidget.tsx'), 'utf-8'),
+          readFile(join(chatTemplateDir, 'lib', 'inboxChat.config.json'), 'utf-8'),
+        ]);
+        await Promise.all([
+          !widgetExists && mkdir(dirname(widgetPath), { recursive: true }).then(() => writeFile(widgetPath, widgetTemplate)),
+          !configExists && mkdir(dirname(configPath), { recursive: true }).then(() => writeFile(configPath, configTemplate)),
+        ]);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: `Failed to auto-install inbox template: ${message}` };
       }
     }
 
@@ -396,4 +411,172 @@ export const updateWidgetConfigTool: SkillToolDefinition = {
     };
   },
   config: { requiresApp: true, timeout: 15_000 },
+};
+
+// ============================================================================
+// ensure_email_channel — ensure an email category exists for the brand
+// ============================================================================
+
+export const ensureEmailChannelTool: SkillToolDefinition = {
+  name: 'ensure_email_channel',
+  description:
+    'Ensure the brand has an active email channel (category) for receiving contact form submissions. ' +
+    'Creates one named "Contact Form" if none exists. ' +
+    'Requires discover_account to have run first. ' +
+    'After this succeeds, proceed to inbox__setup_form.',
+
+  parameters: z.object({}),
+  execute: async (_input: Record<string, never>, context?: ToolContext) => {
+    const appId = getAppId(context);
+    if (!appId) return { error: 'App ID required. Pass context.metadata.appId.' };
+
+    const brandRead = await memoryRepo.get(appId, MEM_BRAND_ID);
+    if (!brandRead.exists) {
+      return { error: 'No account configured. Run inbox__discover_account first.' };
+    }
+    const brandId = brandRead.value as string;
+
+    const client = getClient(context);
+    if (!client) {
+      return { error: 'ClientActionService not available — tool requires an authenticated websocket session.' };
+    }
+
+    const listResult = await listCategories(client, appId, brandId);
+    if (!listResult.success) {
+      return { error: `Failed to list categories: ${listResult.error}` };
+    }
+
+    // email channels always have status 'enabled' or 'disabled'.
+    const emailChannel = listResult.data.find(
+      (cat) => cat.channel_type === 1 && cat.status === 'enabled',
+    );
+
+    if (emailChannel) {
+      await memoryRepo.set(appId, MEM_CATEGORY_ID, emailChannel.id);
+      logger.info('inbox.skill.ensure_email_channel.found', { appId, brandId, categoryId: emailChannel.id });
+      return { alreadyExists: true, categoryId: emailChannel.id, name: emailChannel.name };
+    }
+
+    const createResult = await createCategory(client, appId, brandId, {
+      name: 'Contact Form',
+      channel_type: 1,
+    });
+    if (!createResult.success) {
+      return { error: `Failed to create email channel: ${createResult.error}` };
+    }
+
+    await memoryRepo.set(appId, MEM_CATEGORY_ID, createResult.data.id);
+    logger.info('inbox.skill.ensure_email_channel.created', { appId, brandId, categoryId: createResult.data.id });
+    return { created: true, categoryId: createResult.data.id, name: createResult.data.name };
+  },
+  config: { requiresApp: true, timeout: 30_000 },
+};
+
+// ============================================================================
+// setup_form — install contact form templates and write config
+// ============================================================================
+
+interface ContactFormConfig {
+  brandId: string;
+  categoryId: number | string;
+}
+
+export const setupFormTool: SkillToolDefinition = {
+  name: 'setup_form',
+  description:
+    'Install the contact form server route and write config. ' +
+    'Requires discover_account and ensure_email_channel to have run first. ' +
+    'Idempotent — safe to call multiple times. ' +
+    'After this succeeds, build the form component.',
+
+  parameters: z.object({}),
+  execute: async (_input: Record<string, never>, context?: ToolContext) => {
+    const appId = getAppId(context);
+    if (!appId) return { error: 'App ID required. Pass context.metadata.appId.' };
+
+    const app = await appRepository.findById(appId);
+    if (!app?.path) return { error: `Could not resolve app path for appId: ${appId}` };
+
+    const brandRead = await memoryRepo.get(appId, MEM_BRAND_ID);
+    if (!brandRead.exists) {
+      return { error: 'No account configured. Run inbox__discover_account first.' };
+    }
+    const brandId = brandRead.value as string;
+
+    const categoryRead = await memoryRepo.get(appId, MEM_CATEGORY_ID);
+    if (!categoryRead.exists) {
+      return { error: 'No email channel configured. Run inbox__ensure_email_channel first.' };
+    }
+    const categoryId = categoryRead.value as number | string;
+
+    const routePath = join(app.path, 'src', 'server', 'api', 'contact', 'POST.ts');
+    const configPath = join(app.path, 'src', 'lib', 'contact-form.config.json');
+
+    const routeExists = await fileExists(routePath);
+
+    if (!routeExists) {
+      try {
+        const templateDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'contact-templates');
+        const routeTemplate = await readFile(join(templateDir, 'server', 'api', 'contact', 'POST.ts'), 'utf-8');
+        await mkdir(dirname(routePath), { recursive: true });
+        await writeFile(routePath, routeTemplate);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: `Failed to install contact form route: ${message}` };
+      }
+    }
+
+    const config: ContactFormConfig = { brandId, categoryId };
+    try {
+      await mkdir(dirname(configPath), { recursive: true });
+      await writeFile(configPath, JSON.stringify(config, null, 2) + '\n');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { error: `Failed to write contact form config: ${message}` };
+    }
+
+    // Auto-register the route in entry.ts via the workspace API.
+    const workspace = createForWorkspace(appId, 'preview');
+    let routeRegistration: { registered: boolean; reason?: string } = { registered: false, reason: 'no-workspace' };
+    if (workspace) {
+      try {
+        const result = await regenerateEntryApiRegistrations(workspace.files);
+        if (result.changed) {
+          routeRegistration = { registered: true };
+          logger.info('inbox.skill.setup_form.entry_regenerated', {
+            appId,
+            routeCount: result.routeCount,
+          });
+        } else {
+          routeRegistration = { registered: false, reason: result.reason };
+          logger.warn('inbox.skill.setup_form.entry_not_registered', {
+            appId,
+            reason: result.reason,
+            routeCount: result.routeCount,
+          });
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        routeRegistration = { registered: false, reason: message };
+        logger.warn('inbox.skill.setup_form.entry_regenerate_failed', {
+          appId,
+          error: message,
+        });
+      }
+    }
+
+    logger.info('inbox.skill.setup_form.success', { appId, brandId, categoryId });
+
+    return {
+      success: true,
+      configWritten: configPath,
+      routeInstalled: routePath,
+      routeRegistration,
+      nextSteps: [
+        'Build a form component that POSTs to /api/contact with: { conversation: { messages_attributes: [{ body }], data: { __gd_contact_form_title, ... } }, user: { email, name } }',
+        'The server route returns { success: true } or { success: false, error: "message" }',
+      ],
+    };
+  },
+  config: { requiresApp: true, timeout: 30_000 },
 };

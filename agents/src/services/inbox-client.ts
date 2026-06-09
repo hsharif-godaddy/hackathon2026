@@ -59,7 +59,9 @@ type Operation =
   | 'activate_account'
   | 'list_embeddables'
   | 'create_embeddable'
-  | 'update_embeddable';
+  | 'update_embeddable'
+  | 'list_categories'
+  | 'create_category';
 
 interface DispatchParams {
   operation: Operation;
@@ -172,6 +174,19 @@ export async function activateAccount(
 }
 
 // ----------------------------------------------------------------------------
+// Category types
+// ----------------------------------------------------------------------------
+
+export interface Category {
+  id: number;
+  name: string;
+  channel_type: number;
+  status?: string;
+  [key: string]: unknown;
+}
+
+
+// ----------------------------------------------------------------------------
 // Embeddable types
 // ----------------------------------------------------------------------------
 
@@ -255,3 +270,42 @@ export async function updateEmbeddable(
   }
   return { success: true, data: embeddable };
 }
+
+// ----------------------------------------------------------------------------
+// Category operations (brand-scoped)
+// ----------------------------------------------------------------------------
+
+export async function listCategories(
+  client: IClientActionService,
+  appId: string,
+  brandId: string,
+): Promise<InboxResult<Category[]>> {
+  const result = await dispatch<{ categories?: Category[] }>(client, {
+    operation: 'list_categories',
+    appId,
+    brandId,
+  });
+  if (!result.success) return result;
+  return { success: true, data: result.data.categories ?? [] };
+}
+
+export async function createCategory(
+  client: IClientActionService,
+  appId: string,
+  brandId: string,
+  input: { name: string; channel_type: number },
+): Promise<InboxResult<Category>> {
+  const result = await dispatch<{ category?: Category } & Category>(client, {
+    operation: 'create_category',
+    appId,
+    brandId,
+    body: { category: input },
+  });
+  if (!result.success) return result;
+  const category = result.data.category ?? (result.data as Category);
+  if (typeof category?.id !== 'number') {
+    return { success: false, error: 'Inbox response missing category.id' };
+  }
+  return { success: true, data: category };
+}
+

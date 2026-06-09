@@ -25,29 +25,33 @@ vi.mock('../../../../server/agent-runtime.js', () => ({
   getActionService: (...args: unknown[]) => mockGetActionService(...args),
 }));
 
-const mockInstallTemplates = vi.fn();
-vi.mock('../../../../tools/skill-loader-tool.js', () => ({
-  SkillLoaderTool: vi.fn().mockImplementation(function () { return {
-    installTemplates: mockInstallTemplates,
-  }; }),
-}));
 
 const mockListAccounts = vi.fn();
 const mockActivateAccount = vi.fn();
 const mockListEmbeddables = vi.fn();
 const mockCreateEmbeddable = vi.fn();
 const mockUpdateEmbeddable = vi.fn();
+const mockListCategories = vi.fn();
+const mockCreateCategory = vi.fn();
 vi.mock('../../../../services/inbox-client.js', () => ({
   listAccounts: (...args: unknown[]) => mockListAccounts(...args),
   activateAccount: (...args: unknown[]) => mockActivateAccount(...args),
   listEmbeddables: (...args: unknown[]) => mockListEmbeddables(...args),
   createEmbeddable: (...args: unknown[]) => mockCreateEmbeddable(...args),
   updateEmbeddable: (...args: unknown[]) => mockUpdateEmbeddable(...args),
+  listCategories: (...args: unknown[]) => mockListCategories(...args),
+  createCategory: (...args: unknown[]) => mockCreateCategory(...args),
 }));
 
 const mockAccess = vi.fn();
+const mockWriteFile = vi.fn();
+const mockReadFile = vi.fn();
+const mockMkdir = vi.fn();
 vi.mock('fs/promises', () => ({
   access: (...args: unknown[]) => mockAccess(...args),
+  writeFile: (...args: unknown[]) => mockWriteFile(...args),
+  readFile: (...args: unknown[]) => mockReadFile(...args),
+  mkdir: (...args: unknown[]) => mockMkdir(...args),
 }));
 
 const mockReadWidgetConfig = vi.fn();
@@ -57,7 +61,17 @@ vi.mock('../widget-config.js', () => ({
   writeWidgetConfig: (...args: unknown[]) => mockWriteWidgetConfig(...args),
 }));
 
-const { discoverAccountTool, setupWidgetTool, updateWidgetConfigTool } =
+const mockCreateForWorkspace = vi.fn();
+vi.mock('../../../../workspace/index.js', () => ({
+  createForWorkspace: (...args: unknown[]) => mockCreateForWorkspace(...args),
+}));
+
+const mockRegenerateEntryApiRegistrations = vi.fn();
+vi.mock('../../../../utils/entry-api-sync.js', () => ({
+  regenerateEntryApiRegistrations: (...args: unknown[]) => mockRegenerateEntryApiRegistrations(...args),
+}));
+
+const { discoverAccountTool, setupWidgetTool, updateWidgetConfigTool, ensureEmailChannelTool, setupFormTool } =
   await import('../index.js');
 
 // --- Test helpers ---
@@ -70,12 +84,13 @@ describe('inbox skill tools', () => {
     vi.clearAllMocks();
     mockGetActionService.mockReturnValue(mockClient);
     mockFindById.mockResolvedValue({ path: '/tmp/airo-app-builder/app-123/preview', name: 'My App' });
-    mockInstallTemplates.mockResolvedValue({ success: true });
     mockAccess.mockResolvedValue(undefined);
+    mockReadFile.mockResolvedValue('// template content');
     mockReadWidgetConfig.mockResolvedValue({
       _support: { account: '', ui: { widget: { icon: 'webChat', color: '', position: 'bottom-right' } } },
     });
     mockWriteWidgetConfig.mockResolvedValue(undefined);
+    mockCreateForWorkspace.mockReturnValue(null);
   });
 
   // --------------------------------------------------------------------------
@@ -377,16 +392,19 @@ describe('inbox skill tools', () => {
 
       await setupWidgetTool.execute({}, context);
 
-      expect(mockInstallTemplates).toHaveBeenCalledWith({
-        skill: 'inbox',
-        appPath: '/tmp/airo-app-builder/app-123/preview',
-        appId: 'app-123',
-      });
+      expect(mockReadFile).toHaveBeenCalledWith(
+        expect.stringContaining('chat-templates/components/InboxChatWidget.tsx'),
+        'utf-8',
+      );
+      expect(mockReadFile).toHaveBeenCalledWith(
+        expect.stringContaining('chat-templates/lib/inboxChat.config.json'),
+        'utf-8',
+      );
     });
 
     it('returns error when template auto-install fails', async () => {
       mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
-      mockInstallTemplates.mockResolvedValue({ success: false, error: 'disk full' });
+      mockReadFile.mockRejectedValue(new Error('disk full'));
 
       const result = await setupWidgetTool.execute({}, context);
 
@@ -398,7 +416,7 @@ describe('inbox skill tools', () => {
 
       await setupWidgetTool.execute({}, context);
 
-      expect(mockInstallTemplates).not.toHaveBeenCalled();
+      expect(mockWriteFile).not.toHaveBeenCalled();
     });
 
     it('reuses cached embeddable from memory', async () => {
@@ -651,6 +669,349 @@ describe('inbox skill tools', () => {
       const result = await updateWidgetConfigTool.execute({ color: '#aabbcc' }, context);
 
       expect(result.error).toContain('ClientActionService not available');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // ensure_email_channel
+  // --------------------------------------------------------------------------
+
+  describe('ensure_email_channel', () => {
+    it('has correct tool definition', () => {
+      expect(ensureEmailChannelTool.name).toBe('ensure_email_channel');
+      expect(ensureEmailChannelTool.execute).toBeTypeOf('function');
+    });
+
+    it('returns error when appId is missing', async () => {
+      const result = await ensureEmailChannelTool.execute({}, {});
+      expect(result.error).toContain('App ID required');
+    });
+
+    it('returns error when brand is not configured', async () => {
+      mockMemoryGet.mockResolvedValue({ exists: false });
+
+      const result = await ensureEmailChannelTool.execute({}, context);
+
+      expect(result.error).toContain('No account configured');
+    });
+
+    it('returns error when client is unavailable', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockGetActionService.mockReturnValue(null);
+
+      const result = await ensureEmailChannelTool.execute({}, context);
+
+      expect(result.error).toContain('ClientActionService not available');
+    });
+
+    it('returns alreadyExists when active email channel found', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockListCategories.mockResolvedValue({
+        success: true,
+        data: [{ id: 42, name: 'Support', channel_type: 1, status: 'enabled' }],
+      });
+
+      const result = await ensureEmailChannelTool.execute({}, context);
+
+      expect(result.alreadyExists).toBe(true);
+      expect(result.categoryId).toBe(42);
+      expect(mockMemorySet).toHaveBeenCalledWith('app-123', 'integrations.inbox.contactFormCategoryId', 42);
+    });
+
+    it('creates email channel when none exists', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockListCategories.mockResolvedValue({ success: true, data: [] });
+      mockCreateCategory.mockResolvedValue({
+        success: true,
+        data: { id: 99, name: 'Contact Form', channel_type: 1 },
+      });
+
+      const result = await ensureEmailChannelTool.execute({}, context);
+
+      expect(result.created).toBe(true);
+      expect(result.categoryId).toBe(99);
+      expect(mockCreateCategory).toHaveBeenCalledWith(
+        mockClient, 'app-123', 'brand-123', { name: 'Contact Form', channel_type: 1 },
+      );
+      expect(mockMemorySet).toHaveBeenCalledWith('app-123', 'integrations.inbox.contactFormCategoryId', 99);
+    });
+
+    it('returns error when listCategories fails', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockListCategories.mockResolvedValue({ success: false, error: 'network error' });
+
+      const result = await ensureEmailChannelTool.execute({}, context);
+
+      expect(result.error).toContain('Failed to list categories');
+    });
+
+    it('returns error when createCategory fails', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockListCategories.mockResolvedValue({ success: true, data: [] });
+      mockCreateCategory.mockResolvedValue({ success: false, error: 'server error' });
+
+      const result = await ensureEmailChannelTool.execute({}, context);
+
+      expect(result.error).toContain('Failed to create email channel');
+    });
+
+    it('skips disabled email channels', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockListCategories.mockResolvedValue({
+        success: true,
+        data: [{ id: 10, name: 'Old', channel_type: 1, status: 'disabled' }],
+      });
+      mockCreateCategory.mockResolvedValue({
+        success: true,
+        data: { id: 99, name: 'Contact Form', channel_type: 1 },
+      });
+
+      const result = await ensureEmailChannelTool.execute({}, context);
+
+      expect(result.created).toBe(true);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // setup_form
+  // --------------------------------------------------------------------------
+
+  describe('setup_form', () => {
+    it('has correct tool definition', () => {
+      expect(setupFormTool.name).toBe('setup_form');
+      expect(setupFormTool.execute).toBeTypeOf('function');
+    });
+
+    it('returns error when appId is missing', async () => {
+      const result = await setupFormTool.execute({}, {});
+      expect(result.error).toContain('App ID required');
+    });
+
+    it('returns error when app path cannot be resolved', async () => {
+      mockFindById.mockResolvedValue(null);
+
+      const result = await setupFormTool.execute({}, context);
+
+      expect(result.error).toContain('Could not resolve app path');
+    });
+
+    it('returns error when brand is not configured', async () => {
+      mockMemoryGet.mockResolvedValue({ exists: false });
+
+      const result = await setupFormTool.execute({}, context);
+
+      expect(result.error).toContain('No account configured');
+    });
+
+    it('returns error when category is not configured', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        return Promise.resolve({ exists: false });
+      });
+
+      const result = await setupFormTool.execute({}, context);
+
+      expect(result.error).toContain('No email channel configured');
+    });
+
+    it('installs route template when file is missing', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        if (key === 'integrations.inbox.contactFormCategoryId') {
+          return Promise.resolve({ exists: true, value: 42 });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+      mockReadFile.mockResolvedValue('// route template content');
+      mockMkdir.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+
+      const result = await setupFormTool.execute({}, context);
+
+      expect(result.success).toBe(true);
+      expect(mockReadFile).toHaveBeenCalledWith(
+        expect.stringContaining('contact-templates/server/api/contact/POST.ts'),
+        'utf-8',
+      );
+      expect(mockMkdir).toHaveBeenCalled();
+    });
+
+    it('skips route install when file exists', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        if (key === 'integrations.inbox.contactFormCategoryId') {
+          return Promise.resolve({ exists: true, value: 42 });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockAccess.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+
+      const result = await setupFormTool.execute({}, context);
+
+      expect(result.success).toBe(true);
+      expect(mockReadFile).not.toHaveBeenCalled();
+    });
+
+    it('writes config with brandId and categoryId', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        if (key === 'integrations.inbox.contactFormCategoryId') {
+          return Promise.resolve({ exists: true, value: 42 });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockAccess.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+
+      await setupFormTool.execute({}, context);
+
+      expect(mockWriteFile).toHaveBeenCalledWith(
+        expect.stringContaining('contact-form.config.json'),
+        JSON.stringify({ brandId: 'brand-123', categoryId: 42 }, null, 2) + '\n',
+      );
+    });
+
+    it('returns error when route template copy fails', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        if (key === 'integrations.inbox.contactFormCategoryId') {
+          return Promise.resolve({ exists: true, value: 42 });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+      mockReadFile.mockRejectedValue(new Error('disk full'));
+
+      const result = await setupFormTool.execute({}, context);
+
+      expect(result.error).toContain('Failed to install contact form route');
+    });
+
+    it('reports routeRegistration.registered=true when entry.ts is rewritten', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        if (key === 'integrations.inbox.contactFormCategoryId') {
+          return Promise.resolve({ exists: true, value: 42 });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockAccess.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+      mockCreateForWorkspace.mockReturnValue({ files: {} });
+      mockRegenerateEntryApiRegistrations.mockResolvedValue({ changed: true, reason: 'rewritten', routeCount: 1 });
+
+      const result = await setupFormTool.execute({}, context);
+
+      expect(result.success).toBe(true);
+      expect(result.routeRegistration).toEqual({ registered: true });
+      expect(mockRegenerateEntryApiRegistrations).toHaveBeenCalledWith({});
+    });
+
+    it('reports routeRegistration.registered=false when markers are missing', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        if (key === 'integrations.inbox.contactFormCategoryId') {
+          return Promise.resolve({ exists: true, value: 42 });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockAccess.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+      mockCreateForWorkspace.mockReturnValue({ files: {} });
+      mockRegenerateEntryApiRegistrations.mockResolvedValue({ changed: false, reason: 'markers-missing', routeCount: 1 });
+
+      const result = await setupFormTool.execute({}, context);
+
+      expect(result.success).toBe(true);
+      expect(result.routeRegistration).toEqual({ registered: false, reason: 'markers-missing' });
+    });
+
+    it('reports routeRegistration.registered=false when workspace is unavailable', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        if (key === 'integrations.inbox.contactFormCategoryId') {
+          return Promise.resolve({ exists: true, value: 42 });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockAccess.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+      mockCreateForWorkspace.mockReturnValue(null);
+
+      const result = await setupFormTool.execute({}, context);
+
+      expect(result.success).toBe(true);
+      expect(result.routeRegistration).toEqual({ registered: false, reason: 'no-workspace' });
+      expect(mockRegenerateEntryApiRegistrations).not.toHaveBeenCalled();
+    });
+
+    it('reports routeRegistration.registered=false when regeneration throws', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        if (key === 'integrations.inbox.contactFormCategoryId') {
+          return Promise.resolve({ exists: true, value: 42 });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockAccess.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+      mockCreateForWorkspace.mockReturnValue({ files: {} });
+      mockRegenerateEntryApiRegistrations.mockRejectedValue(new Error('workspace connection lost'));
+
+      const result = await setupFormTool.execute({}, context);
+
+      expect(result.success).toBe(true);
+      expect(result.routeRegistration).toEqual({ registered: false, reason: 'workspace connection lost' });
     });
   });
 });

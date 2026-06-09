@@ -9,7 +9,7 @@
  * No cert / service identity involved.
  *
  * Request body:
- *   { operation: 'list_accounts' | 'activate_account' | 'list_embeddables' | 'create_embeddable' | 'update_embeddable' | 'pusher_auth',
+ *   { operation: 'list_accounts' | 'activate_account' | 'list_embeddables' | 'create_embeddable' | 'update_embeddable' | 'list_categories' | 'create_category' | 'pusher_auth',
  *     brandId?: string,        // required for brand-scoped operations (embeddables, pusher_auth)
  *     embeddableId?: number,   // required for update_embeddable
  *     body?: unknown,          // required for create/update operations and pusher_auth ({ socket_id, channel_name })
@@ -35,6 +35,8 @@ type InboxOperation =
   | 'list_embeddables'
   | 'create_embeddable'
   | 'update_embeddable'
+  | 'list_categories'
+  | 'create_category'
   | 'pusher_auth';
 
 interface InboxRequest {
@@ -62,6 +64,10 @@ function resolveRequest(req: InboxRequest): { method: 'GET' | 'POST' | 'PUT'; pa
         return { error: 'embeddableId (number) is required for update_embeddable' };
       }
       return { method: 'PUT', path: `/embeddables/${req.embeddableId}` };
+    case 'list_categories':
+      return { method: 'GET', path: '/categories' };
+    case 'create_category':
+      return { method: 'POST', path: '/categories' };
     case 'pusher_auth':
       return { method: 'POST', path: '/pusher_authentication/auth' };
     default:
