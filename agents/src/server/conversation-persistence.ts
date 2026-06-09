@@ -713,7 +713,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         toolCalls,
         metadata: {
           agentId: context.agentName,
-          finalResult: result,
+          ...(result?.finishReason !== undefined && { finalResult: { finishReason: result.finishReason } }),
           streamingEvents: streamingEvents.length,
           inProgress: false,
           incomplete: false,
@@ -735,7 +735,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
         toolCalls,
         metadata: {
           agentId: context.agentName,
-          finalResult: result,
+          ...(result?.finishReason !== undefined && { finalResult: { finishReason: result.finishReason } }),
           streamingEvents: streamingEvents.length,
           usedFreeGrants,
           ...traceIds,

@@ -2119,7 +2119,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         appId,
         conversationId,
         streamingEvents,
-        result: lastTurnResult?.finalResult,
+        result: { finishReason: lastTurnResult?.finishReason },
         persistenceContext,
         agentMessageIds: openedAgentMessageIds,
         failureLogEvent: 'sse.execution.persistence_failed',

@@ -1527,7 +1527,7 @@ describe('MessageExecutionService', () => {
           expect.objectContaining({ type: 'chunk', content: 'Hello ' }),
           expect.objectContaining({ type: 'chunk', content: 'world' }),
         ]),
-        undefined, // finalResult (getFinalResult not mocked)
+        { finishReason: 'result_fetch_failed' }, // getFinalResult not mocked → throws → only finishReason stored
         expect.objectContaining({ socketId: 'sse:conv_1' })
       )
     })
