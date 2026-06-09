@@ -807,20 +807,34 @@ describe('inbox skill tools', () => {
   // --------------------------------------------------------------------------
 
   describe('setup_form', () => {
+    const formInput = { name: 'contact-us' };
+
+    function setupMemoryMocks(): void {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        if (key === 'integrations.inbox.contactFormCategoryId') {
+          return Promise.resolve({ exists: true, value: 42 });
+        }
+        return Promise.resolve({ exists: false });
+      });
+    }
+
     it('has correct tool definition', () => {
       expect(setupFormTool.name).toBe('setup_form');
       expect(setupFormTool.execute).toBeTypeOf('function');
     });
 
     it('returns error when appId is missing', async () => {
-      const result = await setupFormTool.execute({}, {});
+      const result = await setupFormTool.execute(formInput, {});
       expect(result.error).toContain('App ID required');
     });
 
     it('returns error when app path cannot be resolved', async () => {
       mockFindById.mockResolvedValue(null);
 
-      const result = await setupFormTool.execute({}, context);
+      const result = await setupFormTool.execute(formInput, context);
 
       expect(result.error).toContain('Could not resolve app path');
     });
@@ -828,7 +842,7 @@ describe('inbox skill tools', () => {
     it('returns error when brand is not configured', async () => {
       mockMemoryGet.mockResolvedValue({ exists: false });
 
-      const result = await setupFormTool.execute({}, context);
+      const result = await setupFormTool.execute(formInput, context);
 
       expect(result.error).toContain('No account configured');
     });
@@ -841,110 +855,142 @@ describe('inbox skill tools', () => {
         return Promise.resolve({ exists: false });
       });
 
-      const result = await setupFormTool.execute({}, context);
+      const result = await setupFormTool.execute(formInput, context);
 
       expect(result.error).toContain('No email channel configured');
     });
 
     it('installs route template when file is missing', async () => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
-        if (key === 'integrations.inbox.brandId') {
-          return Promise.resolve({ exists: true, value: 'brand-123' });
-        }
-        if (key === 'integrations.inbox.contactFormCategoryId') {
-          return Promise.resolve({ exists: true, value: 42 });
-        }
-        return Promise.resolve({ exists: false });
-      });
+      setupMemoryMocks();
       mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
       mockReadFile.mockResolvedValue('// route template content');
       mockMkdir.mockResolvedValue(undefined);
       mockWriteFile.mockResolvedValue(undefined);
 
-      const result = await setupFormTool.execute({}, context);
+      const result = await setupFormTool.execute(formInput, context);
 
       expect(result.success).toBe(true);
       expect(mockReadFile).toHaveBeenCalledWith(
-        expect.stringContaining('contact-templates/server/api/contact/POST.ts'),
+        expect.stringContaining('contact-templates/server/api/contact/[formName]/POST.ts'),
         'utf-8',
       );
       expect(mockMkdir).toHaveBeenCalled();
     });
 
     it('skips route install when file exists', async () => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
-        if (key === 'integrations.inbox.brandId') {
-          return Promise.resolve({ exists: true, value: 'brand-123' });
-        }
-        if (key === 'integrations.inbox.contactFormCategoryId') {
-          return Promise.resolve({ exists: true, value: 42 });
-        }
-        return Promise.resolve({ exists: false });
-      });
+      setupMemoryMocks();
       mockAccess.mockResolvedValue(undefined);
       mockWriteFile.mockResolvedValue(undefined);
 
-      const result = await setupFormTool.execute({}, context);
+      const result = await setupFormTool.execute(formInput, context);
 
       expect(result.success).toBe(true);
-      expect(mockReadFile).not.toHaveBeenCalled();
-    });
-
-    it('writes config with brandId and categoryId', async () => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
-        if (key === 'integrations.inbox.brandId') {
-          return Promise.resolve({ exists: true, value: 'brand-123' });
-        }
-        if (key === 'integrations.inbox.contactFormCategoryId') {
-          return Promise.resolve({ exists: true, value: 42 });
-        }
-        return Promise.resolve({ exists: false });
-      });
-      mockAccess.mockResolvedValue(undefined);
-      mockWriteFile.mockResolvedValue(undefined);
-
-      await setupFormTool.execute({}, context);
-
-      expect(mockWriteFile).toHaveBeenCalledWith(
-        expect.stringContaining('contact-form.config.json'),
-        JSON.stringify({ brandId: 'brand-123', categoryId: 42 }, null, 2) + '\n',
+      // readFile is called for existing config, but not for template install
+      expect(mockReadFile).not.toHaveBeenCalledWith(
+        expect.stringContaining('contact-templates'),
+        'utf-8',
       );
     });
 
+    it('writes config with form entry in forms map', async () => {
+      setupMemoryMocks();
+      mockAccess.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+
+      await setupFormTool.execute(formInput, context);
+
+      const expectedConfig = { forms: { 'contact-us': { brandId: 'brand-123', categoryId: 42 } } };
+      expect(mockWriteFile).toHaveBeenCalledWith(
+        expect.stringContaining('contact-form.config.json'),
+        JSON.stringify(expectedConfig, null, 2) + '\n',
+      );
+    });
+
+    it('includes overrideEmail in config when provided', async () => {
+      setupMemoryMocks();
+      mockAccess.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+
+      await setupFormTool.execute({ name: 'support', overrideEmail: 'support@test.com' }, context);
+
+      const expectedConfig = { forms: { support: { brandId: 'brand-123', categoryId: 42, overrideEmail: 'support@test.com' } } };
+      expect(mockWriteFile).toHaveBeenCalledWith(
+        expect.stringContaining('contact-form.config.json'),
+        JSON.stringify(expectedConfig, null, 2) + '\n',
+      );
+    });
+
+    it('merges new form into existing config without clobbering', async () => {
+      setupMemoryMocks();
+      mockAccess.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+      const existingConfig = { forms: { 'existing-form': { brandId: 'brand-123', categoryId: 10 } } };
+      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+
+      await setupFormTool.execute({ name: 'new-form' }, context);
+
+      const expectedConfig = {
+        forms: {
+          'existing-form': { brandId: 'brand-123', categoryId: 10 },
+          'new-form': { brandId: 'brand-123', categoryId: 42 },
+        },
+      };
+      expect(mockWriteFile).toHaveBeenCalledWith(
+        expect.stringContaining('contact-form.config.json'),
+        JSON.stringify(expectedConfig, null, 2) + '\n',
+      );
+    });
+
+    it('overwrites existing form entry when same name is used (idempotent)', async () => {
+      setupMemoryMocks();
+      mockAccess.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+      const existingConfig = { forms: { 'contact-us': { brandId: 'old-brand', categoryId: 99 } } };
+      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+
+      await setupFormTool.execute(formInput, context);
+
+      const expectedConfig = { forms: { 'contact-us': { brandId: 'brand-123', categoryId: 42 } } };
+      expect(mockWriteFile).toHaveBeenCalledWith(
+        expect.stringContaining('contact-form.config.json'),
+        JSON.stringify(expectedConfig, null, 2) + '\n',
+      );
+    });
+
+    it('returns formName and postUrl on success', async () => {
+      setupMemoryMocks();
+      mockAccess.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+
+      const result = await setupFormTool.execute(formInput, context);
+
+      expect(result.success).toBe(true);
+      expect(result.formName).toBe('contact-us');
+      expect(result.postUrl).toBe('/api/contact/contact-us');
+    });
+
     it('returns error when route template copy fails', async () => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
-        if (key === 'integrations.inbox.brandId') {
-          return Promise.resolve({ exists: true, value: 'brand-123' });
-        }
-        if (key === 'integrations.inbox.contactFormCategoryId') {
-          return Promise.resolve({ exists: true, value: 42 });
-        }
-        return Promise.resolve({ exists: false });
-      });
+      setupMemoryMocks();
       mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
       mockReadFile.mockRejectedValue(new Error('disk full'));
 
-      const result = await setupFormTool.execute({}, context);
+      const result = await setupFormTool.execute(formInput, context);
 
       expect(result.error).toContain('Failed to install contact form route');
     });
 
     it('reports routeRegistration.registered=true when entry.ts is rewritten', async () => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
-        if (key === 'integrations.inbox.brandId') {
-          return Promise.resolve({ exists: true, value: 'brand-123' });
-        }
-        if (key === 'integrations.inbox.contactFormCategoryId') {
-          return Promise.resolve({ exists: true, value: 42 });
-        }
-        return Promise.resolve({ exists: false });
-      });
+      setupMemoryMocks();
       mockAccess.mockResolvedValue(undefined);
       mockWriteFile.mockResolvedValue(undefined);
+      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
       mockCreateForWorkspace.mockReturnValue({ files: {} });
       mockRegenerateEntryApiRegistrations.mockResolvedValue({ changed: true, reason: 'rewritten', routeCount: 1 });
 
-      const result = await setupFormTool.execute({}, context);
+      const result = await setupFormTool.execute(formInput, context);
 
       expect(result.success).toBe(true);
       expect(result.routeRegistration).toEqual({ registered: true });
@@ -952,41 +998,27 @@ describe('inbox skill tools', () => {
     });
 
     it('reports routeRegistration.registered=false when markers are missing', async () => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
-        if (key === 'integrations.inbox.brandId') {
-          return Promise.resolve({ exists: true, value: 'brand-123' });
-        }
-        if (key === 'integrations.inbox.contactFormCategoryId') {
-          return Promise.resolve({ exists: true, value: 42 });
-        }
-        return Promise.resolve({ exists: false });
-      });
+      setupMemoryMocks();
       mockAccess.mockResolvedValue(undefined);
       mockWriteFile.mockResolvedValue(undefined);
+      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
       mockCreateForWorkspace.mockReturnValue({ files: {} });
       mockRegenerateEntryApiRegistrations.mockResolvedValue({ changed: false, reason: 'markers-missing', routeCount: 1 });
 
-      const result = await setupFormTool.execute({}, context);
+      const result = await setupFormTool.execute(formInput, context);
 
       expect(result.success).toBe(true);
       expect(result.routeRegistration).toEqual({ registered: false, reason: 'markers-missing' });
     });
 
     it('reports routeRegistration.registered=false when workspace is unavailable', async () => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
-        if (key === 'integrations.inbox.brandId') {
-          return Promise.resolve({ exists: true, value: 'brand-123' });
-        }
-        if (key === 'integrations.inbox.contactFormCategoryId') {
-          return Promise.resolve({ exists: true, value: 42 });
-        }
-        return Promise.resolve({ exists: false });
-      });
+      setupMemoryMocks();
       mockAccess.mockResolvedValue(undefined);
       mockWriteFile.mockResolvedValue(undefined);
+      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
       mockCreateForWorkspace.mockReturnValue(null);
 
-      const result = await setupFormTool.execute({}, context);
+      const result = await setupFormTool.execute(formInput, context);
 
       expect(result.success).toBe(true);
       expect(result.routeRegistration).toEqual({ registered: false, reason: 'no-workspace' });
@@ -994,21 +1026,14 @@ describe('inbox skill tools', () => {
     });
 
     it('reports routeRegistration.registered=false when regeneration throws', async () => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
-        if (key === 'integrations.inbox.brandId') {
-          return Promise.resolve({ exists: true, value: 'brand-123' });
-        }
-        if (key === 'integrations.inbox.contactFormCategoryId') {
-          return Promise.resolve({ exists: true, value: 42 });
-        }
-        return Promise.resolve({ exists: false });
-      });
+      setupMemoryMocks();
       mockAccess.mockResolvedValue(undefined);
       mockWriteFile.mockResolvedValue(undefined);
+      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
       mockCreateForWorkspace.mockReturnValue({ files: {} });
       mockRegenerateEntryApiRegistrations.mockRejectedValue(new Error('workspace connection lost'));
 
-      const result = await setupFormTool.execute({}, context);
+      const result = await setupFormTool.execute(formInput, context);
 
       expect(result.success).toBe(true);
       expect(result.routeRegistration).toEqual({ registered: false, reason: 'workspace connection lost' });

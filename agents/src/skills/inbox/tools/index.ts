@@ -476,21 +476,46 @@ export const ensureEmailChannelTool: SkillToolDefinition = {
 // setup_form — install contact form templates and write config
 // ============================================================================
 
-interface ContactFormConfig {
+interface ContactFormEntry {
   brandId: string;
   categoryId: number | string;
+  overrideEmail?: string;
+}
+
+interface ContactFormConfig {
+  forms: Record<string, ContactFormEntry>;
+}
+
+async function readExistingConfig(configPath: string): Promise<ContactFormConfig> {
+  try {
+    const raw = await readFile(configPath, 'utf-8');
+    return JSON.parse(raw) as ContactFormConfig;
+  } catch {
+    return { forms: {} };
+  }
 }
 
 export const setupFormTool: SkillToolDefinition = {
   name: 'setup_form',
   description:
-    'Install the contact form server route and write config. ' +
+    'Install the contact form server route and write config for a named form. ' +
     'Requires discover_account and ensure_email_channel to have run first. ' +
-    'Idempotent — safe to call multiple times. ' +
-    'After this succeeds, build the form component.',
+    'Can be called multiple times with different names to create multiple forms. ' +
+    'Each form name must be unique (calling again with the same name updates the entry). ' +
+    'After this succeeds, build the form component that POSTs to /api/contact/{name}.',
 
-  parameters: z.object({}),
-  execute: async (_input: Record<string, never>, context?: ToolContext) => {
+  parameters: z.object({
+    name: z
+      .string()
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Must be lowercase alphanumeric with hyphens (e.g. "contact-us", "support")')
+      .describe('Unique slug name for this contact form (e.g. "contact-us", "support-request").'),
+    overrideEmail: z
+      .string()
+      .email()
+      .optional()
+      .describe('If set, submissions from this form will be sent to this email address instead of the default inbox.'),
+  }),
+  execute: async (input: { name: string; overrideEmail?: string }, context?: ToolContext) => {
     const appId = getAppId(context);
     if (!appId) return { error: 'App ID required. Pass context.metadata.appId.' };
 
@@ -509,7 +534,7 @@ export const setupFormTool: SkillToolDefinition = {
     }
     const categoryId = categoryRead.value as number | string;
 
-    const routePath = join(app.path, 'src', 'server', 'api', 'contact', 'POST.ts');
+    const routePath = join(app.path, 'src', 'server', 'api', 'contact', '[formName]', 'POST.ts');
     const configPath = join(app.path, 'src', 'lib', 'contact-form.config.json');
 
     const routeExists = await fileExists(routePath);
@@ -517,7 +542,7 @@ export const setupFormTool: SkillToolDefinition = {
     if (!routeExists) {
       try {
         const templateDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'contact-templates');
-        const routeTemplate = await readFile(join(templateDir, 'server', 'api', 'contact', 'POST.ts'), 'utf-8');
+        const routeTemplate = await readFile(join(templateDir, 'server', 'api', 'contact', '[formName]', 'POST.ts'), 'utf-8');
         await mkdir(dirname(routePath), { recursive: true });
         await writeFile(routePath, routeTemplate);
       } catch (err: unknown) {
@@ -526,7 +551,13 @@ export const setupFormTool: SkillToolDefinition = {
       }
     }
 
-    const config: ContactFormConfig = { brandId, categoryId };
+    const config = await readExistingConfig(configPath);
+    const entry: ContactFormEntry = { brandId, categoryId };
+    if (input.overrideEmail) {
+      entry.overrideEmail = input.overrideEmail;
+    }
+    config.forms[input.name] = entry;
+
     const configJson = JSON.stringify(config, null, 2) + '\n';
     try {
       await mkdir(dirname(configPath), { recursive: true });
@@ -534,6 +565,17 @@ export const setupFormTool: SkillToolDefinition = {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       return { error: `Failed to write contact form config: ${message}` };
+    }
+
+    // Also write to dist/ so the published bundle (which runs from dist/) can find it.
+    // The SSR build uses emptyOutDir:false so this file survives the build.
+    const distConfigPath = join(app.path, 'dist', 'contact-form.config.json');
+    try {
+      await mkdir(dirname(distConfigPath), { recursive: true });
+      await writeFile(distConfigPath, configJson);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('inbox.skill.setup_form.dist_config_write_failed', { appId, error: msg });
     }
 
     // Auto-register the route in entry.ts via the workspace API.
@@ -566,25 +608,17 @@ export const setupFormTool: SkillToolDefinition = {
       }
     }
 
-    // Also write to dist/ so the published bundle (which runs from dist/) can find it.
-    // The SSR build uses emptyOutDir:false so this file survives the build.
-    const distConfigPath = join(app.path, 'dist', 'contact-form.config.json');
-    try {
-      await mkdir(dirname(distConfigPath), { recursive: true });
-      await writeFile(distConfigPath, configJson);
-    } catch {
-      // dist/ may not exist yet (first setup before first build) — not fatal
-    }
-
-    logger.info('inbox.skill.setup_form.success', { appId, brandId, categoryId });
+    logger.info('inbox.skill.setup_form.success', { appId, brandId, categoryId, formName: input.name });
 
     return {
       success: true,
+      formName: input.name,
+      postUrl: `/api/contact/${input.name}`,
       configWritten: configPath,
       routeInstalled: routePath,
       routeRegistration,
       nextSteps: [
-        'Build a form component that POSTs to /api/contact with: { conversation: { messages_attributes: [{ body }], data: { __gd_contact_form_title, ... } }, user: { email, name } }',
+        `Build a form component that POSTs to /api/contact/${input.name} with: { conversation: { messages_attributes: [{ body }], data: { __gd_contact_form_title, ... } }, user: { email, name } }`,
         'The server route returns { success: true } or { success: false, error: "message" }',
       ],
     };

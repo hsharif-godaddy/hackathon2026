@@ -1,16 +1,21 @@
 /** TREAT AS IMMUTABLE - This file is protected by the file-edit tool
  *
  * Forwards contact form submissions to the Inbox backend /api/v2/contact endpoint.
- * Config values (brandId, categoryId) are read from contact-form.config.json.
+ * Config values are read from contact-form.config.json (map of form entries).
  * Inbox backend host is resolved at runtime from GODADDY_API_BASE_URL.
  */
 import type { Request, Response } from "express";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-interface ContactFormConfig {
+interface ContactFormEntry {
 	brandId: string;
 	categoryId: number | string;
+	overrideEmail?: string;
+}
+
+interface ContactFormConfig {
+	forms: Record<string, ContactFormEntry>;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +124,7 @@ function getVisitorIp(req: Request): string {
 // ---------------------------------------------------------------------------
 
 export default async function handler(req: Request, res: Response): Promise<void> {
+	const formName = req.params.formName as string;
 	const body = req.body;
 
 	const visitorIp = getVisitorIp(req);
@@ -144,8 +150,14 @@ export default async function handler(req: Request, res: Response): Promise<void
 	}
 
 	const config = getConfig();
-	if (!config?.brandId || !config.categoryId) {
+	if (!config?.forms) {
 		res.status(500).json({ success: false, error: "Contact form not configured" });
+		return;
+	}
+
+	const formConfig = Object.hasOwn(config.forms, formName) ? config.forms[formName] : undefined;
+	if (!formConfig) {
+		res.status(404).json({ success: false, error: `Form "${formName}" not configured` });
 		return;
 	}
 
@@ -162,16 +174,17 @@ export default async function handler(req: Request, res: Response): Promise<void
 	const payload = {
 		conversation: {
 			message: { body: messageBody },
-			category_id: config.categoryId,
+			category_id: formConfig.categoryId,
 			user: body.user,
 			data: {
 				...body.conversation?.data,
 				__gd_type: "contact",
+				...(formConfig.overrideEmail && { __gd_override_email: formConfig.overrideEmail }),
 			},
 		},
 	};
 
-	const url = `https://${config.brandId}.${inboxHost}/api/v2/contact`;
+	const url = `https://${formConfig.brandId}.${inboxHost}/api/v2/contact`;
 
 	try {
 		const response = await fetch(url, {
