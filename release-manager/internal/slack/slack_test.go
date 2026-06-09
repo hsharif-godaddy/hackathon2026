@@ -280,3 +280,42 @@ func TestFetchCredentialsInvalidSecret(t *testing.T) {
 		t.Fatal("expected error for invalid secret name")
 	}
 }
+
+func TestPostReplyIsAFreshThreadedBroadcast(t *testing.T) {
+	var mu sync.Mutex
+	var got postRequest
+	var path string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		path = r.URL.Path
+		_ = json.Unmarshal(body, &got)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(apiResponse{OK: true, TS: "999.999"})
+	}))
+	defer server.Close()
+
+	n := New("xoxb-test", "C1")
+	n.baseURL = server.URL
+	n.SeedTS("123.456") // an existing status message to thread under
+
+	n.PostReply(context.Background(), "ping <@U1>")
+
+	mu.Lock()
+	defer mu.Unlock()
+	// It must be a fresh post (chat.postMessage), NOT an edit — edits don't notify.
+	if path != "/chat.postMessage" {
+		t.Errorf("PostReply hit %q, want /chat.postMessage", path)
+	}
+	if got.ThreadTS != "123.456" || !got.ReplyBroadcast {
+		t.Errorf("reply not a broadcast thread reply: thread_ts=%q reply_broadcast=%v", got.ThreadTS, got.ReplyBroadcast)
+	}
+	if got.MarkdownText != "ping <@U1>" {
+		t.Errorf("reply text = %q", got.MarkdownText)
+	}
+	// The status message's ts must be untouched (the reply has its own ts).
+	if n.TS() != "123.456" {
+		t.Errorf("PostReply clobbered the status ts: %q", n.TS())
+	}
+}

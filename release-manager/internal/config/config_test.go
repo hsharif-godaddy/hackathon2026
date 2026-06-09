@@ -4,7 +4,20 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
+
+func TestReleaseConfigApprovalMentions(t *testing.T) {
+	var rc ReleaseConfig
+	data := []byte("repo: o/r\nenabled: true\napproval_mentions:\n  - jeichorn\n  - ask-airo-sre\n")
+	if err := yaml.Unmarshal(data, &rc); err != nil {
+		t.Fatal(err)
+	}
+	if len(rc.ApprovalMentions) != 2 || rc.ApprovalMentions[0] != "jeichorn" || rc.ApprovalMentions[1] != "ask-airo-sre" {
+		t.Errorf("approval_mentions parsed as %v, want [jeichorn ask-airo-sre]", rc.ApprovalMentions)
+	}
+}
 
 func TestResolveTemplate(t *testing.T) {
 	tests := []struct {

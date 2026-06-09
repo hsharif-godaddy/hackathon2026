@@ -79,21 +79,22 @@ type phaseState struct {
 
 // run carries the per-invocation state needed to render the Slack message.
 type run struct {
-	p               *pipeline.Pipeline
-	runner          gh.Runner       // for the optional gh.Approver capability (gate attribution)
-	notifier        *slack.Notifier // nil ⇒ Slack disabled (e.g. dry-run)
-	operator        string
-	branch          string
-	dryRun          bool
-	runURL          string // this orchestrator run's URL (for the approval CTA)
-	repo            string // GITHUB_REPOSITORY, for the approvals API
-	runID           int64  // GITHUB_RUN_ID, for the approvals API
-	releaseNotes    []pipeline.ReleaseNote
-	releaseNotesURL string
-	start           time.Time
-	releaseTag      string
-	releaseURL      string
-	approvedBy      string // reviewer login who approved the prod gate ("" if unknown)
+	p                *pipeline.Pipeline
+	runner           gh.Runner       // for the optional gh.Approver capability (gate attribution)
+	notifier         *slack.Notifier // nil ⇒ Slack disabled (e.g. dry-run)
+	operator         string
+	branch           string
+	dryRun           bool
+	runURL           string // this orchestrator run's URL (for the approval CTA)
+	repo             string // GITHUB_REPOSITORY, for the approvals API
+	runID            int64  // GITHUB_RUN_ID, for the approvals API
+	releaseNotes     []pipeline.ReleaseNote
+	releaseNotesURL  string
+	start            time.Time
+	releaseTag       string
+	releaseURL       string
+	approvedBy       string   // reviewer login who approved the prod gate ("" if unknown)
+	approvalMentions []string // approver handles from config; resolved to Slack mention tokens before the gate ping
 }
 
 // githubRunURL builds the current GHA run's URL from the standard runner env
@@ -128,6 +129,8 @@ func Run(ctx context.Context, cfg *config.Config, runner gh.Runner, notifier *sl
 		repo:     os.Getenv("GITHUB_REPOSITORY"),
 		runID:    githubRunID(),
 		start:    time.Now(),
+
+		approvalMentions: cfg.Release.ApprovalMentions,
 	}
 	r.p.Overrides = opts.Overrides
 	r.p.BaseCommitOverride = opts.BaseCommit
@@ -198,11 +201,31 @@ func (r *run) runTest(ctx context.Context, opts Options) error {
 		r.fail(ctx, "writing phase state failed")
 		return fmt.Errorf("writing phase state: %w", err)
 	}
-	// TEST done and state persisted — post the explicit "awaiting prod approval"
-	// CTA so the channel is pinged that a human must approve before prod runs.
+	// TEST done and state persisted — edit the single status message to the
+	// "awaiting prod approval" CTA…
 	r.updateAwaiting(ctx)
+	// …then ping the approvers in a SEPARATE, fresh post. The edit above can't
+	// notify anyone (Slack only delivers @-mentions on a new message, never on
+	// a chat.update edit), so resolve the approver handles → mention tokens (one
+	// Slack lookup, at the gate) and post them as a broadcast threaded reply.
+	// Best-effort: unresolved handles / a missing scope just yield no ping.
+	if r.notifier != nil && len(r.approvalMentions) > 0 {
+		if mentions := r.notifier.ResolveMentions(ctx, r.approvalMentions); len(mentions) > 0 {
+			r.notifier.PostReply(ctx, approvalPing(r.runURL, mentions))
+		}
+	}
 	r.writeTestSummary()
 	return nil
+}
+
+// approvalPing is the fresh message that actually notifies the approvers (the
+// in-place status edit can't). Mentions go on their own line.
+func approvalPing(runURL string, mentions []string) string {
+	msg := ":hourglass_flowing_sand: **Prod approval needed**"
+	if runURL != "" {
+		msg += " — [Review & approve](" + runURL + ")"
+	}
+	return msg + "\n" + strings.Join(mentions, " ")
 }
 
 func (r *run) runProd(ctx context.Context, opts Options) error {

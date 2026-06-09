@@ -43,6 +43,11 @@ type LockConfig struct {
 type ReleaseConfig struct {
 	Repo    string `yaml:"repo"`
 	Enabled bool   `yaml:"enabled"`
+	// ApprovalMentions are plain Slack handles (a username like "jeichorn" or a
+	// user-group handle like "ask-airo-sre") @-mentioned in the "Awaiting prod
+	// approval" ping. The binary resolves each to its Slack ID at run time (see
+	// slack.ResolveMentions) — needs the bot's users:read + usergroups:read scopes.
+	ApprovalMentions []string `yaml:"approval_mentions"`
 }
 
 // DeployWorkflow represents a unique repo+workflow pair for active-run checking.

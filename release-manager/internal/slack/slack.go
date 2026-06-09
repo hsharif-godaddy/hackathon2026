@@ -121,8 +121,10 @@ func FetchCredentials(ctx context.Context, secretName, awsProfile string) (*Cred
 // postRequest uses markdown_text (12k char limit) instead of text (4k limit).
 // markdown_text must not be combined with text or blocks.
 type postRequest struct {
-	Channel      string `json:"channel"`
-	MarkdownText string `json:"markdown_text"`
+	Channel        string `json:"channel"`
+	MarkdownText   string `json:"markdown_text"`
+	ThreadTS       string `json:"thread_ts,omitempty"`       // reply under this message
+	ReplyBroadcast bool   `json:"reply_broadcast,omitempty"` // also surface the reply in-channel
 }
 
 type updateRequest struct {
@@ -169,6 +171,34 @@ func (n *Notifier) post(ctx context.Context, text string) {
 	n.lastText = text
 
 	logger.Log("slack.posted: ts=%s", resp.TS)
+}
+
+// PostReply posts a NEW message — a broadcast reply in the status message's
+// thread when one exists, else a standalone post. Unlike Update (which EDITS
+// the single status message via chat.update), this is a fresh chat.postMessage,
+// so Slack actually delivers @-mention notifications: editing a message never
+// notifies newly-added mentions, only a new post does. Used for the approval
+// ping. Best-effort; does NOT touch the status message's ts.
+func (n *Notifier) PostReply(ctx context.Context, text string) {
+	if n == nil {
+		return
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	req := postRequest{Channel: n.channelID, MarkdownText: text}
+	if n.ts != "" {
+		req.ThreadTS = n.ts       // keep it attached to the release thread
+		req.ReplyBroadcast = true // …but also surface it in-channel
+	}
+	body, err := json.Marshal(req)
+	if err != nil {
+		logger.Log("slack.error: marshalling reply payload: %s", err)
+		return
+	}
+	if _, err := n.call(ctx, n.baseURL+"/chat.postMessage", body); err != nil {
+		logger.Log("slack.error: approval ping reply: %s", err)
+	}
 }
 
 // Update edits the previously posted message with new content.

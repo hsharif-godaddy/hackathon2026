@@ -46,6 +46,10 @@ type State struct {
 	// channel gets a clear ping that a human needs to act.
 	AwaitingApproval bool
 	RunURL           string // orchestrator run URL, linked from the approval CTA
+	// (Approver @-mentions are NOT rendered here — editing this in-place message
+	// via chat.update never delivers Slack notifications. The ping is posted
+	// separately as a fresh threaded broadcast; see headless.PostReply.)
+	//
 	// ApprovedBy is the reviewer login who approved the prod gate. Set once the
 	// prod phase resumes, so the message credits the approver ("approved by @x")
 	// through the prod deploy and on Complete. Empty when unknown or dry-run.

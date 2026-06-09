@@ -9,6 +9,25 @@ lock:
 release:
   repo: gdcorp-partners/airo-app-builder
   enabled: true
+  # Approvers @-mentioned in the "Awaiting prod approval" ping. Plain Slack
+  # handles — a username, or a user-group handle like ask-airo-sre. The binary
+  # resolves each to its Slack ID at run time (users.list / usergroups.list), so
+  # raw handles here are fine. Requires the bot's users:read + usergroups:read
+  # scopes; an unresolved handle or a missing scope just drops that mention.
+  approval_mentions:
+    - jeichorn
+    - dmendis
+    - ugupta
+    - skilaru
+    - arai1
+    - deverton
+    - matkinson
+    - ask-airo-sre # Slack user group → <!subteam^…>
+    - mlefebvre1
+    - dmiller1
+    - hgupta2
+    - kra
+    - hdewan
 
 # Workflows that are NOT pipeline stages but whose in-flight runs must still
 # block a manual TUI release. The headless GHA release pipeline (release.yml)
