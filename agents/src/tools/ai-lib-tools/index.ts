@@ -107,6 +107,13 @@ import { installDesignSystemAITool } from './install-design-system.js';
 import { showDocAITool } from './show-doc.js';
 import { runAgentAITool } from './run-agent.js'
 import { returnToParentAITool } from './return-to-parent.js';
+import { registerPostEditHandler } from './post-edit-handlers.js';
+import { seoRoutesPostEditHandler } from '../../services/seo-routes-post-edit-handler.js';
+
+// Wire template-/feature-specific post-edit side effects into the generic text
+// editor here, at the tool composition root — the editor itself stays
+// template-agnostic. Registration is idempotent by handler name.
+registerPostEditHandler(seoRoutesPostEditHandler);
 
 /**
  * Complete registry of all AI-Lib converted tools

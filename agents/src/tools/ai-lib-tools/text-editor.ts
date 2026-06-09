@@ -19,6 +19,7 @@ import { createTool, PROVIDER_TOOL_FALLBACK } from '@airo/ai-lib';
 import type { Tool, AgentContext } from '@airo/ai-lib';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
+import { runPostEditHandlers } from './post-edit-handlers.js';
 import { isFileBlocked } from '../read-file.js';
 import {
   isProtectedWorkspacePath,
@@ -162,7 +163,10 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
       if (!old_str || new_str === undefined) {
         throw new Error('str_replace requires old_str and new_str');
       }
-      return handleStrReplace(files, path, old_str, new_str);
+      return await runPostEditHandlers(
+        { fullPath, filePath: path, appPath: app.path, command },
+        await handleStrReplace(files, path, old_str, new_str),
+      );
 
     case 'create':
       if (binaryCopied) {
@@ -171,13 +175,19 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
       if (resolvedFileText == null) {
         throw new Error('create requires file_text');
       }
-      return handleCreate(files, path, resolvedFileText);
+      return await runPostEditHandlers(
+        { fullPath, filePath: path, appPath: app.path, command },
+        await handleCreate(files, path, resolvedFileText),
+      );
 
     case 'insert':
       if (insert_line === undefined || !insert_text) {
         throw new Error('insert requires insert_line and insert_text');
       }
-      return handleInsert(files, path, insert_line, insert_text);
+      return await runPostEditHandlers(
+        { fullPath, filePath: path, appPath: app.path, command },
+        await handleInsert(files, path, insert_line, insert_text),
+      );
 
     default:
       throw new Error(`Unknown command: ${command}`);

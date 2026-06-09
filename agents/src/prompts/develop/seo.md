@@ -4,20 +4,25 @@ The v8 template is server-rendered. Every public page must set head tags, struct
 
 ## SEO check (audit)
 
-When the user asks to **check** or **audit** SEO, **hand off to marketing** to run **`seoAnalysis`** (strategy + technical report widget). Do not load the `seo` skill or run `seo__audit` for the initial check.
+When the user asks to **check** or **audit** SEO, **hand off to marketing** to run **`seoAnalysis`** (strategy + technical report widget).
 
 After the widget appears, **stop** — wait for **Fix SEO issues** or an explicit fix request.
 
-## SEO fixes and implementation
+## Required on every public page
 
-**For code changes** — new pages, metadata, JSON-LD, canonical URLs, Open Graph, sitemap — **load the `seo` skill first.** It covers:
+Use `<Helmet>` from `@dr.pogodin/react-helmet`. Every page you create or edit must emit, in this Helmet block:
 
-- `@dr.pogodin/react-helmet` usage (required for title/meta/OG/canonical on every page)
-- JSON-LD structured data (`<script type="application/ld+json">`) and schema types
-- Image hygiene (`width`/`height`/`alt`, LCP `fetchpriority`, lazy loading)
-- Semantic HTML and heading hierarchy
-- `src/lib/seo-routes.ts` registry (drives `/sitemap.xml`)
+- `<title>` — unique, ≤60 chars, derived from the business brief (not "Home" or the brand name alone).
+- `<meta name="description">` — unique, ≤160 chars, from the brief.
+- `<link rel="canonical" href={absoluteUrl}>`.
+- Open Graph: `og:title`, `og:description`, `og:type`, `og:url`, `og:image`.
+- Twitter: `<meta name="twitter:card" content="summary_large_image">`, `twitter:title`, `twitter:description`, `twitter:image`.
+- One `<script type="application/ld+json">` with the schema.org type that fits the business (Restaurant, LocalBusiness, Organization, SoftwareApplication, FAQPage, BlogPosting, Product, etc.). At minimum populate `@context`, `@type`, `name`, `url`. Add optional fields (`address`, `telephone`, `priceRange`, `openingHours`, etc.) **only when the user's brief gives you real values** — don't fabricate phone numbers, addresses, hours, prices, or customer/stat content. Better to omit a field than to placeholder it; crawlers index this data as authoritative business identity.
 
-Do not hand-roll head management or sitemap generation. Use the native `URL` API for generated Open Graph image URLs so query values are escaped correctly.
+Every `<img>` must have `width`, `height`, descriptive `alt`, `loading` (`eager` for above-fold, `lazy` below), and `fetchpriority` (`high` for the LCP hero image, `auto` otherwise).
 
-To **re-run only the technical scan** after the skill is loaded: `seo__audit`. **Stop** after the audit tool the same way — do not bulk-fix in the same turn unless the user asked to fix.
+Exactly one `<h1>` per page. Headings progress `<h2>` → `<h3>` without skipping levels.
+
+## Sitemap
+
+Static paths in `src/routes.tsx` auto-sync into `src/lib/seo-routes.ts` on every edit. Don't hand-edit `seo-routes.ts` except to adjust `priority` / `changefreq` / `lastmod` after the sync.
