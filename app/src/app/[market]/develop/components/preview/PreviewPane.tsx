@@ -28,6 +28,7 @@ import { useFirstBuildEstimateImpression } from '@/app/[market]/develop/hooks/us
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { EXPERIMENT_IDS, INITIAL_AGENT_V3_COHORT } from '@/config/experiments'
+import { useBuildingTipsVariant } from '@/experiments/building-tips-variant/useBuildingTipsVariant'
 import { isInitialBuildComplete, isInitialBuildFunnelActive } from '@/hooks/shared/initialBuildFunnel'
 import { useHivemind } from '@/hooks/useHivemind'
 import { useImpression } from '@/hooks/useImpression'
@@ -275,6 +276,8 @@ export default function PreviewPane({
     isFirstBuildScreen && isBuildTimeEstimateEnabled ? FIRST_BUILD_ESTIMATE_MINUTES : null
 
   const markBuildEstimateShown = useFirstBuildEstimateImpression(appId)
+
+  const buildingTipsVariant = useBuildingTipsVariant()
 
   useEffect(() => {
     if (isMobile) {
@@ -1155,9 +1158,9 @@ export default function PreviewPane({
     if (showBuildingOverlay && isAwaitingAskQuestion) {
       loadingMessage = t('builder_preview_question_title', undefined, 'Action needed to continue');
     } else if (showBuildingOverlay) {
-      loadingMessage = t('builder_preview_building_app');
+      loadingMessage = t(buildingTipsVariant.buildingAppMessageKey, undefined, buildingTipsVariant.buildingAppDefaultMessage);
     } else {
-      loadingMessage = t('builder_preview_loading_app');
+      loadingMessage = t(buildingTipsVariant.loadingAppMessageKey, undefined, buildingTipsVariant.loadingAppDefaultMessage);
     }
     return <PreviewLoadingState message={loadingMessage} isMobile={isMobile} timeEstimateMinutes={buildEstimateMinutes} onTimeEstimateShown={markBuildEstimateShown} />
   }
@@ -1385,7 +1388,11 @@ export default function PreviewPane({
                     />
                   ) : (
                     <Tips
-                      buildingMessage={t('builder_preview_building_app')}
+                      buildingMessage={t(
+                        buildingTipsVariant.buildingAppMessageKey,
+                        undefined,
+                        buildingTipsVariant.buildingAppDefaultMessage,
+                      )}
                       timeEstimateMinutes={buildEstimateMinutes}
                       onTimeEstimateShown={markBuildEstimateShown}
                     />

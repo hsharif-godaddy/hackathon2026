@@ -13,6 +13,8 @@ export const EXPERIMENT_IDS = {
   initialAgent: 'airo-build-initial-agent',
   /** Budget service: allocates new users to BMS (treatment) or grants (control). Default is grants. */
   budgetService: 'airo-app-builder-budget-service-launch',
+  /** Building tips variant: tests the initial build loading screen (H1 headline + tip cards) as a single packaged experience. */
+  buildingTipsVariant: 'endgame_first_build_action_h1_update',
 } as const
 
 /**

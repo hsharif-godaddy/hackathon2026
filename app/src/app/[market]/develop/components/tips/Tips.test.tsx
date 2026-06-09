@@ -6,10 +6,21 @@ import '@testing-library/jest-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, screen, within } from '@testing-library/react'
 
+import type { TipsVariantPackage } from '@/experiments/building-tips-variant/variant-packages'
 import { logger } from '@/lib/request-context'
 import { renderWithProviders } from '@/tests/test-utils'
 import Tips, { CARD_DWELL_MS } from './Tips'
 import { tips } from './tips-content'
+
+let mockReduceMotion = false
+let mockVariantPackage: TipsVariantPackage = {
+  tipIds: tips,
+  tipCopyDefaults: {},
+  buildingAppMessageKey: 'builder_preview_building_app',
+  buildingAppDefaultMessage: 'Building your App',
+  loadingAppMessageKey: 'builder_preview_loading_app',
+  loadingAppDefaultMessage: 'Loading your App',
+}
 
 vi.mock('@/lib/request-context', () => ({
   logger: {
@@ -20,7 +31,10 @@ vi.mock('@/lib/request-context', () => ({
   },
 }))
 
-let mockReduceMotion = false
+vi.mock('@/experiments/building-tips-variant/useBuildingTipsVariant', () => ({
+  useBuildingTipsVariant: () => mockVariantPackage,
+}))
+
 let mockIsMdBreakpoint = true
 let mockShuffleStrategy: 'identity' | 'reverse' = 'identity'
 
@@ -91,6 +105,14 @@ describe('Tips', () => {
     mockReduceMotion = false
     mockIsMdBreakpoint = true
     mockShuffleStrategy = 'identity'
+    mockVariantPackage = {
+      tipIds: tips,
+      tipCopyDefaults: {},
+      buildingAppMessageKey: 'builder_preview_building_app',
+      buildingAppDefaultMessage: 'Building your App',
+      loadingAppMessageKey: 'builder_preview_loading_app',
+      loadingAppDefaultMessage: 'Loading your App',
+    }
     frontCardAnimationCallback.current = null
     vi.clearAllMocks()
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
@@ -106,39 +128,22 @@ describe('Tips', () => {
     expect(screen.getByTestId('loader-title')).toHaveTextContent('builder_tips_message')
   })
 
-  it('renders the cycling ellipsis on the buildingMessage loader title', () => {
+  it('renders the buildingMessage verbatim with no animated ellipsis', () => {
     renderWithProviders(<Tips buildingMessage="Resuming" />)
 
     const title = screen.getByTestId('loader-title')
-    expect(title.textContent).toBe('Resuming\u2008\u2008\u2008')
+    expect(title.textContent).toBe('Resuming')
 
     act(() => {
-      vi.advanceTimersByTime(400)
+      vi.advanceTimersByTime(2000)
     })
-    expect(title.textContent).toBe('Resuming.\u2008\u2008')
-
-    act(() => {
-      vi.advanceTimersByTime(400)
-    })
-    expect(title.textContent).toBe('Resuming..\u2008')
-
-    act(() => {
-      vi.advanceTimersByTime(400)
-    })
-    expect(title.textContent).toBe('Resuming...')
-
-    act(() => {
-      vi.advanceTimersByTime(400)
-    })
-    expect(title.textContent).toBe('Resuming\u2008\u2008\u2008')
+    expect(title.textContent).toBe('Resuming')
   })
 
-  it('strips trailing ASCII dots from buildingMessage before appending the cycle', () => {
-    renderWithProviders(<Tips buildingMessage="Building app..." />)
+  it('preserves literal dots in the buildingMessage', () => {
+    renderWithProviders(<Tips buildingMessage="Building your project... give me a minute" />)
 
-    const title = screen.getByTestId('loader-title')
-    expect(title.textContent?.startsWith('Building app\u2008')).toBe(true)
-    expect(title.textContent).not.toMatch(/Building app\.\.\./)
+    expect(screen.getByTestId('loader-title')).toHaveTextContent('Building your project... give me a minute')
   })
 
   it('renders the buildingDescription when provided', () => {
@@ -664,6 +669,85 @@ describe('Tips', () => {
       expect(
         screen.queryByText(`builder_tips_${tips[0]}_title`),
       ).not.toBeInTheDocument()
+    })
+  })
+
+  describe('building-tips-variant experiment', () => {
+    it('renders Variant A tip cards (control) when the default package is active', () => {
+      renderWithProviders(<Tips />)
+
+      const cards = screen.getAllByTestId('tip-card')
+      expect(cards.length).toBe(4)
+      expect(within(cards[0] as HTMLElement).getByText(`builder_tips_${tips[0]}_title`)).toBeInTheDocument()
+    })
+
+    const treatmentTipIds = ['start_big_picture_v2', 'get_into_details', 'show_examples_v2', 'ask_one_change']
+    const treatmentTipCopyDefaults = {
+      start_big_picture_v2: {
+        title: 'Start with the big picture',
+        description: 'I’ll build the first version of your project based on what you’ve already told me.',
+      },
+      get_into_details: {
+        title: 'Get into the details',
+        description: 'You can make tweaks to refine your idea once the first draft is complete.',
+      },
+      show_examples_v2: {
+        title: 'Show visual examples',
+        description: 'After your draft is complete, upload an image or file so Airo can match your vision.',
+      },
+      ask_one_change: {
+        title: 'Ask for one change at a time',
+        description: 'Focus on one change at a time to guide your draft to a strong finished product.',
+      },
+    }
+
+    it.each([
+      { suffix: 'b', label: 'Variant B — "Building your project... give me a minute"' },
+      { suffix: 'c', label: 'Variant C — "Working on your project — almost there!"' },
+      { suffix: 'd', label: 'Variant D — "Building your site... loading images... writing copy"' },
+      { suffix: 'e', label: 'Variant E — "Nothing to do yet, just sit back and relax"' },
+    ])('renders the shared treatment card set with default copy for $label', ({ suffix }) => {
+      mockVariantPackage = {
+        tipIds: treatmentTipIds,
+        tipCopyDefaults: treatmentTipCopyDefaults,
+        buildingAppMessageKey: `builder_preview_building_app_${suffix}`,
+        buildingAppDefaultMessage: `Building app variant ${suffix}`,
+        loadingAppMessageKey: `builder_preview_loading_app_${suffix}`,
+        loadingAppDefaultMessage: `Loading app variant ${suffix}`,
+      }
+
+      renderWithProviders(<Tips />)
+
+      const cards = screen.getAllByTestId('tip-card')
+      expect(cards.length).toBe(4)
+      expect(within(cards[0] as HTMLElement).getByText('Start with the big picture')).toBeInTheDocument()
+      expect(screen.queryByText(`builder_tips_${treatmentTipIds[0]}_title`)).not.toBeInTheDocument()
+      expect(screen.queryByText(`builder_tips_${tips[0]}_title`)).not.toBeInTheDocument()
+    })
+
+    it('rotates through the treatment tip cards after the dwell timeout', () => {
+      mockVariantPackage = {
+        tipIds: treatmentTipIds,
+        tipCopyDefaults: treatmentTipCopyDefaults,
+        buildingAppMessageKey: 'builder_preview_building_app_b',
+        buildingAppDefaultMessage: 'Building your project... give me a minute',
+        loadingAppMessageKey: 'builder_preview_loading_app_b',
+        loadingAppDefaultMessage: 'Loading your project... give me a minute',
+      }
+
+      renderWithProviders(<Tips />)
+
+      act(() => {
+        vi.advanceTimersByTime(CARD_DWELL_MS)
+      })
+      act(() => {
+        frontCardAnimationCallback.current?.()
+      })
+
+      const cards = screen.getAllByTestId('tip-card')
+      expect(
+        within(cards[0] as HTMLElement).getByText(treatmentTipCopyDefaults.get_into_details.title),
+      ).toBeInTheDocument()
     })
   })
 })

@@ -6,31 +6,18 @@ import { Loader } from '@airo-ux/loader'
 import Box from '@ux/box'
 import ClockIcon from '@ux/icon/clock'
 
-import { shuffleArray, tips } from '@/app/[market]/develop/components/tips/tips-content'
+import { shuffleArray } from '@/app/[market]/develop/components/tips/tips-content'
 import {
   maxNaturalTipHeightsPx,
   verticalLazyInnerFloorPx,
 } from '@/app/[market]/develop/components/tips/tips-stack-measures'
+import { useBuildingTipsVariant } from '@/experiments/building-tips-variant/useBuildingTipsVariant'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 
 /** Minimum dwell time before advancing; calibrated to the longest translated tip (~12s read at 200 wpm). */
 export const CARD_DWELL_MS = 12000
-
-const CYCLING_ELLIPSIS_INTERVAL_MS = 400
-const CYCLING_ELLIPSIS_PHASE_COUNT = 4
-/**
- * U+2008 PUNCTUATION SPACE — renders as narrow-punctuation width in most fonts
- * so the base title does not shift while dots cycle. Visual stability depends
- * on the loader's font supporting this code point; fallback fonts may render
- * it as a regular space.
- */
-const ELLIPSIS_PAD = '\u2008'
-// Derived so phase 0 produces N pads, phase N-1 produces 0 pads, and no phase
-// produces a negative `repeat()` count (RangeError). Bumping PHASE_COUNT alone
-// would otherwise crash at the highest phase.
-const ELLIPSIS_SLOT_COUNT = CYCLING_ELLIPSIS_PHASE_COUNT - 1
 
 /** Number of cards in the visible z-stack (front, second, third) before the hidden recycle slot. */
 const VISIBLE_STACK_SLOTS = 3
@@ -172,7 +159,7 @@ interface TipsProps {
 }
 
 /**
- * Tips carousel with stacked cards and cycling ellipsis.
+ * Tips carousel with stacked cards.
  *
  * Cards advance in randomized order (shuffled once per mount). The stacked
  * carousel renders `STACK_WINDOW_SIZE` cards at a time: 3 visible slots
@@ -197,9 +184,16 @@ export default function Tips({
   const { isMdBreakpoint } = useBreakpoints()
   const reduceMotion = useReducedMotion()
   const isHorizontalStack = !isMdBreakpoint
-  const [orderedTips, setOrderedTips] = useState(() => shuffleArray(tips))
+  const { tipIds, tipCopyDefaults } = useBuildingTipsVariant()
+  const [orderedTips, setOrderedTips] = useState(() => shuffleArray(tipIds))
+
+  function tipTitle(id: string | undefined) {
+    return t(`builder_tips_${id}_title`, undefined, id ? tipCopyDefaults[id]?.title : undefined)
+  }
+  function tipDescription(id: string | undefined) {
+    return t(`builder_tips_${id}_description`, undefined, id ? tipCopyDefaults[id]?.description : undefined)
+  }
   const [exitingTip, setExitingTip] = useState<string | null>(null)
-  const [ellipsisPhase, setEllipsisPhase] = useState(0)
   const orderedTipsRef = useRef(orderedTips)
   const exitingTipRef = useRef<string | null>(null)
   const rotationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -225,7 +219,7 @@ export default function Tips({
     [orderedTips],
   )
   const visibleTipsKey = useMemo(() => visibleTips.join('\0'), [visibleTips])
-  const spacerTip = orderedTips[exitingTip ? 1 : 0] ?? tips[0]
+  const spacerTip = orderedTips[exitingTip ? 1 : 0] ?? tipIds[0]
 
   const naturalMeasureHostByTipRef = useRef<Map<string, HTMLDivElement>>(new Map())
   const naturalMeasureBindByTipRef = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map())
@@ -298,6 +292,22 @@ export default function Tips({
   useLayoutEffect(() => {
     orderedTipsRef.current = orderedTips
   }, [orderedTips])
+
+  // The active variant (and thus tipIds) can resolve after mount — Hivemind
+  // cohort assignment and the QA override are both read in effects. Re-seed the
+  // carousel when the tip set actually changes so the cards follow the variant
+  // instead of staying stuck on the mount-time (control) set.
+  const tipIdsKey = useMemo(() => tipIds.join('\0'), [tipIds])
+  const seededTipIdsKeyRef = useRef(tipIdsKey)
+  useEffect(function reseedOnVariantChange() {
+    if (seededTipIdsKeyRef.current === tipIdsKey) {
+      return
+    }
+    seededTipIdsKeyRef.current = tipIdsKey
+    exitingTipRef.current = null
+    setExitingTip(null)
+    setOrderedTips(shuffleArray(tipIds))
+  }, [tipIds, tipIdsKey])
 
   const scheduleNextRotation = useCallback(() => {
     if (rotationTimeoutRef.current) {
@@ -414,29 +424,9 @@ export default function Tips({
     return () => clearTimeout(id)
   }, [exitingTip, reduceMotion, complete])
 
-  useEffect(() => {
-    if (buildingMessage == null || reduceMotion) {
-      return
-    }
+  const loaderTitle = buildingMessage ?? t('builder_tips_message')
 
-    setEllipsisPhase(0)
-
-    const id = setInterval(function tickEllipsis() {
-      setEllipsisPhase(
-        (phase) => (phase + 1) % CYCLING_ELLIPSIS_PHASE_COUNT,
-      )
-    }, CYCLING_ELLIPSIS_INTERVAL_MS)
-
-    return () => clearInterval(id)
-  }, [buildingMessage, reduceMotion])
-
-  const baseTitle = buildingMessage != null ? buildingMessage.replace(/\.+$/, '') : null
-  const loaderTitle =
-    baseTitle != null
-      ? reduceMotion
-        ? baseTitle
-        : `${baseTitle}${'.'.repeat(ellipsisPhase)}${ELLIPSIS_PAD.repeat(ELLIPSIS_SLOT_COUNT - ellipsisPhase)}`
-      : t('builder_tips_message')
+  const loaderDescription = buildingDescription ?? undefined
 
   const ghostStackHeightPx =
     unifiedStackMinHeightPx > 0
@@ -449,7 +439,7 @@ export default function Tips({
     <Box className="h-full mt-6" blockAlignChildren="center" inlineAlignChildren="center" gap="lg">
       <Loader
         title={loaderTitle}
-        description={buildingDescription ?? undefined}
+        description={loaderDescription}
       />
 
       {timeEstimateMinutes != null && (
@@ -490,7 +480,7 @@ export default function Tips({
         <Box className="w-full max-w-2xl px-3" gap="md">
           {visibleTips.length > 0 && (
             <div role="status" aria-live="polite" className="sr-only">
-              {t(`builder_tips_${visibleTips[0]}_title`)}
+              {tipTitle(visibleTips[0])}
             </div>
           )}
           <div
@@ -543,10 +533,10 @@ export default function Tips({
                 {showTipBody ? (
                 <div ref={measureHostRef(tip)} className="w-full">
                   <div className="text-base font-semibold">
-                    {t(`builder_tips_${tip}_title`)}
+                    {tipTitle(tip)}
                   </div>
                   <div className="text-sm">
-                    {t(`builder_tips_${tip}_description`)}
+                    {tipDescription(tip)}
                   </div>
                 </div>
                 ) : (
@@ -566,10 +556,10 @@ export default function Tips({
               style={ghostStackHeightPx != null ? { height: ghostStackHeightPx } : undefined}
             >
               <div className="text-base font-semibold">
-                {t(`builder_tips_${spacerTip}_title`)}
+                {tipTitle(spacerTip)}
               </div>
               <div className="text-sm">
-                {t(`builder_tips_${spacerTip}_description`)}
+                {tipDescription(spacerTip)}
               </div>
             </div>
           </div>

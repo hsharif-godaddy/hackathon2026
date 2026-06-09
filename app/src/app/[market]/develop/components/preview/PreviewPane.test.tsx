@@ -1604,7 +1604,7 @@ describe('PreviewPane — Ask Airo to fix button', () => {
       renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} showBuildingOverlay />);
 
       expect(screen.queryByText('Action needed to continue')).not.toBeInTheDocument();
-      expect(screen.getByText('builder_preview_building_app')).toBeInTheDocument();
+      expect(screen.getByText('Building your App')).toBeInTheDocument();
     });
   });
 });
