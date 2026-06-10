@@ -216,33 +216,37 @@ jobs:
         - Unjustified shared-prompt growth; "not picked enough" is
           not valid.
 
-        Skill length (skill.md body) ~200–300 lines:
-        - [Important]: new skill >300; PR growing oversized or pushing
-          a compliant one past 300. Shrinking is fine.
-        - [Suggestion]: new skill 200–300 — split or move to templates/.
+        Skill length (skill.md body):
+        - [Suggestion]: skill body 300–500 lines — getting near the line limit; 
+          check SKILL-CREATOR-GUIDE.md for improvement options.
+        - [Important]: skill body >500 lines — exceeds hard ceiling; skill needs redesign 
+          (split into chained sections or routed sub-skills).
         Fix via splits or templates; never via shared prompts.
 
         Selection overlap (skill add/modify):
-        - [Suggestion]: description keyword overlap with another skill —
-          differentiate or merge.
-        - [Suggestion]: whenToUse/intents fire on same phrases as
-          another — flag ambiguity. Compare across all skills.
+        - [Suggestion]: description keyword overlap with another skill — differentiate or merge.
+        - [Suggestion]: whenToUse/intents fire on same phrases as another — flag ambiguity. Compare 
+          across all skills.
 
         Pattern choice (skill add/restructure):
-        - [Important]: Category dir added but sub-skills do not have independent
+        - [Important]: Routed metaskill added but sub-skills do not have independent
           tools, enablementId flags, or template install steps — apply the
-          "remove the router" test: if whenToUse/intents on sub-skills route
-          correctly without the category entry point, the category adds no value.
+          "remove the metaskill" test: if whenToUse/intents on sub-skills route
+          correctly without the routing entry point, the metaskill adds no value.
           Supporting signal: no shared prerequisite or data dependency between
-          category and sub-skills — see "Adversary example" in
-          SKILL-CREATOR-GUIDE.md for the full media/ vs commerce/ analysis.
-        - [Suggestion]: Flat skill.md exceeds ~300 lines and all
+          metaskill and sub-skills — see "Worked Examples" in
+          SKILL-CREATOR-GUIDE.md.
+        - [Important]: Standalone skill references another skill in whenToUse/description
+          for disambiguation, OR contains conditional load instructions for other skills
+          in its body, OR two standalone skills' whenToUse/intents overlap on the same
+          phrases — routing logic is embedded rather than centralized in a routed metaskill.
+        - [Suggestion]: Standalone skill.md exceeds ~300 lines and all
           sub-topics share the same tools, templates, and feature flag —
-          split into Pattern 2 sections (templates/sections/NN-slug.md)
+          split into a chained metaskill (templates/sections/NN-slug.md)
           rather than a single growing file.
-        - [Important]: Pattern 2 sub-topic needs its own TypeScript tools or a
-          separate template install step — escalate to Pattern 3.
-        - [Important]: Pattern 3 used where Pattern 1 suffices — user intent
+        - [Important]: Chained sub-topic (section) needs its own TypeScript tools or a
+          separate template install step — escalate to routed metaskill.
+        - [Important]: Routed metaskill used where standalone suffices — user intent
           already disambiguates at the first hop via frontmatter; extra load
           round-trip with no benefit.
 
