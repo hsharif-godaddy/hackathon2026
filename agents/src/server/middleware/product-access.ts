@@ -77,6 +77,10 @@ const PAAS_ALLOWED_ROUTES: RoutePattern[] = [
   // Screenshots
   { method: 'GET', path: '/apps/:id/screenshot' },
   { method: 'POST', path: '/apps/:id/capture-screenshot' },
+
+  // App metadata
+  { method: 'GET', path: '/apps/:id/metadata' },
+  { method: 'PATCH', path: '/apps/:id/metadata' },
 ];
 
 /**

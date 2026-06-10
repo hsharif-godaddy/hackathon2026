@@ -292,6 +292,19 @@ export interface BlogPost {
   updatedAt: Date;
 }
 
+/**
+ * Raw `app_metadata` row as stored in SQLite (metadata is a JSON string,
+ * timestamps are plain strings — hence snake_case + no Date objects).
+ * Callers never consume this directly; AppMetadataRepository.merge() parses
+ * the metadata blob and returns the AppMetadata type from @airo/shared.
+ */
+export interface AppMetadataRow {
+  app_id: string;
+  metadata: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // ==================================================================================
 // Database Schema Management Functions
 // ==================================================================================
@@ -314,6 +327,7 @@ export function initializeSchema(db: Database): void {
 
   createFileContextTable(db);
   createMemoryTable(db);
+  createAppMetadataTable(db);
   createImportJobsTable(db);
   createDbImportJobsTable(db);
   createConversationSummariesTable(db);
@@ -471,6 +485,23 @@ function createMemoryTable(db: Database): void {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(app_id, key),
       FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+    )
+  `);
+}
+
+/**
+ * Create the app_metadata table — one JSON metadata object per app.
+ *
+ * Keyed by app_id (siteId). Intentionally NOT a foreign key to `apps`: PaaS apps
+ * have no `apps` row but always have a siteId, and must still carry metadata.
+ */
+function createAppMetadataTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS app_metadata (
+      app_id TEXT PRIMARY KEY,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP -- set explicitly by AppMetadataRepository.merge()'s upsert (no trigger)
     )
   `);
 }

@@ -68,6 +68,10 @@ export {
 } from './share-url/index.js';
 export type { SharePayload } from './share-url/index.js';
 
+// App Metadata
+export type { AppMetadata } from './app-metadata/index.js';
+export { mergeAppMetadata } from './app-metadata/index.js';
+
 // Brand Data
 export type {
   BrandData,

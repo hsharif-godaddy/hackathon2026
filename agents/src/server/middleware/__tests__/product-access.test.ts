@@ -308,3 +308,15 @@ describe('isRouteAllowedForPaaS', () => {
     expect(isRouteAllowedForPaaS('POST', '/apps/test-app/files/search')).toBe(false);
   });
 });
+
+describe('app_metadata routes for PaaS', () => {
+  it('allows GET /apps/:id/metadata', () => {
+    expect(isRouteAllowedForPaaS('GET', '/apps/abcde12345/metadata')).toBe(true);
+  });
+  it('allows PATCH /apps/:id/metadata', () => {
+    expect(isRouteAllowedForPaaS('PATCH', '/apps/abcde12345/metadata')).toBe(true);
+  });
+  it('still denies an unrelated method on the metadata path', () => {
+    expect(isRouteAllowedForPaaS('DELETE', '/apps/abcde12345/metadata')).toBe(false);
+  });
+});

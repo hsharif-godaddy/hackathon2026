@@ -1,6 +1,7 @@
 export * from './db-recovery.js';
 export * from './schema.js';
 export * from './connection.js';
+export * from './repositories/AppMetadataRepository.js';
 export * from './repositories/AppRepository.js';
 export * from './repositories/BlogPostRepository.js';
 export * from './repositories/ConversationRepository.js';
