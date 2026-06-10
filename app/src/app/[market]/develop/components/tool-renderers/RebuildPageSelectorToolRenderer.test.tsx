@@ -97,7 +97,7 @@ describe('RebuildPageSelectorToolRenderer multi-select', () => {
 
   it('disables unchecked checkboxes once the cap is selected (UI cap, independent of store slice)', () => {
     renderSelector(pages(REBUILD_BATCH_CAP + 2))
-    fireEvent.click(screen.getByText(/Show \d+ more/)) // reveal the pages past INITIAL_VISIBLE
+    fireEvent.click(screen.getByText(/Show \d+ more/)) // expand so the tail rows are interactive (not inert)
     for (let i = 0; i < REBUILD_BATCH_CAP; i++) fireEvent.click(screen.getByLabelText(`Page ${i}`))
     // Pages beyond the cap are unchecked AND disabled by the renderer (not just store-truncated).
     expect((screen.getByLabelText(`Page ${REBUILD_BATCH_CAP}`) as HTMLInputElement).disabled).toBe(true)
@@ -106,14 +106,25 @@ describe('RebuildPageSelectorToolRenderer multi-select', () => {
     expect((screen.getByLabelText('Page 0') as HTMLInputElement).disabled).toBe(false)
   })
 
-  it('collapses the list past INITIAL_VISIBLE and expands via show more / show fewer', () => {
+  it('collapses the tail past INITIAL_VISIBLE and animates open via show more / show fewer', () => {
     renderSelector(pages(REBUILD_BATCH_CAP + 2))
-    // Initially only the first 5 are shown.
-    expect(screen.queryByLabelText(`Page ${REBUILD_BATCH_CAP}`)).not.toBeInTheDocument()
-    fireEvent.click(screen.getByText(/Show 2 more/))
+    // Tail rows stay mounted (the grid 0fr→1fr trick animates height); collapse is
+    // expressed via the grid-rows class, not by unmounting.
+    const tail = screen.getByTestId('rebuild-page-tail')
     expect(screen.getByLabelText(`Page ${REBUILD_BATCH_CAP}`)).toBeInTheDocument()
+    expect(tail).toHaveClass('grid-rows-[0fr]')
+    fireEvent.click(screen.getByText(/Show 2 more/))
+    expect(tail).toHaveClass('grid-rows-[1fr]')
     fireEvent.click(screen.getByText('Show fewer'))
-    expect(screen.queryByLabelText(`Page ${REBUILD_BATCH_CAP}`)).not.toBeInTheDocument()
+    expect(tail).toHaveClass('grid-rows-[0fr]')
+  })
+
+  it('renders the build CTA above the page list', () => {
+    renderSelector(pages(3))
+    const cta = screen.getByText(/Select pages|Build \d+ pages/)
+    const firstCheckbox = screen.getByLabelText('Page 0')
+    // DOCUMENT_POSITION_FOLLOWING (4) → firstCheckbox comes after the CTA in DOM order.
+    expect(cta.compareDocumentPosition(firstCheckbox) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('select-all checks every unbuilt page; the same control then deselects all', () => {

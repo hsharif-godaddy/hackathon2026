@@ -1,5 +1,6 @@
 'use client'
 
+import clsx from 'clsx'
 import { CheckCircle, Circle, FileCode, FileText, Globe, Hammer, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import Alert from '@ux/alert'
@@ -304,8 +305,21 @@ export default function RebuildPageSelectorToolRenderer({
   const allSelected = unbuiltPages.length > 0 && unbuiltPages.every(p => selected.has(p.slug))
   const controlsDisabled = isProcessing || queueRunning
   const INITIAL_VISIBLE = 5
-  const visiblePages = expanded ? unbuiltPages : unbuiltPages.slice(0, INITIAL_VISIBLE)
-  const hiddenCount = unbuiltPages.length - INITIAL_VISIBLE
+  const headPages = unbuiltPages.slice(0, INITIAL_VISIBLE)
+  const tailPages = unbuiltPages.slice(INITIAL_VISIBLE)
+  const hiddenCount = tailPages.length
+
+  const renderPage = (p: PageInfo) => (
+    <Checkbox
+      key={p.slug}
+      id={`rebuild-page-${p.slug}`}
+      name={`rebuild-page-${p.slug}`}
+      label={p.title}
+      checked={selected.has(p.slug)}
+      disabled={controlsDisabled || (!selected.has(p.slug) && selected.size >= REBUILD_BATCH_CAP)}
+      onChange={() => toggle(p.slug)}
+    />
+  )
 
   return (
     <div className="my-2 rounded-lg border border-intents-ux-borderDefault-borderColor overflow-hidden text-xs [&_label]:text-xs mr-2">
@@ -323,6 +337,22 @@ export default function RebuildPageSelectorToolRenderer({
         </div>
       </div>
 
+      {/* Primary CTA — sits up top, directly under the header, so it stays put
+          regardless of how far the page list scrolls. */}
+      <div className="px-3 py-2 border-b border-intents-ux-borderDefault-borderColor">
+        <Button
+          text={selected.size === 0
+            ? t('builder_rebuild_select_pages_cta')
+            : t('builder_rebuild_build_n_pages', { count: selected.size })}
+          design="primary"
+          size="sm"
+          className="w-full"
+          disabled={selected.size === 0 || controlsDisabled}
+          onClick={handleBuildSelected}
+        />
+      </div>
+
+      {/* Page list */}
       <div className="px-3 py-2">
         {unbuiltPages.length > 1 && unbuiltPages.length <= REBUILD_BATCH_CAP && (
           <div className="mb-1.5">
@@ -336,18 +366,30 @@ export default function RebuildPageSelectorToolRenderer({
           </div>
         )}
 
-        <div className="flex flex-col gap-1">
-          {visiblePages.map((p) => (
-            <Checkbox
-              key={p.slug}
-              id={`rebuild-page-${p.slug}`}
-              name={`rebuild-page-${p.slug}`}
-              label={p.title}
-              checked={selected.has(p.slug)}
-              disabled={controlsDisabled || (!selected.has(p.slug) && selected.size >= REBUILD_BATCH_CAP)}
-              onChange={() => toggle(p.slug)}
-            />
-          ))}
+        {/* Capped scroll area: the cap + scroll live on a plain block wrapper (not the
+            flex list) — a grid flex-item's intrinsic height otherwise defeats max-height
+            clipping. Head rows always show; the tail animates open via the grid 0fr→1fr
+            trick (matches AnimatedDisclaimer). Anything past the cap scrolls. */}
+        <div className="max-h-48 overflow-y-auto">
+          <div className="flex flex-col gap-1">
+            {headPages.map(renderPage)}
+
+            {hiddenCount > 0 && (
+              <div
+                data-testid="rebuild-page-tail"
+                className={clsx('grid transition-all duration-300 ease-in-out', {
+                  'grid-rows-[1fr] opacity-100': expanded,
+                  'grid-rows-[0fr] opacity-0': !expanded,
+                })}
+              >
+                {/* overflow-hidden child is what the 0fr row collapses; inert keeps the
+                    hidden checkboxes out of tab order while collapsed. */}
+                <div className="flex flex-col gap-1 overflow-hidden" inert={!expanded}>
+                  {tailPages.map(renderPage)}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {hiddenCount > 0 && (
@@ -364,34 +406,22 @@ export default function RebuildPageSelectorToolRenderer({
         )}
       </div>
 
-      <div className="px-3 py-2 border-t border-intents-ux-borderDefault-borderColor bg-intents-ux-surfaceSecondary-surfaceColor">
-        <Button
-          text={selected.size === 0
-            ? t('builder_rebuild_select_pages_cta')
-            : t('builder_rebuild_build_n_pages', { count: selected.size })}
-          design="primary"
-          size="sm"
-          className="w-full"
-          disabled={selected.size === 0 || controlsDisabled}
-          onClick={handleBuildSelected}
-        />
-
-        {size === 'regular' && builtPages.length > 0 && (
-          <div className="mt-2 pt-2 border-t border-intents-ux-borderDefault-borderColor">
-            <text.p size={-2} emphasis="passive" className="mb-1">
-              {t('builder_rebuild_already_built')}
-            </text.p>
-            <Box orientation="horizontal" wrap gap="sm">
-              {builtPages.map((page) => (
-                <span key={page.slug} className="inline-flex items-center gap-0.5 text-intents-ux-contentSecondary-contentColor">
-                  <CheckCircle className="w-2.5 h-2.5" />
-                  <text.span size={-2}>{page.title}</text.span>
-                </span>
-              ))}
-            </Box>
-          </div>
-        )}
-      </div>
+      {/* Footer: already-built pages (CTA moved to the top of the card) */}
+      {size === 'regular' && builtPages.length > 0 && (
+        <div className="px-3 py-2 border-t border-intents-ux-borderDefault-borderColor bg-intents-ux-surfaceSecondary-surfaceColor">
+          <text.p size={-2} emphasis="passive" className="mb-1">
+            {t('builder_rebuild_already_built')}
+          </text.p>
+          <Box orientation="horizontal" wrap gap="sm">
+            {builtPages.map((page) => (
+              <span key={page.slug} className="inline-flex items-center gap-0.5 text-intents-ux-contentSecondary-contentColor">
+                <CheckCircle className="w-2.5 h-2.5" />
+                <text.span size={-2}>{page.title}</text.span>
+              </span>
+            ))}
+          </Box>
+        </div>
+      )}
     </div>
   )
 }
