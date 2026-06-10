@@ -140,6 +140,8 @@ vi.mock('@/lib/request-context', () => ({
 
 import { detectRebuildIntent, handleToolCallSideEffects, handleToolResultSideEffects } from './toolSideEffects'
 
+let dispatchEventSpy: ReturnType<typeof vi.spyOn>
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockGetSelectedCommitHash.mockReturnValue(null)
@@ -147,6 +149,7 @@ beforeEach(() => {
   mockLogImpressionEvent.mockReturnValue(mockLogImpressionEventInner)
   mockStreamingState.streamingState = 'idle'
   mockStreamingState.activeStream = null
+  dispatchEventSpy = vi.spyOn(window, 'dispatchEvent')
 })
 
 describe('detectRebuildIntent', () => {
@@ -338,5 +341,121 @@ describe('handleToolResultSideEffects — websiteRebuild upfront queue', () => {
     )
     expect(mockSetPlan).not.toHaveBeenCalled()
     expect(mockEnqueue).not.toHaveBeenCalled()
+  })
+})
+
+describe('handleToolResultSideEffects — logo-generated event', () => {
+  it('dispatches logo-generated for new singular structuredContent.logo shape', async () => {
+    await handleToolResultSideEffects({
+      name: 'media-logo__generate_logo',
+      output: JSON.stringify({
+        structuredContent: {
+          logo: {
+            id: 'logo-1',
+            urls: { square: { transparent: 'https://cdn.example.com/logo.png', solid: 'https://cdn.example.com/logo-solid.png' } },
+          },
+          sessionId: 'sess-1',
+        },
+      }),
+    }, 'app-1')
+
+    const event = dispatchEventSpy.mock.calls.find(
+      ([e]) => (e as CustomEvent).type === 'logo-generated',
+    )?.[0] as CustomEvent
+    expect(event).toBeDefined()
+    expect(event.detail).toEqual(expect.objectContaining({
+      id: 'logo-1',
+      transparentUrl: 'https://cdn.example.com/logo.png',
+      solidUrl: 'https://cdn.example.com/logo-solid.png',
+    }))
+  })
+
+  it('dispatches logo-generated for legacy structuredContent.logos array', async () => {
+    await handleToolResultSideEffects({
+      name: 'media-logo__generate_logo',
+      output: JSON.stringify({
+        structuredContent: {
+          logos: [{ id: 'logo-2', transparentUrl: 'https://cdn.example.com/legacy.png' }],
+        },
+      }),
+    }, 'app-1')
+
+    const event = dispatchEventSpy.mock.calls.find(
+      ([e]) => (e as CustomEvent).type === 'logo-generated',
+    )?.[0] as CustomEvent
+    expect(event).toBeDefined()
+    expect(event.detail).toEqual(expect.objectContaining({
+      id: 'logo-2',
+      transparentUrl: 'https://cdn.example.com/legacy.png',
+    }))
+  })
+
+  it('dispatches logo-generated for edit_logo tool', async () => {
+    await handleToolResultSideEffects({
+      name: 'media-logo__edit_logo',
+      output: JSON.stringify({
+        structuredContent: {
+          logo: {
+            id: 'logo-3',
+            urls: { horizontal: { transparent: 'https://cdn.example.com/horiz.png' } },
+          },
+        },
+      }),
+    }, 'app-1')
+
+    const event = dispatchEventSpy.mock.calls.find(
+      ([e]) => (e as CustomEvent).type === 'logo-generated',
+    )?.[0] as CustomEvent
+    expect(event).toBeDefined()
+    expect(event.detail.horizontalTransparentUrl).toBe('https://cdn.example.com/horiz.png')
+  })
+
+  it('does not dispatch when logo has no valid URL', async () => {
+    await handleToolResultSideEffects({
+      name: 'media-logo__generate_logo',
+      output: JSON.stringify({
+        structuredContent: {
+          logo: { id: 'logo-empty', urls: {} },
+        },
+      }),
+    }, 'app-1')
+
+    const event = dispatchEventSpy.mock.calls.find(
+      ([e]) => (e as CustomEvent).type === 'logo-generated',
+    )
+    expect(event).toBeUndefined()
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      'toolSideEffects.logoTool.noLogosInResult',
+      expect.objectContaining({ appId: 'app-1', toolName: 'media-logo__generate_logo' }),
+    )
+  })
+
+  it('does not dispatch when tool errored', async () => {
+    await handleToolResultSideEffects({
+      name: 'media-logo__generate_logo',
+      is_error: true,
+      output: JSON.stringify({
+        structuredContent: {
+          logo: { id: 'logo-err', urls: { square: { transparent: 'https://cdn.example.com/x.png' } } },
+        },
+      }),
+    }, 'app-1')
+
+    const event = dispatchEventSpy.mock.calls.find(
+      ([e]) => (e as CustomEvent).type === 'logo-generated',
+    )
+    expect(event).toBeUndefined()
+  })
+
+  it('warns when result cannot be parsed', async () => {
+    await handleToolResultSideEffects({
+      name: 'media-logo__generate_logo',
+      output: '{invalid-json',
+    }, 'app-1')
+
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      'toolSideEffects.logoTool.resultParseFailed',
+      expect.objectContaining({ appId: 'app-1', toolName: 'media-logo__generate_logo' }),
+    )
   })
 })

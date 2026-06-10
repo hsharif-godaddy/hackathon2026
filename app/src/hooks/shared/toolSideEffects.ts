@@ -7,6 +7,7 @@
  */
 
 import { ViewMode } from '@/app/[market]/develop/components/types'
+import { extractLogosFromToolResult, getLogoDisplayUrl } from '@/app/[market]/develop/components/widgets/logo-utils'
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { trackFromToolResult } from '@/hooks/shared/contextGatheringTracker'
 import { trackHandoff, trackQuestionReceived } from '@/hooks/shared/initialBuildFunnel'
@@ -348,9 +349,12 @@ export async function handleToolResultSideEffects(
     try {
       const result = tool.output ?? tool.result
       const resultObj = typeof result === 'string' ? JSON.parse(result) : result
-      const logos = resultObj?.structuredContent?.logos || resultObj?.logos
-      if (logos?.[0]) {
-        window.dispatchEvent(new CustomEvent('logo-generated', { detail: logos[0] }))
+      // Normalize across tool-result shapes (new nested logo #4513, legacy array, …).
+      // Gate on a usable URL so the warning fires here — where appId/toolName context
+      // exists — rather than silently dispatching a logo the brand book can't render.
+      const detail = extractLogosFromToolResult(resultObj)[0]
+      if (detail && getLogoDisplayUrl(detail)) {
+        window.dispatchEvent(new CustomEvent('logo-generated', { detail }))
       } else {
         logger.warn('toolSideEffects.logoTool.noLogosInResult', { appId, toolName: tool.name })
       }
