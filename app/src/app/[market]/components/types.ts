@@ -1,5 +1,6 @@
 export const LOGO_DESIGNER_TEMPLATE = 'logo-designer'
-const VALID_TEMPLATES: string[] = ['default', 'business-plan', LOGO_DESIGNER_TEMPLATE]
+export const DEEP_BUILD_TEMPLATE = 'deep-build'
+const VALID_TEMPLATES: string[] = ['default', 'business-plan', LOGO_DESIGNER_TEMPLATE, DEEP_BUILD_TEMPLATE]
 
 export function validateTemplate(template: string | null): string {
   return template && VALID_TEMPLATES.includes(template) ? template : 'default'

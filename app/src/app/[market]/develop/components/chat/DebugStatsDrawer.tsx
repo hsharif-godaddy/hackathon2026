@@ -7,14 +7,8 @@ import Tag from '@ux/tag'
 import { SWITCHBOARD_APPBUILDER_DEBUG_DRAWER, SWITCHBOARD_APPBUILDER_SSE_TRANSPORT } from '@/config/switchboard-flags'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useStreamingConversationStore, useStreamingState, useWebSocketState } from '@/stores/useStreamingConversationStore'
-import CostSparkline from './CostSparkline'
-import { useDebugStats } from './DebugStatsContext'
+import { type LLMCallRecord, useDebugStats } from './DebugStatsContext'
 
-/**
- * Flask glyph rendered inline as SVG. Avoids the @ux/icon CSS-variable
- * indirection so the icon always renders without a separate CSS registration.
- * Path data taken from @ux/icon/experiment-filled.
- */
 function FlaskIcon(): ReactElement {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -27,11 +21,37 @@ function FlaskIcon(): ReactElement {
   )
 }
 
-/**
- * Inline toggle button. Designed to be rendered alongside other action buttons
- * in the chat input action row (e.g. next to the attachment "+"). Renders
- * nothing when the switchboard flag is off.
- */
+function abbreviateModel(modelName: string): string {
+  if (modelName.includes('opus-4-7')) return 'Op4.7'
+  if (modelName.includes('opus-4-6')) return 'Op4.6'
+  if (modelName.includes('sonnet-4-6')) return 'So4.6'
+  if (modelName.includes('sonnet-4-5')) return 'So4.5'
+  if (modelName.includes('haiku-4-5')) return 'Ha4.5'
+  if (modelName.includes('haiku-4')) return 'Ha4'
+  if (modelName.includes('gpt-4o')) return 'G4o'
+  if (modelName.includes('gpt-4')) return 'G4'
+  return modelName.slice(0, 5)
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`
+  return String(n)
+}
+
+function CallRow({ call }: { call: LLMCallRecord }): ReactElement {
+  const cachePercent = Math.round(call.cacheHitRate * 100)
+  return (
+    <tr className="border-b border-border/50 last:border-0">
+      <td className="py-0.5 pr-2 truncate max-w-[72px]">{call.agentName}</td>
+      <td className="py-0.5 pr-2">{abbreviateModel(call.modelName)}</td>
+      <td className="py-0.5 pr-2 text-right">{call.steps ?? '—'}</td>
+      <td className="py-0.5 pr-2 text-right">{formatTokens(call.inputTokens)}/{formatTokens(call.outputTokens)}</td>
+      <td className="py-0.5 pr-2 text-right">{cachePercent}%</td>
+      <td className="py-0.5 text-right">${call.costUsd.toFixed(4)}</td>
+    </tr>
+  )
+}
+
 export function DebugStatsToggleButton(): ReactElement | null {
   const enabled = useSwitchboard(SWITCHBOARD_APPBUILDER_DEBUG_DRAWER)
   const { open, setOpen } = useDebugStats()
@@ -52,12 +72,6 @@ export function DebugStatsToggleButton(): ReactElement | null {
   )
 }
 
-/**
- * Full-cover panel rendered as an absolute overlay inside its nearest
- * relatively-positioned ancestor. Mount this at the top level of the chat
- * tab so it covers messages + input when open. Renders nothing when closed
- * or when the switchboard flag is off.
- */
 export function DebugStatsPanel(): ReactElement | null {
   const enabled = useSwitchboard(SWITCHBOARD_APPBUILDER_DEBUG_DRAWER)
   const { state, dispatch, open, setOpen } = useDebugStats()
@@ -69,119 +83,90 @@ export function DebugStatsPanel(): ReactElement | null {
   if (!enabled || !open) return null
 
   const transport = sseFlag === true ? 'SSE' : 'WS'
-  const last = state.history[state.history.length - 1]
-  const costValues = state.history.map((h) => h.costUsd)
-  const cacheHitValues = state.history.map((h) => h.cacheHitRate)
-  const truncate = (s: string): string => (s.length > 12 ? `${s.slice(0, 6)}…${s.slice(-4)}` : s)
+  const totalCost = state.calls.reduce((sum, c) => sum + c.costUsd, 0)
 
   return (
     <div
       data-testid="debug-stats-panel"
-      className="absolute inset-x-2 bottom-2 h-4/5 z-40 bg-intents-ux-box-backgroundColor shadow-md rounded-lg flex flex-col p-3 overflow-auto text-sm"
+      className="absolute inset-x-2 bottom-2 h-4/5 z-40 bg-intents-ux-box-backgroundColor shadow-md rounded-lg flex flex-col p-3 overflow-hidden text-[10px] font-mono"
     >
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-semibold">Debug stats</span>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold font-sans">Debug stats</span>
         <button
           type="button"
           aria-label="Close debug stats"
-          className="text-xs text-muted-foreground hover:text-foreground"
+          className="text-[10px] text-muted-foreground hover:text-foreground font-sans"
           onClick={() => setOpen(false)}
         >
           Close
         </button>
       </div>
 
-      <section className="mb-3" data-testid="debug-stats-connection-info">
-        <div className="text-xs text-muted-foreground mb-1">Connection</div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Tag size="sm" emphasis={transport === 'SSE' ? 'info' : 'highlight'} data-testid="debug-stats-transport-badge">
-            {transport}
+      <section className="mb-2 flex flex-wrap items-center gap-1" data-testid="debug-stats-connection-info">
+        <Tag size="sm" emphasis={transport === 'SSE' ? 'info' : 'highlight'} data-testid="debug-stats-transport-badge">
+          {transport}
+        </Tag>
+        <Tag size="sm" emphasis={wsState.connected ? 'success' : 'critical'}>
+          {wsState.connected ? 'connected' : wsState.status}
+        </Tag>
+        {streamingState !== 'idle' && (
+          <Tag size="sm" emphasis="warning">
+            {streamingState}
           </Tag>
-          <Tag size="sm" emphasis={wsState.connected ? 'success' : 'critical'}>
-            {wsState.connected ? 'connected' : wsState.status}
+        )}
+        {retryState.isRetrying && (
+          <Tag size="sm" emphasis="critical">
+            {`retry #${retryState.retryCount}`}
           </Tag>
-          {streamingState !== 'idle' && (
-            <Tag size="sm" emphasis="warning">
-              {streamingState}
-            </Tag>
-          )}
-          {retryState.isRetrying && (
-            <Tag size="sm" emphasis="critical">
-              {`retry #${retryState.retryCount}`}
-            </Tag>
-          )}
-        </div>
+        )}
       </section>
 
-      <section className="mb-3">
-        <div className="text-xs text-muted-foreground">Last prompt</div>
-        {last ? (
-          <>
-            <div className="text-3xl font-semibold tabular-nums" data-testid="debug-stats-last-cost">
-              ${last.costUsd.toFixed(4)}
-            </div>
-            <div className="text-xs text-muted-foreground tabular-nums">
-              {last.inputTokens} in / {last.outputTokens} out tokens
-            </div>
-            <div className="text-xs text-muted-foreground">model: {last.modelName}</div>
-          </>
+      <div className="flex-1 overflow-auto min-h-0">
+        {state.calls.length === 0 ? (
+          <div className="text-muted-foreground text-center py-4 font-sans text-xs">No LLM calls yet</div>
         ) : (
-          <div className="text-xs text-muted-foreground">no data yet</div>
+          <table className="w-full tabular-nums">
+            <thead className="sticky top-0 bg-intents-ux-box-backgroundColor">
+              <tr className="border-b border-border text-muted-foreground text-left">
+                <th className="py-0.5 pr-2 font-medium">Agent</th>
+                <th className="py-0.5 pr-2 font-medium">Model</th>
+                <th className="py-0.5 pr-2 font-medium text-right">Turns</th>
+                <th className="py-0.5 pr-2 font-medium text-right">In/Out</th>
+                <th className="py-0.5 pr-2 font-medium text-right">Cache</th>
+                <th className="py-0.5 font-medium text-right">Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {state.calls.map((call, i) => (
+                <CallRow key={`${call.timestamp}-${i}`} call={call} />
+              ))}
+            </tbody>
+          </table>
         )}
-      </section>
+      </div>
 
-      {costValues.length > 0 && (
-        <section className="mb-3">
-          <div className="text-xs text-muted-foreground mb-1">Cost per prompt</div>
-          <CostSparkline values={costValues} width={280} height={48} />
-        </section>
-      )}
-
-      {cacheHitValues.length > 0 && (
-        <section className="mb-3">
-          <div className="text-xs text-muted-foreground mb-1">Cache hit rate per prompt</div>
-          <CostSparkline
-            values={cacheHitValues}
-            width={280}
-            height={48}
-            maxOverride={1}
-            ariaLabel="cache hit rate per prompt"
-            formatValue={(v) => `${Math.round(v * 100)}%`}
-          />
-        </section>
-      )}
-
-      {last && (
-        <section className="mb-3">
-          <div className="text-xs text-muted-foreground">Cache</div>
-          <div className="text-xs tabular-nums">
-            hit rate: {Math.round(last.cacheHitRate * 100)}% · writes: {last.cacheWriteInputTokens} tokens
-          </div>
-        </section>
-      )}
-
-      <footer className="mt-auto flex items-center justify-between gap-2 pt-2 border-t border-border">
-        <button
-          type="button"
-          className="text-xs text-muted-foreground hover:text-foreground"
-          onClick={() => dispatch({ type: 'CLEAR' })}
-        >
-          Clear history
-        </button>
-        {last && (
-          <span className="flex-1 truncate text-center text-[10px] font-mono text-muted-foreground">
-            {truncate(last.conversationId)}
-          </span>
-        )}
-        <button
-          type="button"
-          aria-label="Close debug stats"
-          data-testid="debug-stats-close-footer"
-          className="px-3 py-1 rounded-md border border-border text-xs text-foreground hover:bg-muted"
-          onClick={() => setOpen(false)}
-        >
-          Close
-        </button>
+      <footer className="mt-2 flex items-center justify-between gap-2 pt-2 border-t border-border">
+        <span className="font-semibold tabular-nums">
+          Total: ${totalCost.toFixed(4)}
+        </span>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground font-sans"
+            onClick={() => dispatch({ type: 'CLEAR' })}
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            aria-label="Close debug stats"
+            data-testid="debug-stats-close-footer"
+            className="px-2 py-0.5 rounded border border-border text-foreground hover:bg-muted font-sans"
+            onClick={() => setOpen(false)}
+          >
+            Close
+          </button>
+        </div>
       </footer>
     </div>
   )

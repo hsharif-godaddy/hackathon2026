@@ -45,6 +45,8 @@ const ACTION_GROUP_TOOL_NAMES = new Set([
   'commerceCommerceStoreList',
   'commerceCommerceStoreGet',
   'commerceCommerceStoreChannelsGet',
+  // Hidden tools (render as null) — must be groupable so they don't break action groups
+  'returnToParent',
 ])
 
 export function isMediaSlotTool(name?: string): boolean {
@@ -52,7 +54,7 @@ export function isMediaSlotTool(name?: string): boolean {
 }
 
 // todoList operations whose renderer returns null
-const TODO_LIST_HIDDEN_OPS = new Set(['mark_done', 'mark_undone', 'show_list'])
+const TODO_LIST_HIDDEN_OPS = new Set(['mark_done', 'mark_undone', 'mark_in_progress', 'show_list'])
 
 export function isActionToolGroupEligible(toolCall?: ToolCall): boolean {
   if (!toolCall?.name) return false

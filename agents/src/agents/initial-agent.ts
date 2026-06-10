@@ -274,9 +274,11 @@ export async function createInitialAgent(
       ? `Initial (${trimmedPromptVersion})`
       : 'Initial'
 
-  const validTargets = templateId === 'logo-designer'
-    ? ['develop', 'initial']
-    : ['develop']
+  const handoffTargetsByTemplate: Record<string, string[]> = {
+    'logo-designer': ['develop', 'initial'],
+    'deep-build': ['deep-build'],
+  }
+  const validTargets = handoffTargetsByTemplate[templateId ?? ''] ?? ['develop']
 
   const handoffTool = stateManager
     ? createHandoffTool({
@@ -420,7 +422,7 @@ export async function createInitialAgent(
         includeAiEditContext: false,
         includeSelectedImages: false,
         includeConversationHistory: true,
-        includeTemplateDescription: true
+        includeTemplateDescription: templateId !== 'deep-build',
       },
       preflightTools,
     }

@@ -3,7 +3,7 @@
 import clsx from 'clsx'
 import { animate, motion, useMotionValue } from 'framer-motion'
 import dynamic from 'next/dynamic'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useIntl } from 'react-intl'
 import { Loader } from '@airo-ux/loader'
@@ -16,6 +16,7 @@ import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThink
 import DomainBar from '@/app/[market]/develop/components/layout/DomainBar'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
 import { getDevicePreset, isFullWidthDevice } from '@/app/[market]/develop/components/preview/devicePresets'
+const DocsView = lazy(() => import('@/app/[market]/develop/components/preview/DocsView'))
 import InboxIframe from '@/app/[market]/develop/components/preview/InboxIframe'
 import PreviewCode from '@/app/[market]/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/[market]/develop/components/preview/PreviewError'
@@ -1067,7 +1068,7 @@ export default function PreviewPane({
   }
 
   // Show error state when resume failed
-  if (resumeFailed && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX) {
+  if (resumeFailed && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX && viewMode !== ViewMode.DOCS) {
     return (
       <PreviewError
         title={t('builder_preview_resume_failed_title')}
@@ -1090,11 +1091,11 @@ export default function PreviewPane({
   }
 
   // Show restarting message when app is hibernated or resuming
-  if ((isHibernated || isResuming) && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX) {
+  if ((isHibernated || isResuming) && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX && viewMode !== ViewMode.DOCS) {
     return <PreviewLoadingState message={t('builder_preview_resuming_message')} isMobile={isMobile} />
   }
 
-  if (imageReloadFailed && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX) {
+  if (imageReloadFailed && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX && viewMode !== ViewMode.DOCS) {
     return (
       <PreviewError
         title={t('builder_preview_image_reload_failed_title')}
@@ -1105,8 +1106,22 @@ export default function PreviewPane({
     )
   }
 
-  if (isImageReloading && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX) {
+  if (isImageReloading && viewMode !== ViewMode.BRAND && viewMode !== ViewMode.DOMAIN && viewMode !== ViewMode.INBOX && viewMode !== ViewMode.DOCS) {
     return <PreviewLoadingState message={t('builder_preview_image_reloading_message')} isMobile={isMobile} />
+  }
+
+  if (viewMode === ViewMode.DOCS) {
+    return (
+      <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
+        <div className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor">
+          <ErrorBoundary>
+            <Suspense fallback={null}>
+              <DocsView appId={appId} />
+            </Suspense>
+          </ErrorBoundary>
+        </div>
+      </div>
+    )
   }
 
   if (viewMode === ViewMode.DOMAIN && isTopLevelDomainEnabled) {

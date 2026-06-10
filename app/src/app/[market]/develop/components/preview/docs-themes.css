@@ -1,0 +1,105 @@
+/*
+ * Per-doc themes for the docs preview pane.
+ * The MarkdownRenderer reads these variables when variant="docs".
+ * The default (.theme-brief) is also the fallback when no theme matches.
+ */
+
+.theme-docs {
+  --docs-fg: #1a1a1a;
+  --docs-bg: #fafaf8;
+  --docs-muted: #666666;
+  --docs-accent: #8b3a1a;
+  --docs-hairline: rgba(107, 90, 62, 0.4);
+  --docs-code-bg: #f0ede9;
+  --docs-blockquote-bar: var(--docs-accent);
+}
+
+.theme-brief {
+  /* Same as .theme-docs — warm editorial gray, our default. */
+  --docs-fg: #1a1a1a;
+  --docs-bg: #fafaf8;
+  --docs-muted: #666666;
+  --docs-accent: #8b3a1a;
+  --docs-hairline: rgba(107, 90, 62, 0.4);
+  --docs-code-bg: #f0ede9;
+  --docs-blockquote-bar: var(--docs-accent);
+}
+
+.theme-design {
+  /* Warm gray — the live /design-preview route is the real visual reveal. */
+  --docs-fg: #1a1a1a;
+  --docs-bg: #fafaf8;
+  --docs-muted: #666666;
+  --docs-accent: #8b3a1a;
+  --docs-hairline: rgba(107, 90, 62, 0.4);
+  --docs-code-bg: #f0ede9;
+  --docs-blockquote-bar: var(--docs-accent);
+}
+
+.theme-plan {
+  /* Blueprint feel — cooler tone, mono numbered headings, hairline section breaks. */
+  --docs-fg: #14171a;
+  --docs-bg: #f5f7fa;
+  --docs-muted: #5b6470;
+  --docs-accent: #1d4ed8;
+  --docs-hairline: rgba(91, 100, 112, 0.35);
+  --docs-code-bg: #e8edf3;
+  --docs-blockquote-bar: var(--docs-accent);
+}
+
+.theme-interview {
+  /* Conversational — looser leading, indented block quotes, soft accent. */
+  --docs-fg: #1a1a1a;
+  --docs-bg: #fcfaf6;
+  --docs-muted: #6e655a;
+  --docs-accent: #8b6f3a;
+  --docs-hairline: rgba(110, 101, 90, 0.35);
+  --docs-code-bg: #f3efe7;
+  --docs-blockquote-bar: var(--docs-accent);
+}
+
+.docs-prose {
+  background: var(--docs-bg);
+  color: var(--docs-fg);
+  max-width: 72ch;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+  font-size: 16px;
+  line-height: 1.7;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.docs-prose h1 { font-size: 2.25rem; line-height: 1.2; margin: 0 0 1.5rem; font-weight: 700; letter-spacing: -0.01em; }
+.docs-prose h2 { font-size: 1.625rem; line-height: 1.25; margin: 3rem 0 1rem; font-weight: 600; letter-spacing: -0.005em; }
+.docs-prose h3 { font-size: 1.25rem; line-height: 1.3; margin: 2rem 0 0.75rem; font-weight: 600; }
+.docs-prose p { margin: 0 0 1rem; }
+.docs-prose a { color: var(--docs-accent); text-decoration: underline; text-underline-offset: 3px; }
+.docs-prose ul, .docs-prose ol { margin: 0 0 1rem; padding-left: 1.5rem; }
+.docs-prose li { margin: 0.25rem 0; }
+.docs-prose blockquote {
+  margin: 1.5rem 0;
+  padding: 0.5rem 0 0.5rem 1.25rem;
+  border-left: 4px solid var(--docs-blockquote-bar);
+  color: var(--docs-muted);
+  font-style: italic;
+  font-size: 1.0625rem;
+}
+.docs-prose hr { border: 0; border-top: 1px solid var(--docs-hairline); margin: 2rem 0; }
+.docs-prose code {
+  background: var(--docs-code-bg);
+  padding: 0.125rem 0.35rem;
+  border-radius: 3px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.9em;
+}
+.docs-prose pre { background: var(--docs-code-bg); padding: 1rem; border-radius: 4px; overflow-x: auto; margin: 1rem 0; }
+.docs-prose pre code { background: transparent; padding: 0; }
+.docs-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-variant-numeric: tabular-nums;
+}
+.docs-prose th { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 2px solid var(--docs-hairline); font-weight: 600; }
+.docs-prose td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--docs-hairline); }
+.docs-prose strong { font-weight: 600; }
+.docs-prose em { font-style: italic; }

@@ -1,6 +1,7 @@
 import type { Tool } from '@airo/ai-lib'
 import { AgentWrapper, getModel } from '@airo/ai-lib'
 import { Logger } from '../logging/index.js'
+import { skillToolManager } from '../tools/skill-tool-manager.js'
 
 const logger = Logger.create({ component: 'sub-agent-runner' })
 
@@ -59,6 +60,36 @@ function extractArtifacts(toolResults: Array<{ toolName: string; result: unknown
   return [...paths]
 }
 
+const TOOL_DETAIL_MAP: Record<string, { field: string; prefix: string; maxLen?: number }> = {
+  str_replace_based_edit_tool: { field: 'path', prefix: 'Editing' },
+  readFile: { field: 'path', prefix: 'Reading' },
+  directoryListing: { field: 'path', prefix: 'Listing' },
+  terminalCommand: { field: 'command', prefix: 'Running:', maxLen: 60 },
+  showDoc: { field: 'path', prefix: 'Document ready:' },
+  websiteScraper: { field: 'url', prefix: 'Scraping', maxLen: 60 },
+}
+
+function formatToolDetail(toolName: string, args: unknown, result: unknown): string {
+  if (toolName === 'media' && result) {
+    const r: Record<string, unknown> = typeof result === 'string'
+      ? (() => { try { return JSON.parse(result) } catch { return {} } })()
+      : result as Record<string, unknown>
+    if (r.slot) return `Media: set ${r.slot as string}`
+    if (r.error) return `Media: ${r.error as string}`
+  }
+
+  const mapping = TOOL_DETAIL_MAP[toolName]
+  if (mapping && args && typeof args === 'object') {
+    const value = (args as Record<string, unknown>)[mapping.field]
+    if (typeof value === 'string') {
+      const truncated = mapping.maxLen ? value.slice(0, mapping.maxLen) : value
+      return `${mapping.prefix} ${truncated}`
+    }
+  }
+
+  return `Using ${toolName}...`
+}
+
 function buildUserMessage(task: string, inputs: Record<string, string | string[]>): string {
   const parts: string[] = [task]
   for (const [key, value] of Object.entries(inputs)) {
@@ -69,35 +100,6 @@ function buildUserMessage(task: string, inputs: Record<string, string | string[]
     }
   }
   return parts.join('\n\n')
-}
-
-interface ToolEventDetail {
-  toolName: string
-  path?: string
-  command?: string
-  slot?: string
-  url?: string
-  error?: string
-}
-
-function buildToolEventDetail(toolName: string, args: Record<string, unknown>, result: unknown): ToolEventDetail {
-  const detail: ToolEventDetail = { toolName }
-
-  if (toolName === 'media' && result) {
-    const r: Record<string, unknown> = typeof result === 'string'
-      ? (() => { try { return JSON.parse(result) } catch { return {} } })()
-      : result as Record<string, unknown>
-    if (r.slot) detail.slot = r.slot as string
-    if (r.error) detail.error = r.error as string
-  } else if (toolName === 'str_replace_based_edit_tool' || toolName === 'readFile' || toolName === 'directoryListing' || toolName === 'showDoc') {
-    if (args.path) detail.path = args.path as string
-  } else if (toolName === 'terminalCommand') {
-    if (args.command) detail.command = (args.command as string).slice(0, 80)
-  } else if (toolName === 'websiteScraper') {
-    if (args.url) detail.url = (args.url as string).slice(0, 80)
-  }
-
-  return detail
 }
 
 export class SubAgentRunner {
@@ -135,8 +137,7 @@ export class SubAgentRunner {
         enablePromptCaching: enablePromptCaching ?? false,
         logger,
         afterToolExecution: (toolName: string, args: unknown, result: unknown) => {
-          const a = (args && typeof args === 'object') ? args as Record<string, unknown> : {}
-          const detail = JSON.stringify(buildToolEventDetail(toolName, a, result))
+          const detail = formatToolDetail(toolName, args, result)
           onEvent({ event: 'tool_call', agent: id, detail })
           if (toolName === 'showDoc' && args && typeof args === 'object' && 'path' in args) {
             const a = args as Record<string, unknown>
@@ -152,7 +153,7 @@ export class SubAgentRunner {
           }
           return undefined
         },
-      })
+      }, skillToolManager)
 
       const userMessage = buildUserMessage(task, inputs)
       const streamResult = await agent.streamGenerate(userMessage, { executionContext })

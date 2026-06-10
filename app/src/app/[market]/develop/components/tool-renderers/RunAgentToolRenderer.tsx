@@ -1,9 +1,10 @@
 'use client'
 
-import { CheckCircle2, FileText, Globe, Loader2, XCircle } from 'lucide-react'
-import { useState } from 'react'
+import { CheckCircle2, ChevronDown, ChevronUp, FileText, Globe, Loader2, XCircle } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 import MarkdownRenderer from '@/app/[market]/develop/components/MarkdownRenderer'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import ToolModal from './ToolModal'
@@ -27,6 +28,15 @@ function truncateTask(task: string, max: number): string {
   return firstLine.length > max ? firstLine.slice(0, max) + '...' : firstLine
 }
 
+function dedupByLabel(outputs: VisualOutput[]): VisualOutput[] {
+  const seen = new Set<string>()
+  return outputs.filter(o => {
+    if (seen.has(o.label)) return false
+    seen.add(o.label)
+    return true
+  })
+}
+
 export default function RunAgentToolRenderer({
   toolName: _toolName,
   toolStatus,
@@ -35,7 +45,17 @@ export default function RunAgentToolRenderer({
   result,
 }: DefaultToolRendererProps): React.ReactElement | null {
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isActivityExpanded, setIsActivityExpanded] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const events = useStreamingConversationStore((state) => state.subagentEvents[toolId ?? '']) ?? EMPTY_EVENTS
+  const openDoc = useDevelopPageStore((state) => state.openDoc)
+  const openPreviewPage = useDevelopPageStore((state) => state.openPreviewPage)
+
+  useEffect(() => {
+    if (isActivityExpanded && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [isActivityExpanded, events.length])
 
   const mode: string | undefined = (input as { mode?: string } | undefined)?.mode
   if (mode === 'interactive') return null
@@ -63,8 +83,8 @@ export default function RunAgentToolRenderer({
 
   const visualOutputs = typedResult?.visualOutputs
   const mediaOutputs = visualOutputs?.filter(o => o.type === 'media') ?? []
-  const pageOutputs = visualOutputs?.filter(o => o.type === 'page') ?? []
-  const docOutputs = visualOutputs?.filter(o => o.type === 'doc') ?? []
+  const pageOutputs = dedupByLabel(visualOutputs?.filter(o => o.type === 'page') ?? [])
+  const docOutputs = dedupByLabel(visualOutputs?.filter(o => o.type === 'doc') ?? [])
 
   const displayLabel = title || truncateTask(task, 80) || 'Sub-agent task'
 
@@ -80,16 +100,15 @@ export default function RunAgentToolRenderer({
       >
         <div className="flex items-center gap-2">
           {statusIcon}
-          <span className="text-xs text-intents-ux-text-textColor truncate">
+          <span className="text-xs text-intents-ux-text-textColor truncate flex-1">
             {displayLabel}
           </span>
+          {toolStatus === 'running' && latestDetail && (
+            <span className="text-xs text-intents-ux-textLowContrast-color truncate max-w-[200px]">
+              {latestDetail}
+            </span>
+          )}
         </div>
-
-        {toolStatus === 'running' && latestDetail && (
-          <div className="text-xs text-intents-ux-textLowContrast-color mt-1 ml-5 truncate">
-            {latestDetail}
-          </div>
-        )}
 
         {toolStatus === 'completed' && mediaOutputs.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2 ml-5" onClick={(e) => e.stopPropagation()}>
@@ -113,45 +132,45 @@ export default function RunAgentToolRenderer({
         )}
 
         {toolStatus === 'completed' && pageOutputs.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2 ml-5">
+          <div className="grid grid-cols-2 gap-1 mt-2 ml-5">
             {pageOutputs.map((output, i) => (
-              <span
-                key={i}
-                className="flex items-center gap-0.5 px-1.5 py-0.5 text-xs rounded border border-intents-ux-borderLowContrast-color text-intents-ux-text-textColor"
-              >
-                <Globe className="w-3 h-3" />
-                {output.label}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {toolStatus === 'completed' && docOutputs.length > 0 && (
-          <div className="flex flex-col gap-0.5 mt-2 ml-5" onClick={(e) => e.stopPropagation()}>
-            {docOutputs.map((output, i) => (
               <button
                 key={i}
                 type="button"
-                className="flex items-center gap-1 text-xs text-intents-ux-textAction-color hover:underline"
-                onClick={() => void 0}
+                className="flex items-center gap-1 px-1.5 py-0.5 text-xs rounded border border-intents-ux-borderLowContrast-color text-intents-ux-text-textColor hover:bg-intents-ux-surface-subtle-fillColor"
+                onClick={(e) => { e.stopPropagation(); openPreviewPage(output.url ?? output.label) }}
               >
-                <FileText className="w-3 h-3" />
+                <Globe className="w-3 h-3 flex-shrink-0" />
                 {output.label}
               </button>
             ))}
           </div>
         )}
 
-        {toolStatus === 'completed' && typedResult?.docPath && !docOutputs.some(o => o.url === typedResult.docPath) && (
-          <button
-            type="button"
-            className="flex items-center gap-1 text-xs text-intents-ux-textAction-color hover:underline mt-1.5 ml-5"
-            onClick={(e) => { e.stopPropagation(); void 0 }}
-          >
-            <FileText className="w-3 h-3" />
-            {typedResult.docPath}
-          </button>
-        )}
+        {toolStatus === 'completed' && docOutputs.length > 0 && (() => {
+          const pageLabels = new Set(pageOutputs.map(p => p.label))
+          const filtered = docOutputs.filter(o => !pageLabels.has(o.label))
+          if (filtered.length === 0) return null
+          return (
+            <div className="flex flex-col gap-0.5 mt-2 ml-5" onClick={(e) => e.stopPropagation()}>
+              {filtered.map((output, i) => {
+                const path = output.url ?? output.label
+                const isPageRoute = path.startsWith('/')
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    className="flex items-center gap-1 text-xs text-intents-ux-textAction-color hover:underline"
+                    onClick={() => { if (isPageRoute) { openPreviewPage(path) } else { openDoc(path) } }}
+                  >
+                    {isPageRoute ? <Globe className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
+                    {output.label}
+                  </button>
+                )
+              })}
+            </div>
+          )
+        })()}
 
         {isError && typedResult?.summary && (
           <div className="text-xs mt-1.5 ml-5 text-intents-ux-textDanger-color truncate">
@@ -175,22 +194,43 @@ export default function RunAgentToolRenderer({
           {typedResult?.artifacts && typedResult.artifacts.length > 0 && (
             <div>
               <h3 className="text-sm font-semibold mb-1">Files</h3>
-              <ul className="text-xs space-y-0.5 text-intents-ux-textLowContrast-color">
-                {typedResult.artifacts.map((f, i) => (
-                  <li key={i}>{f}</li>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-intents-ux-textLowContrast-color">
+                {[...new Set(typedResult.artifacts)].map((f) => (
+                  <div key={f} className="truncate">{f}</div>
                 ))}
-              </ul>
+              </div>
             </div>
           )}
 
           {events.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold mb-1">Activity</h3>
-              <ul className="text-xs space-y-0.5 text-intents-ux-textLowContrast-color">
-                {events.map((e, i) => (
-                  <li key={i}>{e.detail}</li>
-                ))}
-              </ul>
+              <button
+                type="button"
+                className="flex items-center gap-1 text-sm font-semibold mb-1 hover:text-intents-ux-textAction-color"
+                onClick={() => setIsActivityExpanded(!isActivityExpanded)}
+              >
+                Activity ({events.length})
+                {isActivityExpanded
+                  ? <ChevronUp className="w-3.5 h-3.5" />
+                  : <ChevronDown className="w-3.5 h-3.5" />
+                }
+              </button>
+              {isActivityExpanded ? (
+                <div
+                  ref={scrollRef}
+                  className="max-h-40 overflow-y-auto rounded bg-intents-ux-surface-subtle-fillColor p-2"
+                >
+                  {events.map((e, i) => (
+                    <div key={i} className="text-xs text-intents-ux-textLowContrast-color py-0.5 truncate">
+                      {e.detail}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-intents-ux-textLowContrast-color truncate">
+                  {latestDetail}
+                </div>
+              )}
             </div>
           )}
         </div>

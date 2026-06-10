@@ -6,7 +6,7 @@
  * (Code view file-op state, todo-list updates, project-name sync).
  */
 
-import { extractLogosFromToolResult, getLogoDisplayUrl } from '@/app/[market]/develop/components/widgets/logo-utils'
+import { ViewMode } from '@/app/[market]/develop/components/types'
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { trackFromToolResult } from '@/hooks/shared/contextGatheringTracker'
 import { trackHandoff, trackQuestionReceived } from '@/hooks/shared/initialBuildFunnel'
@@ -14,6 +14,7 @@ import { BRAND_DATA_UPDATED_EVENT } from '@/hooks/useBrandData'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { type FileOperationType, useCodeSyncStore } from '@/stores/useCodeSyncStore'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useGitStore } from '@/stores/useGitStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
@@ -78,7 +79,6 @@ export function handleToolCallSideEffects(tool: { name: string; input?: any }, a
   if (tool.name === 'websiteRebuild') {
     setInstrumentationIntentCategory('rebuild')
     try {
-      // Capture prior artifact identifier so analytics can link "before" state to rebuild
       const priorCommitHash = appId ? useGitStore.getState().getSelectedCommitHash(appId) : null
       shipAnalyticsLog('funnel.rebuild.started', {
         appId,
@@ -95,6 +95,32 @@ export function handleToolCallSideEffects(tool: { name: string; input?: any }, a
         error: err instanceof Error ? err.message : String(err),
       })
     }
+  }
+
+  if (tool.name === 'showDoc') {
+    const type: string = tool.input?.type ?? 'doc'
+    const path: string | undefined = tool.input?.path
+
+    if (type === 'doc') {
+      if (typeof path !== 'string' || path.length === 0) {
+        logger.warn('toolSideEffects.showDoc.invalidPath', { path: typeof path })
+        return
+      }
+      useDevelopPageStore.getState().openDoc(path)
+    } else if (type === 'page') {
+      if (typeof path === 'string' && path.length > 0) {
+        useDevelopPageStore.getState().openPreviewPage(path)
+      } else {
+        useDevelopPageStore.getState().setViewMode(ViewMode.PREVIEW)
+      }
+    } else if (type === 'ready') {
+      useDevelopPageStore.getState().setViewMode(ViewMode.PREVIEW)
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('build-complete'))
+    }
+    return
   }
 
   if (!FILE_OPERATION_TOOLS.has(tool.name)) return
@@ -322,12 +348,9 @@ export async function handleToolResultSideEffects(
     try {
       const result = tool.output ?? tool.result
       const resultObj = typeof result === 'string' ? JSON.parse(result) : result
-      // Normalize across tool-result shapes (new nested logo #4513, legacy array, …).
-      // Gate on a usable URL so the warning fires here — where appId/toolName context
-      // exists — rather than silently dispatching a logo the brand book can't render.
-      const detail = extractLogosFromToolResult(resultObj)[0]
-      if (detail && getLogoDisplayUrl(detail)) {
-        window.dispatchEvent(new CustomEvent('logo-generated', { detail }))
+      const logos = resultObj?.structuredContent?.logos || resultObj?.logos
+      if (logos?.[0]) {
+        window.dispatchEvent(new CustomEvent('logo-generated', { detail: logos[0] }))
       } else {
         logger.warn('toolSideEffects.logoTool.noLogosInResult', { appId, toolName: tool.name })
       }

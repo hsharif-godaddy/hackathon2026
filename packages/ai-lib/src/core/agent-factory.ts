@@ -825,6 +825,14 @@ export class AgentWrapper {
         }
       }
 
+      // Allow custom step preparation (e.g. injecting vision images after tool calls)
+      if (this.config.onPrepareStep) {
+        const custom = this.config.onPrepareStep({ stepNumber, messages: (result.messages ?? messages) as unknown[] })
+        if (custom?.messages) {
+          result.messages = custom.messages as typeof messages
+        }
+      }
+
       return Object.keys(result).length > 0 ? result : undefined
     }
 

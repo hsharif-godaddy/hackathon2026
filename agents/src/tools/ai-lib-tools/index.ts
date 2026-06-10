@@ -107,6 +107,8 @@ import { installDesignSystemAITool } from './install-design-system.js';
 import { showDocAITool } from './show-doc.js';
 import { runAgentAITool } from './run-agent.js'
 import { returnToParentAITool } from './return-to-parent.js';
+import { screenshotAITool } from './screenshot.js';
+import { crawlPagesAITool } from './crawl-pages.js';
 import { registerPostEditHandler } from './post-edit-handlers.js';
 import { seoRoutesPostEditHandler } from '../../services/seo-routes-post-edit-handler.js';
 
@@ -168,6 +170,8 @@ export const allAILibTools: Record<string, Tool> = {
   showDoc: showDocAITool,
   runAgent: runAgentAITool,
   returnToParent: returnToParentAITool,
+  screenshot: screenshotAITool,
+  crawlPages: crawlPagesAITool,
 };
 
 /**

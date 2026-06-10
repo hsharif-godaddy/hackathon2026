@@ -1811,6 +1811,8 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         getAgent: (name) => this.deps.getAgent(name),
         streamAgentTurn: async (agent, agentName, message, iteration) => {
           currentIteration = iteration
+          const meta = executionContext.metadata as Record<string, unknown>
+          meta.agentId = agentName
           if (iteration > 0) {
             persistenceContext.agentName = agentName
             try {

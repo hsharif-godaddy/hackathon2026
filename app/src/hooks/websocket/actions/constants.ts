@@ -10,6 +10,8 @@ export const CLIENT_ACTIONS = {
   ATTACH_DOMAIN: 'attachDomain',
   MCP_CALL: 'mcp_call',
   INBOX_CALL: 'inboxCall',
+  SCREENSHOT: 'screenshot',
+  AUDIT: 'audit',
 } as const
 
 export type ClientAction = typeof CLIENT_ACTIONS[keyof typeof CLIENT_ACTIONS]

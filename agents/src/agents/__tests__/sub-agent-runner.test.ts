@@ -3,15 +3,16 @@ import { SubAgentRunner, type SubAgentConfig, type SubAgentEvent } from '../sub-
 
 const mockStreamGenerate = vi.fn()
 
-vi.mock('@airo/ai-lib', () => {
-  const MockAgentWrapper = function(this: { streamGenerate: typeof mockStreamGenerate }) {
-    this.streamGenerate = mockStreamGenerate
-  } as unknown as { new(): { streamGenerate: typeof mockStreamGenerate } }
-  return {
-    AgentWrapper: MockAgentWrapper,
-    getModel: vi.fn().mockResolvedValue({ id: 'mock-model' }),
-  }
-})
+vi.mock('@airo/ai-lib', () => ({
+  AgentWrapper: vi.fn().mockImplementation(function () {
+    return { streamGenerate: mockStreamGenerate }
+  }),
+  getModel: vi.fn().mockResolvedValue({ id: 'mock-model' }),
+}))
+
+vi.mock('../../tools/skill-tool-manager.js', () => ({
+  skillToolManager: {},
+}))
 
 function makeConfig(overrides: Partial<SubAgentConfig> = {}): SubAgentConfig {
   return {

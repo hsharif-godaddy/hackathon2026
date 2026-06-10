@@ -28,11 +28,13 @@ export abstract class BaseTool implements ToolDefinition {
       description: this.description,
       inputSchema: zodSchema(this.inputSchema),
       execute: async (input: unknown, options: ToolExecutionOptions) => {
-        const baseContext = options?.experimental_context as AgentContext | undefined
+        const context = options?.experimental_context as AgentContext | undefined
         const toolCallId = (options as unknown as Record<string, unknown> | undefined)?.toolCallId as string | undefined
-        const context: AgentContext | undefined = baseContext && toolCallId
-          ? { ...baseContext, metadata: { ...baseContext.metadata, toolId: toolCallId } }
-          : baseContext
+        if (context && toolCallId) {
+          const meta = (context.metadata ?? {}) as Record<string, unknown>
+          meta.toolId = toolCallId
+          context.metadata = meta
+        }
         return this.execute(input, context)
       },
       ...(this.providerOptions ? { providerOptions: this.providerOptions as NonNullable<Tool['providerOptions']> } : {})
@@ -72,11 +74,13 @@ export function createTool<T extends z.ZodType<any, any>>(
     description,
     inputSchema: zodSchema(inputSchema),
     execute: async (input: z.infer<T>, executionOptions: ToolExecutionOptions) => {
-      const baseContext = executionOptions?.experimental_context as AgentContext | undefined
+      const context = executionOptions?.experimental_context as AgentContext | undefined
       const toolCallId = (executionOptions as unknown as Record<string, unknown> | undefined)?.toolCallId as string | undefined
-      const context: AgentContext | undefined = baseContext && toolCallId
-        ? { ...baseContext, metadata: { ...baseContext.metadata, toolId: toolCallId } }
-        : baseContext
+      if (context && toolCallId) {
+        const meta = (context.metadata ?? {}) as Record<string, unknown>
+        meta.toolId = toolCallId
+        context.metadata = meta
+      }
       return execute(input, context)
     },
     ...(options?.providerOptions ? { providerOptions: options.providerOptions as NonNullable<Tool['providerOptions']> } : {})
@@ -92,11 +96,13 @@ export function toAISDKTool(toolDef: ToolDefinition) {
     description: toolDef.description,
     inputSchema: zodSchema(toolDef.inputSchema),
     execute: async (input: unknown, options: ToolExecutionOptions) => {
-      const baseContext = options?.experimental_context as AgentContext | undefined
+      const context = options?.experimental_context as AgentContext | undefined
       const toolCallId = (options as unknown as Record<string, unknown> | undefined)?.toolCallId as string | undefined
-      const context: AgentContext | undefined = baseContext && toolCallId
-        ? { ...baseContext, metadata: { ...baseContext.metadata, toolId: toolCallId } }
-        : baseContext
+      if (context && toolCallId) {
+        const meta = (context.metadata ?? {}) as Record<string, unknown>
+        meta.toolId = toolCallId
+        context.metadata = meta
+      }
       return toolDef.execute(input, context)
     },
     ...(toolDef.providerOptions ? { providerOptions: toolDef.providerOptions as NonNullable<Tool['providerOptions']> } : {})

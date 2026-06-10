@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { useEffect } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent,render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 
 import { DebugStatsProvider, useDebugStats } from './DebugStatsContext'
-import { DebugStatsPanel,DebugStatsToggleButton } from './DebugStatsDrawer'
+import { DebugStatsPanel, DebugStatsToggleButton } from './DebugStatsDrawer'
 
 vi.mock('@ux/tag', () => ({
   default: ({ children, ...props }: { children: string; [key: string]: unknown }) => <span {...props}>{children}</span>,
@@ -36,8 +36,8 @@ function Seed({ withHistory = false }: { withHistory?: boolean }) {
       event: {
         type: 'debug_turn_stats',
         conversationId: 'c1',
-        agentName: 'main_agent',
-        modelName: 'claude-sonnet-4-5',
+        agentName: 'sub:design',
+        modelName: 'claude-sonnet-4-6',
         inputTokens: 1000,
         outputTokens: 200,
         totalTokens: 1200,
@@ -47,9 +47,9 @@ function Seed({ withHistory = false }: { withHistory?: boolean }) {
         contextWindowUtilization: 0.1,
         costUsd: 0.0042,
         timestamp: '2026-05-18T12:00:00.000Z',
+        steps: 5,
       },
     })
-    dispatch({ type: 'USER_MESSAGE_SENT', sealedAt: '2026-05-18T12:00:01.000Z' })
   }, [dispatch, withHistory])
   return null
 }
@@ -78,21 +78,21 @@ describe('DebugStats UI', () => {
     expect(screen.queryByTestId('debug-stats-panel')).not.toBeInTheDocument()
   })
 
-  it('opens the panel and shows stats from history when toggle is clicked', () => {
+  it('opens the panel and shows call table when toggle is clicked', () => {
     vi.mocked(useSwitchboard).mockReturnValue(true)
     render(<Mount withHistory />)
     fireEvent.click(screen.getByTestId('debug-stats-toggle'))
     expect(screen.getByTestId('debug-stats-panel')).toBeInTheDocument()
-    expect(screen.getByTestId('debug-stats-last-cost')).toHaveTextContent('$0.0042')
-    expect(screen.getByText(/1000 in \/ 200 out/)).toBeInTheDocument()
-    expect(screen.getByText(/hit rate: 70%/)).toBeInTheDocument()
+    expect(screen.getByText('sub:design')).toBeInTheDocument()
+    expect(screen.getByText('So4.6')).toBeInTheDocument()
+    expect(screen.getByText('$0.0042')).toBeInTheDocument()
   })
 
-  it('shows placeholder when history is empty', () => {
+  it('shows placeholder when no calls exist', () => {
     vi.mocked(useSwitchboard).mockReturnValue(true)
     render(<Mount />)
     fireEvent.click(screen.getByTestId('debug-stats-toggle'))
-    expect(screen.getByText(/no data yet/i)).toBeInTheDocument()
+    expect(screen.getByText(/No LLM calls yet/i)).toBeInTheDocument()
   })
 
   it('clicking the toggle a second time closes the panel', () => {
@@ -104,18 +104,17 @@ describe('DebugStats UI', () => {
     expect(screen.queryByTestId('debug-stats-panel')).not.toBeInTheDocument()
   })
 
-  it('CLEAR button resets history', () => {
+  it('Clear button resets calls', () => {
     vi.mocked(useSwitchboard).mockReturnValue(true)
     render(<Mount withHistory />)
     fireEvent.click(screen.getByTestId('debug-stats-toggle'))
-    fireEvent.click(screen.getByRole('button', { name: /clear history/i }))
-    expect(screen.queryByTestId('debug-stats-last-cost')).not.toBeInTheDocument()
-    expect(screen.getByText(/no data yet/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /clear/i }))
+    expect(screen.queryByText('sub:design')).not.toBeInTheDocument()
+    expect(screen.getByText(/No LLM calls yet/i)).toBeInTheDocument()
   })
 
   it('shows WS transport badge when SSE flag is off', () => {
-    vi.mocked(useSwitchboard).mockImplementation(function (flag: string) { return flag === 'app-builder-sse-transport' ? false : true; }
-    )
+    vi.mocked(useSwitchboard).mockImplementation(function (flag: string) { return flag === 'app-builder-sse-transport' ? false : true; })
     render(<Mount />)
     fireEvent.click(screen.getByTestId('debug-stats-toggle'))
     expect(screen.getByTestId('debug-stats-transport-badge')).toHaveTextContent('WS')
@@ -147,8 +146,7 @@ describe('DebugStats UI', () => {
 
   it('shows retry badge with count', () => {
     vi.mocked(useSwitchboard).mockReturnValue(true)
-    mockUseStreamingConversationStore.mockImplementation(function (selector: (s: Record<string, unknown>) => unknown) { return selector({ retryState: { isRetrying: true, retryCount: 3 } }); }
-    )
+    mockUseStreamingConversationStore.mockImplementation(function (selector: (s: Record<string, unknown>) => unknown) { return selector({ retryState: { isRetrying: true, retryCount: 3 } }); })
     render(<Mount />)
     fireEvent.click(screen.getByTestId('debug-stats-toggle'))
     expect(screen.getByText('retry #3')).toBeInTheDocument()

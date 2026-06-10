@@ -22,6 +22,11 @@ export const templateRegistry: Record<string, InitialAgentTemplate> = {
     name: 'Logo Designer',
     description: 'Discovers brand identity and creates a logo showcase website',
   },
+  'deep-build': {
+    id: 'deep-build',
+    name: 'Deep Build',
+    description: 'Deliberate interview → design → plan → build pipeline with sub-agent orchestration',
+  },
   'design-spec': {
     id: 'design-spec',
     name: 'Design Spec Builder',

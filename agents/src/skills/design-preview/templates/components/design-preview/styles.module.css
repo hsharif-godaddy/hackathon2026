@@ -1,0 +1,178 @@
+/* === managed by design-preview skill — do not edit === */
+
+.page {
+  background: hsl(var(--background, 0 0% 4%));
+  color: hsl(var(--foreground, 0 0% 98%));
+  min-height: 100vh;
+  padding: 3rem 2rem;
+  font-family: var(--font-body, system-ui, sans-serif);
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.header {
+  margin-bottom: 4rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid hsl(var(--accent, 0 0% 50%) / 0.3);
+}
+
+.brandName {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.tagline {
+  font-style: italic;
+  color: hsl(var(--accent, 0 0% 50%));
+  font-size: 1.25rem;
+  margin: 0;
+  opacity: 0.85;
+}
+
+.section {
+  margin-bottom: 4rem;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.7rem;
+  color: hsl(var(--accent, 0 0% 50%));
+  margin: 0 0 0.5rem;
+  opacity: 0.7;
+}
+
+/* Showcase */
+.showcaseContainer {
+  margin-top: 1.5rem;
+  border-radius: var(--radius-md, 6px);
+  overflow: hidden;
+}
+
+/* Palette */
+.paletteGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.swatchCard {
+  display: flex;
+  flex-direction: column;
+}
+
+.swatch {
+  aspect-ratio: 3 / 2;
+  border-radius: var(--radius-md, 6px);
+  border: 1px solid hsl(var(--foreground, 0 0% 98%) / 0.08);
+}
+
+.swatchName {
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  font-weight: 500;
+}
+
+.swatchHex {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.7rem;
+  opacity: 0.5;
+  margin-top: 0.15rem;
+}
+
+/* Typography */
+.typeShowcase {
+  margin-top: 1.5rem;
+}
+
+.displaySample {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0 0 1.5rem;
+}
+
+.bodySample {
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-size: 1rem;
+  line-height: 1.7;
+  max-width: 60ch;
+  opacity: 0.8;
+  margin: 0;
+}
+
+/* Components */
+.componentRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 1.5rem;
+}
+
+.btnPrimary {
+  background: hsl(var(--primary, 0 0% 20%));
+  color: hsl(var(--primary-foreground, 0 0% 98%));
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-md, 6px);
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btnSecondary {
+  background: transparent;
+  color: hsl(var(--primary, 0 0% 50%));
+  border: 1px solid hsl(var(--primary, 0 0% 50%));
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-md, 6px);
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.input {
+  background: transparent;
+  color: hsl(var(--foreground, 0 0% 98%));
+  border: 1px solid hsl(var(--primary, 0 0% 50%) / 0.5);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md, 6px);
+  font-size: 1rem;
+  min-width: 200px;
+}
+
+.cardRow {
+  margin-top: 1.5rem;
+}
+
+.card {
+  background: hsl(var(--card, 0 0% 5%));
+  padding: 1.5rem;
+  border-radius: var(--radius-md, 6px);
+  border: 1px solid hsl(var(--border, 0 0% 50%) / 0.2);
+  max-width: 360px;
+}
+
+.cardTitle {
+  font-family: var(--font-display, Georgia, serif);
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.cardBody {
+  margin: 0;
+  opacity: 0.7;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}

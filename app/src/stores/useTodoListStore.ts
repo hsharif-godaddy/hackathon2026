@@ -21,6 +21,7 @@ export interface TodoItem {
   title: string
   description?: string
   completed: boolean
+  inProgress?: boolean
   order: number
   createdAt: Date
   updatedAt: Date

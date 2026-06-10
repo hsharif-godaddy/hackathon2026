@@ -32,7 +32,8 @@ export const skillAITool: Tool = createTool(
         ? new Set(skillToolManager.getPinnedSkills(conversationId))
         : undefined;
       const contextMetadata = context?.metadata as Record<string, unknown> | undefined;
-      const result = await skillLoader.listSkills({ pinned, market, contextMetadata });
+      const agentId = context?.metadata?.agentId as string | undefined;
+      const result = await skillLoader.listSkills({ pinned, market, contextMetadata, agentId });
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to list skills');

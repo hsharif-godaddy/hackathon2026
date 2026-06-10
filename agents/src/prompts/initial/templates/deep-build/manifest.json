@@ -1,0 +1,8 @@
+{
+  "base": "3.0",
+  "files": [
+    { "src": "template", "file": "identity.md" },
+    { "src": "template", "file": "project-name.md" },
+    { "src": "template", "file": "handoff-template.md" }
+  ]
+}

@@ -294,9 +294,9 @@ export default function TodoListToolRenderer({
     return undefined
   }, [operation, toolStatus])
 
-  // Don't render anything for mark_done/mark_undone/show_list operations
+  // Don't render anything for mark_done/mark_undone/mark_in_progress/show_list operations
   // The persistent todo list UI handles these updates
-  if (operation === 'mark_done' || operation === 'mark_undone' || operation === 'show_list') {
+  if (operation === 'mark_done' || operation === 'mark_undone' || operation === 'mark_in_progress' || operation === 'show_list') {
     return null
   }
 

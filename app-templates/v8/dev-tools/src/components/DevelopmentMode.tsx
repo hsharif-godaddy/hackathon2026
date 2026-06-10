@@ -1404,6 +1404,19 @@ export default function DevelopmentMode() {
           }).catch((error) => {
             console.error('Viewport eval screenshot: Error capturing:', error)
           })
+        } else if (event.data?.type === 'REQUEST_AUDIT') {
+          import('../utils/domAudit').then(({ runDomAudit }) => {
+            const validRoutes: string[] = event.data.validRoutes ?? []
+            const issues = runDomAudit(validRoutes)
+            if (window.parent !== window) {
+              send({ type: 'AUDIT_RESPONSE', issues })
+            }
+          }).catch((error) => {
+            console.error('Audit: Error running:', error)
+            if (window.parent !== window) {
+              send({ type: 'AUDIT_RESPONSE', issues: [] })
+            }
+          })
         } else if (event.data?.type === 'RELOAD_MEDIA_SLOT' && event.data.slotPath) {
           reloadMediaSlot(event.data.slotPath, event.data.isVideo)
         } else if (event.data?.type === 'PREVIEW_THEME' && event.data.palette) {

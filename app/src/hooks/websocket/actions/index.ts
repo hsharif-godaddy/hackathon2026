@@ -6,19 +6,23 @@
  */
 
 export * from './attachDomainAction'
+export * from './auditAction'
 export * from './constants'
 export * from './getSiteDataAction'
 export * from './inboxAction'
 export * from './mcpCallAction'
 export * from './publishAction'
+export * from './screenshotAction'
 export * from './types'
 
 import { attachDomainAction } from './attachDomainAction'
+import { auditAction } from './auditAction'
 import { CLIENT_ACTIONS } from './constants'
 import { getSiteDataAction } from './getSiteDataAction'
 import { inboxAction } from './inboxAction'
 import { mcpCallAction } from './mcpCallAction'
 import { publishAction } from './publishAction'
+import { screenshotAction } from './screenshotAction'
 import type { ClientActionExecutor } from './types'
 
 /**
@@ -32,4 +36,6 @@ export const clientActionExecutors: Record<string, ClientActionExecutor> = {
   [CLIENT_ACTIONS.ATTACH_DOMAIN]: attachDomainAction,
   [CLIENT_ACTIONS.MCP_CALL]: mcpCallAction,
   [CLIENT_ACTIONS.INBOX_CALL]: inboxAction,
+  [CLIENT_ACTIONS.SCREENSHOT]: screenshotAction,
+  [CLIENT_ACTIONS.AUDIT]: auditAction,
 }

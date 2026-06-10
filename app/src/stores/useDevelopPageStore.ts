@@ -2,11 +2,7 @@ import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
-import {
-  DEFAULT_DESKTOP_DEVICE,
-  DEFAULT_MOBILE_DEVICE,
-  DEFAULT_TABLET_DEVICE,
-} from '@/app/[market]/develop/components/preview/devicePresets'
+import { DEFAULT_DESKTOP_DEVICE, DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/[market]/develop/components/preview/devicePresets'
 import { ChatTab, IframeMessageType, MobileMode, PreviewViewMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
 import type { FeedbackCategory } from '@/components/feedback/types'
 import { getSwitchboardFlag } from '@/hooks/useSwitchboard'
@@ -191,6 +187,10 @@ const createDefaultPublishState = () => {
 interface DevelopPageStore {
   // UI states
   viewMode: ViewMode
+  docsPath: string | null
+  docsReloadToken: number
+  previewReloadToken: number
+  previewNavigatePath: string | null
   mobileMode: MobileMode
   previewViewMode: PreviewViewMode
   selectedDeviceId: string
@@ -218,8 +218,12 @@ interface DevelopPageStore {
 
   // Model override (per-project)
   selectedModel: string | null
+  selectedProfile: string | null
 
-  // Inbox account data
+  // Conversations brand ID
+  conversationsBrandId: string | null
+
+  // Inbox
   inboxAccountId: string | null
   inboxBrandId: string | null
 
@@ -307,6 +311,9 @@ interface DevelopPageStore {
 
   // UI setters
   setViewMode: (mode: ViewMode) => void
+  setDocsPath: (path: string | null) => void
+  openDoc: (path: string) => void
+  openPreviewPage: (path: string) => void
   setMobileMode: (mode: MobileMode) => void
   setPreviewViewMode: (mode: PreviewViewMode) => void
   setSelectedDeviceId: (deviceId: string) => void
@@ -317,6 +324,8 @@ interface DevelopPageStore {
   setIsChatPaneCollapsed: (collapsed: boolean) => void
   setHasUnsavedChanges: (hasChanges: boolean) => void
   setSelectedModel: (model: string | null) => void
+  setSelectedProfile: (profile: string | null) => void
+  setConversationsBrandId: (brandId: string | null) => void
   setInboxAccountId: (accountId: string | null) => void
   setInboxBrandId: (brandId: string | null) => void
   setIsMobile: (isMobile: boolean) => void
@@ -445,6 +454,10 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     persist(immer((set, get) => ({
     // Initial UI state
     viewMode: ViewMode.EDIT,
+    docsPath: null,
+    docsReloadToken: 0,
+    previewReloadToken: 0,
+    previewNavigatePath: null,
     mobileMode: MobileMode.TOOLS,
     previewViewMode: PreviewViewMode.DESKTOP,
     selectedDeviceId: DEFAULT_DESKTOP_DEVICE,
@@ -460,6 +473,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     isRestarting: false,
     hasUnsavedChanges: false,
     selectedModel: null,
+    selectedProfile: null,
+    conversationsBrandId: null,
     inboxAccountId: null,
     inboxBrandId: null,
     isVersionHistoryOpen: false,
@@ -515,6 +530,17 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // UI setters
     setViewMode: (mode) => set((state) => { state.viewMode = mode }),
+    setDocsPath: (path) => set((state) => { state.docsPath = path }),
+    openDoc: (path) => set((state) => {
+      state.docsPath = path
+      state.viewMode = ViewMode.DOCS
+      state.docsReloadToken += 1
+    }),
+    openPreviewPage: (path) => set((state) => {
+      state.previewNavigatePath = path
+      state.viewMode = ViewMode.PREVIEW
+      state.previewReloadToken += 1
+    }),
     setMobileMode: (mode) => set((state) => { state.mobileMode = mode }),
     setPreviewViewMode: (mode) => set((state) => {
       state.previewViewMode = mode
@@ -535,6 +561,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setIsChatPaneCollapsed: (collapsed) => set((state) => { state.isChatPaneCollapsed = collapsed }),
     setHasUnsavedChanges: (hasChanges) => set((state) => { state.hasUnsavedChanges = hasChanges }),
     setSelectedModel: (model) => set((state) => { state.selectedModel = model }),
+    setSelectedProfile: (profile) => set((state) => { state.selectedProfile = profile }),
+    setConversationsBrandId: (brandId) => set((state) => { state.conversationsBrandId = brandId }),
     setInboxAccountId: (accountId) => set((state) => { state.inboxAccountId = accountId }),
     setInboxBrandId: (brandId) => set((state) => { state.inboxBrandId = brandId }),
     setIsMobile: (isMobile) => {
@@ -962,7 +990,10 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.autoSendTriggered = false
         state.hasUnsavedChanges = false
         state.selectedModel = null
+        state.selectedProfile = null
         state.feedbackInitialStep = null
+        state.docsPath = null
+        state.viewMode = ViewMode.PREVIEW
       })
     },
 

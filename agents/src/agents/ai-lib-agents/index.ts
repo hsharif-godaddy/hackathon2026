@@ -23,6 +23,7 @@ import {
   ExampleAgent,
   discoverNamedInitialVariants
 } from '../index.js'
+import { createDeepBuildAgent } from '../deep-build-agent.js'
 import { getTemplateIds } from '../template-registry.js'
 import type { EnhancedAgentContext } from './types.js'
 import { skillToolManager } from '../../tools/skill-tool-manager.js'
@@ -70,6 +71,7 @@ export async function createUnifiedAgentFactory(options?: {
 
   const debugConfig = await createDebugAgent()
   const marketingConfig = await createMarketingAgent()
+  const deepBuildConfig = await createDeepBuildAgent()
   const initialConfig = await createInitialAgent(stateManager)
   const initialV2Config = await createInitialAgent(stateManager, undefined, '2.0')
   initialV2Config.id = 'initial-v2'
@@ -185,6 +187,8 @@ export async function createUnifiedAgentFactory(options?: {
     config.contextPipeline = contextPipeline
   }
 
+  deepBuildConfig.contextPipeline = contextPipeline
+
   // Build agent definitions conditionally
   const agentDefinitions: Record<string, AgentConfig> = {
     initial: initialConfig,
@@ -194,6 +198,7 @@ export async function createUnifiedAgentFactory(options?: {
     develop: developConfig,
     marketing: marketingConfig,
     debug: debugConfig,
+    'deep-build': deepBuildConfig,
     ...templateInitialConfigs,
   }
 

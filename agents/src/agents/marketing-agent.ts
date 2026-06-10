@@ -22,7 +22,7 @@ async function buildMarketingSystemPrompt(options?: { market?: string }): Promis
   const paths = getModularPromptPaths(import.meta.url)
 
   const skillLoader = new SkillLoaderTool()
-  const skillsResult = await skillLoader.listSkills({ market: options?.market })
+  const skillsResult = await skillLoader.listSkills({ market: options?.market, agentId: 'marketing' })
   const skillsSection = skillsResult.success && skillsResult.skills?.length
     ? buildSkillsPromptSection(skillsResult.skills)
     : ''

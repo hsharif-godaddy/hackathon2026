@@ -266,7 +266,7 @@ function TodoItemRow({
       `}
     >
       <div className="flex-shrink-0">
-        <CircularCheckbox checked={item.completed} />
+        <CircularCheckbox checked={item.completed} inProgress={item.inProgress} />
       </div>
       <div className={`flex-1 ${item.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
         {item.title}
@@ -280,12 +280,12 @@ function TodoItemRow({
  *
  * Modern circular checkbox with smooth animation
  */
-function CircularCheckbox({ checked }: { checked: boolean }) {
+function CircularCheckbox({ checked, inProgress }: { checked: boolean; inProgress?: boolean }) {
   return (
     <div className="relative w-2.5 h-2.5">
       <div className={`
         w-2.5 h-2.5 rounded-full border-2 transition-all duration-200
-        ${checked ? 'border-intents-success-borderColor bg-intents-success-backgroundColor' : 'border-border bg-intents-ux-box-backgroundColor'}
+        ${checked ? 'border-intents-success-borderColor bg-intents-success-backgroundColor' : inProgress ? 'border-intents-info-borderColor' : 'border-border bg-intents-ux-box-backgroundColor'}
       `}>
         {checked && (
           <svg
@@ -300,6 +300,19 @@ function CircularCheckbox({ checked }: { checked: boolean }) {
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
+            />
+          </svg>
+        )}
+        {!checked && inProgress && (
+          <svg
+            className="w-full h-full text-intents-info-color"
+            viewBox="0 0 20 20"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M10 3 A7 7 0 0 1 10 17"
+              fill="currentColor"
             />
           </svg>
         )}
@@ -347,7 +360,7 @@ function TodoListModal({
               >
                 <div className="flex items-start gap-1.5">
                   <div className="flex-shrink-0">
-                    <CircularCheckbox checked={item.completed} />
+                    <CircularCheckbox checked={item.completed} inProgress={item.inProgress} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className={`text-sm font-medium ${item.completed ? 'line-through text-muted-foreground' : 'text-foreground'}`}>

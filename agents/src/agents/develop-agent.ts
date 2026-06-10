@@ -150,7 +150,7 @@ async function buildDevelopSystemPrompt(
   const paths = getModularPromptPaths(import.meta.url);
 
   const skillLoader = new SkillLoaderTool();
-  const skillsResult = await skillLoader.listSkills({ market: options?.market });
+  const skillsResult = await skillLoader.listSkills({ market: options?.market, agentId: 'develop' });
   const skillsSection = skillsResult.success && skillsResult.skills?.length
     ? buildSkillsPromptSection(skillsResult.skills)
     : '';

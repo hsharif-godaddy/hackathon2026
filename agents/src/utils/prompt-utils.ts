@@ -190,11 +190,10 @@ export function getToolPromptFile(toolName: string, fileName: string, currentMod
  */
 export function getModularPromptPaths(currentModuleUrl: string, depth: number = 1) {
   const resolvedPromptsDir = getPromptsDir(currentModuleUrl, depth)
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   return {
     promptsDir: resolvedPromptsDir,
-    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
     sharedDir: path.join(resolvedPromptsDir, 'shared'),
-    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
     getAgentDir: (agentName: string) => path.join(resolvedPromptsDir, agentName),
     // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
     getAgentFile: (agentName: string, fileName: string) => path.join(resolvedPromptsDir, agentName, fileName),

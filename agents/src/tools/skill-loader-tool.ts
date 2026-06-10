@@ -214,6 +214,7 @@ interface SkillFrontmatter {
   switchboardFlag: string | undefined;
   intents: string[] | undefined;
   skillMarkets: string[] | undefined;
+  allowedAgents: string[] | undefined;
 }
 
 export class SkillLoaderTool {
@@ -289,6 +290,9 @@ export class SkillLoaderTool {
         intents: intents && intents.length > 0 ? intents : undefined,
         skillMarkets: Array.isArray(data.markets)
           ? (data.markets as unknown[]).filter((m): m is string => typeof m === 'string')
+          : undefined,
+        allowedAgents: Array.isArray(data.allowedAgents)
+          ? (data.allowedAgents as unknown[]).filter((a): a is string => typeof a === 'string')
           : undefined,
       };
       this.frontmatterCache.set(skillName, fm);
@@ -770,7 +774,7 @@ export class SkillLoaderTool {
    * List all available skills with their descriptions from YAML frontmatter
    * Only reads the frontmatter, not the full skill.md content
    */
-  async listSkills(options?: { pinned?: Set<string>; market?: string; contextMetadata?: Record<string, unknown> }): Promise<{ success: boolean; skills?: SkillListItem[]; error?: string }> {
+  async listSkills(options?: { pinned?: Set<string>; market?: string; contextMetadata?: Record<string, unknown>; agentId?: string }): Promise<{ success: boolean; skills?: SkillListItem[]; error?: string }> {
     this.logger.info('skill.list.start', {});
 
     try {
@@ -839,6 +843,17 @@ export class SkillLoaderTool {
           this.logger.debug('skill.list.switchboard_disabled', {
             skill: skillName,
             switchboardFlag
+          });
+          return null;
+        }
+
+        // If allowedAgents is provided, only show this skill to listed agents
+        const allowedAgents = fm?.allowedAgents;
+        if (Array.isArray(allowedAgents) && options?.agentId && !allowedAgents.includes(options.agentId)) {
+          this.logger.debug('skill.list.agent_restricted', {
+            skill: skillName,
+            allowedAgents,
+            agentId: options.agentId
           });
           return null;
         }

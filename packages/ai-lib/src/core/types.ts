@@ -181,6 +181,9 @@ export interface AgentConfig {
    *  On failure (empty return or throw), retries up to 3 times across subsequent turns, then gives up. */
   onSkillsLoad?: (conversationId: string) => Promise<PipelineContextMessage[]>
 
+  /** Called during prepareStep to allow injecting additional content (e.g. images) between steps.
+   *  Return { messages } to override the messages array for the next LLM call. */
+  onPrepareStep?: (opts: { stepNumber: number; messages: unknown[] }) => { messages?: unknown[] } | undefined
 }
 
 /**

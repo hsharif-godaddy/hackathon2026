@@ -17,7 +17,6 @@ import ChatInput, { type StagedChatFile } from '@/app/[market]/develop/component
 import ChatToolbar from '@/app/[market]/develop/components/chat/ChatToolbar';
 import {
   DebugStatsProvider,
-  useDebugStats,
 } from '@/app/[market]/develop/components/chat/DebugStatsContext';
 import { DebugStatsPanel } from '@/app/[market]/develop/components/chat/DebugStatsDrawer';
 import { UploadedFile } from '@/app/[market]/develop/components/chat/FileUploadButton';
@@ -226,7 +225,6 @@ function ChatPaneInner({
   initialPromptText = null,
 }: ChatPaneProps) {
   const t = useTranslations();
-  const { dispatch: debugStatsDispatch } = useDebugStats();
   useDebugStatsBridge();
   const messages = useMessages();
   const userMessages = useMemo(
@@ -238,16 +236,6 @@ function ChatPaneInner({
   const isLoading = useIsLoading();
   const currentAppId = useCurrentAppId();
   const isStreaming = useIsActivelyStreaming();
-  // Seal the in-flight debug stats turn when the agent's response finishes
-  // streaming, so the drawer reflects the prompt the user just saw rather
-  // than waiting until the next prompt is sent.
-  const wasStreamingRef = useRef(false);
-  useEffect(() => {
-    if (wasStreamingRef.current && !isStreaming) {
-      debugStatsDispatch({ type: 'USER_MESSAGE_SENT', sealedAt: new Date().toISOString() });
-    }
-    wasStreamingRef.current = isStreaming;
-  }, [isStreaming, debugStatsDispatch]);
   const developmentPlan = useDevelopmentPlan();
   const aiEditContext = useAiEditContext();
   const buildErrorContext = useBuildErrorContext();
@@ -814,7 +802,6 @@ function ChatPaneInner({
   // Handle sending a message - accepts optional content for programmatic sends
   const handleSendMessage = useCallback(
     async (content?: string, options?: SendChatMessageOptions) => {
-      debugStatsDispatch({ type: 'USER_MESSAGE_SENT', sealedAt: new Date().toISOString() });
       const messageToSend = content ?? inputValue;
       const userInitiated = content === undefined;
       const hasText = Boolean(messageToSend?.trim());
@@ -1018,7 +1005,6 @@ function ChatPaneInner({
       }
     },
     [
-      debugStatsDispatch,
       inputValue,
       sendMessage,
       currentAppId,

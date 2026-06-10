@@ -83,6 +83,8 @@ export function getToolActiveDisplayName(toolName: string, t: Translator): strin
       return t('builder_tools_active_website_scraper')
     case 'restore':
       return t('builder_tools_active_restore')
+    case 'runAgent':
+      return 'Building'
     default:
       return null
   }

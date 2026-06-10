@@ -4,13 +4,14 @@ import { z } from 'zod'
 import { SubAgentRunner, type SubAgentEvent } from '../../agents/sub-agent-runner.js'
 import { getSubAgentConfig, type SubAgentName as BackgroundAgentName } from '../../agents/sub-agents/index.js'
 import { interactiveSubAgentManager } from '../../agents/interactive-sub-agent-manager.js'
+import { createInteractiveInterviewConfig } from '../../agents/sub-agents/interview.js'
 import { maybeEmitDebugTurnStats } from '../../server/debug-stats-emit.js'
 import { computeDebugTurnStats } from '../../utils/debug-turn-stats.js'
 import { Logger } from '../../logging/index.js'
 
 const logger = Logger.create({ component: 'run-agent-tool' })
 
-const VALID_AGENTS = ['discovery'] as const
+const VALID_AGENTS = ['discovery', 'planning', 'plan-review', 'media', 'design', 'builder', 'interview', 'verification'] as const
 type AgentName = typeof VALID_AGENTS[number]
 
 export const runAgentAITool: Tool = createTool(
@@ -18,9 +19,9 @@ export const runAgentAITool: Tool = createTool(
 
 Modes:
 - "background" (default): Sub-agent runs internally and returns a summary. Cannot ask the user questions. Multiple background calls in the same turn execute in parallel.
-- "interactive": Sub-agent takes over the conversation temporarily. It CAN ask the user questions via askQuestion. Only one interactive agent at a time.
+- "interactive": Sub-agent takes over the conversation temporarily. It CAN ask the user questions via askQuestion. Only one interactive agent at a time. Use for tasks requiring user input (e.g. interview).
 
-Available agents: discovery (research/scraping).`,
+Available agents: discovery (research/scraping), planning (write implementation plans), plan-review (review and fix plans against quality criteria), media (find/generate images), design (create/update design.md + CSS), builder (execute plans, write code), interview (structured Q&A with user to produce docs/brief.md), verification (run automated checks against built app).`,
   z.object({
     agent: z.enum(VALID_AGENTS).describe('Which sub-agent to dispatch to'),
     title: z.string().describe('Short display title for the task (shown to user in the UI card)'),
@@ -42,6 +43,10 @@ Available agents: discovery (research/scraping).`,
       return handleInteractiveMode(agent as AgentName, task, inputs, context as AgentContext | undefined)
     }
 
+    if (agent === 'interview') {
+      throw new Error('The interview agent only supports interactive mode')
+    }
+
     logger.info('runAgent.dispatching', { agent, appId, task: task.slice(0, 100) })
 
     const subAgentConfig = await getSubAgentConfig(agent as BackgroundAgentName, appPath)
@@ -60,47 +65,55 @@ Available agents: discovery (research/scraping).`,
         })
       }
       if (event.event === 'usage' && appId) {
-        let usage: {
-          modelName: string
-          inputTokens: number
-          outputTokens: number
-          totalTokens: number
-          cachedInputTokens: number
-          cacheWriteInputTokens: number
-          steps: number
-        }
         try {
-          usage = JSON.parse(event.detail)
-        } catch (err) {
-          logger.warn('runAgent.usage.parse_failed', { agent, error: err instanceof Error ? err.message : String(err) })
-          return
-        }
-        const statsInput = {
-          appId,
-          conversationId: (context?.metadata?.conversationId as string) ?? 'unknown',
-          agentName: `sub:${event.agent}`,
-          modelName: usage.modelName,
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          totalTokens: usage.totalTokens,
-          cachedInputTokens: usage.cachedInputTokens,
-          cacheWriteInputTokens: usage.cacheWriteInputTokens,
-          steps: usage.steps,
-        }
-        maybeEmitDebugTurnStats(statsInput)
-        if (emitter) {
-          const payload = computeDebugTurnStats(statsInput)
-          emitter.emit('debug_turn_stats', payload)
+          const usage = JSON.parse(event.detail) as {
+            modelName: string
+            inputTokens: number
+            outputTokens: number
+            totalTokens: number
+            cachedInputTokens: number
+            cacheWriteInputTokens: number
+            steps: number
+          }
+          const statsInput = {
+            appId,
+            conversationId: (context?.metadata?.conversationId as string) ?? 'unknown',
+            agentName: `sub:${event.agent}`,
+            modelName: usage.modelName,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            totalTokens: usage.totalTokens,
+            cachedInputTokens: usage.cachedInputTokens,
+            cacheWriteInputTokens: usage.cacheWriteInputTokens,
+            steps: usage.steps,
+          }
+          // WS path: emit via Socket.IO directly
+          maybeEmitDebugTurnStats(statsInput)
+          // SSE path: emit via eventEmitter → event channel
+          if (emitter) {
+            const payload = computeDebugTurnStats(statsInput)
+            emitter.emit('debug_turn_stats', payload)
+          }
+        } catch {
+          // ignore parse errors
         }
       }
     }
 
     const result = await runner.execute(task, inputs, emitEvent, context as unknown as Record<string, unknown> | undefined)
 
+    if (result.status === 'error') {
+      logger.error('runAgent.failed', {
+        agent,
+        appId,
+        summary: result.summary?.slice(0, 200),
+      })
+      throw new Error(`Sub-agent "${agent}" failed: ${result.summary}`)
+    }
+
     logger.info('runAgent.completed', {
       agent,
       appId,
-      status: result.status,
       artifactCount: result.artifacts.length,
     })
 
@@ -109,6 +122,7 @@ Available agents: discovery (research/scraping).`,
 )
 
 const INTERACTIVE_AGENT_FACTORIES: Partial<Record<AgentName, (agentId: string) => Promise<unknown>>> = {
+  interview: createInteractiveInterviewConfig,
 }
 
 async function handleInteractiveMode(
@@ -116,7 +130,7 @@ async function handleInteractiveMode(
   task: string,
   _inputs: Record<string, string | string[]>,
   context: AgentContext | undefined
-): Promise<{ ok: true; interactive: true; agent: string }> {
+): Promise<{ ok: boolean; interactive: true; agent: string; error?: string }> {
   const metadata = context?.metadata
   const sessionId: string | undefined =
     metadata?.sessionId as string | undefined ??
@@ -137,7 +151,7 @@ async function handleInteractiveMode(
   }
 
   const childAgentName: string = `interactive-${agent}`
-  const parentAgentName: string = (metadata?.agentId as string | undefined) ?? 'airo'
+  const parentAgentName: string = (metadata?.agentId as string | undefined) ?? 'deep-build'
 
   logger.info('runAgent.interactive.launching', {
     agent,
@@ -156,7 +170,15 @@ async function handleInteractiveMode(
     task,
   )
 
-  await interactiveSubAgentManager.triggerHandoffToChild(sessionId, task)
+  try {
+    await interactiveSubAgentManager.triggerHandoffToChild(sessionId, task)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    logger.error('runAgent.interactive.handoff_failed', { agent, sessionId, error: message })
+    interactiveSubAgentManager.cleanup(sessionId)
+    interactiveSubAgentManager.getDeps().removeAgent(childAgentName)
+    return { ok: false, interactive: false, agent: childAgentName, error: `Handoff failed: ${message}` }
+  }
 
   return { ok: true, interactive: true, agent: childAgentName }
 }

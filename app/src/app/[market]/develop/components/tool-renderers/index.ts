@@ -35,10 +35,12 @@ import QRCodeToolRenderer from './QRCodeToolRenderer'
 import ReadFileToolRenderer from './ReadFileToolRenderer'
 import RebuildBuildPageToolRenderer from './RebuildBuildPageToolRenderer'
 import RebuildPageSelectorToolRenderer from './RebuildPageSelectorToolRenderer'
+import RunAgentToolRenderer from './RunAgentToolRenderer'
 import SecretsToolRenderer from './SecretsToolRenderer'
 import SeoAuditToolRenderer from './SeoAuditToolRenderer'
 import SetProjectNameToolRenderer from './SetProjectNameToolRenderer'
 import SetVentureLogoToolRenderer from './SetVentureLogoToolRenderer'
+import ShowDocToolRenderer from './ShowDocToolRenderer'
 import SkillToolRenderer from './SkillToolRenderer'
 import SocialConnectToolRenderer from './SocialConnectToolRenderer'
 import SocialPostCreateToolRenderer from './SocialPostCreateToolRenderer'
@@ -114,11 +116,14 @@ export const toolRendererRegistry = {
   seo__audit: SeoAuditToolRenderer,
   seoAnalysis: SeoAuditToolRenderer,
   setProjectName: SetProjectNameToolRenderer,
+  showDoc: ShowDocToolRenderer,
   socialConnect: SocialConnectToolRenderer,
   'social-platform__socialConnect': SocialConnectToolRenderer,
   skill: SkillToolRenderer,
   publishClient: PublishClientToolRenderer,
   publishing__publish: PublishClientToolRenderer,
+  returnToParent: () => null,
+  runAgent: RunAgentToolRenderer,
   websiteRebuild: WebsiteRebuildToolRenderer,
   rebuildPageSelector: RebuildPageSelectorToolRenderer,
   rebuildBuildPage: RebuildBuildPageToolRenderer,
@@ -194,8 +199,10 @@ export {
   ReadFileToolRenderer,
   RebuildBuildPageToolRenderer,
   RebuildPageSelectorToolRenderer,
+  RunAgentToolRenderer,
   SecretsToolRenderer,
   SetProjectNameToolRenderer,
+  ShowDocToolRenderer,
   SkillToolRenderer,
   SocialPostCreateToolRenderer,
   SocialPublishToolRenderer,

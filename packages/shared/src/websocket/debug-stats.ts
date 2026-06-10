@@ -19,4 +19,5 @@ export interface DebugTurnStatsEvent {
   contextWindowUtilization: number
   costUsd: number
   timestamp: string
+  steps?: number
 }
