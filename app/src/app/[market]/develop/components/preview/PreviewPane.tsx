@@ -1,7 +1,7 @@
 'use client'
 
 import clsx from 'clsx'
-import { animate, AnimatePresence, motion, useMotionValue } from 'framer-motion'
+import { animate, motion, useMotionValue } from 'framer-motion'
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -1399,30 +1399,25 @@ export default function PreviewPane({
                   )}
                 </div>
               )}
-              {isPortalReady && createPortal(
-                <AnimatePresence>
-                  {showEditingChip && editingChipPosition && (
-                    <motion.div
-                      key="preview-editing-chip"
-                      data-testid="preview-editing-chip"
-                      className="fixed z-50"
-                      style={{
-                        left: editingChipPosition.left,
-                        top: editingChipPosition.top,
-                      }}
-                      initial={{ opacity: 0, x: '-50%', y: -4 }}
-                      animate={{ opacity: 1, x: '-50%', y: 0 }}
-                      exit={{ opacity: 0, x: '-50%', y: -4, transition: { duration: 0.25 } }}
-                      transition={{ duration: 0.175 }}
-                    >
-                      <Canvas.Status
-                        label={isMutatingFiles
-                          ? t('builder_preview_editing', undefined, 'Editing…')
-                          : t('builder_agent_thinking', undefined, 'Thinking…')}
-                      />
-                    </motion.div>
-                  )}
-                </AnimatePresence>,
+              {isPortalReady && showEditingChip && editingChipPosition && createPortal(
+                <motion.div
+                  key="preview-editing-chip"
+                  data-testid="preview-editing-chip"
+                  className="fixed"
+                  style={{
+                    left: editingChipPosition.left,
+                    top: editingChipPosition.top,
+                  }}
+                  initial={{ opacity: 0, x: '-50%', y: -4 }}
+                  animate={{ opacity: 1, x: '-50%', y: 0 }}
+                  transition={{ duration: 0.175 }}
+                >
+                  <Canvas.Status
+                    label={isMutatingFiles
+                      ? t('builder_preview_editing', undefined, 'Editing…')
+                      : t('builder_agent_thinking', undefined, 'Thinking…')}
+                  />
+                </motion.div>,
                 document.body
               )}
             </div>
