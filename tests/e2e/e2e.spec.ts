@@ -176,22 +176,25 @@ test.describe('E2E - Critical Path', () => {
     await test.step('Step 3: Preview controls + auto-publish verification', async () => {
       await dismissOverlays(page);
 
-      // Wait for initial AI generation to complete
-      await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
-      console.log('  Initial app generation completed');
-
       if (autoPublishSupported) {
         // Guard: ensure we are still on the develop page. If the test environment
         // had a session/network hiccup and redirected away, this fails fast with a
         // clear URL mismatch instead of silently burning the full PUBLISH_TIMEOUT_MS.
         await expect(page).toHaveURL(/\/develop\//, { timeout: DEFAULT_TIMEOUT });
 
-        // The agent publish pauses on the human-in-the-loop confirmation modal; approve
-        // it so the publish work starts (otherwise it hangs until the confirmation times
-        // out and resolves as cancelled, failing the success assertion below).
+        // The agent calls publishing__publish as a tool call mid-stream, which blocks
+        // the stream until approved — approve BEFORE waiting for chat-send-button or
+        // the stream can never complete (deadlock: send-button only appears after stream
+        // ends, but stream is paused awaiting the publish tool response).
         await approveAgentPublish(page, PUBLISH_TIMEOUT_MS);
         console.log('  Approved agent publish confirmation');
+      }
 
+      // Wait for initial AI generation to complete
+      await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+      console.log('  Initial app generation completed');
+
+      if (autoPublishSupported) {
         // Verify auto-publish succeeded (prompt instructed AI to publish)
         await expectPublishSuccessVisible(page, PUBLISH_TIMEOUT_MS);
         console.log('  Auto-publish success verified');
