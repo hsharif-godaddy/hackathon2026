@@ -439,6 +439,11 @@ export class TransportSupervisor extends EventEmitter {
       refs: this.deps.refs,
       machine: this.deps.machine,
       t: this.deps.t ?? ((id: string) => id),
+      // WS reverse channel for the transport-agnostic timeout-reset signal.
+      // Mirrors how client_action results are emitted back on this same socket.
+      // Sends only requestId — the agent reuses the action's original timeout.
+      resetActionTimeout: (requestId: string) =>
+        socket.emit('client_action_reset_timeout', { requestId }),
     };
 
     socket.on('status', (data) => {

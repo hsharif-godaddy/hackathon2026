@@ -44,6 +44,7 @@ import {
   getSpecPrefix,
 } from '../helpers/constants';
 import {
+  approveAgentPublish,
   dismissOverlays,
   expectPublishSuccessVisible,
   logTestResult,
@@ -184,6 +185,12 @@ test.describe('E2E - Critical Path', () => {
         // had a session/network hiccup and redirected away, this fails fast with a
         // clear URL mismatch instead of silently burning the full PUBLISH_TIMEOUT_MS.
         await expect(page).toHaveURL(/\/develop\//, { timeout: DEFAULT_TIMEOUT });
+
+        // The agent publish pauses on the human-in-the-loop confirmation modal; approve
+        // it so the publish work starts (otherwise it hangs until the confirmation times
+        // out and resolves as cancelled, failing the success assertion below).
+        await approveAgentPublish(page, PUBLISH_TIMEOUT_MS);
+        console.log('  Approved agent publish confirmation');
 
         // Verify auto-publish succeeded (prompt instructed AI to publish)
         await expectPublishSuccessVisible(page, PUBLISH_TIMEOUT_MS);

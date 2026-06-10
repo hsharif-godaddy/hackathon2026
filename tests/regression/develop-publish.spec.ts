@@ -28,6 +28,7 @@ import {
   getSpecPrefix,
 } from '../helpers/constants';
 import {
+  approveAgentPublish,
   dismissGoLiveModalIfPresent,
   dismissOverlays,
   expectPublishSuccessVisible,
@@ -91,6 +92,11 @@ test.describe('Publish Flow', () => {
 
     // Session may have expired during AI generation + publish
     await ensureAuthenticated(page);
+
+    // The agent publish pauses on the confirmation modal; approve it so the publish
+    // work starts (otherwise it hangs until the confirmation times out as cancelled).
+    await approveAgentPublish(page, PUBLISH_TIMEOUT_MS);
+    console.log('  ✓ Approved agent publish confirmation');
 
     // ========================================
     // STEP 3: Verify publish success
@@ -188,6 +194,10 @@ test.describe('Publish Flow', () => {
     console.log('🤖 Step 2: Waiting for AI agent to publish...');
     await waitForChatInput(page);
     await ensureAuthenticated(page);
+
+    // The agent publish pauses on the confirmation modal; approve it before asserting success.
+    await approveAgentPublish(page, PUBLISH_TIMEOUT_MS);
+    console.log('  ✓ Approved agent publish confirmation');
 
     const publishButton = page.getByTestId('airo-header').getByRole('button', { name: /publish/i });
     await expect(publishButton).not.toBeDisabled({ timeout: DEPLOYMENT_TIMEOUT_MS });
@@ -308,6 +318,16 @@ test.describe('Publish Flow', () => {
 
     const appId = page.url().match(/\/develop\/([a-zA-Z0-9]+)/)?.[1] || '';
     expect(appId).toBeTruthy();
+
+    // The creation prompt asks the agent to publish, but this test exercises the *manual*
+    // publish-popover DNS-conflict flow. Decline the agent's publish confirmation (a decline
+    // leaves no side effects) so the modal doesn't block the popover-driven flow below.
+    const agentPublishModal = page.getByTestId('agent-publish-confirm-modal');
+    if (await agentPublishModal.isVisible({ timeout: DEPLOYMENT_TIMEOUT_MS }).catch(() => false)) {
+      await page.keyboard.press('Escape');
+      await expect(agentPublishModal).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      console.log('  ✓ Declined incidental agent publish confirmation');
+    }
 
     const mockedDomain = 'example.com';
     let deploymentsPostCount = 0;

@@ -43,6 +43,79 @@ describe('ClientActionService', () => {
       expect(service['boundHandler']).toBeDefined()
       expect(typeof service['boundHandler']).toBe('function')
     })
+
+    it('should register client_action_reset_timeout event listener', () => {
+      expect(mockSocket.on).toHaveBeenCalledWith('client_action_reset_timeout', expect.any(Function))
+      expect(typeof service['boundResetHandler']).toBe('function')
+    })
+  })
+
+  describe('client_action_reset_timeout', () => {
+    const getResetHandler = () =>
+      mockSocket.on.mock.calls.find((call: any) => call[0] === 'client_action_reset_timeout')?.[1]
+
+    it('resets a pending action to a fresh window reusing the original timeout', async () => {
+      vi.useFakeTimers()
+      const promise = service.executeAction({ action: 'publish', params: {}, timeoutMs: 5000 }).catch((e) => e)
+      const requestId = mockSocket.emit.mock.calls[0][1].data.requestId
+
+      // Burn most of the original window, then reset (payload carries no duration).
+      vi.advanceTimersByTime(4000)
+      getResetHandler()({ requestId })
+
+      // Past the ORIGINAL deadline (would have fired at 5000) — still pending.
+      vi.advanceTimersByTime(2000)
+      expect(service.getPendingRequestIds()).toContain(requestId)
+
+      // Fires one full original window (5000) after the reset point (4000 + 5000).
+      vi.advanceTimersByTime(3001)
+      const err = await promise
+      expect(err.message).toBe('Client action timed out after 5000ms')
+      vi.useRealTimers()
+    })
+
+    it('IGNORES a client-supplied newTimeoutMs that would extend the action', async () => {
+      vi.useFakeTimers()
+      const promise = service.executeAction({ action: 'publish', params: {}, timeoutMs: 5000 }).catch((e) => e)
+      const requestId = mockSocket.emit.mock.calls[0][1].data.requestId
+
+      vi.advanceTimersByTime(4000)
+      // A malicious/buggy client tries to extend the window to ~16 minutes.
+      getResetHandler()({ requestId, newTimeoutMs: 999999 })
+
+      // If the override were honored it would still be pending far past here; instead
+      // it fires one ORIGINAL window (5000) after the reset point (t = 4000 + 5000).
+      vi.advanceTimersByTime(4999)
+      expect(service.getPendingRequestIds()).toContain(requestId)
+      vi.advanceTimersByTime(2)
+      const err = await promise
+      expect(err.message).toBe('Client action timed out after 5000ms')
+      vi.useRealTimers()
+    })
+
+    it('IGNORES a malformed/negative client newTimeoutMs and does not collapse the timeout', async () => {
+      vi.useFakeTimers()
+      const promise = service.executeAction({ action: 'publish', params: {}, timeoutMs: 5000 }).catch((e) => e)
+      const requestId = mockSocket.emit.mock.calls[0][1].data.requestId
+
+      vi.advanceTimersByTime(1000)
+      // A negative duration, if honored, would fire ~immediately (setTimeout clamps to ~0).
+      getResetHandler()({ requestId, newTimeoutMs: -1 })
+
+      // Not collapsed: still pending shortly after the reset.
+      vi.advanceTimersByTime(100)
+      expect(service.getPendingRequestIds()).toContain(requestId)
+
+      // Fires one ORIGINAL window (5000) after the reset point (t = 1000 + 5000).
+      vi.advanceTimersByTime(5001)
+      const err = await promise
+      expect(err.message).toBe('Client action timed out after 5000ms')
+      vi.useRealTimers()
+    })
+
+    it('should ignore a reset for an unknown requestId without throwing', () => {
+      expect(() => getResetHandler()({ requestId: 'nope' })).not.toThrow()
+    })
   })
 
   describe('executeAction', () => {
@@ -232,6 +305,7 @@ describe('ClientActionService', () => {
       service.cleanup()
 
       expect(mockSocket.off).toHaveBeenCalledWith('client_action_result', service['boundHandler'])
+      expect(mockSocket.off).toHaveBeenCalledWith('client_action_reset_timeout', service['boundResetHandler'])
     })
 
     it('should reject all pending requests', async () => {
@@ -274,7 +348,8 @@ describe('ClientActionService', () => {
       service.cleanup()
       service.cleanup()
 
-      expect(mockSocket.off).toHaveBeenCalledTimes(2)
+      // Two listeners (result + reset) removed per cleanup call.
+      expect(mockSocket.off).toHaveBeenCalledTimes(4)
     })
 
     it('should remove pending request after cleanup', () => {

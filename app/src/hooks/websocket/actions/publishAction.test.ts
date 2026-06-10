@@ -125,6 +125,9 @@ describe('publishAction', () => {
       setShowFirstPublishCongrats: vi.fn(),
       setFirstPublishDeployPending: vi.fn(),
       getPublishState: vi.fn(function () { return { firstPublishDeployPending: false }; }),
+      requestAgentPublishConfirmation: vi.fn(),
+      resolveAgentPublishConfirmation: vi.fn(),
+      resetAgentPublishConfirmation: vi.fn(),
     }
 
     vi.mocked(useDevelopPageStore.getState).mockReturnValue(mockStoreActions)
@@ -210,14 +213,17 @@ describe('publishAction', () => {
     vi.mocked(logAiroHQEvent).mockReturnValue(() => {})
     vi.mocked(logImpressionEvent).mockReturnValue(() => {})
 
-    // Default: simulate successful deployment completion via store subscription.
-    // useDeploymentsQuery already polls mgmt-airo; publishAction subscribes to the
-    // store and resolves when deploymentInProgressId is cleared.
+    // Default: satisfy both store-subscription waiters in publishAction.
+    // 1. awaitAgentPublishApproval resolves when agentPublishConfirmation is terminal
+    //    ('approved' here = user approved the publish).
+    // 2. waitForPublishResult resolves when deploymentInProgressId is cleared.
+    // useDeploymentsQuery already polls mgmt-airo for (2); both read the same snapshot.
     vi.mocked(useDevelopPageStore.subscribe).mockImplementation(function (callback: any) {
       Promise.resolve().then(() => {
         callback({
           publishStates: {
             'app-123': {
+              agentPublishConfirmation: 'approved',
               deploymentInProgressId: null,
               publishError: false,
             },
@@ -258,6 +264,104 @@ describe('publishAction', () => {
       } as Response)
 
       await expect(publishAction(params, context)).resolves.toBeDefined()
+    })
+  })
+
+  describe('agent publish confirmation gate', () => {
+    it('should request user confirmation before publishing', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ commitHash: 'abc123' }),
+      } as Response)
+
+      await publishAction(params, context)
+
+      // Gate is requested, and (default mock approves) the publish proceeds.
+      expect(mockStoreActions.requestAgentPublishConfirmation).toHaveBeenCalledWith('app-123')
+      expect(global.fetch).toHaveBeenCalled()
+    })
+
+    it('should not publish when the user declines the confirmation', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      // User declines: the gate's subscription reports a 'cancelled' status.
+      vi.mocked(useDevelopPageStore.subscribe).mockImplementation(function (callback: any) {
+        Promise.resolve().then(() => {
+          callback({
+            publishStates: {
+              'app-123': { agentPublishConfirmation: 'cancelled' },
+            },
+          });
+        });
+        return vi.fn();
+      })
+
+      const result = await publishAction(params, context)
+
+      // Cancellation is surfaced and no publish side effects occur: no agent POST,
+      // and the publishing state is never entered (the gate precedes it).
+      expect(result).toEqual({ cancelled: true })
+      expect(global.fetch).not.toHaveBeenCalled()
+      expect(mockStoreActions.setIsPublishing).not.toHaveBeenCalled()
+      // The clean publish.attempted event is emitted only after approval, so a decline
+      // leaves no trace and is excluded from the attempt rate (no no-blockedReason attempt).
+      expect(shipAnalyticsLog).not.toHaveBeenCalledWith('publish.attempted', expect.anything())
+    })
+
+    it('should reset the agent action timeout on approval (think-time vs work-time split)', async () => {
+      const resetActionTimeout = vi.fn()
+      const context = createMockMessageContext({ resetActionTimeout })
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ commitHash: 'abc123' }),
+      } as Response)
+
+      // Default subscribe mock approves the publish.
+      await publishAction(params, context, 'req-1')
+
+      // On approval the browser signals the agent to refresh the pending action's
+      // timeout, naming the request and omitting newTimeoutMs (agent reuses original).
+      expect(resetActionTimeout).toHaveBeenCalledTimes(1)
+      expect(resetActionTimeout).toHaveBeenCalledWith('req-1')
+    })
+
+    it('should NOT reset the agent action timeout when the user declines', async () => {
+      const resetActionTimeout = vi.fn()
+      const context = createMockMessageContext({ resetActionTimeout })
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      vi.mocked(useDevelopPageStore.subscribe).mockImplementation(function (callback: any) {
+        Promise.resolve().then(() => {
+          callback({ publishStates: { 'app-123': { agentPublishConfirmation: 'cancelled' } } })
+        })
+        return vi.fn()
+      })
+
+      const result = await publishAction(params, context, 'req-1')
+
+      expect(result).toEqual({ cancelled: true })
+      expect(resetActionTimeout).not.toHaveBeenCalled()
+    })
+
+    it('should not throw when approval happens but no requestId was provided', async () => {
+      const resetActionTimeout = vi.fn()
+      const context = createMockMessageContext({ resetActionTimeout })
+      const params = { appId: 'app-123', commitHash: 'abc123' }
+
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ commitHash: 'abc123' }),
+      } as Response)
+
+      // No requestId (e.g. older dispatch path) — reset is simply skipped.
+      await expect(publishAction(params, context)).resolves.toBeDefined()
+      expect(resetActionTimeout).not.toHaveBeenCalled()
     })
   })
 
@@ -1239,6 +1343,8 @@ describe('publishAction', () => {
           callback({
             publishStates: {
               'app-123': {
+                // Approve the publish gate, then report a failed deployment.
+                agentPublishConfirmation: 'approved',
                 deploymentInProgressId: null,
                 publishError: true,
               },
@@ -1282,8 +1388,22 @@ describe('publishAction', () => {
         const context = createMockMessageContext()
         const params = { appId: 'app-123', commitHash: 'abc123' }
 
-        // Subscribe never fires - simulates deployment that never completes
-        vi.mocked(useDevelopPageStore.subscribe).mockReturnValue(vi.fn())
+        // Approve the publish gate, but keep the deployment in-progress so
+        // waitForPublishResult never resolves and hits its timeout.
+        vi.mocked(useDevelopPageStore.subscribe).mockImplementation(function (callback: any) {
+          Promise.resolve().then(() => {
+            callback({
+              publishStates: {
+                'app-123': {
+                  agentPublishConfirmation: 'approved',
+                  deploymentInProgressId: 'deploy-456',
+                  publishError: false,
+                },
+              },
+            });
+          });
+          return vi.fn();
+        })
 
         vi.mocked(global.fetch).mockResolvedValue({
           ok: true,

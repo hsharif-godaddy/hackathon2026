@@ -116,6 +116,7 @@ const AppIntroTour = dynamic(() => import('@/app/[market]/develop/components/tou
 const AppNotFound = dynamic(() => import('@/app/[market]/develop/components/AppNotFound'))
 const MediaPanel = dynamic(() => import('@/app/[market]/develop/components/media/MediaPanel'), { loading: () => <PanelSkeleton panelType={ChatTab.MEDIAS} /> })
 const PostPublishGoLiveModal = dynamic(() => import('@/components/layout/PostPublishGoLiveModal'))
+const AgentPublishConfirmationModal = dynamic(() => import('@/components/layout/AgentPublishConfirmationModal'))
 const VersionHistory = dynamic(() => import('@/app/[market]/develop/components/VersionHistory'), { loading: () => <PanelSkeleton panelType={ChatTab.HISTORY} className="p-2 sm:p-0" /> })
 
 // Lazy-loaded but preloaded on idle after mount
@@ -1610,6 +1611,7 @@ function DevelopPageContent() {
           <UpgradeModal analyticsData={{ appId }} />
           {appId && <DevelopCreditsModal appId={appId} />}
           {appId && <FirstPublishCongratsModal appId={appId} />}
+          {appId && <AgentPublishConfirmationModal appId={appId} />}
         </ErrorBoundary>
         <ErrorBoundary fallback={() => null}>
           <CdsEsmPreload />

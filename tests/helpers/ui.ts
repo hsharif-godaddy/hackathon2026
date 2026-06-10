@@ -401,6 +401,26 @@ export async function expectPublishSuccessVisible(
 }
 
 /**
+ * Approve the agent-publish human-in-the-loop confirmation modal.
+ *
+ * Agent-initiated publishes (driven by a "publish this app" creation prompt) pause on
+ * AgentPublishConfirmationModal — rendered while `agentPublishConfirmation === 'pending'`
+ * (see publishAction.ts `awaitAgentPublishApproval`). The agent's publish work does not
+ * start until the user approves, so any spec that drives the agent to publish MUST call
+ * this before asserting publish success — otherwise the publish hangs until the
+ * confirmation times out (~5 min), resolves as cancelled, and the success assertion fails.
+ *
+ * The UI Publish button does NOT route through the agent action and is never gated, so
+ * specs that publish via the popover button do not call this.
+ */
+export async function approveAgentPublish(page: Page, timeout = DEPLOYMENT_TIMEOUT_MS): Promise<void> {
+  const confirmButton = page.getByTestId('agent-publish-confirm-button');
+  await confirmButton.waitFor({ state: 'visible', timeout });
+  await confirmButton.click();
+  await expect(page.getByTestId('agent-publish-confirm-modal')).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+}
+
+/**
  * Dismiss the "Ready to Go Live?" modal if it appears after first publish
  */
 export async function dismissGoLiveModalIfPresent(page: Page, waitTime = GO_LIVE_MODAL_TIMEOUT): Promise<boolean> {

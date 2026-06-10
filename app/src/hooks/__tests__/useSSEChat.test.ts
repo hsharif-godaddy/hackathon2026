@@ -1936,7 +1936,7 @@ describe('useSSEChat', () => {
         await flushPromises()
       })
 
-      expect(mockPublishAction).toHaveBeenCalledWith({ version: '1.0' }, expect.objectContaining({ currentAppId: 'test-app-123' }))
+      expect(mockPublishAction).toHaveBeenCalledWith({ version: '1.0' }, expect.objectContaining({ currentAppId: 'test-app-123' }), 'req-1')
       expect(lastTransport.postClientActionResult).toHaveBeenCalledWith(
         expect.objectContaining({ requestId: 'req-1', success: true })
       )

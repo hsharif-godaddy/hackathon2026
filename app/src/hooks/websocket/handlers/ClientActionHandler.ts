@@ -72,8 +72,10 @@ export class ClientActionHandler implements MessageHandler {
     }
 
     try {
-      // Execute the action with full context
-      const result = await executor(params, context)
+      // Execute the action with full context. requestId lets the executor
+      // signal the agent mid-execution (e.g. reset the action timeout on
+      // human-in-the-loop approval) via context.resetActionTimeout.
+      const result = await executor(params, context, requestId)
 
       logger.info('websocket.client-action.success', {
         action,

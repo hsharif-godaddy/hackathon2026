@@ -175,6 +175,22 @@ export interface MessageContext {
   // XState machine actor for sending lifecycle events (Tier 1)
   machine: WebSocketActor
   t: (id: string, values?: Record<string, any>) => string
+  /**
+   * Transport-agnostic, best-effort signal asking the agent to reset the
+   * timeout on a pending client action (named by requestId). Used by long
+   * human-in-the-loop executors (e.g. publish approval) so that human
+   * think-time does not consume the budget meant for the actual work.
+   *
+   * Each transport wires its own reverse channel (WS socket.emit vs SSE HTTP
+   * POST). Optional because not every context provides it (SSE minimal
+   * context, tests, older paths) — always call via optional chaining.
+   *
+   * The browser names WHICH action to refresh, never HOW LONG: the agent always
+   * reuses the action's original server-owned timeout. A client-chosen duration
+   * is deliberately not part of this protocol (it would let page code extend or
+   * collapse a pending action).
+   */
+  resetActionTimeout?: (requestId: string) => void
 }
 
 /**

@@ -1561,6 +1561,65 @@ describe('SSE routes', () => {
     })
   })
 
+  describe('POST /api/conversations/:appId/:conversationId/actions/reset-timeout', () => {
+    it('returns 400 when requestId is missing', async () => {
+      const res = await request(app)
+        .post('/api/conversations/abcdefghij/conv_1/actions/reset-timeout')
+        .send({ newTimeoutMs: 1000 })
+
+      expect(res.status).toBe(400)
+      expect(res.body.error).toBe('requestId is required')
+    })
+
+    it('returns 404 when no service is registered', async () => {
+      const res = await request(app)
+        .post('/api/conversations/abcdefghij/conv_1/actions/reset-timeout')
+        .send({ requestId: 'req_1' })
+
+      expect(res.status).toBe(404)
+      expect(res.body.error).toBe('No pending action service for this conversation')
+    })
+
+    it('works for a WS-shaped service and IGNORES any client-supplied newTimeoutMs', async () => {
+      const resetTimeout = vi.fn().mockReturnValue(true)
+      // No resolveAction — unlike the /actions route, reset-timeout must not require it.
+      mockClientActionServices.set('sse:conv_1', {
+        executeAction: vi.fn(),
+        cleanup: vi.fn(),
+        resetTimeout,
+      })
+
+      const res = await request(app)
+        .post('/api/conversations/abcdefghij/conv_1/actions/reset-timeout')
+        // Client tries to dictate a duration; the route must NOT forward it.
+        .send({ requestId: 'req_1', newTimeoutMs: 999999 })
+
+      expect(res.status).toBe(200)
+      expect(res.body.accepted).toBe(true)
+      // Called with requestId ONLY — the browser-supplied duration is dropped, so the
+      // registry reuses the action's original server-owned timeout.
+      expect(resetTimeout).toHaveBeenCalledWith('req_1')
+      expect(resetTimeout.mock.calls[0]).toEqual(['req_1'])
+    })
+
+    it('returns 404 when requestId does not match a pending request', async () => {
+      const resetTimeout = vi.fn().mockReturnValue(false)
+      mockClientActionServices.set('sse:conv_1', {
+        executeAction: vi.fn(),
+        cleanup: vi.fn(),
+        resetTimeout,
+      })
+
+      const res = await request(app)
+        .post('/api/conversations/abcdefghij/conv_1/actions/reset-timeout')
+        .send({ requestId: 'req_1' })
+
+      expect(res.status).toBe(404)
+      expect(res.body.error).toBe('No pending request with this ID')
+      expect(resetTimeout).toHaveBeenCalledWith('req_1')
+    })
+  })
+
   describe('POST /api/conversations/:appId/:conversationId/messages — budget paths', () => {
     it('returns 402 when performBudgetPreCheck throws BudgetExceededError', async () => {
       const { BudgetExceededError } = await import('@airo/ai-common')

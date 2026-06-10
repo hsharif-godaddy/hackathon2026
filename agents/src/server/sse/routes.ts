@@ -790,6 +790,42 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     res.status(200).json({ accepted: true })
   })
 
+  // POST /:appId/:conversationId/actions/reset-timeout - reset a pending client
+  // action's timeout (e.g. after a human-in-the-loop approval). Best-effort: the
+  // browser does not block on this, and resetTimeout is on the shared
+  // IClientActionService surface (unlike resolveAction), so no SSE-only narrowing.
+  router.post('/:appId/:conversationId/actions/reset-timeout', deps.authenticate, validateAppOwnershipFromParam('appId'), convOwnership, (req: Request, res: Response) => {
+    const appId = req.params.appId!
+    const conversationId = req.params.conversationId!
+    const { requestId } = req.body
+
+    if (!requestId || typeof requestId !== 'string') {
+      res.status(400).json({ error: 'requestId is required' })
+      return
+    }
+
+    const service = getActionService(sseSessionKey(conversationId))
+    if (!service) {
+      logger.warn('sse.client-action.timeout_reset.no_service', { appId, conversationId, requestId })
+      res.status(404).json({ error: 'No pending action service for this conversation' })
+      return
+    }
+
+    // Intentionally ignore any client-supplied duration: the browser names WHICH
+    // pending action to refresh, never HOW LONG. resetTimeout reuses the action's
+    // original server-owned timeout. (The registry's resetTimeout signature carries
+    // an optional newTimeoutMs override, but no production caller passes it — this
+    // route and the SSE recovery path above both refresh to the original budget.)
+    const reset = service.resetTimeout(requestId)
+    if (!reset) {
+      res.status(404).json({ error: 'No pending request with this ID' })
+      return
+    }
+
+    logger.info('sse.client-action.timeout_reset', { appId, conversationId, requestId })
+    res.status(200).json({ accepted: true })
+  })
+
   // PUT /:appId/:conversationId/grants
   router.put('/:appId/:conversationId/grants', deps.authenticate, validateAppOwnershipFromParam('appId'), convOwnership, asyncHandler(async (req: Request, res: Response) => {
     const appId = req.params.appId!

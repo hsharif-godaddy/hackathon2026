@@ -35,6 +35,67 @@ import type { ClientActionExecutor } from './types'
 
 const MAX_PUBLISH_WAIT_MS = 5 * 60 * 1000;
 
+// How long to wait for the user to approve/decline an agent-initiated publish.
+// This budgets the human think-time window only. On APPROVAL the browser signals
+// the agent (via context.resetActionTimeout) to reset the pending publish action's
+// timeout, so the actual publish work gets a fresh full window rather than sharing
+// the agent's deadline with think-time. INVARIANT: this must stay <= the agent-side
+// executeAction timeout (420s in publish-client-tool.ts) so the agent never times
+// out during approval before the reset arrives.
+const PUBLISH_CONFIRMATION_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * Human-in-the-loop gate for agent-initiated publishes.
+ *
+ * Only the agent publish path reaches this executor — the UI Publish button uses
+ * `usePublishApp` and never dispatches the `publish` client action — so requiring
+ * approval here cannot double-prompt a user-initiated publish.
+ *
+ * Sets the store to 'pending' (which renders AgentPublishConfirmationModal) and
+ * resolves when the user approves/declines, mirroring the subscribe pattern in
+ * waitForPublishResult. Resolves to false on timeout so the modal is dismissed.
+ *
+ * NOTE: this is the harness's FIRST human-in-the-loop gate and is a deliberate
+ * one-off, not a reusable primitive. It only works because publish already
+ * round-trips to the browser as a `publish` client action, so the approval can
+ * piggyback on that trip. The next likely HITL candidates (socialPostPublish,
+ * commerce mutations, deleteRow — see agents `non-idempotent-tools.ts`) execute
+ * server-side and CANNOT reuse this browser-side gate. When a second consumer
+ * lands, do not copy this: lift it into a generic primitive declared on
+ * `SkillToolDefinition.config` and enforced in the `build-skill-tools.ts`
+ * execute wrapper, round-tripped via a generic `confirm` client action (which
+ * must also define a headless/PaaS default, since there is no UI there).
+ */
+function awaitAgentPublishApproval(appId: string, onApproved?: () => void): Promise<boolean> {
+  const store = useDevelopPageStore.getState();
+  store.requestAgentPublishConfirmation(appId);
+
+  return new Promise(function awaitDecision(resolve) {
+    const finish = (approved: boolean): void => {
+      clearTimeout(timeout);
+      unsubscribe();
+      // Approval only (never decline/timeout): tell the agent to refresh the
+      // pending publish action's timeout so the work phase doesn't inherit the
+      // time already spent waiting for the user.
+      if (approved) onApproved?.();
+      // Reset to 'idle' so a later publish in the same session starts clean.
+      useDevelopPageStore.getState().resetAgentPublishConfirmation(appId);
+      resolve(approved);
+    };
+
+    const timeout = setTimeout(function handleTimeout() {
+      logger.warn('publish-action.confirmation.timeout', { appId, elapsedMs: PUBLISH_CONFIRMATION_TIMEOUT_MS });
+      finish(false);
+    }, PUBLISH_CONFIRMATION_TIMEOUT_MS);
+
+    const unsubscribe = useDevelopPageStore.subscribe(function checkConfirmation(state) {
+      const status = state.publishStates[appId]?.agentPublishConfirmation;
+      if (status === 'approved') finish(true);
+      else if (status === 'cancelled') finish(false);
+    });
+  });
+}
+
 /**
  * Subscribes to useDevelopPageStore and resolves when the existing
  * useDeploymentsQuery polling detects a terminal deployment status
@@ -68,7 +129,7 @@ function waitForPublishResult(appId: string): Promise<DeploymentStatus> {
   });
 }
 
-export const publishAction: ClientActionExecutor = async (params) => {
+export const publishAction: ClientActionExecutor = async (params, context, requestId) => {
   const { appId } = params
 
   // Validate required parameters
@@ -192,8 +253,29 @@ export const publishAction: ClientActionExecutor = async (params) => {
       throw new Error('Authentication required')
     }
 
-    // publish.attempt fires when the user has passed all gates and the actual publish is about to start.
-    // commitHash is the current HEAD — the artifact identifier for this publish attempt.
+    // Human-in-the-loop gate: the agent may only publish to production with explicit
+    // user approval. Placed after eligibility/compliance/auth so we never prompt for a
+    // publish that would be denied, and before any side effects (publishing state,
+    // secrets sync, token regen) so a decline leaves no visible trace and shows no
+    // error alert. The agent side treats this { cancelled: true } as a non-error.
+    // On approval we signal the agent to reset this client action's timeout so the
+    // publish work gets a fresh window rather than sharing the deadline with the
+    // approval wait. The signal carries only requestId; the agent reuses the action's
+    // original server-owned budget (the browser never chooses the duration).
+    const approved = await awaitAgentPublishApproval(appId, () => {
+      if (requestId) context.resetActionTimeout?.(requestId)
+    })
+    if (!approved) {
+      logger.info('websocket.client-action.publish.user-declined', { appId })
+      return { cancelled: true }
+    }
+
+    // publish.attempt fires once the user has approved (and all prior gates passed) and
+    // the actual publish is about to start. It is emitted AFTER the approval gate so a
+    // declined/timed-out publish — which returns above and never reaches here — is
+    // excluded from the attempt rate, matching the gate's "a decline leaves no visible
+    // trace" contract. commitHash is the current HEAD — the artifact identifier for this
+    // publish attempt.
     try {
       const currentCommitHash = appDetails?.gitHash ?? appDetails?.git_hash
       shipAnalyticsLog('publish.attempted', { appId, commitHash: currentCommitHash, trigger: 'agent' })

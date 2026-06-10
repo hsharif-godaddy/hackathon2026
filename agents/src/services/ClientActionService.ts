@@ -45,6 +45,7 @@ export interface IClientActionService {
 export class ClientActionService implements IClientActionService {
   private registry: ClientActionRegistry
   private boundHandler: (data: any) => void
+  private boundResetHandler: (data: any) => void
 
   constructor(
     private socket: Socket,
@@ -79,6 +80,11 @@ export class ClientActionService implements IClientActionService {
 
     this.boundHandler = this.handleClientActionResult.bind(this)
     this.socket.on('client_action_result', this.boundHandler)
+
+    // Browser → agent: reset the timeout on a pending action (e.g. after a
+    // human-in-the-loop approval). Best-effort; the browser is not blocked on it.
+    this.boundResetHandler = this.handleClientActionTimeoutReset.bind(this)
+    this.socket.on('client_action_reset_timeout', this.boundResetHandler)
   }
 
   async executeAction(request: ClientActionRequest): Promise<ClientActionResult> {
@@ -122,6 +128,21 @@ export class ClientActionService implements IClientActionService {
     }
   }
 
+  private handleClientActionTimeoutReset(data: { requestId: string }): void {
+    const { requestId } = data ?? {}
+    // Intentionally ignore any client-supplied duration: the browser names WHICH
+    // pending action to refresh, never HOW LONG. We always reuse the action's
+    // original server-owned timeout (registry falls back to entry.timeoutMs).
+    // Trusting a browser-supplied value would let page code/devtools extend a
+    // pending action or collapse it to an immediate timeout.
+    const reset = this.registry.resetTimeout(requestId)
+    if (reset) {
+      logger.info('client-action.timeout_reset', { requestId, conversationId: this.conversationId })
+    } else {
+      logger.warn('client-action.timeout_reset.unknown_request_id', { requestId, conversationId: this.conversationId })
+    }
+  }
+
   resetTimeout(requestId: string, newTimeoutMs?: number): boolean {
     return this.registry.resetTimeout(requestId, newTimeoutMs)
   }
@@ -133,5 +154,6 @@ export class ClientActionService implements IClientActionService {
   cleanup(): void {
     this.registry.cleanup()
     this.socket.off('client_action_result', this.boundHandler)
+    this.socket.off('client_action_reset_timeout', this.boundResetHandler)
   }
 }

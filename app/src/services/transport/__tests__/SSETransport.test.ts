@@ -212,6 +212,38 @@ describe('SSETransport', () => {
     )
   })
 
+  it('sends POST to /actions/reset-timeout on requestClientActionTimeoutReset', async () => {
+    transport.connect('app_1', 'token_123', 'conv_1')
+    await vi.waitFor(() => {
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
+    })
+
+    await transport.requestClientActionTimeoutReset({ requestId: 'r1' })
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://localhost:4000/api/conversations/app_1/conv_1/actions/reset-timeout',
+      expect.objectContaining({ method: 'POST' })
+    )
+  })
+
+  it('does NOT throw when reset-timeout returns non-ok (older agent, best-effort)', async () => {
+    transport.connect('app_1', 'token_123', 'conv_1')
+    await vi.waitFor(() => {
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
+    })
+
+    // Older agent without the route → 404. Must degrade silently, not reject.
+    ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: () => Promise.resolve({}),
+    })
+
+    await expect(
+      transport.requestClientActionTimeoutReset({ requestId: 'r1' })
+    ).resolves.toBeUndefined()
+  })
+
   it('sends PUT to /grants on emitGrantContext', async () => {
     transport.connect('app_1', 'token_123', 'conv_1')
     await vi.waitFor(() => {

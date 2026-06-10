@@ -312,6 +312,39 @@ export class SSETransport implements ChatTransport {
     if (!response.ok) throw new Error(`postClientActionResult failed: ${response.status}`)
   }
 
+  /**
+   * Best-effort signal asking the agent to reset the timeout on a pending
+   * client action (SSE reverse channel for context.resetActionTimeout).
+   *
+   * Unlike postClientActionResult, this is fire-and-forget: the agent is NOT
+   * blocked on it, so a failure (including an older agent without this route →
+   * 404) must NOT throw. It degrades to the agent keeping the action's
+   * original timeout — exactly the pre-reset behavior. Failures are logged and
+   * swallowed; the no-session case also returns quietly rather than throwing.
+   */
+  async requestClientActionTimeoutReset(data: {
+    requestId: string
+  }): Promise<void> {
+    if (!this.appId || !this.conversationId) {
+      logger.warn('sse.transport.reset_action_timeout.no_session', {
+        requestId: data.requestId,
+        hasAppId: !!this.appId,
+        hasConversationId: !!this.conversationId,
+      })
+      return
+    }
+    const response = await this.authedFetch(`${this.convPath}/actions/reset-timeout`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+    if (!response.ok) {
+      logger.warn('sse.transport.reset_action_timeout.failed', {
+        requestId: data.requestId,
+        status: response.status,
+      })
+    }
+  }
+
   async stopGeneration(): Promise<void> {
     if (!this.appId || !this.conversationId) {
       // The useSSEChat .catch only fires on rejection, so a silent resolve

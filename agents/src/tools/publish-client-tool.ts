@@ -25,6 +25,8 @@ export interface PublishResult {
   exitCode?: number
   requiresUpgrade?: boolean
   reason?: string
+  /** User declined (or let time out) the publish-approval prompt in the client. */
+  cancelled?: boolean
 }
 
 /**
@@ -47,7 +49,16 @@ export async function executePublish(
       params: {
         appId,
       },
-      // Archive/build + wait for mgmt-airo terminal deployment (up to 5m) — must exceed browser publishAction
+      // Initial budget for the human-in-the-loop approval/think-time window. The
+      // browser shows an approval modal first (up to PUBLISH_CONFIRMATION_TIMEOUT_MS
+      // = 300s in publishAction.ts) and, on APPROVAL, emits client_action_reset_timeout
+      // which resets this pending action's timeout to a fresh window for the actual
+      // publish work (archive/build + wait for mgmt-airo terminal deployment, up to 5m).
+      // INVARIANT: this must be >= the browser confirmation timeout so the agent never
+      // times out during approval before the reset arrives. If the browser/agent is old
+      // and no reset arrives, this single window degrades to the prior (shared-deadline)
+      // behavior. The reset carries no client-chosen duration, so the work phase reuses
+      // this same server-owned 420s.
       timeoutMs: 420000,
     })
 
@@ -69,6 +80,19 @@ export async function executePublish(
         exitCode: clientResult.exitCode,
         requiresUpgrade,
         reason: clientResult.reason,
+      }
+    }
+
+    // The client wraps any normal executor return as { success: true, result }, so a
+    // declined approval arrives as a success with a `cancelled` flag rather than an
+    // error. Surface it explicitly so the agent reports "not published" (no commit) and
+    // does not retry — the publish never started.
+    if ((clientResult.result as { cancelled?: boolean } | undefined)?.cancelled) {
+      logger.info('publish-client.cancelled', { appId })
+      return {
+        success: false,
+        cancelled: true,
+        error: 'Publish was not approved by the user.',
       }
     }
 

@@ -205,6 +205,29 @@ describe('publishing skill publish-tools', () => {
         expect(result.message).toContain('publish limit')
       })
 
+      it('should report a clean, non-error result when the user declines (cancelled)', async () => {
+        vi.mocked(executePublish).mockResolvedValue({
+          success: false,
+          cancelled: true,
+          error: 'Publish was not approved by the user.',
+        } as any)
+
+        const context = {
+          metadata: { appId: 'app-1', permissions: { canPublish: true } },
+          socketId: 'sock-1',
+        }
+
+        // Must not throw — a decline is an expected outcome, not a publish failure.
+        const result = await runPublishTool({}, { experimental_context: context })
+
+        expect(result).toMatchObject({
+          success: false,
+          publishStarted: false,
+        })
+        expect(result.requiresUpgrade).toBeUndefined()
+        expect(result.message).toContain('did not approve')
+      })
+
       it('should proceed to executePublish when canPublish is true', async () => {
         vi.mocked(executePublish).mockResolvedValue({
           success: true,

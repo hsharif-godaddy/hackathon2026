@@ -11,6 +11,10 @@ whenToUse: >-
 
 Preview container = dev mode (hot reload). Published site = separate production container (read-only). Changes reach it only via publish.
 
+<human_confirmation>
+When the user asks to publish, call `publishing__publish` directly — a confirmation prompt then appears in their browser and the deploy proceeds only if they approve. That prompt is the approval step, so don't ask the user to confirm in chat first.
+</human_confirmation>
+
 <publish_flow>
 
 1. `npm run build` in preview (`NODE_ENV=production`)

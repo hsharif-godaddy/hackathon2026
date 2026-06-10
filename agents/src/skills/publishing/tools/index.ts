@@ -71,6 +71,16 @@ export const publishTool: SkillToolDefinition = {
     const result = await executePublish(publishOptions, clientActionService);
 
     if (!result.success) {
+      if (result.cancelled) {
+        logger.info('skill.publishing.publish.cancelled', { appId });
+        return {
+          success: false,
+          publishStarted: false,
+          message: 'The user did not approve the publish, so nothing was published. ' +
+            'Let them know publishing is on hold and only publish when they explicitly confirm. Do not retry on your own.',
+        };
+      }
+
       if (result.requiresUpgrade) {
         const reason = result.reason || PublishDenialReason.NoSubscription;
         logger.info('skill.publishing.publish.requires-upgrade', { appId, reason });

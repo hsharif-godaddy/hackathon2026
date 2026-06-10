@@ -181,6 +181,9 @@ const createDefaultPublishState = () => {
     showPostPublishFeatureSelection: false,
     postPublishFeatureSelectionNonce: 0,
     isSecurityAnalysisRunning: false,
+    // Agent-initiated publish confirmation (human-in-the-loop gate). Only the agent's
+    // publish path consults this; the UI Publish button uses usePublishApp and bypasses it.
+    agentPublishConfirmation: 'idle' as 'idle' | 'pending' | 'approved' | 'cancelled',
   };
 }
 
@@ -283,6 +286,9 @@ interface DevelopPageStore {
     showPostPublishFeatureSelection: boolean
     postPublishFeatureSelectionNonce: number
     isSecurityAnalysisRunning: boolean
+    // Agent-initiated publish confirmation: 'pending' shows the approval modal;
+    // 'approved'/'cancelled' are read by the awaiting publishAction, then reset to 'idle'.
+    agentPublishConfirmation: 'idle' | 'pending' | 'approved' | 'cancelled'
   }>
 
   domainJobsInProgress: Record<string, DomainJobInProgress>
@@ -367,6 +373,10 @@ interface DevelopPageStore {
   setShowFirstPublishCongrats: (appId: string, show: boolean) => void
   setFirstPublishDeployPending: (appId: string, pending: boolean) => void
   requestPublishPopoverOpen: (appId: string) => void
+  // Agent-initiated publish confirmation (human-in-the-loop gate)
+  requestAgentPublishConfirmation: (appId: string) => void
+  resolveAgentPublishConfirmation: (appId: string, approved: boolean) => void
+  resetAgentPublishConfirmation: (appId: string) => void
   getPublishState: (appId: string) => {
     isPublishing: boolean
     publishError: boolean
@@ -392,6 +402,7 @@ interface DevelopPageStore {
     showPostPublishFeatureSelection: boolean
     postPublishFeatureSelectionNonce: number
     isSecurityAnalysisRunning: boolean
+    agentPublishConfirmation: 'idle' | 'pending' | 'approved' | 'cancelled'
   }
 
   // Go Live modal actions
@@ -916,6 +927,24 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].publishPopoverRequestNonce += 1;
+    }),
+    requestAgentPublishConfirmation: (appId: string) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState();
+      }
+      state.publishStates[appId].agentPublishConfirmation = 'pending';
+    }),
+    resolveAgentPublishConfirmation: (appId: string, approved: boolean) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState();
+      }
+      state.publishStates[appId].agentPublishConfirmation = approved ? 'approved' : 'cancelled';
+    }),
+    resetAgentPublishConfirmation: (appId: string) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState();
+      }
+      state.publishStates[appId].agentPublishConfirmation = 'idle';
     }),
 
     // Page loading orchestration

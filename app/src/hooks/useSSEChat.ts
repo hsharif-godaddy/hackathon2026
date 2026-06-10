@@ -4,6 +4,7 @@ import { getMessageOriginForAuthType } from '@airo/shared/auth'
 
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
+import type { DataHandlerContext } from '@/hooks/websocket/handlers/types'
 import {
   getConversationIdFromCookie,
   setConversationIdCookie,
@@ -695,9 +696,27 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                     return
                   }
 
-                  const minimalContext = { currentAppId } as any
+                  // SSE reverse channel for the transport-agnostic timeout-reset
+                  // signal (mirrors postClientActionResult). Best-effort: an older
+                  // agent without the route 404s, which the transport logs-and-ignores.
+                  // Typed against the fields executors actually read in the SSE
+                  // path so signature drift (e.g. resetActionTimeout) is caught at
+                  // compile time. The remaining MessageContext members (socket,
+                  // machine, actions, ...) don't exist over SSE; the widening to the
+                  // full executor context is the one deliberate, localized cast.
+                  const minimalContext: Pick<DataHandlerContext, 'currentAppId' | 'resetActionTimeout'> = {
+                    currentAppId,
+                    resetActionTimeout: (rid: string) => {
+                      transportRef.current?.requestClientActionTimeoutReset({ requestId: rid }).catch(err => {
+                        logger.warn('sse.client_action.reset_timeout.failed', {
+                          appId: currentAppId, requestId: rid,
+                          error: err instanceof Error ? err.message : String(err),
+                        })
+                      })
+                    },
+                  }
                   try {
-                    const result = await executor(params ?? {}, minimalContext)
+                    const result = await executor(params ?? {}, minimalContext as DataHandlerContext, requestId)
                     postActionResult({ requestId, success: true, result })
                   } catch (err) {
                     const anyErr = err as { errorDetails?: string; logs?: Array<{ message: string; source?: string; timestamp?: string }>; exitCode?: number }

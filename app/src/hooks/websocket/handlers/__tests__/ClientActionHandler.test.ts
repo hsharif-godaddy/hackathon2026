@@ -172,7 +172,8 @@ describe('ClientActionHandler', () => {
 
       expect(mockExecutor).toHaveBeenCalledWith(
         { appId: 'app-123', commitHash: 'abc123' },
-        context
+        context,
+        'req-123'
       )
     })
 
@@ -193,7 +194,7 @@ describe('ClientActionHandler', () => {
 
       await handler.handle(data, context)
 
-      expect(mockExecutor).toHaveBeenCalledWith({ foo: 'bar' }, context)
+      expect(mockExecutor).toHaveBeenCalledWith({ foo: 'bar' }, context, 'req-456')
 
       // Verify context has expected properties
       const passedContext = mockExecutor.mock.calls[0][1]
@@ -428,7 +429,7 @@ describe('ClientActionHandler', () => {
 
       await handler.handle(data, context)
 
-      expect(mockExecutor).toHaveBeenCalledWith({}, context)
+      expect(mockExecutor).toHaveBeenCalledWith({}, context, 'req-empty-params')
       expect(context.socket.emit).toHaveBeenCalledWith(
         'client_action_result',
         expect.objectContaining({ success: true })
@@ -451,7 +452,7 @@ describe('ClientActionHandler', () => {
 
       await handler.handle(data, context)
 
-      expect(mockExecutor).toHaveBeenCalledWith(undefined, context)
+      expect(mockExecutor).toHaveBeenCalledWith(undefined, context, 'req-no-params')
     })
 
     it('should pass complex params object to executor', async () => {
@@ -480,7 +481,7 @@ describe('ClientActionHandler', () => {
 
       await handler.handle(data, context)
 
-      expect(mockExecutor).toHaveBeenCalledWith(complexParams, context)
+      expect(mockExecutor).toHaveBeenCalledWith(complexParams, context, 'req-complex')
     })
   })
 })
