@@ -130,7 +130,7 @@ async function handleInteractiveMode(
   task: string,
   _inputs: Record<string, string | string[]>,
   context: AgentContext | undefined
-): Promise<{ ok: boolean; interactive: true; agent: string; error?: string }> {
+): Promise<{ ok: boolean; interactive: boolean; agent: string; error?: string }> {
   const metadata = context?.metadata
   const sessionId: string | undefined =
     metadata?.sessionId as string | undefined ??
