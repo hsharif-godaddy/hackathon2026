@@ -255,6 +255,105 @@ describe('useImageReadiness', function useImageReadinessTests() {
     });
   });
 
+  describe('#create flow server health gate', function createFlowHealthGateTests() {
+    it('should not be ready when server is not healthy during create flow', function notReadyWhenCold() {
+      mockServerReady = false;
+
+      const { result } = renderHook(
+        () => useImageReadiness(NOT_HIBERNATED, 'test-app-123', true),
+        { wrapper: createWrapper() }
+      );
+
+      expect(result.current.isReady).toBe(false);
+      expect(result.current.isChecking).toBe(true);
+      expect(result.current.error).toBeNull();
+      expect(appFetch).not.toHaveBeenCalled();
+    });
+
+    it('should start server health polling for create flow', async function startsPolling() {
+      mockServerReady = false;
+
+      renderHook(
+        () => useImageReadiness(NOT_HIBERNATED, 'test-app-123', true),
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => {
+        expect(mockStartPollingForServer).toHaveBeenCalledWith('test-app-123');
+      });
+    });
+
+    it('should become ready once server health check passes', function readyOnceHealthy() {
+      mockServerReady = true;
+
+      const { result } = renderHook(
+        () => useImageReadiness(NOT_HIBERNATED, 'test-app-123', true),
+        { wrapper: createWrapper() }
+      );
+
+      expect(result.current.isReady).toBe(true);
+      expect(result.current.isChecking).toBe(false);
+    });
+
+    it('should not start polling when appId is null', function noPollingWithoutAppId() {
+      mockServerReady = false;
+
+      const { result } = renderHook(
+        () => useImageReadiness(NOT_HIBERNATED, null, true),
+        { wrapper: createWrapper() }
+      );
+
+      expect(result.current.isReady).toBe(true);
+      expect(mockStartPollingForServer).not.toHaveBeenCalled();
+    });
+
+    it('should surface error after server health timeout in create flow', async function createFlowTimeout() {
+      vi.useFakeTimers();
+      mockServerReady = false;
+
+      const { result } = renderHook(
+        () => useImageReadiness(NOT_HIBERNATED, 'test-app-123', true),
+        { wrapper: createWrapper() }
+      );
+
+      expect(result.current.isReady).toBe(false);
+      expect(result.current.isChecking).toBe(true);
+
+      // Advance past SERVER_HEALTH_TIMEOUT_MS (3 min). The timeout effect
+      // runs on a setInterval(IMAGE_POLL_INTERVAL_MS=5000) and checks Date.now().
+      await act(async () => { vi.advanceTimersByTime(3 * 60 * 1000 + 5000); });
+
+      expect(result.current.error).toBe('Server failed to become healthy after image update');
+      expect(result.current.isReady).toBe(false);
+
+      vi.useRealTimers();
+    });
+
+    it('should recover from error state via retry() when server becomes ready', async function createFlowRetryRecovery() {
+      vi.useFakeTimers();
+      mockServerReady = false;
+
+      const { result } = renderHook(
+        () => useImageReadiness(NOT_HIBERNATED, 'test-app-123', true),
+        { wrapper: createWrapper() }
+      );
+
+      // Drive into error state
+      await act(async () => { vi.advanceTimersByTime(3 * 60 * 1000 + 5000); });
+
+      expect(result.current.error).not.toBeNull();
+
+      // Server becomes healthy, user clicks retry
+      mockServerReady = true;
+      vi.useRealTimers();
+
+      act(() => { result.current.retry(); });
+
+      expect(result.current.isReady).toBe(true);
+      expect(result.current.error).toBeNull();
+    });
+  });
+
   describe('#fast paths', function fastPathTests() {
     it('should short-circuit when status is current', async function shortCircuitCurrent() {
       (appFetch as any).mockResolvedValueOnce(mockImageStatusResponse('current'));

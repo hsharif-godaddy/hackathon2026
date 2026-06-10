@@ -926,17 +926,52 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
 
         // Resolve or create conversation before opening stream. agentFetch
         // handles Bearer injection + cache-bust retry on 401, so we don't
-        // re-roll that logic for this POST.
+        // re-roll that logic for this POST. Retry with backoff for transient
+        // failures (e.g. container still starting after health check passed).
         let conversationId = getConversationIdFromCookie(currentAppId!)
         if (!conversationId) {
-          const createRes = await agentFetch(`${config.baseUrl}/api/conversations/${currentAppId!}`, {
-            siteId: currentAppId!,
-            method: 'POST',
-          })
-          if (!createRes.ok) throw new Error(`Failed to create conversation: ${createRes.status}`)
-          const createData = await createRes.json()
-          conversationId = createData.conversationId as string
-          setConversationIdCookie(currentAppId!, conversationId)
+          const maxRetries = 3
+          let lastError: Error | null = null
+          for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            if (cancelled) return
+            if (attempt > 0) {
+              await new Promise<void>(r => setTimeout(r, 1000 * 2 ** (attempt - 1)))
+              if (cancelled) return
+            }
+            try {
+              const createRes = await agentFetch(`${config.baseUrl}/api/conversations/${currentAppId!}`, {
+                siteId: currentAppId!,
+                method: 'POST',
+              })
+              if (createRes.ok) {
+                const createData = await createRes.json()
+                const id = createData.conversationId as string | undefined
+                if (id) {
+                  conversationId = id
+                  setConversationIdCookie(currentAppId!, conversationId)
+                  lastError = null
+                  break
+                }
+                lastError = new Error('Server returned empty conversationId')
+              } else {
+                lastError = new Error(`Failed to create conversation: ${createRes.status}`)
+              }
+            } catch (err) {
+              lastError = err instanceof Error ? err : new Error(String(err))
+            }
+            if (attempt < maxRetries) {
+              logger.warn('sse.connect.conversationCreate.retry', {
+                appId: currentAppId, attempt: attempt + 1, maxRetries,
+                error: lastError?.message,
+              })
+            }
+          }
+          if (lastError) {
+            logger.warn('sse.connect.conversationCreate.exhausted', {
+              appId: currentAppId, maxRetries, error: lastError.message,
+            })
+            throw lastError
+          }
         }
         if (cancelled) return
 

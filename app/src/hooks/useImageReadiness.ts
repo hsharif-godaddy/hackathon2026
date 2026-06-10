@@ -104,6 +104,7 @@ export function useImageReadiness(
   const [error, setError] = useState<string | null>(null);
 
   const hasStartedRef = useRef(false);
+  const createFlowPollingStartedRef = useRef(false);
   const reloadStartTimeRef = useRef<number | null>(null);
   const serverWaitStartTimeRef = useRef<number | null>(null);
   const reloadingPollCountRef = useRef(0);
@@ -316,6 +317,19 @@ export function useImageReadiness(
     setPhase('complete');
   }, [phase, isServerReady, appId, queryClient]);
 
+  // Create flow: skip image checks but start server health polling immediately.
+  // The container was just allocated by Nomad and needs time to start.
+  // Uses its own ref (not hasStartedRef) so the canProceed status-check effect
+  // can still fire if isCreateFlow later transitions to false within the session.
+  useEffect(() => {
+    if (!isCreateFlow || !appId || createFlowPollingStartedRef.current) return;
+    createFlowPollingStartedRef.current = true;
+    startPollingForServer(appId);
+    serverWaitStartTimeRef.current = Date.now();
+    setPhase('waiting-server');
+    logger.info('image-readiness.create-flow.server-wait.start', { appId });
+  }, [isCreateFlow, appId, startPollingForServer]);
+
   // Trigger status check when canProceed becomes true
   useEffect(() => {
     if (!canProceed || !appId || hasStartedRef.current) return;
@@ -328,6 +342,7 @@ export function useImageReadiness(
   useEffect(() => {
     return () => {
       hasStartedRef.current = false;
+      createFlowPollingStartedRef.current = false;
       hasHandledCompletionRef.current = false;
       isReloadingInitialRef.current = false;
       reloadStartTimeRef.current = null;
@@ -342,6 +357,7 @@ export function useImageReadiness(
   // re-fire statusCheck.mutate() on the next render, restarting the flow.
   const retry = useCallback(() => {
     hasStartedRef.current = false;
+    createFlowPollingStartedRef.current = false;
     hasHandledCompletionRef.current = false;
     isReloadingInitialRef.current = false;
     reloadStartTimeRef.current = null;
@@ -363,9 +379,17 @@ export function useImageReadiness(
     return IMAGES_READY;
   }
 
-  // Newly created apps already have the latest image; skip all status checks.
+  // Newly created apps have the latest image but the container process may
+  // still be cold-starting. Skip image-status checks but gate on server health
+  // so the SSE transport doesn't connect to an unready container.
   if (isCreateFlow) {
-    return IMAGES_READY;
+    if (!appId || isServerReady) {
+      return IMAGES_READY;
+    }
+    if (phase === 'error') {
+      return { isChecking: false, isImageUpdating: false, isReady: false, error, retry };
+    }
+    return { isChecking: true, isImageUpdating: false, isReady: false, error: null, retry };
   }
 
   if (!isFeatureEnabled) {

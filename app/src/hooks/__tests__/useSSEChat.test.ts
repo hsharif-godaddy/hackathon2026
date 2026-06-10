@@ -2480,6 +2480,76 @@ describe('useSSEChat', () => {
       hook.unmount()
     })
   })
+
+  describe('conversation creation retry', () => {
+    it('retries POST /api/conversations on failure and connects on success', async () => {
+      mockConversationIdFromCookie = null
+      let callCount = 0
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        callCount++
+        if (callCount === 1) {
+          return Promise.resolve({ ok: false, status: 503, json: () => Promise.resolve({}) })
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ conversationId: 'conv-retry-ok' }) })
+      })
+
+      const { useSSEChat } = await import('@/hooks/useSSEChat')
+      const hook = renderHook(() => useSSEChat())
+
+      await act(async () => { await flushPromises() })
+      // Wait for the retry delay + subsequent attempt to resolve
+      await act(async () => { await new Promise(r => setTimeout(r, 1500)) })
+
+      expect(lastTransport.connect).toHaveBeenCalledWith('test-app-123', 'test-token', 'conv-retry-ok')
+      expect(logger.warn).toHaveBeenCalledWith('sse.connect.conversationCreate.retry', expect.objectContaining({ attempt: 1 }))
+
+      hook.unmount()
+    })
+
+    it('logs error after exhausting all retries with exactly 3 retry warnings', async () => {
+      mockConversationIdFromCookie = null
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, status: 503, json: () => Promise.resolve({}) })
+
+      const { useSSEChat } = await import('@/hooks/useSSEChat')
+      const hook = renderHook(() => useSSEChat())
+
+      // Total retry time: 0 + 1s + 2s + 4s = 7s. Wait with margin.
+      await act(async () => { await new Promise(r => setTimeout(r, 8000)) })
+
+      expect(lastTransport.connect).not.toHaveBeenCalled()
+
+      const retryCalls = (logger.warn as ReturnType<typeof vi.fn>).mock.calls
+        .filter(([event]: [string]) => event === 'sse.connect.conversationCreate.retry')
+      expect(retryCalls).toHaveLength(3)
+      expect(retryCalls[0][1]).toMatchObject({ attempt: 1, maxRetries: 3 })
+      expect(retryCalls[1][1]).toMatchObject({ attempt: 2, maxRetries: 3 })
+      expect(retryCalls[2][1]).toMatchObject({ attempt: 3, maxRetries: 3 })
+
+      expect(logger.warn).toHaveBeenCalledWith('sse.connect.conversationCreate.exhausted', expect.objectContaining({
+        maxRetries: 3, error: 'Failed to create conversation: 503',
+      }))
+      expect(logger.error).toHaveBeenCalledWith('sse.connect.failed', expect.objectContaining({
+        error: 'Failed to create conversation: 503',
+      }))
+
+      hook.unmount()
+    }, 15000)
+
+    it('skips retry loop when conversation cookie exists', async () => {
+      mockConversationIdFromCookie = 'conv-from-cookie'
+      ;(global.fetch as ReturnType<typeof vi.fn>).mockClear()
+
+      const { useSSEChat } = await import('@/hooks/useSSEChat')
+      const hook = renderHook(() => useSSEChat())
+
+      await act(async () => { await flushPromises() })
+
+      expect(lastTransport.connect).toHaveBeenCalledWith('test-app-123', 'test-token', 'conv-from-cookie')
+      expect(global.fetch).not.toHaveBeenCalled()
+
+      hook.unmount()
+    })
+  })
 })
 
 describe('lastAssistantMessageIsComplete', () => {
