@@ -30,6 +30,8 @@ LAKE_PREFIX = "budget_management_system_cln"
 LAKE_DATABASE_NAME = "budget_management_system_cln"
 LAKE_API_ENV = "prod"
 
+AUDIT_TS_COLUMN = "cln_create_utc_ts"
+
 TABLE_COLUMNS: dict[str, dict] = {
     "budget_cln": {
         "pg_table": "budgets",
@@ -131,6 +133,7 @@ def _export_table(
     columns: list[tuple[str, str]],
     bucket: str,
     export_date: str,
+    ingest_ts: dt.datetime,
 ) -> int:
     year, month, day = export_date.split("-")
     key = (
@@ -161,7 +164,9 @@ def _export_table(
         # nosemgrep
         cur.execute(query)
         for row in cur:
-            rows.append({dst: _normalize(val) for (_, dst), val in zip(columns, row)})
+            record = {dst: _normalize(val) for (_, dst), val in zip(columns, row)}
+            record[AUDIT_TS_COLUMN] = ingest_ts
+            rows.append(record)
 
     arrow_table = pa.Table.from_pylist(rows)
 
@@ -190,7 +195,8 @@ def _export_table(
 
 def lambda_handler(event, context):  # noqa: ARG001
     bucket = os.environ["OUTPUT_BUCKET"]
-    export_date = os.environ.get("EXPORT_DATE") or dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    ingest_ts = dt.datetime.now(dt.timezone.utc)
+    export_date = os.environ.get("EXPORT_DATE") or ingest_ts.strftime("%Y-%m-%d")
 
     summary: dict[str, int | str] = {}
     errors: list[str] = []
@@ -200,7 +206,7 @@ def lambda_handler(event, context):  # noqa: ARG001
         for lake_table, spec in TABLE_COLUMNS.items():
             try:
                 summary[lake_table] = _export_table(
-                    conn, lake_table, spec["pg_table"], spec["columns"], bucket, export_date,
+                    conn, lake_table, spec["pg_table"], spec["columns"], bucket, export_date, ingest_ts,
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.exception("export failed for table=%s", lake_table)
