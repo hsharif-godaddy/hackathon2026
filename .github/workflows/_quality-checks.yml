@@ -55,6 +55,11 @@ on:
         required: false
         type: string
         default: ''
+      validate-i18n:
+        description: 'Validate i18n translation keys for changed app/src files'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   # Job 1: Lint, License Check, and Build (runs in parallel with tests)
@@ -68,6 +73,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: ${{ inputs.validate-i18n && 0 || 1 }}
       - name: Setup Artifactory and Node.js
         id: setup
         uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c
@@ -143,6 +150,13 @@ jobs:
 
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Validate i18n translation keys
+        if: inputs.validate-i18n
+        env:
+          I18N_VALIDATION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || '' }}
+          I18N_VALIDATION_HEAD_SHA: ${{ github.sha }}
+        run: bash scripts/validate-i18n-ci.sh
 
       - name: Check license compliance
         working-directory: ${{ inputs.working-directory }}

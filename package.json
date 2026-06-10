@@ -28,6 +28,7 @@
     "e2e:v2:cleanup:dry-run": "PLAYWRIGHT_ENV=test playwright test --project=e2e-v2-setup && node tests/scripts/cleanup-orphaned-apps.mjs --env=test --dry-run",
     "pr-check": "./scripts/pr-check.sh",
     "pr-check:quick": "./scripts/pr-check.sh --quick",
+    "validate:i18n:ci": "bash scripts/validate-i18n-ci.sh",
     "prepare": "husky && husky install",
     "apm:start": "./scripts/local-apm.sh start",
     "apm:stop": "./scripts/local-apm.sh stop",

@@ -56,6 +56,7 @@ jobs:
       working-directory: ./app
       cache-next-build: true
       skip-tests: true
+      validate-i18n: true
     secrets: inherit
 
   app-unit-tests:

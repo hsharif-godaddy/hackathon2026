@@ -13,6 +13,8 @@ on:
       - 'pnpm-lock.yaml'
       - 'turbo.json'
       - 'scripts/license-check.sh'
+      - 'scripts/validate-i18n.mjs'
+      - 'scripts/validate-i18n-ci.sh'
       - '.github/workflows/quality-checks-app.yml'
       - '.github/workflows/_quality-checks.yml'
   push:
@@ -26,6 +28,8 @@ on:
       - 'pnpm-lock.yaml'
       - 'turbo.json'
       - 'scripts/license-check.sh'
+      - 'scripts/validate-i18n.mjs'
+      - 'scripts/validate-i18n-ci.sh'
       - '.github/workflows/quality-checks-app.yml'
       - '.github/workflows/_quality-checks.yml'
 
@@ -43,6 +47,7 @@ jobs:
       working-directory: ./app
       cache-next-build: true
       skip-tests: true
+      validate-i18n: true
     secrets: inherit
 
   quality-checks-app-unit-tests:

@@ -6,9 +6,12 @@
  * Validates that all translation keys used in staged TypeScript/JSX files
  * exist in the i18n API. Runs as part of pre-commit hook via lint-staged.
  *
+ * Flags:
+ * - --strict: Fail when the i18n API is unreachable (used in CI)
+ *
  * Exit codes:
- * - 0: Validation passed or API unreachable (don't block commit)
- * - 1: Validation failed (missing keys found)
+ * - 0: Validation passed, or API unreachable in non-strict mode
+ * - 1: Validation failed (missing keys or API unreachable in strict mode)
  */
 
 import { execSync } from "node:child_process";
@@ -307,9 +310,12 @@ function reportMissingKeys(missingKeys) {
  * Main execution function
  */
 async function main() {
-  // Get files passed by lint-staged (or use getStagedFiles as fallback for manual runs)
-  const stagedFiles =
-    process.argv.length > 2 ? process.argv.slice(2) : getStagedFiles();
+  const args = process.argv.slice(2);
+  const strict = args.includes("--strict");
+  const fileArgs = args.filter((arg) => !arg.startsWith("--"));
+
+  // Get files passed by lint-staged/CI, or use staged files for manual runs
+  const stagedFiles = fileArgs.length > 0 ? fileArgs : getStagedFiles();
 
   const appFiles = filterAppSourceFiles(stagedFiles);
 
@@ -321,12 +327,18 @@ async function main() {
   const availableKeys = await fetchTranslationKeys();
 
   if (!availableKeys) {
-    // API fetch failed - show warning but don't block commit
     console.log("⚠️  Warning: Could not fetch translation keys from API");
+    console.log("   " + API_URL);
+
+    if (strict) {
+      console.log("");
+      console.log("❌ i18n validation failed in strict mode (CI requires API access)");
+      process.exit(1);
+    }
+
     console.log("   Skipping i18n validation (VPN required)");
     console.log("");
-    console.log("   If you're connected to VPN and seeing this, check:");
-    console.log("   " + API_URL);
+    console.log("   Missing keys will be caught in CI. Connect to VPN to validate locally.");
     process.exit(0);
   }
 
