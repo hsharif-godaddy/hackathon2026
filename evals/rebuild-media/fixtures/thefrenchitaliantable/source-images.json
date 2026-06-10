@@ -1,0 +1,1682 @@
+{
+  "assets": [
+    {
+      "localPath": ".source-site/assets/images/10f8533a54c9e7bed87c625938d2bf53.png",
+      "type": "image",
+      "usageContext": "logo",
+      "description": "A bold, stylized text logo reading 'THE FRENCH ITALIAN TABLE' with 'THE' and 'TABLE' in smaller green text on either side of the large central text 'FRENCH ITALIAN' in a thick, modern sans-serif font. The design uses a forest green color palette and has a contemporary, geometric aesthetic.",
+      "dimensions": {
+        "width": 605,
+        "height": 46
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/acid-at-the-end",
+        "https://thefrenchitaliantable.com/about",
+        "https://thefrenchitaliantable.com/aioli-101",
+        "https://thefrenchitaliantable.com/appetizers",
+        "https://thefrenchitaliantable.com/archive",
+        "https://thefrenchitaliantable.com/",
+        "https://thefrenchitaliantable.com/batonnet",
+        "https://thefrenchitaliantable.com/bolognese",
+        "https://thefrenchitaliantable.com/blanching",
+        "https://thefrenchitaliantable.com/book-us",
+        "https://thefrenchitaliantable.com/braising",
+        "https://thefrenchitaliantable.com/butter-at-the-end",
+        "https://thefrenchitaliantable.com/brunoise",
+        "https://thefrenchitaliantable.com/chef-anthony",
+        "https://thefrenchitaliantable.com/chef-tips-1",
+        "https://thefrenchitaliantable.com/chef-dominic",
+        "https://thefrenchitaliantable.com/chiffonade",
+        "https://thefrenchitaliantable.com/cr%C3%AApes-suzette",
+        "https://thefrenchitaliantable.com/classes",
+        "https://thefrenchitaliantable.com/home-1"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/080ad32d02be68f414c9240628124af8.png",
+      "type": "image",
+      "usageContext": "hero",
+      "description": "A minimalist image displaying three lines of pale yellow text on a white background. The text reads 'THE', 'PRICING', and 'TABLE' arranged vertically, creating a simple typographic layout with generous whitespace.",
+      "dimensions": {
+        "width": 1027,
+        "height": 480
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/acid-at-the-end",
+        "https://thefrenchitaliantable.com/aioli-101",
+        "https://thefrenchitaliantable.com/",
+        "https://thefrenchitaliantable.com/braising"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/f71c79da8d9258bba7ae0cb0b42dec59.jpg",
+      "type": "image",
+      "usageContext": "hero",
+      "description": "A humorous 'Coming Soon' promotional image featuring a fish balanced on a fork against a beach boardwalk backdrop with red and white striped awning. The composition uses bold yellow text at top and bottom with the fish as the central focal point, creating a playful teaser for a seafood or beach-related announcement.",
+      "dimensions": {
+        "width": 954,
+        "height": 1266
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/c0148cbe67150bce538bbd5cfbde325a.jpg",
+      "type": "image",
+      "usageContext": "content",
+      "description": "Two men are tasting and examining pasta in a kitchen setting, with one man on the left eating noodles and the other on the right holding up a fork with pasta. The scene captures a casual food tasting or cooking moment with a green-cabineted kitchen visible in the background, bottles and dishware on the shelves.",
+      "dimensions": {
+        "width": 864,
+        "height": 864
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/505f2542d05471f7a6f6715967fcb07d.jpg",
+      "type": "image",
+      "usageContext": "content",
+      "description": "Two male chefs in a professional kitchen are collaborating on food preparation, with one pouring or transferring ingredients from a whisk into a bowl while the other observes. The scene captures an instructional or collaborative cooking moment in an industrial kitchen setting with stainless steel equipment and overhead lighting.",
+      "dimensions": {
+        "width": 864,
+        "height": 864
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/639e525df9e75fd17650a0d151ba8fa7.jpg",
+      "type": "image",
+      "usageContext": "content",
+      "description": "A close-up action shot of someone lifting a golden-brown, cheese-topped potato dish from a skillet filled with similar portions in a creamy sauce. The image captures a casual dining moment with a person's hand and arm visible on the left side, wooden cutting board and kitchen items in the background, creating a warm, homestyle cooking atmosphere.",
+      "dimensions": {
+        "width": 864,
+        "height": 864
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/df8e4fca599b02dd624edfb024b1de69.jpg",
+      "type": "image",
+      "usageContext": "content",
+      "description": "Two professional chefs wearing white chef coats with personalized names (Anthony and Dominic) are actively cooking together in a modern kitchen. They are focused on their work at a stovetop, with one chef tossing or flipping food in a pan while the other observes, demonstrating culinary collaboration and skill.",
+      "dimensions": {
+        "width": 864,
+        "height": 864
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/b50498b248e9f8e51a2120b37122cea9.jpg",
+      "type": "image",
+      "usageContext": "hero",
+      "description": "Two men in white chef's coats are preparing food together at an outdoor table set against a scenic hillside landscape with olive trees and mountains. They are smiling and engaged in cooking, with the golden text 'Bon Appetito' overlaid in the center of the image, suggesting a culinary or lifestyle brand context.",
+      "dimensions": {
+        "width": 2560,
+        "height": 1440
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/",
+        "https://thefrenchitaliantable.com/home-1"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/18dd0d072fb6c2fe2f5a4eea4dc595e0.jpg",
+      "type": "image",
+      "usageContext": "hero",
+      "description": "A vintage-style promotional image for \"The French Italian Table\" featuring three detailed botanical illustrations of ripe red tomatoes with green stems and leaves arranged symmetrically on a cream background. Bold green text repeats the restaurant name across the composition in a retro typography style.",
+      "dimensions": {
+        "width": 2560,
+        "height": 1440
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/",
+        "https://thefrenchitaliantable.com/home-1"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/739203d60985943f6684c19f1a906916.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 1480,
+        "height": 1680
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/acid-at-the-end"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/c53faa87e508deed7c4d647c08d3b2a8.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 2560,
+        "height": 1265
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/about"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/ab580555f7a119f9f5b4b2895305606f.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 1480,
+        "height": 1680
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/aioli-101"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/76f03f8b223c8b6b3c9a119d89a92f6c.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 954,
+        "height": 1266
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/appetizers"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/6a33d59cd58bf322c3d69663c8e4f863.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 1480,
+        "height": 1680
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/batonnet"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/84afd0cb3d78f8b6aebe6f22250de18c.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 1480,
+        "height": 1680
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/bolognese"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/aeb5f0535c9d3a0021774fc04407b8d3.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 1480,
+        "height": 1680
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/blanching"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/0cd6ab6e88ddcf878f2d948b37e23f9f.png",
+      "type": "image",
+      "dimensions": {
+        "width": 1080,
+        "height": 1076
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/book-us"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/eb05e44dbc7f2088058e53b13656c316.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 1480,
+        "height": 1680
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/braising"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/9798ec1478987d2d4d096b691b134925.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 1480,
+        "height": 1680
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/butter-at-the-end"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/c767d9a8a259fedcc12d2360e903ccff.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 1480,
+        "height": 1680
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/brunoise"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/e6d9514e516d02a15a39f522cffb7886.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 1920,
+        "height": 2004
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-anthony"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/78e050ee4523cdb0f7c5f8b5fcbaf928.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 954,
+        "height": 1266
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-tips-1"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/6e7dc0636d900515ca662a24ed5a0f31.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 954,
+        "height": 1266
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-tips-1"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/ad9ea7eee583974ca2864314f16cf507.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 954,
+        "height": 1266
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-tips-1"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/df8a9acd8b3c2ff55425c0e704cdce5c.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 954,
+        "height": 1266
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-tips-1"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/6b168fb97e86769963f457bb0b902fcd.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 954,
+        "height": 1266
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-tips-1"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/4cc0b86c67755313aafc20e4cb3e597c.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 954,
+        "height": 1266
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-tips-1"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/a01e28923ea08eb210e8a5ebb50d7e59.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 864,
+        "height": 864
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-dominic"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/27775448d994467e3f7a56673d8c6e94.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 864,
+        "height": 864
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-dominic"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/c91a4bf3c81a36c5d97903f3ddc98fd9.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 864,
+        "height": 864
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-dominic"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/a89d235ef2485d3187b04fe45118070e.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 864,
+        "height": 864
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-dominic"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/28825f3ae586e397d68116270511a9a5.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 1920,
+        "height": 2004
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-dominic"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/2a5cbccc143fac440cea453d719bcdca.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 1480,
+        "height": 1680
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chiffonade"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/6e4fb3204f12145ef511066dd0140344.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 1480,
+        "height": 1680
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/cr%C3%AApes-suzette"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/8f7ac59fd2a6880ce8ff2b333a72105e.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 2560,
+        "height": 1268
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/classes"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/d9545d2a5b4654b2b97b3e5fcd42df4c.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 1720,
+        "height": 1720
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/home-1"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/8240390780a40771b0bd03dc25c9a402.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 1720,
+        "height": 1720
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/home-1"
+      ]
+    },
+    {
+      "localPath": ".source-site/assets/images/8d7a5a7835c6f5c0dcd3add06c21e6ea.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 592,
+        "height": 671.90625
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/acid-at-the-end"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": true,
+        "isFirstInContainer": true,
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8c",
+          "c1-8d",
+          "c1-4d",
+          "c1-2l",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/247ad1f0cba5bae190be5f8dabe9cd5c.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 405.328125,
+        "height": 189.4375
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/acid-at-the-end"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": false,
+        "isFirstInContainer": true,
+        "linkedTo": "https://thefrenchitaliantable.com/home-1",
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c2-1",
+          "c2-2",
+          "c2-1f",
+          "c2-1j",
+          "c2-1k",
+          "c2-1l",
+          "c2-1m",
+          "c2-1n",
+          "c2-12",
+          "c2-1o",
+          "c2-m",
+          "c2-1e",
+          "c2-1g",
+          "c2-1h",
+          "c2-1i",
+          "c2-1p",
+          "c2-3",
+          "c2-4",
+          "c2-5",
+          "c2-6",
+          "c2-7",
+          "c2-8"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/f6dd2581ec1d005fc6312f120cefa425.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 592,
+        "height": 671.90625
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/aioli-101"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": true,
+        "isFirstInContainer": true,
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8c",
+          "c1-8d",
+          "c1-4d",
+          "c1-2l",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/83ce5f762e2c8a600838606848c9419c.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 378.65625,
+        "height": 502.484375
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/appetizers"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": true,
+        "isFirstInContainer": true,
+        "linkedTo": "https://thefrenchitaliantable.com/thai-style-rice-and-steak",
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8s",
+          "c1-2l",
+          "c1-8t",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/ee95a24971480d4bf3eef28c8d503486.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 378.65625,
+        "height": 502.625
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": false,
+        "isFirstInContainer": true,
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-34",
+          "c1-3b",
+          "c1-3c",
+          "c1-1x",
+          "c1-1z",
+          "c1-3d",
+          "c1-d2",
+          "c1-3i",
+          "c1-d3",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/1b76097be02adb57ddc0ac3da91b5d19.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 272,
+        "height": 272
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": false,
+        "isFirstInContainer": true,
+        "linkedTo": "https://www.instagram.com/thefrenchitaliantable/",
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-34",
+          "c1-3b",
+          "c1-3c",
+          "c1-1x",
+          "c1-1z",
+          "c1-3d",
+          "c1-do",
+          "c1-3i",
+          "c1-d3",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/eeed0c239a5a0b82d9562f762d680533.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 272,
+        "height": 272
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": false,
+        "isFirstInContainer": false,
+        "linkedTo": "https://www.instagram.com/thefrenchitaliantable/",
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-34",
+          "c1-3b",
+          "c1-3c",
+          "c1-1x",
+          "c1-1z",
+          "c1-3d",
+          "c1-do",
+          "c1-3i",
+          "c1-d3",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/9020a71fe27ee41872e7b095c212ddf5.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 272,
+        "height": 272
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": false,
+        "isFirstInContainer": false,
+        "linkedTo": "https://www.instagram.com/thefrenchitaliantable/",
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-34",
+          "c1-3b",
+          "c1-3c",
+          "c1-1x",
+          "c1-1z",
+          "c1-3d",
+          "c1-do",
+          "c1-3i",
+          "c1-d3",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/7c5d1468a089a7453f6153990751c7fd.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 272,
+        "height": 272
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": false,
+        "isFirstInContainer": false,
+        "linkedTo": "https://www.instagram.com/thefrenchitaliantable/",
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-34",
+          "c1-3b",
+          "c1-3c",
+          "c1-1x",
+          "c1-1z",
+          "c1-3d",
+          "c1-do",
+          "c1-3i",
+          "c1-d3",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/ac900fea941e29236d39ca9e4c1e69ea.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 592,
+        "height": 671.90625
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/batonnet"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": true,
+        "isFirstInContainer": true,
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8c",
+          "c1-8d",
+          "c1-4d",
+          "c1-2l",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/50cf64bc134739790687643200de9ee0.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 592,
+        "height": 671.90625
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/bolognese"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": true,
+        "isFirstInContainer": true,
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8c",
+          "c1-8d",
+          "c1-4d",
+          "c1-2l",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/1bd9e19986050ed9472b9ca39bf6847f.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 592,
+        "height": 671.90625
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/blanching"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": true,
+        "isFirstInContainer": true,
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8c",
+          "c1-8d",
+          "c1-4d",
+          "c1-2l",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/03aceea7264b9864ca7a54e0160d7da5.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 592,
+        "height": 671.90625
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/braising"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": true,
+        "isFirstInContainer": true,
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8c",
+          "c1-8d",
+          "c1-4d",
+          "c1-2l",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/0dbcbe34f9b6ae73dd6a75003aae1de7.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 592,
+        "height": 671.90625
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/butter-at-the-end"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": true,
+        "isFirstInContainer": true,
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8c",
+          "c1-8d",
+          "c1-4d",
+          "c1-2l",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/22511a434a4c15e215ac426208ce31fa.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 592,
+        "height": 671.90625
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/brunoise"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": true,
+        "isFirstInContainer": true,
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8c",
+          "c1-8d",
+          "c1-4d",
+          "c1-2l",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/5ec8726cb591ad96306e2dee4912c992.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 378.65625,
+        "height": 502.484375
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-tips-1"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": true,
+        "isFirstInContainer": true,
+        "linkedTo": "https://thefrenchitaliantable.com/salt-in-layers",
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8s",
+          "c1-2l",
+          "c1-8t",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/76868677127395a45da6f399fd12e62f.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 378.65625,
+        "height": 502.484375
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-tips-1"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": true,
+        "isFirstInContainer": false,
+        "linkedTo": "https://thefrenchitaliantable.com/letting-meat-rest",
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8s",
+          "c1-2l",
+          "c1-8t",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/8a62e562950d08d705ce1fda9da1df71.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 378.65625,
+        "height": 502.484375
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-tips-1"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": true,
+        "isFirstInContainer": false,
+        "linkedTo": "https://thefrenchitaliantable.com/preheating-properly",
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8s",
+          "c1-2l",
+          "c1-8t",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/f735e59363e5e9e14f87de58cab936bb.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 378.65625,
+        "height": 502.484375
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-tips-1"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": false,
+        "isFirstInContainer": false,
+        "linkedTo": "https://thefrenchitaliantable.com/acid-at-the-end",
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8s",
+          "c1-2l",
+          "c1-8t",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/28fb46382c65a88566e53163624878cd.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 378.65625,
+        "height": 502.484375
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-tips-1"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": false,
+        "isFirstInContainer": false,
+        "linkedTo": "https://thefrenchitaliantable.com/drying-food",
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8s",
+          "c1-2l",
+          "c1-8t",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/2daa05d2d5c204ef7c9e00b773aedf39.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 378.65625,
+        "height": 502.484375
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-tips-1"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": false,
+        "isFirstInContainer": false,
+        "linkedTo": "https://thefrenchitaliantable.com/butter-at-the-end",
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8s",
+          "c1-2l",
+          "c1-8t",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/b534f01ac3cc60a6c0756d29548b2ab4.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 272,
+        "height": 272
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-dominic"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": false,
+        "isFirstInContainer": true,
+        "linkedTo": "https://www.instagram.com/weeknds/",
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-c3",
+          "c1-2l",
+          "c1-c4",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/7397760cf97d37df19087544cdcc5bbd.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 272,
+        "height": 272
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-dominic"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": false,
+        "isFirstInContainer": false,
+        "linkedTo": "https://www.instagram.com/weeknds/",
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-c3",
+          "c1-2l",
+          "c1-c4",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/a26730ad308381b5e4aa8f496a7afbc7.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 272,
+        "height": 272
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-dominic"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": false,
+        "isFirstInContainer": false,
+        "linkedTo": "https://www.instagram.com/weeknds/",
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-c3",
+          "c1-2l",
+          "c1-c4",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/5ecd7fed29be447615b400b94fcc132b.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 272,
+        "height": 272
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chef-dominic"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": false,
+        "isFirstInContainer": false,
+        "linkedTo": "https://www.instagram.com/weeknds/",
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-c3",
+          "c1-2l",
+          "c1-c4",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/85693d3f50af5ebff947e967e2e70b56.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 592,
+        "height": 671.90625
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/chiffonade"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": true,
+        "isFirstInContainer": true,
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8c",
+          "c1-8d",
+          "c1-4d",
+          "c1-2l",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/0c3dac4d8746215a127f696167cf5196.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 592,
+        "height": 671.90625
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/cr%C3%AApes-suzette"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": true,
+        "isFirstInContainer": true,
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-26",
+          "c1-2d",
+          "c1-2e",
+          "c1-y",
+          "c1-10",
+          "c1-2f",
+          "c1-8c",
+          "c1-8d",
+          "c1-4d",
+          "c1-2l",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/8f7ac59fd2a6880ce8ff2b333a72105e.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 1232,
+        "height": 610.21875
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/classes"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": false,
+        "isFirstInContainer": true,
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c2-1",
+          "c2-2",
+          "c2-1x",
+          "c2-1i",
+          "c2-22",
+          "c2-23",
+          "c2-17",
+          "c2-24",
+          "c2-12",
+          "c2-25",
+          "c2-1v",
+          "c2-1w",
+          "c2-26",
+          "c2-3",
+          "c2-4",
+          "c2-5",
+          "c2-6",
+          "c2-7",
+          "c2-8"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/94e011d7d7b2663b3d5d0ad2eecbc277.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 592,
+        "height": 592
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/home-1"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": true,
+        "isFirstInContainer": true,
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-34",
+          "c1-3b",
+          "c1-3c",
+          "c1-1x",
+          "c1-1z",
+          "c1-3d",
+          "c1-a7",
+          "c1-3i",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    },
+    {
+      "localPath": ".source-site/assets/images/5afdcd79813de636254ec1f2cc35b0b5.jpg",
+      "type": "image",
+      "dimensions": {
+        "width": 592,
+        "height": 592
+      },
+      "sourcePages": [
+        "https://thefrenchitaliantable.com/home-1"
+      ],
+      "placement": {
+        "inHeader": false,
+        "inFooter": false,
+        "inFirstSection": true,
+        "nearH1": true,
+        "isFirstInContainer": false,
+        "classes": [
+          "x-el",
+          "x-el-img",
+          "c1-1",
+          "c1-2",
+          "c1-4",
+          "c1-34",
+          "c1-3b",
+          "c1-3c",
+          "c1-1x",
+          "c1-1z",
+          "c1-3d",
+          "c1-a7",
+          "c1-3i",
+          "c1-b",
+          "c1-c",
+          "c1-d",
+          "c1-e",
+          "c1-f",
+          "c1-g"
+        ]
+      }
+    }
+  ]
+}

@@ -1409,6 +1409,22 @@ importers:
         specifier: 4.1.0
         version: 4.1.0(@opentelemetry/api@1.9.1)(@types/node@22.19.18)(@vitest/ui@4.1.8)(jsdom@26.1.0(bufferutil@4.1.0))(vite@6.4.2(@types/node@22.19.18)(jiti@2.7.0)(lightningcss@1.32.0)(sass@1.99.0)(terser@5.47.1)(tsx@4.21.0)(yaml@2.8.4))
 
+  evals/rebuild-media:
+    dependencies:
+      '@airo/agents':
+        specifier: workspace:*
+        version: link:../../agents
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.18
+      tsx:
+        specifier: 'catalog:'
+        version: 4.21.0
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+
   evals/rebuild-prompts:
     dependencies:
       '@airo/agents':

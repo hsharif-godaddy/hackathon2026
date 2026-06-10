@@ -2,6 +2,8 @@ import { createTool, type Tool } from '@airo/ai-lib';
 import { z } from 'zod';
 import { MediaSlotTool, type MediaSlotResult } from '../media-slot-tool.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
+import { logger } from '../../logging/index.js';
+import { fillSlotFromRebuildSource } from '../rebuild-source-media.js';
 
 /**
  * Media Slot Tool for AI-Lib
@@ -148,6 +150,20 @@ EXAMPLES:
       const appRepo = new AppRepository();
       const app = appRepo.findById(appId);
       customerId = app?.subscriptionId || app?.customerId;
+    }
+
+    // Observability: log every media request (slot + query). Pairs with
+    // media-slot.source-fill below — together they show what the agent asked for
+    // vs whether we served a scraped source photo or fell through to Getty.
+    logger.info('media-slot.fill', { appId, slot, query, mediaType });
+
+    // Rebuild fidelity: while a rebuilt site is in its initial build, fill the slot
+    // with the customer's matching scraped photo instead of Getty stock. Returns
+    // null (→ Getty below) for non-rebuild apps, post-build editing, or when no
+    // source image fits.
+    const sourceFill = await fillSlotFromRebuildSource({ appId, slot, query, mediaType });
+    if (sourceFill) {
+      return JSON.stringify(sourceFill, null, 2);
     }
 
     const mediaSlotTool = new MediaSlotTool();

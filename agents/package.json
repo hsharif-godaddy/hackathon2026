@@ -26,6 +26,10 @@
     "./tools": {
       "types": "./dist/tools/ai-lib-tools/index.d.ts",
       "import": "./dist/tools/ai-lib-tools/index.js"
+    },
+    "./rebuild-source-media": {
+      "types": "./dist/tools/rebuild-source-media.d.ts",
+      "import": "./dist/tools/rebuild-source-media.js"
     }
   },
   "scripts": {

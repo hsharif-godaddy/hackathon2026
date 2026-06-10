@@ -437,13 +437,21 @@ export class AtlasCrawlerAdapter {
     const validated = await this.parseAtlasJson(response, AtlasCrawlResultSchema, endpoint);
     const result = validated as unknown as AtlasCrawlResult;
 
+    // Raw by-type breakdown at the Atlas boundary — distinguishes "Atlas handed us N
+    // images" from what survives our mapping/bucketing downstream. (Post-#42, /home
+    // carries the homepage's full asset set; older builds saw a thin partial.)
+    const rawAssetTypeCounts: Record<string, number> = {};
+    for (const a of result.assets ?? []) {
+      const type = (a as { type?: string }).type ?? 'unknown';
+      rawAssetTypeCounts[type] = (rawAssetTypeCounts[type] ?? 0) + 1;
+    }
     logger.info(`atlas-crawler-adapter.${endpoint}-raw`, {
       jobId,
       hasScreenshots: !!result.screenshots,
       screenshotsCount: result.screenshots?.length ?? 0,
-      // AIROBUILD-2103: the /home payload carries 0 assets — they only arrive
-      // with the full crawl. This count is what proved the build-vs-crawl race.
       assetCount: result.assets?.length ?? 0,
+      rawAssetTypeCounts,
+      imagesSignalCount: result.images?.length ?? 0,
     });
 
     return result;

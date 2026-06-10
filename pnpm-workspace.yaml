@@ -15,6 +15,7 @@ packages:
   - 'evals/corpus-eval'
   - 'evals/gosym-probe'
   - 'evals/rebuild-prompts'
+  - 'evals/rebuild-media'
   - '!app-templates/**'
 
 catalog:

@@ -1,0 +1,19 @@
+{
+  "name": "rebuild-media-eval",
+  "version": "0.1.0",
+  "description": "Fixture-based eval for rebuild source-image selection: asserts the matching pipeline picks customer photos over Getty stock for every slot",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "eval": "pnpm --filter @airo/agents build && node ../../agents/load-env.cjs pnpm exec tsx src/run.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@airo/agents": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}

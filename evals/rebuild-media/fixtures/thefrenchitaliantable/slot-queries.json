@@ -1,0 +1,30 @@
+{
+  "description": "Real slot+query pairs from a thefrenchitaliantable.com homepage rebuild (2026-06-10).",
+  "rootPath": "/",
+  "slots": [
+    {
+      "slot": "pages/home/hero",
+      "query": "two chefs cooking together outdoors rustic table Mediterranean warm natural light"
+    },
+    {
+      "slot": "pages/home/instagram-1",
+      "query": "rustic Mediterranean pasta dish warm food photography"
+    },
+    {
+      "slot": "pages/home/instagram-2",
+      "query": "fresh vegetables rustic kitchen Italian cooking ingredients"
+    },
+    {
+      "slot": "pages/home/instagram-3",
+      "query": "chef cooking action shot rustic kitchen French technique"
+    },
+    {
+      "slot": "pages/home/instagram-4",
+      "query": "artisan bread rustic table Mediterranean food styling"
+    },
+    {
+      "slot": "logo/primary",
+      "query": "restaurant brand logo"
+    }
+  ]
+}

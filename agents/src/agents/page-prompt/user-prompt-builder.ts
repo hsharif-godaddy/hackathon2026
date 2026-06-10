@@ -19,6 +19,7 @@
 import type {
   AssetInfo,
   AssetManifest,
+  ImagePlacement,
   NavigationItem,
   PageContent,
   SiteContactInfo,
@@ -46,8 +47,12 @@ export interface BuildUserPromptArgs {
 export function buildUserPrompt(args: BuildUserPromptArgs): string {
   const { siteMetadata, pageContent, stylePreferences, assetManifest, isFirstPage, hasScreenshot } = args;
 
-  const categorizedAssets = categorizeAssets(assetManifest.assets);
-  const assetsList = renderAssetList(assetManifest.assets);
+  // Sort once by placement so both the dimensioned list and the categorized
+  // section map operate on the same top-N slice (MAX_ASSETS_IN_PROMPT cap).
+  const orderedAssets = [...assetManifest.assets]
+    .sort((a, b) => placementOrder(a.placement) - placementOrder(b.placement));
+  const categorizedAssets = categorizeAssets(orderedAssets);
+  const assetsList = renderAssetList(orderedAssets);
 
   // 4KB cap on the verbose full-content reference — the extracted key content
   // and the categorized assets are the load-bearing inputs; the full text is
@@ -270,13 +275,54 @@ export function getSizeCategory(dimensions?: { width: number; height: number }):
   return 'hero-suitable';
 }
 
-/** Cap on assets included in the prompt. Both renderAssetList and
- *  categorizeAssets see the same top-N slice so the dimensioned list and
- *  the bucketed view agree on which assets are in scope. */
+/** Cap on assets included in the prompt. buildUserPrompt sorts by placement
+ *  once and passes the result to both renderAssetList and categorizeAssets so
+ *  the dimensioned list and the bucketed view agree on which assets are in scope. */
 const MAX_ASSETS_IN_PROMPT = 30;
 
 /** Dimensioned asset list (top {@link MAX_ASSETS_IN_PROMPT}) rendered as bullet lines. */
+/**
+ * Human-readable section role derived from Atlas SSM placement signals — the
+ * section-mapping signal develop needs to put each image back where it belongs.
+ * Returns '' when no placement was captured (e.g. CSS/background images).
+ */
+function placementRole(p: ImagePlacement | undefined): string {
+  if (!p) return '';
+  if (p.inHeader) return 'site header (logo/nav)';
+  if (p.inFooter) return 'footer';
+  const parts: string[] = [];
+  if (p.inFirstSection || p.nearH1) parts.push('hero / top of page');
+  if (p.linkedTo) {
+    const path = linkedToPath(p.linkedTo);
+    if (path) parts.push(`card linking to ${path}`);
+  }
+  if (p.isFirstInContainer && parts.length === 0) parts.push('first image in its section');
+  return parts.join(', ');
+}
+
+/** Pathname of a linkedTo href (absolute or relative), or '' for off-site/root/malformed. */
+function linkedToPath(href: string): string {
+  try {
+    const path = new URL(href, 'https://x.invalid').pathname;
+    return path && path !== '/' ? path : '';
+  } catch {
+    return '';
+  }
+}
+
+/** Render order: header → hero → cards/sections → body → footer → unplaced. */
+function placementOrder(p: ImagePlacement | undefined): number {
+  if (!p) return 5;
+  if (p.inHeader) return 0;
+  if (p.inFirstSection || p.nearH1) return 1;
+  if (p.linkedTo || p.isFirstInContainer) return 2;
+  if (p.inFooter) return 4;
+  return 3;
+}
+
 function renderAssetList(assets: AssetInfo[]): string {
+  // Caller provides assets pre-sorted by placementOrder so both this list and
+  // categorizeAssets apply the same MAX cap to the same ordered input.
   return assets
     .slice(0, MAX_ASSETS_IN_PROMPT)
     .map(a => {
@@ -289,14 +335,29 @@ function renderAssetList(assets: AssetInfo[]): string {
       const altNote = a.altText ? ` - alt: "${a.altText}"` : '';
       const compositionNote = a.composition ? ` - COMPOSITION: ${a.composition}` : '';
       const descriptionNote = a.description ? ` - ${a.description}` : '';
-      return `- ${publicPath} [${dims}] (${a.type}, ${sizeCategory}${altNote}${compositionNote}${descriptionNote})`;
+      // PLACEMENT is the section map: where this image sat on the source page.
+      const role = placementRole(a.placement);
+      const placementNote = role ? ` - PLACEMENT: ${role}` : '';
+      return `- ${publicPath} [${dims}] (${a.type}, ${sizeCategory}${altNote}${compositionNote}${descriptionNote})${placementNote}`;
     })
     .join('\n');
 }
 
-/** Bucket the top {@link MAX_ASSETS_IN_PROMPT} assets into hero/logo/feature/small/unknown sections. */
+/**
+ * Bucket the top {@link MAX_ASSETS_IN_PROMPT} assets by where they sat on the
+ * source page (Atlas placement). Images with placement are grouped by section
+ * role — header/hero/cards/footer — so the agent rebuilds each section with its
+ * real image. Images without placement (CSS/background art) fall back to
+ * size-based buckets.
+ */
 export function categorizeAssets(assets: AssetInfo[]): string {
+  // Placement-anchored buckets (preferred — these carry the section map).
+  const headerImages: string[] = [];
   const heroImages: string[] = [];
+  const cardImages: string[] = [];
+  const footerImages: string[] = [];
+  // Size-based buckets (fallback for images with no placement signal).
+  const bigImages: string[] = [];
   const logoImages: string[] = [];
   const featureImages: string[] = [];
   const smallImages: string[] = [];
@@ -311,10 +372,20 @@ export function categorizeAssets(assets: AssetInfo[]): string {
     // AI-generated description (from vision pass) comes after.
     const alt = asset.altText ? ` alt:"${asset.altText}"` : '';
     const desc = asset.description ? ` - ${asset.description.substring(0, 50)}` : '';
-    const entry = `${publicPath} [${dims}]${alt}${desc}`;
+    const baseEntry = `${publicPath} [${dims}]${alt}${desc}`;
+
+    const p = asset.placement;
+    if (p?.inHeader) { headerImages.push(baseEntry); continue; }
+    if (p?.inFooter) { footerImages.push(baseEntry); continue; }
+    if (p && (p.inFirstSection || p.nearH1)) { heroImages.push(baseEntry); continue; }
+    if (p?.linkedTo) {
+      const path = linkedToPath(p.linkedTo);
+      cardImages.push(path ? `${baseEntry} → links to ${path}` : baseEntry);
+      continue;
+    }
 
     if (!asset.dimensions) {
-      unknownImages.push(entry);
+      unknownImages.push(baseEntry);
       continue;
     }
 
@@ -324,13 +395,13 @@ export function categorizeAssets(assets: AssetInfo[]): string {
     const isLogoLike = minDim >= 50 && minDim <= 400 && aspectRatio >= 0.3 && aspectRatio <= 4;
 
     if (maxDim >= 800) {
-      heroImages.push(entry);
+      bigImages.push(baseEntry);
     } else if (isLogoLike && minDim >= 80 && maxDim <= 500) {
-      logoImages.push(entry);
+      logoImages.push(baseEntry);
     } else if (maxDim >= 300) {
-      featureImages.push(entry);
+      featureImages.push(baseEntry);
     } else {
-      smallImages.push(entry);
+      smallImages.push(baseEntry);
     }
   }
 
@@ -343,7 +414,13 @@ export function categorizeAssets(assets: AssetInfo[]): string {
     if (items.length > cap) output.push(`  ... and ${items.length - cap} more`);
   };
 
-  pushBucket('Hero/Banner Images (800px+)', heroImages, 5);
+  // By source-page position first — this is the section map.
+  pushBucket('Header (logo/nav — from page position)', headerImages, 5);
+  pushBucket('Hero / Top of Page (from page position)', heroImages, 5);
+  pushBucket('Cards / Section Images that link to other pages (use as the image for that nav/card)', cardImages, 10);
+  pushBucket('Footer (from page position)', footerImages, 5);
+  // Then by size, for images with no captured placement.
+  pushBucket('Large Images (800px+, placement unknown)', bigImages, 5);
   pushBucket('Logo Candidates (100-400px, good proportions)', logoImages, 5);
   pushBucket('Feature Images (300-800px)', featureImages, 5);
   pushBucket('Small Images/Icons (<300px)', smallImages, 5);

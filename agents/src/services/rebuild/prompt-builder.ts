@@ -171,12 +171,18 @@ export class RebuildPromptBuilder {
       sourceSiteData.assets,
     );
 
+    const imageAssets = pageAssets.filter(a => a.type === 'image');
     logger.info('rebuild-orchestration.page-assets-analyzed', {
       appId,
       pageSlug,
       pageUrl: pageContent.url,
       pageAssetCount: pageAssets.length,
       analyzedImageCount,
+      // What the build prompt actually hands the agent for this page: source images with
+      // their public /assets/ paths. If these are present but the rebuilt page uses Getty
+      // slots, the agent ignored them (fidelity), not a delivery gap.
+      imageAssetCount: imageAssets.length,
+      imageAssetSample: imageAssets.slice(0, 6).map(a => normalizeAssetPath(a.localPath)),
     });
 
     return {
