@@ -743,12 +743,22 @@ describe('AppCard', () => {
   });
 
   describe('renders thumbnail', () => {
-    it('should render AppThumbnail component', async () => {
+    it('should render the code-icon fallback when the site has no screenshots', () => {
       renderWithProviders(<AppCard site={mockSite} />);
 
-      await waitFor(() => {
-        expect(screen.getByTestId('app-thumbnail-loading')).toBeInTheDocument();
+      expect(screen.getByTestId('app-thumbnail-fallback')).toBeInTheDocument();
+    });
+
+    it('should render the screenshot image when the site has a preview screenshot', () => {
+      const siteWithScreenshot = createMockSite({
+        variants: ['preview'],
+        screenshots: { preview: { desktop: 'https://shots.card.test/preview.png' } },
       });
+
+      renderWithProviders(<AppCard site={siteWithScreenshot} />);
+
+      const img = screen.getByAltText(`Screenshot of ${siteWithScreenshot.name}`);
+      expect(img).toHaveAttribute('src', 'https://shots.card.test/preview.png');
     });
   });
 

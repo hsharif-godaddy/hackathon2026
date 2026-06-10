@@ -11,6 +11,7 @@ import AppThumbnail from '@/app/[market]/apps/AppThumbnail';
 import { useTranslations } from '@/hooks/useTranslations';
 import { Site } from '@/stores/useSitesStore';
 import { generateClickEID } from '@/utils/instrumentation';
+import { getAppScreenshotUrl } from '@/utils/site';
 
 
 export default function AppItem({site, dataEid}: {site: Site, dataEid?: string}) {
@@ -36,7 +37,7 @@ export default function AppItem({site, dataEid}: {site: Site, dataEid?: string})
         inlineAlignChildren="center"
         className="p-1 rounded-md group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300"
       >
-        <AppThumbnail siteId={site.id} siteName={site.name} size="xs" agentUrl={site.agent_url} />
+        <AppThumbnail key={getAppScreenshotUrl(site)} siteName={site.name} size="xs" screenshotUrl={getAppScreenshotUrl(site)} />
         <div className="flex flex-wrap items-center gap-0.5">
           <text.span as="label" className="line-clamp-2">{site.name}</text.span>
         </div>

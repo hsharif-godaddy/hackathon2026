@@ -8,6 +8,7 @@ import { useTranslations } from '@/hooks/useTranslations';
 import type { SiteInfo } from '@/lib/control-plane/types';
 import { PAYWALL_ITC, type PaywallType } from '@/lib/paywall/shared';
 import { generateClickEID, logClickEvent } from '@/utils/instrumentation';
+import { getAppScreenshotUrl } from '@/utils/site';
 
 interface AppSiteRowProps {
   disabled: boolean;
@@ -78,7 +79,7 @@ export default function AppSiteRow({
       )}
     >
       <div className="flex items-center gap-3 min-w-0 w-full md:w-auto">
-        <AppThumbnail siteId={site.id} siteName={site.name} size="md" agentUrl={site.agent_url} />
+        <AppThumbnail key={getAppScreenshotUrl(site)} siteName={site.name} size="md" screenshotUrl={getAppScreenshotUrl(site)} />
         <div className="flex flex-col min-w-0">
           <div className="flex flex-col-reverse md:flex-row md:items-center flex-shrink-0 gap-2">
             <text.p className="truncate font-medium" title={site.name}>

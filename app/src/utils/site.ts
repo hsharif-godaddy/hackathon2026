@@ -1,6 +1,6 @@
 import { hasBeenPublished as hasBeenPublishedShared, type PublishCheckableSite } from '@airo/shared';
 
-import { DomainStatus, DomainType, LifecycleState, SiteStatus, type SiteVariant } from '@/lib/control-plane/types';
+import { DomainStatus, DomainType, LifecycleState, type SiteInfo, SiteStatus, type SiteVariant } from '@/lib/control-plane/types';
 
 type SiteWithOptionalStatus = { status?: SiteStatus } | null | undefined;
 
@@ -61,4 +61,20 @@ export function isPreviewHibernated(site: SiteWithLifecycle): boolean {
   const preview = variants.find(v => v.variant === 'preview');
   const state = preview?.lifecycle?.lifecycleState;
   return state === LifecycleState.PAUSED || state === LifecycleState.ARCHIVED;
+}
+
+/**
+ * Resolve the desktop screenshot URL to show as an app thumbnail.
+ *
+ * A published app prefers its publish screenshot (falling back to preview if
+ * the publish one hasn't been captured yet); an unpublished app uses preview.
+ * Mobile screenshots are intentionally ignored — thumbnails are desktop-only.
+ * Returns undefined when no usable URL exists (callers fall back to a code icon).
+ */
+export function getAppScreenshotUrl(site: SiteInfo): string | undefined {
+  const shots = site.screenshots;
+  if (!shots) return undefined;
+  return hasBeenPublished(site)
+    ? shots.publish?.desktop ?? shots.preview?.desktop
+    : shots.preview?.desktop;
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { DomainStatus, DomainType, LifecycleState, SiteStatus } from '@/lib/control-plane/types';
-import { canAccessDomainManagement, hasBeenPublished, hasCustomDomainAttachments, isPreviewHibernated, isSiteSuspended } from './site';
+import { DomainStatus, DomainType, LifecycleState, type SiteInfo, type SiteScreenshots,SiteStatus } from '@/lib/control-plane/types';
+import { canAccessDomainManagement, getAppScreenshotUrl, hasBeenPublished, hasCustomDomainAttachments, isPreviewHibernated, isSiteSuspended } from './site';
 
 describe('hasBeenPublished', () => {
   describe('with publish variant', () => {
@@ -330,5 +330,67 @@ describe('isPreviewHibernated', () => {
       ],
     };
     expect(isPreviewHibernated(site)).toBe(false);
+  });
+});
+
+describe('getAppScreenshotUrl', () => {
+  const makeSite = (variants: string[], screenshots?: SiteScreenshots): SiteInfo => ({
+    id: 'site-1',
+    name: 'Test App',
+    status: SiteStatus.Running,
+    account_id: 'acct-1',
+    created_at: new Date('2024-01-01T00:00:00Z'),
+    updated_at: new Date('2024-01-01T00:00:00Z'),
+    variants,
+    screenshots,
+  });
+
+  it('returns undefined when the site has no screenshots', () => {
+    expect(getAppScreenshotUrl(makeSite(['preview']))).toBeUndefined();
+  });
+
+  it('unpublished app uses preview desktop', () => {
+    const site = makeSite(['preview'], {
+      preview: { desktop: 'preview-d', mobile: 'preview-m' },
+    });
+    expect(getAppScreenshotUrl(site)).toBe('preview-d');
+  });
+
+  it('published app prefers publish desktop', () => {
+    const site = makeSite(['preview', 'publish'], {
+      preview: { desktop: 'preview-d' },
+      publish: { desktop: 'publish-d' },
+    });
+    expect(getAppScreenshotUrl(site)).toBe('publish-d');
+  });
+
+  it('published app falls back to preview desktop when publish screenshot missing', () => {
+    const site = makeSite(['preview', 'publish'], {
+      preview: { desktop: 'preview-d' },
+    });
+    expect(getAppScreenshotUrl(site)).toBe('preview-d');
+  });
+
+  it('ignores mobile screenshots (desktop-only)', () => {
+    const site = makeSite(['preview'], {
+      preview: { mobile: 'preview-m' },
+    });
+    expect(getAppScreenshotUrl(site)).toBeUndefined();
+  });
+
+  it('unpublished app with only a publish screenshot returns undefined (never leaks publish shot)', () => {
+    const site = makeSite(['preview'], {
+      publish: { desktop: 'publish-d' },
+    });
+    expect(getAppScreenshotUrl(site)).toBeUndefined();
+  });
+
+  it('returns undefined for published app when neither publish nor preview has a desktop URL', () => {
+    // Both variant rows exist but only mobile was captured (partial capture)
+    const site = makeSite(['preview', 'publish'], {
+      preview: { mobile: 'preview-m' },
+      publish: { mobile: 'publish-m' },
+    });
+    expect(getAppScreenshotUrl(site)).toBeUndefined();
   });
 });

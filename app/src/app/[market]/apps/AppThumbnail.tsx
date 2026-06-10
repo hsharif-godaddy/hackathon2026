@@ -1,16 +1,22 @@
+'use client'
+
 import clsx from 'clsx'
+import { useState } from 'react'
 import Box from '@ux/box'
 import CodeIcon from '@ux/icon/code'
-import Skeleton from '@ux/skeleton'
 
-import { useAppThumbnail } from '@/hooks/useAppThumbnail'
+import { logger } from '@/lib/request-context'
 
 interface AppThumbnailProps {
-  siteId: string
   siteName: string
   size?: 'xs' | 'sm' | 'md' | 'lg'
-  /** When set (e.g. from GET /api/sites), resolves screenshot URL without GET /api/sites/:id */
-  agentUrl?: string
+  /**
+   * Pre-rendered screenshot URL (resolve with getAppScreenshotUrl). When absent
+   * — or when the image fails to load — a code-icon fallback tile is shown.
+   * Pass key={screenshotUrl} at the call site so React remounts this component
+   * when the URL changes, giving each URL a fresh error state automatically.
+   */
+  screenshotUrl?: string
 }
 
 const SIZE_CLASS_MAP = {
@@ -27,8 +33,8 @@ const ICON_SIZE_MAP = {
   lg: 'size-5'
 } as const;
 
-export default function AppThumbnail({ siteId, siteName, size, agentUrl }: AppThumbnailProps) {
-  const { data: thumbnailUrl, isLoading, isError } = useAppThumbnail(siteId, true, agentUrl)
+export default function AppThumbnail({ siteName, size, screenshotUrl }: AppThumbnailProps) {
+  const [hasError, setHasError] = useState(false)
 
   const containerSize = size ? clsx(SIZE_CLASS_MAP[size], 'shrink-0') : 'w-full h-full'
   const iconSize = size ? ICON_SIZE_MAP[size] : ICON_SIZE_MAP.md
@@ -36,20 +42,7 @@ export default function AppThumbnail({ siteId, siteName, size, agentUrl }: AppTh
   const containerClasses = clsx(containerSize, rounding)
   const borderClasses = 'border-1 border-intents-ux-borderColor'
 
-  if (isLoading) {
-    return (
-      <Box
-        data-testid="app-thumbnail-loading"
-        blockAlignChildren="center"
-        inlineAlignChildren="center"
-        className={clsx(containerClasses)}
-      >
-        <Skeleton height="100%" width="100%" />
-      </Box>
-    )
-  }
-
-  if (isError || !thumbnailUrl) {
+  if (!screenshotUrl || hasError) {
     return (
       <Box
         data-testid="app-thumbnail-fallback"
@@ -67,12 +60,16 @@ export default function AppThumbnail({ siteId, siteName, size, agentUrl }: AppTh
       data-testid="app-thumbnail"
       blockAlignChildren="center"
       inlineAlignChildren="center"
-      className={clsx(containerClasses, borderClasses, 'overflow-hidden')}
+      className={clsx(containerClasses, borderClasses, 'overflow-hidden', 'bg-intents-ux-boxLowContrast-backgroundColor')}
     >
       <img /* eslint-disable-line @next/next/no-img-element */
-        src={thumbnailUrl}
+        src={screenshotUrl}
         alt={`Screenshot of ${siteName}`}
         className="w-full h-full object-cover object-top"
+        onError={() => {
+          logger.warn('app-thumbnail.image.load.failed', { siteName, screenshotUrl })
+          setHasError(true)
+        }}
       />
     </Box>
   )

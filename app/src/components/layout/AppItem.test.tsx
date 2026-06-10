@@ -97,23 +97,31 @@ describe('AppItem', () => {
     expect(screen.getByText('My Test App')).toBeInTheDocument();
   });
 
-  it('should pass agent_url from site to AppThumbnail', () => {
+  it('should pass the resolved screenshot URL from site to AppThumbnail', () => {
     mockAppThumbnail.mockClear();
-    const siteWithAgent: Site = {
+    const siteWithScreenshot: Site = {
       ...mockSite,
-      agent_url: 'https://agent.item.test',
+      variants: ['preview'],
+      screenshots: { preview: { desktop: 'https://shots.item.test/preview.png' } },
     };
-    renderWithProviders(<AppItem site={siteWithAgent} />);
+    renderWithProviders(<AppItem site={siteWithScreenshot} />);
 
-    expect(mockAppThumbnail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        siteId: 'site-123',
-        siteName: 'My Test App',
-        agentUrl: 'https://agent.item.test',
-        size: 'xs',
-      }),
-      undefined,
-    );
+    expect(mockAppThumbnail.mock.calls[0][0]).toMatchObject({
+      siteName: 'My Test App',
+      screenshotUrl: 'https://shots.item.test/preview.png',
+      size: 'xs',
+    });
+  });
+
+  it('should pass undefined screenshotUrl when site has no screenshots', () => {
+    mockAppThumbnail.mockClear();
+    renderWithProviders(<AppItem site={mockSite} />);
+
+    expect(mockAppThumbnail.mock.calls[0][0]).toMatchObject({
+      siteName: 'My Test App',
+      screenshotUrl: undefined,
+      size: 'xs',
+    });
   });
 });
 

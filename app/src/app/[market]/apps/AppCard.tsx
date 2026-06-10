@@ -43,7 +43,7 @@ import { useSitesStore } from '@/stores/useSitesStore'
 import { formatDate } from '@/utils/common'
 import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
 import { withPreviewParam } from '@/utils/previewUrl'
-import { hasBeenPublished, isPreviewHibernated } from '@/utils/site'
+import { getAppScreenshotUrl, hasBeenPublished, isPreviewHibernated } from '@/utils/site'
 
 interface AlertState {
   siteId: string | null
@@ -526,9 +526,9 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
   const media = (
     <div className="w-full sm:w-1/2 h-[144px] sm:h-[192px] rounded-lg overflow-hidden shrink-0">
       <AppThumbnail
-        siteId={site.id}
+        key={getAppScreenshotUrl(site)}
         siteName={site.name || t('builder_apps_alert_delete_untitled')}
-        agentUrl={site.agent_url}
+        screenshotUrl={getAppScreenshotUrl(site)}
       />
     </div>
   )
