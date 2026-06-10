@@ -161,6 +161,7 @@ export class GitRemoteTokenManager {
   private static readConfigValue(appId: string, key: string): string | undefined {
     const nomadConfig = getNomadAllocConfig();
     const nomadVal = nomadConfig?.[key]?.VALUE;
+    if (typeof nomadVal === 'number' && !Number.isNaN(nomadVal)) return String(nomadVal);
     if (typeof nomadVal === 'string' && nomadVal) return nomadVal;
 
     return GitRemoteTokenManager.readLocalDevConfigValue(appId, key);

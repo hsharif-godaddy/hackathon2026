@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { GitUtils, GitStatus as GitUtilsStatus } from '../utils/git.js';
 import { logger, Logger } from '../logging/index.js';
 import { toolGitEvents } from '../logging/events/index.js';
@@ -1588,11 +1591,31 @@ export class GitTool {
       // Clear index gracefully - no harm if this fails (empty repo, already cleared, etc.)
       // The subsequent git add will establish the correct state regardless.
 
-      // Step 2: Add allowed directories (single command for efficiency)
-      await this.gitUtils.addFiles(appPath, [...ALLOWED_DIRECTORIES], { ignoreErrors: true });
+      // Step 2: Add allowed directories (only those that exist on disk).
+      const existingDirs = ALLOWED_DIRECTORIES.filter(
+        d => fs.existsSync(path.join(appPath, d))
+      );
+      if (existingDirs.length > 0) {
+        await this.gitUtils.addFiles(appPath, existingDirs, { ignoreErrors: true });
+      }
 
-      // Step 3: Add allowed config files (ignore missing files)
-      await this.gitUtils.addFiles(appPath, [...ALLOWED_CONFIG_FILES], { ignoreErrors: true });
+      // Step 3: Add allowed config files (only those that exist on disk).
+      // git add --ignore-errors doesn't suppress missing-pathspec fatals,
+      // so we pre-filter to avoid the error.
+      const existingConfigs = ALLOWED_CONFIG_FILES.filter(
+        f => fs.existsSync(path.join(appPath, f))
+      );
+      if (existingConfigs.length > 0) {
+        await this.gitUtils.addFiles(appPath, existingConfigs, { ignoreErrors: true });
+      }
+
+      this.logger.info('git-tool.push.filtered.staged', {
+        appId,
+        existingDirs,
+        existingConfigs,
+        skippedDirs: ALLOWED_DIRECTORIES.length - existingDirs.length,
+        skippedConfigs: ALLOWED_CONFIG_FILES.length - existingConfigs.length,
+      });
 
       // Step 4: Create tree object from index
       const writeTreeResult = await this.gitUtils.writeTree(appPath);

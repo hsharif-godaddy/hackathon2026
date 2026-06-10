@@ -56,6 +56,13 @@ vi.mock("../../config/app-download.js", () => ({
   ALLOWED_CONFIG_FILES: ["package.json", "tsconfig.json", "vite.config.ts"],
 }));
 
+vi.mock("node:fs", () => ({
+  default: { existsSync: vi.fn().mockReturnValue(true) },
+  existsSync: vi.fn().mockReturnValue(true),
+}));
+
+import fs from "node:fs";
+
 import { GitTool } from "../git-tool.js";
 import { ALLOWED_DIRECTORIES, ALLOWED_CONFIG_FILES } from "../../config/app-download.js";
 
@@ -344,6 +351,67 @@ describe("GitTool - Filtered Push with Allowlist", () => {
 
       // Verify writeTree was called
       expect(mockWriteTree).toHaveBeenCalledWith("/tmp/apps/test-app/app");
+    });
+  });
+
+  describe("existsSync filtering", () => {
+    afterEach(() => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+    });
+
+    it("should only add paths that exist on disk", async function partialPaths() {
+      setupSuccessfulPushMocks();
+
+      vi.mocked(fs.existsSync).mockImplementation(function (p) {
+        const s = String(p);
+        if (s.endsWith('/src') || s.endsWith('/package.json')) return true;
+        return false;
+      });
+
+      const result = await gitTool.executeGitOperation(
+        "/tmp/apps/test-app/app",
+        {
+          operation: "push",
+          remoteName: "origin",
+          branch: "main",
+          repoUrl: "https://github.com/user/repo.git",
+          token: "ghp_test_token",
+        }
+      );
+
+      expect(result.success).toBe(true);
+
+      expect(mockAddFiles).toHaveBeenCalledWith(
+        "/tmp/apps/test-app/app",
+        ["src"],
+        { ignoreErrors: true }
+      );
+
+      expect(mockAddFiles).toHaveBeenCalledWith(
+        "/tmp/apps/test-app/app",
+        ["package.json"],
+        { ignoreErrors: true }
+      );
+    });
+
+    it("should skip addFiles entirely when no paths exist", async function noPaths() {
+      setupSuccessfulPushMocks();
+
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      const result = await gitTool.executeGitOperation(
+        "/tmp/apps/test-app/app",
+        {
+          operation: "push",
+          remoteName: "origin",
+          branch: "main",
+          repoUrl: "https://github.com/user/repo.git",
+          token: "ghp_test_token",
+        }
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockAddFiles).not.toHaveBeenCalled();
     });
   });
 

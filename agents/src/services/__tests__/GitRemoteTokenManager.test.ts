@@ -232,6 +232,15 @@ describe('GitRemoteTokenManager', () => {
       expect(GitRemoteTokenManager.isTokenExpired('app-1')).toBe(true);
     });
 
+    it('handles numeric VALUE from nomad config', function numericValue() {
+      const futureEpoch = Math.floor(Date.now() / 1000) + 600;
+      vi.mocked(getNomadAllocConfig).mockReturnValue({
+        GITHUB_TOKEN_EXPIRES_AT: { VALUE: futureEpoch as unknown as string },
+      });
+
+      expect(GitRemoteTokenManager.isTokenExpired('app-1')).toBe(false);
+    });
+
     it('reads from local dev config when nomad config returns null', function localDev() {
       vi.mocked(getNomadAllocConfig).mockReturnValue(null);
       vi.mocked(existsSync).mockReturnValue(true);
