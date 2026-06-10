@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { isEmployeeAuthType } from '@airo/shared/auth';
 
+import { useAuthContext } from '@/components/providers/AuthProvider';
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
@@ -15,6 +17,7 @@ import { useSiteStore } from '@/stores/useSiteStore';
 import AgentWorkFeedbackBanner from './AgentWorkFeedbackBanner';
 import AppGenerationFeedbackBanner from './AppGenerationFeedbackBanner';
 import FeedbackBanner from './FeedbackBanner';
+import ImpersonationBanner from './ImpersonationBanner';
 import SuspendedComplianceBanner from './SuspendedComplianceBanner';
 import SuspendedNonPaymentBanner from './SuspendedNonPaymentBanner';
 import UpgradeBanner from './UpgradeBanner';
@@ -37,6 +40,7 @@ function isUpgradeBannerDismissedToday(): boolean {
 /**
  * Container component that manages which chat banner to display.
  * Only one banner shows at a time, with priority order:
+ * 0. ImpersonationBanner (e2s/e2s2s session — highest priority while shown, dismissible)
  * 1. SuspendedComplianceBanner (site suspended or account subscription non-compliant; Switchboard-gated)
  * 2. SuspendedNonPaymentBanner (subscription suspended for non-payment)
  * 3. UsageWarningBanner (usage >= 90%)
@@ -46,6 +50,8 @@ function isUpgradeBannerDismissedToday(): boolean {
  * 7. AgentWorkFeedbackBanner (thumbs up/down after first file edit; gated in useAgentWorkFeedbackTrigger)
  */
 export default function ChatBanners({ appId }: ChatBannersProps) {
+  const { tokenAuthType } = useAuthContext();
+  const isImpersonating = isEmployeeAuthType(tokenAuthType);
   const { isWarningBannerActive } = useUsage({ appId, enabled: !!appId });
   const upgradeBannerEnabled = useSwitchboard('appbuilder-airoplus-upgrade-banner');
   const feedbackBannerEnabled = useSwitchboard('appbuilder-feedback-banner');
@@ -60,6 +66,7 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
   const showAgentWorkFeedbackBanner = useDevelopPageStore(
     (state) => state.showAgentWorkFeedbackBanner
   );
+  const [isImpersonationBannerDismissed, setIsImpersonationBannerDismissed] = useState(false);
   const [isUpgradeBannerDismissed, setIsUpgradeBannerDismissed] = useState(true);
   const [mounted, setMounted] = useState(false);
 
@@ -93,6 +100,11 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
 
   // Determine if feedback banner should be shown (feature flag AND store state)
   const showFeedbackBanner = mounted && feedbackBannerEnabled && showFeedbackBannerFromStore;
+
+  // Priority 0: Impersonation banner (highest priority during e2s/e2s2s sessions, dismissible)
+  if (isImpersonating && !isImpersonationBannerDismissed) {
+    return <ImpersonationBanner onClose={() => setIsImpersonationBannerDismissed(true)} />;
+  }
 
   // Priority 1: Suspended compliance (critical - user needs to contact support)
   if (isSuspendedForCompliance) {

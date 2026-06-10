@@ -10,6 +10,19 @@ import { renderWithProviders } from '@/tests/test-utils';
 import { WarningLevel } from '@/types/usage';
 import ChatBanners from './ChatBanners';
 
+const mockIsEmployeeAuthType = vi.fn(() => false);
+vi.mock('@airo/shared/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@airo/shared/auth')>();
+  return {
+    ...actual,
+    isEmployeeAuthType: (...args: unknown[]) => mockIsEmployeeAuthType(...args),
+  };
+});
+
+vi.mock('@/components/providers/AuthProvider', () => ({
+  useAuthContext: vi.fn(() => ({ tokenAuthType: 'shopper' })),
+}));
+
 // Mock hooks that child components use
 vi.mock('@/hooks/useUsage', () => ({
   useUsage: vi.fn(function () { return {
@@ -83,10 +96,94 @@ vi.mock('@/utils/instrumentation', () => ({
 describe('ChatBanners', function chatBannersTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    mockIsEmployeeAuthType.mockReturnValue(false);
     // Reset store state
     mockStoreState.showFeedbackBanner = false;
     mockStoreState.showAppGenerationFeedbackBanner = false;
     mockStoreState.showAgentWorkFeedbackBanner = false;
+  });
+
+  describe('impersonation banner', function impersonationTests() {
+    it('should show ImpersonationBanner when user is impersonating (e2s)', async function showImpersonationBanner() {
+      const { useAuthContext } = await import('@/components/providers/AuthProvider');
+      vi.mocked(useAuthContext).mockReturnValue({ tokenAuthType: 'e2s' } as any);
+      mockIsEmployeeAuthType.mockReturnValue(true);
+
+      renderWithProviders(<ChatBanners appId="test-app" />);
+
+      await waitFor(function waitForBanner() {
+        expect(screen.getByText('builder_chat_impersonation_banner_message')).toBeInTheDocument();
+      });
+    });
+
+    it('should show ImpersonationBanner when user is impersonating (e2s2s)', async function showImpersonationBannerE2s2s() {
+      const { useAuthContext } = await import('@/components/providers/AuthProvider');
+      vi.mocked(useAuthContext).mockReturnValue({ tokenAuthType: 'e2s2s' } as any);
+      mockIsEmployeeAuthType.mockReturnValue(true);
+
+      renderWithProviders(<ChatBanners appId="test-app" />);
+
+      await waitFor(function waitForBanner() {
+        expect(screen.getByText('builder_chat_impersonation_banner_message')).toBeInTheDocument();
+      });
+    });
+
+    it('should take priority over all other banners when impersonating', async function impersonationHighestPriority() {
+      const { useAuthContext } = await import('@/components/providers/AuthProvider');
+      const { useUsage } = await import('@/hooks/useUsage');
+
+      vi.mocked(useAuthContext).mockReturnValue({ tokenAuthType: 'e2s' } as any);
+      mockIsEmployeeAuthType.mockReturnValue(true);
+
+      // Also activate usage warning (priority 3)
+      vi.mocked(useUsage).mockReturnValue({
+        isWarningBannerActive: true,
+        percentage: 95,
+        warningLevel: WarningLevel.WARNING,
+        isLoading: false,
+      });
+
+      renderWithProviders(<ChatBanners appId="test-app" />);
+
+      await waitFor(function waitForBanner() {
+        expect(screen.getByText('builder_chat_impersonation_banner_message')).toBeInTheDocument();
+      });
+
+      // Usage warning should NOT be visible
+      expect(screen.queryByText('builder_usage_warning_message_no_purchase')).not.toBeInTheDocument();
+    });
+
+    it('should be dismissible via close button', async function dismissImpersonationBanner() {
+      const { useAuthContext } = await import('@/components/providers/AuthProvider');
+      vi.mocked(useAuthContext).mockReturnValue({ tokenAuthType: 'e2s' } as any);
+      mockIsEmployeeAuthType.mockReturnValue(true);
+
+      const { user } = renderWithProviders(<ChatBanners appId="test-app" />);
+
+      await waitFor(function waitForBanner() {
+        expect(screen.getByText('builder_chat_impersonation_banner_message')).toBeInTheDocument();
+      });
+
+      const closeButton = screen.getByRole('button', { name: 'builder_common_close' });
+      await user.click(closeButton);
+
+      expect(screen.queryByText('builder_chat_impersonation_banner_message')).not.toBeInTheDocument();
+    });
+
+    it('should not show ImpersonationBanner for regular shopper auth', async function noImpersonationForShopper() {
+      const { useAuthContext } = await import('@/components/providers/AuthProvider');
+      vi.mocked(useAuthContext).mockReturnValue({ tokenAuthType: 'shopper' } as any);
+      mockIsEmployeeAuthType.mockReturnValue(false);
+
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+      vi.mocked(useSwitchboard).mockReturnValue(false);
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
+
+      renderWithProviders(<ChatBanners appId="test-app" />);
+
+      expect(screen.queryByText('builder_chat_impersonation_banner_message')).not.toBeInTheDocument();
+    });
   });
 
   describe('banner priority', function priorityTests() {

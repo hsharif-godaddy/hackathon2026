@@ -8,13 +8,14 @@ import text from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
 
-type BannerVariant = 'warning' | 'info' | 'critical' | 'success'
+type BannerVariant = 'warning' | 'info' | 'critical' | 'success' | 'internal'
 
 const variantStyles: Record<BannerVariant, string> = {
   warning: 'bg-intents-ux-feedbackWarning-feedbackColor',
   info: 'bg-intents-ux-feedbackInfo-feedbackColor',
   critical: 'bg-intents-ux-feedbackCritical-feedbackColor',
-  success: 'bg-intents-ux-feedbackSuccess-feedbackColor'
+  success: 'bg-intents-ux-feedbackSuccess-feedbackColor',
+  internal: 'bg-intents-ux-feedbackInternal-feedbackColor'
 }
 
 interface ChatBannerProps {
