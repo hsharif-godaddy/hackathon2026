@@ -86,6 +86,7 @@ interface UseChoiceListNumberShortcutsArgs {
   config: boolean | ChoiceListNumberKeyShortcutsConfig | undefined;
   disabled: boolean;
   selectionMode: 'single' | 'multiple';
+  commitBehavior?: 'immediate' | 'deferred';
 }
 
 const OTHER_ROW_SELECTOR =
@@ -158,6 +159,7 @@ export function useChoiceListNumberShortcuts({
   config,
   disabled,
   selectionMode,
+  commitBehavior = 'immediate',
 }: UseChoiceListNumberShortcutsArgs): void {
   const enabled = resolveEnabled(config);
   // When the consumer didn't pass an explicit object config, fall back to
@@ -170,8 +172,8 @@ export function useChoiceListNumberShortcuts({
   const autoPromote = !cfgIsObject && companionScopeRef != null;
   const listenOn = autoPromote ? 'document' : resolveListenOn(config);
 
-  const latestRef = useRef({ config, disabled, selectionMode, companionScopeRef, autoPromote });
-  latestRef.current = { config, disabled, selectionMode, companionScopeRef, autoPromote };
+  const latestRef = useRef({ config, disabled, selectionMode, companionScopeRef, autoPromote, commitBehavior });
+  latestRef.current = { config, disabled, selectionMode, companionScopeRef, autoPromote, commitBehavior };
 
   useEffect(() => {
     if (!enabled) return;
@@ -184,6 +186,7 @@ export function useChoiceListNumberShortcuts({
         selectionMode: latestMode,
         companionScopeRef: latestCompanionRef,
         autoPromote: latestAutoPromote,
+        commitBehavior: latestCommitBehavior,
       } = latestRef.current;
       if (latestDisabled) return;
       if (event.repeat) return;
@@ -260,6 +263,13 @@ export function useChoiceListNumberShortcuts({
       // Multi-select rows are native checkboxes with roving tabindex;
       // their `onFocus` handler syncs `activeIndex`.
       targetOption.focus();
+      // Deferred mode: `.click()` updates pending selection via the listbox
+      // option's onClick — assumes `[role="option"]` is the interactive target.
+      // If DS markup moves the handler to a nested button, digit shortcuts would
+      // focus without selecting until this is updated.
+      if (latestMode === 'single' && latestCommitBehavior === 'deferred') {
+        targetOption.click();
+      }
     };
 
     // Always attach at `document` on the capture phase. Capture runs before

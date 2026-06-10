@@ -39,7 +39,7 @@ Horizontal archetypes (apply to most sites):
 - **AUDIENCE** — who it's for, ONLY if the prompt doesn't imply it. (`type: "chips_single"` — one primary audience is cleanest)
 - **LOCATION** — where the business operates: city, neighborhoods, hours, schedule. INCLUDE whenever the business has a physical/local component (restaurants, shops, food trucks, pop-ups, local services, venues). Skip for SaaS, e-commerce, online-only businesses. (`type: "text"`, placed before Key Details, encouraged for local businesses)
 - **KEY DETAILS** — specific story/facts/content to include. (`type: "text"`, last, optional)
-- **NAMING** — brand name or tagline. (`type: "text"`, last, optional)
+- **NAMING** — brand name or tagline. (`type: "text"`, placeholder for the name field, optional chips such as "I don't have one yet" or "Decide for me" — never add "I'll type it in"; the freeform field is always shown below chips for typing)
 
 Vertical-specific archetypes — detect the vertical from the prompt and substitute vertical questions for generic ones. These are make-or-break for that vertical:
 

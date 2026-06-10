@@ -29,6 +29,7 @@
 .airo-input-choice-list {
   --airo-input-choice-list-density: intent('ux.box.density');
   --airo-input-choice-list-letter-gap: calc(var(--airo-input-choice-list-density) * 2);
+  --airo-input-choice-list-row-padding: calc(var(--airo-input-choice-list-density) * 1.5);
   display: block;
   width: 100%;
 }
@@ -162,6 +163,39 @@
   transform: scaleX(-1);
 }
 
+/* Hover-only navigation arrow for single-select ask-question surfaces. */
+.airo-input-choice-list__option-arrow {
+  opacity: 0;
+  color: intent('ux.feedbackHighContrastPassive.feedbackColor');
+  transition: opacity 0.15s ease;
+}
+
+.airo-input-choice-list__option-arrow svg {
+  width: 20px;
+  height: 20px;
+}
+
+.airo-input-choice-list__listbox > .ux-button:hover .airo-input-choice-list__option-arrow,
+.airo-input-choice-list__listbox > .ux-button[data-visually-focused] .airo-input-choice-list__option-arrow,
+.airo-input-choice-list__listbox > .ux-button:focus-visible .airo-input-choice-list__option-arrow {
+  opacity: 1;
+}
+
+.airo-input-choice-list__inline-row-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  column-gap: calc(var(--airo-input-choice-list-density) * 0.5);
+  margin-inline-start: calc(var(--airo-input-choice-list-density) * 1);
+}
+
+.airo-input-choice-list__inline-skip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  margin-inline-start: calc(var(--airo-input-choice-list-density) * 1);
+}
+
 /* Compact option density + text wrapping. `@ux/listbox` hard-codes its
    children to `design="option"` at the default `@ux/button` size, and its
    public API (`node_modules/@ux/listbox/index.d.ts`) does not forward a
@@ -201,7 +235,7 @@
 }
 
 .airo-input-choice-list__listbox .ux-button:not(.ux-button-inline) {
-  padding-block: calc(var(--airo-input-choice-list-density) * 1);
+  padding-block: var(--airo-input-choice-list-row-padding);
   padding-inline: calc(var(--airo-input-choice-list-density) * 1);
   white-space: normal;
   overflow-wrap: break-word;
@@ -244,6 +278,60 @@
   border-block-start: intent('ux.box.borderWidth') solid intent('ux.box.borderColor');
   border-start-start-radius: 0;
   border-start-end-radius: 0;
+}
+
+/* When the Other row follows, the last listbox option is not the visual
+   stack terminus — paint the bottom seam on that option (same rhythm as
+   the top border on the following row) and flatten its bottom corners. */
+.airo-input-choice-list__listbox--option-dividers.airo-input-choice-list__listbox--before-other
+  > .ux-button:last-child:not(.ux-button-inline) {
+  border-block-end: intent('ux.box.borderWidth') solid intent('ux.box.borderColor');
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+}
+
+/* When the listbox is the visual stack terminus (no Other row follows), close
+   the stack with a bottom seam on the last option. The --before-other rule
+   above covers the listbox→Other handoff; text-first stacks place Other first
+   and chip options last. */
+.airo-input-choice-list__listbox--option-dividers:not(.airo-input-choice-list__listbox--before-other)
+  > .ux-button:last-child:not(.ux-button-inline) {
+  border-block-end: intent('ux.box.borderWidth') solid intent('ux.box.borderColor');
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+}
+
+/* Keep the closing seam visible when the last option is keyboard-focused. */
+.airo-input-choice-list__listbox--option-dividers:not(.airo-input-choice-list__listbox--before-other)
+  > .ux-button:last-child[data-visually-focused]:not(.ux-button-inline),
+.airo-input-choice-list__listbox--option-dividers:not(.airo-input-choice-list__listbox--before-other)
+  > .ux-button:last-child:focus-visible:not(.ux-button-inline) {
+  border-block-end-color: intent('ux.box.borderColor');
+}
+
+.airo-input-choice-list__listbox--suppress-last-border.airo-input-choice-list__listbox--option-dividers:not(.airo-input-choice-list__listbox--before-other)
+  > .ux-button:last-child:not(.ux-button-inline) {
+  border-block-end: none;
+}
+
+.airo-input-choice-list__listbox--suppress-last-border.airo-input-choice-list__listbox--option-dividers:not(.airo-input-choice-list__listbox--before-other)
+  > .ux-button:last-child[data-visually-focused]:not(.ux-button-inline),
+.airo-input-choice-list__listbox--suppress-last-border.airo-input-choice-list__listbox--option-dividers:not(.airo-input-choice-list__listbox--before-other)
+  > .ux-button:last-child:focus-visible:not(.ux-button-inline) {
+  border-block-end: none;
+}
+
+.airo-input-choice-list__other-row--suppress-bottom-border
+  .airo-input-choice-list__other-entry-wrap
+  .airo-input-choice-list__other-entry.ux-text-entry-shell {
+  border-block-end: none;
+}
+
+/* The seam already lives on the last listbox option — suppress the duplicate
+   top edge on the Other row so the stack reads as one continuous surface. */
+.airo-input-choice-list__listbox-keyboard-wrap--before-other
+  .airo-input-choice-list__other-row--option-dividers {
+  border-block-start: none;
 }
 
 /* `@ux/listbox` sets `border-color` transparent on the visually focused option --
@@ -371,7 +459,7 @@
 
 .airo-input-choice-list__multi-row > * {
   width: 100%;
-  padding-block: calc(var(--airo-input-choice-list-density) * 1);
+  padding-block: var(--airo-input-choice-list-row-padding);
   padding-inline: calc(var(--airo-input-choice-list-density) * 1);
 }
 
@@ -483,13 +571,34 @@
   margin-block-start: 0;
 }
 
+/* Text-first ask-question steps: freeform row (badge 1) then chip options (2+). */
+.airo-input-choice-list__text-first-stack
+  > .airo-input-choice-list__other-row--option-dividers {
+  border-block-start: none;
+}
+
+.airo-input-choice-list__text-first-stack
+  > .airo-input-choice-list:not(.airo-input-choice-list__text-first-stack)
+  .airo-input-choice-list__listbox--option-dividers
+  > .ux-button:first-child:not(.ux-button-inline) {
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
 .airo-input-choice-list__other-row-inner {
   display: flex;
   flex-direction: row;
   align-items: center;
-  padding-block: calc(var(--airo-input-choice-list-density) * 1);
+  column-gap: var(--airo-input-choice-list-letter-gap);
+  padding-block: var(--airo-input-choice-list-row-padding);
   padding-inline: calc(var(--airo-input-choice-list-density) * 1);
   min-inline-size: 0;
+}
+
+/* Ask-question single-select: the freeform row is the stack terminus with inline
+   Skip / Back / Submit — trim bottom air so the card footer doesn't feel padded twice. */
+.airo-input-choice-list__other-row-inner--compact-bottom {
+  padding-block-end: calc(var(--airo-input-choice-list-density) * 0.5);
 }
 
 .airo-input-choice-list__other-entry-wrap {

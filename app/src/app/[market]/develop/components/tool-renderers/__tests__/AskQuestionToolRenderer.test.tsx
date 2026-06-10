@@ -3,12 +3,12 @@
  */
 import '@testing-library/jest-dom'
 
-import { beforeEach,describe, expect, it, vi } from 'vitest'
-import { fireEvent,render, screen } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import AskQuestionToolRenderer from '../AskQuestionToolRenderer'
 
-// Mock dependencies
 const mockSendUserMessage = vi.fn()
 vi.mock('@/app/[market]/develop/components/chat/ChatContext', () => ({
   useSendUserMessage: () => mockSendUserMessage,
@@ -27,7 +27,15 @@ vi.mock('@/utils/instrumentation', () => ({
   logAiroHQEvent: mockLogAiroHQEvent,
 }))
 
-// Mock framer-motion to render children immediately
+const { mockIsInitialBuildFunnelActive, mockIsInitialBuildComplete } = vi.hoisted(() => ({
+  mockIsInitialBuildFunnelActive: vi.fn(function () { return false; }),
+  mockIsInitialBuildComplete: vi.fn(function () { return true; }),
+}))
+vi.mock('@/hooks/shared/initialBuildFunnel', () => ({
+  isInitialBuildFunnelActive: () => mockIsInitialBuildFunnelActive(),
+  isInitialBuildComplete: () => mockIsInitialBuildComplete(),
+}))
+
 vi.mock('framer-motion', () => ({
   motion: {
     button: ({ children, ...props }: any) => <button {...props}>{children}</button>,
@@ -36,15 +44,125 @@ vi.mock('framer-motion', () => ({
   AnimatePresence: ({ children }: any) => <>{children}</>,
 }))
 
-// Mock @ux/box
 vi.mock('@ux/box', () => ({
   default: ({ children, ...props }: any) => <div {...props}>{children}</div>,
 }))
 
-// Mock @ux/icon/arrow-right
+vi.mock('@ux/text', () => ({
+  default: {
+    span: ({ children, ...props }: any) => <span {...props}>{children}</span>,
+  },
+}))
+
 vi.mock('@ux/icon/arrow-right', () => ({
   default: (props: any) => <span data-testid="arrow-right-icon" {...props} />,
 }))
+
+vi.mock('@ux/icon/arrow-left', () => ({
+  default: (props: any) => <span data-testid="arrow-left-icon" {...props} />,
+}))
+
+vi.mock('@ux/icon/checkmark', () => ({
+  default: (props: any) => <span data-testid="checkmark-icon" {...props} />,
+}))
+
+vi.mock('@ux/tag', () => ({
+  default: ({ children, ...props }: any) => <span data-testid="step-progress-tag" {...props}>{children}</span>,
+}))
+
+vi.mock('@ux/icon/async-icon.js', () => ({
+  default: ({ icon, ...rest }: { icon: string }) => (
+    <svg data-testid={`async-icon-${icon}`} data-icon={icon} {...rest} />
+  ),
+}))
+
+vi.mock('@ux/listbox', () => ({
+  default: ({
+    items,
+    onConfirm,
+    onActiveItemChange,
+    selected,
+    ref: listboxRef,
+    ...rest
+  }: any) => (
+    <div
+      role="listbox"
+      ref={listboxRef}
+      {...rest}
+    >
+      {items?.map((item: any) => (
+        <button
+          key={item.id}
+          type="button"
+          role="option"
+          aria-selected={selected === item.id ? 'true' : 'false'}
+          onClick={() => onConfirm?.(item.id, { event: null })}
+          onFocus={() => onActiveItemChange?.(item.id)}
+        >
+          {item.children}
+        </button>
+      ))}
+    </div>
+  ),
+}))
+
+vi.mock('@ux/text-entry', () => ({
+  default: ({
+    value,
+    onChange,
+    onKeyDown,
+    placeholder,
+    disabled,
+    'aria-label': ariaLabel,
+    ...rest
+  }: any) => (
+    <input
+      role="textbox"
+      value={value ?? ''}
+      onChange={(e) => onChange?.(e.target.value)}
+      onKeyDown={onKeyDown}
+      placeholder={placeholder}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      {...rest}
+    />
+  ),
+}))
+
+vi.mock('@ux/checkbox', () => ({
+  default: ({
+    label,
+    checked,
+    onChange,
+    id,
+    name,
+    disabled,
+    'aria-label': ariaLabel,
+    tabIndex,
+  }: any) => (
+    <label htmlFor={id}>
+      <input
+        type="checkbox"
+        id={id}
+        name={name}
+        checked={checked}
+        disabled={disabled}
+        tabIndex={tabIndex}
+        aria-label={ariaLabel}
+        onChange={(e) => onChange?.(e.target.checked)}
+      />
+      {typeof label === 'string' ? label : <span>{label}</span>}
+    </label>
+  ),
+}))
+
+function clickChipOption(label: string | RegExp) {
+  fireEvent.click(screen.getByRole('option', { name: label }))
+}
+
+function selectedChipOption(label: string | RegExp) {
+  return screen.getByRole('option', { name: label })
+}
 
 function makeResult(questions: any[], currentQuestionIndex = 0) {
   return {
@@ -74,12 +192,19 @@ const defaultProps = {
   isLastAssistantMessage: true,
 }
 
+function submitSelection() {
+  fireEvent.click(screen.getByTestId('ask-question-submit'))
+}
+
+function skipSelection() {
+  fireEvent.click(screen.getByTestId('ask-question-skip'))
+}
+
 describe('AskQuestionToolRenderer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // jsdom lacks scrollIntoView, which @ux/listbox calls when an option
-    // becomes focused. Stub once so any test that focuses an option directly
-    // (e.g. the digit-shortcut path) doesn't blow up unmounting the component.
+    mockIsInitialBuildFunnelActive.mockReturnValue(false)
+    mockIsInitialBuildComplete.mockReturnValue(true)
     Element.prototype.scrollIntoView = vi.fn()
   })
 
@@ -117,7 +242,7 @@ describe('AskQuestionToolRenderer', () => {
     expect(container.innerHTML).toBe('')
   })
 
-  it('single question: clicking a suggestion sends the answer directly', () => {
+  it('single question: selecting a suggestion sends the answer immediately', () => {
     const result = makeResult([
       makeQuestion('What color?', [{ text: 'Red' }, { text: 'Blue' }]),
     ])
@@ -129,15 +254,15 @@ describe('AskQuestionToolRenderer', () => {
     )
 
     expect(screen.getByText('What color?')).toBeInTheDocument()
-    expect(screen.getByText('Red')).toBeInTheDocument()
-    expect(screen.getByText('Blue')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Red/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Blue/ })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByText('Red'))
+    clickChipOption(/Red/)
 
     expect(mockSendUserMessage).toHaveBeenCalledWith('Red', { isActionRequest: true })
   })
 
-  it('multi-question: clicking suggestions advances through questions then sends formatted message', () => {
+  it('multi-question: selecting suggestions advances then sends formatted message', () => {
     const result = makeResult([
       makeQuestion('What color?', [{ text: 'Red' }, { text: 'Blue' }]),
       makeQuestion('What size?', [{ text: 'Small' }, { text: 'Large' }]),
@@ -149,26 +274,74 @@ describe('AskQuestionToolRenderer', () => {
       />,
     )
 
-    // First question visible
     expect(screen.getByText('What color?')).toBeInTheDocument()
 
-    // Click first answer
-    fireEvent.click(screen.getByText('Red'))
+    clickChipOption(/Red/)
 
-    // Should NOT have sent message yet (still have question 2)
     expect(mockSendUserMessage).not.toHaveBeenCalled()
-
-    // Second question visible
     expect(screen.getByText('What size?')).toBeInTheDocument()
 
-    // Click second answer
-    fireEvent.click(screen.getByText('Large'))
+    clickChipOption(/Large/)
 
-    // Should have sent formatted message with both answers
     expect(mockSendUserMessage).toHaveBeenCalledWith(
       '1) What color?\nRed\n\n2) What size?\nLarge',
       { isActionRequest: true },
     )
+  })
+
+  it('does not show back button on the first question', () => {
+    const result = makeResult([
+      makeQuestion('What color?', [{ text: 'Red' }, { text: 'Blue' }]),
+      makeQuestion('What size?', [{ text: 'Small' }, { text: 'Large' }]),
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    expect(screen.queryByTestId('ask-question-back')).not.toBeInTheDocument()
+  })
+
+  it('shows inline back button from the second question onward', () => {
+    const result = makeResult([
+      makeQuestion('What color?', [{ text: 'Red' }, { text: 'Blue' }]),
+      makeQuestion('What size?', [{ text: 'Small' }, { text: 'Large' }]),
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    clickChipOption(/Red/)
+
+    expect(screen.getByTestId('ask-question-back')).toBeInTheDocument()
+    expect(screen.getByTestId('ask-question-back')).toHaveAttribute('aria-label', 'builder_common_back')
+  })
+
+  it('inline back button returns to the previous question', () => {
+    const result = makeResult([
+      makeQuestion('What color?', [{ text: 'Red' }, { text: 'Blue' }]),
+      makeQuestion('What size?', [{ text: 'Small' }, { text: 'Large' }]),
+    ])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    clickChipOption(/Blue/)
+    expect(screen.getByText('What size?')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('ask-question-back'))
+
+    expect(screen.getByText('What color?')).toBeInTheDocument()
+    expect(screen.getByText('1/2')).toBeInTheDocument()
+    expect(screen.queryByTestId('ask-question-back')).not.toBeInTheDocument()
   })
 
   it('allowOther: false hides the Other input', () => {
@@ -231,10 +404,8 @@ describe('AskQuestionToolRenderer', () => {
       />,
     )
 
-    // Answer the only question
-    fireEvent.click(screen.getByText('Red'))
+    clickChipOption(/Red/)
 
-    // Component should now render null
     expect(container.innerHTML).toBe('')
   })
 
@@ -251,7 +422,7 @@ describe('AskQuestionToolRenderer', () => {
       />,
     )
 
-    fireEvent.click(screen.getByText('Red'))
+    clickChipOption(/Red/)
 
     expect(onComplete).toHaveBeenCalled()
   })
@@ -288,7 +459,7 @@ describe('AskQuestionToolRenderer', () => {
       />,
     )
 
-    fireEvent.click(screen.getByText('Blue'))
+    clickChipOption(/Blue/)
 
     expect(mockSendUserMessage).toHaveBeenCalledWith('color_blue', { isActionRequest: true })
   })
@@ -308,7 +479,7 @@ describe('AskQuestionToolRenderer', () => {
       />,
     )
 
-    fireEvent.click(screen.getByText('Build website'))
+    clickChipOption(/Build website/)
 
     expect(mockLogAiroHQEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -333,7 +504,7 @@ describe('AskQuestionToolRenderer', () => {
         result={result2}
       />,
     )
-    fireEvent.click(screen.getAllByText('Edit logo')[0])
+    clickChipOption(/Edit logo/)
 
     expect(mockLogAiroHQEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -376,7 +547,7 @@ describe('AskQuestionToolRenderer', () => {
 
     expect(screen.getByText('Your brand name?')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Your answer...')).toBeInTheDocument()
-    expect(screen.queryAllByRole('button').filter(b => b.textContent && b.textContent !== '').length).toBeLessThanOrEqual(1)
+    expect(screen.queryAllByRole('option').length).toBe(0)
   })
 
   it("type 'text' submits input value as the answer", () => {
@@ -425,6 +596,51 @@ describe('AskQuestionToolRenderer', () => {
     expect(mockSendUserMessage).toHaveBeenCalledWith('Decide for me', { isActionRequest: true })
   })
 
+  it("type 'text' business name lists escape chip first, name field second, without a type-in chip", () => {
+    const result = makeResult([{
+      question: "What's your business name?",
+      type: 'text',
+      placeholder: 'e.g. Bloom Boutique, Peak Gear Co.',
+      suggestions: [
+        { text: "I don't have one yet" },
+        { text: "I'll type it in" },
+      ],
+    }])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    expect(screen.getAllByRole('option')).toHaveLength(1)
+    expect(screen.getByRole('option', { name: /I don't have one yet/i })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /I'll type it in/i })).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText('e.g. Bloom Boutique, Peak Gear Co.')).toBeInTheDocument()
+  })
+
+  it('business name escape chip submits immediately', async () => {
+    const user = userEvent.setup()
+    const result = makeResult([{
+      question: "What's your business name?",
+      type: 'text',
+      placeholder: 'e.g. Bloom Boutique, Peak Gear Co.',
+      suggestions: [
+        { text: "I don't have one yet" },
+      ],
+    }])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    await user.click(screen.getByRole('option', { name: /I don't have one yet/i }))
+
+    expect(mockSendUserMessage).toHaveBeenCalledWith("I don't have one yet", { isActionRequest: true })
+  })
+
   it('forwards question.placeholder to the free-text input', () => {
     const result = makeResult([{
       question: 'Anything else?',
@@ -442,11 +658,6 @@ describe('AskQuestionToolRenderer', () => {
   })
 
   it('bare-digit "Other" answer in range resolves to the chip\'s value', () => {
-    // Aligned with #3558: a bare digit typed into Other is treated as a
-    // pick of suggestion[N-1] (1-based to match the keyboard-shortcut UX).
-    // The user's "2" is rewritten to the chip text/value, NOT preserved
-    // literally. Out-of-range and non-numeric inputs still round-trip raw
-    // (covered separately).
     const result = makeResult([{
       question: 'How many?',
       suggestions: [
@@ -467,8 +678,6 @@ describe('AskQuestionToolRenderer', () => {
     fireEvent.change(input, { target: { value: '2' } })
     fireEvent.keyDown(input, { key: 'Enter' })
 
-    // 1-based: typing "2" picks suggestions[1] = "Few", same as pressing
-    // the digit key 2 or clicking the second chip.
     expect(mockSendUserMessage).toHaveBeenCalledWith('Few', { isActionRequest: true })
   })
 
@@ -492,11 +701,6 @@ describe('AskQuestionToolRenderer', () => {
   })
 
   it('decide chip renders the i18n label, not the raw English text from the agent', () => {
-    // The agent emits the chip with hardcoded English `text: "Decide for me"`,
-    // but the renderer swaps it for the localized translation. The mock
-    // `useTranslations` returns the key verbatim, which stands in for any
-    // non-English locale and proves the label comes from t(), not from the
-    // suggestion's `text` field.
     const result = makeResult([
       {
         question: 'Vibe?',
@@ -517,17 +721,10 @@ describe('AskQuestionToolRenderer', () => {
     expect(
       screen.getByRole('option', { name: /builder_tools_askquestion_decide_for_me/ }),
     ).toBeInTheDocument()
-    // The English fallback should NOT render — it would mean we're reading
-    // s.text instead of going through t().
     expect(screen.queryByRole('option', { name: /^Decide for me$/ })).not.toBeInTheDocument()
   })
 
   it('clicking the decide chip emits canonical "Decide for me" in the message', () => {
-    // Regardless of how the chip is rendered (translated, English fallback,
-    // anything), `resolveSelection` pins the decide chip to the canonical
-    // English string so the prompt-enhancer's matching rule fires across
-    // every UI locale. The raw `__decide__` sentinel must NOT leak into the
-    // chat message.
     const result = makeResult([
       {
         question: 'Vibe?',
@@ -553,11 +750,10 @@ describe('AskQuestionToolRenderer', () => {
       />,
     )
 
-    // Click each step's decide option (rendered with the t() key).
     const decideOptions = screen.getAllByRole('option', {
       name: /builder_tools_askquestion_decide_for_me/,
     })
-    expect(decideOptions).toHaveLength(1) // only the active step renders
+    expect(decideOptions).toHaveLength(1)
     fireEvent.click(decideOptions[0])
     const decideOnNextStep = screen.getByRole('option', {
       name: /builder_tools_askquestion_decide_for_me/,
@@ -597,10 +793,8 @@ describe('AskQuestionToolRenderer', () => {
       />,
     )
 
-    const skip1 = screen.getByRole('button', { name: /^Skip$/i })
-    fireEvent.click(skip1)
-    const skip2 = screen.getByRole('button', { name: /^Skip$/i })
-    fireEvent.click(skip2)
+    skipSelection()
+    skipSelection()
 
     expect(mockSendUserMessage).not.toHaveBeenCalled()
     expect(onSkip).toHaveBeenCalledTimes(1)
@@ -623,19 +817,13 @@ describe('AskQuestionToolRenderer', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /^Skip$/i }))
+    skipSelection()
 
     expect(mockSendUserMessage).not.toHaveBeenCalled()
     expect(onSkip).toHaveBeenCalledTimes(1)
   })
 
-  it('digit press on focused Other input does not trigger a ChoiceList pick', async () => {
-    // Regression: a user who has clicked into the freeform "Other" input is
-    // about to type a custom answer (which may legitimately start with a
-    // digit). The window-level digit shortcut must not steal that keystroke
-    // — even when the field is still empty. The previous behavior ran a
-    // direct `onSelect` for empty fields, which surprised users who'd
-    // deliberately moved focus to the input.
+  it('digit press on focused Other input does not trigger a pick', async () => {
     const result = makeResult([
       makeQuestion('Pick?', [{ text: 'Red' }, { text: 'Blue' }, { text: 'Green' }]),
     ])
@@ -653,25 +841,12 @@ describe('AskQuestionToolRenderer', () => {
     fireEvent.keyDown(window, { key: '2' })
     await new Promise((r) => setTimeout(r, 0))
 
-    // Listener bailed out — focus stays on the Other input, not the listbox
-    // (which would mean the digit shortcut had hijacked the keystroke).
     expect(otherInput).toHaveFocus()
     expect(mockSendUserMessage).not.toHaveBeenCalled()
+    expect(selectedChipOption(/Red/)).not.toHaveAttribute('aria-selected', 'true')
   })
 
   it('Other input keeps typed text across parent re-renders with the same result', () => {
-    // Regression: @airo-ux/pattern-library ChoiceList runs an internal reset effect
-    // whose deps include `activeStep` and `collected`, both derived from the
-    // `children` prop via useMemo. If the parent rebuilds the JSX children on
-    // every render (the natural shape: `<ChoiceList>{questions.map(...)}</ChoiceList>`),
-    // those internal memos invalidate every tick and the effect clears the
-    // freeform "Other" draft to "". In production the parent re-renders every
-    // few seconds (streaming/loading store ticks, store array re-emits), so
-    // the user sees their in-progress text wiped out repeatedly.
-    //
-    // The fix memoizes the step-children array on the parent side. This test
-    // forces a re-render with the SAME `result` reference and asserts the
-    // typed text survives.
     const result = makeResult([
       makeQuestion('What color?', [{ text: 'Red' }, { text: 'Blue' }]),
     ])
@@ -693,25 +868,13 @@ describe('AskQuestionToolRenderer', () => {
       />,
     )
 
-    // Same DOM input, same content. Without the parent-side memo on the
-    // ChoiceList children, the rerender wipes the input back to "".
     expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('Purple')
   })
 
-  it('digit shortcut listener stays attached when hideQuestion=true (composer-card hoist path)', async () => {
-    // Locks the contract that `hideQuestion` only suppresses the per-step
-    // title text — it does NOT disable the keyboard listener. InputActionsPanel
-    // always passes `hideQuestion={true}` when hoisting this component into
-    // the composer card, and the digit shortcut must still move roving (so the
-    // user can press Enter to commit). Treating `hideQuestion` as "renderer is
-    // inert, drop the listener" was the bug that made digits silently no-op
-    // for every real-world AskQuestion.
-    //
-    // We can't cleanly assert `data-visually-focused` here (jsdom doesn't run
-    // @ux/listbox's roving logic the same way the browser does), so we check
-    // the indirect signal that the listener fired: `focusChoiceListOptionByIndex`
-    // focuses the listbox, which means after the digit press the active element
-    // is the listbox (not the option that started focused).
+  it('digit shortcut selects the matching option when hideQuestion=true (composer-card hoist path)', async () => {
+    mockIsInitialBuildFunnelActive.mockReturnValue(true)
+    mockIsInitialBuildComplete.mockReturnValue(false)
+
     const result = makeResult([
       makeQuestion('Pick?', [{ text: 'Red' }, { text: 'Blue' }, { text: 'Green' }]),
     ])
@@ -723,19 +886,107 @@ describe('AskQuestionToolRenderer', () => {
       />,
     )
 
-    // Move focus inside the listbox so `shouldAllowChoiceListDigitShortcut`'s
-    // "focus inside container ref" gate passes.
     const options = screen.getAllByRole('option')
     options[0].focus()
 
     fireEvent.keyDown(window, { key: '2' })
-
-    // `focusChoiceListOptionByIndex` runs through setTimeout chains; wait one
-    // task so the listbox.focus() inside it has executed.
     await new Promise((r) => setTimeout(r, 0))
 
-    // Listener fired and routed to focusChoiceListOptionByIndex → listbox.focus().
-    // If `hideQuestion` had killed the listener, focus would still be on options[0].
-    expect(screen.getByRole('listbox', { name: 'Pick?' })).toHaveFocus()
+    expect(mockSendUserMessage).toHaveBeenCalledWith('Blue', { isActionRequest: true })
+  })
+
+  it('multi-select renders ChoiceList checkbox rows', () => {
+    const result = makeResult([{
+      question: 'What goals?',
+      type: 'chips_multi',
+      suggestions: [
+        { text: 'Show menus' },
+        { text: 'Share location' },
+        { text: 'Take reservations' },
+      ],
+    }])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('checkbox', { name: /Show menus|Share location|Take reservations|Enable custom text/i })).toHaveLength(4)
+    expect(screen.getByTestId('ask-question-submit')).toBeDisabled()
+  })
+
+  it('multi-select toggles checkboxes and submits combined answers', () => {
+    const result = makeResult([{
+      question: 'What goals?',
+      type: 'chips_multi',
+      suggestions: [
+        { text: 'Show menus' },
+        { text: 'Share location' },
+        { text: 'Take reservations' },
+      ],
+    }])
+    render(
+      <AskQuestionToolRenderer
+        {...defaultProps}
+        result={result}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Show menus/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Take reservations/i }))
+    expect(screen.getByRole('checkbox', { name: /Show menus/i })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: /Take reservations/i })).toBeChecked()
+
+    submitSelection()
+    expect(mockSendUserMessage).toHaveBeenCalledWith('Show menus, Take reservations', { isActionRequest: true })
+  })
+
+  describe('follow-up single select', function followUpSingleSelect() {
+    function renderFollowUpQuestion(questions: ReturnType<typeof makeQuestion>[]) {
+      render(
+        <AskQuestionToolRenderer
+          {...defaultProps}
+          result={makeResult(questions)}
+          hideQuestion={true}
+        />,
+      )
+    }
+
+    it('autoSubmitsOnSelect when Other is disabled', function autoSubmit() {
+      renderFollowUpQuestion([
+        makeQuestion('Do you like the design?', [{ text: 'Yes' }, { text: 'No' }], false),
+      ])
+
+      expect(screen.queryByTestId('ask-question-submit')).not.toBeInTheDocument()
+
+      clickChipOption(/Yes/)
+
+      expect(mockSendUserMessage).toHaveBeenCalledWith('Yes', { isActionRequest: true })
+    })
+
+    it('autoSubmitsOnSelect when Other is enabled', function autoSubmitWithOther() {
+      renderFollowUpQuestion([
+        makeQuestion('Do you like the design?', [{ text: 'Yes' }, { text: 'No' }], true),
+      ])
+
+      clickChipOption(/Yes/)
+
+      expect(mockSendUserMessage).toHaveBeenCalledWith('Yes', { isActionRequest: true })
+    })
+
+    it('autoSubmitsOnSelect during initial build in composer card', function initialBuildComposer() {
+      mockIsInitialBuildFunnelActive.mockReturnValue(true)
+      mockIsInitialBuildComplete.mockReturnValue(false)
+
+      renderFollowUpQuestion([
+        makeQuestion('Pick a vibe?', [{ text: 'Modern' }, { text: 'Classic' }], false),
+      ])
+
+      clickChipOption(/Modern/)
+
+      expect(mockSendUserMessage).toHaveBeenCalledWith('Modern', { isActionRequest: true })
+    })
   })
 })

@@ -131,6 +131,32 @@ export const SingleSelect: Story = {
   render: () => <SingleSelectExample />,
 };
 
+function DeferredNoChevronExample() {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+  if (selected) return <UserMessage>{DIRECTION_LABELS[selected] ?? selected}</UserMessage>;
+  return (
+    <ChoiceList
+      ariaLabel="Which direction should I explore first?"
+      commitBehavior="deferred"
+      showOptionChevron={false}
+      selected={selected ?? undefined}
+      onSelectedChange={setSelected}
+      onClose={() => setDismissed(true)}
+    >
+      <ChoiceList.Item value="landing">Build a landing page</ChoiceList.Item>
+      <ChoiceList.Item value="campaign">Launch an email campaign</ChoiceList.Item>
+      <ChoiceList.Item value="research">Run customer research calls</ChoiceList.Item>
+    </ChoiceList>
+  );
+}
+
+export const DeferredNoChevron: Story = {
+  name: 'Deferred, no chevron',
+  render: () => <DeferredNoChevronExample />,
+};
+
 function SingleSelectWithDividersExample() {
   const [selected, setSelected] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);

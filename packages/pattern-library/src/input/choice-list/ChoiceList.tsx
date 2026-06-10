@@ -28,7 +28,7 @@ import {
 
 import { ChoiceListItem, type ChoiceListItemProps } from './ChoiceListItem';
 import { ChoiceListItemContent, type ChoiceListItemContentProps } from './ChoiceListItemContent';
-import { ChoiceListOtherRow } from './ChoiceListOtherRow';
+import { ChoiceListInlineRowActions, ChoiceListOtherRow } from './ChoiceListOtherRow';
 import { ChoiceListStep, type ChoiceListStepProps } from './ChoiceListStep';
 import {
   type ChoiceListNumberKeyShortcutsConfig,
@@ -36,6 +36,8 @@ import {
 } from './useChoiceListNumberShortcuts';
 
 export type { ChoiceListNumberKeyShortcutsConfig } from './useChoiceListNumberShortcuts';
+
+export type ChoiceListCommitBehavior = 'immediate' | 'deferred';
 
 const DEFAULT_ARIA_LABEL = 'Choose an option';
 /** Default placeholder (and default `aria-label` fallback) for the “other” text field. */
@@ -67,7 +69,10 @@ export type ChoiceListChangeMeta = ChoiceListDecisionMeta;
  * Props for the root `ChoiceList` surface.
  */
 export interface ChoiceListProps
-  extends Omit<HTMLAttributes<HTMLDivElement>, 'onChange' | 'onSelect' | 'title'> {
+  extends Omit<
+    HTMLAttributes<HTMLDivElement>,
+    'onChange' | 'onSelect' | 'title' | 'checked' | 'defaultChecked'
+  > {
   /**
    * Accessible name for the menu. The component does not render explanatory
    * copy of its own — the surrounding agent-message component is expected
@@ -201,6 +206,50 @@ export interface ChoiceListProps
    */
   optionDividers?: boolean;
   /**
+   * When `true`, single-select listbox rows show a decorative trailing
+   * chevron. Pass `false` for deferred selection surfaces where the row
+   * highlights a pending pick rather than implying immediate navigation.
+   * @default true
+   */
+  showOptionChevron?: boolean;
+  /**
+   * When `true`, single-select rows show a trailing arrow on hover and
+   * keyboard focus only (mutually exclusive with always-visible
+   * {@link showOptionChevron}).
+   * @default false
+   */
+  showOptionArrowOnHover?: boolean;
+  /**
+   * When `true`, omits the bottom border on the last row in the option stack
+   * (final listbox option or Other row).
+   * @default false
+   */
+  suppressLastRowBottomBorder?: boolean;
+  /**
+   * Visible label for an inline Skip control on the last row (Other row, or
+   * the final listbox option when `allowOther` is false).
+   */
+  inlineSkipLabel?: string;
+  /** Fires when the inline Skip control is activated. */
+  onInlineSkip?: () => void;
+  /**
+   * When `true` with `allowOther`, the Other row shows Skip while the draft
+   * is empty and a primary Submit button once the user has typed text.
+   * Requires {@link onInlineSkip}.
+   * @default false
+   */
+  inlineSkipOrSubmit?: boolean;
+  /** Optional `data-testid` for the inline Submit button on the Other row. */
+  otherSubmitTestId?: string;
+  /** Optional `data-testid` for the inline Skip control. */
+  inlineSkipTestId?: string;
+  /** Accessible label for an inline Back control on the last row. */
+  inlineBackLabel?: string;
+  /** Fires when the inline Back control is activated. */
+  onInlineBack?: () => void;
+  /** Optional `data-testid` for the inline Back control. */
+  inlineBackTestId?: string;
+  /**
    * When `true`, shows a freeform “other” path in addition to fixed items.
    * Single-select: `TextEntry` below the listbox (hint text in the placeholder);
    * multi-select: a trailing checkbox row with inline `TextEntry`.
@@ -221,14 +270,32 @@ export interface ChoiceListProps
    */
   otherAriaLabel?: string;
   /**
+   * Controlled draft for the single-select "other" field when {@link allowOther}
+   * is enabled.
+   */
+  otherDraft?: string;
+  /**
+   * Uncontrolled initial other-field draft when {@link allowOther} is enabled.
+   */
+  defaultOtherDraft?: string;
+  /** Fires when the other-field draft changes. */
+  onOtherDraftChange?: (value: string) => void;
+  /** Fires when the single-select other field receives focus (e.g. to clear a pending chip). */
+  onOtherFocus?: () => void;
+  /**
    * Accessible label for the inline submit button rendered next to the
    * single-select "other" `TextEntry`. The button is visible whenever
-   * `allowOther` is enabled and it commits the same trimmed-non-empty
-   * path as pressing Enter — so the user doesn't have to discover the
-   * keyboard shortcut.
+   * `allowOther` is enabled and {@link showOtherSubmitButton} is `true`.
+   * It commits the same trimmed-non-empty path as pressing Enter.
    * @default "Submit"
    */
   otherSubmitLabel?: string;
+  /**
+   * When `false`, hides the inline submit button beside the single-select
+   * Other field (for hosts that provide their own commit control).
+   * @default true
+   */
+  showOtherSubmitButton?: boolean;
   /**
    * Accessible name for the multi-select “other” checkbox (there is no visible label).
    * @default 'Enable custom text'
@@ -247,6 +314,73 @@ export interface ChoiceListProps
    * @default false
    */
   disabled?: boolean;
+  /**
+   * Controls when a single-select pick commits.
+   *
+   * - **`immediate`** (default) — click or Enter on an option fires
+   *   {@link onDecision} right away (original behaviour).
+   * - **`deferred`** — click or Enter only updates the pending selection
+   *   ({@link selected} / {@link onSelectedChange}). {@link onDecision} fires
+   *   when the user clicks Continue in the built-in deferred footer (when
+   *   {@link showDeferredFooter} is `true`) or when the consumer commits
+   *   externally.
+   *
+   * Multi-select steps always defer until Continue regardless of this prop.
+   *
+   * @default 'immediate'
+   */
+  commitBehavior?: ChoiceListCommitBehavior;
+  /**
+   * Controlled pending selection when {@link commitBehavior} is `deferred`.
+   * Reflected as `aria-selected` on the matching listbox option.
+   */
+  selected?: string | null;
+  /**
+   * Uncontrolled initial pending selection when {@link commitBehavior} is
+   * `deferred`.
+   */
+  defaultSelected?: string;
+  /**
+   * Fires when the pending selection changes in `deferred` mode.
+   */
+  onSelectedChange?: (value: string | null) => void;
+  /**
+   * Controlled checked option ids for single-step {@link selectionMode}
+   * `"multiple"`. Pair with {@link onCheckedChange} when the host owns
+   * commit timing (for example an external Submit footer).
+   */
+  checked?: string[];
+  /**
+   * Uncontrolled initial checked ids for single-step multi-select.
+   */
+  defaultChecked?: string[];
+  /** Fires when checked options change in single-step multi-select mode. */
+  onCheckedChange?: (values: string[]) => void;
+  /**
+   * Controlled Other-checkbox state for multi-select {@link allowOther}.
+   * Ignored in single-select mode.
+   */
+  otherChecked?: boolean;
+  /**
+   * Uncontrolled initial Other-checkbox state for multi-select
+   * {@link allowOther}.
+   */
+  defaultOtherChecked?: boolean;
+  /** Fires when the Other checkbox toggles in multi-select mode. */
+  onOtherCheckedChange?: (checked: boolean) => void;
+  /**
+   * When {@link commitBehavior} is `deferred` and the list is single-step
+   * single-select, renders Skip + Continue in a footer. Pass `false` when
+   * the consumer supplies its own footer chrome. Also suppresses any
+   * built-in footer for single-step multi-select.
+   * @default true
+   */
+  showDeferredFooter?: boolean;
+  /**
+   * Fires when the user clicks Skip in a single-step deferred footer.
+   * Ignored when {@link showDeferredFooter} is `false`.
+   */
+  onSkip?: () => void;
   /**
    * Press `1`–`9` to move keyboard focus to the Nth option (1-indexed).
    * Enter/Space still commits — this only moves focus, matching standard
@@ -421,11 +555,25 @@ function restoreMultiSelectFromPersisted(
   };
 }
 
+function warnDroppedSingleSelectRestore(stepId: string, saved: string, allowOther: boolean) {
+  if (process.env.NODE_ENV === 'production') return;
+  console.warn(
+    `[ChoiceList] Saved single-select value "${saved}" for step "${stepId}" is not in the current option ids` +
+      (allowOther ? '; restored as Other text.' : '; selection was cleared.'),
+  );
+}
+
 /** Decorative chevron at the trailing edge of single-select rows (`aria-hidden`). */
-function ChoiceListOptionChevron() {
+function ChoiceListOptionChevron({ hoverOnly = false }: { hoverOnly?: boolean }) {
   return (
-    <span aria-hidden="true" className="airo-input-choice-list__option-chevron">
-      <AsyncIcon icon="chevron-right" />
+    <span
+      aria-hidden="true"
+      className={classnames(
+        'airo-input-choice-list__option-chevron',
+        hoverOnly && 'airo-input-choice-list__option-arrow',
+      )}
+    >
+      <AsyncIcon icon={hoverOnly ? 'arrow-right' : 'chevron-right'} width={20} height={20} />
     </span>
   );
 }
@@ -473,8 +621,19 @@ interface SingleSelectPanelProps {
   loop: boolean;
   ariaLabel: string;
   ariaLabelledBy?: string;
-  selected?: string;
+  selected?: string | null;
   optionDividers: boolean;
+  showOptionChevron: boolean;
+  showOptionArrowOnHover: boolean;
+  suppressLastRowBottomBorder: boolean;
+  inlineSkipLabel?: string;
+  onInlineSkip?: () => void;
+  inlineSkipOrSubmit: boolean;
+  otherSubmitTestId?: string;
+  inlineSkipTestId?: string;
+  inlineBackLabel?: string;
+  onInlineBack?: () => void;
+  inlineBackTestId?: string;
   disabled?: boolean;
   allowOther?: boolean;
   otherPlaceholder: string;
@@ -485,9 +644,11 @@ interface SingleSelectPanelProps {
   ) => void;
   /** Accessible label for the inline submit button next to the Other TextEntry. */
   otherSubmitLabel?: string;
+  showOtherSubmitButton?: boolean;
   /** Controlled freeform draft when `allowOther` (wizard restore). */
   otherDraft?: string;
   onOtherDraftChange?: (next: string) => void;
+  onOtherFocus?: () => void;
 }
 
 function ListboxSingleSelectPanel({
@@ -498,34 +659,82 @@ function ListboxSingleSelectPanel({
   ariaLabelledBy,
   selected,
   optionDividers,
+  showOptionChevron,
+  showOptionArrowOnHover,
+  suppressLastRowBottomBorder,
+  inlineSkipLabel,
+  onInlineSkip,
+  inlineSkipOrSubmit,
+  otherSubmitTestId,
+  inlineSkipTestId,
+  inlineBackLabel,
+  onInlineBack,
+  inlineBackTestId,
   disabled = false,
   allowOther = false,
   otherPlaceholder,
   otherAriaLabel,
   onOtherSubmit,
   otherSubmitLabel,
+  showOtherSubmitButton = true,
   otherDraft,
   onOtherDraftChange,
+  onOtherFocus,
 }: SingleSelectPanelProps) {
-  const items = useMemo(
-    () =>
-      collected.map((item) => ({
-        id: item.id,
-        children: (
-          <span className="airo-input-choice-list__option-row-inner">
-            <span className="airo-input-choice-list__option-row-body">
-              {renderItemContent(item)}
-            </span>
-            <ChoiceListOptionChevron />
-          </span>
-        ),
-      })),
-    [collected],
-  );
-
-  const showListbox = items.length > 0;
+  const showListbox = collected.length > 0;
   const showOther = Boolean(allowOther && onOtherSubmit);
   const lastItemId = collected[collected.length - 1]?.id;
+  const showInlineSkipOnLastOption =
+    Boolean(inlineSkipLabel && onInlineSkip) && !showOther && !inlineSkipOrSubmit;
+  const showInlineActionsOnLastOption =
+    !showOther && (showInlineSkipOnLastOption || Boolean(inlineBackLabel && onInlineBack));
+
+  const items = useMemo(
+    () =>
+      collected.map((item, index) => {
+        const isLast = index === collected.length - 1;
+        const showInlineActions = isLast && showInlineActionsOnLastOption;
+        return {
+          id: item.id,
+          children: (
+            <span className="airo-input-choice-list__option-row-inner">
+              <span className="airo-input-choice-list__option-row-body">
+                {renderItemContent(item)}
+              </span>
+              {showOptionChevron ? <ChoiceListOptionChevron /> : null}
+              {!showOptionChevron && showOptionArrowOnHover ? (
+                <ChoiceListOptionChevron hoverOnly />
+              ) : null}
+              {showInlineActions ? (
+                <ChoiceListInlineRowActions
+                  disabled={disabled}
+                  inlineBackLabel={inlineBackLabel}
+                  onInlineBack={onInlineBack}
+                  inlineBackTestId={inlineBackTestId}
+                  inlineSkipLabel={showInlineSkipOnLastOption ? inlineSkipLabel : undefined}
+                  onInlineSkip={showInlineSkipOnLastOption ? onInlineSkip : undefined}
+                  inlineSkipTestId={inlineSkipTestId}
+                />
+              ) : null}
+            </span>
+          ),
+        };
+      }),
+    [
+      collected,
+      disabled,
+      inlineBackLabel,
+      inlineBackTestId,
+      inlineSkipLabel,
+      inlineSkipTestId,
+      onInlineBack,
+      onInlineSkip,
+      showInlineActionsOnLastOption,
+      showInlineSkipOnLastOption,
+      showOptionArrowOnHover,
+      showOptionChevron,
+    ],
+  );
 
   const [listboxActiveId, setListboxActiveId] = useState<string | null>(selected ?? null);
   useEffect(() => {
@@ -649,31 +858,40 @@ function ListboxSingleSelectPanel({
     listboxRef.current?.focus();
   }, []);
 
+  const showOtherAfterListbox = showOther && showListbox && optionDividers;
+
   return (
-    <>
+    <div
+      className={classnames(
+        'airo-input-choice-list__listbox-keyboard-wrap',
+        showOtherAfterListbox && 'airo-input-choice-list__listbox-keyboard-wrap--before-other',
+      )}
+      onKeyDownCapture={showListbox ? handleListboxKeyDownCapture : undefined}
+    >
       {showListbox ? (
-        <div
-          className="airo-input-choice-list__listbox-keyboard-wrap"
-          onKeyDownCapture={handleListboxKeyDownCapture}
-        >
-          <Listbox
-            as="listbox"
-            stretch
-            className={classnames(
-              'airo-input-choice-list__listbox',
-              optionDividers && 'airo-input-choice-list__listbox--option-dividers',
-            )}
-            items={items}
-            onConfirm={guardedConfirm}
-            onActiveItemChange={(id) => {
-              setListboxActiveId(id ?? null);
-            }}
-            loop={loop}
-            selected={selected}
-            ref={listboxRef}
-            tabIndex={disabled ? -1 : 0}
-          />
-        </div>
+        <Listbox
+          as="listbox"
+          stretch
+          className={classnames(
+            'airo-input-choice-list__listbox',
+            optionDividers && 'airo-input-choice-list__listbox--option-dividers',
+            showOtherAfterListbox && 'airo-input-choice-list__listbox--before-other',
+            suppressLastRowBottomBorder &&
+              'airo-input-choice-list__listbox--suppress-last-border',
+            !showOptionChevron &&
+              !showOptionArrowOnHover &&
+              'airo-input-choice-list__listbox--no-chevron',
+          )}
+          items={items}
+          onConfirm={guardedConfirm}
+          onActiveItemChange={(id) => {
+            setListboxActiveId(id ?? null);
+          }}
+          loop={loop}
+          selected={selected ?? undefined}
+          ref={listboxRef}
+          tabIndex={disabled ? -1 : 0}
+        />
       ) : null}
       {showOther && onOtherSubmit ? (
         <ChoiceListOtherRow
@@ -682,14 +900,28 @@ function ListboxSingleSelectPanel({
           otherAriaLabel={otherAriaLabel}
           disabled={disabled}
           optionDividers={optionDividers && showListbox}
+          suppressBottomBorder={suppressLastRowBottomBorder}
+          letter={getIndicator(collected.length)}
           onSubmit={onOtherSubmit}
           submitLabel={otherSubmitLabel}
+          showSubmitButton={
+            inlineSkipOrSubmit ? false : showOtherSubmitButton
+          }
+          inlineSkipLabel={inlineSkipLabel}
+          onInlineSkip={onInlineSkip}
+          inlineSkipOrSubmit={inlineSkipOrSubmit}
+          submitTestId={otherSubmitTestId}
+          inlineSkipTestId={inlineSkipTestId}
+          inlineBackLabel={inlineBackLabel}
+          onInlineBack={onInlineBack}
+          inlineBackTestId={inlineBackTestId}
           onArrowUpExit={showListbox ? handleOtherArrowUpExit : undefined}
           draft={otherDraft}
           onDraftChange={onOtherDraftChange}
+          onOtherFocus={onOtherFocus}
         />
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -978,6 +1210,7 @@ interface ChoiceListFooterProps {
   onSkip: () => void;
   continueLabel?: string;
   onContinue?: () => void;
+  continueDisabled?: boolean;
   disabled?: boolean;
 }
 
@@ -993,6 +1226,7 @@ function ChoiceListFooter({
   onSkip,
   continueLabel,
   onContinue,
+  continueDisabled = false,
   disabled = false,
 }: ChoiceListFooterProps) {
   const hasStepIndicator = currentStep != null && totalSteps != null && totalSteps > 1;
@@ -1049,7 +1283,7 @@ function ChoiceListFooter({
             size="small"
             type="button"
             aria-label={continueLabel}
-            disabled={disabled}
+            disabled={disabled || continueDisabled}
             icon={<AsyncIcon icon="arrow-right" />}
             onClick={onContinue}
           />
@@ -1149,13 +1383,41 @@ function ChoiceListRoot({
   onStepChange,
   onActiveStepChange,
   optionDividers = true,
+  showOptionChevron = true,
+  showOptionArrowOnHover = false,
+  suppressLastRowBottomBorder = false,
+  inlineSkipLabel,
+  onInlineSkip,
+  inlineSkipOrSubmit = false,
+  otherSubmitTestId,
+  inlineSkipTestId,
+  inlineBackLabel,
+  onInlineBack,
+  inlineBackTestId,
   allowOther = false,
   otherLabel: otherLabelProp,
   otherPlaceholder,
   otherAriaLabel,
+  otherDraft: otherDraftProp,
+  defaultOtherDraft,
+  onOtherDraftChange,
+  onOtherFocus,
   otherSubmitLabel = 'Submit',
+  showOtherSubmitButton = true,
   otherCheckboxAriaLabel,
   disabled = false,
+  commitBehavior = 'immediate',
+  selected: selectedProp,
+  defaultSelected,
+  onSelectedChange,
+  checked: checkedProp,
+  defaultChecked,
+  onCheckedChange,
+  otherChecked: otherCheckedProp,
+  defaultOtherChecked,
+  onOtherCheckedChange,
+  showDeferredFooter = true,
+  onSkip,
   numberKeyShortcuts,
   ...rest
 }: ChoiceListProps) {
@@ -1186,6 +1448,20 @@ function ChoiceListRoot({
   }, [otherLabelProp, otherPlaceholder]);
   const isMultiStep = useMemo(() => hasStepChildren(children), [children]);
   const steps = useMemo(() => (isMultiStep ? collectSteps(children) : []), [isMultiStep, children]);
+  const isDeferred = commitBehavior === 'deferred';
+
+  // -- Deferred single-select pending state --
+  const [internalPending, setInternalPending] = useState<string | null>(defaultSelected ?? null);
+  const pendingValue = selectedProp !== undefined ? selectedProp : internalPending;
+  const setPendingValue = useCallback(
+    (next: string | null) => {
+      if (selectedProp === undefined) {
+        setInternalPending(next);
+      }
+      onSelectedChange?.(next);
+    },
+    [onSelectedChange, selectedProp],
+  );
 
   // -- Multi-step state --
   const [stepIndex, setStepIndex] = useState(0);
@@ -1201,8 +1477,74 @@ function ChoiceListRoot({
   // slide. Resets to false on remount (a fresh swap-in), so re-entry is clean.
   const hasRenderedStepRef = useRef(false);
   const [multiChecked, setMultiChecked] = useState<string[]>([]);
-  const [otherDraft, setOtherDraft] = useState('');
+  const [singleStepMultiChecked, setSingleStepMultiChecked] = useState<string[]>(defaultChecked ?? []);
+  const [singleStepOtherChecked, setSingleStepOtherChecked] = useState(defaultOtherChecked ?? false);
+  const [internalOtherDraft, setInternalOtherDraft] = useState(defaultOtherDraft ?? '');
+  const otherDraft = otherDraftProp !== undefined ? otherDraftProp : internalOtherDraft;
+  const writeOtherDraft = useCallback(
+    (next: SetStateAction<string>) => {
+      if (otherDraftProp === undefined) {
+        setInternalOtherDraft((prev) => {
+          const resolved = typeof next === 'function' ? next(prev) : next;
+          onOtherDraftChange?.(resolved);
+          return resolved;
+        });
+        return;
+      }
+      const resolved = typeof next === 'function' ? next(otherDraftProp) : next;
+      onOtherDraftChange?.(resolved);
+    },
+    [onOtherDraftChange, otherDraftProp],
+  );
   const [otherChecked, setOtherChecked] = useState(false);
+
+  const effectiveMultiChecked = isMultiStep
+    ? multiChecked
+    : checkedProp !== undefined
+      ? checkedProp
+      : singleStepMultiChecked;
+
+  const effectiveOtherChecked = isMultiStep
+    ? otherChecked
+    : otherCheckedProp !== undefined
+      ? otherCheckedProp
+      : singleStepOtherChecked;
+
+  const writeMultiChecked = useCallback(
+    (updater: string[] | ((prev: string[]) => string[])) => {
+      const prev = isMultiStep
+        ? multiChecked
+        : checkedProp !== undefined
+          ? checkedProp
+          : singleStepMultiChecked;
+      const resolved = typeof updater === 'function' ? updater(prev) : updater;
+      if (isMultiStep) {
+        setMultiChecked(resolved);
+      } else if (checkedProp === undefined) {
+        setSingleStepMultiChecked(resolved);
+      }
+      onCheckedChange?.(resolved);
+    },
+    [checkedProp, isMultiStep, multiChecked, onCheckedChange, singleStepMultiChecked],
+  );
+
+  const writeOtherChecked = useCallback(
+    (updater: boolean | ((prev: boolean) => boolean)) => {
+      const prev = isMultiStep
+        ? otherChecked
+        : otherCheckedProp !== undefined
+          ? otherCheckedProp
+          : singleStepOtherChecked;
+      const resolved = typeof updater === 'function' ? updater(prev) : updater;
+      if (isMultiStep) {
+        setOtherChecked(resolved);
+      } else if (otherCheckedProp === undefined) {
+        setSingleStepOtherChecked(resolved);
+      }
+      onOtherCheckedChange?.(resolved);
+    },
+    [isMultiStep, onOtherCheckedChange, otherChecked, otherCheckedProp, singleStepOtherChecked],
+  );
 
   useEffect(() => {
     if (isMultiStep && steps.length > 0 && stepIndex >= steps.length) {
@@ -1257,16 +1599,16 @@ function ChoiceListRoot({
         if (allowOther) {
           const restored = restoreMultiSelectFromPersisted(prev, knownIds, true);
           setMultiChecked(restored.checked);
-          setOtherDraft(restored.otherDraft);
+          writeOtherDraft(restored.otherDraft);
           setOtherChecked(restored.otherChecked);
         } else {
           setMultiChecked(prev.filter((id) => knownIds.has(id)));
-          setOtherDraft('');
+          writeOtherDraft('');
           setOtherChecked(false);
         }
       } else {
         setMultiChecked([]);
-        setOtherDraft('');
+        writeOtherDraft('');
         setOtherChecked(false);
       }
       return;
@@ -1274,10 +1616,15 @@ function ChoiceListRoot({
 
     setMultiChecked([]);
     if (allowOther && typeof prev === 'string' && prev.length > 0 && !knownIds.has(prev)) {
-      setOtherDraft(prev);
+      writeOtherDraft(prev);
       setOtherChecked(false);
+      warnDroppedSingleSelectRestore(activeStep.id, prev, true);
+    } else if (typeof prev === 'string' && prev.length > 0 && !knownIds.has(prev)) {
+      writeOtherDraft('');
+      setOtherChecked(false);
+      warnDroppedSingleSelectRestore(activeStep.id, prev, false);
     } else {
-      setOtherDraft('');
+      writeOtherDraft('');
       setOtherChecked(false);
     }
   }, [isMultiStep, activeStepId, isMultiSelect, allowOther, collectedIdsKey]);
@@ -1303,7 +1650,7 @@ function ChoiceListRoot({
           selectionsRef.current = { ...selectionsRef.current, [activeStep.id]: value };
           onStepChange?.(activeStep.id, value);
           setMultiChecked([]);
-          setOtherDraft('');
+          writeOtherDraft('');
           setOtherChecked(false);
         } else if (selectionsRef.current[activeStep.id] == null) {
           selectionsRef.current = { ...selectionsRef.current, [activeStep.id]: null };
@@ -1315,10 +1662,20 @@ function ChoiceListRoot({
     : undefined;
 
   // -- Callbacks --
+  const handleSelectOnly = useCallback(
+    (nextValue: string) => {
+      if (disabled) return;
+      writeOtherDraft('');
+      setOtherChecked(false);
+      setPendingValue(nextValue);
+    },
+    [disabled, setPendingValue],
+  );
+
   const handleConfirm = useCallback(
     (nextValue: string, meta: { event: ReactKeyboardEvent | ReactMouseEvent | null }) => {
       if (disabled) return;
-      setOtherDraft('');
+      writeOtherDraft('');
       setOtherChecked(false);
       onDecision?.(nextValue, { event: meta.event });
       onChange?.(nextValue, { event: meta.event });
@@ -1350,6 +1707,65 @@ function ChoiceListRoot({
     ],
   );
 
+  const handleListboxActivate = useCallback(
+    (nextValue: string, meta: { event: ReactKeyboardEvent | ReactMouseEvent | null }) => {
+      if (disabled) return;
+      if (isDeferred && !isMultiSelect) {
+        handleSelectOnly(nextValue);
+        return;
+      }
+      handleConfirm(nextValue, meta);
+    },
+    [disabled, handleConfirm, handleSelectOnly, isDeferred, isMultiSelect],
+  );
+
+  const resolveDeferredCommitValue = useCallback((): string | null => {
+    if (pendingValue) return pendingValue;
+    if (allowOther && otherDraft.trim()) return otherDraft.trim();
+    return null;
+  }, [allowOther, otherDraft, pendingValue]);
+
+  const handleDeferredContinue = useCallback(() => {
+    if (disabled || !isDeferred || isMultiSelect) return;
+    const value = resolveDeferredCommitValue();
+    if (!value) return;
+    handleConfirm(value, { event: null });
+  }, [disabled, handleConfirm, isDeferred, isMultiSelect, resolveDeferredCommitValue]);
+
+  const handleDeferredMultiStepContinue = useCallback(() => {
+    if (disabled || !isMultiStep || !activeStep || isMultiSelect) return;
+    const value = isDeferred ? resolveDeferredCommitValue() : null;
+    selectionsRef.current = { ...selectionsRef.current, [activeStep.id]: value };
+    onStepChange?.(activeStep.id, value);
+    writeOtherDraft('');
+    setOtherChecked(false);
+    setPendingValue(null);
+
+    if (stepIndex < stepTotalSteps - 1) {
+      setDirection('forward');
+      setStepIndex((i) => i + 1);
+    } else {
+      onComplete?.(selectionsRef.current);
+    }
+  }, [
+    activeStep,
+    disabled,
+    isDeferred,
+    isMultiSelect,
+    isMultiStep,
+    onComplete,
+    onStepChange,
+    resolveDeferredCommitValue,
+    setPendingValue,
+    stepIndex,
+    stepTotalSteps,
+  ]);
+
+  const handleSingleStepDeferredSkip = useCallback(() => {
+    if (disabled) return;
+    onSkip?.();
+  }, [disabled, onSkip]);
+
   const handleOtherFreeformSubmit = useCallback(
     (
       value: string,
@@ -1364,11 +1780,11 @@ function ChoiceListRoot({
   const handleCheckboxToggle = useCallback(
     (value: string) => {
       if (disabled) return;
-      setMultiChecked((prev) =>
+      writeMultiChecked((prev) =>
         prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
       );
     },
-    [disabled],
+    [disabled, writeMultiChecked],
   );
 
   const handleMultiConfirm = useCallback(() => {
@@ -1376,7 +1792,7 @@ function ChoiceListRoot({
     const value = buildMultiSelectValue(allowOther, multiChecked, otherChecked, otherDraft);
     selectionsRef.current = { ...selectionsRef.current, [activeStep.id]: value };
     onStepChange?.(activeStep.id, value);
-    setOtherDraft('');
+    writeOtherDraft('');
     setOtherChecked(false);
 
     if (stepIndex < stepTotalSteps - 1) {
@@ -1403,7 +1819,7 @@ function ChoiceListRoot({
     if (disabled || !isMultiStep || !activeStep) return;
     selectionsRef.current = { ...selectionsRef.current, [activeStep.id]: null };
     onStepChange?.(activeStep.id, null);
-    setOtherDraft('');
+    writeOtherDraft('');
     setOtherChecked(false);
     if (stepIndex < stepTotalSteps - 1) {
       setDirection('forward');
@@ -1433,6 +1849,7 @@ function ChoiceListRoot({
     config: numberKeyShortcuts,
     disabled,
     selectionMode: isMultiSelect ? 'multiple' : 'single',
+    commitBehavior,
   });
   const prevStepIndexRef = useRef(stepIndex);
   // Stable ref so the active-step effect below never re-fires due to a
@@ -1478,10 +1895,33 @@ function ChoiceListRoot({
   const stepKey = isMultiStep && activeStep ? activeStep.id : undefined;
   const collectedIds = useMemo(() => new Set(collected.map((c) => c.id)), [collected]);
   const stepSelectedRaw = activeStep ? selectionsRef.current[activeStep.id] : undefined;
-  const stepSelected =
+  const stepSelectedFromSaved =
     typeof stepSelectedRaw === 'string' && collectedIds.has(stepSelectedRaw)
       ? stepSelectedRaw
       : undefined;
+  const stepSelected =
+    isDeferred && !isMultiSelect ? (pendingValue ?? stepSelectedFromSaved) : stepSelectedFromSaved;
+  const singleStepSelected = isDeferred ? (pendingValue ?? undefined) : undefined;
+  const deferredContinueDisabled = !resolveDeferredCommitValue();
+  const showSingleStepDeferredFooter = isDeferred && !isMultiStep && showDeferredFooter;
+  const showMultiStepDeferredContinue = isDeferred && !isMultiSelect;
+
+  const handleOtherDraftChange = useCallback(
+    (next: string) => {
+      writeOtherDraft(next);
+      if (isDeferred && next.trim()) {
+        setPendingValue(null);
+      }
+    },
+    [isDeferred, setPendingValue, writeOtherDraft],
+  );
+
+  const handleOtherFocus = useCallback(() => {
+    if (isDeferred && !isMultiSelect) {
+      setPendingValue(null);
+    }
+    onOtherFocus?.();
+  }, [isDeferred, isMultiSelect, onOtherFocus, setPendingValue]);
 
   const surfaceClassName = 'airo-input-choice-list__surface';
 
@@ -1505,7 +1945,7 @@ function ChoiceListRoot({
             {isMultiSelect ? (
               <MultiSelectOptionPanel
                 collected={collected}
-                checked={multiChecked}
+                checked={effectiveMultiChecked}
                 onToggle={handleCheckboxToggle}
                 loop={loop}
                 ariaLabel={resolvedAriaLabel}
@@ -1516,29 +1956,42 @@ function ChoiceListRoot({
                 otherPlaceholder={activeOtherPlaceholder}
                 otherAriaLabel={activeOtherAriaLabel}
                 otherCheckboxAriaLabel={effectiveOtherCheckboxAriaLabel}
-                otherChecked={otherChecked}
+                otherChecked={effectiveOtherChecked}
                 otherDraft={otherDraft}
-                onOtherCheckedChange={setOtherChecked}
-                onOtherDraftChange={setOtherDraft}
+                onOtherCheckedChange={writeOtherChecked}
+                onOtherDraftChange={writeOtherDraft}
                 onOtherEnterConfirm={handleMultiConfirm}
               />
             ) : (
               <ListboxSingleSelectPanel
                 collected={collected}
-                onConfirm={handleConfirm}
+                onConfirm={handleListboxActivate}
                 loop={loop}
                 ariaLabel={resolvedAriaLabel}
                 ariaLabelledBy={ariaLabelledByAttribute}
                 selected={stepSelected}
                 optionDividers={optionDividers}
+                showOptionChevron={showOptionChevron}
+                showOptionArrowOnHover={showOptionArrowOnHover}
+                suppressLastRowBottomBorder={suppressLastRowBottomBorder}
+                inlineSkipLabel={inlineSkipLabel}
+                onInlineSkip={onInlineSkip}
+                inlineSkipOrSubmit={inlineSkipOrSubmit}
+                otherSubmitTestId={otherSubmitTestId}
+                inlineSkipTestId={inlineSkipTestId}
+                inlineBackLabel={inlineBackLabel}
+                onInlineBack={onInlineBack}
+                inlineBackTestId={inlineBackTestId}
                 disabled={disabled}
                 allowOther={allowOther}
                 otherPlaceholder={activeOtherPlaceholder}
                 otherAriaLabel={activeOtherAriaLabel}
                 onOtherSubmit={allowOther ? handleOtherFreeformSubmit : undefined}
                 otherSubmitLabel={otherSubmitLabel}
+                showOtherSubmitButton={showOtherSubmitButton}
                 otherDraft={allowOther ? otherDraft : undefined}
-                onOtherDraftChange={allowOther ? setOtherDraft : undefined}
+                onOtherDraftChange={allowOther ? handleOtherDraftChange : undefined}
+                onOtherFocus={allowOther ? handleOtherFocus : undefined}
               />
             )}
           </MultiStepSlot>
@@ -1552,28 +2005,84 @@ function ChoiceListRoot({
             forwardLabel={forwardLabel}
             skipLabel={skipLabel}
             onSkip={handleSkip}
-            continueLabel={isMultiSelect ? continueLabel : undefined}
-            onContinue={isMultiSelect ? handleMultiConfirm : undefined}
+            continueLabel={isMultiSelect || showMultiStepDeferredContinue ? continueLabel : undefined}
+            onContinue={
+              isMultiSelect
+                ? handleMultiConfirm
+                : showMultiStepDeferredContinue
+                  ? handleDeferredMultiStepContinue
+                  : undefined
+            }
+            continueDisabled={showMultiStepDeferredContinue ? deferredContinueDisabled : false}
             disabled={disabled}
           />
         </>
       ) : (
-        <ListboxSingleSelectPanel
-          collected={collected}
-          onConfirm={handleConfirm}
-          loop={loop}
-          ariaLabel={resolvedAriaLabel}
-          ariaLabelledBy={ariaLabelledByAttribute}
-          optionDividers={optionDividers}
-          disabled={disabled}
-          allowOther={allowOther}
-          otherPlaceholder={effectiveOtherPlaceholder}
-          otherAriaLabel={otherAriaLabel}
-          onOtherSubmit={allowOther ? handleOtherFreeformSubmit : undefined}
-          otherSubmitLabel={otherSubmitLabel}
-          otherDraft={allowOther ? otherDraft : undefined}
-          onOtherDraftChange={allowOther ? setOtherDraft : undefined}
-        />
+        <>
+          {isMultiSelect ? (
+            <MultiSelectOptionPanel
+              collected={collected}
+              checked={effectiveMultiChecked}
+              onToggle={handleCheckboxToggle}
+              loop={loop}
+              ariaLabel={resolvedAriaLabel}
+              ariaLabelledBy={ariaLabelledByAttribute}
+              optionDividers={optionDividers}
+              disabled={disabled}
+              allowOther={allowOther}
+              otherPlaceholder={effectiveOtherPlaceholder}
+              otherAriaLabel={otherAriaLabel}
+              otherCheckboxAriaLabel={effectiveOtherCheckboxAriaLabel}
+              otherChecked={effectiveOtherChecked}
+              otherDraft={otherDraft}
+              onOtherCheckedChange={writeOtherChecked}
+              onOtherDraftChange={writeOtherDraft}
+            />
+          ) : (
+            <ListboxSingleSelectPanel
+              collected={collected}
+              onConfirm={handleListboxActivate}
+              loop={loop}
+              ariaLabel={resolvedAriaLabel}
+              ariaLabelledBy={ariaLabelledByAttribute}
+              selected={singleStepSelected}
+              optionDividers={optionDividers}
+              showOptionChevron={showOptionChevron}
+              showOptionArrowOnHover={showOptionArrowOnHover}
+              suppressLastRowBottomBorder={suppressLastRowBottomBorder}
+              inlineSkipLabel={inlineSkipLabel}
+              onInlineSkip={onInlineSkip}
+              inlineSkipOrSubmit={inlineSkipOrSubmit}
+              otherSubmitTestId={otherSubmitTestId}
+              inlineSkipTestId={inlineSkipTestId}
+              inlineBackLabel={inlineBackLabel}
+              onInlineBack={onInlineBack}
+              inlineBackTestId={inlineBackTestId}
+              disabled={disabled}
+              allowOther={allowOther}
+              otherPlaceholder={effectiveOtherPlaceholder}
+              otherAriaLabel={otherAriaLabel}
+              onOtherSubmit={allowOther ? handleOtherFreeformSubmit : undefined}
+              otherSubmitLabel={otherSubmitLabel}
+              showOtherSubmitButton={showOtherSubmitButton}
+              otherDraft={allowOther ? otherDraft : undefined}
+              onOtherDraftChange={allowOther ? handleOtherDraftChange : undefined}
+              onOtherFocus={allowOther ? handleOtherFocus : undefined}
+            />
+          )}
+          {showSingleStepDeferredFooter ? (
+            <ChoiceListFooter
+              skipLabel={skipLabel}
+              onSkip={handleSingleStepDeferredSkip}
+              continueLabel={continueLabel}
+              onContinue={handleDeferredContinue}
+              continueDisabled={deferredContinueDisabled}
+              disabled={disabled}
+              backLabel={backLabel}
+              forwardLabel={forwardLabel}
+            />
+          ) : null}
+        </>
       )}
     </>
   );
@@ -1591,8 +2100,7 @@ function ChoiceListRoot({
       {...safeRest}
       ref={surfaceRef}
       aria-disabled={disabled ? true : undefined}
-      // @ts-expect-error React typings do not include the `inert` attribute yet.
-      inert={disabled ? '' : undefined}
+      inert={disabled ? true : undefined}
       style={disabled ? { ...safeRest.style, pointerEvents: 'none' } : safeRest.style}
       className={rootClassName}
     >

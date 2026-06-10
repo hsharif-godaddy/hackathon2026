@@ -7,10 +7,12 @@ import { Thinker } from '@airo-ux/pattern-library/chat/thinker'
 import { ChoiceList } from '@airo-ux/pattern-library/input/choice-list'
 import { ThinkingIndicator } from '@airo-ux/pattern-library/primitives/thinking-indicator'
 import { useQueryClient } from '@tanstack/react-query'
+import Box from '@ux/box'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
 import CollapsibleChatInputSection, { CollapseChevron } from '@/app/[market]/develop/components/chat/CollapsibleChatInputSection'
 import FontThemePreviewInputPanel from '@/app/[market]/develop/components/chat/FontThemePreviewInputPanel'
+import { PanelSectionTitle } from '@/app/[market]/develop/components/chat/StepProgressTag'
 import ThemePreviewInputPanel from '@/app/[market]/develop/components/chat/ThemePreviewInputPanel'
 import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
@@ -46,11 +48,25 @@ import { useUpfrontRebuildBuildQueueStore } from '@/stores/useUpfrontRebuildBuil
 
 const MAX_COMBINED_ITEMS = 4
 
+function InputActionsPanelCard({ children }: { children: ReactNode }) {
+  return (
+    <Box
+      data-testid="input-actions-panel-card"
+      displayType="flex"
+      elevation="raised"
+      orientation="vertical"
+      blockPadding="sm"
+      inlinePadding="sm"
+    >
+      {children}
+    </Box>
+  )
+}
 
 /**
  * InputActionsPanel
  *
- * Unified "Up next" panel rendered at the top of the chat input card.
+ * Unified "Up next" panel rendered in its own card above the chat input.
  * Combines Next Best Actions (NBAs) and Plan/Todo list into one experience.
  *
  * Modes:
@@ -100,6 +116,15 @@ function isAskQuestionNBA(nbaData: ReturnType<typeof useLatestNBAs>): boolean {
   return nbaData?.source === 'askQuestion' || isAskQuestionToolResult(nbaData?.toolResult)
 }
 
+function askQuestionStepCount(toolResult: unknown): number {
+  if (!toolResult || typeof toolResult !== 'object') return 1
+  const resultObj = toolResult as { output?: { widgetData?: { questions?: unknown[] } }; widgetData?: { questions?: unknown[] } }
+  const widgetData = resultObj.output?.widgetData ?? resultObj.widgetData
+  return Array.isArray(widgetData?.questions) && widgetData.questions.length > 0
+    ? widgetData.questions.length
+    : 1
+}
+
 
 /**
  * @deprecated Remove when `airo-builder-theme-selection-chat` is permanently on
@@ -119,6 +144,12 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
   const [fullPlanExpanded, setFullPlanExpanded] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [otherValue, setOtherValue] = useState('')
+  const [askQuestionCompleted, setAskQuestionCompleted] = useState(false)
+
+  useEffect(() => {
+    setAskQuestionCompleted(false)
+    setOtherValue('')
+  }, [nbaData?.toolResult])
 
   const items = currentList?.items ?? []
   const uncompletedItems = items.filter(item => !item.completed)
@@ -291,7 +322,7 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
   }
 
   const showOtherInput = nbaData?.source === 'askQuestion' && nbaData?.allowOther
-  const isAskQuestionActive = isAskQuestionNBA(nbaData) && !!nbaData?.toolResult
+  const isAskQuestionActive = isAskQuestionNBA(nbaData) && !!nbaData?.toolResult && !askQuestionCompleted
 
   const nbaCombinedChoiceListRef = useRef<HTMLDivElement>(null)
   const focusNBAChoiceOptionByIndex = useCallback(
@@ -333,15 +364,10 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
     })
   }
 
-  function handleModalPlanItemClick(item: TodoItem) {
-    handlePlanItemClick(item)
-    setIsModalOpen(false)
-  }
-
   // ── Mode C: Agent working ────────────────────────────────────────────────
   if (isProcessing) {
     return (
-      <>
+      <InputActionsPanelCard>
         <div className="flex items-center justify-between px-1 py-0.5 mb-1 min-h-[22px]">
           <Thinker label={thinkerLabel} indicator={<ThinkingIndicator variant="spinner" />} />
           {hasPlan && !fullPlanExpanded && (
@@ -376,7 +402,6 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
               transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
               className="overflow-hidden"
             >
-              {/* Separator between thinking row and expanded plan */}
               <div className="-mx-1 border-b border-border mb-1" />
               <FullPlanSection
                 list={currentList}
@@ -394,18 +419,13 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
           )}
         </AnimatePresence>
 
-        {/* Separator between panel and input content */}
-        <div className="-mx-1 border-b border-border mb-1" />
-
         <TodoListModal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           list={currentList}
           t={t}
-          onItemClick={handleModalPlanItemClick}
-          disabled={isProcessing}
         />
-      </>
+      </InputActionsPanelCard>
     )
   }
 
@@ -418,7 +438,7 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
 
   // ── Mode B: Agent idle, has data ─────────────────────────────────────────
   return (
-    <>
+    <InputActionsPanelCard>
       <div className="flex flex-col gap-0.5 mb-1">
         {/* When no NBAs: single row with "Continue building" on left + "View plan" on right.
             When NBAs present: header question above, NBAs, then "View plan" as separator.
@@ -446,13 +466,24 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
         ) : (
           // NBAs present: header + NBA buttons + "View plan" separator
           <>
-            {!(fullPlanExpanded && nbaSuggestions.length === 0) && (
+            {!(fullPlanExpanded && nbaSuggestions.length === 0 && !isAskQuestionActive) && (
               <div className="px-1 py-0.5 text-sm font-medium text-muted-foreground text-left">
-                {nbaSuggestions.length > 0 && nbaData?.question ? nbaData.question : t('builder_todo_continue_building')}
+                {(isAskQuestionActive || nbaSuggestions.length > 0) && nbaData?.question
+                  ? nbaData.question
+                  : t('builder_todo_continue_building')}
               </div>
             )}
 
-            {nbaSuggestions.length > 0 && (
+            {isAskQuestionActive ? (
+              <AskQuestionToolRenderer
+                toolName="askQuestion"
+                toolStatus="completed"
+                result={nbaData.toolResult as Record<string, unknown>}
+                isLastAssistantMessage={true}
+                hideQuestion={true}
+                onComplete={() => setAskQuestionCompleted(true)}
+              />
+            ) : nbaSuggestions.length > 0 ? (
               <div ref={nbaCombinedChoiceListRef}>
                 <ChoiceList
                   onDecision={(value) => {
@@ -464,6 +495,7 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
                   ariaLabel={nbaData?.question ?? t('builder_todo_continue_building')}
                   disabled={isProcessing}
                   optionDividers
+                  suppressLastRowBottomBorder={!showOtherInput}
                 >
                   {nbaSuggestions.map((suggestion, index) => (
                     <ChoiceList.Item key={index} value={String(index)}>
@@ -472,9 +504,9 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
                   ))}
                 </ChoiceList>
               </div>
-            )}
+            ) : null}
 
-            {showOtherInput && (
+            {showOtherInput && !isAskQuestionActive && (
               <OptionInput
                 value={otherValue}
                 disabled={isProcessing}
@@ -520,6 +552,7 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
             ariaLabel={t('builder_todo_continue_building')}
             disabled={isProcessing}
             optionDividers
+            suppressLastRowBottomBorder
           >
             {planPreviewItems.map((item, index) => (
               <ChoiceList.Item key={item.id} value={String(index)}>
@@ -556,18 +589,13 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
         </AnimatePresence>
       </div>
 
-      {/* Separator between panel and input content */}
-      <div className="-mx-1 border-b border-border mb-1" />
-
       <TodoListModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         list={currentList}
         t={t}
-        onItemClick={handleModalPlanItemClick}
-        disabled={isProcessing}
       />
-    </>
+    </InputActionsPanelCard>
   )
 }
 
@@ -644,6 +672,7 @@ function PlanOptionsList({
       ariaLabel={ariaLabel}
       disabled={disabled}
       optionDividers
+      suppressLastRowBottomBorder
     >
       {items.map((item, index) => (
         <ChoiceList.Item key={item.id} value={String(index)}>
@@ -791,6 +820,7 @@ function FullPlanSection({
                 ariaLabel={t('builder_todo_continue_building')}
                 disabled={isProcessing}
                 optionDividers
+                suppressLastRowBottomBorder
               >
                 {uncompletedItems.map((item, index) => (
                   <ChoiceList.Item key={item.id} value={String(index)}>
@@ -818,15 +848,11 @@ function TodoListModal({
   onClose,
   list,
   t,
-  onItemClick,
-  disabled = false,
 }: {
   isOpen: boolean
   onClose: () => void
   list: TodoList | null
   t: (key: string, values?: Record<string, unknown>, fallback?: string) => string
-  onItemClick?: (item: TodoItem) => void
-  disabled?: boolean
 }) {
   const dialogRef = useRef<HTMLDivElement>(null)
 
@@ -937,8 +963,11 @@ function TodoListModal({
               <div className="flex-1 overflow-y-auto px-3 py-2">
                 {items.length > 0 ? (
                   <div className="space-y-1.5">
-                    {items.map((item, index) => {
-                      const rowContent = (
+                    {items.map((item, index) => (
+                      <div
+                        key={item.id}
+                        className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-1.5"
+                      >
                         <div className="flex items-start gap-1.5">
                           <span
                             className={`flex-shrink-0 size-3 rounded text-xs font-medium flex items-center justify-center ${
@@ -966,34 +995,8 @@ function TodoListModal({
                             )}
                           </div>
                         </div>
-                      )
-
-                      if (!item.completed && onItemClick) {
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            disabled={disabled}
-                            className="w-full bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-1.5 text-left transition-colors hover:bg-intents-ux-box-backgroundColor disabled:opacity-50 disabled:cursor-not-allowed"
-                            onClick={() => {
-                              onItemClick(item)
-                              onClose()
-                            }}
-                          >
-                            {rowContent}
-                          </button>
-                        )
-                      }
-
-                      return (
-                        <div
-                          key={item.id}
-                          className="bg-intents-ux-boxLowContrast-backgroundColor rounded-lg p-1.5"
-                        >
-                          {rowContent}
-                        </div>
-                      )
-                    })}
+                      </div>
+                    ))}
                   </div>
                 ) : (
                   <div className="text-center text-muted-foreground py-4">
@@ -1100,6 +1103,7 @@ function InputActionsPanelThemeSelection({
   const [selectedFontIndex, setSelectedFontIndex] = useState<number>(0)
   const [askQuestionCompleted, setAskQuestionCompleted] = useState(false)
   const [currentAskQuestionText, setCurrentAskQuestionText] = useState<string | null>(null)
+  const [askQuestionProgress, setAskQuestionProgress] = useState<{ current: number; total: number } | null>(null)
   const nbaChoiceShortcutsRef = useRef<HTMLDivElement>(null)
   const planPreviewShortcutsRef = useRef<HTMLDivElement>(null)
   const nextActionShortcutsRef = useRef<HTMLDivElement>(null)
@@ -1108,6 +1112,9 @@ function InputActionsPanelThemeSelection({
     setAskQuestionDismissed(false)
     setCurrentAskQuestionText(null)
   }, [nbaDataRaw?.toolResult])
+  const handleAskQuestionStepProgress = useCallback((current: number, total: number) => {
+    setAskQuestionProgress({ current, total })
+  }, [])
   const hasPlan = !!currentList && items.length > 0
   const totalItems = items.length
   const completedCount = completedItems.length
@@ -1148,6 +1155,14 @@ function InputActionsPanelThemeSelection({
   const showAnySuggest = showColor || showFont
   const isPreviewMode = viewMode === ViewMode.PREVIEW || viewMode === ViewMode.EDIT
   const isAskQuestionActive = isAskQuestionNBA(nbaData) && !!nbaData?.toolResult && !askQuestionCompleted
+
+  useEffect(() => {
+    if (!isAskQuestionActive) {
+      setAskQuestionProgress(null)
+      return
+    }
+    setAskQuestionProgress({ current: 1, total: askQuestionStepCount(nbaData?.toolResult) })
+  }, [isAskQuestionActive, nbaData?.toolResult])
 
   // ── PromptBox swap (flag: airo-builder-chat-choice-swap) ─────────────────
   // A "choicelist surface" is the body that renders a ChoiceList/AskQuestion —
@@ -1474,14 +1489,6 @@ function InputActionsPanelThemeSelection({
     [isProcessing, sendUserMessage]
   )
 
-  const handleModalPlanItemClick = useCallback(
-    (item: TodoItem) => {
-      handlePlanItemClickCallback(item)
-      setIsModalOpen(false)
-    },
-    [handlePlanItemClickCallback]
-  )
-
   useEffect(() => {
     if (isProcessing || isModalOpen || showColor || isAskQuestionActive) return
 
@@ -1546,9 +1553,7 @@ function InputActionsPanelThemeSelection({
   // ── Mode C: Agent working ────────────────────────────────────────────────
   if (isProcessing) {
     return (
-      <>
-
-        {/* Thinking indicator with optional plan toggle (hide plan when applying theme) */}
+      <InputActionsPanelCard>
         <div className="flex items-center justify-between px-1 py-0.5 mb-1 min-h-[22px]">
           <Thinker label={thinkerLabel} indicator={<ThinkingIndicator variant="spinner" />} />
           {hasPlan && !showAnySuggest && (
@@ -1566,7 +1571,6 @@ function InputActionsPanelThemeSelection({
           )}
         </div>
 
-        {/* Nested plan details when expanded (hide when applying theme) */}
         <AnimatePresence initial={false}>
           {hasPlan && fullPlanExpanded && !showAnySuggest && (
             <motion.div
@@ -1609,17 +1613,13 @@ function InputActionsPanelThemeSelection({
           )}
         </AnimatePresence>
 
-        <div className="-mx-1 border-b border-border mb-1" />
-
         <TodoListModal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           list={currentList}
           t={t}
-          onItemClick={handleModalPlanItemClick}
-          disabled={isProcessing}
         />
-      </>
+      </InputActionsPanelCard>
     )
   }
 
@@ -1638,7 +1638,17 @@ function InputActionsPanelThemeSelection({
       ? nbaData.question
       : t('builder_todo_continue_building')
 
-  const continueBuildingTitle = continueBuildingTitleText
+  const continueBuildingTitle = (
+    <PanelSectionTitle
+      progress={isAskQuestionActive ? askQuestionProgress : null}
+    >
+      {isAskQuestionActive ? (
+        <span className="text-foreground">{currentAskQuestionText || nbaData?.question}</span>
+      ) : (
+        continueBuildingTitleText
+      )}
+    </PanelSectionTitle>
+  )
 
   const progressButton = hasPlan && !showColor ? (
     <button
@@ -1665,6 +1675,7 @@ function InputActionsPanelThemeSelection({
           onComplete={() => setAskQuestionCompleted(true)}
           onSkip={() => setAskQuestionDismissed(true)}
           onQuestionChange={setCurrentAskQuestionText}
+          onStepProgressChange={handleAskQuestionStepProgress}
           hideQuestion={true}
         />
       ) : nbaSuggestions.length > 0 ? (
@@ -1679,6 +1690,7 @@ function InputActionsPanelThemeSelection({
             ariaLabel={nbaData?.question ?? t('builder_todo_continue_building')}
             disabled={isProcessing}
             optionDividers
+            suppressLastRowBottomBorder
           >
             {nbaSuggestions.map((suggestion, index) => (
               <ChoiceList.Item key={index} value={String(index)}>
@@ -1699,6 +1711,7 @@ function InputActionsPanelThemeSelection({
             ariaLabel={t('builder_todo_continue_building')}
             disabled={isProcessing}
             optionDividers
+            suppressLastRowBottomBorder
           >
             {nextActionSuggestions.map((suggestion, index) => (
               <ChoiceList.Item key={index} value={String(index)}>
@@ -1755,7 +1768,7 @@ function InputActionsPanelThemeSelection({
   const slotDismiss = hoistChoice ? collapseChoiceFromSlot : undefined
   const askQuestionCollapsible = (
     <CollapsibleChatInputSection
-      title={<span className="text-foreground">{currentAskQuestionText || nbaData?.question}</span>}
+      title={continueBuildingTitle}
       expanded={continueBuildingExpanded}
       onExpandedChange={setContinueBuildingExpanded}
       onDismiss={slotDismiss}
@@ -1789,7 +1802,7 @@ function InputActionsPanelThemeSelection({
 
   // ── Mode B: Agent idle, has data ─────────────────────────────────────────
   return (
-    <>
+    <InputActionsPanelCard>
       {(hasCombinedItems || hasPlan || showAnySuggest || hasRebuildPages || isAskQuestionActive) && !hoistChoice && (
         <>
           {showColor && activeColorSchemeSuggest ? (
@@ -1841,7 +1854,6 @@ function InputActionsPanelThemeSelection({
           ) : (
             defaultCollapsible
           )}
-          <div className="-mx-1 mb-1 border-b border-border" />
         </>
       )}
 
@@ -1850,12 +1862,12 @@ function InputActionsPanelThemeSelection({
         onClose={() => setIsModalOpen(false)}
         list={currentList}
         t={t}
-        onItemClick={handleModalPlanItemClick}
-        disabled={isProcessing}
       />
-    </>
+    </InputActionsPanelCard>
   )
 }
+
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 export default function InputActionsPanel({
   activeColorSchemeSuggest = null,

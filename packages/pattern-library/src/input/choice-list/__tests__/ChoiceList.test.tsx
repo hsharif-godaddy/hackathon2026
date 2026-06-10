@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ChoiceListNumberKeyShortcutsConfig } from '../ChoiceList';
@@ -184,6 +184,14 @@ describe('ChoiceList', () => {
         expect(el).toHaveAttribute('aria-hidden', 'true');
       }
     });
+
+    it('omits option chevrons when showOptionChevron is false', () => {
+      const { container } = renderThree({ showOptionChevron: false });
+      expect(container.querySelectorAll('.airo-input-choice-list__option-chevron')).toHaveLength(0);
+      expect(
+        container.querySelector('.airo-input-choice-list__listbox--no-chevron'),
+      ).toBeInTheDocument();
+    });
   });
 
   describe('decision event', () => {
@@ -254,6 +262,96 @@ describe('ChoiceList', () => {
 
       expect(onDecision).toHaveBeenNthCalledWith(1, 'landing', expect.anything());
       expect(onDecision).toHaveBeenNthCalledWith(2, 'research', expect.anything());
+    });
+  });
+
+  describe('deferred commitBehavior', () => {
+    it('does not fire onDecision on click until Continue is pressed', async () => {
+      const user = userEvent.setup();
+      const onDecision = vi.fn();
+      renderThree({ commitBehavior: 'deferred', onDecision });
+
+      await user.click(screen.getByRole('option', { name: /Launch a campaign/ }));
+
+      expect(onDecision).not.toHaveBeenCalled();
+      expect(screen.getByRole('option', { name: /Launch a campaign/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+      expect(onDecision).toHaveBeenCalledTimes(1);
+      expect(onDecision).toHaveBeenCalledWith('campaign', expect.objectContaining({ event: null }));
+    });
+
+    it('disables Continue until a selection is made', () => {
+      renderThree({ commitBehavior: 'deferred', onDecision: vi.fn() });
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    });
+
+    it('supports controlled selected state with an external footer', async () => {
+      const user = userEvent.setup();
+      const onDecision = vi.fn();
+      function ControlledDeferred() {
+        const [selected, setSelected] = useState<string | null>(null);
+        return (
+          <>
+            <ChoiceList
+              ariaLabel="Pick a direction"
+              commitBehavior="deferred"
+              showDeferredFooter={false}
+              selected={selected ?? undefined}
+              onSelectedChange={setSelected}
+            >
+              <ChoiceList.Item value="landing">Build a landing page</ChoiceList.Item>
+              <ChoiceList.Item value="campaign">Launch a campaign</ChoiceList.Item>
+            </ChoiceList>
+            <button
+              type="button"
+              disabled={!selected}
+              onClick={() => selected && onDecision(selected)}
+            >
+              Submit
+            </button>
+          </>
+        );
+      }
+      render(<ControlledDeferred />);
+
+      await user.click(screen.getByRole('option', { name: /Launch a campaign/ }));
+      expect(onDecision).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole('button', { name: 'Submit' }));
+      expect(onDecision).toHaveBeenCalledWith('campaign');
+    });
+
+    it('clears deferred list selection when the Other field receives focus', async () => {
+      const user = userEvent.setup();
+      render(
+        <ChoiceList
+          ariaLabel="Pick"
+          allowOther
+          commitBehavior="deferred"
+          showDeferredFooter
+          onDecision={vi.fn()}
+        >
+          <ChoiceList.Item value="a">Alpha</ChoiceList.Item>
+          <ChoiceList.Item value="b">Bravo</ChoiceList.Item>
+        </ChoiceList>,
+      );
+
+      await user.click(screen.getByRole('option', { name: /Alpha/ }));
+      expect(screen.getByRole('option', { name: /Alpha/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+
+      await user.click(screen.getByRole('textbox'));
+      expect(screen.getByRole('option', { name: /Alpha/ })).not.toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
     });
   });
 
@@ -772,6 +870,38 @@ describe('multi-select mode', () => {
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });
 
+  it('renders checkbox rows for single-step selectionMode="multiple"', () => {
+    render(
+      <ChoiceList ariaLabel="Pick features" selectionMode="multiple">
+        <ChoiceList.Item value="a">Alpha</ChoiceList.Item>
+        <ChoiceList.Item value="b">Bravo</ChoiceList.Item>
+      </ChoiceList>,
+    );
+    expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
+  it('supports controlled checked state in single-step multi-select', async () => {
+    const user = userEvent.setup();
+    function Harness() {
+      const [checked, setChecked] = useState<string[]>([]);
+      return (
+        <ChoiceList
+          ariaLabel="Pick"
+          selectionMode="multiple"
+          checked={checked}
+          onCheckedChange={setChecked}
+        >
+          <ChoiceList.Item value="a">Alpha</ChoiceList.Item>
+          <ChoiceList.Item value="b">Bravo</ChoiceList.Item>
+        </ChoiceList>
+      );
+    }
+    render(<Harness />);
+    await user.click(screen.getByRole('checkbox', { name: /Alpha/i }));
+    expect(screen.getByRole('checkbox', { name: /Alpha/i })).toBeChecked();
+  });
+
   it('renders an always-enabled Continue button on multi-select steps', () => {
     renderMultiSelect();
     const btn = screen.getByRole('button', { name: 'Continue' });
@@ -1184,6 +1314,36 @@ describe('ChoiceList allowOther (single-select)', () => {
     expect(screen.getByPlaceholderText('Something else')).toBeInTheDocument();
   });
 
+  it('shows the next number badge on the Other row after list options', () => {
+    render(
+      <ChoiceList ariaLabel="Pick" allowOther onDecision={vi.fn()}>
+        <ChoiceList.Item value="a">Alpha</ChoiceList.Item>
+        <ChoiceList.Item value="b">Bravo</ChoiceList.Item>
+      </ChoiceList>,
+    );
+    const options = screen.getAllByRole('option');
+    const [first, second] = options;
+    if (!first || !second) throw new Error('expected two options');
+    expect(within(first).getByText('1')).toBeInTheDocument();
+    expect(within(second).getByText('2')).toBeInTheDocument();
+    const otherRow = screen.getByRole('textbox').closest('.airo-input-choice-list__other-row');
+    if (!otherRow) throw new Error('expected other row');
+    expect(otherRow).toBeInstanceOf(HTMLElement);
+    expect(within(otherRow as HTMLElement).getByText('3')).toBeInTheDocument();
+  });
+
+  it('adds listbox before-other class when allowOther follows options', () => {
+    const { container } = render(
+      <ChoiceList ariaLabel="Pick" allowOther onDecision={vi.fn()}>
+        <ChoiceList.Item value="a">Alpha</ChoiceList.Item>
+        <ChoiceList.Item value="b">Bravo</ChoiceList.Item>
+      </ChoiceList>,
+    );
+    expect(
+      container.querySelector('.airo-input-choice-list__listbox--before-other'),
+    ).toBeInTheDocument();
+  });
+
   it('maps deprecated string otherLabel to placeholder when otherPlaceholder is omitted', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(function () {});
     render(
@@ -1494,6 +1654,21 @@ describe('allowOther submit button (single-select)', () => {
       </ChoiceList>,
     );
     expect(screen.getByRole('button', { name: 'Go' })).toBeInTheDocument();
+  });
+
+  it('hides the inline Other submit button when showOtherSubmitButton is false', () => {
+    render(
+      <ChoiceList
+        ariaLabel="Pick"
+        allowOther
+        showOtherSubmitButton={false}
+        onDecision={vi.fn()}
+      >
+        <ChoiceList.Item value="a">Alpha</ChoiceList.Item>
+      </ChoiceList>,
+    );
+    expect(screen.getByRole('textbox')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument();
   });
 });
 

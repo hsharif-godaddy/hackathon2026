@@ -670,7 +670,7 @@ export default function StreamingMessageList({
     // Creation flow with initial prompt: show the user's prompt as a real message + thinking indicator
     if (hasInitialPrompt && initialPromptText && allMessages.length === 0) {
       return (
-        <div ref={containerRef} data-testid="chat-transcript" className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-2 md:px-0 pt-3 md:pt-1 gap-1" onScroll={handleScroll}>
+        <div ref={containerRef} data-testid="chat-transcript" className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-2 md:px-0 pt-3 md:pt-1 pb-4 gap-1" onScroll={handleScroll}>
           <StreamingMessage
             message={{ id: 'initial-prompt', role: 'user', content: initialPromptText, timestamp: new Date() } satisfies ChatMessage}
           />
@@ -685,7 +685,7 @@ export default function StreamingMessageList({
     const showSpinner = isLoadingMessages || isPageLoading || isAppTransitioning || !historyLoadingComplete
 
     return (
-      <div ref={containerRef} data-testid="chat-transcript" className="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-2" onScroll={handleScroll}>
+      <div ref={containerRef} data-testid="chat-transcript" className="flex-1 overflow-y-auto overflow-x-hidden p-2 pb-8 space-y-2" onScroll={handleScroll}>
         {showSpinner ? (
           <ChatMessagesSkeleton />
         ) : historyLoadFailed ? (
@@ -710,7 +710,7 @@ export default function StreamingMessageList({
   }
 
   return (
-    <div ref={containerRef} data-testid="chat-transcript" className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-2 md:px-0 pt-3 md:pt-1 gap-1" onScroll={handleScroll}>
+    <div ref={containerRef} data-testid="chat-transcript" className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-2 md:px-0 pt-3 md:pt-1 pb-4 gap-1" onScroll={handleScroll}>
       {/* Skeleton while initial history loads — matches the empty-state skeleton treatment */}
       {!historyLoadingComplete && (
         <Box orientation="vertical" gap="lg" className="pt-2 pb-1">

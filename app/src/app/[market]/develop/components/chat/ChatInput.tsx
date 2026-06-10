@@ -641,10 +641,19 @@ export default function ChatInput({
 
   return (
     <div className="px-2 sm:px-3 md:px-0 mt-1 mt-auto pb-1">
-      <div id="tour-chat-input" className="relative">
+      <div id="tour-chat-input" className="relative flex flex-col gap-1.5" data-chat-composer-card>
+        {areChatPlansEnabled ? (
+          <InputActionsPanel
+            activeColorSchemeSuggest={activeColorSchemeSuggest}
+            activeFontThemeSuggest={activeFontThemeSuggest}
+            shouldCollapse={isMultilineCollapseEnabled ? shouldCollapseUI : false}
+            choiceSwapEnabled={isChoiceSwapEnabled}
+            onChoiceSurfaceChange={handleChoiceSurfaceChange}
+          />
+        ) : null}
+
         <FloatingFooter
           ref={composerCardRef}
-          data-chat-composer-card
           data-testid="chat-input-card"
           orientation="vertical"
           className={cn(
@@ -661,16 +670,6 @@ export default function ChatInput({
               driver runs flag-independently, so the chat-plans-off cohort can start a
               batch and must be able to see/stop it). Renders nothing when idle. */}
           <RebuildQueueProgress />
-
-          {areChatPlansEnabled ? (
-            <InputActionsPanel
-              activeColorSchemeSuggest={activeColorSchemeSuggest}
-              activeFontThemeSuggest={activeFontThemeSuggest}
-              shouldCollapse={isMultilineCollapseEnabled ? shouldCollapseUI : false}
-              choiceSwapEnabled={isChoiceSwapEnabled}
-              onChoiceSurfaceChange={handleChoiceSurfaceChange}
-            />
-          ) : null}
 
           {/* AI Edit Context - shows screenshot (works for both Edit with AI and Replace Image) */}
           {aiEditContext && aiEditContext.screenshot && (

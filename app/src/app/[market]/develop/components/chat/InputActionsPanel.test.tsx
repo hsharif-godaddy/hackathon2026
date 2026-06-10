@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import type { ColorSchemePaletteOption } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
@@ -81,6 +81,67 @@ vi.mock('@/app/[market]/develop/hooks/useNextActions', () => ({
   useNextActions: vi.fn(function () { return { data: null, isLoading: false, isError: false }; })
 }))
 
+vi.mock('@airo-ux/pattern-library/chat/thinker', () => ({
+  Thinker: () => <div data-testid="thinking-indicator" />,
+}))
+
+vi.mock('@airo-ux/pattern-library/primitives/thinking-indicator', () => ({
+  ThinkingIndicator: () => <div data-testid="thinking-indicator-spinner" />,
+}))
+
+vi.mock('@ux/listbox', () => ({
+  default: ({
+    items,
+    onConfirm,
+    onActiveItemChange,
+    selected,
+    ref: listboxRef,
+    ...rest
+  }: any) => (
+    <div
+      role="listbox"
+      ref={listboxRef}
+      {...rest}
+    >
+      {items?.map((item: any) => (
+        <button
+          key={item.id}
+          type="button"
+          role="option"
+          aria-selected={selected === item.id ? 'true' : 'false'}
+          onClick={() => onConfirm?.(item.id, { event: null })}
+          onFocus={() => onActiveItemChange?.(item.id)}
+        >
+          {item.children}
+        </button>
+      ))}
+    </div>
+  ),
+}))
+
+vi.mock('@ux/text-entry', () => ({
+  default: ({
+    value,
+    onChange,
+    onKeyDown,
+    placeholder,
+    disabled,
+    'aria-label': ariaLabel,
+    ...rest
+  }: any) => (
+    <input
+      role="textbox"
+      value={value ?? ''}
+      onChange={(e) => onChange?.(e.target.value)}
+      onKeyDown={onKeyDown}
+      placeholder={placeholder}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      {...rest}
+    />
+  ),
+}))
+
 describe('InputActionsPanel', () => {
   const mockPalette: ColorSchemePaletteOption['palette'] = {
     primary: '#3b82f6',
@@ -132,9 +193,11 @@ describe('InputActionsPanel', () => {
       appId: 'test-app-id',
       name: 'Build Website',
       items: [
-        { id: 'item-1', listId: 'list-1', title: 'Full menu page', completed: false },
-        { id: 'item-2', listId: 'list-1', title: 'Location & hours page', completed: false },
-      ]
+        { id: 'item-1', listId: 'list-1', title: 'Full menu page', completed: false, order: 0, createdAt: new Date(), updatedAt: new Date() },
+        { id: 'item-2', listId: 'list-1', title: 'Location & hours page', completed: false, order: 1, createdAt: new Date(), updatedAt: new Date() },
+      ],
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2024-01-01T00:00:00.000Z'),
     }
 
     const askQuestionResult = {
@@ -173,10 +236,36 @@ describe('InputActionsPanel', () => {
     it('hides plan preview items while askQuestion is active in the input panel variant', () => {
       renderWithProviders(<InputActionsPanel />)
 
-      expect(screen.getByText('Change the color scheme')).toBeInTheDocument()
-      expect(screen.getByText('Adjust the fonts or layout')).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: /Change the color scheme/ })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: /Adjust the fonts or layout/ })).toBeInTheDocument()
       expect(screen.queryByText('Full menu page')).not.toBeInTheDocument()
       expect(screen.queryByText('Location & hours page')).not.toBeInTheDocument()
+    })
+
+    it('shows step progress tag in collapsible header for multi-step askQuestion', () => {
+      vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue({
+        question: 'What color?',
+        suggestions: [{ text: 'Red' }, { text: 'Blue' }],
+        source: 'askQuestion',
+        toolResult: {
+          output: {
+            widgetType: 'ask-question',
+            widgetData: {
+              type: 'ask-question',
+              currentQuestionIndex: 0,
+              answers: [],
+              questions: [
+                { question: 'What color?', suggestions: [{ text: 'Red' }, { text: 'Blue' }], allowOther: false },
+                { question: 'What size?', suggestions: [{ text: 'Small' }, { text: 'Large' }], allowOther: false },
+              ],
+            },
+          },
+        },
+      })
+
+      renderWithProviders(<InputActionsPanel />)
+
+      expect(screen.getByText('1/2')).toBeInTheDocument()
     })
 
     it('hides plan preview items for askQuestion-shaped results even if source is missing', () => {
@@ -191,7 +280,7 @@ describe('InputActionsPanel', () => {
 
       renderWithProviders(<InputActionsPanel />)
 
-      expect(screen.getByText('Change the color scheme')).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: /Change the color scheme/ })).toBeInTheDocument()
       expect(screen.queryByText('Full menu page')).not.toBeInTheDocument()
     })
 
@@ -215,7 +304,7 @@ describe('InputActionsPanel', () => {
 
       renderWithProviders(<InputActionsPanel />)
 
-      expect(screen.getByText('Change the color scheme')).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: /Change the color scheme/ })).toBeInTheDocument()
       expect(screen.queryByText('Full menu page')).not.toBeInTheDocument()
       expect(screen.queryByText('Location & hours page')).not.toBeInTheDocument()
     })
@@ -223,7 +312,7 @@ describe('InputActionsPanel', () => {
     it('hides plan preview items while suggestions are active', async () => {
       renderWithProviders(<InputActionsPanel />)
 
-      expect(screen.getByText('Change the color scheme')).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: /Change the color scheme/ })).toBeInTheDocument()
       expect(screen.queryByText('Full menu page')).not.toBeInTheDocument()
       expect(screen.queryByText('Location & hours page')).not.toBeInTheDocument()
     })
@@ -236,7 +325,7 @@ describe('InputActionsPanel', () => {
 
       renderWithProviders(<InputActionsPanel />)
 
-      expect(screen.getByText('Change the color scheme')).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: /Change the color scheme/ })).toBeInTheDocument()
       expect(screen.queryByText('Full menu page')).not.toBeInTheDocument()
       expect(screen.queryByText('Location & hours page')).not.toBeInTheDocument()
     })
@@ -710,9 +799,11 @@ describe('InputActionsPanel', () => {
       appId: 'test-app-id',
       name: 'Build Website',
       items: [
-        { id: 'item-1', listId: 'list-1', title: 'Task A', completed: false },
-        { id: 'item-2', listId: 'list-1', title: 'Task B', completed: false },
+        { id: 'item-1', listId: 'list-1', title: 'Task A', completed: false, order: 0, createdAt: new Date(), updatedAt: new Date() },
+        { id: 'item-2', listId: 'list-1', title: 'Task B', completed: false, order: 1, createdAt: new Date(), updatedAt: new Date() },
       ],
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2024-01-01T00:00:00.000Z'),
     }
 
     beforeEach(() => {
@@ -747,12 +838,14 @@ describe('InputActionsPanel', () => {
       appId: 'test-app-id',
       name: 'Build Website',
       items: [
-        { id: 'item-1', listId: 'list-1', title: 'Create homepage', completed: false },
-        { id: 'item-2', listId: 'list-1', title: 'Add contact page', completed: false },
-        { id: 'item-3', listId: 'list-1', title: 'Build about section', completed: false },
-        { id: 'item-4', listId: 'list-1', title: 'Add footer', completed: false },
-        { id: 'item-5', listId: 'list-1', title: 'Add navigation', completed: false },
-      ]
+        { id: 'item-1', listId: 'list-1', title: 'Create homepage', completed: false, order: 0, createdAt: new Date(), updatedAt: new Date() },
+        { id: 'item-2', listId: 'list-1', title: 'Add contact page', completed: false, order: 1, createdAt: new Date(), updatedAt: new Date() },
+        { id: 'item-3', listId: 'list-1', title: 'Build about section', completed: false, order: 2, createdAt: new Date(), updatedAt: new Date() },
+        { id: 'item-4', listId: 'list-1', title: 'Add footer', completed: false, order: 3, createdAt: new Date(), updatedAt: new Date() },
+        { id: 'item-5', listId: 'list-1', title: 'Add navigation', completed: false, order: 4, createdAt: new Date(), updatedAt: new Date() },
+      ],
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2024-01-01T00:00:00.000Z'),
     }
 
     beforeEach(() => {
@@ -765,9 +858,11 @@ describe('InputActionsPanel', () => {
     /** Mirrors ChatInput chrome so digit shortcuts match production (empty prompt + card). */
     function renderInputActionsPanelAsInComposer() {
       const view = renderWithProviders(
-        <div data-chat-composer-card data-testid="chat-input-card">
-          <div contentEditable id="chat-input-textarea" suppressContentEditableWarning tabIndex={0} />
+        <div data-chat-composer-card className="flex flex-col gap-1.5">
           <InputActionsPanel />
+          <div data-testid="chat-input-card">
+            <div contentEditable id="chat-input-textarea" suppressContentEditableWarning tabIndex={0} />
+          </div>
         </div>
       )
       document.getElementById('chat-input-textarea')?.focus()
@@ -989,9 +1084,11 @@ describe('InputActionsPanel', () => {
 
     function renderInputActionsPanelAsInComposer() {
       const view = renderWithProviders(
-        <div data-chat-composer-card data-testid="chat-input-card">
-          <div contentEditable id="chat-input-textarea" suppressContentEditableWarning tabIndex={0} />
+        <div data-chat-composer-card className="flex flex-col gap-1.5">
           <InputActionsPanel />
+          <div data-testid="chat-input-card">
+            <div contentEditable id="chat-input-textarea" suppressContentEditableWarning tabIndex={0} />
+          </div>
         </div>
       )
       document.getElementById('chat-input-textarea')?.focus()
@@ -1017,6 +1114,7 @@ describe('InputActionsPanel', () => {
       const { user } = renderInputActionsPanelAsInComposer()
 
       window.dispatchEvent(new KeyboardEvent('keydown', { key: '2' }))
+      await new Promise((r) => setTimeout(r, 0))
 
       const options = screen.getAllByRole('option')
       await waitFor(() => {
@@ -1158,62 +1256,6 @@ describe('InputActionsPanel', () => {
 
       // Should remain collapsed (falling edge doesn't expand)
       expect(chevronButton.getAttribute('aria-expanded')).toBe('false')
-    })
-  })
-
-  describe('plan modal', () => {
-    const mockTodoList = {
-      id: 'list-1',
-      appId: 'test-app-id',
-      name: 'Build Website',
-      items: [
-        { id: 'item-1', listId: 'list-1', title: 'Create homepage', completed: true },
-        { id: 'item-2', listId: 'list-1', title: 'Add contact page', completed: false, description: 'Contact form and map' },
-      ],
-    }
-
-    beforeEach(() => {
-      vi.mocked(TodoListStore.useCurrentList).mockReturnValue(mockTodoList)
-      vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
-      vi.mocked(StreamingStore.useMessages).mockReturnValue([
-        { id: 'msg-1', role: 'user', content: 'test', timestamp: new Date() },
-      ])
-      vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(null)
-    })
-
-    it('executes an uncompleted plan item from the progress modal and closes it', async function modalPlanItemClick() {
-      const mockSendMessage = vi.fn()
-      vi.mocked(ChatContext.useSendUserMessage).mockReturnValue(mockSendMessage)
-
-      const { user } = renderWithProviders(<InputActionsPanel />)
-
-      await user.click(screen.getByRole('button', { name: 'builder_todo_view_plan' }))
-
-      const dialog = screen.getByRole('dialog')
-      expect(dialog).toBeInTheDocument()
-
-      await user.click(within(dialog).getByRole('button', { name: /Add contact page/i }))
-
-      expect(mockSendMessage).toHaveBeenCalledWith(
-        'Add contact page',
-        expect.objectContaining({
-          isActionRequest: true,
-          customContext: expect.objectContaining({ type: 'plan_item', source: 'plan-item' }),
-        }),
-      )
-      await waitFor(() => {
-        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-      })
-    })
-
-    it('does not render completed plan items as buttons in the modal', async function modalCompletedReadOnly() {
-      renderWithProviders(<InputActionsPanel />)
-
-      await fireEvent.click(screen.getByRole('button', { name: 'builder_todo_view_plan' }))
-
-      const dialog = screen.getByRole('dialog')
-      expect(within(dialog).queryByRole('button', { name: /Create homepage/i })).not.toBeInTheDocument()
-      expect(within(dialog).getByText('Create homepage')).toBeInTheDocument()
     })
   })
 })
