@@ -224,6 +224,78 @@ describe('GoDaddyCommerceProvider', () => {
 				/SKU ID is required/
 			);
 		});
+
+		describe('SKU pricing error detection', () => {
+			it('throws PAYMENT_CONFIG_MISSING when error contains "Failed to add all catalog line items"', async () => {
+				mockFetch.mockResolvedValueOnce({
+					ok: true,
+					json: async () => ({
+						success: false,
+						error: 'Failed to add all catalog line items to draft order: 0/1 succeeded. Errors: lineItem0: some detail',
+					}),
+				});
+
+				await expect(provider.createPaymentSession(params)).rejects.toThrow(
+					/may not have a price configured/
+				);
+			});
+
+			it('throws PAYMENT_CONFIG_MISSING when error contains "Cannot read properties of undefined (reading \'node\')"', async () => {
+				mockFetch.mockResolvedValueOnce({
+					ok: true,
+					json: async () => ({
+						success: false,
+						error: "Cannot read properties of undefined (reading 'node')",
+					}),
+				});
+
+				await expect(provider.createPaymentSession(params)).rejects.toThrow(
+					/may not have a price configured/
+				);
+			});
+
+			it('includes the SKU ID in the error message', async () => {
+				mockFetch.mockResolvedValueOnce({
+					ok: true,
+					json: async () => ({
+						success: false,
+						error: 'Failed to add all catalog line items to draft order: 0/1 succeeded.',
+					}),
+				});
+
+				await expect(provider.createPaymentSession(params)).rejects.toThrow(
+					new RegExp(params.skuId)
+				);
+			});
+
+			it('handles non-string error values without crashing', async () => {
+				mockFetch.mockResolvedValueOnce({
+					ok: true,
+					json: async () => ({
+						success: false,
+						error: { code: 500, details: 'something went wrong' },
+					}),
+				});
+
+				await expect(provider.createPaymentSession(params)).rejects.toThrow(
+					/Checkout session creation failed/
+				);
+			});
+
+			it('handles null error value without crashing', async () => {
+				mockFetch.mockResolvedValueOnce({
+					ok: true,
+					json: async () => ({
+						success: false,
+						error: null,
+					}),
+				});
+
+				await expect(provider.createPaymentSession(params)).rejects.toThrow(
+					/Checkout session creation failed.*Unknown error/
+				);
+			});
+		});
 	});
 
 	describe('getOrderStatus', () => {

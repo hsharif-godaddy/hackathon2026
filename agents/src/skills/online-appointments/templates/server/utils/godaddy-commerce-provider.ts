@@ -172,8 +172,21 @@ export class GoDaddyCommerceProvider implements PaymentProvider {
 		}
 
 		if (!data.success) {
+			const errorMsg = String(data.error ?? 'Unknown error');
+
+			// Detect SKU pricing issues — the Commerce API returns a cryptic GraphQL error
+			// when a SKU exists but has no price set in the catalog.
+			if (errorMsg.includes('Failed to add all catalog line items') || errorMsg.includes("Cannot read properties of undefined (reading 'node')")) {
+				throw new PaymentProviderError(
+					`Commerce checkout failed: the SKU '${params.skuId}' may not have a price configured. ` +
+					`Ensure the SKU exists in your GoDaddy Commerce store AND has a price set. ` +
+					`Original error: ${errorMsg}`,
+					PaymentProviderErrorCode.PAYMENT_CONFIG_MISSING
+				);
+			}
+
 			throw new PaymentProviderError(
-				`Checkout session creation failed: ${data.error || "Unknown error"}`,
+				`Checkout session creation failed: ${errorMsg}`,
 				PaymentProviderErrorCode.API_ERROR
 			);
 		}

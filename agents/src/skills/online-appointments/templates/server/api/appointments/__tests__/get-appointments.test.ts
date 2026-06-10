@@ -128,7 +128,7 @@ function createMockRes(): { res: Partial<Response>; json: ReturnType<typeof vi.f
 	const json = vi.fn();
 	const status = vi.fn(function () { return { json }; });
 	return {
-		res: { json, status } as Partial<Response>,
+		res: { json, status } as unknown as Partial<Response>,
 		json,
 		status,
 	};
