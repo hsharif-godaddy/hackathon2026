@@ -182,6 +182,7 @@ export async function performBudgetPreCheck(
             reason: 'allowOverage=true but BMS returned 402 — budget likely has no budget_items',
             bmsResponse: err.responseBody,
             purchaseIntent,
+            purchaseIntentClassifierEnabled: metadata.purchaseIntentClassifierEnabled,
           })
         } else {
           deps.logger.warn('budget.precheck.no_capacity', {
@@ -190,6 +191,7 @@ export async function performBudgetPreCheck(
             subscriptionId: metadata.subscriptionId,
             bmsResponse: err.responseBody,
             purchaseIntent,
+            purchaseIntentClassifierEnabled: metadata.purchaseIntentClassifierEnabled,
           })
         }
         throw BudgetExceededError.fromBudgetCheck(budgetId, { purchaseIntent })
