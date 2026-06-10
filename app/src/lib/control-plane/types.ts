@@ -470,6 +470,25 @@ export interface IControlPlaneAdapter {
     destinationVariant: 'preview' | 'publish',
     jwt: string
   ): Promise<SecretOperationsResult>;
+
+  /**
+   * Get protected secrets for an app (e.g. GitHub tokens).
+   * Calls the API without a variant filter and returns secrets from
+   * the `protected` bucket merged with variant secrets.
+   */
+  getProtectedSecrets(appId: string, jwt: string): Promise<SecretsResponse>;
+
+  /**
+   * Upsert or delete protected secrets across one or more variants.
+   * Each operation is sent with `protected: true` so the control plane
+   * delivers them via the protected-secrets pipeline.
+   */
+  updateProtectedSecrets(
+    appId: string,
+    variants: ('preview' | 'publish')[],
+    operations: SecretOperations,
+    jwt: string
+  ): Promise<SecretOperationsResult>;
 }
 
 /**

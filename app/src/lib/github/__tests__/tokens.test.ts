@@ -19,10 +19,10 @@ const JWT = 'test-jwt';
 
 function mockAdapter(secrets: Array<{ name: string; value: string }> = []) {
   const adapter = {
-    getSecrets: vi.fn(function getSecrets() {
+    getProtectedSecrets: vi.fn(function getProtectedSecrets() {
       return Promise.resolve({ secrets });
     }),
-    updateSecrets: vi.fn(function updateSecrets() {
+    updateProtectedSecrets: vi.fn(function updateProtectedSecrets() {
       return Promise.resolve();
     }),
   };
@@ -72,15 +72,15 @@ describe('github-tokens', function tokensTests() {
       });
     });
 
-    it('uses preview variant when calling getSecrets', async function variant() {
+    it('calls getProtectedSecrets with appId and jwt', async function callArgs() {
       const adapter = mockAdapter([]);
       await load(APP_ID, JWT);
-      expect(adapter.getSecrets).toHaveBeenCalledWith(APP_ID, 'preview', JWT);
+      expect(adapter.getProtectedSecrets).toHaveBeenCalledWith(APP_ID, JWT);
     });
   });
 
   describe('#save', function saveTests() {
-    it('calls updateSecrets with correct secret names and values', async function names() {
+    it('calls updateProtectedSecrets with correct secret names and both variants', async function names() {
       const adapter = mockAdapter();
       await save(APP_ID, JWT, {
         accessToken: 'gho_new',
@@ -88,9 +88,9 @@ describe('github-tokens', function tokensTests() {
         expiresAt: 1700001000,
       });
 
-      expect(adapter.updateSecrets).toHaveBeenCalledWith(
+      expect(adapter.updateProtectedSecrets).toHaveBeenCalledWith(
         APP_ID,
-        'preview',
+        ['preview', 'publish'],
         {
           additions: [
             { name: 'GITHUB_TOKEN', value: 'gho_new' },
@@ -102,18 +102,18 @@ describe('github-tokens', function tokensTests() {
       );
     });
 
-    it('passes preview variant', async function variant() {
+    it('passes both preview and publish variants', async function variants() {
       const adapter = mockAdapter();
       await save(APP_ID, JWT, { accessToken: 'a', refreshToken: 'r', expiresAt: 100 });
-      expect(adapter.updateSecrets.mock.calls[0][1]).toBe('preview');
+      expect(adapter.updateProtectedSecrets.mock.calls[0][1]).toEqual(['preview', 'publish']);
     });
 
     it('omits refreshToken and expiresAt when null', async function nullFields() {
       const adapter = mockAdapter();
       await save(APP_ID, JWT, { accessToken: 'a', refreshToken: null, expiresAt: null });
-      expect(adapter.updateSecrets).toHaveBeenCalledWith(
+      expect(adapter.updateProtectedSecrets).toHaveBeenCalledWith(
         APP_ID,
-        'preview',
+        ['preview', 'publish'],
         { additions: [{ name: 'GITHUB_TOKEN', value: 'a' }] },
         JWT,
       );
@@ -121,13 +121,13 @@ describe('github-tokens', function tokensTests() {
   });
 
   describe('#remove', function removeTests() {
-    it('calls updateSecrets with deletions array of all secret names', async function deletions() {
+    it('calls updateProtectedSecrets with deletions across both variants', async function deletions() {
       const adapter = mockAdapter();
       await remove(APP_ID, JWT);
 
-      expect(adapter.updateSecrets).toHaveBeenCalledWith(
+      expect(adapter.updateProtectedSecrets).toHaveBeenCalledWith(
         APP_ID,
-        'preview',
+        ['preview', 'publish'],
         {
           deletions: [
             'GITHUB_TOKEN',
@@ -177,7 +177,7 @@ describe('github-tokens', function tokensTests() {
       });
 
       expect(await resolve(APP_ID, JWT)).toBe('gho_refreshed');
-      expect(adapter.updateSecrets).toHaveBeenCalled();
+      expect(adapter.updateProtectedSecrets).toHaveBeenCalled();
     });
 
     it('returns existing token when expiresAt is null', async function nullExpiry() {

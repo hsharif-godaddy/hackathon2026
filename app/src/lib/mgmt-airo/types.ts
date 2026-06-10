@@ -734,6 +734,9 @@ export interface AiroRawSecretsResponse {
       secrets: AiroRawSecret[];
     };
   };
+  protected?: {
+    secrets: AiroRawSecret[];
+  };
   metadata?: any;
 }
 
@@ -756,6 +759,7 @@ export interface AiroSecretOperation {
     value?: string;
     variants: string[];
     systemManaged?: boolean;
+    protected?: boolean;
   };
 }
 

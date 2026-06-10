@@ -17,7 +17,7 @@ export interface GitHubTokenData {
 
 export async function load(appId: string, jwt: string): Promise<GitHubTokenData | null> {
   const adapter = getControlPlaneAdapter();
-  const result = await adapter.getSecrets(appId, 'preview', jwt);
+  const result = await adapter.getProtectedSecrets(appId, jwt);
 
   const secretMap = new Map(result.secrets.map((s: { name: string; value?: string }) => [s.name, s.value]));
 
@@ -48,12 +48,12 @@ export async function save(appId: string, jwt: string, tokenData: GitHubTokenDat
   if (tokenData.expiresAt !== null) {
     additions.push({ name: GITHUB_TOKEN_EXPIRES_AT_SECRET, value: String(tokenData.expiresAt) });
   }
-  await adapter.updateSecrets(appId, 'preview', { additions }, jwt);
+  await adapter.updateProtectedSecrets(appId, ['preview', 'publish'], { additions }, jwt);
 }
 
 export async function remove(appId: string, jwt: string): Promise<void> {
   const adapter = getControlPlaneAdapter();
-  await adapter.updateSecrets(appId, 'preview', {
+  await adapter.updateProtectedSecrets(appId, ['preview', 'publish'], {
     deletions: [...ALL_GITHUB_SECRETS],
   }, jwt);
 }

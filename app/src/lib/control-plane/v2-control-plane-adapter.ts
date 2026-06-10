@@ -1785,4 +1785,147 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       throw error;
     }
   }
+
+  async getProtectedSecrets(appId: string, jwt: string): Promise<SecretsResponse> {
+    try {
+      const client = this.createClient(jwt);
+      const site = await this.getSite(appId, jwt);
+
+      if (!site || !site.system_id || !site.subscription_id) {
+        logger.warn('v2-control-plane.get-protected-secrets.missing-ids', { appId });
+        throw new Error(`Unable to retrieve system/subscription IDs for app ${appId}`);
+      }
+
+      const rawResponse = await client.getSecrets(
+        site.subscription_id,
+        site.system_id,
+        appId,
+        undefined,
+        true
+      );
+
+      const protectedSecrets = rawResponse.protected?.secrets || [];
+      const previewSecrets = rawResponse.variants?.preview?.secrets || [];
+      const allSecrets = [...protectedSecrets, ...previewSecrets];
+
+      const secrets = allSecrets.map(secret => ({
+        name: secret.name,
+        systemManaged: secret.systemManaged,
+        variants: ['preview', 'publish'] as ('preview' | 'publish')[],
+        value: this.formatSecretValueForClient(secret.value)
+      }));
+
+      return {
+        appId: rawResponse.appId,
+        secrets,
+        count: secrets.length
+      };
+    } catch (error: any) {
+      if (error.status === 401) {
+        throw error;
+      }
+      logger.error('v2-control-plane.get-protected-secrets.error', {
+        appId,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      throw error;
+    }
+  }
+
+  async updateProtectedSecrets(
+    appId: string,
+    variants: ('preview' | 'publish')[],
+    operations: SecretOperations,
+    jwt: string
+  ): Promise<SecretOperationsResult> {
+    try {
+      const { additions = [], updates = [], deletions = [] } = operations;
+      const client = this.createClient(jwt);
+      const site = await this.getSite(appId, jwt);
+
+      if (!site || !site.system_id || !site.subscription_id) {
+        logger.warn('v2-control-plane.update-protected-secrets.missing-ids', { appId });
+        throw new Error(`Unable to retrieve system/subscription IDs for app ${appId}`);
+      }
+
+      const airoOperations = [];
+
+      for (const addition of additions) {
+        airoOperations.push({
+          type: 'upsert' as const,
+          secret: {
+            name: addition.name,
+            value: this.parseSecretValue(addition.value),
+            variants,
+            systemManaged: false,
+            protected: true
+          }
+        });
+      }
+
+      for (const update of updates) {
+        airoOperations.push({
+          type: 'upsert' as const,
+          secret: {
+            name: update.name,
+            value: this.parseSecretValue(update.value),
+            variants,
+            systemManaged: false,
+            protected: true
+          }
+        });
+      }
+
+      for (const name of deletions) {
+        airoOperations.push({
+          type: 'delete' as const,
+          secret: {
+            name,
+            variants,
+            systemManaged: false,
+            protected: true
+          }
+        });
+      }
+
+      if (airoOperations.length === 0) {
+        return {
+          success: true,
+          message: 'No operations to perform',
+          operations: { added: 0, updated: 0, deleted: 0 }
+        };
+      }
+
+      const airoResponse = await client.updateSecrets(
+        site.subscription_id,
+        site.system_id,
+        appId,
+        {
+          operations: airoOperations,
+          workflowName: 'airo-app-secrets'
+        }
+      );
+
+      return {
+        success: true,
+        message: airoResponse.statusJobId
+          ? `Secrets workflow started: ${airoResponse.statusJobId}`
+          : 'Protected secrets updated',
+        operations: {
+          added: additions.length,
+          updated: updates.length,
+          deleted: deletions.length
+        }
+      };
+    } catch (error: any) {
+      if (error.status === 401) {
+        throw error;
+      }
+      logger.error('v2-control-plane.update-protected-secrets.error', {
+        appId,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      throw error;
+    }
+  }
 }
