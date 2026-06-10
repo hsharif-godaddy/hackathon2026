@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -15,8 +15,13 @@ import {
 } from '@/app/[market]/develop/hooks/useRebuildIntake'
 import { useTranslations } from '@/hooks/useTranslations'
 import { defaultMessageForRebuildIntakeKey } from '@/lib/translations/rebuild-intake-defaults'
+import {
+  type RebuildIntakeDesignChoiceId,
+  trackRebuildIntakeFormShown,
+  trackRebuildIntakeSubmitted,
+} from './rebuildIntakeInstrumentation'
 
-type DesignChoiceId = 'airo_decide' | 'keep_similar' | 'modernize' | 'simplify' | 'bold'
+type DesignChoiceId = RebuildIntakeDesignChoiceId
 
 const DESIGN_OPTIONS: { id: DesignChoiceId; labelKey: string }[] = [
   { id: 'airo_decide', labelKey: 'builder_rebuild_intake_design_airo_decide' },
@@ -47,6 +52,23 @@ export default function RebuildIntakeForm({ appId, sourceUrl }: RebuildIntakeFor
   const { data: workflowStatus } = useRebuildWorkflowStatus(appId, true)
   const { data: scopeEstimates, isLoading: estimatesLoading, isError: estimatesError } = useRebuildScopeEstimates(appId)
   const submitIntake = useSubmitRebuildIntake(appId)
+  const hasLoggedImpressionRef = useRef(false)
+
+  useEffect(function logIntakeFormImpression() {
+    if (hasLoggedImpressionRef.current) return
+    if (workflowStatus?.intakeCompleted) return
+    if (workflowStatus && workflowStatus.status !== 'awaiting_intake') return
+    if (estimatesLoading || estimatesError || !scopeEstimates?.length) return
+
+    trackRebuildIntakeFormShown(sourceUrl)
+    hasLoggedImpressionRef.current = true
+  }, [
+    estimatesError,
+    estimatesLoading,
+    scopeEstimates?.length,
+    sourceUrl,
+    workflowStatus,
+  ])
 
   if (workflowStatus?.intakeCompleted) {
     return null
@@ -164,8 +186,16 @@ export default function RebuildIntakeForm({ appId, sourceUrl }: RebuildIntakeFor
           text={tr('builder_rebuild_intake_submit')}
           disabled={submitIntake.isPending}
           onClick={function submit() {
+            const designDirection = designChoiceToDirection(designChoice)
+            trackRebuildIntakeSubmitted({
+              scope,
+              designChoice,
+              designDirection,
+              submitSource: 'submit',
+              sourceUrl,
+            })
             submitIntake.mutate(
-              { scope, designDirection: designChoiceToDirection(designChoice) },
+              { scope, designDirection },
               {
                 onSuccess: function invalidate() {
                   void queryClient.invalidateQueries({ queryKey: ['rebuild-status', appId] })
@@ -180,6 +210,13 @@ export default function RebuildIntakeForm({ appId, sourceUrl }: RebuildIntakeFor
           text={tr('builder_rebuild_intake_use_defaults')}
           disabled={submitIntake.isPending}
           onClick={function useDefaults() {
+            trackRebuildIntakeSubmitted({
+              scope: 'homepage_only',
+              designChoice: 'keep_similar',
+              designDirection: 'keep-similar',
+              submitSource: 'defaults',
+              sourceUrl,
+            })
             submitIntake.mutate(
               { scope: 'homepage_only', designDirection: 'keep-similar' },
               {

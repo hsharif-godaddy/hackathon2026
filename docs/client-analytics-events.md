@@ -185,6 +185,15 @@ develop.initialBuild.start        ← create flow begins
 | EID | Type | Fires when | Extra fields |
 |---|---|---|---|
 | `develop.rebuild.started` | impression | Rebuild tool fires | `priorArtifactHash` (optional) |
+| `develop.rebuild.intakeform` | impression | Rebuild intake form renders (scope + design) | `sourceUrl` |
+| `develop.rebuild.intakesubmit` | click | User clicks **Start rebuild** on intake form | `scope`, `designChoice`, `designDirection`, `submitSource` (`submit`), `sourceUrl` |
+| `develop.rebuild.intakedefaults` | click | User clicks **Use recommended defaults** | `scope` (`homepage_only`), `designChoice` (`keep_similar`), `designDirection` (`keep-similar`), `submitSource` (`defaults`), `sourceUrl` |
+
+**Intake selection fields (product reporting):**
+
+- **`scope`** — `homepage_only` \| `small` \| `large`
+- **`designChoice`** — UI radio id: `airo_decide` \| `keep_similar` \| `modernize` \| `simplify` \| `bold`
+- **`designDirection`** — value sent to agents API (`airo_decide` maps to `keep-similar`)
 
 ### Edit
 
@@ -272,6 +281,7 @@ For every successful publish, AiroHQ fires twice — at attempt (`completedTask:
 | `hooks/shared/initialBuildFunnel.ts` | `funnel.initial_build.*` · `develop.initialBuild.start` · `develop.generation.triggered` · `develop.firstBuild.complete` |
 | `hooks/shared/contextGatheringTracker.ts` | `funnel.context_gathering.*` · `develop.contextGathering.*` |
 | `hooks/shared/toolSideEffects.ts` | `funnel.rebuild.started` · `develop.rebuild.started` |
+| `app/.../rebuild/RebuildIntakeForm.tsx` | `develop.rebuild.intakeform` · `develop.rebuild.intakesubmit` · `develop.rebuild.intakedefaults` |
 | `components/chat/ChatPane.tsx` | `chat.prompt.sent` · `funnel.user_first_message.sent` · `funnel.edit.triggered` · `develop.edit.triggered` · AiroHQ prompt submit |
 | `components/StreamingMessageList.tsx` | `funnel.first_response.rendered` |
 | `components/layout/AppPublish.tsx` | `publish.attempted` · `develop.publish.attempt` · AiroHQ publish (UI path) |

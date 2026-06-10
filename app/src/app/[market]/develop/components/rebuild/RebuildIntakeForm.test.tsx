@@ -10,6 +10,8 @@ import RebuildIntakeForm from './RebuildIntakeForm'
 
 const mockMutate = vi.fn()
 const mockInvalidateQueries = vi.fn()
+const mockTrackFormShown = vi.hoisted(() => vi.fn())
+const mockTrackSubmitted = vi.hoisted(() => vi.fn())
 
 const { mockWorkflowStatus } = vi.hoisted(() => ({
   mockWorkflowStatus: { status: 'awaiting_intake' as const, intakeCompleted: false },
@@ -57,6 +59,11 @@ vi.mock('@/lib/translations/rebuild-intake-defaults', () => ({
   defaultMessageForRebuildIntakeKey: (key: string) => `default:${key}`,
 }))
 
+vi.mock('./rebuildIntakeInstrumentation', () => ({
+  trackRebuildIntakeFormShown: mockTrackFormShown,
+  trackRebuildIntakeSubmitted: mockTrackSubmitted,
+}))
+
 vi.mock('@ux/box', () => ({
   default: ({ children, ...props }: React.ComponentProps<'div'>) => <div {...props}>{children}</div>,
 }))
@@ -86,6 +93,7 @@ describe('RebuildIntakeForm', () => {
   it('renders intake form with scope and design sections', function renderForm() {
     render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
 
+    expect(mockTrackFormShown).toHaveBeenCalledWith('https://example.com')
     expect(screen.getByTestId('rebuild-intake-form')).toBeInTheDocument()
     expect(screen.getByText('default:builder_rebuild_intake_scope_homepage_label')).toBeInTheDocument()
     expect(screen.getByText('default:builder_rebuild_intake_design_heading')).toBeInTheDocument()
@@ -104,6 +112,14 @@ describe('RebuildIntakeForm', () => {
 
     fireEvent.click(screen.getByTestId('rebuild-intake-submit'))
 
+    expect(mockTrackSubmitted).toHaveBeenCalledWith({
+      scope: 'homepage_only',
+      designChoice: 'airo_decide',
+      designDirection: 'keep-similar',
+      submitSource: 'submit',
+      sourceUrl: 'https://example.com',
+    })
+
     await waitFor(() => {
       expect(mockMutate).toHaveBeenCalledWith(
         { scope: 'homepage_only', designDirection: 'keep-similar' },
@@ -116,6 +132,14 @@ describe('RebuildIntakeForm', () => {
     render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
 
     fireEvent.click(screen.getByTestId('rebuild-intake-use-defaults'))
+
+    expect(mockTrackSubmitted).toHaveBeenCalledWith({
+      scope: 'homepage_only',
+      designChoice: 'keep_similar',
+      designDirection: 'keep-similar',
+      submitSource: 'defaults',
+      sourceUrl: 'https://example.com',
+    })
 
     await waitFor(() => {
       expect(mockMutate).toHaveBeenCalledWith(
