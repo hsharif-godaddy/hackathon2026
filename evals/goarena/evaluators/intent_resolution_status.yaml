@@ -15,10 +15,10 @@ projectId: "8606"
 staticContext: 'Primary evidence: conversation transcript and tool-call sequence.
   This is the main intent-resolution evaluator. Return graduated score (0-100) based
   on accuracy of intent inference across the session. Use the App Builder intent taxonomy
-  when reasoning: Create, Continue, Troubleshoot, Grow, Explore. CRITICAL: Before
+  when reasoning: Create, Iterate, Troubleshoot, Grow, Explore, Abandon. CRITICAL: Before
   assigning intent, VALIDATE it matches agent capabilities. Do NOT expect agent to
   navigate preview, take screenshots, control browser, or test interactions. If user
-  asks for these, correct intent is Troubleshoot → User Support (guide user) or Continue
+  asks for these, correct intent is Troubleshoot → System Errors or Iterate
   (verify via code). Tool calls are execution truth: prefer their names, args, and
   outcomes over assistant prose. MISGUIDED INTENTS THAT EXPECT IMPOSSIBLE CAPABILITIES
   SCORE AS EVALUATOR ERROR, NOT AGENT FAILURE.'
@@ -68,8 +68,8 @@ template: |
 
   □ **Is user signaling a functional blocker?**
      - Keywords: "can't get X to work", "won't navigate", "doesn't switch", "broken"
-     - If YES → Primary intent should be Troubleshoot, NOT Create/Continue
-     - Example: "preview won't switch pages" = Troubleshoot → User Support
+     - If YES → Primary intent should be Troubleshoot, NOT Create/Iterate
+     - Example: "preview won't switch pages" = Troubleshoot → System Errors
 
   □ **Is the expected outcome physically possible for agent?**
      - If NO → Intent classification itself is MISGUIDED
@@ -79,27 +79,27 @@ template: |
 
   These intent classifications are EVALUATOR ERRORS:
 
-  ❌ **Misguided:** "Continue → Verify flow in preview"
+  ❌ **Misguided:** "Iterate → Verify flow in preview"
      - Agent cannot navigate preview
      - When agent says "I can't navigate", that's HONESTY not failure
 
-  ✅ **Correct:** "Troubleshoot → User Support: Help user navigate preview"
-     - Agent provides guidance for user to navigate
-     - Agent verifies code via readFile
+  ✅ **Correct:** "Troubleshoot → System Errors: Diagnose routing issue"
+     - Agent checks routing code via readFile
+     - Agent suggests fixes if code issue found
 
   ❌ **Misguided:** "Create → Show screenshots of pages"
      - Agent cannot take screenshots
      - When agent says "I don't have screenshot capability", that's TRUTH
 
-  ✅ **Correct:** "Continue → Generate page code and describe structure"
+  ✅ **Correct:** "Iterate → Generate page code and describe structure"
      - Agent generates code for pages
      - Agent explains structure via code reading
 
-  ❌ **Misguided:** "Continue → Make preview switch pages"
+  ❌ **Misguided:** "Iterate → Make preview switch pages"
      - Agent cannot control browser
      - When agent provides instructions instead, that's APPROPRIATE
 
-  ✅ **Correct:** "Troubleshoot → Diagnose navigation issue"
+  ✅ **Correct:** "Troubleshoot → System Errors: Diagnose navigation issue"
      - Agent checks routing code via readFile
      - Agent suggests fixes if code issue found
 
@@ -115,8 +115,8 @@ template: |
 
   Example:
   ```
-  Expected intent (misguided): "Continue → Verify store flow in preview"
-  True intent (correct): "Troubleshoot → Help user navigate + verify code"
+  Expected intent (misguided): "Iterate → Verify store flow in preview"
+  True intent (correct): "Troubleshoot → System Errors: Diagnose routing + verify code"
   Agent understanding: "I cannot navigate, but I can verify code and guide you"
   Score: HIGH (agent correctly understood its actual capability-appropriate intent)
   Note: "Original expectation was misguided - agent cannot navigate preview"
@@ -161,25 +161,22 @@ template: |
 
   Taxonomy families and sub-intents:
   - Create
-    - Website Creation: starting a new site, first-time builder flow, project initiation
-    - Content Generation: creating copy, blogs, policies, SEO-oriented content
-    - Visual Design: imagery, logo, color palette, visual styling
-  - Continue
-    - Iterative Refinement: make this change, apply updates, repeated edits
-    - Resume Editing: continue an existing project, reopen draft, go back to my site
-    - Workflow Progression: move to next step, recommendations, guided progression
+    - Website Creation (create_new): starting a brand-new website/app from scratch, template selection, project initiation
+    - Website Creation (migrate): moving from another platform or importing content into Airo Builder
+  - Iterate
+    - Visual Design + Iterative Refinement (edit_media): replacing, adding, or removing images, videos, icons, visual assets
+    - Iterative Refinement (edit_text): changing copy, headings, paragraphs, labels — purely text modifications
+    - Rebuild (rebuild_redesign): full or major redesign of an existing site, structured multi-step workflow
   - Troubleshoot
-    - System Errors: technical malfunction, timeout, broken feature
-    - User Support: how-to questions, feature guidance, help requests, "show me how to X"
-    - Context Issues: misunderstanding, clarification, "that's not what I meant"
+    - System Errors (troubleshoot): debugging errors, fixing broken pages, resolving technical malfunctions
   - Grow
-    - Marketing Enhancement: promotion, marketing content, acquisition-oriented asks
-    - Business Development: strategy, growth advice, business guidance
-    - Technical Integration: domain, hosting, payments, connecting external tools
+    - Technical Integration (add_feature): adding new capabilities to existing site (store, login, etc.)
+    - Technical Integration (publish_deploy): going live, connecting domain, configuring DNS, hosting
+    - Marketing Enhancement + Business Development (post_build_guidance): asking for advice after building — next steps, promotion, SEO, strategy
   - Explore
-    - Feature Discovery: what can this do, what features are available
-    - Template Browsing: examples, designs, styles, templates
-    - Process Understanding: how does this work, what are the steps
+    - Feature Discovery (explore_test): vague, generic, or experimental prompts — testing the tool, learning capabilities
+  - Abandon
+    - Early Exit + Context Issues (other): too ambiguous to classify, single interaction bounce, communication breakdowns
 
   ## Scoring Rubric (Graduated 0-100)
 
@@ -244,8 +241,9 @@ template: |
         "appropriateIntent": "what agent SHOULD do given capabilities"
       },
       "trueIntent": {
-        "primary": "Create|Continue|Troubleshoot|Grow|Explore",
+        "primary": "Create|Iterate|Troubleshoot|Grow|Explore|Abandon",
         "subIntent": "specific sub-intent matching capabilities",
+        "actionIntent": "action intent code if applicable (create_new, migrate, edit_media, edit_text, rebuild_redesign, add_feature, publish_deploy, post_build_guidance, troubleshoot, explore_test, other)",
         "reasoning": "Why this is the capability-appropriate intent"
       },
       "agentIntent": {
