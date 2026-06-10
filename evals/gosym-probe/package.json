@@ -6,6 +6,8 @@
   "scripts": {
     "eval": "tsx --env-file=.env src/index.ts",
     "save-baseline": "tsx --env-file=.env src/save-baseline.ts",
+    "prompt-tax-compare": "tsx src/prompt-tax-compare.ts",
+    "prompt-tax-rescore": "tsx --env-file=.env src/prompt-tax-rescore.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/ config/",

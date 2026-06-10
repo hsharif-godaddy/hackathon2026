@@ -21,6 +21,7 @@ import {
   symptomModuleNotFoundScenario,
   multiTurnPublishFlowScenario,
 } from './prompt-vs-skill/index.js';
+import { buildPortfolioPromptTaxScenarios } from './prompt-tax/index.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
 import type {
   AABCtrlPlaneClient,
@@ -49,5 +50,6 @@ export function createAllScenarios(
     handoffVoiceSeoCheckScenario(gocode, ctrlPlane),
     handoffVoiceHandbackScenario(gocode, ctrlPlane),
     ...buildAiroBaselineScenarios(gocode, ctrlPlane),
+    ...buildPortfolioPromptTaxScenarios(gocode, ctrlPlane),
   ];
 }

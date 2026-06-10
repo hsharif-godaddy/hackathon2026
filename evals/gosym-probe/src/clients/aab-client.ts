@@ -45,7 +45,29 @@ export interface AABClientOptions {
   socketUrl: Config['aab']['socketUrl'];
   auth?: {
     agentContext?: AgentContext;
+    /**
+     * Unsigned mock JWT. In AUTH_TYPE=mock the AAB WS handshake rebuilds its own
+     * agentContext and sources `agentProfile` ONLY from this token's decoded
+     * claims (ai-lib-websocket-server.ts mock branch), discarding the structured
+     * `agentContext` field above. So an agentProfile arm MUST also be encoded
+     * here or it never reaches the develop agent. Built by `mockAuthToken()`.
+     */
+    token?: string;
   };
+}
+
+/**
+ * Mints an UNSIGNED JWT (header.payload.unsigned) carrying the given claims.
+ * AAB mock auth never verifies the signature — it base64url-decodes the payload
+ * segment and reads claims like `agentProfile` — so a placeholder signature is
+ * sufficient and intentionally not a real credential. Local eval / mock auth only.
+ */
+export function mockAuthToken(claims: Record<string, unknown>): string {
+  const encode = (obj: Record<string, unknown>): string =>
+    Buffer.from(JSON.stringify(obj)).toString('base64url');
+  const header = encode({ alg: 'none', typ: 'JWT' });
+  const payload = encode(claims);
+  return `${header}.${payload}.unsigned`;
 }
 
 export class AABClient implements AgentClient {

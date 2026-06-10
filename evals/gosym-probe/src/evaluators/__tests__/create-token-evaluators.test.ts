@@ -15,23 +15,25 @@ function makeMockGocode(): ProbeUsageSource & { getModel(): string } {
 }
 
 describe('createTokenEvaluators', () => {
-  it('returns two evaluators', () => {
+  it('returns four evaluators', () => {
     const gocode = makeMockGocode();
     const evaluators = createTokenEvaluators(gocode);
 
-    expect(evaluators).toHaveLength(2);
+    expect(evaluators).toHaveLength(4);
   });
 
-  it('includes token-usage and llm-cost evaluators', () => {
+  it('includes total + output-only token and cost evaluators', () => {
     const gocode = makeMockGocode();
     const evaluators = createTokenEvaluators(gocode);
 
     const names = evaluators.map(e => e.name);
     expect(names).toContain('token-usage');
     expect(names).toContain('llm-cost');
+    expect(names).toContain('output-token-usage');
+    expect(names).toContain('output-cost');
   });
 
-  it('both evaluators have regressionMode "score"', () => {
+  it('all evaluators have regressionMode "score"', () => {
     const gocode = makeMockGocode();
     const evaluators = createTokenEvaluators(gocode);
 
@@ -40,7 +42,7 @@ describe('createTokenEvaluators', () => {
     }
   });
 
-  it('both evaluators have lowerIsBetter true', () => {
+  it('all evaluators have lowerIsBetter true', () => {
     const gocode = makeMockGocode();
     const evaluators = createTokenEvaluators(gocode);
 
@@ -49,7 +51,7 @@ describe('createTokenEvaluators', () => {
     }
   });
 
-  it('both evaluators share the same collector instance', () => {
+  it('all evaluators share the same collector instance', () => {
     const gocode = makeMockGocode();
     const evaluators = createTokenEvaluators(gocode);
 
@@ -60,12 +62,13 @@ describe('createTokenEvaluators', () => {
       onMessage: vi.fn(),
     };
 
-    // Hook both evaluators — no error thrown proves they share the same
-    // idempotent collector (second hook call is a no-op, not an exception).
+    // Hook all evaluators — no error thrown proves they share the same
+    // idempotent collector (later hook calls are no-ops, not exceptions).
     for (const ev of evaluators) {
       ev.hookClient?.(mockClient, 0);
     }
 
-    expect(gocode.getAccumulatedUsage).toHaveBeenCalledTimes(2);
+    // Each evaluator snapshots the probe baseline once at hook time.
+    expect(gocode.getAccumulatedUsage).toHaveBeenCalledTimes(4);
   });
 });

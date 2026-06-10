@@ -3,7 +3,7 @@ import type {
   AgentClient,
   AgentEvent,
 } from '../clients/agent-client.js';
-import type { SiteCapture } from '../clients/dom-capture.js';
+import { CaptureError, type SiteCapture } from '../clients/dom-capture.js';
 import type { Scenario, SetupContext } from '../scenarios/types.js';
 import { Agent, fetch } from 'undici';
 import { GoalTracker } from './goal-tracker.js';
@@ -424,9 +424,33 @@ export class Simulation {
       builder.addCapturedSite(result.capturedSite);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+
+      // Correlate with rate-limiting: either a 429/Retry-After response was
+      // observed during capture, or the agent already recorded a 429 error
+      // upstream (capture itself makes no LLM calls). When either is true the
+      // empty/erroring page is most likely a downstream symptom of throttling.
+      const captureSawRateLimit =
+        err instanceof CaptureError
+        && err.diagnostics.networkFailures.some((f) => f.isRateLimit);
+      const likelyRateLimited = captureSawRateLimit || builder.hasRateLimitError();
+      const note = likelyRateLimited
+        ? ' (likely rate-limited — see transcript errors / Retry-After)'
+        : '';
+
       builder.addCaptureError(
-        `Capture failed (trial ${trialIndex}): ${msg}`,
+        `Capture failed (trial ${trialIndex}): ${msg}${note}`,
       );
+      if (err instanceof CaptureError) {
+        builder.addCaptureDiagnostics(err.diagnostics);
+      }
+      if (likelyRateLimited) {
+        // Sanitized — do not log raw page/response bodies, which may contain
+        // tokens or other sensitive content (mirrors the 429 handler above).
+        console.warn(
+          `[Trial ${trialIndex}] Capture likely rate-limited. ` +
+          `Lower eval.maxConcurrency to reduce concurrent requests.`,
+        );
+      }
       // nosemgrep: javascript.lang.security.audit.unsafe-formatstring
       console.warn(
         '[Trial %d] Capture skipped:',

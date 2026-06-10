@@ -1,87 +1,18 @@
-import type { EvalResult, Evaluator } from './evaluator.js';
-import type {
-  DOMSnapshot,
-  Transcript,
-} from '../runner/transcript.js';
-import type { Scenario } from '../scenarios/types.js';
-import type { AgentClient } from '../clients/agent-client.js';
-import type {
-  TokenUsageCollector,
-  TrialTokenData,
-} from './token-usage-collector.js';
-import type {
-  ProbeUsage,
-  ProbeUsageSource,
-} from '../clients/gocode-client.js';
-import { computeProbeDelta } from './eval-utils.js';
+import type { EvalResult } from './evaluator.js';
+import type { TrialTokenData } from './token-usage-collector.js';
+import {
+  ProbeUsageEvaluator,
+  type ProbeUsageMeasurement,
+} from './probe-usage-evaluator.js';
 
-export class TokenUsageEvaluator implements Evaluator {
+export class TokenUsageEvaluator extends ProbeUsageEvaluator {
   readonly name = 'token-usage';
-  readonly regressionMode = 'score' as const;
-  readonly lowerIsBetter = true;
 
-  private readonly baselines = new Map<number, ProbeUsage>();
-  private readonly afterSnapshots = new Map<number, ProbeUsage>();
-
-  constructor(
-    private readonly options: {
-      collector: TokenUsageCollector;
-      gocodeClient: ProbeUsageSource;
-    },
-  ) {}
-
-  hookClient(client: AgentClient, trialIndex: number): void {
-    this.options.collector.hook(client, trialIndex);
-    this.baselines.set(
-      trialIndex,
-      this.options.gocodeClient.getAccumulatedUsage(),
-    );
+  protected get noDataReason(): string {
+    return 'no token data available for this trial (collector returned null)';
   }
 
-  afterSimulation(trialIndex: number): void {
-    this.afterSnapshots.set(trialIndex, this.options.gocodeClient.getAccumulatedUsage());
-  }
-
-  unhookTrial(trialIndex: number): void {
-    this.options.collector.unhook(trialIndex);
-    this.baselines.delete(trialIndex);
-    this.afterSnapshots.delete(trialIndex);
-  }
-
-  async evaluate(
-    transcript: Transcript,
-    _scenario: Scenario,
-    _snapshot?: DOMSnapshot,
-  ): Promise<EvalResult> {
-    const { collector, gocodeClient } = this.options;
-    const { trialIndex } = transcript;
-
-    const baseline = this.baselines.get(trialIndex);
-    this.baselines.delete(trialIndex);
-
-    if (baseline === undefined) {
-      return {
-        evaluator: this.name,
-        score: 0,
-        verdict: 'unknown',
-        reason: 'evaluate() called without a prior hookClient() for this trial',
-      };
-    }
-
-    const aabData = collector.collect(trialIndex);
-    if (aabData === null) {
-      return {
-        evaluator: this.name,
-        score: 0,
-        verdict: 'unknown',
-        reason: 'no token data available for this trial (collector returned null)',
-      };
-    }
-
-    const probeEnd = this.afterSnapshots.get(trialIndex) ?? gocodeClient.getAccumulatedUsage();
-    this.afterSnapshots.delete(trialIndex);
-    const probeDelta = computeProbeDelta(probeEnd, baseline);
-
+  protected score({ aabData, probeDelta }: ProbeUsageMeasurement): EvalResult {
     const aabTotalTokens = aabData.totalTokens;
     const totalTokens = aabTotalTokens + probeDelta.totalTokens;
 
@@ -108,7 +39,6 @@ export class TokenUsageEvaluator implements Evaluator {
       details,
     };
   }
-
 }
 
 function buildAabDetails(

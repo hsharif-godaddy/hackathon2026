@@ -1,100 +1,29 @@
-import type { EvalResult, Evaluator } from './evaluator.js';
-import type {
-  DOMSnapshot,
-  Transcript,
-} from '../runner/transcript.js';
-import type { Scenario } from '../scenarios/types.js';
-import type { AgentClient } from '../clients/agent-client.js';
-import type {
-  TokenUsageCollector,
-  TrialTokenData,
-} from './token-usage-collector.js';
-import type {
-  ProbeUsage,
-  ProbeUsageSource,
-} from '../clients/gocode-client.js';
-import { computeProbeDelta } from './eval-utils.js';
+import type { EvalResult } from './evaluator.js';
+import type { TrialTokenData } from './token-usage-collector.js';
+import type { ProbeUsage } from '../clients/gocode-client.js';
+import {
+  ProbeUsageEvaluator,
+  type ProbeUsageEvaluatorOptions,
+  type ProbeUsageMeasurement,
+} from './probe-usage-evaluator.js';
+import { MODEL_PRICING } from './model-pricing.js';
 
-// Pricing for models gosym-probe actually uses.
-// Source: Anthropic pricing (ai-lib/src/utils/model-pricing.ts reference).
-// Units: USD per 1K tokens.
-const MODEL_PRICING: Record<
-  string,
-  { inputCostPer1K: number; outputCostPer1K: number }
-> = {
-  'claude-sonnet-4-6': { inputCostPer1K: 0.003, outputCostPer1K: 0.015 },
-  'claude-sonnet-4-5': { inputCostPer1K: 0.003, outputCostPer1K: 0.015 },
-  'claude-opus-4-6': { inputCostPer1K: 0.015, outputCostPer1K: 0.075 },
-  'claude-haiku-4-5': { inputCostPer1K: 0.0008, outputCostPer1K: 0.004 },
-};
-
-export class LLMCostEvaluator implements Evaluator {
+export class LLMCostEvaluator extends ProbeUsageEvaluator {
   readonly name = 'llm-cost';
-  readonly regressionMode = 'score' as const;
-  readonly lowerIsBetter = true;
 
-  private readonly baselines = new Map<number, ProbeUsage>();
-  private readonly afterSnapshots = new Map<number, ProbeUsage>();
+  private readonly probeModel: string | undefined;
 
-  constructor(
-    private readonly options: {
-      collector: TokenUsageCollector;
-      gocodeClient: ProbeUsageSource;
-      probeModel?: string;
-    },
-  ) {}
-
-  hookClient(client: AgentClient, trialIndex: number): void {
-    this.options.collector.hook(client, trialIndex);
-    this.baselines.set(
-      trialIndex,
-      this.options.gocodeClient.getAccumulatedUsage(),
-    );
+  constructor(options: ProbeUsageEvaluatorOptions & { probeModel?: string }) {
+    super(options);
+    this.probeModel = options.probeModel;
   }
 
-  afterSimulation(trialIndex: number): void {
-    this.afterSnapshots.set(trialIndex, this.options.gocodeClient.getAccumulatedUsage());
+  protected get noDataReason(): string {
+    return 'no cost data available for this trial (collector returned null)';
   }
 
-  unhookTrial(trialIndex: number): void {
-    this.options.collector.unhook(trialIndex);
-    this.baselines.delete(trialIndex);
-    this.afterSnapshots.delete(trialIndex);
-  }
-
-  async evaluate(
-    transcript: Transcript,
-    _scenario: Scenario,
-    _snapshot?: DOMSnapshot,
-  ): Promise<EvalResult> {
-    const { collector, gocodeClient, probeModel } = this.options;
-    const { trialIndex } = transcript;
-
-    const baseline = this.baselines.get(trialIndex);
-    this.baselines.delete(trialIndex);
-
-    if (baseline === undefined) {
-      return {
-        evaluator: this.name,
-        score: 0,
-        verdict: 'unknown',
-        reason: 'evaluate() called without a prior hookClient() for this trial',
-      };
-    }
-
-    const aabData = collector.collect(trialIndex);
-    if (aabData === null) {
-      return {
-        evaluator: this.name,
-        score: 0,
-        verdict: 'unknown',
-        reason: 'no cost data available for this trial (collector returned null)',
-      };
-    }
-
-    const probeEnd = this.afterSnapshots.get(trialIndex) ?? gocodeClient.getAccumulatedUsage();
-    this.afterSnapshots.delete(trialIndex);
-    const probeDelta = computeProbeDelta(probeEnd, baseline);
+  protected score({ aabData, probeDelta }: ProbeUsageMeasurement): EvalResult {
+    const { probeModel } = this;
 
     const unknownModel =
       probeModel !== undefined && !(probeModel in MODEL_PRICING);

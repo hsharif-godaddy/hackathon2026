@@ -12,11 +12,25 @@ import type { SetupContext } from '../scenarios/types.js';
 import { captureRoutes } from './site-capture/capture.js';
 import { dismissCookieConsent } from './site-capture/cookie-dismiss.js';
 import type { CapturedSite } from './site-capture/types.js';
+import {
+  CaptureError,
+  PageDiagnosticsRecorder,
+  formatCaptureError,
+  type CaptureDiagnostics,
+  type ConsoleLogEntry,
+  type NetworkFailure,
+} from './site-capture/diagnostics.js';
+import {
+  DEFAULT_READINESS_RETRY_WINDOW_MS,
+  ReadinessNavigationError,
+  navigateUntilReady,
+} from './site-capture/readiness.js';
 
-export interface ConsoleLogEntry {
-  type: string;
-  text: string;
-}
+// Re-exported so existing importers (transcript.ts, simulation.ts, tests)
+// keep their `../clients/dom-capture.js` import paths after the readiness and
+// diagnostics logic moved into site-capture/.
+export { CaptureError };
+export type { CaptureDiagnostics, ConsoleLogEntry, NetworkFailure };
 
 export interface DOMSnapshot {
   url: string;
@@ -26,6 +40,12 @@ export interface DOMSnapshot {
   consoleLogs: ConsoleLogEntry[];
   /** Inline HTML content. When present, evaluators prefer this over reading htmlPath from disk. */
   html?: string;
+  /** Main-frame HTTP status from the initial navigation, when observed. */
+  httpStatus?: number;
+  /** Uncaught in-page exceptions observed during capture (omitted when none). */
+  pageErrors?: string[];
+  /** Failed requests / non-2xx responses observed during capture (omitted when none). */
+  networkFailures?: NetworkFailure[];
 }
 
 export interface CapturedTrial {
@@ -42,6 +62,12 @@ export interface SiteCaptureConfig {
   ignoreHttpsErrors: boolean;
   readySelector?: string;
   readyTimeoutMs?: number;
+  /**
+   * Upper bound on how long to keep reloading a preview that is serving a
+   * transient 5xx (dev server still booting / mid dep-optimization). Once the
+   * window elapses we stop reloading and fall through to the long ready-wait.
+   */
+  readinessRetryWindowMs?: number;
   /** Forwarded to captureRoutes(). */
   maxRoutes?: number;
 }
@@ -51,6 +77,7 @@ export class SiteCapture {
   private readonly ignoreHttpsErrors: boolean;
   private readonly readySelector: string;
   private readonly readyTimeoutMs: number;
+  private readonly readinessRetryWindowMs: number;
   private readonly maxRoutes: number | undefined;
 
   constructor(config: SiteCaptureConfig) {
@@ -58,6 +85,8 @@ export class SiteCapture {
     this.ignoreHttpsErrors = config.ignoreHttpsErrors;
     this.readySelector = config.readySelector ?? '#app > *';
     this.readyTimeoutMs = config.readyTimeoutMs ?? 90_000;
+    this.readinessRetryWindowMs =
+      config.readinessRetryWindowMs ?? DEFAULT_READINESS_RETRY_WINDOW_MS;
     this.maxRoutes = config.maxRoutes;
   }
 
@@ -82,45 +111,58 @@ export class SiteCapture {
       });
 
       const page: Page = await context.newPage();
-      const consoleLogs: ConsoleLogEntry[] = [];
-      page.on('console', (msg) => {
-        consoleLogs.push({ type: msg.type(), text: msg.text() });
-      });
+      const recorder = new PageDiagnosticsRecorder();
+      recorder.attach(page);
 
+      let httpStatus: number | undefined;
       try {
-        await page.goto(
+        httpStatus = await navigateUntilReady({
+          page,
           previewUrl,
-          { waitUntil: 'domcontentloaded', timeout: this.readyTimeoutMs },
-        );
-        const finalUrl = page.url();
-        if (new URL(finalUrl).href !== new URL(previewUrl).href) {
-          console.warn(
-            'SiteCapture: redirect detected',
-            { expected: previewUrl, actual: finalUrl },
-          );
-        }
-        await page.waitForSelector(
-          this.readySelector,
-          { timeout: this.readyTimeoutMs },
-        );
+          recorder,
+          readySelector: this.readySelector,
+          readyTimeoutMs: this.readyTimeoutMs,
+          readinessRetryWindowMs: this.readinessRetryWindowMs,
+        });
         await dismissCookieConsent(page);
         const html = await page.content();
         await writeFile(screenshotPath, await page.screenshot());
         await writeFile(htmlPath, html);
         homepagePage = page;
       } catch (err) {
+        if (err instanceof ReadinessNavigationError) {
+          httpStatus = err.httpStatus;
+        }
+        const diagnostics = await recorder.gather(page, httpStatus);
+        await this.writeFailureArtifacts(
+          page,
+          screenshotPath,
+          htmlPath,
+          snapshotsDir,
+          diagnostics,
+        );
         await page.close().catch((closeErr: unknown) => {
           console.warn('SiteCapture: page.close() failed during cleanup', closeErr);
         });
-        throw err;
+        throw new CaptureError(
+          formatCaptureError(this.readySelector, this.readyTimeoutMs, diagnostics),
+          diagnostics,
+          err,
+        );
       }
 
+      const consoleLogs = recorder.getConsoleLogs();
+      const pageErrors = recorder.getPageErrors();
+      const networkFailures = recorder.getNetworkFailures();
       const snapshot: DOMSnapshot = {
         url: previewUrl,
         screenshotPath,
         htmlPath,
         timestamp: new Date().toISOString(),
         consoleLogs,
+        ...(httpStatus !== undefined && { httpStatus }),
+        ...(pageErrors.length > 0 && { pageErrors }),
+        ...(networkFailures.length > 0 && { networkFailures }),
       };
 
       const capturedSite = await captureRoutes({
@@ -148,6 +190,32 @@ export class SiteCapture {
         console.warn('SiteCapture: browser.close() failed', err);
       });
     }
+  }
+
+  /**
+   * Persists whatever we can of the failed page (screenshot, HTML, and the
+   * structured diagnostics) so a run can be diagnosed after the fact. Every
+   * write is best-effort; failures here must not mask the capture error.
+   */
+  private async writeFailureArtifacts(
+    page: Page,
+    screenshotPath: string,
+    htmlPath: string,
+    snapshotsDir: string,
+    diagnostics: CaptureDiagnostics,
+  ): Promise<void> {
+    await page
+      .screenshot()
+      .then((bytes) => writeFile(screenshotPath, bytes))
+      .catch(() => undefined);
+    await page
+      .content()
+      .then((html) => writeFile(htmlPath, html))
+      .catch(() => undefined);
+    await writeFile(
+      join(snapshotsDir, '0-diagnostics.json'),
+      JSON.stringify(diagnostics, null, 2),
+    ).catch(() => undefined);
   }
 }
 

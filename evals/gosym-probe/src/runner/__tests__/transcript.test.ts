@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import type { DOMSnapshot } from '../../clients/dom-capture.js';
+import type {
+  CaptureDiagnostics,
+  DOMSnapshot,
+} from '../../clients/dom-capture.js';
 import type { CapturedSite } from '../../clients/site-capture/types.js';
 import { TranscriptBuilder } from '../transcript.js';
 import type { Turn, ToolCall } from '../transcript.js';
@@ -230,6 +233,52 @@ describe('TranscriptBuilder', () => {
       const transcript = builder.build();
       expect(transcript.captureErrors).toHaveLength(0);
       expect(transcript.errors).toHaveLength(1);
+    });
+  });
+
+  describe('addCaptureDiagnostics()', () => {
+    const sample: CaptureDiagnostics = {
+      finalUrl: 'https://localhost:8443',
+      httpStatus: 429,
+      pageTitle: 'Too Many Requests',
+      bodyTextSnippet: 'Rate limit exceeded',
+      pageErrors: [],
+      networkFailures: [
+        { url: 'https://localhost:8443/api', detail: 'HTTP 429', isRateLimit: true },
+      ],
+    };
+
+    it('is omitted from the built transcript when never attached', () => {
+      const transcript = new TranscriptBuilder('s', 0).build();
+      expect(transcript.captureDiagnostics).toBeUndefined();
+    });
+
+    it('flows diagnostics into the built transcript', () => {
+      const builder = new TranscriptBuilder('s', 0);
+      builder.addCaptureDiagnostics(sample);
+      const transcript = builder.build();
+      expect(transcript.captureDiagnostics).toHaveLength(1);
+      expect(transcript.captureDiagnostics?.[0]).toEqual(sample);
+    });
+  });
+
+  describe('hasRateLimitError()', () => {
+    it('detects a 429 in recorded agent errors', () => {
+      const builder = new TranscriptBuilder('s', 0);
+      builder.addError('Request failed with status 429');
+      expect(builder.hasRateLimitError()).toBe(true);
+    });
+
+    it('detects "rate limit" wording case-insensitively', () => {
+      const builder = new TranscriptBuilder('s', 0);
+      builder.addError('GoCode Rate Limit hit');
+      expect(builder.hasRateLimitError()).toBe(true);
+    });
+
+    it('returns false when no rate-limit error is recorded', () => {
+      const builder = new TranscriptBuilder('s', 0);
+      builder.addError('some unrelated failure');
+      expect(builder.hasRateLimitError()).toBe(false);
     });
   });
 

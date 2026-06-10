@@ -6,6 +6,7 @@ import {
   InactivityGuard,
 } from '../simulation.js';
 import type { SimulationCaptureContext } from '../simulation.js';
+import { CaptureError } from '../../clients/dom-capture.js';
 import type { Transcript } from '../transcript.js';
 import { GoalTracker } from '../goal-tracker.js';
 import type { AgentClient, AgentEvent } from '../../clients/agent-client.js';
@@ -530,6 +531,59 @@ describe('Simulation', () => {
       expect(warnSpy).toHaveBeenCalledOnce();
       expect(transcript.captureErrors).toHaveLength(1);
       expect(transcript.captureErrors[0]).toContain('browser crash');
+      expect(transcript.errors).toHaveLength(0);
+      warnSpy.mockRestore();
+    },
+  );
+
+  it(
+    'persists CaptureError diagnostics and flags a rate-limit seen during capture',
+    async () => {
+      const warnSpy = vi
+        .spyOn(console, 'warn')
+        .mockImplementation(function () {});
+      const scenario = makeScenario({
+        setup: vi.fn().mockResolvedValue({ appId: 'app' }),
+      });
+      const syntheticUser: SyntheticUserAgent = {
+        nextMessage: vi
+          .fn()
+          .mockResolvedValueOnce('hello')
+          .mockResolvedValue(null),
+      };
+      const captureError = new CaptureError(
+        'Capture failed waiting for "#app > *" after 90000ms. httpStatus=429',
+        {
+          httpStatus: 429,
+          pageErrors: [],
+          networkFailures: [
+            { url: 'https://app/api', detail: 'HTTP 429', isRateLimit: true },
+          ],
+        },
+      );
+      const mockSiteCapture = {
+        capture: vi.fn().mockRejectedValue(captureError),
+      };
+      const agent = makeAutoAgent();
+      const captureContext: SimulationCaptureContext = {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        siteCapture: mockSiteCapture as any,
+        getTrialOutputDir: vi.fn().mockResolvedValue('/tmp/trials/0'),
+      };
+
+      const transcript = await new Simulation({
+        scenario,
+        agentClient: agent,
+        syntheticUser,
+        captureContext,
+        config: mockConfig,
+      }).run(0);
+
+      expect(transcript.captureErrors[0]).toContain('likely rate-limited');
+      expect(transcript.captureDiagnostics).toHaveLength(1);
+      expect(transcript.captureDiagnostics?.[0].networkFailures[0]).toMatchObject({
+        isRateLimit: true,
+      });
       expect(transcript.errors).toHaveLength(0);
       warnSpy.mockRestore();
     },

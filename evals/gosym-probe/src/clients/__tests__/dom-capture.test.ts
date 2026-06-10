@@ -20,21 +20,35 @@ const {
   cookieClickedAt,
   screenshotCalledAt,
   callOrder,
+  pageHandlers,
+  firePageEvent,
 } = vi.hoisted(() => {
   const callOrder: string[] = [];
   const cookieClickedAt: { value: number | null } = { value: null };
   const screenshotCalledAt: { value: number | null } = { value: null };
+  // Captures listeners registered via page.on(event, handler) so tests can
+  // synthesize Playwright events (response, pageerror, ...).
+  const pageHandlers: Map<string, ((arg: unknown) => void)[]> = new Map();
+  const firePageEvent = (event: string, arg: unknown): void => {
+    for (const handler of pageHandlers.get(event) ?? []) handler(arg);
+  };
   const mockPage = {
     goto: vi.fn().mockResolvedValue(undefined),
     waitForSelector: vi.fn().mockResolvedValue(undefined),
     content: vi.fn().mockResolvedValue('<html><body>app</body></html>'),
+    title: vi.fn().mockResolvedValue('App'),
+    evaluate: vi.fn().mockResolvedValue(''),
     screenshot: vi.fn().mockImplementation(async function () {
       screenshotCalledAt.value = callOrder.length;
       callOrder.push('screenshot');
       return Buffer.from('PNGDATA');
     }),
     url: vi.fn().mockReturnValue('https://preview.local:5001'),
-    on: vi.fn(),
+    on: vi.fn().mockImplementation((event: string, handler: (arg: unknown) => void) => {
+      const list = pageHandlers.get(event) ?? [];
+      list.push(handler);
+      pageHandlers.set(event, list);
+    }),
     close: vi.fn().mockResolvedValue(undefined),
   };
   const mockContext = {
@@ -65,6 +79,8 @@ const {
     cookieClickedAt,
     screenshotCalledAt,
     callOrder,
+    pageHandlers,
+    firePageEvent,
   };
 });
 
@@ -82,8 +98,14 @@ vi.mock('../site-capture/cookie-dismiss.js', () => ({
   dismissCookieConsent: mockDismissCookieConsent,
 }));
 
+// Make readiness-retry backoff instant so retry tests don't sleep for real.
+vi.mock('../../util/sleep.js', () => ({
+  sleep: vi.fn().mockResolvedValue(undefined),
+}));
+
 import {
   AABPreviewUrlResolver,
+  CaptureError,
   SetupContextResolver,
   SiteCapture,
 } from '../dom-capture.js';
@@ -103,9 +125,12 @@ describe('SiteCapture', () => {
     callOrder.length = 0;
     cookieClickedAt.value = null;
     screenshotCalledAt.value = null;
+    pageHandlers.clear();
     mockPage.goto.mockResolvedValue(undefined);
     mockPage.waitForSelector.mockResolvedValue(undefined);
     mockPage.content.mockResolvedValue('<html><body>app</body></html>');
+    mockPage.title.mockResolvedValue('App');
+    mockPage.evaluate.mockResolvedValue('');
     mockPage.url.mockReturnValue(PREVIEW_URL);
     mockContext.newPage.mockResolvedValue(mockPage);
     mockBrowser.newContext.mockResolvedValue(mockContext);
@@ -247,14 +272,185 @@ describe('SiteCapture', () => {
   );
 
   it('closes the homepage page when navigation fails', async () => {
-    mockPage.waitForSelector.mockRejectedValueOnce(new Error('not ready'));
+    // Healthy-but-never-painted app: selector never appears (probe + long wait
+    // both reject), no 5xx → falls through to the long wait, which throws.
+    mockPage.waitForSelector.mockRejectedValue(new Error('not ready'));
     const cap = new SiteCapture({
       resolver: makeResolver(),
       ignoreHttpsErrors: true,
     });
 
-    await expect(cap.capture({}, trialDir)).rejects.toThrow('not ready');
+    await expect(cap.capture({}, trialDir)).rejects.toThrow(CaptureError);
     expect(mockPage.close).toHaveBeenCalled();
+  });
+
+  it('wraps a selector timeout in a CaptureError carrying diagnostics', async () => {
+    mockPage.waitForSelector.mockRejectedValue(
+      new Error('Timeout 90000ms exceeded'),
+    );
+    mockPage.title.mockResolvedValue('500 Internal Server Error');
+    mockPage.evaluate.mockResolvedValue('Rate limit exceeded. Please retry.');
+    const cap = new SiteCapture({
+      resolver: makeResolver(),
+      ignoreHttpsErrors: true,
+    });
+
+    const err = await cap.capture({}, trialDir).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CaptureError);
+    const captureErr = err as CaptureError;
+    expect(captureErr.diagnostics.pageTitle).toBe('500 Internal Server Error');
+    expect(captureErr.diagnostics.bodyTextSnippet).toContain('Rate limit');
+    expect(captureErr.message).toContain('500 Internal Server Error');
+    expect(captureErr.cause).toBeInstanceOf(Error);
+  });
+
+  it('flags a 429 response observed during capture as rate-limited', async () => {
+    // Fire a 429 response event once the listeners are wired, then never paint
+    // the selector so capture takes the failure path. 429 is not a 5xx, so it
+    // is not retried — it falls through to the long wait.
+    mockPage.goto.mockImplementation(async () => {
+      firePageEvent('response', {
+        ok: () => false,
+        status: () => 429,
+        url: () => `${PREVIEW_URL}/api/generate`,
+        headers: () => ({ 'retry-after': '30' }),
+      });
+      return { status: () => 200 };
+    });
+    mockPage.waitForSelector.mockRejectedValue(
+      new Error('Timeout 90000ms exceeded'),
+    );
+    const cap = new SiteCapture({
+      resolver: makeResolver(),
+      ignoreHttpsErrors: true,
+    });
+
+    const err = await cap.capture({}, trialDir).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CaptureError);
+    const captureErr = err as CaptureError;
+    const failures = captureErr.diagnostics.networkFailures;
+    expect(failures.some((f: { isRateLimit: boolean }) => f.isRateLimit)).toBe(
+      true,
+    );
+    expect(captureErr.message).toContain('rate-limit');
+  });
+
+  it('writes failure artifacts (screenshot, html, diagnostics) on timeout', async () => {
+    mockPage.waitForSelector.mockRejectedValue(
+      new Error('Timeout 90000ms exceeded'),
+    );
+    mockPage.content.mockResolvedValue('<html><body>error page</body></html>');
+    const cap = new SiteCapture({
+      resolver: makeResolver(),
+      ignoreHttpsErrors: true,
+    });
+
+    await cap.capture({}, trialDir).catch(() => undefined);
+
+    const diag = JSON.parse(
+      await readFile(join(trialDir, 'snapshots', '0-diagnostics.json'), 'utf-8'),
+    );
+    expect(diag).toHaveProperty('pageErrors');
+    expect(diag).toHaveProperty('networkFailures');
+    const html = await readFile(
+      join(trialDir, 'snapshots', '0.html'),
+      'utf-8',
+    );
+    expect(html).toContain('error page');
+  });
+
+  it('recovers when a transient 502 clears within the readiness window', async () => {
+    // First boot serves a 502 + never paints; second boot is healthy.
+    let attempt = 0;
+    mockPage.goto.mockImplementation(async () => {
+      attempt++;
+      if (attempt === 1) {
+        return { status: () => 502 };
+      }
+      return { status: () => 200 };
+    });
+    // Probe fails on attempt 1 (502, not painted), succeeds on attempt 2.
+    mockPage.waitForSelector
+      .mockRejectedValueOnce(new Error('Timeout 3000ms exceeded'))
+      .mockResolvedValue(undefined);
+    const cap = new SiteCapture({
+      resolver: makeResolver(),
+      ignoreHttpsErrors: true,
+    });
+
+    const result = await cap.capture({}, trialDir);
+
+    expect(attempt).toBeGreaterThanOrEqual(2);
+    expect(result.snapshot.httpStatus).toBe(200);
+  });
+
+  it('fast-fails a persistent 502 without waiting the full ready timeout', async () => {
+    // Every boot serves a 502 and never paints. With a tiny retry window the
+    // loop gives up quickly via ReadinessNavigationError rather than burning
+    // the 90s long wait.
+    mockPage.goto.mockImplementation(async () => ({ status: () => 502 }));
+    mockPage.waitForSelector.mockRejectedValue(
+      new Error('Timeout 3000ms exceeded'),
+    );
+    mockPage.evaluate.mockResolvedValue('Service startup failed');
+    const cap = new SiteCapture({
+      resolver: makeResolver(),
+      ignoreHttpsErrors: true,
+      readinessRetryWindowMs: 10,
+    });
+
+    const err = await cap.capture({}, trialDir).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CaptureError);
+    const captureErr = err as CaptureError;
+    expect(captureErr.diagnostics.httpStatus).toBe(502);
+    expect(captureErr.diagnostics.bodyTextSnippet).toContain(
+      'Service startup failed',
+    );
+  });
+
+  it('retries on a 5xx sub-resource (e.g. /src/main.tsx) then recovers', async () => {
+    // App shell loads 200, but the entry module 500s on the first boot (the
+    // persona/5 signature) — Vite mid dep-optimization. Retry clears it.
+    let attempt = 0;
+    mockPage.goto.mockImplementation(async () => {
+      attempt++;
+      if (attempt === 1) {
+        firePageEvent('response', {
+          ok: () => false,
+          status: () => 500,
+          url: () => `${PREVIEW_URL}/src/main.tsx`,
+          headers: () => ({}),
+        });
+      }
+      return { status: () => 200 };
+    });
+    mockPage.waitForSelector
+      .mockRejectedValueOnce(new Error('Timeout 3000ms exceeded'))
+      .mockResolvedValue(undefined);
+    const cap = new SiteCapture({
+      resolver: makeResolver(),
+      ignoreHttpsErrors: true,
+    });
+
+    const result = await cap.capture({}, trialDir);
+
+    expect(attempt).toBeGreaterThanOrEqual(2);
+    expect(result.snapshot.url).toBe(PREVIEW_URL);
+  });
+
+  it('records httpStatus on a successful capture', async () => {
+    mockPage.goto.mockResolvedValueOnce({ status: () => 200 });
+    const cap = new SiteCapture({
+      resolver: makeResolver(),
+      ignoreHttpsErrors: true,
+    });
+
+    const result = await cap.capture({}, trialDir);
+
+    expect(result.snapshot.httpStatus).toBe(200);
   });
 
   it('uses domcontentloaded wait strategy on homepage navigation', async () => {

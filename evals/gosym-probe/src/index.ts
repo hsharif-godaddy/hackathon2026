@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { loadConfig } from '../config/index.js';
-import { AABClient } from './clients/aab-client.js';
+import { AABClient, mockAuthToken } from './clients/aab-client.js';
 import { AABCtrlPlaneClient } from './clients/aab-ctrl-plane-client.js';
 import { GocodeClient } from './clients/gocode-client.js';
 import { PerTrialGocodeClient } from './clients/per-trial-gocode-client.js';
@@ -164,15 +164,25 @@ async function main(): Promise<void> {
     : undefined;
 
   const makeAgentClient = async (scenario?: Scenario) => {
+    // Single source for the profile claims so the structured agentContext and
+    // the mock token below can't drift apart.
+    const agentContext = scenario?.agentProfile
+      ? {
+          siteId: 'bypass-site',
+          agentProfile: scenario.agentProfile,
+          agentProfileSelectorEnabled: true,
+        }
+      : undefined;
     const client = new AABClient({
       socketUrl: config.aab.socketUrl,
-      ...(scenario?.agentProfile ? {
+      ...(agentContext ? {
         auth: {
-          agentContext: {
-            siteId: 'bypass-site',
-            agentProfile: scenario.agentProfile,
-            agentProfileSelectorEnabled: true,
-          },
+          agentContext,
+          // AUTH_TYPE=mock rebuilds agentContext from this token's claims and
+          // ignores the structured field above, so the profile MUST ride along
+          // in the token or it never reaches the develop agent. Built from the
+          // same object so the two can't diverge.
+          token: mockAuthToken(agentContext),
         },
       } : {}),
     });
