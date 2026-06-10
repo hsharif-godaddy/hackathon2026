@@ -42,6 +42,7 @@ export interface CreateTokenOptions {
   market?: string; // User's resolved market locale (e.g. 'en-US', 'es-MX')
   marketingCampaignsEnabled?: boolean; // Enable Marketing Campaigns feature (switchboard: appbuilder-marketing-campaigns)
   asmDualWriteEnabled?: boolean; // Mirror SQLite conversation writes to ASM (switchboard: appbuilder-asm-dual-write)
+  logoBrandColorsEnabled?: boolean; // Send structured brand colors to the logo API (switchboard: appbuilder-logo-brand-colors)
 }
 
 export interface TokenResult {
@@ -210,6 +211,7 @@ export class JWTService {
       ...(options.market && { market: options.market }),
       marketingCampaignsEnabled: options.marketingCampaignsEnabled ?? false,
       asmDualWriteEnabled: options.asmDualWriteEnabled ?? false,
+      logoBrandColorsEnabled: options.logoBrandColorsEnabled ?? false,
     };
 
     const headerBase64 = Buffer.from(JSON.stringify(header)).toString('base64url');
@@ -271,7 +273,7 @@ export class JWTService {
    */
   private getCacheKey(options: CreateTokenOptions): string {
     const authType = options.authType || 'basic';
-    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.assessmentClassifier || ''}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentProfileSelectorEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}:${options.useAtlasCrawler ?? false}:${options.rebuildIntakeFormEnabled ?? false}:${options.debugStatsEnabled ?? false}:${options.market || ''}:${options.marketingCampaignsEnabled ?? false}:${options.asmDualWriteEnabled ?? false}`;
+    return `${options.siteId}:${options.customerId || ''}:${options.canDownload}:${options.canPublish}:${options.canPurchaseDomain ?? false}:${authType}:${options.useTestBudget ?? false}:${options.budgetServiceEnabled ?? false}:${options.subscriptionId || ''}:${options.enableAssessmentAgent ?? false}:${options.enableAssessmentOverride ?? false}:${options.assessmentClassifier || ''}:${options.product || 'AiroAppBuilder'}:${options.modelOverride || ''}:${options.modelSelectorEnabled ?? false}:${options.agentProfile || ''}:${options.agentProfileSelectorEnabled ?? false}:${options.costAttributionDryRun ?? false}:${options.bmsBudgetId || ''}:${options.useAtlasCrawler ?? false}:${options.rebuildIntakeFormEnabled ?? false}:${options.debugStatsEnabled ?? false}:${options.market || ''}:${options.marketingCampaignsEnabled ?? false}:${options.asmDualWriteEnabled ?? false}:${options.logoBrandColorsEnabled ?? false}`;
   }
 
   /**

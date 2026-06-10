@@ -29,10 +29,27 @@ export interface LayoutUrls {
   landscapeMockup: string
 }
 
+/**
+ * Structured brand colors sent to the logo API so it can render a mark that
+ * reads on the surface it lands on (`background`) and harmonizes with the brand
+ * (`primary`/`secondary`/`accent`). All optional — only populated roles are sent.
+ *
+ * NOTE: the shape is provisional until gai-logo-agent defines the contract;
+ * the send is gated by the `appbuilder-logo-brand-colors` switchboard flag
+ * (default off), surfaced on context.metadata and read in the media-logo tool.
+ */
+export interface LogoColors {
+  primary?: string
+  secondary?: string
+  accent?: string
+  background?: string
+}
+
 export interface GenerateLogoInput {
   prompt: string
   layout: LogoLayout[]
   referenceUrl?: string
+  colors?: LogoColors
   appId: string
   customerId: string
   budgetUserId: string
@@ -150,10 +167,12 @@ class LogoService {
 
   async generate(input: GenerateLogoInput): Promise<LogoSessionResponse> {
     const url = `${getLogoApiBaseUrl().replace(/\/$/, '')}/api/logo/create`
+    const hasColors = Boolean(input.colors && Object.keys(input.colors).length > 0)
     const body: Record<string, unknown> = {
       prompt: input.prompt,
       layout: input.layout,
       ...(input.referenceUrl && { referenceUrl: input.referenceUrl }),
+      ...(hasColors && { colors: input.colors }),
     }
 
     logger.info('logo.generate.begin', {
@@ -163,6 +182,7 @@ class LogoService {
       promptLength: input.prompt.length,
       layouts: input.layout,
       hasReference: Boolean(input.referenceUrl),
+      hasColors,
     })
 
     let response: Response

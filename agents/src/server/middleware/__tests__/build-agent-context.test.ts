@@ -54,6 +54,7 @@ describe('buildAgentContext', function suite() {
       debugStatsEnabled: false,
       marketingCampaignsEnabled: false,
       asmDualWriteEnabled: false,
+      logoBrandColorsEnabled: false,
       exp: 1700000000,
       iat: 1699999000,
     });

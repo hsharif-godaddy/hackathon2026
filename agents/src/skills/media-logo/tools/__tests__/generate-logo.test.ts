@@ -207,6 +207,79 @@ describe('media-logo generate_logo tool', () => {
     });
   });
 
+  describe('structured colors', () => {
+    const paletteData = {
+      success: true,
+      data: {
+        colorPalette: {
+          primary: '#B96B3C',
+          secondary: '#2A4D3E',
+          accent: '#F2C94C',
+          background: '#FAF8F5',
+          foreground: '#1F1F1F',
+        },
+      },
+    };
+
+    // Flag arrives on context.metadata (set by the agent JWT from the
+    // `appbuilder-logo-brand-colors` switchboard flag).
+    const flagOnContext = {
+      ...baseContext,
+      metadata: { ...baseContext.metadata, logoBrandColorsEnabled: true },
+    };
+
+    it('passes background + brand colors (no foreground) when the flag is on', async () => {
+      mockAppPlanExecute.mockResolvedValueOnce(paletteData);
+
+      const { generateLogoTool } = await import('../index.js');
+
+      await generateLogoTool.execute(
+        { prompt: 'a coffee cup logo', layout: 'horizontal' },
+        flagOnContext,
+      );
+
+      const callArg = mockGenerate.mock.calls[0][0];
+      expect(callArg.colors).toEqual({
+        primary: '#B96B3C',
+        secondary: '#2A4D3E',
+        accent: '#F2C94C',
+        background: '#FAF8F5',
+      });
+      expect(callArg.colors).not.toHaveProperty('foreground');
+      // Prompt suffix is independent of the flag and still includes everything.
+      expect(callArg.prompt).toContain('Brand colors');
+      expect(callArg.prompt).toContain('foreground #1F1F1F');
+    });
+
+    it('does not pass colors when the flag is off', async () => {
+      mockAppPlanExecute.mockResolvedValueOnce(paletteData);
+
+      const { generateLogoTool } = await import('../index.js');
+
+      await generateLogoTool.execute(
+        { prompt: 'a coffee cup logo', layout: 'horizontal' },
+        baseContext,
+      );
+
+      const callArg = mockGenerate.mock.calls[0][0];
+      expect(callArg).not.toHaveProperty('colors');
+      // Suffix path is unaffected by the flag.
+      expect(callArg.prompt).toContain('Brand colors');
+    });
+
+    it('omits colors when the flag is on but no palette resolved', async () => {
+      const { generateLogoTool } = await import('../index.js');
+
+      await generateLogoTool.execute(
+        { prompt: 'a logo', layout: 'horizontal' },
+        flagOnContext,
+      );
+
+      const callArg = mockGenerate.mock.calls[0][0];
+      expect(callArg).not.toHaveProperty('colors');
+    });
+  });
+
   describe('layout expansion', () => {
     it('expands layout: "all" into [square, horizontal, vertical]', async () => {
       mockGenerate.mockResolvedValueOnce({

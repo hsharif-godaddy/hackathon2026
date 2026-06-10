@@ -212,6 +212,56 @@ describe('LogoService', () => {
     })
   })
 
+  it('includes structured colors in the body when provided', async () => {
+    fetchMock.mockResolvedValueOnce(
+      apiResponse({ id: 's', sessionId: 's', logos: [{ ...SQUARE_API_LOGO }] }),
+    )
+
+    await logoService.generate({
+      prompt: 'a coffee cup logo',
+      layout: ['square'],
+      colors: {
+        background: '#FAF8F5',
+        primary: '#B96B3C',
+        secondary: '#2A4D3E',
+        accent: '#F2C94C',
+      },
+      appId: 'a',
+      customerId: 'c',
+      budgetUserId: 'b',
+    })
+
+    const [, opts] = fetchMock.mock.calls[0]
+    expect(JSON.parse(opts.body)).toEqual({
+      prompt: 'a coffee cup logo',
+      layout: ['square'],
+      colors: {
+        background: '#FAF8F5',
+        primary: '#B96B3C',
+        secondary: '#2A4D3E',
+        accent: '#F2C94C',
+      },
+    })
+  })
+
+  it('omits the colors key when colors is absent or empty', async () => {
+    fetchMock.mockResolvedValue(
+      apiResponse({ id: 's', sessionId: 's', logos: [{ ...SQUARE_API_LOGO }] }),
+    )
+
+    await logoService.generate({
+      prompt: 'logo',
+      layout: ['square'],
+      colors: {},
+      appId: 'a',
+      customerId: 'c',
+      budgetUserId: 'b',
+    })
+
+    const [, opts] = fetchMock.mock.calls[0]
+    expect(JSON.parse(opts.body)).not.toHaveProperty('colors')
+  })
+
   it('maps a 402 response to BudgetExceededError', async () => {
     fetchMock.mockResolvedValueOnce(apiResponse('budget gone', { status: 402 }))
 

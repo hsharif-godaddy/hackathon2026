@@ -651,6 +651,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 agentsAppContext.metadata.marketingCampaignsEnabled = true
               }
 
+              if (agentContext?.logoBrandColorsEnabled) {
+                agentsAppContext.metadata.logoBrandColorsEnabled = true
+              }
+
               // Resolve app base URL once for tools like httpCheck.
               // Appends the active share token so the dev-supervisor proxy
               // allows requests without requiring a browser cookie.
@@ -1287,6 +1291,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             // client-supplied metadata.market.
             market: agentContext.market,
             marketingCampaignsEnabled: agentContext.marketingCampaignsEnabled ?? false,
+            logoBrandColorsEnabled: agentContext.logoBrandColorsEnabled ?? false,
             ...(agentContext.customerId && { customerId: agentContext.customerId }),
           }
         }

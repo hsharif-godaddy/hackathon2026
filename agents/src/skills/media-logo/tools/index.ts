@@ -27,6 +27,7 @@ import {
   logoService,
   type LogoLayout,
   type LayoutUrls,
+  type LogoColors,
   type LogoSessionResponse,
 } from '../../../services/LogoService.js';
 
@@ -148,6 +149,36 @@ function buildPaletteSuffix(palette: Partial<Record<CorePaletteKey, string>>): s
   }
   if (parts.length === 0) return '';
   return ` Brand colors: ${parts.join(', ')}.`;
+}
+
+/**
+ * Color roles sent to the logo API as structured params. `background` is the
+ * surface the logo lands on (header/footer use `bg-background`); the rest are
+ * brand colors to harmonize with. `foreground` is intentionally excluded — the
+ * logo's reversed/solid variants handle light/dark polarity, so the exact
+ * background hex is the only contrast signal the API needs.
+ */
+const STRUCTURED_COLOR_KEYS: readonly (keyof LogoColors)[] = [
+  'primary',
+  'secondary',
+  'accent',
+  'background',
+] as const;
+
+/**
+ * Build the structured `colors` payload from the resolved palette. Sends
+ * whatever is populated (send-if-present) and returns undefined when none of
+ * the roles resolved, so the caller can omit the field entirely.
+ */
+function buildLogoColors(
+  palette: Partial<Record<CorePaletteKey, string>>,
+): LogoColors | undefined {
+  const out: LogoColors = {};
+  for (const k of STRUCTURED_COLOR_KEYS) {
+    const v = palette[k];
+    if (v) out[k] = v;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function assembleFinalPrompt(agentPrompt: string, suffix: string, appId: string): string {
@@ -420,6 +451,23 @@ export const generateLogoTool: SkillToolDefinition = {
     const suffix = buildPaletteSuffix(palette);
     const finalPrompt = assembleFinalPrompt(input.prompt, suffix, appId);
 
+    // Structured brand colors, gated by the `appbuilder-logo-brand-colors`
+    // switchboard flag (surfaced on context.metadata via the agent JWT; default
+    // off) until the logo API accepts them. The prose suffix above is unaffected
+    // and remains the functional path. Send-if-present: omitted when nothing
+    // resolved.
+    const logoBrandColorsEnabled =
+      (context as { metadata?: { logoBrandColorsEnabled?: boolean } })?.metadata
+        ?.logoBrandColorsEnabled === true;
+    const colors = logoBrandColorsEnabled ? buildLogoColors(palette) : undefined;
+    if (colors) {
+      logger.info('skill.media-logo.colors.resolved', {
+        appId,
+        keys: Object.keys(colors),
+        hasBackground: Boolean(colors.background),
+      });
+    }
+
     const layouts = expandLayouts(input.layout);
     const reference = await resolveReferenceUrl(appId, input.referenceUrl, layouts);
     const referenceUrl = reference.url;
@@ -442,6 +490,7 @@ export const generateLogoTool: SkillToolDefinition = {
         prompt: finalPrompt,
         layout: layouts,
         ...(referenceUrl !== undefined && { referenceUrl }),
+        ...(colors && { colors }),
         appId,
         customerId,
         budgetUserId,

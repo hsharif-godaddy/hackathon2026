@@ -45,6 +45,7 @@ export interface JWTClaims {
   market?: string; // User's resolved market locale (e.g. 'en-US', 'es-MX') from gasket visitor
   marketingCampaignsEnabled?: boolean; // When true, enable Marketing Campaigns feature (switchboard: appbuilder-marketing-campaigns)
   asmDualWriteEnabled?: boolean; // When true, agents service mirrors SQLite conversation writes to ASM (switchboard: appbuilder-asm-dual-write)
+  logoBrandColorsEnabled?: boolean; // When true, send structured brand colors to the logo API (switchboard: appbuilder-logo-brand-colors)
 }
 
 /**
