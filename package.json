@@ -110,13 +110,13 @@
       "dotenv": "17.2.3",
       "eslint": "9.28.0",
       "glob": ">=10.5.0 <11 || >=11.1.0",
-      "hono": "4.12.16",
+      "hono": "4.12.21",
       "js-cookie": ">=3.0.7",
       "jsdom": "26.1.0",
       "langsmith": "0.6.1",
       "next": "16.2.6",
       "prettier": "3.4.2",
-      "qs": "6.14.1",
+      "qs": "6.15.2",
       "react": "19.1.0",
       "react-dom": "19.1.0",
       "vite": "6.4.2",
@@ -158,7 +158,11 @@
       "protobufjs": ">=8.0.2",
       "@opentelemetry/sdk-node": ">=0.217.0",
       "@opentelemetry/auto-instrumentations-node": ">=0.75.0",
-      "@opentelemetry/exporter-prometheus": ">=0.217.0"
+      "@opentelemetry/exporter-prometheus": ">=0.217.0",
+      "postcss": ">=8.5.10 <9",
+      "prismjs": ">=1.30.0 <2",
+      "shell-quote": ">=1.8.4 <2",
+      "ws": ">=8.21.0 <9"
     },
     "onlyBuiltDependencies": [
       "better-sqlite3"
