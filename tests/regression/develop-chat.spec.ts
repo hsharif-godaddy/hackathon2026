@@ -330,7 +330,7 @@ test.describe('Develop Page', () => {
     await headerPublishButton.click({ force: true });
 
     const publishPopover = page.locator('[data-slot="popover-content"][data-state="open"]');
-    await publishPopover.getByText(/builder_publish_popover_title|Publish Your App/i).waitFor({
+    await publishPopover.getByText(/builder_publish_popover_title|Publish your (app|project)/i).waitFor({
       state: 'visible',
       timeout: DEFAULT_TIMEOUT,
     });
@@ -346,7 +346,7 @@ test.describe('Develop Page', () => {
       /publishing|builder_publish_button_publishing/i,
       { timeout: DEFAULT_TIMEOUT },
     );
-    await expect(publishPopover.getByText(/builder_publish_popover_title|Publish Your App/i)).toBeVisible({
+    await expect(publishPopover.getByText(/builder_publish_popover_title|Publish your (app|project)/i)).toBeVisible({
       timeout: DEFAULT_TIMEOUT,
     });
     console.log('  ✓ Publish started, popover remains open');

@@ -219,7 +219,7 @@ test.describe('Publish Flow', () => {
     await publishButton.click();
 
     await expect(
-      page.getByText(/builder_publish_popover_title|Publish Your App/i),
+      page.getByText(/builder_publish_popover_title|Publish your (app|project)/i),
     ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
     const preLaunchCheck = page.getByRole('button', {
@@ -416,7 +416,7 @@ test.describe('Publish Flow', () => {
     console.log('🧪 Step 3: Publish with DNS checkbox unchecked should send dnsUpdateConsent=false...');
     await publishTrigger.click();
     const publishDialog = page.getByRole('dialog');
-    await expect(publishDialog.getByText(/builder_publish_popover_title|Publish Your App/i)).toBeVisible({
+    await expect(publishDialog.getByText(/builder_publish_popover_title|Publish your (app|project)/i)).toBeVisible({
       timeout: DEFAULT_TIMEOUT,
     });
     // The dialog's inner Publish button is disabled while
@@ -441,7 +441,7 @@ test.describe('Publish Flow', () => {
     lastDnsConsent = undefined;
     await expect(publishTrigger).not.toBeDisabled({ timeout: DEPLOYMENT_TIMEOUT_MS });
     await publishTrigger.click();
-    await expect(publishDialog.getByText(/builder_publish_popover_title|Publish Your App/i)).toBeVisible({
+    await expect(publishDialog.getByText(/builder_publish_popover_title|Publish your (app|project)/i)).toBeVisible({
       timeout: DEFAULT_TIMEOUT,
     });
     await expect(dialogPublishButton).toBeEnabled({ timeout: DEPLOYMENT_TIMEOUT_MS });
