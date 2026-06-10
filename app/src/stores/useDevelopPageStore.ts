@@ -181,6 +181,7 @@ const createDefaultPublishState = () => {
     showPostPublishFeatureSelection: false,
     postPublishFeatureSelectionNonce: 0,
     isSecurityAnalysisRunning: false,
+    securityAnalysisResult: null as 'safe' | 'issues' | null,
     // Agent-initiated publish confirmation (human-in-the-loop gate). Only the agent's
     // publish path consults this; the UI Publish button uses usePublishApp and bypasses it.
     agentPublishConfirmation: 'idle' as 'idle' | 'pending' | 'approved' | 'cancelled',
@@ -286,6 +287,7 @@ interface DevelopPageStore {
     showPostPublishFeatureSelection: boolean
     postPublishFeatureSelectionNonce: number
     isSecurityAnalysisRunning: boolean
+    securityAnalysisResult: 'safe' | 'issues' | null
     // Agent-initiated publish confirmation: 'pending' shows the approval modal;
     // 'approved'/'cancelled' are read by the awaiting publishAction, then reset to 'idle'.
     agentPublishConfirmation: 'idle' | 'pending' | 'approved' | 'cancelled'
@@ -402,6 +404,7 @@ interface DevelopPageStore {
     showPostPublishFeatureSelection: boolean
     postPublishFeatureSelectionNonce: number
     isSecurityAnalysisRunning: boolean
+    securityAnalysisResult: 'safe' | 'issues' | null
     agentPublishConfirmation: 'idle' | 'pending' | 'approved' | 'cancelled'
   }
 
@@ -416,6 +419,7 @@ interface DevelopPageStore {
   hasGoneLive: (appId: string) => boolean
   setPostPublishFeatureSelection: (appId: string, show: boolean) => void
   setSecurityAnalysisRunning: (appId: string, isRunning: boolean) => void
+  setSecurityAnalysisResult: (appId: string, result: 'safe' | 'issues' | null) => void
   acquireSecurityAnalysisLock: (appId: string) => boolean
 
   // Page loading orchestration
@@ -1244,6 +1248,13 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].isSecurityAnalysisRunning = isRunning;
+    }),
+
+    setSecurityAnalysisResult: (appId: string, result: 'safe' | 'issues' | null) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState();
+      }
+      state.publishStates[appId].securityAnalysisResult = result;
     }),
 
     acquireSecurityAnalysisLock: (appId: string): boolean => {

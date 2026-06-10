@@ -54,6 +54,7 @@ import { useHivemind } from '@/hooks/useHivemind'
 import { useImageReadiness } from '@/hooks/useImageReadiness'
 import { useInboxAccount } from '@/hooks/useInboxAccount'
 import { usePaywallDeeplinkWithStore } from '@/hooks/usePaywallDeeplinkWithStore'
+import { useSettingsNotifications } from '@/hooks/useSettingsNotifications'
 import { prefetchSubscription, useSubscription } from '@/hooks/useSubscription'
 import { useIsRenewalPolling } from '@/hooks/useSubscriptionRenewal'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -74,6 +75,7 @@ import {
 } from '@/lib/logo-designer-preview-switch-storage'
 import { getEffectivePlan, PAYWALL_ITC } from '@/lib/paywall/shared'
 import { logger } from '@/lib/request-context'
+import { clearSettingsNotification } from '@/lib/settings-notifications-storage'
 import { claimTodoListHandoff, releaseTodoListHandoff } from '@/lib/todo-list-handoff-dedupe'
 import { cn } from '@/lib/utils'
 import { appService, type FormatOverrideUpdateData, gitHistoryFailureHttpStatus } from '@/services/AppService'
@@ -246,6 +248,7 @@ function DevelopPageContent() {
 
   // Deep-link the Inbox view via ?view=inbox (see useView).
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button')
+  const isSecurityScanUiEnabled = useSwitchboard('appbuilder-security-scan-ui') === true
   const getViewAvailability = useCallback(
     (mode: ViewMode): ViewAvailability => {
       if (mode === ViewMode.INBOX) {
@@ -354,7 +357,19 @@ function DevelopPageContent() {
   const isChatPaneCollapsed = useDevelopPageStore((state) => state.isChatPaneCollapsed)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
   const mobileMode = useDevelopPageStore((state) => state.mobileMode)
-  const { activeChatTab, setActiveChatTab } = useChatTabs()
+  const { activeChatTab, setActiveChatTab, activeSettingsSection } = useChatTabs()
+  const { sections: notifiedSettingsSections } = useSettingsNotifications(isSecurityScanUiEnabled ? appId : undefined)
+
+  // Visiting a Settings sub-section clears its "action needed" dot (session-scoped).
+  // Generic across sections; notifiedSettingsSections in deps also catches a notification
+  // that arrives while the user is already viewing that section.
+  useEffect(() => {
+    if (!appId) return
+    if (activeChatTab === ChatTab.SETTINGS && notifiedSettingsSections.has(activeSettingsSection)) {
+      clearSettingsNotification(appId, activeSettingsSection)
+    }
+  }, [appId, activeChatTab, activeSettingsSection, notifiedSettingsSections])
+
   const isPreviewVisible = useDevelopPageStore((state) => state.isPreviewVisible)
   const loadingPhase = useDevelopPageStore((state) => state.loadingPhase)
   const openFeedbackId = useDevelopPageStore((state) => state.openFeedbackId)

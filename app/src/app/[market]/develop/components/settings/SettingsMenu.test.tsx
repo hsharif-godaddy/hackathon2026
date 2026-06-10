@@ -18,6 +18,7 @@ vi.mock('@/app/[market]/develop/components/utils', () => ({
 const mockDevelopStore = {
   openFeedbackModal: vi.fn(),
   isMobile: false,
+  publishStates: {} as Record<string, { isSecurityAnalysisRunning?: boolean }>,
 };
 
 vi.mock('@/stores/useDevelopPageStore', () => ({

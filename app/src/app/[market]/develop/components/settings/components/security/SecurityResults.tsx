@@ -5,6 +5,7 @@ import Box from "@ux/box";
 import Button from "@ux/button";
 import Card from "@ux/card";
 import Growl from '@ux/growl';
+import InfoIcon from '@ux/icon/information';
 import ShieldIcon from '@ux/icon/shield-check-filled';
 import Tag from '@ux/tag';
 import text from '@ux/text';
@@ -14,6 +15,7 @@ import { ChatTab } from '@/app/[market]/develop/components/types';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { type StructuredVulnerability } from '@/app/api/testpilot/transform-scan-result';
 import { useChatTabs } from '@/hooks/useChatTabs';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
 import { type TestPilotRunResult } from '@/lib/testpilot';
@@ -246,6 +248,7 @@ export default function SecurityResults({
   const t = useTranslations();
   const router = useRouter();
   const appId = useAppIdFromParams();
+  const isSecurityScanUiEnabled = useSwitchboard('appbuilder-security-scan-ui') === true;
   const { activeChatTab } = useChatTabs();
   const [checkedVulnerabilities, setCheckedVulnerabilities] = useState<Set<string>>(new Set());
   const [isCreatingTodoList, setIsCreatingTodoList] = useState(false);
@@ -454,10 +457,20 @@ export default function SecurityResults({
         <Box gap="md">
           <Box gap="sm">
             <div className="flex min-w-0 flex-col gap-2 @md:flex-row @md:items-center @md:justify-between @md:gap-4">
-              <div className="flex min-w-0 flex-row flex-wrap items-center gap-0.5">
-                <text.h3 as="title" className="min-w-0" size={2}>
-                  {t('builder_settings_security_results_title')} ({visibleVulnerabilities.length})
-                </text.h3>
+              <div className="flex min-w-0 flex-col gap-1">
+                <div className="flex min-w-0 flex-row flex-wrap items-center gap-0.5">
+                  <text.h3 as="title" className="min-w-0" size={2}>
+                    {t('builder_settings_security_results_title')} ({visibleVulnerabilities.length})
+                  </text.h3>
+                </div>
+                {isSecurityScanUiEnabled && (
+                  <div className="flex min-w-0 flex-row items-center gap-1 mb-2">
+                    <InfoIcon className="size-2.5 shrink-0 text-intents-ux-textSubtle-textColor" />
+                    <text.p emphasis="passive" size={-1} className="min-w-0">
+                      {t('builder_settings_security_fix_credits_note')}
+                    </text.p>
+                  </div>
+                )}
               </div>
               <div className="grid min-w-0 w-full grid-cols-2 gap-2 @md:flex @md:w-auto @md:flex-row @md:flex-nowrap @md:justify-end">
                 <Button

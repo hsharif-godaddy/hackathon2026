@@ -12,11 +12,16 @@ function isErrorResult(r: CodeResult): r is { error: string; status: 'failed' } 
   return 'error' in r;
 }
 
+interface TriggerAnalysisOptions {
+  onSafe?: () => void;
+  onIssuesFound?: () => void;
+}
+
 export function useTriggerSecurityAnalysis() {
   const setSecurityAnalysisRunning = useDevelopPageStore((s) => s.setSecurityAnalysisRunning);
   const acquireSecurityAnalysisLock = useDevelopPageStore((s) => s.acquireSecurityAnalysisLock);
 
-  const triggerAnalysis = useCallback((appId: string, url?: string): void => {
+  const triggerAnalysis = useCallback((appId: string, url?: string, options?: TriggerAnalysisOptions): void => {
     if (!acquireSecurityAnalysisLock(appId)) {
       logger.info('security-analysis.trigger.skipped', { appId, reason: 'already-running' });
       return;
@@ -45,6 +50,11 @@ export function useTriggerSecurityAnalysis() {
           const summary = summarizeScan(codeResult, appId);
           shipAnalyticsLog('security.scan_completed', summary);
           logger.info('security-analysis.trigger.completed', summary);
+          if (summary.actionableIssues === 0) {
+            options?.onSafe?.();
+          } else {
+            options?.onIssuesFound?.();
+          }
         }
 
         setSecurityAnalysisRunning(appId, false);

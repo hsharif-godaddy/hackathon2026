@@ -61,6 +61,7 @@ const mockDevelopStore = {
   setIsPublishing: vi.fn(),
   setPublishError: vi.fn(),
   clearPublishStatus: vi.fn(),
+  setSecurityAnalysisResult: vi.fn(),
   setDeploymentsRefetch: vi.fn(),
   setFirstPublishDeployPending: vi.fn(),
   openFeedbackModal: vi.fn(),

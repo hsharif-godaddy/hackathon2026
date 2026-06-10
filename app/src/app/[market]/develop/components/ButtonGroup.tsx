@@ -79,6 +79,10 @@ interface ButtonGroupItemProps extends Omit<HTMLMotionProps<'button'>, 'onClick'
   onClick?: () => void;
   /** When true, label stays visible for inactive items (e.g. header view toggles). */
   showLabelAlways?: boolean;
+  /** Optional trailing adornment (e.g. a background-activity spinner) rendered to the right of the label. */
+  adornment?: React.ReactNode;
+  /** Optional badge (e.g. a notification dot) overhanging the top-right corner of the button. */
+  cornerBadge?: React.ReactNode;
   tooltipDescription?: string | React.ReactNode;
   'data-eid'?: string;
 }
@@ -91,6 +95,8 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
     disabled,
     onClick,
     showLabelAlways = false,
+    adornment,
+    cornerBadge,
     tooltipDescription = null,
     'data-eid': dataEid,
     className: extraClassName,
@@ -137,7 +143,7 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
     </Tooltip>
   );
 
-  return (
+  const button = (
     <motion.button
       type="button"
       role={isControlled && context?.role === 'radiogroup' ? "radio" : undefined}
@@ -184,8 +190,22 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
           )}
         </AnimatePresence>
       )}
+      {adornment && <span className="ml-1 flex shrink-0 items-center">{adornment}</span>}
       {!isActive && showTooltip && tooltipComponent}
     </motion.button>
+  );
+
+  if (!cornerBadge) {
+    return button;
+  }
+
+  return (
+    <span className="relative inline-flex shrink-0">
+      {button}
+      <span className="pointer-events-none absolute -right-px -top-px z-10 flex items-center">
+        {cornerBadge}
+      </span>
+    </span>
   );
 });
 

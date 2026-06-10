@@ -8,12 +8,14 @@ import Box from '@ux/box';
 import Button from '@ux/button';
 import Growl from '@ux/growl';
 import AlertIcon from '@ux/icon/alert';
+import ArrowRightIcon from '@ux/icon/arrow-right';
 import CheckmarkIcon from '@ux/icon/checkmark';
 import ChevronRightIcon from '@ux/icon/chevron-right';
 import CloudUploadIcon from '@ux/icon/cloud-upload';
 import CommentsIcon from '@ux/icon/comments';
 import HistoryIcon from '@ux/icon/history';
 import InlineEditIcon from '@ux/icon/inline-edit';
+import ShieldCheckIcon from '@ux/icon/shield-check';
 import WindowNewIcon from '@ux/icon/window-new';
 import Spinner from '@ux/spinner';
 import text from '@ux/text';
@@ -45,6 +47,7 @@ import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { openPostPublishFeatureSelectionInChat } from '@/lib/post-publish-feature-selection';
 import { getPublishLimit } from '@/lib/publish-limit';
 import { logger } from '@/lib/request-context';
+import { markSettingsNotification } from '@/lib/settings-notifications-storage';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { Separator } from '@/lib/shadcn/separator';
 import { PublishComplianceBlockReason } from '@/lib/subscription';
@@ -148,6 +151,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const isPostPublishFeatureSelectionEnabled = useSwitchboard('appbuilder-post-publish-feature-selection');
   const isGoLiveFeatureEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE) === true;
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
+  const isSecurityScanUiEnabled = useSwitchboard('appbuilder-security-scan-ui') === true;
 
   const isChatToolbar = location === 'develop.chat_toolbar';
 
@@ -155,6 +159,57 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const [pendingOpenAfterUpgrade, setPendingOpenAfterUpgrade] = useState(false);
   const [isAgentInitiatedPublish, setIsAgentInitiatedPublish] = useState(false);
   const { triggerAnalysis } = useTriggerSecurityAnalysis();
+  const isSecurityAnalysisRunning = useDevelopPageStore(
+    (s) => !!(s.currentAppId && s.publishStates[s.currentAppId]?.isSecurityAnalysisRunning)
+  );
+  // Persisted scan outcome for the current app: drives the publish-footer "completed" state.
+  // Reset to null on the next publish so the footer reverts to its pre-publish message.
+  const securityAnalysisResult = useDevelopPageStore(
+    (s) => (s.currentAppId ? s.publishStates[s.currentAppId]?.securityAnalysisResult ?? null : null)
+  );
+  const setSecurityAnalysisResult = useDevelopPageStore((state) => state.setSecurityAnalysisResult);
+  // The scan can finish before the publish button leaves its "Publishing…" state. Hold the
+  // result here and let an effect flush it once publish is fully resolved (see below), so the
+  // security growl never overlaps the still-spinning publish button.
+  const [pendingSecurityGrowl, setPendingSecurityGrowl] = useState<'safe' | 'issues' | null>(null);
+
+  const showSecuritySafeGrowl = useCallback(() => {
+    Growl.addGrowlMessage({
+      id: 'security-scan-safe',
+      title: t('builder_security_scan_complete_safe'),
+      emphasis: 'success',
+    });
+  }, [t]);
+
+  const showSecurityIssuesGrowl = useCallback(() => {
+    Growl.addGrowlMessage({
+      id: 'security-scan-issues',
+      title: t('builder_security_scan_complete_title'),
+      emphasis: 'warning',
+      children: (
+        <Box orientation='vertical' gap='md' className='min-w-[200px]'>
+          <text.p size={-1}>
+            {t('builder_security_scan_complete_subtitle')}
+          </text.p>
+          <Separator className='opacity-20' />
+          <Box orientation='vertical' gap='sm' data-partial='inverted'>
+            <Button
+              design='primary'
+              type='button'
+              size='sm'
+              text={t('builder_security_scan_view_fixes')}
+              stretch
+              onClick={() => {
+                Growl.removeGrowlMessage('security-scan-issues');
+                setActiveChatTab(ChatTab.SETTINGS);
+                setActiveSettingsSection(SettingsSection.SECURITY);
+              }}
+            />
+          </Box>
+        </Box>
+      ),
+    });
+  }, [t, setActiveChatTab, setActiveSettingsSection]);
 
   const handlePaywallPurchaseSuccess = useCallback(async () => {
     setPendingOpenAfterUpgrade(true);
@@ -405,6 +460,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
       clearPublishStatus(currentAppId);
       setIsPublishing(currentAppId, true);
+      // Clear any prior scan outcome so the footer reverts to its pre-publish state for this run.
+      setSecurityAnalysisResult(currentAppId, null);
 
       // publish.attempt: fires when user passes all gates
       try {
@@ -420,7 +477,17 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       });
       JourneyTracker.current()?.trackMilestone('site_published', { appId: currentAppId })
 
-      triggerAnalysis(currentAppId, site?.preview_url ?? undefined);
+      triggerAnalysis(currentAppId, site?.preview_url ?? undefined, {
+        onSafe: () => {
+          setSecurityAnalysisResult(currentAppId, 'safe');
+          setPendingSecurityGrowl('safe');
+        },
+        onIssuesFound: () => {
+          markSettingsNotification(currentAppId, SettingsSection.SECURITY);
+          setSecurityAnalysisResult(currentAppId, 'issues');
+          setPendingSecurityGrowl('issues');
+        },
+      });
       // Note: usePublishApp hook polls until deployment appears and triggers refetch
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -432,7 +499,24 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       setPublishError(currentAppId, true);
       setIsPublishing(currentAppId, false);
     }
-  }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, publishMutation, runGate, triggerAnalysis]);
+  }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, publishMutation, runGate, triggerAnalysis, setSecurityAnalysisResult]);
+
+  // Flush the deferred security growl only once publish is fully resolved.
+  useEffect(() => {
+    // TEMP (re-enable in follow-up PR): the security-scan result growl is disabled because it
+    // overlaps the first-publish congrats / publish-success modals and confuses customers. The
+    // pending-intent plumbing and growl builders below are intentionally kept so flipping this
+    // flag back to true fully restores the behavior.
+    const SECURITY_GROWL_ENABLED: boolean = false;
+    if (!SECURITY_GROWL_ENABLED) return;
+    if (!pendingSecurityGrowl || isPublishingOrDeploying) return;
+    if (pendingSecurityGrowl === 'safe') {
+      showSecuritySafeGrowl();
+    } else {
+      showSecurityIssuesGrowl();
+    }
+    setPendingSecurityGrowl(null);
+  }, [pendingSecurityGrowl, isPublishingOrDeploying, showSecuritySafeGrowl, showSecurityIssuesGrowl]);
 
   const handleFixBuildError = useCallback(() => {
     if (!currentAppId || !buildErrorDetails) return;
@@ -601,6 +685,12 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     }
   }, [clickContext, handleMobileModeChange, handleViewModeChange, hasUnsavedChanges, isMobile, isTopLevelDomainEnabled, location, setActiveChatTab, setActiveSettingsSection, setOpen]);
 
+  const handleViewSecurityFixes = useCallback(() => {
+    setOpen(false);
+    setActiveChatTab(ChatTab.SETTINGS);
+    setActiveSettingsSection(SettingsSection.SECURITY);
+  }, [setOpen, setActiveChatTab, setActiveSettingsSection]);
+
   const handleGoLiveInChat = useCallback(() => {
     if (!currentAppId || !isGoLiveFeatureEnabled || isPreLaunchCheckFromPublishDisabled) {
       return;
@@ -715,6 +805,14 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   };
 
   const lastDeployedTimeAgo = lastDeployedDate ? timeAgo(lastDeployedDate) : null;
+
+  // Publish-footer security state: a running scan wins; a finished scan that found issues shows the
+  // "review fixes" prompt; otherwise the neutral pre-publish message.
+  const securityFooterVariant: 'running' | 'issues' | 'idle' = isSecurityAnalysisRunning
+    ? 'running'
+    : securityAnalysisResult === 'issues'
+      ? 'issues'
+      : 'idle';
 
   return (
     <>
@@ -912,6 +1010,44 @@ export default function AppPublish({ location = 'develop' }: { location?: string
                 size='sm'
                 text={t('builder_settings_nav_feedback')}
               />
+            )}
+
+            {isSecurityScanUiEnabled && (
+              <>
+                <Separator />
+                <div className='-mx-3 -mb-3 px-3 py-3 bg-intents-ux-boxLowContrast-backgroundColor rounded-b-md flex items-start gap-2'>
+                  <div className='shrink-0 mt-0.5'>
+                    {securityFooterVariant === 'running' ? (
+                      <Spinner size='sm' data-partial='componentAiro' />
+                    ) : securityFooterVariant === 'issues' ? (
+                      <AlertIcon className='size-[1.25em] text-intents-ux-feedbackHighContrastWarning-feedbackColor' />
+                    ) : (
+                      <ShieldCheckIcon className='size-[1.25em] text-intents-ux-textSubtle-textColor' />
+                    )}
+                  </div>
+                  {securityFooterVariant === 'issues' ? (
+                    <Box orientation='vertical' gap='sm' className='min-w-0'>
+                      <text.p size={-1}>
+                        {t('builder_security_scan_complete_issues')}
+                      </text.p>
+                      <button
+                        type='button'
+                        onClick={handleViewSecurityFixes}
+                        className='inline-flex items-center gap-0.5 self-start text-intents-ux-link-foregroundColor hover:cursor-pointer'
+                      >
+                        <text.span size={-1}>{t('builder_security_scan_view_fixes')}</text.span>
+                        <ArrowRightIcon className='size-2' />
+                      </button>
+                    </Box>
+                  ) : (
+                    <text.p size={-1}>
+                      {securityFooterVariant === 'running'
+                        ? t('builder_security_scan_running_message')
+                        : t('builder_security_scan_prepublish_message')}
+                    </text.p>
+                  )}
+                </div>
+              </>
             )}
           </div>
         </PopoverContent>

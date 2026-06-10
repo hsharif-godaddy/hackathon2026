@@ -5,9 +5,11 @@ import Box from '@ux/box';
 import CheckmarkIcon from '@ux/icon/checkmark';
 import CopyIcon from '@ux/icon/copy';
 import Modal from '@ux/modal';
+import Spinner from '@ux/spinner';
 import text from '@ux/text';
 
 import IconButton from '@/app/[market]/develop/components/IconButton';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from '@/stores/useSiteStore';
@@ -20,10 +22,14 @@ export interface FirstPublishCongratsModalProps {
 
 export default function FirstPublishCongratsModal({ appId }: FirstPublishCongratsModalProps) {
   const t = useTranslations();
+  const isSecurityScanUiEnabled = useSwitchboard('appbuilder-security-scan-ui') === true;
   const showFirstPublishCongrats = useDevelopPageStore(
     (state) => state.getPublishState(appId).showFirstPublishCongrats
   );
   const setShowFirstPublishCongrats = useDevelopPageStore((state) => state.setShowFirstPublishCongrats);
+  const isSecurityAnalysisRunning = useDevelopPageStore(
+    (state) => state.publishStates[appId]?.isSecurityAnalysisRunning ?? false
+  );
 
   const site = useSiteStore((state) => state.getSite(appId));
   const fqdn = resolveSiteFqdn(site) || '';
@@ -140,6 +146,15 @@ export default function FirstPublishCongratsModal({ appId }: FirstPublishCongrat
             inverted
           />
         </Box>
+
+        {isSecurityScanUiEnabled && isSecurityAnalysisRunning && (
+          <Box orientation='horizontal' blockAlignChildren='start' gap='sm' className='w-full pt-10'>
+            <Spinner size='sm' data-partial='componentAiro' className='shrink-0' />
+            <text.p size={-1}>
+              {t('builder_security_scan_running_in_progress')}
+            </text.p>
+          </Box>
+        )}
       </Box>
     </Modal>
   );

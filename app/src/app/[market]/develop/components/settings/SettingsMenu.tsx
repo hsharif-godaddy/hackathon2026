@@ -1,14 +1,19 @@
 'use client';
 
+import clsx from 'clsx';
 import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import Button from '@ux/button';
 import MenuIcon from '@ux/icon/menu';
+import Spinner from '@ux/spinner';
+import text from '@ux/text';
 
 import { ButtonGroup } from '@/app/[market]/develop/components/ButtonGroup';
 import { useSettingsNavItems } from '@/app/[market]/develop/components/settings/useSettingsNavItems';
 import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { useChatTabs } from '@/hooks/useChatTabs';
+import { useSettingsNotifications } from '@/hooks/useSettingsNotifications';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import {
   Popover,
@@ -34,7 +39,29 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
   const anchorRef = useRef<HTMLButtonElement>(null);
   const isMobile = useDevelopPageStore((state) => state.isMobile);
 
+  const isSecurityScanUiEnabled = useSwitchboard('appbuilder-security-scan-ui') === true;
+
+  // Background tasks owned by settings sub-tabs surface a spinner on the toolbar button.
+  // For now only the security analysis triggers it; OR additional sources in here as they land.
+  const isSecurityAnalysisRunning = useDevelopPageStore(
+    (state) => !!(appId && state.publishStates[appId]?.isSecurityAnalysisRunning)
+  );
+  const isBackgroundActivityRunning = isSecurityScanUiEnabled && isSecurityAnalysisRunning;
+
   const { activeChatTab, activeSettingsSection, setActiveSettingsSection, setActiveChatTab } = useChatTabs();
+
+  // Session-scoped "action needed" dots, raised when a settings sub-task completes (e.g. security scan)
+  // and cleared once the user visits that section. Drives both the toolbar corner badge and per-item dots.
+  // Pass undefined when the feature is off so the hook returns an empty set and no dots are shown.
+  const settingsNotifications = useSettingsNotifications(isSecurityScanUiEnabled ? appId : undefined);
+  // Toolbar corner badge.
+  const notificationDot = (
+    <span className="size-1 shrink-0 rounded-full bg-intents-ux-feedbackHighContrastCritical-feedbackColor" />
+  );
+  // Popover item dot: a flex-item ::after pinned immediately to the right of the button label,
+  // so it tracks any label width and survives the button's full-width row without overlay math.
+  const itemDotClass =
+    "after:ml-2 after:inline-block after:size-1 after:shrink-0 after:self-center after:rounded-full after:bg-intents-ux-feedbackHighContrastCritical-feedbackColor after:content-['']";
 
   useImperativeHandle(ref, () => ({
     openPopover: () => setOpen(true),
@@ -60,6 +87,12 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
           ref={anchorRef}
           value={ChatTab.SETTINGS}
           icon={<MenuIcon className="size-2.5" />}
+          adornment={
+            isBackgroundActivityRunning ? (
+              <Spinner size="sm" data-partial="componentAiro" className="size-2.5 shrink-0" />
+            ) : undefined
+          }
+          cornerBadge={settingsNotifications.hasAny ? notificationDot : undefined}
           label={t('builder_chat_toolbar_button_settings')}
           onClick={() => setOpen(prev => !prev)}
           aria-expanded={open}
@@ -83,26 +116,37 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
       >
         <div className="flex flex-col gap-0.5">
           {items.map((item) => (
-            <Button
-              key={item.id}
-              design="option"
-              size="sm"
-              active={isOnSettingsTab && activeSettingsSection === item.id}
-              icon={item.icon}
-              text={item.label}
-              disabled={item.disabled}
-              className="!justify-start"
-              data-testid={item.testId}
-              onClick={() => {
-                logClickEvent(`develop.settings_menu.${item.id}`, clickContext)();
-                if (item.onClick) {
-                  item.onClick();
-                  setOpen(false);
-                } else {
-                  handleNavigate(item.id);
-                }
-              }}
-            />
+            <div key={item.id} className="flex flex-col">
+              <Button
+                design="option"
+                size="sm"
+                active={isOnSettingsTab && activeSettingsSection === item.id}
+                icon={item.icon}
+                text={item.label}
+                disabled={item.disabled}
+                className={clsx('!justify-start', settingsNotifications.has(item.id) && itemDotClass)}
+                data-testid={item.testId}
+                onClick={() => {
+                  logClickEvent(`develop.settings_menu.${item.id}`, clickContext)();
+                  if (item.onClick) {
+                    item.onClick();
+                    setOpen(false);
+                  } else {
+                    handleNavigate(item.id);
+                  }
+                }}
+              />
+              {item.loadingLabel && (
+                <text.span
+                  size={-1}
+                  className="flex items-center gap-1 pb-1 text-intents-ux-textSubtle-textColor"
+                  style={{ paddingInlineStart: 'calc(1rem + 2em)' }}
+                >
+                  <Spinner size="sm" data-partial="componentAiro" className="shrink-0" />
+                  {item.loadingLabel}
+                </text.span>
+              )}
+            </div>
           ))}
         </div>
       </PopoverContent>

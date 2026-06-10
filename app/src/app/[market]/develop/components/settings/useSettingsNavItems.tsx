@@ -29,6 +29,11 @@ export interface SettingsNavItem {
   disabled: boolean;
   onClick?: () => void;
   testId?: string;
+  /**
+   * When set, renders an inline spinner + this label beneath the item to signal a
+   * background task owned by that section is in progress (e.g. the security scan).
+   */
+  loadingLabel?: string;
 }
 
 /**
@@ -39,6 +44,9 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const t = useTranslations();
   const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal);
   const isMobile = useDevelopPageStore((state) => state.isMobile);
+  const isSecurityScanRunning = useDevelopPageStore(
+    (state) => !!(state.currentAppId && state.publishStates[state.currentAppId]?.isSecurityAnalysisRunning)
+  );
 
   const project = useSwitchboard('appbuilder-settings-project');
   const domain = useSwitchboard('appbuilder-settings-domain');
@@ -84,6 +92,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       label: t('builder_settings_nav_security'),
       icon: <LockedIcon />,
       disabled: security !== true,
+      loadingLabel: isSecurityScanRunning ? t('builder_security_scan_running_status') : undefined,
     },
     {
       id: SettingsSection.DATABASE,
