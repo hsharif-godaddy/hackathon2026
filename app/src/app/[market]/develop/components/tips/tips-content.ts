@@ -16,6 +16,32 @@ export const tips: string[] = [
 ]
 
 /**
+ * Tip description i18n keys for the chat thinking-state tips.
+ * NOTE: These keys are resolved dynamically via t(selectedKey) in ThinkingTip.tsx,
+ * so the i18n key validator cannot detect them statically. All keys must be
+ * manually confirmed in the i18n catalog before rollout.
+ */
+export const thinkingTipsContent: string[] = [
+  'builder_tips_select_edit_description',
+  'builder_tips_logo_description',
+  'builder_tips_continue_description',
+  'builder_tips_upload_media_description',
+  'builder_tips_media_tab_description',
+  'builder_tips_history_description',
+  'builder_tips_autosave_description',
+  'builder_tips_backup_description',
+  'builder_tips_firewall_description',
+  'builder_tips_hosting_description',
+  'builder_tips_preview_link_description',
+  'builder_tips_publish_first_description',
+  'builder_tips_republish_description',
+  'builder_tips_seo_description',
+  'builder_tips_domain_description',
+  'builder_tips_pre_publish_description',
+  'builder_tips_support_description'
+]
+
+/**
  * Shuffles an array using the Fisher-Yates algorithm.
  * Used to randomize tip order on each app creation.
  *

@@ -17,14 +17,26 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: (...args: unknown[]) => mockUseSwitchboard(...args),
 }));
 
+vi.mock('@/app/[market]/develop/components/chat/thinking-tips-content', () => ({
+  THINKING_TIPS: ['builder_tips_select_edit_description', 'builder_tips_logo_description'],
+}));
+
+vi.mock('@/app/[market]/develop/components/tips/tips-content', async (importOriginal) => {
+  const orig = await importOriginal<
+    typeof import('@/app/[market]/develop/components/tips/tips-content')
+  >();
+  return {
+    ...orig,
+    shuffleArray: (a: string[]) => a,
+  };
+});
+
 import ThinkingTip from './ThinkingTip';
 
 const messages = {
   builder_thinking_tip_label: 'Tip:',
-  builder_tips_be_specific_description: 'Be specific about what to add or edit.',
-  builder_tips_iterate_and_refine_description: 'Focus on one change at a time.',
-  builder_tips_show_examples_description: 'Show examples of what you want.',
-  builder_tips_start_big_picture_description: 'Set your style and layout first.',
+  builder_tips_select_edit_description: 'Click any element to select it, then edit directly.',
+  builder_tips_logo_description: 'Upload your logo in Settings to brand your site.',
 };
 
 function renderWithIntl(ui: ReactElement) {

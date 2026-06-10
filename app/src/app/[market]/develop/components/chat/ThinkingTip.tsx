@@ -63,17 +63,14 @@ export default function ThinkingTip() {
   }, [isThinkingTipsEnabled, orderedTips.length, visible])
 
   const selectedKey = orderedTips[tipIndex] ?? ''
-  if (!isThinkingTipsEnabled || !visible || !selectedKey) {
+  const tipLabel = t('builder_thinking_tip_label', undefined, 'Tip:')
+  const tipText = t(selectedKey, undefined, '')
+  if (!isThinkingTipsEnabled || !visible || !selectedKey || !tipText) {
     return null
   }
 
-  const tipLabel = t('builder_thinking_tip_label', undefined, 'Tip:')
-  const tipText = t(selectedKey, undefined, '')
-
   return (
-    <div
-      className={`text-[13px] leading-relaxed ${prefersReducedMotion ? '' : 'transition-opacity duration-300'} ${visible ? 'opacity-100' : 'opacity-0'}`}
-    >
+    <div className="text-[13px] leading-relaxed">
       <div className="rounded-t-lg rounded-b-none bg-[var(--color-ai)]/5 px-2 py-1">
         <span className="font-medium text-[var(--color-ai)]">{tipLabel} </span>
         <span
