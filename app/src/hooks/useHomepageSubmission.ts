@@ -8,6 +8,7 @@ import { useAuthContext } from '@/components/providers/AuthProvider'
 import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useAnalytics } from '@/hooks/useAnalytics'
 import { useAuthGateTracking } from '@/hooks/useAuthGateTracking'
+import { useDeeplinkPromptPrefill } from '@/hooks/useDeeplinkPromptPrefill'
 import { useHomepageBounceTracking } from '@/hooks/useHomepageBounceTracking'
 import { useSafariClass } from '@/hooks/useSafariClass'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
@@ -192,7 +193,6 @@ export function useHomepageSubmission() {
   const locationParam = searchParams.get('location')
   const itcParam = searchParams.get('itc')
   const siteLocationParam = searchParams.get('site_location')
-  const initialPromptParam = searchParams.get('initialPrompt')
   const fqdnParam = searchParams.get('fqdn')
 
   const fqdnValidation = useMemo<{ fqdn?: string; invalidReason?: string }>(() => {
@@ -211,33 +211,16 @@ export function useHomepageSubmission() {
     }
   }, [fqdnValidation.invalidReason])
 
+  // Email deep-link prompt prefill (?initialPromptKey= / ?initialPrompt=) + its
+  // firstprompt.prefill impression. Self-contained; see useDeeplinkPromptPrefill.
+  useDeeplinkPromptPrefill({ promptText, onPrefill: setPromptText, logAnalytics })
+
   useEffect(() => {
     const siteLocation = siteLocationParam || document.referrer;
     if (siteLocation) {
       shipAnalyticsLog('homepage.redirect.source', { siteLocation });
     }
   }, [siteLocationParam]);
-
-  useEffect(() => {
-    if (initialPromptParam && !promptText) {
-      const decoded = decodeURIComponent(initialPromptParam)
-      const validated = validateAndClampPrompt(decoded)
-      setPromptText(validated.text)
-
-      logAnalytics('homepage.prompt.prefill_from_url', {
-        clipped: validated.wasClipped,
-        promptLength: validated.text.length,
-      })
-
-      if (validated.wasClipped) {
-        logger.warn('homepage.url-param.clipped', {
-          originalLength: decoded.length,
-          clippedLength: validated.charLength,
-          byteLength: validated.byteLength
-        })
-      }
-    }
-  }, [initialPromptParam, logAnalytics])
 
   useEffect(() => {
     return () => setIsRedirecting(false)

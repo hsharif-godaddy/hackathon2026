@@ -13,12 +13,19 @@ export interface UseAnalyticsOptions {
 
 type AnalyticsEventKind = 'action' | 'click' | 'impression'
 
-interface AnalyticsEidOptions {
+export interface AnalyticsEidOptions {
   kind?: AnalyticsEventKind
   eid?: string
   action?: 'blur' | 'drag' | 'focus' | 'hover' | 'load' | 'scroll'
   impressionProps?: Record<string, boolean | string | number>
 }
+
+/** The `logAnalytics` callback returned by {@link useAnalytics}. */
+export type LogAnalytics = (
+  event: string,
+  data?: Record<string, unknown>,
+  options?: AnalyticsEidOptions,
+) => void
 
 export function useAnalytics({ experimentId, baseData = {} }: UseAnalyticsOptions) {
   const baseDataRef = useRef(baseData)

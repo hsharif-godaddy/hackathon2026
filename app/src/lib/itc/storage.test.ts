@@ -12,7 +12,32 @@ import {
   getEffectiveItc,
   getItcOverride,
   setItcOverride,
+  validateItc,
 } from './storage';
+
+describe('validateItc', function validateItcTests() {
+  it('accepts alphanumeric, underscore, hyphen', () => {
+    expect(validateItc('email')).toBe('email');
+    expect(validateItc('email_AAB-1')).toBe('email_AAB-1');
+  });
+
+  it('trims surrounding whitespace', () => {
+    expect(validateItc('  email  ')).toBe('email');
+  });
+
+  it('returns null for null, undefined, and empty/whitespace input', () => {
+    expect(validateItc(null)).toBeNull();
+    expect(validateItc(undefined)).toBeNull();
+    expect(validateItc('')).toBeNull();
+    expect(validateItc('   ')).toBeNull();
+  });
+
+  it('rejects over-length and disallowed characters rather than stripping', () => {
+    expect(validateItc('a'.repeat(129))).toBeNull();
+    expect(validateItc('email source')).toBeNull(); // space
+    expect(validateItc('email.source')).toBeNull(); // dot
+  });
+});
 
 describe('lib/itc/storage', function itcStorageTests() {
   beforeEach(() => {

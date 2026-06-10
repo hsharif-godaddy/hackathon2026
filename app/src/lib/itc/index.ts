@@ -24,4 +24,5 @@ export {
   getEffectiveItc,
   getItcOverride,
   setItcOverride,
+  validateItc,
 } from './storage';

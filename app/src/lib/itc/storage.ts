@@ -42,10 +42,20 @@ function isBrowser(): boolean {
 }
 
 /**
- * Validate and sanitize an ITC value
- * @returns The sanitized ITC or null if invalid
+ * Validate and sanitize an ITC value.
+ *
+ * Shared single source of truth for "what is a valid `itc`": alphanumeric,
+ * underscores, hyphens, non-empty, <= 128 chars. Also reused for the
+ * deep-link `itc`/`itc_source` query params (see `@/lib/deeplink-prompt`),
+ * which share these rules. Rejects (does not strip) disallowed input.
+ *
+ * @returns The trimmed ITC or null if invalid/empty/missing
  */
-function validateItc(itc: string): string | null {
+export function validateItc(itc: string | null | undefined): string | null {
+  if (!itc) {
+    return null;
+  }
+
   const trimmed = itc.trim();
 
   if (!trimmed || trimmed.length > MAX_ITC_LENGTH) {
