@@ -47,6 +47,10 @@ test.describe('Edit Interactions', () => {
     });
 
     await page.goto('/');
+    // The "Projects" popover auto-opens on the authenticated homepage and
+    // covers the user menu — dismiss overlays first or loginIfNeeded's
+    // user-menu click can't open its popover (helpers/auth.ts:540).
+    await dismissOverlays(page);
     await loginIfNeeded(page);
     // Re-navigate fresh after potential SSO redirect.
     await page.goto('/');
@@ -138,6 +142,10 @@ test.describe('Edit Interactions', () => {
     });
 
     await page.goto('/');
+    // The "Projects" popover auto-opens on the authenticated homepage and
+    // covers the user menu — dismiss overlays first or loginIfNeeded's
+    // user-menu click can't open its popover (helpers/auth.ts:540).
+    await dismissOverlays(page);
     await loginIfNeeded(page);
     await page.goto('/');
 
@@ -290,6 +298,10 @@ test.describe('Edit Interactions', () => {
     });
 
     await page.goto('/');
+    // The "Projects" popover auto-opens on the authenticated homepage and
+    // covers the user menu — dismiss overlays first or loginIfNeeded's
+    // user-menu click can't open its popover (helpers/auth.ts:540).
+    await dismissOverlays(page);
     await loginIfNeeded(page);
     // Re-navigate fresh after potential SSO redirect.
     await page.goto('/');
@@ -451,6 +463,10 @@ test.describe('Edit Interactions', () => {
     });
 
     await page.goto('/');
+    // The "Projects" popover auto-opens on the authenticated homepage and
+    // covers the user menu — dismiss overlays first or loginIfNeeded's
+    // user-menu click can't open its popover (helpers/auth.ts:540).
+    await dismissOverlays(page);
     await loginIfNeeded(page);
     await page.goto('/');
 
@@ -485,7 +501,7 @@ test.describe('Edit Interactions', () => {
 
     const chatInput = page.getByTestId('chat-input-textarea');
     await expect(chatInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    await chatInput.fill('Show me some font theme options');
+    await chatInput.fill('Show me some font theme options - no other changes, no follow up questions, reply in one short sentence');
 
     const sendButton = page.getByTestId('chat-send-button');
     await expect(sendButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
@@ -550,23 +566,20 @@ test.describe('Edit Interactions', () => {
     // Wait for the AI to process the apply request
     await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
     console.log('  Font theme apply completed');
-    await expect(fontThemePanel).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+    // Apply is sent as an action request, so the panel deliberately persists
+    // (fontSuggestPanelVisibility.ts) — only a typed message or Cancel
+    // dismisses it.
+    await expect(fontThemePanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('  Panel persists after apply');
 
     // ========================================
-    // STEP 6: Verify Cancel and Generate More buttons work
+    // STEP 6: Verify Generate More and Cancel on the persisted panel
     // ========================================
     console.log('Step 6: Testing Generate More button...');
 
-    // Request font themes again
-    await chatInput.fill('Show me different font options');
-    await expect(sendButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
-    await sendButton.click();
-
-    // Panel must reappear — if it doesn't, the test should fail
-    await expect(fontThemePanel).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
-    console.log('  Font theme panel reappeared');
-
-    // Test "Generate More" button - must be present and working
+    // The panel is still open after apply, so Generate More can be exercised
+    // directly — no extra chat round trip needed.
     const generateMoreButton = page.getByTestId('font-theme-preview-more-options');
     await expect(generateMoreButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await expect(generateMoreButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
@@ -575,14 +588,9 @@ test.describe('Edit Interactions', () => {
     await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
     console.log('  Generate More completed');
 
-    // Request font themes one more time to test Cancel
-    await chatInput.fill('Show me font themes');
-    await expect(sendButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
-    await sendButton.click();
-
-    // Panel must reappear again
-    await expect(fontThemePanel).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
-    console.log('  Font theme panel reappeared for cancel test');
+    // Generate More re-suggests, so the panel must come back with fresh options
+    await expect(fontThemePanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('  Font theme panel visible after Generate More');
 
     // Test Cancel button - must be present and working
     const cancelButton = page.getByTestId('font-theme-preview-cancel');

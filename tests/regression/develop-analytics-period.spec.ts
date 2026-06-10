@@ -106,7 +106,12 @@ test.describe('Analytics Custom Period', () => {
     }
   });
 
-  test('Custom date range flyout — pick dates, apply, refresh analytics', async ({ page }, testInfo) => {
+  // TODO(@hdewan): re-enable once the SSO login flake is resolved. Since
+  // ~June 9 this spec fails repeatedly in CI before reaching any analytics
+  // assertion: the sign-in iframe appears but the credential fill times out
+  // (locator.fill: Timeout 30000ms) on both attempts, and cleanup then 401s.
+  // See run 27234059953 (prod) shard 3 for a representative failure.
+  test.skip('Custom date range flyout — pick dates, apply, refresh analytics', async ({ page }, testInfo) => {
     testInfo.setTimeout(AI_RESPONSE_TIMEOUT_MS + 120_000);
 
     await page.addInitScript(() => {
