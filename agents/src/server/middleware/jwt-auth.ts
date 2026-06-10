@@ -63,6 +63,7 @@ export interface AgentContext {
   logoBrandColorsEnabled?: boolean; // Send structured brand colors to the logo API (switchboard: appbuilder-logo-brand-colors)
   market?: string; // BCP-47 market/locale from token mint (BFF-resolved from URL)
   asmDualWriteEnabled?: boolean; // Mirror SQLite writes to ASM (switchboard: appbuilder-asm-dual-write)
+  purchaseIntentClassifierEnabled?: boolean; // Enable LLM purchase-intent classifier on credit=0 402 path (switchboard: appbuilder-purchase-intent-classifier)
   exp: number;
   iat: number;
 }
@@ -108,6 +109,7 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     logoBrandColorsEnabled: (raw.logoBrandColorsEnabled as boolean) ?? false,
     market: typeof raw.market === 'string' && raw.market.length > 0 ? raw.market : undefined,
     asmDualWriteEnabled: (raw.asmDualWriteEnabled as boolean) ?? false,
+    purchaseIntentClassifierEnabled: (raw.purchaseIntentClassifierEnabled as boolean) ?? false,
     exp: (raw.exp as number) || 0,
     iat: (raw.iat as number) || 0,
   };

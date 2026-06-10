@@ -16,3 +16,5 @@ export const SWITCHBOARD_APPBUILDER_UPLOADED_IMAGE_DELETION =
  * returns the PromptBox. Default off.
  */
 export const SWITCHBOARD_AIRO_BUILDER_CHAT_CHOICE_SWAP = 'airo-builder-chat-choice-swap';
+export const SWITCHBOARD_APPBUILDER_PURCHASE_INTENT_CLASSIFIER =
+  'appbuilder-purchase-intent-classifier';

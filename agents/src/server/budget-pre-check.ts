@@ -24,6 +24,7 @@ import type { BudgetServiceClient } from '@airo/ai-lib/budget'
 import { BudgetServiceUnavailableError, BudgetServiceTimeoutError, BudgetNoCapacityError, BudgetNotFoundError } from '@airo/ai-lib/budget'
 import { BudgetExceededError } from '@airo/ai-common'
 import type { LoggerLike } from '@airo/ai-common'
+import { classifyPurchaseIntent } from '../services/purchase-intent-classifier.js'
 
 const MAX_ATTEMPTS = 2
 const RETRY_DELAY_MS = 200
@@ -50,8 +51,10 @@ export async function performBudgetPreCheck(
     bmsBudgetId?: string
     appId?: string
     allowOverage?: boolean
+    purchaseIntentClassifierEnabled?: boolean
   },
   deps: BudgetPreCheckDeps,
+  userMessage?: string,
 ): Promise<BudgetPreCheckResult | null> {
   if (metadata.budgetServiceEnabled !== true) return null
 
@@ -129,6 +132,48 @@ export async function performBudgetPreCheck(
     } catch (err) {
       // Non-transient errors: throw immediately, no retry.
       if (err instanceof BudgetNoCapacityError) {
+        const purchaseIntent = userMessage && metadata.purchaseIntentClassifierEnabled
+          ? await classifyPurchaseIntent(userMessage, { logger: deps.logger })
+          : undefined
+
+        if (purchaseIntent === true && !metadata.allowOverage) {
+          try {
+            const session = await budgetClient.createSession(budgetId, { allowOverage: true })
+            deps.logger.info('budget.precheck.purchase_intent_bypass', {
+              appId: metadata.appId,
+              subscriptionId: metadata.subscriptionId,
+              budgetId,
+              sessionId: session.sessionId,
+              reason: 'purchase intent detected on credit=0; bypassing 402 with allowOverage',
+            })
+            return {
+              budgetId,
+              sessionId: session.sessionId,
+            }
+          } catch (bypassErr) {
+            // Any other error (transient/auth/404/5xx)
+            if (bypassErr instanceof BudgetNoCapacityError) {
+              deps.logger.error('budget.precheck.purchase_intent_bypass_failed', {
+                appId: metadata.appId,
+                subscriptionId: metadata.subscriptionId,
+                budgetId,
+                reason: 'BMS still 402 with allowOverage — budget likely has no budget_items',
+                error: bypassErr.message,
+              })
+              // Fall through to the standard 402 throw below.
+            } else {
+              deps.logger.error('budget.precheck.purchase_intent_bypass_failed', {
+                appId: metadata.appId,
+                subscriptionId: metadata.subscriptionId,
+                budgetId,
+                reason: 'bypass createSession failed with non-402 error',
+                error: bypassErr instanceof Error ? bypassErr.message : String(bypassErr),
+              })
+              throw bypassErr
+            }
+          }
+        }
+
         if (metadata.allowOverage) {
           deps.logger.error('budget.precheck.overage_bypass_failed', {
             appId: metadata.appId,
@@ -136,6 +181,7 @@ export async function performBudgetPreCheck(
             budgetId,
             reason: 'allowOverage=true but BMS returned 402 — budget likely has no budget_items',
             bmsResponse: err.responseBody,
+            purchaseIntent,
           })
         } else {
           deps.logger.warn('budget.precheck.no_capacity', {
@@ -143,9 +189,10 @@ export async function performBudgetPreCheck(
             appId: metadata.appId,
             subscriptionId: metadata.subscriptionId,
             bmsResponse: err.responseBody,
+            purchaseIntent,
           })
         }
-        throw BudgetExceededError.fromBudgetCheck(budgetId)
+        throw BudgetExceededError.fromBudgetCheck(budgetId, { purchaseIntent })
       }
       if (err instanceof BudgetNotFoundError) {
         deps.logger.error('budget.precheck.budget_not_found', {

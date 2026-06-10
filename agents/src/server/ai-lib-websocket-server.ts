@@ -655,6 +655,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 agentsAppContext.metadata.logoBrandColorsEnabled = true
               }
 
+              if (agentContext?.purchaseIntentClassifierEnabled) {
+                agentsAppContext.metadata.purchaseIntentClassifierEnabled = true
+              }
+
               // Resolve app base URL once for tools like httpCheck.
               // Appends the active share token so the dev-supervisor proxy
               // allows requests without requiring a browser cookie.
@@ -1576,8 +1580,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             bmsBudgetId: agentContext?.bmsBudgetId as string | undefined,
             appId: siteId,
             allowOverage: allowSessionOverage(effectiveSubscriptionId),
+            purchaseIntentClassifierEnabled: agentContext?.purchaseIntentClassifierEnabled === true,
           },
           { getClient: getBudgetServiceClient, logger },
+          message,
         )
         if (budgetResult) {
           // Write to ExecutionContextMetadata for GoCode header propagation

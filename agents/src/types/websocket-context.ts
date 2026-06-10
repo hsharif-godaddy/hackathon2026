@@ -17,6 +17,7 @@ export interface AgentsAppContext extends BaseAgentsAppContext {
     subscriptionId?: string
     marketingCampaignsEnabled?: boolean
     asmDualWriteEnabled?: boolean
+    purchaseIntentClassifierEnabled?: boolean
   }
 }
 

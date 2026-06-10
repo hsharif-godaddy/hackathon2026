@@ -1,7 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+vi.mock('../../services/purchase-intent-classifier.js', () => ({
+  classifyPurchaseIntent: vi.fn(),
+}))
+
 import { performBudgetPreCheck, type BudgetPreCheckDeps } from '../budget-pre-check.js'
 import { BudgetExceededError } from '@airo/ai-common'
 import { BudgetServiceError, BudgetServiceUnavailableError, BudgetServiceTimeoutError, BudgetNoCapacityError, BudgetNotFoundError } from '@airo/ai-lib/budget'
+import { classifyPurchaseIntent } from '../../services/purchase-intent-classifier.js'
+
+const mockedClassify = vi.mocked(classifyPurchaseIntent)
 
 describe('performBudgetPreCheck', () => {
   const mockLogger = {
@@ -25,6 +33,7 @@ describe('performBudgetPreCheck', () => {
     mockBudgetClient.createSession.mockResolvedValue({
       sessionId: 'sess-123',
     })
+    mockedClassify.mockResolvedValue(false)
   })
 
   describe('when budgetServiceEnabled is false', () => {
@@ -190,14 +199,220 @@ describe('performBudgetPreCheck', () => {
         ),
       ).rejects.toThrow(BudgetExceededError)
 
-      expect(mockLogger.error).toHaveBeenCalledWith('budget.precheck.overage_bypass_failed', {
+      expect(mockLogger.error).toHaveBeenCalledWith('budget.precheck.overage_bypass_failed', expect.objectContaining({
         appId: 'app-1',
         subscriptionId: 'airo-builder:care-agent',
         budgetId: 'budget-1',
         reason: 'allowOverage=true but BMS returned 402 — budget likely has no budget_items',
         bmsResponse: '{"code":"NO_BUDGET_CAPACITY"}',
-      })
+      }))
       expect(mockLogger.warn).not.toHaveBeenCalledWith('budget.precheck.no_capacity', expect.anything())
+    })
+  })
+
+  describe('purchase-intent classifier integration (credit=0 + userMessage)', () => {
+    beforeEach(() => {
+      mockBudgetClient.createSession.mockRejectedValue(
+        new BudgetNoCapacityError('Budget Service no capacity: POST /api/v1/sessions', '{"code":"NO_BUDGET_CAPACITY"}'),
+      )
+    })
+
+    it('bypasses the 402 with allowOverage when classifier returns true', async () => {
+      // First createSession (no allowOverage) returns 402; second (allowOverage:true) succeeds.
+      mockBudgetClient.createSession
+        .mockReset()
+        .mockRejectedValueOnce(
+          new BudgetNoCapacityError('Budget Service no capacity: POST /api/v1/sessions', '{"code":"NO_BUDGET_CAPACITY"}'),
+        )
+        .mockResolvedValueOnce({ sessionId: 'sess-bypass-1' })
+      mockedClassify.mockResolvedValue(true)
+
+      const result = await performBudgetPreCheck(
+        { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', subscriptionId: 'sub-1', appId: 'app-1', purchaseIntentClassifierEnabled: true },
+        deps,
+        'Upgrade my plan to publish the site',
+      )
+
+      expect(result).toEqual({ budgetId: 'budget-1', sessionId: 'sess-bypass-1' })
+      expect(mockBudgetClient.createSession).toHaveBeenNthCalledWith(1, 'budget-1', { allowOverage: undefined })
+      expect(mockBudgetClient.createSession).toHaveBeenNthCalledWith(2, 'budget-1', { allowOverage: true })
+      expect(mockedClassify).toHaveBeenCalledWith(
+        'Upgrade my plan to publish the site',
+        { logger: deps.logger },
+      )
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'budget.precheck.purchase_intent_bypass',
+        expect.objectContaining({
+          budgetId: 'budget-1',
+          sessionId: 'sess-bypass-1',
+          appId: 'app-1',
+          subscriptionId: 'sub-1',
+        }),
+      )
+    })
+
+    it('falls through to 402 with purchaseIntent=true when bypass retry also returns 402', async () => {
+      mockBudgetClient.createSession
+        .mockReset()
+        .mockRejectedValueOnce(
+          new BudgetNoCapacityError('Budget Service no capacity: POST /api/v1/sessions', '{"code":"NO_BUDGET_CAPACITY"}'),
+        )
+        .mockRejectedValueOnce(
+          new BudgetNoCapacityError('Budget Service no capacity: POST /api/v1/sessions', '{"code":"NO_BUDGET_CAPACITY"}'),
+        )
+      mockedClassify.mockResolvedValue(true)
+
+      await expect(
+        performBudgetPreCheck(
+          { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', subscriptionId: 'sub-1', appId: 'app-1', purchaseIntentClassifierEnabled: true },
+          deps,
+          'Upgrade my plan',
+        ),
+      ).rejects.toMatchObject({ purchaseIntent: true })
+
+      expect(mockBudgetClient.createSession).toHaveBeenCalledTimes(2)
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'budget.precheck.purchase_intent_bypass_failed',
+        expect.objectContaining({
+          budgetId: 'budget-1',
+          appId: 'app-1',
+          subscriptionId: 'sub-1',
+          reason: 'BMS still 402 with allowOverage — budget likely has no budget_items',
+        }),
+      )
+    })
+
+    it('rethrows non-402 bypass errors instead of laundering them as a 402', async () => {
+      // Bypass retry hits a transient outage — must NOT be reported to the user as
+      // "out of credits" (402); it should propagate so the caller can handle it.
+      const transientErr = new BudgetServiceUnavailableError('BMS unreachable')
+      mockBudgetClient.createSession
+        .mockReset()
+        .mockRejectedValueOnce(
+          new BudgetNoCapacityError('Budget Service no capacity: POST /api/v1/sessions', '{"code":"NO_BUDGET_CAPACITY"}'),
+        )
+        .mockRejectedValueOnce(transientErr)
+      mockedClassify.mockResolvedValue(true)
+
+      await expect(
+        performBudgetPreCheck(
+          { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', subscriptionId: 'sub-1', appId: 'app-1', purchaseIntentClassifierEnabled: true },
+          deps,
+          'Upgrade my plan',
+        ),
+      ).rejects.toBe(transientErr)
+
+      expect(mockBudgetClient.createSession).toHaveBeenCalledTimes(2)
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'budget.precheck.purchase_intent_bypass_failed',
+        expect.objectContaining({
+          reason: 'bypass createSession failed with non-402 error',
+        }),
+      )
+      // Must not log/throw the 402 path
+      expect(mockLogger.warn).not.toHaveBeenCalledWith(
+        'budget.precheck.no_capacity',
+        expect.anything(),
+      )
+    })
+
+    it('attaches purchaseIntent=false when classifier returns false', async () => {
+      mockedClassify.mockResolvedValue(false)
+
+      const promise = performBudgetPreCheck(
+        { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', subscriptionId: 'sub-1', appId: 'app-1', purchaseIntentClassifierEnabled: true },
+        deps,
+        'change the button color',
+      )
+
+      await expect(promise).rejects.toMatchObject({ purchaseIntent: false })
+    })
+
+    it('includes purchaseIntent in the no_capacity log when classifier returns false', async () => {
+      mockedClassify.mockResolvedValue(false)
+
+      await expect(
+        performBudgetPreCheck(
+          { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', subscriptionId: 'sub-1', appId: 'app-1', purchaseIntentClassifierEnabled: true },
+          deps,
+          'change the button color',
+        ),
+      ).rejects.toThrow(BudgetExceededError)
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'budget.precheck.no_capacity',
+        expect.objectContaining({ budgetId: 'budget-1', purchaseIntent: false }),
+      )
+    })
+
+    it('includes purchaseIntent in the overage_bypass_failed log', async () => {
+      mockedClassify.mockResolvedValue(false)
+
+      await expect(
+        performBudgetPreCheck(
+          {
+            budgetServiceEnabled: true,
+            bmsBudgetId: 'budget-1',
+            subscriptionId: 'airo-builder:care-agent',
+            appId: 'app-1',
+            allowOverage: true,
+            purchaseIntentClassifierEnabled: true,
+          },
+          deps,
+          'add a testimonials section',
+        ),
+      ).rejects.toThrow(BudgetExceededError)
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'budget.precheck.overage_bypass_failed',
+        expect.objectContaining({ purchaseIntent: false }),
+      )
+    })
+
+    it('skips the classifier when purchaseIntentClassifierEnabled is omitted (gate off by default)', async () => {
+      const promise = performBudgetPreCheck(
+        { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', subscriptionId: 'sub-1', appId: 'app-1' },
+        deps,
+        'Upgrade my plan to publish the site',
+      )
+
+      await expect(promise).rejects.toThrow(BudgetExceededError)
+      await expect(promise).rejects.toMatchObject({ purchaseIntent: undefined })
+      expect(mockedClassify).not.toHaveBeenCalled()
+    })
+
+    it('skips the classifier when purchaseIntentClassifierEnabled is false', async () => {
+      const promise = performBudgetPreCheck(
+        { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', subscriptionId: 'sub-1', appId: 'app-1', purchaseIntentClassifierEnabled: false },
+        deps,
+        'Upgrade my plan to publish the site',
+      )
+
+      await expect(promise).rejects.toThrow(BudgetExceededError)
+      await expect(promise).rejects.toMatchObject({ purchaseIntent: undefined })
+      expect(mockedClassify).not.toHaveBeenCalled()
+    })
+
+    it('skips the classifier when no userMessage is supplied', async () => {
+      const promise = performBudgetPreCheck(
+        { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', subscriptionId: 'sub-1', appId: 'app-1' },
+        deps,
+      )
+
+      await expect(promise).rejects.toThrow(BudgetExceededError)
+      await expect(promise).rejects.toMatchObject({ purchaseIntent: undefined })
+      expect(mockedClassify).not.toHaveBeenCalled()
+    })
+
+    it('skips the classifier on empty-string userMessage', async () => {
+      const promise = performBudgetPreCheck(
+        { budgetServiceEnabled: true, bmsBudgetId: 'budget-1', subscriptionId: 'sub-1', appId: 'app-1' },
+        deps,
+        '',
+      )
+
+      await expect(promise).rejects.toThrow(BudgetExceededError)
+      expect(mockedClassify).not.toHaveBeenCalled()
     })
   })
 

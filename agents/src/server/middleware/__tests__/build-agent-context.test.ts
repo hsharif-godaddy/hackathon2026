@@ -53,8 +53,10 @@ describe('buildAgentContext', function suite() {
       rebuildIntakeFormEnabled: false,
       debugStatsEnabled: false,
       marketingCampaignsEnabled: false,
+      market: undefined,
       asmDualWriteEnabled: false,
       logoBrandColorsEnabled: false,
+      purchaseIntentClassifierEnabled: false,
       exp: 1700000000,
       iat: 1699999000,
     });
@@ -174,6 +176,8 @@ describe('buildAgentContext', function suite() {
       'debugStatsEnabled',
       'useAtlasCrawler',
       'rebuildIntakeFormEnabled',
+      'asmDualWriteEnabled',
+      'purchaseIntentClassifierEnabled',
     ] as const;
 
     const ctx = buildAgentContext({});

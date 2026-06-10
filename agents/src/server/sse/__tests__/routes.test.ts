@@ -1642,7 +1642,33 @@ describe('SSE routes', () => {
 
       expect(res.status).toBe(402)
       expect(res.body.error).toContain('quota exceeded')
+      expect(res.body.purchaseIntent).toBeUndefined()
       expect(mockExec.execute).not.toHaveBeenCalled()
+    })
+
+    it('surfaces purchaseIntent in the 402 payload when the classifier ran', async () => {
+      const { BudgetExceededError } = await import('@airo/ai-common')
+      const mockExec = {
+        execute: vi.fn(),
+        stop: vi.fn(),
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(false),
+      }
+      ;(deps as any).executionService = mockExec
+      app = express()
+      app.use(express.json())
+      app.use('/api/conversations', createSSERoutes(deps as any))
+
+      mockBudgetPreCheck.mockRejectedValueOnce(
+        new BudgetExceededError('quota exceeded', 402, '{}', { purchaseIntent: true }),
+      )
+
+      const res = await request(app)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'Upgrade my plan to publish' })
+
+      expect(res.status).toBe(402)
+      expect(res.body.purchaseIntent).toBe(true)
     })
 
     it('passes bmsBudgetId and budgetSessionId to execute when pre-check succeeds', async () => {
@@ -1707,6 +1733,7 @@ describe('SSE routes', () => {
       expect(mockBudgetPreCheck).toHaveBeenCalledWith(
         expect.objectContaining({ allowOverage: true }),
         expect.any(Object),
+        'hi',
       )
     })
 
@@ -1735,6 +1762,7 @@ describe('SSE routes', () => {
       expect(mockBudgetPreCheck).toHaveBeenCalledWith(
         expect.objectContaining({ allowOverage: false }),
         expect.any(Object),
+        'hi',
       )
     })
 

@@ -40,7 +40,7 @@ import { findLatestFontThemeSuggest } from '@/app/[market]/develop/components/ut
 import { isFontSuggestPanelVisible } from '@/app/[market]/develop/components/utils/fontSuggestPanelVisibility';
 import { useUpfrontRebuildBuildQueue } from '@/app/[market]/develop/hooks/useUpfrontRebuildBuildQueue';
 import { useAuthContext } from '@/components/providers/AuthProvider';
-import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE } from '@/config/switchboard-flags';
+import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE, SWITCHBOARD_APPBUILDER_PURCHASE_INTENT_CLASSIFIER } from '@/config/switchboard-flags';
 import { trackPostInteraction } from '@/hooks/shared/initialBuildFunnel';
 import { useAotPreload } from '@/hooks/useAotPreload';
 import { useChatTabs } from '@/hooks/useChatTabs';
@@ -267,6 +267,7 @@ function ChatPaneInner({
   const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat');
   const isGoLiveFeatureEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE) === true;
   const isFontSelectionChatEnabled = useSwitchboard('airo-builder-font-selection-chat');
+  const isPurchaseIntentClassifierEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_PURCHASE_INTENT_CLASSIFIER) === true;
 
   // Unified grants fetch - works for both BMS and legacy paths
   const { data: grants, isFetching: isGrantsFetching } = useCreditGrants({
@@ -289,6 +290,7 @@ function ChatPaneInner({
   const grantsStillProvisioning = grants !== undefined && grants.length === 0
 
   const budgetExceeded = !isImpersonating && !hasAvailableCredits && !grantsStillProvisioning && (dataLoaded || budgetExceededFlag)
+  const isInputBudgetGated = budgetExceeded && !isPurchaseIntentClassifierEnabled
   const [isProactiveBannerDismissed, setIsProactiveBannerDismissed] = useState(false)
 
   useAotPreload(aotImports);
@@ -751,7 +753,7 @@ function ChatPaneInner({
 
   const handleStageFiles = useCallback(
     (files: File[]) => {
-      if (!appId || budgetExceeded) return;
+      if (!appId || isInputBudgetGated) return;
       if (files.length === 0) return;
 
       let errorAfter: string | undefined;
@@ -796,7 +798,7 @@ function ChatPaneInner({
         );
       }
     },
-    [appId, budgetExceeded, selectedAssets.length, maxAssets, t, showTransientAttachmentBanner]
+    [appId, isInputBudgetGated, selectedAssets.length, maxAssets, t, showTransientAttachmentBanner]
   );
 
   const handleRemoveStagedFile = useCallback((id: string) => {
@@ -1442,7 +1444,7 @@ function ChatPaneInner({
             isDisabled={isProcessing}
             isStreaming={isStreaming}
             isAwaitingStream={isAwaitingStream}
-            isBudgetExceeded={budgetExceeded}
+            isBudgetExceeded={isInputBudgetGated}
             loadingMessage={loadingMessage}
             onInputChange={setInputValue}
             onSendMessage={handleSendMessage}
@@ -1583,7 +1585,7 @@ function ChatPaneInner({
               isDisabled={isProcessing}
               isStreaming={isStreaming}
               isAwaitingStream={isAwaitingStream}
-              isBudgetExceeded={budgetExceeded}
+              isBudgetExceeded={isInputBudgetGated}
               loadingMessage={loadingMessage}
               onInputChange={setInputValue}
               onSendMessage={handleSendMessage}

@@ -586,8 +586,10 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           bmsBudgetId: agentContext?.bmsBudgetId,
           appId,
           allowOverage: allowSessionOverage(effectiveSubscriptionId),
+          purchaseIntentClassifierEnabled: agentContext?.purchaseIntentClassifierEnabled === true,
         },
         { getClient: getBudgetServiceClient, logger },
+        effectiveContent,
       )
       if (budgetResult) {
         bmsBudgetId = budgetResult.budgetId
@@ -601,7 +603,10 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           apmTransaction.setOutcome('failure')
           apmTransaction.end()
         }
-        res.status(402).json({ error: (err as Error).message })
+        res.status(402).json({
+          error: err.message,
+          ...(err.purchaseIntent !== undefined && { purchaseIntent: err.purchaseIntent }),
+        })
         return
       }
       if (apmTransaction) {

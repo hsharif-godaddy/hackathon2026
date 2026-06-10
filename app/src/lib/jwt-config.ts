@@ -46,6 +46,7 @@ export interface JWTClaims {
   marketingCampaignsEnabled?: boolean; // When true, enable Marketing Campaigns feature (switchboard: appbuilder-marketing-campaigns)
   asmDualWriteEnabled?: boolean; // When true, agents service mirrors SQLite conversation writes to ASM (switchboard: appbuilder-asm-dual-write)
   logoBrandColorsEnabled?: boolean; // When true, send structured brand colors to the logo API (switchboard: appbuilder-logo-brand-colors)
+  purchaseIntentClassifierEnabled?: boolean; // When true, enable LLM purchase-intent classifier on credit=0 402 path (switchboard: appbuilder-purchase-intent-classifier)
 }
 
 /**

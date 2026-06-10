@@ -185,17 +185,32 @@ export class BudgetExceededError extends Error {
   readonly errorType = 'BUDGET_EXCEEDED' as const;
 
   /**
+   * Whether the customer's last message indicated purchase or upgrade intent.
+   * (see agents/src/services/purchase-intent-classifier.ts).
+   */
+  readonly purchaseIntent?: boolean;
+
+  /**
    * Create a BudgetExceededError
    *
    * @param message - Human-readable error message
    * @param statusCode - HTTP status code from the API response
    * @param responseBody - Raw response body containing budget details
+   * @param opts.purchaseIntent - Optional purchase-intent classification result
    */
-  constructor(message: string, statusCode: number, responseBody: string) {
+  constructor(
+    message: string,
+    statusCode: number,
+    responseBody: string,
+    opts?: { purchaseIntent?: boolean },
+  ) {
     super(message);
     this.name = 'BudgetExceededError';
     this.statusCode = statusCode;
     this.responseBody = responseBody;
+    if (opts?.purchaseIntent !== undefined) {
+      this.purchaseIntent = opts.purchaseIntent;
+    }
     // Maintains proper stack trace in V8 environments
     Error.captureStackTrace?.(this, BudgetExceededError);
   }
@@ -205,11 +220,15 @@ export class BudgetExceededError extends Error {
    * Used when Budget Service reports insufficient credits (distinct from
    * LiteLLM-originated budget errors during streaming).
    */
-  static fromBudgetCheck(budgetId: string): BudgetExceededError {
+  static fromBudgetCheck(
+    budgetId: string,
+    opts?: { purchaseIntent?: boolean },
+  ): BudgetExceededError {
     return new BudgetExceededError(
       'Your AI usage budget has been reached.',
       402,
-      JSON.stringify({ budgetId, source: 'budget-service-pre-check' })
+      JSON.stringify({ budgetId, source: 'budget-service-pre-check' }),
+      opts,
     );
   }
 
