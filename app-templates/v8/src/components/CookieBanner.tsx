@@ -119,6 +119,11 @@ export default function CookieBanner() {
   useEffect(function checkConsent() {
     if (typeof window === 'undefined') return;
 
+    if (import.meta.env.DEV) {
+      setIsLoaded(true);
+      return;
+    }
+
     const consentData = localStorage.getItem(COOKIE_CONSENT_KEY);
 
     if (!consentData) {
