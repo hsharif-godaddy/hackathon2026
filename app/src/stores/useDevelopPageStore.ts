@@ -994,6 +994,10 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.feedbackInitialStep = null
         state.docsPath = null
         state.viewMode = ViewMode.PREVIEW
+        // Keep isEditModeEnabled in sync with the PREVIEW viewMode. Otherwise a
+        // freshly-built app lands on the Preview toggle while the iframe still
+        // receives EDIT_MODE_ENABLED on IFRAME_READY and shows the hover bar.
+        state.isEditModeEnabled = false
       })
     },
 

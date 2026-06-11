@@ -1183,4 +1183,27 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       expect(useDevelopPageStore.getState().showResponseFeedbackThanksBanner).toBe(false);
     });
   });
+
+  describe('#resetForNewApp', function resetForNewAppTests() {
+    it('should land in preview with editing disabled so the toggle and iframe agree', function resetSyncsEditMode() {
+      // Simulate the default-initialized store (viewMode EDIT, edit enabled)
+      // that exists before the first build navigates into the develop page.
+      act(function setup() {
+        useDevelopPageStore.setState({
+          viewMode: ViewMode.EDIT,
+          isEditModeEnabled: true,
+        });
+      });
+
+      act(function reset() {
+        useDevelopPageStore.getState().resetForNewApp('app-123');
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.viewMode).toBe(ViewMode.PREVIEW);
+      // The bug: viewMode flips to PREVIEW but isEditModeEnabled stayed true,
+      // so the iframe got EDIT_MODE_ENABLED and showed the hover bar.
+      expect(state.isEditModeEnabled).toBe(false);
+    });
+  });
 });
