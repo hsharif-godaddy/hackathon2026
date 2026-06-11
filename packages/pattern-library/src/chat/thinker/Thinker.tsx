@@ -297,7 +297,7 @@ function ThinkerRoot({
           // @ts-expect-error — `inert` is a valid HTML attribute not yet typed in @types/react@18
           inert=""
         >
-          {indicator || <ThinkingIndicator size={0.75} />}
+          {indicator || <ThinkingIndicator />}
         </span>
       ) : null}
       {labelNode}
@@ -328,6 +328,7 @@ function ThinkerRoot({
               <Box
                 orientation="horizontal"
                 gap="sm"
+                inlineAlignChildren="center"
                 className="airo-chat-thinker__header airo-chat-thinker__header--complete"
                 data-partial="componentAiro"
               >
@@ -360,6 +361,7 @@ function ThinkerRoot({
               <Box
                 orientation="horizontal"
                 gap="sm"
+                inlineAlignChildren="center"
                 className="airo-chat-thinker__header"
                 data-partial="componentAiro"
               >

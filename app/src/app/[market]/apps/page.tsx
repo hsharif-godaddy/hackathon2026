@@ -22,6 +22,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { SiteStatus } from '@/lib/control-plane/types'
+import { isTLAShopper } from '@/lib/is-tla-shopper'
 import { logger } from '@/lib/request-context'
 import { useSitesStore } from '@/stores/useSitesStore'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
@@ -58,10 +59,7 @@ function SitesPageContent() {
     [totalSites]
   )
 
-  const isTLA = useMemo(() => {
-    const sid = authState?.details?.shopperId;
-    return typeof sid === 'string' && sid.length === 3;
-  }, [authState]);
+  const isTLA = useMemo(() => isTLAShopper(authState?.details?.shopperId), [authState]);
 
   // Allow transfer when flag is loaded and true, or fall back to TLA check while loading
   const canUseTransfer = useMemo(() => {

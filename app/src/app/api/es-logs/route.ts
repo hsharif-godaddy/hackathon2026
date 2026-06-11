@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
+import { isTLAShopper } from '@/lib/is-tla-shopper';
 import { logger } from '@/lib/request-context';
 
 /**
@@ -19,17 +20,6 @@ export const revalidate = 0;
  */
 function isTLARestrictionEnabled(): boolean {
   return process.env.ENVIRONMENT_NAME === 'production';
-}
-
-/**
- * Check if user is a TLA (Three Letter Acronym - internal GoDaddy employee)
- * TLA users have a shopperId with 3 or fewer characters
- *
- * @param shopperId - User's shopper ID
- * @returns True if user is a TLA
- */
-function isTLAUser(shopperId: string): boolean {
-  return shopperId.length <= 3;
 }
 
 /**
@@ -94,7 +84,7 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
   logger.info('logs-api.request.begin', { message: 'GET request received' });
 
   // Check if user is a TLA (only enforced in production)
-  if (isTLARestrictionEnabled() && !isTLAUser(authContext.user.shopperId)) {
+  if (isTLARestrictionEnabled() && !isTLAShopper(authContext.user.shopperId)) {
     logger.debug('logs-api.tla_required', {
       reason: 'User is not a TLA',
       shopperId: authContext.user.shopperId

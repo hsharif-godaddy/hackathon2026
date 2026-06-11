@@ -23,6 +23,7 @@ import { isEmployeeAuthType } from '@airo/shared/auth';
 
 import { airoCertTokenService, openCrmCase } from '@/lib/crm';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
+import { isTLAShopper } from '@/lib/is-tla-shopper';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 
@@ -53,7 +54,7 @@ export const POST = withCustomerAuth(async (
     return NextResponse.json({ error: 'impersonation-not-allowed' }, { status: 403 });
   }
 
-  if (shopperId?.length === 3) {
+  if (isTLAShopper(shopperId)) {
     logger.info(`${LOG_DOMAIN}.submit.rejected`, {
       reason: 'internal-user-not-allowed',
       customerId,

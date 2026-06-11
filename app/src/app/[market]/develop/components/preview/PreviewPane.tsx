@@ -12,6 +12,7 @@ import { Canvas } from '@airo-ux/pattern-library/surfaces/canvas'
 import Button from '@ux/button'
 
 import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
+import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
 import DomainBar from '@/app/[market]/develop/components/layout/DomainBar'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
@@ -220,6 +221,7 @@ export default function PreviewPane({
 }: PreviewPaneProps) {
   const t = useTranslations();
   const thinkerLabel = useThinkerLabel()
+  const thinkerIndicator = useThinkerIndicator()
   const intl = useIntl();
   const isDomainBarEnabled = useSwitchboard('appbuilder-domain-bar');
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
@@ -1352,7 +1354,7 @@ export default function PreviewPane({
                         />
                       ) : (
                         <div className="bg-intents-ux-box-backgroundColor rounded-full px-2 pt-0.5 pb-0 shadow-lg border">
-                          <Thinker label={thinkerLabel} />
+                          <Thinker label={thinkerLabel} indicator={thinkerIndicator} />
                         </div>
                       )}
                     </div>

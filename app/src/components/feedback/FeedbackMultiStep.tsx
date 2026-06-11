@@ -7,6 +7,7 @@ import { useExperimentsLine } from '@/components/feedback/experimentsLine';
 import { getFeedbackModalPortal } from '@/components/feedback/feedbackModalPortal';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useTranslations } from '@/hooks/useTranslations';
+import { isTLAShopper } from '@/lib/is-tla-shopper';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
@@ -140,8 +141,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
   const userInfo = getUserInfo();
   const shopperId = userInfo?.shopperId as string | undefined;
   const customerId = userInfo?.customerId as string | undefined;
-  // GoDaddy TLA (three-letter acronym) accounts have 3-char shopperIds — these are internal employees
-  const isInternalUser = shopperId?.length === 3;
+  const isInternalUser = isTLAShopper(shopperId);
 
   const experimentsLine = useExperimentsLine();
   const isMobile = useDevelopPageStore((state) => state.isMobile);

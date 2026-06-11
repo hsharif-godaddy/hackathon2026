@@ -9,6 +9,7 @@ import Spinner from '@ux/spinner'
 
 import ChatMessagesSkeleton from '@/app/[market]/develop/components/chat/ChatMessagesSkeleton'
 import ThinkingTip from '@/app/[market]/develop/components/chat/ThinkingTip'
+import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
 import StaticSkeleton from '@/app/[market]/develop/components/StaticSkeleton'
 import { ChatTab } from '@/app/[market]/develop/components/types'
@@ -77,6 +78,7 @@ export default function StreamingMessageList({
   const hasUserInteractedRef = useRef(false)
   const t = useTranslations();
   const thinkerLabel = useThinkerLabel()
+  const thinkerIndicator = useThinkerIndicator()
   const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans')
 
   // Store hooks for loading state
@@ -674,7 +676,7 @@ export default function StreamingMessageList({
           <StreamingMessage
             message={{ id: 'initial-prompt', role: 'user', content: initialPromptText, timestamp: new Date() } satisfies ChatMessage}
           />
-          <Thinker label={thinkerLabel} />
+          <Thinker label={thinkerLabel} indicator={thinkerIndicator} />
           <ThinkingTip />
           <div ref={messagesEndRef} />
         </div>
@@ -835,7 +837,7 @@ export default function StreamingMessageList({
       {/* Standalone thinking indicator when the last assistant message has no content yet */}
       {shouldShowStandaloneThinking && (
         <>
-          <Thinker label={thinkerLabel} />
+          <Thinker label={thinkerLabel} indicator={thinkerIndicator} />
           <ThinkingTip />
         </>
       )}

@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withApmRoute } from '@/lib/apm-context';
 import { authenticateCustomer } from '@/lib/customer-auth';
+import { isTLAShopper } from '@/lib/is-tla-shopper';
 import { logger, LogLevel } from '@/lib/request-context';
 
 /**
@@ -242,7 +243,7 @@ export const POST = withApmRoute(async (request: NextRequest): Promise<NextRespo
         customerId = authContext.user.customerId;
         shopperId = authContext.user.shopperId;
         // TLA (Three Letter Account) indicates GoDaddy employee accounts
-        isTLA = shopperId?.length === 3;
+        isTLA = isTLAShopper(shopperId);
       }
     } catch {
       // Auth extraction failed - continue without customer context

@@ -142,6 +142,16 @@ describe('Thinker', () => {
       expect(container.querySelector('.airo-primitives-thinking-indicator--dots')).toBeTruthy();
     });
 
+    it('default indicator does not set an inline size multiplier', () => {
+      const { container } = render(<Thinker />);
+      const root = container.querySelector('.airo-primitives-thinking-indicator');
+
+      expect(root).toBeTruthy();
+      expect(
+        root!.style.getPropertyValue('--airo-primitives-thinking-indicator-size-multiplier'),
+      ).toBe('');
+    });
+
     it('replaces the default graphic when a custom indicator is provided', () => {
       const { container } = render(
         <Thinker indicator={<span data-testid="custom-indicator">⏳</span>} />,

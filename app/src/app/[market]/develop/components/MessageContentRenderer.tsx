@@ -6,6 +6,7 @@ import { Thinker } from '@airo-ux/pattern-library/chat/thinker'
 import ActionToolGroupRenderer from '@/app/[market]/develop/components/ActionToolGroupRenderer'
 import ThinkingTip from '@/app/[market]/develop/components/chat/ThinkingTip'
 import { useThinkerContent } from '@/app/[market]/develop/components/chat/useThinkerContent'
+import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
 import MarkdownRenderer from '@/app/[market]/develop/components/MarkdownRenderer'
 import MessageToolCallsRenderer from '@/app/[market]/develop/components/MessageToolCallsRenderer'
 import MediaGroupRenderer from '@/app/[market]/develop/components/tool-renderers/MediaGroupRenderer'
@@ -36,6 +37,7 @@ function blockKey(block: ContentBlock, index: number): string {
 
 function MessageContentRenderer({ blocks, isActiveStream = false, isLastAssistantMessage = false, showThinking = false }: MessageContentRendererProps) {
   const { label: thinkerLabel, subAgentSteps } = useThinkerContent()
+  const thinkerIndicator = useThinkerIndicator()
   const toolCallArraysCacheRef = useRef<Map<string, ToolCall[]>>(new Map())
 
   // Create stable array references for tool calls using a cache
@@ -85,7 +87,11 @@ function MessageContentRenderer({ blocks, isActiveStream = false, isLastAssistan
 
       {showThinking && (
         <>
-          <Thinker label={thinkerLabel} defaultOpen={subAgentSteps.length > 0}>
+          <Thinker
+            label={thinkerLabel}
+            indicator={thinkerIndicator}
+            defaultOpen={subAgentSteps.length > 0}
+          >
             {subAgentSteps.length > 0 && (
               <Thinker.Timeline>
                 {subAgentSteps.map((step) => (

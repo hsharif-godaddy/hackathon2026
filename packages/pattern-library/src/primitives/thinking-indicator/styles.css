@@ -8,7 +8,9 @@
  * Variants: --dots (default, three staggered bouncing dots),
  *           --spinner (single rotating circular arc),
  *           --godaddy (GoDaddy brand mark with happy bounce + brand-color
- *                      breathing cycle — heavier branded option).
+ *                      breathing cycle — heavier branded option),
+ *           --thinking-daddy (Thinking Daddy mascot — head tilt, hair,
+ *                             glasses, star, smile morph, eyebrow blink).
  *
  * All three variants share the same root size envelope: `--airo-primitives-
  * thinking-indicator-dot-size` is driven by the density intent token times an
@@ -46,6 +48,12 @@
     var(--airo-primitives-thinking-indicator-dot-size) /
     12
   );
+  /* AIROBUILD-2415: under prefers-reduced-motion, rotation cycles slow down
+     (6× base duration) instead of freezing. Translate/scale motion stays off;
+     color-only cycles (godaddy brand breathe) slow to 6× as well. */
+  --airo-primitives-thinking-indicator-reduced-rotation-cycle: 21.6s;
+  --airo-primitives-thinking-indicator-reduced-spin-cycle: 5.4s;
+  --airo-primitives-thinking-indicator-reduced-brand-color-cycle: 9.6s;
   display: inline-flex;
 }
 
@@ -213,21 +221,34 @@
     opacity: 0.8;
   }
   .airo-primitives-thinking-indicator__spinner {
-    animation: none;
+    animation: airo-primitives-thinking-indicator-spin
+      var(--airo-primitives-thinking-indicator-reduced-spin-cycle) linear infinite;
   }
   .airo-primitives-thinking-indicator__logo {
-    /* Freeze both happyBounce and brand-color cycles, hold on the rest
-       teal so the mark stays recognisable even when motion is disabled. */
-    animation: none;
-    color: var(--airo-primitives-thinking-indicator-godaddy-brand-rest);
+    /* Strip bounce (translate/scale); keep brand-color breathe at 6× so the
+       mark still reads alive under reduced motion (AIROBUILD-2415). */
+    animation: airo-primitives-thinking-indicator-brand-color
+      var(--airo-primitives-thinking-indicator-reduced-brand-color-cycle) ease-in-out infinite;
   }
   .airo-primitives-thinking-indicator__pulse-ring {
-    /* Freeze the pulse mid-flight at a low-opacity rest scale, so the
-       ring stays visible as static decoration without competing with
-       the mark for attention. */
+    display: none;
+  }
+  .airo-primitives-thinking-indicator__thinking-daddy {
+    animation: airo-primitives-thinking-indicator-thinking-daddy-head-tilt
+      var(--airo-primitives-thinking-indicator-reduced-rotation-cycle) ease-in-out infinite;
+  }
+  .airo-primitives-thinking-indicator__thinking-daddy-glasses-lens,
+  .airo-primitives-thinking-indicator__thinking-daddy-glasses-ear {
     animation: none;
-    transform: scale(1);
-    opacity: 0.25;
+  }
+  .airo-primitives-thinking-indicator__thinking-daddy-star {
+    animation: airo-primitives-thinking-indicator-thinking-daddy-star-spin-reduced
+      var(--airo-primitives-thinking-indicator-reduced-rotation-cycle) linear infinite;
+    filter: none;
+  }
+  .airo-primitives-thinking-indicator__thinking-daddy-hair {
+    animation: none;
+    transform: none;
   }
 }
 
@@ -470,5 +491,93 @@
   }
   74% {
     color: var(--airo-primitives-thinking-indicator-godaddy-brand-rest);
+  }
+}
+
+/* --- thinking-daddy variant ------------------------------------------- */
+
+/* Prototype renders at 20×20px; scale off the same dot-size token so the
+   mascot tracks surrounding text density. 5× dot-size ≈ 20px at density 1. */
+.airo-primitives-thinking-indicator__thinking-daddy {
+  display: block;
+  flex-shrink: 0;
+  width: calc(var(--airo-primitives-thinking-indicator-dot-size) * 5);
+  height: calc(var(--airo-primitives-thinking-indicator-dot-size) * 5);
+  transform-origin: 50% 80%;
+  animation: airo-primitives-thinking-indicator-thinking-daddy-head-tilt 3.6s ease-in-out
+    infinite;
+}
+
+.airo-primitives-thinking-indicator__thinking-daddy-glasses-lens {
+  animation: airo-primitives-thinking-indicator-thinking-daddy-glasses-bob 3.6s ease-in-out
+    infinite 0.05s;
+}
+
+.airo-primitives-thinking-indicator__thinking-daddy-glasses-ear {
+  animation: airo-primitives-thinking-indicator-thinking-daddy-glasses-bob 3.6s ease-in-out
+    infinite 0.1s;
+}
+
+.airo-primitives-thinking-indicator__thinking-daddy-star {
+  transform-origin: 31px 102px;
+  animation: airo-primitives-thinking-indicator-thinking-daddy-star-spin 3.6s ease-in-out
+    infinite;
+}
+
+@keyframes airo-primitives-thinking-indicator-thinking-daddy-head-tilt {
+  0% {
+    transform: rotate(0deg);
+  }
+  20% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(4deg);
+  }
+  80% {
+    transform: rotate(-3deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes airo-primitives-thinking-indicator-thinking-daddy-glasses-bob {
+  0% {
+    transform: translateY(0);
+  }
+  25% {
+    transform: translateY(-0.4px);
+  }
+  55% {
+    transform: translateY(0.4px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes airo-primitives-thinking-indicator-thinking-daddy-star-spin {
+  0% {
+    transform: scale(1) rotate(0deg);
+    filter: brightness(1);
+  }
+  30% {
+    transform: scale(1.18) rotate(15deg);
+    filter: brightness(1.5) drop-shadow(0 0 2px #f5c518);
+  }
+  60% {
+    transform: scale(0.95) rotate(-8deg);
+    filter: brightness(1.1);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    filter: brightness(1);
+  }
+}
+
+@keyframes airo-primitives-thinking-indicator-thinking-daddy-star-spin-reduced {
+  to {
+    transform: rotate(360deg);
   }
 }

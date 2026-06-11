@@ -12,7 +12,7 @@ const meta: Meta<typeof ThinkingIndicator> = {
     docs: {
       description: {
         component:
-          'Lightweight loading indicator with three variants — three staggered bouncing dots (default), a single rotating circular arc (`spinner`), and the GoDaddy brand mark with a happy bounce + brand-color breathing cycle (`godaddy`). Renders a `role="status"` live region so screen readers announce the label on mount.',
+          'Lightweight loading indicator with four variants — three staggered bouncing dots (default), a single rotating circular arc (`spinner`), the GoDaddy brand mark with a happy bounce + brand-color breathing cycle (`godaddy`), and the approved "Thinking Daddy" mascot (`thinking-daddy`). Renders a `role="status"` live region so screen readers announce the label on mount.',
       },
     },
   },
@@ -102,5 +102,30 @@ export const GoDaddyLarge: Story = {
           'GoDaddy variant at `size={2}` for hero placements. The bounce keyframes use `transform-origin: center bottom` so the mark plants on its baseline and reads as a jump rather than a wobble.',
       },
     },
+  },
+};
+
+export const ThinkingDaddy: Story = {
+  name: 'Thinking Daddy',
+  args: {
+    variant: 'thinking-daddy',
+    label: 'Thinking…',
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'The approved "Thinking Daddy" mascot — head tilt, rAF hair bounce, glasses bob, star spin, smile morph, and eyebrow blink.',
+      },
+    },
+  },
+};
+
+export const ThinkingDaddyLarge: Story = {
+  name: 'Thinking Daddy (large)',
+  args: {
+    variant: 'thinking-daddy',
+    size: 2,
+    label: 'Thinking…',
   },
 };

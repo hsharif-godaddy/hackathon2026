@@ -1284,8 +1284,12 @@ describe('PreviewPane — Storage Access fallback gating', () => {
 
     const iframe = document.querySelector('iframe');
     expect(iframe?.src).not.toContain('/airo/storage-access');
-    // Probe should not even be called on non-WebKit
-    expect(fetchMock).not.toHaveBeenCalled();
+    // Auth probe should not run on non-WebKit (config fetch from useAuth is OK)
+    expect(
+      fetchMock.mock.calls.some(
+        ([url]) => typeof url === 'string' && url.includes('/airo/auth-check'),
+      ),
+    ).toBe(false);
   });
 
   it('does NOT redirect when probe fetch throws (network error)', async () => {

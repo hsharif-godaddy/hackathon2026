@@ -5,7 +5,6 @@ import { type ReactNode, type RefObject, useCallback, useEffect, useLayoutEffect
 import { createPortal } from 'react-dom'
 import { Thinker } from '@airo-ux/pattern-library/chat/thinker'
 import { ChoiceList } from '@airo-ux/pattern-library/input/choice-list'
-import { ThinkingIndicator } from '@airo-ux/pattern-library/primitives/thinking-indicator'
 import { useQueryClient } from '@tanstack/react-query'
 import Box from '@ux/box'
 
@@ -15,6 +14,7 @@ import FontThemePreviewInputPanel from '@/app/[market]/develop/components/chat/F
 import { PanelSectionTitle } from '@/app/[market]/develop/components/chat/StepProgressTag'
 import ThemePreviewInputPanel from '@/app/[market]/develop/components/chat/ThemePreviewInputPanel'
 import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
+import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
 import AskQuestionToolRenderer from '@/app/[market]/develop/components/tool-renderers/AskQuestionToolRenderer'
 import { parseChoiceListIndex } from '@/app/[market]/develop/components/tool-renderers/choiceListIndex'
@@ -133,6 +133,7 @@ function askQuestionStepCount(toolResult: unknown): number {
 function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCollapse?: boolean }) {
   const t = useTranslations()
   const thinkerLabel = useThinkerLabel()
+  const thinkerIndicator = useThinkerIndicator()
   const sendUserMessage = useSendUserMessage()
   const nbaData = useLatestNBAs()
   const currentList = useCurrentList()
@@ -368,56 +369,58 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
   if (isProcessing) {
     return (
       <InputActionsPanelCard>
-        <div className="flex items-center justify-between px-1 py-0.5 mb-1 min-h-[22px]">
-          <Thinker label={thinkerLabel} indicator={<ThinkingIndicator variant="spinner" />} />
-          {hasPlan && !fullPlanExpanded && (
-            <button
-              type="button"
-              className="flex items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 ml-2"
-              onClick={() => setFullPlanExpanded(true)}
-            >
-              <span>{t('builder_todo_view_plan', { completed: completedCount, total: totalItems })}</span>
-              <svg
-                className="w-2 h-2 transition-transform duration-200"
-                style={{ transform: fullPlanExpanded ? 'rotate(180deg)' : undefined }}
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between px-1 py-0.5 my-[4px] min-h-[22px]">
+            <Thinker label={thinkerLabel} indicator={thinkerIndicator} />
+            {hasPlan && !fullPlanExpanded && (
+              <button
+                type="button"
+                className="flex items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 ml-2"
+                onClick={() => setFullPlanExpanded(true)}
               >
-                <path d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-          )}
-        </div>
+                <span>{t('builder_todo_view_plan', { completed: completedCount, total: totalItems })}</span>
+                <svg
+                  className="w-2 h-2 transition-transform duration-200"
+                  style={{ transform: fullPlanExpanded ? 'rotate(180deg)' : undefined }}
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            )}
+          </div>
 
-        <AnimatePresence initial={false}>
-          {hasPlan && fullPlanExpanded && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-              className="overflow-hidden"
-            >
-              <div className="-mx-1 border-b border-border mb-1" />
-              <FullPlanSection
-                list={currentList}
-                completedItems={completedItems}
-                uncompletedItems={uncompletedItems}
-                completedCount={completedCount}
-                totalItems={totalItems}
-                isProcessing={isProcessing}
-                onItemClick={handlePlanItemClick}
-                onOpenModal={() => setIsModalOpen(true)}
-                onCollapse={() => setFullPlanExpanded(false)}
-                t={t}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
+          <AnimatePresence initial={false}>
+            {hasPlan && fullPlanExpanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="-mx-1 border-b border-border mb-1" />
+                <FullPlanSection
+                  list={currentList}
+                  completedItems={completedItems}
+                  uncompletedItems={uncompletedItems}
+                  completedCount={completedCount}
+                  totalItems={totalItems}
+                  isProcessing={isProcessing}
+                  onItemClick={handlePlanItemClick}
+                  onOpenModal={() => setIsModalOpen(true)}
+                  onCollapse={() => setFullPlanExpanded(false)}
+                  t={t}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         <TodoListModal
           isOpen={isModalOpen}
@@ -1022,6 +1025,7 @@ function InputActionsPanelThemeSelection({
 }: InputActionsPanelProps) {
   const t = useTranslations()
   const thinkerLabel = useThinkerLabel()
+  const thinkerIndicator = useThinkerIndicator()
   const queryClient = useQueryClient()
   const sendUserMessage = useSendUserMessage()
   const nbaDataRaw = useLatestNBAs()
@@ -1554,33 +1558,34 @@ function InputActionsPanelThemeSelection({
   if (isProcessing) {
     return (
       <InputActionsPanelCard>
-        <div className="flex items-center justify-between px-1 py-0.5 mb-1 min-h-[22px]">
-          <Thinker label={thinkerLabel} indicator={<ThinkingIndicator variant="spinner" />} />
-          {hasPlan && !showAnySuggest && (
-            <button
-              type="button"
-              className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 ml-2"
-              onClick={() => {
-                setFullPlanExpanded(v => !v)
-                autoExpandedRef.current = false
-              }}
-            >
-              <span>{currentList.name}</span>
-              <CollapseChevron expanded={fullPlanExpanded} />
-            </button>
-          )}
-        </div>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between px-1 py-0.5 my-[4px] min-h-[22px]">
+            <Thinker label={thinkerLabel} indicator={thinkerIndicator} />
+            {hasPlan && !showAnySuggest && (
+              <button
+                type="button"
+                className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 ml-2"
+                onClick={() => {
+                  setFullPlanExpanded(v => !v)
+                  autoExpandedRef.current = false
+                }}
+              >
+                <span>{currentList.name}</span>
+                <CollapseChevron expanded={fullPlanExpanded} />
+              </button>
+            )}
+          </div>
 
-        <AnimatePresence initial={false}>
-          {hasPlan && fullPlanExpanded && !showAnySuggest && (
-            <motion.div
-              key="full-plan-processing"
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-              className="overflow-hidden mb-1"
-            >
+          <AnimatePresence initial={false}>
+            {hasPlan && fullPlanExpanded && !showAnySuggest && (
+              <motion.div
+                key="full-plan-processing"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                className="overflow-hidden"
+              >
               <div className="max-h-48 overflow-y-auto flex flex-col gap-0.5 px-1">
                 {[...completedItems, ...uncompletedItems].length > 0 ? (
                   <>
@@ -1610,8 +1615,9 @@ function InputActionsPanelThemeSelection({
                 )}
               </div>
             </motion.div>
-          )}
-        </AnimatePresence>
+            )}
+          </AnimatePresence>
+        </div>
 
         <TodoListModal
           isOpen={isModalOpen}

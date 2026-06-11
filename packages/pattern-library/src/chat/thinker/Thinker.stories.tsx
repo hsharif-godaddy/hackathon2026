@@ -104,6 +104,23 @@ export const GoDaddyIndicator: Story = {
   },
 };
 
+export const ThinkingDaddyIndicator: Story = {
+  name: 'Indicator: Thinking Daddy',
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'Pass `<ThinkingIndicator variant="thinking-daddy" />` for the approved mascot animation in agent-working status rows.',
+      },
+    },
+  },
+  args: {
+    showAnimation: true,
+    label: 'Thinking…',
+    indicator: <ThinkingIndicator variant="thinking-daddy" />,
+  },
+};
+
 export const Resolved: Story = {
   args: {
     showAnimation: false,

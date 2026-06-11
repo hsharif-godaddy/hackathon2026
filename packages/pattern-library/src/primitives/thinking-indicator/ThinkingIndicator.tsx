@@ -1,6 +1,8 @@
 import classnames from 'classnames';
 import type { CSSProperties, HTMLAttributes, JSX } from 'react';
 
+import { ThinkingDaddyGraphic } from './ThinkingDaddyGraphic';
+
 /**
  * Visual variant. `'dots'` (default) renders three staggered bouncing dots.
  * `'spinner'` renders a single rotating circular arc, useful inside compact
@@ -8,6 +10,8 @@ import type { CSSProperties, HTMLAttributes, JSX } from 'react';
  * `'godaddy'` renders the GoDaddy brand mark with a happy bounce and a
  * subtle brand-color breathing cycle — a heavier, branded option for hero
  * "the AI is working on it" moments.
+ * `'thinking-daddy'` renders the approved "Thinking Daddy" mascot with head
+ * tilt, hair bounce, glasses bob, star spin, smile morph, and eyebrow blink.
  *
  * The set of known variants may evolve over time. If a `variant` value is
  * not recognized at runtime the component renders the `'dots'` fallback,
@@ -19,7 +23,7 @@ import type { CSSProperties, HTMLAttributes, JSX } from 'react';
 // variant means appending one entry here; removing one is symmetric.
 // Without this, the type and the Set drift and `resolveVariant()` can
 // silently fall back to `'dots'` for a "known" type-level variant.
-const VARIANTS = ['dots', 'spinner', 'godaddy'] as const;
+const VARIANTS = ['dots', 'spinner', 'godaddy', 'thinking-daddy'] as const;
 export type ThinkingIndicatorVariant = (typeof VARIANTS)[number];
 
 const KNOWN_VARIANTS = new Set<ThinkingIndicatorVariant>(VARIANTS);
@@ -74,6 +78,9 @@ export interface ThinkingIndicatorProps extends HTMLAttributes<HTMLSpanElement> 
  *   subtle brand-color breathing cycle, framed by a soft pulse ring.
  *   Reserve for hero "the AI is working on it" moments where a branded
  *   affordance is appropriate.
+ * - **`thinking-daddy`** — the "Thinking Daddy" mascot (head tilt, animated
+ *   hair, glasses, star, smile morph, eyebrow blink). Approved character
+ *   art for prominent agent-working moments.
  *
  * All variants share the same accessibility surface: a `role="status"` live
  * region with a single accessible label. The animated graphic itself is
@@ -152,6 +159,8 @@ export function ThinkingIndicator({
         <SpinnerGraphic />
       ) : effectiveVariant === 'godaddy' ? (
         <GoDaddyLogoGraphic />
+      ) : effectiveVariant === 'thinking-daddy' ? (
+        <ThinkingDaddyGraphic />
       ) : (
         <DotsGraphic />
       )}

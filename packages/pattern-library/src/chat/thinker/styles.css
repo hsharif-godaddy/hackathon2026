@@ -18,7 +18,8 @@
   --airo-chat-thinker-density: intent('ux.box.density');
   --airo-chat-thinker-gap-sm: var(--airo-chat-thinker-density);
   --airo-chat-thinker-gap-md: calc(var(--airo-chat-thinker-density) * 2);
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   max-width: 100%;
 }
 
@@ -43,6 +44,53 @@
 .airo-chat-thinker__indicator {
   display: inline-flex;
   align-items: center;
+  overflow: visible;
+}
+
+/* Thinker status rows share one compact scale for every indicator variant
+   (dots, spinner, godaddy, thinking-daddy) so branded marks sit inline with
+   label text without per-call-site `size` props. */
+.airo-chat-thinker__indicator .airo-primitives-thinking-indicator {
+  --airo-primitives-thinking-indicator-size-multiplier: 0.75;
+}
+
+/* Branded ThinkingIndicator variants paint outside their layout box — the
+   godaddy logo stage uses negative margin so the pulse ring can expand, and
+   thinking-daddy head tilt rotates past the inline start. Chat transcripts
+   often set overflow-x:hidden near the column edge, which clips the mark.
+   Drop the godaddy stage margin inside Thinker; pin thinking-daddy at 22×22 in
+   status rows via explicit SVG size and 4.4px dot-size. */
+.airo-chat-thinker__indicator .airo-primitives-thinking-indicator__logo-stage {
+  margin: 0;
+}
+
+.airo-chat-thinker__status:has(.airo-primitives-thinking-indicator--thinking-daddy) {
+  align-items: center;
+}
+
+.airo-chat-thinker__status:has(.airo-primitives-thinking-indicator--thinking-daddy) .airo-chat-thinker__label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+}
+
+.airo-chat-thinker__indicator:has(.airo-primitives-thinking-indicator--thinking-daddy) {
+  --airo-primitives-thinking-indicator-dot-size: 4.4px;
+  height: 22px;
+  align-items: center;
+  overflow: visible;
+  flex-shrink: 0;
+}
+
+.airo-chat-thinker__indicator .airo-primitives-thinking-indicator--thinking-daddy {
+  padding-inline-start: calc(var(--airo-primitives-thinking-indicator-dot-size) * 0.5);
+  overflow: visible;
+}
+
+.airo-chat-thinker__indicator .airo-primitives-thinking-indicator__thinking-daddy {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
 }
 
 /* The toggle itself is a UXCore2 @ux/button; only layout rules belong here. */

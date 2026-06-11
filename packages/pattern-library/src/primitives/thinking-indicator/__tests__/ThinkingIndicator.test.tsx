@@ -191,6 +191,45 @@ describe('ThinkingIndicator', () => {
       ).toBe('0.6');
     });
 
+    it('"thinking-daddy" variant renders the mascot SVG, no dots, no spinner', () => {
+      const { container } = render(<ThinkingIndicator variant="thinking-daddy" />);
+      const mascot = container.querySelector(
+        '.airo-primitives-thinking-indicator__thinking-daddy',
+      );
+      expect(mascot).toBeInTheDocument();
+      expect(mascot?.tagName.toLowerCase()).toBe('svg');
+      expect(container.querySelectorAll('.airo-primitives-thinking-indicator__dot')).toHaveLength(
+        0,
+      );
+      expect(
+        container.querySelector('.airo-primitives-thinking-indicator__spinner'),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveClass(
+        'airo-primitives-thinking-indicator--thinking-daddy',
+      );
+    });
+
+    it('thinking-daddy SVG is aria-hidden so the live-region label is the only announcement', () => {
+      const { container } = render(<ThinkingIndicator variant="thinking-daddy" />);
+      const mascot = container.querySelector(
+        '.airo-primitives-thinking-indicator__thinking-daddy',
+      );
+      expect(mascot).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it('thinking-daddy variant keeps the same a11y surface (status role + accessible name)', () => {
+      render(<ThinkingIndicator variant="thinking-daddy" label="Thinking…" />);
+      expect(screen.getByRole('status', { name: 'Thinking…' })).toBeInTheDocument();
+    });
+
+    it('thinking-daddy variant respects the size multiplier', () => {
+      render(<ThinkingIndicator variant="thinking-daddy" size={0.6} />);
+      const root = screen.getByRole('status');
+      expect(
+        root.style.getPropertyValue('--airo-primitives-thinking-indicator-size-multiplier'),
+      ).toBe('0.6');
+    });
+
     it('falls back to the bouncing-dots variant when given an unknown variant', () => {
       const { container } = render(
         // Cast to `ThinkingIndicatorVariant` to simulate an unrecognized
