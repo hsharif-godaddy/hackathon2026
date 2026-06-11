@@ -109,6 +109,7 @@ DO NOT call this tool:
       scheduledDate: z.string().optional().describe('Planned publish date (YYYY-MM-DD)'),
       contentPreview: z.string().optional().describe('Brief description of what this content will cover'),
       imageUrl: z.string().optional().describe('URL of the image used for this content piece'),
+      status: z.enum(['draft', 'scheduled', 'published', 'sent']).optional().describe("Publish status shown on the card badge. Use 'scheduled' for built site assets (landing page, blog) that go out at launch, and 'draft' for social/email/ad that still need the user to publish. Never 'published'/'sent' before the user launches."),
     })).describe('List of planned content items for the campaign'),
   }),
   async execute(args, context) {
@@ -161,7 +162,7 @@ DO NOT call this tool:
         assetRef: item.scheduledDate || 'planned',
         title: item.title,
         scheduledDate: item.scheduledDate,
-        status: 'scheduled',
+        status: item.status ?? 'scheduled',
         contentPreview: item.contentPreview,
         imageUrl,
       }
