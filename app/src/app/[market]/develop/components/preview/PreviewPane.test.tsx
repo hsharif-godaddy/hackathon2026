@@ -690,27 +690,8 @@ describe('PreviewPane', () => {
     expect(screen.queryByTestId('preview-mobile-status-pill')).not.toBeInTheDocument();
   });
 
-  it('should show cookie-blocked overlay when cookieVerified is false', () => {
-    mockServerPollingStore.getServerState = vi.fn(function () { return {
-      isReady: false,
-      url: 'http://localhost:3000',
-      healthCheckPassed: true,
-      cookieVerified: false,
-    }; });
-
-    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
-
-    const overlay = screen.getByTestId('preview-cookie-blocked');
-    expect(overlay).toBeInTheDocument();
-
-    // Retry button present
-    expect(screen.getByText('builder_common_try_again')).toBeInTheDocument();
-
-    // Open-in-new-tab link with correct href (defaultMessage used since messages={})
-    const link = screen.getByText('Open preview in new tab');
-    expect(link).toHaveAttribute('href', 'http://localhost:3000');
-    expect(link).toHaveAttribute('target', '_blank');
-  });
+  // Browser-specific cookieVerified=false behavior (WebKit storage-access vs the
+  // non-WebKit error UI) is covered in the "Storage Access fallback gating" suite.
 
   it('should not show cookie-blocked overlay when cookieVerified is undefined', () => {
     mockServerPollingStore.getServerState = vi.fn(function () { return {
@@ -1239,26 +1220,151 @@ describe('PreviewPane — Storage Access fallback gating', () => {
     }
   }
 
-  it('redirects iframe to storage-access bootstrap when WebKit + auth probe detects 307', async () => {
+  it('renders the storage-access bootstrap in-pane on WebKit when cookieVerified is false', () => {
     stubWebKit();
-    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaqueredirect' });
+    mockServerPollingStore.getServerState = vi.fn(function () {
+      return {
+        isReady: false,
+        url: 'https://app.preview.c4.test-airoapp.ai/?airoShareToken=tok',
+        healthCheckPassed: true,
+        cookieVerified: false,
+      };
+    });
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    // Under Safari ITP the cookie is partitioned (cookieVerified=false). Instead of
+    // the dead-end "Try Again" UI, the pane should host the /airo/storage-access
+    // bootstrap so the user can grant access and load the preview in place.
+    const container = screen.getByTestId('preview-cookie-blocked-storage-access');
+    expect(container).toBeInTheDocument();
+    const iframe = container.querySelector('iframe');
+    expect(iframe?.getAttribute('src')).toContain('/airo/storage-access');
+    expect(iframe?.getAttribute('src')).toContain('redirect=');
+    expect(screen.queryByTestId('preview-cookie-blocked')).not.toBeInTheDocument();
+  });
+
+  it('keeps the cookie-blocked error UI on non-WebKit when cookieVerified is false', () => {
+    stubChrome();
+    mockServerPollingStore.getServerState = vi.fn(function () {
+      return {
+        isReady: false,
+        url: 'http://localhost:3000',
+        healthCheckPassed: true,
+        cookieVerified: false,
+      };
+    });
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    expect(screen.getByTestId('preview-cookie-blocked')).toBeInTheDocument();
+    expect(screen.queryByTestId('preview-cookie-blocked-storage-access')).not.toBeInTheDocument();
+    // Retry button + open-in-new-tab link (defaultMessage used since messages={})
+    expect(screen.getByText('builder_common_try_again')).toBeInTheDocument();
+    const link = screen.getByText('Open preview in new tab');
+    expect(link).toHaveAttribute('href', 'http://localhost:3000');
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  it('does NOT remount the in-pane Storage Access bootstrap (no IFRAME_READY churn)', async () => {
+    // Regression for the "Enable preview coming again and again" loop. When the
+    // cross-site cookie is ITP-blocked the store reports isReady=true AND
+    // cookieVerified=false, and PreviewPane renders the dev-supervisor
+    // /airo/storage-access bootstrap in-pane. That page never posts IFRAME_READY
+    // by design, so bootstrap-race recovery used to mistake it for a failed
+    // preview boot and remount it every IFRAME_BOOTSTRAP_RETRY_MS — reloading the
+    // "Enable preview" prompt and stomping the one-tap requestStorageAccess()
+    // gesture. Recovery must be suppressed while the bootstrap owns the iframe.
+    //
+    // isReady:true is load-bearing here — with isReady:false the recovery
+    // effect's existing `!serverState.isReady` guard would mask the cookie
+    // guard and the test would pass even without the fix.
+    stubWebKit();
+    mockServerPollingStore.getServerState = vi.fn(function () {
+      return {
+        isReady: true,
+        url: 'https://app.preview.c4.test-airoapp.ai/?airoShareToken=tok',
+        healthCheckPassed: true,
+        cookieVerified: false,
+      };
+    });
+    const { logger } = await import('@/lib/request-context');
+    const warn = logger.warn as ReturnType<typeof vi.fn>;
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    // The Storage Access bootstrap is shown in-pane.
+    const container = screen.getByTestId('preview-cookie-blocked-storage-access');
+    expect(container.querySelector('iframe')?.getAttribute('src')).toContain('/airo/storage-access');
+
+    // Advancing well past the remount budget must produce NO bootstrap-timeout
+    // remount (pre-fix this fired MAX_IFRAME_BOOTSTRAP_RETRIES times).
+    await exhaustBootstrapRetries();
+
+    const bootstrapTimeoutWarns = warn.mock.calls.filter(
+      ([event]) => event === 'preview-pane.iframe.bootstrap-timeout',
+    );
+    expect(bootstrapTimeoutWarns).toHaveLength(0);
+    // …and the bootstrap is still in place (not remounted away).
+    expect(screen.getByTestId('preview-cookie-blocked-storage-access')).toBeInTheDocument();
+  });
+
+  it('redirects iframe to storage-access bootstrap when WebKit + auth probe gets 401', async () => {
+    stubWebKit();
+    // dev-supervisor rejects with a direct 401 (CORS-readable) when the
+    // partitioned cookie fails JWT validation — the probe must treat that as
+    // auth-blocked and switch the iframe to the storage-access bootstrap.
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'cors', status: 401 });
     vi.stubGlobal('fetch', fetchMock);
 
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
     await exhaustBootstrapRetries();
-
-    // Allow the probe fetch promise to resolve
     await vi.advanceTimersByTimeAsync(0);
     await act(async () => { await Promise.resolve(); });
 
     const iframe = document.querySelector('iframe');
     expect(iframe?.src).toContain('/airo/storage-access');
-    expect(iframe?.src).toContain('redirect=');
   });
 
-  it('does NOT redirect to storage-access when auth probe returns opaque (no 307)', async () => {
+  it('redirects iframe to storage-access bootstrap when WebKit + auth probe gets 403', async () => {
     stubWebKit();
-    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaque' });
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'cors', status: 403 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+    await exhaustBootstrapRetries();
+    await vi.advanceTimersByTimeAsync(0);
+    await act(async () => { await Promise.resolve(); });
+
+    const iframe = document.querySelector('iframe');
+    expect(iframe?.src).toContain('/airo/storage-access');
+  });
+
+  it('probes auth-check with redirect:manual and never mode:no-cors (WebKit rejects the combo)', async () => {
+    stubWebKit();
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'cors', status: 401 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+    await exhaustBootstrapRetries();
+    await vi.advanceTimersByTimeAsync(0);
+    await act(async () => { await Promise.resolve(); });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/airo/auth-check'),
+      expect.objectContaining({ method: 'HEAD', credentials: 'include', redirect: 'manual' }),
+    );
+    // Regression guard: `mode: 'no-cors'` + `redirect: 'manual'` is illegal per
+    // the Fetch spec and throws in WebKit ("No-Cors mode requires follow
+    // redirect mode"), which made this probe always return false on Safari and
+    // suppressed the Storage Access fallback. Never set no-cors here.
+    const opts = (fetchMock.mock.calls[0]?.[1] ?? {}) as RequestInit;
+    expect(opts.mode).not.toBe('no-cors');
+  });
+
+  it('does NOT redirect to storage-access when auth probe returns 200 (authed, no 307/401/403)', async () => {
+    stubWebKit();
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'cors', status: 200 });
     vi.stubGlobal('fetch', fetchMock);
 
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
@@ -1273,7 +1379,7 @@ describe('PreviewPane — Storage Access fallback gating', () => {
 
   it('does NOT redirect to storage-access on Chrome even if retries exhausted', async () => {
     stubChrome();
-    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaqueredirect' });
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'cors', status: 401 });
     vi.stubGlobal('fetch', fetchMock);
 
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
@@ -1309,7 +1415,7 @@ describe('PreviewPane — Storage Access fallback gating', () => {
 
   it('resets isAuthBlocked when previewUrl changes', async () => {
     stubWebKit();
-    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaqueredirect' });
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'cors', status: 401 });
     vi.stubGlobal('fetch', fetchMock);
 
     const { rerender } = renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);

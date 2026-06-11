@@ -129,12 +129,20 @@ function isWebKit(): boolean {
 }
 
 /**
- * Probe the preview origin's /airo/auth-check endpoint to detect whether
- * requests are being 307'd due to auth/cookie issues. This endpoint is behind
- * JWT middleware in dev-supervisor (not proxied to Node.js), so it's
- * lightweight. Uses redirect:'manual' + mode:'no-cors' so we can distinguish
- * a redirect (type 'opaqueredirect') from a successful response (type 'opaque')
- * without needing CORS headers on the preview.
+ * Probe the preview origin's /airo/auth-check endpoint to detect whether the
+ * cross-site preview is failing auth (ITP-partitioned cookie). dev-supervisor's
+ * JWT middleware now signals this with a direct 401/403 — the prior 307→builder
+ * path is gone. This endpoint is not proxied to Node.js, so it's lightweight;
+ * auth-check sends CORS headers, so a 401/403 is readable directly. Any other
+ * response (or a CORS rejection) falls through to `false`. `redirect:'manual'`
+ * is retained defensively so the probe never silently follows an unexpected
+ * redirect to the builder and reports a misleading status.
+ *
+ * Do NOT add `mode: 'no-cors'` here: the Fetch spec requires redirect:'follow'
+ * under no-cors, and WebKit/Safari enforces it by throwing "No-Cors mode
+ * requires follow redirect mode". That throw was caught below and made this
+ * probe always return false on Safari — the exact browser the Storage Access
+ * fallback targets — so the fallback never triggered.
  */
 async function probePreviewAuth(previewUrl: string): Promise<boolean> {
   try {
@@ -143,9 +151,10 @@ async function probePreviewAuth(previewUrl: string): Promise<boolean> {
       method: 'HEAD',
       credentials: 'include',
       redirect: 'manual',
-      mode: 'no-cors',
     })
-    return res.type === 'opaqueredirect'
+    // A 401/403 from dev-supervisor's JWT middleware means the preview is
+    // auth-blocked → show the Storage Access fallback.
+    return res.status === 401 || res.status === 403
   } catch {
     return false
   }
@@ -154,7 +163,7 @@ async function probePreviewAuth(previewUrl: string): Promise<boolean> {
 /**
  * Build the dev-supervisor Storage Access bootstrap URL for a preview origin.
  * When Safari ITP blocks the cross-site preview cookie, the embedded app's
- * sub-resources are 307'd and it never loads. Pointing the iframe at this page
+ * sub-resources are auth-blocked (401) and it never loads. Pointing the iframe at this page
  * lets the user grant cookie access via `document.requestStorageAccess()` (a
  * one-tap gesture *inside* the iframe — the only context the API accepts),
  * after which it redirects back to `previewUrl` with the cookie now usable.
@@ -298,8 +307,9 @@ export default function PreviewPane({
   const [iframeKey, setIframeKey] = useState(0)
   // Bootstrap-race recovery: tracks whether the iframe has signalled
   // IFRAME_READY (which only fires when the preview app's own script
-  // loads — NOT when the iframe was 307'd to the builder or blocked by
-  // frame-ancestors CSP). If the signal doesn't arrive within
+  // loads — NOT when dev-supervisor serves its 401 login page instead of the
+  // app, or the frame is blocked by frame-ancestors CSP). If the signal
+  // doesn't arrive within
   // IFRAME_BOOTSTRAP_RETRY_MS, bump iframeKey to force a re-mount; by
   // then the bootstrap retry in useServerPollingStore should have
   // settled and the new mount picks up the cookie.
@@ -474,7 +484,7 @@ export default function PreviewPane({
   // OLD one being torn down and the NEW one starting up. Bootstrapping
   // during this window can hit the OLD container's binary, which may
   // lack the cookie-setting code path that the NEW container has, leaving
-  // the user with no `preview_auth` cookie and a 307'd iframe. By gating
+  // the user with no `preview_auth` cookie and an auth-blocked (401) iframe. By gating
   // on isImageReloading, polling only fires once the cutover is complete
   // and all requests route to the new container. useImageReadiness owns
   // the orchestration during the reload window.
@@ -968,9 +978,9 @@ export default function PreviewPane({
   // within the timeout, the most likely cause is the preview_auth cookie
   // wasn't set yet when the iframe first hit the preview origin (race
   // between the bootstrap fetch in useServerPollingStore and the iframe
-  // mount). dev-supervisor 307'd to the builder, the iframe followed,
-  // CSP frame-ancestors blocks the inner frame from rendering — net result
-  // is a blank iframe that never sends IFRAME_READY.
+  // mount). dev-supervisor serves its 401 login page instead of the preview
+  // app, so the app's own script never runs — net result is an iframe that
+  // never sends IFRAME_READY.
   //
   // Re-mount with a fresh key after the timeout. By the second mount,
   // the bootstrap-fetch retry has settled and the cookie is in the
@@ -979,6 +989,18 @@ export default function PreviewPane({
   // (e.g. third-party-cookie blocking with no share-token fallback).
   useEffect(() => {
     if (!previewUrl || !serverState?.isReady) return
+    // When the cross-site cookie is ITP-blocked (cookieVerified=false) we
+    // deliberately render the dev-supervisor /airo/storage-access bootstrap in
+    // place of the preview app (see the cookieVerified===false branch in the
+    // render below). isReady is still true in that state — the vite health
+    // check passes even when the cookie is partitioned — so without this guard
+    // recovery runs against the bootstrap. That page never posts IFRAME_READY
+    // by design, so recovery would mistake it for a failed boot and remount it
+    // every IFRAME_BOOTSTRAP_RETRY_MS, reloading the "Enable preview" prompt out
+    // from under the user and stomping the one-tap requestStorageAccess()
+    // gesture. Recovery targets the preview-app iframe only; skip it while the
+    // Storage Access bootstrap owns the iframe.
+    if (serverState?.cookieVerified === false) return
     if (iframeBootstrapped) return
     if (bootstrapRetryCount >= MAX_IFRAME_BOOTSTRAP_RETRIES) return
 
@@ -993,7 +1015,7 @@ export default function PreviewPane({
     }, IFRAME_BOOTSTRAP_RETRY_MS)
 
     return () => clearTimeout(timer)
-  }, [previewUrl, serverState?.isReady, iframeBootstrapped, bootstrapRetryCount, appId])
+  }, [previewUrl, serverState?.isReady, serverState?.cookieVerified, iframeBootstrapped, bootstrapRetryCount, appId])
 
   // Reset bootstrap flag whenever the iframe is re-keyed (forced re-mount)
   // or the URL changes — otherwise the previous "bootstrapped" state would
@@ -1016,7 +1038,7 @@ export default function PreviewPane({
   }, [previewUrl])
 
   // When bootstrap retries are exhausted on WebKit, probe the preview origin
-  // to confirm the failure is auth-related (307 redirect) before showing the
+  // to confirm the failure is auth-related (a 401/403 from dev-supervisor) before showing the
   // Storage Access fallback. Non-auth failures (app crash, slow startup) won't
   // trigger the fallback UI.
   useEffect(() => {
@@ -1202,8 +1224,40 @@ export default function PreviewPane({
     )
   }
 
-  // Cookie verification failed - browser is blocking cookies needed for preview auth
+  // Cookie verification failed - browser is blocking cookies needed for preview auth.
+  // On WebKit/Safari this is ITP partitioning the cross-site cookie (it exists but
+  // isn't sent third-party), NOT a missing session. Rather than dead-ending on a
+  // "Try Again" that just re-verifies and re-fails, render the dev-supervisor
+  // Storage Access bootstrap in-pane: it requests access on a one-tap gesture and
+  // reloads into the preview (carrying the airoShareToken) with the cookie now
+  // usable — so the preview loads on the same screen as the chat.
   if (serverState?.cookieVerified === false && serverState.url) {
+    if (isWebKit()) {
+      return (
+        <div className="h-full w-full" data-testid="preview-cookie-blocked-storage-access">
+          {/*
+            Stable key (NOT iframeKey): the Storage Access bootstrap has its own
+            lifecycle — it redirects itself into the preview app once the user
+            grants access. Keying it to iframeKey would let a remount reload the
+            "Enable preview" prompt and discard the post-grant navigation.
+            Bootstrap-race recovery is also disabled in this state (see the
+            cookieVerified===false guard on the recovery effect above).
+          */}
+          <iframe
+            key="storage-access-bootstrap"
+            ref={iframeRef}
+            id="preview-iframe"
+            data-testid="preview-iframe"
+            src={buildStorageAccessUrl(serverState.url)}
+            className="w-full h-full border rounded-lg md:rounded-b-none"
+            onError={handleIframeError}
+            onLoad={handleIframeLoad}
+            sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation allow-storage-access-by-user-activation"
+            title={t('builder_preview_preview_for', { appId })}
+          />
+        </div>
+      )
+    }
     return (
       <div className="h-full flex flex-col items-center justify-center px-4" data-testid="preview-cookie-blocked">
         <h3 className="text-lg font-semibold mb-1">{t('builder_preview_error_title')}</h3>
@@ -1250,7 +1304,7 @@ export default function PreviewPane({
     // Storage Access fallback: only activate when all three conditions hold:
     // 1. iframe never signalled IFRAME_READY after retries exhausted
     // 2. We're on WebKit (Safari ITP is the only browser that blocks this way)
-    // 3. A probe confirmed the preview origin is 307-redirecting (auth blocked)
+    // 3. A probe confirmed the preview origin returns 401/403 (auth blocked)
     const storageAccessFallback =
       !iframeBootstrapped && bootstrapRetryCount >= MAX_IFRAME_BOOTSTRAP_RETRIES && isAuthBlocked
     const iframeSrc = storageAccessFallback ? buildStorageAccessUrl(previewUrl) : previewUrl
