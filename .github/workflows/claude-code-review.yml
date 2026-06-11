@@ -47,7 +47,7 @@ jobs:
       needs.check-back-merge.outputs.skip != 'true' &&
       github.event.pull_request.draft == false &&
       github.event.sender.type != 'Bot'
-    uses: gdcorp-actions/gd-claude-code-action/.github/workflows/secure-claude-code.yml@1ca40c7d1b80196caae3f2d845e7a809837df6f2 # v2.15.0
+    uses: gdcorp-actions/gd-claude-code-action/.github/workflows/secure-claude-code.yml@e56ec6c5aeb92b60166868098e9cf59e0f35e872 # v2.17.1
     with:
       runner_group: ${{ vars.CLAUDE_RUNNER_GROUP }}
       runner_labels_json: '["self-hosted"]'
