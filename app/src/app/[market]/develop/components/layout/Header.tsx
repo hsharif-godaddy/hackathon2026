@@ -126,15 +126,16 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
 
       {/* Larger screen header */}
       {!isMobile && (
-        <div className="p-1.5 md:p-2.5 grow">
+        <div className="p-1.5 md:p-2.5 grow overflow-hidden">
           <Box
             orientation="horizontal"
             blockAlignChildren='spaceBetween'
             inlineAlignChildren='center'
             gap="sm"
+            className="overflow-x-auto"
           >
             {/* Left side controls */}
-            <Box orientation="horizontal" gap="sm" inlineAlignChildren='center'>
+            <Box orientation="horizontal" gap="sm" inlineAlignChildren='center' className="shrink-0">
               {/* Primary mode toggle: segmented Preview ↔ Edit. */}
               <ButtonGroup
                 value={viewMode}

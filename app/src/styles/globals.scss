@@ -305,6 +305,16 @@
   }
 }
 
+/* Filerobot image editor (builder MediaPanel). !important beats styled-components
+   runtime injection (same specificity, but injected after globals.scss). */
+.FIE_root {
+  overflow-y: auto !important; // fixes mobile bottom cutoff
+}
+
+.FIE_tool-options-wrapper {
+  padding-inline: 24px !important; // use px to match FIE styling
+}
+
 /* UPP mounts #UpgradeLibraryPortal inside cdsLoader (portaled to body).
    @ux/disrupt sets data-inert on the portal parent, which adds overflow:hidden
    and collapses absolute backdrops. Keep outside @layer base to beat UPP CSS. */
