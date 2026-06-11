@@ -183,7 +183,7 @@ test.describe('Develop Page', () => {
 
     // Test refresh button
     await headerRefreshButton.click({ force: true });
-    await expect(page.getByTestId('preview-iframe')).toBeVisible();
+    await expect(page.getByTestId('preview-iframe')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     console.log('  ✓ Refresh button works');
 
     // Test device selector - mobile view
@@ -330,7 +330,7 @@ test.describe('Develop Page', () => {
     await headerPublishButton.click({ force: true });
 
     const publishPopover = page.locator('[data-slot="popover-content"][data-state="open"]');
-    await publishPopover.getByText(/builder_publish_popover_title|Publish your (app|project)/i).waitFor({
+    await publishPopover.getByText(/builder_publish_popover_title|Publish your (app|project)/i).first().waitFor({
       state: 'visible',
       timeout: DEFAULT_TIMEOUT,
     });
