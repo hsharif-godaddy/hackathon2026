@@ -23,12 +23,13 @@ import { appPlanTool } from '../../../tools/app-plan-tool.js';
 import { mediaManifestService } from '../../../services/MediaManifestService.js';
 import { getKvMemoryStore } from '../../../memory/adapters/index.js';
 import { workspaceScopeFromAppId } from '../../../memory/interfaces/scope.js';
+import { LOGO_SLOT_PATHS, ALL_LAYOUTS } from '../../../services/logo/logo-slots.js';
+import { logoGenerationService } from '../../../services/logo/LogoGenerationService.js';
+import { createForWorkspace } from '../../../workspace/index.js';
+import { readLogoJob } from '../../../services/logo/logo-job-state.js';
 import {
-  logoService,
   type LogoLayout,
-  type LayoutUrls,
   type LogoColors,
-  type LogoSessionResponse,
 } from '../../../services/LogoService.js';
 
 const PROMPT_HARD_MAX = 2000;
@@ -64,19 +65,20 @@ const GenerateLogoInputSchema = z.object({
         'Omit when iterating on the existing saved logo; the tool resolves the ' +
         'current slot URL automatically.',
     ),
+  background: z
+    .boolean()
+    .default(true)
+    .describe(
+      'Run generation in the background (default true): the tool returns immediately with ' +
+        'animated placeholder slots that update when the logo is ready — use this when you ' +
+        'can keep working or end your turn without needing the finished logo. ' +
+        'Set false to generate synchronously and WAIT for the finished logo before the tool ' +
+        'returns — required when your very next step depends on the logo being done (e.g. you ' +
+        'will immediately ask the user about it or act on it in the same flow).',
+    ),
 });
 
 type GenerateLogoInput = z.infer<typeof GenerateLogoInputSchema>;
-
-type LogoSlotLayout = LogoLayout;
-
-const LOGO_SLOT_PATHS: Record<LogoSlotLayout, string> = {
-  square: 'logo/primary',
-  horizontal: 'logo/horizontal',
-  vertical: 'logo/vertical',
-};
-
-const ALL_LAYOUTS: readonly LogoLayout[] = ['square', 'horizontal', 'vertical'] as const;
 
 /** Five core palette tokens we surface to the model. */
 type CorePaletteKey = 'primary' | 'secondary' | 'accent' | 'background' | 'foreground';
@@ -265,138 +267,6 @@ async function resolveReferenceUrl(
   return { url: undefined, existingSlotWithoutReference: sawSlot };
 }
 
-interface SaveSlotsResult {
-  savedSlots: Partial<Record<LogoLayout, string>>;
-  slotSaveFailed: boolean;
-  failedLayouts: LogoLayout[];
-}
-
-async function saveLogoToSlots(
-  appId: string,
-  response: LogoSessionResponse,
-  searchQuery: string,
-): Promise<SaveSlotsResult> {
-  const savedSlots: Partial<Record<LogoLayout, string>> = {};
-  const failedLayouts: LogoLayout[] = [];
-  const now = new Date().toISOString();
-
-  for (const layout of ALL_LAYOUTS) {
-    const variants: LayoutUrls | undefined = response.logo.urls[layout];
-    if (!variants) continue;
-
-    const slotPath = LOGO_SLOT_PATHS[layout];
-    const transparent = variants.transparent;
-
-    const solidUrlMap = { [transparent]: variants.solid };
-    const reversedUrlMap = { [transparent]: variants.reversed };
-    const reversedSolidUrlMap = { [transparent]: variants.reversedSolid };
-    const mockupUrlMap = { [transparent]: variants.mockup };
-    const landscapeMockupUrlMap = { [transparent]: variants.landscapeMockup };
-    const logoSourceMap = {
-      [transparent]: { sessionId: response.sessionId, logoId: response.logo.id },
-    };
-
-    let mergedAlternatives: string[] = [];
-    let mergedSolidUrlMap = { ...solidUrlMap };
-    let mergedReversedUrlMap = { ...reversedUrlMap };
-    let mergedReversedSolidUrlMap = { ...reversedSolidUrlMap };
-    let mergedMockupUrlMap = { ...mockupUrlMap };
-    let mergedLandscapeMockupUrlMap = { ...landscapeMockupUrlMap };
-    let mergedLogoSourceMap = { ...logoSourceMap };
-    let createdAt = now;
-
-    try {
-      const existing = await mediaManifestService.getSlot(appId, slotPath);
-      if (existing.success && existing.slot) {
-        const old = existing.slot;
-        const oldUrls = [old.currentUrl, ...(old.alternatives ?? [])].filter(
-          (u) => u && u !== transparent,
-        );
-        mergedAlternatives = oldUrls;
-        mergedSolidUrlMap = { ...(old.solidUrlMap ?? {}), ...solidUrlMap };
-        mergedReversedUrlMap = { ...(old.reversedUrlMap ?? {}), ...reversedUrlMap };
-        mergedReversedSolidUrlMap = { ...(old.reversedSolidUrlMap ?? {}), ...reversedSolidUrlMap };
-        mergedMockupUrlMap = { ...(old.mockupUrlMap ?? {}), ...mockupUrlMap };
-        mergedLandscapeMockupUrlMap = {
-          ...(old.landscapeMockupUrlMap ?? {}),
-          ...landscapeMockupUrlMap,
-        };
-        mergedLogoSourceMap = { ...(old.logoSourceMap ?? {}), ...logoSourceMap };
-        createdAt = old.createdAt || now;
-      }
-
-      await mediaManifestService.setSlot(appId, slotPath, {
-        mediaType: 'logo',
-        currentUrl: transparent,
-        searchQuery,
-        alternatives: mergedAlternatives,
-        solidUrlMap: mergedSolidUrlMap,
-        reversedUrlMap: mergedReversedUrlMap,
-        reversedSolidUrlMap: mergedReversedSolidUrlMap,
-        mockupUrlMap: mergedMockupUrlMap,
-        landscapeMockupUrlMap: mergedLandscapeMockupUrlMap,
-        logoSourceMap: mergedLogoSourceMap,
-        userModified: false,
-        createdAt,
-        lastUpdated: now,
-      });
-
-      savedSlots[layout] = `/airo-assets/images/${slotPath}`;
-      logger.info('skill.media-logo.slot_saved', {
-        appId, slotPath, layout, sessionId: response.sessionId,
-      });
-    } catch (err) {
-      failedLayouts.push(layout);
-      logger.error('skill.media-logo.slot_save_failed', {
-        appId,
-        slotPath,
-        layout,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
-  return { savedSlots, slotSaveFailed: failedLayouts.length > 0, failedLayouts };
-}
-
-function buildResultText(args: {
-  /** Layouts actually produced by the API (not merely requested). */
-  producedLayouts: LogoLayout[];
-  savedSlots: Partial<Record<LogoLayout, string>>;
-  failedLayouts: LogoLayout[];
-  /**
-   * True when the caller omitted `referenceUrl`, a saved logo existed, but no
-   * usable reference could be resolved — i.e. an intended edit silently became
-   * a fresh design. Lets the agent tell the user it's a new logo, not a tweak.
-   */
-  generatedFromScratchDespiteExisting: boolean;
-}): string {
-  const count = args.producedLayouts.length;
-  const slotEntries = Object.entries(args.savedSlots);
-  const slotNote = slotEntries.length === 0
-    ? 'No slot URLs saved.'
-    : slotEntries.length === 1
-      ? `Slot URL: ${slotEntries[0]![1]} (transparent).`
-      : 'Slot URLs: ' +
-        slotEntries.map(([l, u]) => `${l}: ${u}`).join(', ') +
-        '. Use the orientation matching the placement.';
-
-  const failureNote = args.failedLayouts.length > 0
-    ? ` Slot save failed for: ${args.failedLayouts.join(', ')} — ${args.failedLayouts.length > 1 ? 'those layouts' : 'that layout'} will not appear in the Brand Book until retried. Tell the user and offer to retry.`
-    : '';
-
-  const fromScratchNote = args.generatedFromScratchDespiteExisting
-    ? ' Note: no usable reference was found for the existing logo, so this is a brand-new design rather than an edit of the current one — let the user know if they expected a tweak.'
-    : '';
-
-  return (
-    `Generated logo${count > 1 ? 's' : ''} for ${count} layout` +
-    `${count > 1 ? 's' : ''}.${failureNote}${fromScratchNote} ${slotNote} ` +
-    "If the user's request includes a placement (e.g. \"add it to the header\"), place the appropriate slot URL in source code now. " +
-    'Otherwise, present the result and let the user decide — they can ask you to place it later.'
-  );
-}
-
 export const generateLogoTool: SkillToolDefinition = {
   name: 'generate_logo',
   description:
@@ -475,68 +345,99 @@ export const generateLogoTool: SkillToolDefinition = {
     // The caller omitted a reference and we couldn't resolve one from an
     // existing slot — an intended "make it blue"-style edit will produce a
     // fresh design instead. Surface it so it isn't silently misleading.
-    const generatedFromScratchDespiteExisting =
-      !input.referenceUrl && referenceUrl === undefined && reference.existingSlotWithoutReference;
-    if (generatedFromScratchDespiteExisting) {
+    if (!input.referenceUrl && referenceUrl === undefined && reference.existingSlotWithoutReference) {
       logger.warn('skill.media-logo.reference.unresolved_with_existing_slot', {
         appId,
         layout: input.layout,
       });
     }
 
-    let response: LogoSessionResponse;
-    try {
-      response = await logoService.generate({
-        prompt: finalPrompt,
-        layout: layouts,
-        ...(referenceUrl !== undefined && { referenceUrl }),
-        ...(colors && { colors }),
-        appId,
-        customerId,
-        budgetUserId,
-      });
-    } catch (err) {
-      if (BudgetExceededError.isInstance(err)) throw err;
-      logger.error('skill.media-logo.generate_logo.error', {
-        appId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return { error: err instanceof Error ? err.message : 'Logo generation failed' };
+    const result = await logoGenerationService.start({
+      appId,
+      prompt: finalPrompt,
+      layouts,
+      ...(referenceUrl !== undefined ? { referenceUrl } : {}),
+      ...(colors !== undefined ? { colors } : {}),
+      customerId,
+      budgetUserId,
+      searchQuery: input.prompt.slice(0, 80),
+      ...(input.background === false ? { suppressGrowl: true } : {}),
+    });
+
+    if (result.status === 'error') {
+      return { error: result.error ?? 'Logo generation could not be started' };
     }
 
-    const { savedSlots, slotSaveFailed, failedLayouts } = await saveLogoToSlots(
-      appId,
-      response,
-      input.prompt.slice(0, 80),
-    );
+    // Synchronous mode: wait for the background run to settle, then report THIS
+    // job's outcome (resolved through `done`, not re-read from the per-app job
+    // file — which could describe a newer job after a supersede). Used when the
+    // caller's next step depends on the finished logo (the logo-designer flow
+    // asks the user about it immediately after).
+    if (input.background === false) {
+      const outcome = await result.done;
+      if (outcome?.status === 'completed') {
+        const skippedLayouts = outcome.skippedLayouts ?? [];
+        const hasSkipped = skippedLayouts.length > 0;
+        // Every requested layout was left untouched because the user had manually
+        // overridden those slots (save-time userModified guard) — the new logo was
+        // generated but NOT applied. Tell the model so it doesn't claim the new logo
+        // is live over the user's custom one.
+        const allKept = hasSkipped && skippedLayouts.length === layouts.length;
+        logger.info('skill.media-logo.generate_logo.completed_sync', {
+          appId, jobId: result.jobId, slots: result.slots,
+          slotSaveFailed: outcome.slotSaveFailed, skippedLayouts,
+        });
+        const text = outcome.slotSaveFailed
+          ? 'Logo generated, but one or more layouts failed to save — you may want to regenerate.'
+          : allKept
+            ? 'Logo generated, but the brand slots were left unchanged because the user had ' +
+              'manually set a custom logo. The new logo was NOT applied — do not tell the user it ' +
+              'was; ask before replacing their custom logo.'
+            : hasSkipped
+              ? `Logo generated and saved. Kept the user's custom logo (left unchanged) for: ${skippedLayouts.join(', ')}.`
+              : 'Logo generated and saved to the brand slots.';
+        return {
+          text,
+          structuredContent: {
+            started: true,
+            jobId: result.jobId,
+            slots: result.slots,
+            status: 'completed',
+            logoId: outcome.logoId,
+            ...(outcome.slotSaveFailed
+              ? { slotSaveFailed: true, failedLayouts: outcome.failedLayouts }
+              : {}),
+            ...(hasSkipped ? { skippedLayouts } : {}),
+          },
+        };
+      }
+      const status = outcome?.status ?? 'unknown';
+      logger.warn('skill.media-logo.generate_logo.failed_sync', {
+        appId, jobId: result.jobId, status,
+      });
+      const error =
+        status === 'cancelled'
+          ? 'Logo generation was cancelled.'
+          : status === 'superseded'
+            ? 'Logo generation was superseded by a newer request.'
+            : 'Logo generation failed. Please try again.';
+      return { error, structuredContent: { jobId: result.jobId, status } };
+    }
 
-    const producedLayouts = Object.keys(response.logo.urls) as LogoLayout[];
-
-    const layoutKeys = Object.keys(savedSlots) as LogoLayout[];
-    const primaryLayout: LogoLayout =
-      layoutKeys.includes('square') ? 'square'
-      : layoutKeys.includes('horizontal') ? 'horizontal'
-      : layoutKeys.includes('vertical') ? 'vertical'
-      : layouts[0]!;
-    const primarySlotPath = LOGO_SLOT_PATHS[primaryLayout];
-    const primarySlotUrl = savedSlots[primaryLayout] ?? `/airo-assets/images/${primarySlotPath}`;
-
-    const text = buildResultText({
-      producedLayouts,
-      savedSlots,
-      failedLayouts,
-      generatedFromScratchDespiteExisting,
+    logger.info('skill.media-logo.generate_logo.queued', {
+      appId, jobId: result.jobId, slots: result.slots,
     });
 
     return {
-      text,
+      text:
+        'Logo generation has started in the background. Placeholder slots are in place — ' +
+        'you can reference the logo slots now and they will update automatically when the logo is ready. ' +
+        'I will let you know when it completes (or if it fails).',
       structuredContent: {
-        logo: response.logo,
-        sessionId: response.sessionId,
-        slotUrl: primarySlotUrl,
-        slotPath: primarySlotPath,
-        savedSlots,
-        slotSaveFailed,
+        started: true,
+        jobId: result.jobId,
+        slots: result.slots,
+        status: 'queued',
       },
     };
   },
@@ -566,6 +467,18 @@ export const setVentureLogoTool: SkillToolDefinition = {
     }
 
     logger.info('skill.media-logo.set_venture_logo.start', { appId });
+
+    const workspace = createForWorkspace(appId, 'preview')?.files ?? null;
+    if (workspace) {
+      const job = await readLogoJob(workspace, appId);
+      if (job && (job.status === 'queued' || job.status === 'generating')) {
+        logger.info('skill.media-logo.set_venture_logo.pending', { appId, jobId: job.jobId });
+        return {
+          text: 'The logo is still generating — I will set it on the venture dashboard once it is ready.',
+          structuredContent: { pending: true },
+        };
+      }
+    }
 
     let horizontalResult: Awaited<ReturnType<typeof mediaManifestService.getSlot>>;
     let squareResult: Awaited<ReturnType<typeof mediaManifestService.getSlot>>;

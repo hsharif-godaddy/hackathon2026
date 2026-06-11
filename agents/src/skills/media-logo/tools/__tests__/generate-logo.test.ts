@@ -40,6 +40,24 @@ vi.mock('../../../../memory/adapters/index.js', () => ({
   getKvMemoryStore: () => ({ get: mockMemoryGet }),
 }));
 
+const mockStart = vi.fn(async () => ({
+  status: 'queued', jobId: 'job-1', slots: ['logo/horizontal'], done: Promise.resolve(),
+}));
+vi.mock('../../../../services/logo/LogoGenerationService.js', () => ({
+  logoGenerationService: { start: mockStart },
+}));
+
+// Used only by the synchronous (background:false) path to read the settled job.
+const mockCreateForWorkspace = vi.fn(() => ({ files: {} }));
+vi.mock('../../../../workspace/index.js', () => ({
+  createForWorkspace: mockCreateForWorkspace,
+}));
+
+const mockReadLogoJob = vi.fn(async () => ({ jobId: 'job-1', status: 'completed', logoId: 'logo-abc' }));
+vi.mock('../../../../services/logo/logo-job-state.js', () => ({
+  readLogoJob: mockReadLogoJob,
+}));
+
 describe('media-logo generate_logo tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -52,6 +70,13 @@ describe('media-logo generate_logo tool', () => {
 
     mockGetSlot.mockResolvedValue({ success: false });
     mockSetSlot.mockResolvedValue({ success: true });
+
+    mockStart.mockResolvedValue({
+      status: 'queued', jobId: 'job-1', slots: ['logo/horizontal'], done: Promise.resolve(),
+    });
+
+    mockCreateForWorkspace.mockReturnValue({ files: {} });
+    mockReadLogoJob.mockResolvedValue({ jobId: 'job-1', status: 'completed', logoId: 'logo-abc' });
 
     mockGenerate.mockResolvedValue({
       sessionId: 'sess-1',
@@ -86,7 +111,7 @@ describe('media-logo generate_logo tool', () => {
       );
 
       expect(result.error).toMatch(/app id/i);
-      expect(mockGenerate).not.toHaveBeenCalled();
+      expect(mockStart).not.toHaveBeenCalled();
     });
 
     it('returns an error when the app has no customerId', async () => {
@@ -100,7 +125,7 @@ describe('media-logo generate_logo tool', () => {
       );
 
       expect(result.error).toMatch(/customer/i);
-      expect(mockGenerate).not.toHaveBeenCalled();
+      expect(mockStart).not.toHaveBeenCalled();
     });
 
     it('returns an error when grants are exhausted', async () => {
@@ -114,7 +139,7 @@ describe('media-logo generate_logo tool', () => {
       );
 
       expect(result.error).toMatch(/credit/i);
-      expect(mockGenerate).not.toHaveBeenCalled();
+      expect(mockStart).not.toHaveBeenCalled();
     });
   });
 
@@ -140,7 +165,7 @@ describe('media-logo generate_logo tool', () => {
         baseContext,
       );
 
-      const callArg = mockGenerate.mock.calls[0][0];
+      const callArg = mockStart.mock.calls[0][0];
       expect(callArg.prompt).toContain('a coffee cup logo');
       expect(callArg.prompt).toContain('Brand colors');
       expect(callArg.prompt).toContain('primary #B96B3C');
@@ -170,7 +195,7 @@ describe('media-logo generate_logo tool', () => {
         baseContext,
       );
 
-      const callArg = mockGenerate.mock.calls[0][0];
+      const callArg = mockStart.mock.calls[0][0];
       expect(callArg.prompt).toContain('primary #000');
       expect(callArg.prompt).toContain('accent #FFF');
     });
@@ -183,7 +208,7 @@ describe('media-logo generate_logo tool', () => {
         baseContext,
       );
 
-      const callArg = mockGenerate.mock.calls[0][0];
+      const callArg = mockStart.mock.calls[0][0];
       expect(callArg.prompt).toBe('a logo');
       expect(callArg.prompt).not.toContain('Brand colors');
     });
@@ -202,7 +227,7 @@ describe('media-logo generate_logo tool', () => {
         baseContext,
       );
 
-      const callArg = mockGenerate.mock.calls[0][0];
+      const callArg = mockStart.mock.calls[0][0];
       expect(callArg.prompt.length).toBeLessThanOrEqual(2000);
     });
   });
@@ -238,7 +263,7 @@ describe('media-logo generate_logo tool', () => {
         flagOnContext,
       );
 
-      const callArg = mockGenerate.mock.calls[0][0];
+      const callArg = mockStart.mock.calls[0][0];
       expect(callArg.colors).toEqual({
         primary: '#B96B3C',
         secondary: '#2A4D3E',
@@ -261,7 +286,7 @@ describe('media-logo generate_logo tool', () => {
         baseContext,
       );
 
-      const callArg = mockGenerate.mock.calls[0][0];
+      const callArg = mockStart.mock.calls[0][0];
       expect(callArg).not.toHaveProperty('colors');
       // Suffix path is unaffected by the flag.
       expect(callArg.prompt).toContain('Brand colors');
@@ -275,25 +300,13 @@ describe('media-logo generate_logo tool', () => {
         flagOnContext,
       );
 
-      const callArg = mockGenerate.mock.calls[0][0];
+      const callArg = mockStart.mock.calls[0][0];
       expect(callArg).not.toHaveProperty('colors');
     });
   });
 
   describe('layout expansion', () => {
     it('expands layout: "all" into [square, horizontal, vertical]', async () => {
-      mockGenerate.mockResolvedValueOnce({
-        sessionId: 'sess-1',
-        logo: {
-          id: 'l-1', generatedAt: 'now', prompt: 'p', modelUsed: 'gpt-image-2',
-          urls: {
-            square: stubVariants('s.png'),
-            horizontal: stubVariants('h.png'),
-            vertical: stubVariants('v.png'),
-          },
-        },
-      });
-
       const { generateLogoTool } = await import('../index.js');
 
       await generateLogoTool.execute(
@@ -301,8 +314,8 @@ describe('media-logo generate_logo tool', () => {
         baseContext,
       );
 
-      expect(mockGenerate).toHaveBeenCalledWith(
-        expect.objectContaining({ layout: ['square', 'horizontal', 'vertical'] }),
+      expect(mockStart).toHaveBeenCalledWith(
+        expect.objectContaining({ layouts: ['square', 'horizontal', 'vertical'] }),
       );
     });
 
@@ -314,8 +327,8 @@ describe('media-logo generate_logo tool', () => {
         baseContext,
       );
 
-      expect(mockGenerate).toHaveBeenCalledWith(
-        expect.objectContaining({ layout: ['vertical'] }),
+      expect(mockStart).toHaveBeenCalledWith(
+        expect.objectContaining({ layouts: ['vertical'] }),
       );
     });
   });
@@ -333,7 +346,7 @@ describe('media-logo generate_logo tool', () => {
         baseContext,
       );
 
-      expect(mockGenerate).toHaveBeenCalledWith(
+      expect(mockStart).toHaveBeenCalledWith(
         expect.objectContaining({
           referenceUrl: 'https://app-1.agent.c4.test-airoapp.ai/files/uploads/app-1/foo.png?sig=x',
         }),
@@ -364,7 +377,7 @@ describe('media-logo generate_logo tool', () => {
         baseContext,
       );
 
-      expect(mockGenerate).toHaveBeenCalledWith(
+      expect(mockStart).toHaveBeenCalledWith(
         expect.objectContaining({ referenceUrl: '/airo-assets/uploads/existing-logo.png' }),
       );
     });
@@ -405,7 +418,7 @@ describe('media-logo generate_logo tool', () => {
         baseContext,
       );
 
-      expect(mockGenerate).toHaveBeenCalledWith(
+      expect(mockStart).toHaveBeenCalledWith(
         expect.objectContaining({ referenceUrl: '/airo-assets/uploads/horizontal-logo.png' }),
       );
     });
@@ -439,7 +452,7 @@ describe('media-logo generate_logo tool', () => {
         baseContext,
       );
 
-      expect(mockGenerate).toHaveBeenCalledWith(
+      expect(mockStart).toHaveBeenCalledWith(
         expect.objectContaining({ referenceUrl: '/airo-assets/uploads/horizontal-logo.png' }),
       );
     });
@@ -461,16 +474,13 @@ describe('media-logo generate_logo tool', () => {
 
       const { generateLogoTool } = await import('../index.js');
 
-      const result = await generateLogoTool.execute(
+      await generateLogoTool.execute(
         { prompt: 'logo', layout: 'horizontal' },
         baseContext,
       );
 
-      const callArg = mockGenerate.mock.calls[0][0];
+      const callArg = mockStart.mock.calls[0][0];
       expect(callArg.referenceUrl).toBeUndefined();
-      // An intended edit silently became a fresh design — the result text must
-      // tell the agent so it can warn the user (not pretend it was a tweak).
-      expect(result.text).toMatch(/brand-new design/i);
     });
 
     it('rejects an http (non-https) referenceUrl', async () => {
@@ -482,95 +492,103 @@ describe('media-logo generate_logo tool', () => {
       );
 
       expect(result.error).toMatch(/https/);
-      expect(mockGenerate).not.toHaveBeenCalled();
+      expect(mockStart).not.toHaveBeenCalled();
     });
   });
 
-  describe('slot save', () => {
-    it('writes a slot per generated layout', async () => {
-      mockGenerate.mockResolvedValueOnce({
-        sessionId: 'sess-1',
-        logo: {
-          id: 'l-1', generatedAt: 'now', prompt: 'p', modelUsed: 'gpt-image-2',
-          urls: {
-            square: stubVariants('s.png'),
-            horizontal: stubVariants('h.png'),
-          },
-        },
-      });
-
-      const { generateLogoTool } = await import('../index.js');
-
-      await generateLogoTool.execute(
-        { prompt: 'logo', layout: 'all' },
-        baseContext,
-      );
-
-      const slotCalls = mockSetSlot.mock.calls.map(([appId, path]) => ({ appId, path }));
-      expect(slotCalls).toEqual(
-        expect.arrayContaining([
-          { appId: 'app-1', path: 'logo/primary' },
-          { appId: 'app-1', path: 'logo/horizontal' },
-        ]),
-      );
+  describe('async kickoff', () => {
+    beforeEach(() => {
+      mockStart.mockResolvedValue({ status: 'queued', jobId: 'job-1', slots: ['logo/horizontal'], done: Promise.resolve() });
     });
 
-    it('records logoSourceMap so a later edit can auto-resolve', async () => {
+    it('returns a started ack (does not block on generation)', async () => {
       const { generateLogoTool } = await import('../index.js');
-
-      await generateLogoTool.execute(
-        { prompt: 'logo', layout: 'horizontal' },
-        baseContext,
-      );
-
-      const slotPayload = mockSetSlot.mock.calls[0][2];
-      expect(slotPayload.logoSourceMap).toBeDefined();
-      expect(Object.values(slotPayload.logoSourceMap)).toEqual([
-        { sessionId: 'sess-1', logoId: 'logo-abc' },
-      ]);
-    });
-
-    it('returns slotSaveFailed: true when the slot write throws', async () => {
-      mockSetSlot.mockRejectedValueOnce(new Error('disk full'));
-
-      const { generateLogoTool } = await import('../index.js');
-
-      const result = await generateLogoTool.execute(
-        { prompt: 'logo', layout: 'horizontal' },
-        baseContext,
-      );
-
-      expect(result.structuredContent?.slotSaveFailed).toBe(true);
-      expect(result.text).toMatch(/slot save failed/i);
-    });
-  });
-
-  describe('output shape', () => {
-    it('returns text + structuredContent on success', async () => {
-      const { generateLogoTool } = await import('../index.js');
-
-      const result = await generateLogoTool.execute(
-        { prompt: 'logo', layout: 'horizontal' },
-        baseContext,
-      );
-
+      const result = await generateLogoTool.execute({ prompt: 'logo', layout: 'horizontal' }, baseContext);
       expect(result.structuredContent).toMatchObject({
-        sessionId: 'sess-1',
-        slotUrl: '/airo-assets/images/logo/horizontal',
-        slotPath: 'logo/horizontal',
-        savedSlots: { horizontal: '/airo-assets/images/logo/horizontal' },
-        slotSaveFailed: false,
+        started: true, jobId: 'job-1', slots: ['logo/horizontal'], status: 'queued',
       });
-      expect(result.structuredContent?.logo).toMatchObject({ id: 'logo-abc' });
       expect(result.text).toBeTruthy();
+    });
+
+    it('starts the job with the resolved prompt, layouts, customer and budget user', async () => {
+      const { generateLogoTool } = await import('../index.js');
+      await generateLogoTool.execute({ prompt: 'logo', layout: 'horizontal' }, baseContext);
+      expect(mockStart).toHaveBeenCalledWith(expect.objectContaining({
+        appId: 'app-1',
+        layouts: ['horizontal'],
+        customerId: expect.any(String),
+        budgetUserId: expect.any(String),
+        searchQuery: expect.any(String),
+      }));
+    });
+
+    it('surfaces a start error', async () => {
+      mockStart.mockResolvedValueOnce({ status: 'error', error: 'Workspace unavailable for logo generation' });
+      const { generateLogoTool } = await import('../index.js');
+      const result = await generateLogoTool.execute({ prompt: 'logo', layout: 'horizontal' }, baseContext);
+      expect(result.error).toBe('Workspace unavailable for logo generation');
+    });
+  });
+
+  describe('synchronous mode (background: false)', () => {
+    // The sync path reports THIS job's outcome via the `done` promise, not a
+    // per-app job-file read — so a supersede can't make it report a newer job.
+    const withOutcome = (outcome: unknown) =>
+      mockStart.mockResolvedValue({
+        status: 'queued', jobId: 'job-1', slots: ['logo/horizontal'], done: Promise.resolve(outcome),
+      });
+
+    it('waits for the run to settle and returns the completed result', async () => {
+      withOutcome({ status: 'completed', jobId: 'job-1', logoId: 'logo-xyz', slotSaveFailed: false, failedLayouts: [] });
+      const { generateLogoTool } = await import('../index.js');
+      const result = await generateLogoTool.execute(
+        { prompt: 'logo', layout: 'horizontal', background: false }, baseContext,
+      );
+      expect(result.error).toBeUndefined();
+      expect(result.structuredContent).toMatchObject({
+        started: true, jobId: 'job-1', slots: ['logo/horizontal'], status: 'completed', logoId: 'logo-xyz',
+      });
+    });
+
+    it('surfaces a partial slot-save failure instead of reporting clean success', async () => {
+      withOutcome({ status: 'completed', jobId: 'job-1', logoId: 'logo-xyz', slotSaveFailed: true, failedLayouts: ['vertical'] });
+      const { generateLogoTool } = await import('../index.js');
+      const result = await generateLogoTool.execute(
+        { prompt: 'logo', layout: 'all', background: false }, baseContext,
+      );
+      expect(result.error).toBeUndefined();
+      expect(result.text).toMatch(/failed to save/i);
+      expect(result.structuredContent).toMatchObject({ status: 'completed', slotSaveFailed: true, failedLayouts: ['vertical'] });
+    });
+
+    it('returns an error when the synchronous run failed', async () => {
+      withOutcome({ status: 'failed', jobId: 'job-1' });
+      const { generateLogoTool } = await import('../index.js');
+      const result = await generateLogoTool.execute(
+        { prompt: 'logo', layout: 'horizontal', background: false }, baseContext,
+      );
+      expect(result.error).toBeTruthy();
+      expect(result.structuredContent).toMatchObject({ status: 'failed' });
+    });
+
+    it('reports cancellation distinctly', async () => {
+      withOutcome({ status: 'cancelled', jobId: 'job-1' });
+      const { generateLogoTool } = await import('../index.js');
+      const result = await generateLogoTool.execute(
+        { prompt: 'logo', layout: 'horizontal', background: false }, baseContext,
+      );
+      expect(result.error).toContain('cancelled');
+      expect(result.structuredContent).toMatchObject({ status: 'cancelled' });
+    });
+
+    it('reports supersede distinctly (does not misreport a newer job as this call)', async () => {
+      withOutcome({ status: 'superseded', jobId: 'job-1' });
+      const { generateLogoTool } = await import('../index.js');
+      const result = await generateLogoTool.execute(
+        { prompt: 'logo', layout: 'horizontal', background: false }, baseContext,
+      );
+      expect(result.error).toMatch(/superseded/i);
+      expect(result.structuredContent).toMatchObject({ status: 'superseded' });
     });
   });
 });
-
-function stubVariants(base: string) {
-  const url = `/airo-assets/uploads/${base}`;
-  return {
-    transparent: url, solid: url, reversed: url,
-    reversedSolid: url, mockup: url, landscapeMockup: url,
-  };
-}

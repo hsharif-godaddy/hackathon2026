@@ -66,6 +66,10 @@
     "./publish": {
       "types": "./dist/publish/index.d.ts",
       "import": "./dist/publish/index.js"
+    },
+    "./logo-shimmer": {
+      "types": "./dist/logo-shimmer/index.d.ts",
+      "import": "./dist/logo-shimmer/index.js"
     }
   },
   "typesVersions": {
@@ -111,6 +115,9 @@
       ],
       "publish": [
         "dist/publish/index.d.ts"
+      ],
+      "logo-shimmer": [
+        "dist/logo-shimmer/index.d.ts"
       ]
     }
   },

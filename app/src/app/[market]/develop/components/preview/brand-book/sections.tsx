@@ -11,6 +11,7 @@ import type { BrandData, BrandDataPalette } from '@/hooks/useBrandData';
 import { logger } from '@/lib/request-context';
 import { logClickEvent } from '@/utils/instrumentation';
 import styles from './brand-book.module.css';
+import { LogoShimmer, LogoShimmerOverlay } from './LogoShimmer';
 import { SectionHeader, SectionWrapper } from './shared-components';
 import type { BrandStyle } from './types';
 
@@ -88,15 +89,82 @@ export function LogoSection({
   logoUrl,
   reversedLogoUrl,
   isLoading = false,
+  isPending = false,
+  priorLightLogoUrl,
+  priorDarkLogoUrl,
 }: {
   brand: BrandStyle;
   palette?: BrandDataPalette;
   logoUrl?: string;
   reversedLogoUrl?: string;
   isLoading?: boolean;
+  /** When the logo slot has an in-flight async job, render a shimmer and ignore the live logoUrl
+   *  (the /airo-assets/* shimmer URL does not resolve on the builder origin). */
+  isPending?: boolean;
+  /** Prior hosted logo (light/solid) when this is a REGENERATION — shown dimmed under an
+   *  animated "updating" overlay. Absent for a fresh generation (bare shimmer). */
+  priorLightLogoUrl?: string;
+  /** Prior hosted logo for the dark panel (reversed/solid variant, falling back to light). */
+  priorDarkLogoUrl?: string;
 }) {
   const downloadImage = useDownloadImage();
   const brandClickProps = { flow: 'logo-designer' as const };
+
+  // In-flight async logo job: shimmer the dual panel and never load the live currentUrl.
+  // Takes precedence over both the loaded and empty/placeholder states below.
+  if (isPending) {
+    // Regeneration: a prior hosted logo exists — show it dimmed beneath an animated overlay sheen.
+    const isRegen = !!priorLightLogoUrl;
+    return (
+      <SectionWrapper palette={palette}>
+        <SectionHeader num="01" label="Primary Mark" title="Logo" brand={brand} />
+        <Box gap="lg">
+          <div className={styles.logoDualPanel}>
+            <div className={styles.logoPanelCard}>
+              <div className={`${styles.logoPanelImage} relative`} style={{ backgroundColor: '#FFFFFF' }}>
+                {isRegen ? (
+                  <>
+                    <Image
+                      src={priorLightLogoUrl}
+                      alt="Logo on light background"
+                      width={0}
+                      height={0}
+                      sizes="(max-width: 768px) 100vw, 50vw"
+                      unoptimized
+                      className={`${styles.logoPanelMedia} opacity-60`}
+                    />
+                    <LogoShimmerOverlay data-testid="logo-shimmer-overlay-light" />
+                  </>
+                ) : (
+                  <LogoShimmer className="w-full aspect-video" orientation="horizontal" data-testid="logo-shimmer-light" />
+                )}
+              </div>
+            </div>
+            <div className={styles.logoPanelCard}>
+              <div className={`${styles.logoPanelImage} relative`} style={{ backgroundColor: '#1C1C1E' }}>
+                {isRegen ? (
+                  <>
+                    <Image
+                      src={priorDarkLogoUrl || priorLightLogoUrl}
+                      alt="Logo on dark background"
+                      width={0}
+                      height={0}
+                      sizes="(max-width: 768px) 100vw, 50vw"
+                      unoptimized
+                      className={`${styles.logoPanelMedia} opacity-60`}
+                    />
+                    <LogoShimmerOverlay data-testid="logo-shimmer-overlay-dark" />
+                  </>
+                ) : (
+                  <LogoShimmer className="w-full aspect-video" orientation="horizontal" data-testid="logo-shimmer-dark" />
+                )}
+              </div>
+            </div>
+          </div>
+        </Box>
+      </SectionWrapper>
+    );
+  }
 
   // null (manifest loading) or undefined (no logo) — show spinner or placeholder
   if (!logoUrl) {
@@ -257,20 +325,79 @@ export function ColorContextsSection({
   brand,
   logoUrl,
   isLoading = false,
+  isPending = false,
+  priorLogoUrl,
 }: {
   palette?: BrandDataPalette;
   brand: BrandStyle;
   logoUrl?: string;
   isLoading?: boolean;
+  /** When the logo slot has an in-flight async job, render a shimmer and ignore the live logoUrl
+   *  (the /airo-assets/* shimmer URL does not resolve on the builder origin). */
+  isPending?: boolean;
+  /** Prior hosted logo when this is a REGENERATION — shown dimmed under an animated overlay
+   *  inside each color inset. Absent for a fresh generation (bare shimmer). */
+  priorLogoUrl?: string;
 }) {
   const displayColors = palette?.displayColors;
   const hasData = displayColors && displayColors.length > 0 && logoUrl;
+  // Regeneration: a prior hosted logo exists — show it dimmed beneath an animated overlay sheen.
+  const isRegen = isPending && !!priorLogoUrl;
 
   return (
     <SectionWrapper palette={palette}>
       <SectionHeader num="04" label="Color Contexts" title="Logo on Brand Colors" brand={brand} />
 
-      {hasData ? (
+      {isPending ? (
+        // In-flight async logo job: shimmer the swatch grid (or a single placeholder when no
+        // colors yet) and never load the live currentUrl. During a regeneration, layer an
+        // animated overlay over the dimmed prior logo. Takes precedence over loaded/empty states.
+        displayColors && displayColors.length > 0 ? (
+          <div className={styles.colorContextGrid}>
+            {displayColors.map((color) => (
+              <div key={color.id} className={styles.colorContextCard}>
+                <div className={styles.colorContextSwatch} style={{ backgroundColor: color.hex }}>
+                  <div className={`${styles.colorContextLogoInset} relative`}>
+                    {isRegen ? (
+                      <>
+                        <Image
+                          src={priorLogoUrl}
+                          alt={`Logo on ${color.name}`}
+                          fill
+                          unoptimized
+                          className={`${styles.logoImage} opacity-60`}
+                        />
+                        <LogoShimmerOverlay />
+                      </>
+                    ) : (
+                      <LogoShimmer className="w-full h-full" />
+                    )}
+                  </div>
+                </div>
+                <text.span as="caption" className={styles.colorContextLabel}>
+                  {color.name.toUpperCase()}
+                </text.span>
+              </div>
+            ))}
+          </div>
+        ) : isRegen ? (
+          <div className={`${styles.placeholderCard} relative`}>
+            <Image
+              src={priorLogoUrl}
+              alt="Logo"
+              width={96}
+              height={96}
+              unoptimized
+              className="opacity-60 object-contain"
+            />
+            <LogoShimmerOverlay data-testid="color-contexts-shimmer-overlay" />
+          </div>
+        ) : (
+          <div className={styles.placeholderCard}>
+            <LogoShimmer className="w-24 h-24" data-testid="color-contexts-shimmer" />
+          </div>
+        )
+      ) : hasData ? (
         <div className={styles.colorContextGrid}>
           {displayColors.map((color) => (
             <div key={color.id} className={styles.colorContextCard}>

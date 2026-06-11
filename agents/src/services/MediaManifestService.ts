@@ -91,6 +91,9 @@ export interface MediaSlot {
   logoSourceMap?: Record<string, { sessionId: string; logoId: string }>;
   /** Aspect-ratio classification of the upload, set when dimensions are available. */
   naturalOrientation?: LogoOrientation;
+  /** Set while a background logo job is populating this slot (shimmer placeholder /
+   *  mid-regeneration). Cleared on completion, cancel, or failure. */
+  pendingJobId?: string;
 }
 
 export type LogoOrientation = 'square' | 'horizontal' | 'vertical';
@@ -1006,6 +1009,9 @@ export class MediaManifestService {
         alternativeGettyIds: newAlternativeGettyIds.some((id) => id)
           ? newAlternativeGettyIds
           : undefined,
+        // A user-driven currentUrl change drops any in-progress logo job marker —
+        // the background job (if any) is no longer the source of this slot's content.
+        pendingJobId: undefined,
         // Update mediaType when swapping between image and video (preserve logo/generated)
         ...resolveMediaTypeUpdate(existingSlot.mediaType, isVideo, isImage),
         ...(options.searchQuery !== undefined && { searchQuery: options.searchQuery }),
@@ -1157,6 +1163,9 @@ export class MediaManifestService {
         lastUpdated: nowIso,
         searchQuery: '', // upload is unrelated to any prior search term
         gettyId: undefined, // Uploaded image has no Getty ID
+        // A user-driven upload drops any in-progress logo job marker — the
+        // background job (if any) is no longer the source of this slot's content.
+        pendingJobId: undefined,
         alternativeGettyIds: newAlternativeGettyIds.some((id) => id)
           ? newAlternativeGettyIds
           : undefined,
@@ -1662,6 +1671,71 @@ export class MediaManifestService {
         manifest,
         commitHash,
       };
+    } finally {
+      releaseLock();
+    }
+  }
+
+  /**
+   * Remove a slot entry from the manifest. Used to revert a fresh placeholder on
+   * cancel/failure — an empty currentUrl would 500 in the resolver, so the slot
+   * must be removed rather than blanked. Returns success when the slot is already
+   * absent (no write performed).
+   */
+  async removeSlot(
+    appId: string,
+    slotName: string,
+    skipGitCommit: boolean = false
+  ): Promise<ManifestOperationResult> {
+    const app = this.appRepository.findById(appId);
+    if (!app) {
+      return { success: false, error: `App not found: ${appId}` };
+    }
+
+    const logContext = { appId, slotName };
+    logger.info('media_manifest.remove_slot.begin', logContext);
+
+    const releaseLock = await acquireLock(appId);
+    try {
+      const manifestPath = this.getManifestPath(app.path);
+
+      let manifest: MediaManifest = {};
+      try {
+        const content = await fs.readFile(manifestPath, 'utf-8');
+        manifest = JSON.parse(content);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          logger.warn('media_manifest.remove_slot.read_error', {
+            ...logContext,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        manifest = {};
+      }
+
+      if (!manifest[slotName]) {
+        logger.info('media_manifest.remove_slot.absent', logContext);
+        return { success: true, manifest };
+      }
+
+      delete manifest[slotName];
+      await this.writeManifest(manifestPath, manifest);
+      logger.info('media_manifest.remove_slot.written', logContext);
+
+      let commitHash: string | undefined;
+      if (!skipGitCommit) {
+        try {
+          commitHash = await this.commitManifestChange(appId, slotName, 'delete');
+        } catch (gitError) {
+          logger.warn('media_manifest.remove_slot.git_commit_failed', {
+            ...logContext,
+            error: gitError instanceof Error ? gitError.message : String(gitError),
+          });
+        }
+      }
+
+      logger.info('media_manifest.remove_slot.success', { ...logContext, commitHash });
+      return { success: true, manifest, commitHash };
     } finally {
       releaseLock();
     }

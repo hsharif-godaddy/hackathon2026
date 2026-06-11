@@ -15,7 +15,6 @@ import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestN
 import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
 import DomainBar from '@/app/[market]/develop/components/layout/DomainBar'
-import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
 import { getDevicePreset, isFullWidthDevice } from '@/app/[market]/develop/components/preview/devicePresets'
 import Inbox from '@/app/[market]/develop/components/preview/inbox/Inbox'
 const DocsView = lazy(() => import('@/app/[market]/develop/components/preview/DocsView'))
@@ -1172,26 +1171,11 @@ export default function PreviewPane({
     )
   }
 
-  // Brand Book uses its own API and doesn't depend on the preview server.
-  // When the preview server IS ready, Brand renders as an overlay layer in
-  // the success block so that PreviewCode stays mounted and preserves state
-  // (open file tabs, search). This fallback only fires before server readiness.
-  if (viewMode === ViewMode.BRAND && !(previewUrl && serverState?.isReady)) {
-    return (
-      <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
-        <div className="inset-0 relative h-full">
-          <div className="flex flex-col items-center justify-center h-full bg-intents-ux-boxLowContrast-backgroundColor rounded-lg md:rounded-b-none">
-            <div className="flex flex-col h-full w-full bg-intents-ux-boxLowContrast-backgroundColor relative rounded-lg md:rounded-b-none">
-              <div className="relative w-full h-full overflow-hidden rounded-lg md:rounded-b-none">
-                <BrandBookView appId={appId} />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
+  // Brand Book is rendered as a persistent overlay by the develop page (a stable
+  // parent), NOT here — so it is not torn down when this component switches between
+  // its server-readiness branches during generation. While BRAND is active this
+  // component still renders the preview/code underneath (mounted-but-inert), so
+  // tab/iframe state is preserved; the parent overlay covers it.
   if (!serverState || (isPollingServer(appId) && !serverState.isReady)) {
     let loadingMessage: string;
     if (showBuildingOverlay && isAwaitingAskQuestion) {
@@ -1323,14 +1307,9 @@ export default function PreviewPane({
             <div className="flex flex-col h-full w-full bg-intents-ux-boxLowContrast-backgroundColor relative rounded-lg md:rounded-b-none">
               {/* Crossfade Animation Container */}
               <div className="relative w-full h-full overflow-hidden">
-                {/* Brand View - rendered as overlay to preserve code/preview state */}
-                {viewMode === ViewMode.BRAND && (
-                  <div
-                    className="absolute inset-0 w-full h-full z-10 rounded-lg md:rounded-b-none overflow-hidden"
-                  >
-                    <BrandBookView appId={appId} />
-                  </div>
-                )}
+                {/* Brand View is rendered as a persistent overlay by the develop page
+                    (see page.tsx) so it survives this component's readiness branch
+                    switches. The preview/code below stays mounted-but-inert under it. */}
 
                 {/* Preview View (DomainBar + iframe) */}
                 <motion.div

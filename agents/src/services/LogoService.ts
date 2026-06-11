@@ -53,6 +53,8 @@ export interface GenerateLogoInput {
   appId: string
   customerId: string
   budgetUserId: string
+  /** Optional external cancellation signal (combined with the request timeout). */
+  signal?: AbortSignal
 }
 
 export interface ProcessedLogo {
@@ -188,6 +190,10 @@ class LogoService {
     let response: Response
     try {
       const token = await getS2SToken()
+      const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+      const signal = input.signal
+        ? AbortSignal.any([timeoutSignal, input.signal])
+        : timeoutSignal
       response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -200,7 +206,7 @@ class LogoService {
           'x-budget-user-id': input.budgetUserId,
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal,
       })
     } catch (err) {
       if (err instanceof DOMException && err.name === 'TimeoutError') {

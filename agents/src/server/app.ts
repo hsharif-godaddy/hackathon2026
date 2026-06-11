@@ -659,6 +659,19 @@ async function initialize() {
     await initAgentRuntime()
     logger.info('server.agent_runtime.init.success')
 
+    // Reconcile any logo jobs orphaned by a prior restart (in-flight state is
+    // memory-only, so a queued/generating job left in .airo/logo.json has no live
+    // worker after reboot). Best-effort — must never block boot. Dynamic import
+    // keeps the logo/WS module graph out of app.ts eval.
+    try {
+      const { reconcileAllStaleLogoJobs } = await import('../services/logo/logo-reconciler.js')
+      await reconcileAllStaleLogoJobs()
+    } catch (error) {
+      logger.error('server.logo.reconcile.failed', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+
     // Phase 3: Setup AI-Lib WebSocket Server
     logger.info('server.websocket.init.begin', { phase: 3 });
     const websocketSetup = await setupAILibWebSocketServer(server);

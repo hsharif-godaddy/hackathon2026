@@ -717,28 +717,32 @@ describe('PreviewPane', () => {
     });
   });
 
-  it('should render BrandBookView as overlay when viewMode is BRAND and server is ready', () => {
+  // The Brand Book is mounted as a persistent overlay by the develop page (a stable
+  // parent), NOT by PreviewPane — so it survives PreviewPane's readiness branch
+  // switches mid-generation. PreviewPane's only brand responsibility is to keep the
+  // preview/code mounted-but-inert underneath when BRAND is active.
+  it('keeps preview + code mounted underneath (and does not own the brand book) in BRAND mode when ready', () => {
     mockDevelopPageStore.viewMode = ViewMode.BRAND;
 
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
-    expect(screen.getByTestId('brand-book')).toBeInTheDocument();
+    expect(screen.queryByTestId('brand-book')).not.toBeInTheDocument();
     expect(screen.getByTestId('preview-iframe')).toBeInTheDocument();
     expect(screen.getByTestId('preview-code')).toBeInTheDocument();
   });
 
-  it('should render BrandBookView alone when viewMode is BRAND and server is NOT ready', () => {
+  it('shows the loading state (no brand, no preview) in BRAND mode when server is NOT ready', () => {
     mockDevelopPageStore.viewMode = ViewMode.BRAND;
     mockServerPollingStore.getServerState = vi.fn(function () { return { isReady: false, url: null }; });
 
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
 
-    expect(screen.getByTestId('brand-book')).toBeInTheDocument();
+    expect(screen.queryByTestId('brand-book')).not.toBeInTheDocument();
     expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument();
     expect(screen.queryByTestId('preview-code')).not.toBeInTheDocument();
   });
 
-  it('should not render BrandBookView when viewMode is PREVIEW', () => {
+  it('never renders the brand book itself (it is owned by the page) — e.g. in PREVIEW mode', () => {
     mockDevelopPageStore.viewMode = ViewMode.PREVIEW;
 
     renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);

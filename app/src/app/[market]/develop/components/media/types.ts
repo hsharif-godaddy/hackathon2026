@@ -10,6 +10,10 @@ export interface MediaSlot {
   mediaType: 'image' | 'video' | 'generated' | 'logo';
   /** Current URL being used */
   currentUrl: string;
+  /** When set, an async logo job is in flight for this slot. While present, surfaces must
+   *  render a CSS shimmer and ignore currentUrl (the /airo-assets/* shimmer URL does not
+   *  resolve on the builder origin). Cleared by the backend once the job completes. */
+  pendingJobId?: string;
   /** For videos: thumbnail image URL for preview display */
   thumbnailUrl?: string;
   /** Search query used to find this media */

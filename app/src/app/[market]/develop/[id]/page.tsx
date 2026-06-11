@@ -15,6 +15,7 @@ import DevelopHeader from '@/app/[market]/develop/components/layout/Header'
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import { DevelopCreditsModal, PaywallErrorFallback, RenewalPollingModal, UpgradePollingModal } from '@/app/[market]/develop/components/paywall'
 import { CdsEsmPreload } from '@/app/[market]/develop/components/paywall/CdsEsmPreload'
+import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
 import PreviewPane, { type PublishSnapshotRequestDetail } from '@/app/[market]/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/[market]/develop/components/ResizableDivider'
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
@@ -1318,7 +1319,7 @@ function DevelopPageContent() {
     typeof document !== 'undefined' && document.documentElement.dir === 'rtl'
 
   return (
-    <WebSocketProvider sendMessage={ws.actions.send} loadHistory={ws.actions.loadHistory} stopGeneration={ws.actions.stop}>
+    <WebSocketProvider sendMessage={ws.actions.send} loadHistory={ws.actions.loadHistory} stopGeneration={ws.actions.stop} cancelLogoGeneration={ws.actions.cancelLogo}>
       <div
         className={cn("absolute inset-0 flex flex-col overflow-hidden bg-develop-bg", {
           "ios-fixed-container": isMobile
@@ -1418,6 +1419,18 @@ function DevelopPageContent() {
                     onAskAiroToFix={sendPreviewFixRequest}
                   />
                 </div>
+                {/* Brand Book overlay — mounted here (a stable parent) rather than inside
+                    PreviewPane so it is NOT torn down and re-mounted when PreviewPane flips
+                    between its preview-server readiness branches mid-generation. PreviewPane
+                    keeps the underlying preview/code mounted-but-inert while BRAND is active. */}
+                {viewMode === ViewMode.BRAND && (
+                  <div
+                    className="absolute inset-0 z-20 overflow-hidden rounded-lg md:rounded-b-none"
+                    data-testid="brand-book-overlay"
+                  >
+                    <BrandBookView appId={appId} />
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>

@@ -125,6 +125,20 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
       return res.status(404).json({ error: 'App not found' });
     }
 
+    // Logo pre-publish guard: revert/strip any media slot still carrying a
+    // pending logo job (shimmer placeholder / mid-regeneration) BEFORE the build
+    // archives the committed manifest, so the published archive never ships an
+    // in-progress placeholder. Best-effort — must never fail the publish. Dynamic
+    // import keeps the logo/WS module graph out of route eval (see media.ts).
+    try {
+      const { reconcilePendingLogoSlotsForPublish } = await import('../../services/logo/logo-reconciler.js');
+      await reconcilePendingLogoSlotsForPublish(id);
+    } catch (error) {
+      contextLogger.warn('route.publish.logo_guard_failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     const workspace = createForWorkspace(id, 'preview');
 
     if (!workspace) {

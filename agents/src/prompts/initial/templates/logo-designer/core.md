@@ -197,10 +197,13 @@ Then gather the details based on their choice. Use their answers to inform the p
 
 **One focused logo:** `generate_logo` produces a single logo per call. Write your single strongest recommendation for the brand (or the style the user asked for) as a complete, plain-English `prompt` — describe the subject, style, mood, and composition. Do **not** list hex values; the tool appends the brand color palette automatically.
 
+**ALWAYS pass `background: false`.** In this flow you ask the user about the logo right after generating it, so you must WAIT for the finished logo — never generate it in the background. Every `generate_logo` call in this template includes `background: false`; do not omit it.
+
 ```
 media-logo__generate_logo({
   prompt: "<complete plain-English description — subject, style, mood, composition>",
-  layout: "horizontal"
+  layout: "horizontal",
+  background: false
 })
 ```
 
@@ -241,7 +244,7 @@ Wait for the user's response:
 - **Build a website with this logo** → hand off to the `initial` agent to build a website that uses the current brand identity and logo
 - **Set as my logo** → run the venture-sync sequence:
   1. First, post a brief user-facing message so they know what's happening: "Generating a square version of your logo so it works in any layout…" Send this BEFORE the `generate_logo` call so the user has context during the wait.
-  2. Call `media-logo__generate_logo({ prompt: "Reformat for a square layout, preserving the existing icon design and arranging the text as required", layout: "square" })` to produce a square companion of the current logo.
+  2. Call `media-logo__generate_logo({ prompt: "Reformat for a square layout, preserving the existing icon design and arranging the text as required", layout: "square", background: false })` to produce a square companion of the current logo.
   3. If `generate_logo` returns an `error`, surface it to the user and offer to retry. Do NOT call `set_venture_logo` in that case.
   4. On success, call `media-logo__set_venture_logo({})`.
   5. Reply with one short message: "Logo set! You can close this window — your dashboard will now show the new logo."
@@ -255,7 +258,8 @@ When the user wants to modify an existing logo, call `media-logo__generate_logo`
 ```
 media-logo__generate_logo({
   prompt: "<what the user wants to change, e.g. 'recolor to deep navy, keep all other elements unchanged'>",
-  layout: "horizontal"
+  layout: "horizontal",
+  background: false
 })
 ```
 

@@ -18,6 +18,7 @@ import Tag from '@ux/tag'
 
 import type { DeleteUploadResult, SlotUploadItem } from '@/app/[market]/develop/components/media/UploadedMediaSection'
 import { UploadedMediaSection } from '@/app/[market]/develop/components/media/UploadedMediaSection'
+import { LogoShimmer, logoShimmerOrientation, LogoShimmerOverlay } from '@/app/[market]/develop/components/preview/brand-book/LogoShimmer'
 import { getParentOrigin } from '@/components/security/allowed-frame-ancestors'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
 import { useIsEmbedded } from '@/hooks/useIsEmbedded'
@@ -607,7 +608,20 @@ export function MediaSlotDetail({
     [appId, slotName, reloadPreviewSlot, refetch, refetchManifest, t]
   )
 
-  const allImages = slot ? [...new Set([slot.currentUrl, ...slot.alternatives])] : []
+  // In-flight async logo job. SHARED CONTRACT: when currentUrl is a real hosted https logo this is
+  // a regeneration — show the existing logo (dimmed) under an animated overlay. When currentUrl is
+  // the /airo-assets/* shimmer placeholder (not http, does not resolve on the builder origin), it's
+  // a fresh generation — render a bare shimmer. Either way exclude currentUrl from the alternatives
+  // grid while pending (a fresh placeholder renders broken; a regen prior is shown in the preview).
+  const isSlotPending = !!slot?.pendingJobId
+  const priorLogoUrl =
+    isSlotPending && slot?.currentUrl &&
+    (slot.currentUrl.startsWith('http://') || slot.currentUrl.startsWith('https://'))
+      ? slot.currentUrl
+      : undefined
+  const allImages = slot
+    ? [...new Set([...(isSlotPending ? [] : [slot.currentUrl]), ...slot.alternatives])]
+    : []
   const gettyImages = allImages.filter((url) => !isUploadUrl(url)).sort()
 
   const allGettyImages = [
@@ -801,7 +815,7 @@ export function MediaSlotDetail({
               {error}
             </p>
           </div>
-        ) : slot && allImages.length > 0 ? (
+        ) : slot && (allImages.length > 0 || isSlotPending) ? (
           <div className="flex flex-col gap-2">
             <div>
               <h3 className="font-semibold text-lg">
@@ -830,6 +844,25 @@ export function MediaSlotDetail({
                 <p className="text-sm italic mt-1">{slot.searchQuery}</p>
               )}
             </div>
+
+            {/* In-flight async logo job. Regeneration: show the existing logo (dimmed) under an
+                animated overlay. Fresh: bare shimmer (the /airo-assets/* placeholder in currentUrl
+                would render broken on the builder origin). */}
+            {isSlotPending && (
+              priorLogoUrl ? (
+                <div className="relative w-full aspect-square">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={priorLogoUrl}
+                    alt={formatSlotName(slotName)}
+                    className="w-full h-full object-contain opacity-60"
+                  />
+                  <LogoShimmerOverlay data-testid="media-slot-detail-shimmer-overlay" />
+                </div>
+              ) : (
+                <LogoShimmer className="w-full aspect-square" orientation={logoShimmerOrientation(slotName)} data-testid="media-slot-detail-shimmer" />
+              )
+            )}
 
             {uploadError && (
               <p className="text-sm text-intents-ux-error-textColor mb-2">

@@ -36,6 +36,35 @@ import { getPersistentPublicDir } from '../../utils/persistent-assets.js';
 
 const router: IRouter = Router();
 
+/**
+ * Cancel an in-flight logo generation job that currently owns a slot, before a
+ * manual override (slot swap / upload) writes a new value. Best-effort.
+ *
+ * `logoGenerationService` is imported dynamically here so that the media routes
+ * do NOT pull the websocket-server module graph (emitToApp → logger.child) at
+ * module-eval time — that coupling breaks media-route unit tests whose logger
+ * mock has no `.child`. The chain is only loaded when an override actually
+ * races an in-flight job.
+ */
+async function cancelPendingLogoJob(
+  appId: string,
+  slotName: string,
+  pendingJobId: string,
+): Promise<void> {
+  logger.info('logo.slot_override.cancel_pending', { appId, jobId: pendingJobId, slotName });
+  try {
+    const { logoGenerationService } = await import('../../services/logo/LogoGenerationService.js');
+    await logoGenerationService.cancel(appId, pendingJobId, { revert: false });
+  } catch (err) {
+    logger.warn('logo.slot_override.cancel_failed', {
+      appId,
+      jobId: pendingJobId,
+      slotName,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 // Canonical MIME type constants for video formats
 export const VIDEO_MIME_TYPE = {
   MP4: 'video/mp4',
@@ -832,6 +861,15 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
       alternativeIndex,
     });
 
+    // A user-driven slot override supersedes any in-flight logo job populating
+    // this slot. Abort it (best-effort, no revert — we're about to write the
+    // slot ourselves) so the background job can't clobber the user's choice.
+    const existingSlotResult = await mediaManifestService.getSlot(appId, slotName);
+    const pendingJobId = existingSlotResult.slot?.pendingJobId;
+    if (pendingJobId) {
+      await cancelPendingLogoJob(appId, slotName, pendingJobId);
+    }
+
     const result = await mediaManifestService.updateSlot(appId, slotName, {
       newUrl: newUrl || '',
       alternativeIndex,
@@ -1028,6 +1066,14 @@ router.post(
       await fs.rename(tempPath, filePath); // nosemgrep: path-traversal
 
       const uploadedUrl = `${AIRO_ASSET_UPLOADS_URL_PREFIX}${mediaFilename}`;
+
+      // A user-driven upload supersedes any in-flight logo job populating this
+      // slot. Abort it (best-effort, no revert — we're about to write the slot
+      // ourselves) so the background job can't clobber the user's choice.
+      const pendingJobId = slotResult.slot?.pendingJobId;
+      if (pendingJobId) {
+        await cancelPendingLogoJob(appId, slotName, pendingJobId);
+      }
 
       const updateResult = await mediaManifestService.updateSlotWithUpload(
         appId,
@@ -1465,6 +1511,14 @@ router.post(
             error: chatErr instanceof Error ? chatErr.message : String(chatErr),
           });
         }
+      }
+
+      // A user-driven upload supersedes any in-flight logo job populating this
+      // slot. Abort it (best-effort, no revert — we're about to write the slot
+      // ourselves) so the background job can't clobber the user's choice.
+      const pendingJobId = slotResult.slot?.pendingJobId;
+      if (pendingJobId) {
+        await cancelPendingLogoJob(appId, slotName, pendingJobId);
       }
 
       // Update manifest: new URL becomes current, old current goes to alternatives.

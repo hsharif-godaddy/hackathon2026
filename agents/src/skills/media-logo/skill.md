@@ -35,6 +35,16 @@ One layout per call (or `all` for the full kit):
 
 If the user names a placement ("add it to the header"), generate the matching layout. If they don't, default to `horizontal` and ask later if they need other orientations, or generate `all` proactively when scaffolding a new app.
 
+## Async generation (background by default)
+
+`generate_logo` runs in the background by default. It returns immediately with animated placeholder slots (status `queued`) while the real logo is generated; the finished logo overwrites the placeholders automatically when it is ready. You can reference the logo slots in source code right away — they update in place, so no rebuild is needed.
+
+While a job is `queued` or `generating`, do **not** tell the user the logo is finished, ready, or done. It's fine to say the logo is being generated in the background and will appear automatically — just don't claim a result you don't have yet.
+
+Pass `background: false` only when your very next step depends on the finished logo — for example, you're about to ask the user to react to it or act on it in the same turn. In that mode the tool WAITS and returns the completed (or failed) outcome before you continue.
+
+`set_venture_logo` is async-aware: if you call it while a logo job is still in flight, it returns a pending result and applies the logo to the venture dashboard automatically once generation completes — you don't need to poll or re-call it.
+
 ## Slot URL placement in source code
 
 Generated logos auto-save to per-orientation media slots. **Use the slot URL in source code, never the raw CDN URL** — the user can swap logos via the LogoGridWidget and the slot URL stays the same.

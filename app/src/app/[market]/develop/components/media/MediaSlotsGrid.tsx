@@ -5,6 +5,7 @@ import { Play } from 'lucide-react'
 import { formatSlotName, getPreviewOrigin } from '@/app/[market]/develop/components/media/MediaSlotDetail'
 import type { MediaSlot } from '@/app/[market]/develop/components/media/types'
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
+import { LogoShimmer, logoShimmerOrientation, LogoShimmerOverlay } from '@/app/[market]/develop/components/preview/brand-book/LogoShimmer'
 import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
@@ -116,6 +117,17 @@ export function MediaSlotsGrid({
         const slot = manifest[name]
         if (!slot) return null
 
+        // In-flight async logo job. SHARED CONTRACT: when currentUrl is a real hosted https logo
+        // this is a regeneration — show the existing logo (dimmed) under an animated overlay. When
+        // currentUrl is the /airo-assets/* shimmer placeholder (not http, does not resolve on the
+        // builder origin), it's a fresh generation — render a bare shimmer and skip URL resolution.
+        const isPending = !!slot.pendingJobId
+        const priorLogoUrl =
+          isPending && slot.currentUrl &&
+          (slot.currentUrl.startsWith('http://') || slot.currentUrl.startsWith('https://'))
+            ? slot.currentUrl
+            : undefined
+
         const isVideo = slot.mediaType === 'video'
         // For videos: thumbnailUrl is a static poster image, currentUrl is the actual video MP4
         const displayUrl = isVideo ? slot.currentUrl : (slot.thumbnailUrl || slot.currentUrl)
@@ -142,7 +154,22 @@ export function MediaSlotsGrid({
             data-eid={generateClickEID("develop.media_panel.slot")}
           >
             <div className="relative aspect-square w-full overflow-hidden rounded-md bg-intents-ux-box-backgroundColor border border-intents-ux-box-borderColor group-hover:border-intents-ux-ring-borderColor transition-colors">
-              {isVideo ? (
+              {isPending ? (
+                priorLogoUrl ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={priorLogoUrl}
+                      alt={formatSlotName(name)}
+                      className="w-full h-full object-contain opacity-60"
+                      loading="lazy"
+                    />
+                    <LogoShimmerOverlay data-testid={`media-slot-shimmer-overlay-${name}`} />
+                  </>
+                ) : (
+                  <LogoShimmer className="w-full h-full" orientation={logoShimmerOrientation(name)} data-testid={`media-slot-shimmer-${name}`} />
+                )
+              ) : isVideo ? (
                 <>
                   <video
                     src={proxiedUrl}

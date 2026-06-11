@@ -85,6 +85,15 @@ export function useMediaManifest({
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
     retry: 1,
+    // Self-heal for a dropped WS/SSE `logo` event: while any slot is mid-generation
+    // (pendingJobId set), poll every 4s so the completed slot swaps in within one
+    // poll. Disables itself the moment the backend clears pendingJobId.
+    refetchInterval: (query): number | false => {
+      const data = query.state.data as MediaManifest | null | undefined;
+      const anyPending = !!data && Object.values(data).some((slot) => !!slot.pendingJobId);
+      return anyPending ? 4000 : false;
+    },
+    refetchIntervalInBackground: false,
   });
 
   const manifest = query.data ?? null;

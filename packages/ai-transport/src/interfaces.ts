@@ -346,6 +346,7 @@ export const STREAMING_EVENT_TYPES = [
   'subagent_event',
   'stream_retry',
   'video',
+  'logo',
   'request_grant_refresh',
 ] as const
 

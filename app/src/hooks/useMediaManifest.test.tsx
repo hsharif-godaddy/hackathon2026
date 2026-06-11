@@ -7,13 +7,26 @@ import { renderHook, waitFor } from '@testing-library/react';
 
 import { useMediaManifest } from './useMediaManifest';
 
+// Capture the options (notably refetchInterval) passed to useQuery so we can test
+// the polling self-heal logic directly without driving real timers.
+let capturedQueryOptions: Record<string, unknown> | undefined;
+
 vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>();
   return {
     ...actual,
-    useQuery: (options: unknown) => actual.useQuery({ ...(options as Record<string, unknown>), retry: false }),
+    useQuery: (options: unknown) => {
+      capturedQueryOptions = options as Record<string, unknown>;
+      return actual.useQuery({ ...(options as Record<string, unknown>), retry: false });
+    },
   };
 });
+
+type RefetchIntervalFn = (query: { state: { data: unknown } }) => number | false;
+
+function makeManifestQuery(data: unknown): { state: { data: unknown } } {
+  return { state: { data } };
+}
 
 const mockAppId = 'app-123';
 
@@ -52,6 +65,7 @@ const createWrapper = () => {
 describe('useMediaManifest', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    capturedQueryOptions = undefined;
     global.fetch = vi.fn();
   });
 
@@ -138,5 +152,37 @@ describe('useMediaManifest', () => {
 
     expect(result.current.isLoading).toBe(false);
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  describe('refetchInterval self-heal', () => {
+    it('polls every 4000ms while a slot has a pendingJobId', () => {
+      renderHook(() => useMediaManifest({ appId: mockAppId }), { wrapper: createWrapper() });
+      const refetchInterval = capturedQueryOptions?.refetchInterval as RefetchIntervalFn | undefined;
+      expect(refetchInterval).toBeInstanceOf(Function);
+      const manifest = {
+        'logo/horizontal': { pendingJobId: 'job-1', alternatives: [] },
+        'logo/vertical': { alternatives: [] },
+      };
+      expect(refetchInterval!(makeManifestQuery(manifest))).toBe(4000);
+    });
+
+    it('disables polling when no slot has a pendingJobId', () => {
+      renderHook(() => useMediaManifest({ appId: mockAppId }), { wrapper: createWrapper() });
+      const refetchInterval = capturedQueryOptions?.refetchInterval as RefetchIntervalFn | undefined;
+      expect(refetchInterval).toBeInstanceOf(Function);
+      const manifest = {
+        'logo/horizontal': { currentUrl: '/img.png', alternatives: [] },
+        'logo/vertical': { alternatives: [] },
+      };
+      expect(refetchInterval!(makeManifestQuery(manifest))).toBe(false);
+    });
+
+    it('disables polling when manifest is null/undefined', () => {
+      renderHook(() => useMediaManifest({ appId: mockAppId }), { wrapper: createWrapper() });
+      const refetchInterval = capturedQueryOptions?.refetchInterval as RefetchIntervalFn | undefined;
+      expect(refetchInterval).toBeInstanceOf(Function);
+      expect(refetchInterval!(makeManifestQuery(null))).toBe(false);
+      expect(refetchInterval!(makeManifestQuery(undefined))).toBe(false);
+    });
   });
 });

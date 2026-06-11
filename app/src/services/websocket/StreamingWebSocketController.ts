@@ -442,6 +442,26 @@ export class StreamingWebSocketController extends EventEmitter {
   }
 
   /**
+   * Ask the server to cancel an in-flight background logo generation and revert
+   * any placeholder slots. Resolves cancelled:false when there's no socket.
+   */
+  cancelLogoGeneration(jobId?: string): Promise<{ cancelled: boolean }> {
+    const socket = this.supervisor.getSocket()
+    if (!socket?.connected) return Promise.resolve({ cancelled: false })
+
+    return new Promise((resolve) => {
+      socket.emit(
+        'cancel_logo_generation',
+        jobId ? { jobId } : {},
+        (response: { success?: boolean; cancelled?: boolean; error?: string }) => {
+          if (response?.error) logger.warn('websocket.cancel_logo.failed', { error: response.error })
+          resolve({ cancelled: !!response?.cancelled })
+        },
+      )
+    })
+  }
+
+  /**
    * Send a message through the WebSocket
    */
   async sendMessage(params: {

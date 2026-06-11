@@ -6,12 +6,19 @@ import { useEffect, useRef, useState } from 'react'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import MediaModal from '@/app/[market]/develop/components/tool-renderers/MediaModal'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
-import { extractLogosFromToolResult, getLogoDisplayUrl, type LogoData } from '@/app/[market]/develop/components/widgets/logo-utils'
+import { extractLogosFromToolResult, getLogoDisplayUrl, getLogoSolidDisplayUrl, type LogoData,mapLogoSessionToLogoData } from '@/app/[market]/develop/components/widgets/logo-utils'
 import LogoGridWidget from '@/app/[market]/develop/components/widgets/LogoGridWidget'
+import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import { useToolDetailsModal } from '@/stores/useToolDetailsModalStore'
 
 type LogoResult = LogoData
+
+function safeJsonParse(s: string): Record<string, unknown> | undefined {
+  try { return JSON.parse(s) as Record<string, unknown> } catch { return undefined }
+}
 
 /**
  * Custom renderer for media-logo__generate_logo tool
@@ -26,6 +33,21 @@ export default function LogoGeneratorToolRenderer({
   input: _input,
   result
 }: DefaultToolRendererProps) {
+  const currentAppId = useStreamingConversationStore((s) => s.currentAppId)
+
+  // New async shape: { started: true, jobId, slots }. Pure derivation (no hooks) —
+  // computed BEFORE the store selector so the selector can key off THIS card's jobId.
+  const asyncResultObj = typeof result === 'string' ? safeJsonParse(result) : (result as Record<string, unknown> | undefined)
+  const structured = asyncResultObj?.structuredContent as { started?: boolean; jobId?: string; slots?: string[] } | undefined
+  const startedJobId = structured?.started ? structured.jobId : undefined
+
+  // Look up THIS card's job by jobId so an older card keeps reading its own result
+  // when a second job arrives (logoJobResults is keyed appId -> jobId -> result).
+  const logoJobResult = useDevelopPageStore((s) =>
+    currentAppId ? s.logoJobResults[currentAppId]?.[startedJobId ?? ''] : undefined,
+  )
+  const t = useTranslations()
+
   const [isModalOpen, setIsModalOpen] = useToolDetailsModal(toolId)
   const [selectedLogoIndex, setSelectedLogoIndex] = useState(0)
   const thumbnailRefs = useRef<(HTMLButtonElement | null)[]>([])
@@ -105,6 +127,70 @@ export default function LogoGeneratorToolRenderer({
       })
     }
   }, [selectedLogoIndex, isModalOpen])
+
+  // Async logo (started ack { started, jobId, slots }) — rendered AFTER all hooks
+  // above so hook order is stable across renders (react-hooks/rules-of-hooks).
+  if (startedJobId) {
+    // The selector already returned the entry for THIS jobId (or undefined), so no
+    // jobId-match guard is needed here.
+    const matched = logoJobResult ?? null
+
+    if (!matched || matched.status === undefined) {
+      return (
+        <div data-testid="logo-generating-placeholder">
+          <ToolHeader icon={<Sparkles className="w-2 h-2" />} displayName={t('builder_logo_generating')} toolStatus="running" hasDetails={false} />
+        </div>
+      )
+    }
+
+    if (matched.status === 'completed') {
+      // Solid variant (same as the Brand Book light panel) — a transparent logo with
+      // light strokes can vanish on the chat surface; solid carries its own background.
+      const displayUrl = matched.logo ? getLogoSolidDisplayUrl(mapLogoSessionToLogoData(matched.logo)) : undefined
+      // Partial completion: some slots were not updated. Show the (valid) logo but warn
+      // about the layouts that did not apply, rather than claiming an unqualified success.
+      const slotSaveFailed = matched.slotSaveFailed === true
+      const failedLayouts = matched.failedLayouts ?? []
+      return (
+        <div data-testid="logo-result">
+          <ToolHeader
+            icon={<Sparkles className="w-2 h-2" />}
+            displayName={slotSaveFailed ? (t('builder_logo_partial_title') || 'Logo partially applied') : t('builder_logo_ready_title')}
+            toolStatus="completed"
+            hasDetails={false}
+          />
+          {slotSaveFailed && (
+            <p data-testid="logo-result-warning" className="text-xs text-intents-ux-warning-textColor mt-1">
+              {t('builder_logo_partial_description', { layouts: failedLayouts.join(', ') }) || 'Some logo layouts could not be applied.'}
+            </p>
+          )}
+          {displayUrl && (
+            <div className="mt-2 w-full overflow-hidden rounded-md border-2 border-intents-ux-boxHighContrast-borderColor shadow-md bg-intents-ux-boxLowContrast-backgroundColor">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img data-testid="logo-result-image" src={displayUrl} alt="Generated logo" />
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    if (matched.status === 'failed') {
+      return (
+        <div data-testid="logo-error">
+          <ToolHeader icon={<Sparkles className="w-2 h-2" />} displayName={t('builder_logo_failed_title')} toolStatus="error" hasDetails={false} />
+          <p className="text-xs text-foreground/60 mt-1">{matched.error || t('builder_logo_failed_default_error')}</p>
+        </div>
+      )
+    }
+
+    if (matched.status === 'cancelled') {
+      return (
+        <div data-testid="logo-cancelled">
+          <ToolHeader icon={<Sparkles className="w-2 h-2" />} displayName={t('builder_logo_cancelled')} toolStatus="completed" hasDetails={false} />
+        </div>
+      )
+    }
+  }
 
   const selectedLogo = logos[selectedLogoIndex]
 

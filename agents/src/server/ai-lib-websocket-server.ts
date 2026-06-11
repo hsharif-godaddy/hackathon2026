@@ -102,6 +102,8 @@ import {
   collectImagesFromFormattedContexts,
   checkAndTriggerSummarization,
 } from './context-builders.js'
+import { buildLogoStatusContextMessage } from './logo-status-context.js'
+import { handleCancelLogoGeneration } from './logo-cancel-handler.js'
 import { interactiveSubAgentManager } from '../agents/interactive-sub-agent-manager.js'
 import { buildSharedPostStreamValidator } from './post-stream-validator.js'
 import { buildAppliedSkillsContextMessage } from './applied-skills-context.js'
@@ -751,6 +753,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             appId: agentsAppContext.metadata?.appId as string,
           })
 
+          // Build logo-job status context so the agent can answer "is my logo ready?"
+          const logoStatusMessage = await buildLogoStatusContextMessage({
+            appId: agentsAppContext.metadata?.appId as string,
+          })
+
           // Search KnowB with user's message for relevant documentation
           // CACHING: KnowB results are query-dependent (change every request), so they MUST be
           // inserted 'after_history' to preserve caching of stable prefix content.
@@ -820,6 +827,15 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
               role: memoryContextMessage.role as 'user' | 'system',
               content: memoryContextMessage.content,
               insertionOrder: memoryContextMessage.insertionOrder
+            })
+          }
+
+          // Add logo-job status context if present (Segment 7.6: async logo job state)
+          if (logoStatusMessage) {
+            allMessages.push({
+              role: logoStatusMessage.role as 'user' | 'system',
+              content: logoStatusMessage.content,
+              insertionOrder: logoStatusMessage.insertionOrder
             })
           }
 
@@ -2894,6 +2910,14 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         logger.debug('websocket.grant_context.refresh_acknowledged', {
           socketId: socket.id,
         })
+      })
+
+      // ── Logo cancel (always) ──────────────────────────────────────────
+      // Mirrors stop_generation. appId is taken from the authenticated siteId
+      // inside the handler (never from client data), so cancel can only ever
+      // affect the socket's own app — no cross-tenant risk.
+      socket.on('cancel_logo_generation', (data: { jobId?: string }, ack?: (r: { success?: boolean; cancelled?: boolean; error?: string }) => void) => {
+        void handleCancelLogoGeneration(socket, data, ack)
       })
 
       // ── Handshake-auth path (old clients, PaaS, reconnects) ───────────

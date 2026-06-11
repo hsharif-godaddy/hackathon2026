@@ -34,6 +34,18 @@ vi.mock('../../../../memory/adapters/index.js', () => ({
   getKvMemoryStore: () => ({ get: vi.fn() }),
 }));
 
+vi.mock('../../../../services/logo/LogoGenerationService.js', () => ({
+  logoGenerationService: { start: vi.fn() },
+}));
+
+const mockReadLogoJob = vi.fn(async () => null);
+vi.mock('../../../../services/logo/logo-job-state.js', () => ({
+  readLogoJob: (...a: unknown[]) => mockReadLogoJob(),
+}));
+vi.mock('../../../../workspace/index.js', () => ({
+  createForWorkspace: () => ({ files: {} }),
+}));
+
 // LOGO_SLOT_PATHS values the tool looks up.
 const HORIZONTAL_PATH = 'logo/horizontal';
 const SQUARE_PATH = 'logo/primary';
@@ -41,6 +53,7 @@ const SQUARE_PATH = 'logo/primary';
 describe('media-logo set_venture_logo tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockReadLogoJob.mockResolvedValue(null);
   });
 
   const baseContext = { socketId: 'sock-1', metadata: { appId: 'app-1' } };
@@ -103,5 +116,15 @@ describe('media-logo set_venture_logo tool', () => {
     });
     expect(mockGetSlot).toHaveBeenCalledWith('app-1', HORIZONTAL_PATH);
     expect(mockGetSlot).toHaveBeenCalledWith('app-1', SQUARE_PATH);
+  });
+
+  describe('set_venture_logo while a job is in flight', () => {
+    it('returns pending without reading slots', async () => {
+      mockReadLogoJob.mockResolvedValueOnce({ jobId: 'job-1', status: 'generating' } as never);
+      const { setVentureLogoTool } = await import('../index.js');
+      const result = await setVentureLogoTool.execute({}, baseContext);
+      expect(result.structuredContent).toEqual({ pending: true });
+      expect(mockGetSlot).not.toHaveBeenCalled();
+    });
   });
 });

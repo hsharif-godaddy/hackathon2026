@@ -478,10 +478,18 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
     await controllerRef.current?.reconnect()
   }, [])
 
+  /**
+   * Cancel an in-flight background logo generation and revert placeholder slots.
+   */
+  const cancelLogo = useCallback(async (jobId?: string): Promise<void> => {
+    await controllerRef.current?.cancelLogoGeneration(jobId)
+  }, [])
+
   return {
     actions: {
       send: sendMessage,
       stop: stopGeneration,
+      cancelLogo,
       loadHistory,
       reconnect,
     },

@@ -4,6 +4,7 @@ import { immer } from 'zustand/middleware/immer'
 
 import { DEFAULT_DESKTOP_DEVICE, DEFAULT_MOBILE_DEVICE, DEFAULT_TABLET_DEVICE } from '@/app/[market]/develop/components/preview/devicePresets'
 import { ChatTab, IframeMessageType, MobileMode, PreviewViewMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types'
+import type { LogoSessionLogo } from '@/app/[market]/develop/components/widgets/logo-utils'
 import type { FeedbackCategory } from '@/components/feedback/types'
 import { getSwitchboardFlag } from '@/hooks/useSwitchboard'
 import type { SiteInfo } from '@/lib/control-plane/types'
@@ -139,6 +140,19 @@ interface PublishLimitData {
 export type LaunchVideoResult =
   | { type: 'success'; url: string }
   | { type: 'error'; message: string }
+
+export interface LogoJobResult {
+  jobId: string
+  status: 'completed' | 'failed' | 'cancelled'
+  slots: string[]
+  error?: string
+  logo?: LogoSessionLogo
+  /** True when some logo layouts could not be saved to their slots even though
+   *  generation succeeded (e.g. a user-modified slot was skipped). */
+  slotSaveFailed?: boolean
+  /** Layout names whose slots were not updated (carried from the backend event). */
+  failedLayouts?: string[]
+}
 
 export interface DomainJobInProgress {
   fqdn: string
@@ -300,6 +314,12 @@ interface DevelopPageStore {
   domainJobsInProgress: Record<string, DomainJobInProgress>
   setDomainJobInProgress: (appId: string, job: DomainJobInProgress) => void
   clearDomainJobInProgress: (appId: string) => void
+
+  /** Per-app, per-jobId logo results. Keyed by appId → jobId → result so that
+   *  concurrent/sequential jobs each retain their own entry (a second job no longer
+   *  overwrites the first card's result). */
+  logoJobResults: Record<string, Record<string, LogoJobResult>>
+  setLogoJobResult: (appId: string, result: LogoJobResult) => void
 
   // Page loading orchestration
   loadingPhase: LoadingPhase
@@ -519,6 +539,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     publishStates: {},
 
     domainJobsInProgress: {},
+    logoJobResults: {},
 
     // Page loading orchestration state
     loadingPhase: 'idle',
@@ -1221,6 +1242,11 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].launchVideoResult = result;
+    }),
+
+    setLogoJobResult: (appId: string, result: LogoJobResult) => set((state) => {
+      state.logoJobResults[appId] ??= {};
+      state.logoJobResults[appId][result.jobId] = result;
     }),
 
     setFeatureSelections: (appId: string, selections: { qa: boolean; security: boolean; video: boolean; marketing: boolean }) => set((state) => {

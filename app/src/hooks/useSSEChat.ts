@@ -54,6 +54,7 @@ import {
   updateSiteTimestamp,
 } from './shared/completionSideEffects'
 import { isInitialBuildComplete, isInitialBuildFunnelActive } from './shared/initialBuildFunnel'
+import { handleLogoNotification } from './shared/logoNotification'
 import { mapToolCall, mapToolResult, mapToolStart } from './shared/toolMappers'
 import { detectRebuildIntent, handleToolCallSideEffects, handleToolResultSideEffects } from './shared/toolSideEffects'
 import { handleToolStartSideEffects } from './shared/toolStartSideEffects'
@@ -743,6 +744,17 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   t: tRef.current,
                   logPrefix: 'sse.video',
                 })
+              } else if (type === 'logo') {
+                // Shared with the WS LogoHandler: store update (chat card swap),
+                // mediaManifest query invalidation (Brand Book / media live refresh),
+                // RELOAD_MEDIA_SLOT, and Growl toast. SSE sessions get no WS push
+                // (emitToApp wsDelivered=0), so this branch is required for parity.
+                handleLogoNotification({
+                  raw: event.data,
+                  clientAppId: store.currentAppId,
+                  t: tRef.current,
+                  logPrefix: 'sse.logo',
+                })
               } else if (type === 'recovery_status') {
                 const payload = event.data as any
                 recoveryHandshakePendingRef.current = false
@@ -1195,6 +1207,10 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     actions: {
       send: sendMessage,
       stop,
+      // SSE transport (headless/PaaS) has no socket-backed background logo job to
+      // cancel; async logo generation is AAB/WebSocket-only. No-op keeps the
+      // useChatTransport() union shape consistent with useStreamingWebSocket.
+      cancelLogo: async (_jobId?: string): Promise<void> => {},
       loadHistory: loadMore,
       reconnect,
     },

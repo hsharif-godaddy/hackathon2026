@@ -273,6 +273,45 @@ describe('updateSlotWithUpload — logo variant-map clearing & sibling propagati
     expect(written['logo/horizontal'].naturalOrientation).toBeUndefined();
   });
 
+  it('clears pendingJobId on updateSlotWithUpload (user-driven upload drops the in-progress marker)', async () => {
+    const slotMidJob: MediaSlot = {
+      ...makeAiHorizontalLogo(),
+      pendingJobId: 'job-abc-123',
+    };
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ 'logo/horizontal': slotMidJob }));
+
+    const result = await service.updateSlotWithUpload('test-app', 'logo/horizontal', UPLOAD_URL, {
+      dimensions: { width: 1536, height: 1024 },
+    });
+
+    expect(result.success).toBe(true);
+    const written = readWrittenManifest();
+    expect(written['logo/horizontal'].currentUrl).toBe(UPLOAD_URL);
+    expect(written['logo/horizontal'].pendingJobId).toBeUndefined();
+  });
+
+  it('clears pendingJobId on updateSlot (user-driven currentUrl change drops the in-progress marker)', async () => {
+    const aiUrl = 'https://logos.example.com/ai-horizontal-transparent.png';
+    const slotMidJob: MediaSlot = {
+      mediaType: 'logo',
+      currentUrl: UPLOAD_URL,
+      pendingJobId: 'job-abc-123',
+      searchQuery: '',
+      alternatives: [aiUrl],
+      userModified: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      lastUpdated: '2026-01-02T00:00:00.000Z',
+    };
+    vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({ 'logo/horizontal': slotMidJob }));
+
+    const result = await service.updateSlot('test-app', 'logo/horizontal', { newUrl: aiUrl });
+
+    expect(result.success).toBe(true);
+    const written = readWrittenManifest();
+    expect(written['logo/horizontal'].currentUrl).toBe(aiUrl);
+    expect(written['logo/horizontal'].pendingJobId).toBeUndefined();
+  });
+
   it('leaves non-logo slots untouched: no variant-map clearing, no naturalOrientation, no sibling writes', async () => {
     const heroSlot: MediaSlot = {
       mediaType: 'image',

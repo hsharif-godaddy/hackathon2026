@@ -179,6 +179,47 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
     return undefined;
   }, [previewMockupUrl, isManifestLoading, manifestError, manifest, previewBaseUrl, appId]);
 
+  // Pending-job state plus the prior hosted logo URLs to show during a *regeneration*.
+  //
+  // SHARED CONTRACT: when a logo slot has pendingJobId set AND its currentUrl is a real hosted
+  // https logo, this is a regeneration — surfaces show the EXISTING logo (dimmed) with an animated
+  // "updating" overlay sheen. When pendingJobId is set but currentUrl is the shimmer-asset path
+  // (not http), it's a fresh generation — surfaces show a bare animated shimmer.
+  //
+  // A chat-selected logo (previewLogoUrl) means a real logo already arrived, so it wins over any
+  // pending flag. Otherwise we honor the first logo slot that is either pending or has a currentUrl
+  // — mirroring the first-match ordering used by the URL memos above — so the shimmer maps to the
+  // same slot that would otherwise drive the logo image.
+  //
+  // priorLightUrl / priorDarkUrl are only populated for a regeneration; the dark panel prefers the
+  // reversed-solid / reversed variant of the prior currentUrl (falling back to the light prior).
+  const { isLogoPending, priorLightLogoUrl, priorDarkLogoUrl } = useMemo(() => {
+    if (previewLogoUrl) {
+      return { isLogoPending: false, priorLightLogoUrl: undefined, priorDarkLogoUrl: undefined };
+    }
+    for (const slotName of LOGO_SLOT_NAMES) {
+      const slot = manifest?.[slotName];
+      if (!slot) continue;
+      if (slot.pendingJobId) {
+        const prior = slot.currentUrl;
+        // Regeneration only when the prior currentUrl is a real hosted logo (startsWith http).
+        if (prior && (prior.startsWith('http://') || prior.startsWith('https://'))) {
+          const light = getSlotImageUrl(slotName, slot.solidUrlMap?.[prior] || prior, previewBaseUrl);
+          const darkSource =
+            slot.reversedSolidUrlMap?.[prior] || slot.reversedUrlMap?.[prior] || prior;
+          const dark = getSlotImageUrl(slotName, darkSource, previewBaseUrl);
+          return { isLogoPending: true, priorLightLogoUrl: light, priorDarkLogoUrl: dark };
+        }
+        // Fresh generation — bare shimmer, no prior URL.
+        return { isLogoPending: true, priorLightLogoUrl: undefined, priorDarkLogoUrl: undefined };
+      }
+      if (slot.currentUrl) {
+        return { isLogoPending: false, priorLightLogoUrl: undefined, priorDarkLogoUrl: undefined };
+      }
+    }
+    return { isLogoPending: false, priorLightLogoUrl: undefined, priorDarkLogoUrl: undefined };
+  }, [previewLogoUrl, manifest, previewBaseUrl]);
+
   // Fire book_view impression once all brand data sections are populated
   useEffect(() => {
     if (bookViewFiredRef.current) return;
@@ -221,6 +262,9 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
         logoUrl={primarySolidLogoUrl}
         reversedLogoUrl={reversedLogoUrl}
         isLoading={isGenerating}
+        isPending={isLogoPending}
+        priorLightLogoUrl={priorLightLogoUrl}
+        priorDarkLogoUrl={priorDarkLogoUrl}
       />
       <BrandApplicationsSection
         brand={brand}
@@ -238,6 +282,8 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
         brand={brand}
         logoUrl={primaryLogoUrl}
         isLoading={isGenerating}
+        isPending={isLogoPending}
+        priorLogoUrl={priorLightLogoUrl}
       />
       <TypographySection
         data={data}
