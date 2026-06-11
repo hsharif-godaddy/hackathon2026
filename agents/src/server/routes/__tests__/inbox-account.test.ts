@@ -7,6 +7,7 @@ import type { AuthenticatedRequest, ProductType } from '../../middleware/jwt-aut
 // Mock memory store
 const mockMemoryStore = {
   get: vi.fn(),
+  set: vi.fn(),
 };
 
 // IMPORTANT: Mocks must be set up BEFORE importing the route module
@@ -291,5 +292,93 @@ describe('GET /apps/:id/inbox-account', () => {
       brandId: mockBrandId,
       accountId: null
     });
+  });
+});
+
+describe('POST /apps/:id/inbox-account', () => {
+  let app: Express;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    app = express();
+    app.use(express.json());
+
+    vi.mocked(validateAppOwnership).mockImplementation(function (req, _res, next) {
+      (req as AuthenticatedRequest).agentContext = {
+        customerId: 'test-customer-id',
+        siteId: 'test-app-id',
+        canDownload: true,
+        canPublish: false,
+        isE2S: false,
+        product: 'AiroAppBuilder' as ProductType,
+        exp: Date.now() + 3600000,
+        iat: Date.now(),
+      };
+      next();
+    });
+
+    app.use(inboxAccountRouter);
+  });
+
+  it('persists accountId to scoped memory and returns it', async () => {
+    const accountId = 'https://account.reamaze.example/account-123';
+    mockMemoryStore.set.mockResolvedValue({ success: true });
+
+    const response = await request(app)
+      .post('/apps/test-app-id/inbox-account')
+      .send({ accountId })
+      .expect(200);
+
+    expect(response.body).toEqual({ accountId });
+    expect(mockMemoryStore.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: 'test-app-id',
+        customerId: 'test-customer-id',
+      }),
+      'integrations.inbox.accountId',
+      accountId
+    );
+  });
+
+  it('returns 400 when accountId is missing', async () => {
+    const response = await request(app)
+      .post('/apps/test-app-id/inbox-account')
+      .send({})
+      .expect(400);
+
+    expect(response.body).toMatchObject({ error: expect.any(String) });
+    expect(mockMemoryStore.set).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when accountId is not a non-empty string', async () => {
+    const response = await request(app)
+      .post('/apps/test-app-id/inbox-account')
+      .send({ accountId: '   ' })
+      .expect(400);
+
+    expect(response.body).toMatchObject({ error: expect.any(String) });
+    expect(mockMemoryStore.set).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when the memory write fails', async () => {
+    mockMemoryStore.set.mockResolvedValue({ success: false, error: 'db error' });
+
+    const response = await request(app)
+      .post('/apps/test-app-id/inbox-account')
+      .send({ accountId: 'https://account.reamaze.example/account-123' })
+      .expect(500);
+
+    expect(response.body).toMatchObject({ error: expect.any(String) });
+  });
+
+  it('returns 500 when the memory write throws', async () => {
+    mockMemoryStore.set.mockRejectedValue(new Error('Unexpected error'));
+
+    const response = await request(app)
+      .post('/apps/test-app-id/inbox-account')
+      .send({ accountId: 'https://account.reamaze.example/account-123' })
+      .expect(500);
+
+    expect(response.body).toMatchObject({ error: 'Internal server error' });
   });
 });
