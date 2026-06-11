@@ -13,6 +13,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 import { cleanCapturedText } from './cleanCapturedText'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
 import { imageMatchesPage } from './imageMatchesPage'
@@ -53,13 +54,20 @@ const MAX_GRID_IMAGES = 12
  * Custom renderer for the rebuildBuildPage tool.
  *
  * The deterministic inner-page rebuild emits a tool_result whose `output` carries
- * the page that was rebuilt from the scraped source: `{ pageSlug, pageTitle,
- * sourceUrl, imageCount }`. We surface a confirmation card in the same family as
- * the homepage rebuild card, with a "View source" modal that lazily loads the
- * scraped page snapshot (description, carried-over images, navigation, raw text).
+ * the page that will be rebuilt from the scraped source: `{ pageSlug, pageTitle,
+ * sourceUrl, imageCount }`. The synthetic lifecycle fires at prompt-substitution
+ * time (before the develop turn writes the page), so we show an in-progress card
+ * while the last assistant stream is active and switch to the completed card once
+ * the turn finishes. A "View source" modal lazily loads the scraped page snapshot.
  */
-export default function RebuildBuildPageToolRenderer({ result }: DefaultToolRendererProps) {
+export default function RebuildBuildPageToolRenderer({
+  result,
+  isLastAssistantMessage = false,
+}: DefaultToolRendererProps) {
   const t = useTranslations()
+  const isStreaming = useIsActivelyStreaming()
+  const isLoading = useIsLoading()
+  const isBuilding = isLastAssistantMessage && (isStreaming || isLoading)
   const appId = useDevelopPageStore((state) => state.currentAppId)
   const { tokenAuthType } = useAuthContext()
   const isInternal = isEmployeeAuthType(tokenAuthType)
@@ -183,11 +191,18 @@ export default function RebuildBuildPageToolRenderer({ result }: DefaultToolRend
         gap="sm"
         className="ml-1 mt-1 pl-2 border-l-1 border-intents-ux-box-borderColor"
         data-testid="rebuild-build-page-confirmation"
+        data-phase={isBuilding ? 'building' : 'completed'}
       >
         <Box orientation="horizontal" gap="sm">
-          <CheckCircle className="w-2 h-2" />
+          {isBuilding ? (
+            <Spinner size="sm" />
+          ) : (
+            <CheckCircle className="w-2 h-2" />
+          )}
           <text.p size={-1}>
-            {t('builder_rebuild_inner_confirmation_title', { pageTitle })}
+            {isBuilding
+              ? t('builder_rebuild_building_page', { pageTitle })
+              : t('builder_rebuild_inner_confirmation_title', { pageTitle })}
           </text.p>
         </Box>
         {imageCount > 0 && (

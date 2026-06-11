@@ -16,6 +16,9 @@ import RebuildBuildPageToolRenderer from './RebuildBuildPageToolRenderer'
 // Key-aware translation mock so each rendered string is predictable.
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (id: string, values?: Record<string, unknown>) => {
+    if (id === 'builder_rebuild_building_page') {
+      return `Building ${values?.pageTitle ?? ''} page...`
+    }
     if (id === 'builder_rebuild_inner_confirmation_title') {
       return `Rebuilt your ${values?.pageTitle ?? ''} page from your site`
     }
@@ -50,6 +53,12 @@ vi.mock('@/services/AppService', () => ({
   appService: { readFile: vi.fn() },
 }))
 
+const streamingState = { isStreaming: false, isLoading: false }
+vi.mock('@/stores/useStreamingConversationStore', () => ({
+  useIsActivelyStreaming: () => streamingState.isStreaming,
+  useIsLoading: () => streamingState.isLoading,
+}))
+
 // Design-system pieces used only inside the modal — stub to passthrough so the
 // test exercises the renderer's data/branch logic, not UXCore internals.
 vi.mock('@ux/spinner', () => ({ default: () => <div data-testid="spinner" /> }))
@@ -70,13 +79,45 @@ function httpError(status: number): Error & { status: number } {
 beforeEach(() => {
   readFileMock.mockReset()
   warnMock.mockReset()
+  streamingState.isStreaming = false
+  streamingState.isLoading = false
 })
 
 describe('RebuildBuildPageToolRenderer', () => {
-  it('renders the page title from the tool result', () => {
+  it('renders the completed confirmation when the stream has finished', () => {
+    renderWithProviders(
+      <RebuildBuildPageToolRenderer
+        toolName="rebuildBuildPage"
+        toolStatus="completed"
+        isLastAssistantMessage
+        result={OUTPUT}
+      />
+    )
+    expect(screen.getByTestId('rebuild-build-page-confirmation')).toHaveAttribute('data-phase', 'completed')
+    expect(screen.getByText(/Rebuilt your About page from your site/i)).toBeInTheDocument()
+  })
+
+  it('renders the in-progress card while the last assistant stream is active', () => {
+    streamingState.isStreaming = true
+    renderWithProviders(
+      <RebuildBuildPageToolRenderer
+        toolName="rebuildBuildPage"
+        toolStatus="completed"
+        isLastAssistantMessage
+        result={OUTPUT}
+      />
+    )
+    expect(screen.getByTestId('rebuild-build-page-confirmation')).toHaveAttribute('data-phase', 'building')
+    expect(screen.getByText(/Building About page\.\.\./i)).toBeInTheDocument()
+    expect(screen.queryByText(/Rebuilt your About page from your site/i)).not.toBeInTheDocument()
+  })
+
+  it('renders completed copy for historical messages even while a new stream runs', () => {
+    streamingState.isStreaming = true
     renderWithProviders(
       <RebuildBuildPageToolRenderer toolName="rebuildBuildPage" toolStatus="completed" result={OUTPUT} />
     )
+    expect(screen.getByTestId('rebuild-build-page-confirmation')).toHaveAttribute('data-phase', 'completed')
     expect(screen.getByText(/Rebuilt your About page from your site/i)).toBeInTheDocument()
   })
 
