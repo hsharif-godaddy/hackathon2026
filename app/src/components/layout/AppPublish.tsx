@@ -156,6 +156,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const isChatToolbar = location === 'develop.chat_toolbar';
 
   const isUpgradePolling = useIsUpgradePolling();
+  const fetchSite = useSiteStore((state) => state.fetchSite);
   const [pendingOpenAfterUpgrade, setPendingOpenAfterUpgrade] = useState(false);
   const [isAgentInitiatedPublish, setIsAgentInitiatedPublish] = useState(false);
   const { triggerAnalysis } = useTriggerSecurityAnalysis();
@@ -215,13 +216,22 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     setPendingOpenAfterUpgrade(true);
   }, []);
 
-  // Open popover after upgrade polling completes
+  // Open popover after upgrade polling completes, refreshing site data first so domain is current
   useEffect(() => {
-    if (pendingOpenAfterUpgrade && !isUpgradePolling) {
-      setPendingOpenAfterUpgrade(false);
+    if (!pendingOpenAfterUpgrade || isUpgradePolling) return;
+    setPendingOpenAfterUpgrade(false);
+    const openWithFreshSite = async () => {
+      if (currentAppId) {
+        try {
+          await fetchSite(currentAppId, true, true);
+        } catch {
+          // Proceed to open even if the refresh fails
+        }
+      }
       setOpen(true);
-    }
-  }, [pendingOpenAfterUpgrade, isUpgradePolling]);
+    };
+    void openWithFreshSite();
+  }, [pendingOpenAfterUpgrade, isUpgradePolling, currentAppId, fetchSite]);
 
   // Use shared paywall modal hook (includes publish limit check)
   const { checkAndShowPaywall, paywallModal, isPaywallLoading, isPublishLimitLoading } = usePaywallModal({

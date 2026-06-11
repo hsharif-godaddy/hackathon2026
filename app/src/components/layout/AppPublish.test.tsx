@@ -71,6 +71,7 @@ let mockDeploymentsData: Array<{ id: string; status: string }> = [];
 
 const mockSiteStore = {
   getSite: vi.fn(),
+  fetchSite: vi.fn().mockResolvedValue(null),
 };
 
 const mockStreaming = {
@@ -1601,6 +1602,9 @@ describe('AppPublish', () => {
       await waitFor(() => {
         expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
       });
+
+      // Site data must be force-refreshed (silent) before opening so domain is current
+      expect(mockSiteStore.fetchSite).toHaveBeenCalledWith('app-123', true, true);
     });
 
     it('should open popover immediately when no upgrade polling is active', async function popoverOpensImmediately() {
@@ -1614,6 +1618,9 @@ describe('AppPublish', () => {
       await waitFor(() => {
         expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
       });
+
+      // Site data must be force-refreshed (silent) before opening so domain is current
+      expect(mockSiteStore.fetchSite).toHaveBeenCalledWith('app-123', true, true);
     });
   });
 
