@@ -15,6 +15,7 @@ vi.mock('@/hooks/useUsage', () => ({
   useUsage: vi.fn(function () { return {
     isWarningBannerActive: true,
     percentage: 92,
+    creditsRemaining: 8,
     warningLevel: 'warning',
     isLoading: false,
   }; }),
@@ -70,6 +71,7 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: false,
         percentage: 50,
+        creditsRemaining: 50,
         warningLevel: WarningLevel.CAUTION,
         isLoading: false,
       });
@@ -86,6 +88,7 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: true,
         percentage: 92,
+        creditsRemaining: 8,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
       });
@@ -113,6 +116,7 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: true,
         percentage: 92,
+        creditsRemaining: 8,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
       });
@@ -125,7 +129,7 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
       });
 
       // FormattedMessage renders the message ID when no translations are provided
-      expect(screen.getByText('builder_usage_warning_message_no_purchase')).toBeInTheDocument();
+      expect(screen.getByText('builder_usage_warning_message_no_purchase_v2')).toBeInTheDocument();
     });
 
     it('should render message when purchase is enabled', async function messageEnabled() {
@@ -135,6 +139,7 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: true,
         percentage: 92,
+        creditsRemaining: 8,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
       });
@@ -147,7 +152,7 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
       });
 
       // FormattedMessage renders the message ID when no translations are provided
-      expect(screen.getByText('builder_usage_warning_message')).toBeInTheDocument();
+      expect(screen.getByText('builder_usage_warning_message_v2')).toBeInTheDocument();
     });
   });
 
@@ -157,6 +162,7 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: true,
         percentage: 92,
+        creditsRemaining: 8,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
       });
@@ -180,6 +186,7 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: true,
         percentage: 92,
+        creditsRemaining: 8,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
       });
@@ -198,6 +205,7 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: true,
         percentage: 92,
+        creditsRemaining: 8,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
       });
@@ -219,6 +227,7 @@ describe('UsageWarningBanner', function usageWarningBannerTests() {
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: true,
         percentage: 92,
+        creditsRemaining: 8,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
       });

@@ -18,7 +18,7 @@ export default function UsageWarningBanner({ appId }: UsageWarningBannerProps) {
   const t = useTranslations()
   const [isDismissed, setIsDismissed] = useState(false)
   const purchaseEnabled = useSwitchboard('appbuilder-usage-purchase')
-  const { isWarningBannerActive } = useUsage({ appId, enabled: !!appId })
+  const { isWarningBannerActive, creditsRemaining } = useUsage({ appId, enabled: !!appId })
 
   const hasLoggedImpressionRef = useRef(false)
 
@@ -54,12 +54,12 @@ export default function UsageWarningBanner({ appId }: UsageWarningBannerProps) {
   )
 
   const messageId = purchaseEnabled
-    ? 'builder_usage_warning_message'
-    : 'builder_usage_warning_message_no_purchase'
+    ? 'builder_usage_warning_message_v2'
+    : 'builder_usage_warning_message_no_purchase_v2'
 
   return (
     <ChatBanner variant="warning" onClose={handleClose}>
-      <FormattedMessage id={messageId} values={{ link }} />
+      <FormattedMessage id={messageId} values={{ credits: creditsRemaining, link }} />
     </ChatBanner>
   )
 }

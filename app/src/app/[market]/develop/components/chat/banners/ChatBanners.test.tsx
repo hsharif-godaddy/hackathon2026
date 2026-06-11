@@ -28,6 +28,7 @@ vi.mock('@/hooks/useUsage', () => ({
   useUsage: vi.fn(function () { return {
     isWarningBannerActive: false,
     percentage: 0,
+    creditsRemaining: 100,
     warningLevel: 'none',
     isLoading: false,
   }; }),
@@ -139,6 +140,7 @@ describe('ChatBanners', function chatBannersTests() {
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: true,
         percentage: 95,
+        creditsRemaining: 5,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
       });
@@ -150,7 +152,7 @@ describe('ChatBanners', function chatBannersTests() {
       });
 
       // Usage warning should NOT be visible
-      expect(screen.queryByText('builder_usage_warning_message_no_purchase')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_usage_warning_message_no_purchase_v2')).not.toBeInTheDocument();
     });
 
     it('should be dismissible via close button', async function dismissImpersonationBanner() {
@@ -195,9 +197,9 @@ describe('ChatBanners', function chatBannersTests() {
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: true,
         percentage: 92,
+        creditsRemaining: 8,
         warningLevel: WarningLevel.WARNING,
         isLoading: false,
-
       });
       vi.mocked(useSwitchboard).mockReturnValue(false);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false, isError: false, error: null });
@@ -206,7 +208,7 @@ describe('ChatBanners', function chatBannersTests() {
 
       await waitFor(function waitForBanner() {
         // UsageWarningBanner renders its message ID when no translations provided
-        expect(screen.getByText('builder_usage_warning_message_no_purchase')).toBeInTheDocument();
+        expect(screen.getByText('builder_usage_warning_message_no_purchase_v2')).toBeInTheDocument();
       });
     });
 
@@ -218,9 +220,9 @@ describe('ChatBanners', function chatBannersTests() {
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: false,
         percentage: 50,
+        creditsRemaining: 50,
         warningLevel: WarningLevel.CAUTION,
         isLoading: false,
-
       });
       vi.mocked(useSwitchboard).mockReturnValue(true);
       vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
@@ -241,9 +243,9 @@ describe('ChatBanners', function chatBannersTests() {
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: false,
         percentage: 50,
+        creditsRemaining: 50,
         warningLevel: WarningLevel.CAUTION,
         isLoading: false,
-
       });
 
       // Mock switchboard to return false for upgrade banner and true for feedback banner
@@ -275,9 +277,9 @@ describe('ChatBanners', function chatBannersTests() {
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: false,
         percentage: 0,
+        creditsRemaining: 100,
         warningLevel: WarningLevel.NONE,
         isLoading: false,
-
       });
 
       renderWithProviders(<ChatBanners appId="my-app-id" />);
@@ -293,6 +295,7 @@ describe('ChatBanners', function chatBannersTests() {
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: false,
         percentage: 50,
+        creditsRemaining: 50,
         warningLevel: WarningLevel.CAUTION,
         isLoading: false,
       });
@@ -321,6 +324,7 @@ describe('ChatBanners', function chatBannersTests() {
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: false,
         percentage: 50,
+        creditsRemaining: 50,
         warningLevel: WarningLevel.CAUTION,
         isLoading: false,
       });
@@ -346,9 +350,9 @@ describe('ChatBanners', function chatBannersTests() {
       vi.mocked(useUsage).mockReturnValue({
         isWarningBannerActive: false,
         percentage: 0,
+        creditsRemaining: 100,
         warningLevel: WarningLevel.NONE,
         isLoading: false,
-
       });
 
       renderWithProviders(<ChatBanners appId={null} />);

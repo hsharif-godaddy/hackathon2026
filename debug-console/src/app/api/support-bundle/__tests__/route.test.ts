@@ -22,7 +22,7 @@ vi.mock('@/lib/logger', () => ({
 import { streamConfiguredLogSources, streamLokiLogs } from '@/app/api/support-bundle/log-streams';
 import { logger } from '@/lib/logger';
 import { buildLokiQuery, queryLoki, transformLokiResponse } from '@/lib/loki-client';
-import type { LogSourceConfig } from '@/lib/log-sources';
+import { isLokiLogSource, type LogSourceConfig } from '@/lib/log-sources';
 
 const mockedBuildLokiQuery = buildLokiQuery as unknown as ReturnType<typeof vi.fn>;
 const mockedQueryLoki = queryLoki as unknown as ReturnType<typeof vi.fn>;
@@ -345,12 +345,9 @@ describe('streamConfiguredLogSources', () => {
       hits: { hits: [{ _id: 'loki-entry' }] },
     });
     expect(sourceMeta['airo-agents']).toMatchObject({ name: 'Agent App' });
-    // airo-agents/preview/publish are Loki-only (no fetch); airo-app +
-    // control_plane are ES (one fetch each). Assert on sourceMeta key set
-    // rather than a hardcoded count so adding/removing a default source
-    // doesn't spuriously break this test.
-    const lokiKeys = ['airo-agents', 'airo-preview', 'airo-publish'];
-    const esKeys = Object.keys(sourceMeta).filter((k) => !lokiKeys.includes(k));
+    // Loki sources use queryLoki (no fetch); ES sources use fetch. Derive the
+    // expected fetch count from backendType so new Loki entries don't break this.
+    const esKeys = Object.keys(sourceMeta).filter((k) => !isLokiLogSource(k));
     expect(fetchSpy).toHaveBeenCalledTimes(esKeys.length);
     expect(sourceMeta['airo-preview']).toMatchObject({ name: 'Preview App' });
     expect(sourceMeta['airo-publish']).toMatchObject({ name: 'Publish App' });
@@ -383,8 +380,7 @@ describe('streamConfiguredLogSources', () => {
     expect(sourceMeta['airo-agents']).toMatchObject({
       error: expect.stringContaining('LOKI_ENDPOINT is required'),
     });
-    const lokiKeys = ['airo-agents', 'airo-preview', 'airo-publish'];
-    const esKeys = Object.keys(sourceMeta).filter((k) => !lokiKeys.includes(k));
+    const esKeys = Object.keys(sourceMeta).filter((k) => !isLokiLogSource(k));
     expect(fetchSpy).toHaveBeenCalledTimes(esKeys.length);
     expect(sourceMeta['airo-app']).toMatchObject({ name: 'UI Client App' });
     expect(sourceMeta['control_plane']).toMatchObject({ name: 'Control Plane' });

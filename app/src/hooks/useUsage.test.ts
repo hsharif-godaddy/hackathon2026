@@ -85,6 +85,7 @@ describe('useUsage', () => {
 
       // (30 + 20) / (100 + 100) = 50 / 200 = 25%
       expect(result.current.percentage).toBe(25)
+      expect(result.current.creditsRemaining).toBe(150)
     })
 
     it('returns NONE warning level below 50%', () => {
@@ -129,7 +130,7 @@ describe('useUsage', () => {
       expect(result.current.warningLevel).toBe(WarningLevel.WARNING)
     })
 
-    it('returns isWarningBannerActive true at 90-99%', () => {
+    it('returns isWarningBannerActive true when remaining credits fall within warning threshold', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [
           createMockGrant({ id: 'grant-1', creditsSpent: 95, creditsMax: 100 }),
@@ -139,8 +140,154 @@ describe('useUsage', () => {
 
       const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
 
+      // 5 credits remaining, threshold = max(10, 100 * 0.10) = 10 → banner active
       expect(result.current.percentage).toBe(95)
+      expect(result.current.creditsRemaining).toBe(5)
       expect(result.current.isWarningBannerActive).toBe(true)
+    })
+
+    it('does not fire banner for large account with many credits remaining', () => {
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          createMockGrant({ id: 'grant-1', creditsSpent: 9000, creditsMax: 10000 }),
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useCreditGrants>)
+
+      const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
+
+      // 1000 credits remaining, threshold = min(100, 10000 * 0.10) = 100 → no banner
+      expect(result.current.percentage).toBe(90)
+      expect(result.current.creditsRemaining).toBe(1000)
+      expect(result.current.isWarningBannerActive).toBe(false)
+    })
+
+    it('fires banner for large account only when remaining credits drop to cap', () => {
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          createMockGrant({ id: 'grant-1', creditsSpent: 9920, creditsMax: 10000 }),
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useCreditGrants>)
+
+      const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
+
+      // 80 credits remaining, threshold = min(100, 10000 * 0.10) = 100 → banner active
+      expect(result.current.percentage).toBe(99.2)
+      expect(result.current.isWarningBannerActive).toBe(true)
+    })
+
+    it('fires banner for small 25-credit pack when remaining credits hit floor', () => {
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          createMockGrant({ id: 'grant-1', creditsSpent: 18, creditsMax: 25 }),
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useCreditGrants>)
+
+      const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
+
+      // 7 credits remaining, threshold = min(100, max(10, 25 * 0.10)) = 10 → banner active
+      expect(result.current.isWarningBannerActive).toBe(true)
+    })
+
+    it('does not fire banner for small 25-credit pack while credits are healthy', () => {
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          createMockGrant({ id: 'grant-1', creditsSpent: 10, creditsMax: 25 }),
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useCreditGrants>)
+
+      const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
+
+      // 15 credits remaining, threshold = min(100, max(10, 25 * 0.10)) = 10 → no banner
+      expect(result.current.isWarningBannerActive).toBe(false)
+    })
+
+    it('fires banner at floor threshold boundary (remaining === 10)', () => {
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          createMockGrant({ id: 'grant-1', creditsSpent: 15, creditsMax: 25 }),
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useCreditGrants>)
+
+      const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
+
+      expect(result.current.creditsRemaining).toBe(10)
+      expect(result.current.isWarningBannerActive).toBe(true)
+    })
+
+    it('does not fire banner one credit above floor threshold (remaining === 11)', () => {
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          createMockGrant({ id: 'grant-1', creditsSpent: 14, creditsMax: 25 }),
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useCreditGrants>)
+
+      const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
+
+      expect(result.current.creditsRemaining).toBe(11)
+      expect(result.current.isWarningBannerActive).toBe(false)
+    })
+
+    it('fires banner at cap threshold boundary (remaining === 100)', () => {
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          createMockGrant({ id: 'grant-1', creditsSpent: 9900, creditsMax: 10000 }),
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useCreditGrants>)
+
+      const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
+
+      expect(result.current.creditsRemaining).toBe(100)
+      expect(result.current.isWarningBannerActive).toBe(true)
+    })
+
+    it('does not fire banner one credit above cap threshold (remaining === 101)', () => {
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          createMockGrant({ id: 'grant-1', creditsSpent: 9899, creditsMax: 10000 }),
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useCreditGrants>)
+
+      const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
+
+      expect(result.current.creditsRemaining).toBe(101)
+      expect(result.current.isWarningBannerActive).toBe(false)
+    })
+
+    it('fires banner at ratio threshold boundary for mid-size pack (remaining === 50)', () => {
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          createMockGrant({ id: 'grant-1', creditsSpent: 450, creditsMax: 500 }),
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useCreditGrants>)
+
+      const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
+
+      // 500-credit pack: threshold = min(100, max(10, floor(500 * 0.10))) = 50
+      expect(result.current.creditsRemaining).toBe(50)
+      expect(result.current.isWarningBannerActive).toBe(true)
+    })
+
+    it('does not fire banner one credit above ratio threshold (remaining === 51)', () => {
+      vi.mocked(useCreditGrants).mockReturnValue({
+        data: [
+          createMockGrant({ id: 'grant-1', creditsSpent: 449, creditsMax: 500 }),
+        ],
+        isLoading: false,
+      } as ReturnType<typeof useCreditGrants>)
+
+      const { result } = renderHookWithProviders(() => useUsage({ appId: 'app-123' }))
+
+      expect(result.current.creditsRemaining).toBe(51)
+      expect(result.current.isWarningBannerActive).toBe(false)
     })
 
     it('returns EXCEEDED warning level when all grants consumed (exhausted)', () => {
@@ -155,6 +302,7 @@ describe('useUsage', () => {
 
       // 100/100 = 100%
       expect(result.current.percentage).toBe(100)
+      expect(result.current.creditsRemaining).toBe(0)
       expect(result.current.warningLevel).toBe(WarningLevel.EXCEEDED)
       expect(result.current.isWarningBannerActive).toBe(false)
     })
@@ -421,7 +569,7 @@ describe('useUsage', () => {
       expect(result.current.isWarningBannerActive).toBe(false)
     })
 
-    it('fires toast banner when combined usage across grants crosses 90%', () => {
+    it('fires banner when combined remaining credits fall within warning threshold', () => {
       vi.mocked(useCreditGrants).mockReturnValue({
         data: [
           createMockGrant({

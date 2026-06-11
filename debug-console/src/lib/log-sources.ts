@@ -335,6 +335,10 @@ function buildESConfig(sourceId: string): LogSourceConfig | null {
 // Default log sources used by app-context summary + error-details aggregation
 // when the caller does not pass an explicit `sources` query param. Derived
 // from the source tables so new entries are picked up automatically.
+export function isLokiLogSource(sourceId: string): boolean {
+  return Object.hasOwn(LOKI_SOURCES, sourceId);
+}
+
 export const DEFAULT_SUMMARY_SOURCE_IDS: readonly string[] = [
   ...Object.keys(LOKI_SOURCES),
   ...Object.keys(ES_SOURCES),

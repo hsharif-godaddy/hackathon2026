@@ -43,7 +43,7 @@ function isUpgradeBannerDismissedToday(): boolean {
  * 0. ImpersonationBanner (e2s/e2s2s session — highest priority while shown, dismissible)
  * 1. SuspendedComplianceBanner (site suspended or account subscription non-compliant; Switchboard-gated)
  * 2. SuspendedNonPaymentBanner (subscription suspended for non-payment)
- * 3. UsageWarningBanner (usage >= 90%)
+ * 3. UsageWarningBanner (remaining credits within warning threshold)
  * 4. UpgradeBanner (no Airo Plus subscription)
  * 5. FeedbackBanner (session-based NPS prompt)
  * 6. AppGenerationFeedbackBanner (thumbs up/down after first app generation; Switchboard-gated upstream in useAppGenerationFeedbackTrigger)
