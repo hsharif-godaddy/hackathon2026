@@ -114,7 +114,7 @@ describe('RebuildIntakeForm', () => {
 
     expect(mockTrackSubmitted).toHaveBeenCalledWith({
       scope: 'homepage_only',
-      designChoice: 'airo_decide',
+      designChoice: 'keep_similar',
       designDirection: 'keep-similar',
       submitSource: 'submit',
       sourceUrl: 'https://example.com',

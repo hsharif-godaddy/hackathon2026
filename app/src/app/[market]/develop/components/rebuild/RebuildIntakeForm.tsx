@@ -48,7 +48,7 @@ export default function RebuildIntakeForm({ appId, sourceUrl }: RebuildIntakeFor
   }
   const queryClient = useQueryClient()
   const [scope, setScope] = useState<RebuildScope>('homepage_only')
-  const [designChoice, setDesignChoice] = useState<DesignChoiceId>('airo_decide')
+  const [designChoice, setDesignChoice] = useState<DesignChoiceId>('keep_similar')
   const { data: workflowStatus } = useRebuildWorkflowStatus(appId, true)
   const { data: scopeEstimates, isLoading: estimatesLoading, isError: estimatesError } = useRebuildScopeEstimates(appId)
   const submitIntake = useSubmitRebuildIntake(appId)
