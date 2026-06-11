@@ -79,4 +79,41 @@ export const getFullStorySessionUrl = async (now = true): Promise<string | null>
   }
 };
 
+/**
+ * Constant prefix of a FullStory replay URL. The session token returned by
+ * {@link getFullStorySessionId} is everything after this, so a full, openable
+ * replay URL is `FULLSTORY_SESSION_URL_PREFIX + <token>`. Org id `YKBRC` matches
+ * `FullStoryProvider`'s `init({ orgId: 'YKBRC' })`.
+ */
+export const FULLSTORY_SESSION_URL_PREFIX = 'https://app.fullstory.com/ui/YKBRC/client-session/';
+
+/**
+ * Get the FullStory session token: the final path segment of the `url.now`
+ * replay URL, stripped of the constant {@link FULLSTORY_SESSION_URL_PREFIX}.
+ *
+ * The token is `<sessionId>:<clientId>:<timestamp>` with each `:` percent-encoded
+ * as `%3A`. It is returned VERBATIM (still encoded) so a viewer can rebuild the
+ * exact replay URL by pasting `FULLSTORY_SESSION_URL_PREFIX + token` into a
+ * browser — decoding would produce a non-identical URL. The trailing
+ * `:<timestamp>` is the moment anchor. We take the last path segment rather than
+ * matching a specific marker, to stay robust across the `/session/` vs
+ * `/client-session/` path variants across FullStory SDK versions.
+ *
+ * Returns null when FullStory is unavailable (e.g. local dev).
+ */
+export const getFullStorySessionId = async (): Promise<string | null> => {
+  const sessionUrl = await getFullStorySessionUrl(true);
+  if (!sessionUrl) {
+    return null;
+  }
+  // The token is the final path segment; strip any trailing query/hash first.
+  const pathOnly = sessionUrl.split(/[?#]/)[0].replace(/\/+$/, '');
+  const lastSlash = pathOnly.lastIndexOf('/');
+  if (lastSlash === -1) {
+    return null;
+  }
+  const token = pathOnly.slice(lastSlash + 1);
+  return token || null;
+};
+
 

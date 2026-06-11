@@ -271,6 +271,7 @@ export class SSETransport implements ChatTransport {
         buildErrorContext: params.buildErrorContext,
         uploadedFileName: params.uploadedFileName,
         market: params.market,
+        fullStorySessionId: params.fullStorySessionId,
       })
     })
 

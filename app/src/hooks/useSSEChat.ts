@@ -2,6 +2,7 @@ import { useParams } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getMessageOriginForAuthType } from '@airo/shared/auth'
 
+import { getFullStorySessionId } from '@/components/feedback/utils'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
 import type { DataHandlerContext } from '@/hooks/websocket/handlers/types'
@@ -1067,10 +1068,13 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     clearAppNotFoundRetry()
 
     try {
-      const defaults = await resolveMessageDefaults({
-        modelOverride: options.modelOverride,
-        visualContext: options.visualContext,
-      })
+      const [defaults, fullStorySessionId] = await Promise.all([
+        resolveMessageDefaults({
+          modelOverride: options.modelOverride,
+          visualContext: options.visualContext,
+        }),
+        getFullStorySessionId(),
+      ])
 
       const resolvedSendParams: SendMessageParams = {
         content: options.content,
@@ -1091,6 +1095,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         subscriptionId: subscriptionIdRef.current,
         buildErrorContext: store.buildErrorContext,
         uploadedFileName: options.uploadedFileName,
+        ...(fullStorySessionId && { fullStorySessionId }),
       }
       lastResolvedSendParamsRef.current = resolvedSendParams
       await t.sendMessage(resolvedSendParams)

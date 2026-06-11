@@ -209,6 +209,8 @@ interface ExecuteParams {
   authType?: string
   /** Raw HTTP request headers — used to extract Signals/OTEL trace propagation. */
   requestHeaders?: Record<string, string | string[] | undefined>
+  /** FullStory session id token (from `x-fullstory-session-id`), attached to the trace. */
+  fullStorySessionId?: string
   /** JWT agent context + derived lifecycle hints (isInitialPrompt, multi-turn caches). */
   lifecycleContext?: LifecycleContext
   market?: string
@@ -773,9 +775,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       persistenceContext: SSEPersistenceContext
       streamState: ActiveStream
       agentMessageId?: string
+      fullStorySessionId?: string
     },
   ): Promise<{ accumulatedContent: string; currentStep: number; finalResult: any; finishReason: string; responseMetadata: ResponseMetadata; steps: ExecutionStep[] }> {
-    const { conversationId, appId, siteId, sseSocketId, abortController, streamingEvents, executionContext, persistenceContext, streamState, agentMessageId } = opts
+    const { conversationId, appId, siteId, sseSocketId, abortController, streamingEvents, executionContext, persistenceContext, streamState, agentMessageId, fullStorySessionId } = opts
     const abortSignal = abortController.signal
 
     const pendingPublishes: Promise<unknown>[] = []
@@ -1050,6 +1053,15 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     // land in GoCode logs with no trace link back to the conversation.
     const invocationSpan = trace.getSpan(invocation.context)
     const traceId = invocationSpan?.spanContext().traceId
+
+    // Surface the FullStory session id on the Langfuse trace. The Langfuse
+    // span processor maps `langfuse.trace.metadata.<key>` attributes into the
+    // trace's metadata; setting it on the agent-invocation span (the turn's
+    // root Langfuse observation) puts it on the trace. Separate from the
+    // Signals/Event Bus sink (global.context), which never reaches Langfuse.
+    if (invocationSpan && fullStorySessionId) {
+      invocationSpan.setAttribute('langfuse.trace.metadata.fullStorySessionId', fullStorySessionId)
+    }
     const executionContextWithTrace: Record<string, unknown> = {
       socketId: sseSocketId,
       ...executionContext,
@@ -1493,6 +1505,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         },
       }),
       ...(params.appId.length > 0 && { appId: params.appId }),
+      ...(params.fullStorySessionId !== undefined && { fullStorySessionId: params.fullStorySessionId }),
       logPrefix: 'sse',
       logFields: { appId: params.appId, conversationId: params.conversationId },
       logger: { warn: (event, fields) => logger.warn(event, fields) },
@@ -1831,6 +1844,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
             conversationId, appId, siteId, sseSocketId,
             abortController,
             streamingEvents, executionContext, persistenceContext, streamState, agentMessageId: activeAgentMessageId,
+            ...(params.fullStorySessionId !== undefined && { fullStorySessionId: params.fullStorySessionId }),
           })
 
           if (budgetRecoveryCallback) {

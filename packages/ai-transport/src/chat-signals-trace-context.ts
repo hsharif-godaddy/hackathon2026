@@ -52,11 +52,12 @@ export function buildChatSignalsTraceContext(options: {
   headers?: Record<string, string | string[] | undefined>
   jwtAgentContext?: JwtAgentContextSubset | null | undefined
   appId?: string | undefined
+  fullStorySessionId?: string | undefined
   logPrefix: ChatSignalsTraceLogPrefix
   logFields?: Record<string, string | undefined>
   logger: ChatSignalsTraceLogger
 }): Context {
-  const { headers, jwtAgentContext, appId, logPrefix, logFields, logger } = options
+  const { headers, jwtAgentContext, appId, fullStorySessionId, logPrefix, logFields, logger } = options
   const { screenshotUrl, listPublishedSnapshotsUrl } = screenshotUrlsForApp(appId)
 
   let baseSignals: SignalsContext = {}
@@ -78,6 +79,8 @@ export function buildChatSignalsTraceContext(options: {
       jwtAgentContext.visitorId.length > 0 && { visitorId: jwtAgentContext.visitorId }),
     ...(typeof jwtAgentContext?.trafficSessionId === 'string' &&
       jwtAgentContext.trafficSessionId.length > 0 && { sessionId: jwtAgentContext.trafficSessionId }),
+    ...(typeof fullStorySessionId === 'string' &&
+      fullStorySessionId.length > 0 && { fullStorySessionId }),
   }
 
   try {

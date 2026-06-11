@@ -486,6 +486,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       uploadedFileName,
       market,
       userTimezone,
+      fullStorySessionId,
     } = req.body
 
     // WS permits empty content after stripping /agent markers and when the
@@ -504,6 +505,11 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
 
     if (userTimezone !== undefined && typeof userTimezone !== 'string') {
       res.status(400).json({ error: 'userTimezone must be a string' })
+      return
+    }
+
+    if (fullStorySessionId !== undefined && typeof fullStorySessionId !== 'string') {
+      res.status(400).json({ error: 'fullStorySessionId must be a string' })
       return
     }
 
@@ -549,6 +555,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       apmTransaction.setLabel('conversationId', conversationId)
       apmTransaction.setLabel('message_length', effectiveContent.length)
       apmTransaction.setLabel('isInitialPrompt', 'false')
+      if (fullStorySessionId) apmTransaction.setLabel('fullStorySessionId', fullStorySessionId)
     }
 
     if (!deps.executionService) {
@@ -719,6 +726,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       market,
       userTimezone,
       requestHeaders: req.headers as Record<string, string | string[] | undefined>,
+      ...(fullStorySessionId !== undefined && { fullStorySessionId }),
       requestId: (req as any).requestId,
       apmTransaction,
       lifecycleContext: {

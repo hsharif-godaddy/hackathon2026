@@ -147,4 +147,51 @@ describe('buildChatSignalsTraceContext', function suite() {
 
     vi.unstubAllEnvs()
   })
+
+  it('includes fullStorySessionId in signalsContext when provided', function fullStory() {
+    buildChatSignalsTraceContext({
+      appId: 'my-app',
+      fullStorySessionId: '123:456',
+      logPrefix: 'sse',
+      logger,
+    })
+
+    expect(createTraceContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        signalsContext: expect.objectContaining({
+          fullStorySessionId: '123:456',
+        }),
+      }),
+    )
+  })
+
+  it('omits fullStorySessionId from signalsContext when absent or empty', function noFullStory() {
+    buildChatSignalsTraceContext({
+      appId: 'my-app',
+      fullStorySessionId: '',
+      logPrefix: 'sse',
+      logger,
+    })
+
+    const arg = vi.mocked(createTraceContext).mock.calls[0][0] as {
+      signalsContext: Record<string, unknown>
+    }
+    expect(arg.signalsContext.fullStorySessionId).toBeUndefined()
+  })
+
+  it('attaches fullStorySessionId to signalsContext even when appId is absent', function fullStoryNoApp() {
+    buildChatSignalsTraceContext({
+      fullStorySessionId: '789',
+      logPrefix: 'sse',
+      logger,
+    })
+
+    expect(createTraceContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        signalsContext: expect.objectContaining({
+          fullStorySessionId: '789',
+        }),
+      }),
+    )
+  })
 })

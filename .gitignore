@@ -113,3 +113,4 @@ investigator/node_modules/
 .specstory/
 # Cursor extension data
 .cursorindexingignore
+.temporary/

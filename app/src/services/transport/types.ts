@@ -34,6 +34,7 @@ export interface SendMessageParams {
   buildErrorContext?: { error: string; details: string; exitCode?: number } | null
   uploadedFileName?: string
   market?: string
+  fullStorySessionId?: string
 }
 
 export interface ChatTransport {

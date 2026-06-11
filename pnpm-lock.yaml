@@ -377,9 +377,12 @@ importers:
       '@opentelemetry/sdk-node':
         specifier: '>=0.217.0'
         version: 0.217.0(@opentelemetry/api@1.9.1)
+      '@qdrant/js-client-rest':
+        specifier: ^1.17.0
+        version: 1.18.0(typescript@5.9.3)
       '@signals/otel-sdk':
-        specifier: ^0.2.0
-        version: 0.2.0(@opentelemetry/api@1.9.1)
+        specifier: ^0.2.2
+        version: 0.2.2(@opentelemetry/api@1.9.1)
       '@types/multer':
         specifier: 'catalog:'
         version: 2.1.0
@@ -1671,11 +1674,11 @@ importers:
         specifier: 'catalog:'
         version: 1.9.1
       '@signals/otel-sdk':
-        specifier: ^0.2.0
-        version: 0.2.0(@opentelemetry/api@1.9.1)
+        specifier: ^0.2.2
+        version: 0.2.2(@opentelemetry/api@1.9.1)
       '@signals/sdk':
-        specifier: ^1.3.0
-        version: 1.3.0
+        specifier: ^2.1.0
+        version: 2.1.0
       ai:
         specifier: 'catalog:'
         version: 6.0.177(zod@4.4.3)
@@ -5325,6 +5328,16 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
+  '@qdrant/js-client-rest@1.18.0':
+    resolution: {integrity: sha512-/0dqX5uV9chC1DnYSnU4gNMrDqse/pt6hHg3Rqqpl5isH7xl1xSNvffjzBoxycDD79luWn7Ho6Rh/61sOs5DNw==}
+    engines: {node: '>=18.17.0', pnpm: '>=8'}
+    peerDependencies:
+      typescript: '>=4.7'
+
+  '@qdrant/openapi-typescript-fetch@1.2.6':
+    resolution: {integrity: sha512-oQG/FejNpItrxRHoyctYvT3rwGZOnK4jr3JdppO/c78ktDvkWiPXPHNsrDf33K9sZdRb6PR7gi4noIapu5q4HA==}
+    engines: {node: '>=18.0.0', pnpm: '>=8'}
+
   '@radix-ui/primitive@1.1.3':
     resolution: {integrity: sha512-JTF99U/6XIjCBo0wqkU5sK10glYe27MRRsfwoiq5zzOEZLHU3A3KCMa5X/azekYRCJ0HlwI0crAXS/5dEHTzDg==}
 
@@ -5969,8 +5982,16 @@ packages:
     peerDependencies:
       '@opentelemetry/api': ^1.0.0
 
+  '@signals/otel-sdk@0.2.2':
+    resolution: {integrity: sha512-UVh3KrMGafhnGD8j0DYhBv8I2K8ODqA+erwPXCOX4BB9mprYPJgbA5ysSndD7a+HHlGWBelD2FxPNT3dVP8Dww==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@signals/otel-sdk/-/@signals/otel-sdk-0.2.2.tgz}
+    peerDependencies:
+      '@opentelemetry/api': ^1.0.0
+
   '@signals/sdk@1.3.0':
     resolution: {integrity: sha512-kE7P310p7pPAgyilzPtlyP+gEKnrPKX2ThNdc7CxhRBxEQCSg3QtSmIDYYLPH/vmxe6wIBfJClwmgAFKqX7+gA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@signals/sdk/-/@signals/sdk-1.3.0.tgz}
+
+  '@signals/sdk@2.1.0':
+    resolution: {integrity: sha512-a1dG7ZDa7NXMeK50gaBMg2WNJlDQEUwimQMS7y92DrH1AhnvLuCH3x8lGDk/pxKQZKJ5Yfr7lj5TaUjQIbDvuQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@signals/sdk/-/@signals/sdk-2.1.0.tgz}
 
   '@sindresorhus/merge-streams@4.0.0':
     resolution: {integrity: sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ==}
@@ -18409,6 +18430,14 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
+  '@qdrant/js-client-rest@1.18.0(typescript@5.9.3)':
+    dependencies:
+      '@qdrant/openapi-typescript-fetch': 1.2.6
+      typescript: 5.9.3
+      undici: 6.25.0
+
+  '@qdrant/openapi-typescript-fetch@1.2.6': {}
+
   '@radix-ui/primitive@1.1.3': {}
 
   '@radix-ui/react-accordion@1.2.12(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
@@ -18987,7 +19016,15 @@ snapshots:
       '@signals/sdk': 1.3.0
       lru-cache: 11.3.6
 
+  '@signals/otel-sdk@0.2.2(@opentelemetry/api@1.9.1)':
+    dependencies:
+      '@opentelemetry/api': 1.9.1
+      '@signals/sdk': 2.1.0
+      lru-cache: 11.3.6
+
   '@signals/sdk@1.3.0': {}
+
+  '@signals/sdk@2.1.0': {}
 
   '@sindresorhus/merge-streams@4.0.0': {}
 

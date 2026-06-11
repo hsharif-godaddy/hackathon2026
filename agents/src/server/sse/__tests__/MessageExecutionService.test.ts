@@ -14,12 +14,22 @@ import { context as otelContext, trace as otelTrace } from '@opentelemetry/api'
 // in any test — leaving the primary behavioral change of this PR
 // untested. The traceId assertion in the success test pins that wiring.
 const MOCK_TRACE_ID = 'abcdef1234567890abcdef1234567890'
-const mockSpan = otelTrace.wrapSpanContext({
+const mockSpanContext = {
   traceId: MOCK_TRACE_ID,
   spanId: '0123456789abcdef',
   traceFlags: 1,
   isRemote: false,
-})
+}
+// A spy-able span: streamAgentTurn reads spanContext().traceId for x-trace-id
+// wiring AND calls setAttribute('langfuse.trace.metadata.fullStorySessionId', …)
+// so the id lands on the Langfuse trace. wrapSpanContext alone yields a
+// non-recording span whose setAttribute is an unobservable no-op, so we hand
+// roll a minimal span that satisfies both reads and records setAttribute calls.
+const mockSpanSetAttribute = vi.fn()
+const mockSpan = {
+  spanContext: () => mockSpanContext,
+  setAttribute: mockSpanSetAttribute,
+} as unknown as Parameters<typeof otelTrace.setSpan>[1]
 const mockInvocationContext = otelTrace.setSpan(otelContext.active(), mockSpan)
 const mockInvocationEnd = vi.fn()
 const mockCreateAgentInvocationSpan = vi.fn(function () { return {
@@ -217,6 +227,7 @@ describe('MessageExecutionService', () => {
     mockGetBudgetServiceClient.mockReturnValue(null)
     mockInvocationEnd.mockReset()
     mockCreateAgentInvocationSpan.mockClear()
+    mockSpanSetAttribute.mockClear()
     mockEmitConversationStart.mockClear()
     deps = createMockDeps()
     service = new MessageExecutionService(deps as any)
@@ -3007,6 +3018,48 @@ describe('MessageExecutionService', () => {
       // reworded — keep it keyed to MOCK_TRACE_ID.
       const streamCall = (deps.getAgent().streamGenerate as any).mock.calls[0]
       expect(streamCall[1].executionContext.metadata.traceId).toBe(MOCK_TRACE_ID)
+    })
+
+    it('sets the FullStory session id as a langfuse.trace.metadata span attribute when provided', async () => {
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([{ type: 'text-delta', text: 'hi' }]),
+          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, fullStorySessionId: 'abc123:456' })
+
+      // The Langfuse span processor maps langfuse.trace.metadata.<key> onto the
+      // trace. Setting it on the invocation span (the turn's root observation)
+      // is what makes the id queryable in Langfuse — businessContext does NOT
+      // reach Langfuse, so this assertion is the real guarantee of the feature.
+      expect(mockSpanSetAttribute).toHaveBeenCalledWith(
+        'langfuse.trace.metadata.fullStorySessionId',
+        'abc123:456',
+      )
+    })
+
+    it('does not set the FullStory span attribute when the id is absent', async () => {
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([{ type: 'text-delta', text: 'hi' }]),
+          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(mockSpanSetAttribute).not.toHaveBeenCalledWith(
+        'langfuse.trace.metadata.fullStorySessionId',
+        expect.anything(),
+      )
     })
 
     it('ends the invocation span with success:false, finishReason:aborted when the client aborts', async () => {
