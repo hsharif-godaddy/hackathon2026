@@ -15,6 +15,7 @@ import {
 } from "../utils/element-detection";
 import InlineLexicalEditor from "../components/InlineLexicalEditor";
 import { htmlToJsxStructured } from "../utils/html-to-jsx";
+import { insertPlainTextOnPaste } from "../utils/contenteditable-paste";
 import { createElement } from "react";
 import {
   INDICATOR_MS,
@@ -355,6 +356,7 @@ export function useTextEditing(isEditModeActive: boolean) {
       } else {
         if (blurHandlerRef.current) {
           editingElement.removeEventListener("blur", blurHandlerRef.current);
+          editingElement.removeEventListener("paste", insertPlainTextOnPaste);
           blurHandlerRef.current = null;
           editingElement.contentEditable = "false";
         }
@@ -380,6 +382,7 @@ export function useTextEditing(isEditModeActive: boolean) {
       const parentOriginalText = brParent?.textContent?.trim() || "";
       element.contentEditable = "true";
       element.style.outline = "none";
+      element.addEventListener("paste", insertPlainTextOnPaste);
       element.focus();
 
       const sel = window.getSelection();
@@ -396,6 +399,7 @@ export function useTextEditing(isEditModeActive: boolean) {
         element.removeAttribute("contenteditable");
         element.style.outline = "";
         element.removeEventListener("blur", onBlur);
+        element.removeEventListener("paste", insertPlainTextOnPaste);
         blurHandlerRef.current = null;
         const newText = element.textContent?.trim() || "";
         const hasStructureNow = element.querySelector("a, span, em, strong, b, i, code, br") !== null;
