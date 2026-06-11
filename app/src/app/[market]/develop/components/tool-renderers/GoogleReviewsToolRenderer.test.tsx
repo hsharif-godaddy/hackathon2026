@@ -188,4 +188,40 @@ describe('GoogleReviewsToolRenderer', () => {
 
     expect(screen.getByTestId('default-tool-renderer')).toBeInTheDocument()
   })
+
+  describe('tool name compatibility', () => {
+    it('works with legacy global tool name "googleReviews"', async () => {
+      render(
+        <GoogleReviewsToolRenderer
+          toolName="googleReviews"
+          toolStatus="completed"
+          toolId="tool-1"
+          conversationId="conv-1"
+          result={{ action: 'fetchReviews', socialId: SOCIAL_ID }}
+          isLastAssistantMessage={true}
+        />
+      )
+
+      await waitFor(() => {
+        expect(screen.getByText('Reviews loaded.')).toBeInTheDocument()
+      })
+    })
+
+    it('works with new skill-specific tool name "google-reviews__fetchReviews"', async () => {
+      render(
+        <GoogleReviewsToolRenderer
+          toolName="google-reviews__fetchReviews"
+          toolStatus="completed"
+          toolId="tool-1"
+          conversationId="conv-1"
+          result={{ action: 'fetchReviews', socialId: SOCIAL_ID }}
+          isLastAssistantMessage={true}
+        />
+      )
+
+      await waitFor(() => {
+        expect(screen.getByText('Reviews loaded.')).toBeInTheDocument()
+      })
+    })
+  })
 })

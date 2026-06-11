@@ -15,7 +15,7 @@ export const socialRead: Tool = createTool(
   Use this to check whether a platform is connected before attempting to use its data.
   Returns stored connection details (platform, socialId, createdAt).
 
-  Useful before calling googleReviews to confirm Google Business Profile is connected.`,
+  Example: Check if Google Business Profile is connected before loading the google-reviews skill.`,
   z.object({
     platform: z.enum(Object.values(SocialPlatform) as [string, ...string[]])
       .optional()

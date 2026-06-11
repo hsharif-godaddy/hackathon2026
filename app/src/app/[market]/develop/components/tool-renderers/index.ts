@@ -97,7 +97,8 @@ export const toolRendererRegistry = {
   socialPostCreate: SocialPostCreateToolRenderer,
   socialPostPublish: SocialPublishToolRenderer,
   end_conversation: EndConversationToolRenderer,
-  googleReviews: GoogleReviewsToolRenderer,
+  googleReviews: GoogleReviewsToolRenderer, // Legacy global tool (backwards compatibility)
+  'google-reviews__fetchReviews': GoogleReviewsToolRenderer, // New skill-specific tool
   grepSearch: GrepSearchToolRenderer,
   handoff: HandoffToolRenderer,
   readFile: ReadFileToolRenderer,
