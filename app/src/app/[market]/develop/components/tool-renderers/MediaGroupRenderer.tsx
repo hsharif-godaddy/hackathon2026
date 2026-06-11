@@ -203,7 +203,7 @@ export default function MediaGroupRenderer({
                 <div className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded-md bg-intents-ux-box-backgroundColor shadow-md transition-all duration-300 ease-in-out origin-bottom-right group-hover:w-full group-hover:h-full group-hover:bottom-0 group-hover:right-0 group-hover:rounded-md group-hover:backdrop-blur-sm flex flex-col items-center justify-center">
                   <PlusIcon className="size-2 transition-all duration-300 ease-in-out group-hover:-mt-1" />
                   {/* Show alternatives count on hover */}
-                  {(slot.result!.alternativeCount || slot.result!.alternatives?.length) && (
+                  {(slot.result!.alternativeCount || slot.result!.alternatives?.length || 0) > 0 && (
                     <span className="absolute top-1/2 scale-0 text-xs text-intents-ux-text-textColor font-medium transition-all duration-300 ease-in-out group-hover:scale-100 group-hover:mt-1">
                       {t('builder_common_options_count', {
                         count: slot.result!.alternativeCount || slot.result!.alternatives!.length
