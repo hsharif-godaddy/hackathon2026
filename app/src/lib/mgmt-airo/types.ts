@@ -114,6 +114,8 @@ export interface AiroApp {
   }>;
   cellId?: string;
   screenshots?: Screenshots;
+  /** Authoritative publish state from mgmt-airo (airo_apps enrichment). See getAppScreenshotUrl for usage. */
+  published?: boolean;
 }
 
 /**

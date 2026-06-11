@@ -334,7 +334,11 @@ describe('isPreviewHibernated', () => {
 });
 
 describe('getAppScreenshotUrl', () => {
-  const makeSite = (variants: string[], screenshots?: SiteScreenshots): SiteInfo => ({
+  const makeSite = (
+    variants: string[],
+    screenshots?: SiteScreenshots,
+    published?: boolean,
+  ): SiteInfo => ({
     id: 'site-1',
     name: 'Test App',
     status: SiteStatus.Running,
@@ -343,6 +347,7 @@ describe('getAppScreenshotUrl', () => {
     updated_at: new Date('2024-01-01T00:00:00Z'),
     variants,
     screenshots,
+    ...(published === undefined ? {} : { published }),
   });
 
   it('returns undefined when the site has no screenshots', () => {
@@ -392,5 +397,58 @@ describe('getAppScreenshotUrl', () => {
       publish: { mobile: 'publish-m' },
     });
     expect(getAppScreenshotUrl(site)).toBeUndefined();
+  });
+
+  describe('with the canonical published flag (authoritative over variants)', () => {
+    it('published:false uses preview even when a (stale) publish screenshot exists', () => {
+      // The app was published (publish variant + publish shot linger) but is now
+      // unpublished — the publish screenshot is stale, so show preview instead.
+      const site = makeSite(
+        ['preview', 'publish'],
+        { preview: { desktop: 'preview-d' }, publish: { desktop: 'stale-publish-d' } },
+        false,
+      );
+      expect(getAppScreenshotUrl(site)).toBe('preview-d');
+    });
+
+    it('published:true uses publish even when variants omit the publish entry', () => {
+      const site = makeSite(
+        ['preview'],
+        { preview: { desktop: 'preview-d' }, publish: { desktop: 'publish-d' } },
+        true,
+      );
+      expect(getAppScreenshotUrl(site)).toBe('publish-d');
+    });
+
+    it('published:true falls back to preview when publish screenshot not yet captured', () => {
+      // Publish variant is active and published=true, but the capture pipeline
+      // hasn't run for this variant yet — publish.desktop is absent.
+      const site = makeSite(
+        ['preview', 'publish'],
+        { preview: { desktop: 'preview-d' } },
+        true,
+      );
+      expect(getAppScreenshotUrl(site)).toBe('preview-d');
+    });
+
+    it('published:false with only a stale publish shot and no preview returns undefined', () => {
+      // Unpublished app: stale publish screenshot lingers, preview was never
+      // captured. Should not leak the stale shot; no preview → undefined.
+      const site = makeSite(
+        ['preview', 'publish'],
+        { publish: { desktop: 'stale-publish-d' } },
+        false,
+      );
+      expect(getAppScreenshotUrl(site)).toBeUndefined();
+    });
+
+    it('falls back to the variants check when the published flag is absent', () => {
+      // No published flag → defer to hasBeenPublished (publish variant present)
+      const site = makeSite('preview,publish'.split(','), {
+        preview: { desktop: 'preview-d' },
+        publish: { desktop: 'publish-d' },
+      });
+      expect(getAppScreenshotUrl(site)).toBe('publish-d');
+    });
   });
 });

@@ -1036,6 +1036,38 @@ describe('V2ControlPlaneAdapter', () => {
     });
   });
 
+  describe('getSite - published flag passthrough', () => {
+    const appFixture = (published?: boolean) => ({
+      id: MOCK_APP_ID,
+      status: 'active',
+      systemId: MOCK_SYSTEM_ID,
+      subscriptionId: 'sub-123',
+      cellId: 'c4-dev-sxb1-eu-central-1',
+      variables: { title: 'Pub App', initialPrompt: MOCK_PROMPT },
+      ...(published === undefined ? {} : { published }),
+      createdAt: '2025-10-02T10:30:00Z',
+      updatedAt: '2025-10-02T10:35:00Z'
+    });
+
+    it('carries published=true through mapAppToSiteInfo', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ apps: [appFixture(true)] }) });
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+      expect(site?.published).toBe(true);
+    });
+
+    it('carries published=false through mapAppToSiteInfo (explicit unpublish)', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ apps: [appFixture(false)] }) });
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+      expect(site?.published).toBe(false);
+    });
+
+    it('leaves published undefined when mgmt-airo omits the field', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ apps: [appFixture(undefined)] }) });
+      const site = await adapter.getSite(MOCK_JOB_ID, MOCK_JWT);
+      expect(site?.published).toBeUndefined();
+    });
+  });
+
   describe('getSite - Job ID Polling', () => {
     it('should handle in-progress job (no apps yet)', async () => {
       // Mock job endpoint - workflow in progress

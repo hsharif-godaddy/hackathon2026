@@ -70,11 +70,17 @@ export function isPreviewHibernated(site: SiteWithLifecycle): boolean {
  * the publish one hasn't been captured yet); an unpublished app uses preview.
  * Mobile screenshots are intentionally ignored — thumbnails are desktop-only.
  * Returns undefined when no usable URL exists (callers fall back to a code icon).
+ *
+ * Publish state is taken from mgmt-airo's canonical `published` flag, which
+ * flips to false on unpublish — so an unpublished app never shows its now-stale
+ * publish screenshot. Falls back to the variants-based `hasBeenPublished` check
+ * only when the flag is absent (older payloads / local dev).
  */
 export function getAppScreenshotUrl(site: SiteInfo): string | undefined {
   const shots = site.screenshots;
   if (!shots) return undefined;
-  return hasBeenPublished(site)
+  const isPublished = site.published ?? hasBeenPublished(site);
+  return isPublished
     ? shots.publish?.desktop ?? shots.preview?.desktop
     : shots.preview?.desktop;
 }

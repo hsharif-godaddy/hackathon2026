@@ -234,6 +234,7 @@ describe('/api/sites', function sitesRouteTests() {
           status: 'running',
           account_id: 'test-account',
           screenshots,
+          published: true,
           created_at: new Date('2025-01-01T00:00:00.000Z'),
           updated_at: new Date('2025-01-01T00:00:00.000Z')
         }
@@ -248,6 +249,7 @@ describe('/api/sites', function sitesRouteTests() {
 
       expect(response.status).toBe(200);
       expect(body[0].screenshots).toEqual(screenshots);
+      expect(body[0].published).toBe(true);
     });
 
     it('includes screenshots in the single-site response when the adapter provides them', async function singleIncludesScreenshots() {
@@ -260,6 +262,7 @@ describe('/api/sites', function sitesRouteTests() {
         status: 'running',
         account_id: 'test-account',
         screenshots,
+        published: false,
         created_at: new Date('2025-01-01T00:00:00.000Z'),
         updated_at: new Date('2025-01-01T00:00:00.000Z')
       };
@@ -273,6 +276,7 @@ describe('/api/sites', function sitesRouteTests() {
 
       expect(response.status).toBe(200);
       expect(body.screenshots).toEqual(screenshots);
+      expect(body.published).toBe(false);
     });
   });
 
