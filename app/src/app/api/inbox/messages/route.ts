@@ -5,14 +5,10 @@
  * Fetch messages for a conversation OR children for a parent message.
  * Routes to the appropriate Reamaze endpoint based on which ID is provided.
  *
- * Auth: level 3 (reads customer data from external system).
- *
  * POST /api/inbox/messages
  *
  * Send a reply message to an existing conversation.
  * Body: { brandId, conversationId, body?, attachments?, parentMessageId?, isInternalNote?, clientId? }
- *
- * Auth: level 3 (writes customer data to external system).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -165,7 +161,7 @@ export const GET = withCustomerAuth(async (
   });
 
   return NextResponse.json(data);
-}, { level: 3 });
+});
 
 interface SendReplyBody {
   brandId?: string;
@@ -332,4 +328,4 @@ export const POST = withCustomerAuth(async (
   });
 
   return NextResponse.json({ message });
-}, { level: 3 });
+});

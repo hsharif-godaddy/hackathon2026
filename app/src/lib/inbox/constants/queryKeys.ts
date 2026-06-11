@@ -1,20 +1,30 @@
-import { IntString, IsoDateTimeString } from '@/types/inbox/local/core'
+import { IntString, IsoDateTimeString, UuidString } from '@/types/inbox/local/core'
 
 export const queryKeys = {
   all: ['reamaze'] as const,
+  inboxConversation: (
+    brandId: UuidString,
+    id: IntString,
+  ) =>
+    [
+      ...queryKeys.all,
+      'inboxConversation',
+      id,
+      brandId,
+    ] as const,
   inboxConversations: (
-    brandId: string,
-    until?: IsoDateTimeString,
+    brandId: UuidString,
+    page?: number,
   ) =>
     [
       ...queryKeys.all,
       'inboxConversations',
       brandId,
-      until,
+      page,
     ] as const,
   inboxConversationMessages: (
     id: IntString,
-    brandId: string,
+    brandId: UuidString,
     until?: IsoDateTimeString,
     childrenFetchData?: {
       until: IsoDateTimeString | undefined

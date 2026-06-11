@@ -1,0 +1,1 @@
+export type InboxConversationStatusFilter = 'all' | 'unresolved' | 'resolved';

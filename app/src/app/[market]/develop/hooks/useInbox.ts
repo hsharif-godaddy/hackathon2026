@@ -9,7 +9,15 @@ import { IntString, IsoDateTimeString, UuidString } from '@/types/inbox/local/co
 import { Message } from '@/types/inbox/local/message'
 import { RemoteConversation } from '@/types/inbox/remote/conversation'
 import { RemoteMessage } from '@/types/inbox/remote/message'
-import { ConversationMessagesRequest, ConversationMessagesResponse, ConversationsRequest, ConversationsResponse, SendReplyRequest, SendReplyResponse } from '@/types/inbox/remote/reamaze'
+import {
+  ConversationMessagesRequest,
+  ConversationMessagesResponse,
+  ConversationRequest,
+  ConversationsRequest,
+  ConversationsResponse,
+  SendReplyRequest,
+  SendReplyResponse
+} from '@/types/inbox/remote/reamaze'
 
 async function getInboxConversations(params: ConversationsRequest): Promise<ConversationsResponse> {
   if (!params.brandId) {
@@ -18,8 +26,8 @@ async function getInboxConversations(params: ConversationsRequest): Promise<Conv
 
   const url = new URL('/api/inbox/conversations', window.location.origin)
   url.searchParams.set('brandId', params.brandId)
-  if (params.until) {
-    url.searchParams.set('before_timestamp', params.until)
+  if (params.page) {
+    url.searchParams.set('page', params.page.toString())
   }
 
   const response = await fetch(url.toString(), {
@@ -37,18 +45,6 @@ async function getInboxConversations(params: ConversationsRequest): Promise<Conv
     throw new Error('Invalid conversations response format: conversations is not an array')
   }
 
-  const getUntil = (conversations: Conversation[]) => {
-    const lastConversation = conversations[conversations.length - 1]
-    let nextUntil = params.until
-    if (
-      lastConversation &&
-      (!params.until || params.until > lastConversation.bumpedAt)
-    ) {
-      nextUntil = lastConversation.bumpedAt
-    }
-    return nextUntil
-  }
-
   const conversations = remoteResponse.conversations.flatMap((c: RemoteConversation) => {
     try {
       return [convertConversation(c)]
@@ -62,15 +58,53 @@ async function getInboxConversations(params: ConversationsRequest): Promise<Conv
     }
   })
 
-  const until = getUntil(conversations)
-  const hasMore = remoteResponse.page_count
-    ? remoteResponse.page_count > 1
-    : conversations.length >= (remoteResponse.page_size || 30)
+  // Reamaze returns the total number of pages; fall back to a single page when
+  // it is absent. The last page is `pageCount` (pages are 1-indexed).
+  const pageCount =
+    typeof remoteResponse.page_count === 'number' && remoteResponse.page_count > 0
+      ? remoteResponse.page_count
+      : 1
 
   return {
     conversations,
-    hasMore,
-    until,
+    pageCount,
+  }
+}
+
+async function getInboxConversation(params: ConversationRequest): Promise<Conversation> {
+  if (!params.conversationId) {
+    throw new Error('Conversation ID is required')
+  }
+
+  if (!params.brandId) {
+    throw new Error('Brand ID is required')
+  }
+
+  const url = new URL('/api/inbox/conversation', window.location.origin)
+  url.searchParams.set('brandId', params.brandId)
+  url.searchParams.set('conversationId', params.conversationId)
+
+  const response = await fetch(url.toString(), {
+    credentials: 'include',
+  })
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to get conversation: ${response.status}`);
+  }
+
+  const remoteResponse = await response.json()
+
+  if (!remoteResponse?.conversation || typeof remoteResponse.conversation !== 'object') {
+    throw new Error('Invalid conversation response format: conversation is missing')
+  }
+
+  try {
+    return convertConversation(remoteResponse.conversation)
+  } catch (transformError) {
+    throw new Error(
+      `Failed to transform conversation: ${transformError instanceof Error ? transformError.message : 'Unknown transformation error'}`,
+    )
   }
 }
 
@@ -183,17 +217,33 @@ async function getInboxConversationMessages(params: ConversationMessagesRequest)
 
 export function useInboxConversations(
   brandId: UuidString,
-  until?: IsoDateTimeString,
+  page?: number,
 ) {
   return useQuery({
-    queryKey: queryKeys.inboxConversations(brandId, until),
-    queryFn: () => getInboxConversations({ brandId, until }),
+    queryKey: queryKeys.inboxConversations(brandId, page),
+    queryFn: () => getInboxConversations({ brandId, page }),
     staleTime: 60_000,
     retry: (failureCount, error) => {
       console.error('Error fetching conversations:', error)
       return failureCount < 3
     },
     enabled: !!brandId
+  })
+}
+
+export function useInboxConversation(
+  brandId: UuidString,
+  conversationId: IntString
+) {
+  return useQuery({
+    queryKey: queryKeys.inboxConversation(brandId, conversationId),
+    queryFn: () => getInboxConversation({ brandId, conversationId }),
+    staleTime: 60_000,
+    retry: (failureCount, error) => {
+      console.error('Error fetching conversation:', error)
+      return failureCount < 3
+    },
+    enabled: !!conversationId
   })
 }
 
@@ -220,9 +270,9 @@ export function useInboxConversationMessages(
         until,
         childrenFetchData,
       }),
-    staleTime: 1 * 60 * 1000, // 1 minute
+    staleTime: 60_000,
     retry: (failureCount, error) => {
-      console.error('Error fetching conversation messages by ID:', error)
+      console.error('Error fetching conversation messages:', error)
       return failureCount < 3
     },
     enabled: !!conversationId, // Only run query if conversationId is provided

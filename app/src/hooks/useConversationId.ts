@@ -14,7 +14,7 @@ const CONVERSATION_ID_PARAM = 'conversationId'
  * window.location.search directly, matching useView/useChatTabs (avoids the
  * App Router useSearchParams Suspense requirement).
  *
- * Intended for use from InboxIframe, which only mounts in the inbox view — so
+ * Intended for use from Inbox, which only mounts in the inbox view — so
  * the read and the strip happen only when the inbox view actually renders. If
  * inbox is unavailable (flag off / no brand), the param is left untouched.
  */

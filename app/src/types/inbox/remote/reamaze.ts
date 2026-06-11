@@ -5,7 +5,13 @@ import { Message } from '@/types/inbox/local/message'
 
 export interface ConversationsRequest {
   brandId: UuidString
-  until?: IsoDateTimeString
+  /** 1-indexed page number. Omitted means page 1. */
+  page?: number
+}
+
+export interface ConversationRequest {
+  brandId: UuidString
+  conversationId: IntString
 }
 
 export interface ConversationMessagesRequest {
@@ -21,8 +27,8 @@ export interface ConversationMessagesRequest {
 
 export interface ConversationsResponse {
   conversations: Conversation[]
-  hasMore: boolean
-  until: IsoDateTimeString | undefined
+  /** Total number of pages; the last page is `pageCount` (pages are 1-indexed). */
+  pageCount: number
 }
 
 export interface ConversationMessagesResponse {

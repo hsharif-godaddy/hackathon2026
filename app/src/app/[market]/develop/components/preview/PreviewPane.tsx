@@ -17,8 +17,8 @@ import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThink
 import DomainBar from '@/app/[market]/develop/components/layout/DomainBar'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
 import { getDevicePreset, isFullWidthDevice } from '@/app/[market]/develop/components/preview/devicePresets'
+import Inbox from '@/app/[market]/develop/components/preview/inbox/Inbox'
 const DocsView = lazy(() => import('@/app/[market]/develop/components/preview/DocsView'))
-import InboxIframe from '@/app/[market]/develop/components/preview/InboxIframe'
 import PreviewCode from '@/app/[market]/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/[market]/develop/components/preview/PreviewError'
 import PreviewLoadingState from '@/app/[market]/develop/components/preview/PreviewLoadingState'
@@ -1144,7 +1144,7 @@ export default function PreviewPane({
     return (
       <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
         <div className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor">
-          <InboxIframe brandId={inboxBrandId} accountId={inboxAccountId} />
+          <Inbox brandId={inboxBrandId} accountId={inboxAccountId} />
         </div>
       </div>
     )

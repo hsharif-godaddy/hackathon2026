@@ -81,6 +81,7 @@ describe('convertConversation status mapping', () => {
     [3, 'isSpam'],
     [9, 'isSpam'],
     [2, 'isResolved'],
+    [1, 'isResolved'], // Pending is treated as Resolved (see convertConversation)
     [0, 'isUnresolved'],
     [5, 'isOnHold'],
   ])('status %i sets %s', (status, flag) => {
@@ -91,8 +92,8 @@ describe('convertConversation status mapping', () => {
     expect(result[flag]).toBe(true)
   })
 
-  it('leaves all status flags false for a non-mapped status (pending = 1)', () => {
-    const result = convertConversation(makeRemoteConversation({ status: 1 }))
+  it('leaves all status flags false for a non-mapped status (botAssigned = 7)', () => {
+    const result = convertConversation(makeRemoteConversation({ status: 7 }))
     expect(result.isArchived).toBe(false)
     expect(result.isSpam).toBe(false)
     expect(result.isResolved).toBe(false)

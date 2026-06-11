@@ -164,7 +164,7 @@ export const convertConversation = (
 
   const isArchived = conversation.status === 4
   const isSpam = conversation.status === 3 || conversation.status === 9
-  const isResolved = conversation.status === 2
+  const isResolved = conversation.status === 2 || conversation.status === 1 // Consider PENDING as RESOLVED for now
   const isUnresolved = conversation.status === 0
   const isOnHold = conversation.status === 5
 

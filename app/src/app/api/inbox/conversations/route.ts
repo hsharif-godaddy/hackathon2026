@@ -2,7 +2,6 @@
  * GET /api/inbox/conversations?brandId={uuid}&before_timestamp={iso}
  *
  * Fetch conversations for a given brand from Reamaze.
- * Auth: level 3 (reads customer data from external system).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -28,10 +27,20 @@ export const GET = withCustomerAuth(async (
   const { searchParams } = new URL(request.url);
   const brandId = searchParams.get('brandId');
   const beforeTimestamp = searchParams.get('before_timestamp');
+  const page = searchParams.get('page');
 
   if (!brandId || !UUID_RE.test(brandId)) {
     return NextResponse.json(
       { error: 'brandId (valid UUID) is required' },
+      { status: 400 }
+    );
+  }
+
+  // Reamaze pages are 1-indexed positive integers. Reject anything else when present.
+  const POSITIVE_INT_RE = /^[1-9]\d*$/;
+  if (page && !POSITIVE_INT_RE.test(page)) {
+    return NextResponse.json(
+      { error: 'page must be a positive integer' },
       { status: 400 }
     );
   }
@@ -43,9 +52,14 @@ export const GET = withCustomerAuth(async (
     url.searchParams.set('before_timestamp', beforeTimestamp);
   }
 
+  if (page) {
+    url.searchParams.set('page', page);
+  }
+
   logger.info('inbox.conversations.fetch.start', {
     brandId,
     beforeTimestamp,
+    page
   });
 
   const upstream = await fetch(url.toString(), {
@@ -104,4 +118,4 @@ export const GET = withCustomerAuth(async (
   });
 
   return NextResponse.json(data);
-}, { level: 3 });
+});

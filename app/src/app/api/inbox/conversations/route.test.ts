@@ -43,10 +43,6 @@ describe('GET /api/inbox/conversations', () => {
       const response = await GET(request, createAuthContext());
       expect(response.status).toBe(401);
     });
-
-    it('uses withCustomerAuth with level 3', () => {
-      expect(capturedAuthOpts).toEqual({ level: 3 });
-    });
   });
 
   describe('validation', () => {

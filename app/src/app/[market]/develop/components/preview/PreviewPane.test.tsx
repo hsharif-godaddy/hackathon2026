@@ -74,7 +74,7 @@ vi.mock('@/app/[market]/develop/components/settings/DomainPanel', () => ({
   default: () => <div data-testid="domain-panel">Domain Panel</div>,
 }));
 
-vi.mock('@/app/[market]/develop/components/preview/InboxIframe', () => ({
+vi.mock('@/app/[market]/develop/components/preview/inbox/Inbox', () => ({
   default: ({ brandId }: { brandId: string }) => (
     <div data-testid="inbox-iframe">Inbox: {brandId}</div>
   ),
