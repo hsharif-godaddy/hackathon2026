@@ -4,7 +4,6 @@ import React, { useRef } from 'react'
 import { Thinker } from '@airo-ux/pattern-library/chat/thinker'
 
 import ActionToolGroupRenderer from '@/app/[market]/develop/components/ActionToolGroupRenderer'
-import ThinkingTip from '@/app/[market]/develop/components/chat/ThinkingTip'
 import { useThinkerContent } from '@/app/[market]/develop/components/chat/useThinkerContent'
 import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
 import MarkdownRenderer from '@/app/[market]/develop/components/MarkdownRenderer'
@@ -86,24 +85,21 @@ function MessageContentRenderer({ blocks, isActiveStream = false, isLastAssistan
       })}
 
       {showThinking && (
-        <>
-          <Thinker
-            label={thinkerLabel}
-            indicator={thinkerIndicator}
-            defaultOpen={subAgentSteps.length > 0}
-          >
-            {subAgentSteps.length > 0 && (
-              <Thinker.Timeline>
-                {subAgentSteps.map((step) => (
-                  <Thinker.Step key={step.toolId}>
-                    {step.title}{step.detail ? ` — ${step.detail}` : ''}
-                  </Thinker.Step>
-                ))}
-              </Thinker.Timeline>
-            )}
-          </Thinker>
-          <ThinkingTip />
-        </>
+        <Thinker
+          label={thinkerLabel}
+          indicator={thinkerIndicator}
+          defaultOpen={subAgentSteps.length > 0}
+        >
+          {subAgentSteps.length > 0 && (
+            <Thinker.Timeline>
+              {subAgentSteps.map((step) => (
+                <Thinker.Step key={step.toolId}>
+                  {step.title}{step.detail ? ` — ${step.detail}` : ''}
+                </Thinker.Step>
+              ))}
+            </Thinker.Timeline>
+          )}
+        </Thinker>
       )}
     </div>
   )

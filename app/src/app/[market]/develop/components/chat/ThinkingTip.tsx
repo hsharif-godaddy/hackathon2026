@@ -71,7 +71,7 @@ export default function ThinkingTip() {
 
   return (
     <div className="text-[13px] leading-relaxed">
-      <div className="rounded-t-lg rounded-b-none bg-[var(--color-ai)]/5 px-2 py-1">
+      <div className="rounded-lg bg-[var(--color-ai)]/5 px-2 py-1">
         <span className="font-medium text-[var(--color-ai)]">{tipLabel} </span>
         <span
           data-testid="thinking-tip-text"

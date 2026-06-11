@@ -13,6 +13,7 @@ import CollapsibleChatInputSection, { CollapseChevron } from '@/app/[market]/dev
 import FontThemePreviewInputPanel from '@/app/[market]/develop/components/chat/FontThemePreviewInputPanel'
 import { PanelSectionTitle } from '@/app/[market]/develop/components/chat/StepProgressTag'
 import ThemePreviewInputPanel from '@/app/[market]/develop/components/chat/ThemePreviewInputPanel'
+import ThinkingTip from '@/app/[market]/develop/components/chat/ThinkingTip'
 import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
@@ -404,6 +405,7 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
               </button>
             )}
           </div>
+          <ThinkingTip />
 
           <AnimatePresence initial={false}>
             {hasPlan && fullPlanExpanded && (
@@ -1587,6 +1589,7 @@ function InputActionsPanelThemeSelection({
               </button>
             )}
           </div>
+          <ThinkingTip />
 
           <AnimatePresence initial={false}>
             {hasPlan && fullPlanExpanded && !showAnySuggest && (

@@ -8,7 +8,6 @@ import ChevronDownIcon from '@ux/icon/chevron-down'
 import Spinner from '@ux/spinner'
 
 import ChatMessagesSkeleton from '@/app/[market]/develop/components/chat/ChatMessagesSkeleton'
-import ThinkingTip from '@/app/[market]/develop/components/chat/ThinkingTip'
 import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
 import StaticSkeleton from '@/app/[market]/develop/components/StaticSkeleton'
@@ -677,7 +676,6 @@ export default function StreamingMessageList({
             message={{ id: 'initial-prompt', role: 'user', content: initialPromptText, timestamp: new Date() } satisfies ChatMessage}
           />
           <Thinker label={thinkerLabel} indicator={thinkerIndicator} />
-          <ThinkingTip />
           <div ref={messagesEndRef} />
         </div>
       )
@@ -836,10 +834,7 @@ export default function StreamingMessageList({
 
       {/* Standalone thinking indicator when the last assistant message has no content yet */}
       {shouldShowStandaloneThinking && (
-        <>
-          <Thinker label={thinkerLabel} indicator={thinkerIndicator} />
-          <ThinkingTip />
-        </>
+        <Thinker label={thinkerLabel} indicator={thinkerIndicator} />
       )}
 
       {transcriptFooter}
