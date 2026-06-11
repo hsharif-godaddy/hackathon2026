@@ -15,6 +15,7 @@ import {
   setApmUserContext,
   startApmTransaction
 } from '@/lib/apm-context';
+import { withCorsHeaders } from '@/lib/cors';
 import { isFeatureEnabled } from '@/lib/features';
 import { extractTokenFromRequest } from '@/lib/gd-auth-service';
 import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
@@ -271,14 +272,19 @@ export function withCustomerAuth<T extends unknown[]>(
           if (!authContext.isAuthenticated) {
             const unauthContext = authContext as UnauthenticatedCustomerContext;
             transaction?.end('HTTP 401');
-            return NextResponse.json(
-              {
-                error: 'Unauthorized',
-                message: unauthContext.error,
-                requiresAuth: true,
-                ...(unauthContext.authReason !== undefined ? { authReason: unauthContext.authReason } : {})
-              },
-              { status: 401 }
+            // This 401 short-circuits before the handler's withCorsHeaders runs, so apply
+            // it here or allowlisted cross-origin callers get a masked CORS error, not the 401.
+            return withCorsHeaders(
+              NextResponse.json(
+                {
+                  error: 'Unauthorized',
+                  message: unauthContext.error,
+                  requiresAuth: true,
+                  ...(unauthContext.authReason !== undefined ? { authReason: unauthContext.authReason } : {})
+                },
+                { status: 401 }
+              ),
+              request.headers.get('origin')
             );
           }
 
@@ -342,7 +348,9 @@ export function withCustomerAuth<T extends unknown[]>(
           const authResponse = mgmtAiro401Response(error, 'auth.handler.mgmt-airo.hbi-expired');
           if (authResponse) {
             transaction?.end('HTTP 401');
-            return authResponse;
+            // Same CORS treatment as the early-return 401 above: this 401 also
+            // short-circuits past the handler's own withCorsHeaders wrapping.
+            return withCorsHeaders(authResponse, request.headers.get('origin'));
           }
 
           // Log here (inside run()) so the ALS store is still active and context fields are present

@@ -7,6 +7,7 @@ const ALLOWED_ORIGINS = [
   'https://account.test-godaddy.com',
   'https://account.godaddy.com',
   'https://local.cx.test-godaddy.com:8443',
+  'https://local.cx.godaddy.com:8443',
 ];
 
 /**

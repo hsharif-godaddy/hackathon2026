@@ -114,6 +114,7 @@ Use `pnpm run dev` — preflight checks generate `.env` files automatically. Don
 - Setup: `GETTING_STARTED.md`
 - Mock auth: `app/MOCK-AUTH-SETUP.md`
 - Sandbox-parity runtime (optional Lima VM for kernel parity): `scripts/container-runtime/README.md`
+- Solutions: `docs/solutions/` — documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when implementing or debugging in documented areas.
 - Documentation: browse `docs/` and read files relevant to your task
 
 ## i18n Validation
