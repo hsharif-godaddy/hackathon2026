@@ -8,13 +8,17 @@ interface TokenCache {
     refreshPromise: Promise<string> | null;
 }
 
-function getSsoHost(): string {
-    const ssoUrl = process.env.SSO_LOGIN_URL || 'https://sso.test-godaddy.com/login';
-    return ssoUrl.includes('test') ? 'sso.test-godaddy.com' : 'sso.godaddy.com';
-}
-
 function getMgmtBaseUrl(): string {
     return process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
+}
+
+// The mgmt control plane only accepts JWTs signed by the SSO instance whose
+// trust store it shares. Prod mgmt (`mgmt.woosaas.godaddy.com`) requires prod
+// SSO; everything else (test mgmt at `mgmt.nstk.net`, plus all local dev) uses
+// test SSO — there is no separate dev mgmt control plane.
+function getSsoHost(): string {
+    const mgmtUrl = getMgmtBaseUrl();
+    return mgmtUrl.includes('woosaas.godaddy.com') ? 'sso.godaddy.com' : 'sso.test-godaddy.com';
 }
 
 function getCertPaths(): { cert: string; key: string } {

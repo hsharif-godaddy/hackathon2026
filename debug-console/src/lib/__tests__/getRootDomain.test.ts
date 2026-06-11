@@ -59,10 +59,24 @@ describe('getRootDomain', () => {
         });
 
         it('should accept all allowlisted domains', () => {
-            for (const domain of ['godaddy.com', 'test-godaddy.com', 'dev-godaddy.com', 'gdcorp.tools']) {
+            for (const domain of [
+                'godaddy.com',
+                'test-godaddy.com',
+                'dev-godaddy.com',
+                'gdcorp.tools',
+                'test-gdcorp.tools',
+                'dev-gdcorp.tools',
+            ]) {
                 const headers = new Headers({ host: `app.${domain}` });
                 expect(getRootDomainFromHeaders(headers)).toBe(domain);
             }
+        });
+
+        it('should extract root domain from deep gdcorp.tools subdomains', () => {
+            const headers = new Headers({
+                host: 'local.console.airo-builder.int.dev-gdcorp.tools:443',
+            });
+            expect(getRootDomainFromHeaders(headers)).toBe('dev-gdcorp.tools');
         });
     });
 });

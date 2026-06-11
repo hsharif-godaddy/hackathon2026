@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "predev": "pnpm turbo run build --filter=@airo/shared --filter=@airo/ai-lib",
-    "dev": "NEXT_TELEMETRY_DISABLED=1 tsx watch server.ts",
+    "dev": "NEXT_TELEMETRY_DISABLED=1 PORT=3443 tsx watch server.ts",
     "build": "next build",
     "start": "tsx server.ts",
     "typecheck": "tsc --noEmit",

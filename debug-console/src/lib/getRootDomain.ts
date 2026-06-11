@@ -1,6 +1,13 @@
 import { logger } from '@/lib/logger';
 
-const ALLOWED_ROOT_DOMAINS = ['godaddy.com', 'test-godaddy.com', 'dev-godaddy.com', 'gdcorp.tools'];
+const ALLOWED_ROOT_DOMAINS = [
+    'godaddy.com',
+    'test-godaddy.com',
+    'dev-godaddy.com',
+    'gdcorp.tools',
+    'test-gdcorp.tools',
+    'dev-gdcorp.tools',
+];
 
 /**
  * Extract root domain from a hostname and validate against allowlist.

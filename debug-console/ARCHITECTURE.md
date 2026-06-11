@@ -150,15 +150,15 @@ debug-console/
 
 - **Used by:** `CarePanel`, `/api/care/*`
 
-### 15. GoDaddy SSO (`SSO_LOGIN_URL`)
-- Handles user login/token refresh for the debug console's own auth
-- Operator JOMAX tokens are also forwarded through to downstream services (Shopper, Care)
+### 15. GoDaddy SSO
+- Handles user login/token refresh for the debug console's own auth (see `src/lib/sso-host.ts`).
+- Operator JOMAX tokens are also forwarded through to downstream services (Shopper, Care).
 
 ---
 
 ## Key Architectural Patterns
 
-- **All API routes are server-side only** — secrets never reach the browser; `NEXT_PUBLIC_*` vars are limited to non-sensitive UI config (Langfuse base URL, SSO login URL).
+- **All API routes are server-side only** — secrets never reach the browser; `NEXT_PUBLIC_*` vars are limited to non-sensitive UI config (Langfuse base URLs, environment label).
 - **`withAuth` middleware** wraps all routes, validating the operator's GoDaddy SSO session.
 - **The mgmt control plane is the routing layer** for all per-app agent requests — the debug console first looks up `agent_url` for an `appId`, then hits that URL directly with a minted JWT.
 - **Dual Langfuse instances** — one for the main Airo Langfuse tracing, one for the EB (Engineering Bridge) observability platform.
@@ -178,7 +178,7 @@ flowchart LR
     BFF["Next.js BFF\n(debug-console)"]
 
     subgraph Auth
-        SSO["GoDaddy SSO\nSSO_LOGIN_URL"]
+        SSO["GoDaddy SSO\n(zone-derived host)"]
     end
 
     subgraph Logging

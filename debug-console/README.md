@@ -4,26 +4,25 @@ A React-based debug console application for debugging apps.
 
 ## Development
 
-The dev server runs on `https://dev-console.airo-builder.godaddy.com/` (port 443) using a
-self-signed cert. You only need to do the host + cert setup once.
+The dev server runs on `https://local.console.airo-builder.dev-gdcorp.tools:3443/`
+using a self-signed cert. You only need to do the host + cert setup once.
 
-> **Note:** There is no NO-AUTH / auth-bypass mode. Even local dev requires a valid
-> GoDaddy SSO session — the server validates the `auth_jomax` JWT via `gd-auth` and will
-> redirect to SSO when no session is present. The HTTPS hostname above is required because
-> SSO will only set `auth_jomax` on a `*.godaddy.com` domain.
+> **Note:** Local dev requires a valid GoDaddy SSO session — there is no
+> auth-bypass mode. The `local.` prefix lets a future deployed
+> `console.airo-builder.dev-gdcorp.tools` coexist with this `/etc/hosts` entry.
 
 ### 1. Map the hostname to localhost
 
 Add the following line to `/etc/hosts`:
 
 ```
-127.0.0.1 dev-console.airo-builder.godaddy.com
+127.0.0.1 local.console.airo-builder.dev-gdcorp.tools
 ```
 
 Quick one-liner (requires sudo):
 
 ```bash
-echo "127.0.0.1 dev-console.airo-builder.godaddy.com" | sudo tee -a /etc/hosts
+echo "127.0.0.1 local.console.airo-builder.dev-gdcorp.tools" | sudo tee -a /etc/hosts
 ```
 
 ### 2. Generate a local self-signed certificate
@@ -36,8 +35,8 @@ mkdir -p certs
 openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
   -keyout certs/server.key \
   -out certs/server.crt \
-  -subj "/CN=dev-console.airo-builder.godaddy.com" \
-  -addext "subjectAltName=DNS:dev-console.airo-builder.godaddy.com,DNS:localhost,IP:127.0.0.1"
+  -subj "/CN=local.console.airo-builder.dev-gdcorp.tools" \
+  -addext "subjectAltName=DNS:local.console.airo-builder.dev-gdcorp.tools,DNS:localhost,IP:127.0.0.1"
 ```
 
 (Optional) Trust the cert in macOS Keychain so the browser stops warning:
@@ -53,17 +52,11 @@ sudo security add-trusted-cert -d -r trustRoot \
 # probably has to be run from the top-level repo since pnpm workspaces don't always filter env vars correctly when run from a package
 pnpm install && pnpm build
 
-# Port 443 requires sudo on macOS/Linux
-sudo -E pnpm dev
+# `pnpm dev` defaults to PORT=3443 (non-privileged) so no sudo is needed.
+pnpm dev
 ```
 
-Open <https://dev-console.airo-builder.godaddy.com/>.
-
-To run on a non-privileged port instead, set `PORT`:
-
-```bash
-PORT=3443 pnpm dev   # https://dev-console.airo-builder.godaddy.com:3443/
-```
+Open <https://local.console.airo-builder.dev-gdcorp.tools:3443/>.
 
 To run with Budget Service features (requires additional config):
 
@@ -77,8 +70,7 @@ export BUDGET_SERVICE_URL=https://budget-service.api.int.test-godaddy.com
 
 # OR just set them inline for the dev server
 AWS_PROFILE=airobuild-dev-private-sso BUDGET_SERVICE_URL=https://budget-service.api.int.test-godaddy.com pnpm dev
-
-````
+```
 
 ## Configuration
 

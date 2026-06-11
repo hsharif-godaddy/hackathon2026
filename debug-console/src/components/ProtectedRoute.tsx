@@ -28,7 +28,8 @@ export default function ProtectedRoute({
     useEffect(() => {
         if (typeof window === 'undefined') return;
         if (!isLoading && !isAuthenticated) {
-            window.location.href = buildSsoLoginUrl(window.location.href, window.location.hostname);
+            const path = window.location.pathname + window.location.search + window.location.hash;
+            window.location.href = buildSsoLoginUrl(window.location.host, path);
         }
     }, [isAuthenticated, isLoading]);
 

@@ -6,7 +6,8 @@ import { buildSsoLoginUrl } from '@/lib/sso-host';
 
 export default function SessionStaleBanner() {
     const handleSignIn = () => {
-        window.location.href = buildSsoLoginUrl(window.location.href, window.location.hostname);
+        const path = window.location.pathname + window.location.search + window.location.hash;
+        window.location.href = buildSsoLoginUrl(window.location.host, path);
     };
 
     return (

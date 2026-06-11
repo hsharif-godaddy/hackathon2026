@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 
 import { NOTES_MAX_WORDS, NOTES_RE } from '@/lib/credit-pack-constants';
 import { formatTimestamp } from '@/lib/date-utils';
+import { buildSsoLoginUrl } from '@/lib/sso-host';
 
 type AuthStatus = 'loading' | 'authenticated' | 'forbidden' | 'unauthorized';
 
@@ -38,23 +39,8 @@ interface Eligibility {
 }
 
 function redirectToSso(): void {
-    const returnUrl = window.location.href;
-    const hostname = window.location.hostname;
-
-    let ssoLoginUrl = process.env.NEXT_PUBLIC_SSO_LOGIN_URL;
-    if (!ssoLoginUrl) {
-        const isTestEnv = hostname.includes('test-') || hostname.includes('.test.');
-        const ssoDomain = isTestEnv ? 'sso.test-godaddy.com' : 'sso.godaddy.com';
-        ssoLoginUrl = `https://${ssoDomain}/login`;
-    }
-
-    const params = new URLSearchParams({
-        app: 'console.airo-builder',
-        redirect: returnUrl,
-        realm: 'jomax',
-    });
-
-    window.location.href = `${ssoLoginUrl}?${params.toString()}`;
+    const path = window.location.pathname + window.location.search + window.location.hash;
+    window.location.href = buildSsoLoginUrl(window.location.host, path);
 }
 
 export default function AddCreditPackPage() {
