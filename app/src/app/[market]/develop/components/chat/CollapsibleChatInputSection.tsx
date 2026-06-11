@@ -5,6 +5,8 @@ import { type ReactNode, useCallback, useId, useState } from 'react'
 import ChevronDown from '@ux/icon/chevron-down'
 import XIcon from '@ux/icon/x'
 
+import { cn } from '@/lib/utils'
+
 export type CollapsibleChatInputSectionProps = {
   title: ReactNode
   children: ReactNode
@@ -67,8 +69,8 @@ export default function CollapsibleChatInputSection({
   )
 
   return (
-    <div className="mb-0.5" data-testid={dataTestId}>
-      <div className="flex min-h-[22px] items-center justify-between px-1 py-0.5">
+    <div className={cn(expanded && 'mb-0.5')} data-testid={dataTestId}>
+      <div className="flex min-h-[22px] items-center justify-between px-1 py-0.5 my-[4px]">
         <span id={sectionLabelId} className="min-w-0 flex-1 text-sm font-medium text-muted-foreground">{title}</span>
         <div className="flex shrink-0 items-center gap-1">
           {headerRight}

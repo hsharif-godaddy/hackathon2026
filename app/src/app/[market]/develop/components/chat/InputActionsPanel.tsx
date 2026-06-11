@@ -39,6 +39,7 @@ import { manualRebuildSelectorPages, useRebuildPages } from '@/app/[market]/deve
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
+import { cn } from '@/lib/utils'
 import { todoListService } from '@/services/TodoListService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useIsActivelyStreaming, useIsLoading, useMessages } from '@/stores/useStreamingConversationStore'
@@ -48,7 +49,14 @@ import { useUpfrontRebuildBuildQueueStore } from '@/stores/useUpfrontRebuildBuil
 
 const MAX_COMBINED_ITEMS = 4
 
-function InputActionsPanelCard({ children }: { children: ReactNode }) {
+function InputActionsPanelCard({
+  children,
+  headerOnly = false,
+}: {
+  children: ReactNode
+  /** When true, only the header row is visible — drop bottom card padding. */
+  headerOnly?: boolean
+}) {
   return (
     <Box
       data-testid="input-actions-panel-card"
@@ -57,6 +65,7 @@ function InputActionsPanelCard({ children }: { children: ReactNode }) {
       orientation="vertical"
       blockPadding="sm"
       inlinePadding="sm"
+      className={cn(headerOnly && '[padding-block-end:0!important]')}
     >
       {children}
     </Box>
@@ -367,8 +376,9 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
 
   // ── Mode C: Agent working ────────────────────────────────────────────────
   if (isProcessing) {
+    const thinkingHeaderOnly = !(hasPlan && fullPlanExpanded)
     return (
-      <InputActionsPanelCard>
+      <InputActionsPanelCard headerOnly={thinkingHeaderOnly}>
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between px-1 py-0.5 my-[4px] min-h-[22px]">
             <Thinker label={thinkerLabel} indicator={thinkerIndicator} />
@@ -449,7 +459,7 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
         {nbaSuggestions.length === 0 && hasPlan ? (
           // Plan-only: combined row (hidden when expanded — plan name takes over)
           !fullPlanExpanded && (
-            <div className="flex items-center justify-between px-1 py-0.5">
+            <div className="flex items-center justify-between px-1 py-0.5 my-[4px] min-h-[22px]">
               <span className="text-sm font-medium text-muted-foreground">{t('builder_todo_continue_building')}</span>
               <button
                 type="button"
@@ -1557,8 +1567,9 @@ function InputActionsPanelThemeSelection({
 
   // ── Mode C: Agent working ────────────────────────────────────────────────
   if (isProcessing) {
+    const thinkingHeaderOnly = !(hasPlan && fullPlanExpanded && !showAnySuggest)
     return (
-      <InputActionsPanelCard>
+      <InputActionsPanelCard headerOnly={thinkingHeaderOnly}>
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between px-1 py-0.5 my-[4px] min-h-[22px]">
             <Thinker label={thinkerLabel} indicator={thinkerIndicator} />
@@ -1807,10 +1818,13 @@ function InputActionsPanelThemeSelection({
       : defaultCollapsible
     : null
 
+  const showInlinePanel =
+    (hasCombinedItems || hasPlan || showAnySuggest || hasRebuildPages || isAskQuestionActive) && !hoistChoice
+
   // ── Mode B: Agent idle, has data ─────────────────────────────────────────
   return (
-    <InputActionsPanelCard>
-      {(hasCombinedItems || hasPlan || showAnySuggest || hasRebuildPages || isAskQuestionActive) && !hoistChoice && (
+    <InputActionsPanelCard headerOnly={showInlinePanel && !continueBuildingExpanded}>
+      {showInlinePanel && (
         <>
           {showColor && activeColorSchemeSuggest ? (
             <ThemePreviewInputPanel
