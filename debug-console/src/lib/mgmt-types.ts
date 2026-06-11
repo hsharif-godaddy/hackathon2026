@@ -144,6 +144,21 @@ export interface MgmtReloadResponse {
     failedAt?: string;
 }
 
+/**
+ * Response from PUT .../deploy. mgmt-airo passes through the hosting
+ * response, or returns {status:'ok'} when hosting sent an empty body —
+ * so every field is optional to cover both shapes.
+ */
+export interface MgmtDeployResponse {
+    status?: string;
+    message?: string;
+    appId?: string;
+    systemId?: string;
+    nomadJobIds?: string[];
+    generatedConfigId?: string;
+    variant?: string;
+}
+
 export interface MgmtAttribute {
     id?: string;
     ownerType?: string;

@@ -113,6 +113,10 @@ interface DetailedStatusBlockProps {
     variant?: MgmtVariantWithLifecycle;
     imageStatus: MgmtImageStatus | null;
     imageStatusLoading: boolean;
+    /** Undefined hides the button (pre-start, or variant not deployed). */
+    onRestart?: () => void;
+    restartInFlight?: boolean;
+    restartDisabled?: boolean;
 }
 
 // pre-start, agent, and preview all run in the preview variant stack
@@ -123,7 +127,22 @@ const VARIANT_FOR: Record<ComponentName, string> = {
     'publish': 'publish',
 };
 
-function DetailedStatusBlock({ name, url, shareToken, variant, imageStatus, imageStatusLoading }: DetailedStatusBlockProps) {
+const RESTARTABLE = ['agent', 'preview', 'publish'] as const;
+type RestartableComponent = typeof RESTARTABLE[number];
+
+function isRestartable(name: ComponentName): name is RestartableComponent {
+    return (RESTARTABLE as readonly string[]).includes(name);
+}
+
+// Restarting via the deploy endpoint redeploys the whole variant stack, not a
+// single container — the confirm copy must be honest about what bounces.
+const RESTART_CONFIRM: Record<RestartableComponent, string> = {
+    agent: 'This redeploys the preview variant — the agent AND preview containers restart together. Any in-flight agent session will be killed.',
+    preview: 'This redeploys the preview variant — the preview AND agent containers restart together. Any in-flight agent session will be killed.',
+    publish: "This redeploys the publish variant — the customer's LIVE site will be briefly unavailable while containers restart.",
+};
+
+function DetailedStatusBlock({ name, url, shareToken, variant, imageStatus, imageStatusLoading, onRestart, restartInFlight, restartDisabled }: DetailedStatusBlockProps) {
     const image = imageStatus?.images?.find(i => i.imageType === name);
     const href = shareToken && url
         ? (() => { const u = new URL(url); u.searchParams.set('airoShareToken', shareToken); return u.toString(); })()
@@ -176,14 +195,39 @@ function DetailedStatusBlock({ name, url, shareToken, variant, imageStatus, imag
                     )}
                 </div>
 
-                {/* Right: variant lifecycle */}
-                {variant && variant.lifecycle && (
+                {/* Right: variant lifecycle + restart */}
+                {(variant?.lifecycle || onRestart) && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem', flexShrink: 0 }}>
-                        <StatusBadge value={variant.lifecycle.lifecycleState} green={['running']} red={['stopped', 'failed']} />
-                        <span style={{ fontSize: '0.7rem', color: '#6b7280', fontFamily: 'monospace' }}>
-                            {variant.lifecycle.reason}
-                        </span>
-                        <Timestamp iso={variant.lifecycle.stateChangedAt} style={{ fontSize: '0.7rem', color: '#9ca3af' }} />
+                        {variant?.lifecycle && (
+                            <>
+                                <StatusBadge value={variant.lifecycle.lifecycleState} green={['running']} red={['stopped', 'failed']} />
+                                <span style={{ fontSize: '0.7rem', color: '#6b7280', fontFamily: 'monospace' }}>
+                                    {variant.lifecycle.reason}
+                                </span>
+                                <Timestamp iso={variant.lifecycle.stateChangedAt} style={{ fontSize: '0.7rem', color: '#9ca3af' }} />
+                            </>
+                        )}
+                        {onRestart && (
+                            <button
+                                onClick={onRestart}
+                                disabled={restartDisabled}
+                                title="Redeploy this component's variant stack via mgmt-airo"
+                                style={{
+                                    padding: '0.125rem 0.5rem',
+                                    fontSize: '0.7rem',
+                                    fontWeight: 600,
+                                    color: restartDisabled ? '#6b7280' : '#92400e',
+                                    backgroundColor: restartDisabled ? '#f3f4f6' : '#fffbeb',
+                                    border: '1px solid',
+                                    borderColor: restartDisabled ? '#d1d5db' : '#fde68a',
+                                    borderRadius: '4px',
+                                    cursor: restartDisabled ? 'not-allowed' : 'pointer',
+                                    whiteSpace: 'nowrap'
+                                }}
+                            >
+                                {restartInFlight ? 'Restarting…' : 'Restart'}
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
@@ -626,8 +670,13 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onSubscr
     const [reloadPhase, setReloadPhase] = useState<'idle' | 'calling' | 'polling'>('idle');
     const [reloadStatusText, setReloadStatusText] = useState('');
     const [reloadError, setReloadError] = useState<string | null>(null);
+    const [restarting, setRestarting] = useState<RestartableComponent | null>(null);
+    const [restartNote, setRestartNote] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
     const [previewShareToken, setPreviewShareToken] = useState<string | null>(null);
     const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Aborts an in-flight restart when the user navigates to another app, so
+    // a late response can't stamp a success/error note onto the wrong app.
+    const restartAbortRef = useRef<AbortController | null>(null);
     // Stable refs for parent callbacks — avoids including them in the subscription
     // useEffect dep array (which would re-run on every poll tick if passed as new function refs).
     const onSubscriptionLoadedRef = useRef(onSubscriptionLoaded);
@@ -646,15 +695,22 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onSubscr
         }
     }
 
-    // Clean up polling on unmount
-    useEffect(() => () => stopPolling(), []);
+    // Clean up polling + in-flight restart on unmount
+    useEffect(() => () => {
+        stopPolling();
+        restartAbortRef.current?.abort();
+    }, []);
 
     // Reset reload state when appId changes
     useEffect(() => {
         stopPolling();
+        restartAbortRef.current?.abort();
+        restartAbortRef.current = null;
         setReloadPhase('idle');
         setReloadStatusText('');
         setReloadError(null);
+        setRestarting(null);
+        setRestartNote(null);
         setSubscription(null);
         setGrants(null);
         setPreviewShareToken(null);
@@ -740,12 +796,67 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onSubscr
         }
     }, [app?.subscriptionId, app?.systemId, appId]);
 
+    async function handleRestart(component: RestartableComponent) {
+        // Don't race concurrent deploys, or an in-flight reload (which also
+        // redeploys upstream).
+        if (!app || restarting || reloadPhase !== 'idle') return;
+        // The deploy endpoint requires both ids — refuse up front rather than
+        // surfacing a confusing 400 (same guard as the domain-error button).
+        if (!app.subscriptionId || !app.systemId) return;
+
+        const variant = VARIANT_FOR[component] as 'preview' | 'publish';
+        if (!window.confirm(`Restart ${component} for ${app.id}?\n\n${RESTART_CONFIRM[component]}`)) return;
+
+        const controller = new AbortController();
+        restartAbortRef.current = controller;
+
+        setRestarting(component);
+        setRestartNote(null);
+
+        try {
+            const res = await fetch(`/api/mgmt/apps/${encodeURIComponent(appId)}/deploy`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subscriptionId: app.subscriptionId, systemId: app.systemId, variant }),
+                signal: controller.signal
+            });
+            const data = await res.json();
+            // App switched mid-flight — this result belongs to the old app.
+            if (controller.signal.aborted) return;
+
+            if (!res.ok) {
+                setRestartNote({ kind: 'error', text: data.error ?? `Restart failed (HTTP ${res.status})` });
+                return;
+            }
+
+            const jobs = Array.isArray(data.nomadJobIds) && data.nomadJobIds.length > 0
+                ? ` (jobs: ${data.nomadJobIds.join(', ')})`
+                : '';
+            setRestartNote({
+                kind: 'success',
+                text: `Redeploy of ${variant} variant queued${jobs}. Containers restart asynchronously — lifecycle badges may take a minute to update.`
+            });
+        } catch (err) {
+            if (err instanceof Error && err.name === 'AbortError') return;
+            console.error('[AppDetailsPanel] Restart request failed', err);
+            setRestartNote({ kind: 'error', text: err instanceof Error ? err.message : 'Restart request failed' });
+        } finally {
+            if (restartAbortRef.current === controller) restartAbortRef.current = null;
+            // If aborted, the appId-change effect already reset this (and a
+            // clear here could clobber state belonging to the new app).
+            if (!controller.signal.aborted) setRestarting(null);
+        }
+    }
+
     async function handleReload() {
-        if (!app) return;
+        // Mirror handleRestart's guard — reload also redeploys upstream, so
+        // never let the two fire concurrently for the same app.
+        if (!app || restarting) return;
         stopPolling();
         setReloadPhase('calling');
         setReloadStatusText('');
         setReloadError(null);
+        setRestartNote(null);
 
         try {
             const res = await fetch(`/api/mgmt/apps/${encodeURIComponent(appId)}/reload`, {
@@ -876,6 +987,11 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onSubscr
 
     if (!app) return null;
 
+    const reloadDisabled = reloadPhase !== 'idle' || restarting !== null;
+    // The deploy endpoint requires both ids — without them the button would
+    // only ever produce a 400, so don't offer it.
+    const restartIdsPresent = Boolean(app.subscriptionId && app.systemId);
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -962,7 +1078,7 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onSubscr
                     {app && (imageStatus?.status === 'stale' || reloadPhase !== 'idle') && (
                         <button
                             onClick={handleReload}
-                            disabled={reloadPhase !== 'idle'}
+                            disabled={reloadDisabled}
                             style={{
                                 marginLeft: 'auto',
                                 display: 'flex',
@@ -971,12 +1087,12 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onSubscr
                                 padding: '0.375rem 0.75rem',
                                 fontSize: '0.75rem',
                                 fontWeight: 600,
-                                color: reloadPhase !== 'idle' ? '#6b7280' : 'white',
-                                backgroundColor: reloadPhase !== 'idle' ? '#f3f4f6' : '#3b82f6',
+                                color: reloadDisabled ? '#6b7280' : 'white',
+                                backgroundColor: reloadDisabled ? '#f3f4f6' : '#3b82f6',
                                 border: '1px solid',
-                                borderColor: reloadPhase !== 'idle' ? '#d1d5db' : '#3b82f6',
+                                borderColor: reloadDisabled ? '#d1d5db' : '#3b82f6',
                                 borderRadius: '6px',
-                                cursor: reloadPhase !== 'idle' ? 'not-allowed' : 'pointer',
+                                cursor: reloadDisabled ? 'not-allowed' : 'pointer',
                                 whiteSpace: 'nowrap'
                             }}
                         >
@@ -993,18 +1109,58 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onSubscr
                         {reloadError}
                     </div>
                 )}
+                {restartNote && (
+                    <div style={{
+                        marginBottom: '0.75rem',
+                        padding: '0.5rem 0.75rem',
+                        backgroundColor: restartNote.kind === 'success' ? '#f0fdf4' : '#fef2f2',
+                        border: '1px solid',
+                        borderColor: restartNote.kind === 'success' ? '#bbf7d0' : '#fecaca',
+                        borderRadius: '6px',
+                        fontSize: '0.8rem',
+                        color: restartNote.kind === 'success' ? '#166534' : '#dc2626',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        flexWrap: 'wrap'
+                    }}>
+                        <span>{restartNote.text}</span>
+                        {restartNote.kind === 'success' && onRefresh && (
+                            <button
+                                onClick={() => { setRestartNote(null); onRefresh(); }}
+                                style={{ background: 'transparent', border: 'none', color: '#16a34a', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                            >
+                                Refresh now
+                            </button>
+                        )}
+                    </div>
+                )}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.5rem' }}>
-                    {COMPONENTS.map(name => (
-                        <DetailedStatusBlock
-                            key={name}
-                            name={name}
-                            url={app.urls[name]}
-                            shareToken={name === 'preview' ? previewShareToken : null}
-                            variant={app.variantsWithLifecycle.find(v => v.variant === VARIANT_FOR[name])}
-                            imageStatus={imageStatus}
-                            imageStatusLoading={imageStatusLoading}
-                        />
-                    ))}
+                    {COMPONENTS.map(name => {
+                        // Only offer restart for components whose variant is
+                        // actually deployed — e.g. no "Restart publish" on a
+                        // never-published app (deploying it would spin up a
+                        // publish stack that shouldn't exist).
+                        const restartable = isRestartable(name) ? name : null;
+                        const variantDeployed = app.variants?.includes(VARIANT_FOR[name]) ||
+                            app.variantsWithLifecycle?.some(v => v.variant === VARIANT_FOR[name]);
+                        return (
+                            <DetailedStatusBlock
+                                key={name}
+                                name={name}
+                                url={app.urls[name]}
+                                shareToken={name === 'preview' ? previewShareToken : null}
+                                variant={app.variantsWithLifecycle.find(v => v.variant === VARIANT_FOR[name])}
+                                imageStatus={imageStatus}
+                                imageStatusLoading={imageStatusLoading}
+                                onRestart={restartable && variantDeployed && restartIdsPresent ? () => handleRestart(restartable) : undefined}
+                                // A deploy bounces the whole variant stack, so flag every
+                                // component sharing the restarting variant (agent ↔ preview).
+                                restartInFlight={restarting !== null && VARIANT_FOR[name] === VARIANT_FOR[restarting]}
+                                restartDisabled={restarting !== null || reloadPhase !== 'idle'}
+                            />
+                        );
+                    })}
 
                     {/* Custom domains */}
                     {app.domains.map(domain => {

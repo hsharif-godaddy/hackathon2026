@@ -87,6 +87,7 @@ export {
     type MgmtImageStatus,
     type MgmtReloadStatus,
     type MgmtReloadResponse,
+    type MgmtDeployResponse,
     type MgmtSubscription,
     type MgmtGrant,
     type MgmtSubscriptionGrants,
@@ -104,6 +105,7 @@ import type {
     MgmtGrant,
     MgmtDomainError,
     MgmtReloadResponse,
+    MgmtDeployResponse,
     MgmtCustomerApp,
 } from '@/lib/mgmt-types';
 
@@ -230,6 +232,28 @@ export class MgmtControlPlaneAdapter {
         // for this app so the next read fetches fresh.
         invalidateReadCache(`getAppDetails:${appId}`);
         return this.request(path, { method: 'POST', body: '{}' });
+    }
+
+    /**
+     * Trigger a redeploy of one variant's container stack (preview = agent +
+     * pre-start + preview containers, publish = the live site). Unlike reload,
+     * the deploy endpoint only exists subscription-scoped, so both ids are
+     * required. `environment` mirrors `variant` for backward compat upstream.
+     */
+    deployApp(
+        appId: string,
+        opts: { subscriptionId: string; systemId: string; variant: 'preview' | 'publish' }
+    ): Promise<MgmtDeployResponse> {
+        const path = `/api/airo/v1/subscriptions/${encodeURIComponent(opts.subscriptionId)}/systems/${encodeURIComponent(opts.systemId)}/apps/${encodeURIComponent(appId)}/deploy`;
+
+        invalidateReadCache(`getAppDetails:${appId}`);
+        return this.request(path, {
+            method: 'PUT',
+            body: JSON.stringify({ variant: opts.variant, environment: opts.variant }),
+            // Deploy synchronously re-renders Nomad job configs before
+            // queueing to SQS — slower than reads, widen the 10s default.
+            timeoutMs: 30000,
+        });
     }
 
     async getCustomerApps(customerId: string): Promise<MgmtCustomerApp[]> {
