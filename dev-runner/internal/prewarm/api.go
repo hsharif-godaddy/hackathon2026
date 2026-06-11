@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sync"
 	"time"
 )
 
@@ -18,9 +17,6 @@ const (
 	// It bounds only the server-ready poll in waitForReady; route GETs and
 	// image warming are intentionally unbounded (long docker builds are fine).
 	readyTimeout = 120 * time.Second
-	// maxConcurrency bounds simultaneous in-flight route GETs so we don't
-	// open ~140 sockets at once (the script's unbounded Promise.all).
-	maxConcurrency = 12
 )
 
 // insecureClient trusts the dev proxy's mkcert cert (Go's bundle rejects it
@@ -38,47 +34,29 @@ func insecureClient() *http.Client {
 	}
 }
 
-// syncWriter serializes concurrent writes from the route-warming goroutines so
-// callers can pass any io.Writer (WarmAPI fans out across many goroutines).
-type syncWriter struct {
-	mu sync.Mutex
-	w  io.Writer
-}
-
-func (s *syncWriter) Write(p []byte) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.w.Write(p)
-}
-
 // WarmAPI waits for baseURL to accept connections, then GETs every route in
-// Routes (bounded concurrency) to force Next.js dev compilation. Per-route
+// Routes SEQUENTIALLY (one at a time) to force Next.js dev compilation. The
+// requests are intentionally serial: `next dev` compiles on a single shared
+// compiler, so concurrent GETs cannot seal entries in parallel — they only
+// thrash that one compiler (inflating each route's wall time — e.g. jwks took
+// ~98s under a 12-way concurrent burst vs ~4ms once sealed) and obscure the
+// per-route seal timing. One request at a time matches how the dev compiler
+// actually works and yields clean, meaningful per-route durations. Per-route
 // failures are written to out and ignored — the goal is compilation, not a
 // successful response. It returns an error only if the server never becomes
-// ready before ctx is done. Writes to out are serialized internally, so any
-// io.Writer is safe to pass regardless of its own concurrency guarantees.
+// ready before ctx is done.
 func WarmAPI(ctx context.Context, baseURL string, out io.Writer) error {
-	sw := &syncWriter{w: out}
 	client := insecureClient()
 
-	if err := waitForReady(ctx, client, baseURL, sw); err != nil {
+	if err := waitForReady(ctx, client, baseURL, out); err != nil {
 		return err
 	}
-	fmt.Fprintf(sw, "[prewarm] up; warming %d routes\n", len(Routes))
+	fmt.Fprintf(out, "[prewarm] up; warming %d routes\n", len(Routes))
 
-	sem := make(chan struct{}, maxConcurrency)
-	var wg sync.WaitGroup
 	for _, path := range Routes {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(path string) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			warmRoute(ctx, client, baseURL, path, sw)
-		}(path)
+		warmRoute(ctx, client, baseURL, path, out)
 	}
-	wg.Wait()
-	fmt.Fprintln(sw, "[prewarm] done")
+	fmt.Fprintln(out, "[prewarm] done")
 	return nil
 }
 

@@ -1,131 +1,72 @@
 package prewarm
 
-// Routes is the list of app paths to GET to force Next.js dev compilation.
-// Ported from app/scripts/prewarm.mjs. Page paths use the bare (no-market)
-// form; middleware rewrites `/foo` to `/<market>/foo`, compiling the same
-// chunk. `_warmup` stands in for any dynamic segment. GETting a POST-only
-// route returns 405, but Next.js compiles the handler either way.
+// Routes is the core set of app paths GETted by the opt-in prewarm (`pnpm run dev prewarm`, or the
+// `w` keybinding) to force Next.js dev compilation of the route ENTRIES a developer hits on the hot
+// path: the homepage, the apps list, creating an app, and opening the develop page plus its
+// first-paint API fan-out. Page paths use the bare (no-market) form; Gasket middleware rewrites
+// `/foo` to `/<market>/foo`, compiling the same entry. `_warmup` stands in for any dynamic segment.
+// A GET against a POST/PATCH-only route returns 405, but Next.js compiles the handler entry either
+// way (401/405/500 all seal the entry; only a 404 — a non-matching path — is a wasted warm).
+//
+// Scope: this list is deliberately limited to the create->develop->chat critical path, derived from
+// 6 instrumented dev captures + per-flow static analysis. The dev compiler seals each entry on first
+// hit (12-90s for heavy routes), serialized on one compiler — and a long synchronous seal starves the
+// dev worker's event loop (the cause of the agents register cascade and the slow time-to-chat).
+// Pre-sealing these entries ONLY helps because dev runs with on-demand-entry eviction disabled
+// (onDemandEntries in app/next.config.js); without that, warmed entries evict within 60s and the warm
+// is wasted. Long-tail surfaces (publish, transfer, dkim, database, domains panel, marketing,
+// analytics) are intentionally omitted: they cold-compile once on first use, then stay warm via
+// no-eviction. Maintenance: if a new route lands on the hot path (a "new victim" that cold-compiles
+// at create/develop time), add it here — but keep the list lean; every entry adds to the prewarm wall.
 var Routes = []string{
-	// Pages
+	// Pages (market-less; the heaviest entries)
 	"/",
 	"/apps",
-	"/create",
 	"/develop/_warmup",
-	"/develop/_warmup/context",
-	"/explore",
-	"/explore/_warmup",
-	"/manage-plan",
-	"/share/_warmup",
 
-	// Auth, config, well-known
+	// Create action + agent registration (create button + register-JWT validation path)
 	"/.well-known/jwks.json",
+	"/api/sites/quick-create",
 	"/api/auth/agent-token",
-	"/api/auth/logout",
+	"/api/referral-link",
+
+	// Auth, config, readiness
 	"/api/auth/token",
 	"/api/auth/validate",
 	"/api/config",
 	"/api/health",
-	"/api/i18n/package",
+	"/api/client-logs",
 
-	// Apps
-	"/api/apps/_warmup/deployments",
-	"/api/apps/_warmup/dkim/offboard",
-	"/api/apps/_warmup/dkim/onboard",
-	"/api/apps/_warmup/dkim/status",
-	"/api/apps/_warmup/dns-check-conflict",
-	"/api/apps/_warmup/domain/check",
-	"/api/apps/_warmup/download",
-	"/api/apps/_warmup/email-signing/debug",
-	"/api/apps/_warmup/events",
-	"/api/apps/_warmup/exports",
-	"/api/apps/_warmup/git/return",
-	"/api/apps/_warmup/project-domain",
-	"/api/apps/_warmup/publish-snapshots",
-	"/api/apps/_warmup/purge-cache",
-	"/api/apps/_warmup/share",
-	"/api/apps/_warmup/subscription",
-	"/api/apps/_warmup/transfer",
-	"/api/apps/_warmup/transfer/cancel",
-	"/api/apps/_warmup/transfer/validate",
-	"/api/apps/_warmup/unpublish",
-
-	// Sites
+	// Sites (develop first-paint + just-after-create polling)
 	"/api/sites",
 	"/api/sites/_warmup",
-	"/api/sites/_warmup/archive-restore",
 	"/api/sites/_warmup/archive-status",
-	"/api/sites/_warmup/deploy",
-	"/api/sites/_warmup/domain-dns-ownership",
-	"/api/sites/_warmup/domain-errors",
-	"/api/sites/_warmup/domains",
-	"/api/sites/_warmup/domains/job",
-	"/api/sites/_warmup/image-status",
-	"/api/sites/_warmup/reload-images",
-	"/api/sites/_warmup/resume",
 	"/api/sites/_warmup/variables",
-	"/api/sites/quick-create",
+	"/api/sites/_warmup/image-status",
+	"/api/sites/_warmup/deploy",
+
+	// Apps
+	"/api/apps/_warmup/git/remote/status",
+	"/api/apps/_warmup/deployments",
 
 	// Servers
-	"/api/servers",
 	"/api/servers/_warmup",
 
-	// Subscriptions, entitlements, pricing, grants, token budget
-	"/api/credits/grants",
-	"/api/ecomm-subscription/auto-renew",
-	"/api/ecomm-subscription/status",
-	"/api/entitlements",
-	"/api/entitlements/_warmup/update",
-	"/api/pricing/offers",
-	"/api/subscription-cache",
-	"/api/subscription/exports/status",
+	// Subscriptions, grants, pricing
 	"/api/subscriptions",
 	"/api/subscriptions/_warmup",
-	"/api/subscriptions/_warmup/acknowledge",
-	"/api/subscriptions/renew",
-	"/api/token-budget/_warmup",
+	"/api/credits/grants",
+	"/api/pricing/offers",
 
-	// Database
-	"/api/database/_warmup/tables",
-	"/api/database/_warmup/tables/_warmup/data",
-	"/api/database/_warmup/tables/_warmup/export",
-	"/api/database/_warmup/tables/_warmup/rows",
-	"/api/database/_warmup/tables/_warmup/schema",
-
-	// Domains
+	// Venture, domains
+	"/api/venture",
 	"/api/domains",
-	"/api/domains/config",
-	"/api/domains/isc-session",
-	"/api/domains/search",
 
-	// Develop, conversations, jobs, projects, venture, transfer
+	// Secrets
+	"/api/secrets/_warmup/diff",
+
+	// Develop-adjacent (job stage, conversations, context)
+	"/api/jobs/_warmup",
 	"/api/conversations",
 	"/api/develop/_warmup/context",
-	"/api/jobs/_warmup",
-	"/api/projects",
-	"/api/transfer",
-	"/api/venture",
-
-	// Secrets, security
-	"/api/secrets/_warmup/diff",
-	"/api/secrets/_warmup/sync",
-	"/api/secrets/_warmup/variants/_warmup",
-	"/api/security-report/_warmup",
-
-	// Analytics, logs, feedback, referrals, misc
-	"/api/analytics/graphql",
-	"/api/analytics/insights-feedback",
-	"/api/cds-log",
-	"/api/client-logs",
-	"/api/crm/case",
-	"/api/es-logs",
-	"/api/eval-snapshots",
-	"/api/feedback/s3-store",
-	"/api/marketing/calendar",
-	"/api/mcp/proxy",
-	"/api/referral-link",
-	"/api/referral/track",
-	"/api/slack-webhook/feedback",
-	// NOTE: /api/testpilot/[taskid] is intentionally omitted — it is not part
-	// of the core local-dev flow and its handler times out frequently during
-	// warmup, slowing the whole prewarm for no benefit.
 }

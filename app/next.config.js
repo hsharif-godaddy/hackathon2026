@@ -62,6 +62,17 @@ export default gasket.actions.getNextConfig({
   devIndicators: {
     position: 'top-left',
   },
+  // Dev-only: disable on-demand-entry eviction so compiled route entries stay sealed in memory for
+  // the whole session (Next's defaults evict after 60s / keep only the 5 most-recent). This is what
+  // lets the opt-in `pnpm run dev prewarm` (dev-runner) actually stick: without it, prewarmed routes
+  // evict within 60s and the warm is wasted, leaving create→develop to re-pay the per-route webpack
+  // "seal" — a long synchronous seal that starves the single dev worker's event loop (the cause of
+  // the agents register cascade + slow time-to-chat). Next ignores onDemandEntries in production.
+  // Tradeoff: more resident entries → more dev memory (fine given the dev worker's ~16GB headroom).
+  onDemandEntries: {
+    maxInactiveAge: 3_600_000,
+    pagesBufferLength: 100,
+  },
   allowedDevOrigins: [
     'localhost:3000',
     'localhost:8443',
