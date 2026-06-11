@@ -63,6 +63,23 @@ function getDomainServicesEnv(): 'dev' | 'test' | 'prod' {
 const MAX_SEEDS = 4;
 const MAX_SEED_LENGTH = 24;
 const MIN_SEED_LENGTH = 3;
+// Mandatory for Entourage FIND context; the *_idp/isc/actpro/mbr/xpnes group drives shopper-aware pricing.
+const ENTOURAGE_FORWARD_COOKIES = [
+  'q',
+  'key',
+  'req_id',
+  'market',
+  'currency',
+  'visitor',
+  'auth_idp',
+  'info_idp',
+  'info_cust_idp',
+  'isc',
+  'actpro',
+  'mbr',
+  'xpnes',
+] as const;
+const ENTOURAGE_FORWARD_COOKIES_SET = new Set<string>(ENTOURAGE_FORWARD_COOKIES);
 // Queries longer than this are multi-word concatenations
 // Spins are surfaced first so brandable alternatives appear before the ungainly exact match.
 const LONG_QUERY_THRESHOLD = 20;
@@ -118,6 +135,22 @@ function buildSpinsQuery(original: string, sanitized: string): string {
     .replace(/[^a-z0-9]/g, '')
     .slice(0, 24);
   return seed.length >= MIN_SEED_LENGTH ? seed : sanitized;
+}
+
+// findExact/findSpins pass `options` through to fetch (see @site/domain-services Fetcher.js).
+function filterEntourageCookies(cookieHeader: string): string {
+  if (!cookieHeader) return '';
+
+  return cookieHeader
+    .split(';')
+    .map(c => c.trim())
+    .filter(c => ENTOURAGE_FORWARD_COOKIES_SET.has(c.split('=')[0]))
+    .join('; ');
+}
+
+function getEntourageFetchOptions(request: NextRequest): { options?: { headers: { Cookie: string } } } {
+  const forwarded = filterEntourageCookies(request.headers.get('cookie') || '');
+  return forwarded ? { options: { headers: { Cookie: forwarded } } } : {};
 }
 
 function getDomainServices(market: string): DomainServices {
@@ -212,6 +245,7 @@ export const POST = withCustomerAuth(async (
     const clientMarket = typeof body.market === 'string' ? body.market.trim() : '';
     const market = (clientMarket && LOCALE_RE.test(clientMarket)) ? clientMarket : await detectTranslationLocale();
     const domainServices = getDomainServices(market);
+    const entourageFetchOptions = getEntourageFetchOptions(request);
 
     const validSeeds = validateSeeds(body.seeds);
     const useFanout = validSeeds.length > 0;
@@ -226,12 +260,14 @@ export const POST = withCustomerAuth(async (
       maxResults,
       market,
       isc: isc ?? null,
+      hasForwardedCookies: !!entourageFetchOptions.options,
       customerId: authContext.user?.customerId,
     });
 
     const exactPromise = domainServices.findExact({
       query: sanitizedQuery,
       ...(isc ? { extraParams: { isc } } : {}),
+      ...entourageFetchOptions,
     });
 
     // Each seed gets the full maxResults; downstream dedup-by-FQDN trims overlap.
@@ -249,6 +285,7 @@ export const POST = withCustomerAuth(async (
       domainServices.findSpins({
         query: q,
         extraParams: { pagesize: maxResults, ...(isc ? { isc } : {}) },
+        ...entourageFetchOptions,
       })
     );
 

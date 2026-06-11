@@ -51,10 +51,16 @@ vi.mock('@/lib/switchboard/server', () => ({
   checkSwitchboardFlag: mockCheckSwitchboardFlag,
 }));
 
-function createRequest(body: Record<string, unknown>): NextRequest {
+function createRequest(
+  body: Record<string, unknown>,
+  init?: { cookie?: string }
+): NextRequest {
   return new NextRequest('http://test/api/domains/search', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.cookie ? { Cookie: init.cookie } : {}),
+    },
     body: JSON.stringify(body),
   });
 }
@@ -513,6 +519,93 @@ describe('POST /api/domains/search', () => {
 
       expect(response.status).toBe(500);
       expect(data.error).toBe('Internal server error');
+    });
+  });
+
+  describe('entourage cookie forwarding', () => {
+    beforeEach(() => {
+      mockFindExact.mockResolvedValue(null);
+      mockFindSpins.mockResolvedValue({ RecommendedDomains: [], Products: [] });
+    });
+
+    it('forwards allowlisted cookies to findExact and findSpins', async () => {
+      await POST(createRequest(
+        { query: 'mybrand' },
+        {
+          cookie: [
+            'unrelated=drop',
+            'market=en-US',
+            'currency=USD',
+            'visitor=vid123',
+            'auth_idp=secret',
+            'info_idp=info',
+            'info_cust_idp=cust',
+            'isc=GDWELCOME',
+            'actpro=ENCRYPTED_BLOB',
+            'mbr=1',
+            'xpnes=exp',
+          ].join('; '),
+        }
+      ));
+
+      const upstreamOptions = {
+        options: {
+          headers: {
+            Cookie: [
+              'market=en-US',
+              'currency=USD',
+              'visitor=vid123',
+              'auth_idp=secret',
+              'info_idp=info',
+              'info_cust_idp=cust',
+              'isc=GDWELCOME',
+              'actpro=ENCRYPTED_BLOB',
+              'mbr=1',
+              'xpnes=exp',
+            ].join('; '),
+          },
+        },
+      };
+      expect(mockFindExact).toHaveBeenCalledWith(
+        expect.objectContaining(upstreamOptions)
+      );
+      expect(mockFindSpins).toHaveBeenCalledWith(
+        expect.objectContaining(upstreamOptions)
+      );
+    });
+
+    it('omits options when no allowlisted cookies are present', async () => {
+      await POST(createRequest(
+        { query: 'mybrand' },
+        { cookie: 'unrelated=drop; pathway=abc' }
+      ));
+
+      const exactArgs = mockFindExact.mock.calls[0][0];
+      expect(exactArgs.options).toBeUndefined();
+      const spinsArgs = mockFindSpins.mock.calls[0][0];
+      expect(spinsArgs.options).toBeUndefined();
+    });
+
+    it('omits options when no cookies are present', async () => {
+      await POST(createRequest({ query: 'mybrand' }));
+
+      const exactArgs = mockFindExact.mock.calls[0][0];
+      expect(exactArgs.options).toBeUndefined();
+      const spinsArgs = mockFindSpins.mock.calls[0][0];
+      expect(spinsArgs.options).toBeUndefined();
+    });
+
+    it('preserves = characters inside cookie values (e.g. base64 actpro blobs)', async () => {
+      await POST(createRequest(
+        { query: 'mybrand' },
+        { cookie: 'actpro=base64+encoded==; unrelated=drop' }
+      ));
+
+      expect(mockFindExact).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: { headers: { Cookie: 'actpro=base64+encoded==' } },
+        })
+      );
     });
   });
 
