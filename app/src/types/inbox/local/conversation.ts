@@ -16,6 +16,8 @@ export interface Form {
   }>
 }
 
+export type ConversationStatus = 'resolved' | 'unresolved' | 'onHold' | 'archived' | 'spam'
+
 export type MessageType =
   | 'adComments'
   | 'adLead'
@@ -47,6 +49,7 @@ export interface Conversation extends DataEntity {
   //   readonly createdAt: IsoDateTimeString
   //   readonly lastProcessedTimestamp: IsoDateTimeString
   // }
+  // Legacy: redundant with status ('archived' | 'spam'). Remove once all consumers use status.
   readonly isArchived: boolean
   readonly isSpam: boolean
   readonly isStarred: boolean
@@ -61,9 +64,6 @@ export interface Conversation extends DataEntity {
   // readonly customerLanguage?: string
   // readonly searchResult?: SearchResult
   // readonly replyableUntil?: IsoDateTimeString
-  readonly isResolved: boolean
-  readonly isUnresolved: boolean
-  // readonly isPending: boolean
-  readonly isOnHold: boolean
+  readonly status: ConversationStatus
   readonly holdUntil?: IsoDateTimeString
 }

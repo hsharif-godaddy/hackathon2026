@@ -3,7 +3,7 @@ import { makeChannelType } from '@/lib/inbox/transforms/category'
 import { convertMessage } from '@/lib/inbox/transforms/message'
 import { selectC2 } from '@/lib/inbox/transforms/user'
 import { ChannelType, ConversationCategory, emailProviders } from '@/types/inbox/local/category'
-import { Conversation, Form, MessageType } from '@/types/inbox/local/conversation'
+import { Conversation, ConversationStatus, Form, MessageType } from '@/types/inbox/local/conversation'
 import { Optional } from '@/types/inbox/local/core'
 import { RemoteConversationCategory } from '@/types/inbox/remote/category'
 import { RemoteConversation, RemoteConversationData } from '@/types/inbox/remote/conversation'
@@ -147,10 +147,32 @@ const getOriginalChannel = (
   return channel
 }
 
+const deriveConversationStatus = (numericStatus: number, conversationId: number): ConversationStatus => {
+  switch (numericStatus) {
+    case 0: return 'unresolved'
+    case 3: case 9: return 'spam'
+    case 4: return 'archived'
+    case 5: return 'onHold'
+    case 1: case 2: case 6: case 7: case 8: return 'resolved'
+    default:
+      console.warn('inbox.conversation.unknownStatus', { conversationId, status: numericStatus })
+      return 'resolved'
+  }
+}
+
+const UNKNOWN_CATEGORY: ConversationCategory = {
+  id: 0,
+  type: 'Unknown',
+  name: 'Unknown',
+  slug: 'unknown',
+}
+
 export const convertConversation = (
   conversation: RemoteConversation,
 ): Conversation => {
-  const category = convertConversationCategory(conversation.category)
+  const category = conversation.category
+    ? convertConversationCategory(conversation.category)
+    : UNKNOWN_CATEGORY
   const lastMessage = convertMessage(conversation.last_message)
   const bumpedAt =
     lastMessage.isInbound && lastMessage.createdAt > conversation.sort_timestamp
@@ -164,9 +186,8 @@ export const convertConversation = (
 
   const isArchived = conversation.status === 4
   const isSpam = conversation.status === 3 || conversation.status === 9
-  const isResolved = conversation.status === 2 || conversation.status === 1 // Consider PENDING as RESOLVED for now
-  const isUnresolved = conversation.status === 0
-  const isOnHold = conversation.status === 5
+
+  const status = deriveConversationStatus(conversation.status, conversation.id)
 
   return {
     id: conversation.id.toString(),
@@ -195,9 +216,7 @@ export const convertConversation = (
         ? conversation.data?.__important_reason
         : undefined,
     form,
-    isOnHold,
-    isResolved,
-    isUnresolved,
+    status,
     isArchived,
     isSpam,
     messageCount: conversation.message_count,

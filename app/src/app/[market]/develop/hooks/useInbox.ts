@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 
 import { queryKeys } from '@/lib/inbox/constants/queryKeys'
 import { ThreadedMessagePageChildren } from '@/lib/inbox/http/response/core'
@@ -6,6 +6,7 @@ import { convertConversation } from '@/lib/inbox/transforms/conversation'
 import { convertMessage } from '@/lib/inbox/transforms/message'
 import { Conversation } from '@/types/inbox/local/conversation'
 import { IntString, IsoDateTimeString, UuidString } from '@/types/inbox/local/core'
+import { InboxConversationStatusFilter } from '@/types/inbox/local/inboxConversationStatusFilter'
 import { Message } from '@/types/inbox/local/message'
 import { RemoteConversation } from '@/types/inbox/remote/conversation'
 import { RemoteMessage } from '@/types/inbox/remote/message'
@@ -19,7 +20,7 @@ import {
   SendReplyResponse
 } from '@/types/inbox/remote/reamaze'
 
-async function getInboxConversations(params: ConversationsRequest): Promise<ConversationsResponse> {
+export async function getInboxConversations(params: ConversationsRequest): Promise<ConversationsResponse> {
   if (!params.brandId) {
     throw new Error('Brand ID is required')
   }
@@ -28,6 +29,9 @@ async function getInboxConversations(params: ConversationsRequest): Promise<Conv
   url.searchParams.set('brandId', params.brandId)
   if (params.page) {
     url.searchParams.set('page', params.page.toString())
+  }
+  if (params.filter && params.filter !== 'all') {
+    url.searchParams.set('filter', params.filter)
   }
 
   const response = await fetch(url.toString(), {
@@ -45,6 +49,8 @@ async function getInboxConversations(params: ConversationsRequest): Promise<Conv
     throw new Error('Invalid conversations response format: conversations is not an array')
   }
 
+  const total = remoteResponse.conversations.length
+
   const conversations = remoteResponse.conversations.flatMap((c: RemoteConversation) => {
     try {
       return [convertConversation(c)]
@@ -57,6 +63,14 @@ async function getInboxConversations(params: ConversationsRequest): Promise<Conv
       return []
     }
   })
+
+  const failureCount = total - conversations.length
+
+  if (total > 0 && failureCount > Math.ceil(total * 0.2)) {
+    throw new Error(
+      `Conversation transform failure: ${failureCount}/${total} conversations failed to parse`,
+    )
+  }
 
   // Reamaze returns the total number of pages; fall back to a single page when
   // it is absent. The last page is `pageCount` (pages are 1-indexed).
@@ -218,10 +232,11 @@ async function getInboxConversationMessages(params: ConversationMessagesRequest)
 export function useInboxConversations(
   brandId: UuidString,
   page?: number,
-) {
+  filter?: InboxConversationStatusFilter,
+): UseQueryResult<ConversationsResponse, Error> {
   return useQuery({
-    queryKey: queryKeys.inboxConversations(brandId, page),
-    queryFn: () => getInboxConversations({ brandId, page }),
+    queryKey: queryKeys.inboxConversations(brandId, page, filter),
+    queryFn: () => getInboxConversations({ brandId, page, filter }),
     staleTime: 60_000,
     retry: (failureCount, error) => {
       console.error('Error fetching conversations:', error)

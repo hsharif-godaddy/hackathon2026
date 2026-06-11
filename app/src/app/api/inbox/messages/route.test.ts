@@ -1,12 +1,8 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-let capturedAuthOpts: unknown;
 vi.mock('@/lib/customer-auth', () => ({
-  withCustomerAuth: (handler: any, opts: unknown) => {
-    capturedAuthOpts = opts;
-    return handler;
-  },
+  withCustomerAuth: (handler: (...args: unknown[]) => unknown) => handler,
 }));
 vi.mock('@/lib/request-context', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },

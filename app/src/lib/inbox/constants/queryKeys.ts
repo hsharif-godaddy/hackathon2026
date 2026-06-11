@@ -1,4 +1,5 @@
 import { IntString, IsoDateTimeString, UuidString } from '@/types/inbox/local/core'
+import { InboxConversationStatusFilter } from '@/types/inbox/local/inboxConversationStatusFilter'
 
 export const queryKeys = {
   all: ['reamaze'] as const,
@@ -12,15 +13,19 @@ export const queryKeys = {
       id,
       brandId,
     ] as const,
+  inboxConversationsByBrand: (brandId: UuidString) =>
+    [...queryKeys.all, 'inboxConversations', brandId] as const,
   inboxConversations: (
     brandId: UuidString,
     page?: number,
+    filter?: InboxConversationStatusFilter,
   ) =>
     [
       ...queryKeys.all,
       'inboxConversations',
       brandId,
       page,
+      filter,
     ] as const,
   inboxConversationMessages: (
     id: IntString,

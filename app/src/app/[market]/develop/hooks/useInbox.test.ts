@@ -1,9 +1,20 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-const { sendInboxReply } = await import('./useInbox');
+const mockConvertConversation = vi.fn((c: unknown) => c);
+vi.mock('@/lib/inbox/transforms/conversation', () => ({
+  convertConversation: (...args: unknown[]) => mockConvertConversation(...args),
+}));
+
+const { sendInboxReply, getInboxConversations } = await import('./useInbox');
+
+const BRAND_ID = '550e8400-e29b-41d4-a716-446655440000';
+
+const mockConversationsResponse = (conversations: unknown[] = []) =>
+  new Response(JSON.stringify({ conversations, page_count: 1 }), { status: 200 });
 
 describe('sendInboxReply', () => {
   beforeEach(() => {
@@ -110,5 +121,79 @@ describe('sendInboxReply', () => {
     expect(sentBody.isInternalNote).toBe(true);
     expect(sentBody.attachments).toEqual([{ id: 10 }]);
     expect(sentBody.clientId).toBe('my-client-id');
+  });
+});
+
+describe('getInboxConversations', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('does not include filter param when filter is all', async () => {
+    mockFetch.mockResolvedValue(mockConversationsResponse());
+    await getInboxConversations({ brandId: BRAND_ID, filter: 'all' });
+
+    const url = new URL(mockFetch.mock.calls[0][0]);
+    expect(url.searchParams.has('filter')).toBe(false);
+  });
+
+  it('includes filter param when filter is unresolved', async () => {
+    mockFetch.mockResolvedValue(mockConversationsResponse());
+    await getInboxConversations({ brandId: BRAND_ID, filter: 'unresolved' });
+
+    const url = new URL(mockFetch.mock.calls[0][0]);
+    expect(url.searchParams.get('filter')).toBe('unresolved');
+  });
+
+  it('includes filter param when filter is resolved', async () => {
+    mockFetch.mockResolvedValue(mockConversationsResponse());
+    await getInboxConversations({ brandId: BRAND_ID, filter: 'resolved' });
+
+    const url = new URL(mockFetch.mock.calls[0][0]);
+    expect(url.searchParams.get('filter')).toBe('resolved');
+  });
+
+  it('does not include filter param when filter is undefined', async () => {
+    mockFetch.mockResolvedValue(mockConversationsResponse());
+    await getInboxConversations({ brandId: BRAND_ID });
+
+    const url = new URL(mockFetch.mock.calls[0][0]);
+    expect(url.searchParams.has('filter')).toBe(false);
+  });
+
+  it('throws when more than 20% of conversations fail to transform', async () => {
+    mockConvertConversation.mockImplementation(() => {
+      throw new Error('transform failed');
+    });
+
+    const conversations = Array.from({ length: 4 }, (_, i) => ({ id: i }));
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ conversations, page_count: 1 }), { status: 200 }),
+    );
+
+    await expect(
+      getInboxConversations({ brandId: BRAND_ID }),
+    ).rejects.toThrow('Conversation transform failure');
+
+    mockConvertConversation.mockImplementation((c: unknown) => c);
+  });
+
+  it('does not throw when exactly 20% of conversations fail to transform', async () => {
+    let callCount = 0;
+    mockConvertConversation.mockImplementation((c: unknown) => {
+      callCount++;
+      if (callCount === 1) throw new Error('transform failed');
+      return c;
+    });
+
+    const conversations = Array.from({ length: 5 }, (_, i) => ({ id: i }));
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ conversations, page_count: 1 }), { status: 200 }),
+    );
+
+    const result = await getInboxConversations({ brandId: BRAND_ID });
+    expect(result.conversations).toHaveLength(4);
+
+    mockConvertConversation.mockImplementation((c: unknown) => c);
   });
 });

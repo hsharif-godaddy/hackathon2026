@@ -9,9 +9,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { getReamazeHost, UUID_RE } from '@/lib/inbox/reamaze-host';
 import { logger } from '@/lib/request-context';
+import type { InboxConversationStatusFilter } from '@/types/inbox/local/inboxConversationStatusFilter';
 import { ApiErrorCode } from '@/utils/api-errors';
 
 export const dynamic = 'force-dynamic';
+
+type FilterableStatus = Exclude<InboxConversationStatusFilter, 'all'>;
+
+const POSITIVE_INT_RE = /^[1-9]\d*$/;
+const FILTER_TO_REAMAZE: Record<FilterableStatus, string> = {
+  unresolved: 'open',
+  resolved: 'resolved',
+};
+const ALLOWED_FILTERS: readonly string[] = Object.keys(FILTER_TO_REAMAZE);
 
 export const GET = withCustomerAuth(async (
   request: NextRequest,
@@ -28,6 +38,7 @@ export const GET = withCustomerAuth(async (
   const brandId = searchParams.get('brandId');
   const beforeTimestamp = searchParams.get('before_timestamp');
   const page = searchParams.get('page');
+  const filter = searchParams.get('filter');
 
   if (!brandId || !UUID_RE.test(brandId)) {
     return NextResponse.json(
@@ -36,11 +47,16 @@ export const GET = withCustomerAuth(async (
     );
   }
 
-  // Reamaze pages are 1-indexed positive integers. Reject anything else when present.
-  const POSITIVE_INT_RE = /^[1-9]\d*$/;
   if (page && !POSITIVE_INT_RE.test(page)) {
     return NextResponse.json(
       { error: 'page must be a positive integer' },
+      { status: 400 }
+    );
+  }
+
+  if (filter && !ALLOWED_FILTERS.includes(filter)) {
+    return NextResponse.json(
+      { error: `filter must be one of: ${ALLOWED_FILTERS.join(', ')}` },
       { status: 400 }
     );
   }
@@ -56,10 +72,15 @@ export const GET = withCustomerAuth(async (
     url.searchParams.set('page', page);
   }
 
+  if (filter) {
+    url.searchParams.set('filter', FILTER_TO_REAMAZE[filter as FilterableStatus]);
+  }
+
   logger.info('inbox.conversations.fetch.start', {
     brandId,
     beforeTimestamp,
-    page
+    page,
+    filter,
   });
 
   const upstream = await fetch(url.toString(), {

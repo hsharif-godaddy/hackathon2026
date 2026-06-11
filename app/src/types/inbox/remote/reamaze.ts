@@ -1,12 +1,14 @@
 import { ThreadedMessagePageChildren } from '@/lib/inbox/http/response/core'
 import { Conversation } from '@/types/inbox/local/conversation'
 import { IntString, IsoDateTimeString, UuidString } from '@/types/inbox/local/core'
+import { InboxConversationStatusFilter } from '@/types/inbox/local/inboxConversationStatusFilter'
 import { Message } from '@/types/inbox/local/message'
 
 export interface ConversationsRequest {
   brandId: UuidString
   /** 1-indexed page number. Omitted means page 1. */
   page?: number
+  filter?: InboxConversationStatusFilter
 }
 
 export interface ConversationRequest {

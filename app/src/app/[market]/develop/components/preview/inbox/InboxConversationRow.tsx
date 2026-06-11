@@ -50,7 +50,7 @@ export function InboxConversationRow({
             {displayName}
           </span>
           <div className='flex shrink-0 items-center gap-1.5'>
-            {showResolvedTag && conversation.isResolved ? (
+            {showResolvedTag && conversation.status === 'resolved' ? (
               <span data-testid='conversation-row-resolved'>
                 <Tag size='sm' emphasis='passive'>
                   {t('builder_inbox_resolved')}

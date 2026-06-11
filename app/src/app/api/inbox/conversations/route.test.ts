@@ -1,12 +1,8 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-let capturedAuthOpts: unknown;
 vi.mock('@/lib/customer-auth', () => ({
-  withCustomerAuth: (handler: any, opts: unknown) => {
-    capturedAuthOpts = opts;
-    return handler;
-  },
+  withCustomerAuth: (handler: (...args: unknown[]) => unknown) => handler,
 }));
 vi.mock('@/lib/request-context', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -63,6 +59,19 @@ describe('GET /api/inbox/conversations', () => {
     });
   });
 
+  describe('validation — filter', () => {
+    it('returns 400 when filter is not an allowed value', async () => {
+      const request = makeRequest({
+        brandId: '550e8400-e29b-41d4-a716-446655440000',
+        filter: 'spam',
+      });
+      const response = await GET(request, createAuthContext('jwt-token'));
+      const data = await response.json();
+      expect(response.status).toBe(400);
+      expect(data.error).toContain('filter must be one of');
+    });
+  });
+
   describe('URL construction', () => {
     it('builds correct Reamaze URL for dev environment', async () => {
       mockFetch.mockResolvedValue(new Response(JSON.stringify({ conversations: [] }), { status: 200 }));
@@ -83,6 +92,36 @@ describe('GET /api/inbox/conversations', () => {
       await GET(request, createAuthContext('jwt-token'));
       const url = mockFetch.mock.calls[0][0] as string;
       expect(url).toContain('before_timestamp=2024-01-01T00%3A00%3A00Z');
+    });
+
+    it('maps filter=unresolved to Reamaze filter=open', async () => {
+      mockFetch.mockResolvedValue(new Response(JSON.stringify({ conversations: [] }), { status: 200 }));
+      const request = makeRequest({
+        brandId: '550e8400-e29b-41d4-a716-446655440000',
+        filter: 'unresolved',
+      });
+      await GET(request, createAuthContext('jwt-token'));
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toContain('filter=open');
+    });
+
+    it('maps filter=resolved to Reamaze filter=resolved', async () => {
+      mockFetch.mockResolvedValue(new Response(JSON.stringify({ conversations: [] }), { status: 200 }));
+      const request = makeRequest({
+        brandId: '550e8400-e29b-41d4-a716-446655440000',
+        filter: 'resolved',
+      });
+      await GET(request, createAuthContext('jwt-token'));
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toContain('filter=resolved');
+    });
+
+    it('does not include filter param when omitted', async () => {
+      mockFetch.mockResolvedValue(new Response(JSON.stringify({ conversations: [] }), { status: 200 }));
+      const request = makeRequest({ brandId: '550e8400-e29b-41d4-a716-446655440000' });
+      await GET(request, createAuthContext('jwt-token'));
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).not.toContain('filter=');
     });
   });
 

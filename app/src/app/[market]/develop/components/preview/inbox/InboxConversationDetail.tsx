@@ -82,6 +82,7 @@ export function InboxConversationDetail({
     <div className='flex h-full min-h-0 flex-col'>
       <InboxConversationDetailHeader
         conversation={conversation}
+        brandId={brandId}
         onBack={onBack}
       />
 
