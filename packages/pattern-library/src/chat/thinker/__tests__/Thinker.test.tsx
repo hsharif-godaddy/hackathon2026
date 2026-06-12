@@ -2,7 +2,9 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
+import { ThinkingIndicator } from '../../../primitives/thinking-indicator';
 import { Thinker } from '../index';
+import '../styles.css';
 
 beforeAll(() => {
   vi.spyOn(globalThis, 'fetch').mockImplementation(function (input) {
@@ -192,6 +194,37 @@ describe('Thinker', () => {
         3,
       );
       expect(container.querySelector('.airo-primitives-thinking-indicator--dots')).toBeTruthy();
+    });
+
+    it('reserves inline inset for the godaddy pulse ring inside Thinker', () => {
+      const { container } = render(
+        <Thinker indicator={<ThinkingIndicator variant="godaddy" />} />,
+      );
+      const indicatorSlot = container.querySelector(
+        '.airo-chat-thinker__indicator:has(.airo-primitives-thinking-indicator--godaddy)',
+      );
+      const godaddyRoot = container.querySelector('.airo-primitives-thinking-indicator--godaddy');
+      const pulseRing = container.querySelector(
+        '.airo-primitives-thinking-indicator__pulse-ring',
+      );
+      const logoStage = container.querySelector(
+        '.airo-primitives-thinking-indicator__logo-stage',
+      );
+      expect(indicatorSlot).toBeTruthy();
+      expect(godaddyRoot).toBeTruthy();
+      expect(pulseRing).toBeTruthy();
+      expect(logoStage).toBeTruthy();
+      expect(getComputedStyle(pulseRing!).display).not.toBe('none');
+      expect(getComputedStyle(pulseRing!).zIndex).toBe('3');
+      expect(getComputedStyle(indicatorSlot!).paddingInlineStart).toBe(
+        'calc(var(--airo-primitives-thinking-indicator-dot-size) * 0.75)',
+      );
+      expect(getComputedStyle(logoStage!).margin).toBe('0px');
+      expect(
+        getComputedStyle(godaddyRoot!).getPropertyValue(
+          '--airo-primitives-thinking-indicator-dot-size',
+        ),
+      ).toBe('7.34px');
     });
   });
 

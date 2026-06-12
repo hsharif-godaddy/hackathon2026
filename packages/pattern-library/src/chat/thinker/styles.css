@@ -47,21 +47,56 @@
   overflow: visible;
 }
 
-/* Thinker status rows share one compact scale for every indicator variant
-   (dots, spinner, godaddy, thinking-daddy) so branded marks sit inline with
-   label text without per-call-site `size` props. */
-.airo-chat-thinker__indicator .airo-primitives-thinking-indicator {
+/* Thinker status rows share one compact scale for dots/spinner/thinking-daddy.
+   Godaddy keeps a pinned dot-size so the pulse ring is large enough to read
+   around the mark (0.75× density buries the ring behind the SVG). */
+.airo-chat-thinker__indicator .airo-primitives-thinking-indicator:not(.airo-primitives-thinking-indicator--godaddy) {
   --airo-primitives-thinking-indicator-size-multiplier: 0.75;
 }
 
 /* Branded ThinkingIndicator variants paint outside their layout box — the
-   godaddy logo stage uses negative margin so the pulse ring can expand, and
-   thinking-daddy head tilt rotates past the inline start. Chat transcripts
-   often set overflow-x:hidden near the column edge, which clips the mark.
-   Drop the godaddy stage margin inside Thinker; pin thinking-daddy at 22×22 in
-   status rows via explicit SVG size and 4.4px dot-size. */
+   godaddy pulse ring scales past the stage, and thinking-daddy head tilt
+   rotates past the inline start. Chat columns often clip transform overflow
+   (overflow-x:hidden on the transcript); stack the ring above the logo and
+   use a contained pulse keyframe inside Thinker. */
+.airo-chat-thinker__indicator:has(.airo-primitives-thinking-indicator--godaddy) {
+  overflow: visible;
+  flex-shrink: 0;
+  min-height: calc(var(--airo-primitives-thinking-indicator-dot-size) * 3);
+  padding-inline-start: calc(var(--airo-primitives-thinking-indicator-dot-size) * 0.75);
+  padding-inline-end: calc(var(--airo-primitives-thinking-indicator-dot-size) * 0.75);
+}
+
 .airo-chat-thinker__indicator .airo-primitives-thinking-indicator__logo-stage {
   margin: 0;
+}
+
+.airo-chat-thinker__indicator .airo-primitives-thinking-indicator--godaddy {
+  /* 3 × 7.34px ≈ 22px stage — matches thinking-daddy footprint. */
+  --airo-primitives-thinking-indicator-dot-size: 7.34px;
+  overflow: visible;
+}
+
+/* Default godaddy stacks the ring behind the SVG (z-index 2); at compact
+   sizes the opaque mark hides the ring entirely. In Thinker, paint the ring
+   on top and use a slightly smaller scale cap so the halo survives clip. */
+.airo-chat-thinker__indicator:has(.airo-primitives-thinking-indicator--godaddy)
+  .airo-primitives-thinking-indicator__pulse-ring {
+  z-index: 3;
+  border-color: var(--airo-primitives-thinking-indicator-godaddy-brand);
+  animation: airo-chat-thinker-godaddy-pulse 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes airo-chat-thinker-godaddy-pulse {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.5;
+  }
+  60%,
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
 }
 
 .airo-chat-thinker__status:has(.airo-primitives-thinking-indicator--thinking-daddy) {
