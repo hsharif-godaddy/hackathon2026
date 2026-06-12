@@ -8,6 +8,16 @@
 import { create } from 'zustand'
 import type { MessageOrigin } from '@airo/shared/auth'
 
+import {
+  batchSecretKey,
+  secretKeyFor,
+} from '@/app/[market]/develop/components/chat/secrets/keys'
+import {
+  loadResolvedSecretsComposerToolCallIds,
+  mergeResolvedSecretsComposerToolCallIds,
+  saveResolvedSecretsComposerToolCallIds,
+} from '@/app/[market]/develop/components/chat/secrets/resolvedSecretsComposerStorage'
+import type { AiEditContext } from '@/app/[market]/develop/components/types'
 import { logger } from '@/lib/request-context'
 import type { StructuredError } from '@/types/errors'
 import { generateId, mergeToolCallData, normalizeConversationMessages } from './conversation-normalization'
@@ -22,6 +32,7 @@ import type {
 // Re-export all store types to preserve the public import surface.
 export type {
   AgentSummary,
+  AppChatHistoryEntry,
   ChatMessage,
   ConnectionRetryState,
   Conversation,
@@ -87,6 +98,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   historyNextCursor: null,
   historyLoadingMore: false,
   serverCapabilities: null,
+  resolvedSecretsComposerToolCallIds: {},
   subagentEvents: {},
 
   // === CORE STREAMING ACTIONS ===
@@ -717,9 +729,14 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
       // Save current app's messages and active stream
       if (state.currentAppId) {
+        saveResolvedSecretsComposerToolCallIds(
+          state.currentAppId,
+          state.resolvedSecretsComposerToolCallIds,
+        );
         newAppChatHistory[state.currentAppId] = {
           messages: state.messages,
-          activeStream: state.activeStream
+          activeStream: state.activeStream,
+          resolvedSecretsComposerToolCallIds: state.resolvedSecretsComposerToolCallIds,
         };
       }
 
@@ -730,6 +747,12 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
 
       // Get saved state for the new app (or defaults)
       const savedState = appId ? newAppChatHistory[appId] : null;
+      const resolvedSecretsComposerToolCallIds = appId
+        ? mergeResolvedSecretsComposerToolCallIds(
+            appId,
+            savedState?.resolvedSecretsComposerToolCallIds ?? {},
+          )
+        : {};
 
       return {
         currentAppId: appId,
@@ -760,7 +783,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         historyHasMore: true,
         historyNextCursor: null,
         historyLoadingMore: false,
-        serverCapabilities: null // Reset capabilities when switching apps
+        serverCapabilities: null, // Reset capabilities when switching apps
+        resolvedSecretsComposerToolCallIds,
       };
     });
   },
@@ -944,7 +968,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     set({
       messages: [],
       activeStream: null,
-      streamingState: 'idle'
+      streamingState: 'idle',
+      resolvedSecretsComposerToolCallIds: {},
     })
   },
 
@@ -977,8 +1002,75 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       },
       serverCapabilities: null,
       historyLoadRequested: false,
-      historyLoadingComplete: false
+      historyLoadingComplete: false,
+      resolvedSecretsComposerToolCallIds: {},
     });
+  },
+
+  resolveSecretsComposerToolCall: (toolCallId) => {
+    set((state) => {
+      const appId = state.currentAppId
+      const nextIds: Record<string, true> = {
+        ...state.resolvedSecretsComposerToolCallIds,
+        [toolCallId]: true,
+      }
+      const resolvedSecretsComposerToolCallIds = appId
+        ? mergeResolvedSecretsComposerToolCallIds(appId, nextIds)
+        : nextIds
+      if (appId) {
+        saveResolvedSecretsComposerToolCallIds(appId, resolvedSecretsComposerToolCallIds)
+      }
+      if (!appId) {
+        return { resolvedSecretsComposerToolCallIds }
+      }
+      const cached = state.appChatHistory[appId]
+      return {
+        resolvedSecretsComposerToolCallIds,
+        appChatHistory: {
+          ...state.appChatHistory,
+          [appId]: {
+            messages: cached?.messages ?? state.messages,
+            activeStream: cached?.activeStream ?? state.activeStream,
+            resolvedSecretsComposerToolCallIds,
+          },
+        },
+      }
+    })
+  },
+
+  cancelSecretsComposerToolCall: (toolCallId, allSecretNames) => {
+    set((state) => {
+      const resolvedSecretsComposerToolCallIds: Record<string, true> = {
+        ...state.resolvedSecretsComposerToolCallIds,
+      }
+      resolvedSecretsComposerToolCallIds[batchSecretKey(toolCallId)] = true
+      for (const secretName of allSecretNames) {
+        const secretKey = secretKeyFor(toolCallId, secretName)
+        resolvedSecretsComposerToolCallIds[secretKey] = true
+      }
+      const appId = state.currentAppId
+      const merged = appId
+        ? mergeResolvedSecretsComposerToolCallIds(appId, resolvedSecretsComposerToolCallIds)
+        : resolvedSecretsComposerToolCallIds
+      if (appId) {
+        saveResolvedSecretsComposerToolCallIds(appId, merged)
+      }
+      if (!appId) {
+        return { resolvedSecretsComposerToolCallIds: merged }
+      }
+      const cached = state.appChatHistory[appId]
+      return {
+        resolvedSecretsComposerToolCallIds: merged,
+        appChatHistory: {
+          ...state.appChatHistory,
+          [appId]: {
+            messages: cached?.messages ?? state.messages,
+            activeStream: cached?.activeStream ?? state.activeStream,
+            resolvedSecretsComposerToolCallIds: merged,
+          },
+        },
+      }
+    })
   },
 
   // === UTILITY FUNCTIONS ===
@@ -1044,15 +1136,23 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         }
       }
 
+      const resolvedSecretsComposerToolCallIds = mergeResolvedSecretsComposerToolCallIds(
+        appId,
+        state.resolvedSecretsComposerToolCallIds,
+      )
+      saveResolvedSecretsComposerToolCallIds(appId, resolvedSecretsComposerToolCallIds)
+
       return {
         messages: updatedMessages,
+        resolvedSecretsComposerToolCallIds,
         appChatHistory: {
           ...state.appChatHistory,
           [appId]: {
             messages: updatedMessages,
-            activeStream: activeStream ?? state.activeStream
-          }
-        }
+            activeStream: activeStream ?? state.activeStream,
+            resolvedSecretsComposerToolCallIds,
+          },
+        },
       }
     })
 

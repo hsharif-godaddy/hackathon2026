@@ -211,32 +211,51 @@ const mockChatTabs = {
   setActiveSettingsSection: vi.fn(),
 };
 
-vi.mock('@/stores/useStreamingConversationStore', () => ({
-  useMessages: () => mockStreamingStore.messages,
-  useActiveStream: () => mockStreamingStore.activeStream,
-  useInputValue: () => mockStreamingStore.inputValue,
-  useIsLoading: () => mockStreamingStore.isLoading,
-  useCurrentAppId: () => mockStreamingStore.currentAppId,
-  useIsActivelyStreaming: () => mockStreamingStore.isActivelyStreaming,
-  useStreamingState: () => mockStreamingStore.streamingState,
-  useDevelopmentPlan: () => mockStreamingStore.developmentPlan,
-  useAiEditContext: () => mockStreamingStore.aiEditContext,
-  useAiEditContexts: () => mockStreamingStore.aiEditContexts,
-  useBuildErrorContext: () => mockStreamingStore.buildErrorContext,
-  useBudgetExceeded: () => mockStreamingStore.activeStream?.budgetExceeded === true || mockStreamingStore.messages[mockStreamingStore.messages.length - 1]?.budgetExceeded === true,
-  useSetInputValue: () => mockStreamingStore.setInputValue,
-  useSetAiEditContext: () => mockStreamingStore.setAiEditContext,
-  useStreamingConversationStore: Object.assign(
-    (selector: (s: Record<string, unknown>) => unknown) => selector({ retryState: { isRetrying: false, retryCount: 0 } }),
-    { getState: () => ({ aiEditContext: mockStreamingStore.aiEditContext }) }
-  ),
-  useRemoveAiEditContext: () => mockStreamingStore.removeAiEditContext,
-  useClearAiEditContexts: () => mockStreamingStore.clearAiEditContexts,
-  useSetBuildErrorContext: () => mockStreamingStore.setBuildErrorContext,
-  useSetCurrentAppId: () => mockStreamingStore.setCurrentAppId,
-  useHistoryLoadingComplete: () => mockStreamingStore.historyLoadingComplete,
-  useWebSocketState: () => ({ connected: true, status: 'idle' }),
-}));
+vi.mock('@/stores/useStreamingConversationStore', () => {
+  const mockPersistHistory = vi.fn()
+  const mockResolvedSecretsComposerToolCallIds: Record<string, true> = {}
+
+  function streamingGetState() {
+    return {
+      aiEditContext: mockStreamingStore.aiEditContext,
+      currentAppId: mockStreamingStore.currentAppId,
+      persistHistory: mockPersistHistory,
+      resolvedSecretsComposerToolCallIds: mockResolvedSecretsComposerToolCallIds,
+    }
+  }
+
+  function useStreamingConversationStore(selector: (s: ReturnType<typeof streamingGetState>) => unknown) {
+    return selector(streamingGetState())
+  }
+  Object.assign(useStreamingConversationStore, { getState: streamingGetState })
+
+  return {
+    useMessages: () => mockStreamingStore.messages,
+    useActiveStream: () => mockStreamingStore.activeStream,
+    useInputValue: () => mockStreamingStore.inputValue,
+    useIsLoading: () => mockStreamingStore.isLoading,
+    useCurrentAppId: () => mockStreamingStore.currentAppId,
+    useIsActivelyStreaming: () => mockStreamingStore.isActivelyStreaming,
+    useStreamingState: () => mockStreamingStore.streamingState,
+    useDevelopmentPlan: () => mockStreamingStore.developmentPlan,
+    useAiEditContext: () => mockStreamingStore.aiEditContext,
+    useAiEditContexts: () => mockStreamingStore.aiEditContexts,
+    useBuildErrorContext: () => mockStreamingStore.buildErrorContext,
+    useBudgetExceeded: () => mockStreamingStore.activeStream?.budgetExceeded === true || mockStreamingStore.messages[mockStreamingStore.messages.length - 1]?.budgetExceeded === true,
+    useSetInputValue: () => mockStreamingStore.setInputValue,
+    useSetAiEditContext: () => mockStreamingStore.setAiEditContext,
+    useStreamingConversationStore: Object.assign(
+      (selector: (s: Record<string, unknown>) => unknown) => selector({ retryState: { isRetrying: false, retryCount: 0 } }),
+      { getState: () => ({ aiEditContext: mockStreamingStore.aiEditContext }) }
+    ),
+    useRemoveAiEditContext: () => mockStreamingStore.removeAiEditContext,
+    useClearAiEditContexts: () => mockStreamingStore.clearAiEditContexts,
+    useSetBuildErrorContext: () => mockStreamingStore.setBuildErrorContext,
+    useSetCurrentAppId: () => mockStreamingStore.setCurrentAppId,
+    useHistoryLoadingComplete: () => mockStreamingStore.historyLoadingComplete,
+    useWebSocketState: () => ({ connected: true, status: 'idle' }),
+  }
+});
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => selector(mockDevelopPageStore),
@@ -299,9 +318,11 @@ vi.mock('@/utils/postMessage', () => ({
 
 // Mock framer-motion
 vi.mock('framer-motion', () => ({
+  AnimatePresence: ({ children }: any) => <>{children}</>,
   motion: {
     div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
   },
+  useReducedMotion: () => false,
 }));
 
 describe('ChatPane', () => {

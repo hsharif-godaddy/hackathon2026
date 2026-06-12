@@ -86,6 +86,7 @@
 
 .airo-input-secrets-form--borderless .airo-input-secrets-form__header {
   padding-block-start: 0;
+  border-block-end: none;
 }
 
 .airo-input-secrets-form--borderless .airo-input-secrets-form__toolbar,
@@ -100,6 +101,189 @@
 .airo-input-secrets-form--borderless.airo-input-secrets-form--conversation
   .airo-input-secrets-form__input-area {
   margin-inline: 0;
+}
+
+/* Composer takeover: outer inset on the shell; tighter horizontal padding per row. */
+.airo-input-secrets-form--takeover {
+  --airo-input-secrets-form-takeover-inset-block: calc(var(--airo-input-secrets-form-density) * 1.5);
+  --airo-input-secrets-form-takeover-inset-inline: calc(var(--airo-input-secrets-form-density) * 1.5);
+  --airo-input-secrets-form-takeover-row-inline: calc(var(--airo-input-secrets-form-density) * 1.25);
+}
+
+.airo-input-secrets-form--borderless.airo-input-secrets-form--takeover {
+  padding-block: var(--airo-input-secrets-form-takeover-inset-block);
+}
+
+.airo-input-secrets-form--borderless.airo-input-secrets-form--takeover .airo-input-secrets-form__header,
+.airo-input-secrets-form--borderless.airo-input-secrets-form--takeover .airo-input-secrets-form__takeover-field,
+.airo-input-secrets-form--borderless.airo-input-secrets-form--takeover .airo-input-secrets-form__toolbar,
+.airo-input-secrets-form--borderless.airo-input-secrets-form--takeover .airo-input-secrets-form__takeover-footer,
+.airo-input-secrets-form--borderless.airo-input-secrets-form--takeover .airo-input-secrets-paginated-form__footer {
+  padding-inline: var(--airo-input-secrets-form-takeover-row-inline);
+}
+
+.airo-input-secrets-form--borderless.airo-input-secrets-form--takeover .airo-input-secrets-form__header {
+  padding-block-start: 0;
+  padding-block-end: 0;
+  border-block-end: none;
+}
+
+.airo-input-secrets-form--borderless.airo-input-secrets-form--takeover .airo-input-secrets-form__takeover-field {
+  padding-block: calc(var(--airo-input-secrets-form-density) * 1);
+}
+
+.airo-input-secrets-form--borderless.airo-input-secrets-form--takeover .airo-input-secrets-form__toolbar,
+.airo-input-secrets-form--borderless.airo-input-secrets-form--takeover .airo-input-secrets-form__takeover-footer,
+.airo-input-secrets-form--borderless.airo-input-secrets-form--takeover .airo-input-secrets-paginated-form__footer {
+  padding-block-end: 0;
+  padding-block-start: calc(var(--airo-input-secrets-form-density) * 0.5);
+}
+
+.airo-input-secrets-form__takeover-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: calc(var(--airo-input-secrets-form-density) * 1);
+  padding-inline: var(--airo-input-secrets-form-padding);
+  padding-block-start: calc(var(--airo-input-secrets-form-density) * 0.5);
+}
+
+.airo-input-secrets-form--borderless .airo-input-secrets-form__takeover-footer {
+  padding-inline: 0;
+}
+
+/* --------------------------------------------------------------------------
+ * SecretsPaginatedForm — multi-step secret entry with ChoiceList-style footer
+ * navigation (back chevron, step indicator, continue/save).
+ * ----------------------------------------------------------------------- */
+
+.airo-input-secrets-paginated-form {
+  --airo-input-secrets-paginated-form-density: intent('ux.box.density');
+  --airo-input-secrets-form-density: var(--airo-input-secrets-paginated-form-density);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  overflow: hidden;
+}
+
+.airo-input-secrets-paginated-form__step--enter-forward {
+  animation: airo-input-secrets-paginated-form-slide-in-right 0.25s ease-out;
+}
+
+.airo-input-secrets-paginated-form__step--enter-back {
+  animation: airo-input-secrets-paginated-form-slide-in-left 0.25s ease-out;
+}
+
+@keyframes airo-input-secrets-paginated-form-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(30%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes airo-input-secrets-paginated-form-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-30%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .airo-input-secrets-paginated-form__step--enter-forward,
+  .airo-input-secrets-paginated-form__step--enter-back {
+    animation: none;
+  }
+}
+
+.airo-input-secrets-paginated-form__title {
+  margin-block-end: calc(var(--airo-input-secrets-paginated-form-density) * 0.5);
+}
+
+.airo-input-secrets-paginated-form__label {
+  display: block;
+  margin-block-end: calc(var(--airo-input-secrets-paginated-form-density) * 0.5);
+}
+
+.airo-input-secrets-paginated-form__input-area {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--airo-input-secrets-paginated-form-density) * 0.5);
+}
+
+.airo-input-secrets-paginated-form__entry {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.airo-input-secrets-paginated-form__visibility-toggle {
+  flex-shrink: 0;
+}
+
+.airo-input-secrets-paginated-form__messages {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--airo-input-secrets-paginated-form-density) * 0.25);
+  margin-block-start: calc(var(--airo-input-secrets-paginated-form-density) * 0.5);
+}
+
+.airo-input-secrets-paginated-form__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--airo-input-secrets-paginated-form-density) * 1);
+  margin-block-start: calc(var(--airo-input-secrets-paginated-form-density) * 1);
+  padding-block-start: calc(var(--airo-input-secrets-paginated-form-density) * 1);
+  min-height: calc(var(--airo-input-secrets-paginated-form-density) * 4);
+  border-block-start: intent('ux.box.borderWidth') solid intent('ux.box.borderColor');
+}
+
+.airo-input-secrets-paginated-form__footer-nav {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--airo-input-secrets-paginated-form-density) * 1);
+}
+
+.airo-input-secrets-paginated-form__step-indicator {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.airo-input-secrets-paginated-form__footer-actions {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--airo-input-secrets-paginated-form-density) * 1);
+  margin-inline-start: auto;
+}
+
+.airo-input-secrets-paginated-form__footer-nav .ux-button.ux-text-size-1.ux-button-square:not(.ux-button-inline) {
+  padding: 0.1875rem;
+}
+
+.airo-input-secrets-paginated-form.airo-input-secrets-form--takeover {
+  overflow: visible;
+}
+
+.airo-input-secrets-paginated-form--flat-sections .airo-input-secrets-form__header {
+  border-block-end: none;
+}
+
+.airo-input-secrets-paginated-form--flat-sections .airo-input-secrets-paginated-form__footer {
+  border-block-start: none;
+}
+
+.airo-input-secrets-paginated-form.airo-input-secrets-form--takeover .airo-input-secrets-paginated-form__footer {
+  margin-block-start: calc(var(--airo-input-secrets-form-density) * 0.5);
 }
 
 /* -- Header ------------------------------------------------------------ */
@@ -131,6 +315,14 @@
   min-width: 0;
 }
 
+.airo-input-secrets-form__step-indicator {
+  flex-shrink: 0;
+  align-self: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  margin-inline-start: auto;
+}
+
 .airo-input-secrets-form__secret-lock {
   flex-shrink: 0;
   display: inline-flex;
@@ -157,6 +349,13 @@
   margin-block: var(--airo-input-secrets-form-eyebrow-margin-block, 0);
 }
 
+.airo-input-secrets-form__info-button {
+  flex-shrink: 0;
+  /* Larger click target for accessibility */
+  min-width: calc(var(--airo-input-secrets-form-density) * 5.5);
+  min-height: calc(var(--airo-input-secrets-form-density) * 5.5);
+}
+
 .airo-input-secrets-form__label {
   color: intent('ux.box.foregroundColor');
 }
@@ -168,39 +367,6 @@
   align-items: center;
   gap: 0;
   padding-inline: var(--airo-input-secrets-form-padding);
-}
-
-.airo-input-secrets-form__input-area > .airo-input-secrets-form__entry {
-  flex: 1 1 0%;
-  min-width: 0;
-  color: intent('ux.box.foregroundColor');
-}
-
-/* Tighter padding than default @ux/text-entry (mirrors PromptBox borderless). */
-.airo-input-secrets-form__input-area > .airo-input-secrets-form__entry :where(input, textarea) {
-  padding-block: calc(var(--airo-input-secrets-form-density) * 1.5);
-  padding-inline: 0;
-  background: transparent;
-}
-
-.airo-input-secrets-form__input-area
-  > .airo-input-secrets-form__entry
-  :where(input, textarea)::placeholder {
-  color: intent('ux.controlVoid.foregroundColor');
-}
-
-/* Conversation: tighten vertical rhythm only (visualSize is already `sm`). */
-.airo-input-secrets-form--conversation
-  .airo-input-secrets-form__input-area
-  > .airo-input-secrets-form__entry
-  :where(input, textarea) {
-  padding-block: calc(var(--airo-input-secrets-form-density) * 1);
-}
-
-.airo-input-secrets-form__entry--plaintext-visible :where(input, textarea) {
-  text-overflow: ellipsis;
-  overflow: hidden;
-  white-space: nowrap;
 }
 
 /*
@@ -246,7 +412,16 @@
   align-items: center;
   gap: calc(var(--airo-input-secrets-form-density) * 1);
   padding: var(--airo-input-secrets-form-padding);
-  justify-content: flex-start;
+  justify-content: space-between;
+}
+
+.airo-input-secrets-form__conversation-footer-actions {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--airo-input-secrets-form-density) * 1);
+  margin-left: auto;
 }
 
 /* -- Toolbar ----------------------------------------------------------- */
@@ -257,6 +432,70 @@
   justify-content: space-between;
   gap: calc(var(--airo-input-secrets-form-density) * 2);
   padding: var(--airo-input-secrets-form-padding);
+}
+
+.airo-input-secrets-form__toolbar--send-only {
+  justify-content: flex-end;
+  padding-block-start: calc(var(--airo-input-secrets-form-density) * 0.5);
+}
+
+/* Takeover field — ChoiceList-style underline TextEntry + inline square action. */
+.airo-input-secrets-form__takeover-field {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--airo-input-secrets-form-density) * 0.5);
+  padding-inline: var(--airo-input-secrets-form-padding);
+  padding-block-end: calc(var(--airo-input-secrets-form-density) * 0.5);
+}
+
+.airo-input-secrets-form--borderless .airo-input-secrets-form__takeover-field {
+  padding-inline: 0;
+}
+
+.airo-input-secrets-form__takeover-entry-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-inline-size: 0;
+}
+
+.airo-input-secrets-form__takeover-entry-wrap {
+  flex: 1 1 0%;
+  min-inline-size: 0;
+  width: 100%;
+}
+
+.airo-input-secrets-form__takeover-entry-action {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-inline-start: calc(var(--airo-input-secrets-form-density) * 1);
+}
+
+.airo-input-secrets-form__takeover-entry-wrap
+  .airo-input-secrets-form__takeover-entry.ux-text-entry-shell {
+  border-block-end: intent('ux.box.borderWidth') solid intent('ux.box.borderColor');
+  border-radius: 0;
+}
+
+.airo-input-secrets-form__takeover-entry-wrap
+  .airo-input-secrets-form__takeover-entry.ux-text-entry--size-sm.ux-text-entry-shell
+  > :where(.ux-text-entry-field, .ux-text-entry-suggestion) {
+  padding-inline: calc(var(--uxTextEntry-padding) * 0.5);
+}
+
+@supports selector(:has(*)) {
+  .airo-input-secrets-form--borderless:not(.airo-input-secrets-form--conversation)
+    .airo-input-secrets-form__takeover-entry-wrap
+    > .airo-input-secrets-form__takeover-entry:has(:where(input, textarea):focus) {
+    outline: none;
+  }
+}
+
+.airo-input-secrets-form__takeover-messages {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--airo-input-secrets-form-density) * 0.25);
 }
 
 .airo-input-secrets-form__toolbar-messages {
@@ -278,4 +517,29 @@
 .airo-input-secrets-form__submit {
   flex-shrink: 0;
   margin-inline-start: auto;
+}
+
+/* -- Multi-field mode -------------------------------------------------- */
+
+.airo-input-secrets-form__multi-field-container {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--airo-input-secrets-form-density) * 1.5);
+  padding-inline: var(--airo-input-secrets-form-padding);
+  padding-block: calc(var(--airo-input-secrets-form-density) * 1);
+}
+
+.airo-input-secrets-form__field-row {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--airo-input-secrets-form-density) * 0.5);
+}
+
+.airo-input-secrets-form__field-label {
+  color: intent('ux.box.foregroundColor');
+}
+
+.airo-input-secrets-form__field-helper-text {
+  color: intent('ux.box.foregroundColor');
+  padding-inline-start: 0;
 }

@@ -21,8 +21,10 @@ import type { SendMessageOptions } from '@/app/[market]/develop/components/chat/
 import { DebugStatsToggleButton } from '@/app/[market]/develop/components/chat/DebugStatsDrawer'
 import InputActionsPanel from '@/app/[market]/develop/components/chat/InputActionsPanel'
 import RebuildQueueProgress from '@/app/[market]/develop/components/chat/RebuildQueueProgress'
+import { useSecretsComposerTakeover } from '@/app/[market]/develop/components/chat/secrets/useSecretsComposerTakeover'
 import UsageGauge from '@/app/[market]/develop/components/chat/usage-gauge/UsageGauge'
 import { useChatHistoryNavigation } from '@/app/[market]/develop/components/chat/useChatHistoryNavigation'
+import { useInputActionsPanelEnabled } from '@/app/[market]/develop/components/chat/useInputActionsPanelEnabled'
 import type { AiEditContext } from '@/app/[market]/develop/components/types'
 import type { ActiveColorSchemeSuggest } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
 import type { ActiveFontThemeSuggest } from '@/app/[market]/develop/components/utils/findLatestFontThemeSuggest'
@@ -174,8 +176,9 @@ export default function ChatInput({
   useRebuildBuildQueueDriver();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
   const { locale } = useIntl();
+  const showInputActionsPanel = useInputActionsPanelEnabled();
+  const secretsComposerTakeover = useSecretsComposerTakeover();
   const isChatGaugeEnabled = useSwitchboard('appbuilder-chat-gauge');
-  const areChatPlansEnabled = useSwitchboard('airo-builder-chat-plans');
   const isMultilineCollapseEnabled = useSwitchboard('airo-builder-chat-collapse-multiline-input');
   // When on, a choicelist surface reported by InputActionsPanel replaces the
   // PromptBox in the input slot (animated via PromptStage). Skip reveals the box.
@@ -196,7 +199,13 @@ export default function ChatInput({
   const handleChoiceSurfaceChange = useCallback((node: ReactNode | null, key: string | null) => {
     setChoiceSurface(node != null && key != null ? { node, key } : null)
   }, [])
-  const showChoice = isChoiceSwapEnabled && choiceSurface != null
+  const showChoice =
+    isChoiceSwapEnabled && choiceSurface != null && secretsComposerTakeover == null
+  useEffect(() => {
+    if (secretsComposerTakeover != null) {
+      setChoiceSurface(null)
+    }
+  }, [secretsComposerTakeover])
   // When the choicelist collapses out of the slot, focus the composer so the
   // user can type immediately.
   const prevShowChoiceRef = useRef(showChoice)
@@ -640,7 +649,7 @@ export default function ChatInput({
   return (
     <div className="px-2 sm:px-3 md:px-0 mt-1 mt-auto pb-1">
       <div id="tour-chat-input" className="relative flex flex-col gap-1.5" data-chat-composer-card>
-        {areChatPlansEnabled ? (
+        {showInputActionsPanel && secretsComposerTakeover == null ? (
           <InputActionsPanel
             activeColorSchemeSuggest={activeColorSchemeSuggest}
             activeFontThemeSuggest={activeFontThemeSuggest}

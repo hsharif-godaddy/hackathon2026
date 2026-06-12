@@ -1,3 +1,8 @@
+import {
+  isSecretsComposerCancelUserContent,
+  isSecretsComposerSuccessUserContent,
+} from '@airo/shared';
+
 import type { CompressionStrategy, CompressionContext } from '../MessageCompressor.js';
 import type { LLMMessage } from '../../ConversationHistoryLoader.js';
 
@@ -34,14 +39,11 @@ export class SecretOperationCompressionStrategy implements CompressionStrategy {
       return false;
     }
 
-    // Detect secret operation messages
-    const secretOperationPatterns = [
-      /Secrets?\s+(added|updated|saved)\s+successfully/i,
-      /I\s+cancelled\s+adding\s+secrets/i,
-      /Secret\s+value\s+is\s+required/i,
-    ];
+    if (isSecretsComposerSuccessUserContent(content) || isSecretsComposerCancelUserContent(content)) {
+      return true;
+    }
 
-    return secretOperationPatterns.some(pattern => pattern.test(content));
+    return /Secret\s+value\s+is\s+required/i.test(content);
   }
 
   /**

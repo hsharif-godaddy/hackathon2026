@@ -11,10 +11,11 @@ import Box from '@ux/box'
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
 import CollapsibleChatInputSection, { CollapseChevron } from '@/app/[market]/develop/components/chat/CollapsibleChatInputSection'
 import FontThemePreviewInputPanel from '@/app/[market]/develop/components/chat/FontThemePreviewInputPanel'
+import { useSecretsComposerTakeover } from '@/app/[market]/develop/components/chat/secrets/useSecretsComposerTakeover'
 import { PanelSectionTitle } from '@/app/[market]/develop/components/chat/StepProgressTag'
 import ThemePreviewInputPanel from '@/app/[market]/develop/components/chat/ThemePreviewInputPanel'
 import ThinkingTip from '@/app/[market]/develop/components/chat/ThinkingTip'
-import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
+import { type LatestNBAData, useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
 import AskQuestionToolRenderer from '@/app/[market]/develop/components/tool-renderers/AskQuestionToolRenderer'
@@ -122,8 +123,18 @@ function isAskQuestionToolResult(toolResult: unknown): boolean {
   )
 }
 
-function isAskQuestionNBA(nbaData: ReturnType<typeof useLatestNBAs>): boolean {
+function isAskQuestionNBA(nbaData: LatestNBAData | null | undefined): boolean {
   return nbaData?.source === 'askQuestion' || isAskQuestionToolResult(nbaData?.toolResult)
+}
+
+function isActionableNbaData(nbaData: LatestNBAData | null | undefined): nbaData is LatestNBAData {
+  if (!nbaData) {
+    return false
+  }
+  if (nbaData.suggestions.length > 0) {
+    return true
+  }
+  return isAskQuestionNBA(nbaData) && !!nbaData.toolResult
 }
 
 function askQuestionStepCount(toolResult: unknown): number {
@@ -1048,6 +1059,7 @@ function InputActionsPanelThemeSelection({
   const isStreaming = useIsActivelyStreaming()
   const isLoading = useIsLoading()
   const isProcessing = isStreaming || isLoading
+  const secretsComposerTakeover = useSecretsComposerTakeover()
   const messages = useMessages()
   const viewMode = useDevelopPageStore((state) => state.viewMode)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
@@ -1086,9 +1098,12 @@ function InputActionsPanelThemeSelection({
   const completedItems = useMemo(() => items.filter(item => item.completed), [items])
   const hasPendingPlanItems = uncompletedItems.length > 0
 
-  const hasNoBAs = !nbaData || nbaData.suggestions.length === 0
+  const hasNoBAs = !isActionableNbaData(nbaData)
   const hasConversationHistory = messages.length > 0
-  const { data: nextActionsData, isError: isNextActionsError, error: nextActionsError } = useNextActions(appId, hasNoBAs && !isProcessing && hasConversationHistory && !hasPendingPlanItems)
+  const { data: nextActionsData, isError: isNextActionsError, error: nextActionsError } = useNextActions(
+    appId,
+    hasNoBAs && !isProcessing && hasConversationHistory && !hasPendingPlanItems,
+  )
   if (isNextActionsError) logger.warn('input-actions-panel.next-actions-error', { appId }, { error: nextActionsError as Error })
   const nextActionSuggestions = nextActionsData?.suggestions ?? []
 
@@ -1125,8 +1140,8 @@ function InputActionsPanelThemeSelection({
   const planPreviewShortcutsRef = useRef<HTMLDivElement>(null)
   const nextActionShortcutsRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    setAskQuestionCompleted(false)
     setAskQuestionDismissed(false)
+    setAskQuestionCompleted(false)
     setCurrentAskQuestionText(null)
   }, [nbaDataRaw?.toolResult])
   const handleAskQuestionStepProgress = useCallback((current: number, total: number) => {
@@ -1136,14 +1151,13 @@ function InputActionsPanelThemeSelection({
   const totalItems = items.length
   const completedCount = completedItems.length
 
-  // NBAs are only shown when agent is idle
   const hasNBAs = !isProcessing && !!nbaData && nbaData.suggestions.length > 0
 
   // Client-side dedup: strip NBAs that overlap with uncompleted plan items.
   // The agent prompt discourages this, but older responses or edge cases can
   // still produce duplicates like "Build the about page" ≈ "About page".
   const dedupedNBASuggestions = hasNBAs
-    ? nbaData!.suggestions.filter(suggestion => {
+    ? nbaData.suggestions.filter(suggestion => {
         const nbaText = suggestion.text.toLowerCase()
         return !uncompletedItems.some(item => {
           const planText = item.title.toLowerCase()
@@ -1203,7 +1217,8 @@ function InputActionsPanelThemeSelection({
   // it is expanded. The header X collapses it (expanded → false): it then drops
   // out of the slot and renders inline above the PromptBox as a normal
   // collapsible. Expanding again (the chevron) swaps it back into the slot.
-  const hoistChoice = choiceSwapActive && continueBuildingExpanded
+  const hoistChoice =
+    choiceSwapActive && continueBuildingExpanded && secretsComposerTakeover == null
   const collapseChoiceFromSlot = useCallback(() => {
     setContinueBuildingExpanded(false)
   }, [])
@@ -1237,7 +1252,14 @@ function InputActionsPanelThemeSelection({
       hoistChoice ? choiceSurfaceNodeRef.current : null,
       hoistChoice ? choiceSurfaceKey : null,
     )
-  }, [choiceSwapEnabled, hoistChoice, choiceSurfaceKey, choiceSurfaceSignature, onChoiceSurfaceChange])
+  }, [
+    choiceSwapEnabled,
+    hoistChoice,
+    choiceSurfaceKey,
+    choiceSurfaceSignature,
+    onChoiceSurfaceChange,
+    secretsComposerTakeover,
+  ])
   // Tell ChatInput to drop the hoisted surface on unmount so the PromptBox
   // swaps back in if the panel disappears entirely.
   useEffect(() => {
@@ -1645,6 +1667,10 @@ function InputActionsPanelThemeSelection({
   }
 
   // ── Mode A: Agent idle, nothing to show ──────────────────────────────────
+  if (secretsComposerTakeover != null) {
+    return null
+  }
+
   // Text-only askQuestion (e.g. URL prompt for rebuild) has no chip suggestions,
   // so hasCombinedItems is false — keep the panel mounted so the text input renders.
   if (!hasCombinedItems && !hasPlan && !showAnySuggest && !hasRebuildPages && !isAskQuestionActive) {
@@ -1830,6 +1856,77 @@ function InputActionsPanelThemeSelection({
     (hasCombinedItems || hasPlan || showAnySuggest || hasRebuildPages || isAskQuestionActive) && !hoistChoice
 
   // ── Mode B: Agent idle, has data ─────────────────────────────────────────
+  const inlinePanelContent =
+    (hasCombinedItems || hasPlan || showAnySuggest || hasRebuildPages || isAskQuestionActive) &&
+    !hoistChoice ? (
+      <>
+        {showColor && activeColorSchemeSuggest ? (
+          <ThemePreviewInputPanel
+            key={activeColorSchemeSuggest.toolCallId}
+            toolCallId={activeColorSchemeSuggest.toolCallId}
+            palettes={palettesWithCurrent}
+            onCancel={handleColorCancel}
+            selectedIndex={selectedThemeIndex}
+            onSelectedIndexChange={setSelectedThemeIndex}
+            disabled={!isPreviewMode}
+          >
+            {({ body, footer }) => (
+              <CollapsibleChatInputSection
+                title={continueBuildingTitle}
+                expanded={continueBuildingExpanded}
+                onExpandedChange={setContinueBuildingExpanded}
+                footer={footer}
+                data-testid="collapsible-section-continue-building"
+              >
+                {body}
+              </CollapsibleChatInputSection>
+            )}
+          </ThemePreviewInputPanel>
+        ) : showFont && activeFontThemeSuggest ? (
+          <FontThemePreviewInputPanel
+            key={activeFontThemeSuggest.toolCallId}
+            disabled={!isPreviewMode}
+            onCancel={handleFontCancel}
+            selectedIndex={selectedFontIndex}
+            themes={themesWithCurrent}
+            toolCallId={activeFontThemeSuggest.toolCallId}
+            onSelectedIndexChange={setSelectedFontIndex}
+          >
+            {({ body, footer }) => (
+              <CollapsibleChatInputSection
+                title={continueBuildingTitle}
+                expanded={continueBuildingExpanded}
+                footer={footer}
+                onExpandedChange={setContinueBuildingExpanded}
+                data-testid="collapsible-section-continue-building"
+              >
+                {body}
+              </CollapsibleChatInputSection>
+            )}
+          </FontThemePreviewInputPanel>
+        ) : isAskQuestionActive ? (
+          askQuestionCollapsible
+        ) : (
+          defaultCollapsible
+        )}
+      </>
+    ) : null
+
+  const todoListModal = (
+    <TodoListModal
+      isOpen={isModalOpen}
+      onClose={() => setIsModalOpen(false)}
+      list={currentList}
+      t={t}
+    />
+  )
+
+  // When the choicelist is hoisted into ChatInput's PromptStage slot, skip the
+  // empty elevated card shell above the composer — it only showed as a tiny dot.
+  if (hoistChoice) {
+    return todoListModal
+  }
+
   return (
     <InputActionsPanelCard headerOnly={showInlinePanel && !continueBuildingExpanded}>
       {showInlinePanel && (

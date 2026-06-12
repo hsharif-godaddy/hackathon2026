@@ -10,6 +10,7 @@ const meta: Meta<typeof SecretsForm> = {
   tags: ['autodocs'],
   args: {
     onClose: () => {},
+    submitLabel: 'Save',
   },
   parameters: {
     layout: 'centered',

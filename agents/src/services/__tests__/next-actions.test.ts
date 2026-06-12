@@ -1,3 +1,4 @@
+import { buildSecretsComposerSuccessUserMessage } from '@airo/shared'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const {
@@ -207,6 +208,34 @@ describe('NextActionsService', () => {
       expect(mockGetMessagesAfterMessageId).not.toHaveBeenCalled()
       const prompt = mockGenerateText.mock.calls[0][0].prompt as string
       expect(prompt).toContain('Assistant: Here are some name ideas. Any of these resonate?')
+    })
+
+    it('should include secrets-just-saved guidance when the latest user message saved secrets', async () => {
+      mockFindLatestForApp.mockResolvedValue(null)
+      mockGetRecentMessagesForApp.mockResolvedValue([
+        { sender: 'user', content: buildSecretsComposerSuccessUserMessage('add', ['STRIPE_KEY']) },
+        { sender: 'agent', content: 'Thanks — what should we build next?' },
+      ])
+
+      await service.generateNextActions(appId)
+
+      const prompt = mockGenerateText.mock.calls[0][0].prompt as string
+      expect(prompt).toContain('SECRETS JUST SAVED')
+    })
+
+    it('should omit secrets-just-saved guidance when an older turn saved secrets', async () => {
+      mockFindLatestForApp.mockResolvedValue(null)
+      mockGetRecentMessagesForApp.mockResolvedValue([
+        { sender: 'user', content: buildSecretsComposerSuccessUserMessage('add', ['STRIPE_KEY']) },
+        { sender: 'agent', content: 'Thanks — what should we build next?' },
+        { sender: 'user', content: 'Add a pricing page' },
+        { sender: 'agent', content: 'Any of these layouts resonate?' },
+      ])
+
+      await service.generateNextActions(appId)
+
+      const prompt = mockGenerateText.mock.calls[0][0].prompt as string
+      expect(prompt).not.toContain('SECRETS JUST SAVED')
     })
 
     it('should pass correct parameters to generateText', async () => {

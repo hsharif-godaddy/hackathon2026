@@ -18,8 +18,8 @@ const SecretDefinitionSchema = z.object({
  * Use this tool when you need API keys or secrets from the user for integrations
  * like Stripe, OpenAI, Google Maps, etc.
  *
- * Instead of telling users to edit .env files, this tool displays an inline form
- * in the chat where users can securely add or update secrets.
+ * Instead of telling users to edit .env files, this tool drives the secrets UI in the
+ * builder where the user can save credentials securely.
  *
  * The secrets are stored securely via the Secrets management system and are
  * available to the application at runtime.
@@ -53,19 +53,28 @@ const SecretDefinitionSchema = z.object({
  * })
  */
 export const requestSecrets: Tool = createTool(
-  `Request secrets (API keys, credentials) from the user via an inline form in the chat.
+  `Request secrets (API keys, credentials) from the user via the builder secrets UI.
+The UI will present a secrets form for the user to enter and save values securely.
 Use this instead of telling users to edit .env files directly.
 
 WHEN TO USE:
-- User wants to integrate Stripe, OpenAI, Google Maps, or other external services
+- User wants to integrate Stripe, OpenAI, Google Maps, AWS, or other external services
+- User says "connect me with …", "hook up …", "add my API keys", or "update credentials"
 - User asks "how do I add secrets?" or "how do I add API keys?"
-- User wants to update an existing API key
-- Any integration that requires credentials
+- User wants to update an existing API key, including after they closed the form without saving
+- Any integration that requires credentials the user must supply
 
 DO NOT use this for:
 - System-managed secrets
+- Stock photos (Getty/Unsplash) — use the media tool; users do not connect stock-photo accounts
 
-The tool returns secretsRequired=true and displays a form for the user to fill in.
+After the user closes the secrets step without saving and later asks to provide or update a key again,
+call this tool again with the appropriate secret name and mode — do not assume the form is still visible.
+
+Do not describe where the form appears or tell the user to look in a specific location — the UI handles placement.
+Never say the form is "above", "below", "in the chat", or "ready" without calling this tool in the same turn.
+
+The tool returns secretsRequired=true so the UI can show the secrets form.
 After the user saves secrets, they will send a message confirming completion.`,
 
   z.object({
@@ -91,7 +100,7 @@ After the user saves secrets, they will send a message confirming completion.`,
       secretsRequired: true,
       message: input.autoSubmit
         ? 'Secrets are being auto-generated. The user will confirm when ready.'
-        : 'Please fill in the secrets form and click Save. Let me know when you are done.',
+        : 'Secrets form is open. Wait for the user to save and send a confirmation message.',
       secretsRequest: {
         type: 'secrets_request',
         title: input.title,

@@ -4,6 +4,10 @@ import clsx from 'clsx'
 import { Check, ClipboardCopy, Expand, Headset, Paperclip } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  parseSecretsComposerOutcomeKind,
+  stripSecretsComposerOutcomeTag,
+} from '@airo/shared'
 import { isRestoreMetadata } from '@airo/shared/websocket'
 import Button from '@ux/button'
 import Modal from '@ux/modal'
@@ -169,7 +173,18 @@ function UserMessage({ content, selectedAssets, referencedFiles, uploadedFileNam
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isTruncated, setIsTruncated] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
-  const { mentions, text } = useMemo(() => parseElementMentions(content), [content])
+  const displayContent = useMemo(function resolveDisplayContent() {
+    const outcome = parseSecretsComposerOutcomeKind(content)
+    if (outcome === 'cancel') {
+      return t(
+        'builder_secrets_composer_cancelled',
+        undefined,
+        'I cancelled entering the requested secret(s).',
+      )
+    }
+    return stripSecretsComposerOutcomeTag(content)
+  }, [content, t])
+  const { mentions, text } = useMemo(() => parseElementMentions(displayContent), [displayContent])
 
   useEffect(() => {
     if (contentRef.current) {

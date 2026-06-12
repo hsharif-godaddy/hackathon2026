@@ -1,13 +1,16 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { buildSecretsComposerCancelUserMessage } from '@airo/shared'
 import Button from '@ux/button'
 import LockIcon from '@ux/icon/locked'
 import DeleteIcon from '@ux/icon/x-thick'
 
+import { secretsComposerSaveLabel } from '@/app/[market]/develop/components/chat/secrets/secretsComposerLabels'
 import IconButton from '@/app/[market]/develop/components/IconButton'
 import { useWebSocketContext } from '@/contexts/WebSocketContext'
 import { useSecretOperations } from '@/hooks/useSecretOperations'
+import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { useCurrentAppId } from '@/stores/useStreamingConversationStore'
 
@@ -98,6 +101,7 @@ export default function ChatSecretsRequestMessage({
   const currentAppId = useCurrentAppId()
   const { sendMessage } = useWebSocketContext()
   const secretOperations = useSecretOperations()
+  const t = useTranslations()
 
   const { title, description, secrets, mode, allowMultiple, showSettingsLink, autoSubmit, existingSecretNames = [] } = payload
 
@@ -468,7 +472,7 @@ export default function ChatSecretsRequestMessage({
   }
 
   const handleCancel = () => {
-    sendMessage({ content: 'I cancelled adding secrets.' })
+    sendMessage({ content: buildSecretsComposerCancelUserMessage() })
   }
 
   // Determine if we can remove a row (can't remove required secrets or if only one row left)
@@ -639,7 +643,7 @@ export default function ChatSecretsRequestMessage({
         {/* Settings Link */}
         {showSettingsLink && (
           <p className="mt-3 text-xs text-typography-lowEmphasis">
-            Or use <span className="font-medium">Secrets</span> in settings for full management.
+            {t('builder_secrets_thread_notice', undefined, 'You can also manage this from secrets settings')}
           </p>
         )}
 
@@ -659,7 +663,7 @@ export default function ChatSecretsRequestMessage({
                 size="sm"
                 onClick={handleCancel}
                 disabled={!isInteractive}
-                text="Cancel"
+                text={t('builder_common_cancel')}
               />
               <Button
                 design="primary"
@@ -692,7 +696,7 @@ export default function ChatSecretsRequestMessage({
                 design="secondary"
                 size="sm"
                 onClick={() => setStatus('pending')}
-                text="Try Again"
+                text={t('builder_common_try_again', undefined, 'Try Again')}
               />
             </div>
           )}

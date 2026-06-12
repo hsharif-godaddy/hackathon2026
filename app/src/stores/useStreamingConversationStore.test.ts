@@ -114,6 +114,75 @@ describe('useStreamingConversationStore', function packageTests() {
       expect(restoredState.messages[0].content).toBe('Hello from app 1');
     });
 
+    it('should persist resolvedSecretsComposerToolCallIds to localStorage on cancel', function persistCancelToStorage() {
+      localStorage.clear()
+
+      act(() => {
+        useStreamingConversationStore.getState().setCurrentAppId('app-1')
+      })
+
+      act(() => {
+        useStreamingConversationStore.getState().cancelSecretsComposerToolCall('tc-1', ['SECRET_A'])
+      })
+
+      expect(localStorage.getItem('airo-secrets-composer-resolved:app-1')).toContain('tc-1:batch')
+      expect(useStreamingConversationStore.getState().resolvedSecretsComposerToolCallIds).toEqual({
+        'tc-1:batch': true,
+        'tc-1:SECRET_A': true,
+      })
+
+      act(() => {
+        useStreamingConversationStore.getState().cleanup()
+      })
+
+      act(() => {
+        useStreamingConversationStore.getState().setCurrentAppId('app-1')
+      })
+
+      expect(useStreamingConversationStore.getState().resolvedSecretsComposerToolCallIds).toEqual({
+        'tc-1:batch': true,
+        'tc-1:SECRET_A': true,
+      })
+    })
+
+    it('should persist resolvedSecretsComposerToolCallIds across app switches', function persistResolvedIds() {
+      // Clear state from previous test
+      localStorage.clear()
+      act(() => {
+        useStreamingConversationStore.getState().cleanup()
+      })
+
+      act(() => {
+        useStreamingConversationStore.getState().setCurrentAppId('app-1')
+      })
+
+      act(() => {
+        useStreamingConversationStore.getState().resolveSecretsComposerToolCall('tc-secrets-1')
+      })
+
+      expect(useStreamingConversationStore.getState().resolvedSecretsComposerToolCallIds).toEqual({
+        'tc-secrets-1': true,
+      })
+
+      act(() => {
+        useStreamingConversationStore.getState().setCurrentAppId('app-2')
+      })
+
+      expect(useStreamingConversationStore.getState().resolvedSecretsComposerToolCallIds).toEqual({})
+
+      act(() => {
+        useStreamingConversationStore.getState().setCurrentAppId('app-1')
+      })
+
+      expect(useStreamingConversationStore.getState().resolvedSecretsComposerToolCallIds).toEqual({
+        'tc-secrets-1': true,
+      })
+
+      expect(
+        useStreamingConversationStore.getState().appChatHistory['app-1']?.resolvedSecretsComposerToolCallIds,
+      ).toEqual({ 'tc-secrets-1': true })
+    })
+
     it('should not restore active stream - let server recovery handle it', function noRestoreActiveStream() {
       const store = useStreamingConversationStore.getState();
 

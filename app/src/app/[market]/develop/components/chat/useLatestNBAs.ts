@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 
+import { pickLatestUnresolvedFromToolCalls } from '@/app/[market]/develop/components/chat/secrets/resolveSecretsRequest'
 import type { ChatMessage, ToolCall } from '@/stores/useStreamingConversationStore'
-import { useActiveStream, useMessages } from '@/stores/useStreamingConversationStore'
+import { useActiveStream, useMessages, useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 
 interface Suggestion {
   text: string
@@ -66,7 +67,6 @@ function extractAskQuestion(toolCall: ToolCall): LatestNBAData | null {
     return null
   }
 
-  // For the chat area, render the first (or current) question
   const currentIndex = widgetData.currentQuestionIndex ?? 0
   const currentQuestion = widgetData.questions[currentIndex]
   if (!currentQuestion?.question || !Array.isArray(currentQuestion.suggestions)) {
@@ -77,9 +77,6 @@ function extractAskQuestion(toolCall: ToolCall): LatestNBAData | null {
     (s: unknown): s is Suggestion => !!s && typeof (s as Suggestion).text === 'string'
   )
 
-  // Text-input questions intentionally have no chip suggestions — the user
-  // types a free-text answer (e.g. a URL). Reject empty suggestions only for
-  // chip-style questions, where zero options means an unanswerable step.
   if (validSuggestions.length === 0 && currentQuestion.type !== 'text') {
     return null
   }
@@ -139,9 +136,18 @@ function extractLatestNBAFromMessages(messages: ChatMessage[]): LatestNBAData | 
 export function useLatestNBAs(): LatestNBAData | null {
   const messages = useMessages()
   const activeStream = useActiveStream()
+  const resolvedSecretsComposerToolCallIds = useStreamingConversationStore(
+    (state) => state.resolvedSecretsComposerToolCallIds,
+  )
 
   return useMemo(() => {
-    // If there's an active (incomplete) stream, no NBAs to show — agent is working
+    if (
+      activeStream?.toolCalls?.length &&
+      pickLatestUnresolvedFromToolCalls(activeStream.toolCalls, resolvedSecretsComposerToolCallIds)
+    ) {
+      return null
+    }
+
     if (activeStream && !activeStream.isComplete) {
       return null
     }
@@ -149,12 +155,11 @@ export function useLatestNBAs(): LatestNBAData | null {
     const lastAssistantIndex = findLastAssistantIndex(messages)
     const nbaConsumed = hasNbaResponseAfter(messages, lastAssistantIndex)
 
-    // Check the completed active stream first (most recent)
     if (activeStream?.isComplete && activeStream.toolCalls) {
       const nba = extractLatestNBAFromToolCalls(activeStream.toolCalls)
       if (nba) return nbaConsumed ? null : nba
     }
 
     return extractLatestNBAFromMessages(messages)
-  }, [messages, activeStream])
+  }, [activeStream, messages, resolvedSecretsComposerToolCallIds])
 }

@@ -3,7 +3,11 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { sendPendingAutoSendMessage } from '@/app/[market]/develop/hooks/sendPendingAutoSendMessage'
+import {
+  sendPendingAutoSendMessage,
+  type SendPendingAutoSendMessageOptions,
+} from '@/app/[market]/develop/hooks/sendPendingAutoSendMessage'
+import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
 import { logger } from '@/lib/request-context'
 
 vi.mock('@/lib/request-context', () => ({
@@ -25,7 +29,7 @@ const MESSAGE = 'Build me a landing page'
 const TEMPLATE_ID = 'logo-designer'
 
 interface BuildOptionsOverrides {
-  send?: ReturnType<typeof vi.fn>
+  send?: (options: SendMessageOptions) => Promise<void>
   setInputValue?: ReturnType<typeof vi.fn>
   markInitialPromptSent?: ReturnType<typeof vi.fn>
   markFirstFileEditSeen?: ReturnType<typeof vi.fn>
@@ -35,19 +39,19 @@ interface BuildOptionsOverrides {
   uploadedFiles?: Array<{ name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean }> | null
 }
 
-function buildOptions(overrides: BuildOptionsOverrides = {}) {
+function buildOptions(overrides: BuildOptionsOverrides = {}): SendPendingAutoSendMessageOptions {
   return {
     messageToSend: MESSAGE,
     appId: APP_ID,
     templateId: 'templateId' in overrides ? overrides.templateId ?? null : TEMPLATE_ID,
     uploadedFiles: overrides.uploadedFiles ?? null,
-    send: overrides.send ?? vi.fn().mockResolvedValue(undefined),
+    send: overrides.send ?? vi.fn<(options: SendMessageOptions) => Promise<void>>().mockResolvedValue(),
     setInputValue: overrides.setInputValue ?? vi.fn(),
     markInitialPromptSent: overrides.markInitialPromptSent ?? vi.fn(),
     markFirstFileEditSeen: overrides.markFirstFileEditSeen ?? vi.fn(),
     onSettled: overrides.onSettled ?? vi.fn(),
     onUploadsFailed: overrides.onUploadsFailed ?? vi.fn(),
-  }
+  } as SendPendingAutoSendMessageOptions
 }
 
 describe('sendPendingAutoSendMessage', () => {
@@ -56,7 +60,7 @@ describe('sendPendingAutoSendMessage', () => {
   })
 
   it('forwards content, aiEditContext, and templateId to send on the success path', async () => {
-    const send = vi.fn().mockResolvedValue(undefined)
+    const send = vi.fn<(options: SendMessageOptions) => Promise<void>>().mockResolvedValue()
 
     await sendPendingAutoSendMessage(buildOptions({ send }))
 
@@ -68,7 +72,7 @@ describe('sendPendingAutoSendMessage', () => {
   })
 
   it('omits templateId when null is provided (preserves "no template" semantics)', async () => {
-    const send = vi.fn().mockResolvedValue(undefined)
+    const send = vi.fn<(options: SendMessageOptions) => Promise<void>>().mockResolvedValue()
 
     await sendPendingAutoSendMessage(buildOptions({ send, templateId: null }))
 
@@ -100,7 +104,7 @@ describe('sendPendingAutoSendMessage', () => {
   })
 
   it('restores the prompt to the input when send rejects (catch path)', async () => {
-    const send = vi.fn().mockRejectedValue(new Error('socket closed'))
+    const send = vi.fn<(options: SendMessageOptions) => Promise<void>>().mockRejectedValue(new Error('socket closed'))
     const setInputValue = vi.fn()
 
     await sendPendingAutoSendMessage(buildOptions({ send, setInputValue }))
@@ -109,7 +113,7 @@ describe('sendPendingAutoSendMessage', () => {
   })
 
   it('logs the failure with appId and error message when send rejects', async () => {
-    const send = vi.fn().mockRejectedValue(new Error('socket closed'))
+    const send = vi.fn<(options: SendMessageOptions) => Promise<void>>().mockRejectedValue(new Error('socket closed'))
 
     await sendPendingAutoSendMessage(buildOptions({ send }))
 
@@ -120,7 +124,7 @@ describe('sendPendingAutoSendMessage', () => {
   })
 
   it('coerces non-Error rejection values into a string for the failure log', async () => {
-    const send = vi.fn().mockRejectedValue('boom')
+    const send = vi.fn<(options: SendMessageOptions) => Promise<void>>().mockRejectedValue('boom')
 
     await sendPendingAutoSendMessage(buildOptions({ send }))
 
@@ -131,7 +135,7 @@ describe('sendPendingAutoSendMessage', () => {
   })
 
   it('still releases the lock and clears refs after a failed send', async () => {
-    const send = vi.fn().mockRejectedValue(new Error('socket closed'))
+    const send = vi.fn<(options: SendMessageOptions) => Promise<void>>().mockRejectedValue(new Error('socket closed'))
     const markInitialPromptSent = vi.fn()
     const onSettled = vi.fn()
 
@@ -170,7 +174,7 @@ describe('sendPendingAutoSendMessage', () => {
   })
 
   it('emits both auto-send.failed and auto-send.finally-failed (with originalError) when send and markInitialPromptSent both throw', async () => {
-    const send = vi.fn().mockRejectedValue(new Error('socket closed'))
+    const send = vi.fn<(options: SendMessageOptions) => Promise<void>>().mockRejectedValue(new Error('socket closed'))
     const markInitialPromptSent = vi.fn(function () {
       throw new Error('storage blocked')
     })
@@ -299,7 +303,7 @@ describe('sendPendingAutoSendMessage', () => {
   })
 
   it('does not include customContext when all uploads fail', async () => {
-    const send = vi.fn().mockResolvedValue(undefined)
+    const send = vi.fn<(options: SendMessageOptions) => Promise<void>>().mockResolvedValue()
     mockRetrieveAndUploadFiles.mockResolvedValue({ uploaded: [], failed: ['file.png'] })
 
     await sendPendingAutoSendMessage(
@@ -319,7 +323,7 @@ describe('sendPendingAutoSendMessage', () => {
 
   it('notifies onUploadsFailed with all expected files when retrieveAndUploadFiles throws', async () => {
     const onUploadsFailed = vi.fn()
-    const send = vi.fn().mockResolvedValue(undefined)
+    const send = vi.fn<(options: SendMessageOptions) => Promise<void>>().mockResolvedValue()
     mockRetrieveAndUploadFiles.mockRejectedValueOnce(new Error('IDB exploded'))
 
     await sendPendingAutoSendMessage(

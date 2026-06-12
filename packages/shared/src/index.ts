@@ -44,6 +44,17 @@ export type { SiteDomainForAttachCheck } from './domain/index.js';
 // Site publish gating (shared by app UI and agents SEO audit)
 export { hasBeenPublished, type PublishCheckableSite } from './site/index.js';
 
+// Secrets composer save/cancel user-message tags (locale-stable detection)
+export {
+  buildSecretsComposerCancelUserMessage,
+  buildSecretsComposerSuccessUserMessage,
+  isSecretsComposerCancelUserContent,
+  isSecretsComposerSuccessUserContent,
+  parseSecretsComposerOutcomeKind,
+  stripSecretsComposerOutcomeTag,
+} from './secrets-composer-outcome/index.js';
+export type { SecretsComposerOutcomeKind } from './secrets-composer-outcome/index.js';
+
 // JSON
 export { safeStringify } from './json/index.js';
 

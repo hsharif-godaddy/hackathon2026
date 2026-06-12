@@ -11,10 +11,13 @@ import { useLatestNBAs } from './useLatestNBAs'
 
 let mockMessages: ChatMessage[] = []
 let mockActiveStream: StreamingMessage | null = null
+const mockResolvedSecretsComposerToolCallIds: Record<string, true> = {}
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useMessages: () => mockMessages,
   useActiveStream: () => mockActiveStream,
+  useStreamingConversationStore: (selector: (s: { resolvedSecretsComposerToolCallIds: Record<string, true> }) => unknown) =>
+    selector({ resolvedSecretsComposerToolCallIds: mockResolvedSecretsComposerToolCallIds }),
 }))
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -94,6 +97,9 @@ function makeActiveStream(
 beforeEach(() => {
   mockMessages = []
   mockActiveStream = null
+  Object.keys(mockResolvedSecretsComposerToolCallIds).forEach((key) => {
+    delete mockResolvedSecretsComposerToolCallIds[key]
+  })
 })
 
 describe('useLatestNBAs', () => {
@@ -101,7 +107,7 @@ describe('useLatestNBAs', () => {
   // ── Active incomplete stream ──────────────────────────────────────────────
 
   describe('when there is an active incomplete stream', () => {
-    it('returns null even if previous messages have NBA data', () => {
+    it('returns null while the stream is still in progress', () => {
       mockMessages = [makeAssistantMessage([makeSuggestedResponseToolCall()])]
       mockActiveStream = makeActiveStream(false)
 
@@ -109,8 +115,34 @@ describe('useLatestNBAs', () => {
       expect(result.current).toBeNull()
     })
 
-    it('returns null when the active stream itself has a suggestedResponse tool call', () => {
+    it('returns null for incomplete streams even when tool calls are present', () => {
       mockActiveStream = makeActiveStream(false, [makeSuggestedResponseToolCall()])
+
+      const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current).toBeNull()
+    })
+
+    it('returns null when active stream has a pending requestSecrets tool call', () => {
+      mockActiveStream = makeActiveStream(false, [
+        makeSuggestedResponseToolCall(),
+        {
+          id: 'tc-secrets',
+          name: 'requestSecrets',
+          status: 'completed',
+          input: {},
+          result: {
+            success: true,
+            secretsRequired: true,
+            secretsRequest: {
+              type: 'secrets_request',
+              title: 'API key',
+              description: 'From provider console',
+              secrets: [{ name: 'OPENAI_API_KEY', required: true }],
+              mode: 'add',
+            },
+          },
+        },
+      ])
 
       const { result } = renderHook(() => useLatestNBAs())
       expect(result.current).toBeNull()
@@ -244,6 +276,70 @@ describe('useLatestNBAs', () => {
       const { result } = renderHook(() => useLatestNBAs())
       // newerAssistant has no suggestedResponse; older one should NOT be checked
       expect(result.current).toBeNull()
+    })
+
+    it('reuses suggestedResponse from the secrets turn when cancel is the latest message', () => {
+      const secretsTurn = makeAssistantMessage([
+        makeSuggestedResponseToolCall({
+          widgetData: {
+            question: 'What next?',
+            suggestions: [{ text: 'Try again later' }],
+          },
+        }),
+      ])
+      mockMessages = [
+        secretsTurn,
+        { ...makeUserMessage(), content: 'I cancelled entering the requested secret(s).' },
+      ]
+
+      const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current?.suggestions).toEqual([{ text: 'Try again later' }])
+    })
+
+    it('reuses suggestedResponse from the post-save assistant when save confirmation is the latest message', () => {
+      const secretsTurn = makeAssistantMessage([
+        {
+          id: 'tc-secrets',
+          name: 'requestSecrets',
+          status: 'completed',
+          input: {},
+          result: { secretsRequired: true },
+        },
+      ])
+      const postSaveTurn = makeAssistantMessage([
+        makeSuggestedResponseToolCall({
+          widgetData: {
+            question: 'What next?',
+            suggestions: [{ text: 'Call OpenAI from the app' }],
+          },
+        }),
+      ])
+      mockMessages = [
+        secretsTurn,
+        { ...makeUserMessage(), content: 'Secret added successfully: OPENAI_API_KEY' },
+        postSaveTurn,
+      ]
+
+      const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current?.suggestions).toEqual([{ text: 'Call OpenAI from the app' }])
+    })
+
+    it('reuses suggestedResponse from the secrets turn when save confirmation is the latest message', () => {
+      const secretsTurn = makeAssistantMessage([
+        makeSuggestedResponseToolCall({
+          widgetData: {
+            question: 'What next?',
+            suggestions: [{ text: 'Wire up OpenAI calls' }],
+          },
+        }),
+      ])
+      mockMessages = [
+        secretsTurn,
+        { ...makeUserMessage(), content: 'Secret added successfully: OPENAI_API_KEY' },
+      ]
+
+      const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current?.suggestions).toEqual([{ text: 'Wire up OpenAI calls' }])
     })
 
     it('picks the last suggestedResponse in the last assistant message toolCalls', () => {

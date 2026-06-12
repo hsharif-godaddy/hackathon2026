@@ -6,6 +6,7 @@ import '@testing-library/jest-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 
+import * as useSecretsComposerTakeoverModule from '@/app/[market]/develop/components/chat/secrets/useSecretsComposerTakeover'
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import type { ColorSchemePaletteOption } from '@/app/[market]/develop/components/utils/findLatestColorSchemeSuggest'
 import { previewThemeInIframe } from '@/app/[market]/develop/components/utils/previewThemeInIframe'
@@ -54,6 +55,10 @@ vi.mock('@/stores/useTodoListStore', () => ({
 
 vi.mock('./useLatestNBAs', () => ({
   useLatestNBAs: vi.fn()
+}))
+
+vi.mock('@/app/[market]/develop/components/chat/secrets/useSecretsComposerTakeover', () => ({
+  useSecretsComposerTakeover: vi.fn(function () { return null; }),
 }))
 
 vi.mock('@/hooks/useSwitchboard', () => ({
@@ -183,6 +188,7 @@ describe('InputActionsPanel', () => {
     vi.mocked(TodoListStore.useCurrentList).mockReturnValue(null)
     vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
     vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(null)
+    vi.mocked(useSecretsComposerTakeoverModule.useSecretsComposerTakeover).mockReturnValue(null)
     vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.PREVIEW, isMobile: false }); }
     )
   })
@@ -354,6 +360,7 @@ describe('InputActionsPanel', () => {
         expect(lastCall[1]).toContain('askq:') // per-turn key
         // The choicelist is rendered by ChatInput's swap slot, not inline here.
         expect(screen.queryByText('Change the color scheme')).not.toBeInTheDocument()
+        expect(screen.queryByTestId('input-actions-panel-card')).not.toBeInTheDocument()
       })
 
       it('hoists the NBA/next-action default collapsible with an nba: key and a dismiss-X', async () => {
@@ -448,6 +455,33 @@ describe('InputActionsPanel', () => {
 
         expect(onChoiceSurfaceChange).not.toHaveBeenCalled()
         expect(screen.getByText('Change the color scheme')).toBeInTheDocument()
+      })
+
+      it('renders nothing when secrets composer takeover is active', async () => {
+        vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(nbaSuggestions)
+        vi.mocked(useSecretsComposerTakeoverModule.useSecretsComposerTakeover).mockReturnValue({
+          toolCallId: 'tc-secrets',
+          secretKey: 'tc-secrets:API_KEY',
+          allSecretNames: ['API_KEY'],
+          displayMode: 'single',
+          payload: {
+            type: 'secrets_request',
+            title: 'API key',
+            secrets: [{ name: 'API_KEY', required: true }],
+            mode: 'add',
+          },
+        })
+
+        const onChoiceSurfaceChange = vi.fn()
+        renderWithProviders(
+          <InputActionsPanel
+            choiceSwapEnabled
+            onChoiceSurfaceChange={onChoiceSurfaceChange}
+          />,
+        )
+
+        expect(screen.queryByTestId('collapsible-section-continue-building')).not.toBeInTheDocument()
+        expect(screen.queryByTestId('input-actions-panel-card')).not.toBeInTheDocument()
       })
     })
   })

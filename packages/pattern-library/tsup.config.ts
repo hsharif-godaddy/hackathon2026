@@ -90,6 +90,10 @@ export default defineConfig({
   format: ['esm', 'cjs'],
   outDir: 'dist',
   clean: false,
+  // Shared chunk files (chunk-*.js) break Next.js resolution when dist is
+  // partially rebuilt — entry index.js can reference a chunk hash that no
+  // longer exists. Self-contained entries avoid that class of errors.
+  splitting: false,
   sourcemap: true,
   target: 'es2020',
   external: [

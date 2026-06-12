@@ -95,7 +95,7 @@ describe('auth/refresh route POST', () => {
         expect(fetchMock.mock.calls[0][0]).toBe('https://sso.godaddy.com/v1/api/token/ui_heartbeat');
     });
 
-    it('targets the test SSO host for dev fqdns', async () => {
+    it('targets the dev SSO host for dev-godaddy.com fqdns', async () => {
         const fetchMock = vi.fn().mockResolvedValue(
             buildSsoResponse({ status: 200, setCookies: ['auth_jomax=new; Path=/; Secure'] })
         );
@@ -103,7 +103,7 @@ describe('auth/refresh route POST', () => {
         const { POST } = await import('../route');
         const res = await POST(makeRequest('local.gasket.dev-godaddy.com:8443'));
         expect(res.status).toBe(200);
-        expect(fetchMock.mock.calls[0][0]).toBe('https://sso.test-godaddy.com/v1/api/token/ui_heartbeat');
+        expect(fetchMock.mock.calls[0][0]).toBe('https://sso.dev-godaddy.com/v1/api/token/ui_heartbeat');
     });
 
     it('returns 401 when SSO heartbeat returns 401', async () => {

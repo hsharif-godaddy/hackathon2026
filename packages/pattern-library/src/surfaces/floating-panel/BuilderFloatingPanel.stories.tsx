@@ -577,6 +577,7 @@ function BuilderSplitDemo({ initialShow = false }: { initialShow?: boolean }) {
         label="EMAIL_API_KEY"
         helperText="Token from your provider's developer settings."
         placeholder="sk-••••••••••••••••"
+        submitLabel="Save"
         onSubmit={handleSecretSubmit}
         onClose={handleSecretCancel}
       />
@@ -699,6 +700,7 @@ function BuilderSplitDemo({ initialShow = false }: { initialShow?: boolean }) {
         label="EMAIL_API_KEY"
         helperText="Token from your provider's developer settings."
         placeholder="sk-••••••••••••••••"
+        submitLabel="Save"
         onSubmit={handleSecretSubmit}
         onClose={handleSecretCancel}
       />

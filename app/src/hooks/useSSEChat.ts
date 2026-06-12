@@ -1041,7 +1041,9 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     const hasText = Boolean(options.content?.trim())
     const hasReferencedFiles = (options.customContext?.referencedFiles?.length ?? 0) > 0
     const hasSelectedAssets = (options.selectedAssets?.length ?? 0) > 0
-    if (!hasText && !hasReferencedFiles && !hasSelectedAssets) return
+    if (!hasText && !hasReferencedFiles && !hasSelectedAssets) {
+      return
+    }
 
     if (!activeAppId) {
       logger.error('sse.send_message.no_app_id', {})

@@ -4,22 +4,23 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { isEmployeeAuthType } from '@airo/shared/auth';
-import Box from '@ux/box';
 import Growl from '@ux/growl';
 
 import { AssetManagerItem, MediaType } from '@/app/[market]/develop/components/chat/AssetTypes';
 import ChatBanners from '@/app/[market]/develop/components/chat/banners/ChatBanners';
+import ChatComposerSlot from '@/app/[market]/develop/components/chat/ChatComposerSlot';
 import {
   ChatContext,
   type SendMessageOptions as SendChatMessageOptions,
 } from '@/app/[market]/develop/components/chat/ChatContext';
-import ChatInput, { type StagedChatFile } from '@/app/[market]/develop/components/chat/ChatInput';
+import { type StagedChatFile } from '@/app/[market]/develop/components/chat/ChatInput';
 import ChatToolbar from '@/app/[market]/develop/components/chat/ChatToolbar';
 import {
   DebugStatsProvider,
 } from '@/app/[market]/develop/components/chat/DebugStatsContext';
 import { DebugStatsPanel } from '@/app/[market]/develop/components/chat/DebugStatsDrawer';
 import { UploadedFile } from '@/app/[market]/develop/components/chat/FileUploadButton';
+import { useSecretsComposerTakeover } from '@/app/[market]/develop/components/chat/secrets';
 import {
   getStagedFilePreviewUrl,
   revokeStagedFilePreviewIfCached,
@@ -52,6 +53,7 @@ import { useTodoListLoader } from '@/hooks/useTodoListLoader';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useVenture } from '@/hooks/useVenture';
 import { useVisitedTabs } from '@/hooks/useVisitedTabs';
+import { getConversationIdFromCookie } from '@/hooks/websocket/useWebSocketHelpers';
 import ChatBanner from '@/lib/ChatBanner';
 import { getFileUploadAgent } from '@/lib/file-agent';
 import { shipAnalyticsLog } from '@/lib/logging';
@@ -312,6 +314,11 @@ function ChatPaneInner({
   const visitedTabs = useVisitedTabs(activeChatTab);
 
   const appId = useAppIdFromParams();
+
+  const activeSecretsRequest = useSecretsComposerTakeover()
+  const showSecretsComposer = activeSecretsRequest != null
+  const secretsComposerConversationId =
+    showSecretsComposer && currentAppId ? getConversationIdFromCookie(currentAppId) : undefined
 
   const showPostPublishFeatureSelection = useDevelopPageStore((state) =>
     appId && state.publishStates?.[appId]
@@ -1412,7 +1419,7 @@ function ChatPaneInner({
               </ChatBanner>
             </div>
           )}
-          <ChatInput
+          <ChatComposerSlot
             activeColorSchemeSuggest={activeColorSchemeSuggest}
             activeFontThemeSuggest={activeFontThemeSuggest}
             appId={appId}
@@ -1442,6 +1449,8 @@ function ChatPaneInner({
             onLargePasteDetected={handleLargePasteDetected}
             mediaLimitError={uploadError}
             userMessages={userMessages}
+            secretsComposer={showSecretsComposer ? activeSecretsRequest : null}
+            secretsComposerConversationId={secretsComposerConversationId ?? undefined}
           />
           <DebugStatsPanel />
         </div>
@@ -1542,7 +1551,7 @@ function ChatPaneInner({
                 </ChatBanner>
               </div>
             )}
-            <ChatInput
+            <ChatComposerSlot
               activeColorSchemeSuggest={activeColorSchemeSuggest}
               activeFontThemeSuggest={activeFontThemeSuggest}
               appId={appId}
@@ -1575,6 +1584,8 @@ function ChatPaneInner({
               onLargePasteDetected={handleLargePasteDetected}
               mediaLimitError={uploadError}
               userMessages={userMessages}
+              secretsComposer={showSecretsComposer ? activeSecretsRequest : null}
+              secretsComposerConversationId={secretsComposerConversationId ?? undefined}
             />
           </div>
           <DebugStatsPanel />

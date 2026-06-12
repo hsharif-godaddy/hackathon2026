@@ -1,3 +1,4 @@
+import { isSecretsComposerSuccessUserContent } from '@airo/shared'
 import { getModel } from '@airo/ai-lib'
 import { generateText } from 'ai'
 
@@ -91,6 +92,19 @@ export class NextActionsService {
         .join('\n\n')
       if (formatted) {
         contextParts.push(`=== RECENT MESSAGES (since last summary) ===\n${formatted}`)
+      }
+
+      const lastUserMessage = [...recentMessages].reverse().find(msg => msg.sender === 'user')
+      const secretsJustSaved =
+        lastUserMessage != null &&
+        isSecretsComposerSuccessUserContent((lastUserMessage.content ?? '').trim())
+      if (secretsJustSaved) {
+        contextParts.push(
+          '=== SECRETS JUST SAVED ===\n' +
+            'The user just saved API credentials in the builder. Suggest 2-4 concrete build tasks ' +
+            'for the developer to work on next. Do not return an empty array solely because the ' +
+            "assistant's last message asked an open-ended question — chips should be actionable tasks.",
+        )
       }
     }
 

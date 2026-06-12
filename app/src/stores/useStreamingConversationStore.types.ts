@@ -106,6 +106,12 @@ export interface StreamingMessage {
   }
 }
 
+export interface AppChatHistoryEntry {
+  messages: ChatMessage[]
+  activeStream: StreamingMessage | null
+  resolvedSecretsComposerToolCallIds: Record<string, true>
+}
+
 // Completed message (finalized)
 export interface ChatMessage {
   id: string
@@ -204,8 +210,8 @@ export interface StreamingConversationState {
   currentAgentName: string | null
   developmentPlan: PlanItem[]
 
-  // Per-app chat cache: messages and active streams
-  appChatHistory: Record<string, { messages: ChatMessage[], activeStream: StreamingMessage | null }>
+  // Per-app chat cache: messages, active streams, and resolved secrets composer tool calls
+  appChatHistory: Record<string, AppChatHistoryEntry>
 
   // WebSocket state
   websocket: WebSocketState
@@ -229,6 +235,9 @@ export interface StreamingConversationState {
 
   // Server capabilities (for backwards compatibility)
   serverCapabilities: ServerCapabilities | null
+
+  /** requestSecrets toolCallIds dismissed or saved in the secrets composer (mirrored per app in appChatHistory) */
+  resolvedSecretsComposerToolCallIds: Record<string, true>
 
   // Subagent events keyed by tool ID
   subagentEvents: Record<string, Array<{ event: string; agent: string; detail: string }>>
@@ -313,6 +322,8 @@ export interface StreamingConversationState {
   mergeMessageMetadata: (messageId: string, metadataUpdates: Record<string, unknown>) => void
   clearMessages: () => void
   cleanup: () => void
+  resolveSecretsComposerToolCall: (toolCallId: string) => void
+  cancelSecretsComposerToolCall: (toolCallId: string, allSecretNames: string[]) => void
 
   // === UTILITY FUNCTIONS ===
 

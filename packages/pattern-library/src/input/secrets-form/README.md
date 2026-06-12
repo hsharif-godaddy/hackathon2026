@@ -109,7 +109,7 @@ Set **`borderless`** to drop the form's outer card chrome (background, border, r
 
 - The **locked** icon is decorative (`aria-hidden`); the eyebrow (**`h3`**, default **"New Secret"**) carries the cue visually (title case, short heading, no terminal period).
 - The secret name is a **`<label htmlFor={…}>`** for the field (accessible name); **`aria-describedby`** includes helper and error ids when present.
-- **`variant="composer"`** always renders the header **X**; it uses **`closeLabel`** (default “Close”). **`showSecretLabel`** / **`hideSecretLabel`** override the visibility toggle’s **`aria-label`** (defaults **“Show value”** / **“Hide value”**). **`variant="conversation"`** uses **`submitLabel`** / **`cancelLabel`** for visible Save/Cancel text (defaults **“Save”** / **“Cancel”** when omitted).
+- **`variant="composer"`** always renders the header **X**; it uses **`closeLabel`** (default “Close”). **`showSecretLabel`** / **`hideSecretLabel`** override the visibility toggle’s **`aria-label`** (defaults **“Show value”** / **“Hide value”**). **`submitLabel`** is **required** (host supplies i18n, e.g. `builder_common_save`). **`variant="conversation"`** also uses **`cancelLabel`** (default **“Cancel”** when omitted).
 
 ## Gotchas
 
