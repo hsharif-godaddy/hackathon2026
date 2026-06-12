@@ -402,17 +402,17 @@ function InputActionsPanelLegacy({
     return (
       <InputActionsPanelCard headerOnly={thinkingHeaderOnly}>
         <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between px-1 py-0.5 my-[4px] min-h-[22px]">
-            <Thinker label={thinkerLabel} indicator={thinkerIndicator} />
+          <div className="flex items-center justify-between gap-2 px-1 py-0.5 my-[4px] min-h-[22px]">
+            <Thinker label={thinkerLabel} indicator={thinkerIndicator} className="shrink-0" />
             {hasPlan && !fullPlanExpanded && (
               <button
                 type="button"
-                className="flex items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 ml-2"
+                className="flex items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground transition-colors min-w-0"
                 onClick={() => setFullPlanExpanded(true)}
               >
-                <span>{t('builder_todo_view_plan', { completed: completedCount, total: totalItems })}</span>
+                <span className="truncate">{t('builder_todo_view_plan', { completed: completedCount, total: totalItems })}</span>
                 <svg
-                  className="w-2 h-2 transition-transform duration-200"
+                  className="w-2 h-2 shrink-0 transition-transform duration-200"
                   style={{ transform: fullPlanExpanded ? 'rotate(180deg)' : undefined }}
                   fill="none"
                   strokeLinecap="round"
@@ -1536,18 +1536,18 @@ function InputActionsPanelThemeSelection({
     return (
       <InputActionsPanelCard headerOnly={thinkingHeaderOnly}>
         <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between px-1 py-0.5 my-[4px] min-h-[22px]">
-            <Thinker label={thinkerLabel} indicator={thinkerIndicator} />
+          <div className="flex items-center justify-between gap-2 px-1 py-0.5 my-[4px] min-h-[22px]">
+            <Thinker label={thinkerLabel} indicator={thinkerIndicator} className="shrink-0" />
             {hasPlan && !showAnySuggest && (
               <button
                 type="button"
-                className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 ml-2"
+                className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors min-w-0"
                 onClick={() => {
                   setFullPlanExpanded(v => !v)
                   autoExpandedRef.current = false
                 }}
               >
-                <span>{currentList.name}</span>
+                <span className="truncate">{currentList.name}</span>
                 <CollapseChevron expanded={fullPlanExpanded} />
               </button>
             )}

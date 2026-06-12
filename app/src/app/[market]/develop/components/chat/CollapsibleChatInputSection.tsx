@@ -34,7 +34,7 @@ export type CollapsibleChatInputSectionProps = {
 
 export function CollapseChevron({ expanded }: { expanded: boolean }) {
   return (
-    <ChevronDown className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
+    <ChevronDown className={`transition-transform duration-200 shrink-0 ${expanded ? 'rotate-180' : ''}`} />
   )
 }
 
