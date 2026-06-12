@@ -14,6 +14,9 @@ vi.mock('../ViteConfigModifier.js', () => ({
 
 vi.mock('../../logging/index.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  Logger: {
+    create: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
+  },
 }));
 
 const { processAndGenerateViteConfig } = await import('../ViteConfigModifier.js');
