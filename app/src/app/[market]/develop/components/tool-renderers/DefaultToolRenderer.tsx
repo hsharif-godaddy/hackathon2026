@@ -1,9 +1,8 @@
 'use client'
 
-import { Wrench } from 'lucide-react'
-
 import MarkdownRenderer from '@/app/[market]/develop/components/MarkdownRenderer'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
+import { getToolIcon } from '@/app/[market]/develop/components/tool-renderers/toolIcons'
 import ToolModal from '@/app/[market]/develop/components/tool-renderers/ToolModal'
 import type { ToolStatus } from '@/app/[market]/develop/components/types'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -66,7 +65,7 @@ export default function DefaultToolRenderer({
   return (
     <div>
       <ToolHeader
-        icon={<Wrench className="w-2 h-2" />}
+        icon={getToolIcon(toolName)}
         displayName={getToolDisplayName(toolName)}
         toolStatus={toolStatus}
         hasDetails={hasDetails}

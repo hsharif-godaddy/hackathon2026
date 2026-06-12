@@ -157,6 +157,9 @@ export function getToolDisplayName(toolName: string): string {
       return 'Icons Validator'
     case 'validateCode':
       return 'Validate Code'
+    case 'httpCheck':
+    case 'http_check':
+      return 'Validate Endpoint'
     case 'todo_list':
     case 'todoList':
       return 'Todo List'

@@ -215,6 +215,16 @@ describe('getToolDisplayName', () => {
     });
   });
 
+  describe('http check variants', () => {
+    it('should map "httpCheck" to "Validate Endpoint"', () => {
+      expect(getToolDisplayName('httpCheck')).toBe('Validate Endpoint');
+    });
+
+    it('should map "http_check" to "Validate Endpoint"', () => {
+      expect(getToolDisplayName('http_check')).toBe('Validate Endpoint');
+    });
+  });
+
   describe('todo list variants', () => {
     it('should map "todo_list" to "Todo List"', () => {
       expect(getToolDisplayName('todo_list')).toBe('Todo List');

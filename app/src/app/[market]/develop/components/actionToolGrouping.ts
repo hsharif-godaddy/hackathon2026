@@ -35,6 +35,7 @@ const ACTION_GROUP_TOOL_NAMES = new Set([
   'viewLogs',
   'websiteScraper',
   'skill',
+  'httpCheck',
   'listDesignSystems',
   'installDesignSystem',
   'loadUiKit',

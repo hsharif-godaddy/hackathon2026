@@ -6,6 +6,7 @@
  */
 
 import {
+  Activity,
   Database,
   File,
   FileCode,
@@ -90,6 +91,10 @@ export function getToolIcon(toolName: string | undefined): React.ReactNode {
 
     case 'skill':
       return <Package className={ICON_CLASS} aria-hidden="true" />
+
+    case 'httpCheck':
+    case 'http_check':
+      return <Activity className={ICON_CLASS} aria-hidden="true" />
 
     case 'listDesignSystems':
     case 'installDesignSystem':
