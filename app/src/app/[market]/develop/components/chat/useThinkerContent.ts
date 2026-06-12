@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 
-import { useTranslations } from '@/hooks/useTranslations'
-import { useActiveRunningToolName, useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
-import { getToolActiveDisplayName } from '@/utils/toolNameMapping'
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+import { deriveSubAgentLifecycle } from '@/utils/subagentStatus'
+import { useThinkerLabel } from './useThinkerLabel'
 
 export interface SubAgentStep {
   toolId: string
@@ -48,18 +48,21 @@ function formatToolDetail(raw: string): string {
 }
 
 export function useThinkerContent(): ThinkerContent {
-  const t = useTranslations()
-  const runningToolName = useActiveRunningToolName()
-  const activeLabel = runningToolName ? getToolActiveDisplayName(runningToolName, t) : null
-  const label = activeLabel ?? t('builder_agent_thinking')
+  const label = useThinkerLabel()
 
   const activeStream = useStreamingConversationStore((state) => state.activeStream)
   const subagentEvents = useStreamingConversationStore((state) => state.subagentEvents)
 
   const subAgentSteps = useMemo((): SubAgentStep[] => {
-    const runningTools = activeStream?.toolCalls?.filter(
-      (tc) => tc.name === 'runAgent' && tc.status === 'running'
-    )
+    // A runAgent tool call completes the instant its dispatch is acked, but the
+    // sub-agent keeps running detached. Derive "still running" from the event
+    // stream, not the tool call's own status, so the timeline reflects sub-agents
+    // that are actually in flight.
+    const runningTools = activeStream?.toolCalls?.filter((tc) => {
+      if (tc.name !== 'runAgent') return false
+      const events = subagentEvents[tc.id] ?? []
+      return deriveSubAgentLifecycle(events, tc.status) === 'running'
+    })
     if (!runningTools?.length) return []
 
     return runningTools.map((tc) => {

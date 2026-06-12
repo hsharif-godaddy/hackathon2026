@@ -53,7 +53,7 @@ export { httpCheckAITool } from './http-check.js';
 export { listDesignSystemsAITool } from './list-design-systems.js'
 export { installDesignSystemAITool } from './install-design-system.js'
 export { showDocAITool } from './show-doc.js';
-export { runAgentAITool } from './run-agent.js'
+export { runAgentAITool, awaitAgentsAITool } from './run-agent.js'
 export { returnToParentAITool } from './return-to-parent.js';
 
 // Re-import for registry
@@ -103,7 +103,7 @@ import { httpCheckAITool } from './http-check.js';
 import { listDesignSystemsAITool } from './list-design-systems.js';
 import { installDesignSystemAITool } from './install-design-system.js';
 import { showDocAITool } from './show-doc.js';
-import { runAgentAITool } from './run-agent.js'
+import { runAgentAITool, awaitAgentsAITool } from './run-agent.js'
 import { returnToParentAITool } from './return-to-parent.js';
 import { screenshotAITool } from './screenshot.js';
 import { crawlPagesAITool } from './crawl-pages.js';
@@ -166,6 +166,7 @@ export const allAILibTools: Record<string, Tool> = {
   installDesignSystem: installDesignSystemAITool,
   showDoc: showDocAITool,
   runAgent: runAgentAITool,
+  awaitAgents: awaitAgentsAITool,
   returnToParent: returnToParentAITool,
   screenshot: screenshotAITool,
   crawlPages: crawlPagesAITool,

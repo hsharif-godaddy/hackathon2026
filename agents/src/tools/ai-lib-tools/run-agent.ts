@@ -1,13 +1,15 @@
 import { createTool, type Tool, type AgentContext } from '@airo/ai-lib'
 import { z } from 'zod'
 
-import { SubAgentRunner, type SubAgentEvent } from '../../agents/sub-agent-runner.js'
+import { SubAgentRunner, buildContinuationMessage, type SubAgentEvent } from '../../agents/sub-agent-runner.js'
 import { getSubAgentConfig, type SubAgentName as BackgroundAgentName } from '../../agents/sub-agents/index.js'
 import { interactiveSubAgentManager } from '../../agents/interactive-sub-agent-manager.js'
 import { createInteractiveInterviewConfig } from '../../agents/sub-agents/interview.js'
 import { maybeEmitDebugTurnStats } from '../../server/debug-stats-emit.js'
 import { computeDebugTurnStats } from '../../utils/debug-turn-stats.js'
 import { Logger } from '../../logging/index.js'
+import { subAgentJobRegistry } from '../../agents/sub-agent-job-registry.js'
+import { detectStaleFiles } from '../../agents/sub-agent-transcript.js'
 
 const logger = Logger.create({ component: 'run-agent-tool' })
 
@@ -18,7 +20,7 @@ export const runAgentAITool: Tool = createTool(
   `Dispatch a task to a specialized sub-agent. Each sub-agent runs in its own context with its own tools.
 
 Modes:
-- "background" (default): Sub-agent runs internally and returns a summary. Cannot ask the user questions. Multiple background calls in the same turn execute in parallel.
+- "background" (default): Sub-agent is dispatched NON-BLOCKING. Returns { jobId, status: "running" } immediately. You MUST call awaitAgents([jobId]) to get results before using them. Multiple background calls can be dispatched in the same turn for true parallelism, then awaited together.
 - "interactive": Sub-agent takes over the conversation temporarily. It CAN ask the user questions via askQuestion. Only one interactive agent at a time. Use for tasks requiring user input (e.g. interview).
 
 Available agents: discovery (research/scraping), planning (write implementation plans), plan-review (review and fix plans against quality criteria), media (find/generate images), design (create/update design.md + CSS), builder (execute plans, write code), interview (structured Q&A with user to produce docs/brief.md), verification (run automated checks against built app).`,
@@ -28,6 +30,8 @@ Available agents: discovery (research/scraping), planning (write implementation 
     task: z.string().describe('Natural language task description for the sub-agent'),
     inputs: z.record(z.string(), z.union([z.string(), z.array(z.string())])).default({}).describe('Structured context: file paths, URLs, search queries, etc.'),
     mode: z.enum(['background', 'interactive']).default('background').describe('"background" runs internally (no user interaction). "interactive" lets the sub-agent ask questions.'),
+    continue: z.boolean().default(false).describe('Re-enter a prior sub-agent run, replaying its context instead of starting cold. Use for follow-up edits.'),
+    fromJobId: z.string().optional().describe('The jobId of the prior run to continue. If omitted and exactly one completed job of this agent type exists, that one is used.'),
   }),
   async (input, context) => {
     const { agent, task, inputs, mode } = input
@@ -48,6 +52,16 @@ Available agents: discovery (research/scraping), planning (write implementation 
     }
 
     logger.info('runAgent.dispatching', { agent, appId, task: task.slice(0, 100) })
+
+    // conversationId is the registry key and a load-bearing invariant (it lets
+    // detached-job completion/abort callbacks find the right registry). Fail loud
+    // rather than fall back to a shared 'unknown' bucket, which would let jobs,
+    // sessions, and aborts cross-contaminate between conversations.
+    const conversationId = context?.metadata?.conversationId as string | undefined
+    if (!conversationId) {
+      throw new Error('runAgent requires conversationId in context metadata')
+    }
+    const registry = subAgentJobRegistry.get(conversationId)
 
     const subAgentConfig = await getSubAgentConfig(agent as BackgroundAgentName, appPath)
     const runner = new SubAgentRunner(subAgentConfig)
@@ -77,7 +91,7 @@ Available agents: discovery (research/scraping), planning (write implementation 
           }
           const statsInput = {
             appId,
-            conversationId: (context?.metadata?.conversationId as string) ?? 'unknown',
+            conversationId,
             agentName: `sub:${event.agent}`,
             modelName: usage.modelName,
             inputTokens: usage.inputTokens,
@@ -100,24 +114,88 @@ Available agents: discovery (research/scraping), planning (write implementation 
       }
     }
 
-    const result = await runner.execute(task, inputs, emitEvent, context as unknown as Record<string, unknown> | undefined)
+    const wantContinue = input.continue
+    const fromJobId = input.fromJobId
 
-    if (result.status === 'error') {
-      logger.error('runAgent.failed', {
-        agent,
-        appId,
-        summary: result.summary?.slice(0, 200),
-      })
-      throw new Error(`Sub-agent "${agent}" failed: ${result.summary}`)
+    // Ambiguous re-entry: continue with no explicit fromJobId, but more than one
+    // completed run of this agent type is cached. Don't silently guess (or cold-run)
+    // — make the model choose. Resolved before dispatch so the model gets the error
+    // synchronously instead of via awaitAgents.
+    if (wantContinue && !fromJobId) {
+      const candidates = registry.sessionJobIdsByAgent(agent)
+      if (candidates.length > 1) {
+        logger.info('runAgent.reentry.ambiguous', { agent, appId, candidates })
+        return {
+          agent,
+          title: input.title,
+          status: 'error',
+          error: `Ambiguous re-entry: ${candidates.length} completed "${agent}" runs are cached (${candidates.join(', ')}). Pass fromJobId to choose which run to continue.`,
+        }
+      }
     }
 
-    logger.info('runAgent.completed', {
-      agent,
-      appId,
-      artifactCount: result.artifacts.length,
+    const jobId = registry.dispatch({ agent, title: input.title }, async (signal) => {
+      const session = wantContinue
+        ? (fromJobId ? registry.getSession(fromJobId) : registry.findLatestSessionByAgent(agent)?.session)
+        : undefined
+
+      let result
+      if (session) {
+        const stale = await detectStaleFiles([...session.filesRead, ...session.filesWritten], appPath)
+        const contextualTask = buildContinuationMessage(task, stale)
+        result = await runner.continueExecution(
+          session.messages,
+          contextualTask,
+          inputs,
+          emitEvent,
+          context as unknown as Record<string, unknown> | undefined,
+          signal
+        )
+      } else {
+        result = await runner.execute(
+          task,
+          inputs,
+          emitEvent,
+          context as unknown as Record<string, unknown> | undefined,
+          signal
+        )
+      }
+
+      // A deliberate cancellation (user stop / recovery-timeout) surfaces as a
+      // signalled abort with the runner returning { status: 'error' }. Report it
+      // as 'aborted' — not a failure — so logs and the UI card don't treat every
+      // Stop as an error.
+      const aborted = signal.aborted
+      if (aborted) {
+        logger.info('runAgent.aborted', { agent, appId })
+      } else if (result.status === 'error') {
+        logger.error('runAgent.failed', { agent, appId, summary: result.summary?.slice(0, 200) })
+      } else {
+        logger.info('runAgent.completed', { agent, appId, artifactCount: result.artifacts.length, reentry: !!session })
+      }
+
+      // Detached dispatch returns only { jobId } to the model, so the sub-agent's
+      // final outputs no longer ride back on the tool result. Emit them as a final
+      // structured event (JSON detail, like the `usage` event) so the UI's runAgent
+      // card can flip from running → done and render summary/artifacts/visualOutputs
+      // the moment the job finishes — independent of when awaitAgents is called.
+      emitEvent({
+        event: 'outputs',
+        agent,
+        detail: JSON.stringify({
+          status: aborted ? 'aborted' : result.status,
+          summary: result.summary,
+          artifacts: result.artifacts,
+          visualOutputs: result.visualOutputs ?? [],
+          ...(result.docPath ? { docPath: result.docPath } : {}),
+        }),
+      })
+
+      return result
     })
 
-    return result
+    const status = registry.snapshot().find(j => j.jobId === jobId)?.status ?? 'running'
+    return { jobId, agent, title: input.title, status }
   }
 )
 
@@ -182,3 +260,24 @@ async function handleInteractiveMode(
 
   return { ok: true, interactive: true, agent: childAgentName }
 }
+
+export const awaitAgentsAITool: Tool = createTool(
+  `Wait for one or more previously dispatched sub-agent jobs to finish, then return their results.
+
+Pass the jobIds returned by earlier runAgent calls. Blocks until all listed jobs complete. Returns each job's status ("success" | "error" | "aborted"), summary, artifacts, and (on failure) error. A failed job is reported as a structured error result — it does NOT throw — so you can decide whether to retry or route around it.`,
+  z.object({
+    jobIds: z.array(z.string()).min(1).describe('Job IDs returned by prior runAgent dispatches'),
+  }),
+  async (input, context) => {
+    // Must resolve the SAME registry the jobs were dispatched into — see the
+    // conversationId invariant note in runAgent. Fail loud rather than join a
+    // shared 'unknown' bucket and return spurious "No job" errors.
+    const conversationId = context?.metadata?.conversationId as string | undefined
+    if (!conversationId) {
+      throw new Error('awaitAgents requires conversationId in context metadata')
+    }
+    const registry = subAgentJobRegistry.get(conversationId)
+    const results = await registry.await(input.jobIds)
+    return { results }
+  }
+)

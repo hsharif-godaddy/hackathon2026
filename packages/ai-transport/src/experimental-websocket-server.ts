@@ -184,6 +184,13 @@ export interface WebSocketConfig {
   /** Event handlers */
   onConnection?: (socketId: string, meta?: { recoveryMode?: string; previousSocketId?: string }) => void | Promise<void>
   onDisconnection?: (socketId: string, meta?: { reason?: string; transport?: string | undefined }) => void | Promise<void>
+  /**
+   * Called when an active stream is aborted by an explicit user stop or by the
+   * disconnect recovery window expiring (NOT on normal completion or transient
+   * disconnect). Lets the host tear down work tied to the conversation
+   * (e.g. background sub-agent jobs). Must not throw.
+   */
+  onStreamAbort?: (conversationId: string, reason: string) => void
   onMessageStart?: (socketId: string, message: string, agentName?: string, context?: Record<string, unknown>) => void | Promise<void>
   /**
    * Called BEFORE message completion to allow for pre-completion operations
@@ -667,6 +674,7 @@ export class WebSocketServer {
         }
         this.stateManager.updateConnection(socketId, { userStopped: true })
         stateData.abortController.abort('user_stopped')
+        this.notifyStreamAbort(socketId, 'user_stopped')
         this.logger.info('stop_generation', { socketId })
         ack?.({ success: true })
       })
@@ -850,6 +858,7 @@ export class WebSocketServer {
           const timeoutId = setTimeout(() => {
             this.logger.warn('socket.disconnect.recovery_expired', { socketId })
             stateData.abortController?.abort('user_cancel')
+            this.notifyStreamAbort(socketId, 'recovery_timeout')
             // Don't call cleanupConversation here — it races with completeConversation
             // in handleChatMessageInternal. completeConversation persists the message
             // first, then handleChatMessageInternal cleans up state after.
@@ -1316,6 +1325,19 @@ export class WebSocketServer {
       if (spanKey.startsWith(`${socketId}:`)) {
         this.activeObservabilityToolSpans.delete(spanKey)
       }
+    }
+  }
+
+  /** Notify the host that a conversation's stream was aborted (user stop / recovery timeout). */
+  private notifyStreamAbort(socketId: string, reason: string): void {
+    try {
+      const stateData = this.stateManager.getStateData(socketId)
+      const conversationId = stateData?.conversationId
+      if (conversationId) {
+        this.config.onStreamAbort?.(conversationId, reason)
+      }
+    } catch (err) {
+      this.logger.warn('stream_abort.notify_failed', { socketId, error: err instanceof Error ? err.message : String(err) })
     }
   }
 
@@ -2197,6 +2219,7 @@ export class WebSocketServer {
           const newTimeoutId = setTimeout(() => {
             this.logger.warn('disconnect.recovery_expired_early', { socketId })
             controller.abort('user_cancel')
+            this.notifyStreamAbort(socketId, 'recovery_timeout')
             // Don't call cleanupConversation here — same race as the primary timeout.
             // handleChatMessageInternal cleans up after completeConversation finishes.
           }, this.STREAM_RECOVERY_WINDOW)

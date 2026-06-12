@@ -29,7 +29,9 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsLoading: vi.fn(),
   useMessages: vi.fn(),
   useActiveStream: vi.fn(function () { return null; }),
-  useActiveRunningToolName: vi.fn(function () { return null; })
+  useActiveRunningToolName: vi.fn(function () { return null; }),
+  useActiveAwaitAgentsCount: vi.fn(function () { return 0; }),
+  useAwaitedJobResult: vi.fn(function () { return undefined; })
 }))
 
 vi.mock('@/app/[market]/develop/hooks/useRebuildPages', async function importRebuildPages() {

@@ -7,11 +7,13 @@
 
 import {
   Activity,
+  Bot,
   Database,
   File,
   FileCode,
   FileText,
   GitBranch,
+  Hourglass,
   ListTodo,
   Package,
   Palette,
@@ -95,6 +97,12 @@ export function getToolIcon(toolName: string | undefined): React.ReactNode {
     case 'httpCheck':
     case 'http_check':
       return <Activity className={ICON_CLASS} aria-hidden="true" />
+
+    case 'runAgent':
+      return <Bot className={ICON_CLASS} aria-hidden="true" />
+
+    case 'awaitAgents':
+      return <Hourglass className={ICON_CLASS} aria-hidden="true" />
 
     case 'listDesignSystems':
     case 'installDesignSystem':

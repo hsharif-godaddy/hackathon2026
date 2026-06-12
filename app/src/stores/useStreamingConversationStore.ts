@@ -150,7 +150,13 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       currentStep: 1,
       inputValue: '', // Clear input
       isLoading: true,
-      subagentEvents: {},
+      // NOTE: do NOT clear subagentEvents here. Sub-agent jobs are detached and
+      // can outlive the dispatching turn; deep-build also auto-continues into a
+      // fresh turn (new stream) after awaitAgents. Wiping events per-turn made
+      // already-completed runAgent cards (still mounted from prior turns) lose
+      // their terminal `outputs` event and revert to the running state. Events
+      // are keyed by globally-unique tool ids, so they're cleared with the
+      // messages they describe (clearMessages / cleanup) instead.
     }))
   },
 
@@ -970,6 +976,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       activeStream: null,
       streamingState: 'idle',
       resolvedSecretsComposerToolCallIds: {},
+      subagentEvents: {},
     })
   },
 
@@ -989,6 +996,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       currentAppId: null,
       inputValue: '',
       isLoading: false,
+      subagentEvents: {},
       aiEditContext: null,
       aiEditContexts: [],
       appChatHistory: {},

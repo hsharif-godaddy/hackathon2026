@@ -1,7 +1,10 @@
+import type { ModelMessage } from 'ai'
 import type { Tool } from '@airo/ai-lib'
 import { AgentWrapper, getModel } from '@airo/ai-lib'
 import { Logger } from '../logging/index.js'
 import { skillToolManager } from '../tools/skill-tool-manager.js'
+import type { FileAccess } from './sub-agent-transcript.js'
+import { extractTranscript, extractFileAccess, truncateTranscript, WRITE_TOOL_NAMES } from './sub-agent-transcript.js'
 
 const logger = Logger.create({ component: 'sub-agent-runner' })
 
@@ -32,7 +35,7 @@ export interface SubAgentConfig {
 }
 
 export interface SubAgentEvent {
-  event: 'started' | 'tool_call' | 'progress' | 'completed' | 'error' | 'usage'
+  event: 'started' | 'tool_call' | 'progress' | 'completed' | 'error' | 'usage' | 'outputs'
   agent: string
   detail: string
 }
@@ -43,14 +46,16 @@ export interface SubAgentResult {
   status: 'success' | 'error'
   docPath?: string
   visualOutputs?: VisualOutput[]
+  /** Internal: captured transcript for re-entry. Stripped before returning to the model. */
+  _session?: { messages: ModelMessage[]; filesRead: FileAccess[]; filesWritten: FileAccess[] }
+  /** Internal: agent id for the captured session. */
+  _sessionAgent?: string
 }
-
-const ARTIFACT_TOOL_NAMES = new Set(['writeFile', 'str_replace_based_edit_tool', 'fileEdit'])
 
 function extractArtifacts(toolResults: Array<{ toolName: string; result: unknown }>): string[] {
   const paths = new Set<string>()
   for (const { toolName, result } of toolResults) {
-    if (ARTIFACT_TOOL_NAMES.has(toolName) && result && typeof result === 'object') {
+    if (WRITE_TOOL_NAMES.has(toolName) && result && typeof result === 'object') {
       const path = (result as Record<string, unknown>).path
       if (typeof path === 'string') {
         paths.add(path)
@@ -90,6 +95,43 @@ function formatToolDetail(toolName: string, args: unknown, result: unknown): str
   return `Using ${toolName}...`
 }
 
+interface StepForSession {
+  response: { messages: ModelMessage[] }
+  toolResults?: Array<{ toolName: string; args: Record<string, unknown>; result: unknown }>
+}
+
+/**
+ * Build the re-entry session transcript from a run's steps.
+ * Fresh run: pass no priorMessages → the original task is prepended.
+ * Continuation: pass priorMessages → prepended, then the continuation's user
+ * turn, then the new response messages. The AI SDK's `response.messages` carries
+ * only assistant/tool roles (the prompt is passed separately to streamGenerate),
+ * so we must re-insert the user turn ourselves — mirroring extractTranscript —
+ * or replays of consecutive assistant blocks lose the instruction that drove them.
+ */
+export function buildSessionTranscript(
+  steps: StepForSession[],
+  userMessage: string,
+  priorMessages?: ModelMessage[]
+): { messages: ModelMessage[]; filesRead: FileAccess[]; filesWritten: FileAccess[] } {
+  const responseMsgs = steps[steps.length - 1]?.response?.messages ?? []
+  const userTurn = { role: 'user', content: [{ type: 'text', text: userMessage }] } as ModelMessage
+  const full = priorMessages
+    ? [...priorMessages, userTurn, ...responseMsgs]
+    : extractTranscript(steps, userMessage)
+  return {
+    messages: truncateTranscript(full),
+    filesRead: extractFileAccess(steps, 'read'),
+    filesWritten: extractFileAccess(steps, 'write'),
+  }
+}
+
+export function buildContinuationMessage(task: string, staleFiles: string[]): string {
+  if (staleFiles.length === 0) return task
+  const list = staleFiles.map(f => `- ${f}`).join('\n')
+  return `Note: these files have changed since you last read or wrote them — re-read them before relying on your prior knowledge:\n${list}\n\n${task}`
+}
+
 function buildUserMessage(task: string, inputs: Record<string, string | string[]>): string {
   const parts: string[] = [task]
   for (const [key, value] of Object.entries(inputs)) {
@@ -113,11 +155,34 @@ export class SubAgentRunner {
     task: string,
     inputs: Record<string, string | string[]>,
     onEvent: (event: SubAgentEvent) => void,
-    executionContext?: Record<string, unknown>
+    executionContext?: Record<string, unknown>,
+    signal?: AbortSignal
+  ): Promise<SubAgentResult> {
+    return this.run(task, inputs, onEvent, executionContext, signal)
+  }
+
+  async continueExecution(
+    priorMessages: ModelMessage[],
+    task: string,
+    inputs: Record<string, string | string[]>,
+    onEvent: (event: SubAgentEvent) => void,
+    executionContext?: Record<string, unknown>,
+    signal?: AbortSignal
+  ): Promise<SubAgentResult> {
+    return this.run(task, inputs, onEvent, executionContext, signal, priorMessages)
+  }
+
+  private async run(
+    task: string,
+    inputs: Record<string, string | string[]>,
+    onEvent: (event: SubAgentEvent) => void,
+    executionContext?: Record<string, unknown>,
+    signal?: AbortSignal,
+    priorMessages?: ModelMessage[]
   ): Promise<SubAgentResult> {
     const { id, name, system, tools, model, maxSteps, temperature, maxOutputTokens, visualOutputExtractors, enablePromptCaching } = this.config
 
-    onEvent({ event: 'started', agent: name, detail: 'Starting task execution' })
+    onEvent({ event: 'started', agent: name, detail: priorMessages ? 'Resuming prior context' : 'Starting task execution' })
 
     try {
       const languageModel = await getModel(model)
@@ -156,7 +221,11 @@ export class SubAgentRunner {
       }, skillToolManager)
 
       const userMessage = buildUserMessage(task, inputs)
-      const streamResult = await agent.streamGenerate(userMessage, { executionContext })
+      const streamResult = await agent.streamGenerate(userMessage, {
+        executionContext,
+        ...(signal && { abortSignal: signal }),
+        ...(priorMessages && { messages: priorMessages }),
+      })
 
       let fullText = ''
       let lastProgressEmit = Date.now()
@@ -218,12 +287,17 @@ export class SubAgentRunner {
 
       onEvent({ event: 'completed', agent: name, detail: fullText })
 
+      const sessionSteps = (Array.isArray(fullResult.steps) ? fullResult.steps : []) as StepForSession[]
+      const session = buildSessionTranscript(sessionSteps, userMessage, priorMessages)
+
       return {
         summary: fullText,
         artifacts,
         status: 'success',
         ...(docPath && { docPath }),
         ...(visualOutputs.length > 0 && { visualOutputs }),
+        _session: session,
+        _sessionAgent: id,
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)

@@ -3283,6 +3283,29 @@ describe('WebSocketServer - Stop Generation', () => {
 
     server.close()
   })
+
+  it('should call onStreamAbort with conversationId and "user_stopped" when stop_generation fires', async () => {
+    const onStreamAbort = vi.fn()
+    const { server, stopHandler } = await setupWithStopHandler()
+    // Patch the server config to include onStreamAbort spy
+    ;(server as any).config.onStreamAbort = onStreamAbort
+
+    const stateManager = (server as any).stateManager
+    stateManager.createConnection(mockSocket.id, {
+      conversationId: 'conv-abort-test',
+      agentName: 'test-agent',
+      context: { socketId: mockSocket.id, agentName: 'test-agent' }
+    })
+    const abortController = new AbortController()
+    stateManager.updateConnection(mockSocket.id, { abortController })
+
+    await stopHandler({}, vi.fn())
+
+    expect(onStreamAbort).toHaveBeenCalledTimes(1)
+    expect(onStreamAbort).toHaveBeenCalledWith('conv-abort-test', 'user_stopped')
+
+    server.close()
+  })
 })
 
 describe('BusinessContext Enrichment', () => {

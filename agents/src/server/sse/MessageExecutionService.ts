@@ -86,6 +86,7 @@ import {
 } from '../context-builders.js'
 import { computeDebugTurnStats } from '../../utils/debug-turn-stats.js'
 import { interactiveSubAgentManager } from '../../agents/interactive-sub-agent-manager.js'
+import { subAgentJobRegistry } from '../../agents/sub-agent-job-registry.js'
 import { AppRepository } from '../../database/repositories/index.js'
 import { buildAppliedSkillsContextMessage } from '../applied-skills-context.js'
 
@@ -272,6 +273,8 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         // preventing it from publishing a duplicate terminal event.
         this.activeStreams.delete(conversationId)
         controller.abort('no_subscriber_timeout')
+        // tear down detached sub-agent jobs for this conversation
+        subAgentJobRegistry.abort(conversationId)
 
         void this.publishTerminal(appId, conversationId, {
           conversationId,
@@ -394,6 +397,8 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     }
 
     controller.abort('user_stopped')
+    // tear down detached sub-agent jobs for this conversation
+    subAgentJobRegistry.abort(conversationId)
     const active = this.activeStreams.get(conversationId)
     logger.info('sse.execution.stopped', { conversationId, ...(active?.requestId && { requestId: active.requestId }) })
 

@@ -49,6 +49,7 @@ export async function createDeepBuildAgent(): Promise<AgentConfig> {
     tools: {
       askQuestion: allAILibTools.askQuestion,
       runAgent: allAILibTools.runAgent,
+      awaitAgents: allAILibTools.awaitAgents,
       todoList: allAILibTools.todoList,
       showDoc: allAILibTools.showDoc,
       readFile: allAILibTools.readFile,
@@ -57,7 +58,7 @@ export async function createDeepBuildAgent(): Promise<AgentConfig> {
     },
     stopAfterTools: ['askQuestion'],
     stopWhen: [hasInteractiveRunAgent()],
-    maxSteps: 50,
+    maxSteps: 100,
     temperature: 0.3,
     maxOutputTokens: 16000,
     timeout: { stepMs: 600_000 },

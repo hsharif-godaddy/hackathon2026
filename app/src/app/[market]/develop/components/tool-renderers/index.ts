@@ -8,6 +8,7 @@
  */
 
 import AskQuestionToolRenderer from './AskQuestionToolRenderer'
+import AwaitAgentsToolRenderer from './AwaitAgentsToolRenderer'
 import CampaignPlanProposeToolRenderer from './CampaignPlanProposeToolRenderer'
 import CampaignPlanToolRenderer from './CampaignPlanToolRenderer'
 import ColorSchemeToolRenderer from './ColorSchemeToolRenderer'
@@ -125,6 +126,7 @@ export const toolRendererRegistry = {
   publishing__publish: PublishClientToolRenderer,
   returnToParent: () => null,
   runAgent: RunAgentToolRenderer,
+  awaitAgents: AwaitAgentsToolRenderer,
   websiteRebuild: WebsiteRebuildToolRenderer,
   rebuildPageSelector: RebuildPageSelectorToolRenderer,
   rebuildBuildPage: RebuildBuildPageToolRenderer,

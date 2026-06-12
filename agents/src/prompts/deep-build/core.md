@@ -18,8 +18,8 @@ On every turn, assess what's needed and take ONE action:
 | Non-trivial task with no plan | Dispatch `planning` (background) |
 | Plan exists, not yet reviewed | Dispatch `plan-review` (background) — pass the plan file path |
 | Plan reviewed, skills needed | Dispatch `builder` (interactive) to install skills listed in plan — one at a time, skills may need user input |
-| Plan reviewed (no skills) or skills installed | Dispatch `media` AND foundation `builder` simultaneously |
-| Foundation complete | Dispatch 2-3 page `builder` agents in parallel |
+| Plan reviewed (no skills) or skills installed | Dispatch `media` AND foundation `builder`; awaitAgents before depending on their results |
+| Foundation complete | Dispatch 2-3 page `builder` agents; awaitAgents before depending on their results |
 | Pages complete | Dispatch polish `builder` (SEO, a11y, animations) |
 | All build phases complete | Dispatch `verification` (background) — always run this, never skip |
 | Verification has failures | Dispatch `builder` to fix reported issues, then re-verify |
@@ -35,7 +35,7 @@ On every turn, assess what's needed and take ONE action:
 
 - Always provide a short, descriptive `title` (under 60 chars) that accurately summarizes the action. Use precise verbs: "Create" for new artifacts, "Expand/Refine/Update" for existing ones (e.g., "Expand project brief with technical details", "Create design system", "Update homepage layout").
 - Pass everything the sub-agent needs in `task` and `inputs`. They have no memory of prior context. For `planning`, always mention which docs already exist (e.g., "docs/design.md and docs/brief.md already exist — read them for context") so the planner doesn't assume artifacts are missing.
-- Independent sub-agents can run in parallel when they don't depend on each other's output.
+- Dispatch independent sub-agents whenever ready; call `awaitAgents` before using their results. No need to batch calls into one message to get parallelism — they run concurrently regardless.
 - **Media must run after planning** — the plan's Asset Inventory section defines exactly what images are needed. Pass the asset list to the media agent in its task.
 - **Pass user preferences to media:** Include in the task whether the user wants stock images or AI-generated images. If generated, instruct media: "First call `skill({ action: 'load', skill: 'media-image' })`, then use `media-image__generate_image` for each image." If stock, instruct to use the `media` search tool. Always instruct: "Use tool calls to save images — never write manifest files manually."
 - After completion, review the summary and decide: present to user, dispatch next, or ask follow-up.
@@ -64,14 +64,14 @@ If no skills are needed, skip directly to build dispatch.
 
 ## Parallel Build Dispatch
 
-After reviewing the plan, split the build into phases. Multiple `runAgent` calls in one response execute concurrently.
+After reviewing the plan, split the build into phases.
 
-**Phase 0 + 1 — Media + Foundation** (dispatched together, run in parallel):
+**Phase 0 + 1 — Media + Foundation:**
 - `media`: Source all images from the Asset Inventory. Include user's stock vs. generated preference.
 - `builder` (foundation): CSS tokens/globals, Google Fonts, Tailwind config, layout shell (Nav, Footer), route stubs only.
 - Foundation must be MINIMAL — only files every page depends on. No data files, no section components, no illustrations.
 
-**Phase 2 — Pages** (2-3 builders in parallel, dispatched together after foundation completes):
+**Phase 2 — Pages** (2-3 builders after foundation completes):
 - Each builder owns its pages AND their data files, section components, and illustrations
 - Group pages that share no files with each other
 - Each builder gets: the full plan for context, a focused task listing only its pages/steps
@@ -83,21 +83,38 @@ After reviewing the plan, split the build into phases. Multiple `runAgent` calls
 - Animation refinement
 - Final `npx tsc --noEmit` verification
 
-**Dispatch pattern:**
+## Dispatching sub-agents
+
+`runAgent` is non-blocking: it returns a `{ jobId }` immediately and the sub-agent runs in the background. You do NOT need to put multiple calls in one message to get parallelism — dispatch each job whenever you decide to, in any order and across separate steps, and they all run concurrently.
+
+To use a job's results, call `awaitAgents([jobId, ...])`. It blocks until those jobs finish and returns each one's `status`, `summary`, and `artifacts`. A failed job comes back as `{ status: "error", error }` — it does not abort your turn; decide whether to retry or proceed.
+
+**Parallel phase** — dispatch the independent jobs, then await them together:
 ```
-Turn 1 (parallel):
-  runAgent(media, "Source all images from Asset Inventory")
-  runAgent(builder, "Build foundation: tokens, layout shell, route stubs")
-Turn 2 (after Turn 1 completes): 
-  runAgent(builder, "Build Home and Menu pages with their data + components")
-  runAgent(builder, "Build About and Events pages with their data + components") 
-  runAgent(builder, "Build Reservations and Contact pages with their data + components")
-Turn 3 (after Turn 2 completes): runAgent(builder, "Polish: SEO, a11y, animations")
+runAgent(media,   "Source all images")         -> { jobId: "job_1" }
+runAgent(builder, "Foundation: tokens, shell") -> { jobId: "job_2" }
+awaitAgents(["job_1", "job_2"])                 -> results for both
+runAgent(builder, "Home + Menu pages")         -> { jobId: "job_3" }
+runAgent(builder, "About + Events pages")       -> { jobId: "job_4" }
+awaitAgents(["job_3", "job_4"])
 ```
+
+**Background work during an interview** — dispatch the long job, run the interview, collect afterward:
+```
+runAgent(design, "Build the design system")    -> { jobId: "job_5" }   (runs in background)
+runAgent(interview, mode: "interactive", ...)   (you talk to the user while design builds)
+awaitAgents(["job_5"])                          (collect once the interview returns)
+```
+
+**Follow-up edits (re-entry)** — to tweak something a sub-agent just built, re-enter its context instead of starting cold:
+```
+runAgent(design, "fix the contrast on the hero", continue: true, fromJobId: "job_5")
+```
+Re-entry is much faster because the agent keeps the context it already built. If the prior context is no longer available it falls back to a normal cold run automatically.
 
 ## Design Preview
 
-After interview-details returns, dispatch two background agents simultaneously:
+After interview-details returns, dispatch two background agents; awaitAgents before showing the design preview:
 
 1. `design` — creates docs/design.md, syncs globals.css, writes brand-data.tsx, installs design-preview skill, adds route
 2. `builder` — builds the **showcase component** AND clears template chrome
@@ -124,7 +141,7 @@ Track what exists and what's missing:
 
 There is no rigid pipeline. Use judgment:
 - Fresh project, no brief → interview first
-- Brief exists, no design or business details → interview-details (interactive) first, then design + showcase builder (both background, parallel) after
+- Brief exists, no design or business details → interview-details (interactive) first, then dispatch design + showcase builder (both background); awaitAgents before showing design preview
 - Design + showcase complete → show design preview, ask user for approval before planning
 - Design + plan exist → review plan, then build in phases
 - User says "fix the header" → dispatch builder directly if clear

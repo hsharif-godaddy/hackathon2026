@@ -180,6 +180,8 @@ vi.mock('@/stores/useStreamingConversationStore', () => {
     useStreamingConversationStore: store,
     useIsActivelyStreaming: () => mockStreamingStore.isActivelyStreaming,
     useActiveRunningToolName: () => null,
+    useActiveAwaitAgentsCount: () => 0,
+    useAwaitedJobResult: () => undefined,
     useConversationPagination: () => mockStreamingStore.pagination,
     useCurrentAppId: () => mockStreamingStore.currentAppId,
     useHistoryLoadingComplete: () => mockStreamingStore.historyLoadingComplete,

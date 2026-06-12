@@ -32,6 +32,86 @@ const activeRunningToolNameSelector = (state: StreamingConversationState): strin
 }
 
 export const useActiveRunningToolName = () => useStreamingConversationStore(activeRunningToolNameSelector)
+
+// Count of jobs the active running tool is awaiting — 0 unless the last running
+// tool is `awaitAgents`. Returns a primitive so the selector stays referentially
+// stable across unrelated store updates.
+const activeAwaitAgentsCountSelector = (state: StreamingConversationState): number => {
+  const tools = state.activeStream?.toolCalls
+  if (!tools?.length) return 0
+  for (let i = tools.length - 1; i >= 0; i--) {
+    const tc = tools[i]!
+    if (tc.status !== 'running') continue
+    if (tc.name !== 'awaitAgents') return 0
+    const jobIds = (tc.input as { jobIds?: unknown }).jobIds
+    return Array.isArray(jobIds) ? jobIds.length : 0
+  }
+  return 0
+}
+
+export const useActiveAwaitAgentsCount = () => useStreamingConversationStore(activeAwaitAgentsCountSelector)
+
+/** A single job's outcome as carried in a persisted `awaitAgents` tool result. */
+export interface AwaitedJobResult {
+  jobId: string
+  agent?: string
+  title?: string
+  status: 'queued' | 'running' | 'success' | 'error' | 'aborted'
+  summary?: string
+  artifacts?: string[]
+  error?: string
+}
+
+function indexAwaitedJobs(
+  map: Map<string, AwaitedJobResult>,
+  toolCalls: ReadonlyArray<{ name: string; result?: Record<string, unknown> | string }> | undefined,
+): void {
+  if (!toolCalls) return
+  for (const tc of toolCalls) {
+    if (tc.name !== 'awaitAgents') continue
+    const res = tc.result
+    if (!res || typeof res !== 'object') continue
+    const results = (res as { results?: AwaitedJobResult[] }).results
+    if (!results) continue
+    for (const r of results) map.set(r.jobId, r) // later/active wins
+  }
+}
+
+// jobId → AwaitedJobResult index, memoized by the messages/activeStream refs so
+// the O(messages × toolCalls) scan runs once per store change and is shared by
+// every mounted runAgent card (O(1) lookup each), rather than re-scanning per card.
+let cachedAwaitedIndex: {
+  messages: StreamingConversationState['messages']
+  activeStream: StreamingConversationState['activeStream']
+  map: Map<string, AwaitedJobResult>
+} | null = null
+
+function getAwaitedJobIndex(state: StreamingConversationState): Map<string, AwaitedJobResult> {
+  if (
+    cachedAwaitedIndex &&
+    cachedAwaitedIndex.messages === state.messages &&
+    cachedAwaitedIndex.activeStream === state.activeStream
+  ) {
+    return cachedAwaitedIndex.map
+  }
+  const map = new Map<string, AwaitedJobResult>()
+  // Oldest → newest, active stream last, so the most recent result wins.
+  for (const msg of state.messages) indexAwaitedJobs(map, msg.toolCalls)
+  indexAwaitedJobs(map, state.activeStream?.toolCalls)
+  cachedAwaitedIndex = { messages: state.messages, activeStream: state.activeStream, map }
+  return map
+}
+
+// Durable terminal status for a runAgent card after its live events are gone
+// (e.g. page reload): look up the persisted awaitAgents result for this jobId.
+// Returns the JobResult object reference (stable across renders), so the selector
+// is referentially safe.
+const awaitedJobResultSelector = (jobId: string | undefined) =>
+  (state: StreamingConversationState): AwaitedJobResult | undefined =>
+    jobId ? getAwaitedJobIndex(state).get(jobId) : undefined
+
+export const useAwaitedJobResult = (jobId: string | undefined) =>
+  useStreamingConversationStore(awaitedJobResultSelector(jobId))
 export const useInputValue = () => useStreamingConversationStore(state => state.inputValue)
 export const useIsLoading = () => useStreamingConversationStore(state => state.isLoading)
 export const useCurrentAppId = () => useStreamingConversationStore(state => state.currentAppId)

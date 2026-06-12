@@ -1,15 +1,22 @@
 'use client'
 
-import { CheckCircle2, ChevronDown, ChevronUp, FileText, Globe, Loader2, XCircle } from 'lucide-react'
+import { ChevronDown, ChevronUp, FileText, Globe } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import MarkdownRenderer from '@/app/[market]/develop/components/MarkdownRenderer'
+import { useTranslations } from '@/hooks/useTranslations'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
-import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+import { useAwaitedJobResult, useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+import { deriveSubAgentLifecycle, parseSubagentOutputs } from '@/utils/subagentStatus'
 import type { DefaultToolRendererProps } from './DefaultToolRenderer'
+import { getToolIcon } from './toolIcons'
 import ToolModal from './ToolModal'
 
-const EMPTY_EVENTS: Array<{ detail: string }> = []
+const EMPTY_EVENTS: Array<{ event: string; agent: string; detail: string }> = []
+
+// Events that carry machine payloads (JSON) rather than human-readable progress
+// text — excluded from the inline detail line and the activity log.
+const NON_PROGRESS_EVENTS = new Set(['outputs', 'usage', 'completed', 'error'])
 
 interface VisualOutput {
   type: 'media' | 'page' | 'doc'
@@ -44,12 +51,16 @@ export default function RunAgentToolRenderer({
   input,
   result,
 }: DefaultToolRendererProps): React.ReactElement | null {
+  const t = useTranslations()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isActivityExpanded, setIsActivityExpanded] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const events = useStreamingConversationStore((state) => state.subagentEvents[toolId ?? '']) ?? EMPTY_EVENTS
   const openDoc = useDevelopPageStore((state) => state.openDoc)
   const openPreviewPage = useDevelopPageStore((state) => state.openPreviewPage)
+  // Durable terminal status for after a reload, when live events are gone.
+  const jobId: string | undefined = (result as { jobId?: string } | undefined)?.jobId
+  const awaited = useAwaitedJobResult(jobId)
 
   useEffect(() => {
     if (isActivityExpanded && scrollRef.current) {
@@ -62,56 +73,75 @@ export default function RunAgentToolRenderer({
 
   const title: string = (input as { title?: string } | undefined)?.title ?? ''
   const task: string = (input as { task?: string } | undefined)?.task ?? ''
-  const typedResult = result as {
+
+  // The sub-agent runs detached: its true lifecycle and final outputs arrive on
+  // the event stream (the `outputs` event), not on the runAgent tool result
+  // (which now only carries { jobId, status: 'running' }). After a reload the
+  // events are gone, so fall back to the persisted awaitAgents result for this
+  // job, then to the tool result (blocking-mode/legacy payloads).
+  const lifecycle = deriveSubAgentLifecycle(events, toolStatus, awaited?.status)
+  const outputs = parseSubagentOutputs(events)
+  const legacyResult = result as {
     summary?: string
     artifacts?: string[]
     status?: string
     docPath?: string
     visualOutputs?: VisualOutput[]
   } | undefined
-  const isError: boolean = typedResult?.status === 'error'
 
-  const latestDetail: string = events.length > 0 ? events[events.length - 1]!.detail : ''
+  const summary: string | undefined = outputs?.summary ?? awaited?.summary ?? awaited?.error ?? legacyResult?.summary
+  const artifacts: string[] | undefined = outputs?.artifacts ?? awaited?.artifacts ?? legacyResult?.artifacts
+  const visualOutputs = (outputs?.visualOutputs ?? legacyResult?.visualOutputs) as VisualOutput[] | undefined
 
-  const statusIcon = isError
-    ? <XCircle className="w-3 h-3 text-intents-ux-textDanger-color flex-shrink-0" />
-    : toolStatus === 'completed'
-      ? <CheckCircle2 className="w-3 h-3 text-intents-ux-textSuccess-color flex-shrink-0" />
-      : toolStatus === 'running'
-        ? <Loader2 className="w-3 h-3 text-intents-ux-textLowContrast-color animate-spin flex-shrink-0" />
-        : null
+  const isRunning = lifecycle === 'running'
+  const isError = lifecycle === 'error'
+  const isDone = lifecycle === 'success'
+  const isAborted = lifecycle === 'aborted'
 
-  const visualOutputs = typedResult?.visualOutputs
+  const progressEvents = events.filter((e) => !NON_PROGRESS_EVENTS.has(e.event))
+  const latestDetail: string = progressEvents.length > 0 ? progressEvents[progressEvents.length - 1]!.detail : ''
+
   const mediaOutputs = visualOutputs?.filter(o => o.type === 'media') ?? []
   const pageOutputs = dedupByLabel(visualOutputs?.filter(o => o.type === 'page') ?? [])
   const docOutputs = dedupByLabel(visualOutputs?.filter(o => o.type === 'doc') ?? [])
 
-  const displayLabel = title || truncateTask(task, 80) || 'Sub-agent task'
+  const displayLabel = title || truncateTask(task, 80) || t('builder_subagent_run_fallback_title', undefined, 'Sub-agent task')
 
   return (
     <>
       <div
-        className="rounded-md border border-intents-ux-borderLowContrast-color p-2.5 my-2 cursor-pointer hover:bg-intents-ux-surface-subtle-fillColor transition-colors"
+        className="my-1.5 cursor-pointer group"
         data-testid="run-agent-renderer"
         onClick={() => setIsModalOpen(true)}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setIsModalOpen(true) }}
       >
-        <div className="flex items-center gap-2">
-          {statusIcon}
-          <span className="text-xs text-intents-ux-text-textColor truncate flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className={`flex-shrink-0 ${isError ? 'text-intents-ux-textDanger-color' : 'text-intents-ux-textLowContrast-color'}`}>
+            {getToolIcon('runAgent')}
+          </span>
+          <span
+            className={
+              isRunning
+                ? 'text-xs text-shimmer truncate flex-1'
+                : `text-xs truncate flex-1 group-hover:underline ${isError ? 'text-intents-ux-textDanger-color' : isAborted ? 'text-intents-ux-textLowContrast-color' : 'text-intents-ux-text-textColor'}`
+            }
+          >
             {displayLabel}
           </span>
-          {toolStatus === 'running' && latestDetail && (
+          {isAborted && (
+            <span className="text-xs text-intents-ux-textLowContrast-color flex-shrink-0">{t('builder_status_stopped', undefined, 'Stopped')}</span>
+          )}
+          {isRunning && latestDetail && (
             <span className="text-xs text-intents-ux-textLowContrast-color truncate max-w-[200px]">
               {latestDetail}
             </span>
           )}
         </div>
 
-        {toolStatus === 'completed' && mediaOutputs.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-2 ml-5" onClick={(e) => e.stopPropagation()}>
+        {isDone && mediaOutputs.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2 ml-3.5" onClick={(e) => e.stopPropagation()}>
             {mediaOutputs.slice(0, 6).map((output, i) => (
               <div key={i} className="w-12 h-12 rounded overflow-hidden border border-intents-ux-borderLowContrast-color">
                 {(output.thumbnailUrl || output.url) ? (
@@ -131,8 +161,8 @@ export default function RunAgentToolRenderer({
           </div>
         )}
 
-        {toolStatus === 'completed' && pageOutputs.length > 0 && (
-          <div className="grid grid-cols-2 gap-1 mt-2 ml-5">
+        {isDone && pageOutputs.length > 0 && (
+          <div className="grid grid-cols-2 gap-1 mt-2 ml-3.5">
             {pageOutputs.map((output, i) => (
               <button
                 key={i}
@@ -147,12 +177,12 @@ export default function RunAgentToolRenderer({
           </div>
         )}
 
-        {toolStatus === 'completed' && docOutputs.length > 0 && (() => {
+        {isDone && docOutputs.length > 0 && (() => {
           const pageLabels = new Set(pageOutputs.map(p => p.label))
           const filtered = docOutputs.filter(o => !pageLabels.has(o.label))
           if (filtered.length === 0) return null
           return (
-            <div className="flex flex-col gap-0.5 mt-2 ml-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex flex-col gap-0.5 mt-2 ml-3.5" onClick={(e) => e.stopPropagation()}>
               {filtered.map((output, i) => {
                 const path = output.url ?? output.label
                 const isPageRoute = path.startsWith('/')
@@ -172,9 +202,9 @@ export default function RunAgentToolRenderer({
           )
         })()}
 
-        {isError && typedResult?.summary && (
-          <div className="text-xs mt-1.5 ml-5 text-intents-ux-textDanger-color truncate">
-            {typedResult.summary.split('\n')[0]?.slice(0, 100)}
+        {isError && summary && (
+          <div className="text-xs mt-1.5 ml-3.5 text-intents-ux-textDanger-color truncate">
+            {summary.split('\n')[0]?.slice(0, 100)}
           </div>
         )}
       </div>
@@ -185,31 +215,31 @@ export default function RunAgentToolRenderer({
         title={displayLabel}
       >
         <div className="flex-1 overflow-y-auto space-y-4">
-          {typedResult?.summary && (
+          {summary && (
             <div className="prose prose-sm max-w-none dark:prose-invert">
-              <MarkdownRenderer content={typedResult.summary} />
+              <MarkdownRenderer content={summary} />
             </div>
           )}
 
-          {typedResult?.artifacts && typedResult.artifacts.length > 0 && (
+          {artifacts && artifacts.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold mb-1">Files</h3>
+              <h3 className="text-sm font-semibold mb-1">{t('builder_common_files', undefined, 'Files')}</h3>
               <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-intents-ux-textLowContrast-color">
-                {[...new Set(typedResult.artifacts)].map((f) => (
+                {[...new Set(artifacts)].map((f) => (
                   <div key={f} className="truncate">{f}</div>
                 ))}
               </div>
             </div>
           )}
 
-          {events.length > 0 && (
+          {progressEvents.length > 0 && (
             <div>
               <button
                 type="button"
                 className="flex items-center gap-1 text-sm font-semibold mb-1 hover:text-intents-ux-textAction-color"
                 onClick={() => setIsActivityExpanded(!isActivityExpanded)}
               >
-                Activity ({events.length})
+                {t('builder_subagent_run_activity', { count: progressEvents.length }, 'Activity ({count})')}
                 {isActivityExpanded
                   ? <ChevronUp className="w-3.5 h-3.5" />
                   : <ChevronDown className="w-3.5 h-3.5" />
@@ -220,7 +250,7 @@ export default function RunAgentToolRenderer({
                   ref={scrollRef}
                   className="max-h-40 overflow-y-auto rounded bg-intents-ux-surface-subtle-fillColor p-2"
                 >
-                  {events.map((e, i) => (
+                  {progressEvents.map((e, i) => (
                     <div key={i} className="text-xs text-intents-ux-textLowContrast-color py-0.5 truncate">
                       {e.detail}
                     </div>

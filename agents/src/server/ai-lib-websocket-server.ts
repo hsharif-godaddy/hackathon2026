@@ -105,6 +105,7 @@ import {
 import { buildLogoStatusContextMessage } from './logo-status-context.js'
 import { handleCancelLogoGeneration } from './logo-cancel-handler.js'
 import { interactiveSubAgentManager } from '../agents/interactive-sub-agent-manager.js'
+import { subAgentJobRegistry } from '../agents/sub-agent-job-registry.js'
 import { buildSharedPostStreamValidator } from './post-stream-validator.js'
 import { buildAppliedSkillsContextMessage } from './applied-skills-context.js'
 import { buildPinnedSkillsContextMessages } from './pinned-skills-context.js'
@@ -2482,6 +2483,11 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
 
         // Unified cleanup: memory tracking + orphaned message transaction
         finalizeMessage(socketId, 'aborted', { appId: appId ?? undefined });
+      },
+
+      onStreamAbort: (conversationId: string, reason: string): void => {
+        logger.info('runAgent.streamAbort.tearing_down_jobs', { conversationId, reason })
+        subAgentJobRegistry.abort(conversationId)
       },
 
       onHandoffWithSocket: (socketId: string, oldAgentName: string, newAgentName: string) => {

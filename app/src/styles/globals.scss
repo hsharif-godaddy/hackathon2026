@@ -663,6 +663,38 @@ body:has(#UpgradeLibraryPortal .ux-modal) .tooltip[role="tooltip"] {
     animation: gradient 8s linear infinite;
   }
 
+  /* Animated text shimmer for in-progress labels (e.g. a running sub-agent).
+     A light band sweeps across muted text via a clipped gradient. */
+  @keyframes text-shimmer {
+    0% { background-position: 150% center; }
+    100% { background-position: -50% center; }
+  }
+
+  .text-shimmer {
+    background: linear-gradient(
+      90deg,
+      rgb(148, 155, 164) 0%,
+      rgb(148, 155, 164) 40%,
+      rgb(28, 33, 40) 50%,
+      rgb(148, 155, 164) 60%,
+      rgb(148, 155, 164) 100%
+    );
+    background-size: 200% auto;
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    animation: text-shimmer 2.2s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .text-shimmer {
+      animation: none;
+      color: rgb(110, 117, 125);
+      -webkit-text-fill-color: rgb(110, 117, 125);
+    }
+  }
+
   @keyframes paywall-skeleton-shimmer {
     0% { background-position: 100% 100%; opacity: 0.6; }
     50% { opacity: 1; }
