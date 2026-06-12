@@ -13,6 +13,26 @@ export const config = {
 
 const SHARE_PREFIX = '/share/';
 
+// `?p=<path>` lets the share-create caller (e.g. PaaS screenshot capture for
+// apps configured with a non-root rootPath like /blog) ask the BFF to redirect
+// recipients to that path on the previewed app, instead of always to host
+// root. The constraints below are an open-redirect guard: the value MUST be a
+// same-host absolute path (no scheme, no host, no protocol-relative `//`, no
+// backslashes, no fragment) bounded by length. Validation here is paired with
+// the explicit host assertion after `new URL(...)` below — both layers must
+// agree before we issue the 307.
+const SHARE_PATH_QUERY = 'p';
+const SHARE_PATH_MAX_LEN = 128;
+const SHARE_PATH_REGEX = /^\/[A-Za-z0-9_\-./~]*$/;
+
+function resolveSharePath(raw: string | null): string {
+  if (!raw) return '/';
+  if (raw.length > SHARE_PATH_MAX_LEN) return '/';
+  if (raw.startsWith('//') || raw.startsWith('/\\')) return '/';
+  if (!SHARE_PATH_REGEX.test(raw)) return '/';
+  return raw;
+}
+
 // Includes lower envs so deploys are self-verifying (curl test env after promote → header should appear)
 // and so internal URLs that may leak don't get indexed. Excludes godaddy.com apex so the FOS SLP stays indexable.
 const NOINDEX_HOSTS = new Set([
@@ -74,7 +94,16 @@ export async function middleware(request: Request) {
       // public host survives in x-dsa-host.
       const baseDomain = airoAppDomainForHost(getPublicHost(request));
       const previewHost = `${payload.siteId}.preview.${payload.cellPrefix}.${baseDomain}`;
-      const target = `https://${previewHost}/?airoShareToken=${payload.token}`;
+      // Defense in depth: resolveSharePath gates the input on charset/length
+      // before we ever construct a URL; the post-construction host assertion
+      // is the second layer that catches anything the regex missed (e.g. a
+      // future spec change in URL parsing). Any mismatch falls back to '/'.
+      const requestedPath = resolveSharePath(requestUrl.searchParams.get(SHARE_PATH_QUERY));
+      const baseUrl = `https://${previewHost}`;
+      const targetUrl = new URL(`${requestedPath}?airoShareToken=${encodeURIComponent(payload.token)}`, baseUrl);
+      const target = targetUrl.host === previewHost
+        ? targetUrl.toString()
+        : `${baseUrl}/?airoShareToken=${encodeURIComponent(payload.token)}`;
       return NextResponse.redirect(target, 307);
     }
   }

@@ -252,6 +252,102 @@ describe('middleware', () => {
         'https://k8bnu24pcq.preview.c4.airoapp.ai/?airoShareToken=yPBorcyKvnYJ',
       );
     });
+
+    describe('?p= path forwarding', () => {
+      // When share-create callers (e.g. PaaS screenshot capture for non-root
+      // apps) pass ?p=/blog, the redirect target's path becomes /blog instead
+      // of /. The validator gates the value before it ever reaches a URL
+      // constructor — these tests cover both happy path and every refusal.
+      const encoded = encodeSharePayload({
+        siteId: 'k8bnu24pcq',
+        cellPrefix: 'c4',
+        token: 'yPBorcyKvnYJ',
+      });
+
+      it('forwards a valid ?p= path into the redirect target', async () => {
+        const result = await middleware(makeRequest(`/share/${encoded}?p=%2Fblog`)) as any;
+
+        expect(result.type).toBe('redirect');
+        expect(result.status).toBe(307);
+        expect(result.url).toBe(
+          'https://k8bnu24pcq.preview.c4.test-airoapp.ai/blog?airoShareToken=yPBorcyKvnYJ',
+        );
+      });
+
+      it('forwards a nested ?p= path with dots', async () => {
+        const result = await middleware(makeRequest(`/share/${encoded}?p=%2Fblog%2Fpost.html`)) as any;
+
+        expect(result.type).toBe('redirect');
+        expect(result.url).toBe(
+          'https://k8bnu24pcq.preview.c4.test-airoapp.ai/blog/post.html?airoShareToken=yPBorcyKvnYJ',
+        );
+      });
+
+      it('falls back to / when ?p= is missing (no behavior change for existing share URLs)', async () => {
+        const result = await middleware(makeRequest(`/share/${encoded}`)) as any;
+
+        expect(result.url).toBe(
+          'https://k8bnu24pcq.preview.c4.test-airoapp.ai/?airoShareToken=yPBorcyKvnYJ',
+        );
+      });
+
+      it('rejects ?p=//evil.com (open-redirect via protocol-relative URL)', async () => {
+        // The exact attack the validator exists to stop: //evil.com would
+        // normally resolve to https://evil.com when used as a path. Must
+        // fall back to / and stay on the previewed app's host.
+        const result = await middleware(makeRequest(`/share/${encoded}?p=%2F%2Fevil.com%2F`)) as any;
+
+        expect(result.url).toBe(
+          'https://k8bnu24pcq.preview.c4.test-airoapp.ai/?airoShareToken=yPBorcyKvnYJ',
+        );
+        expect(result.url).not.toContain('evil.com');
+      });
+
+      it('rejects ?p=https://evil.com (open-redirect via absolute URL)', async () => {
+        const result = await middleware(makeRequest(`/share/${encoded}?p=https%3A%2F%2Fevil.com`)) as any;
+
+        expect(result.url).not.toContain('evil.com');
+        expect(result.url).toBe(
+          'https://k8bnu24pcq.preview.c4.test-airoapp.ai/?airoShareToken=yPBorcyKvnYJ',
+        );
+      });
+
+      it('rejects ?p= without a leading slash', async () => {
+        const result = await middleware(makeRequest(`/share/${encoded}?p=blog`)) as any;
+
+        expect(result.url).toBe(
+          'https://k8bnu24pcq.preview.c4.test-airoapp.ai/?airoShareToken=yPBorcyKvnYJ',
+        );
+      });
+
+      it('rejects ?p= containing a backslash', async () => {
+        const result = await middleware(makeRequest(`/share/${encoded}?p=%2F%5Cevil.com`)) as any;
+
+        expect(result.url).not.toContain('evil.com');
+        expect(result.url).toBe(
+          'https://k8bnu24pcq.preview.c4.test-airoapp.ai/?airoShareToken=yPBorcyKvnYJ',
+        );
+      });
+
+      it('rejects ?p= with disallowed characters (space)', async () => {
+        const result = await middleware(makeRequest(`/share/${encoded}?p=%2Fpath%20with%20space`)) as any;
+
+        expect(result.url).toBe(
+          'https://k8bnu24pcq.preview.c4.test-airoapp.ai/?airoShareToken=yPBorcyKvnYJ',
+        );
+      });
+
+      it('rejects ?p= longer than 128 chars', async () => {
+        const longPath = '/' + 'a'.repeat(200);
+        const result = await middleware(
+          makeRequest(`/share/${encoded}?p=${encodeURIComponent(longPath)}`),
+        ) as any;
+
+        expect(result.url).toBe(
+          'https://k8bnu24pcq.preview.c4.test-airoapp.ai/?airoShareToken=yPBorcyKvnYJ',
+        );
+      });
+    });
   });
 
   describe('subdomain noindex', () => {
