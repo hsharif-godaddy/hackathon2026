@@ -202,6 +202,74 @@ describe('isFontSuggestPanelVisible', () => {
     expect(isFontSuggestPanelVisible(messages, mockSuggest)).toBe(true)
   })
 
+  it('returns false when a completed fontTheme apply tool call exists after suggest', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'msg1',
+        role: 'assistant',
+        timestamp: new Date(),
+        content: 'Here are font themes',
+      },
+      {
+        id: 'msg2',
+        role: 'user',
+        timestamp: new Date(),
+        content: 'Apply font theme: Modern',
+        metadata: { isActionRequest: true },
+      },
+      {
+        id: 'msg3',
+        role: 'assistant',
+        timestamp: new Date(),
+        content: 'Applied the font',
+        toolCalls: [
+          {
+            id: 'tc-apply',
+            name: 'fontTheme',
+            input: { mode: 'apply' },
+            status: 'completed',
+          },
+        ],
+      },
+    ]
+
+    expect(isFontSuggestPanelVisible(messages, mockSuggest)).toBe(false)
+  })
+
+  it('returns true when a fontTheme apply tool call is still running (not completed) after suggest', () => {
+    const messages: ChatMessage[] = [
+      {
+        id: 'msg1',
+        role: 'assistant',
+        timestamp: new Date(),
+        content: 'Here are font themes',
+      },
+      {
+        id: 'msg2',
+        role: 'user',
+        timestamp: new Date(),
+        content: 'Apply font theme: Modern',
+        metadata: { isActionRequest: true },
+      },
+      {
+        id: 'msg3',
+        role: 'assistant',
+        timestamp: new Date(),
+        content: '',
+        toolCalls: [
+          {
+            id: 'tc-apply',
+            name: 'fontTheme',
+            input: { mode: 'apply' },
+            status: 'running',
+          },
+        ],
+      },
+    ]
+
+    expect(isFontSuggestPanelVisible(messages, mockSuggest)).toBe(true)
+  })
+
   it('only checks messages after the suggest message', () => {
     const messages: ChatMessage[] = [
       {

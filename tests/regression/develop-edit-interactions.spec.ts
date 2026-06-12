@@ -567,19 +567,27 @@ test.describe('Edit Interactions', () => {
     await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
     console.log('  Font theme apply completed');
 
-    // Apply is sent as an action request, so the panel deliberately persists
-    // (fontSuggestPanelVisibility.ts) — only a typed message or Cancel
-    // dismisses it.
+    // After the agent completes a fontTheme apply, isFontSuggestPanelVisible
+    // detects the completed tool call and hides the panel.
+    await expect(fontThemePanel).not.toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('  Panel correctly hides after apply');
+
+    // ========================================
+    // STEP 6: Verify Generate More and Cancel with a fresh suggest round-trip
+    // ========================================
+    console.log('Step 6: Re-requesting font options to test Generate More and Cancel...');
+
+    // Re-request fonts so we have a panel to exercise Generate More and Cancel against
+    const chatInputStep6 = page.getByTestId('chat-input-textarea');
+    const sendButtonStep6 = page.getByTestId('chat-send-button');
+    await chatInputStep6.fill('Show me more font theme options - no other changes, no follow up questions');
+    await sendButtonStep6.click();
+    await expect(sendButtonStep6).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    console.log('  Font re-request completed');
+
     await expect(fontThemePanel).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    console.log('  Panel persists after apply');
+    console.log('  Font theme panel appeared for Generate More / Cancel testing');
 
-    // ========================================
-    // STEP 6: Verify Generate More and Cancel on the persisted panel
-    // ========================================
-    console.log('Step 6: Testing Generate More button...');
-
-    // The panel is still open after apply, so Generate More can be exercised
-    // directly — no extra chat round trip needed.
     const generateMoreButton = page.getByTestId('font-theme-preview-more-options');
     await expect(generateMoreButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await expect(generateMoreButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
