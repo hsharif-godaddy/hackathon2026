@@ -11,3 +11,10 @@ export class FileReadError extends Error {
     this.name = 'FileReadError'
   }
 }
+
+export class MaliciousContentError extends Error {
+  constructor(public readonly fileName: string) {
+    super(`Malicious content detected in ${fileName}`)
+    this.name = 'MaliciousContentError'
+  }
+}

@@ -142,7 +142,7 @@ function UploadHarness() {
 describe('homepage upload -> prefill -> CTA (integration)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockProcessDesignFiles.mockResolvedValue({ processed: [], errors: [] })
+    mockProcessDesignFiles.mockResolvedValue({ processed: [], errors: [], warnings: [] })
   })
 
   it('starts with an empty prompt and a disabled CTA', () => {
@@ -154,7 +154,7 @@ describe('homepage upload -> prefill -> CTA (integration)', () => {
 
   it('prefills the prompt and enables the CTA after a file is uploaded', async () => {
     const processed: UploadedDesignFile = { name: 'design.png', content: '', isImage: true, isDesignMd: false }
-    mockProcessDesignFiles.mockResolvedValueOnce({ processed: [processed], errors: [] })
+    mockProcessDesignFiles.mockResolvedValueOnce({ processed: [processed], errors: [], warnings: [] })
 
     const { container, getByTestId, user } = renderWithProviders(<UploadHarness />)
     const input = container.querySelector('input[type="file"]') as HTMLInputElement
@@ -167,7 +167,7 @@ describe('homepage upload -> prefill -> CTA (integration)', () => {
 
   it('clears the prefill and disables the CTA when the uploaded file is removed', async () => {
     const processed: UploadedDesignFile = { name: 'design.png', content: '', isImage: true, isDesignMd: false }
-    mockProcessDesignFiles.mockResolvedValueOnce({ processed: [processed], errors: [] })
+    mockProcessDesignFiles.mockResolvedValueOnce({ processed: [processed], errors: [], warnings: [] })
 
     const { container, getByTestId, user } = renderWithProviders(<UploadHarness />)
     const input = container.querySelector('input[type="file"]') as HTMLInputElement
@@ -183,7 +183,7 @@ describe('homepage upload -> prefill -> CTA (integration)', () => {
 
   it('keeps custom prompt text instead of overwriting it with the prefill', async () => {
     const processed: UploadedDesignFile = { name: 'design.png', content: '', isImage: true, isDesignMd: false }
-    mockProcessDesignFiles.mockResolvedValueOnce({ processed: [processed], errors: [] })
+    mockProcessDesignFiles.mockResolvedValueOnce({ processed: [processed], errors: [], warnings: [] })
 
     const { container, getByTestId, user } = renderWithProviders(<UploadHarness />)
     const input = container.querySelector('input[type="file"]') as HTMLInputElement

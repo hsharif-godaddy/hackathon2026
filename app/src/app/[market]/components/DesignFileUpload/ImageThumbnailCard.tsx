@@ -3,7 +3,7 @@ import ImageIcon from '@ux/icon/image'
 import XIcon from '@ux/icon/x'
 
 import { useTranslations } from '@/hooks/useTranslations'
-import { getExtension, MIME_MAP } from './utils'
+import { getExtension, MIME_MAP } from '@/lib/file/utils'
 import type { UploadedDesignFile } from '../types'
 
 export function ImageThumbnailCard({ uploadedFile, onRemove, disabled }: { uploadedFile: UploadedDesignFile; onRemove: () => void; disabled?: boolean }) {

@@ -32,6 +32,7 @@ export interface UploadedDesignFile {
   isAppImport?: boolean
   isImage?: boolean
   zipRaw?: ArrayBuffer
+  warning?: string
 }
 
 export interface HeroSectionProps {

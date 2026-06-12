@@ -93,6 +93,11 @@ export default makeGasket({
         api: {
           baseUrl: 'https://cds.api.int.dev-godaddy.com',
         }
+      },
+      onDemandScanner: {
+        api: {
+          baseUrl: 'https://on-demand-scanner.int.dev-godaddy.com',
+        }
       }
     },
     'local.test': {
@@ -142,6 +147,11 @@ export default makeGasket({
       cds: {
         api: {
           baseUrl: 'https://cds.api.int.test-godaddy.com',
+        }
+      },
+      onDemandScanner: {
+        api: {
+          baseUrl: 'https://on-demand-scanner.int.test-godaddy.com',
         }
       }
     },
@@ -193,6 +203,11 @@ export default makeGasket({
         api: {
           baseUrl: 'https://cds.api.int.godaddy.com',
         }
+      },
+      onDemandScanner: {
+        api: {
+          baseUrl: 'https://on-demand-scanner.int.godaddy.com',
+        }
       }
     },
     // Deployed environments
@@ -205,6 +220,11 @@ export default makeGasket({
       cds: {
         api: {
           baseUrl: 'https://cds.api.int.dev-godaddy.com',
+        }
+      },
+      onDemandScanner: {
+        api: {
+          baseUrl: 'https://on-demand-scanner.int.dev-godaddy.com',
         }
       }
     },
@@ -219,6 +239,11 @@ export default makeGasket({
         api: {
           baseUrl: 'https://cds.api.int.test-godaddy.com',
         }
+      },
+      onDemandScanner: {
+        api: {
+          baseUrl: 'https://on-demand-scanner.int.test-godaddy.com',
+        }
       }
     },
     'production': {
@@ -231,6 +256,11 @@ export default makeGasket({
       cds: {
         api: {
           baseUrl: 'https://cds.api.int.godaddy.com',
+        }
+      },
+      onDemandScanner: {
+        api: {
+          baseUrl: 'https://on-demand-scanner.int.godaddy.com',
         }
       }
     },

@@ -2,7 +2,7 @@ import Spinner from '@ux/spinner'
 import { text } from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
-import { isImageFileName } from './utils'
+import { isImageFileName } from '@/lib/file/utils'
 
 export function DesignFileUploadSkeleton({ fileNames }: { fileNames: string[] }) {
   const t = useTranslations()

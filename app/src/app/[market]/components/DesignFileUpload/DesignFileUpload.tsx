@@ -20,6 +20,7 @@ interface DesignFileUploadProps {
 
 export default function DesignFileUpload({ currentFilesRef, onFilesChange, onError, isProcessing, onProcessingChange, onProcessingFilesChange, disabled }: DesignFileUploadProps) {
   const isEnabled = useSwitchboard('appbuilder-design-upload')
+  const isServerScanEnabled = useSwitchboard('appbuilder-design-upload-scanner')
   const inputRef = useRef<HTMLInputElement>(null)
   const { isBelowSmBreakpoint } = useBreakpoints()
   const t = useTranslations()
@@ -34,26 +35,35 @@ export default function DesignFileUpload({ currentFilesRef, onFilesChange, onErr
     onError?.(null)
     try {
       const { processDesignFiles } = await import('./design-file-processing')
-      const { processed, errors } = await processDesignFiles(
+      const { processed, errors, warnings } = await processDesignFiles(
         Array.from(fileList),
         currentFilesRef.current ?? [],
-        t,
+        { isServerScanEnabled },
       )
       if (processed.length > 0) {
         onFilesChange([...(currentFilesRef.current ?? []), ...processed])
         logImpressionEvent('homepage.prompt.fileAttached', { fileCount: processed.length, source: 'picker' })()
       }
       if (errors.length > 0) {
-        onError?.(errors[0])
+        const [firstError] = errors
+        onError?.(t(firstError.message.key, firstError.message.params))
+      }
+      for (const error of errors) {
+        logImpressionEvent('homepage.prompt.fileRejected', { fileName: error.fileName, reason: error.error })()
+      }
+      for (const warning of warnings) {
+        logImpressionEvent('homepage.prompt.scannerUnavailable', { fileName: warning.fileName })()
       }
     } finally {
       onProcessingChange?.(false)
       onProcessingFilesChange?.([])
     }
     if (inputRef.current) inputRef.current.value = ''
-  }, [currentFilesRef, isProcessing, onError, onFilesChange, onProcessingChange, onProcessingFilesChange])
+  }, [currentFilesRef, isProcessing, isServerScanEnabled, onError, onFilesChange, onProcessingChange, onProcessingFilesChange, t])
 
-  if (!isEnabled) return null
+  if (!isEnabled) {
+    return null
+  }
 
   return (
     <>

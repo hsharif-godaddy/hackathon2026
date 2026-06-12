@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { waitFor } from '@testing-library/react'
+import { fireEvent, waitFor } from '@testing-library/react'
 
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { renderWithProviders } from '@/tests/test-utils'
@@ -14,7 +14,7 @@ import type { UploadedDesignFile } from '../types'
 const { mockProcessDesignFiles, mockLogImpressionEvent, mockImpressionThunk, mockGenerateClickEID } = vi.hoisted(() => {
   const mockImpressionThunk = vi.fn()
   return {
-    mockProcessDesignFiles: vi.fn().mockResolvedValue({ processed: [], errors: [] }),
+    mockProcessDesignFiles: vi.fn().mockResolvedValue({ processed: [], errors: [], warnings: [] }),
     mockImpressionThunk,
     mockLogImpressionEvent: vi.fn(() => mockImpressionThunk),
     mockGenerateClickEID: vi.fn(() => 'appbuilder.homepage.prompt.attach.click'),
@@ -68,7 +68,7 @@ describe('DesignFileUpload (picker path)', () => {
 
   it('logs a fileAttached impression with source=picker when files are processed', async () => {
     const newFile: UploadedDesignFile = { name: 'a.png', content: '', isDesignMd: false }
-    mockProcessDesignFiles.mockResolvedValueOnce({ processed: [newFile], errors: [] })
+    mockProcessDesignFiles.mockResolvedValueOnce({ processed: [newFile], errors: [], warnings: [] })
 
     const { input, onFilesChange, user } = renderUpload()
     await user.upload(input, new File(['x'], 'a.png', { type: 'image/png' }))
@@ -83,7 +83,11 @@ describe('DesignFileUpload (picker path)', () => {
   })
 
   it('does not log a fileAttached impression when nothing is processed', async () => {
-    mockProcessDesignFiles.mockResolvedValueOnce({ processed: [], errors: ['File too large'] })
+    mockProcessDesignFiles.mockResolvedValueOnce({
+      processed: [],
+      errors: [{ fileName: 'big.zip', error: 'too_large', message: { key: 'File too large' } }],
+      warnings: [],
+    })
 
     const { input, onError, user } = renderUpload()
     await user.upload(input, new File(['x'], 'big.zip'))
@@ -91,7 +95,33 @@ describe('DesignFileUpload (picker path)', () => {
     await waitFor(() => {
       expect(onError).toHaveBeenCalledWith('File too large')
     })
-    expect(mockLogImpressionEvent).not.toHaveBeenCalled()
+    expect(mockLogImpressionEvent).not.toHaveBeenCalledWith('homepage.prompt.fileAttached', expect.anything())
+  })
+
+  it('logs scannerUnavailable impression for each warning after processing', async () => {
+    const newFile: UploadedDesignFile = { name: 'doc.txt', content: 'ok', isDesignMd: false }
+    mockProcessDesignFiles.mockResolvedValueOnce({
+      processed: [newFile],
+      errors: [],
+      warnings: [{ fileName: 'doc.txt', reason: 'scanner_unavailable' }],
+    })
+
+    const { input, user } = renderUpload()
+    await user.upload(input, new File(['x'], 'doc.txt'))
+
+    await waitFor(() => {
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith('homepage.prompt.scannerUnavailable', { fileName: 'doc.txt' })
+    })
+    expect(mockImpressionThunk).toHaveBeenCalled()
+  })
+
+  it('triggers file input click when the attachment button is clicked', async () => {
+    const { container, user } = renderUpload()
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    const clickSpy = vi.spyOn(input, 'click').mockImplementation(() => {})
+    const button = container.querySelector('button') as HTMLButtonElement
+    await user.click(button)
+    expect(clickSpy).toHaveBeenCalled()
   })
 
   it('renders nothing when switchboard flag is disabled', () => {
@@ -104,5 +134,72 @@ describe('DesignFileUpload (picker path)', () => {
       />,
     )
     expect(container.firstChild).toBeNull()
+  })
+
+  it('does nothing when change event fires with null file list', () => {
+    const { input, onFilesChange, onError } = renderUpload()
+    fireEvent.change(input, { target: { files: null } })
+    expect(onFilesChange).not.toHaveBeenCalled()
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('falls back to empty array when currentFilesRef.current is null', async () => {
+    const newFile: UploadedDesignFile = { name: 'a.png', content: '', isDesignMd: false }
+    mockProcessDesignFiles.mockResolvedValueOnce({ processed: [newFile], errors: [], warnings: [] })
+    const onFilesChange = vi.fn()
+    const { container } = renderWithProviders(
+      <DesignFileUpload
+        currentFilesRef={{ current: null as unknown as UploadedDesignFile[] }}
+        onFilesChange={onFilesChange}
+      />,
+    )
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['x'], 'a.png')] } })
+    await waitFor(() => expect(onFilesChange).toHaveBeenCalledWith([newFile]))
+  })
+
+  it('does nothing when isProcessing is true and a file is selected', async () => {
+    const onFilesChange = vi.fn()
+    const onError = vi.fn()
+    const currentFilesRef = { current: [] as UploadedDesignFile[] }
+    const { container } = renderWithProviders(
+      <DesignFileUpload
+        currentFilesRef={currentFilesRef}
+        onFilesChange={onFilesChange}
+        onError={onError}
+        isProcessing={true}
+      />,
+    )
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(['x'], 'doc.txt')
+    fireEvent.change(input, { target: { files: [file] } })
+    expect(onFilesChange).not.toHaveBeenCalled()
+  })
+
+  it('calls onProcessingChange and onProcessingFilesChange when provided', async () => {
+    const onProcessingChange = vi.fn()
+    const onProcessingFilesChange = vi.fn()
+    const newFile: UploadedDesignFile = { name: 'a.png', content: '', isDesignMd: false }
+    mockProcessDesignFiles.mockResolvedValueOnce({ processed: [newFile], errors: [], warnings: [] })
+
+    const onFilesChange = vi.fn()
+    const currentFilesRef = { current: [] as UploadedDesignFile[] }
+    const { container, user } = renderWithProviders(
+      <DesignFileUpload
+        currentFilesRef={currentFilesRef}
+        onFilesChange={onFilesChange}
+        onProcessingChange={onProcessingChange}
+        onProcessingFilesChange={onProcessingFilesChange}
+      />,
+    )
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    await user.upload(input, new File(['x'], 'a.png', { type: 'image/png' }))
+
+    await waitFor(() => {
+      expect(onProcessingChange).toHaveBeenCalledWith(true)
+      expect(onProcessingChange).toHaveBeenCalledWith(false)
+    })
+    expect(onProcessingFilesChange).toHaveBeenCalledWith(['a.png'])
+    expect(onProcessingFilesChange).toHaveBeenCalledWith([])
   })
 })

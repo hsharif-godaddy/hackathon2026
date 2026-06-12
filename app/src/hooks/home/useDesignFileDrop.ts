@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 
 import { processDesignFiles } from '@/app/[market]/components/DesignFileUpload'
 import type { UploadedDesignFile } from '@/app/[market]/components/types'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logActionEvent, logImpressionEvent } from '@/utils/instrumentation'
 
@@ -41,6 +42,7 @@ export function useDesignFileDrop({
   disabled = false,
 }: UseDesignFileDropOptions): UseDesignFileDropResult {
   const t = useTranslations()
+  const isServerScanEnabled = useSwitchboard('appbuilder-design-upload-scanner')
   const [isFileDragOver, setIsFileDragOver] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const dragCounterRef = useRef(0)
@@ -92,15 +94,22 @@ export function useDesignFileDrop({
     onProcessingFilesChange?.(droppedFiles.map(f => f.name))
     onError(null)
 
-    processDesignFiles(droppedFiles, currentFilesRef.current ?? [], t, maxFiles, maxTotalBytes)
-      .then(({ processed, errors }) => {
+    processDesignFiles(droppedFiles, currentFilesRef.current ?? [], { maxFiles, maxTotalBytes, isServerScanEnabled })
+      .then(({ processed, errors, warnings }) => {
         if (processed.length > 0) {
           const updated = [...(currentFilesRef.current ?? []), ...processed]
           onFilesChange(updated)
           logImpressionEvent('homepage.prompt.fileAttached', { fileCount: processed.length, source: 'drop' })()
         }
         if (errors.length > 0) {
-          onError(errors[0])
+          const [firstError] = errors
+          onError(t(firstError.message.key, firstError.message.params))
+        }
+        for (const error of errors) {
+          logImpressionEvent('homepage.prompt.fileRejected', { fileName: error.fileName, reason: error.error })()
+        }
+        for (const warning of warnings) {
+          logImpressionEvent('homepage.prompt.scannerUnavailable', { fileName: warning.fileName })()
         }
       })
       .catch(() => {
@@ -110,7 +119,7 @@ export function useDesignFileDrop({
         setIsProcessing(false)
         onProcessingFilesChange?.([])
       })
-  }, [currentFilesRef, disabled, isProcessing, maxFiles, maxTotalBytes, onError, onFilesChange, onProcessingFilesChange, t])
+  }, [currentFilesRef, disabled, isProcessing, isServerScanEnabled, maxFiles, maxTotalBytes, onError, onFilesChange, onProcessingFilesChange, t])
 
   return {
     isFileDragOver,
