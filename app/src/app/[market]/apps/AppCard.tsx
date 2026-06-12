@@ -366,7 +366,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
     >
       {site.status === SiteStatus.Running && site.preview_url && !isPreviewHibernated(site) && (
         <Button
-          design="control"
+          design="secondary"
           size="sm"
           icon={<WindowNewIcon />}
           onClick={() => window.open(isPreviewHeaderEnabled ? withPreviewParam(site.preview_url) : site.preview_url, '_blank', 'noopener,noreferrer')}
@@ -387,7 +387,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
         <MenuButton
           aria-label={t('builder_apps_menu_actions')}
           data-testid="app-card-menu-button"
-          design="control"
+          design="secondary"
           size="sm"
           icon={<MenuIcon />}
         />
