@@ -1,9 +1,10 @@
 // Package auth provides HTTP middleware for GoDaddy authentication using gd-auth-lib.
 //
-// SIEM hygiene note: gd-auth-lib's `ParseToken`, `GetAwsIamArn`, and
-// `GetCommonName` errors are forwarded into seclog events as `error.message`.
-// Audited at gd-auth-lib v0.11.0: TokenValidationError and FFIError formats
-// are static (`"token validation error: <static-msg> (code: <int>)"` and
+// SIEM hygiene note: gd-auth-lib's `ParseToken`, `GetAwsIamArn`,
+// `GetCommonName`, `GetShopperID`, and `GetAccountName` errors are forwarded
+// into seclog events as `error.message`. Audited at gd-auth-lib v0.11.0:
+// TokenValidationError and FFIError formats are static
+// (`"token validation error: <static-msg> (code: <int>)"` and
 // `"FFI error: <int>"`), with no token bytes / kid / claim values echoed.
 // Re-audit if go.mod bumps gd-auth-lib; if a new version starts echoing
 // input into error strings, drop seclog.Event.Err for the INVALID_TOKEN /
@@ -41,6 +42,8 @@ type GDAuthValidator interface {
 	ParseToken(token string, opts *gdauth.AuthOptions) (*gdauth.TokenClaims, error)
 	GetAwsIamArn(claims *gdauth.TokenClaims) (string, error)
 	GetCommonName(claims *gdauth.TokenClaims) (string, error)
+	GetShopperID(claims *gdauth.TokenClaims) (string, error)
+	GetAccountName(claims *gdauth.TokenClaims) (string, error)
 }
 
 // Middleware provides HTTP middleware for GoDaddy SSO JWT authentication.
@@ -302,9 +305,14 @@ func (m *Middleware) AuthenticateShopperOrService(next http.Handler) http.Handle
 
 		authOptions := &gdauth.AuthOptions{
 			GoDaddySSO: &gdauth.GoDaddySSOConfig{
-				Host:             m.client.SSOHost,
-				SecurityLevel:    gdauth.SecurityLevelLow,
-				Auths:            []gdauth.Auths{gdauth.AuthsBasic, gdauth.AuthsCert2S},
+				Host:          m.client.SSOHost,
+				SecurityLevel: gdauth.SecurityLevelLow,
+				Auths: []gdauth.Auths{
+					gdauth.AuthsBasic,
+					gdauth.AuthsCert2S,
+					gdauth.AuthsE2S,
+					gdauth.AuthsS2S,
+				},
 				FilterByAuthType: false,
 				AllowHeartbeat:   false,
 			},
@@ -324,6 +332,7 @@ func (m *Middleware) AuthenticateShopperOrService(next http.Handler) http.Handle
 
 		tokenType := claims.GetType()
 		var resolvedUser string
+		var extraSuccessLabels []slog.Attr
 		switch tokenType {
 		case string(gdauth.AuthTypeAWSIAM), string(gdauth.AuthTypeCERT):
 			user, handled := m.resolveUserForToken(w, r, g, claims, tokenType)
@@ -332,11 +341,12 @@ func (m *Middleware) AuthenticateShopperOrService(next http.Handler) http.Handle
 			}
 			resolvedUser = user
 		case string(gdauth.AuthTypeIDP):
-			// shopper — no allowlist; proceed. resolvedUser left empty: the
-			// GDAuthValidator interface deliberately exposes only the principal
-			// extractors needed for awsiam/cert allowlisting; shopper identity
-			// (shopper ID / customer ID) is read by downstream handlers from
-			// claims via GetClaims when needed.
+			shopperID, accountName, authType := m.resolveShopperIdentity(g, claims)
+			resolvedUser = shopperID
+			extraSuccessLabels = append(extraSuccessLabels, slog.String("auth_type", authType))
+			if accountName != "" {
+				extraSuccessLabels = append(extraSuccessLabels, slog.String("account_name", accountName))
+			}
 		default:
 			seclog.AuthzFailure(r, seclog.Event{
 				Reason: "UNAUTHORIZED_TOKEN_TYPE",
@@ -351,19 +361,52 @@ func (m *Middleware) AuthenticateShopperOrService(next http.Handler) http.Handle
 			return
 		}
 
+		successLabels := append([]slog.Attr{
+			slog.String("token_type", tokenType),
+			sourceLabel,
+		}, extraSuccessLabels...)
 		seclog.AuthSuccess(r, seclog.Event{
 			Reason: "AUTH_SUCCESS",
 			User:   resolvedUser,
-			Labels: []slog.Attr{
-				slog.String("token_type", tokenType),
-				sourceLabel,
-			},
+			Labels: successLabels,
 		})
 
 		ctx := context.WithValue(r.Context(), ClaimsKey, claims)
 		ctx = context.WithValue(ctx, TokenSourceKey, source)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// resolveShopperIdentity returns the acting shopper id, any employee
+// account name (for e2s delegation), and the token's `auth` claim for an
+// idp-typed token. authType is claims.GetAuth() — at this point the
+// ParseToken Auths filter has already constrained the value to one of
+// "basic", "e2s", "s2s" for typ=idp tokens (cert2s carries typ=cert and is
+// handled by the resolveUserForToken cert branch instead).
+//
+// All values are best-effort SIEM signal: the SSO has already validated the
+// token, so an empty shopperID / accountName never gates the request. We use
+// gd-auth-lib's high-level accessors (GetShopperID / GetAccountName) rather
+// than cracking the raw delegation payload — the FFI knows how to walk the
+// delegation chain across versions, the field shape inside the payload does
+// not.
+func (m *Middleware) resolveShopperIdentity(g GDAuthValidator, claims *gdauth.TokenClaims) (
+	shopperID, accountName, authType string,
+) {
+	authType = claims.GetAuth()
+	shopperID, _ = g.GetShopperID(claims) // best-effort; populates User label
+
+	switch authType {
+	case string(gdauth.AuthsE2S):
+		// Employee-to-Shopper: the delegating identity is the employee's
+		// jomax account name. The acting shopper id (User) may be empty
+		// when the outer claims expose the employee directly.
+		accountName, _ = g.GetAccountName(claims)
+	}
+	// s2s and basic: the shopper id from GetShopperID is the meaningful
+	// principal. auth_type=s2s alone is the SIEM signal that this is a
+	// delegated read; there is no separate account-name identity to record.
+	return shopperID, accountName, authType
 }
 
 // resolveUserForToken extracts the principal identity from claims and verifies

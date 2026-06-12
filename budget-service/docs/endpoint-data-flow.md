@@ -37,7 +37,11 @@ GET /api/v1/auth-check
 { "message": "awsiam token accepted", "tokenType": "awsiam", "tokenSource": "header" }
 ```
 
-Accepts service tokens (`awsiam`, `cert`, `cert2s`) via the `Authorization` header and shopper tokens (`idp`) via either the header or the `auth_idp` cookie. The response reports the resolved `tokenType` and `tokenSource` so callers can confirm which extraction path matched.
+Accepts service tokens (`awsiam`, `cert`, `cert2s`) via the `Authorization` header and shopper tokens (`idp`, including `e2s` and `s2s` delegation) via either the header or the `auth_idp` cookie. The response reports the resolved `tokenType` and `tokenSource` so callers can confirm which extraction path matched. For `tokenType=idp` the response also includes an `authType` field carrying the token's `auth` claim (`basic`, `e2s`, or `s2s`), so callers can confirm which delegation path was accepted:
+
+```json
+{ "message": "idp token accepted", "tokenType": "idp", "tokenSource": "cookie", "authType": "e2s" }
+```
 
 ## 2 · Register a product
 

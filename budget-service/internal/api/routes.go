@@ -4,6 +4,7 @@ package api
 import (
 	"net/http"
 
+	gdauth "github.com/gdcorp-identity/gd-auth-lib/go/gd_auth_lib"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/auth"
 	"github.com/gdcorp-partners/airo-app-builder/budget-service/internal/openapi"
 	"github.com/gorilla/mux"
@@ -40,11 +41,18 @@ func NewRouter(s *Server, authMW *auth.Middleware) http.Handler {
 			return
 		}
 		tokenType := claims.GetType()
-		writeJSON(w, http.StatusOK, map[string]any{
+		body := map[string]any{
 			"message":     tokenType + " token accepted",
 			"tokenType":   tokenType,
 			"tokenSource": auth.GetTokenSource(r),
-		})
+		}
+		// For shopper tokens, surface the `auth` claim (basic / e2s / s2s)
+		// so callers can confirm which delegation path matched. Service
+		// tokens (awsiam / cert) don't carry a meaningful `auth` value here.
+		if tokenType == string(gdauth.AuthTypeIDP) {
+			body["authType"] = claims.GetAuth()
+		}
+		writeJSON(w, http.StatusOK, body)
 	}))).Methods(http.MethodGet)
 
 	v1.Handle("/products", serviceAuth(http.HandlerFunc(s.getProducts))).Methods(http.MethodGet)

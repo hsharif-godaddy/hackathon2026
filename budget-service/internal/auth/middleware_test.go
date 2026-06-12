@@ -1239,8 +1239,12 @@ func TestAllowedCerts_IAMTokenIgnoresCertAllowlist(t *testing.T) {
 
 // stubProdGDAuth implements GDAuthValidator for exercising real Middleware.AuthenticateAWSIAMService.
 type stubProdGDAuth struct {
-	claims   *gdauth.TokenClaims
-	parseErr error
+	claims         *gdauth.TokenClaims
+	parseErr       error
+	shopperID      string
+	shopperIDErr   error
+	accountName    string
+	accountNameErr error
 }
 
 func (s *stubProdGDAuth) ParseToken(token string, opts *gdauth.AuthOptions) (*gdauth.TokenClaims, error) {
@@ -1262,6 +1266,14 @@ func (s *stubProdGDAuth) GetAwsIamArn(claims *gdauth.TokenClaims) (string, error
 
 func (s *stubProdGDAuth) GetCommonName(claims *gdauth.TokenClaims) (string, error) {
 	return "stub-cn.example.com", nil
+}
+
+func (s *stubProdGDAuth) GetShopperID(claims *gdauth.TokenClaims) (string, error) {
+	return s.shopperID, s.shopperIDErr
+}
+
+func (s *stubProdGDAuth) GetAccountName(claims *gdauth.TokenClaims) (string, error) {
+	return s.accountName, s.accountNameErr
 }
 
 func TestMiddleware_AuthenticateAWSIAMService_FailClosedEmptyRoles(t *testing.T) {
@@ -1373,6 +1385,14 @@ func (s *stubProdGDAuthWithErrors) GetAwsIamArn(claims *gdauth.TokenClaims) (str
 
 func (s *stubProdGDAuthWithErrors) GetCommonName(claims *gdauth.TokenClaims) (string, error) {
 	return s.cn, s.cnErr
+}
+
+func (s *stubProdGDAuthWithErrors) GetShopperID(claims *gdauth.TokenClaims) (string, error) {
+	return "", nil
+}
+
+func (s *stubProdGDAuthWithErrors) GetAccountName(claims *gdauth.TokenClaims) (string, error) {
+	return "", nil
 }
 
 func TestMiddleware_AuthenticateAWSIAMService_ArnExtractionFailed(t *testing.T) {
@@ -2370,5 +2390,311 @@ func TestMiddleware_AuthenticateShopperOrService_AllowlistDenialBlocksNext(t *te
 	}
 	if !strings.Contains(rec.Body.String(), "IAM_ROLE_DENIED") {
 		t.Fatalf("body=%s want IAM_ROLE_DENIED", rec.Body.String())
+	}
+}
+
+// --- Shopper delegation tests (basic / e2s / s2s) ---
+//
+// Locks the per-token-source and per-delegation-type behavior added when
+// AuthenticateShopperOrService began accepting AuthsE2S / AuthsS2S in addition
+// to AuthsBasic / AuthsCert2S. SIEM hinges on `auth_type` and `account_name`
+// labels; any regression that drops them is caught here.
+
+// idpClaims builds a typ=idp TokenClaims with the given auth value. jti is
+// embedded in the test name so failures point back at the source.
+func idpClaims(auth, jti string) *gdauth.TokenClaims {
+	return gdauth.NewTokenClaims(map[string]any{
+		"typ":  string(gdauth.AuthTypeIDP),
+		"auth": auth,
+		"jti":  jti,
+	})
+}
+
+func TestMiddleware_ShopperOrService_BasicPopulatesUser(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator: &stubProdGDAuth{
+			claims:    idpClaims(string(gdauth.AuthsBasic), "basic-jti"),
+			shopperID: "shopper-123",
+		},
+	}
+
+	h := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", nil)
+	req.Header.Set("Authorization", "Bearer shopper-token")
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	got := findSeclogLine(t, &buf)
+	if got == nil {
+		t.Fatalf("no seclog event captured; output=%q", buf.String())
+	}
+	if v := nestedString(got, "user.name"); v != "shopper-123" {
+		t.Errorf("user.name=%q want shopper-123", v)
+	}
+	labels, _ := got["labels"].(map[string]any)
+	if dt, _ := labels["auth_type"].(string); dt != "basic" {
+		t.Errorf("auth_type=%v want basic", labels["auth_type"])
+	}
+	if _, has := labels["account_name"]; has {
+		t.Errorf("account_name label should be absent for basic; got %v", labels["account_name"])
+	}
+}
+
+func TestMiddleware_ShopperOrService_BasicViaCookie(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator: &stubProdGDAuth{
+			claims:    idpClaims(string(gdauth.AuthsBasic), "basic-cookie-jti"),
+			shopperID: "shopper-123",
+		},
+	}
+
+	h := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", nil)
+	req.AddCookie(&http.Cookie{Name: "auth_idp", Value: "shopper-cookie"})
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	got := findSeclogLine(t, &buf)
+	labels, _ := got["labels"].(map[string]any)
+	if src, _ := labels["token_source"].(string); src != "cookie" {
+		t.Errorf("token_source=%v want cookie", labels["token_source"])
+	}
+	if dt, _ := labels["auth_type"].(string); dt != "basic" {
+		t.Errorf("auth_type=%v want basic", labels["auth_type"])
+	}
+}
+
+func TestMiddleware_ShopperOrService_E2SHeader(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator: &stubProdGDAuth{
+			claims:      idpClaims(string(gdauth.AuthsE2S), "e2s-jti"),
+			shopperID:   "shopper-target",
+			accountName: "jdoe",
+		},
+	}
+
+	h := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", nil)
+	req.Header.Set("Authorization", "Bearer e2s-token")
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	got := findSeclogLine(t, &buf)
+	if v := nestedString(got, "user.name"); v != "shopper-target" {
+		t.Errorf("user.name=%q want shopper-target", v)
+	}
+	labels, _ := got["labels"].(map[string]any)
+	if dt, _ := labels["auth_type"].(string); dt != "e2s" {
+		t.Errorf("auth_type=%v want e2s", labels["auth_type"])
+	}
+	if d, _ := labels["account_name"].(string); d != "jdoe" {
+		t.Errorf("account_name=%v want jdoe (employee account name)", labels["account_name"])
+	}
+}
+
+func TestMiddleware_ShopperOrService_S2SHeader(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator: &stubProdGDAuth{
+			claims:    idpClaims(string(gdauth.AuthsS2S), "s2s-jti"),
+			shopperID: "shopper-source",
+		},
+	}
+
+	h := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", nil)
+	req.Header.Set("Authorization", "Bearer s2s-token")
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	got := findSeclogLine(t, &buf)
+	if v := nestedString(got, "user.name"); v != "shopper-source" {
+		t.Errorf("user.name=%q want shopper-source", v)
+	}
+	labels, _ := got["labels"].(map[string]any)
+	if dt, _ := labels["auth_type"].(string); dt != "s2s" {
+		t.Errorf("auth_type=%v want s2s", labels["auth_type"])
+	}
+	if _, hasAccountName := labels["account_name"]; hasAccountName {
+		t.Errorf("account_name label should be absent for s2s (User already carries the source shopper); got %v", labels["account_name"])
+	}
+}
+
+func TestMiddleware_ShopperOrService_E2SViaCookie(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator: &stubProdGDAuth{
+			claims:      idpClaims(string(gdauth.AuthsE2S), "e2s-cookie-jti"),
+			shopperID:   "shopper-target",
+			accountName: "jdoe",
+		},
+	}
+
+	h := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", nil)
+	req.AddCookie(&http.Cookie{Name: "auth_idp", Value: "e2s-cookie"})
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	got := findSeclogLine(t, &buf)
+	labels, _ := got["labels"].(map[string]any)
+	if src, _ := labels["token_source"].(string); src != "cookie" {
+		t.Errorf("token_source=%v want cookie (locks no-cookie-restriction policy)", labels["token_source"])
+	}
+}
+
+// captureAuthsParser captures the configured AuthOptions so tests can assert
+// the Auths slice passed into ParseToken includes the delegation types the
+// design committed to (basic, cert2s, e2s, s2s).
+type captureAuthsParser struct {
+	stubProdGDAuth
+	captured *gdauth.AuthOptions
+}
+
+func (c *captureAuthsParser) ParseToken(token string, opts *gdauth.AuthOptions) (*gdauth.TokenClaims, error) {
+	c.captured = opts
+	return c.stubProdGDAuth.ParseToken(token, opts)
+}
+
+func TestMiddleware_ShopperOrService_ParseTokenOptions_IncludesE2SAndS2S(t *testing.T) {
+	t.Parallel()
+
+	stub := &captureAuthsParser{
+		stubProdGDAuth: stubProdGDAuth{
+			claims:    idpClaims(string(gdauth.AuthsBasic), "auths-capture"),
+			shopperID: "shopper-1",
+		},
+	}
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator:    stub,
+	}
+	h := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/x", nil)
+	req.Header.Set("Authorization", "Bearer t")
+	h.ServeHTTP(rec, req)
+
+	if stub.captured == nil || stub.captured.GoDaddySSO == nil {
+		t.Fatal("AuthOptions not captured")
+	}
+	want := map[gdauth.Auths]bool{
+		gdauth.AuthsBasic:  false,
+		gdauth.AuthsCert2S: false,
+		gdauth.AuthsE2S:    false,
+		gdauth.AuthsS2S:    false,
+	}
+	for _, a := range stub.captured.GoDaddySSO.Auths {
+		if _, ok := want[a]; ok {
+			want[a] = true
+		}
+	}
+	for a, seen := range want {
+		if !seen {
+			t.Errorf("Auths slice missing %s; got %v", a, stub.captured.GoDaddySSO.Auths)
+		}
+	}
+}
+
+// --- Best-effort identity extraction ---
+//
+// gd-auth-lib's GetShopperID / GetAccountName errors are non-fatal: the SSO
+// has already validated the token, so empty values just mean SIEM gets a
+// less-rich label. The request still proceeds.
+
+func TestMiddleware_ShopperOrService_E2S_AccountNameErrorIsNonFatal(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	m := &Middleware{
+		authType:     "jwt",
+		allowedRoles: []string{"arn:aws:iam::123:role/x"},
+		allowedCerts: []string{"cn.example"},
+		client:       &Client{SSOHost: "https://sso.test.godaddy.com"},
+		validator: &stubProdGDAuth{
+			claims:         idpClaims(string(gdauth.AuthsE2S), "e2s-acct-err"),
+			shopperID:      "shopper-target",
+			accountNameErr: errors.New("FFI error: 5"),
+		},
+	}
+	h := m.AuthenticateShopperOrService(dummyHandler())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/budgets/x", nil)
+	req.Header.Set("Authorization", "Bearer e2s-token")
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	got := findSeclogLine(t, &buf)
+	labels, _ := got["labels"].(map[string]any)
+	if dt, _ := labels["auth_type"].(string); dt != "e2s" {
+		t.Errorf("auth_type=%v want e2s", labels["auth_type"])
+	}
+	if _, has := labels["account_name"]; has {
+		t.Errorf("account_name label should be absent when GetAccountName errors; got %v", labels["account_name"])
 	}
 }

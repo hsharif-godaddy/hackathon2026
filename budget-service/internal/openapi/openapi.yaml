@@ -105,10 +105,11 @@ paths:
       summary: Auth probe — returns 200 when JWT is accepted
       description: |
         Accepts service tokens (`awsiam`, `cert`, `cert2s`) via `Authorization`
-        header (`Bearer` or `sso-jwt`) and shopper tokens (`idp`) via either the
-        `Authorization` header or the `auth_idp` cookie. The response surfaces
-        the resolved token type and source so callers can verify which path
-        authenticated the request.
+        header (`Bearer` or `sso-jwt`) and shopper tokens (`idp`, including
+        `e2s` and `s2s` delegation) via either the `Authorization` header or
+        the `auth_idp` cookie. The response surfaces the resolved token type
+        and source so callers can verify which path authenticated the request;
+        for shopper tokens, the `auth` claim is also surfaced as `authType`.
       responses:
         '200':
           description: OK
@@ -132,6 +133,14 @@ paths:
                     type: string
                     description: Where the JWT was read from on this request.
                     enum: [header, cookie]
+                  authType:
+                    type: string
+                    description: |
+                      The token's `auth` claim. Present only when
+                      `tokenType=idp`. Reflects which shopper delegation path
+                      was accepted (`basic` for direct shopper, `e2s` for
+                      Employee-to-Shopper, `s2s` for Shopper-to-Shopper).
+                    enum: [basic, e2s, s2s]
 
   /api/v1/products:
     get:
@@ -439,10 +448,16 @@ paths:
       summary: Get budget
       description: |
         Accepts a Shopper JWT (`typ=idp`) in addition to the IAM / cert-class
-        service JWTs accepted by other `/api/v1/*` routes. The shopper JWT may
-        be delivered via the `Authorization` header OR the `auth_idp` cookie
-        (header wins when both are present). PATCH and DELETE on this same
-        path remain service-only.
+        service JWTs accepted by other `/api/v1/*` routes. Shopper tokens may
+        carry `auth=basic` (direct shopper), `auth=e2s` (Employee-to-Shopper
+        delegation), or `auth=s2s` (Shopper-to-Shopper delegation). NPR
+        (`s2snpr`, `e2s2snpr`) and 2-level chains (`e2s2s`, `e2s2p`) are
+        rejected. Cert-to-Shopper delegation tokens (`auth=cert2s`, `typ=cert`)
+        are accepted via the cert path here just like on every other
+        `/api/v1/*` route — they go through the cert allowlist, not the
+        shopper path. The shopper JWT may be delivered via the `Authorization`
+        header OR the `auth_idp` cookie (header wins when both are present).
+        PATCH and DELETE on this same path remain service-only.
       security:
         - bearerAuth: []
         - cookieAuth: []

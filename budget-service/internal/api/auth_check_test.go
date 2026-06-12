@@ -18,6 +18,8 @@ type stubValidator struct {
 	claims       *gdauth.TokenClaims
 	principalARN string
 	principalCN  string
+	shopperID    string
+	accountName  string
 }
 
 func (s *stubValidator) ParseToken(_ string, _ *gdauth.AuthOptions) (*gdauth.TokenClaims, error) {
@@ -28,6 +30,12 @@ func (s *stubValidator) GetAwsIamArn(_ *gdauth.TokenClaims) (string, error) {
 }
 func (s *stubValidator) GetCommonName(_ *gdauth.TokenClaims) (string, error) {
 	return s.principalCN, nil
+}
+func (s *stubValidator) GetShopperID(_ *gdauth.TokenClaims) (string, error) {
+	return s.shopperID, nil
+}
+func (s *stubValidator) GetAccountName(_ *gdauth.TokenClaims) (string, error) {
+	return s.accountName, nil
 }
 
 // authCheckTestRouter wires NewRouter with the supplied middleware so
@@ -84,6 +92,9 @@ func TestAuthCheck_ServiceHeader_EmitsTokenTypeAndSource(t *testing.T) {
 	if got, _ := body["message"].(string); !strings.Contains(got, "awsiam token accepted") {
 		t.Errorf("message=%q want substring 'awsiam token accepted'", got)
 	}
+	if _, has := body["authType"]; has {
+		t.Errorf("authType field should be absent for service tokens; got %v", body["authType"])
+	}
 }
 
 // Case 2: shopper idp token via auth_idp cookie → 200 with tokenType:"idp"
@@ -99,8 +110,9 @@ func TestAuthCheck_ShopperCookie_EmitsTokenTypeAndSource(t *testing.T) {
 		"https://sso.test.godaddy.com",
 		&stubValidator{
 			claims: gdauth.NewTokenClaims(map[string]any{
-				"typ": string(gdauth.AuthTypeIDP),
-				"jti": "auth-check-shopper-cookie",
+				"typ":  string(gdauth.AuthTypeIDP),
+				"auth": string(gdauth.AuthsBasic),
+				"jti":  "auth-check-shopper-cookie",
 			}),
 		},
 	)
@@ -122,6 +134,58 @@ func TestAuthCheck_ShopperCookie_EmitsTokenTypeAndSource(t *testing.T) {
 	}
 	if got, _ := body["message"].(string); !strings.Contains(got, "idp token accepted") {
 		t.Errorf("message=%q want substring 'idp token accepted'", got)
+	}
+	if got := body["authType"]; got != "basic" {
+		t.Errorf("authType=%v want basic", got)
+	}
+}
+
+// Case 2b: e2s and s2s shopper tokens surface the `auth` claim as authType
+// in the response so callers can confirm which delegation path matched.
+func TestAuthCheck_Shopper_AuthTypeForDelegationTokens(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		auth gdauth.Auths
+	}{
+		{"e2s", gdauth.AuthsE2S},
+		{"s2s", gdauth.AuthsS2S},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			mw := auth.NewMiddlewareWithValidator(
+				"jwt",
+				[]string{"arn:aws:iam::123:role/x"},
+				[]string{"cn.example"},
+				"https://sso.test.godaddy.com",
+				&stubValidator{
+					claims: gdauth.NewTokenClaims(map[string]any{
+						"typ":  string(gdauth.AuthTypeIDP),
+						"auth": string(tc.auth),
+						"jti":  "auth-check-" + tc.name,
+					}),
+				},
+			)
+
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/auth-check", nil)
+			req.Header.Set("Authorization", "Bearer "+tc.name+"-token")
+			authCheckTestRouter(mw).ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+			}
+			body := decodeAuthCheckBody(t, rec)
+			if got := body["tokenType"]; got != "idp" {
+				t.Errorf("tokenType=%v want idp", got)
+			}
+			if got := body["authType"]; got != string(tc.auth) {
+				t.Errorf("authType=%v want %s", got, tc.auth)
+			}
+		})
 	}
 }
 
