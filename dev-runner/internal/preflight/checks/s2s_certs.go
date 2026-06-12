@@ -9,9 +9,9 @@ import (
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
 )
 
-// S2SCertsCheck verifies that S2S client certificates (GraphQL and TestPilot)
+// S2SCertsCheck verifies that S2S client certificates (GraphQL)
 // are configured in app/.env when AUTH_TYPE requires real authentication.
-// Without these, venture API, Product Graph, and TestPilot calls fail at runtime.
+// Without these, venture API and Product Graph calls fail at runtime.
 type S2SCertsCheck struct{}
 
 func (c *S2SCertsCheck) Name() string     { return "S2S Client Certs" }
@@ -45,8 +45,6 @@ func (c *S2SCertsCheck) Run(_ context.Context, projectRoot string) preflight.Che
 	requiredVars := []string{
 		"GRAPHQL_CLIENT_CERT",
 		"GRAPHQL_CLIENT_KEY",
-		"TESTPILOT_CLIENT_CERT",
-		"TESTPILOT_CLIENT_KEY",
 	}
 
 	var missing []string
@@ -75,6 +73,6 @@ func (c *S2SCertsCheck) Run(_ context.Context, projectRoot string) preflight.Che
 		Status:   preflight.StatusPass,
 		Name:     c.Name(),
 		Category: c.Category(),
-		Message:  "S2S client certificates configured (GraphQL + TestPilot)",
+		Message:  "S2S client certificates configured (GraphQL)",
 	}
 }

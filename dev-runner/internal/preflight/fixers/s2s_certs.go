@@ -18,11 +18,9 @@ var s2sCertSecrets = []struct {
 }{
 	{"/Katana/Secrets/airobuilde/app/test/GRAPHQL_CLIENT_CERT", "GRAPHQL_CLIENT_CERT"},
 	{"/Katana/Secrets/airobuilde/app/test/GRAPHQL_CLIENT_KEY", "GRAPHQL_CLIENT_KEY"},
-	{"/Katana/Secrets/airobuilde/app/test/TESTPILOT_CLIENT_CERT", "TESTPILOT_CLIENT_CERT"},
-	{"/Katana/Secrets/airobuilde/app/test/TESTPILOT_CLIENT_KEY", "TESTPILOT_CLIENT_KEY"},
 }
 
-// S2SCertsFixer fetches GraphQL and TestPilot client certificates from
+// S2SCertsFixer fetches GraphQL client certificates from
 // AWS Secrets Manager and writes them to app/.env.
 type S2SCertsFixer struct{}
 

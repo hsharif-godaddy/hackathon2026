@@ -2,11 +2,11 @@ import { useCallback } from 'react';
 
 import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
+import { type SecurityAnalysisRunResult } from '@/lib/security-analysis';
 import { summarizeScan } from '@/lib/security-scan';
-import { type TestPilotRunResult } from '@/lib/testpilot';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 
-type CodeResult = TestPilotRunResult | { error: string; status: 'failed' };
+type CodeResult = SecurityAnalysisRunResult | { error: string; status: 'failed' };
 
 function isErrorResult(r: CodeResult): r is { error: string; status: 'failed' } {
   return 'error' in r;
@@ -27,7 +27,7 @@ export function useTriggerSecurityAnalysis() {
       return;
     }
 
-    fetch('/api/testpilot', {
+    fetch('/api/security-analysis', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ appId, url, runTests: ['code'] }),
@@ -44,8 +44,6 @@ export function useTriggerSecurityAnalysis() {
           logger.warn('security-analysis.trigger.scan-failed', { appId, error: 'no result' });
         } else if (isErrorResult(codeResult)) {
           logger.warn('security-analysis.trigger.scan-failed', { appId, error: codeResult.error });
-        } else if (codeResult.timedOut) {
-          logger.warn('security-analysis.trigger.timed-out', { appId, taskId: codeResult.taskId });
         } else {
           const summary = summarizeScan(codeResult, appId);
           shipAnalyticsLog('security.scan_completed', summary);

@@ -106,8 +106,6 @@ func TestS2SCertsCheck_JWTWithAllCerts(t *testing.T) {
 	writeAppEnv(t, root, `AUTH_TYPE=jwt
 GRAPHQL_CLIENT_CERT=test-cert-data
 GRAPHQL_CLIENT_KEY=test-key-data
-TESTPILOT_CLIENT_CERT=test-cert-data
-TESTPILOT_CLIENT_KEY=test-key-data
 `)
 
 	result := (&S2SCertsCheck{}).Run(context.Background(), root)
@@ -126,18 +124,5 @@ func TestS2SCertsCheck_JWTMissingAll(t *testing.T) {
 	}
 	if result.InstallHint == "" {
 		t.Error("expected InstallHint to be set")
-	}
-}
-
-func TestS2SCertsCheck_JWTMissingTestPilot(t *testing.T) {
-	root := t.TempDir()
-	writeAppEnv(t, root, `AUTH_TYPE=jwt
-GRAPHQL_CLIENT_CERT="cert"
-GRAPHQL_CLIENT_KEY="key"
-`)
-
-	result := (&S2SCertsCheck{}).Run(context.Background(), root)
-	if result.Status != preflight.StatusWarn {
-		t.Errorf("expected Warn for missing TestPilot certs, got %v: %s", result.Status, result.Message)
 	}
 }

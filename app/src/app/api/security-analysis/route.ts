@@ -1,7 +1,7 @@
 /**
- * TestPilot API Route
+ * Security Analysis API Route
  *
- * Backend API for running TestPilot tests and security scans.
+ * Backend API for running security scans via the internal agents service.
  * Handles authentication and provides a secure interface for the frontend.
  */
 
@@ -15,9 +15,9 @@ import { VulnerabilityScannerResult } from '@/types/vulnerability-scanner';
 import { transformVulnerabilityScanResult } from './transform-scan-result';
 
 /**
- * POST /api/testpilot
+ * POST /api/security-analysis
  *
- * Run TestPilot tests and security scans
+ * Run security scans on the app
  *
  * Request body:
  * - appId: string
@@ -57,7 +57,7 @@ export const POST = withCustomerAuth(async (
     }
 
     const adapter = getControlPlaneAdapter();
-    logger.info('testpilot.api.start', { appId, runTests });
+    logger.info('security-analysis.api.start', { appId, runTests });
 
     const startTime = Date.now();
 
@@ -65,7 +65,7 @@ export const POST = withCustomerAuth(async (
       const testStartTime = Date.now();
       let scanEndpoint: string | undefined;
       try {
-        logger.info('testpilot.api.test-start', { testType });
+        logger.info('security-analysis.api.test-start', { testType });
 
         if (testType === 'code') {
           const site = await adapter.getSite(appId, authContext.jwt);
@@ -91,7 +91,7 @@ export const POST = withCustomerAuth(async (
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            logger.error('testpilot.api.agent-fetch-failed', {
+            logger.error('security-analysis.api.agent-fetch-failed', {
               appId,
               testType,
               scanEndpoint,
@@ -107,7 +107,7 @@ export const POST = withCustomerAuth(async (
           // Transform using helper function
           const transformedResult = transformVulnerabilityScanResult(scanResult);
 
-          logger.info('testpilot.api.test-complete', {
+          logger.info('security-analysis.api.test-complete', {
             testType,
             elapsed,
             vulnerabilitiesFound: transformedResult.aiInsights.securityReport.vulnerabilities.length,
@@ -129,7 +129,7 @@ export const POST = withCustomerAuth(async (
         const errorStack = error instanceof Error ? error.stack : undefined;
         const errorCause = error instanceof Error ? (error as Error & { cause?: unknown }).cause : undefined;
 
-        logger.error('testpilot.api.test-failed', {
+        logger.error('security-analysis.api.test-failed', {
           testType,
           elapsed,
           error: errorMessage,
@@ -149,10 +149,10 @@ export const POST = withCustomerAuth(async (
       }
     });
 
-    logger.info('testpilot.api.waiting', { message: 'Waiting for all tests to complete...' });
+    logger.info('security-analysis.api.waiting', { message: 'Waiting for all tests to complete...' });
     const testResults = await Promise.all(promises);
     const totalElapsed = Date.now() - startTime;
-    logger.info('testpilot.api.all-complete', { totalElapsed, testCount: testResults.length });
+    logger.info('security-analysis.api.all-complete', { totalElapsed, testCount: testResults.length });
 
     // Combine results into a single object (include errors)
     const results: Record<string, unknown> = {};
@@ -162,18 +162,17 @@ export const POST = withCustomerAuth(async (
       }
     }
 
-    logger.info('testpilot.api.complete', { appId, testTypes: runTests, resultKeys: Object.keys(results) });
+    logger.info('security-analysis.api.complete', { appId, testTypes: runTests, resultKeys: Object.keys(results) });
 
     return NextResponse.json(results);
   } catch (error) {
-    logger.error('testpilot.api.error', {
+    logger.error('security-analysis.api.error', {
       error: error instanceof Error ? error.message : String(error),
     });
 
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'TestPilot API request failed' },
+      { error: error instanceof Error ? error.message : 'Security Analysis API request failed' },
       { status: 500 }
     );
   }
 });
-

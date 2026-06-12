@@ -13,18 +13,18 @@ import TextLockup from '@ux/text-lockup';
 
 import { ChatTab } from '@/app/[market]/develop/components/types';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
-import { type StructuredVulnerability } from '@/app/api/testpilot/transform-scan-result';
+import { type StructuredVulnerability } from '@/app/api/security-analysis/transform-scan-result';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
-import { type TestPilotRunResult } from '@/lib/testpilot';
+import { type SecurityAnalysisRunResult } from '@/lib/security-analysis';
 import { TodoListService } from '@/services/TodoListService';
 
 type TranslateFn = ReturnType<typeof useTranslations>;
 
 /**
- * TestPilot security response interface — `vulnerabilities` is the structured
+ * Security analysis response interface — `vulnerabilities` is the structured
  * shape emitted by transform-scan-result.ts. The client templates user-visible
  * strings via translation keys (builder_settings_security_*).
  */
@@ -235,14 +235,14 @@ function SecurityVulnerabilityCard({
 /**
  * Component to display security analysis results
  *
- * @param results - The TestPilot API response containing security test results
+ * @param results - The Security Analysis API response containing security test results
  * @param onQuickFixInProgressChange - Notifies parent when Quick Fix create/navigation is in progress
  */
 export default function SecurityResults({
   results,
   onQuickFixInProgressChange
 }: {
-  results: { security?: TestPilotRunResult }
+  results: { security?: SecurityAnalysisRunResult }
   onQuickFixInProgressChange?: (inProgress: boolean) => void
 }) {
   const t = useTranslations();

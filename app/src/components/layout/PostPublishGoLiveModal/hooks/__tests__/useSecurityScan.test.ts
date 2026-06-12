@@ -166,7 +166,7 @@ describe('useSecurityScan', () => {
 
     await waitFor(() => {
       expect(mocks.appFetch).toHaveBeenCalledWith(
-        '/api/testpilot',
+        '/api/security-analysis',
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({

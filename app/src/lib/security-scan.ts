@@ -1,5 +1,5 @@
-import type { StructuredVulnerability } from '@/app/api/testpilot/transform-scan-result';
-import type { TestPilotRunResult } from '@/lib/testpilot';
+import type { StructuredVulnerability } from '@/app/api/security-analysis/transform-scan-result';
+import type { SecurityAnalysisRunResult } from '@/lib/security-analysis';
 
 type SeverityBucket = { critical: number; high: number; medium: number; low: number };
 type Kind = StructuredVulnerability['kind'];
@@ -13,7 +13,7 @@ function emptyBucket(): SeverityBucket {
  * Build the analytics payload for a completed scan. Bucketed counts feed the
  * per-scanner-kind dashboard; top-level totals stay flat for simple queries.
  */
-export function summarizeScan(result: TestPilotRunResult, appId: string) {
+export function summarizeScan(result: SecurityAnalysisRunResult, appId: string) {
   const vulnerabilities: StructuredVulnerability[] =
     result.results?.aiInsights?.securityReport?.vulnerabilities ?? [];
 

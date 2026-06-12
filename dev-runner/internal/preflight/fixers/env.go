@@ -151,7 +151,7 @@ func (f *EnvFixer) generateAppEnv(projectRoot string, v *EnvValues) error {
 	case err == nil:
 		// File exists — upsert only the managed variables, preserving
 		// everything else (e.g., JWT_PRIVATE_KEY/JWT_PUBLIC_KEY written by
-		// JWTKeysFixer and GRAPHQL/TESTPILOT client certs written by
+		// JWTKeysFixer and GRAPHQL client certs written by
 		// S2SCertsFixer). A wholesale rewrite here would wipe those and
 		// trigger a JWT rotation downstream.
 		managed := []struct{ key, value string }{

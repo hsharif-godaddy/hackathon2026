@@ -5,7 +5,7 @@ import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
 import { VulnerabilityScannerResult } from '@/types/vulnerability-scanner';
-import { transformVulnerabilityScanResult } from '../../testpilot/transform-scan-result';
+import { transformVulnerabilityScanResult } from '../../security-analysis/transform-scan-result';
 
 export const GET = withCustomerAuth(async (
   _request: NextRequest,

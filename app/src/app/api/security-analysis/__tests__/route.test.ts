@@ -1,7 +1,7 @@
 /**
- * TestPilot Route Tests
+ * Security Analysis Route Tests
  *
- * Tests the /api/testpilot endpoint to ensure proper handling of vulnerability
+ * Tests the /api/security-analysis endpoint to ensure proper handling of vulnerability
  * scanning results, transformation logic, and error cases.
  */
 
@@ -15,14 +15,13 @@ import { transformVulnerabilityScanResult } from '../transform-scan-result';
 /**
  * Mock dependencies using vi.hoisted
  */
-const { mockAgentFetch, mockAuthenticateCustomer, mockControlPlaneAdapter, mockTestPilotClient, mockLogger } = vi.hoisted(function setup() {
+const { mockAgentFetch, mockAuthenticateCustomer, mockControlPlaneAdapter, mockLogger } = vi.hoisted(function setup() {
   return {
     mockAgentFetch: vi.fn(),
     mockAuthenticateCustomer: vi.fn(),
     mockControlPlaneAdapter: {
       getSite: vi.fn(),
     },
-    mockTestPilotClient: {},
     mockLogger: {
       info: vi.fn(),
       error: vi.fn(),
@@ -73,15 +72,6 @@ vi.mock('@/lib/customer-auth', async function mockCustomerAuthModule() {
 });
 
 /**
- * Mock testpilot client
- */
-vi.mock('@/lib/testpilot', function mockTestPilotModule() {
-  return {
-    testPilotClient: mockTestPilotClient,
-  };
-});
-
-/**
  * Mock logger
  */
 vi.mock('@/lib/request-context', function mockLoggerModule() {
@@ -101,7 +91,7 @@ const MOCK_URL = 'https://test-app.example.com';
  * Helper to create mock NextRequest
  */
 function createMockRequest(body: unknown): NextRequest {
-  return new NextRequest('http://localhost:3000/api/testpilot', {
+  return new NextRequest('http://localhost:3000/api/security-analysis', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -202,7 +192,7 @@ const VALID_SCAN_RESULT: VulnerabilityScannerResult = {
   },
 };
 
-describe('testpilot', function packageTests() {
+describe('security-analysis', function packageTests() {
   describe('#POST', function postTests() {
     beforeEach(function resetMocks() {
       vi.clearAllMocks();
@@ -921,7 +911,7 @@ describe('testpilot', function packageTests() {
 
     describe('error handling', function errorTests() {
       it('should handle JSON parse error', async function jsonParseError() {
-        const invalidRequest = new NextRequest('http://localhost:3000/api/testpilot', {
+        const invalidRequest = new NextRequest('http://localhost:3000/api/security-analysis', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: 'invalid json',

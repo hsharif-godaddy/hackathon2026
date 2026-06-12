@@ -11,8 +11,8 @@ import SettingsSection from "@/app/[market]/develop/components/settings/Settings
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { useTranslations } from '@/hooks/useTranslations';
 import { shipAnalyticsLog } from '@/lib/logging';
+import { type SecurityAnalysisRunResult } from '@/lib/security-analysis';
 import { summarizeScan } from '@/lib/security-scan';
-import { type TestPilotRunResult } from "@/lib/testpilot";
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSecurityQuickFixHandoffStore } from '@/stores/useSecurityQuickFixHandoffStore';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
@@ -22,7 +22,7 @@ import SecurityResults from './components/security/SecurityResults';
 /**
  * Security Panel component for running security analysis
  *
- * Provides interface to run security tests using the TestPilot API
+ * Provides interface to run security analysis via the internal agents service
  * and display the results to the user.
  */
 export default function SecurityPanel() {
@@ -33,7 +33,7 @@ export default function SecurityPanel() {
 
   const [isLoadingStoredReport, setIsLoadingStoredReport] = useState(false);
   const [isQuickFixInProgress, setIsQuickFixInProgress] = useState(false);
-  const [results, setResults] = useState<{ security?: TestPilotRunResult } | null>(null);
+  const [results, setResults] = useState<{ security?: SecurityAnalysisRunResult } | null>(null);
   const [lastScannedAt, setLastScannedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorTitle, setErrorTitle] = useState<string | null>(null);
@@ -78,7 +78,7 @@ export default function SecurityPanel() {
           setIsLoadingStoredReport(false);
           return;
         }
-        const data = await res.json() as { scannedAt: string; results: TestPilotRunResult['results']; timedOut: boolean; taskId: string };
+        const data = await res.json() as { scannedAt: string; results: SecurityAnalysisRunResult['results']; timedOut: boolean; taskId: string };
         if (controller.signal.aborted) return;
         setResults({ security: { results: data.results, timedOut: data.timedOut, taskId: data.taskId } });
         setLastScannedAt(data.scannedAt);
@@ -92,61 +92,6 @@ export default function SecurityPanel() {
     return () => controller.abort();
   }, [appId]);
 
-  /**
-   * Retry a timed out task by polling its results
-   *
-   * @param taskId - The task ID to retry
-   * @param currentRetryCount - Current retry attempt number
-   * @param resolvedAppId - appId captured as non-null from the caller after the !appId guard
-   */
-  const retryTimedOutTask = async (taskId: string, currentRetryCount: number, resolvedAppId: string) => {
-    try {
-      const response = await fetch(`/api/testpilot/${taskId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || t('builder_settings_security_error_attempt_failed'));
-      }
-
-      const data = await response.json();
-      if (data.timedOut && currentRetryCount + 1 < 3) {
-        // Still timed out, retry again
-        setTimeout(() => {
-          retryTimedOutTask(taskId, currentRetryCount + 1, resolvedAppId);
-        }, 2000); // Wait 2 seconds before next retry
-      } else {
-        setResults({ security: data });
-        if (!data.timedOut) {
-          shipAnalyticsLog('security.scan_completed', summarizeScan(data, resolvedAppId));
-        }
-        setSecurityAnalysisRunning(resolvedAppId, false);
-      }
-    } catch (err) {
-      // On retry error, try again unless we've hit max attempts
-      if (currentRetryCount + 1 < 3) {
-        setTimeout(() => {
-          retryTimedOutTask(taskId, currentRetryCount + 1, resolvedAppId);
-        }, 2000);
-      } else {
-        const errorMessage = err instanceof Error ? err.message : t('builder_settings_security_error_unknown');
-        setError(errorMessage);
-        setErrorTitle(t('builder_settings_security_error_attempt_failed_title'));
-        setSecurityAnalysisRunning(resolvedAppId, false);
-      }
-    }
-  };
-
-  /**
-   * Handle running security analysis
-   *
-   * Calls the TestPilot API with 'security' test type to analyze
-   * the current application for security vulnerabilities.
-   */
   const handleRunAnalysis = async () => {
     if (!appId || !serverState?.url) {
       setError(t('builder_settings_security_error_not_ready'));
@@ -160,7 +105,7 @@ export default function SecurityPanel() {
     setErrorTitle(null);
 
     try {
-      const response = await fetch('/api/testpilot', {
+      const response = await fetch('/api/security-analysis', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -185,14 +130,6 @@ export default function SecurityPanel() {
       } else if (codeResult.error || codeResult.status === 'failed') {
         setError(codeResult.error || t('builder_settings_security_error_analysis_failed'));
         setSecurityAnalysisRunning(appId, false);
-      } else if (codeResult.timedOut) {
-        if (codeResult.taskId) {
-          // Start retry process
-          retryTimedOutTask(codeResult.taskId, 0, appId);
-        } else {
-          setError(t('builder_settings_security_error_analysis_failed'));
-          setSecurityAnalysisRunning(appId, false);
-        }
       } else {
         // Success - rename 'code' to 'security' for backwards compatibility with SecurityResults
         setResults({ security: codeResult });

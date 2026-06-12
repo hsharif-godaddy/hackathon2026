@@ -162,7 +162,6 @@ AWS_PROFILE=airobuild-dev-private-sso
 JWT_PRIVATE_KEY="preserved-private-key"
 JWT_PUBLIC_KEY="preserved-public-key"
 GRAPHQL_CLIENT_CERT="preserved-graphql-cert"
-TESTPILOT_CLIENT_KEY="preserved-testpilot-key"
 `
 	writeEnv(t, root, "app", existingAppEnv)
 
@@ -175,7 +174,6 @@ TESTPILOT_CLIENT_KEY="preserved-testpilot-key"
 	assertEq(t, env, "JWT_PRIVATE_KEY", "preserved-private-key")
 	assertEq(t, env, "JWT_PUBLIC_KEY", "preserved-public-key")
 	assertEq(t, env, "GRAPHQL_CLIENT_CERT", "preserved-graphql-cert")
-	assertEq(t, env, "TESTPILOT_CLIENT_KEY", "preserved-testpilot-key")
 	assertEq(t, env, "AUTH_TYPE", "jwt")
 	assertEq(t, env, "AWS_PROFILE", "airobuild-dev-private-sso")
 }

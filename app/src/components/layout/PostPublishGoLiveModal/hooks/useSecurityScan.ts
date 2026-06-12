@@ -8,7 +8,7 @@ import { useTranslations } from '@/hooks/useTranslations';
 import { appFetch } from '@/lib/gasket-config';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
-import type { TestPilotRunResult } from '@/lib/testpilot';
+import type { SecurityAnalysisRunResult } from '@/lib/security-analysis';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import type { SecurityScanResult } from '../types';
 
@@ -16,7 +16,7 @@ import type { SecurityScanResult } from '../types';
  * Mirrors StructuredVulnerability shape from transform-scan-result.ts. Inlined
  * here to avoid a cross-module dep into BFF-internal types from a UI hook.
  */
-interface TestPilotVulnerability {
+interface SecurityAnalysisVulnerability {
   kind: 'sca' | 'secret' | 'sast' | 'supplyChain';
   severity: string;
   ruleId?: string;
@@ -29,7 +29,7 @@ interface TestPilotVulnerability {
 
 type T = ReturnType<typeof useTranslations>;
 
-function vulnTitle(v: TestPilotVulnerability, t: T): string {
+function vulnTitle(v: SecurityAnalysisVulnerability, t: T): string {
   switch (v.kind) {
     case 'sca':
       return t('builder_settings_security_vuln_title_sca', { title: v.rawTitle ?? v.packageName ?? '' });
@@ -42,15 +42,14 @@ function vulnTitle(v: TestPilotVulnerability, t: T): string {
   }
 }
 
-function vulnDescription(v: TestPilotVulnerability, t: T): string | undefined {
+function vulnDescription(v: SecurityAnalysisVulnerability, t: T): string | undefined {
   if (v.description && v.description.trim().length > 0) return v.description;
   if (v.kind === 'sca') return t('builder_settings_security_vuln_desc_sca_fallback');
   return undefined;
 }
 
-// Discriminated union for TestPilot API response
-type TestPilotApiResponse =
-  | { success: true; data: TestPilotRunResult }
+type SecurityAnalysisApiResponse =
+  | { success: true; data: SecurityAnalysisRunResult }
   | { success: false; error: string; status?: string };
 
 export function useSecurityScan(appId: string) {
@@ -81,7 +80,7 @@ export function useSecurityScan(appId: string) {
         message: 'Running internal vulnerability and secrets scan'
       });
 
-      const response = await appFetch('/api/testpilot', {
+      const response = await appFetch('/api/security-analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -108,10 +107,10 @@ export function useSecurityScan(appId: string) {
 
       // Parse the response into our discriminated union
       const rawResult = data.code;
-      const securityApiResponse: TestPilotApiResponse =
+      const securityApiResponse: SecurityAnalysisApiResponse =
         rawResult.error || rawResult.status === 'failed'
           ? { success: false, error: rawResult.error || 'Security scan failed', status: rawResult.status }
-          : { success: true, data: rawResult as TestPilotRunResult };
+          : { success: true, data: rawResult as SecurityAnalysisRunResult };
 
       // Handle error case (TypeScript type narrowing)
       if (securityApiResponse.success === false) {
@@ -133,16 +132,16 @@ export function useSecurityScan(appId: string) {
       const vulnerabilities = securityData.aiInsights?.securityReport?.vulnerabilities || [];
 
       const summary = {
-        critical: vulnerabilities.filter((v: TestPilotVulnerability) => v.severity.toLowerCase() === 'critical').length,
-        high: vulnerabilities.filter((v: TestPilotVulnerability) => v.severity.toLowerCase() === 'high').length,
-        moderate: vulnerabilities.filter((v: TestPilotVulnerability) =>
+        critical: vulnerabilities.filter((v: SecurityAnalysisVulnerability) => v.severity.toLowerCase() === 'critical').length,
+        high: vulnerabilities.filter((v: SecurityAnalysisVulnerability) => v.severity.toLowerCase() === 'high').length,
+        moderate: vulnerabilities.filter((v: SecurityAnalysisVulnerability) =>
           v.severity.toLowerCase() === 'medium' || v.severity.toLowerCase() === 'moderate'
         ).length,
-        low: vulnerabilities.filter((v: TestPilotVulnerability) => v.severity.toLowerCase() === 'low').length
+        low: vulnerabilities.filter((v: SecurityAnalysisVulnerability) => v.severity.toLowerCase() === 'low').length
       };
 
       const normalizedResults: SecurityScanResult = {
-        vulnerabilities: vulnerabilities.map((v: TestPilotVulnerability) => {
+        vulnerabilities: vulnerabilities.map((v: SecurityAnalysisVulnerability) => {
           const severityLower = v.severity.toLowerCase();
           // Map "medium" to "moderate" to match our type system
           const normalizedSeverity = severityLower === 'medium' ? 'moderate' : severityLower;
