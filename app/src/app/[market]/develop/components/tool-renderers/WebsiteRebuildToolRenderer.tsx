@@ -1,13 +1,14 @@
 'use client'
 
 import { CheckCircle, Expand, FileText, Globe, Image, XCircle } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Tag from '@ux/tag'
 import text from '@ux/text'
 
 import RebuildIntakeForm from '@/app/[market]/develop/components/rebuild/RebuildIntakeForm'
+import { trackRebuildIntakeTimedOut } from '@/app/[market]/develop/components/rebuild/rebuildIntakeInstrumentation'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { defaultMessageForRebuildIntakeKey } from '@/lib/translations/rebuild-intake-defaults'
@@ -71,6 +72,11 @@ export default function WebsiteRebuildToolRenderer({
   const isRunning = toolStatus === 'running'
   const isError = toolStatus === 'error' || !!errorMessage
   const isComplete = !isRunning && !isError && isSuccess
+
+  useEffect(function logIntakeTimeoutFromResult() {
+    if (!intakeTimedOut || !sourceUrl) return
+    trackRebuildIntakeTimedOut(sourceUrl)
+  }, [intakeTimedOut, sourceUrl])
 
   // Build display name based on state
   let displayName = t('builder_rebuild_analyzing_website')

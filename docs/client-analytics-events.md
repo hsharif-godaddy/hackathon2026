@@ -185,9 +185,12 @@ develop.initialBuild.start        ← create flow begins
 | EID | Type | Fires when | Extra fields |
 |---|---|---|---|
 | `develop.rebuild.started` | impression | Rebuild tool fires | `priorArtifactHash` (optional) |
+| `develop.rebuild.intakewaiting` | impression | Rebuild enters `awaiting_intake` (before scope estimates load) | `sourceUrl` |
 | `develop.rebuild.intakeform` | impression | Rebuild intake form renders (scope + design) | `sourceUrl` |
+| `develop.rebuild.intakeform.error` | impression | Scope estimates failed or returned empty while awaiting intake | `sourceUrl`, `reason` (`fetch_failed` \| `empty_estimates`) |
 | `develop.rebuild.intakesubmit` | click | User clicks **Start rebuild** on intake form | `scope`, `designChoice`, `designDirection`, `submitSource` (`submit`), `sourceUrl` |
 | `develop.rebuild.intakedefaults` | click | User clicks **Use recommended defaults** | `scope` (`homepage_only`), `designChoice` (`keep_similar`), `designDirection` (`keep-similar`), `submitSource` (`defaults`), `sourceUrl` |
+| `develop.rebuild.intaketimeout` | impression | Backend auto-applies defaults after 10-minute intake wait | `scope` (`homepage_only`), `designChoice` (`keep_similar`), `designDirection` (`keep-similar`), `submitSource` (`timeout`), `sourceUrl` |
 
 **Intake selection fields (product reporting):**
 
@@ -281,7 +284,8 @@ For every successful publish, AiroHQ fires twice — at attempt (`completedTask:
 | `hooks/shared/initialBuildFunnel.ts` | `funnel.initial_build.*` · `develop.initialBuild.start` · `develop.generation.triggered` · `develop.firstBuild.complete` |
 | `hooks/shared/contextGatheringTracker.ts` | `funnel.context_gathering.*` · `develop.contextGathering.*` |
 | `hooks/shared/toolSideEffects.ts` | `funnel.rebuild.started` · `develop.rebuild.started` |
-| `app/.../rebuild/RebuildIntakeForm.tsx` | `develop.rebuild.intakeform` · `develop.rebuild.intakesubmit` · `develop.rebuild.intakedefaults` |
+| `app/.../rebuild/RebuildIntakeForm.tsx` | `develop.rebuild.intakewaiting` · `develop.rebuild.intakeform` · `develop.rebuild.intakeform.error` · `develop.rebuild.intakesubmit` · `develop.rebuild.intakedefaults` · `develop.rebuild.intaketimeout` |
+| `app/.../tool-renderers/WebsiteRebuildToolRenderer.tsx` | `develop.rebuild.intaketimeout` (backup when user returns after timeout) |
 | `components/chat/ChatPane.tsx` | `chat.prompt.sent` · `funnel.user_first_message.sent` · `funnel.edit.triggered` · `develop.edit.triggered` · AiroHQ prompt submit |
 | `components/StreamingMessageList.tsx` | `funnel.first_response.rendered` |
 | `components/layout/AppPublish.tsx` | `publish.attempted` · `develop.publish.attempt` · AiroHQ publish (UI path) |

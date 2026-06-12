@@ -17,8 +17,11 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { defaultMessageForRebuildIntakeKey } from '@/lib/translations/rebuild-intake-defaults'
 import {
   type RebuildIntakeDesignChoiceId,
+  trackRebuildIntakeFormError,
   trackRebuildIntakeFormShown,
   trackRebuildIntakeSubmitted,
+  trackRebuildIntakeTimedOut,
+  trackRebuildIntakeWaiting,
 } from './rebuildIntakeInstrumentation'
 
 type DesignChoiceId = RebuildIntakeDesignChoiceId
@@ -52,7 +55,20 @@ export default function RebuildIntakeForm({ appId, sourceUrl }: RebuildIntakeFor
   const { data: workflowStatus } = useRebuildWorkflowStatus(appId, true)
   const { data: scopeEstimates, isLoading: estimatesLoading, isError: estimatesError } = useRebuildScopeEstimates(appId)
   const submitIntake = useSubmitRebuildIntake(appId)
+  const hasLoggedWaitingRef = useRef(false)
   const hasLoggedImpressionRef = useRef(false)
+  const hasLoggedErrorRef = useRef(false)
+  const hasLoggedTimeoutRef = useRef(false)
+  const userSubmittedRef = useRef(false)
+
+  useEffect(function logIntakeWaiting() {
+    if (hasLoggedWaitingRef.current) return
+    if (workflowStatus?.intakeCompleted) return
+    if (workflowStatus && workflowStatus.status !== 'awaiting_intake') return
+
+    trackRebuildIntakeWaiting(sourceUrl)
+    hasLoggedWaitingRef.current = true
+  }, [sourceUrl, workflowStatus])
 
   useEffect(function logIntakeFormImpression() {
     if (hasLoggedImpressionRef.current) return
@@ -69,6 +85,36 @@ export default function RebuildIntakeForm({ appId, sourceUrl }: RebuildIntakeFor
     sourceUrl,
     workflowStatus,
   ])
+
+  useEffect(function logIntakeFormError() {
+    if (hasLoggedErrorRef.current) return
+    if (workflowStatus?.intakeCompleted) return
+    if (workflowStatus && workflowStatus.status !== 'awaiting_intake') return
+    if (estimatesLoading) return
+    if (!estimatesError && scopeEstimates?.length) return
+
+    trackRebuildIntakeFormError(
+      sourceUrl,
+      estimatesError ? 'fetch_failed' : 'empty_estimates',
+    )
+    hasLoggedErrorRef.current = true
+  }, [
+    estimatesError,
+    estimatesLoading,
+    scopeEstimates?.length,
+    sourceUrl,
+    workflowStatus,
+  ])
+
+  useEffect(function logIntakeTimeout() {
+    if (hasLoggedTimeoutRef.current) return
+    if (!hasLoggedImpressionRef.current) return
+    if (userSubmittedRef.current) return
+    if (!workflowStatus?.intakeCompleted) return
+
+    trackRebuildIntakeTimedOut(sourceUrl)
+    hasLoggedTimeoutRef.current = true
+  }, [sourceUrl, workflowStatus?.intakeCompleted])
 
   if (workflowStatus?.intakeCompleted) {
     return null
@@ -186,6 +232,7 @@ export default function RebuildIntakeForm({ appId, sourceUrl }: RebuildIntakeFor
           text={tr('builder_rebuild_intake_submit')}
           disabled={submitIntake.isPending}
           onClick={function submit() {
+            userSubmittedRef.current = true
             const designDirection = designChoiceToDirection(designChoice)
             trackRebuildIntakeSubmitted({
               scope,
@@ -210,6 +257,7 @@ export default function RebuildIntakeForm({ appId, sourceUrl }: RebuildIntakeFor
           text={tr('builder_rebuild_intake_use_defaults')}
           disabled={submitIntake.isPending}
           onClick={function useDefaults() {
+            userSubmittedRef.current = true
             trackRebuildIntakeSubmitted({
               scope: 'homepage_only',
               designChoice: 'keep_similar',

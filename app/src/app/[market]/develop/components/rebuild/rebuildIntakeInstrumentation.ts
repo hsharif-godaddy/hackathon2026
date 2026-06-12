@@ -1,5 +1,5 @@
 import type { DesignDirection, RebuildScope } from '@/app/[market]/develop/hooks/useRebuildIntake'
-import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
+import { getInstrumentationAppId, logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 
 export type RebuildIntakeDesignChoiceId =
   | 'airo_decide'
@@ -8,10 +8,39 @@ export type RebuildIntakeDesignChoiceId =
   | 'simplify'
   | 'bold'
 
-export type RebuildIntakeSubmitSource = 'submit' | 'defaults'
+export type RebuildIntakeSubmitSource = 'submit' | 'defaults' | 'timeout'
+
+export type RebuildIntakeFormErrorReason = 'fetch_failed' | 'empty_estimates'
+
+const loggedIntakeTimeouts = new Set<string>()
+
+function intakeTimeoutDedupeKey(sourceUrl: string): string {
+  return `${getInstrumentationAppId() ?? ''}:${sourceUrl}`
+}
+
+export function trackRebuildIntakeWaiting(sourceUrl: string) {
+  logImpressionEvent('develop.rebuild.intakewaiting', { sourceUrl })()
+}
 
 export function trackRebuildIntakeFormShown(sourceUrl: string) {
   logImpressionEvent('develop.rebuild.intakeform', { sourceUrl })()
+}
+
+export function trackRebuildIntakeFormError(sourceUrl: string, reason: RebuildIntakeFormErrorReason) {
+  logImpressionEvent('develop.rebuild.intakeform.error', { sourceUrl, reason })()
+}
+
+export function trackRebuildIntakeTimedOut(sourceUrl: string) {
+  const key = intakeTimeoutDedupeKey(sourceUrl)
+  if (loggedIntakeTimeouts.has(key)) return
+  loggedIntakeTimeouts.add(key)
+  logImpressionEvent('develop.rebuild.intaketimeout', {
+    scope: 'homepage_only',
+    designChoice: 'keep_similar',
+    designDirection: 'keep-similar',
+    submitSource: 'timeout',
+    sourceUrl,
+  })()
 }
 
 export function trackRebuildIntakeSubmitted({

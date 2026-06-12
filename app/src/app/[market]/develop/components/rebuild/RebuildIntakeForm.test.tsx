@@ -12,6 +12,9 @@ const mockMutate = vi.fn()
 const mockInvalidateQueries = vi.fn()
 const mockTrackFormShown = vi.hoisted(() => vi.fn())
 const mockTrackSubmitted = vi.hoisted(() => vi.fn())
+const mockTrackWaiting = vi.hoisted(() => vi.fn())
+const mockTrackTimedOut = vi.hoisted(() => vi.fn())
+const mockTrackFormError = vi.hoisted(() => vi.fn())
 
 const { mockWorkflowStatus } = vi.hoisted(() => ({
   mockWorkflowStatus: { status: 'awaiting_intake' as const, intakeCompleted: false },
@@ -62,6 +65,9 @@ vi.mock('@/lib/translations/rebuild-intake-defaults', () => ({
 vi.mock('./rebuildIntakeInstrumentation', () => ({
   trackRebuildIntakeFormShown: mockTrackFormShown,
   trackRebuildIntakeSubmitted: mockTrackSubmitted,
+  trackRebuildIntakeWaiting: mockTrackWaiting,
+  trackRebuildIntakeTimedOut: mockTrackTimedOut,
+  trackRebuildIntakeFormError: mockTrackFormError,
 }))
 
 vi.mock('@ux/box', () => ({
@@ -93,6 +99,7 @@ describe('RebuildIntakeForm', () => {
   it('renders intake form with scope and design sections', function renderForm() {
     render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
 
+    expect(mockTrackWaiting).toHaveBeenCalledWith('https://example.com')
     expect(mockTrackFormShown).toHaveBeenCalledWith('https://example.com')
     expect(screen.getByTestId('rebuild-intake-form')).toBeInTheDocument()
     expect(screen.getByText('default:builder_rebuild_intake_scope_homepage_label')).toBeInTheDocument()
@@ -153,6 +160,28 @@ describe('RebuildIntakeForm', () => {
     mockWorkflowStatus.intakeCompleted = true
     const { container } = render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
     expect(container.firstChild).toBeNull()
+  })
+
+  it('logs timeout when intake completes without user submit', function intakeTimeout() {
+    const { rerender } = render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
+
+    expect(mockTrackTimedOut).not.toHaveBeenCalled()
+
+    mockWorkflowStatus.intakeCompleted = true
+    rerender(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
+
+    expect(mockTrackTimedOut).toHaveBeenCalledWith('https://example.com')
+  })
+
+  it('does not log timeout after user submits', async function noTimeoutAfterSubmit() {
+    const { rerender } = render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
+
+    fireEvent.click(screen.getByTestId('rebuild-intake-submit'))
+
+    mockWorkflowStatus.intakeCompleted = true
+    rerender(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
+
+    expect(mockTrackTimedOut).not.toHaveBeenCalled()
   })
 
   it('returns null when workflow has already left awaiting_intake', function pastIntake() {
