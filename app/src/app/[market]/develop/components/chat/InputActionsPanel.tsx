@@ -91,19 +91,24 @@ type InputActionsPanelProps = {
   /** External trigger to collapse the panel (e.g., when chat input grows) */
   shouldCollapse?: boolean
   /**
-   * When true, the active choicelist surface is hoisted up to ChatInput (via
-   * {@link onChoiceSurfaceChange}) so it can be swapped INTO the PromptBox slot
-   * instead of rendered inline above it. Gated by the
-   * `airo-builder-chat-choice-swap` Switchboard flag. Default false →
-   * byte-identical to the pre-swap behavior.
+   * Fired when Initial/Follow-up askQuestion UI should replace the free-text
+   * PromptBox (true) or when the composer prompt should return (false).
+   * NBA and next-action Continue Building surfaces do not hide the prompt.
    */
-  choiceSwapEnabled?: boolean
-  /**
-   * Reports the active choicelist surface (or null when none is active) and a
-   * stable key identifying the turn, so ChatInput can render it inside the
-   * PromptStage swap slot. Only fired when {@link choiceSwapEnabled}.
-   */
-  onChoiceSurfaceChange?: (node: ReactNode | null, surfaceKey: string | null) => void
+  onHideComposerPromptChange?: (hidden: boolean) => void
+}
+
+function usePublishHideComposerPrompt(
+  hidden: boolean,
+  onHideComposerPromptChange?: (hidden: boolean) => void,
+) {
+  useLayoutEffect(() => {
+    onHideComposerPromptChange?.(hidden)
+  }, [hidden, onHideComposerPromptChange])
+  useEffect(() => {
+    if (!onHideComposerPromptChange) return
+    return () => onHideComposerPromptChange(false)
+  }, [onHideComposerPromptChange])
 }
 
 function isAskQuestionToolResult(toolResult: unknown): boolean {
@@ -151,7 +156,10 @@ function askQuestionStepCount(toolResult: unknown): number {
  * @deprecated Remove when `airo-builder-theme-selection-chat` is permanently on
  * @param shouldCollapse - Accepted but ignored. Legacy component does not implement collapse behavior.
  */
-function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCollapse?: boolean }) {
+function InputActionsPanelLegacy({
+  shouldCollapse: _shouldCollapse,
+  onHideComposerPromptChange,
+}: InputActionsPanelProps) {
   const t = useTranslations()
   const thinkerLabel = useThinkerLabel()
   const thinkerIndicator = useThinkerIndicator()
@@ -345,6 +353,8 @@ function InputActionsPanelLegacy({ shouldCollapse: _shouldCollapse }: { shouldCo
 
   const showOtherInput = nbaData?.source === 'askQuestion' && nbaData?.allowOther
   const isAskQuestionActive = isAskQuestionNBA(nbaData) && !!nbaData?.toolResult && !askQuestionCompleted
+
+  usePublishHideComposerPrompt(isAskQuestionActive, onHideComposerPromptChange)
 
   const nbaCombinedChoiceListRef = useRef<HTMLDivElement>(null)
   const focusNBAChoiceOptionByIndex = useCallback(
@@ -1043,8 +1053,7 @@ function InputActionsPanelThemeSelection({
   activeColorSchemeSuggest = null,
   activeFontThemeSuggest = null,
   shouldCollapse = false,
-  choiceSwapEnabled = false,
-  onChoiceSurfaceChange,
+  onHideComposerPromptChange,
 }: InputActionsPanelProps) {
   const t = useTranslations()
   const thinkerLabel = useThinkerLabel()
@@ -1195,77 +1204,9 @@ function InputActionsPanelThemeSelection({
     setAskQuestionProgress({ current: 1, total: askQuestionStepCount(nbaData?.toolResult) })
   }, [isAskQuestionActive, nbaData?.toolResult])
 
-  // ── PromptBox swap (flag: airo-builder-chat-choice-swap) ─────────────────
-  // A "choicelist surface" is the body that renders a ChoiceList/AskQuestion —
-  // NOT the color/font preview panels (which take over the whole collapsible)
-  // nor the plan-only PlanOptionsList. These are exactly the conditions under
-  // which `continueBuildingTodoBody` renders a choicelist.
-  const isChoiceSurfaceActive =
-    !showColor &&
-    !showFont &&
-    (isAskQuestionActive ||
-      nbaSuggestions.length > 0 ||
-      (!hasPendingPlanItems && nextActionSuggestions.length > 0))
-  const choiceSwapActive = choiceSwapEnabled && isChoiceSurfaceActive
-  // Stable per-turn key: changes when the agent presents a different surface.
-  const choiceSurfaceKey = isAskQuestionActive
-    ? `askq:${nbaData?.question ?? ''}`
-    : nbaSuggestions.length > 0
-      ? `nba:${nbaData?.question ?? ''}:${nbaSuggestions.length}`
-      : `next:${nextActionSuggestions.length}`
-  // The choicelist occupies the input slot (is "hoisted" up to ChatInput) while
-  // it is expanded. The header X collapses it (expanded → false): it then drops
-  // out of the slot and renders inline above the PromptBox as a normal
-  // collapsible. Expanding again (the chevron) swaps it back into the slot.
-  const hoistChoice =
-    choiceSwapActive && continueBuildingExpanded && secretsComposerTakeover == null
-  const collapseChoiceFromSlot = useCallback(() => {
-    setContinueBuildingExpanded(false)
-  }, [])
-  // Holds the latest hoisted node so the publish effect can read the current
-  // JSX without putting the (always-new) element in its dependency array.
-  // Assigned during render below, once the collapsible nodes exist.
-  const choiceSurfaceNodeRef = useRef<ReactNode>(null)
-  // Re-publish only when something that changes the hoisted node changes, or
-  // when it stops/starts being hoisted — not on every parent re-render, which
-  // would loop. We fold in the *values* the published collapsible closes over
-  // (not just counts), so an equal-count change still re-publishes: NBA /
-  // next-action suggestion text, the plan-progress counter rendered in the
-  // default collapsible's header, the async rebuild-pages data, and isMobile
-  // (PlanOptionsList orientation). Each is derived from stable store/query
-  // data, so it only changes when the underlying surface actually changes.
-  const choiceSurfaceSignature = hoistChoice
-    ? [
-        choiceSurfaceKey,
-        currentAskQuestionText ?? '',
-        isProcessing,
-        isMobile,
-        JSON.stringify(nbaSuggestions.map(s => s.text)),
-        JSON.stringify(nextActionSuggestions.map(s => s.text)),
-        `${completedCount}/${totalItems}`,
-        rebuildPagesData?.availablePages?.length ?? 0,
-      ].join('|')
-    : null
-  useLayoutEffect(() => {
-    if (!choiceSwapEnabled) return
-    onChoiceSurfaceChange?.(
-      hoistChoice ? choiceSurfaceNodeRef.current : null,
-      hoistChoice ? choiceSurfaceKey : null,
-    )
-  }, [
-    choiceSwapEnabled,
-    hoistChoice,
-    choiceSurfaceKey,
-    choiceSurfaceSignature,
-    onChoiceSurfaceChange,
-    secretsComposerTakeover,
-  ])
-  // Tell ChatInput to drop the hoisted surface on unmount so the PromptBox
-  // swaps back in if the panel disappears entirely.
-  useEffect(() => {
-    if (!choiceSwapEnabled) return
-    return () => onChoiceSurfaceChange?.(null, null)
-  }, [choiceSwapEnabled, onChoiceSurfaceChange])
+  const hideComposerPrompt =
+    isAskQuestionActive && continueBuildingExpanded && !showColor && !showFont
+  usePublishHideComposerPrompt(hideComposerPrompt, onHideComposerPromptChange)
 
   // Prepend the current applied theme to the suggestions if it exists, filtering duplicates by name
   const palettesWithCurrent = useMemo(
@@ -1810,21 +1751,11 @@ function InputActionsPanelThemeSelection({
     </div>
   )
 
-  // The two choicelist-bearing collapsibles, extracted so the same node is used
-  // both for inline rendering (swap off) and for hoisting into ChatInput's
-  // PromptStage slot (swap on). Built unconditionally — only one is ever
-  // rendered, and they are cheap element descriptors.
-  // While hoisted into the input slot the header shows a dismiss (X) that
-  // collapses the choicelist back out of the slot (revealing the PromptBox);
-  // when rendered inline it falls back to the normal collapse chevron.
-  const slotDismiss = hoistChoice ? collapseChoiceFromSlot : undefined
   const askQuestionCollapsible = (
     <CollapsibleChatInputSection
       title={continueBuildingTitle}
       expanded={continueBuildingExpanded}
       onExpandedChange={setContinueBuildingExpanded}
-      onDismiss={slotDismiss}
-      dismissLabel={t('builder_common_close', undefined, 'Close')}
       data-testid="collapsible-section-continue-building"
     >
       {continueBuildingTodoBody}
@@ -1836,97 +1767,16 @@ function InputActionsPanelThemeSelection({
       expanded={continueBuildingExpanded}
       onExpandedChange={setContinueBuildingExpanded}
       headerRight={progressButton}
-      onDismiss={slotDismiss}
-      dismissLabel={t('builder_common_close', undefined, 'Close')}
       data-testid="collapsible-section-continue-building"
     >
       {continueBuildingTodoBody}
     </CollapsibleChatInputSection>
   )
-  // Publish the active choicelist surface to ChatInput (read by the layout
-  // effect above). Assigned during render so the effect always sees the latest
-  // node; null when it is not hoisted into the slot.
-  choiceSurfaceNodeRef.current = hoistChoice
-    ? isAskQuestionActive
-      ? askQuestionCollapsible
-      : defaultCollapsible
-    : null
 
   const showInlinePanel =
-    (hasCombinedItems || hasPlan || showAnySuggest || hasRebuildPages || isAskQuestionActive) && !hoistChoice
+    hasCombinedItems || hasPlan || showAnySuggest || hasRebuildPages || isAskQuestionActive
 
   // ── Mode B: Agent idle, has data ─────────────────────────────────────────
-  const inlinePanelContent =
-    (hasCombinedItems || hasPlan || showAnySuggest || hasRebuildPages || isAskQuestionActive) &&
-    !hoistChoice ? (
-      <>
-        {showColor && activeColorSchemeSuggest ? (
-          <ThemePreviewInputPanel
-            key={activeColorSchemeSuggest.toolCallId}
-            toolCallId={activeColorSchemeSuggest.toolCallId}
-            palettes={palettesWithCurrent}
-            onCancel={handleColorCancel}
-            selectedIndex={selectedThemeIndex}
-            onSelectedIndexChange={setSelectedThemeIndex}
-            disabled={!isPreviewMode}
-          >
-            {({ body, footer }) => (
-              <CollapsibleChatInputSection
-                title={continueBuildingTitle}
-                expanded={continueBuildingExpanded}
-                onExpandedChange={setContinueBuildingExpanded}
-                footer={footer}
-                data-testid="collapsible-section-continue-building"
-              >
-                {body}
-              </CollapsibleChatInputSection>
-            )}
-          </ThemePreviewInputPanel>
-        ) : showFont && activeFontThemeSuggest ? (
-          <FontThemePreviewInputPanel
-            key={activeFontThemeSuggest.toolCallId}
-            disabled={!isPreviewMode}
-            onCancel={handleFontCancel}
-            selectedIndex={selectedFontIndex}
-            themes={themesWithCurrent}
-            toolCallId={activeFontThemeSuggest.toolCallId}
-            onSelectedIndexChange={setSelectedFontIndex}
-          >
-            {({ body, footer }) => (
-              <CollapsibleChatInputSection
-                title={continueBuildingTitle}
-                expanded={continueBuildingExpanded}
-                footer={footer}
-                onExpandedChange={setContinueBuildingExpanded}
-                data-testid="collapsible-section-continue-building"
-              >
-                {body}
-              </CollapsibleChatInputSection>
-            )}
-          </FontThemePreviewInputPanel>
-        ) : isAskQuestionActive ? (
-          askQuestionCollapsible
-        ) : (
-          defaultCollapsible
-        )}
-      </>
-    ) : null
-
-  const todoListModal = (
-    <TodoListModal
-      isOpen={isModalOpen}
-      onClose={() => setIsModalOpen(false)}
-      list={currentList}
-      t={t}
-    />
-  )
-
-  // When the choicelist is hoisted into ChatInput's PromptStage slot, skip the
-  // empty elevated card shell above the composer — it only showed as a tiny dot.
-  if (hoistChoice) {
-    return todoListModal
-  }
-
   return (
     <InputActionsPanelCard headerOnly={showInlinePanel && !continueBuildingExpanded}>
       {showInlinePanel && (
@@ -1999,8 +1849,7 @@ export default function InputActionsPanel({
   activeColorSchemeSuggest = null,
   activeFontThemeSuggest = null,
   shouldCollapse = false,
-  choiceSwapEnabled = false,
-  onChoiceSurfaceChange,
+  onHideComposerPromptChange,
 }: InputActionsPanelProps) {
   const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
   const isFontSelectionChatEnabled = useSwitchboard('airo-builder-font-selection-chat')
@@ -2010,11 +1859,15 @@ export default function InputActionsPanel({
         activeColorSchemeSuggest={activeColorSchemeSuggest}
         activeFontThemeSuggest={activeFontThemeSuggest}
         shouldCollapse={shouldCollapse}
-        choiceSwapEnabled={choiceSwapEnabled}
-        onChoiceSurfaceChange={onChoiceSurfaceChange}
+        onHideComposerPromptChange={onHideComposerPromptChange}
       />
     )
   }
   // Legacy path: shouldCollapse passed but not implemented (component is deprecated)
-  return <InputActionsPanelLegacy shouldCollapse={shouldCollapse} />
+  return (
+    <InputActionsPanelLegacy
+      shouldCollapse={shouldCollapse}
+      onHideComposerPromptChange={onHideComposerPromptChange}
+    />
+  )
 }

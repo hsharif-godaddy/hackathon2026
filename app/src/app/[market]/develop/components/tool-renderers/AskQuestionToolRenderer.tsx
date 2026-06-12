@@ -115,12 +115,8 @@ export default function AskQuestionToolRenderer({
   const activeStepSuggestionCount = activeQuestion?.suggestions.length ?? 0
   const decideLabel = t('builder_tools_askquestion_decide_for_me', undefined, 'Decide for me')
   // `hideQuestion` only suppresses the title text inside each ChoiceList.Step —
-  // it does NOT mean the renderer is inert. InputActionsPanel passes
-  // `hideQuestion={true}` when hoisting this component into the composer card
-  // because the card draws its own collapsible header above; the ChoiceList
-  // itself is fully active and the digit shortcuts must still work. Disabling
-  // the keyboard listener on `hideQuestion` would be wrong (and was: the
-  // composer-card path is the only path users actually see).
+  // the panel draws its own collapsible header above. The ChoiceList itself is
+  // fully active and digit shortcuts must still work when hideQuestion is true.
   useNumberKeySelection({
     itemCount: activeStepSuggestionCount,
     disabled:

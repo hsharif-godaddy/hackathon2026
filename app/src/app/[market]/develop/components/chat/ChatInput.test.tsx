@@ -164,75 +164,24 @@ describe('ChatInput', () => {
     expect(mockRebuildQueueProgress).toHaveBeenCalled();
   });
 
-  describe('choicelist prompt swap (airo-builder-chat-choice-swap)', () => {
-    function enableSwap() {
-      mockUseSwitchboard.mockImplementation(function (feature: string) {
-        if (feature === 'airo-builder-chat-plans') return true;
-        if (feature === 'airo-builder-chat-choice-swap') return true;
-        return false;
-      });
-    }
-
-    // A panel mock that hoists a choicelist surface up to ChatInput, mimicking
-    // the real InputActionsPanel. The surface includes a dismiss button that
-    // re-reports `null` — mimicking the panel collapsing the list out of the
-    // slot (which is what brings the PromptBox back).
-    function mockPanelReporting(surfaceKey: string) {
-      mockInputActionsPanel.mockImplementation(function (props: any) {
-        useEffect(() => {
-          props.onChoiceSurfaceChange?.(
-            <div data-testid="hoisted-choice">
-              <button
-                type="button"
-                data-testid="hoisted-dismiss"
-                onClick={() => props.onChoiceSurfaceChange?.(null, null)}
-              >
-                X
-              </button>
-            </div>,
-            surfaceKey,
-          );
-        }, [props.onChoiceSurfaceChange]);
-        return null;
-      });
-    }
-
-    it('swaps the PromptBox out for the reported choicelist surface', async () => {
-      enableSwap();
-      mockPanelReporting('askq:1');
-      renderWithProviders(<ChatInput {...defaultProps} />);
-
-      await waitFor(() => expect(screen.getByTestId('hoisted-choice')).toBeInTheDocument());
-      expect(screen.getByTestId('chat-input-stage')).toBeInTheDocument();
-      // PromptStage keeps the outgoing PromptBox in the DOM for the 250ms exit
-      // animation; once that clears, only the choicelist remains.
-      await waitFor(() => expect(screen.queryByRole('textbox')).not.toBeInTheDocument());
+  it('hides PromptBox when InputActionsPanel reports hideComposerPrompt', async () => {
+    mockUseSwitchboard.mockImplementation(function (feature: string) {
+      if (feature === 'appbuilder-image-manager') return true;
+      if (feature === 'appbuilder-chat-gauge') return true;
+      if (feature === 'airo-builder-chat-collapse-multiline-input') return true;
+      if (feature === 'airo-builder-chat-plans') return true;
+      return false;
+    });
+    mockInputActionsPanel.mockImplementation(function (props: { onHideComposerPromptChange?: (hidden: boolean) => void }) {
+      useEffect(() => {
+        props.onHideComposerPromptChange?.(true);
+      }, [props.onHideComposerPromptChange]);
+      return null;
     });
 
-    it('reveals the PromptBox again when the surface is collapsed out of the slot', async () => {
-      enableSwap();
-      mockPanelReporting('askq:1');
-      const { user } = renderWithProviders(<ChatInput {...defaultProps} />);
+    renderWithProviders(<ChatInput {...defaultProps} />);
 
-      await waitFor(() => expect(screen.getByTestId('hoisted-dismiss')).toBeInTheDocument());
-      await user.click(screen.getByTestId('hoisted-dismiss'));
-
-      // Collapsing un-reports the surface, so the composer returns. The outgoing
-      // choicelist lingers in PromptStage's exit slot for 250ms, then clears.
-      await waitFor(() => expect(screen.getByRole('textbox')).toBeInTheDocument());
-      await waitFor(() => expect(screen.queryByTestId('hoisted-choice')).not.toBeInTheDocument());
-      // The composer is refocused on the showChoice→false transition (the
-      // prevShowChoiceRef effect), so the user can type immediately.
-      await waitFor(() => expect(screen.getByRole('textbox')).toHaveFocus());
-    });
-
-    it('does not wrap the PromptBox in a swap stage when the flag is off', () => {
-      // default beforeEach leaves airo-builder-chat-choice-swap off
-      renderWithProviders(<ChatInput {...defaultProps} />);
-
-      expect(screen.getByRole('textbox')).toBeInTheDocument();
-      expect(screen.queryByTestId('chat-input-stage')).not.toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.queryByRole('textbox')).not.toBeInTheDocument());
   });
 
   it('should display textarea with placeholder', () => {
