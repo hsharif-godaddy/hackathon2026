@@ -67,6 +67,7 @@ const mockConfig: ResolvedConfig = {
     maxConcurrency: 1,
   },
   playwright: { ignoreHttpsErrors: true },
+  capture: { concurrency: 2, maxConcurrency: 8, maxRoutes: 20, viewports: ['mobile', 'laptop'], gotoTimeoutMs: 30_000, appReadyTimeoutMs: 15_000 },
   regression: { alpha: 0.05, k: 2.0, minMargin: 0.05, fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 } },
 };
 

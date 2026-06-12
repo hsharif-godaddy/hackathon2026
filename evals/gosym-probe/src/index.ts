@@ -14,6 +14,7 @@ import {
   SuiteRunner,
 } from './runner/suite-runner.js';
 import {
+  clampCaptureConcurrency,
   clampConcurrency,
   effectiveConcurrency,
 } from './util/concurrency.js';
@@ -80,6 +81,8 @@ async function main(): Promise<void> {
       env:                { type: 'string' },
       trials:             { type: 'string' },
       concurrency:        { type: 'string' },
+      'capture-concurrency': { type: 'string' },
+      'max-routes':       { type: 'string' },
       'max-turns':        { type: 'string' },
       'skip-baseline':    { type: 'boolean' },
       baseline:           { type: 'string' },
@@ -144,6 +147,8 @@ async function main(): Promise<void> {
     graduateSuite: values['graduate-suite'],
     stability: values.stability,
     concurrency: values.concurrency,
+    captureConcurrency: values['capture-concurrency'],
+    maxRoutes: values['max-routes'],
     maxTurns: values['max-turns'],
   });
   if (flagError) {
@@ -161,6 +166,12 @@ async function main(): Promise<void> {
     : undefined;
   const maxTurnsOverride = values['max-turns']
     ? parseInt(values['max-turns'], 10)
+    : undefined;
+  const captureConcurrencyOverride = values['capture-concurrency']
+    ? parseInt(values['capture-concurrency'], 10)
+    : undefined;
+  const maxRoutesOverride = values['max-routes']
+    ? parseInt(values['max-routes'], 10)
     : undefined;
 
   const makeAgentClient = async (scenario?: Scenario) => {
@@ -192,9 +203,33 @@ async function main(): Promise<void> {
   const ctrlPlane     = new AABCtrlPlaneClient({
     baseUrl: config.aab.controlPlaneUrl,
   });
+  // Bound capture parallelism to a sanity ceiling so a runaway override (e.g.
+  // a `--capture-concurrency 100` typo) can't launch a browser stampede
+  // against the single local backend. Clamp covers the CLI flag, env var, and
+  // config paths uniformly since all three resolve into one requested value.
+  const requestedCaptureConcurrency =
+    captureConcurrencyOverride ?? config.capture.concurrency;
+  const { value: captureConcurrency, clamped: captureConcurrencyClamped } =
+    clampCaptureConcurrency(
+      requestedCaptureConcurrency,
+      config.capture.maxConcurrency,
+    );
+  if (captureConcurrencyClamped) {
+    console.warn(
+      `Warning: capture concurrency ${requestedCaptureConcurrency} exceeds the ` +
+      `ceiling of ${config.capture.maxConcurrency}; clamping to ` +
+      `${captureConcurrency}. Raise capture.maxConcurrency or ` +
+      `MAX_CAPTURE_CONCURRENCY to allow more.`,
+    );
+  }
   const siteCapture   = new SiteCapture({
     resolver: new SetupContextResolver(),
     ignoreHttpsErrors: config.playwright.ignoreHttpsErrors,
+    maxRoutes: maxRoutesOverride ?? config.capture.maxRoutes,
+    gotoTimeoutMs: config.capture.gotoTimeoutMs,
+    appReadyTimeoutMs: config.capture.appReadyTimeoutMs,
+    viewports: config.capture.viewports,
+    captureConcurrency,
   });
   const gocodeClient          = new PerTrialGocodeClient(config.gocode);
   const narrativeGocodeClient = new GocodeClient(config.gocode);

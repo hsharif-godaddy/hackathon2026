@@ -45,6 +45,8 @@ export interface RunFlags {
   stability: string | undefined;
   trials?: string;
   concurrency?: string;
+  captureConcurrency?: string;
+  maxRoutes?: string;
   maxTurns?: string;
 }
 
@@ -85,6 +87,18 @@ export function validateRunFlags(flags: RunFlags): string | null {
     const n = parseInt(flags.concurrency, 10);
     if (Number.isNaN(n) || n < 1) {
       return '--concurrency must be a positive integer.';
+    }
+  }
+  if (flags.captureConcurrency !== undefined) {
+    const n = parseInt(flags.captureConcurrency, 10);
+    if (Number.isNaN(n) || n < 1) {
+      return '--capture-concurrency must be a positive integer.';
+    }
+  }
+  if (flags.maxRoutes !== undefined) {
+    const n = parseInt(flags.maxRoutes, 10);
+    if (Number.isNaN(n) || n < 1) {
+      return '--max-routes must be a positive integer.';
     }
   }
   if (flags.maxTurns !== undefined) {

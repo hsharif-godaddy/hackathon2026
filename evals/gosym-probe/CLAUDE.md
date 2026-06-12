@@ -55,6 +55,8 @@ pnpm run eval          # headless eval with flags
 --env <env>              Override GD_ENV
 --trials <n>             Override per-scenario trial count
 --concurrency <n>        Cap concurrency (trials in standard mode, worker pool size in --fan-out mode; clamped to config.eval.maxConcurrency)
+--capture-concurrency <n> Cap concurrent Playwright captures, independent of trial concurrency (default 2; clamped to capture.maxConcurrency, default 8). Lets you raise --concurrency without overlapping captures thrashing the backend.
+--max-routes <n>         Cap routes captured per trial (default 20). Lower it to trade capture depth for speed.
 --max-turns <n>          Override max turns per simulation
 --skip-baseline          Skip baseline comparison
 --baseline <run-id>      Compare against a specific baseline run instead of the most recent
@@ -84,6 +86,31 @@ drains. `--concurrency M` sets the worker pool size, capped by MAX_CONCURRENCY.
 `--baseline` and `--skip-baseline` are mutually exclusive. `--baseline`
 pins comparison to a specific prior run; omitting both flags loads the
 most recent baseline for each scenario.
+
+### Capture concurrency (decoupled from trial concurrency)
+
+Each trial has two phases: a network-bound LLM conversation, then an
+expensive Playwright capture (a fresh browser + up to `--max-routes` ×
+viewports navigations against the single local AAB backend). `--concurrency`
+governs how many trials/conversations run at once; **`--capture-concurrency`
+separately caps how many captures run at once** (default 2). They are
+independent — `--capture-concurrency` is *not* clamped to the trial
+`maxConcurrency`. It **is** bounded by its own ceiling, `capture.maxConcurrency`
+(default 8, env var `MAX_CAPTURE_CONCURRENCY`), a sanity guard so a typo like
+`--capture-concurrency 100` can't launch a browser stampede against the single
+local backend; a request above the ceiling is clamped down with a warning.
+
+This is why raising trial concurrency alone used to cause capture timeouts:
+N overlapping captures thrash CPU/RAM and the backend, blowing the per-route
+goto/app-ready waits. Keep captures bounded while raising conversations:
+
+```bash
+MAX_CONCURRENCY=8 pnpm run eval --suite golden-light --capture-concurrency 2
+```
+
+If captures are still slow at 2-wide, trim depth with `--max-routes` (or the
+`MAX_ROUTES` env var). A single shared semaphore inside `SiteCapture` enforces
+the cap across standard, fan-out, and graduation paths.
 
 ### Resume behavior
 
@@ -200,6 +227,9 @@ Configured in `.env` (copy from `.env.example`).
 | `GOCODE_USE_S2S_AUTH`   | No       | `false`                     | Set to `true` to use IAM S2S JWT auth instead of a static key                  |
 | `OPENAI_MODEL`          | No       | —                           | Model for the synthetic user (GoCode)                                           |
 | `MAX_CONCURRENCY`       | No       | per-env                     | Max concurrent trials; `--concurrency` overrides                                |
+| `CAPTURE_CONCURRENCY`   | No       | `2`                         | Max concurrent Playwright captures, independent of trial concurrency; `--capture-concurrency` overrides; clamped to `MAX_CAPTURE_CONCURRENCY` |
+| `MAX_CAPTURE_CONCURRENCY` | No     | `8`                         | Hard ceiling for capture concurrency; requests above it are clamped down with a warning |
+| `MAX_ROUTES`            | No       | `20`                        | Max routes captured per trial; `--max-routes` overrides                         |
 | `MAX_TURNS`             | No       | `10`                        | Max turns per simulation; `--max-turns` overrides                               |
 | `AWS_PROFILE`           | No       | `airobuild-dev-private-sso` | AWS SSO profile; required for S2S and AAB                                       |
 | `PROBE_DEBUG_EVENTS`    | No       | —                           | Set to `1` to log AAB socket events                                             |

@@ -90,6 +90,8 @@ vi.mock('playwright', () => ({
   },
 }));
 
+import { chromium } from 'playwright';
+
 vi.mock('../site-capture/capture.js', () => ({
   captureRoutes: mockCaptureRoutes,
 }));
@@ -465,6 +467,98 @@ describe('SiteCapture', () => {
       PREVIEW_URL,
       expect.objectContaining({ waitUntil: 'domcontentloaded' }),
     );
+  });
+
+  it('forwards capture-scope options to captureRoutes', async () => {
+    const cap = new SiteCapture({
+      resolver: makeResolver(),
+      ignoreHttpsErrors: true,
+      maxRoutes: 5,
+      gotoTimeoutMs: 12_000,
+      appReadyTimeoutMs: 7_000,
+      viewports: ['mobile'],
+    });
+
+    await cap.capture({}, trialDir);
+
+    expect(mockCaptureRoutes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxRoutes: 5,
+        gotoTimeoutMs: 12_000,
+        appReadyTimeoutMs: 7_000,
+        viewports: ['mobile'],
+      }),
+    );
+  });
+
+  it('bounds concurrent captures to captureConcurrency', async () => {
+    // Block captureRoutes on a deferred so we can observe how many capture()
+    // bodies launch a browser concurrently under a permit cap of 1.
+    let releaseCaptureRoutes: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      releaseCaptureRoutes = () => resolve();
+    });
+    mockCaptureRoutes.mockImplementation(async () => {
+      await gate;
+      return {
+        previewUrl: PREVIEW_URL,
+        generatedAt: new Date().toISOString(),
+        durationMs: 1,
+        outputDir: '/tmp',
+        routes: [],
+        perRoute: [],
+        errors: [],
+      };
+    });
+
+    const cap = new SiteCapture({
+      resolver: makeResolver(),
+      ignoreHttpsErrors: true,
+      captureConcurrency: 1,
+    });
+
+    const dirA = await mkdtemp(join(tmpdir(), 'cap-a-'));
+    const dirB = await mkdtemp(join(tmpdir(), 'cap-b-'));
+    try {
+      const p1 = cap.capture({}, dirA);
+      const p2 = cap.capture({}, dirB);
+
+      // Let microtasks drain; only the first capture should have launched.
+      await new Promise((r) => setTimeout(r, 10));
+      expect(chromium.launch).toHaveBeenCalledTimes(1);
+
+      releaseCaptureRoutes?.();
+      await Promise.all([p1, p2]);
+      // The second capture proceeds once the first releases its permit.
+      expect(chromium.launch).toHaveBeenCalledTimes(2);
+    } finally {
+      await rm(dirA, { recursive: true, force: true });
+      await rm(dirB, { recursive: true, force: true });
+    }
+  });
+
+  it('releases the capture permit even when capture throws', async () => {
+    mockCaptureRoutes
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce({
+        previewUrl: PREVIEW_URL,
+        generatedAt: new Date().toISOString(),
+        durationMs: 1,
+        outputDir: '/tmp',
+        routes: [],
+        perRoute: [],
+        errors: [],
+      });
+
+    const cap = new SiteCapture({
+      resolver: makeResolver(),
+      ignoreHttpsErrors: true,
+      captureConcurrency: 1,
+    });
+
+    await expect(cap.capture({}, trialDir)).rejects.toThrow('boom');
+    // If the permit leaked, this second acquire would hang forever.
+    await expect(cap.capture({}, trialDir)).resolves.toBeDefined();
   });
 });
 

@@ -90,6 +90,36 @@ Optimal concurrency depends on scenario complexity. Resource-heavy
 scenarios (multi-agent handoffs, large DOM captures) may need a lower
 value. Monitor system load and adjust accordingly.
 
+### Capture concurrency (decoupled from trials)
+
+Each trial ends with an expensive Playwright capture phase (a fresh browser
+plus up to `MAX_ROUTES` × viewports navigations against the single local
+backend). `MAX_CONCURRENCY` governs how many trials/conversations run at once;
+**`CAPTURE_CONCURRENCY` separately caps how many captures run at once** (default
+`2`). They are independent — raising trial concurrency no longer drags capture
+concurrency up in lockstep, which used to thrash the backend and cause spurious
+capture timeouts.
+
+```dotenv
+# Run 8 conversations in parallel but keep captures bounded at 2.
+MAX_CONCURRENCY=8
+CAPTURE_CONCURRENCY=2
+```
+
+`CAPTURE_CONCURRENCY` is **not** clamped to `MAX_CONCURRENCY`, but it **is**
+bounded by its own ceiling `MAX_CAPTURE_CONCURRENCY` (default `8`) — a sanity
+guard so a typo like `--capture-concurrency 100` can't launch a browser
+stampede. A request above the ceiling is clamped down with a warning. If
+captures are still slow at `2`-wide, trim depth with `MAX_ROUTES` (default
+`20`). The CLI flags `--capture-concurrency` / `--max-routes` take priority
+over the env vars.
+
+| Env var                   | Default | CLI override            | Purpose                                          |
+| ------------------------- | ------- | ----------------------- | ------------------------------------------------ |
+| `CAPTURE_CONCURRENCY`     | `2`     | `--capture-concurrency` | Concurrent captures, independent of trials       |
+| `MAX_CAPTURE_CONCURRENCY` | `8`     | —                       | Hard ceiling; requests above it clamp + warn     |
+| `MAX_ROUTES`              | `20`    | `--max-routes`          | Routes captured per trial (capture depth)        |
+
 ### AAB Launch Configuration
 
 Start AAB with socket diagnostics and mock auth:

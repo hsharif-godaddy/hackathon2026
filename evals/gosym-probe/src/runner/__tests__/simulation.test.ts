@@ -25,6 +25,14 @@ vi.mock('undici', () => ({
   fetch: (...args: unknown[]) => mockUndiciFetch(...args),
 }));
 
+// warnLine writes structured diagnostics to stderr (via console.warn).
+// Mock it so phase/timeout instrumentation does not inflate the console.warn
+// counts asserted elsewhere, and so emissions can be inspected directly.
+const mockWarnLine = vi.fn();
+vi.mock('../../util/warn-line.js', () => ({
+  warnLine: (...args: unknown[]) => mockWarnLine(...args),
+}));
+
 // Controllable mock — call .emit() to push events into the simulation.
 class MockAgentClient implements AgentClient {
   private handlers: ((e: AgentEvent) => void)[] = [];
@@ -78,6 +86,7 @@ const mockConfig: ResolvedConfig = {
     maxConcurrency: 1,
   },
   playwright: { ignoreHttpsErrors: true },
+  capture: { concurrency: 2, maxConcurrency: 8, maxRoutes: 20, viewports: ['mobile', 'laptop'], gotoTimeoutMs: 30_000, appReadyTimeoutMs: 15_000 },
   regression: { alpha: 0.05, k: 2.0, minMargin: 0.05, fallbackThresholds: { thresholds: {}, defaultThreshold: 0.1 } },
 };
 
@@ -130,6 +139,7 @@ describe('Simulation', () => {
 
   beforeEach(() => {
     agentClient = new MockAgentClient();
+    mockWarnLine.mockClear();
   });
 
   it('calls setup() before first nextMessage()', async () => {
@@ -404,6 +414,88 @@ describe('Simulation', () => {
       expect(transcript.snapshots).toHaveLength(1);
     },
   );
+
+  it('emits capture.conversation.complete and capture.phase.complete diagnostics', async () => {
+    const scenario = makeScenario({ name: 'diag-scenario' });
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi
+        .fn()
+        .mockResolvedValueOnce('hello')
+        .mockResolvedValue(null),
+    };
+    const mockSiteCapture = {
+      capture: vi.fn().mockResolvedValue({
+        snapshot: makeSnapshotMeta(),
+        capturedSite: { routes: [{ path: '/' }, { path: '/about' }] },
+      }),
+    };
+    const agent = makeAutoAgent();
+    const captureContext: SimulationCaptureContext = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      siteCapture: mockSiteCapture as any,
+      getTrialOutputDir: vi.fn().mockResolvedValue('/tmp/trials/0'),
+    };
+
+    await new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      captureContext,
+      config: mockConfig,
+    }).run(0);
+
+    const events = mockWarnLine.mock.calls.map((c) => c[0]);
+    expect(events).toContain('capture.conversation.complete');
+    expect(events).toContain('capture.phase.complete');
+
+    const phaseCall = mockWarnLine.mock.calls.find(
+      (c) => c[0] === 'capture.phase.complete',
+    );
+    expect(phaseCall?.[1]).toMatchObject({
+      scenario: 'diag-scenario',
+      trialIndex: 0,
+      routes: 2,
+    });
+    expect(typeof phaseCall?.[1].captureMs).toBe('number');
+  });
+
+  it('emits capture.phase.failed with a timeoutClass when capture throws', async () => {
+    const scenario = makeScenario({ name: 'diag-fail' });
+    const syntheticUser: SyntheticUserAgent = {
+      nextMessage: vi
+        .fn()
+        .mockResolvedValueOnce('hello')
+        .mockResolvedValue(null),
+    };
+    const mockSiteCapture = {
+      capture: vi
+        .fn()
+        .mockRejectedValue(new Error('page.goto: Timeout 30000ms exceeded.')),
+    };
+    const agent = makeAutoAgent();
+    const captureContext: SimulationCaptureContext = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      siteCapture: mockSiteCapture as any,
+      getTrialOutputDir: vi.fn().mockResolvedValue('/tmp/trials/0'),
+    };
+
+    await new Simulation({
+      scenario,
+      agentClient: agent,
+      syntheticUser,
+      captureContext,
+      config: mockConfig,
+    }).run(0);
+
+    const failCall = mockWarnLine.mock.calls.find(
+      (c) => c[0] === 'capture.phase.failed',
+    );
+    expect(failCall?.[1]).toMatchObject({
+      scenario: 'diag-fail',
+      trialIndex: 0,
+      timeoutClass: 'goto',
+    });
+  });
 
   it('captures snapshot before teardown', async () => {
     const callOrder: string[] = [];

@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { loadConfig } from '../index.js';
+import { loadConfig, resolveCaptureConfig } from '../index.js';
+import { createConfig as createLocalDev } from '../environments/local.dev.js';
+import { CAPTURE_DEFAULTS } from '../resolve-eval-config.js';
+import type { Config } from '../environments/types.js';
 
 const ENV_VARS = [
   'GD_ENV',
@@ -9,6 +12,9 @@ const ENV_VARS = [
   'OPENAI_MODEL',
   'MAX_CONCURRENCY',
   'MAX_TURNS',
+  'CAPTURE_CONCURRENCY',
+  'MAX_CAPTURE_CONCURRENCY',
+  'MAX_ROUTES',
 ] as const;
 
 type EnvKey = (typeof ENV_VARS)[number];
@@ -147,6 +153,92 @@ describe('loadConfig', () => {
       expect(
         loadConfig().playwright.ignoreHttpsErrors,
       ).toBeTypeOf('boolean');
+    });
+  });
+
+  describe('capture config', () => {
+    it('resolves capture defaults when unconfigured', () => {
+      const { capture } = loadConfig();
+      expect(capture).toEqual({
+        concurrency: 2,
+        maxConcurrency: 8,
+        maxRoutes: 20,
+        viewports: ['mobile', 'laptop'],
+        gotoTimeoutMs: 30_000,
+        appReadyTimeoutMs: 15_000,
+      });
+    });
+
+    it('reads capture.concurrency from CAPTURE_CONCURRENCY', () => {
+      process.env.CAPTURE_CONCURRENCY = '4';
+      expect(loadConfig().capture.concurrency).toBe(4);
+    });
+
+    it('reads capture.maxRoutes from MAX_ROUTES', () => {
+      process.env.MAX_ROUTES = '5';
+      expect(loadConfig().capture.maxRoutes).toBe(5);
+    });
+
+    it('ignores a non-numeric CAPTURE_CONCURRENCY and keeps the default', () => {
+      process.env.CAPTURE_CONCURRENCY = 'abc';
+      expect(loadConfig().capture.concurrency).toBe(2);
+    });
+
+    it('ignores a zero MAX_ROUTES and keeps the default', () => {
+      process.env.MAX_ROUTES = '0';
+      expect(loadConfig().capture.maxRoutes).toBe(20);
+    });
+
+    it('decouples capture.concurrency from eval.maxConcurrency', () => {
+      process.env.MAX_CONCURRENCY = '8';
+      process.env.CAPTURE_CONCURRENCY = '2';
+      const config = loadConfig();
+      expect(config.eval.maxConcurrency).toBe(8);
+      expect(config.capture.concurrency).toBe(2);
+    });
+
+    it('defaults capture.maxConcurrency to 8', () => {
+      expect(loadConfig().capture.maxConcurrency).toBe(8);
+    });
+
+    it('reads capture.maxConcurrency from MAX_CAPTURE_CONCURRENCY', () => {
+      process.env.MAX_CAPTURE_CONCURRENCY = '16';
+      expect(loadConfig().capture.maxConcurrency).toBe(16);
+    });
+
+    it('ignores a non-numeric MAX_CAPTURE_CONCURRENCY and keeps the default', () => {
+      process.env.MAX_CAPTURE_CONCURRENCY = 'abc';
+      expect(loadConfig().capture.maxConcurrency).toBe(8);
+    });
+
+    it('resolves the ceiling independently of the requested concurrency', () => {
+      process.env.CAPTURE_CONCURRENCY = '4';
+      process.env.MAX_CAPTURE_CONCURRENCY = '6';
+      const config = loadConfig();
+      expect(config.capture.concurrency).toBe(4);
+      expect(config.capture.maxConcurrency).toBe(6);
+    });
+  });
+
+  describe('resolveCaptureConfig', () => {
+    const withCapture = (capture: Config['capture']): Config => ({
+      ...createLocalDev(),
+      capture,
+    });
+
+    it('honors a non-empty viewports override', () => {
+      const resolved = resolveCaptureConfig(withCapture({ viewports: ['mobile'] }));
+      expect(resolved.viewports).toEqual(['mobile']);
+    });
+
+    it('falls back to default viewports when override is an empty array', () => {
+      const resolved = resolveCaptureConfig(withCapture({ viewports: [] }));
+      expect(resolved.viewports).toEqual(CAPTURE_DEFAULTS.viewports);
+    });
+
+    it('falls back to default viewports when capture block is absent', () => {
+      const resolved = resolveCaptureConfig(withCapture(undefined));
+      expect(resolved.viewports).toEqual(CAPTURE_DEFAULTS.viewports);
     });
   });
 

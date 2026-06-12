@@ -1,4 +1,5 @@
 import type { ThresholdConfig } from '../../src/baselines/threshold.js';
+import type { ViewportName } from '../../src/clients/site-capture/types.js';
 
 export interface StatisticalRegressionConfig {
   /** Significance level for TOST (0, 1). Default: 0.05. */
@@ -58,6 +59,27 @@ export interface Config {
   };
   playwright: {
     ignoreHttpsErrors: boolean;
+  };
+  /**
+   * Playwright capture-phase tuning. Every field is optional; loadConfig
+   * fills unset fields from CAPTURE_DEFAULTS (and the CAPTURE_CONCURRENCY /
+   * MAX_ROUTES env vars), so an env config that omits this block behaves
+   * exactly as before. `concurrency` bounds how many captures run at once
+   * independently of trial concurrency.
+   */
+  capture?: {
+    concurrency?: number;
+    /**
+     * Hard ceiling for capture concurrency. A requested `concurrency` (config,
+     * env var, or `--capture-concurrency` flag) above this is clamped down so a
+     * typo can't launch a browser stampede against the single local backend.
+     * Filled from CAPTURE_DEFAULTS.maxConcurrency when unset.
+     */
+    maxConcurrency?: number;
+    maxRoutes?: number;
+    viewports?: readonly ViewportName[];
+    gotoTimeoutMs?: number;
+    appReadyTimeoutMs?: number;
   };
   regression: StatisticalRegressionConfig;
   storage?: {

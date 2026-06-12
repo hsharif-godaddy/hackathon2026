@@ -369,6 +369,120 @@ describe('validateRunFlags()', () => {
     expect(err).toContain('--concurrency');
   });
 
+  it('returns null when captureConcurrency is not set', () => {
+    expect(
+      validateRunFlags({
+        skipBaseline: false,
+        graduate: undefined,
+        graduateSuite: undefined,
+        stability: undefined,
+        captureConcurrency: undefined,
+      }),
+    ).toBeNull();
+  });
+
+  it('returns null when captureConcurrency is a positive integer string', () => {
+    expect(
+      validateRunFlags({
+        skipBaseline: false,
+        graduate: undefined,
+        graduateSuite: undefined,
+        stability: undefined,
+        captureConcurrency: '4',
+      }),
+    ).toBeNull();
+  });
+
+  it('returns error when captureConcurrency is zero', () => {
+    const err = validateRunFlags({
+      skipBaseline: false,
+      graduate: undefined,
+      graduateSuite: undefined,
+      stability: undefined,
+      captureConcurrency: '0',
+    });
+    expect(err).toContain('--capture-concurrency');
+  });
+
+  it('returns error when captureConcurrency is non-numeric', () => {
+    const err = validateRunFlags({
+      skipBaseline: false,
+      graduate: undefined,
+      graduateSuite: undefined,
+      stability: undefined,
+      captureConcurrency: 'abc',
+    });
+    expect(err).toContain('--capture-concurrency');
+  });
+
+  it('returns error when captureConcurrency is negative', () => {
+    const err = validateRunFlags({
+      skipBaseline: false,
+      graduate: undefined,
+      graduateSuite: undefined,
+      stability: undefined,
+      captureConcurrency: '-1',
+    });
+    expect(err).toContain('--capture-concurrency');
+  });
+
+  it('returns null when maxRoutes is not set', () => {
+    expect(
+      validateRunFlags({
+        skipBaseline: false,
+        graduate: undefined,
+        graduateSuite: undefined,
+        stability: undefined,
+        maxRoutes: undefined,
+      }),
+    ).toBeNull();
+  });
+
+  it('returns null when maxRoutes is a positive integer string', () => {
+    expect(
+      validateRunFlags({
+        skipBaseline: false,
+        graduate: undefined,
+        graduateSuite: undefined,
+        stability: undefined,
+        maxRoutes: '10',
+      }),
+    ).toBeNull();
+  });
+
+  it('returns error when maxRoutes is zero', () => {
+    const err = validateRunFlags({
+      skipBaseline: false,
+      graduate: undefined,
+      graduateSuite: undefined,
+      stability: undefined,
+      maxRoutes: '0',
+    });
+    expect(err).toContain('--max-routes');
+  });
+
+  it('returns error when maxRoutes is non-numeric', () => {
+    const err = validateRunFlags({
+      skipBaseline: false,
+      graduate: undefined,
+      graduateSuite: undefined,
+      stability: undefined,
+      maxRoutes: 'abc',
+    });
+    expect(err).toContain('--max-routes');
+  });
+
+  it('returns error when maxRoutes is negative', () => {
+    const err = validateRunFlags({
+      skipBaseline: false,
+      graduate: undefined,
+      graduateSuite: undefined,
+      stability: undefined,
+      maxRoutes: '-1',
+    });
+    expect(err).toContain('--max-routes');
+  });
+
   it('returns null when maxTurns is not set', () => {
     expect(
       validateRunFlags({

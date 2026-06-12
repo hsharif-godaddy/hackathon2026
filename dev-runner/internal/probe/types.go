@@ -55,16 +55,18 @@ func (SuiteTarget) isTarget() {}
 
 // RunArgs describes a single probe invocation.
 type RunArgs struct {
-	Command        Command
-	Target         Target // nil = run all; ScenarioTarget or SuiteTarget
-	Trials         int    // 0 = use default from config
-	Concurrency    int    // 0 = use default from config
-	MaxTurns       int    // 0 = use default from config
-	Env            string // "" = use default GD_ENV
-	ParallelSuites bool   // --fan-out flag
-	SkipBaseline   bool   // --skip-baseline flag
-	Graduate       bool   // --graduate / --graduate-suite
-	Stability      string // "low" | "medium" | "high" | ""
+	Command            Command
+	Target             Target // nil = run all; ScenarioTarget or SuiteTarget
+	Trials             int    // 0 = use default from config
+	Concurrency        int    // 0 = use default from config
+	CaptureConcurrency int    // 0 = use default from config
+	MaxRoutes          int    // 0 = use default from config
+	MaxTurns           int    // 0 = use default from config
+	Env                string // "" = use default GD_ENV
+	ParallelSuites     bool   // --fan-out flag
+	SkipBaseline       bool   // --skip-baseline flag
+	Graduate           bool   // --graduate / --graduate-suite
+	Stability          string // "low" | "medium" | "high" | ""
 	// SaveBaseline causes the runner to auto-spawn save-baseline after a
 	// successful eval, parsing the run ID from eval stdout.
 	SaveBaseline bool

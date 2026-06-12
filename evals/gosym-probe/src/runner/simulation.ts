@@ -10,6 +10,8 @@ import { GoalTracker } from './goal-tracker.js';
 import type { SyntheticUserAgent } from './synthetic-user.js';
 import type { Transcript, ToolCall, Turn } from './transcript.js';
 import { TranscriptBuilder } from './transcript.js';
+import { classifyCaptureError } from '../clients/site-capture/timeout-class.js';
+import { warnLine } from '../util/warn-line.js';
 
 export class FatalAABError extends Error {
   constructor(message: string) {
@@ -137,6 +139,7 @@ export class Simulation {
     let setupResult: SetupContext | void = undefined;
     try {
       setupResult = await this.runSetup(trialIndex);
+      const conversationStartMs = Date.now();
       let assistantTurnCount = 0;
       while (assistantTurnCount < maxTurns) {
         const activeGoal = tracker.nextGoal();
@@ -187,6 +190,13 @@ export class Simulation {
 
         assistantTurnCount++;
       }
+
+      warnLine('capture.conversation.complete', {
+        scenario: scenario.name,
+        trialIndex,
+        conversationMs: Date.now() - conversationStartMs,
+        turns: assistantTurnCount,
+      });
 
       if (this.options.onConversationComplete) {
         await this.options.onConversationComplete(trialIndex, builder.build());
@@ -355,8 +365,15 @@ export class Simulation {
       this.options.firstTurnInactivityMsOverride
       ?? config.eval.firstTurnInactivityMs;
 
+    const { scenario } = this.options;
     const hardTimer = setTimeout(
       () => {
+        warnLine('capture.turn.timeout', {
+          scenario: scenario.name,
+          turnCount: turnCount + 1,
+          kind: 'hard',
+          turnTimeoutMs: turnTimeout,
+        });
         state.rejectTurn?.(
           new Error(
             `Turn ${turnCount + 1} timed out ` +
@@ -373,9 +390,17 @@ export class Simulation {
       if (isFirstTurn) {
         const guard = new InactivityGuard(
           inactivityMs,
-          () => state.rejectTurn?.(
-            new InactivityTimeoutError(inactivityMs),
-          ),
+          () => {
+            warnLine('capture.turn.timeout', {
+              scenario: scenario.name,
+              turnCount: turnCount + 1,
+              kind: 'inactivity',
+              inactivityMs,
+            });
+            state.rejectTurn?.(
+              new InactivityTimeoutError(inactivityMs),
+            );
+          },
         );
         state.inactivityGuard = guard;
       }
@@ -415,6 +440,7 @@ export class Simulation {
       return;
     }
 
+    const captureStartMs = Date.now();
     try {
       const result = await captureContext.siteCapture.capture(
         setupResult ?? {},
@@ -422,6 +448,12 @@ export class Simulation {
       );
       builder.addSnapshot(result.snapshot);
       builder.addCapturedSite(result.capturedSite);
+      warnLine('capture.phase.complete', {
+        scenario: this.options.scenario.name,
+        trialIndex,
+        captureMs: Date.now() - captureStartMs,
+        routes: result.capturedSite?.routes?.length ?? 0,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
 
@@ -443,6 +475,13 @@ export class Simulation {
       if (err instanceof CaptureError) {
         builder.addCaptureDiagnostics(err.diagnostics);
       }
+      warnLine('capture.phase.failed', {
+        scenario: this.options.scenario.name,
+        trialIndex,
+        captureMs: Date.now() - captureStartMs,
+        timeoutClass: classifyCaptureError(err),
+        likelyRateLimited,
+      });
       if (likelyRateLimited) {
         // Sanitized — do not log raw page/response bodies, which may contain
         // tokens or other sensitive content (mirrors the 429 handler above).

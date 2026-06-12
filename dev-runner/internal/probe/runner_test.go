@@ -284,6 +284,42 @@ func TestBuildCmdArgs_SkipBaseline(t *testing.T) {
 	}
 }
 
+// TestBuildCmdArgs_CaptureFlags verifies --capture-concurrency and --max-routes
+// are emitted only when set (> 0).
+func TestBuildCmdArgs_CaptureFlags(t *testing.T) {
+	args := RunArgs{
+		Command:            CmdEval,
+		Target:             ScenarioTarget{Name: "landing-page"},
+		Trials:             1,
+		CaptureConcurrency: 2,
+		MaxRoutes:          5,
+	}
+	got := BuildCmdArgs(args)
+	want := []string{
+		"run", "eval", "--scenario", "landing-page", "--trials", "1",
+		"--capture-concurrency", "2", "--max-routes", "5",
+	}
+	if !equalSlice(got, want) {
+		t.Errorf("BuildCmdArgs = %v, want %v", got, want)
+	}
+}
+
+// TestBuildCmdArgs_CaptureFlags_OmittedWhenZero verifies the capture flags are
+// absent when their values are 0 (use config defaults).
+func TestBuildCmdArgs_CaptureFlags_OmittedWhenZero(t *testing.T) {
+	args := RunArgs{
+		Command: CmdEval,
+		Target:  ScenarioTarget{Name: "landing-page"},
+		Trials:  1,
+	}
+	got := BuildCmdArgs(args)
+	for _, a := range got {
+		if a == "--capture-concurrency" || a == "--max-routes" {
+			t.Errorf("expected no capture flags when unset, got %v", got)
+		}
+	}
+}
+
 // TestParseRunID extracts UUID from the eval's "Starting eval run: <uuid>" line.
 func TestParseRunID(t *testing.T) {
 	cases := []struct {

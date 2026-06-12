@@ -11,7 +11,7 @@ import { Agent, fetch } from 'undici';
 import type { SetupContext } from '../scenarios/types.js';
 import { captureRoutes } from './site-capture/capture.js';
 import { dismissCookieConsent } from './site-capture/cookie-dismiss.js';
-import type { CapturedSite } from './site-capture/types.js';
+import type { CapturedSite, ViewportName } from './site-capture/types.js';
 import {
   CaptureError,
   PageDiagnosticsRecorder,
@@ -25,6 +25,8 @@ import {
   ReadinessNavigationError,
   navigateUntilReady,
 } from './site-capture/readiness.js';
+import { createSemaphore } from '../util/semaphore.js';
+import type { Semaphore } from '../util/semaphore.js';
 
 // Re-exported so existing importers (transcript.ts, simulation.ts, tests)
 // keep their `../clients/dom-capture.js` import paths after the readiness and
@@ -70,6 +72,19 @@ export interface SiteCaptureConfig {
   readinessRetryWindowMs?: number;
   /** Forwarded to captureRoutes(). */
   maxRoutes?: number;
+  /** Per-route navigation timeout, forwarded to captureRoutes(). */
+  gotoTimeoutMs?: number;
+  /** Per-route app-ready selector timeout, forwarded to captureRoutes(). */
+  appReadyTimeoutMs?: number;
+  /** Viewports captured per route, forwarded to captureRoutes(). */
+  viewports?: readonly ViewportName[];
+  /**
+   * Caps how many capture() bodies run concurrently. A single SiteCapture is
+   * shared across every runner in a run, so this gate bounds the expensive
+   * Playwright phase independently of trial concurrency. Omit (or pass a
+   * value < 1) for no gating.
+   */
+  captureConcurrency?: number;
 }
 
 export class SiteCapture {
@@ -79,6 +94,10 @@ export class SiteCapture {
   private readonly readyTimeoutMs: number;
   private readonly readinessRetryWindowMs: number;
   private readonly maxRoutes: number | undefined;
+  private readonly gotoTimeoutMs: number | undefined;
+  private readonly appReadyTimeoutMs: number | undefined;
+  private readonly viewports: readonly ViewportName[] | undefined;
+  private readonly semaphore: Semaphore;
 
   constructor(config: SiteCaptureConfig) {
     this.resolver = config.resolver;
@@ -88,9 +107,28 @@ export class SiteCapture {
     this.readinessRetryWindowMs =
       config.readinessRetryWindowMs ?? DEFAULT_READINESS_RETRY_WINDOW_MS;
     this.maxRoutes = config.maxRoutes;
+    this.gotoTimeoutMs = config.gotoTimeoutMs;
+    this.appReadyTimeoutMs = config.appReadyTimeoutMs;
+    this.viewports = config.viewports;
+    // An unconfigured captureConcurrency falls back to 0, which createSemaphore
+    // treats (along with any value < 1) as unbounded — so an unconfigured
+    // SiteCapture gates nothing, preserving prior behavior.
+    this.semaphore = createSemaphore(config.captureConcurrency ?? 0);
   }
 
   async capture(
+    ctx: SetupContext,
+    trialDir: string,
+  ): Promise<CapturedTrial> {
+    const release = await this.semaphore.acquire();
+    try {
+      return await this.captureUnsynchronized(ctx, trialDir);
+    } finally {
+      release();
+    }
+  }
+
+  private async captureUnsynchronized(
     ctx: SetupContext,
     trialDir: string,
   ): Promise<CapturedTrial> {
@@ -172,6 +210,9 @@ export class SiteCapture {
         outputDir: snapshotsDir,
         ignoreHttpsErrors: this.ignoreHttpsErrors,
         maxRoutes: this.maxRoutes,
+        gotoTimeoutMs: this.gotoTimeoutMs,
+        appReadyTimeoutMs: this.appReadyTimeoutMs,
+        viewports: this.viewports,
       });
 
       return { snapshot, capturedSite };

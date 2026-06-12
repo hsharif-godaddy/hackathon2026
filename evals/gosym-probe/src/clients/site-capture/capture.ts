@@ -18,6 +18,7 @@ import {
   type ViewportName,
 } from './types.js';
 
+/** Defaults preserved as constants so an unconfigured call is unchanged. */
 const PAGE_GOTO_TIMEOUT_MS = 30_000;
 const APP_READY_SELECTOR = '#app > *';
 const APP_READY_TIMEOUT_MS = 15_000;
@@ -42,6 +43,15 @@ export interface CaptureRoutesOptions {
   outputDir: string;
   ignoreHttpsErrors?: boolean;
   maxRoutes?: number;
+  /** Per-route navigation timeout. Defaults to PAGE_GOTO_TIMEOUT_MS. */
+  gotoTimeoutMs?: number;
+  /** Per-route app-ready selector timeout. Defaults to APP_READY_TIMEOUT_MS. */
+  appReadyTimeoutMs?: number;
+  /**
+   * Viewports captured per route. Defaults to VIEWPORT_ORDER (mobile, laptop).
+   * Trimming this (e.g. to just one viewport) halves per-route navigations.
+   */
+  viewports?: readonly ViewportName[];
 }
 
 interface ViewportResult {
@@ -58,6 +68,8 @@ async function captureOneViewport(params: {
   routeSlug: string;
   collectRendered: boolean;
   skip: boolean;
+  gotoTimeoutMs: number;
+  appReadyTimeoutMs: number;
 }): Promise<ViewportResult> {
   const {
     context,
@@ -67,6 +79,8 @@ async function captureOneViewport(params: {
     routeSlug,
     collectRendered,
     skip,
+    gotoTimeoutMs,
+    appReadyTimeoutMs,
   } = params;
 
   if (skip) {
@@ -83,11 +97,11 @@ async function captureOneViewport(params: {
     // for dev servers (HMR / WebSockets keep the network busy forever).
     await page.goto(route.url, {
       waitUntil: 'domcontentloaded',
-      timeout: PAGE_GOTO_TIMEOUT_MS,
+      timeout: gotoTimeoutMs,
     });
     await page
       .waitForSelector(APP_READY_SELECTOR, {
-        timeout: APP_READY_TIMEOUT_MS,
+        timeout: appReadyTimeoutMs,
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -128,6 +142,9 @@ export async function captureRoutes(
   await mkdir(options.outputDir, { recursive: true });
 
   const { context, homepagePage } = options;
+  const gotoTimeoutMs = options.gotoTimeoutMs ?? PAGE_GOTO_TIMEOUT_MS;
+  const appReadyTimeoutMs = options.appReadyTimeoutMs ?? APP_READY_TIMEOUT_MS;
+  const viewportOrder = options.viewports ?? VIEWPORT_ORDER;
   let routes: DiscoveredRoute[] = [];
   const perRoute: RouteCapture[] = [];
 
@@ -157,8 +174,8 @@ export async function captureRoutes(
     let renderedForRoute: RenderedSignals | undefined;
     let skipRemaining = false;
 
-    for (let vi = 0; vi < VIEWPORT_ORDER.length; vi++) {
-      const vpName = VIEWPORT_ORDER[vi];
+    for (let vi = 0; vi < viewportOrder.length; vi++) {
+      const vpName = viewportOrder[vi];
       const vp = VIEWPORTS[vpName];
       try {
         const result = await captureOneViewport({
@@ -169,6 +186,8 @@ export async function captureRoutes(
           routeSlug,
           collectRendered: vi === 0,
           skip: skipRemaining,
+          gotoTimeoutMs,
+          appReadyTimeoutMs,
         });
         perViewport[vpName] = { tiles: result.tiles };
         if (result.captureError) {

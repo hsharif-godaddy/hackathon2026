@@ -8,6 +8,8 @@ import {
 import {
   parseMaxConcurrency,
   parseMaxTurns,
+  parseCaptureConcurrency,
+  parseMaxRoutes,
 } from '../environments/parse-env.js';
 
 describe('parseMaxConcurrency', () => {
@@ -97,5 +99,75 @@ describe('parseMaxTurns', () => {
   it('returns fallback when env var is negative', () => {
     process.env.MAX_TURNS = '-5';
     expect(parseMaxTurns(30)).toBe(30);
+  });
+});
+
+describe('parseCaptureConcurrency', () => {
+  const saved = process.env.CAPTURE_CONCURRENCY;
+
+  beforeEach(() => {
+    delete process.env.CAPTURE_CONCURRENCY;
+  });
+
+  afterEach(() => {
+    if (saved === undefined) {
+      delete process.env.CAPTURE_CONCURRENCY;
+    } else {
+      process.env.CAPTURE_CONCURRENCY = saved;
+    }
+  });
+
+  it('returns fallback when env var is unset', () => {
+    expect(parseCaptureConcurrency(2)).toBe(2);
+  });
+
+  it('returns parsed integer when valid', () => {
+    process.env.CAPTURE_CONCURRENCY = '4';
+    expect(parseCaptureConcurrency(2)).toBe(4);
+  });
+
+  it('returns fallback when env var is non-numeric', () => {
+    process.env.CAPTURE_CONCURRENCY = 'abc';
+    expect(parseCaptureConcurrency(2)).toBe(2);
+  });
+
+  it('returns fallback when env var is zero', () => {
+    process.env.CAPTURE_CONCURRENCY = '0';
+    expect(parseCaptureConcurrency(2)).toBe(2);
+  });
+});
+
+describe('parseMaxRoutes', () => {
+  const saved = process.env.MAX_ROUTES;
+
+  beforeEach(() => {
+    delete process.env.MAX_ROUTES;
+  });
+
+  afterEach(() => {
+    if (saved === undefined) {
+      delete process.env.MAX_ROUTES;
+    } else {
+      process.env.MAX_ROUTES = saved;
+    }
+  });
+
+  it('returns fallback when env var is unset', () => {
+    expect(parseMaxRoutes(20)).toBe(20);
+  });
+
+  it('returns parsed integer when valid', () => {
+    process.env.MAX_ROUTES = '5';
+    expect(parseMaxRoutes(20)).toBe(5);
+  });
+
+  it('returns fallback when env var is non-numeric', () => {
+    process.env.MAX_ROUTES = 'abc';
+    expect(parseMaxRoutes(20)).toBe(20);
+  });
+
+  it('returns fallback when env var is negative', () => {
+    process.env.MAX_ROUTES = '-1';
+    expect(parseMaxRoutes(20)).toBe(20);
   });
 });

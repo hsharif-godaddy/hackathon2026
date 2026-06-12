@@ -193,6 +193,12 @@ func buildEvalArgs(args RunArgs) []string {
 	if args.Concurrency > 0 {
 		cmd = append(cmd, "--concurrency", strconv.Itoa(args.Concurrency))
 	}
+	if args.CaptureConcurrency > 0 {
+		cmd = append(cmd, "--capture-concurrency", strconv.Itoa(args.CaptureConcurrency))
+	}
+	if args.MaxRoutes > 0 {
+		cmd = append(cmd, "--max-routes", strconv.Itoa(args.MaxRoutes))
+	}
 	if args.MaxTurns > 0 {
 		cmd = append(cmd, "--max-turns", strconv.Itoa(args.MaxTurns))
 	}
