@@ -48,3 +48,16 @@ for the full list of active alerts and their configurations.
   1. Check the [Observability Dashboard](observability.md#dashboards) for trends in `go.memory.used` and `go.memory.limit`.
   2. Identify any recent changes in traffic patterns, deploys, or code changes that could contribute to increased memory usage.
   3. If the issue is persistent, consider increasing the container memory limit and updating `GOMEMLIMIT` accordingly (see [Memory alerting and GOMEMLIMIT](observability.md#memory-alerting-and-gomemlimit)).
+
+
+## DB wait duration > 50ms per acquire
+- **Type:** Custom Threshold
+- **Description:** Fires when the **average wait per connection acquire** — `rate(db.pool.wait_duration[5m]) / rate(db.pool.wait_count[5m])` — exceeds **50 ms** sustained over **10 minutes** in production. Indicates the connection pool is saturated: goroutines are blocking on `MaxOpenConns` and waiting non-trivially for a free connection.
+- **Schedule:** Every 1 minute
+- **Notifications:** Slack + Incident
+- **Investigation steps:**
+  1. Check `db.pool.open_connections` against the configured `MaxOpenConns` — sustained near-ceiling usage is the leading indicator that produced this alert.
+  2. Look for slow queries holding connections: drill into recent transactions in the [Observability Dashboard](observability.md#dashboards) and correlate with the latency alert if it also fired.
+  3. Identify any recent deploys, traffic spikes, or schema/index changes that could have increased per-request connection hold time.
+  4. If the issue is persistent consider raising `DB_MAX_OPEN_CONNS` in Katana (see [DevOps Docs](devops.md)).
+     - Verify Postgres `max_connections` available headroom  
