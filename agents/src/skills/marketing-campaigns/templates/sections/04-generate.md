@@ -76,6 +76,7 @@ In the SAME message after calling `socialPostCreate`, write email and ad copy as
 
 **CRITICAL RULES FOR THE HANDOFF BRIEF:**
 - The brief MUST be a single block of text — not fragmented sections the agent picks from
+- The landing-page brief MUST include the **availability window** — instruct DevelopAgent to define `SALE_START` / `SALE_END` set to the campaign's ACTUAL start and end dates from the approved plan (the SAME dates saved to the campaign card; NEVER leave them as `[start]`/`[end]`, never omit them) and to date-gate the page: show the offer inside the window, and an explicit "campaign has ended" / "coming soon" state outside it. A landing page handed off without this date-gating is an incomplete build — do not drop this line when you compress the brief.
 - The blog MUST be discoverable — set up a blog index/listing page + route if one doesn't exist, and link it from the nav. Never leave a post as an orphaned page reachable only by direct URL.
 - NEVER tell DevelopAgent to create a summary/planning markdown file
 - NEVER tell DevelopAgent to put social posts, emails, or ads into a file (those were already created in Step 1–2)
@@ -95,8 +96,14 @@ Requirements:
 - Social proof / trust signals
 - Campaign end date / urgency element
 - On-brand design matching existing site
+- Availability window (REQUIRED): the page must ALWAYS define two constants, SALE_START and SALE_END, set to the campaign start date ([start]) and end date ([end]) — these MUST be the exact campaign dates (the same ones saved to the campaign card), never the literal placeholders. Both are REQUIRED — never generate the landing page without them. Gate what the page renders on the current date against these constants:
+  - Between SALE_START and SALE_END (inclusive of the full SALE_END day): show the campaign offer normally.
+  - Before SALE_START: render a brief "coming soon" state (campaign name + when it starts) instead of the offer — NOT the live offer.
+  - After SALE_END: render a brief "this sale has ended" state with a link back to the homepage (/) instead of the offer — NOT the live offer.
+  Single source of truth: SALE_START/SALE_END are baked into this page at build time, so if the campaign dates change the page must be regenerated and the site republished — there is no runtime source for these dates.
+  NEVER mention the SALE_START / SALE_END variable names in any user-facing message — they are internal implementation details (see execution contract rule 12). Refer only to the sale's start and end dates in plain language (e.g. "live from June 1 to June 14").
 Images: Use media() tool to search, use returned URLs directly. No placeholders.
-Site discovery: Add an announcement banner / link in the main layout pointing to this page.
+Site discovery: Add an announcement banner / link in the main layout pointing to this page (only shown during the availability window above).
 
 [IF A SALE BANNER WAS ALSO PLANNED, ADD:]
 Also add a site-wide dismissible announcement banner (coupon code + end date) in the main layout. This is IN ADDITION to the landing page, not instead of it.
