@@ -30,6 +30,16 @@ export function usePusher(options: UsePusherOptions): UsePusherResult {
   const pusherClientRef = useRef<Pusher | null>(null);
   const channelRef = useRef<Channel | null>(null);
 
+  // Hold the latest onAutoupdate callback in a ref so handleAutoupdateVersion can
+  // stay referentially stable. The subscribe effect depends on that handler;
+  // depending on the caller's callback identity directly would tear down and
+  // rebuild the entire Pusher connection on every parent re-render.
+  const onAutoupdateRef = useRef<UsePusherOptions['onAutoupdate']>(options.onAutoupdate);
+  // Sync every render so the ref always holds the freshest callback.
+  useEffect(() => {
+    onAutoupdateRef.current = options.onAutoupdate;
+  });
+
   // Pusher auth goes through BFF proxy at /api/inbox
   const PUSHER_AUTH_URL = '/api/inbox';
 
@@ -46,6 +56,14 @@ export function usePusher(options: UsePusherOptions): UsePusherResult {
           accountId,
           version: data.autoupdate_version,
         });
+      }
+      // Guard the caller callback so a throw can't escape into pusher-js's
+      // dispatch loop — matches the error boundary on every other handler here.
+      try {
+        onAutoupdateRef.current?.(data);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        logger.error('pusher.autoupdate.callback_failed', { accountId, error: error.message });
       }
     },
     [accountId]

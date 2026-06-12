@@ -4,7 +4,7 @@
 import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import Inbox from './Inbox';
 
@@ -22,9 +22,19 @@ vi.mock('framer-motion', () => ({
   },
 }));
 
+const mockUsePusher = vi.fn();
 vi.mock('@/hooks/usePusher', () => ({
-  usePusher: () => ({ isConnected: false, isAuthenticating: false, error: null }),
+  usePusher: (options: unknown) => mockUsePusher(options),
 }));
+
+const invalidateQueriesSpy = vi.fn();
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+  return {
+    ...actual,
+    useQueryClient: () => ({ invalidateQueries: invalidateQueriesSpy }),
+  };
+});
 
 const mockUseConversationId = vi.fn();
 vi.mock('@/hooks/useConversationId', () => ({
@@ -75,6 +85,7 @@ vi.mock('./InboxConversationDetail', () => ({
 describe('Inbox', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUsePusher.mockReturnValue({ isConnected: false, isAuthenticating: false, error: null });
   });
 
   it('renders the conversation list when there is no deep-linked conversation', () => {
@@ -121,5 +132,79 @@ describe('Inbox', () => {
 
     expect(screen.getByTestId('stub-conversation-list')).toBeInTheDocument();
     expect(screen.queryByTestId('stub-conversation-detail')).not.toBeInTheDocument();
+  });
+
+  it('debounces a burst of autoupdate_version events into a single invalidation, resetting the timer on each event', () => {
+    vi.useFakeTimers();
+    try {
+      mockUseConversationId.mockReturnValue(null);
+
+      render(<Inbox brandId='brand-1' accountId='acct-1' />);
+
+      // Grab the onAutoupdate callback Inbox passed to usePusher.
+      const options = mockUsePusher.mock.calls[0][0] as {
+        onAutoupdate?: (data: { autoupdate_version: number }) => void;
+      };
+      expect(typeof options.onAutoupdate).toBe('function');
+
+      // Interleave events with timer advances so each one re-enters the
+      // clearTimeout branch — this proves a sliding window (timer reset per
+      // event), which a synchronous burst could not distinguish from a fixed one.
+      act(() => {
+        options.onAutoupdate?.({ autoupdate_version: 1 });
+      });
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      // 200ms after event 1 — still within the window, nothing yet.
+      expect(invalidateQueriesSpy).not.toHaveBeenCalled();
+
+      act(() => {
+        options.onAutoupdate?.({ autoupdate_version: 2 });
+      });
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      // 400ms after event 1 but only 200ms after event 2. A fixed window from
+      // event 1 would have fired by now; a sliding window has not.
+      expect(invalidateQueriesSpy).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      // 400ms after the last event — exactly one collapsed invalidation.
+      expect(invalidateQueriesSpy).toHaveBeenCalledTimes(1);
+      expect(invalidateQueriesSpy).toHaveBeenCalledWith({ queryKey: ['reamaze'] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not invalidate when unmounted before the debounce window elapses', () => {
+    vi.useFakeTimers();
+    try {
+      mockUseConversationId.mockReturnValue(null);
+
+      const { unmount } = render(<Inbox brandId='brand-1' accountId='acct-1' />);
+
+      const options = mockUsePusher.mock.calls[0][0] as {
+        onAutoupdate?: (data: { autoupdate_version: number }) => void;
+      };
+
+      act(() => {
+        options.onAutoupdate?.({ autoupdate_version: 1 });
+      });
+
+      // Unmount mid-debounce — the cleanup effect must clear the pending timer.
+      unmount();
+
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      expect(invalidateQueriesSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

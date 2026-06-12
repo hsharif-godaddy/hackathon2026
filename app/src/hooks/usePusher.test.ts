@@ -252,6 +252,51 @@ describe('usePusher', function usePusherTests() {
         expect.objectContaining({ accountId: 'acct-1', version: 42 })
       );
     });
+
+    it('invokes onAutoupdate with the payload when the event fires', function callsOnAutoupdate() {
+      const onAutoupdate = vi.fn();
+      renderHookWithProviders(() => usePusher({ accountId: 'acct-1', onAutoupdate }));
+
+      const channel = latestClient().channels.get(CHANNEL_NAME('acct-1'));
+      act(function trigger() {
+        channel?.trigger('autoupdate_version', { autoupdate_version: 7 });
+      });
+
+      expect(onAutoupdate).toHaveBeenCalledTimes(1);
+      expect(onAutoupdate).toHaveBeenCalledWith({ autoupdate_version: 7 });
+    });
+
+    it('does not re-subscribe when the onAutoupdate identity changes', function stableSubscription() {
+      const { rerender } = renderHookWithProviders(
+        ({ cb }: { cb: () => void }) => usePusher({ accountId: 'acct-1', onAutoupdate: cb }),
+        { initialProps: { cb: () => {} } }
+      );
+
+      // A brand-new callback identity on re-render must not tear down the connection.
+      rerender({ cb: () => {} });
+      rerender({ cb: () => {} });
+
+      expect(pusherMock.instances).toHaveLength(1);
+    });
+
+    it('invokes the latest onAutoupdate after a re-render', function latestCallback() {
+      const first = vi.fn();
+      const second = vi.fn();
+      const { rerender } = renderHookWithProviders(
+        ({ cb }: { cb: () => void }) => usePusher({ accountId: 'acct-1', onAutoupdate: cb }),
+        { initialProps: { cb: first } }
+      );
+
+      rerender({ cb: second });
+
+      const channel = latestClient().channels.get(CHANNEL_NAME('acct-1'));
+      act(function trigger() {
+        channel?.trigger('autoupdate_version', { autoupdate_version: 9 });
+      });
+
+      expect(first).not.toHaveBeenCalled();
+      expect(second).toHaveBeenCalledWith({ autoupdate_version: 9 });
+    });
   });
 
   describe('authorizer (BFF proxy auth)', function authorizerTests() {
