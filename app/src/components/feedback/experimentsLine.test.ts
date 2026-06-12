@@ -23,7 +23,7 @@ describe('experimentsLine', function experimentsLineSuite() {
     it('skips boolean feature flags and includes only cohort assignments', function filtersPrimitives() {
       expect(
         buildExperimentsLineFromSwitchboard({
-          'appbuilder-chat-gauge': true,
+          'some-feature-flag': true,
           'exp-b': { cohortId: 'treatment' },
           'exp-a': { cohortId: 'control' },
         }),
@@ -67,7 +67,7 @@ describe('experimentsLine', function experimentsLineSuite() {
       mockUseGasketData.mockReturnValue({
         switchboard: {
           'aab_recommended_plan_uppdcx': { cohortId: 'control' },
-          'airo-app-builder-chat-gauge': { cohortId: 'control' },
+          'vh_dashboard_logo_to_airo_builder_redirect': { cohortId: 'control' },
         },
       });
     });
@@ -77,7 +77,7 @@ describe('experimentsLine', function experimentsLineSuite() {
 
       expect(result.current).toBe(
         '<https://hivemind.gdcorp.tools/experiments/aab_recommended_plan_uppdcx|aab_recommended_plan_uppdcx>: control\n'
-        + '<https://hivemind.gdcorp.tools/experiments/airo-app-builder-chat-gauge|airo-app-builder-chat-gauge>: control',
+        + '<https://hivemind.gdcorp.tools/experiments/vh_dashboard_logo_to_airo_builder_redirect|vh_dashboard_logo_to_airo_builder_redirect>: control',
       );
     });
 
@@ -88,13 +88,13 @@ describe('experimentsLine', function experimentsLineSuite() {
 
       mockUseGasketData.mockReturnValue({
         switchboard: {
-          'airo-app-builder-chat-gauge': { cohortId: 'treatment' },
+          'vh_dashboard_logo_to_airo_builder_redirect': { cohortId: 'treatment' },
         },
       });
       rerender();
 
       expect(result.current).toBe(
-        '<https://hivemind.gdcorp.tools/experiments/airo-app-builder-chat-gauge|airo-app-builder-chat-gauge>: treatment',
+        '<https://hivemind.gdcorp.tools/experiments/vh_dashboard_logo_to_airo_builder_redirect|vh_dashboard_logo_to_airo_builder_redirect>: treatment',
       );
     });
   });

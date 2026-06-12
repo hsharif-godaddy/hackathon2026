@@ -8,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { MediaType } from '@/app/[market]/develop/components/chat/AssetTypes';
-import { EXPERIMENT_IDS } from '@/config/experiments';
 import { renderWithProviders } from '@/tests/test-utils';
 import { logClickEvent } from '@/utils/instrumentation';
 import ChatInput from './ChatInput';
@@ -28,10 +27,6 @@ const mockUseSwitchboard = vi.hoisted(() => vi.fn(function (feature: string) {
   return false;
 }));
 
-const mockUseHivemind = vi.hoisted(() =>
-  vi.fn(function (_experimentId: string) { return { cohort: undefined as string | undefined, data: undefined, experiment: undefined }; }),
-);
-
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn(function (id: string) { return id; }),
   logClickEvent: vi.fn(function () { return vi.fn(); }),
@@ -41,9 +36,6 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 }));
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: mockUseSwitchboard,
-}));
-vi.mock('@/hooks/useHivemind', () => ({
-  useHivemind: (experimentId: string) => mockUseHivemind(experimentId),
 }));
 vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: () => ({ data: { id: 'sub-1', plan: 'starter' }, isLoading: false }),
@@ -124,8 +116,6 @@ describe('ChatInput', () => {
       if (feature === 'airo-builder-chat-collapse-multiline-input') return true;
       return false;
     });
-    mockUseHivemind.mockReset();
-    mockUseHivemind.mockReturnValue({ cohort: undefined, data: undefined, experiment: undefined });
   });
 
   it('should render without crashing', () => {
@@ -786,86 +776,29 @@ describe('ChatInput', () => {
     expect(screen.getByTestId('chat-attachment-menu-trigger')).not.toBeDisabled();
   });
 
-  describe('chat gauge Switchboard and Hivemind', () => {
-    it('should call useHivemind with chat gauge experiment id', function cohortHookArgs() {
-      renderWithProviders(<ChatInput {...defaultProps} appId="test-app-123" />);
-
-      expect(mockUseHivemind).toHaveBeenCalledWith(EXPERIMENT_IDS.chatGauge);
-    });
-
-    it('should not render UsageGauge when switchboard is on and user is in treatment cohort', function switchboardOnTreatmentHidesGauge() {
+  describe('chat gauge Switchboard', () => {
+    it('should render UsageGauge when the switchboard flag is on', function gaugeVisibleWhenFlagOn() {
       mockUseSwitchboard.mockImplementation(function (feature: string) {
         if (feature === 'appbuilder-image-manager') return true;
         if (feature === 'appbuilder-chat-gauge') return true;
         return false;
       });
-      mockUseHivemind.mockImplementation(function (experimentId: string) {
-        if (experimentId === EXPERIMENT_IDS.chatGauge) {
-          return { cohort: 'treatment', data: undefined, experiment: undefined };
-        }
-        return { cohort: undefined, data: undefined, experiment: undefined };
-      });
-
-      renderWithProviders(<ChatInput {...defaultProps} appId="test-app-123" />);
-
-      expect(screen.queryByRole('button', { name: /builder_usage_gauge_aria_label/i })).not.toBeInTheDocument();
-    });
-
-    it('should not render UsageGauge when switchboard is off even if not in treatment cohort', function switchboardOffHidesGauge() {
-      mockUseSwitchboard.mockImplementation(function (feature: string) {
-        if (feature === 'appbuilder-image-manager') return true;
-        if (feature === 'appbuilder-chat-gauge') return false;
-        return false;
-      });
-      mockUseHivemind.mockReturnValue({ cohort: 'control', data: undefined, experiment: undefined });
-
-      renderWithProviders(<ChatInput {...defaultProps} appId="test-app-123" />);
-
-      expect(screen.queryByRole('button', { name: /builder_usage_gauge_aria_label/i })).not.toBeInTheDocument();
-    });
-
-    it('should not render UsageGauge when switchboard is off even if user is in treatment cohort', function switchboardOffTreatmentStillHidesGauge() {
-      mockUseSwitchboard.mockImplementation(function (feature: string) {
-        if (feature === 'appbuilder-image-manager') return true;
-        if (feature === 'appbuilder-chat-gauge') return false;
-        return false;
-      });
-      mockUseHivemind.mockImplementation(function (experimentId: string) {
-        if (experimentId === EXPERIMENT_IDS.chatGauge) {
-          return { cohort: 'treatment', data: undefined, experiment: undefined };
-        }
-        return { cohort: undefined, data: undefined, experiment: undefined };
-      });
-
-      renderWithProviders(<ChatInput {...defaultProps} appId="test-app-123" />);
-
-      expect(screen.queryByRole('button', { name: /builder_usage_gauge_aria_label/i })).not.toBeInTheDocument();
-    });
-
-    it('should render UsageGauge when switchboard is on and user is not in treatment cohort', function gaugeVisibleWhenNotTreatment() {
-      mockUseSwitchboard.mockImplementation(function (feature: string) {
-        if (feature === 'appbuilder-image-manager') return true;
-        if (feature === 'appbuilder-chat-gauge') return true;
-        return false;
-      });
-      mockUseHivemind.mockReturnValue({ cohort: 'control', data: undefined, experiment: undefined });
 
       renderWithProviders(<ChatInput {...defaultProps} appId="test-app-123" />);
 
       expect(screen.getByRole('button', { name: /builder_usage_gauge_aria_label/i })).toBeInTheDocument();
     });
 
-    it('should render UsageGauge when switchboard is on and user is ineligible (not control, not treatment)', function gaugeVisibleWhenIneligible() {
+    it('should not render UsageGauge when the switchboard flag is off', function gaugeHiddenWhenFlagOff() {
       mockUseSwitchboard.mockImplementation(function (feature: string) {
         if (feature === 'appbuilder-image-manager') return true;
-        if (feature === 'appbuilder-chat-gauge') return true;
+        if (feature === 'appbuilder-chat-gauge') return false;
         return false;
       });
-      mockUseHivemind.mockReturnValue({ cohort: 'ineligible', data: undefined, experiment: undefined });
 
       renderWithProviders(<ChatInput {...defaultProps} appId="test-app-123" />);
 
-      expect(screen.getByRole('button', { name: /builder_usage_gauge_aria_label/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /builder_usage_gauge_aria_label/i })).not.toBeInTheDocument();
     });
   });
 

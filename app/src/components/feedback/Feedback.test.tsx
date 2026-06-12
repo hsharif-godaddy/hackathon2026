@@ -88,7 +88,7 @@ const mockUseGasketData = vi.hoisted(() =>
   vi.fn(function () { return {
     switchboard: {
       'aab_recommended_plan_uppdcx': { cohortId: 'control' },
-      'airo-app-builder-chat-gauge': { cohortId: 'control' },
+      'vh_dashboard_logo_to_airo_builder_redirect': { cohortId: 'control' },
     },
   }; }),
 );
@@ -240,7 +240,7 @@ const defaultProps = {
 
 const EXPECTED_EXPERIMENTS_LINE_DEFAULT = buildExperimentsLineFromSwitchboard({
   [EXPERIMENT_IDS.recommendedPlan]: { cohortId: 'control' },
-  [EXPERIMENT_IDS.chatGauge]: { cohortId: 'control' },
+  [EXPERIMENT_IDS.ventureHomeLogo]: { cohortId: 'control' },
 });
 
 function mockAuth(authType: string | undefined, shopperId = '12345678') {
@@ -278,7 +278,7 @@ describe('Feedback', function feedbackTests() {
     mockUseGasketData.mockReturnValue({
       switchboard: {
         [EXPERIMENT_IDS.recommendedPlan]: { cohortId: 'control' },
-        [EXPERIMENT_IDS.chatGauge]: { cohortId: 'control' },
+        [EXPERIMENT_IDS.ventureHomeLogo]: { cohortId: 'control' },
       },
     });
     global.fetch = vi.fn(function () { return Promise.resolve({

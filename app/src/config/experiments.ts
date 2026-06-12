@@ -5,8 +5,6 @@ export const EXPERIMENT_IDS = {
   homepageEngagement: 'airo-app-builder-homepage-engagement-2',
   /** UPP / pricing: which paid tier is highlighted as recommended (Professional vs Ultimate) */
   recommendedPlan: 'aab_recommended_plan_uppdcx',
-  /** Chat Gauge: whether to show the chat gauge on the develop page */
-  chatGauge: 'airo-app-builder-chat-gauge',
   /** Venture Home logo redirect: enable Brand Book for users entering via Venture Home */
   ventureHomeLogo: 'vh_dashboard_logo_to_airo_builder_redirect',
   /** Initial agent selection: maps cohort → agent profile. Only one agent-config experiment should run at a time. */
