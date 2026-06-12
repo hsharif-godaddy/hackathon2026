@@ -162,7 +162,9 @@
       "postcss": ">=8.5.10 <9",
       "prismjs": ">=1.30.0 <2",
       "shell-quote": ">=1.8.4 <2",
-      "ws": ">=8.21.0 <9"
+      "ws": ">=8.21.0 <9",
+      "@grpc/grpc-js": ">=1.14.4 <2",
+      "joi": ">=18.2.1 <19"
     },
     "onlyBuiltDependencies": [
       "better-sqlite3"

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -172,8 +172,11 @@ describe('applied-skills-registry', () => {
     it('persists the auto-registered skill to applied-skills.json on disk', async function diskPersist() {
       await registry.mergeSkillState('online-conferencing', appPath, { providers: ['google'] });
 
-      const raw = await readFile(join(appPath, '.airo', 'applied-skills.json'), 'utf8');
-      const file = JSON.parse(raw);
+      const filePath = join(appPath, '.airo', 'applied-skills.json');
+      const file = await vi.waitFor(async () => JSON.parse(await readFile(filePath, 'utf8')), {
+        timeout: 2000,
+        interval: 50,
+      });
       expect(file.skills['online-conferencing']).toBeDefined();
       expect(file.skills['online-conferencing'].installedAt).toBeDefined();
     });
