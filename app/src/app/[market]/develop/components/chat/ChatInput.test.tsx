@@ -124,6 +124,26 @@ describe('ChatInput', () => {
     expect(screen.getByRole('textbox')).toBeInTheDocument();
   });
 
+  describe('mediaLimitError', function mediaLimitErrorTests() {
+    it('should show inline alert without dismiss control', function showAlert() {
+      renderWithProviders(
+        <ChatInput {...defaultProps} mediaLimitError="builder_chatfiles_error_max_attachments" />
+      );
+
+      const alert = screen.getByTestId('chat-attachment-limit-error');
+      expect(alert).toHaveAttribute('role', 'alert');
+      expect(alert).toHaveTextContent('builder_chatfiles_error_max_attachments');
+      expect(screen.queryByRole('button', { name: 'builder_common_dismiss' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'builder_common_close' })).not.toBeInTheDocument();
+    });
+
+    it('should not render alert when mediaLimitError is null', function hideAlert() {
+      renderWithProviders(<ChatInput {...defaultProps} mediaLimitError={null} />);
+
+      expect(screen.queryByTestId('chat-attachment-limit-error')).not.toBeInTheDocument();
+    });
+  });
+
   it('mounts the rebuild queue driver even when airo-builder-chat-plans is off', () => {
     // Regression: the driver used to mount inside InputActionsPanel, which only
     // renders when chat-plans is on. The selector card enqueues regardless of the

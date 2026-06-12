@@ -437,9 +437,7 @@ function ChatPaneInner({
   /** Staged attachment ids currently uploading — ChatInput shows overlay spinners on those thumbnails */
   const [uploadingStagedFileIds, setUploadingStagedFileIds] = useState<string[]>([]);
 
-  // State for upload error message (auto-dismisses after 8s)
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const uploadErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // State for referenced files (file paths with content from file tree)
   const [referencedFiles, setReferencedFiles] = useState<Array<{ path: string; content: string }>>(
@@ -523,6 +521,7 @@ function ChatPaneInner({
         });
         return [];
       });
+      setUploadError(null);
     }
   }, [safeAiEditContext?.isImageReplacement]);
 
@@ -534,7 +533,19 @@ function ChatPaneInner({
       });
       return [];
     });
+    setUploadError(null);
   }, [appId]);
+
+  // Clear stale attachment errors when the user removes all composer attachments.
+  // Only on >0 → 0 transitions so rejected adds (validation failures with no staged files) keep their alert.
+  const prevAttachmentCountRef = useRef(0);
+  useEffect(() => {
+    const attachmentCount = selectedAssets.length + stagedFiles.length;
+    if (prevAttachmentCountRef.current > 0 && attachmentCount === 0) {
+      setUploadError(null);
+    }
+    prevAttachmentCountRef.current = attachmentCount;
+  }, [selectedAssets.length, stagedFiles.length]);
 
   // Debug current state (only log when there's a significant change)
   const prevDebugRef = useRef<string>('');
@@ -698,24 +709,9 @@ function ChatPaneInner({
     setBuildErrorContext(null);
   }, [setBuildErrorContext]);
 
-  useEffect(function cleanupUploadErrorTimer() {
-    return () => {
-      if (uploadErrorTimeoutRef.current) {
-        clearTimeout(uploadErrorTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  /** Chat attachment banner (staging limits, validation); does not log as upload failure or clear in-flight upload state */
+  /** Inline composer attachment error (staging limits, validation); cleared on user send */
   const showTransientAttachmentBanner = useCallback((errorMessage: string) => {
     setUploadError(errorMessage);
-    if (uploadErrorTimeoutRef.current) {
-      clearTimeout(uploadErrorTimeoutRef.current);
-    }
-    uploadErrorTimeoutRef.current = setTimeout(() => {
-      setUploadError(null);
-      uploadErrorTimeoutRef.current = null;
-    }, 8000);
   }, []);
 
   const handleUploadError = useCallback(
@@ -784,6 +780,8 @@ function ChatPaneInner({
         showTransientAttachmentBanner(
           t('builder_chatfiles_error_max_attachments', { count: maxAssets })
         );
+      } else {
+        setUploadError(null);
       }
     },
     [appId, isInputBudgetGated, selectedAssets.length, maxAssets, t, showTransientAttachmentBanner]
@@ -821,6 +819,10 @@ function ChatPaneInner({
           referencedFileCount: referencedFiles.length,
         });
         return;
+      }
+
+      if (userInitiated) {
+        setUploadError(null);
       }
 
       const outboundContent = messageToSend.trim();
@@ -1393,18 +1395,6 @@ function ChatPaneInner({
             </div>
           )}
           <ChatBanners appId={appId} />
-          {uploadError && (
-            <div className="mx-2 sm:mx-3 md:mx-0 mb-1 px-3 py-2 text-sm rounded-md bg-intents-ux-feedbackHighContrastCritical-feedbackColor/10 text-intents-ux-feedbackHighContrastCritical-feedbackColor flex items-center justify-between">
-              <span>{uploadError}</span>
-              <button
-                onClick={() => setUploadError(null)}
-                className="ml-2 font-bold hover:opacity-70"
-                aria-label={t('builder_common_dismiss')}
-              >
-                ×
-              </button>
-            </div>
-          )}
           {showResponseFeedbackThanksBanner && (
             <div className="mb-1">
               <ChatBanner
@@ -1450,6 +1440,7 @@ function ChatPaneInner({
             aiEditContext={safeAiEditContext}
             onClearAiEditContext={handleClearAiEditContext}
             onLargePasteDetected={handleLargePasteDetected}
+            mediaLimitError={uploadError}
             userMessages={userMessages}
           />
           <DebugStatsPanel />
@@ -1534,18 +1525,6 @@ function ChatPaneInner({
           )}
           <div className="px-2 sm:px-3 md:px-0">
             <ChatBanners appId={appId} />
-            {uploadError && (
-              <div className="mb-1 px-3 py-2 text-sm rounded-md bg-intents-ux-feedbackHighContrastCritical-feedbackColor/10 text-intents-ux-feedbackHighContrastCritical-feedbackColor flex items-center justify-between">
-                <span>{uploadError}</span>
-                <button
-                  onClick={() => setUploadError(null)}
-                  className="ml-2 font-bold hover:opacity-70"
-                  aria-label={t('builder_common_dismiss')}
-                >
-                  ×
-                </button>
-              </div>
-            )}
             {showResponseFeedbackThanksBanner && (
               <div className="mb-1">
                 <ChatBanner
@@ -1594,6 +1573,7 @@ function ChatPaneInner({
               onRemoveAiEditContext={handleRemoveAiEditContext}
               isMultiElementSelect={Boolean(isMultiElementSelect)}
               onLargePasteDetected={handleLargePasteDetected}
+              mediaLimitError={uploadError}
               userMessages={userMessages}
             />
           </div>

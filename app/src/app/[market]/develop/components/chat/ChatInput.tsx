@@ -7,9 +7,12 @@ import { PromptStage } from '@airo-ux/pattern-library/input/prompt-stage'
 import { FloatingFooter } from '@airo-ux/pattern-library/surfaces/floating-footer'
 import Button from '@ux/button'
 import Chip from '@ux/chip'
+import AsyncIcon from '@ux/icon/async-icon.js'
 import CodeIcon from '@ux/icon/code'
 import MicIcon from '@ux/icon/mic'
 import StopIcon from '@ux/icon/stop'
+import text from '@ux/text'
+import TextLockup from '@ux/text-lockup'
 
 import AssetInline, { AssetMode } from '@/app/[market]/develop/components/chat/AssetInline'
 import { AssetManagerItem, MediaType } from '@/app/[market]/develop/components/chat/AssetTypes'
@@ -157,6 +160,7 @@ export default function ChatInput({
   onRemoveAiEditContext,
   isMultiElementSelect = false,
   onLargePasteDetected,
+  mediaLimitError = null,
   userMessages = [],
   activeColorSchemeSuggest = null,
   activeFontThemeSuggest = null,
@@ -741,6 +745,16 @@ export default function ChatInput({
                   isLoading={uploadingStagedFileIds.includes(s.id)}
                 />
               ))}
+            </div>
+          )}
+
+          {mediaLimitError && (
+            <div className="mb-1 px-1" role="alert" data-testid="chat-attachment-limit-error">
+              <TextLockup size="sm" emphasis="critical" icon={<AsyncIcon icon="alert" />}>
+                <text.span as="caption" size={-1} emphasis="critical">
+                  {mediaLimitError}
+                </text.span>
+              </TextLockup>
             </div>
           )}
 

@@ -11,7 +11,7 @@ import { ChatTab } from '@/app/[market]/develop/components/types';
 import { getFileUploadAgent } from '@/lib/file-agent';
 import { mockInstrumentation } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
-import { MAX_TOTAL_ASSETS } from '@/utils/file-upload-validation';
+import { MAX_FILE_SIZE, MAX_TOTAL_ASSETS } from '@/utils/file-upload-validation';
 import ChatPane from './ChatPane';
 
 vi.mock('@/lib/file-agent', () => ({
@@ -33,13 +33,18 @@ vi.mock('@ux/growl', () => ({
 
 // Mock child components
 vi.mock('@/app/[market]/develop/components/chat/ChatInput', () => ({
-  default: ({ onSendMessage, inputValue, onInputChange, isDisabled, isAwaitingStream, isStreaming, onLargePasteDetected, onScreenshotCaptured, selectedAssets, referencedFiles }: any) => (
+  default: ({ onSendMessage, inputValue, onInputChange, isDisabled, isAwaitingStream, isStreaming, onLargePasteDetected, onScreenshotCaptured, onUploadError, onStageFiles, onClearSelectedAsset, onRemoveStagedFile, selectedAssets, stagedFiles, referencedFiles, mediaLimitError }: any) => (
     <div
       data-testid="chat-input"
       data-disabled={isDisabled}
       data-awaiting-stream={isAwaitingStream ? 'true' : 'false'}
       data-streaming={isStreaming ? 'true' : 'false'}
     >
+      {mediaLimitError && (
+        <div role="alert" data-testid="chat-attachment-limit-error">
+          {mediaLimitError}
+        </div>
+      )}
       <input
         value={inputValue}
         onChange={(e) => onInputChange(e.target.value)}
@@ -57,8 +62,40 @@ vi.mock('@/app/[market]/develop/components/chat/ChatInput', () => ({
       {onScreenshotCaptured && (
         <button data-testid="simulate-screenshot" onClick={() => onScreenshotCaptured('data:image/jpeg;base64,/9j/fakedata')}>Screenshot</button>
       )}
+      {onUploadError && (
+        <button data-testid="simulate-attachment-error" onClick={() => onUploadError('builder_chatfiles_error_max_attachments')}>Error</button>
+      )}
+      {onStageFiles && (
+        <>
+          <button
+            data-testid="simulate-stage-file"
+            onClick={() => onStageFiles([new File(['small'], 'small.txt', { type: 'text/plain' })])}
+          >
+            Stage
+          </button>
+          <button
+            data-testid="simulate-stage-oversized-file"
+            onClick={() => onStageFiles([new File([new Uint8Array(MAX_FILE_SIZE + 1)], 'huge.bin', { type: 'application/octet-stream' })])}
+          >
+            Stage oversized
+          </button>
+        </>
+      )}
       {selectedAssets?.map((a: any, i: number) => (
-        <span key={i} data-testid="selected-asset" data-url={a.imageUrl}>{a.filename}</span>
+        <span key={i} data-testid="selected-asset" data-url={a.imageUrl}>
+          {a.filename}
+          {onClearSelectedAsset && (
+            <button type="button" data-testid={`clear-asset-${i}`} onClick={() => onClearSelectedAsset(i)}>×</button>
+          )}
+        </span>
+      ))}
+      {stagedFiles?.map((s: any) => (
+        <span key={s.id} data-testid="staged-file">
+          {s.file.name}
+          {onRemoveStagedFile && (
+            <button type="button" data-testid={`clear-staged-${s.id}`} onClick={() => onRemoveStagedFile(s.id)}>×</button>
+          )}
+        </span>
       ))}
       {referencedFiles?.map((f: any) => (
         <span key={f.path} data-testid="referenced-file">{f.path}</span>
@@ -208,8 +245,10 @@ vi.mock('@/hooks/useChatTabs', () => ({
   useChatTabs: () => mockChatTabs,
 }));
 
+const mockAppIdFromParams = vi.hoisted(() => ({ value: 'test-app-123' }));
+
 vi.mock('@/app/[market]/develop/components/utils', () => ({
-  useAppIdFromParams: () => 'test-app-123',
+  useAppIdFromParams: () => mockAppIdFromParams.value,
 }));
 
 // Mock grants-related hooks and utilities
@@ -279,6 +318,8 @@ describe('ChatPane', () => {
     mockStreamingStore.isLoading = false;
     mockStreamingStore.isActivelyStreaming = false;
     mockStreamingStore.historyLoadingComplete = true;
+    mockStreamingStore.aiEditContext = null;
+    mockAppIdFromParams.value = 'test-app-123';
 
     // Reset grants-related mocks
     mockSubscriptionData.data = undefined;
@@ -1051,8 +1092,124 @@ describe('ChatPane', () => {
       await waitFor(function assertCapped() {
         expect(screen.getAllByTestId('selected-asset')).toHaveLength(MAX_TOTAL_ASSETS)
       })
-      expect(screen.getByText('builder_chatfiles_error_max_attachments')).toBeInTheDocument()
+      expect(screen.getByTestId('chat-attachment-limit-error')).toHaveTextContent(
+        'builder_chatfiles_error_max_attachments'
+      )
     })
+  });
+
+  describe('uploadError context reset', function uploadErrorContextReset() {
+    it('should clear uploadError when switching apps', async function clearOnAppSwitch() {
+      const pane = <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />;
+      const { user, rerender } = renderWithProviders(pane);
+
+      await user.click(screen.getByTestId('simulate-attachment-error'));
+      expect(screen.getByTestId('chat-attachment-limit-error')).toHaveTextContent(
+        'builder_chatfiles_error_max_attachments'
+      );
+
+      mockAppIdFromParams.value = 'other-app-456';
+      rerender(pane);
+
+      await waitFor(function assertCleared() {
+        expect(screen.queryByTestId('chat-attachment-limit-error')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should clear uploadError when entering image replacement mode', async function clearOnImageReplacement() {
+      const pane = <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />;
+      const { user, rerender } = renderWithProviders(pane);
+
+      await user.click(screen.getByTestId('simulate-attachment-error'));
+      expect(screen.getByTestId('chat-attachment-limit-error')).toHaveTextContent(
+        'builder_chatfiles_error_max_attachments'
+      );
+
+      mockStreamingStore.aiEditContext = { isImageReplacement: true };
+      rerender(pane);
+
+      await waitFor(function assertCleared() {
+        expect(screen.queryByTestId('chat-attachment-limit-error')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should clear uploadError when the last attachment is removed', async function clearOnRemoveAll() {
+      vi.mocked(getFileUploadAgent).mockResolvedValue({ token: 'test-token', uploadUrl: 'http://localhost:4000/files/upload' });
+      global.fetch = vi.fn(function (url: string) {
+        if (url.endsWith('/api/venture')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ ventureId: 'v-123' }) } as Response);
+        }
+        if (url.startsWith('data:')) {
+          return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob(['jpeg'], { type: 'image/jpeg' })) } as Response);
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            uploadId: 'upload-1',
+            files: [{
+              id: 'f0',
+              originalName: 'screenshot-0.jpg',
+              filename: 'screenshot-0.jpg',
+              size: 1024,
+              mimeType: 'image/jpeg',
+              uploadedAt: '2026-01-01',
+              signedUrl: '/files/signed/abc-0.jpg',
+            }],
+            failedFiles: [],
+          }),
+        } as Response);
+      });
+
+      const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+
+      await user.click(screen.getByTestId('simulate-screenshot'));
+      await waitFor(function assertAsset() {
+        expect(screen.getByTestId('selected-asset')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId('simulate-attachment-error'));
+      expect(screen.getByTestId('chat-attachment-limit-error')).toBeInTheDocument();
+
+      await user.click(screen.getByTestId('clear-asset-0'));
+
+      await waitFor(function assertCleared() {
+        expect(screen.queryByTestId('chat-attachment-limit-error')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should clear a stale uploadError after successfully staging a valid file', async function clearOnSuccessfulStage() {
+      const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+
+      await user.click(screen.getByTestId('simulate-attachment-error'));
+      expect(screen.getByTestId('chat-attachment-limit-error')).toHaveTextContent(
+        'builder_chatfiles_error_max_attachments'
+      );
+
+      await user.click(screen.getByTestId('simulate-stage-file'));
+
+      await waitFor(function assertCleared() {
+        expect(screen.queryByTestId('chat-attachment-limit-error')).not.toBeInTheDocument();
+      });
+      expect(screen.getByTestId('staged-file')).toHaveTextContent('small.txt');
+    });
+
+    it('should replace a stale uploadError with a new validation error', async function replaceWithValidationError() {
+      const { user } = renderWithProviders(<ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />);
+
+      await user.click(screen.getByTestId('simulate-attachment-error'));
+      expect(screen.getByTestId('chat-attachment-limit-error')).toHaveTextContent(
+        'builder_chatfiles_error_max_attachments'
+      );
+
+      await user.click(screen.getByTestId('simulate-stage-oversized-file'));
+
+      await waitFor(function assertReplaced() {
+        expect(screen.getByTestId('chat-attachment-limit-error')).toHaveTextContent(
+          'builder_chatfiles_error_file_too_large'
+        );
+      });
+      expect(screen.queryByTestId('staged-file')).not.toBeInTheDocument();
+    });
   });
 
 });
