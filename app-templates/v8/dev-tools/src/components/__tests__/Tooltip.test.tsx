@@ -86,6 +86,30 @@ describe("Tooltip", function tooltipTests() {
     expect(document.body.querySelector(".airo-tooltip-bubble")).toBeNull();
   });
 
+  it("strips native title from the trigger to prevent double tooltips", function stripNativeTitle() {
+    render(
+      createElement(
+        Tooltip,
+        { content: "Text color" },
+        createElement("button", { type: "button", title: "Text color" }, "C"),
+      ),
+    );
+
+    expect(document.querySelector("button")).not.toHaveAttribute("title");
+  });
+
+  it("keeps native title on the trigger when disabled", function keepNativeTitleWhenDisabled() {
+    render(
+      createElement(
+        Tooltip,
+        { content: "Text color", disabled: true },
+        createElement("button", { type: "button", title: "Text color" }, "C"),
+      ),
+    );
+
+    expect(document.querySelector("button")).toHaveAttribute("title", "Text color");
+  });
+
   it("portals bubble into the dev-tools root when present", function portalIntoDevToolsRoot() {
     const devToolsRoot = document.createElement("div");
     devToolsRoot.id = "airo-dev-tools-injected";

@@ -1,4 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 
 import {
@@ -21,6 +30,19 @@ function getTooltipPortalTarget(): HTMLElement | null {
 }
 
 injectTooltipStyles();
+
+/** Drop native `title` so the browser's delayed tooltip cannot stack under ours. */
+function suppressNativeTitle(child: ReactNode, stripTitle: boolean): ReactNode {
+  if (!stripTitle || !isValidElement(child)) {
+    return child;
+  }
+
+  if ((child.props as { title?: string }).title === undefined) {
+    return child;
+  }
+
+  return cloneElement(child as ReactElement<{ title?: string }>, { title: undefined });
+}
 
 export interface TooltipProps {
   content: ReactNode
@@ -192,7 +214,7 @@ export function Tooltip({
       onBlur={handleContainerBlur}
       onPointerDown={handlePointerDown}
     >
-      {children}
+      {suppressNativeTitle(children, !disabled)}
       {bubble && portalTarget && createPortal(bubble, portalTarget)}
     </div>
   );
