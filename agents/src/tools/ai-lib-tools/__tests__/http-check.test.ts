@@ -143,6 +143,85 @@ describe('httpCheckAITool', function httpCheckTests() {
       await execute({ url: 'http://127.0.0.1:3000/api' });
       expect(mockFetch.mock.calls[0][1].dispatcher).toBeUndefined();
     });
+
+    // TLS verification must NOT be skipped on production GoDaddy hosts —
+    // they have real public certs. Only dev/local hosts have self-signed.
+    it('does not set dispatcher for *.test-godaddy.com HTTPS', async function noTlsSkipTestGodaddy() {
+      mockFetch.mockResolvedValue(makeResponse());
+      await execute({ url: 'https://app.test-godaddy.com/api' });
+      expect(mockFetch.mock.calls[0][1].dispatcher).toBeUndefined();
+    });
+
+    it('does not set dispatcher for *.godaddy.com HTTPS', async function noTlsSkipProdGodaddy() {
+      mockFetch.mockResolvedValue(makeResponse());
+      await execute({ url: 'https://app.godaddy.com/api' });
+      expect(mockFetch.mock.calls[0][1].dispatcher).toBeUndefined();
+    });
+  });
+
+  describe('X-Airo-HttpCheck sentinel header', function sentinelTests() {
+    const getSentinel = (): string | undefined => {
+      const headers = mockFetch.mock.calls[0]?.[1]?.headers as Record<string, string> | undefined;
+      return headers?.['X-Airo-HttpCheck'];
+    };
+
+    it('attaches sentinel when target host matches appBaseUrl (relative path)', async function sentinelRelative() {
+      mockFetch.mockResolvedValue(makeResponse());
+      await execute({ url: '/api/contact/email-capture' }, 'https://abc123.c4.test-airoapp.ai');
+      expect(getSentinel()).toBe('true');
+    });
+
+    it('attaches sentinel when absolute URL host matches appBaseUrl', async function sentinelAbsoluteMatch() {
+      mockFetch.mockResolvedValue(makeResponse());
+      await execute(
+        { url: 'https://abc123.c4.test-airoapp.ai/api/contact/email-capture' },
+        'https://abc123.c4.test-airoapp.ai',
+      );
+      expect(getSentinel()).toBe('true');
+    });
+
+    it('does not attach sentinel when absolute URL host differs from appBaseUrl', async function sentinelAbsoluteMismatch() {
+      mockFetch.mockResolvedValue(makeResponse());
+      await execute(
+        { url: 'https://api.stripe.com/v1/charges' },
+        'https://abc123.c4.test-airoapp.ai',
+      );
+      expect(getSentinel()).toBeUndefined();
+    });
+
+    it('does not attach sentinel when appBaseUrl is unset', async function sentinelNoAppBaseUrl() {
+      mockFetch.mockResolvedValue(makeResponse());
+      await execute({ url: 'https://abc123.c4.test-airoapp.ai/api' });
+      expect(getSentinel()).toBeUndefined();
+    });
+
+    it('attaches sentinel even when POST body forces content-type injection', async function sentinelWithBody() {
+      mockFetch.mockResolvedValue(makeResponse());
+      await execute(
+        { url: '/api/contact', method: 'POST', body: '{"hello":"world"}' },
+        'https://abc123.c4.test-airoapp.ai',
+      );
+      expect(getSentinel()).toBe('true');
+      const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>;
+      expect(headers['content-type']).toBe('application/json');
+    });
+
+    it('does not override caller-provided X-Airo-HttpCheck', async function preservesCallerHeader() {
+      mockFetch.mockResolvedValue(makeResponse());
+      await execute(
+        { url: '/api/health', headers: { 'X-Airo-HttpCheck': 'override' } },
+        'https://abc123.c4.test-airoapp.ai',
+      );
+      expect(getSentinel()).toBe('override');
+    });
+
+    it('handles localhost normalization in appBaseUrl', async function sentinelLocalhostNorm() {
+      mockFetch.mockResolvedValue(makeResponse());
+      await execute({ url: '/api/health' }, 'http://localhost:3000');
+      // localhost in appBaseUrl is normalized to 127.0.0.1, matching the
+      // already-normalized parsedTarget.hostname.
+      expect(getSentinel()).toBe('true');
+    });
   });
 
   describe('status matching', function statusTests() {

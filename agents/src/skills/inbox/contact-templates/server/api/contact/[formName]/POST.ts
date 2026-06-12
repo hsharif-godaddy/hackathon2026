@@ -186,6 +186,13 @@ export default async function handler(req: Request, res: Response): Promise<void
 
 	const url = `https://${formConfig.brandId}.${inboxHost}/api/v2/contact`;
 
+	// Pass-through for the agent's httpCheck tool: when present, the Inbox
+	// backend short-circuits before persisting (full validation still runs,
+	// so payload-shape bugs surface as 4xx). Rate limiting and all other
+	// guards still apply on this path — the header gates only the
+	// downstream persist step, not anything here.
+	const isHttpCheck = req.headers["x-airo-httpcheck"] === "true";
+
 	try {
 		const response = await fetch(url, {
 			method: "POST",
@@ -193,6 +200,7 @@ export default async function handler(req: Request, res: Response): Promise<void
 				"Content-Type": "application/json",
 				"X-Airo-Contact-Form": "true",
 				"X-Forwarded-For": visitorIp,
+				...(isHttpCheck && { "X-Airo-HttpCheck": "true" }),
 			},
 			body: JSON.stringify(payload),
 		});

@@ -76,11 +76,31 @@ export const httpCheckAITool: Tool = createTool(
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), input.timeoutMs);
 
+    // Sentinel header lets non-idempotent endpoints (contact form, etc.)
+    // detect httpCheck traffic and validate without performing side effects.
+    // Scoped to the per-conversation app target (context.metadata.appBaseUrl)
+    // so the header is never leaked to external or unrelated hosts.
+    const { hostname } = parsedTarget;
+    const appBaseUrlForSentinel = context?.metadata?.appBaseUrl as string | undefined;
+    let appHostname: string | null = null;
+    if (appBaseUrlForSentinel) {
+      try {
+        const normalized = /^https?:\/\//i.test(appBaseUrlForSentinel) ? appBaseUrlForSentinel : `https://${appBaseUrlForSentinel}`;
+        appHostname = new URL(normalized).hostname;
+        if (appHostname === 'localhost') appHostname = '127.0.0.1';
+      } catch {
+        // appBaseUrl unparseable — relative-path resolution above would have
+        // already errored; for absolute-URL callers we just skip the sentinel.
+      }
+    }
+    const sentinelHeader: Record<string, string> =
+      appHostname !== null && hostname === appHostname ? { 'X-Airo-HttpCheck': 'true' } : {};
+
     const start = Date.now();
     try {
       const fetchOptions: RequestInit & { dispatcher?: Agent } = {
         method: input.method,
-        headers: input.headers,
+        headers: { ...sentinelHeader, ...input.headers },
         signal: controller.signal,
       };
       if (input.body !== undefined && ['POST', 'PUT', 'PATCH'].includes(input.method)) {
@@ -90,14 +110,13 @@ export const httpCheckAITool: Tool = createTool(
         if (!hasContentType) {
           const firstChar = input.body.trimStart()[0];
           const inferredType = firstChar === '{' || firstChar === '[' ? 'application/json' : 'text/plain';
-          fetchOptions.headers = { 'content-type': inferredType, ...existingHeaders };
+          fetchOptions.headers = { ...sentinelHeader, 'content-type': inferredType, ...existingHeaders };
         }
       }
       // Dev-supervisor proxy uses self-signed TLS certs; skip verification
       // only for known-local hostnames so external HTTPS targets are not silently
       // checked with TLS verification off.
       if (parsedTarget.protocol === 'https:') {
-        const { hostname } = parsedTarget;
         const isLocal =
           hostname === '127.0.0.1' ||
           hostname === '[::1]' ||
