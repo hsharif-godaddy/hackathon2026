@@ -6,9 +6,9 @@ name: E2E v2 Tests (preview)
 #
 # Differences vs. playwright-e2e.yml (intentional, while in preview):
 #   - workflow_dispatch only (no schedule) — manual smoke until we trust it
-#   - single env (`test`) — validate shape end-to-end before extending
-#   - dedicated AWS secret `/test/airo-app-builder-user-v2` — keeps the
-#     legacy CI shopper free for the existing nightly cron's load
+#   - test + prod envs — each uses its own dedicated v2 shopper secret
+#     (`/<env>/airo-app-builder-user-v2`), keeping the legacy CI shopper
+#     free for the existing nightly cron's load
 #   - no shards / matrix — e2e-v2 already runs its 4 specs in 4 parallel
 #     workers in-process via `PLAYWRIGHT_E2E_WORKERS=4`
 #   - no merge-reports / Slack — the dispatcher reads the run artifact
@@ -30,14 +30,7 @@ on:
         type: choice
         options:
           - test
-  # TEMP: pre-merge testing trigger — REMOVE before merging to main.
-  # `workflow_dispatch` isn't usable from the GitHub API until this file
-  # lands on the default branch (the API returns HTTP 404 with the
-  # branch ref otherwise). The push trigger lets us validate the v2
-  # workflow on the PR branch before flipping CI to it. Once this PR
-  # merges, drop this block so the workflow only runs on explicit dispatch.
-  push:
-    branches: [refactor/e2e-split-and-quick-create]
+          - prod
 
 # Serialize per-env so two manual dispatches against the same env don't
 # race over the same shopper account's app quota. `cancel-in-progress: false`
@@ -70,6 +63,9 @@ jobs:
           case "$ENV" in
             test)
               echo "base_url=https://airo-builder.test-godaddy.com" >> $GITHUB_OUTPUT
+              ;;
+            prod)
+              echo "base_url=https://airo-builder.godaddy.com" >> $GITHUB_OUTPUT
               ;;
             *)
               echo "❌ Unknown environment: $ENV"
@@ -104,12 +100,20 @@ jobs:
 
       - name: Get e2e-v2 test credentials from Secrets Manager
         id: get-credentials
+        env:
+          # Resolved env (test|prod) from the env-config step. Drives which
+          # dedicated v2 shopper secret we read.
+          ENVIRONMENT: ${{ steps.env-config.outputs.environment }}
         run: |
           set -e
-          # Dedicated v2 shopper so the canonical e2e cron's account isn't
-          # competing with this preview's app quota.
-          echo "Retrieving e2e-v2 test credentials from Secrets Manager..."
-          CREDENTIALS=$(aws secretsmanager get-secret-value --secret-id "/test/airo-app-builder-user-v2" --query 'SecretString' --output text --region us-west-2)
+          # Dedicated per-env v2 shopper so the canonical e2e cron's account
+          # isn't competing with this preview's app quota. Secret name follows
+          # the legacy convention: /<env>/airo-app-builder-user-v2
+          #   test → /test/airo-app-builder-user-v2
+          #   prod → /prod/airo-app-builder-user-v2
+          SECRET_ID="/${ENVIRONMENT}/airo-app-builder-user-v2"
+          echo "Retrieving e2e-v2 credentials from Secrets Manager (${SECRET_ID})..."
+          CREDENTIALS=$(aws secretsmanager get-secret-value --secret-id "$SECRET_ID" --query 'SecretString' --output text --region us-west-2)
 
           # Same {"<email>": "<password>"} schema as the legacy secret —
           # keep the keys[0]/.[] extraction pattern so future rotation can
@@ -119,7 +123,7 @@ jobs:
           echo "Extracted username: ${USERNAME}"
 
           if [ "$USERNAME" = "null" ] || [ "$PASSWORD" = "null" ] || [ -z "$USERNAME" ] || [ -z "$PASSWORD" ]; then
-            echo "❌ Failed to extract valid credentials from /test/airo-app-builder-user-v2"
+            echo "❌ Failed to extract valid credentials from ${SECRET_ID}"
             exit 1
           fi
 
@@ -185,10 +189,10 @@ jobs:
         env:
           CI: true
           # tests/helpers/constants.ts getCredentials() reads env-specific
-          # variables based on PLAYWRIGHT_ENV. Only TEST_* needs to be set
-          # while this preview targets the test env exclusively, but exporting
-          # all four pairs costs nothing and avoids surprises if someone
-          # extends the inputs.environment choice list later.
+          # variables based on PLAYWRIGHT_ENV. The single resolved v2 shopper
+          # is exported into all four pairs so whichever PLAYWRIGHT_ENV the
+          # run resolves to (test|prod) picks up the right credentials without
+          # per-env branching here.
           DEV_USERNAME: ${{ steps.get-credentials.outputs.username }}
           DEV_PASSWORD: ${{ steps.get-credentials.outputs.password }}
           PRE_TEST_USERNAME: ${{ steps.get-credentials.outputs.username }}
@@ -206,6 +210,14 @@ jobs:
           # is a single worker — they parallelize across files, not within).
           PLAYWRIGHT_E2E_WORKERS: '4'
         run: |
+          # Ensure the long-lived pool apps exist for this shopper BEFORE
+          # e2e-v2 runs. bootstrap-pool is idempotent: cheap (~2 serial GETs)
+          # when the pools already exist, and on a fresh v2 shopper it pays the
+          # one-time create + auto-publish cost. Without this, the pool-resolve
+          # setup (an e2e-v2 dependency) fails "Pool app not found" and skips
+          # the whole suite. See tests/pool-setup/build-pool-apps.spec.ts.
+          echo "Ensuring pool apps exist for $PLAYWRIGHT_ENV (idempotent)"
+          npx playwright test --project=bootstrap-pool
           echo "Running --project=e2e-v2 against $PLAYWRIGHT_ENV"
           npx playwright test --project=e2e-v2
 

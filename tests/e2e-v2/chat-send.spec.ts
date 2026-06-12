@@ -12,10 +12,10 @@
  * (created in `beforeAll`, deleted in `afterAll`) and each test's
  * transcript assertion expects the message it just sent.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers/test-fixtures';
 
 import { deleteApp, evictOldestE2eAppsToFitLimit } from '../helpers/api';
-import { detectSsoType, ensureAuthenticated, handleSsoLogin, isSignInUIResult, loginIfNeeded } from '../helpers/auth';
+import { detectSsoType, ensureAuthenticated, handleSsoLogin, isSignInUIResult, loginViaSsoDirect } from '../helpers/auth';
 import {
   AI_RESPONSE_TIMEOUT_MS,
   DEFAULT_TIMEOUT,
@@ -52,9 +52,12 @@ test.describe('E2E v2 - Chat send', () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     try {
+      // Authenticate on the standalone SSO page (top-level, not the app's
+      // cross-origin iframe) so parallel workers don't contend on iframe
+      // credential fills. Then the app loads already signed in.
+      await loginViaSsoDirect(page);
       await page.goto('/');
       await dismissOverlays(page);
-      await loginIfNeeded(page);
       await evictOldestE2eAppsToFitLimit(page).catch(() => {});
 
       const promptInput = page.getByTestId('homepage-prompt-input');
@@ -102,11 +105,11 @@ test.describe('E2E v2 - Chat send', () => {
     const page = await ctx.newPage();
     try {
       // deleteApp uses page.evaluate(fetch('/api/sites/<id>'…)). The
-      // relative URL needs a base origin, which `about:blank` doesn't
-      // provide, so navigate to the app's host first.
+      // relative URL needs a base origin, so authenticate then land on the
+      // app host first.
+      await loginViaSsoDirect(page);
       await page.goto('/');
       await dismissOverlays(page);
-      await loginIfNeeded(page);
       await deleteApp(page, appId);
     } catch (err) {
       console.error(`  Cleanup of app ${appId} failed:`, err);
@@ -120,11 +123,10 @@ test.describe('E2E v2 - Chat send', () => {
     await page.addInitScript(() => {
       localStorage.setItem('airo-intro-tour-shown', 'true');
     });
-    // Each test gets a fresh browser context (no storageState) — login fresh
-    // before navigating to /develop/<id>, otherwise gd-auth bounces to SSO.
-    await page.goto('/');
-    await dismissOverlays(page);
-    await loginIfNeeded(page);
+    // Each test gets a fresh browser context (no storageState) — log in via
+    // the standalone SSO page first, then go straight to /develop/<id>
+    // (already authenticated, so gd-auth doesn't bounce us to SSO).
+    await loginViaSsoDirect(page);
     await page.goto(`/develop/${appId}`);
     await waitForDevelopPage(page);
   });
@@ -135,14 +137,14 @@ test.describe('E2E v2 - Chat send', () => {
 
   // Initial AI generation needs more time than a follow-up response: the
   // legacy monolith reaches this gate ~1–2 min after homepage submit (so AI
-  // gen has had a head-start during SSO + navigation), but in e2e-v2 the
-  // app is created via API and the test arrives at /develop/<id> within
-  // seconds — the AI gen has barely started when the wait begins. On a
-  // slow test env that's not enough margin within AI_RESPONSE_TIMEOUT_MS.
-  // Add 2 min to cover the missing head-start.
+  // gen has had a head-start during SSO + navigation). This spec creates its
+  // app via homepage submit in beforeAll too, but each test then re-enters
+  // via /develop/<id> in a fresh context, so its own gating wait can begin
+  // while AI gen is still early. On a slow test env that's not enough margin
+  // within AI_RESPONSE_TIMEOUT_MS. Add 2 min to cover the missing head-start.
   const INITIAL_GEN_TIMEOUT_MS = AI_RESPONSE_TIMEOUT_MS + 120_000;
 
-  test('Send message via Enter key (default user path)', async ({ page }, testInfo) => {
+  test('Send message via Enter key (default user path)', { tag: ['@thorough', '@chat'] }, async ({ page }, testInfo) => {
     // Budget: bumped first-gate (initial gen) + second gate (own-response) + slack.
     testInfo.setTimeout(INITIAL_GEN_TIMEOUT_MS + AI_RESPONSE_TIMEOUT_MS + 60_000);
 
@@ -175,7 +177,7 @@ test.describe('E2E v2 - Chat send', () => {
     await ensureAuthenticated(page);
   });
 
-  test('Send message via send button (regression guard)', async ({ page }, testInfo) => {
+  test('Send message via send button (regression guard)', { tag: ['@thorough', '@chat'] }, async ({ page }, testInfo) => {
     // Same two-cycle budget as the Enter-key test above — see comment there.
     testInfo.setTimeout(2 * AI_RESPONSE_TIMEOUT_MS + 60_000);
 

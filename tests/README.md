@@ -147,17 +147,34 @@ account.
 ### E2E v2 (Split + Parallel)
 
 Same coverage as the legacy E2E suite, split into 4 spec files under
-`tests/e2e-v2/` that can run with file-level parallelism. Every spec
-except `create-flow.spec.ts` creates its app via `POST /api/sites/quick-create`
-(see `createSiteViaApi` in `helpers/api.ts`) and skips the homepage UI +
-SSO redirect cost.
+`tests/e2e-v2/` that run with file-level parallelism (4 workers).
+
+App strategy: the read-only and publish specs share **long-lived pool apps**
+(`[e2e-pool:<purpose>]`) instead of creating an app per run. The pool ids are
+resolved **once per run** by the `pool-resolve` setup project (an `e2e-v2`
+dependency) and read from an on-disk cache (`tests/.pool-cache.json`) in each
+spec's `beforeAll` — no per-spec `GET /api/sites`. Pool apps are created by the
+`bootstrap-pool` project (idempotent). `create-flow` and `chat-send` still
+drive a real homepage submit (cold-start coverage / transcript mutation).
 
 | File | Coverage | Concurrency | App strategy |
 | --- | --- | --- | --- |
 | `create-flow.spec.ts` | Homepage submit → SSO → develop redirect | serial, 1 worker | UI-create per test, deleted by ID |
-| `develop-ui.spec.ts` | Read-only develop-page UI (header, preview controls, chat input states, edit mode, code view, publish-button state, manual feedback) | parallel within file | one shared app, API-create in `beforeAll` |
-| `chat-send.spec.ts` | Chat send via Enter + send-button | serial within file | one shared app, API-create in `beforeAll` |
-| `publish-and-domain.spec.ts` | Auto-publish verification, custom-domain attach/disconnect, page-reload recovery | serial within file | one shared app + auto-publish wait in `beforeAll` |
+| `develop-ui.spec.ts` | Read-only develop-page UI (header, preview controls, chat input states, edit mode, code view, publish-button state, manual feedback) | parallel within file | shared `[e2e-pool:develop-ui]` pool app, cached id in `beforeAll` |
+| `chat-send.spec.ts` | Chat send via Enter + send-button | serial within file | own homepage submit in `beforeAll` |
+| `publish-and-domain.spec.ts` | Default `*.ai` publish verification, custom-domain attach/disconnect, page-reload recovery | serial within file | shared pre-published `[e2e-pool:publish-domain]` pool app, cached id in `beforeAll` |
+
+**First-time setup (per env / new shopper):** the pool apps must exist before
+running e2e-v2. Bootstrap is idempotent (cheap when they already exist; pays a
+one-time create + auto-publish on a fresh shopper):
+
+```bash
+pnpm exec playwright test --project=bootstrap-pool --env=test
+pnpm exec playwright test --project=e2e-v2 --env=test
+```
+
+CI runs `bootstrap-pool` automatically before `e2e-v2` (see
+`.github/workflows/playwright-e2e-v2.yml`), so a fresh CI shopper self-seeds.
 
 > **INVARIANT — `develop-ui.spec.ts` is read-only.** Tests in that file
 > share one server-side app across parallel browser contexts (different

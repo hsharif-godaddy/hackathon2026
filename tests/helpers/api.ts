@@ -9,6 +9,14 @@ interface SiteInfo {
   initial_prompt?: string;
   /** ISO8601 timestamp from GET /api/sites — used to find the oldest apps for eviction. */
   created_at?: string;
+  /**
+   * Published site URL from GET /api/sites. Present only once the app has
+   * been published. Defaults to the Airo `*.ai` publish URL; overridden to a
+   * custom/prefix domain when one is attached (see
+   * `app/src/lib/control-plane/v2-control-plane-adapter.ts`). Used to verify
+   * publish state without relying on ephemeral publish-success UI.
+   */
+  published_url?: string;
 }
 
 /**
@@ -16,8 +24,231 @@ interface SiteInfo {
  * via `getSpecPrefix(...)` in `tests/helpers/constants.ts` — always
  * `[e2e:<spec>:<salt>]`. Used by the eviction guard to identify test-owned
  * apps so we never touch non-test apps in the same account.
+ *
+ * Note the trailing colon: pool apps use `[e2e-pool:<purpose>]`, which
+ * does NOT contain `[e2e:`, so eviction and prefix-based cleanup helpers
+ * automatically skip pool apps without special-casing.
  */
 const E2E_PREFIX_MARKER = '[e2e:';
+
+/**
+ * Prefix for long-lived pool apps used by `develop-ui.spec.ts` and
+ * `publish-and-domain.spec.ts` — see `tests/e2e/REFACTOR_PLAN.md` PR 4
+ * design notes. Created by `tests/pool-setup/build-pool-apps.spec.ts`
+ * (idempotent, run via the `bootstrap-pool` project), resolved once per run
+ * by the `pool-resolve` setup project and read from the on-disk cache by
+ * specs. The structural difference from `[e2e:` (no colon between `e2e` and `pool`)
+ * is what makes eviction/cleanup helpers leave pool apps alone.
+ */
+const E2E_POOL_PREFIX = '[e2e-pool:';
+
+export function getPoolPrefix(purpose: string): string {
+  return `${E2E_POOL_PREFIX}${purpose}]`;
+}
+
+/**
+ * Look up a pool app by purpose. Pool apps are pre-built once per env
+ * (run `tests/scripts/pool-setup/build-pool-apps.spec.ts`) and reused
+ * across runs to skip per-run AI generation / auto-publish costs. Throws
+ * with a clear bootstrap-runner hint if no app matches the pool prefix.
+ *
+ * Caller must be authenticated — this helper does not handle SSO.
+ */
+/**
+ * GET /api/sites, retrying on transient gateway failures. The test env's
+ * sites endpoint intermittently returns 504 Gateway Time-out (and
+ * occasionally 502/503); throwing on the first one made the pooled specs
+ * brittle — especially at workers=4, where all four spec `beforeAll`s fire
+ * this lookup near-simultaneously, a concurrent burst that's far more likely
+ * to hit a slow/timing-out backend than the staggered workers=1 calls.
+ *
+ * Retries ride out brief blips (the 504 flickers on a minutes scale). Two
+ * transient modes are handled: a returned 5xx/gateway status, AND a *hung*
+ * request that never responds — the latter is aborted per-attempt via an
+ * AbortController (status 0) so it doesn't block page.evaluate until the
+ * test timeout. A 4xx (e.g. 401 auth) won't fix with retry, so we surface it
+ * immediately. Throws after the last attempt with the final status + body.
+ * Caller must be authenticated and on the app host (the fetch is a
+ * same-origin relative URL).
+ */
+async function fetchSitesWithRetry(
+  page: Page,
+  opts: {
+    attempts?: number;
+    backoffMs?: number;
+    maxBackoffMs?: number;
+    perAttemptTimeoutMs?: number;
+  } = {},
+): Promise<SiteInfo[]> {
+  const attempts: number = opts.attempts ?? 5;
+  const backoffMs: number = opts.backoffMs ?? 2000;
+  const maxBackoffMs: number = opts.maxBackoffMs ?? 15000;
+  const perAttemptTimeoutMs: number = opts.perAttemptTimeoutMs ?? 12000;
+
+  let lastStatus = 0;
+  let lastBody = '';
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const result: { ok: boolean; status: number; body: string } = await page.evaluate(
+      async (timeoutMs) => {
+        // Abort a hung request so it's a catchable error (status 0 → retried)
+        // rather than blocking until the enclosing test's timeout.
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const response = await fetch('/api/sites', { signal: controller.signal });
+          return { ok: response.ok, status: response.status, body: await response.text() };
+        } catch (err) {
+          // Network failure / abort (hang) / connection reset — status 0, transient.
+          return { ok: false, status: 0, body: String(err) };
+        } finally {
+          clearTimeout(timer);
+        }
+      },
+      perAttemptTimeoutMs,
+    );
+
+    if (result.ok) {
+      try {
+        const sites: unknown = JSON.parse(result.body);
+        if (Array.isArray(sites)) return sites as SiteInfo[];
+        lastStatus = result.status;
+        lastBody = 'response was not an array';
+      } catch {
+        lastStatus = result.status;
+        lastBody = `non-JSON response: ${result.body.slice(0, 200)}`;
+      }
+    } else {
+      lastStatus = result.status;
+      lastBody = result.body;
+      // Only 5xx / gateway timeouts (and network-level status 0) are transient.
+      // 4xx (auth, bad request) won't change on retry — fail fast.
+      const transient: boolean = result.status === 0 || result.status >= 500;
+      if (!transient) break;
+    }
+
+    if (attempt < attempts - 1) {
+      const delay: number = Math.min(backoffMs * 2 ** attempt, maxBackoffMs);
+      console.log(
+        `  GET /api/sites attempt ${attempt + 1}/${attempts} failed ` +
+          `(HTTP ${lastStatus}); retrying in ${Math.round(delay / 1000)}s`,
+      );
+      await page.waitForTimeout(delay);
+    }
+  }
+
+  throw new Error(
+    `GET /api/sites failed after ${attempts} attempt(s): HTTP ${lastStatus} — ` +
+      `${String(lastBody).slice(0, 500)}`,
+  );
+}
+
+/**
+ * Look up a pool app id, returning null ONLY when GET /api/sites was reached
+ * successfully and no app matches the prefix — i.e. the pool is *confirmed
+ * absent*. A transient /api/sites failure throws (propagated from
+ * fetchSitesWithRetry) rather than masquerading as "absent".
+ *
+ * This distinction is what lets `bootstrap-pool` avoid minting a DUPLICATE
+ * pool app when it merely couldn't verify existence: a `.catch(() => null)`
+ * around the old throw-on-everything `getPoolAppId` treated a flaky /api/sites
+ * (504/hang) as "doesn't exist" and created a fresh app — the root cause of
+ * the duplicate `[e2e-pool:*]` apps observed while the test env was flapping.
+ *
+ * When multiple apps match, picks the first deterministically (sorted by id)
+ * and warns — selection must not depend on /api/sites row order.
+ */
+export async function findPoolAppId(page: Page, purpose: string): Promise<string | null> {
+  const prefix = getPoolPrefix(purpose);
+
+  const sites = await fetchSitesWithRetry(page);
+  const matches = sites.filter((site) => {
+    const haystack = [site.name, site.initial_prompt].filter(Boolean).join(' ');
+    return haystack.includes(prefix);
+  });
+
+  if (matches.length === 0) return null;
+  if (matches.length > 1) {
+    // Duplicates make selection nondeterministic. Pick the first
+    // deterministically (sorted by id) and warn loudly so the extras get
+    // cleaned up — bootstrap-pool's "already exists → return" also only ever
+    // checks the first match, so a stray duplicate can otherwise linger.
+    const ids = matches.map((m) => m.id).sort();
+    console.warn(
+      `⚠️ ${matches.length} pool apps match prefix "${prefix}" (${ids.join(', ')}); ` +
+        `using ${ids[0]}. Delete the extras from /apps to avoid nondeterminism.`,
+    );
+    return ids[0];
+  }
+  return matches[0].id;
+}
+
+/**
+ * Like findPoolAppId but throws a clear "run bootstrap-pool" hint when the
+ * pool app is confirmed absent. Used by specs / pool-resolve where a missing
+ * pool app is a hard error. A transient /api/sites failure also throws (from
+ * fetchSitesWithRetry) — callers must NOT swallow that into "create a new one".
+ */
+export async function getPoolAppId(page: Page, purpose: string): Promise<string> {
+  const id = await findPoolAppId(page, purpose);
+  if (!id) {
+    const prefix = getPoolPrefix(purpose);
+    throw new Error(
+      `Pool app not found for purpose "${purpose}" (prefix "${prefix}"). ` +
+        `Run \`pnpm exec playwright test --project=bootstrap-pool --env=<env>\` ` +
+        `to create it. See tests/e2e/REFACTOR_PLAN.md PR 4 design notes.`,
+    );
+  }
+  return id;
+}
+
+/**
+ * Fetch an app's `published_url` from GET /api/sites. Returns null when the
+ * app isn't found or has no published_url (i.e. not published). This is the
+ * persistent, server-derived publish signal — unlike the ephemeral
+ * publish-success modal/growl, it survives a fresh page load and isn't
+ * subject to AI-narration variance.
+ *
+ * Caller must be authenticated. Works from any page on the app host (the
+ * fetch is a same-origin relative URL).
+ */
+export async function getPublishedUrl(page: Page, appId: string): Promise<string | null> {
+  // Shares the transient-504 retry with getPoolAppId — see fetchSitesWithRetry.
+  const sites = await fetchSitesWithRetry(page);
+  const site = sites.find((s) => s.id === appId);
+  return site?.published_url ?? null;
+}
+
+/**
+ * Poll GET /api/sites until the app's `published_url` is present, returning
+ * it. Used by the pool bootstrap to confirm a TRUE published state before
+ * caching the pool app — the ephemeral publish-success indicator can fire
+ * (or be matched) without the deploy having actually landed, which would
+ * otherwise cache a non-published app. Throws on timeout.
+ */
+export async function waitForPublishedUrl(
+  page: Page,
+  appId: string,
+  opts: { timeoutMs?: number; pollIntervalMs?: number } = {},
+): Promise<string> {
+  const timeoutMs = opts.timeoutMs ?? DEPLOYMENT_TIMEOUT_MS;
+  const pollIntervalMs = opts.pollIntervalMs ?? DEPLOYMENT_POLL_INTERVAL_MS;
+  const startedAt = Date.now();
+
+  while (true) {
+    const publishedUrl = await getPublishedUrl(page, appId);
+    if (publishedUrl) return publishedUrl;
+
+    const elapsed = Date.now() - startedAt;
+    if (elapsed >= timeoutMs) {
+      throw new Error(
+        `waitForPublishedUrl(${appId}) timed out after ${Math.round(elapsed / 1000)}s — ` +
+          `app has no published_url, so the publish did not land. Do NOT cache this as a ` +
+          `pool app; re-run bootstrap-pool.`,
+      );
+    }
+    await page.waitForTimeout(pollIntervalMs);
+  }
+}
 
 /**
  * Length of a real V2 app ID (nanoId format). Job IDs are shorter (~7

@@ -319,10 +319,54 @@ The existing `e2e` project's `testMatch` (or directory scoping) is left untouche
 | **1.6** | Delete `tests/e2e/e2e.spec.ts` and the legacy `e2e` Playwright project entry. Closes the duplicate-maintenance window. | ~30 min | None directly — cleanup. Gated on ~1–2 weeks of green daily CI on v2 with no new flakes. |
 | **2** | (removed) ~~`storageState` global setup — single SSO login per CI run~~ | — | We tried this in PR 1 (`tests/e2e-v2/auth.setup.ts`) and it failed: the saved JWT was syntactically valid but Gasket's `pluginAuth` rejected it on `/develop/<id>` navigations because the un-exercised JWT lacks live VAT / customer-context grants that only get minted by an interactive login flow. The e2e-v2 suite now does live SSO per-test (matching the proven venture-agent pattern in `airohq/airo-ai-automation`). Revisiting is possible but would need a deeper audit of which session-bound cookies are required by gd-auth — not a 2-hour change. |
 | **3** | Cleanup correctness — drop `afterEach` `page.goto('/apps')`, surface non-200 DELETE responses | ~1 hr | Closes silent leak paths #2, #3, #4. No direct wall-clock impact; converts invisible orphans into debuggable ones. |
-| **4** | Pool of pre-built read-only apps for `develop-ui.spec.ts` | ~3 hrs | Drops file B from ~3 min to ~1 min (skips API-create + AI gen). Also the biggest AI-credit lever post PR 1 — reduces per-run fresh generations from 4 → 3. Worth pulling forward as e2e coverage grows and per-run credit cost compounds. |
+| **4** | **Pool of pre-built apps + Playwright tags** — see "PR 4 design" below | ~6–8 hrs | Targets <10 min total wall-clock by removing the auto-publish-wait bottleneck in `publish-and-domain.spec.ts`'s `beforeAll`. Tags unblock a future PR-gate split. Reduces per-run fresh AI generations from 4 → 2 (chat-send + create-flow only). |
 | **5** | `ChatInterface` POM + `startMonitoring` (console+network) helpers | ~6–8 hrs | Quality/maintainability win, modest wall-clock gain via network-level assertions replacing polling |
+| **6** | Workflow split: PR-gate runs `--grep @pr-fast` (~3–5 min); scheduled / label-triggered runs full `@thorough` suite | ~1 hr | Makes e2e-v2 a viable PR check without blocking developer flow. Gated on PR 4's tags landing. |
 
-Each of these is independently shippable on top of this PR. PRs 1.5 and 1.6 must ship in order; PRs 2–5 can ship in any order.
+Each of these is independently shippable on top of this PR. PRs 1.5 and 1.6 must ship in order; PRs 2–6 can ship in any order, but PR 6 needs PR 4's tags.
+
+### PR 4 design — pool apps + tags
+
+**Wall-clock bottleneck (current at workers=4): `publish-and-domain` ~10 min**, dominated by `beforeAll`'s auto-publish wait (~5–7 min). `develop-ui` ~7 min (homepage submit + AI gen). Sharding doesn't help — `e2e-v2` is already 4 specs in parallel-in-process via `workers=4`, and 4 separate runners each pay ~5 min CI setup overhead.
+
+**Pool apps** target `beforeAll` cost directly. Two pools per env:
+
+| Pool | Prefix | Used by | What it skips |
+|---|---|---|---|
+| `[e2e-pool:develop-ui]` | read-only landing page | `develop-ui.spec.ts` | Homepage submit + initial AI gen (~2 min) |
+| `[e2e-pool:publish-domain]` | pre-published landing page | `publish-and-domain.spec.ts` | Homepage submit + AI gen + auto-publish wait (~5–7 min) |
+
+`chat-send` and `create-flow` keep using fresh apps because they mutate transcript / test cold-start SSO respectively.
+
+**Eviction guards already exclude pool apps for free.** `evictOldestE2eAppsToFitLimit` filters by substring `[e2e:`, and `[e2e-pool:` does not contain `[e2e:` (the colon is the disambiguator). No code change needed in eviction logic.
+
+**Bootstrap** (`tests/pool-setup/build-pool-apps.spec.ts`, run via the `bootstrap-pool` Playwright project — implemented as a spec, not a standalone `.mjs` script, so it reuses the specs' SSO/auth helpers): idempotent. Run once per env to create missing pool apps via real homepage submit (so the pool app's state matches what specs would observe). For the `publish-domain` pool, the prompt includes the auto-publish instruction so the app is in a published state; if a pool app exists but its publish never landed, bootstrap auto-deletes and re-seeds it. At runtime the `pool-resolve` setup project resolves the pool ids once and caches them (`tests/.pool-cache.json`) for specs to read — eliminating the per-spec `GET /api/sites` lookups. CI runs `bootstrap-pool` before `e2e-v2`.
+
+**Concurrency**: the workflow's existing `concurrency: e2e-v2-${env}` group serializes CI runs per environment, so two PRs can't race over the same pool app. For mutating specs (publish-domain attach/disconnect), tests already restore state at end of mutation.
+
+**Tags** (Playwright `tag:` option) label tests for the future PR 6 split:
+
+| Tag | Tests | Wall-clock target |
+|---|---|---|
+| `@pr-fast` | `create-flow` + 7× `develop-ui` | ~3–5 min |
+| `@thorough` | 2× `chat-send` + 3× `publish-and-domain` | full coverage, ~10 min |
+| `@create` / `@develop` / `@chat` / `@publish` | functional grouping for local subset runs | n/a |
+
+PR 4 only adds the tags as metadata; PR 6 adds the workflow filter (`--grep @pr-fast` for PR-gate, no filter for scheduled).
+
+**Risks**:
+- *Pool app drift* — failed test mutations could leave residue. Mitigations: (a) the custom-domain test pre-cleans any leftover attachment at its start (`disconnectDomainIfPresent`) so a prior mid-test failure can't poison the next run; (b) it also disconnects what it attaches on the happy path; (c) ?tab=settings is transient; (d) re-running `bootstrap-pool` recreates a deleted pool app.
+- *Coverage shift* — `publish-and-domain` test 11 changes from "verify auto-publish flow completed" to "verify app is in published state." The full auto-publish-via-AI-prompt flow stays covered by legacy `e2e` until PR 1.6 (delete-legacy) and by the `bootstrap-pool` project's pool creation itself.
+- *AI-cost reduction is conditional* — pool apps are reused, but bootstrap creates them once per pool refresh. Net win is large IF pool apps are long-lived; if pool apps get deleted often (eviction bug, manual cleanup), the cost regresses to today's baseline.
+
+**Scalability — how this pattern grows (validated against the "more AAB validation coverage" direction):**
+
+The pool pattern scales along two axes, both clean for the read-only-heavy growth this suite is headed toward:
+
+1. **More tests per fixture (the common case).** Read-only validation tests (does the AI build X correctly, does develop-page control Y work) cost ~0 marginal setup — they all share one pool app in parallel contexts. This is the sweet spot; add freely.
+2. **More fixture *types*.** Coverage of different generated-app shapes (multi-page site, forms, blog, e-commerce) = new pool *purposes*. `getPoolAppId(page, purpose)` + one `bootstrap-pool` entry per type. Linear, no per-test coupling.
+
+**What does NOT scale: mutating tests against a shared app.** Each one needs restore-discipline + idempotent pre-cleanup + serial ordering (see `publish-and-domain`'s `disconnectDomainIfPresent`). Three is fine; keep them rare. If mutating coverage ever grows, move those specs to fresh-app-per-test (`createSiteViaApi`) or a per-worker pool — don't pile more mutation onto a shared fixture. Read-only coverage has no such ceiling.
 
 ## Risks and mitigations
 

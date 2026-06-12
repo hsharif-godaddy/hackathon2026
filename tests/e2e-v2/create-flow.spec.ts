@@ -2,19 +2,28 @@
  * Create flow — homepage submit → SSO → develop redirect → app created.
  *
  * Coverage equivalent to Step 1 of the legacy `tests/e2e/e2e.spec.ts`
- * monolith, isolated into its own spec. Originally intended as the only
- * spec exercising the homepage create flow (other specs were going to use
- * `createSiteViaApi` for speed), but `createSiteViaApi` + a direct
- * `/develop/<id>` navigation proved unreliable for any test that waited
- * >5 min on AI-streaming gates — so chat-send / develop-ui /
- * publish-and-domain all do their own homepage submit in `beforeAll`. This
- * file remains the canonical spec for selector regressions on the home
- * prompt, hydration race conditions, and the SSO-then-redirect sequence.
+ * monolith, isolated into its own spec. It is the canonical spec for
+ * selector regressions on the home prompt, hydration race conditions, and
+ * the cold-start SSO-then-redirect sequence — so it always creates its app
+ * through the real homepage submit flow.
+ *
+ * App strategy across e2e-v2 (as of the pool refactor):
+ *   - create-flow      : UI homepage submit per test (this file), deleted by id.
+ *   - develop-ui       : shared long-lived [e2e-pool:develop-ui] pool app,
+ *                        read-only; id resolved once by pool-resolve, read
+ *                        from cache in beforeAll (no per-run create).
+ *   - publish-and-domain: shared pre-published [e2e-pool:publish-domain] pool
+ *                        app, same cached-id resolution.
+ *   - chat-send        : its own homepage submit in beforeAll (mutates the
+ *                        app's transcript, so it can't share a pool app).
+ * (`createSiteViaApi` + a direct `/develop/<id>` nav was tried for the
+ * shared-app specs and proved unreliable for tests waiting >5 min on
+ * AI-streaming gates, which is why pools / homepage submit are used instead.)
  *
  * Concurrency: serial / 1 worker. The test handles SSO and we don't want
  * concurrent logins racing on the shared shopper account.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../helpers/test-fixtures';
 
 import { deleteApp, deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { detectSsoType, handleSsoLogin, isSignInUIResult } from '../helpers/auth';
@@ -50,7 +59,7 @@ test.describe('E2E v2 - Create flow', () => {
     }
   });
 
-  test('Homepage submit creates app and lands on develop page', async ({ page }, testInfo) => {
+  test('Homepage submit creates app and lands on develop page', { tag: ['@pr-fast', '@create'] }, async ({ page }, testInfo) => {
     // 3 min: homepage hydration (10 s fixed wait) + SSO redirect + develop-page render.
     testInfo.setTimeout(180_000);
 

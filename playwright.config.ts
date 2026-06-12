@@ -12,17 +12,26 @@ dotenv.config({ path: path.resolve(__dirname, 'tests/.env') });
 const { env: envName, config: envConfig } = getEnvConfig();
 
 /**
- * CI runners resolve `sso.test-godaddy.com` to an internal VIP, so Chrome's
- * Local Network Access check blocks the cross-origin heartbeat POST from
- * `airo-builder.test-godaddy.com` (classified public) to SSO (classified
- * local). Heartbeats silently fail, the VAT ages out, and mid-run 401s
- * redirect the page to SSO. Real users hit this from public DNS where both
- * hosts are public→public, so LNA doesn't trip. Scope the flag to `test` and
- * `pre-test` (same DNS zone, same internal-VIP routing on CI) — never disable
- * it against prod.
+ * CI runners resolve `sso.*godaddy.com` to an internal VIP, so Chrome's
+ * Local Network Access check blocks the cross-origin SSO traffic from
+ * `airo-builder.*godaddy.com` (classified public) to SSO (classified local).
+ * On test/pre-test this silently fails the heartbeat POST (VAT ages out →
+ * mid-run 401s). On prod-on-CI it also breaks the standalone-SSO login token
+ * exchange (`loginViaSsoDirect`), surfacing as `/api/sites` 401
+ * "Encoded token does not have 3 parts".
+ *
+ * Real users hit every env from public DNS (public→public), so LNA never
+ * trips for them — the flag is purely a CI-runner-network workaround.
+ * Therefore:
+ *   - test / pre-test: always disable (the original heartbeat fix).
+ *   - prod: disable ONLY on CI (process.env.CI). Never locally — a local
+ *     prod run uses public DNS, and we don't want to mask the LNA check that
+ *     real prod users genuinely rely on outside the runner.
  */
 const LNA_DISABLED_ENVS: readonly string[] = ['test', 'pre-test'];
-const launchOptions = LNA_DISABLED_ENVS.includes(envName)
+const lnaDisabled =
+  LNA_DISABLED_ENVS.includes(envName) || (envName === 'prod' && !!process.env.CI);
+const launchOptions = lnaDisabled
   ? {
       args: [
         '--disable-features=LocalNetworkAccessChecks,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessForIframes',
@@ -75,9 +84,11 @@ export default defineConfig({
    * 2. Tests create/delete apps which affects global state
    * 3. SSO session state is shared across tests
    *
-   * The `e2e-v2` project is parallel-safe — each spec creates its own app
-   * via the `quick-create` API and uses a fresh browser context per test,
-   * so multiple workers don't collide. `scripts/e2e.sh` sets
+   * The `e2e-v2` project is parallel-safe — each spec uses a fresh browser
+   * context per test (live SSO, no shared storageState), and the shared-app
+   * specs read a long-lived pool app whose id is resolved once by the
+   * `pool-resolve` setup dependency (no concurrent `GET /api/sites`), so
+   * multiple workers don't collide. `scripts/e2e.sh` sets
    * `PLAYWRIGHT_E2E_WORKERS=4` automatically when invoked with
    * `--project=e2e-v2`. The override applies process-wide; if a single
    * invocation also runs `e2e` or `regression`, fall back to 1 worker
@@ -134,6 +145,23 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], ...(launchOptions && { launchOptions }) },
     },
     /**
+     * bootstrap-pool: one-shot, idempotent setup that ensures the long-lived
+     * pool apps used by `e2e-v2` exist for the target env. Run manually once
+     * per env (and to re-seed after a pool app is deleted):
+     *
+     *   pnpm exec playwright test --project=bootstrap-pool --env=test
+     *
+     * NOT part of `e2e-v2` and NOT a `dependencies` entry — pool apps are
+     * meant to outlive individual runs, so we don't pay their creation cost
+     * every run. Specs look the apps up via `getPoolAppId` and fail with a
+     * clear "run bootstrap-pool" hint if missing. See REFACTOR_PLAN.md PR 4.
+     */
+    {
+      name: 'bootstrap-pool',
+      testDir: './tests/pool-setup',
+      use: { ...devices['Desktop Chrome'], ...(launchOptions && { launchOptions }) },
+    },
+    /**
      * e2e-v2: split + parallel-safe successor to the `e2e` project. Runs
      * the 4-file shape under `tests/e2e-v2/`. Workers default to 1
      * (matching the rest of the suite); `scripts/e2e.sh` sets
@@ -160,9 +188,29 @@ export default defineConfig({
      * `--project=e2e-v2` and a third PR removes the legacy project +
      * `tests/e2e/e2e.spec.ts`.
      */
+    /**
+     * pool-resolve: setup project (a `dependencies` entry of e2e-v2) that
+     * resolves every pool app id ONCE per run and caches them to
+     * tests/.pool-cache.json. Specs then read the cache (no network) in
+     * beforeAll. This eliminates the workers=4 concurrent `GET /api/sites`
+     * burst that 504'd against the test env (4 beforeAll lookups firing at
+     * once). Runs only when e2e-v2 runs — `--project=e2e` does NOT trigger it.
+     * See tests/pool-resolve/resolve-pool-apps.setup.ts.
+     */
+    {
+      name: 'pool-resolve',
+      testDir: './tests/pool-resolve',
+      // Default testMatch only picks up *.spec.ts / *.test.ts; the setup file
+      // is *.setup.ts, so match it explicitly or the project finds 0 tests.
+      testMatch: /.*\.setup\.ts$/,
+      use: { ...devices['Desktop Chrome'], ...(launchOptions && { launchOptions }) },
+    },
     {
       name: 'e2e-v2',
       testDir: './tests/e2e-v2',
+      // Resolve pool ids once (serially) before the 4 specs fan out, instead
+      // of each beforeAll hitting /api/sites concurrently.
+      dependencies: ['pool-resolve'],
       use: {
         ...devices['Desktop Chrome'],
         ...(launchOptions && { launchOptions }),

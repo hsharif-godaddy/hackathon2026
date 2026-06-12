@@ -1,7 +1,73 @@
 import type { Page, BrowserContext, FrameLocator } from '@playwright/test';
 import { expect } from '@playwright/test';
 
-import { getCredentials, DEFAULT_TIMEOUT, SSO_TIMEOUT, SHORT_TIMEOUT } from './constants';
+import { getCredentials, getEnvConfig, DEFAULT_TIMEOUT, SSO_TIMEOUT, SHORT_TIMEOUT } from './constants';
+import type { Environment } from './constants';
+
+/**
+ * Standalone SSO host per env. The app's embedded sign-in points at these
+ * (e.g. the prod iframe loads `sso.godaddy.com`). `loginViaSsoDirect` logs in
+ * on these pages directly — at the top level, not inside the app's iframe.
+ */
+const SSO_BASE_URL_BY_ENV: Record<Environment, string> = {
+  local: 'https://sso.test-godaddy.com',
+  dev: 'https://sso.dev-godaddy.com',
+  'pre-test': 'https://sso.test-godaddy.com',
+  test: 'https://sso.test-godaddy.com',
+  prod: 'https://sso.godaddy.com',
+};
+
+/**
+ * Log in directly on the standalone GoDaddy SSO page, then leave the browser
+ * authenticated for the whole `.godaddy.com` (or `.test-godaddy.com`) domain —
+ * so a subsequent `page.goto(<airo-builder base>)` lands already signed in.
+ *
+ * Why this exists: the app's *embedded* sign-in is a cross-origin iframe
+ * (`sso-deck-iframe`) on prod. Filling credentials inside that iframe is slow
+ * and, under parallel workers on a single shopper, the `locator.fill` times
+ * out (concurrent cross-origin iframe interaction). The standalone SSO page
+ * exposes `#username` / `#password` / `#submitBtn` at the TOP level, so a
+ * direct fill is fast and contention-tolerant. SSO sets the shared `auth_idp`
+ * cookie on the apex domain, which airo-builder reads.
+ *
+ * No-op-safe: if the SSO page doesn't show the login form (already
+ * authenticated / redirected), returns without error.
+ */
+export async function loginViaSsoDirect(page: Page, timeout: number = SSO_TIMEOUT): Promise<void> {
+  const { env } = getEnvConfig();
+  const { username, password } = getCredentials();
+  const ssoBase = SSO_BASE_URL_BY_ENV[env];
+
+  await page.goto(`${ssoBase}/`);
+
+  const usernameInput = page.locator('#username');
+  const formPresent = await usernameInput
+    .waitFor({ state: 'visible', timeout })
+    .then(() => true)
+    .catch(() => false);
+  if (!formPresent) {
+    console.log('  SSO direct: no login form (already authenticated), continuing');
+    return;
+  }
+
+  await usernameInput.fill(username);
+  await page.locator('#password').fill(password);
+  await page.locator('#submitBtn').click();
+
+  // Login success navigates the SSO page away from the login form (the
+  // post-login redirect, which carries the Set-Cookie that establishes the
+  // session). The form detaching is the completion signal.
+  //
+  // Do NOT wait for 'networkidle' here: the post-login landing page
+  // (e.g. www.<env>godaddy.com) has continuous background polling, so
+  // networkidle never fires and the helper hangs (the rest of the suite
+  // avoids networkidle for the same reason). 'domcontentloaded' is bounded
+  // and fires once the landing page's document is ready — by which point the
+  // redirect's auth cookie has been processed.
+  await usernameInput.waitFor({ state: 'detached', timeout }).catch(() => {});
+  await page.waitForLoadState('domcontentloaded').catch(() => {});
+  console.log(`  SSO direct: signed in at ${ssoBase} (now on ${new URL(page.url()).host})`);
+}
 
 /**
  * User menu opener in the main app chrome only (`data-testid="user-menu-trigger"` under `airo-header`).

@@ -1,37 +1,36 @@
 /**
- * Publish + custom domain — auto-publish verification, custom-domain
- * attach/disconnect, and page-reload recovery (Step 12 lives here so the
- * `?tab=settings` URL-normalization branch fires after the custom-domain
- * test leaves the page on `?tab=settings`).
+ * Publish + custom domain — default `*.ai` publish verification,
+ * custom-domain attach/disconnect, and page-reload `?tab=settings`
+ * URL-normalization recovery.
  *
- * Coverage: legacy monolith Steps 3 (auto-publish verification half),
- * 11 (custom domain), 12 (page reload).
+ * Coverage: legacy monolith Steps 3 (publish verification half), 11 (custom
+ * domain), 12 (page reload). The page-reload test self-navigates to
+ * `?tab=settings`, so it doesn't depend on the custom-domain test's end
+ * state.
  *
- * Concurrency: serial within file. All three tests mutate state in
- * sequence, and Step 12's coverage of the `?tab=settings` normalization
- * branch depends on Step 11 having already navigated there. The shared
- * app is created in `beforeAll`; if `autoPublishSupported`, the
- * `beforeAll` also waits for the prompt-driven auto-publish to finish so
- * the auto-publish test below has something to verify.
+ * Concurrency: serial within file — all three run against the shared
+ * pre-published `[e2e-pool:publish-domain]` pool app (looked up in
+ * `beforeAll`, seeded by the `bootstrap-pool` project), and the
+ * custom-domain test mutates state (attach → disconnect). That test restores
+ * pool state by disconnecting what it attaches and pre-cleans any leftover
+ * from a prior interrupted run.
  */
-import { test, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from '../helpers/test-fixtures';
 
-import { deleteApp, evictOldestE2eAppsToFitLimit } from '../helpers/api';
-import { detectSsoType, ensureAuthenticated, handleSsoLogin, isSignInUIResult, loginIfNeeded } from '../helpers/auth';
+import { getPublishedUrl } from '../helpers/api';
+import { ensureAuthenticated, loginViaSsoDirect } from '../helpers/auth';
 import {
   CHAT_INPUT_TIMEOUT,
   DEFAULT_TIMEOUT,
   DEPLOYMENT_TIMEOUT_MS,
-  E2E_NO_DELETE,
   LONG_TIMEOUT,
   PREVIEW_TIMEOUT,
-  PUBLISH_TIMEOUT_MS,
   getEnvConfig,
-  getSpecPrefix,
 } from '../helpers/constants';
+import { getCachedPoolAppId } from '../helpers/pool-cache';
 import {
   dismissOverlays,
-  expectPublishSuccessVisible,
   logTestResult,
   logTestStart,
   waitForDevelopPage,
@@ -46,117 +45,79 @@ const { env } = getEnvConfig();
 // has no effect there.
 const autoPublishSupported = env !== 'local';
 
+/**
+ * Disconnect a custom domain from the currently-open Domain settings panel
+ * if a row for it exists; no-op otherwise. Used to pre-clean the long-lived
+ * pool app at the start of the custom-domain test — a prior run that failed
+ * after attaching but before disconnecting would otherwise leave the domain
+ * attached and break this run's attach step.
+ *
+ * Caller must have the Domain settings panel already open. `escapedTarget`
+ * is the regex-escaped domain (so `.` matches literally).
+ */
+async function disconnectDomainIfPresent(page: Page, escapedTarget: string): Promise<void> {
+  const existingRow = page
+    .locator('div')
+    .filter({ has: page.getByText(new RegExp(`^${escapedTarget}`)) })
+    .filter({ has: page.getByRole('button', { name: /builder_common_options|^Options$/i }) })
+    .last();
+
+  // Short probe — the panel is already open, so a real leftover row is
+  // visible immediately; absence is the common (clean-pool) case.
+  const present = await existingRow.isVisible({ timeout: 5_000 }).catch(() => false);
+  if (!present) return;
+
+  console.log(`  Pre-cleanup: disconnecting leftover domain from pool app`);
+  await existingRow.getByRole('button', { name: /builder_common_options|^Options$/i }).click();
+  await page.locator('[data-eid*="settings-domains.custom_domain.disconnect"]').click();
+  const confirm = page.locator('[data-eid*="domain.disconnect.confirm"]');
+  await expect(confirm).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+  await confirm.click();
+  await expect(existingRow).not.toBeAttached({ timeout: DEPLOYMENT_TIMEOUT_MS });
+}
+
 test.describe.configure({ mode: 'serial' });
 
 test.describe('E2E v2 - Publish and custom domain', () => {
   let appId: string;
 
-  test.beforeAll(async ({ browser }) => {
-    // playwright.config.ts sets a global `timeout: 420000` (7 min) that
-    // caps both tests AND hooks. The auto-publish wait below is bounded
-    // by PUBLISH_TIMEOUT_MS (10 min), so without raising the hook budget
-    // the wait truncates at 7 min and the hook fails before publish has
-    // a real chance to land. Match the 15-min budget the legacy monolith
-    // gave this flow.
-    test.setTimeout(900_000);
-
-    // No storageState — the e2e-v2 project does live SSO at every entry
-    // point because storageState-cached cookies were rejected by gd-auth
-    // on /develop/<id> navigations (see playwright.config.ts notes).
-    const ctx = await browser.newContext();
-    const page = await ctx.newPage();
-    try {
-      await page.goto('/');
-      await dismissOverlays(page);
-      await loginIfNeeded(page);
-      await evictOldestE2eAppsToFitLimit(page).catch(() => {});
-
-      // App creation: use homepage submit (not API quick-create). The AI
-      // auto-publish skill is only reliably triggered on apps created via
-      // the homepage UI — `createSiteViaApi` + a "publish this app" prompt
-      // doesn't reliably fire the publish skill, so the auto-publish wait
-      // below times out. Legacy e2e.spec.ts (which passes) creates apps
-      // this way; mirror it. Costs ~30–60 s of homepage submit; saves the
-      // 10-min auto-publish timeout otherwise hit on slow days.
-      const promptInput = page.getByTestId('homepage-prompt-input');
-      await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
-      await dismissOverlays(page);
-      await promptInput.fill(
-        `${getSpecPrefix(SPEC_NAME)} Simple landing page - do not ask follow up questions and publish this app`,
-      );
-
-      // Hydration wait — see create-flow.spec.ts for why 10 s fixed beats
-      // networkidle here.
-      const submitButton = page.locator('[data-eid*="homepage.prompt.submit"]');
-      await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
-      await page.waitForTimeout(10_000);
-      await submitButton.click();
-
-      // Already authed (loginIfNeeded above), so SSO should be a no-op,
-      // but defend against env-specific session refreshes.
-      const ssoResult = await detectSsoType(page, true);
-      if (isSignInUIResult(ssoResult)) {
-        console.log(`  SSO refresh detected (${ssoResult}), re-authenticating...`);
-        await handleSsoLogin(page);
-      }
-
-      await page.waitForURL(/\/develop\//, { timeout: LONG_TIMEOUT });
-      await waitForDevelopPage(page);
-
-      const matched = page.url().match(/\/develop\/([^/?#]+)/);
-      appId = matched?.[1] ?? '';
-      expect(appId, 'develop URL should contain an app id').not.toBe('');
-      console.log(`  publish-and-domain shared app: ${appId}`);
-
-      if (autoPublishSupported) {
-        // We're already on /develop/<id> after the homepage submit, so the
-        // legacy navigation step is unnecessary here.
-        await expectPublishSuccessVisible(page, PUBLISH_TIMEOUT_MS);
-        console.log(`  Auto-publish completed for ${appId}`);
-      } else {
-        console.log('  Auto-publish skipped (local env — no deployment pipeline)');
-      }
-    } finally {
-      await ctx.close();
-    }
+  test.beforeAll(() => {
+    // Pool app: this spec used to create a fresh app and wait the full
+    // auto-publish cycle (~5–7 min) in beforeAll — the single biggest
+    // wall-clock cost in the whole e2e-v2 suite. The [e2e-pool:publish-domain]
+    // app is pre-built AND pre-published by the `bootstrap-pool` project.
+    //
+    // The id is resolved ONCE by the `pool-resolve` setup project (an e2e-v2
+    // `dependencies` entry) and read here from the on-disk cache — no network,
+    // no login. This is what eliminates the workers=4 concurrent
+    // `GET /api/sites` burst that 504'd against the test env.
+    // getCachedPoolAppId throws a clear hint if the cache is missing (i.e.
+    // pool-resolve didn't run, or bootstrap-pool never seeded the app).
+    //
+    // Coverage note: the "published to its default *.ai domain" test still
+    // verifies live published state via getPublishedUrl (a single, retry-
+    // protected /api/sites read at test time — not a concurrent beforeAll
+    // burst). The full AI-prompt-driven auto-publish-on-create flow is still
+    // exercised by the bootstrap project when it seeds the pool, and by
+    // legacy e2e.spec.ts.
+    appId = getCachedPoolAppId(env, 'publish-domain');
+    console.log(`  publish-and-domain pool app (cached): ${appId}`);
   });
 
-  test.afterAll(async ({ browser }) => {
-    if (E2E_NO_DELETE) {
-      console.log('Cleanup skipped (E2E_NO_DELETE=true)');
-      return;
-    }
-    if (!appId) {
-      console.log('  No appId captured — skipping cleanup');
-      return;
-    }
-    const ctx = await browser.newContext();
-    const page = await ctx.newPage();
-    try {
-      // deleteApp uses page.evaluate(fetch('/api/sites/<id>'…)). The
-      // relative URL needs a base origin, which `about:blank` doesn't
-      // provide, so navigate to the app's host first.
-      await page.goto('/');
-      await dismissOverlays(page);
-      await loginIfNeeded(page);
-      await deleteApp(page, appId);
-    } catch (err) {
-      console.error(`  Cleanup of app ${appId} failed:`, err);
-    } finally {
-      await ctx.close();
-    }
-  });
+  // No afterAll cleanup — pool apps are long-lived and reused across runs
+  // ([e2e-pool:*] prefix is skipped by the eviction guard). The custom-domain
+  // test (below) restores pool state by disconnecting what it attaches, and
+  // also pre-cleans any leftover domain at its start so a mid-test failure on
+  // a prior run can't poison the next.
 
   test.beforeEach(async ({ page }, testInfo) => {
     logTestStart(testInfo);
     await page.addInitScript(() => {
       localStorage.setItem('airo-intro-tour-shown', 'true');
     });
-    // Each test gets a fresh browser context (no storageState) — login fresh
-    // before navigating to /develop/<id>, otherwise gd-auth bounces to SSO.
-    await page.goto('/');
-    await dismissOverlays(page);
-    await loginIfNeeded(page);
+    // Each test gets a fresh browser context (no storageState) — log in via
+    // the standalone SSO page first, then go straight to /develop/<id>.
+    await loginViaSsoDirect(page);
     await page.goto(`/develop/${appId}`);
     await waitForDevelopPage(page);
   });
@@ -165,66 +126,71 @@ test.describe('E2E v2 - Publish and custom domain', () => {
     await logTestResult(page, testInfo);
   });
 
-  test('Auto-publish completed successfully', async ({ page }, testInfo) => {
-    testInfo.setTimeout(60_000);
+  test('App is published to its default *.ai domain', { tag: ['@thorough', '@publish'] }, async ({ page }, testInfo) => {
+    testInfo.setTimeout(120_000);
 
     if (!autoPublishSupported) {
-      console.log('Auto-publish skipped (local env)');
+      console.log('Publish-state check skipped (local env — no deployment pipeline)');
       return;
     }
 
-    await dismissOverlays(page);
     await ensureAuthenticated(page);
 
-    // Guard: ensure we are still on the develop page. If a session/network
-    // hiccup redirected away, this fails fast with a clear URL mismatch.
-    await expect(page).toHaveURL(/\/develop\//, { timeout: DEFAULT_TIMEOUT });
+    // Verify the pool app is PUBLISHED TO ITS DEFAULT *.ai DOMAIN via the
+    // server-derived `published_url` from GET /api/sites — NOT via UI:
+    //
+    // - Ephemeral publish-success indicators (modal / growl) fire once in the
+    //   publishing context and never re-trigger on a fresh load.
+    // - The chat-transcript "Published commit <sha>" line is AI-narration-
+    //   dependent (a fail-then-retry publish narrates differently).
+    // - The develop-page publish popover's FQDN input is gated by the
+    //   `appbuilder-publish-button` switchboard flag + async `site` load, so
+    //   it's unreliable to assert against.
+    //
+    // `published_url` is set by the control-plane adapter once the app is
+    // published; with no custom domain attached it's the default Airo *.ai
+    // URL (v2-control-plane-adapter.ts). Asserting it ends with the env's
+    // Airo apex (`airoapp.ai` on prod, `test-airoapp.ai` on test) directly
+    // and deterministically verifies default-domain publish.
+    const publishedUrl = await getPublishedUrl(page, appId);
+    expect(publishedUrl, `pool app ${appId} should have a published_url (i.e. be published)`).toBeTruthy();
 
-    // The beforeAll already waited for the publish-success indicator (modal
-    // / popover alert / growl) in its own context. Those indicators are all
-    // ephemeral, event-driven UI from `useDevelopPageStore.publishStates` —
-    // they fire ONCE in the context where the publish happened and never
-    // re-trigger on a fresh page load. So this test's fresh context can't
-    // re-observe them; instead, verify the persistent server-side outcome:
-    // the chat-transcript renders the publish tool result with a
-    // "Published commit <sha>" line (PublishClientToolRenderer.tsx). That
-    // tool message is part of the persisted conversation, so any later
-    // context loading the develop page sees it.
-    const transcript = page.getByTestId('chat-transcript');
-    await expect(
-      transcript.getByText(/Published commit [a-f0-9]+/i).first(),
-    ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    const expectedAiroDomain = env === 'prod' ? 'airoapp.ai' : 'test-airoapp.ai';
+    // Leading `\.` makes the apex a domain boundary, so the prod check
+    // (`\.airoapp\.ai`) does NOT match a `*.test-airoapp.ai` URL (preceded
+    // by `-`, not `.`). Trailing `(/|$)` allows an optional path.
+    const airoDomainPattern = new RegExp(`\\.${expectedAiroDomain.replace(/\./g, '\\.')}(/|$)`);
+    expect(publishedUrl).toMatch(airoDomainPattern);
   });
 
-  test('Custom domain attach + disconnect (e2e.airotesting.shop)', async ({ page }, testInfo) => {
+  test('Custom domain attach + disconnect (e2e.airotesting.shop)', { tag: ['@thorough', '@publish'] }, async ({ page }, testInfo) => {
     testInfo.setTimeout(DEPLOYMENT_TIMEOUT_MS + 120_000);
 
     const TARGET_DOMAIN = 'e2e.airotesting.shop';
+    // Escaped once here and reused for the pre-cleanup probe and the row
+    // locator below, so the `.` chars match literally, not as regex "any".
+    const escapedTarget = TARGET_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     await dismissOverlays(page);
     await ensureAuthenticated(page);
 
     const airoHeader = page.getByTestId('airo-header');
-    const publishButton = airoHeader.getByRole('button', { name: /publish/i });
 
-    // Open the Domain settings panel via the desktop user-flow path:
-    // header Publish button -> "Connect a Custom Domain" button in the
-    // resulting popover. The button calls `handleViewDomain` in
-    // `app/src/components/layout/AppPublish.tsx`, which sets
-    // `activeChatTab=SETTINGS` + `activeSettingsSection=DOMAIN`. The
-    // button only renders when the app is on an Airo subdomain AND has
-    // published at least once — both true here after the beforeAll
-    // auto-publish wait.
-    await expect(publishButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    await publishButton.click();
-
-    // Translation key first as a safety net in case the rendered string
-    // changes; English copy second as the runtime label.
-    const connectCustomDomainButton = page.getByRole('button', {
-      name: /Connect a Custom Domain|builder_common_custom_domain_button/i,
+    // Open the Domain settings panel via the header "Domain" view-mode button
+    // (ViewMode.DOMAIN, gated by `appbuilder-domain-top-level`; Header.tsx).
+    // This renders the SAME DomainPanel → DomainAttach (with `#custom-domain-slug`)
+    // that the publish-popover "Connect a Custom Domain" entry reaches.
+    //
+    // We deliberately do NOT use the publish-popover path here: that popover's
+    // domain affordances ("Connect a Custom Domain" / the FQDN input) depend on
+    // the publish query (`appbuilder-publish-button` flag + async `site` load)
+    // and rendered unreliably for the pooled app. The header Domain button is a
+    // direct, stable entry point. Domain coverage is unchanged — same panel.
+    const domainViewButton = airoHeader.getByRole('button', {
+      name: /^Domain$|builder_domain_title/i,
     });
-    await expect(connectCustomDomainButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    await connectCustomDomainButton.click();
+    await expect(domainViewButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await domainViewButton.click();
 
     // Use the heading role (renders as `text.h3` in SettingsSection.tsx)
     // with an anchored regex. A bare `getByText(/Custom Domain/i).first()`
@@ -237,6 +203,12 @@ test.describe('E2E v2 - Publish and custom domain', () => {
     const customDomainInput = page.locator('#custom-domain-slug');
     await expect(customDomainInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await expect(customDomainInput).toBeEnabled();
+
+    // Idempotency against the long-lived pool app: clear any leftover
+    // attachment from a prior run that failed mid-test before attaching.
+    await disconnectDomainIfPresent(page, escapedTarget);
+    await expect(customDomainInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
     await customDomainInput.fill(TARGET_DOMAIN);
 
     // Add stays disabled until the 500ms input debounce elapses AND the
@@ -267,10 +239,9 @@ test.describe('E2E v2 - Publish and custom domain', () => {
     // domain text AND the row's Options button. A bare getByText(TARGET_DOMAIN)
     // is ambiguous once DNS records render. The DNS card has no Options
     // button, so the dual filter uniquely picks the row Card.
-    // TARGET_DOMAIN is escaped before being interpolated into the regex
-    // so the `.` chars in `e2e.airotesting.shop` are matched literally,
-    // not as the regex "any char" metachar.
-    const escapedTarget = TARGET_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // `escapedTarget` (defined at the top of this test) escapes the `.`
+    // chars in `e2e.airotesting.shop` so they match literally in the regex,
+    // not as the "any char" metachar.
     const domainRowContainer = page
       .locator('div')
       .filter({ has: page.getByText(new RegExp(`^${escapedTarget}`)) })
@@ -336,13 +307,9 @@ test.describe('E2E v2 - Publish and custom domain', () => {
     // that would hide-but-keep the row in DOM.
     await expect(domainRowContainer).not.toBeAttached({ timeout: DEPLOYMENT_TIMEOUT_MS });
     await expect(customDomainInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-
-    // NOTE: this test deliberately leaves the page on `?tab=settings` so
-    // the next test exercises the URL-normalization branch in develop's
-    // post-reload recovery path. Do NOT navigate away here.
   });
 
-  test('Page reload recovers state (handles ?tab=settings normalization)', async ({ page }, testInfo) => {
+  test('Page reload recovers state (handles ?tab=settings normalization)', { tag: ['@thorough', '@publish'] }, async ({ page }, testInfo) => {
     testInfo.setTimeout(180_000);
 
     // The previous test ran in its own browser context; this test's

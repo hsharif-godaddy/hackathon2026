@@ -16,6 +16,9 @@ __pycache__/
 # Local clone of gdcorp-golang/auth (needed for Go replace directives)
 /auth
 
+# e2e pool-app id cache, written by the pool-resolve setup project each run
+tests/.pool-cache.json
+
 # Build outputs
 dist/
 build/
