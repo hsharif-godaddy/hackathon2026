@@ -28,10 +28,11 @@ func (c *GitHubAppCheck) Run(_ context.Context, projectRoot string) preflight.Ch
 	appEnv, err := preflight.ParseEnvFile(filepath.Join(projectRoot, "app", ".env"))
 	if err != nil {
 		return preflight.CheckResult{
-			Status:   preflight.StatusSkip,
-			Name:     c.Name(),
-			Category: c.Category(),
-			Message:  "app/.env not found; skipping GitHub App check",
+			Status:       preflight.StatusWarn,
+			Name:         c.Name(),
+			Category:     c.Category(),
+			FixAvailable: true,
+			Message:      "app/.env not found; GitHub App credentials need to be fetched after env setup",
 		}
 	}
 
@@ -54,10 +55,11 @@ func (c *GitHubAppCheck) Run(_ context.Context, projectRoot string) preflight.Ch
 
 	if len(warnings) > 0 {
 		return preflight.CheckResult{
-			Status:   preflight.StatusWarn,
-			Name:     c.Name(),
-			Category: c.Category(),
-			Message:  "GitHub sync feature requires: " + joinMissing(warnings) + ". Ask in #airo-dev or #airo-manage slack channel for the details. Without them, the GitHub sync settings panel will not function in the local dev environment.",
+			Status:       preflight.StatusWarn,
+			Name:         c.Name(),
+			Category:     c.Category(),
+			Message:      "GitHub sync feature requires: " + joinMissing(warnings),
+			FixAvailable: true,
 		}
 	}
 

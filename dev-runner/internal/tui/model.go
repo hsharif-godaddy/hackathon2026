@@ -500,7 +500,7 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 					{Check: &checks.S2SCertsCheck{}, Fixer: &fixers.S2SCertsFixer{}},
 					{Check: &checks.AiroAppBuilderOAuthCheck{}, Fixer: &fixers.AiroAppBuilderOAuthFixer{}},
 					{Check: &checks.CommerceOAuthCheck{}, Fixer: &fixers.CommerceOAuthFixer{}},
-					{Check: &checks.GitHubAppCheck{}},
+					{Check: &checks.GitHubAppCheck{}, Fixer: &fixers.GitHubAppFixer{}},
 					{Check: &checks.JWTKeysCheck{}, Fixer: &fixers.JWTKeysFixer{}},
 					{Check: &checks.GettyCheck{}, Fixer: &fixers.GettyFixer{}},
 					{Check: &checks.KnowBCheck{}, Fixer: &fixers.KnowBFixer{TokenCache: ssoTokenCache}},

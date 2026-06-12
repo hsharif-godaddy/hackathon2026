@@ -24,7 +24,9 @@ export const dynamic = 'force-dynamic';
 /**
  * GitHub App install callbacks are cross-site redirects from github.com
  * and may not carry session cookies, so the install branch is NOT auth-gated.
- * OAuth code exchange IS auth-gated (needs JWT to store secrets).
+ * OAuth code exchange IS auth-gated (needs JWT to store secrets) but uses
+ * default level 1 (not level 3) — the cross-site redirect from github.com
+ * prevents heartbeat refresh, so HBI would falsely expire during the round-trip.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(request.url);
@@ -122,4 +124,4 @@ const handleOAuthCallback = withCustomerAuth(async (
   response.headers.append('Set-Cookie', clearOAuthCookie('gh_oauth_nonce'));
   response.headers.append('Set-Cookie', clearOAuthCookie('gh_pkce_verifier'));
   return response;
-}, { level: 3 });
+});

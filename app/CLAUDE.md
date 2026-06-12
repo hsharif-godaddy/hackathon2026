@@ -64,7 +64,7 @@ gd-auth supports three authentication levels. Default is level 1; sensitive oper
 
 e2s (impersonation) tokens: fixed 2-hour expiration, no HBI.
 
-**Level 3 covers:** financial/billing, ownership transfer, deploy/publish/unpublish, secrets read+write, site deletion, archive restore, domain changes, data export, database writes. Grep `{ level: 3 }` for the current list. `sites/quick-create` is intentionally level 1 — mhp-airo classifies every URL as LOW_RISK, and gating it would trigger a re-auth loop from landing-page create buttons that fire before `authPreflight`.
+**Level 3 covers:** financial/billing, ownership transfer, deploy/publish/unpublish, secrets read+write, site deletion, archive restore, domain changes, data export, database writes. Grep `{ level: 3 }` for the current list. `sites/quick-create` is intentionally level 1 — mhp-airo classifies every URL as LOW_RISK, and gating it would trigger a re-auth loop from landing-page create buttons that fire before `authPreflight`. `api/github/callback` is intentionally level 1 — it's a cross-site redirect from github.com where no heartbeat occurs, so HBI (level 3) would falsely expire during the OAuth round-trip.
 
 **Config mapping:** `use12HourExpiration` in `gasket-config.ts` (client, `@godaddy/gasket-auth`) ↔ `useNewExpiration` in `gd-auth-service.ts` (server, `gd-auth` 1.5.0+). A level-3 401 throws `ssoCode: 2`, returned to the client as `authReason: 2`, which triggers `AuthBoundary`'s re-auth prompt.
 
