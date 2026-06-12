@@ -15,6 +15,10 @@ const AIRO_CHANNEL_SUB_TYPE = 'airo.ai.builder';
 const AIRO_CHANNEL_SOURCE = 'airo-app-builder';
 const AIRO_CHANNEL_NAME = 'Airo App Builder';
 const AIRO_CHANNEL_PROVIDER_ID = '30373c02-3ab0-4f31-87e6-9c8e99ce83e2';
+const COMMERCE_UI_TEMPLATE_LOAD_ACTION = "skill({ action: 'load', skill: 'commerce/ui' })";
+const COMMERCE_UI_TEMPLATE_INSTALL_ACTION = "skill({ action: 'install', skill: 'commerce/ui' })";
+const GODADDY_PAYMENTS_TEMPLATE_INSTALL_ACTION =
+  "skill({ action: 'install', skill: 'payment/godaddy-payments' })";
 
 interface ClientActionContext {
   socketId?: unknown;
@@ -411,6 +415,14 @@ export const commerceStoreSetupTool: SkillToolDefinition = {
       .describe(
         'Optional Commerce Home store URL. The tool extracts storeId from the URL and reuses that store directly.'
       ),
+    businessId: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe(
+        'GoDaddy business ID to scope store discovery to a specific business. Pass this after the user has chosen a business from a businessChoiceRequired response.'
+      ),
     idempotencyKey: z
       .string()
       .trim()
@@ -497,7 +509,7 @@ export const commerceStoreChannelsGetTool: SkillToolDefinition = {
 export const commerceStoreChannelEnsureTool: SkillToolDefinition = {
   name: 'commerce_store_channel_ensure',
   description:
-    'Ensure the required Airo App Builder sales channel exists on a GoDaddy Commerce store. This tool sets trusted channel type, subtype, provider, and current app binding from runtime context; only storeId is required.',
+    `Ensure the required Airo App Builder sales channel exists on a GoDaddy Commerce store. This tool sets trusted channel type, subtype, provider, and current app binding from runtime context; only storeId is required. After this tool succeeds, write the GoDaddy Commerce env vars, classify the user's original intent, and for catalog/product/cart UI call ${COMMERCE_UI_TEMPLATE_LOAD_ACTION} followed by ${COMMERCE_UI_TEMPLATE_INSTALL_ACTION} before writing UI, catalog hooks, or Commerce API routes.`,
   parameters: z.object({
     storeId: z.string().trim().min(1).describe('The Commerce store ID to ensure the channel on.'),
     channelName: z
@@ -539,7 +551,55 @@ export const commerceStoreChannelEnsureTool: SkillToolDefinition = {
         });
         return `commerce__commerce_store_channel_ensure error: Commerce did not return a valid Airo App Builder channel for this app.`;
       }
-      return result;
+      const ensuredChannel = isRecord(result) ? result : {};
+      return {
+        ...ensuredChannel,
+        commerceSetupReady: true,
+        NEXT_STEP:
+          `Write VITE_GODADDY_STORE_ID, VITE_GODADDY_CHANNEL_ID, GODADDY_API_BASE_URL, and VITE_GODADDY_CURRENCY_CODE from the setup/channel results, then classify the user's original request. For catalog, product detail, shop, or cart UI, the next skill calls must be ${COMMERCE_UI_TEMPLATE_LOAD_ACTION} and then ${COMMERCE_UI_TEMPLATE_INSTALL_ACTION} before writing UI, catalog hooks, or Commerce API code. If checkout is also needed, also use ${GODADDY_PAYMENTS_TEMPLATE_INSTALL_ACTION}. Do not create catalog/cart proxy routes manually.`,
+        requiredNextActions: [
+          'Write VITE_GODADDY_STORE_ID from the resolved GoDaddy Commerce store ID.',
+          'Write VITE_GODADDY_CHANNEL_ID from this ensured Airo App Builder channel.',
+          'Write GODADDY_API_BASE_URL from the agents runtime and VITE_GODADDY_CURRENCY_CODE from setup or the store default.',
+          'Classify the original request before calling catalog/product tools or installing templates: non-catalog payment, catalog data work, catalog UI, cart UI, or full shop with checkout.',
+          `For catalog, product detail, shop, or cart UI, call ${COMMERCE_UI_TEMPLATE_LOAD_ACTION} to load the Commerce UI implementation instructions.`,
+          `Immediately after loading commerce/ui for catalog, product detail, shop, or cart UI, call ${COMMERCE_UI_TEMPLATE_INSTALL_ACTION} before commerce__search_tools, commerce__execute_tool, React commerce UI, hooks, or same-origin Commerce API routes.`,
+          `For checkout, buy buttons, or cart checkout, load payment/godaddy-payments and call ${GODADDY_PAYMENTS_TEMPLATE_INSTALL_ACTION} after payment setup requirements are satisfied.`,
+        ],
+        commerceUiTemplatePack: {
+          skill: 'commerce/ui',
+          requiredWhen:
+            'The original request needs a product catalog, product detail page, shop page, storefront, cart, or Commerce-backed product UI.',
+          nextToolCallsInOrder: [
+            COMMERCE_UI_TEMPLATE_LOAD_ACTION,
+            COMMERCE_UI_TEMPLATE_INSTALL_ACTION,
+          ],
+          mustCompleteBefore: [
+            'reading or creating src/server/api/commerce/products route files',
+            'reading or creating src/server/api/commerce/cart route files',
+            'calling commerce__search_tools or commerce__execute_tool for catalog UI work',
+            'creating Commerce product/cart React hooks',
+            'creating Commerce catalog, PDP, storefront, or cart UI',
+          ],
+        },
+        routingChoices: {
+          nonCatalogPayment:
+            'Do not create catalog products or install commerce/ui. Load payment/godaddy-payments and use lineItemData checkout.',
+          catalogDataOnly:
+            'Use commerce__search_tools and commerce__execute_tool for product/catalog/inventory work. Install no UI templates unless the user also asked for UI.',
+          catalogOrCartUi:
+            `Load commerce/ui with ${COMMERCE_UI_TEMPLATE_LOAD_ACTION}, then install it with ${COMMERCE_UI_TEMPLATE_INSTALL_ACTION} before writing UI or API route code.`,
+          fullShopWithCheckout:
+            `Load and install commerce/ui for catalog/cart, then use payment/godaddy-payments for checkout. commerce/ui does not include checkout routes.`,
+        },
+        forbiddenActions: [
+          'Do not create src/server/api/commerce/products/GET.ts manually.',
+          'Do not create src/server/api/commerce/cart/* route files manually.',
+          'Do not hand-roll Commerce product or cart proxy helpers.',
+          'Do not build Commerce UI against missing env vars or uninstalled templates.',
+          'Do not expect commerce/ui to provide checkout routes.',
+        ],
+      };
     } catch (err) {
       logDispatchError('commerce_store_channel_ensure', err);
       return `commerce__commerce_store_channel_ensure error: ${formatToolError(err)}`;

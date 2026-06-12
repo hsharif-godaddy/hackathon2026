@@ -452,7 +452,7 @@ const LONG_STEP_LABELS: { approach: Record<string, string>; scope: Record<string
     multi:
       'A multi-page site with separate sections for services, team, blog, and contact information',
     ecommerce:
-      'A full e-commerce storefront with product listings, a shopping cart, and a checkout flow',
+      'A full online store with product listings, a shopping cart, and a checkout flow',
   },
 };
 

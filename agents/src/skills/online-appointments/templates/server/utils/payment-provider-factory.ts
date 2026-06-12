@@ -22,7 +22,7 @@ import { GoDaddyCommerceProvider } from "./godaddy-commerce-provider";
  */
 export function isPaymentProviderConfigured(): boolean {
 	// Only GoDaddy Commerce is currently implemented
-	const storeId = process.env.VITE_GODADDY_STORE_ID?.trim();
+	const storeId = import.meta.env.VITE_GODADDY_STORE_ID || process.env.VITE_GODADDY_STORE_ID?.trim();
 	if (storeId && storeId.length > 0) {
 		return true;
 	}
@@ -32,14 +32,10 @@ export function isPaymentProviderConfigured(): boolean {
 
 /**
  * Get the active payment provider
- *
- * @param baseUrl Optional base URL for API calls. If not provided, reads from API_BASE_URL env var.
- *                Required for server-side usage (Node.js fetch rejects relative URLs).
- *                Typically derived from request: `${req.protocol}://${req.get('host')}`
  * @returns Active payment provider instance
  * @throws Error if no payment provider is configured
  */
-export function getPaymentProvider(baseUrl?: string): PaymentProvider {
+export function getPaymentProvider(): PaymentProvider {
 	if (!isPaymentProviderConfigured()) {
 		throw new PaymentProviderError(
 			"Payment provider not configured. Set VITE_GODADDY_STORE_ID environment variable to enable payments.",
@@ -47,21 +43,6 @@ export function getPaymentProvider(baseUrl?: string): PaymentProvider {
 		);
 	}
 
-	// Use provided baseUrl, or fall back to environment variable
-	// API_BASE_URL is required for server-side fetch calls (Node.js rejects relative URLs)
-	const resolvedBaseUrl = baseUrl || process.env.API_BASE_URL;
-	if (!resolvedBaseUrl || resolvedBaseUrl.trim().length === 0) {
-		throw new PaymentProviderError(
-			"Base URL is required for payment provider. " +
-			"Either pass baseUrl parameter (derived from request) or set API_BASE_URL environment variable. " +
-			"Example: getPaymentProvider(`${req.protocol}://${req.get('host')}`)",
-			PaymentProviderErrorCode.PROVIDER_NOT_CONFIGURED
-		);
-	}
-
 	// Default: GoDaddy Commerce
-	return new GoDaddyCommerceProvider(
-		process.env.VITE_GODADDY_STORE_ID,
-		resolvedBaseUrl,
-	);
+	return new GoDaddyCommerceProvider();
 }

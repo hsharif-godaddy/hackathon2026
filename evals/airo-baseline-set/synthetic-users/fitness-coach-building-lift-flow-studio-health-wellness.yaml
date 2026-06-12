@@ -10,8 +10,8 @@ persona:
     - cares about mobile
     - asks for practical wording
     - "risk tolerance: Medium - will follow setup steps if they are clear"
-    - "Complexity: hard | Primary intent: website + appointments + payments | Skill under test:
-      online-appointments/commerce-one-time-payment | Scenario cluster: Booking and payment flow |
+    - "Complexity: hard | Primary intent: website + appointments + payments | Skills under test:
+      online-appointments + payment/godaddy-payments | Scenario cluster: Booking and payment flow |
       Expected: create class pages, booking request flow, pricing, and simple payment CTA"
   decisionPattern: They approve when visitors can see classes, request a booking, and understand how
     to pay for a drop-in class.

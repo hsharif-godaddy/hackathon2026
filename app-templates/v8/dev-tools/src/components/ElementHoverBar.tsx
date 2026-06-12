@@ -105,7 +105,7 @@ export default function ElementHoverBar({
   const isImage = hoveredElement.type === "image";
   const isVideo = hoveredElement.type === "image" && hoveredElement.isVideo;
 
-  // Commerce Storefront (VITE_GODADDY_STORE_ID): product images come from the
+  // Commerce UI (VITE_GODADDY_STORE_ID): product images come from the
   // Commerce API — hide Replace/Modify for images without data-dev-id or media slot.
   const isCommerceIntegrated = !!import.meta.env.VITE_GODADDY_STORE_ID;
   const isUneditableImage = isImage && !element.getAttribute("data-dev-id") && !hoveredElement.isMediaSlot;

@@ -843,11 +843,11 @@ intents:
         'AI chatbot',
         'buy domain', 'want domain', 'purchase domain',
         'search rankings', 'meta tags',
-        // Payment router intents (replaces old stripe + commerce-one-time-payment intents)
+        // Payment router intents.
         'accept payments', 'charge customers',
         'Stripe / Stripe checkout / Stripe payments',
-        // Routing-time ordering hints for commerce sub-skills. Without
-        // these the LLM may build storefront / one-time-payment UI before
+        // Routing-time ordering hints for commerce implementation packs. Without
+        // these the LLM may build storefront or payment UI before
         // Commerce MCP has verified/setup store data, producing UI wired to
         // an unconfigured store.
         'storefront UI/shop page/product detail page/PDP',
@@ -860,7 +860,7 @@ intents:
 
       // Each routed skill must have its own <skill name="..."> tag
       const routedSkills = [
-        'commerce', 'commerce-storefront',
+        'commerce',
         'authentication', 'online-appointments', 'blog',
         'blog-writing', 'i18n', 'google-maps', 'email',
         'database', 'ai-agent', 'payment', 'custom-domain',
@@ -935,12 +935,12 @@ intents:
       //
       // Each fragment includes its terminator (comma for mid-list, period
       // for the final entry) so prefix-ambiguous names remain distinct:
-      // "commerce," doesn't match "commerce-storefront," and "blog,"
+      // "commerce," doesn't match "commerce/ui," and "blog,"
       // doesn't match "blog-writing,". Match the actual ordering and
       // terminator in the core.md sentence.
       const excludedBackendSkillFragments = [
         'commerce,',
-        'commerce-storefront,',
+        'commerce/ui,',
         'payment,',
         'authentication,',
         'database,',

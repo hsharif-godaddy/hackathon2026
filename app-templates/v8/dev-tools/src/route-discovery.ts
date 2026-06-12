@@ -4,7 +4,7 @@
  * The agents server picks a `pageHint` by looking at which `src/pages/*.tsx`
  * file received the largest diff in the target commit. That heuristic
  * misses when a skill (or any other code path) registers a page at a
- * non-filename route — e.g. `commerce-storefront` mounts `Catalog.tsx` at
+ * non-filename route — e.g. `commerce/ui` mounts `Catalog.tsx` at
  * `/shop`, not `/Catalog`. Acting on the bare hint would push the iframe to
  * `/Catalog`, which 404s.
  *

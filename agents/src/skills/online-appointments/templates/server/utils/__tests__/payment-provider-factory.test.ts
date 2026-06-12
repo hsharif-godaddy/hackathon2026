@@ -71,7 +71,6 @@ describe('Payment Provider Factory', () => {
 		describe('when GoDaddy Commerce configured', () => {
 			beforeEach(() => {
 				process.env.VITE_GODADDY_STORE_ID = 'test-store-123';
-				process.env.API_BASE_URL = 'http://localhost:3000';
 			});
 
 			it('returns GoDaddy Commerce provider', () => {
@@ -85,22 +84,8 @@ describe('Payment Provider Factory', () => {
 			it('returns provider with correct interface', () => {
 				const provider = getPaymentProvider();
 
-				// Check that methods exist and are functions
 				expect(typeof provider.createPaymentSession).toBe('function');
 				expect(typeof provider.getOrderStatus).toBe('function');
-			});
-
-			it('accepts baseUrl parameter (overrides environment)', () => {
-				const provider = getPaymentProvider('https://custom.example.com');
-
-				expect(provider).toBeDefined();
-				expect(provider.createPaymentSession).toBeDefined();
-			});
-
-			it('throws when baseUrl parameter and env var are both missing', () => {
-				delete process.env.API_BASE_URL;
-
-				expect(() => getPaymentProvider()).toThrow(/Base URL is required/i);
 			});
 		});
 
@@ -111,10 +96,9 @@ describe('Payment Provider Factory', () => {
 			});
 
 			it('returns provider instance', () => {
-				const provider1 = getPaymentProvider('http://localhost:3000');
-				const provider2 = getPaymentProvider('http://localhost:3000');
+				const provider1 = getPaymentProvider();
+				const provider2 = getPaymentProvider();
 
-				// Both should be valid providers
 				expect(provider1).toBeDefined();
 				expect(provider2).toBeDefined();
 			});

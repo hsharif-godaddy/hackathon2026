@@ -1,22 +1,28 @@
 ## § Payment Integration ⚠️ COMPLEX
 
-**PREREQUISITES: Install commerce skill first**
+**PREREQUISITES: Complete Commerce setup, then GoDaddy Payments setup**
 
 ```typescript
-skill({ action: 'install', skill: 'payment/commerce-one-time-payment' });
+skill({ action: 'load', skill: 'commerce' });
+// Follow the Commerce setup workflow for store/channel context and SKU/cart setup.
+skill({ action: 'load', skill: 'payment/godaddy-payments' });
+// Follow the loaded setup workflow, reusing Commerce store/channel context where available.
+skill({ action: 'install', skill: 'payment/godaddy-payments' });
 ```
 
-This provides:
+Install only after the Commerce plus GoDaddy Payments setup/channel workflow has produced
+store/channel env values. This provides:
 - Payment provider abstraction (`getPaymentProvider`)
-- GoDaddy Commerce integration
+- GoDaddy Payments checkout integration
 - Required environment variables
 
-**Environment variables needed (provided by commerce skill):**
+**Environment variables needed (provided by GoDaddy Payments setup):**
 - `VITE_GODADDY_STORE_ID` - Your GoDaddy Commerce store ID
-- `VITE_GODADDY_COMMERCE_URL` - Commerce API URL
-- Commerce API credentials (managed by commerce skill)
+- `VITE_GODADDY_CHANNEL_ID` - Airo App Builder channel ID
+- `GODADDY_API_BASE_URL` - Commerce API URL
+- GoDaddy OAuth credentials from platform-mounted config
 
-**The commerce skill handles all provider configuration.** The payment-provider factory in online-appointments templates will automatically detect the configured provider.
+**The GoDaddy Payments skill handles provider checkout configuration.** The payment-provider factory in online-appointments templates will automatically detect the configured provider.
 
 ---
 
@@ -84,7 +90,7 @@ does not forward customer name/email/phone to checkout — do not pretend it doe
 
 **Key points:**
 
-- Uses the `commerce-one-time-payment` HTTP endpoint exposed by the commerce skill.
+- Uses the in-process checkout helpers installed by the GoDaddy Payments skill.
 - `createPaymentSession()` returns `{ paymentUrl, orderId }` where `orderId` is the
   GoDaddy **draftOrderId**.
 - That value is stored in `appointment.order_id`. The row is **not** updated with a
@@ -218,7 +224,7 @@ booking.
 **CRITICAL:** GoDaddy Commerce does **NOT** have webhooks. The success page must:
 1. Retrieve `appointmentId` and the `orderId` (= draftOrderId) from `sessionStorage`
    (stored by the booking form before redirect).
-2. Check payment status via the commerce skill's `order-status` endpoint.
+2. Check payment status via the GoDaddy Payments `order-status` endpoint.
 3. If `status === 'paid'`, POST `{ orderId }` to `/api/appointments/:id/confirm-payment`,
    which sends the confirmation email with the `.ics` invite. The `appointment.orderId`
    row is already populated from booking time — there is no separate id to write back.
@@ -245,7 +251,7 @@ export default function SuccessPage() {
           return;
         }
 
-        // Check payment status via commerce API
+        // Check payment status via the GoDaddy Payments order-status route.
         const statusRes = await fetch(`/api/commerce/order-status?orderId=${draftOrderId}`);
         const statusData = await statusRes.json();
 
@@ -509,13 +515,15 @@ The system supports any ISO 4217 currency. The contract:
 
 **Setup checklist for a non-USD merchant:**
 
-1. Set `config.currency: 'EUR'` (or whatever ISO code).
-2. Use the `commerce` skill to create SKUs **priced in that currency**: call
+1. Load `commerce` and complete store/channel setup for the app.
+2. Set `config.currency: 'EUR'` (or whatever ISO code).
+3. Use the `commerce` skill to create SKUs **priced in that currency**: call
    `commerce__search_tools` to find the product/SKU creation tool, then call
    `commerce__execute_tool` with the MCP tool name and arguments.
-3. Fill `pricingTiers[].skuId` with the resulting SKU IDs and `pricingTiers[].amount` in
+4. Fill `pricingTiers[].skuId` with the resulting SKU IDs and `pricingTiers[].amount` in
    the smallest unit of that currency.
-4. All UI templates already call `formatMoney(...)` — no further display changes needed.
+5. Load/install `payment/godaddy-payments` for checkout routes/helpers. All UI templates
+   already call `formatMoney(...)` — no further display changes needed.
 
 **Sanity checks:**
 

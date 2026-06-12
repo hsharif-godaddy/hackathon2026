@@ -28,7 +28,8 @@ export const getBookingConfigTool: SkillToolDefinition = {
   name: 'getBookingConfig',
   description:
     'Returns the payment provider configuration for the online-appointments skill. ' +
-    'Payment is handled internally via GoDaddy Commerce — do NOT load stripe.',
+    'Load commerce for store/catalog/cart setup, then payment/godaddy-payments for checkout. ' +
+    'Do NOT load stripe.',
   parameters: z.object({}),
 
   async execute(_input, context) {
@@ -43,8 +44,8 @@ export const getBookingConfigTool: SkillToolDefinition = {
     const result = {
       paymentProvider: 'godaddy-commerce',
       message:
-        'Online appointments uses GoDaddy Commerce for payment. ' +
-        'Do NOT load stripe. Use commerce-one-time-payment skill for payment integration.',
+        'Online appointments uses GoDaddy Commerce for store/catalog/cart setup and GoDaddy Payments checkout. ' +
+        'Load commerce first, then payment/godaddy-payments. Do NOT load stripe.',
     };
 
     if (appId) {

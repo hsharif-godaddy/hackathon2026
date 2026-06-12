@@ -223,7 +223,38 @@ describe('commerce skill MCP tools', () => {
       { socketId: 'socket-1', metadata: { appId: 'app-1' } }
     );
 
-    expect(result).toEqual(channel);
+    expect(result).toEqual(expect.objectContaining({
+      ...channel,
+      commerceSetupReady: true,
+      requiredNextActions: expect.arrayContaining([
+        expect.stringContaining("skill({ action: 'load', skill: 'commerce/ui' })"),
+        expect.stringContaining("skill({ action: 'install', skill: 'commerce/ui' })"),
+        expect.stringContaining("skill({ action: 'install', skill: 'payment/godaddy-payments' })"),
+      ]),
+      commerceUiTemplatePack: expect.objectContaining({
+        skill: 'commerce/ui',
+        nextToolCallsInOrder: [
+          "skill({ action: 'load', skill: 'commerce/ui' })",
+          "skill({ action: 'install', skill: 'commerce/ui' })",
+        ],
+        mustCompleteBefore: expect.arrayContaining([
+          expect.stringContaining('src/server/api/commerce/products'),
+          expect.stringContaining('commerce__search_tools'),
+          expect.stringContaining('Commerce catalog'),
+        ]),
+      }),
+      routingChoices: expect.objectContaining({
+        catalogOrCartUi: expect.stringContaining("skill({ action: 'load', skill: 'commerce/ui' })"),
+        fullShopWithCheckout: expect.stringContaining('payment/godaddy-payments'),
+      }),
+      forbiddenActions: expect.arrayContaining([
+        expect.stringContaining('Do not create src/server/api/commerce/products/GET.ts manually.'),
+        expect.stringContaining('Do not create src/server/api/commerce/cart/* route files manually.'),
+      ]),
+    }));
+    const nextStep = (result as { NEXT_STEP?: string }).NEXT_STEP;
+    expect(nextStep).toContain("skill({ action: 'load', skill: 'commerce/ui' })");
+    expect(nextStep).toContain("skill({ action: 'install', skill: 'commerce/ui' })");
     expect(mockExecuteAction).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'mcp_call',
@@ -279,7 +310,13 @@ describe('commerce skill MCP tools', () => {
       { socketId: 'socket-1', metadata: { appId: 'app-1' } }
     );
 
-    expect(result).toEqual(channel);
+    expect(result).toEqual(expect.objectContaining({
+      ...channel,
+      commerceSetupReady: true,
+    }));
+    const nextStep = (result as { NEXT_STEP?: string }).NEXT_STEP;
+    expect(nextStep).toContain("skill({ action: 'load', skill: 'commerce/ui' })");
+    expect(nextStep).toContain("skill({ action: 'install', skill: 'commerce/ui' })");
   });
 
   it('rejects an invalid Airo channel response', async () => {
@@ -304,6 +341,7 @@ describe('commerce skill MCP tools', () => {
     );
 
     expect(result).toMatch(/did not return a valid Airo App Builder channel/);
+    expect(result).not.toMatch(/install', skill: 'commerce\/ui'/);
     expect(mockExecuteAction).toHaveBeenCalledTimes(1);
   });
 

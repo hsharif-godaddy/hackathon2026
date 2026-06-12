@@ -329,11 +329,14 @@ or `'use client'` directives.
 
 ### Quick Setup Steps
 
-1. Install commerce skill: `skill({ action: 'install', skill: 'payment/commerce-one-time-payment' })`
-2. Set `config.currency` to the same ISO 4217 code (e.g. `'EUR'`) the merchant's GoDaddy
+1. Load `commerce` first for the Commerce store/channel context and any SKU/catalog/cart
+   setup needed by appointment payments or class-credit/cart flows.
+2. Then load `payment/godaddy-payments`, reuse the Commerce store/channel context, complete
+   any remaining setup/env workflow, and install its checkout templates.
+3. Set `config.currency` to the same ISO 4217 code (e.g. `'EUR'`) the merchant's GoDaddy
    Commerce store SKUs are priced in. The store catalog is the source of truth at checkout
    time; this field drives display formatting on our side.
-3. Create SKUs for each tier with the `commerce` skill: call `commerce__search_tools`
+4. Create SKUs for each tier with the `commerce` skill: call `commerce__search_tools`
    to find the product/SKU creation tool, then call `commerce__execute_tool` with the
    MCP tool name and arguments. Price those SKUs **in that currency**. Each
    `pricingTiers[]` entry **requires** a `skuId` — Zod rejects the config otherwise. Tier
@@ -345,9 +348,9 @@ or `'use client'` directives.
      // JPY example would be `amount: 8000` for ¥8,000 (JPY has 0 decimals).
    ],
    ```
-4. Wire the booking form to redirect to `paymentUrl` after `POST /api/appointments`
-5. Create success/cancel pages
-6. Implement the first-appointment check endpoint (if `freeFirstAppointment === true` —
+5. Wire the booking form to redirect to `paymentUrl` after `POST /api/appointments`
+6. Create success/cancel pages
+7. Implement the first-appointment check endpoint (if `freeFirstAppointment === true` —
    requires schema extension; see § 8.7)
 
 ---

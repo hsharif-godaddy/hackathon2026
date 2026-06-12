@@ -329,7 +329,7 @@ Current skills (22):
 - **blog** - Install and activate the blog system (routes, pages, components)
 - **blog-writing** - Create blog post content for sites with blog system installed
 - **commerce** - GoDaddy Commerce store, catalog, product, inventory, channel, and order operations
-- **commerce-storefront** - Storefront setup and product display
+- **commerce/ui** - Catalog, product detail, and cart UI
 - **custom-domain** - Purchase new domains or attach existing ones to the app
 - **database** - SQL database operations for application data
 - **email** - Send transactional email through the Airo email gateway
@@ -340,7 +340,7 @@ Current skills (22):
 - **media-video** - AI video generation from text prompts
 - **online-appointments** - Online appointment booking system
 - **payment** - Payment integration router (choose GoDaddy Payments or Stripe)
-  - **payment/commerce-one-time-payment** - One-time payment processing via Commerce API
+  - **payment/godaddy-payments** - GoDaddy Payments checkout integration
   - **payment/stripe** - Stripe payment integration
 - **publishing** - Publish to production, check status, troubleshoot build/deploy
 - **seo** - Search engine optimization tools and metadata

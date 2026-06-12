@@ -24,7 +24,7 @@ goal:
   goals:
     - "Help a fitness studio convert mobile visitors into class bookings, with clear schedules, pricing, booking requests, and a simple drop-in payment option."
 customerSummary: "busy, wants a polished fitness studio website with class schedule, booking requests, payments for drop-in classes, and strong mobile CTAs. hard scenario."
-testingCapability: "Complexity: hard | Primary intent: website + appointments + payments | Skill under test: online-appointments/commerce-one-time-payment | Scenario cluster: Booking and payment flow | Expected: create class pages, booking request flow, pricing, and simple payment CTA"
+testingCapability: "Complexity: hard | Primary intent: website + appointments + payments | Skills under test: online-appointments + payment/godaddy-payments | Scenario cluster: Booking and payment flow | Expected: create class pages, booking request flow, pricing, and simple payment CTA"
 trials: 1
 maxTurns: 45
 llmConfig:

@@ -196,7 +196,7 @@ Only triggers when the tool succeeds (has a matching `tool-result`, not `tool-er
 
 44 tools registered in `agents/src/tools/ai-lib-tools/index.ts`. Each agent declares which tools it uses in its config. Tool execution is wrapped with `beforeToolExecutionHook` and `afterToolExecutionHook` for observability and custom logic.
 
-**Skills** extend the tool set dynamically. 18 skills available (ai-agent, authentication, blog, blog-writing, commerce, commerce-one-time-payment, commerce-storefront, database, email, google-maps, i18n, media, online-appointments, seo, social-platform, social-posts, social-publish, stripe). Skill tools are prefixed `skill__{skillName}` and managed by `SkillToolManager` with inactivity-based cleanup (deactivated after 30 steps of non-use, configurable via `SKILL_INACTIVITY_THRESHOLD_STEPS`). No limit on concurrently active skills.
+**Skills** extend the tool set dynamically. Skills include ai-agent, authentication, blog, blog-writing, commerce, commerce/ui, database, email, google-maps, i18n, media, online-appointments, seo, social-platform, social-posts, social-publish, and payment providers such as payment/godaddy-payments and payment/stripe. Skill tools are prefixed `skill__{skillName}` and managed by `SkillToolManager` with inactivity-based cleanup (deactivated after 30 steps of non-use, configurable via `SKILL_INACTIVITY_THRESHOLD_STEPS`). No limit on concurrently active skills.
 
 ---
 

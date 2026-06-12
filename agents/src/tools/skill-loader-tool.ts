@@ -13,7 +13,7 @@ import { regenerateEntryApiRegistrations } from '../utils/entry-api-sync.js';
  * Options for loading a skill
  */
 export interface SkillLoaderOptions {
-  /** Name of the skill to load (e.g., 'blog', 'commerce-storefront') */
+  /** Name of the skill to load (e.g., 'blog', 'payment') */
   skill: string;
   /**
    * BCP-47 market/locale string (e.g., 'en-US'). When provided, skills with a

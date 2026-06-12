@@ -1,30 +1,42 @@
 /**
  * GoDaddy Commerce Payment Provider
  *
- * Default payment provider implementation using GoDaddy Commerce APIs.
- * Delegates to commerce-one-time-payment skill endpoints.
+ * Both `createPaymentSession` and `getOrderStatus` call their respective lib
+ * functions from the `payment/godaddy-payments` skill directly, in-process. We deliberately
+ * do NOT loopback-`fetch` the `/api/commerce/*` routes: that would be a
+ * server→server request to the same Node process which (a) drops the inbound
+ * request's cookies and any caller auth context, and (b) burns an extra HTTP
+ * hop for no reason.
  */
 
+import {
+  createCheckoutSession,
+  type CreateCheckoutSessionParams,
+} from '../../lib/commerce/create-checkout-session';
+import {
+  getOrderStatus as getOrderStatusLib,
+  type CommerceOrderStatus,
+} from '../../lib/commerce/get-order-status';
 import type {
-	PaymentProvider,
-	PaymentSession,
-	OrderStatus,
-	CreatePaymentSessionParams,
-} from "./payment-provider";
-import { PaymentProviderError, PaymentProviderErrorCode } from "./payment-provider";
-import { logger } from "../../lib/logger";
+  PaymentProvider,
+  PaymentSession,
+  OrderStatus,
+  CreatePaymentSessionParams,
+} from './payment-provider';
+import { PaymentProviderError, PaymentProviderErrorCode } from './payment-provider';
+import { logger } from '../../lib/logger';
 
-const COMMERCE_STATUS_MAP: Record<string, OrderStatus["status"]> = {
-	paid: "paid",
-	completed: "paid",
-	complete: "paid",
-	pending: "pending",
-	processing: "pending",
-	unpaid: "pending",
-	cancelled: "cancelled",
-	canceled: "cancelled",
-	refunded: "refunded",
-	failed: "failed",
+const COMMERCE_STATUS_MAP: Record<string, OrderStatus['status']> = {
+  paid: 'paid',
+  completed: 'paid',
+  complete: 'paid',
+  pending: 'pending',
+  processing: 'pending',
+  unpaid: 'pending',
+  cancelled: 'cancelled',
+  canceled: 'cancelled',
+  refunded: 'refunded',
+  failed: 'failed',
 };
 
 /**
@@ -32,289 +44,101 @@ const COMMERCE_STATUS_MAP: Record<string, OrderStatus["status"]> = {
  * Uses exact match against known statuses to avoid substring false positives
  * (e.g. "unpaid".includes("paid") === true).
  */
-function mapCommerceStatus(
-	commerceStatus: string,
-): OrderStatus["status"] {
-	const mapped = COMMERCE_STATUS_MAP[commerceStatus.toLowerCase()];
-	if (mapped) return mapped;
+function mapCommerceStatus(commerceStatus: string): OrderStatus['status'] {
+  const mapped = COMMERCE_STATUS_MAP[commerceStatus.toLowerCase()];
+  if (mapped) return mapped;
 
-	logger.warn('commerce.status.unknown', {
-		commerceStatus,
-		message: 'Unknown commerce status, mapping to pending'
-	});
-	return "pending";
+  logger.warn('commerce.status.unknown', {
+    commerceStatus,
+    message: 'Unknown commerce status, mapping to pending',
+  });
+  return 'pending';
 }
 
-/**
- * GoDaddy Commerce provider implementation
- *
- * Uses the commerce-one-time-payment skill endpoints:
- * - POST /api/commerce/create-checkout-session
- * - GET /api/commerce/order-status
- */
+/** GoDaddy Commerce provider implementation. */
 export class GoDaddyCommerceProvider implements PaymentProvider {
-	private readonly storeId: string;
-	private readonly baseUrl: string;
+  async createPaymentSession(params: CreatePaymentSessionParams): Promise<PaymentSession> {
+    // SKU ID is required (not optional). The previous fallback to a hard-coded
+    // "appointment-booking" was a trap that could silently charge the wrong
+    // product — fail fast instead.
+    if (!params.skuId) {
+      throw new PaymentProviderError(
+        'SKU ID is required for GoDaddy Commerce payments. Pass skuId in createPaymentSession params.',
+        PaymentProviderErrorCode.PAYMENT_CONFIG_MISSING
+      );
+    }
 
-	/**
-	 * @param storeId GoDaddy Commerce Store ID
-	 * @param baseUrl Base URL for API calls (required - absolute URL like https://yourapp.airoapp.ai)
-	 */
-	constructor(storeId?: string, baseUrl?: string) {
-		// Trim and validate storeId
-		const rawStoreId = storeId || process.env.VITE_GODADDY_STORE_ID || "";
-		this.storeId = rawStoreId.trim();
+    const checkoutParams: CreateCheckoutSessionParams = {
+      skuId: params.skuId,
+      quantity: 1,
+      returnUrl: params.returnUrl,
+      successUrl: params.successUrl,
+    };
 
-		// Trim and validate baseUrl (required)
-		const rawBaseUrl = baseUrl || "";
-		this.baseUrl = rawBaseUrl.trim();
+    let session: Awaited<ReturnType<typeof createCheckoutSession>>;
+    try {
+      session = await createCheckoutSession(checkoutParams);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
 
-		if (!this.storeId || this.storeId.length === 0) {
-			throw new PaymentProviderError(
-				"VITE_GODADDY_STORE_ID environment variable is required for GoDaddy Commerce provider. " +
-				"Either set VITE_GODADDY_STORE_ID or use a different payment provider.",
-				PaymentProviderErrorCode.PROVIDER_NOT_CONFIGURED
-			);
-		}
+      // Detect SKU pricing issues — the Commerce API returns a cryptic GraphQL error
+      // when a SKU exists but has no price set in the catalog.
+      if (
+        errorMsg.includes('Failed to add all catalog line items') ||
+        errorMsg.includes("Cannot read properties of undefined (reading 'node')")
+      ) {
+        throw new PaymentProviderError(
+          `Commerce checkout failed: the SKU '${params.skuId}' may not have a price configured. ` +
+            `Ensure the SKU exists in your GoDaddy Commerce store AND has a price set. ` +
+            `Original error: ${errorMsg}`,
+          PaymentProviderErrorCode.PAYMENT_CONFIG_MISSING,
+          error
+        );
+      }
 
-		// baseUrl is required - Node.js fetch rejects relative URLs (TypeError: Failed to parse URL)
-		if (!this.baseUrl || this.baseUrl.length === 0) {
-			throw new PaymentProviderError(
-				"Base URL is required for GoDaddy Commerce provider. " +
-				"Set API_BASE_URL environment variable (e.g., https://yourapp.airoapp.ai or http://localhost:3000)",
-				PaymentProviderErrorCode.PROVIDER_NOT_CONFIGURED
-			);
-		}
-	}
+      throw new PaymentProviderError(
+        `Failed to create checkout session: ${errorMsg}`,
+        PaymentProviderErrorCode.API_ERROR,
+        error
+      );
+    }
 
-	async createPaymentSession(
-		params: CreatePaymentSessionParams,
-	): Promise<PaymentSession> {
-		// Validate required SKU ID
-		// Note: skuId is now required (not optional). This is safe as the online-appointments
-		// skill has not been released to customers yet. The previous fallback to "appointment-booking"
-		// was a trap that could silently charge the wrong product - fail fast instead.
-		if (!params.skuId) {
-			throw new PaymentProviderError(
-				'SKU ID is required for GoDaddy Commerce payments. Pass skuId in createPaymentSession params.',
-				PaymentProviderErrorCode.PAYMENT_CONFIG_MISSING
-			);
-		}
+    // Validate required fields are present
+    if (!session.url || !session.draftOrderId) {
+      throw new PaymentProviderError(
+        `Invalid checkout session response: missing url or draftOrderId`,
+        PaymentProviderErrorCode.API_ERROR
+      );
+    }
 
-		// Call commerce-one-time-payment checkout endpoint
-		const abortController = new AbortController();
-		const timeoutId = setTimeout(() => abortController.abort(), 10000);
+    return {
+      paymentUrl: session.url,
+      orderId: session.draftOrderId,
+    };
+  }
 
-		let response: Response;
-		try {
-			response = await fetch(
-				`${this.baseUrl}/api/commerce/create-checkout-session`,
-				{
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify({
-						storeId: this.storeId,
-						lineItems: [
-							{
-								skuId: params.skuId,
-								quantity: 1,
-							},
-						],
-						returnUrl: params.returnUrl,
-						successUrl: params.successUrl,
-						storeName: "Appointment Booking",
-						enableBillingAddressCollection: true,
-						enablePaymentMethodCollection: true,
-					}),
-					signal: abortController.signal,
-				},
-			);
-		} catch (error) {
-			// Network errors (DNS failure, connection refused, timeout)
-			throw new PaymentProviderError(
-				`Network error creating checkout session: ${error instanceof Error ? error.message : String(error)}`,
-				PaymentProviderErrorCode.NETWORK_ERROR,
-				error
-			);
-		} finally {
-			clearTimeout(timeoutId);
-		}
+  async getOrderStatus(orderId: string): Promise<OrderStatus> {
+    let order: CommerceOrderStatus;
+    try {
+      order = await getOrderStatusLib(orderId);
+    } catch (error) {
+      throw new PaymentProviderError(
+        `Failed to get order status: ${error instanceof Error ? error.message : String(error)}`,
+        PaymentProviderErrorCode.API_ERROR,
+        error
+      );
+    }
 
-		if (!response.ok) {
-			let errorText: string;
-			try {
-				errorText = await response.text();
-			} catch (error) {
-				errorText = '(unreadable)';
-				logger.warn('commerce.response.body_unreadable', {
-					status: response.status,
-					error: error instanceof Error ? error.message : String(error),
-					operation: 'createPaymentSession'
-				});
-			}
-			throw new PaymentProviderError(
-				`Failed to create checkout session: ${response.status} - ${errorText}`,
-				PaymentProviderErrorCode.API_ERROR
-			);
-		}
-
-		let data: any;
-		try {
-			data = await response.json();
-		} catch (error) {
-			throw new PaymentProviderError(
-				`Failed to parse response as JSON: ${error instanceof Error ? error.message : String(error)}`,
-				PaymentProviderErrorCode.API_ERROR,
-				error
-			);
-		}
-
-		if (!data.success) {
-			const errorMsg = String(data.error ?? 'Unknown error');
-
-			// Detect SKU pricing issues — the Commerce API returns a cryptic GraphQL error
-			// when a SKU exists but has no price set in the catalog.
-			if (errorMsg.includes('Failed to add all catalog line items') || errorMsg.includes("Cannot read properties of undefined (reading 'node')")) {
-				throw new PaymentProviderError(
-					`Commerce checkout failed: the SKU '${params.skuId}' may not have a price configured. ` +
-					`Ensure the SKU exists in your GoDaddy Commerce store AND has a price set. ` +
-					`Original error: ${errorMsg}`,
-					PaymentProviderErrorCode.PAYMENT_CONFIG_MISSING
-				);
-			}
-
-			throw new PaymentProviderError(
-				`Checkout session creation failed: ${errorMsg}`,
-				PaymentProviderErrorCode.API_ERROR
-			);
-		}
-
-		// Validate required fields are present
-		if (!data.checkoutUrl || !data.draftOrderId) {
-			throw new PaymentProviderError(
-				`Invalid checkout session response: missing checkoutUrl or draftOrderId`,
-				PaymentProviderErrorCode.API_ERROR
-			);
-		}
-
-		return {
-			paymentUrl: data.checkoutUrl,
-			orderId: data.draftOrderId,
-		};
-	}
-
-	async getOrderStatus(orderId: string): Promise<OrderStatus> {
-		// Call commerce-one-time-payment order status endpoint
-		const abortController = new AbortController();
-		const timeoutId = setTimeout(() => abortController.abort(), 10000);
-
-		let response: Response;
-		try {
-			response = await fetch(
-				`${this.baseUrl}/api/commerce/order-status?orderId=${encodeURIComponent(orderId)}`,
-				{
-					method: "GET",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					signal: abortController.signal,
-				},
-			);
-		} catch (error) {
-			// Network errors (DNS failure, connection refused, timeout)
-			throw new PaymentProviderError(
-				`Network error fetching order status: ${error instanceof Error ? error.message : String(error)}`,
-				PaymentProviderErrorCode.NETWORK_ERROR,
-				error
-			);
-		} finally {
-			clearTimeout(timeoutId);
-		}
-
-		if (!response.ok) {
-			let errorText: string;
-			try {
-				errorText = await response.text();
-			} catch (error) {
-				errorText = '(unreadable)';
-				logger.warn('commerce.response.body_unreadable', {
-					status: response.status,
-					error: error instanceof Error ? error.message : String(error),
-					operation: 'getOrderStatus'
-				});
-			}
-			throw new PaymentProviderError(
-				`Failed to get order status: ${response.status} - ${errorText}`,
-				PaymentProviderErrorCode.API_ERROR
-			);
-		}
-
-		let data: any;
-		try {
-			data = await response.json();
-		} catch (error) {
-			throw new PaymentProviderError(
-				`Failed to parse response as JSON: ${error instanceof Error ? error.message : String(error)}`,
-				PaymentProviderErrorCode.API_ERROR,
-				error
-			);
-		}
-
-		if (!data.success) {
-			throw new PaymentProviderError(
-				`Order status query failed: ${data.error || "Unknown error"}`,
-				PaymentProviderErrorCode.API_ERROR
-			);
-		}
-
-		// Validate order data is present
-		if (!data.order) {
-			throw new PaymentProviderError(
-				`Invalid order status response: missing order data`,
-				PaymentProviderErrorCode.API_ERROR
-			);
-		}
-
-		const order = data.order;
-
-		// Validate required fields
-		if (typeof order.status !== 'string') {
-			throw new PaymentProviderError(
-				`Invalid order status response: missing or invalid status field`,
-				PaymentProviderErrorCode.API_ERROR
-			);
-		}
-		if (!order.id) {
-			throw new PaymentProviderError(
-				`Invalid order status response: missing id field`,
-				PaymentProviderErrorCode.API_ERROR
-			);
-		}
-		if (typeof order.amount !== 'number') {
-			throw new PaymentProviderError(
-				`Invalid order status response: missing or invalid amount field`,
-				PaymentProviderErrorCode.API_ERROR
-			);
-		}
-		if (typeof order.currency !== 'string') {
-			throw new PaymentProviderError(
-				`Invalid order status response: missing or invalid currency field`,
-				PaymentProviderErrorCode.API_ERROR
-			);
-		}
-
-		return {
-			orderId: order.id,
-			status: mapCommerceStatus(order.status),
-			amount: order.amount,
-			currency: order.currency,
-			createdAt: order.createdAt,
-			updatedAt: order.updatedAt,
-			metadata: {
-				lineItems: order.lineItems,
-			},
-		};
-	}
+    return {
+      orderId: order.id,
+      status: mapCommerceStatus(order.status),
+      amount: order.amount,
+      currency: order.currency,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+      metadata: {
+        lineItems: order.lineItems,
+      },
+    };
+  }
 }

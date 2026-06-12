@@ -4,12 +4,15 @@ description: Help user choose and integrate the right payment solution for their
 whenToUse: Trigger for any payment-related request — accept payments, checkout, buy now, charge customers, Stripe, subscriptions, payment page.
 intents:
   - accept payments / payment page / buy now / checkout / one-time payment / charge customers
+  - GoDaddy Payments / GoDaddy checkout / GoDaddy payment page
   - Stripe / Stripe checkout / Stripe payments / Stripe subscription
 ---
 
 # Payment Skill
 
-Router only — load sub-skills, never implement payments directly.
+Router only — route to the provider-specific skill flow, never implement payments directly.
+
+This is an instruction-only router. Do not install the `payment` skill itself. If a generic skill activation workflow says to load then install skills, skip installation for this router and follow the provider flow below.
 
 If the user already named a provider, skip to its flow directly. Otherwise, use `askQuestion` to let them choose:
 
@@ -34,9 +37,8 @@ Do not load sub-skills until the user picks.
 
 ### GoDaddy Payments
 
-Load `payment/commerce-one-time-payment`.
+Load `payment/godaddy-payments` and follow its setup flow through env write and template install before implementing payment UI or server code.
 
 ### Stripe
 
 Load `payment/stripe`
-
