@@ -1,6 +1,6 @@
 import { ThreadedMessagePageChildren } from '@/lib/inbox/http/response/core'
 import { Conversation } from '@/types/inbox/local/conversation'
-import { IntString, IsoDateTimeString, UuidString } from '@/types/inbox/local/core'
+import { EmailString, IntString, IsoDateTimeString, UuidString } from '@/types/inbox/local/core'
 import { InboxConversationStatusFilter } from '@/types/inbox/local/inboxConversationStatusFilter'
 import { Message } from '@/types/inbox/local/message'
 
@@ -52,4 +52,20 @@ export interface SendReplyRequest {
 
 export interface SendReplyResponse {
   message: Message
+}
+
+export interface UpdateStaffNotificationEmailRequest {
+  brandId: UuidString
+  /** Reamaze staff id (numeric); used in the PUT path /api/v2/staff/{staffId}. */
+  staffId: number
+  notificationEmail: EmailString
+}
+
+export interface EmailNotificationsResponse {
+  emailNotifications: boolean
+}
+
+export interface UpdateEmailNotificationsRequest {
+  brandId: UuidString
+  emailNotifications: boolean
 }

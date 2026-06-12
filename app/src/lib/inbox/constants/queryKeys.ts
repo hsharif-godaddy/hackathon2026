@@ -44,4 +44,16 @@ export const queryKeys = {
       until,
       childrenFetchData,
     ] as const,
+  inboxStaff: (brandId: UuidString) =>
+    [
+      ...queryKeys.all,
+      'inboxStaff',
+      brandId,
+    ] as const,
+  inboxEmailNotifications: (brandId: UuidString) =>
+    [
+      ...queryKeys.all,
+      'inboxEmailNotifications',
+      brandId,
+    ] as const,
 }

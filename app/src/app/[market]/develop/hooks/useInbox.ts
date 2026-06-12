@@ -4,11 +4,14 @@ import { queryKeys } from '@/lib/inbox/constants/queryKeys'
 import { ThreadedMessagePageChildren } from '@/lib/inbox/http/response/core'
 import { convertConversation } from '@/lib/inbox/transforms/conversation'
 import { convertMessage } from '@/lib/inbox/transforms/message'
+import { convertStaff } from '@/lib/inbox/transforms/staff'
 import { Conversation } from '@/types/inbox/local/conversation'
 import { IntString, IsoDateTimeString, UuidString } from '@/types/inbox/local/core'
 import { InboxConversationStatusFilter } from '@/types/inbox/local/inboxConversationStatusFilter'
 import { Message } from '@/types/inbox/local/message'
+import { Staff } from '@/types/inbox/local/staff'
 import { RemoteConversation } from '@/types/inbox/remote/conversation'
+import { RemoteEmailNotifications } from '@/types/inbox/remote/emailNotifications'
 import { RemoteMessage } from '@/types/inbox/remote/message'
 import {
   ConversationMessagesRequest,
@@ -16,8 +19,11 @@ import {
   ConversationRequest,
   ConversationsRequest,
   ConversationsResponse,
+  EmailNotificationsResponse,
   SendReplyRequest,
-  SendReplyResponse
+  SendReplyResponse,
+  UpdateEmailNotificationsRequest,
+  UpdateStaffNotificationEmailRequest,
 } from '@/types/inbox/remote/reamaze'
 
 export async function getInboxConversations(params: ConversationsRequest): Promise<ConversationsResponse> {
@@ -327,6 +333,171 @@ export function useSendInboxReply(brandId: UuidString, conversationId: IntString
       queryClient.invalidateQueries({
         queryKey: queryKeys.inboxConversationMessages(conversationId, brandId),
       })
+    },
+  })
+}
+
+async function getInboxStaff(brandId: UuidString): Promise<Staff> {
+  if (!brandId) {
+    throw new Error('Brand ID is required')
+  }
+
+  const url = new URL('/api/inbox/staff', window.location.origin)
+  url.searchParams.set('brandId', brandId)
+
+  const response = await fetch(url.toString(), { credentials: 'include' })
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}))
+    throw new Error(data.error || `Failed to get staff: ${response.status}`)
+  }
+
+  const remoteResponse = await response.json()
+
+  if (!remoteResponse?.staff || typeof remoteResponse.staff !== 'object') {
+    throw new Error('Invalid staff response format: staff is missing')
+  }
+
+  try {
+    return convertStaff(remoteResponse.staff)
+  } catch (transformError) {
+    throw new Error(
+      `Failed to transform staff: ${transformError instanceof Error ? transformError.message : 'Unknown transformation error'}`,
+    )
+  }
+}
+
+async function getInboxEmailNotifications(brandId: UuidString): Promise<EmailNotificationsResponse> {
+  if (!brandId) {
+    throw new Error('Brand ID is required')
+  }
+
+  const url = new URL('/api/inbox/email-notifications', window.location.origin)
+  url.searchParams.set('brandId', brandId)
+
+  const response = await fetch(url.toString(), { credentials: 'include' })
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}))
+    throw new Error(data.error || `Failed to get email notifications: ${response.status}`)
+  }
+
+  const remote = (await response.json()) as RemoteEmailNotifications
+
+  if (typeof remote?.email_notifications !== 'boolean') {
+    throw new Error('Invalid email notifications response format: email_notifications is not a boolean')
+  }
+
+  return { emailNotifications: remote.email_notifications }
+}
+
+async function putInboxStaffNotificationEmail(
+  params: UpdateStaffNotificationEmailRequest,
+): Promise<Staff> {
+  const response = await fetch('/api/inbox/staff', {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}))
+    throw new Error(data.error || `Failed to update notification email: ${response.status}`)
+  }
+
+  const remoteResponse = await response.json()
+
+  if (!remoteResponse?.staff || typeof remoteResponse.staff !== 'object') {
+    throw new Error('Invalid staff response format: staff is missing')
+  }
+
+  try {
+    return convertStaff(remoteResponse.staff)
+  } catch (transformError) {
+    throw new Error(
+      `Failed to transform staff: ${transformError instanceof Error ? transformError.message : 'Unknown transformation error'}`,
+    )
+  }
+}
+
+async function putInboxEmailNotifications(
+  params: UpdateEmailNotificationsRequest,
+): Promise<EmailNotificationsResponse> {
+  const response = await fetch('/api/inbox/email-notifications', {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}))
+    throw new Error(data.error || `Failed to update email notifications: ${response.status}`)
+  }
+  const remote = (await response.json()) as RemoteEmailNotifications
+
+  if (typeof remote?.email_notifications !== 'boolean') {
+    throw new Error('Invalid email notifications response format: email_notifications is not a boolean')
+  }
+
+  return { emailNotifications: remote.email_notifications }
+}
+
+export function useInboxStaff(brandId: UuidString, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.inboxStaff(brandId),
+    queryFn: () => getInboxStaff(brandId),
+    staleTime: 60_000,
+    retry: (failureCount, error) => {
+      console.error('Error fetching staff:', error)
+      return failureCount < 3
+    },
+    enabled: !!brandId && (options?.enabled ?? true),
+  })
+}
+
+export function useInboxEmailNotifications(brandId: UuidString, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.inboxEmailNotifications(brandId),
+    queryFn: () => getInboxEmailNotifications(brandId),
+    staleTime: 60_000,
+    retry: (failureCount, error) => {
+      console.error('Error fetching email notifications:', error)
+      return failureCount < 3
+    },
+    enabled: !!brandId && (options?.enabled ?? true),
+  })
+}
+
+export function useUpdateStaffNotificationEmail(brandId: UuidString) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (params: Omit<UpdateStaffNotificationEmailRequest, 'brandId'>) =>
+      putInboxStaffNotificationEmail({ ...params, brandId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.inboxStaff(brandId) })
+    },
+  })
+}
+
+export function useUpdateEmailNotifications(brandId: UuidString) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (emailNotifications: boolean) =>
+      putInboxEmailNotifications({ brandId, emailNotifications }),
+    // Optimistically flip the cached toggle so the UI responds instantly; roll
+    // back on error, then re-sync from the server on settle.
+    onMutate: async (emailNotifications: boolean) => {
+      const key = queryKeys.inboxEmailNotifications(brandId)
+      await queryClient.cancelQueries({ queryKey: key })
+      const previous = queryClient.getQueryData<EmailNotificationsResponse>(key)
+      queryClient.setQueryData<EmailNotificationsResponse>(key, { emailNotifications })
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.inboxEmailNotifications(brandId), context.previous)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.inboxEmailNotifications(brandId) })
     },
   })
 }

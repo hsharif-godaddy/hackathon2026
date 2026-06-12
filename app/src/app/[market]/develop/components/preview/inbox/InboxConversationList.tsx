@@ -8,6 +8,7 @@ import { IntString, UuidString } from '@/types/inbox/local/core';
 import { type InboxConversationStatusFilter } from '@/types/inbox/local/inboxConversationStatusFilter';
 import { InboxConversationRow } from './InboxConversationRow';
 import { InboxConversationStatusFilters } from './InboxConversationStatusFilters';
+import { InboxNotificationSettings } from './InboxNotificationSettings';
 import { slideMotionProps, slideTransition } from './slideView';
 import { useInboxConversations } from '../../../hooks/useInbox';
 
@@ -69,7 +70,7 @@ export function InboxConversationList({
           onChange={handleFilterChange}
         />
 
-        {/* TODO: Notification Settings */}
+        <InboxNotificationSettings brandId={brandId} />
       </div>
       
       <div
