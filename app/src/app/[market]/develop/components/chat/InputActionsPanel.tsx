@@ -10,11 +10,13 @@ import Box from '@ux/box'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
 import CollapsibleChatInputSection, { CollapseChevron } from '@/app/[market]/develop/components/chat/CollapsibleChatInputSection'
+import { FirstBuildFeedbackPanel } from '@/app/[market]/develop/components/chat/FirstBuildFeedbackPanel'
 import FontThemePreviewInputPanel from '@/app/[market]/develop/components/chat/FontThemePreviewInputPanel'
 import { useSecretsComposerTakeover } from '@/app/[market]/develop/components/chat/secrets/useSecretsComposerTakeover'
 import { PanelSectionTitle } from '@/app/[market]/develop/components/chat/StepProgressTag'
 import ThemePreviewInputPanel from '@/app/[market]/develop/components/chat/ThemePreviewInputPanel'
 import ThinkingTip from '@/app/[market]/develop/components/chat/ThinkingTip'
+import { useFirstBuildFeedback } from '@/app/[market]/develop/components/chat/useFirstBuildFeedback'
 import { type LatestNBAData, useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
 import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThinkerLabel'
@@ -48,6 +50,7 @@ import { useIsActivelyStreaming, useIsLoading, useMessages } from '@/stores/useS
 import type { TodoItem, TodoList } from '@/stores/useTodoListStore'
 import { useCurrentList, useTodoListStore, useViewState } from '@/stores/useTodoListStore'
 import { useUpfrontRebuildBuildQueueStore } from '@/stores/useUpfrontRebuildBuildQueueStore'
+import { safeGetItem } from '@/utils/localStorage'
 
 const MAX_COMBINED_ITEMS = 4
 
@@ -96,6 +99,9 @@ type InputActionsPanelProps = {
    * NBA and next-action Continue Building surfaces do not hide the prompt.
    */
   onHideComposerPromptChange?: (hidden: boolean) => void
+  // FBF props (internal, passed from wrapper to variants)
+  feedbackActive?: boolean
+  feedback?: import('./useFirstBuildFeedback').UseFirstBuildFeedbackResult | null
 }
 
 function usePublishHideComposerPrompt(
@@ -158,13 +164,14 @@ function askQuestionStepCount(toolResult: unknown): number {
  */
 function InputActionsPanelLegacy({
   shouldCollapse: _shouldCollapse,
+  feedbackActive = false,
   onHideComposerPromptChange,
 }: InputActionsPanelProps) {
   const t = useTranslations()
   const thinkerLabel = useThinkerLabel()
   const thinkerIndicator = useThinkerIndicator()
   const sendUserMessage = useSendUserMessage()
-  const nbaData = useLatestNBAs()
+  const nbaData = useLatestNBAs(feedbackActive)
   const currentList = useCurrentList()
   const viewState = useViewState()
   const isStreaming = useIsActivelyStreaming()
@@ -1054,15 +1061,15 @@ function InputActionsPanelThemeSelection({
   activeFontThemeSuggest = null,
   shouldCollapse = false,
   onHideComposerPromptChange,
+  feedbackActive = false,
+  feedback = null,
 }: InputActionsPanelProps) {
   const t = useTranslations()
   const thinkerLabel = useThinkerLabel()
   const thinkerIndicator = useThinkerIndicator()
   const queryClient = useQueryClient()
   const sendUserMessage = useSendUserMessage()
-  const nbaDataRaw = useLatestNBAs()
   const [askQuestionDismissed, setAskQuestionDismissed] = useState(false)
-  const nbaData = askQuestionDismissed ? null : nbaDataRaw
   const currentList = useCurrentList()
   const viewState = useViewState()
   const isStreaming = useIsActivelyStreaming()
@@ -1073,6 +1080,10 @@ function InputActionsPanelThemeSelection({
   const viewMode = useDevelopPageStore((state) => state.viewMode)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
   const appId = useAppIdFromParams()
+
+  const nbaDataRaw = useLatestNBAs(feedbackActive)
+  const nbaData = askQuestionDismissed ? null : nbaDataRaw
+
   const isRebuildMultipageEnabled = useSwitchboard('appbuilder-rebuild-multipage')
   const mayBeRebuildApp = useMemo(() =>
     messages.some(msg =>
@@ -1779,7 +1790,9 @@ function InputActionsPanelThemeSelection({
   // ── Mode B: Agent idle, has data ─────────────────────────────────────────
   return (
     <InputActionsPanelCard headerOnly={showInlinePanel && !continueBuildingExpanded}>
-      {showInlinePanel && (
+      {feedback ? (
+        <FirstBuildFeedbackPanel feedback={feedback} appId={appId ?? ''} />
+      ) : showInlinePanel && (
         <>
           {showColor && activeColorSchemeSuggest ? (
             <ThemePreviewInputPanel
@@ -1853,6 +1866,63 @@ export default function InputActionsPanel({
 }: InputActionsPanelProps) {
   const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
   const isFontSelectionChatEnabled = useSwitchboard('airo-builder-font-selection-chat')
+
+  // FBF lives here so it runs regardless of which variant (Legacy or ThemeSelection) is active.
+  const appId = useAppIdFromParams()
+  const messages = useMessages()
+  const feedback = useFirstBuildFeedback(appId ?? '')
+  const feedbackActive = feedback !== null
+
+  // After FBF is answered/skipped (localStorage marks it), permanently suppress
+  // the agent's askQuestion NBA for this app so it doesn't snap back.
+  const initialBuildComplete = useDevelopPageStore(
+    (s) => s.app?.id === appId ? s.app?.initialBuildComplete : undefined,
+  )
+  const feedbackResolved = Boolean(
+    safeGetItem(`fbf_answered_${appId}`) || safeGetItem(`fbf_skipped_${appId}`),
+  )
+
+  // Track message count when FBF was first resolved so we can stop
+  // suppressing once new messages arrive (agent asks new questions after).
+  const [fbfConsumedMessageCount, setFbfConsumedMessageCount] = useState<number | null>(null)
+  useEffect(() => {
+    if (feedbackResolved && fbfConsumedMessageCount === null) {
+      setFbfConsumedMessageCount(messages.length)
+    } else if (!feedbackResolved) {
+      setFbfConsumedMessageCount(null)
+    }
+  }, [feedbackResolved, messages.length, fbfConsumedMessageCount])
+
+  // Suppress NBA while FBF is active OR until 2+ new messages arrive after FBF resolved.
+  // Once the conversation moves forward, allow new agent askQuestions normally.
+  const fbfNBASuppressed = !!initialBuildComplete && feedbackResolved &&
+    (fbfConsumedMessageCount === null || messages.length <= fbfConsumedMessageCount + 1)
+  const suppressNBA = feedbackActive || fbfNBASuppressed
+
+  // Chatted-past: dismiss if the user sends a message AFTER the panel first appears.
+  // feedbackJustActivatedRef gates the first run: when feedback becomes non-null we
+  // calibrate the baseline to the current count instead of comparing against a stale
+  // mount-time count (which would fire immediately since messages arrived during the build).
+  const userMessageCountRef = useRef(messages.filter((m) => m.role === 'user').length)
+  const feedbackJustActivatedRef = useRef(false)
+  useEffect(() => {
+    if (!feedback) {
+      feedbackJustActivatedRef.current = false
+      return
+    }
+    const currentCount = messages.filter((m) => m.role === 'user').length
+    if (!feedbackJustActivatedRef.current) {
+      // First render with feedback active — calibrate baseline to now, do not dismiss.
+      feedbackJustActivatedRef.current = true
+      userMessageCountRef.current = currentCount
+      return
+    }
+    if (currentCount > userMessageCountRef.current) {
+      feedback.dismiss('chatted-past')
+    }
+    userMessageCountRef.current = currentCount
+  }, [messages, feedback])
+
   if (isThemeSelectionChatEnabled || isFontSelectionChatEnabled) {
     return (
       <InputActionsPanelThemeSelection
@@ -1860,14 +1930,20 @@ export default function InputActionsPanel({
         activeFontThemeSuggest={activeFontThemeSuggest}
         shouldCollapse={shouldCollapse}
         onHideComposerPromptChange={onHideComposerPromptChange}
+        feedbackActive={suppressNBA}
+        feedback={feedback}
       />
     )
   }
   // Legacy path: shouldCollapse passed but not implemented (component is deprecated)
   return (
-    <InputActionsPanelLegacy
-      shouldCollapse={shouldCollapse}
-      onHideComposerPromptChange={onHideComposerPromptChange}
-    />
+    <>
+      {feedback && <FirstBuildFeedbackPanel feedback={feedback} appId={appId ?? ''} />}
+      <InputActionsPanelLegacy
+        shouldCollapse={shouldCollapse}
+        onHideComposerPromptChange={onHideComposerPromptChange}
+        feedbackActive={suppressNBA}
+      />
+    </>
   )
 }

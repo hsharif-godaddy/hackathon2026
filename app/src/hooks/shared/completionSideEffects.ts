@@ -167,6 +167,13 @@ export function postInitialBuildEvent(appId: string): void {
     return;
   }
 
+  // First build just completed — make initialBuildComplete reactive so the
+  // feedback hook re-evaluates without waiting for a page reload.
+  useDevelopPageStore.setState((state) => ({
+    ...state,
+    app: state.app ? { ...state.app, initialBuildComplete: true } : state.app,
+  }));
+
   appFetch(`/api/apps/${appId}/events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

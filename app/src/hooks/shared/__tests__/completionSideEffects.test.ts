@@ -19,7 +19,7 @@ vi.mock("@/hooks/websocket/useWebSocketHelpers", () => ({
   sendToolImpressionEvent: mockSendToolImpressionEvent,
 }));
 
-const { mockAppFetch, mockLogger, mockSafeGetItem, mockSafeSetItem } = vi.hoisted(() => ({
+const { mockAppFetch, mockLogger, mockSafeGetItem, mockSafeSetItem, mockSetState } = vi.hoisted(() => ({
   mockAppFetch: vi.fn(),
   mockLogger: {
     info: vi.fn(),
@@ -29,6 +29,7 @@ const { mockAppFetch, mockLogger, mockSafeGetItem, mockSafeSetItem } = vi.hoiste
   },
   mockSafeGetItem: vi.fn(),
   mockSafeSetItem: vi.fn(),
+  mockSetState: vi.fn(),
 }));
 
 vi.mock("@/lib/gasket-config", () => ({
@@ -42,6 +43,12 @@ vi.mock("@/lib/request-context", () => ({
 vi.mock("@/utils/localStorage", () => ({
   safeGetItem: mockSafeGetItem,
   safeSetItem: mockSafeSetItem,
+}));
+
+vi.mock("@/stores/useDevelopPageStore", () => ({
+  useDevelopPageStore: {
+    setState: mockSetState,
+  },
 }));
 
 describe("completionSideEffects", () => {
@@ -184,6 +191,35 @@ describe("completionSideEffects", () => {
         expect(mockAppFetch).not.toHaveBeenCalled();
 
         vi.unstubAllGlobals();
+      });
+    });
+
+    describe("store update", () => {
+      beforeEach(() => {
+        mockSetState.mockReset();
+        mockSafeGetItem.mockReturnValue(null);
+        mockSafeSetItem.mockReset();
+      });
+
+      it("updates useDevelopPageStore.app.initialBuildComplete when first build fires", () => {
+        postInitialBuildEvent(APP_ID);
+        expect(mockSetState).toHaveBeenCalledOnce();
+        const updater = mockSetState.mock.calls[0][0];
+        const result = updater({ app: { initialBuildComplete: false, id: APP_ID } });
+        expect(result.app.initialBuildComplete).toBe(true);
+      });
+
+      it("does not update store when already fired (localStorage guard)", () => {
+        mockSafeGetItem.mockReturnValue("true");
+        postInitialBuildEvent(APP_ID);
+        expect(mockSetState).not.toHaveBeenCalled();
+      });
+
+      it("leaves app null alone", () => {
+        postInitialBuildEvent(APP_ID);
+        const updater = mockSetState.mock.calls[0][0];
+        const result = updater({ app: null });
+        expect(result.app).toBeNull();
       });
     });
   });

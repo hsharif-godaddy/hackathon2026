@@ -639,3 +639,19 @@ describe('useLatestNBAs', () => {
     })
   })
 })
+
+describe('useLatestNBAs — feedbackActive suppression', () => {
+  it('returns null when feedbackActive is true regardless of NBA data', () => {
+    mockMessages = [makeAssistantMessage([makeSuggestedResponseToolCall()])]
+    mockActiveStream = null
+    const { result } = renderHook(() => useLatestNBAs(true))
+    expect(result.current).toBeNull()
+  })
+
+  it('returns NBA when feedbackActive is false', () => {
+    mockMessages = [makeAssistantMessage([makeSuggestedResponseToolCall()])]
+    mockActiveStream = null
+    const { result } = renderHook(() => useLatestNBAs(false))
+    expect(result.current).not.toBeNull()
+  })
+})

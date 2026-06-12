@@ -13,3 +13,5 @@ export const SWITCHBOARD_APPBUILDER_UPLOADED_IMAGE_DELETION =
   'appbuilder-uploaded-image-deletion';
 export const SWITCHBOARD_APPBUILDER_PURCHASE_INTENT_CLASSIFIER =
   'appbuilder-purchase-intent-classifier';
+export const SWITCHBOARD_APPBUILDER_FIRST_BUILD_FEEDBACK =
+  'appbuilder-first-build-feedback';

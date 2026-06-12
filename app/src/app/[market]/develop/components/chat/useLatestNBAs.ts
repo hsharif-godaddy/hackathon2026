@@ -131,9 +131,9 @@ function extractLatestNBAFromMessages(messages: ChatMessage[]): LatestNBAData | 
 
 /**
  * Hook that extracts the latest NBA (suggested response) data from conversation messages.
- * Returns null when no NBA data is available.
+ * Returns null when no NBA data is available, or when feedbackActive is true.
  */
-export function useLatestNBAs(): LatestNBAData | null {
+export function useLatestNBAs(feedbackActive = false): LatestNBAData | null {
   const messages = useMessages()
   const activeStream = useActiveStream()
   const resolvedSecretsComposerToolCallIds = useStreamingConversationStore(
@@ -141,6 +141,8 @@ export function useLatestNBAs(): LatestNBAData | null {
   )
 
   return useMemo(() => {
+    if (feedbackActive) return null
+
     if (
       activeStream?.toolCalls?.length &&
       pickLatestUnresolvedFromToolCalls(activeStream.toolCalls, resolvedSecretsComposerToolCallIds)
@@ -161,5 +163,5 @@ export function useLatestNBAs(): LatestNBAData | null {
     }
 
     return extractLatestNBAFromMessages(messages)
-  }, [activeStream, messages, resolvedSecretsComposerToolCallIds])
+  }, [messages, activeStream, feedbackActive, resolvedSecretsComposerToolCallIds])
 }
