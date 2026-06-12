@@ -219,6 +219,7 @@ describe('StreamingMessageList', function packageTests() {
     mockIsHistoryDisabled.value = false;
     mockActiveChatTab.value = 'chat';
     mockStreamingStore.isActivelyStreaming = false;
+    mockStreamingStore.activeStream = null;
     mockUndoAction.isLocked = false;
     mockUndoAction.isPending = false;
     mockUndoAction.error = null;
@@ -327,14 +328,18 @@ describe('StreamingMessageList', function packageTests() {
   });
 
   describe('scroll behavior', function scrollBehavior() {
-    let scrollIntoViewMock: any;
+    const SCROLL_BOTTOM = 500 // scrollHeight (1000) - clientHeight (500)
+    const originalScrollTo = HTMLElement.prototype.scrollTo
+
+    function getScrollContainer(container: HTMLElement) {
+      const scrollContainer = container.querySelector('.overflow-y-auto');
+      if (!scrollContainer) {
+        throw new Error('Scroll container not found');
+      }
+      return scrollContainer as HTMLElement;
+    }
 
     beforeEach(() => {
-      // Mock scrollIntoView
-      scrollIntoViewMock = vi.fn();
-      Element.prototype.scrollIntoView = scrollIntoViewMock;
-
-      // Setup container with scroll properties
       Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
         configurable: true,
         get: function() { return 1000; }
@@ -348,13 +353,21 @@ describe('StreamingMessageList', function packageTests() {
         configurable: true,
         get: function() { return 500; }
       });
+      HTMLElement.prototype.scrollTo = vi.fn(function (this: HTMLElement, options?: ScrollToOptions | number) {
+        if (typeof options === 'object' && options?.top !== undefined) {
+          this.scrollTop = options.top;
+        }
+      });
+    });
+
+    afterEach(() => {
+      HTMLElement.prototype.scrollTo = originalScrollTo
     });
 
     it('should scroll to bottom when user sends a message', async function scrollOnUserMessage() {
       const initialMessages: any[] = [];
-      const { rerender } = renderWithProviders(<StreamingMessageList allMessages={initialMessages} />);
+      const { container, rerender } = renderWithProviders(<StreamingMessageList allMessages={initialMessages} />);
 
-      // Add user message
       const updatedMessages = [
         {
           id: 'msg-1',
@@ -366,9 +379,8 @@ describe('StreamingMessageList', function packageTests() {
 
       rerender(<StreamingMessageList allMessages={updatedMessages} />);
 
-      // Wait for scroll effects to execute
       await vi.waitFor(() => {
-        expect(scrollIntoViewMock).toHaveBeenCalled();
+        expect(getScrollContainer(container).scrollTop).toBe(SCROLL_BOTTOM);
       }, { timeout: 200 });
     });
 
@@ -381,12 +393,8 @@ describe('StreamingMessageList', function packageTests() {
           timestamp: new Date(),
         },
       ];
-      const { rerender } = renderWithProviders(<StreamingMessageList allMessages={initialMessages} />);
+      const { container, rerender } = renderWithProviders(<StreamingMessageList allMessages={initialMessages} />);
 
-      // Clear previous calls
-      scrollIntoViewMock.mockClear();
-
-      // Add assistant message
       const updatedMessages = [
         ...initialMessages,
         {
@@ -400,7 +408,7 @@ describe('StreamingMessageList', function packageTests() {
       rerender(<StreamingMessageList allMessages={updatedMessages} />);
 
       await vi.waitFor(() => {
-        expect(scrollIntoViewMock).toHaveBeenCalled();
+        expect(getScrollContainer(container).scrollTop).toBe(SCROLL_BOTTOM);
       }, { timeout: 200 });
     });
 
@@ -451,36 +459,20 @@ describe('StreamingMessageList', function packageTests() {
         },
       ];
       mockStreamingStore.isActivelyStreaming = true;
+      mockStreamingStore.activeStream = messages[1];
 
       const { container } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
 
-      // Wait for initial render
-      await vi.waitFor(() => {
-        const scrollContainer = container.querySelector('.overflow-y-auto');
-        expect(scrollContainer).toBeInTheDocument();
+      const scrollContainer = getScrollContainer(container);
+
+      await act(async () => {
+        scrollContainer.scrollTop = SCROLL_BOTTOM;
+        fireEvent.scroll(scrollContainer);
+        scrollContainer.scrollTop = 100;
+        fireEvent.scroll(scrollContainer);
       });
 
-      const scrollContainer = container.querySelector('.overflow-y-auto');
-
-      if (!scrollContainer) {
-        throw new Error('Scroll container not found');
-      }
-
-      // Simulate user scrolling up (away from bottom)
-      Object.defineProperty(scrollContainer, 'scrollTop', {
-        value: 100, // Not at bottom
-        writable: true,
-        configurable: true
-      });
-
-      const scrollEvent = new Event('scroll', { bubbles: true });
-      scrollContainer.dispatchEvent(scrollEvent);
-
-      // Wait for throttled scroll handler
-      await new Promise(resolve => setTimeout(resolve, 150));
-
-      // Verify scroll container is still present
-      expect(container.querySelector('.overflow-y-auto')).toBeInTheDocument();
+      expect(screen.getByText('builder_messages_new_messages')).toBeInTheDocument();
     });
 
     it('should resume auto-scroll when user scrolls back to bottom', async function resumeOnScrollToBottom() {
@@ -491,27 +483,133 @@ describe('StreamingMessageList', function packageTests() {
           content: 'Hello',
           timestamp: new Date(),
         },
+        {
+          id: 'stream-1',
+          role: 'assistant' as const,
+          content: 'Streaming...',
+          segments: [],
+          toolCalls: [],
+          timestamp: new Date(),
+          isComplete: false,
+        },
       ];
       mockStreamingStore.isActivelyStreaming = true;
+      mockStreamingStore.activeStream = messages[1];
 
       const { container } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
-      const scrollContainer = container.querySelector('.overflow-y-auto');
+      const scrollContainer = getScrollContainer(container);
 
-      if (!scrollContainer) {
-        throw new Error('Scroll container not found');
-      }
-
-      // Simulate user scrolling to bottom (within 150px threshold)
-      Object.defineProperty(scrollContainer, 'scrollTop', {
-        value: 450, // scrollHeight (1000) - clientHeight (500) - scrollTop (450) = 50px from bottom
-        writable: true
+      await act(async () => {
+        scrollContainer.scrollTop = SCROLL_BOTTOM;
+        fireEvent.scroll(scrollContainer);
+        scrollContainer.scrollTop = 100;
+        fireEvent.scroll(scrollContainer);
       });
 
-      const scrollEvent = new Event('scroll');
-      scrollContainer.dispatchEvent(scrollEvent);
+      expect(screen.getByText('builder_messages_new_messages')).toBeInTheDocument();
 
-      // Should be considered "near bottom" and resume auto-scroll
-      expect(scrollContainer).toBeInTheDocument();
+      await act(async () => {
+        scrollContainer.scrollTop = 450;
+        fireEvent.scroll(scrollContainer);
+      });
+
+      expect(screen.queryByText('builder_messages_new_messages')).not.toBeInTheDocument();
+    });
+
+    it('should not reset scroll position on token updates after wheel scroll up', async function holdPositionOnWheelDuringStream() {
+      const initialStream = {
+        id: 'stream-1',
+        role: 'assistant' as const,
+        content: 'Hello',
+        segments: [] as unknown[],
+        toolCalls: [] as unknown[],
+        timestamp: new Date(),
+        isComplete: false,
+      };
+      const messages = [
+        {
+          id: 'msg-1',
+          role: 'user' as const,
+          content: 'Hello',
+          timestamp: new Date(),
+        },
+        initialStream,
+      ];
+      mockStreamingStore.isActivelyStreaming = true;
+      mockStreamingStore.activeStream = initialStream;
+
+      const { container, rerender } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
+      const scrollContainer = getScrollContainer(container);
+
+      await act(async () => {
+        scrollContainer.scrollTop = 200;
+        fireEvent.wheel(scrollContainer, { deltaY: -10 });
+      });
+
+      const heldScrollTop = scrollContainer.scrollTop;
+
+      const updatedStream = {
+        ...initialStream,
+        content: 'Hello world with more streamed tokens',
+      };
+      mockStreamingStore.activeStream = updatedStream;
+
+      rerender(
+        <StreamingMessageList
+          allMessages={[
+            messages[0],
+            updatedStream,
+          ]}
+        />,
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(scrollContainer.scrollTop).toBe(heldScrollTop);
+      expect(screen.getByText('builder_messages_new_messages')).toBeInTheDocument();
+    });
+
+    it('should not resume auto-scroll while still in near-bottom zone without scrolling down', async function noResumeInNearBottomZone() {
+      const messages = [
+        {
+          id: 'msg-1',
+          role: 'user' as const,
+          content: 'Hello',
+          timestamp: new Date(),
+        },
+        {
+          id: 'stream-1',
+          role: 'assistant' as const,
+          content: 'Streaming...',
+          segments: [],
+          toolCalls: [],
+          timestamp: new Date(),
+          isComplete: false,
+        },
+      ];
+      mockStreamingStore.isActivelyStreaming = true;
+      mockStreamingStore.activeStream = messages[1];
+
+      const { container } = renderWithProviders(<StreamingMessageList allMessages={messages} />);
+      const scrollContainer = getScrollContainer(container);
+
+      await act(async () => {
+        scrollContainer.scrollTop = SCROLL_BOTTOM;
+        fireEvent.scroll(scrollContainer);
+        scrollContainer.scrollTop = 400;
+        fireEvent.wheel(scrollContainer, { deltaY: -5 });
+        fireEvent.scroll(scrollContainer);
+      });
+
+      expect(screen.getByText('builder_messages_new_messages')).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.scroll(scrollContainer);
+      });
+
+      expect(screen.getByText('builder_messages_new_messages')).toBeInTheDocument();
     });
 
     describe('transcript footer scroll', function transcriptFooterScroll() {
@@ -526,7 +624,7 @@ describe('StreamingMessageList', function packageTests() {
         ];
         const footer = <div data-testid="transcript-footer">pre-launch</div>;
 
-        const { rerender } = renderWithProviders(
+        const { container, rerender } = renderWithProviders(
           <StreamingMessageList
             allMessages={messages}
             transcriptFooter={footer}
@@ -537,12 +635,10 @@ describe('StreamingMessageList', function packageTests() {
 
         await vi.waitFor(
           () => {
-            expect(scrollIntoViewMock).toHaveBeenCalled();
+            expect(getScrollContainer(container).scrollTop).toBe(SCROLL_BOTTOM);
           },
           { timeout: 300 },
         );
-
-        scrollIntoViewMock.mockClear();
 
         rerender(
           <StreamingMessageList
@@ -555,7 +651,7 @@ describe('StreamingMessageList', function packageTests() {
 
         await vi.waitFor(
           () => {
-            expect(scrollIntoViewMock).toHaveBeenCalled();
+            expect(getScrollContainer(container).scrollTop).toBe(SCROLL_BOTTOM);
           },
           { timeout: 300 },
         );
@@ -572,7 +668,7 @@ describe('StreamingMessageList', function packageTests() {
         ];
         const footer = <div data-testid="transcript-footer">pre-launch</div>;
 
-        const { rerender } = renderWithProviders(
+        const { container, rerender } = renderWithProviders(
           <StreamingMessageList
             allMessages={messages}
             transcriptFooter={footer}
@@ -580,8 +676,6 @@ describe('StreamingMessageList', function packageTests() {
             transcriptContainerVisible={false}
           />,
         );
-
-        scrollIntoViewMock.mockClear();
 
         rerender(
           <StreamingMessageList
@@ -594,7 +688,7 @@ describe('StreamingMessageList', function packageTests() {
 
         await vi.waitFor(
           () => {
-            expect(scrollIntoViewMock).toHaveBeenCalled();
+            expect(getScrollContainer(container).scrollTop).toBe(SCROLL_BOTTOM);
           },
           { timeout: 300 },
         );

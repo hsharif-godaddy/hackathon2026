@@ -49,6 +49,8 @@ interface StreamingMessageListProps {
   transcriptContainerVisible?: boolean
 }
 
+const SCROLL_NEAR_BOTTOM_THRESHOLD = 150
+
 export default function StreamingMessageList({
   allMessages,
   isCreateFlowSession = false,
@@ -58,17 +60,17 @@ export default function StreamingMessageList({
   transcriptFooterScrollNonce = 0,
   transcriptContainerVisible = true,
 }: StreamingMessageListProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const prevMessagesLength = useRef(0)
   const prevLastMessageId = useRef<string | null>(null)
   const prevAppIdRef = useRef<string | null>(null)
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const scrollRafRef = useRef(0)
+  const lastScrollTopRef = useRef(0)
   const [userHasScrolledUp, setUserHasScrolledUp] = useState(false)
   const userHasScrolledUpRef = useRef(false)
   const scrollThrottleRef = useRef<NodeJS.Timeout | null>(null)
-  const activeStreamSignatureRef = useRef<string | null>(null)
   const isNearBottomRef = useRef(true)
   const [showNewMessageIndicator, setShowNewMessageIndicator] = useState(false)
   const showNewMessageIndicatorRef = useRef(false)
@@ -141,6 +143,10 @@ export default function StreamingMessageList({
       if (scrollThrottleRef.current) {
         clearTimeout(scrollThrottleRef.current)
         scrollThrottleRef.current = null
+      }
+      if (scrollRafRef.current) {
+        cancelAnimationFrame(scrollRafRef.current)
+        scrollRafRef.current = 0
       }
     }
   }, [currentAppId])
@@ -279,45 +285,129 @@ export default function StreamingMessageList({
     void runPreviewCheckout(appIdFromParams, pendingHash)
   }, [isHistoryDisabled, appIdFromParams, runPreviewCheckout])
 
-  // Handle scroll events to detect user scroll (throttled for performance)
-  // Reads from refs and store.getState() to avoid dependency churn on every state change
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    if (scrollThrottleRef.current) return
+  const userScrollInputUntilRef = useRef(0)
+  const touchStartYRef = useRef<number | null>(null)
 
-    // Capture DOM element before setTimeout — React nullifies synthetic event properties after handler returns
+  const cancelPendingScroll = useCallback(() => {
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current)
+      scrollTimeoutRef.current = null
+    }
+    if (scrollRafRef.current) {
+      cancelAnimationFrame(scrollRafRef.current)
+      scrollRafRef.current = 0
+    }
+  }, [])
+
+  const markUserScrollInput = useCallback(() => {
+    userScrollInputUntilRef.current = performance.now() + 150
+  }, [])
+
+  const detachFromBottom = useCallback(() => {
+    if (userHasScrolledUpRef.current) return
+
+    userHasScrolledUpRef.current = true
+    setUserHasScrolledUp(true)
+    cancelPendingScroll()
+
+    const { activeStream } = useStreamingConversationStore.getState()
+    if (activeStream && !activeStream.isComplete) {
+      setShowNewMessageIndicator(true)
+    }
+  }, [cancelPendingScroll])
+
+  const resumeAutoScroll = useCallback(() => {
+    userHasScrolledUpRef.current = false
+    setUserHasScrolledUp(false)
+    if (showNewMessageIndicatorRef.current) {
+      setShowNewMessageIndicator(false)
+    }
+  }, [])
+
+  // Wheel/touch/key fire before scrollTop changes — catch intent before token-driven RAF scroll.
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY < 0) {
+        markUserScrollInput()
+        detachFromBottom()
+      }
+    }
+
+    const onTouchStart = (event: TouchEvent) => {
+      touchStartYRef.current = event.touches[0]?.clientY ?? null
+    }
+
+    const onTouchMove = (event: TouchEvent) => {
+      const startY = touchStartYRef.current
+      const currentY = event.touches[0]?.clientY
+      // Finger moves down on screen → content scrolls up toward older messages.
+      if (startY !== null && currentY !== undefined && currentY > startY) {
+        markUserScrollInput()
+        detachFromBottom()
+      }
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+        if (target.isContentEditable || target.closest('[contenteditable="true"]')) return
+      }
+      if (event.key === 'ArrowUp' || event.key === 'PageUp' || event.key === 'Home') {
+        markUserScrollInput()
+        detachFromBottom()
+      }
+    }
+
+    container.addEventListener('wheel', onWheel, { passive: true })
+    container.addEventListener('touchstart', onTouchStart, { passive: true })
+    container.addEventListener('touchmove', onTouchMove, { passive: true })
+    window.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      container.removeEventListener('wheel', onWheel)
+      container.removeEventListener('touchstart', onTouchStart)
+      container.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [detachFromBottom, markUserScrollInput])
+
+  // Handle scroll events: detect user intent immediately; throttle pagination only.
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const container = e.currentTarget
+    const { scrollTop, scrollHeight, clientHeight } = container
+    const distFromBottom = scrollHeight - scrollTop - clientHeight
+    const nearBottom = distFromBottom < SCROLL_NEAR_BOTTOM_THRESHOLD
+    isNearBottomRef.current = nearBottom
+
+    // Auto-scroll should only resume after the user intentionally scrolls down.
+    if (nearBottom && userHasScrolledUpRef.current && scrollTop > lastScrollTopRef.current) {
+      resumeAutoScroll()
+    } else if (!nearBottom && scrollTop < lastScrollTopRef.current && !userHasScrolledUpRef.current) {
+      detachFromBottom()
+    }
+    lastScrollTopRef.current = scrollTop
+
+    if (scrollThrottleRef.current) return
 
     scrollThrottleRef.current = setTimeout(() => {
       scrollThrottleRef.current = null
 
       if (!container) return
-      const { scrollTop, scrollHeight, clientHeight } = container
-      const nearBottom = scrollHeight - scrollTop - clientHeight < 150
-      isNearBottomRef.current = nearBottom
 
-      if (nearBottom && showNewMessageIndicatorRef.current) {
-        setShowNewMessageIndicator(false)
-      }
-
-      if (!nearBottom && !userHasScrolledUpRef.current) {
-        setUserHasScrolledUp(true)
-
-        // Show indicator if user scrolls up during an active stream
-        const { activeStream } = useStreamingConversationStore.getState()
-        if (activeStream && !activeStream.isComplete) {
-          setShowNewMessageIndicator(true)
-        }
-      } else if (nearBottom && userHasScrolledUpRef.current) {
-        setUserHasScrolledUp(false)
-      }
-
-      // Load more history when user scrolls near the top
       const { historyHasMore, historyLoadingMore, historyNextCursor, setHistoryLoadingMore } =
         useStreamingConversationStore.getState()
 
-      if (scrollTop < 100 && historyHasMore && !historyLoadingMore && historyNextCursor) {
+      if (container.scrollTop < 100 && historyHasMore && !historyLoadingMore && historyNextCursor) {
         setHistoryLoadingMore(true)
-        paginationAnchorRef.current = { scrollHeight, messageCount: allMessages.length }
+        paginationAnchorRef.current = {
+          scrollHeight: container.scrollHeight,
+          messageCount: allMessages.length,
+        }
 
         if (!loadHistory({ cursor: historyNextCursor, limit: 20 })) {
           setHistoryLoadingMore(false)
@@ -325,54 +415,53 @@ export default function StreamingMessageList({
         }
       }
     }, 100)
-  }, [loadHistory, allMessages.length])
+  }, [allMessages.length, detachFromBottom, loadHistory, resumeAutoScroll])
 
-  // Reliable scroll to bottom function
+  // Pin transcript to bottom. During streaming, always use instant scrollTop so
+  // growing content does not fight smooth-scroll animations or manual wheel input.
   const scrollToBottom = useCallback((smooth = true, immediate = false) => {
-    // Clear any pending scroll
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current)
-    }
+    if (performance.now() < userScrollInputUntilRef.current) return
 
-    // Use requestAnimationFrame to ensure DOM is ready
+    cancelPendingScroll()
+
     const performScroll = () => {
-      // Try multiple scroll methods for reliability
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({
-          behavior: smooth && !immediate ? 'smooth' : 'instant',
-          block: 'end'
-        })
-      }
+      if (performance.now() < userScrollInputUntilRef.current) return
+      const container = containerRef.current
+      if (!container) return
 
-      // Also try scrolling the container directly
-      if (containerRef.current) {
-        const container = containerRef.current
-        container.scrollTop = container.scrollHeight
+      const target = container.scrollHeight - container.clientHeight
+      if (smooth && !immediate && !isStreaming) {
+        container.scrollTo({ top: target, behavior: 'smooth' })
+      } else {
+        container.scrollTop = target
       }
     }
 
-    if (smooth && !immediate) {
-      // Shorter delay for streaming content to be more responsive
-      const delay = isStreaming ? 25 : 50
+    if (smooth && !immediate && !isStreaming) {
       scrollTimeoutRef.current = setTimeout(() => {
+        scrollTimeoutRef.current = null
         requestAnimationFrame(performScroll)
-      }, delay)
-    } else {
-      // Immediate scroll
-      requestAnimationFrame(performScroll)
+      }, 50)
+      return
     }
-  }, [isStreaming])
+
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = 0
+      performScroll()
+    })
+  }, [cancelPendingScroll, isStreaming])
 
   // Scroll to bottom and hide new message indicator (for button click)
   const scrollToBottomAndHideIndicator = useCallback(() => {
     const container = containerRef.current
     if (container) {
-      container.scrollTop = container.scrollHeight
-      setShowNewMessageIndicator(false)
+      container.scrollTop = container.scrollHeight - container.clientHeight
       isNearBottomRef.current = true
-      setUserHasScrolledUp(false)
+      lastScrollTopRef.current = container.scrollTop
+      userScrollInputUntilRef.current = 0
+      resumeAutoScroll()
     }
-  }, [])
+  }, [resumeAutoScroll])
 
   const prevTranscriptFooterScrollNonceRef = useRef(0)
 
@@ -390,13 +479,14 @@ export default function StreamingMessageList({
       }
 
       prevTranscriptFooterScrollNonceRef.current = transcriptFooterScrollNonce
-      setUserHasScrolledUp(false)
+      userScrollInputUntilRef.current = 0
+      resumeAutoScroll()
       scrollToBottom(false, true)
       requestAnimationFrame(() => {
         scrollToBottom(false, true)
       })
     },
-    [transcriptFooter, transcriptContainerVisible, transcriptFooterScrollNonce, scrollToBottom],
+    [transcriptFooter, transcriptContainerVisible, transcriptFooterScrollNonce, resumeAutoScroll, scrollToBottom],
   )
 
   // Show "new messages" indicator when new stream starts while user is scrolled up
@@ -437,7 +527,8 @@ export default function StreamingMessageList({
 
         // New message added (user sent OR assistant started responding)
         // ALWAYS scroll to bottom and reset scroll state
-        setUserHasScrolledUp(false)
+        userScrollInputUntilRef.current = 0
+        resumeAutoScroll()
 
         if (currentLastMessageRole === 'user') {
           // User message - immediate aggressive scroll
@@ -454,57 +545,51 @@ export default function StreamingMessageList({
 
     prevMessagesLength.current = allMessages.length
     prevLastMessageId.current = currentLastMessageId
-  }, [allMessages, isInitialLoad, scrollToBottom, userHasScrolledUp])
+  }, [allMessages, isInitialLoad, resumeAutoScroll, scrollToBottom])
 
-  // Handle streaming content updates and completion
+  // Pin to bottom once per paint while streaming — avoids per-token RAF fighting wheel input.
+  useLayoutEffect(() => {
+    if (!isStreaming || userHasScrolledUpRef.current) return
+    if (performance.now() < userScrollInputUntilRef.current) return
+
+    const container = containerRef.current
+    if (!container) return
+
+    container.scrollTop = container.scrollHeight - container.clientHeight
+  }, [
+    isStreaming,
+    activeStream?.content.length,
+    activeStream?.segments.length,
+    activeStream?.toolCalls.length,
+  ])
+
+  // Handle streaming completion
   const wasStreamingRef = useRef(false)
   useEffect(() => {
-    const currentSignature = activeStream
-      ? `${activeStream.id}:${activeStream.content.length}:${activeStream.segments.length}:${activeStream.toolCalls.length}`
-      : null
-
-    // Handle stream completion (was streaming, now stopped)
-    if (wasStreamingRef.current && !isStreaming && !userHasScrolledUp) {
+    if (wasStreamingRef.current && !isStreaming && !userHasScrolledUpRef.current) {
       scrollToBottom(true, true)
-      wasStreamingRef.current = false
-      activeStreamSignatureRef.current = currentSignature
-      return
     }
-
     wasStreamingRef.current = isStreaming
-
-    if (!isStreaming || userHasScrolledUp) {
-      activeStreamSignatureRef.current = currentSignature
-      return
-    }
-
-    const shouldScrollImmediately = Boolean(
-      activeStream && activeStreamSignatureRef.current !== currentSignature
-    )
-
-    scrollToBottom(true, shouldScrollImmediately)
-
-    activeStreamSignatureRef.current = currentSignature
-  }, [isStreaming, activeStream, scrollToBottom, userHasScrolledUp])
+  }, [isStreaming, scrollToBottom])
 
   // Handle thinking indicator appearance with immediate scroll
   useEffect(() => {
-    if (isStreaming && activeStream && !activeStream.isComplete && !userHasScrolledUp) {
+    if (isStreaming && activeStream && !activeStream.isComplete && !userHasScrolledUpRef.current) {
       // Delay scroll slightly to catch thinking indicator appearance
       const thinkingScrollTimeout = setTimeout(() => {
-        scrollToBottom(false, true) // Instant scroll when thinking indicator appears
+        scrollToBottom(false, true)
       }, 450) // Slightly after the 400ms thinking indicator delay
 
       return () => clearTimeout(thinkingScrollTimeout)
     }
-  }, [isStreaming, activeStream, scrollToBottom, userHasScrolledUp])
+  }, [isStreaming, activeStream, scrollToBottom])
 
   // Listen for widget injection events to trigger scroll
   useEffect(() => {
     const handleWidgetInjected = () => {
       // Scroll to bottom when a widget is dynamically injected
-      if (!userHasScrolledUp) {
-        scrollToBottom(true, true)
+      if (!userHasScrolledUpRef.current) {
+        scrollToBottom(false, true)
       }
     }
 
@@ -512,7 +597,7 @@ export default function StreamingMessageList({
     return () => {
       window.removeEventListener('widget-injected', handleWidgetInjected)
     }
-  }, [scrollToBottom, userHasScrolledUp])
+  }, [scrollToBottom])
 
   // Play notification sound when streaming completes (only after user interaction)
   useEffect(() => {
@@ -611,14 +696,12 @@ export default function StreamingMessageList({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current)
-      }
+      cancelPendingScroll()
       if (scrollThrottleRef.current) {
         clearTimeout(scrollThrottleRef.current)
       }
     }
-  }, [])
+  }, [cancelPendingScroll])
 
   const shouldShowGlobalThinking = useMemo(() => {
     if (!isStreaming || !activeStream || activeStream.isComplete) {
@@ -676,7 +759,6 @@ export default function StreamingMessageList({
             message={{ id: 'initial-prompt', role: 'user', content: initialPromptText, timestamp: new Date() } satisfies ChatMessage}
           />
           <Thinker label={thinkerLabel} indicator={thinkerIndicator} />
-          <div ref={messagesEndRef} />
         </div>
       )
     }
@@ -704,7 +786,6 @@ export default function StreamingMessageList({
           </div>
         )}
         {transcriptFooter}
-        <div ref={messagesEndRef} />
       </div>
     )
   }
@@ -852,8 +933,6 @@ export default function StreamingMessageList({
           />
         </div>
       )}
-
-      <div ref={messagesEndRef} />
     </div>
   )
 }
