@@ -12,6 +12,7 @@ import { getAgentModelWithName } from '../utils/model-selection.js'
 import { getModularPromptPaths } from '../utils/prompt-utils.js'
 import type { AssetManifest, PageContent, SiteMetadata, StylePreferences } from '../types/rebuild.js'
 import { buildUserPrompt } from './page-prompt/user-prompt-builder.js'
+import { buildEmbeddedTextConstraint } from './page-prompt/embedded-text-constraint.js'
 import { processScreenshot } from './page-prompt/screenshot-processing.js'
 import { shouldPreserveDesign } from './page-prompt/style-instructions.js'
 
@@ -180,7 +181,11 @@ export class PagePromptAgent {
     const hasScreenshot = files.length > 0
     const prompt = buildUserPrompt({ siteMetadata, pageContent, stylePreferences, assetManifest, isFirstPage, hasScreenshot })
     const result = await agent.generate(prompt, hasScreenshot ? { files } : {})
-    return result.content
+
+    // PagePromptAgent's rewrite drops the per-asset "do NOT overlay" note that
+    // buildUserPrompt emits, so re-assert it deterministically after generation —
+    // the rewrite can't summarize away what we append below it. (AIROBUILD-2430)
+    return result.content + buildEmbeddedTextConstraint(assetManifest.assets)
   }
 
   async cleanup(): Promise<void> {

@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { categorizeAssets } from '../user-prompt-builder.js';
+import { categorizeAssets, renderAssetList } from '../user-prompt-builder.js';
 import type { AssetInfo } from '../../../types/rebuild.js';
 
 const img = (localPath: string, placement: AssetInfo['placement'], dims = { width: 1200, height: 1200 }): AssetInfo => ({
@@ -49,5 +49,34 @@ describe('categorizeAssets — placement-aware bucketing', () => {
     const heroIdx = out.indexOf('Hero / Top of Page');
     expect(headerIdx).toBeGreaterThanOrEqual(0);
     expect(out.slice(headerIdx, heroIdx >= 0 ? heroIdx : undefined)).toContain('/assets/images/logo.png');
+  });
+});
+
+describe('embedded-text warnings', () => {
+  const heroWithText = (): AssetInfo => ({
+    ...img('marquee.jpg', { inHeader: false, inFooter: false, inFirstSection: true, nearH1: true, isFirstInContainer: true }, { width: 1600, height: 900 }),
+    hasEmbeddedText: true,
+    embeddedText: 'Bon Appetito',
+  });
+
+  it('categorizeAssets flags a hero image that has text burned in', () => {
+    const out = categorizeAssets([heroWithText()]);
+    expect(out).toContain('[CONTAINS TEXT: "Bon Appetito"]');
+  });
+
+  it('categorizeAssets adds no warning when the image has no embedded text', () => {
+    const plainHero = img('hero.jpg', { inHeader: false, inFooter: false, inFirstSection: true, nearH1: true, isFirstInContainer: true });
+    expect(categorizeAssets([plainHero])).not.toContain('CONTAINS TEXT');
+  });
+
+  it('renderAssetList warns the agent not to overlay headings on text images', () => {
+    const out = renderAssetList([heroWithText()]);
+    expect(out).toContain('IMAGE CONTAINS TEXT: "Bon Appetito"');
+    expect(out).toContain('do NOT overlay additional headings');
+  });
+
+  it('renderAssetList adds no warning when hasEmbeddedText is set but text is empty', () => {
+    const noText: AssetInfo = { ...heroWithText(), embeddedText: null };
+    expect(renderAssetList([noText])).not.toContain('IMAGE CONTAINS TEXT');
   });
 });

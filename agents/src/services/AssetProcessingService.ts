@@ -406,7 +406,7 @@ export class AssetProcessingService {
     localPath: string,
     existingAlt?: string,
     dimensions?: { width: number; height: number }
-  ): Promise<{ description: string; composition: string; usageContext: string } | null> {
+  ): Promise<ImageDescriptionResult | null> {
     let cleanup: (() => Promise<void>) | null = null;
     
     try {
@@ -440,6 +440,7 @@ Analyze the image and provide:
 1. A detailed description (2-3 sentences) of what the image shows
 2. The compositional layout - WHERE the visual interest is located (e.g., "subject on left", "centered", "subject on right", "full-bleed texture", "top-heavy", "bottom-weighted")
 3. The usage context (one of: hero, icon, logo, background, product, profile, decorative, content, general)
+4. Whether the image has readable text (headlines, taglines, brand names, slogans) burned directly into its pixels. If yes, transcribe it. Stylized/decorative/cursive fonts count. Watermarks and tiny copyright lines do NOT count.
 
 This composition information is CRITICAL for layout decisions. For example:
 - If a car/product is on the left side, content should overlay on the right
@@ -447,18 +448,22 @@ This composition information is CRITICAL for layout decisions. For example:
 - If it's a centered subject, use split layout or overlay carefully
 - If it's a texture/pattern, full overlay is safe
 
+The embedded-text signal matters because if a hero image already has its heading baked in, the page must NOT overlay another heading on top of it (that would double the text).
+
 ${existingAlt ? `The image has this alt text: "${existingAlt}"` : ''}
 
 Respond ONLY with valid JSON in this exact format:
 {
   "description": "detailed description here",
   "composition": "where the visual interest is (left/right/center/full/top/bottom)",
-  "usageContext": "context here"
+  "usageContext": "context here",
+  "hasEmbeddedText": true/false,
+  "embeddedText": "the readable text if any, or null"
 }`,
           model,
           maxSteps: 1,
           temperature: 0.3,
-          maxOutputTokens: 400,
+          maxOutputTokens: 500,
           logger: createAgentTelemetryLogger('image-analyst')
         }
       });
@@ -468,39 +473,34 @@ Respond ONLY with valid JSON in this exact format:
         files: [processedFile]
       });
 
-      const jsonMatch = result.content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
+      const parsed = parseImageDescriptionResponse(
+        result.content.match(/\{[\s\S]*\}/)?.[0],
+        existingAlt
+      );
+
+      // Cleanup temp file before returning. Null it so the catch's
+      // `if (cleanup)` guard can't fire a second unlink if cleanup() threw.
+      await cleanup();
+      cleanup = null;
+
+      if (parsed) {
         logger.info('asset-processing.description-generated', {
           localPath,
           description: parsed.description.substring(0, 50) + '...',
           composition: parsed.composition,
-          usageContext: parsed.usageContext
+          usageContext: parsed.usageContext,
+          hasEmbeddedText: parsed.hasEmbeddedText
         });
-        
-        // Cleanup temp file before returning
-        await cleanup();
-        
-        return {
-          description: parsed.description,
-          composition: parsed.composition || 'unknown',
-          usageContext: parsed.usageContext
-        };
+        return parsed;
       }
 
+      // No parseable JSON (no object matched, or malformed) — the model
+      // misbehaved; warn and fall back to alt-text-derived values.
       logger.warn('asset-processing.description-parse-failed', {
         localPath,
         response: result.content
       });
-
-      // Cleanup temp file before returning
-      await cleanup();
-
-      return {
-        description: existingAlt || 'Image from source website',
-        composition: 'unknown',
-        usageContext: existingAlt ? this.inferUsageContext(existingAlt) : 'general'
-      };
+      return fallbackImageDescription(existingAlt);
     } catch (error) {
       logger.warn('asset-processing.description-error', {
         localPath,
@@ -512,30 +512,8 @@ Respond ONLY with valid JSON in this exact format:
         await cleanup();
       }
       
-      return {
-        description: existingAlt || 'Image from source website',
-        composition: 'unknown',
-        usageContext: existingAlt ? this.inferUsageContext(existingAlt) : 'general'
-      };
+      return fallbackImageDescription(existingAlt);
     }
-  }
-
-  /**
-   * Infer usage context from alt text
-   * 
-   * @param altText - Alt text
-   * @returns Usage context
-   */
-  private inferUsageContext(altText: string): string {
-    const lower = altText.toLowerCase();
-
-    if (lower.includes('hero') || lower.includes('banner')) return 'hero';
-    if (lower.includes('icon') || lower.includes('logo')) return 'icon';
-    if (lower.includes('background')) return 'background';
-    if (lower.includes('product') || lower.includes('item')) return 'product';
-    if (lower.includes('team') || lower.includes('person') || lower.includes('profile')) return 'profile';
-
-    return 'general';
   }
 
   /**
@@ -1051,12 +1029,15 @@ Respond ONLY with valid JSON in this exact format:
             image.description = description.description;
             image.composition = description.composition;
             image.usageContext = description.usageContext;
-            
+            image.hasEmbeddedText = description.hasEmbeddedText;
+            image.embeddedText = description.embeddedText;
+
             logger.info('asset-processing.image-analyzed', {
               url: image.url,
               description: description.description.substring(0, 50),
               composition: description.composition,
-              usageContext: description.usageContext
+              usageContext: description.usageContext,
+              hasEmbeddedText: description.hasEmbeddedText
             });
           }
         })
@@ -1066,6 +1047,77 @@ Respond ONLY with valid JSON in this exact format:
     logger.info('asset-processing.batch-analysis-complete', {
       imagesAnalyzed: images.length
     });
+  }
+}
+
+/** Result of the Haiku vision scan run on each downloaded image. */
+export interface ImageDescriptionResult {
+  description: string;
+  composition: string;
+  usageContext: string;
+  /** Image has heading/brand text burned into its pixels. */
+  hasEmbeddedText: boolean;
+  /** Transcription of the embedded text, when {@link hasEmbeddedText} is true. */
+  embeddedText: string | null;
+}
+
+/** Infer usage context from alt text when the vision scan yields no JSON. */
+function inferUsageContext(altText: string): string {
+  const lower = altText.toLowerCase();
+
+  if (lower.includes('hero') || lower.includes('banner')) return 'hero';
+  if (lower.includes('icon') || lower.includes('logo')) return 'icon';
+  if (lower.includes('background')) return 'background';
+  if (lower.includes('product') || lower.includes('item')) return 'product';
+  if (lower.includes('team') || lower.includes('person') || lower.includes('profile')) return 'profile';
+
+  return 'general';
+}
+
+/** Fallback description used when the vision scan errors or returns no JSON. */
+function fallbackImageDescription(existingAlt?: string): ImageDescriptionResult {
+  return {
+    description: existingAlt || 'Image from source website',
+    composition: 'unknown',
+    usageContext: existingAlt ? inferUsageContext(existingAlt) : 'general',
+    hasEmbeddedText: false,
+    embeddedText: null,
+  };
+}
+
+/**
+ * Parse the JSON object extracted from a Haiku vision-scan response into an
+ * {@link ImageDescriptionResult}.
+ *
+ * Pure so the field coercion logic is unit-testable without mocking the ai-lib
+ * agent factory. `jsonText` is the `{...}` substring the caller matched out of
+ * the model response (undefined when none was found). Returns `null` when
+ * `jsonText` is absent or malformed so the caller can log the miss and apply
+ * its own fallback — a `null` is the signal that the model misbehaved.
+ */
+export function parseImageDescriptionResponse(
+  jsonText: string | undefined,
+  existingAlt?: string,
+): ImageDescriptionResult | null {
+  if (!jsonText) return null;
+  try {
+    const parsed = JSON.parse(jsonText);
+    const hasEmbeddedText = parsed.hasEmbeddedText === true;
+    return {
+      // Coerce description: a valid JSON object that omits it must not yield an
+      // undefined `description` (the type promises a string, and callers call
+      // .substring on it).
+      description: parsed.description || existingAlt || 'Image from source website',
+      composition: parsed.composition || 'unknown',
+      // Coerce like its siblings: the type promises a string, and a valid JSON
+      // object can omit usageContext. Mirrors fallbackImageDescription's default.
+      usageContext: parsed.usageContext || 'general',
+      hasEmbeddedText,
+      embeddedText: hasEmbeddedText ? (parsed.embeddedText || null) : null,
+    };
+  } catch {
+    // Malformed JSON — signal the miss to the caller.
+    return null;
   }
 }
 
@@ -1151,6 +1203,13 @@ export function dedupeImageVariants(assets: AssetInfo[]): AssetInfo[] {
       ...(!keep.altText && drop.altText ? { altText: drop.altText } : {}),
       ...(!keep.usageContext && drop.usageContext ? { usageContext: drop.usageContext } : {}),
       ...(!keep.composition && drop.composition ? { composition: drop.composition } : {}),
+      // Backfill embedded-text only from a dropped variant when the kept one
+      // has no value yet. In today's flow dedup runs before vision analysis, so
+      // both are undefined here; the guard also protects an already-analyzed
+      // `false` from a disagreeing variant if the order ever changes.
+      ...(keep.hasEmbeddedText === undefined && drop.hasEmbeddedText
+        ? { hasEmbeddedText: true, embeddedText: drop.embeddedText ?? null }
+        : {}),
     });
   }
   return [...byKey.values()];

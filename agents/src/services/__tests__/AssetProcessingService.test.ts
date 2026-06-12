@@ -5,7 +5,11 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AssetInfo, AssetManifest } from '../../types/rebuild.js';
-import { AssetProcessingService, dedupeImageVariants } from '../AssetProcessingService.js';
+import {
+  AssetProcessingService,
+  dedupeImageVariants,
+  parseImageDescriptionResponse,
+} from '../AssetProcessingService.js';
 
 describe('AssetProcessingService - analyzePageAssets filtering', () => {
   const createMockManifest = (): AssetManifest => ({
@@ -311,6 +315,42 @@ describe('AssetProcessingService - analyzePageAssets return value', () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it('propagates embedded-text fields from the vision scan onto the analyzed asset', async function embeddedTextPropagates() {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'asset-processing-embedded-'));
+    try {
+      await mkdir(path.join(dir, '.source-site', 'assets'), { recursive: true });
+      const manifest: AssetManifest = {
+        assets: [
+          {
+            url: 'https://example.com/marquee.jpg',
+            localPath: '.source-site/assets/images/marquee.jpg',
+            type: 'image',
+            sourcePages: ['https://example.com/']
+          }
+        ],
+        totalAssets: 1,
+        byType: { image: 1, font: 0, icon: 0, other: 0 },
+        generatedAt: new Date().toISOString()
+      };
+
+      const svc = new AssetProcessingService(dir);
+      vi.spyOn(svc, 'generateImageDescription').mockResolvedValue({
+        description: 'A cursive banner over a table',
+        composition: 'centered',
+        usageContext: 'hero',
+        hasEmbeddedText: true,
+        embeddedText: 'Bon Appetito',
+      });
+
+      const result = await svc.analyzePageAssets('https://example.com/', manifest);
+
+      expect(result.pageAssets[0]?.hasEmbeddedText).toBe(true);
+      expect(result.pageAssets[0]?.embeddedText).toBe('Bon Appetito');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('AssetProcessingService - Atlas-provided dimensions and placement', () => {
@@ -566,5 +606,137 @@ describe('dedupeImageVariants', () => {
     expect(out[0]?.description).toBe('A hero kitchen'); // content backfilled
     expect(out[0]?.altText).toBe('kitchen');
     expect(out[0]?.dimensions).toBeUndefined(); // did NOT inherit the 500w variant's size
+  });
+
+  it('backfills embedded-text fields from the dropped variant', () => {
+    const out = dedupeImageVariants([
+      {
+        url: 'https://cdn.example.com/marquee.jpg?format=original',
+        localPath: '.source-site/assets/images/a.jpg',
+        type: 'image',
+        sourcePages: ['/'],
+      },
+      {
+        url: 'https://cdn.example.com/marquee.jpg?format=500w',
+        localPath: '.source-site/assets/images/b.jpg',
+        type: 'image',
+        sourcePages: ['/'],
+        hasEmbeddedText: true,
+        embeddedText: 'Bon Appetito',
+      },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.hasEmbeddedText).toBe(true);
+    expect(out[0]?.embeddedText).toBe('Bon Appetito');
+  });
+
+  it('does not overwrite an analyzed hasEmbeddedText:false on the kept variant', () => {
+    const out = dedupeImageVariants([
+      {
+        url: 'https://cdn.example.com/marquee.jpg?format=original',
+        localPath: '.source-site/assets/images/a.jpg',
+        type: 'image',
+        sourcePages: ['/'],
+        dimensions: { width: 2000, height: 1000 },
+        hasEmbeddedText: false,
+      },
+      {
+        url: 'https://cdn.example.com/marquee.jpg?format=500w',
+        localPath: '.source-site/assets/images/b.jpg',
+        type: 'image',
+        sourcePages: ['/'],
+        hasEmbeddedText: true,
+        embeddedText: 'Bon Appetito',
+      },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.hasEmbeddedText).toBe(false); // kept's own analysis wins
+    expect(out[0]?.embeddedText).toBeUndefined();
+  });
+});
+
+describe('parseImageDescriptionResponse', () => {
+  const fallbackAlt = 'kitchen photo';
+
+  it('parses a full response including embedded text', () => {
+    const out = parseImageDescriptionResponse(
+      JSON.stringify({
+        description: 'A cursive banner over a table',
+        composition: 'centered',
+        usageContext: 'hero',
+        hasEmbeddedText: true,
+        embeddedText: 'Bon Appetito',
+      }),
+    );
+    expect(out).toEqual({
+      description: 'A cursive banner over a table',
+      composition: 'centered',
+      usageContext: 'hero',
+      hasEmbeddedText: true,
+      embeddedText: 'Bon Appetito',
+    });
+  });
+
+  it('defaults embedded-text fields when the model returns the old schema', () => {
+    const out = parseImageDescriptionResponse(
+      JSON.stringify({
+        description: 'A plain photo',
+        composition: 'left',
+        usageContext: 'content',
+      }),
+    );
+    expect(out.hasEmbeddedText).toBe(false);
+    expect(out.embeddedText).toBeNull();
+  });
+
+  it('coerces embeddedText to null when hasEmbeddedText is false', () => {
+    const out = parseImageDescriptionResponse(
+      JSON.stringify({
+        description: 'A plain photo',
+        composition: 'left',
+        usageContext: 'content',
+        hasEmbeddedText: false,
+        embeddedText: 'leftover transcription',
+      }),
+    );
+    expect(out?.hasEmbeddedText).toBe(false);
+    expect(out?.embeddedText).toBeNull();
+  });
+
+  it('coerces a missing usageContext to "general" rather than undefined', () => {
+    const out = parseImageDescriptionResponse(
+      JSON.stringify({ description: 'A photo', composition: 'center' }),
+    );
+    expect(out?.usageContext).toBe('general');
+  });
+
+  it('treats a non-boolean hasEmbeddedText as false (strict === true)', () => {
+    const out = parseImageDescriptionResponse(
+      JSON.stringify({
+        description: 'A photo',
+        composition: 'center',
+        usageContext: 'hero',
+        hasEmbeddedText: 'true',
+        embeddedText: 'should be ignored',
+      }),
+    );
+    expect(out?.hasEmbeddedText).toBe(false);
+    expect(out?.embeddedText).toBeNull();
+  });
+
+  it('coerces a missing description to the alt text rather than undefined', () => {
+    const out = parseImageDescriptionResponse(
+      JSON.stringify({ composition: 'center', usageContext: 'hero' }),
+      fallbackAlt,
+    );
+    expect(out?.description).toBe(fallbackAlt);
+  });
+
+  it('returns null when no JSON was matched (undefined input)', () => {
+    expect(parseImageDescriptionResponse(undefined, fallbackAlt)).toBeNull();
+  });
+
+  it('returns null on malformed JSON', () => {
+    expect(parseImageDescriptionResponse('{not valid json}', fallbackAlt)).toBeNull();
   });
 });

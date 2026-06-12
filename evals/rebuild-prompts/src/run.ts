@@ -132,6 +132,33 @@ const CONTRACTS: Record<string, Contract[]> = {
       check: (p) => !/search for (additional |new |stock )?(images?|photography|photos?) (for|to fill) (slides?|the carousel)/i.test(p),
     },
   ],
+  'hero-embedded-text': [
+    {
+      // AIROBUILD-2430: the hero image has its title text ("Bon Appetito")
+      // baked into the pixels. The prompt MUST tell the agent not to overlay
+      // its own heading, or the page renders duplicate, overlapping text.
+      description: 'Warns against overlaying headings on the embedded-text image',
+      check: (p) => /do NOT overlay/i.test(p),
+    },
+    {
+      // The freestyle failure mode: given "don't overlay", the agent routed
+      // around the rule by pulling clean images into a fabricated carousel and
+      // re-typing the text on top. The directive must forbid that.
+      description: 'Forbids substituting images / fabricating a carousel for the embedded-text hero',
+      check: (p) => /carousel|slideshow/i.test(p) && /do NOT (substitute|fabricate|invent|replace)/i.test(p),
+    },
+    {
+      description: 'Surfaces the baked-in hero text so the agent treats it as the image’s text',
+      check: (p) => p.includes('Bon Appetito'),
+    },
+    {
+      // The constraint is appended deterministically after PagePromptAgent's
+      // rewrite (which drops the per-asset note), so this holds regardless of
+      // LLM drift — that's the point of the fix.
+      description: 'Cites the scraped role (hero) for the embedded-text image',
+      check: (p) => /\[hero\]/i.test(p),
+    },
+  ],
   'with-newsletter-form': [
     {
       description: 'Prompt directs a real <form> element',

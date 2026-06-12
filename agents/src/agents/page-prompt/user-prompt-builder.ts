@@ -27,6 +27,7 @@ import type {
   StylePreferences,
 } from '../../types/rebuild.js';
 import { normalizeAssetPath } from '../../utils/asset-paths.js';
+import { sanitizeEmbeddedText } from './embedded-text-constraint.js';
 import { buildSiteTypeRules } from '../site-type-helpers.js';
 import { extractKeyContent } from './extract-key-content.js';
 import { buildColorInstructions, buildDesignInstructions, buildTypographyInstructions } from './style-instructions.js';
@@ -320,7 +321,7 @@ function placementOrder(p: ImagePlacement | undefined): number {
   return 3;
 }
 
-function renderAssetList(assets: AssetInfo[]): string {
+export function renderAssetList(assets: AssetInfo[]): string {
   // Caller provides assets pre-sorted by placementOrder so both this list and
   // categorizeAssets apply the same MAX cap to the same ordered input.
   return assets
@@ -338,7 +339,12 @@ function renderAssetList(assets: AssetInfo[]): string {
       // PLACEMENT is the section map: where this image sat on the source page.
       const role = placementRole(a.placement);
       const placementNote = role ? ` - PLACEMENT: ${role}` : '';
-      return `- ${publicPath} [${dims}] (${a.type}, ${sizeCategory}${altNote}${compositionNote}${descriptionNote})${placementNote}`;
+      // The source already baked heading text into this image — keep the agent
+      // from stacking its own heading on top (double text).
+      const embeddedTextNote = a.hasEmbeddedText && a.embeddedText
+        ? ` - ⚠️ IMAGE CONTAINS TEXT: "${sanitizeEmbeddedText(a.embeddedText)}" — do NOT overlay additional headings`
+        : '';
+      return `- ${publicPath} [${dims}] (${a.type}, ${sizeCategory}${altNote}${compositionNote}${descriptionNote})${placementNote}${embeddedTextNote}`;
     })
     .join('\n');
 }
@@ -372,7 +378,12 @@ export function categorizeAssets(assets: AssetInfo[]): string {
     // AI-generated description (from vision pass) comes after.
     const alt = asset.altText ? ` alt:"${asset.altText}"` : '';
     const desc = asset.description ? ` - ${asset.description.substring(0, 50)}` : '';
-    const baseEntry = `${publicPath} [${dims}]${alt}${desc}`;
+    // Surfaces on hero/header buckets so the agent reuses the image as-is
+    // instead of overlaying a duplicate heading.
+    const textWarning = asset.hasEmbeddedText && asset.embeddedText
+      ? ` [CONTAINS TEXT: "${sanitizeEmbeddedText(asset.embeddedText)}"]`
+      : '';
+    const baseEntry = `${publicPath} [${dims}]${alt}${textWarning}${desc}`;
 
     const p = asset.placement;
     if (p?.inHeader) { headerImages.push(baseEntry); continue; }

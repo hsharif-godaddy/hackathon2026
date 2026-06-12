@@ -269,6 +269,10 @@ export interface AssetInfo {
   composition?: string;
   altText?: string;
   usageContext?: string;
+  /** Image has heading/brand text burned into its pixels (vision-detected). */
+  hasEmbeddedText?: boolean;
+  /** Transcription of the embedded text, when {@link hasEmbeddedText} is true. */
+  embeddedText?: string | null;
   dimensions?: {
     width: number;
     height: number;
