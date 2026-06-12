@@ -24,6 +24,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import { SiteStatus } from '@/lib/control-plane/types'
 import { isTLAShopper } from '@/lib/is-tla-shopper'
 import { logger } from '@/lib/request-context'
+import { useAuthUIStore } from '@/stores/useAuthUIStore'
 import { useSitesStore } from '@/stores/useSitesStore'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
 
@@ -35,6 +36,9 @@ function SitesPageContent() {
   const [isAcceptTransferOpen, setIsAcceptTransferOpen] = useState(false)
   const [appsPage, setAppsPage] = useState(1)
   const isTransferEnabled = useSwitchboard('appbuilder-transfer-ownership')
+  // The mobile action bar is fixed at z-60, while the body-portaled SSO modal
+  // stacks at z-index auto — hide the bar so it can't cover the login form (AIROBUILD-1878).
+  const isSsoLoginOpen = useAuthUIStore((state) => state.isSsoLoginOpen)
   const sites = useSitesStore((state) => state.allSites)
   const isLoading = useSitesStore((state) => state.isLoadingAll)
   const error = useSitesStore((state) => state.error)
@@ -163,7 +167,7 @@ function SitesPageContent() {
 
           
 
-          {!isAcceptTransferOpen && (
+          {!isAcceptTransferOpen && !isSsoLoginOpen && (
             <div className={`fixed bottom-0 left-0 right-0 z-60 bg-intents-ux-box-backgroundColor border-t border-intents-ux-borderColor p-3 flex gap-2 md:static md:z-0 md:bg-transparent md:border-0 md:p-0 ${totalSites === 0 ? 'md:!hidden' : ''}`}>
             <Button
               design="primary"

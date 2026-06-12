@@ -10,6 +10,7 @@ import { screen, waitFor } from '@testing-library/react';
 import { APPS_GRID_PAGE_SIZE } from '@/app/[market]/apps/constants';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { SiteStatus } from '@/lib/control-plane/types';
+import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { createMockSite, mockRouter } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
@@ -130,6 +131,7 @@ vi.mock('@/utils/instrumentation', () => ({
 describe('Sites Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useAuthUIStore.setState({ isSsoLoginOpen: false });
     useSitesStore.setState({
       allSites: [],
       sitesById: {},
@@ -397,6 +399,31 @@ describe('Sites Page', () => {
       useSitesStore.setState({ isLoadingAll: true });
 
       expect(screen.getByTestId('accept-transfer-dialog')).toBeInTheDocument();
+    });
+  });
+
+  describe('hides action bar while SSO login modal is open', () => {
+    it('should not render create/transfer buttons when SSO modal is open', () => {
+      useAuthUIStore.setState({ isSsoLoginOpen: true });
+
+      renderWithProviders(<Sites />);
+
+      expect(screen.queryByTestId('create-app-card')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('transfer-app-card')).not.toBeInTheDocument();
+    });
+
+    it('should restore the buttons after the SSO modal closes', async () => {
+      useAuthUIStore.setState({ isSsoLoginOpen: true });
+
+      renderWithProviders(<Sites />);
+
+      expect(screen.queryByTestId('create-app-card')).not.toBeInTheDocument();
+
+      useAuthUIStore.setState({ isSsoLoginOpen: false });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('create-app-card')).toBeInTheDocument();
+      });
     });
   });
 
