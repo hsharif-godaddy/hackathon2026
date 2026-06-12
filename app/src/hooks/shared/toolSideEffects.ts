@@ -12,6 +12,7 @@ import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { trackFromToolResult } from '@/hooks/shared/contextGatheringTracker'
 import { trackHandoff, trackQuestionReceived } from '@/hooks/shared/initialBuildFunnel'
 import { BRAND_DATA_UPDATED_EVENT } from '@/hooks/useBrandData'
+import { getSwitchboardFlag } from '@/hooks/useSwitchboard'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { type FileOperationType, useCodeSyncStore } from '@/stores/useCodeSyncStore'
@@ -314,9 +315,13 @@ export async function handleToolResultSideEffects(
         const upfrontPlanSlugs = Array.isArray(resultObj?.upfrontPlanSlugs)
           ? resultObj.upfrontPlanSlugs.filter((slug: unknown): slug is string => typeof slug === 'string' && slug.length > 0)
           : []
+        // Multi-page upfront auto-build is part of the gated multipage rebuild
+        // experience — seed it only when the flag is on, so flag-OFF fully restores
+        // the single-page flow even if the intake form produced a multi-page scope.
+        const multipageEnabled = getSwitchboardFlag('appbuilder-rebuild-multipage') === true
         // Outer gate: multi-page upfront plan, or legacy follow-up slugs without a plan list.
         // Inner setPlan accepts any non-empty upfrontPlanSlugs (homepage-only plans skip seeding).
-        if (upfrontPlanSlugs.length > 1 || upfrontBuildSlugs.length > 0) {
+        if (multipageEnabled && (upfrontPlanSlugs.length > 1 || upfrontBuildSlugs.length > 0)) {
           const queue = useUpfrontRebuildBuildQueueStore.getState()
           if (upfrontPlanSlugs.length > 0) {
             queue.setPlan(appId, upfrontPlanSlugs, upfrontBuildSlugs)

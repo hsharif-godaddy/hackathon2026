@@ -23,6 +23,7 @@ const {
   mockSetPlan,
   mockEnqueue,
   mockMarkProcessing,
+  mockFlags,
 } = vi.hoisted(() => {
   const mockLogImpressionEventInner = vi.fn()
   return {
@@ -44,6 +45,7 @@ const {
     mockSetPlan: vi.fn(),
     mockEnqueue: vi.fn(),
     mockMarkProcessing: vi.fn(),
+    mockFlags: { multipage: true },
   }
 })
 
@@ -129,6 +131,11 @@ vi.mock('@/hooks/useBrandData', () => ({
   BRAND_DATA_UPDATED_EVENT: 'brand-data-updated',
 }))
 
+vi.mock('@/hooks/useSwitchboard', () => ({
+  getSwitchboardFlag: (flag: string) =>
+    flag === 'appbuilder-rebuild-multipage' ? mockFlags.multipage : undefined,
+}))
+
 vi.mock('@/lib/request-context', () => ({
   logger: {
     warn: mockLoggerWarn,
@@ -149,6 +156,7 @@ beforeEach(() => {
   mockLogImpressionEvent.mockReturnValue(mockLogImpressionEventInner)
   mockStreamingState.streamingState = 'idle'
   mockStreamingState.activeStream = null
+  mockFlags.multipage = true
   dispatchEventSpy = vi.spyOn(window, 'dispatchEvent')
 })
 
@@ -284,6 +292,21 @@ describe('handleToolResultSideEffects — websiteRebuild upfront queue', () => {
     }, 'app-1')
 
     expect(mockSetPlan).toHaveBeenCalledWith('app-1', ['homepage', 'about'], ['about'])
+    expect(mockEnqueue).not.toHaveBeenCalled()
+  })
+
+  it('does not seed the queue when the multipage flag is OFF', async () => {
+    mockFlags.multipage = false
+
+    await handleToolResultSideEffects({
+      name: 'websiteRebuild',
+      output: JSON.stringify({
+        upfrontPlanSlugs: ['homepage', 'about'],
+        upfrontBuildSlugs: ['about'],
+      }),
+    }, 'app-1')
+
+    expect(mockSetPlan).not.toHaveBeenCalled()
     expect(mockEnqueue).not.toHaveBeenCalled()
   })
 

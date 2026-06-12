@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 import { useRebuildBuildQueue } from './useRebuildBuildQueue'
 
@@ -22,6 +23,7 @@ const SEND_WATCHDOG_MS = 8000
  */
 export function useRebuildBuildQueueDriver(): void {
   const send = useSendUserMessage()
+  const multipageEnabled = useSwitchboard('appbuilder-rebuild-multipage')
   const isActivelyStreaming = useIsActivelyStreaming()
   const isLoading = useIsLoading()
   const isProcessing = isActivelyStreaming || isLoading
@@ -52,10 +54,10 @@ export function useRebuildBuildQueueDriver(): void {
 
   // Send the next page's message when the batch is running and the stream is idle.
   useEffect(() => {
-    if (status !== 'running' || phase !== 'awaiting-send' || isProcessing || !send) return
+    if (!multipageEnabled || status !== 'running' || phase !== 'awaiting-send' || isProcessing || !send) return
     const slug = slugs[cursor]
     if (!slug) return
     void send(`Build the ${slug} page`, { isActionRequest: true, rebuildBuildPageSlug: slug })
     markSent()
-  }, [status, phase, isProcessing, slugs, cursor, send, markSent])
+  }, [multipageEnabled, status, phase, isProcessing, slugs, cursor, send, markSent])
 }

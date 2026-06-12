@@ -9,6 +9,7 @@ import { useRebuildBuildQueueDriver } from './useRebuildBuildQueueDriver'
 
 const sendMock = vi.fn()
 let processing = false
+let multipageFlag = true
 
 vi.mock('@/app/[market]/develop/components/chat/ChatContext', () => ({
   useSendUserMessage: () => sendMock,
@@ -16,6 +17,9 @@ vi.mock('@/app/[market]/develop/components/chat/ChatContext', () => ({
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsActivelyStreaming: () => processing,
   useIsLoading: () => false,
+}))
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: () => multipageFlag,
 }))
 vi.mock('@/lib/request-context', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -25,6 +29,7 @@ describe('useRebuildBuildQueueDriver', () => {
   beforeEach(() => {
     sendMock.mockReset()
     processing = false
+    multipageFlag = true
     useRebuildBuildQueue.getState().stop()
   })
 
@@ -38,6 +43,14 @@ describe('useRebuildBuildQueueDriver', () => {
       rebuildBuildPageSlug: 'about',
     })
     expect(useRebuildBuildQueue.getState().phase).toBe('sent')
+  })
+
+  it('does not send when the multipage flag is OFF, even with a running queue', () => {
+    multipageFlag = false
+    const { rerender } = renderHook(() => useRebuildBuildQueueDriver())
+    useRebuildBuildQueue.getState().enqueue(['about', 'contact'])
+    rerender()
+    expect(sendMock).not.toHaveBeenCalled()
   })
 
   it('does not send a second message until the first turn completes, then sends the next', () => {

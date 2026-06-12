@@ -1040,6 +1040,7 @@ function InputActionsPanelThemeSelection({
   const viewMode = useDevelopPageStore((state) => state.viewMode)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
   const appId = useAppIdFromParams()
+  const isRebuildMultipageEnabled = useSwitchboard('appbuilder-rebuild-multipage')
   const mayBeRebuildApp = useMemo(() =>
     messages.some(msg =>
       msg.role === 'assistant' &&
@@ -1057,7 +1058,7 @@ function InputActionsPanelThemeSelection({
   )
   const { data: rebuildPagesData, isError: isRebuildError, error: rebuildError } = useRebuildPages(
     appId,
-    mayBeRebuildApp,
+    mayBeRebuildApp && !!isRebuildMultipageEnabled,
     rebuildPlanInProgress ? 5000 : false,
   )
   if (isRebuildError) logger.warn('input-actions-panel.rebuild-pages-error', { appId }, { error: rebuildError as Error })
@@ -1728,7 +1729,7 @@ function InputActionsPanelThemeSelection({
         </div>
       ) : null}
 
-      {hasRebuildPages && nbaData?.source !== 'askQuestion' && rebuildPagesData && (
+      {!!isRebuildMultipageEnabled && hasRebuildPages && nbaData?.source !== 'askQuestion' && rebuildPagesData && (
         <RebuildPageSelectorToolRenderer
           toolName="rebuildPageSelector"
           toolStatus="completed"
