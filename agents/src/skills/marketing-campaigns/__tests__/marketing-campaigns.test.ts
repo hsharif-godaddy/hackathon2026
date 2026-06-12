@@ -18,6 +18,9 @@ const samplePlan = {
   endDate: '2026-07-07',
   campaignType: 'landing-page' as const,
   assets: [{ assetType: 'social' as const, title: 'Teaser post' }],
+  assumptions: ['Your audience is collectors', 'Your main goal is sales'],
+  whyThisMix: 'The landing page gives buyers one place to land and buy.',
+  expectation: 'A small first wave of visitors and a handful of early sales.',
 }
 
 const run = (tool: typeof campaignPlanPropose, input: unknown, context: unknown): Promise<any> =>
@@ -40,6 +43,10 @@ describe('marketing-campaigns orchestrator tools', () => {
       expect(result.widgetType).toBe('campaign-plan-propose')
       expect(result.widgetData.plan.name).toBe('Summer Sale')
       expect(result.widgetData.plan.assets).toHaveLength(1)
+      // structured education fields are passed through to the card (deterministic, not prose-dependent)
+      expect(result.widgetData.plan.assumptions).toEqual(['Your audience is collectors', 'Your main goal is sales'])
+      expect(result.widgetData.plan.whyThisMix).toMatch(/one place to land and buy/i)
+      expect(result.widgetData.plan.expectation).toMatch(/small first wave/i)
     })
   })
 
@@ -84,15 +91,15 @@ describe('marketing-campaigns orchestration contract', () => {
   it('PLAN instructs the AI to choose the channel mix with a rationale', () => {
     const plan = readSection('templates/sections/02-plan.md')
     expect(plan).toMatch(/Choose the channel mix/i)
-    expect(plan).toMatch(/one-line rationale/i)
+    expect(plan).toMatch(/each channel serves their goal/i)
   })
 
   it('PLAN proposes name + dates (date-aware) and frames around outcomes', () => {
     const plan = readSection('templates/sections/02-plan.md')
     expect(plan).toMatch(/propose everything else/i)
     expect(plan).toMatch(/be date-aware/i)
-    expect(plan).toMatch(/The goal, in business terms/i)
-    expect(plan).toMatch(/what the key assets do/i) // one-line "why" that educates the owner
+    expect(plan).toMatch(/why marketing it this way matters/i)
+    expect(plan).toMatch(/Why each piece — tie every asset to the goal/i) // per-asset "why" that educates the owner
   })
 
   it('PLAN surfaces assumptions and invites correction before the plan card', () => {
@@ -100,15 +107,26 @@ describe('marketing-campaigns orchestration contract', () => {
     const skill = readSection('skill.md')
     expect(plan).toMatch(/What I understood about your business/i)
     expect(plan).toMatch(/tell me if any of this is off/i)
-    expect(skill).toMatch(/Never skip the assumptions intro/i)
+    expect(skill).toMatch(/Never leave the .assumptions. field empty/i)
   })
 
-  it('PLAN sets expectations qualitatively and forbids fabricated numbers', () => {
+  it('PLAN gives a directional expectation but forbids precise fabricated figures', () => {
     const plan = readSection('templates/sections/02-plan.md')
     const skill = readSection('skill.md')
-    expect(plan).toMatch(/qualitatively only/i)
-    expect(plan).toMatch(/NEVER invent numbers/i)
-    expect(skill).toMatch(/Never invent specific performance numbers/i)
+    expect(plan).toMatch(/rough, directional/i)
+    expect(plan).toMatch(/never precise figures or guarantees/i)
+    expect(plan).toMatch(/as if they were projections/i)
+    expect(skill).toMatch(/Never present precise performance numbers/i)
+  })
+
+  it('PLAN educates conversationally and includes a plain-language checklist', () => {
+    const plan = readSection('templates/sections/02-plan.md')
+    const skill = readSection('skill.md')
+    expect(plan).toMatch(/Educating clearly matters more than being terse/i)
+    expect(plan).toMatch(/A quick checklist — in plain terms/i)
+    expect(plan).toMatch(/goes live when you launch/i)
+    expect(plan).toMatch(/NOT a `todoList`/i) // conversational recap, not a todo list
+    expect(skill).toMatch(/plain-language checklist of what they're getting/i)
   })
 
   it('landing page is mandatory in every plan (counts are the AI call)', () => {
@@ -160,6 +178,20 @@ describe('marketing-campaigns orchestration contract', () => {
     // per-asset status honesty: nothing is 'published'/'sent' at summary time
     expect(summary).toMatch(/Set .*status.* honestly/i)
     expect(summary).toMatch(/never use .*published.* or .*sent/i)
+  })
+
+  it('skill.md routes PLAN education into structured tool fields + keeps SUMMARY honesty', () => {
+    const skill = readSection('skill.md')
+    // education lives in REQUIRED tool fields the card renders (reliable), not prose the model may skip
+    expect(skill).toMatch(/fill the education fields on the tool call/i)
+    expect(skill).toMatch(/REQUIRED education fields/i)
+    expect(skill).toMatch(/`assumptions`/)
+    expect(skill).toMatch(/`whyThisMix`/)
+    expect(skill).toMatch(/`expectation`/)
+    expect(skill).toMatch(/populate every field/i)
+    // SUMMARY honesty unchanged
+    expect(skill).toMatch(/NEVER say the campaign or any asset is "live", "launched", or "published"/i)
+    expect(skill).toMatch(/built and ready to launch/i)
   })
 
   it('all five phase sections exist', () => {

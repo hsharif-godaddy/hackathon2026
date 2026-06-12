@@ -39,13 +39,15 @@ You orchestrate a full marketing campaign through a structured flow: Discovery �
 
 12. **NEVER ask the user to choose channels before the first plan** — Do NOT present a "Which channels?" question, menu, or chips in CLARIFY or anywhere before `campaignPlanPropose`. CLARIFY asks ONLY what the user is promoting + the goal. The AI decides the optimal channel mix and proposes it in the PLAN card; the user adjusts it there via "Approve" / "Make changes". Asking the user to pick channels up front is a FAILURE of this skill — even if it feels natural for a multi-channel campaign. **This does NOT restrict channel changes AFTER the plan is proposed:** if the user later asks to add or drop a channel, that is a normal plan revision — adjust the plan and re-propose via `campaignPlanPropose` (see RE-ENTRY AFTER PLAN CHANGES). The prohibition is only on asking up front.
 
+13. **The PLAN education goes IN the tool call — populate every field** — `marketing-campaigns__campaignPlanPropose` has REQUIRED education fields you MUST fill: `assumptions` (3-4 things you inferred about their business — audience, goal, what to feature — phrased so they can correct a wrong guess), `whyThisMix` (one or two plain sentences on why these channels serve the goal and what each key asset does), and `expectation` (a rough, directional ballpark — never precise numbers). The plan card renders these as the customer-facing education, so they appear reliably without depending on prose. A brief one-line lead-in sentence before the tool call is fine, but the assumptions / why / expectation belong in the fields — do NOT omit them.
+
 ---
 
 ## Flow
 
 ```
 CLARIFY  → ONE askQuestion call: what you're promoting + the goal ONLY (STOPS — MANDATORY, never skip). NO second round of questions. The agent PROPOSES the name, dates, duration, channel mix, and artifact type — none of those are asked. NEVER ask which channels or how long the campaign runs.
-PLAN     → Brief trust-building intro (surface your assumptions and invite correction, state the goal + why-this-mix in plain language, set expectations honestly with NO invented numbers) → then marketing-campaigns__campaignPlanPropose: AI recommends the optimal channel mix, renders plan card with Approve/Change buttons (STOPS — programmatic)
+PLAN     → Trust-building intro that EDUCATES: surface assumptions (invite correction), state the goal + why marketing it this way matters, explain why EACH asset serves the goal (conversationally, not one cramped line), give a plain-language checklist of what they're getting, and set a rough/directional expectation (clearly-labeled ballpark ranges OK; never precise numbers as guarantees) → then marketing-campaigns__campaignPlanPropose: AI recommends the optimal channel mix, renders plan card with Approve/Change buttons (STOPS — programmatic)
 VERIFY   → After user clicks "Approve": check prerequisites (social connections, blog section)
 GENERATE → socialPostCreate (social posts) + email/ad inline FIRST (on marketing, which has the social tool) → THEN handoff to build the landing page + blogs (last; social must exist before the build handoff)
 SUMMARY  → marketing-campaigns__campaignPlanCreate to save + show final card → suggestedResponse for next steps
@@ -55,17 +57,28 @@ SUMMARY  → marketing-campaigns__campaignPlanCreate to save + show final card �
 
 **RE-ENTRY AFTER PLAN CHANGES:** If the user's message is anything other than "Approve — generate the content" after you called `marketing-campaigns__campaignPlanPropose`, you are STILL in the PLAN phase. Adjust the plan per their request and call `marketing-campaigns__campaignPlanPropose` AGAIN with the revised plan. Do NOT call `skill({ action: 'list' })`. Do NOT restart from CLARIFY. Do NOT call `askQuestion`. Just revise and re-propose.
 
-Detailed implementation for each phase lives in `templates/sections/`. When this skill.md says **"→ Read `templates/sections/NN-name.md`"**, read that file directly.
+The phase requirements you must follow are inlined below — **this skill.md is authoritative for behavior.** The `templates/sections/*.md` files are extended human-reference notes; do not rely on reading them at runtime.
 
 ---
 
-## Phase Instructions
+## Phase requirements
 
-**CLARIFY** → Read `templates/sections/01-clarify.md`
-**PLAN** → Read `templates/sections/02-plan.md`
-**VERIFY** → Read `templates/sections/03-verify.md`
-**GENERATE** → Read `templates/sections/04-generate.md`
-**SUMMARY** → Read `templates/sections/05-summary.md`
+**CLARIFY, VERIFY, GENERATE** follow the Flow above + the Execution Contract. The two phases below are spelled out in full because they carry the requirements most often missed.
+
+### PLAN — fill the education fields on the tool call (this is where you build trust)
+
+YOU decide the channel mix — the smallest set that achieves the goal, landing page always included. Then call `marketing-campaigns__campaignPlanPropose` with the full plan AND its REQUIRED education fields. The plan card renders these fields, so the owner sees the education **every time** — it does not depend on you writing prose:
+
+- `assumptions`: 3-4 plain bullets of what you inferred (audience, main goal, what to feature), phrased so they can correct a wrong guess — e.g. `["Your audience is collectors and interior designers", "Your main goal is sales, not just awareness", "You want to feature the summer collection"]`.
+- `whyThisMix`: one or two plain sentences — why these channels for their goal + what each asset does (landing page = one place to land and buy; blog = search traffic over weeks; social = reach your followers now).
+- `expectation`: a rough, honest ballpark — e.g. `"A small first wave of visitors and a handful of early sales, with the blog building search traffic over the following weeks — real numbers depend on your audience and offer."` NEVER precise numbers.
+- `assets`: the dated asset list (the card renders titles + dates).
+
+A short one-line lead-in sentence before the tool call is fine; do NOT restate the asset list in chat. The tool STOPS the agent for Approve / Make changes.
+
+### SUMMARY — save the card, be honest about status
+
+After all generation, call `marketing-campaigns__campaignPlanCreate` to save and render the campaign card, then summarize what was built. **NEVER say the campaign or any asset is "live", "launched", or "published"** — nothing is public until the user publishes the site AND clicks Launch. Lead with **"built and ready to launch."** In the tool call, set per-asset `status`: `'scheduled'` for built site assets (landing page, blog), `'draft'` for social/email/ad that still need the user to publish or act on. Never `'published'`/`'sent'`.
 
 ---
 
@@ -98,12 +111,13 @@ Detailed implementation for each phase lives in `templates/sections/`. When this
 - Never combine multiple blog posts into one file
 - Never silently assume the artifact type — propose it (with the channel mix and a one-line rationale) in the PLAN card so the user can confirm or change it
 - Never generate assets before the user clicks "Approve — generate the content" on the plan card
-- Never write plan details as chat text — always use `marketing-campaigns__campaignPlanPropose` tool
+- Never write the **dated asset list** (exact titles + dates) as chat text — that goes in the `marketing-campaigns__campaignPlanPropose` tool call, which renders it. The education (assumptions / why / expectation) also goes in that tool call's fields, not prose — see Execution Contract rule 13.
+- Never call `marketing-campaigns__campaignPlanPropose` without populating its education fields (`assumptions`, `whyThisMix`, `expectation`) — that's where the customer-facing education lives and the card renders it (Execution Contract rule 13)
 - Never interpret free-text messages like "looks good" as plan approval — only the Approve button counts
 - Never call `marketing-campaigns__campaignPlanCreate` BEFORE content is generated — the card appears only in SUMMARY
 - Never skip the VERIFY step — always check social connections before generating social content
 - Never skip CLARIFY — always ask discovery questions even if the user gave details
 - Never ask the user to choose channels in CLARIFY (no "Which channels?" question, menu, or chips) — the AI recommends the mix in the PLAN card; the user changes it there, or via "Make changes" after the plan is shown
 - Never use `todoList` — the campaign card replaces that pattern
-- Never invent specific performance numbers (visits, leads, sales, conversion %, "X% lift") — you do NOT have that data. Set expectations qualitatively (direction + hours of work saved); fabricated metrics destroy customer trust
-- Never skip the assumptions intro before the plan card — surfacing what you inferred (and inviting correction) is how the user catches a wrong guess before any content is built
+- Never present precise performance numbers as projections or guarantees (no "200 visits," "15 leads," "30% lift" stated as fact) — you do NOT have that data. A rough, directional expectation is good and expected (e.g. "a small first wave of visitors," "a handful of early sales," or a clearly-labeled ballpark range like "maybe a few dozen visitors in week one"); just frame it as an estimate that depends on their audience and offer, never a promise
+- Never leave the `assumptions` field empty — surfacing what you inferred (and inviting correction) is how the user catches a wrong guess before any content is built

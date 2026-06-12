@@ -6,6 +6,7 @@ import { ChoiceList } from '@airo-ux/pattern-library/input/choice-list'
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import DefaultToolRenderer from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
+import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 
 interface PlannedAsset {
@@ -23,6 +24,9 @@ interface CampaignPlan {
   campaignType: 'landing-page' | 'banner' | 'content-only'
   landingPagePath?: string
   assets: PlannedAsset[]
+  assumptions?: string[]
+  whyThisMix?: string
+  expectation?: string
 }
 
 interface ToolResult {
@@ -30,13 +34,13 @@ interface ToolResult {
   widgetData?: { plan?: CampaignPlan }
 }
 
-const ASSET_LABELS: Record<string, string> = {
-  'landing-page': 'Landing page',
-  banner: 'Banner',
-  blog: 'Blog post',
-  social: 'Social post',
-  email: 'Email',
-  ad: 'Ad',
+const ASSET_LABEL_KEYS: Record<string, string> = {
+  'landing-page': 'builder_marketing_campaign_plan_asset_landing_page',
+  banner: 'builder_marketing_campaign_plan_asset_banner',
+  blog: 'builder_marketing_content_type_blog_post',
+  social: 'builder_marketing_content_type_social_post',
+  email: 'builder_marketing_content_type_email',
+  ad: 'builder_marketing_campaign_plan_asset_ad',
 }
 
 function formatDate(dateStr: string): string {
@@ -52,6 +56,7 @@ export default function CampaignPlanProposeToolRenderer({
   isLastAssistantMessage,
   ...rest
 }: DefaultToolRendererProps) {
+  const t = useTranslations()
   const sendUserMessage = useSendUserMessage()
   const isStreaming = useIsActivelyStreaming()
   const isLoading = useIsLoading()
@@ -87,11 +92,23 @@ export default function CampaignPlanProposeToolRenderer({
   return (
     <div className="mt-1">
       <div className="text-sm leading-relaxed mb-3">
-        <p className="font-semibold mb-1">Here&apos;s the plan for your {plan.name}:</p>
+        {plan.assumptions && plan.assumptions.length > 0 && (
+          <div className="mb-3">
+            <p className="font-semibold mb-1">{t('builder_marketing_campaign_plan_assumptions_heading')}</p>
+            <ul className="list-disc pl-5 space-y-1">
+              {plan.assumptions.map((a, i) => (
+                <li key={i}>{a}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <p className="font-semibold mb-1">{t('builder_marketing_campaign_plan_heading', { name: plan.name })}</p>
         <ul className="list-disc pl-5 space-y-1">
           {plan.assets.map((asset, i) => (
             <li key={i}>
-              <span className="font-medium">{ASSET_LABELS[asset.assetType] || asset.assetType}</span>
+              <span className="font-medium">
+                {ASSET_LABEL_KEYS[asset.assetType] ? t(ASSET_LABEL_KEYS[asset.assetType]) : asset.assetType}
+              </span>
               {': '}
               {asset.title}
               {asset.scheduledDate && (
@@ -101,25 +118,31 @@ export default function CampaignPlanProposeToolRenderer({
           ))}
         </ul>
         <p className="mt-2 text-intents-ux-textSubtle-textColor">
-          Campaign runs: {formatDate(plan.startDate)} – {formatDate(plan.endDate)}
+          {t('builder_marketing_campaign_plan_runs', { startDate: formatDate(plan.startDate), endDate: formatDate(plan.endDate) })}
         </p>
+        {plan.whyThisMix && (
+          <p className="mt-3"><span className="font-medium">{t('builder_marketing_campaign_plan_why_label')}</span> {plan.whyThisMix}</p>
+        )}
+        {plan.expectation && (
+          <p className="mt-2"><span className="font-medium">{t('builder_marketing_campaign_plan_expectation_label')}</span> {plan.expectation}</p>
+        )}
       </div>
 
       {showInteractions && (
         <ChoiceList
-          ariaLabel="Campaign plan approval"
+          ariaLabel={t('builder_marketing_campaign_plan_approval_aria')}
           disabled={isProcessing}
           allowOther={true}
-          otherPlaceholder="Describe what you'd like to change..."
+          otherPlaceholder={t('builder_marketing_campaign_plan_change_placeholder')}
           onComplete={handleComplete}
         >
           <ChoiceList.Step
             id="0"
-            title="Does this plan look good?"
+            title={t('builder_marketing_campaign_plan_approval_title')}
             selectionMode="single"
           >
-            <ChoiceList.Item value="1">Approve — generate the content</ChoiceList.Item>
-            <ChoiceList.Item value="2">Make changes to the plan</ChoiceList.Item>
+            <ChoiceList.Item value="1">{t('builder_marketing_campaign_plan_approve_option')}</ChoiceList.Item>
+            <ChoiceList.Item value="2">{t('builder_marketing_campaign_plan_change_option')}</ChoiceList.Item>
           </ChoiceList.Step>
         </ChoiceList>
       )}
