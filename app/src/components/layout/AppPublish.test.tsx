@@ -39,12 +39,21 @@ type MockPublishSlice = {
   publishPopoverRequestNonce?: number;
   buildErrorDetails?: { error: string; details: string; exitCode?: number } | null;
   showPostPublishFeatureSelection?: boolean;
+  seoRegressionAlert?: {
+    scoreDelta: number;
+    currentScore: number;
+    regressions: Array<{ path: string; newIssues: string[] }>;
+  } | null;
 };
+
+const mockDismissSeoRegressionAlert = vi.fn();
+const mockLogImpressionEvent = vi.fn(() => vi.fn());
 
 const mockDevelopStore = {
   currentAppId: 'app-123',
   isMobile: false,
   publishStates: {} as Record<string, MockPublishSlice>,
+  dismissSeoRegressionAlert: (...args: unknown[]) => mockDismissSeoRegressionAlert(...args),
   getPublishState(appId: string) {
     const slice = mockDevelopStore.publishStates[appId];
     return {
@@ -244,6 +253,11 @@ vi.mock('@/utils/instrumentation', () => ({
     mockLogClickEvent(...args);
     return vi.fn();
   },
+  logImpressionEvent: (...args: unknown[]) => mockLogImpressionEvent(...args),
+}));
+
+vi.mock('@/hooks/useSeoQualityCheck', () => ({
+  useSeoQualityCheck: vi.fn(),
 }));
 
 vi.mock('@ux/growl', () => ({
@@ -288,6 +302,9 @@ describe('AppPublish', () => {
     }
     mockComplianceGateState.isBlocked = false;
     mockComplianceGateState.blockReason = null;
+    mockDismissSeoRegressionAlert.mockReset();
+    mockLogImpressionEvent.mockReset();
+    mockLogImpressionEvent.mockReturnValue(vi.fn());
   });
 
   it('should render nothing when pathname is not the develop page', function notDevelopPage() {
@@ -1701,6 +1718,65 @@ describe('AppPublish', () => {
         ([event, data]) => event === 'publish.attempted' && !data.blockedReason,
       );
       expect(gatesPassedCall).toBeDefined();
+    });
+  });
+
+  describe('SEO regression alert', function seoAlertTests() {
+    const seoAlert = {
+      scoreDelta: -30,
+      currentScore: 50,
+      regressions: [{ path: '/about', newIssues: ['missing-h1'] }],
+    };
+
+    it('should render the alert when seoRegressionAlert is set', async function rendersAlert() {
+      mockDevelopStore.publishStates['app-123'] = { seoRegressionAlert: seoAlert };
+
+      renderWithProviders(<AppPublish />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('seo-quality-regression-alert')).toBeInTheDocument();
+      });
+    });
+
+    it('should not render the alert when seoRegressionAlert is null', async function noAlertWhenNull() {
+      mockDevelopStore.publishStates['app-123'] = { seoRegressionAlert: null };
+
+      renderWithProviders(<AppPublish />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'builder_publish_button' })).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('seo-quality-regression-alert')).not.toBeInTheDocument();
+    });
+
+    it('should call dismissSeoRegressionAlert when close button is clicked', async function dismissOnClose() {
+      mockDevelopStore.publishStates['app-123'] = { seoRegressionAlert: seoAlert };
+
+      const { user } = renderWithProviders(<AppPublish />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('seo-quality-regression-alert')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: 'builder_common_close' }));
+
+      expect(mockDismissSeoRegressionAlert).toHaveBeenCalledWith('app-123');
+    });
+
+    it('should fire seo.alert.shown impression when alert appears', async function impressionOnShow() {
+      mockDevelopStore.publishStates['app-123'] = { seoRegressionAlert: seoAlert };
+
+      renderWithProviders(<AppPublish />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('seo-quality-regression-alert')).toBeInTheDocument();
+      });
+
+      expect(mockLogImpressionEvent).toHaveBeenCalledWith('seo.alert.shown', {
+        scoreDelta: -30,
+        currentScore: 50,
+        affectedPages: 1,
+      });
     });
   });
 });

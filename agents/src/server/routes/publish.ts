@@ -15,12 +15,73 @@ import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { getPublishStrategy, BuildError, PreviewNotRunningError, MissingStartCommandError } from './publish/strategies/index.js';
 import type { PublishContext } from './publish/strategies/index.js';
 import { getGitHookService } from '../agent-runtime.js';
-import { logPublishedSeoAudit } from '../../services/seo-audit.js';
+import { logSeoAuditReport, runSeoAudit } from '../../services/seo-audit.js';
+import type { SeoAuditReport } from '../../services/seo-audit.js';
 import { reportPublishedComplianceStatus } from '../../services/compliance-publish-report.js';
+import { scoreAuditReport, detectRegressionFromSnapshot } from '../../services/SeoQualityScorer.js';
+import { SeoQualityRepository } from '../../database/repositories/SeoQualityRepository.js';
+import type { ILogger } from '../../logging/types.js';
+import { resolvePublicHttpsFetchUrl } from '../../utils/public-fetch-url.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
 const memoryRepository = new MemoryRepository();
+const seoQualityRepo = new SeoQualityRepository();
+
+// Tracks appIds with an in-progress SEO audit to prevent concurrent audits
+// from producing out-of-order snapshots that break regression detection.
+const seoAuditInProgress = new Set<string>();
+
+async function captureSeoQuality(
+  appId: string,
+  report: SeoAuditReport,
+  contextLogger: Pick<ILogger, 'info' | 'warn' | 'error'>,
+): Promise<void> {
+  const result = scoreAuditReport(report);
+
+  if (result.pageCount === 0) {
+    contextLogger.warn('seo.quality.empty-report', {
+      appId,
+      reason: 'audit returned no pages — skipping snapshot',
+    });
+    return;
+  }
+
+  const previous = seoQualityRepo.findLatest(appId);
+  const snapshot = seoQualityRepo.save({
+    appId,
+    score: result.score,
+    pageScores: result.pageScores,
+    missingElements: result.missingElements,
+    triggeredBy: 'publish',
+  });
+
+  contextLogger.info('seo.quality.scored', {
+    appId,
+    snapshotId: snapshot.id,
+    score: result.score,
+    pageCount: result.pageCount,
+    pagesWithIssues: result.pagesWithIssues,
+    isBaseline: snapshot.isBaseline,
+    triggeredBy: 'publish',
+  });
+
+  if (previous) {
+    const regression = detectRegressionFromSnapshot(result, previous);
+    if (regression.isRegression) {
+      contextLogger.warn('seo.quality.regression', {
+        appId,
+        currentScore: result.score,
+        previousScore: previous.score,
+        scoreDelta: regression.scoreDelta,
+        affectedPages: regression.regressions.map(r => ({
+          path: r.path,
+          newIssues: r.newIssues,
+        })),
+      });
+    }
+  }
+}
 
 // SECURITY: Apply ownership validation to all publish routes
 // Prevents cross-tenant access to build artifacts and source archives
@@ -325,17 +386,42 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
 
     res.json(response);
 
-    // Advisory SEO validation — fire-and-forget after response; never blocks publish.
-    const publishedUrl = app.publishedUrl?.trim() || null;
-    if (publishedUrl) {
-      logPublishedSeoAudit(id, app.path, publishedUrl, contextLogger).catch((err) => {
-        contextLogger.warn('seo.validation.exception', {
-          error: err instanceof Error ? err.message : String(err),
+    // Advisory SEO validation + quality scoring — fire-and-forget; never blocks publish.
+    // Runs on every publish: HTML audit when published_url is available, source-only otherwise.
+    (async (): Promise<void> => {
+      if (seoAuditInProgress.has(id)) {
+        contextLogger.info('seo.quality.audit-skipped', { appId: id, reason: 'previous audit still in progress' });
+        return;
+      }
+      seoAuditInProgress.add(id);
+      try {
+      const bodyUrl = typeof req.body.publishedUrl === 'string' ? req.body.publishedUrl.trim() : null;
+      const publishedUrl = resolvePublicHttpsFetchUrl(app.publishedUrl, bodyUrl);
+      if ((app.publishedUrl?.trim() || bodyUrl) && !publishedUrl) {
+        contextLogger.warn('seo.audit.blocked-url', {
+          appId: id,
+          hadDbUrl: Boolean(app.publishedUrl?.trim()),
+          hadBodyUrl: Boolean(bodyUrl),
         });
+      }
+      const report = await runSeoAudit({
+        appId: id,
+        appPath: app.path,
+        publishedUrl,
+        isPublished: !!publishedUrl,
+        includeSourceScan: true,
       });
-    } else {
-      contextLogger.info('seo.validation.skipped', { reason: 'no-published-url' });
-    }
+      logSeoAuditReport(id, report, contextLogger);
+      await captureSeoQuality(id, report, contextLogger);
+      } finally {
+        seoAuditInProgress.delete(id);
+      }
+    })().catch((err) => {
+      contextLogger.error('seo.audit.exception', {
+        appId: id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
 
     // Compliance document status — fire-and-forget after response; never blocks
     // publish. Reports the published/deleted state of any compliance docs the

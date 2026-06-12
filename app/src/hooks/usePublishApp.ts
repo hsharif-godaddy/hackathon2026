@@ -14,6 +14,7 @@ import { DomainType } from '@/lib/control-plane/types';
 import { appFetch, AuthDismissedError, authPreflight } from '@/lib/gasket-config';
 import { regenerateToken } from '@/lib/jwt-regeneration';
 import type { AiroSubscription } from '@/lib/mgmt-airo/types';
+import * as postAgentPublish from '@/lib/post-agent-publish';
 import { logger } from '@/lib/request-context';
 import {
   getPublishComplianceBlockReason,
@@ -303,17 +304,15 @@ export function usePublishApp() {
         throw new Error('Agent URL not available for this site');
       }
 
-      // Call agent service directly with fresh token
-      const publishUrl = `${apiConfig.agentUrl}/apps/${appId}/publish`;
+      const publishUrl = postAgentPublish.url(apiConfig.agentUrl, appId);
       logger.info('publish.calling-agent', { appId, url: publishUrl });
 
-      const response = await fetch(publishUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${tokenResult.token}`,
-        },
-      });
+      const response = await postAgentPublish.post(
+        apiConfig.agentUrl,
+        appId,
+        tokenResult.token,
+        site.published_url,
+      );
 
       if (!response.ok) {
         const errorData = await response.json();

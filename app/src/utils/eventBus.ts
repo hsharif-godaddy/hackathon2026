@@ -1,3 +1,4 @@
+import type { SeoRegressionAlertData } from '@/components/layout/SeoQualityRegressionAlert';
 import { logger } from '@/lib/request-context';
 import { logClickEvent, logImpressionEvent } from './instrumentation';
 
@@ -165,6 +166,10 @@ export interface BusEventMap {
     errorMessage: string;
     errorDetails: string;
     exitCode?: number;
+  };
+  'seo-quality-fix-request': {
+    appId: string;
+    regression: SeoRegressionAlertData;
   };
   SPEECH_QUERY_SUPPORT: object;
   SPEECH_START: object;

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { validatePublishedSeo } from '../SeoValidator.js';
+import { fetchPublishedPageHtml, validatePublishedSeo } from '../SeoValidator.js';
 
 function htmlResponse(body: string, status = 200): Response {
   return new Response(body, {
@@ -379,5 +379,24 @@ describe('validatePublishedSeo', () => {
       ok: false,
       warningCount: result.warnings.length,
     });
+  });
+});
+
+describe('fetchPublishedPageHtml', function fetchTests() {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects internal hosts without fetching', async function blockedHost() {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await fetchPublishedPageHtml('https://169.254.169.254/latest/meta-data/');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.detail).toContain('blocked URL');
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -90,6 +90,7 @@ const REGISTERED_TYPES: readonly BusEventType[] = [
   'request-processing-state',
   'build-page-request',
   'build-error-fix-request',
+  'seo-quality-fix-request',
   'SCREENSHOT_RESPONSE',
   'VIEWPORT_SCREENSHOT_RESPONSE',
   'OPEN_MEDIA_SLOT_DIALOG',
@@ -422,6 +423,45 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
             },
             persistence: 'ephemeral',
             source: 'publish-failure',
+          },
+        })
+      })
+    })
+
+    on('seo-quality-fix-request', (m) => {
+      const cur = d()
+      if (cur.isProcessingRef.current) {
+        logger.info('develop-page.seo-quality-fix-request.skipped-processing', { appId: cur.appId })
+        return
+      }
+      const { regression: reg } = m
+      const affectedSummary = reg.regressions
+        .map((r) => `${r.path} (${r.newIssues.join(', ')})`)
+        .join('; ')
+      const messageContent = affectedSummary
+        ? `SEO quality dropped by ${Math.abs(reg.scoreDelta)} points to ${reg.currentScore}/100. Please fix the new SEO issues on these pages: ${affectedSummary}`
+        : `SEO quality dropped by ${Math.abs(reg.scoreDelta)} points to ${reg.currentScore}/100. Please review and fix the SEO issues.`
+      logger.info('develop-page.seo-quality-fix-request', {
+        appId: cur.appId,
+        scoreDelta: reg.scoreDelta,
+        currentScore: reg.currentScore,
+        affectedPages: reg.regressions.length,
+      })
+      cur.setInputValue(messageContent)
+      cur.scheduleMicrotask(() => {
+        void cur.wsSend({
+          content: messageContent,
+          aiEditContext: null,
+          isActionRequest: false,
+          customContext: {
+            type: 'seo_quality_regression',
+            data: {
+              scoreDelta: reg.scoreDelta,
+              currentScore: reg.currentScore,
+              regressions: reg.regressions,
+            },
+            persistence: 'ephemeral',
+            source: 'seo-quality-alert',
           },
         })
       })

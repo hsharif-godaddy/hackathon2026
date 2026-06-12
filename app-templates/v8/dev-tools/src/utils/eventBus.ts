@@ -165,10 +165,20 @@ export interface BusEventMap {
     errorDetails: string;
     exitCode?: number;
   };
+  "seo-quality-fix-request": {
+    appId: string;
+    regression: SeoRegressionEventData;
+  };
   SPEECH_QUERY_SUPPORT: object;
   SPEECH_START: object;
   SPEECH_STOP: object;
 }
+
+export type SeoRegressionEventData = {
+  scoreDelta: number;
+  currentScore: number;
+  regressions: Array<{ path: string; newIssues: string[] }>;
+};
 
 export type BusEventType = keyof BusEventMap;
 export type BusMessage<K extends BusEventType = BusEventType> = { type: K } & BusEventMap[K];

@@ -1,5 +1,4 @@
 import { Router, Request, Response, IRouter } from 'express';
-import { isIP } from 'net';
 
 import { AppRepository, type App } from '../../database/index.js';
 import { GitUtils } from '../../utils/git.js';
@@ -8,6 +7,7 @@ import { log } from '../../logging/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import { getScreenshotStore } from './screenshot-store.js';
+import { isBlockedFetchHostname } from '../../utils/public-fetch-url.js';
 
 const router: IRouter = Router();
 const appRepo = new AppRepository();
@@ -30,36 +30,6 @@ interface CaptureRecord {
 const DEDUP_WINDOW_MS = 15 * 60 * 1_000; // 15 minutes
 
 const recentCaptures = new Map<string, CaptureRecord>();
-
-/**
- * SSRF protection — reject hostnames that resolve to internal/private addresses.
- * Only public internet hosts should be screenshotted.
- *
- * Known limitation: decimal/octal/hex IPv4 representations (e.g. https://2130706433/
- * for 127.0.0.1) bypass isIP() detection. The downstream web-scraper service is
- * responsible for its own URL validation as an additional layer of defense.
- */
-const BLOCKED_HOSTNAME_PATTERNS = [
-  /^localhost$/i,
-  /^127\./,
-  /^10\./,
-  /^172\.(1[6-9]|2\d|3[01])\./,
-  /^192\.168\./,
-  /^169\.254\./,                // link-local
-  /^0\./,                       // "this" network
-  /\.(local|internal|corp|lan)$/i,
-  /\.svc\.cluster\.local$/i,    // k8s service DNS
-];
-
-function isBlockedHost(hostname: string): boolean {
-  // Strip IPv6 brackets
-  const host = hostname.replace(/^\[|\]$/g, '');
-
-  // Block raw IP addresses — only public domain names are allowed
-  if (isIP(host)) return true;
-
-  return BLOCKED_HOSTNAME_PATTERNS.some(pattern => pattern.test(host));
-}
 
 function parseDimension(value: unknown, fallback: number): number | null {
   if (value === undefined || value === null) return fallback;
@@ -130,7 +100,7 @@ router.post('/:id/capture-screenshot', async (req: Request, res: Response) => {
       return res.status(422).json({ error: 'url must use https protocol' });
     }
 
-    if (isBlockedHost(parsed.hostname)) {
+    if (isBlockedFetchHostname(parsed.hostname)) {
       contextLogger.warn('route.apps.capture-screenshot.blocked-host', { appId: id, url, hostname: parsed.hostname });
       return res.status(422).json({ error: 'URL hostname is not allowed' });
     }

@@ -5,7 +5,7 @@
  * This is triggered by agents when the user requests to publish their site.
  */
 
-import { PublishDenialReason, PublishErrorCode, PublishUpgradeRequiredError } from '@airo/shared/publish'
+import { PublishDenialReason, PublishUpgradeRequiredError } from '@airo/shared/publish'
 
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
@@ -22,6 +22,7 @@ import { type AiroSubscription, DeploymentStatus } from '@/lib/mgmt-airo/types'
 import { ClientPaywallProvider } from '@/lib/paywall/client-provider'
 import { checkPaywallEligibility, PaywallAction } from '@/lib/paywall/core'
 import { PAYWALL_ITC, PaywallDenialReason } from '@/lib/paywall/shared'
+import * as postAgentPublish from '@/lib/post-agent-publish'
 import { logger } from '@/lib/request-context'
 import {
   getPublishComplianceBlockReason,
@@ -388,40 +389,22 @@ export const publishAction: ClientActionExecutor = async (params, context, reque
       throw new Error('Agent URL not available for this site')
     }
 
-    // Call agent service directly with fresh token (retry once on TOKEN_STALE)
-    const publishUrl = `${apiConfig.agentUrl}/apps/${appId}/publish`
+    const publishUrl = postAgentPublish.url(apiConfig.agentUrl, appId)
     logger.info('websocket.client-action.publish.calling-agent', { appId, url: publishUrl })
 
-    let response = await fetch(publishUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${tokenResult.token}`,
+    const { response, parsedBody } = await postAgentPublish.postWithStaleRetry({
+      agentUrl: apiConfig.agentUrl,
+      appId,
+      token: tokenResult.token,
+      publishedUrl: appDetails.published_url,
+      refreshToken: async function refreshPublishToken() {
+        logger.info('websocket.client-action.publish.token-stale-retry', { appId })
+        return regenerateToken({ siteId: appId, force: true })
       },
     })
 
-    let parsedBody: any = null
     if (!response.ok) {
-      parsedBody = await response.json().catch(() => ({}))
-    }
-
-    if (response.status === 401 && parsedBody?.code === PublishErrorCode.TokenStale) {
-      logger.info('websocket.client-action.publish.token-stale-retry', { appId })
-      const retryToken = await regenerateToken({ siteId: appId, force: true })
-      response = await fetch(publishUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${retryToken.token}`,
-        },
-      })
-      parsedBody = !response.ok
-        ? await response.json().catch(() => ({}))
-        : null
-    }
-
-    if (!response.ok) {
-      const errorData = parsedBody ?? { error: 'Unknown error' }
+      const errorData: any = parsedBody ?? { error: 'Unknown error' }
 
       // If this is a build/runtime error with details or logs, store it for the UI to handle
       // This includes both 400 (build errors) and 500 (supervisor/runtime errors)

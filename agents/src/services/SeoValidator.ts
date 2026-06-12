@@ -1,3 +1,5 @@
+import { validatePublicHttpsFetchUrl } from '../utils/public-fetch-url.js';
+
 /**
  * Advisory SEO validator. Fetches a published URL (no JS) and reports
  * missing SEO elements. Non-blocking.
@@ -166,12 +168,17 @@ export async function fetchPublishedPageHtml(
   url: string,
   options?: Pick<ValidateOptions, 'timeoutMs'>,
 ): Promise<{ ok: true; html: string } | { ok: false; detail: string }> {
+  const validated = validatePublicHttpsFetchUrl(url);
+  if (!validated.ok) {
+    return { ok: false, detail: `blocked URL: ${validated.reason}` };
+  }
+
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(url, {
+    const res = await fetch(validated.url.href, {
       method: 'GET',
       headers: { 'User-Agent': 'AiroSeoValidator/1.0', Accept: 'text/html' },
       signal: controller.signal,

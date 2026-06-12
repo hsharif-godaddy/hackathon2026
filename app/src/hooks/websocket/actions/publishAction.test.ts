@@ -742,6 +742,7 @@ describe('publishAction', () => {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer mock-jwt-token',
           },
+          body: JSON.stringify({ publishedUrl: null }),
         })
       )
     })

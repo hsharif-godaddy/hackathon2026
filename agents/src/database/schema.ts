@@ -254,6 +254,23 @@ export interface SocialPost {
   updatedAt: Date;
 }
 
+export type SeoQualityTriggeredBy = 'publish' | 'manual';
+
+/**
+ * SEO quality snapshot stored per publish or manual trigger.
+ * score: 0-100 site-wide average; is_baseline: true for the first snapshot.
+ */
+export interface SeoQualityScore {
+  id: string;
+  appId: string;
+  score: number;
+  pageScores: string;      // JSON: Record<path, number>
+  missingElements: string; // JSON: Record<path, string[]>
+  triggeredBy: SeoQualityTriggeredBy;
+  isBaseline: boolean;
+  createdAt: Date;
+}
+
 /**
  * Route type for dynamic content routes
  */
@@ -310,6 +327,25 @@ export interface AppMetadataRow {
 // ==================================================================================
 
 /**
+ * Create the seo_quality_scores table — RUBICON-143.
+ */
+function createSeoQualityScoresTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS seo_quality_scores (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      score INTEGER NOT NULL,
+      page_scores TEXT NOT NULL,
+      missing_elements TEXT NOT NULL,
+      triggered_by TEXT NOT NULL CHECK(triggered_by IN ('publish','manual')),
+      is_baseline BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+    )
+  `);
+}
+
+/**
  * Initialize the complete database schema
  */
 export function initializeSchema(db: Database): void {
@@ -333,6 +369,7 @@ export function initializeSchema(db: Database): void {
   createConversationSummariesTable(db);
   createGitRemoteConfigTable(db);
   createShareTokensTable(db);
+  createSeoQualityScoresTable(db);
 
   // Apply migrations BEFORE creating indexes (migrations may alter schema)
   // Note: oauth_tokens and social tables creation moved to migrations
@@ -936,6 +973,24 @@ function createIndexes(db: Database): void {
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_share_tokens_expires_at ON share_tokens(expires_at)
+  `);
+
+  // seo_quality_scores table indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_seo_quality_scores_app_id ON seo_quality_scores(app_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_seo_quality_scores_created_at ON seo_quality_scores(app_id, created_at)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_seo_quality_scores_baseline ON seo_quality_scores(app_id, is_baseline)
+  `);
+
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_seo_quality_scores_one_baseline
+    ON seo_quality_scores(app_id) WHERE is_baseline = TRUE
   `);
 }
 
@@ -1560,6 +1615,9 @@ function applyMigrations(db: Database): void {
 
   // Add purpose column to share_tokens for archive-snapshot share tokens
   migrateShareTokensPurpose(db);
+
+  // Create seo_quality_scores table for existing databases — RUBICON-143
+  createSeoQualityScoresTable(db);
 
   // Add sync_strategy column to git_remote_config
   migrateGitRemoteConfigSyncStrategy(db);

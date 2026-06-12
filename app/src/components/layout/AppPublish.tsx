@@ -25,6 +25,7 @@ import TextLockup from '@ux/text-lockup';
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
+import SeoQualityRegressionAlert from '@/components/layout/SeoQualityRegressionAlert';
 import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE } from '@/config/switchboard-flags';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
@@ -35,6 +36,7 @@ import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { usePublishApp } from '@/hooks/usePublishApp';
 import { usePublishComplianceGate } from '@/hooks/usePublishComplianceGate';
 import { useSecretsDiff } from '@/hooks/useSecretsDiff';
+import { useSeoQualityCheck } from '@/hooks/useSeoQualityCheck';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
@@ -258,6 +260,12 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const buildErrorDetails = useDevelopPageStore(
     (state) => state.publishStates?.[currentAppId]?.buildErrorDetails ?? null
   );
+  const seoRegressionAlert = useDevelopPageStore(
+    (state) => state.publishStates?.[currentAppId]?.seoRegressionAlert ?? null
+  );
+  const dismissSeoRegressionAlert = useDevelopPageStore((state) => state.dismissSeoRegressionAlert);
+
+  useSeoQualityCheck(currentAppId);
   const prevBuildErrorDetailsRef = useRef(buildErrorDetails);
   const showFirstPublishCongrats = useDevelopPageStore(
     (state) =>
@@ -675,6 +683,36 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     });
   }, [currentAppId, isPublishingOrDeploying, mostRecentDeployment?.status, publishError, buildErrorDetails, fqdn, t, handleDeploy, handleFixBuildError, handlePublishFeedbackClick, location, openFeedbackModal]);
 
+  useEffect(() => {
+    if (!seoRegressionAlert || !currentAppId) return;
+    logger.info('seo-quality-alert.shown', {
+      appId: currentAppId,
+      scoreDelta: seoRegressionAlert.scoreDelta,
+      currentScore: seoRegressionAlert.currentScore,
+      affectedPages: seoRegressionAlert.regressions.length,
+    });
+    logImpressionEvent('seo.alert.shown', {
+      scoreDelta: seoRegressionAlert.scoreDelta,
+      currentScore: seoRegressionAlert.currentScore,
+      affectedPages: seoRegressionAlert.regressions.length,
+    })();
+  }, [seoRegressionAlert, currentAppId]);
+
+  const handleSeoRegressionFix = useCallback(() => {
+    if (!seoRegressionAlert || !currentAppId) return;
+    logger.info('seo-quality-alert.fix-clicked', {
+      appId: currentAppId,
+      scoreDelta: seoRegressionAlert.scoreDelta,
+      currentScore: seoRegressionAlert.currentScore,
+      affectedPages: seoRegressionAlert.regressions.length,
+    });
+    dismissSeoRegressionAlert(currentAppId);
+    window.postMessage(
+      { type: 'seo-quality-fix-request', appId: currentAppId, regression: seoRegressionAlert },
+      window.location.origin,
+    );
+  }, [seoRegressionAlert, currentAppId, dismissSeoRegressionAlert]);
+
   /**
    * Navigate to version history tab
    */
@@ -826,6 +864,12 @@ export default function AppPublish({ location = 'develop' }: { location?: string
 
   return (
     <>
+      {seoRegressionAlert && currentAppId && (
+        <SeoQualityRegressionAlert
+          onDismiss={() => dismissSeoRegressionAlert(currentAppId)}
+          onFix={handleSeoRegressionFix}
+        />
+      )}
       {paywallModal}
       {dnsConflictModal}
       <Popover open={open} onOpenChange={handlePublish}>

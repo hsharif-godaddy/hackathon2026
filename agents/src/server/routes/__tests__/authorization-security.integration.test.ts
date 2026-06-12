@@ -19,6 +19,7 @@ import { chatRouter } from '../chat.js';
 import diagnoseRouter, { _setDependencies as _setDiagnoseDependencies, _resetDependencies as _resetDiagnoseDependencies } from '../diagnose.js';
 import rebuildRouter from '../rebuild.js';
 import nextActionsRouter from '../next-actions.js';
+import seoQualityRouter from '../seo-quality.js';
 import { jwtAuthMiddleware } from '../../middleware/jwt-auth.js';
 
 describe('Cross-Tenant Authorization Security - Integration Tests', () => {
@@ -31,6 +32,12 @@ describe('Cross-Tenant Authorization Security - Integration Tests', () => {
   // 400 these requests before the ownership comparison runs.
   const siteA_id = '11111111-1111-1111-1111-111111111111';
   const siteB_id = '22222222-2222-2222-2222-222222222222';
+
+  // SEO quality routes enforce a [a-z0-9]{10} regex on :id — use valid 10-char IDs.
+  const seoA_token = 'mock-jwt-token-seo-a';
+  const seoB_token = 'mock-jwt-token-seo-b';
+  const seoA_id = 'aaaaaaaaaa';
+  const seoB_id = 'bbbbbbbbbb';
 
   beforeAll(() => {
     // Mock JWT auth middleware to inject test agent contexts
@@ -53,6 +60,20 @@ describe('Cross-Tenant Authorization Security - Integration Tests', () => {
       } else if (token === siteB_token) {
         req.agentContext = {
           siteId: siteB_id,
+          product: 'PaaSNodeJS',
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000),
+        };
+      } else if (token === seoA_token) {
+        req.agentContext = {
+          siteId: seoA_id,
+          product: 'PaaSNodeJS',
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000),
+        };
+      } else if (token === seoB_token) {
+        req.agentContext = {
+          siteId: seoB_id,
           product: 'PaaSNodeJS',
           exp: Math.floor(Date.now() / 1000) + 3600,
           iat: Math.floor(Date.now() / 1000),
@@ -84,6 +105,7 @@ describe('Cross-Tenant Authorization Security - Integration Tests', () => {
     app.use('/apps', diagnoseRouter);
     app.use('/apps', rebuildRouter);
     app.use('/apps', nextActionsRouter);
+    app.use('/', seoQualityRouter);
   });
 
   afterAll(() => {
@@ -450,6 +472,55 @@ describe('Cross-Tenant Authorization Security - Integration Tests', () => {
         .set('Authorization', `Bearer ${siteA_token}`);
 
       expect(response.status).not.toBe(403);
+    });
+  });
+
+  // SEO quality routes use the [a-z0-9]{10} regex on :id, so tests must use
+  // canonical 10-char IDs (seoA_id / seoB_id) — UUID-format IDs would 404.
+  describe('SEO Quality Router - /apps/:id/seo-quality/*', () => {
+    it('should reject cross-tenant access to /seo-quality/latest', async () => {
+      const response = await request(app)
+        .get(`/apps/${seoB_id}/seo-quality/latest`)
+        .set('Authorization', `Bearer ${seoA_token}`);
+
+      expect(response.status).toBe(403);
+      expect(response.body).toHaveProperty('error', 'Access denied');
+    });
+
+    it('should reject cross-tenant access to /seo-quality/history', async () => {
+      const response = await request(app)
+        .get(`/apps/${seoB_id}/seo-quality/history`)
+        .set('Authorization', `Bearer ${seoA_token}`);
+
+      expect(response.status).toBe(403);
+      expect(response.body).toHaveProperty('error', 'Access denied');
+    });
+
+    it('should allow same-tenant access to /seo-quality/latest (no data yet = 404)', async () => {
+      const response = await request(app)
+        .get(`/apps/${seoA_id}/seo-quality/latest`)
+        .set('Authorization', `Bearer ${seoA_token}`);
+
+      // Ownership check passes (not 403); no snapshot yet → 404
+      expect(response.status).not.toBe(403);
+      expect(response.status).toBe(404);
+    });
+
+    it('should allow same-tenant access to /seo-quality/history (empty list)', async () => {
+      const response = await request(app)
+        .get(`/apps/${seoA_id}/seo-quality/history`)
+        .set('Authorization', `Bearer ${seoA_token}`);
+
+      expect(response.status).not.toBe(403);
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('history');
+    });
+
+    it('should reject unauthenticated access to /seo-quality/latest', async () => {
+      const response = await request(app)
+        .get(`/apps/${seoA_id}/seo-quality/latest`);
+
+      expect(response.status).toBe(401);
     });
   });
 });

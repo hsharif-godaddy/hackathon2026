@@ -40,5 +40,6 @@ export { default as nextActionsRouter } from './next-actions.js';
 export { default as feedbackRouter } from './feedback.js';
 export { captureScreenshotRouter } from './capture-screenshot.js';
 export { default as inboxAccountRouter } from './inbox-account.js';
+export { default as seoQualityRouter } from './seo-quality.js';
 export { default as campaignsRouter } from './campaigns.js';
 export { appMetadataRouter } from './app-metadata.js';

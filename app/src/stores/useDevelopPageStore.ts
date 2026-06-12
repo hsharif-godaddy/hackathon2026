@@ -191,6 +191,7 @@ const createDefaultPublishState = () => {
     showPostPublishFeatureSelection: false,
     postPublishFeatureSelectionNonce: 0,
     isSecurityAnalysisRunning: false,
+    seoRegressionAlert: null,
     securityAnalysisResult: null as 'safe' | 'issues' | null,
     // Agent-initiated publish confirmation (human-in-the-loop gate). Only the agent's
     // publish path consults this; the UI Publish button uses usePublishApp and bypasses it.
@@ -305,6 +306,11 @@ interface DevelopPageStore {
     showPostPublishFeatureSelection: boolean
     postPublishFeatureSelectionNonce: number
     isSecurityAnalysisRunning: boolean
+    seoRegressionAlert: {
+      scoreDelta: number;
+      currentScore: number;
+      regressions: Array<{ path: string; newIssues: string[] }>;
+    } | null
     securityAnalysisResult: 'safe' | 'issues' | null
     // Agent-initiated publish confirmation: 'pending' shows the approval modal;
     // 'approved'/'cancelled' are read by the awaiting publishAction, then reset to 'idle'.
@@ -399,6 +405,8 @@ interface DevelopPageStore {
   setPublishSuccess: (appId: string, showSuccess: boolean) => void
   dismissPublishSuccess: (appId: string) => void
   clearPublishStatus: (appId: string) => void
+  setSeoRegressionAlert: (appId: string, alert: { scoreDelta: number; currentScore: number; regressions: Array<{ path: string; newIssues: string[] }> } | null) => void
+  dismissSeoRegressionAlert: (appId: string) => void
   setShowPaywallModal: (appId: string, show: boolean) => void
   setShowPublishLimitModal: (appId: string, show: boolean, data?: PublishLimitData) => void
   setShowFirstPublishCongrats: (appId: string, show: boolean) => void
@@ -433,6 +441,11 @@ interface DevelopPageStore {
     showPostPublishFeatureSelection: boolean
     postPublishFeatureSelectionNonce: number
     isSecurityAnalysisRunning: boolean
+    seoRegressionAlert: {
+      scoreDelta: number;
+      currentScore: number;
+      regressions: Array<{ path: string; newIssues: string[] }>;
+    } | null
     securityAnalysisResult: 'safe' | 'issues' | null
     agentPublishConfirmation: 'idle' | 'pending' | 'approved' | 'cancelled'
   }
@@ -948,6 +961,17 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId].buildErrorDetails = null;
         state.publishStates[appId].showSuccessAlert = false;
         // Keep lastPublishedCommitHash and deploymentsRefetch for retry functionality
+      }
+    }),
+    setSeoRegressionAlert: (appId: string, alert) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState();
+      }
+      state.publishStates[appId].seoRegressionAlert = alert;
+    }),
+    dismissSeoRegressionAlert: (appId: string) => set((state) => {
+      if (state.publishStates[appId]) {
+        state.publishStates[appId].seoRegressionAlert = null;
       }
     }),
     setShowPaywallModal: (appId: string, show: boolean) => set((state) => {

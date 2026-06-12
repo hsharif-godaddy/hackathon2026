@@ -480,20 +480,11 @@ export async function runSeoCheck(params: RunSeoCheckParams): Promise<SeoAuditRe
 }
 
 /** Log-only multi-route validation for publish (reuses audit, logs per page). */
-export async function logPublishedSeoAudit(
+export function logSeoAuditReport(
   appId: string,
-  appPath: string,
-  publishedUrl: string,
+  report: SeoAuditReport,
   logger: ValidatorLogger,
-): Promise<void> {
-  const report = await runSeoAudit({
-    appId,
-    appPath,
-    publishedUrl,
-    isPublished: true,
-    includeSourceScan: false,
-  });
-
+): void {
   for (const page of report.pages) {
     if (page.ok) {
       logger.info('seo.validation.result', {
@@ -528,6 +519,22 @@ export async function logPublishedSeoAudit(
     pagesWithIssues: report.summary.pagesWithIssues,
     issueCount: report.summary.issueCount,
   });
+}
+
+export async function logPublishedSeoAudit(
+  appId: string,
+  appPath: string,
+  publishedUrl: string,
+  logger: ValidatorLogger,
+): Promise<void> {
+  const report = await runSeoAudit({
+    appId,
+    appPath,
+    publishedUrl,
+    isPublished: true,
+    includeSourceScan: false,
+  });
+  logSeoAuditReport(appId, report, logger);
 }
 
 export function seoCheckResultFromPage(page: SeoPageAudit): SeoCheckResult {

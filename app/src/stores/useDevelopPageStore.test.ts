@@ -1184,6 +1184,58 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
     });
   });
 
+  describe('setSeoRegressionAlert / dismissSeoRegressionAlert', function seoRegressionAlertTests() {
+    const appId = 'seoapp0001';
+    const alert = {
+      scoreDelta: -30,
+      currentScore: 50,
+      regressions: [{ path: '/home', newIssues: ['missing-h1'] }],
+    };
+
+    it('should set the alert for the given appId', function setsAlert() {
+      act(function set() {
+        useDevelopPageStore.getState().setSeoRegressionAlert(appId, alert);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.publishStates[appId]?.seoRegressionAlert).toEqual(alert);
+    });
+
+    it('should clear the alert when set to null', function clearsAlert() {
+      act(function set() {
+        useDevelopPageStore.getState().setSeoRegressionAlert(appId, alert);
+      });
+      act(function clear() {
+        useDevelopPageStore.getState().setSeoRegressionAlert(appId, null);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.publishStates[appId]?.seoRegressionAlert).toBeNull();
+    });
+
+    it('should dismiss the alert via dismissSeoRegressionAlert', function dismissesAlert() {
+      act(function set() {
+        useDevelopPageStore.getState().setSeoRegressionAlert(appId, alert);
+      });
+      act(function dismiss() {
+        useDevelopPageStore.getState().dismissSeoRegressionAlert(appId);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.publishStates[appId]?.seoRegressionAlert).toBeNull();
+    });
+
+    it('should not affect other appIds when setting alert', function isolatedToApp() {
+      const otherId = 'otherapp01';
+      act(function set() {
+        useDevelopPageStore.getState().setSeoRegressionAlert(appId, alert);
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.publishStates[otherId]?.seoRegressionAlert).toBeUndefined();
+    });
+  });
+
   describe('#resetForNewApp', function resetForNewAppTests() {
     it('should land in preview with editing disabled so the toggle and iframe agree', function resetSyncsEditMode() {
       // Simulate the default-initialized store (viewMode EDIT, edit enabled)
