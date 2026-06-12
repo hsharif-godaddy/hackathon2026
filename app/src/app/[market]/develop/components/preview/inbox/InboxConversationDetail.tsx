@@ -1,10 +1,14 @@
 'use client';
 
-import { useInboxConversation, useInboxConversationMessages } from '@/app/[market]/develop/hooks/useInbox';
+import { useCallback, useEffect, useState } from 'react';
+
+import { useInboxConversation, useInboxConversationMessages, useSendInboxReply } from '@/app/[market]/develop/hooks/useInbox';
 import { useTranslations } from '@/hooks/useTranslations';
+import { isGuideBotConversation } from '@/lib/inbox/isGuideBotConversation';
 import { IntString, UuidString } from '@/types/inbox/local/core';
 import { InboxConversationDetailHeader } from './InboxConversationDetailHeader';
 import { InboxConversationMessageThread } from './InboxConversationMessageThread';
+import { InboxReplyComposer } from './InboxReplyComposer';
 
 interface InboxConversationDetailProps {
   conversationId: IntString;
@@ -18,6 +22,9 @@ export function InboxConversationDetail({
   onBack,
 }: InboxConversationDetailProps) {
   const t = useTranslations();
+  const [body, setBody] = useState('');
+  const [sendError, setSendError] = useState(false);
+
   const {
     isLoading: messagesLoading,
     isError: messagesIsError,
@@ -36,6 +43,26 @@ export function InboxConversationDetail({
   } = useInboxConversation(
     brandId,
     conversationId,
+  );
+
+  const sendReply = useSendInboxReply(brandId, conversationId);
+
+  useEffect(
+    function resetBodyOnConversationChange() {
+      setBody('');
+    },
+    [conversationId],
+  );
+
+  const handleSend = useCallback(
+    function send(replyBody: string) {
+      setSendError(false);
+      sendReply.mutate({ body: replyBody }, {
+        onSuccess: () => setBody(''),
+        onError: () => setSendError(true),
+      });
+    },
+    [sendReply.mutate],
   );
 
   const messages = messagesData?.messages ?? [];
@@ -90,6 +117,16 @@ export function InboxConversationDetail({
         messages={messages}
         conversation={conversation}
       />
+
+      {!isGuideBotConversation(conversation) && (
+        <InboxReplyComposer
+          value={body}
+          onChange={(value: string) => { setSendError(false); setBody(value); }}
+          onSend={handleSend}
+          disabled={sendReply.isPending}
+          error={sendError}
+        />
+      )}
     </div>
   );
 }
