@@ -70,7 +70,6 @@ export function injectDevelopmentMode() {
 }
 
 export function injectPreviewHeader() {
-  if (import.meta.env.MODE !== 'development' && !import.meta.env.VITE_PREVIEW_MODE) return
   if (typeof window === 'undefined') return
   if (!new URLSearchParams(window.location.search).has('airoPreview')) return
   if (document.getElementById('airo-preview-header')) return
