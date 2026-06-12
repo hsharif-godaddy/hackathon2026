@@ -161,7 +161,17 @@ describe('convertConversation messageType matrix', () => {
     expect(result.messageType).toBe('chat')
   })
 
-  it('is contactForm for a web chat carrying a contact form', () => {
+  it('is contactForm when origin is Form (17)', () => {
+    const result = convertConversation(
+      makeRemoteConversation({
+        category: makeRemoteCategory({ channel_type: 1, visibility: 1 }),
+        origin: 17,
+      }),
+    )
+    expect(result.messageType).toBe('contactForm')
+  })
+
+  it('is chat for a web chat with form data but non-form origin', () => {
     const result = convertConversation(
       makeRemoteConversation({
         category: makeRemoteCategory({ channel_type: 1, visibility: 1 }),
@@ -169,7 +179,7 @@ describe('convertConversation messageType matrix', () => {
         data: { __gd_type: 'contact', name: 'Jane' },
       }),
     )
-    expect(result.messageType).toBe('contactForm')
+    expect(result.messageType).toBe('chat')
   })
 
   it('is email for an email category on a non-native origin', () => {
@@ -299,16 +309,20 @@ describe('convertForm', () => {
     expect(result).toEqual({
       type: 'contact',
       title: 'Contact us',
-      form: [
+      fields: [
         { name: 'name', value: 'Jane' },
         { name: 'email', value: 'jane@example.com' },
       ],
     })
   })
 
-  it('returns undefined when every field is filtered out', () => {
+  it('returns a Form with empty fields when every field is filtered out', () => {
     const form: RemoteConversationData = { __gd_type: 'contact', device: 'iPhone' }
-    expect(convertForm(form)).toBeUndefined()
+    expect(convertForm(form)).toEqual({
+      type: 'contact',
+      title: '',
+      fields: [],
+    })
   })
 
   it('honors an explicit field position ordering', () => {
@@ -318,7 +332,7 @@ describe('convertForm', () => {
       email: 'jane@example.com',
     }
     const result = convertForm(form, ['email', 'name'])
-    expect(result?.form).toEqual([
+    expect(result?.fields).toEqual([
       { name: 'email', value: 'jane@example.com' },
       { name: 'name', value: 'Jane' },
     ])

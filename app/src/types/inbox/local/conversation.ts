@@ -10,7 +10,7 @@ export interface Form {
   // TODO: do not expose remote enums to local domain
   readonly type: FormType
   readonly title: string
-  readonly form: ReadonlyArray<{
+  readonly fields: ReadonlyArray<{
     readonly name: string
     readonly value: string
   }>

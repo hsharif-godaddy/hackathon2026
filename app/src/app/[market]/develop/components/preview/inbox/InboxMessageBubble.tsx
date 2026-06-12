@@ -4,19 +4,14 @@ import { useTranslations } from '@/hooks/useTranslations';
 import { Conversation } from '@/types/inbox/local/conversation';
 import { Message } from '@/types/inbox/local/message';
 import { timeAgo } from '@/utils/time';
+import { CUSTOMER_BUBBLE_CLASS, SENT_BUBBLE_CLASS } from './bubbleStyles';
+import { ContactFormMessageContent } from './ContactFormMessageContent';
 
 interface InboxMessageBubbleProps {
   message: Message;
   conversation: Conversation;
+  isFirstMessage?: boolean;
 }
-
-const BUBBLE_BASE_CLASS = 'rounded-lg px-2 py-1.5 my-0.5';
-
-/** Matches StreamingMessage user role bubble (getMessageClasses). */
-const SENT_BUBBLE_CLASS = `${BUBBLE_BASE_CLASS} border bg-intents-ux-actionHovered-backgroundColor`;
-
-/** Same size/radius as sent; box surface shows it is from the customer. */
-const CUSTOMER_BUBBLE_CLASS = `${BUBBLE_BASE_CLASS} border border-intents-ux-boxLowContrast-borderColor bg-intents-ux-box-backgroundColor`;
 
 const MESSAGE_BODY_CLASS =
   'text-sm leading-relaxed wrap-anywhere whitespace-pre-wrap text-ux-text-primary';
@@ -60,6 +55,7 @@ function MessageBubbleBody({
 export function InboxMessageBubble({
   message,
   conversation,
+  isFirstMessage = false,
 }: InboxMessageBubbleProps) {
   const { body, isInbound, createdAt } = message;
   const t = useTranslations();
@@ -68,25 +64,27 @@ export function InboxMessageBubble({
   const displayBody = body || t('builder_inbox_message_no_content');
   const singleParticipant = conversation.c2.length === 1;
 
-  // Inbound (customer) sits left with the timestamp to its right; outbound
-  // (business) sits right with the timestamp to its left.
-  const bubble =
-    isInbound && conversation.messageType === 'contactForm' ? (
-      // TODO: <ContactFormMessageContent form={conversation.form} />
-      <div>Contact Form</div>
-    ) : (
-      <MessageBubbleBody
-        body={displayBody}
-        className={isInbound ? CUSTOMER_BUBBLE_CLASS : SENT_BUBBLE_CLASS}
-      />
-    );
+  const isContactFormFirstMessage =
+    isFirstMessage && isInbound && conversation.messageType === 'contactForm';
+
+  const contactFormCard =
+    isContactFormFirstMessage && conversation.form?.fields.length ? (
+      <ContactFormMessageContent form={conversation.form} />
+    ) : null;
+
+  const bubble = (
+    <MessageBubbleBody
+      body={displayBody}
+      className={isInbound ? CUSTOMER_BUBBLE_CLASS : SENT_BUBBLE_CLASS}
+    />
+  );
 
   const timestampEl = (
     <MessageTimestamp value={timestamp} side={isInbound ? 'right' : 'left'} />
   );
 
   const bubbleRow = (
-    <div className='flex max-w-full items-center gap-1.5'>
+    <div className='flex items-center gap-1.5'>
       {isInbound ? (
         <>
           {bubble}
@@ -109,17 +107,25 @@ export function InboxMessageBubble({
       data-testid='message-bubble'
     >
       {showSenderLabel ? (
-        <div className='flex min-w-0 max-w-full flex-col items-start'>
+        <div className='flex min-w-0 max-w-[80%] flex-col items-start'>
           <span
             className='mb-0.5 px-1 text-xs font-medium text-ux-text-secondary'
             data-testid='message-sender-label'
           >
             {firstName(message.user.name)}
           </span>
+          {contactFormCard}
+          {bubbleRow}
+        </div>
+      ) : contactFormCard ? (
+        <div className='flex max-w-[80%] flex-col items-start'>
+          {contactFormCard}
           {bubbleRow}
         </div>
       ) : (
-        bubbleRow
+        <div className='max-w-[80%]'>
+          {bubbleRow}
+        </div>
       )}
     </div>
   );

@@ -91,15 +91,72 @@ describe('InboxMessageBubble', () => {
     );
   });
 
-  it('renders the contact-form seam for an inbound contactForm conversation', () => {
+  it('renders contact form fields and message body for the first inbound message in a contactForm conversation', () => {
     render(
       <InboxMessageBubble
-        message={makeMessage()}
-        conversation={makeConversation({ messageType: 'contactForm' })}
+        message={makeMessage({ body: 'I need help with sizing' })}
+        conversation={makeConversation({
+          messageType: 'contactForm',
+          form: {
+            type: 'contact',
+            title: 'Get in Touch',
+            fields: [
+              { name: 'full_name', value: 'Ada Lovelace' },
+              { name: 'email', value: 'ada@example.com' },
+            ],
+          },
+        })}
+        isFirstMessage={true}
       />,
     );
 
-    expect(screen.getByText('Contact Form')).toBeInTheDocument();
-    expect(screen.queryByTestId('message-content')).not.toBeInTheDocument();
+    expect(screen.getByText('Get in Touch')).toBeInTheDocument();
+    expect(screen.getByTestId('contact-form-fields')).toBeInTheDocument();
+    expect(screen.getByText('full_name')).toBeInTheDocument();
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+    expect(screen.getByText('email')).toBeInTheDocument();
+    expect(screen.getByText('ada@example.com')).toBeInTheDocument();
+    expect(screen.getByText('I need help with sizing')).toBeInTheDocument();
+  });
+
+  it('renders the contact form card and fallback body for a contactForm first message with empty body', () => {
+    render(
+      <InboxMessageBubble
+        message={makeMessage({ body: '' })}
+        conversation={makeConversation({
+          messageType: 'contactForm',
+          form: {
+            type: 'contact',
+            title: 'Contact Us',
+            fields: [{ name: 'help_topic', value: 'Sizing' }],
+          },
+        })}
+        isFirstMessage={true}
+      />,
+    );
+
+    expect(screen.getByText('Contact Us')).toBeInTheDocument();
+    expect(screen.getByTestId('contact-form-fields')).toBeInTheDocument();
+    expect(screen.getByTestId('message-content')).toBeInTheDocument();
+  });
+
+  it('renders normal body for non-first messages in a contactForm conversation', () => {
+    render(
+      <InboxMessageBubble
+        message={makeMessage({ body: 'follow-up message' })}
+        conversation={makeConversation({
+          messageType: 'contactForm',
+          form: {
+            type: 'contact',
+            title: 'Get in Touch',
+            fields: [{ name: 'email', value: 'ada@example.com' }],
+          },
+        })}
+        isFirstMessage={false}
+      />,
+    );
+
+    expect(screen.queryByTestId('contact-form-fields')).not.toBeInTheDocument();
+    expect(screen.getByTestId('message-content')).toHaveTextContent('follow-up message');
   });
 });

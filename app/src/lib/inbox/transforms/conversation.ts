@@ -44,13 +44,11 @@ export const convertForm = (
     if (!key.startsWith('__') && !formHiddenFields.includes(key))
       formData.push({ name: key, value: safeString(form[key]) })
   }
-  return formData.length
-    ? {
-        type: form.__gd_type,
-        title: form.__gd_contact_form_title ?? '',
-        form: formData,
-      }
-    : undefined
+  return {
+    type: form.__gd_type,
+    title: form.__gd_contact_form_title ?? '',
+    fields: formData,
+  }
 }
 
 const convertConversationCategory = (
@@ -83,10 +81,12 @@ const convertConversationCategory = (
 const convertMessageType = (
   conversation: RemoteConversation,
   originalChannel: ChannelType,
-  hasForm: boolean,
+  isContactFormOrigin: boolean,
 ): MessageType => {
-  if (originalChannel === 'WebChat') return hasForm ? 'contactForm' : 'chat'
-  if (originalChannel === 'Email') return hasForm ? 'contactForm' : 'email'
+  if (originalChannel === 'WebChat')
+    return isContactFormOrigin ? 'contactForm' : 'chat'
+  if (originalChannel === 'Email')
+    return isContactFormOrigin ? 'contactForm' : 'email'
   if (originalChannel === 'Telephony')
     return conversation.last_message.origin === 9 ? 'sms' : 'call'
   if (
@@ -193,7 +193,11 @@ export const convertConversation = (
     id: conversation.id.toString(),
     originId: conversation.origin_id,
     originalChannel: channel,
-    messageType: convertMessageType(conversation, channel, !!form),
+    messageType: convertMessageType(
+      conversation,
+      channel,
+      conversation.origin === 17,
+    ),
     category,
     c2: selectC2(
       conversation.followers,
