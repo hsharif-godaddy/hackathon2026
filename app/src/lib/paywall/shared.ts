@@ -203,6 +203,8 @@ export const PAYWALL_ITC = {
   DOMAIN_PURCHASE: 'airo_ai_builder_domain_purchase',
   /** ITC for domain purchase for external domain attach purchase flow */
   ATTACH_DOMAIN: 'airo_ai_builder_attach_domain',
+  /** ITC for code editor paywall (when code view is blocked) */
+  CODE_EDITOR: 'upp_airo_ai_builder_code_editor',
 } as const;
 
 export type PaywallItcValue = (typeof PAYWALL_ITC)[keyof typeof PAYWALL_ITC];

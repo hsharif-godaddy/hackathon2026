@@ -120,6 +120,19 @@ vi.mock('@/hooks/useSupportChat', () => ({
   }; }),
 }));
 
+const mockCheckAndShowPaywall = vi.fn(async (action: () => Promise<void>) => {
+  await action();
+});
+
+vi.mock('@/hooks/usePaywallModal', () => ({
+  usePaywallModal: () => ({
+    checkAndShowPaywall: mockCheckAndShowPaywall,
+    paywallModal: null,
+    isPaywallLoading: false,
+    isPublishLimitLoading: false,
+  }),
+}));
+
 describe('DevelopHeader', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -313,5 +326,60 @@ describe('DevelopHeader', () => {
     await user.click(screen.getByRole('button', { name: 'builder_preview_button_help' }));
 
     expect(vi.mocked(logClickEvent)).toHaveBeenCalledWith('develop.header.help', { appId: 'app-123' });
+  });
+
+  describe('Code button paywall', () => {
+    it('should call checkAndShowPaywall when code button is clicked', async () => {
+      const { user } = renderWithProviders(<DevelopHeader />);
+
+      await user.click(screen.getByLabelText('builder_preview_button_code'));
+
+      expect(mockCheckAndShowPaywall).toHaveBeenCalledTimes(1);
+      expect(mockCheckAndShowPaywall).toHaveBeenCalledWith(expect.any(Function));
+    });
+
+    it('should switch to code view when paywall allows through', async () => {
+      mockCheckAndShowPaywall.mockImplementation(async (action: () => Promise<void>) => {
+        await action();
+      });
+
+      const { user } = renderWithProviders(<DevelopHeader />);
+
+      await user.click(screen.getByLabelText('builder_preview_button_code'));
+
+      expect(mockDevelopStore.handleViewModeChange).toHaveBeenCalledWith(ViewMode.CODE, false);
+    });
+
+    it('should NOT switch to code view when paywall blocks', async () => {
+      mockCheckAndShowPaywall.mockImplementation(async () => {
+        // Paywall intercepts — does not call the action
+      });
+
+      const { user } = renderWithProviders(<DevelopHeader />);
+
+      await user.click(screen.getByLabelText('builder_preview_button_code'));
+
+      expect(mockDevelopStore.handleViewModeChange).not.toHaveBeenCalled();
+    });
+
+    it('should NOT call checkAndShowPaywall for preview button', async () => {
+      mockDevelopStore.viewMode = ViewMode.CODE;
+
+      const { user } = renderWithProviders(<DevelopHeader />);
+
+      await user.click(screen.getByLabelText('builder_preview_button_preview'));
+
+      expect(mockCheckAndShowPaywall).not.toHaveBeenCalled();
+      expect(mockDevelopStore.handleViewModeChange).toHaveBeenCalledWith(ViewMode.PREVIEW, false);
+    });
+
+    it('should NOT call checkAndShowPaywall for edit button', async () => {
+      const { user } = renderWithProviders(<DevelopHeader />);
+
+      await user.click(screen.getByLabelText('builder_preview_button_edit'));
+
+      expect(mockCheckAndShowPaywall).not.toHaveBeenCalled();
+      expect(mockDevelopStore.handleViewModeChange).toHaveBeenCalledWith(ViewMode.EDIT, false);
+    });
   });
 });

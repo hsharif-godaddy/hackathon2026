@@ -29,9 +29,11 @@ import AppPublish from '@/components/layout/AppPublish';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import IframeCloseButton from '@/components/layout/IframeCloseButton';
 import UserMenu from '@/components/layout/UserMenu';
+import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { useSupportChat } from '@/hooks/useSupportChat';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
+import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { logClickEvent } from '@/utils/instrumentation'
 
@@ -68,6 +70,12 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
   const { launchSupportChat } = useSupportChat();
 
+  const { checkAndShowPaywall, paywallModal, isPaywallLoading } = usePaywallModal({
+    appId,
+    source: 'code_editor',
+    itc: PAYWALL_ITC.CODE_EDITOR,
+  });
+
   const inboxBrandId = useDevelopPageStore((state) => state.inboxBrandId)
   const chatPaneWidth = useDevelopPageStore((state) => state.chatPaneWidth)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
@@ -81,6 +89,13 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const toggleChatPaneCollapse = useDevelopPageStore((state) => state.toggleChatPaneCollapse)
 
   const handleViewModeButtonChange = (value: string) => {
+    if (value === ViewMode.CODE) {
+      void checkAndShowPaywall(async () => {
+        handleViewModeChange(value as ViewMode, hasUnsavedChanges)
+        if (VIEW_MODE_EID_MAP[value]) logClickEvent(VIEW_MODE_EID_MAP[value], clickContext)()
+      })
+      return
+    }
     handleViewModeChange(value as ViewMode, hasUnsavedChanges)
     if (VIEW_MODE_EID_MAP[value]) logClickEvent(VIEW_MODE_EID_MAP[value], clickContext)()
   }
@@ -166,7 +181,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                   value={ViewMode.CODE}
                   icon={<CodeIcon className="size-2.5" />}
                   label={t('builder_preview_button_code')}
-                  disabled={isVersionHistoryOpen}
+                  disabled={isVersionHistoryOpen || isPaywallLoading}
                 />
                 {isTopLevelDomainEnabled && (
                   <ButtonGroup.Item
@@ -267,6 +282,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
           <IframeCloseButton location="develop" />
         </div>
       )}
+      {paywallModal}
     </header>
   )
 }
