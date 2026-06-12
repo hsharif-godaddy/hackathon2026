@@ -71,7 +71,7 @@ vi.mock('../../../../utils/entry-api-sync.js', () => ({
   regenerateEntryApiRegistrations: (...args: unknown[]) => mockRegenerateEntryApiRegistrations(...args),
 }));
 
-const { discoverAccountTool, setupWidgetTool, updateWidgetConfigTool, ensureEmailChannelTool, setupFormTool } =
+const { discoverAccountTool, setupWidgetTool, updateWidgetConfigTool, setupFormTool, setFormEmailTool } =
   await import('../index.js');
 
 // --- Test helpers ---
@@ -673,136 +673,6 @@ describe('inbox skill tools', () => {
   });
 
   // --------------------------------------------------------------------------
-  // ensure_email_channel
-  // --------------------------------------------------------------------------
-
-  describe('ensure_email_channel', () => {
-    it('has correct tool definition', () => {
-      expect(ensureEmailChannelTool.name).toBe('ensure_email_channel');
-      expect(ensureEmailChannelTool.execute).toBeTypeOf('function');
-    });
-
-    it('returns error when appId is missing', async () => {
-      const result = await ensureEmailChannelTool.execute({}, {});
-      expect(result.error).toContain('App ID required');
-    });
-
-    it('returns error when brand is not configured', async () => {
-      mockMemoryGet.mockResolvedValue({ exists: false });
-
-      const result = await ensureEmailChannelTool.execute({}, context);
-
-      expect(result.error).toContain('No account configured');
-    });
-
-    it('returns error when client is unavailable', async () => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
-        if (key === 'integrations.inbox.brandId') {
-          return Promise.resolve({ exists: true, value: 'brand-123' });
-        }
-        return Promise.resolve({ exists: false });
-      });
-      mockGetActionService.mockReturnValue(null);
-
-      const result = await ensureEmailChannelTool.execute({}, context);
-
-      expect(result.error).toContain('ClientActionService not available');
-    });
-
-    it('returns alreadyExists when active email channel found', async () => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
-        if (key === 'integrations.inbox.brandId') {
-          return Promise.resolve({ exists: true, value: 'brand-123' });
-        }
-        return Promise.resolve({ exists: false });
-      });
-      mockListCategories.mockResolvedValue({
-        success: true,
-        data: [{ id: 42, name: 'Support', channel_type: 1, status: 'enabled' }],
-      });
-
-      const result = await ensureEmailChannelTool.execute({}, context);
-
-      expect(result.alreadyExists).toBe(true);
-      expect(result.categoryId).toBe(42);
-      expect(mockMemorySet).toHaveBeenCalledWith('app-123', 'integrations.inbox.contactFormCategoryId', 42);
-    });
-
-    it('creates email channel when none exists', async () => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
-        if (key === 'integrations.inbox.brandId') {
-          return Promise.resolve({ exists: true, value: 'brand-123' });
-        }
-        return Promise.resolve({ exists: false });
-      });
-      mockListCategories.mockResolvedValue({ success: true, data: [] });
-      mockCreateCategory.mockResolvedValue({
-        success: true,
-        data: { id: 99, name: 'Contact Form', channel_type: 1 },
-      });
-
-      const result = await ensureEmailChannelTool.execute({}, context);
-
-      expect(result.created).toBe(true);
-      expect(result.categoryId).toBe(99);
-      expect(mockCreateCategory).toHaveBeenCalledWith(
-        mockClient, 'app-123', 'brand-123', { name: 'Contact Form', channel_type: 1 },
-      );
-      expect(mockMemorySet).toHaveBeenCalledWith('app-123', 'integrations.inbox.contactFormCategoryId', 99);
-    });
-
-    it('returns error when listCategories fails', async () => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
-        if (key === 'integrations.inbox.brandId') {
-          return Promise.resolve({ exists: true, value: 'brand-123' });
-        }
-        return Promise.resolve({ exists: false });
-      });
-      mockListCategories.mockResolvedValue({ success: false, error: 'network error' });
-
-      const result = await ensureEmailChannelTool.execute({}, context);
-
-      expect(result.error).toContain('Failed to list categories');
-    });
-
-    it('returns error when createCategory fails', async () => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
-        if (key === 'integrations.inbox.brandId') {
-          return Promise.resolve({ exists: true, value: 'brand-123' });
-        }
-        return Promise.resolve({ exists: false });
-      });
-      mockListCategories.mockResolvedValue({ success: true, data: [] });
-      mockCreateCategory.mockResolvedValue({ success: false, error: 'server error' });
-
-      const result = await ensureEmailChannelTool.execute({}, context);
-
-      expect(result.error).toContain('Failed to create email channel');
-    });
-
-    it('skips disabled email channels', async () => {
-      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
-        if (key === 'integrations.inbox.brandId') {
-          return Promise.resolve({ exists: true, value: 'brand-123' });
-        }
-        return Promise.resolve({ exists: false });
-      });
-      mockListCategories.mockResolvedValue({
-        success: true,
-        data: [{ id: 10, name: 'Old', channel_type: 1, status: 'disabled' }],
-      });
-      mockCreateCategory.mockResolvedValue({
-        success: true,
-        data: { id: 99, name: 'Contact Form', channel_type: 1 },
-      });
-
-      const result = await ensureEmailChannelTool.execute({}, context);
-
-      expect(result.created).toBe(true);
-    });
-  });
-
-  // --------------------------------------------------------------------------
   // setup_form
   // --------------------------------------------------------------------------
 
@@ -847,17 +717,82 @@ describe('inbox skill tools', () => {
       expect(result.error).toContain('No account configured');
     });
 
-    it('returns error when category is not configured', async () => {
+    it('auto-ensures email channel when categoryId is not in memory', async () => {
       mockMemoryGet.mockImplementation((_appId: string, key: string) => {
         if (key === 'integrations.inbox.brandId') {
           return Promise.resolve({ exists: true, value: 'brand-123' });
         }
         return Promise.resolve({ exists: false });
       });
+      mockFindById.mockReturnValue({ path: '/app' });
+      mockListCategories.mockResolvedValue({
+        success: true,
+        data: [{ id: 42, name: 'Support', channel_type: 1, status: 'enabled' }],
+      });
+      mockAccess.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
 
       const result = await setupFormTool.execute(formInput, context);
 
-      expect(result.error).toContain('No email channel configured');
+      expect(result.success).toBe(true);
+      expect(mockMemorySet).toHaveBeenCalledWith('app-123', 'integrations.inbox.contactFormCategoryId', 42);
+    });
+
+    it('creates email channel when none exists and categoryId not in memory', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockFindById.mockReturnValue({ path: '/app' });
+      mockListCategories.mockResolvedValue({ success: true, data: [] });
+      mockCreateCategory.mockResolvedValue({
+        success: true,
+        data: { id: 99, name: 'Contact Form', channel_type: 1 },
+      });
+      mockAccess.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+
+      const result = await setupFormTool.execute(formInput, context);
+
+      expect(result.success).toBe(true);
+      expect(mockCreateCategory).toHaveBeenCalledWith(
+        mockClient, 'app-123', 'brand-123', { name: 'Contact Form', channel_type: 1 },
+      );
+      expect(mockMemorySet).toHaveBeenCalledWith('app-123', 'integrations.inbox.contactFormCategoryId', 99);
+    });
+
+    it('returns error when ensure email channel fails', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockFindById.mockReturnValue({ path: '/app' });
+      mockListCategories.mockResolvedValue({ success: false, error: 'network error' });
+
+      const result = await setupFormTool.execute(formInput, context);
+
+      expect(result.error).toContain('Failed to list categories');
+    });
+
+    it('returns error when client is unavailable and categoryId not in memory', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'brand-123' });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockFindById.mockReturnValue({ path: '/app' });
+      mockGetActionService.mockReturnValue(null);
+
+      const result = await setupFormTool.execute(formInput, context);
+
+      expect(result.error).toContain('ClientActionService not available');
     });
 
     it('installs route template when file is missing', async () => {
@@ -907,15 +842,15 @@ describe('inbox skill tools', () => {
       );
     });
 
-    it('includes overrideEmail in config when provided', async () => {
+    it('does not include overrideEmail in config (use set_form_email instead)', async () => {
       setupMemoryMocks();
       mockAccess.mockResolvedValue(undefined);
       mockWriteFile.mockResolvedValue(undefined);
       mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
 
-      await setupFormTool.execute({ name: 'support', overrideEmail: 'support@test.com' }, context);
+      await setupFormTool.execute({ name: 'support' }, context);
 
-      const expectedConfig = { forms: { support: { brandId: 'brand-123', categoryId: 42, overrideEmail: 'support@test.com' } } };
+      const expectedConfig = { forms: { support: { brandId: 'brand-123', categoryId: 42 } } };
       expect(mockWriteFile).toHaveBeenCalledWith(
         expect.stringContaining('contact-form.config.json'),
         JSON.stringify(expectedConfig, null, 2) + '\n',
@@ -1037,6 +972,61 @@ describe('inbox skill tools', () => {
 
       expect(result.success).toBe(true);
       expect(result.routeRegistration).toEqual({ registered: false, reason: 'workspace connection lost' });
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // set_form_email
+  // --------------------------------------------------------------------------
+
+  describe('set_form_email', () => {
+    it('sets overrideEmail on an existing form', async () => {
+      const existingConfig = { forms: { support: { brandId: 'brand-123', categoryId: 42 } } };
+      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+      mockWriteFile.mockResolvedValue(undefined);
+
+      const result = await setFormEmailTool.execute({ formName: 'support', email: 'support@test.com' }, context);
+
+      expect(result.success).toBe(true);
+      expect(result.email).toBe('support@test.com');
+      const expectedConfig = { forms: { support: { brandId: 'brand-123', categoryId: 42, overrideEmail: 'support@test.com' } } };
+      expect(mockWriteFile).toHaveBeenCalledWith(
+        expect.stringContaining('contact-form.config.json'),
+        JSON.stringify(expectedConfig, null, 2) + '\n',
+      );
+    });
+
+    it('removes overrideEmail when email is omitted', async () => {
+      const existingConfig = { forms: { support: { brandId: 'brand-123', categoryId: 42, overrideEmail: 'old@test.com' } } };
+      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+      mockWriteFile.mockResolvedValue(undefined);
+
+      const result = await setFormEmailTool.execute({ formName: 'support' }, context);
+
+      expect(result.success).toBe(true);
+      expect(result.email).toBeNull();
+      const expectedConfig = { forms: { support: { brandId: 'brand-123', categoryId: 42 } } };
+      expect(mockWriteFile).toHaveBeenCalledWith(
+        expect.stringContaining('contact-form.config.json'),
+        JSON.stringify(expectedConfig, null, 2) + '\n',
+      );
+    });
+
+    it('returns error when form does not exist', async () => {
+      const existingConfig = { forms: { other: { brandId: 'brand-123', categoryId: 42 } } };
+      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+
+      const result = await setFormEmailTool.execute({ formName: 'support', email: 'x@test.com' }, context);
+
+      expect(result.error).toContain('Form "support" not found');
+    });
+
+    it('returns error when config file is missing (no forms set up)', async () => {
+      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+
+      const result = await setFormEmailTool.execute({ formName: 'support', email: 'x@test.com' }, context);
+
+      expect(result.error).toContain('Form "support" not found');
     });
   });
 });

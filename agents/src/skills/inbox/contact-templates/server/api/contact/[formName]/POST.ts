@@ -50,17 +50,14 @@ function resolveInboxHost(): string {
 	return "reamaze.godaddy.com";
 }
 
-let cachedConfig: ContactFormConfig | null = null;
 const inboxHost = resolveInboxHost();
 
 function getConfig(): ContactFormConfig | null {
-	if (cachedConfig) return cachedConfig;
 	try {
-		cachedConfig = loadConfig();
+		return loadConfig();
 	} catch {
 		return null;
 	}
-	return cachedConfig;
 }
 
 // ---------------------------------------------------------------------------

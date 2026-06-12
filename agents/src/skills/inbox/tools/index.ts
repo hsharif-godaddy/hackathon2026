@@ -7,6 +7,8 @@
  *   discover_account       — find or auto-create the account for this app
  *   setup_widget           — find/create the default embeddable, write config
  *   update_widget_config   — sync widget settings to backend + config file
+ *   setup_form             — install contact form route + config (auto-ensures email channel)
+ *   set_form_email         — set or remove the notification email for a contact form
  *
  * Tools own the config file (src/lib/inboxChat.config.json). They read it,
  * merge changes, and write it back. The agent never edits the config directly.
@@ -93,7 +95,7 @@ export const discoverAccountTool: SkillToolDefinition = {
     'saves it to memory and returns it. Otherwise, auto-creates a new account from the ' +
     'first available entitlement. Returns alreadyConfigured or accountCreated on success, ' +
     'noAccounts if no entitlements are available. ' +
-    'After this succeeds, proceed to inbox__setup_widget (for chat) or inbox__ensure_email_channel (for contact form).',
+    'After this succeeds, proceed to inbox__setup_widget (for chat) or inbox__setup_form (for contact form).',
 
   parameters: z.object({}),
   execute: async (_input: Record<string, never>, context?: ToolContext) => {
@@ -414,63 +416,46 @@ export const updateWidgetConfigTool: SkillToolDefinition = {
 };
 
 // ============================================================================
-// ensure_email_channel — ensure an email category exists for the brand
+// ensureEmailChannel — ensure an email category exists for the brand
 // ============================================================================
 
-export const ensureEmailChannelTool: SkillToolDefinition = {
-  name: 'ensure_email_channel',
-  description:
-    'Ensure the brand has an active email channel (category) for receiving contact form submissions. ' +
-    'Creates one named "Contact Form" if none exists. ' +
-    'Requires discover_account to have run first. ' +
-    'After this succeeds, proceed to inbox__setup_form.',
+async function ensureEmailChannel(
+  appId: string,
+  brandId: string,
+  context?: ToolContext,
+): Promise<{ categoryId: number | string } | { error: string }> {
+  const client = getClient(context);
+  if (!client) {
+    return { error: 'ClientActionService not available — tool requires an authenticated websocket session.' };
+  }
 
-  parameters: z.object({}),
-  execute: async (_input: Record<string, never>, context?: ToolContext) => {
-    const appId = getAppId(context);
-    if (!appId) return { error: 'App ID required. Pass context.metadata.appId.' };
+  const listResult = await listCategories(client, appId, brandId);
+  if (!listResult.success) {
+    return { error: `Failed to list categories: ${listResult.error}` };
+  }
 
-    const brandRead = await memoryRepo.get(appId, MEM_BRAND_ID);
-    if (!brandRead.exists) {
-      return { error: 'No account configured. Run inbox__discover_account first.' };
-    }
-    const brandId = brandRead.value as string;
+  const emailChannel = listResult.data.find(
+    (cat) => cat.channel_type === 1 && cat.status === 'enabled',
+  );
 
-    const client = getClient(context);
-    if (!client) {
-      return { error: 'ClientActionService not available — tool requires an authenticated websocket session.' };
-    }
+  if (emailChannel) {
+    await memoryRepo.set(appId, MEM_CATEGORY_ID, emailChannel.id);
+    logger.info('inbox.skill.setup_form.email_channel.found', { appId, brandId, categoryId: emailChannel.id });
+    return { categoryId: emailChannel.id };
+  }
 
-    const listResult = await listCategories(client, appId, brandId);
-    if (!listResult.success) {
-      return { error: `Failed to list categories: ${listResult.error}` };
-    }
+  const createResult = await createCategory(client, appId, brandId, {
+    name: 'Contact Form',
+    channel_type: 1,
+  });
+  if (!createResult.success) {
+    return { error: `Failed to create email channel: ${createResult.error}` };
+  }
 
-    // email channels always have status 'enabled' or 'disabled'.
-    const emailChannel = listResult.data.find(
-      (cat) => cat.channel_type === 1 && cat.status === 'enabled',
-    );
-
-    if (emailChannel) {
-      await memoryRepo.set(appId, MEM_CATEGORY_ID, emailChannel.id);
-      logger.info('inbox.skill.ensure_email_channel.found', { appId, brandId, categoryId: emailChannel.id });
-      return { alreadyExists: true, categoryId: emailChannel.id, name: emailChannel.name };
-    }
-
-    const createResult = await createCategory(client, appId, brandId, {
-      name: 'Contact Form',
-      channel_type: 1,
-    });
-    if (!createResult.success) {
-      return { error: `Failed to create email channel: ${createResult.error}` };
-    }
-
-    await memoryRepo.set(appId, MEM_CATEGORY_ID, createResult.data.id);
-    logger.info('inbox.skill.ensure_email_channel.created', { appId, brandId, categoryId: createResult.data.id });
-    return { created: true, categoryId: createResult.data.id, name: createResult.data.name };
-  },
-  config: { requiresApp: true, timeout: 30_000 },
-};
+  await memoryRepo.set(appId, MEM_CATEGORY_ID, createResult.data.id);
+  logger.info('inbox.skill.setup_form.email_channel.created', { appId, brandId, categoryId: createResult.data.id });
+  return { categoryId: createResult.data.id };
+}
 
 // ============================================================================
 // setup_form — install contact form templates and write config
@@ -499,23 +484,19 @@ export const setupFormTool: SkillToolDefinition = {
   name: 'setup_form',
   description:
     'Install the contact form server route and write config for a named form. ' +
-    'Requires discover_account and ensure_email_channel to have run first. ' +
+    'Requires discover_account to have run first. ' +
     'Can be called multiple times with different names to create multiple forms. ' +
     'Each form name must be unique (calling again with the same name updates the entry). ' +
-    'After this succeeds, build the form component that POSTs to /api/contact/{name}.',
+    'After this succeeds, build the form component that POSTs to /api/contact/{name}. ' +
+    'To set a custom notification email, use set_form_email after this tool.',
 
   parameters: z.object({
     name: z
       .string()
       .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Must be lowercase alphanumeric with hyphens (e.g. "contact-us", "support")')
       .describe('Unique slug name for this contact form (e.g. "contact-us", "support-request").'),
-    overrideEmail: z
-      .string()
-      .email()
-      .optional()
-      .describe('If set, submissions from this form will be sent to this email address instead of the default inbox.'),
   }),
-  execute: async (input: { name: string; overrideEmail?: string }, context?: ToolContext) => {
+  execute: async (input: { name: string }, context?: ToolContext) => {
     const appId = getAppId(context);
     if (!appId) return { error: 'App ID required. Pass context.metadata.appId.' };
 
@@ -529,10 +510,16 @@ export const setupFormTool: SkillToolDefinition = {
     const brandId = brandRead.value as string;
 
     const categoryRead = await memoryRepo.get(appId, MEM_CATEGORY_ID);
-    if (!categoryRead.exists) {
-      return { error: 'No email channel configured. Run inbox__ensure_email_channel first.' };
+    let categoryId: number | string;
+    if (categoryRead.exists) {
+      categoryId = categoryRead.value as number | string;
+    } else {
+      const channelResult = await ensureEmailChannel(appId, brandId, context);
+      if ('error' in channelResult) {
+        return { error: channelResult.error };
+      }
+      categoryId = channelResult.categoryId;
     }
-    const categoryId = categoryRead.value as number | string;
 
     const routePath = join(app.path, 'src', 'server', 'api', 'contact', '[formName]', 'POST.ts');
     const configPath = join(app.path, 'src', 'lib', 'contact-form.config.json');
@@ -552,11 +539,7 @@ export const setupFormTool: SkillToolDefinition = {
     }
 
     const config = await readExistingConfig(configPath);
-    const entry: ContactFormEntry = { brandId, categoryId };
-    if (input.overrideEmail) {
-      entry.overrideEmail = input.overrideEmail;
-    }
-    config.forms[input.name] = entry;
+    config.forms[input.name] = { brandId, categoryId };
 
     const configJson = JSON.stringify(config, null, 2) + '\n';
     try {
@@ -618,10 +601,84 @@ export const setupFormTool: SkillToolDefinition = {
       routeInstalled: routePath,
       routeRegistration,
       nextSteps: [
-        `Build a form component that POSTs to /api/contact/${input.name} with: { conversation: { messages_attributes: [{ body }], data: { __gd_contact_form_title, ... } }, user: { email, name } }`,
+        `Build a form component that POSTs to /api/contact/${input.name}. CRITICAL field mapping: messages_attributes[0].body is ONLY for the free-text message textarea. ALL other fields (dropdowns, radios, checkboxes) MUST go in conversation.data as { "Field Label": "value" } pairs. Never concatenate fields into the body.`,
+        'Payload shape: { conversation: { messages_attributes: [{ body: messageTextareaOnly }], data: { __gd_contact_form_title: "Form Heading", "Dropdown Label": selectedValue, "Checkbox Label": "Yes"/"No" } }, user: { email, name } }',
+        'Add this comment above the fetch/POST call in the submit handler: // Field mapping: only the message textarea goes in messages_attributes[0].body. All other fields (dropdowns, radios, checkboxes) must be added to conversation.data as { "Label": value } pairs.',
         'The server route returns { success: true } or { success: false, error: "message" }',
+        'To send notifications to a custom email instead of the GoDaddy account default, call inbox__set_form_email.',
       ],
     };
   },
   config: { requiresApp: true, timeout: 30_000 },
+};
+
+// ============================================================================
+// set_form_email — update or remove the notification email for a contact form
+// ============================================================================
+
+export const setFormEmailTool: SkillToolDefinition = {
+  name: 'set_form_email',
+  description:
+    'Set or remove the notification email for an existing contact form. ' +
+    'Pass email to override the default GoDaddy account email, or omit it to revert to the default.',
+
+  parameters: z.object({
+    formName: z
+      .string()
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Must be lowercase alphanumeric with hyphens (e.g. "contact-us", "support")')
+      .describe('The form slug to update (must already exist via setup_form).'),
+    email: z
+      .string()
+      .email()
+      .optional()
+      .describe('Email address to receive form notifications. Omit to revert to the GoDaddy account default.'),
+  }),
+  execute: async (input: { formName: string; email?: string }, context?: ToolContext) => {
+    const appId = getAppId(context);
+    if (!appId) return { error: 'App ID required. Pass context.metadata.appId.' };
+
+    const app = await appRepository.findById(appId);
+    if (!app?.path) return { error: `Could not resolve app path for appId: ${appId}` };
+
+    const configPath = join(app.path, 'src', 'lib', 'contact-form.config.json');
+    const config = await readExistingConfig(configPath);
+
+    const entry = config.forms[input.formName];
+    if (!entry) {
+      return { error: `Form "${input.formName}" not found. Run inbox__setup_form first.` };
+    }
+
+    if (input.email) {
+      entry.overrideEmail = input.email;
+    } else {
+      delete entry.overrideEmail;
+    }
+
+    const configJson = JSON.stringify(config, null, 2) + '\n';
+    try {
+      await mkdir(dirname(configPath), { recursive: true });
+      await writeFile(configPath, configJson);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { error: `Failed to write contact form config: ${message}` };
+    }
+
+    const distConfigPath = join(app.path, 'dist', 'contact-form.config.json');
+    try {
+      await mkdir(dirname(distConfigPath), { recursive: true });
+      await writeFile(distConfigPath, configJson);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('inbox.skill.set_form_email.dist_config_write_failed', { appId, error: msg });
+    }
+
+    logger.info('inbox.skill.set_form_email.success', { appId, formName: input.formName, email: input.email ?? null });
+
+    return {
+      success: true,
+      formName: input.formName,
+      email: input.email ?? null,
+    };
+  },
+  config: { requiresApp: true, timeout: 15_000 },
 };
