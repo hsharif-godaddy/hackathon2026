@@ -2,6 +2,7 @@ import { logger } from '@/lib/request-context';
 import gasket from '../../../../../gasket.ts';
 
 export type ScannerResult = {
+  success: true;
   status: number;
   data: {
     pass: boolean;
@@ -12,11 +13,16 @@ export type ScannerResult = {
   };
 };
 
-export async function scanFile(file: string, fileName: string): Promise<ScannerResult | null> {
+export type ScannerFailure = {
+  success: false;
+  error: string;
+};
+
+export async function scanFile(file: string, fileName: string): Promise<ScannerResult | ScannerFailure> {
   const scannerBaseUrl: string | undefined = (gasket.config as any).onDemandScanner?.api?.baseUrl;
   if (!scannerBaseUrl) {
     logger.error('files.scan.config.missing', { message: 'onDemandScanner.api.baseUrl not configured' });
-    return null;
+    return { error: 'config_missing', success: false };
   }
 
   try {
@@ -27,12 +33,10 @@ export async function scanFile(file: string, fileName: string): Promise<ScannerR
       signal: AbortSignal.timeout(30_000),
     });
     const data = await upstream.json() as ScannerResult['data'];
-    return { status: upstream.status, data };
+    return { status: upstream.status, data, success: true };
   } catch (err) {
-    logger.error('files.scan.upstream.failed', {
-      fileName,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return null;
+    const error = err instanceof Error ? err.message : String(err);
+    logger.error('files.scan.upstream.failed', { fileName, error });
+    return { error, success: false };
   }
 }

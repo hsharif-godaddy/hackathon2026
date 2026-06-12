@@ -37,8 +37,8 @@ export const POST = withApmRoute(async (request: NextRequest) => {
   const { file, fileName } = parsed.data;
 
   const scanResult = await scanFile(file, fileName);
-  if (!scanResult) {
-    return NextResponse.json({ error: 'Scan service unavailable' }, { status: 503 });
+  if (scanResult.success === false) {
+    return NextResponse.json({ error: 'Scan service unavailable', detail: scanResult.error }, { status: 503 });
   }
 
   if (scanResult.status === 400) {
@@ -61,5 +61,5 @@ export const POST = withApmRoute(async (request: NextRequest) => {
   }
 
   logger.error('files.scan.upstream.unexpected', { fileName, status: scanResult.status });
-  return NextResponse.json({ error: 'Scan service unavailable' }, { status: 503 });
+  return NextResponse.json({ error: 'Scan service unavailable', detail: `upstream returned ${scanResult.status}` }, { status: 503 });
 });

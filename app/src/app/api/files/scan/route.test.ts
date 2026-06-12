@@ -158,30 +158,36 @@ describe('POST /api/files/scan', () => {
       expect(data.message).toBe('Malware found in file');
     });
 
-    it('returns 503 when scanner fetch throws (network error)', async () => {
+    it('returns 503 with detail:connection refused when scanner fetch throws (network error)', async () => {
       mockFetch.mockRejectedValueOnce(new Error('connection refused'));
 
       const response = await POST(createScanRequest({ file: 'base64data', fileName: 'photo.png' }));
       expect(response.status).toBe(503);
+      const data = await response.json();
+      expect(data.detail).toBe('connection refused');
       expect(mockLogger.error).toHaveBeenCalledWith(
         'files.scan.upstream.failed',
         expect.objectContaining({ fileName: 'photo.png' }),
       );
     });
 
-    it('returns 503 when scanner fetch throws a timeout (AbortError)', async () => {
+    it('returns 503 with detail:abort message when scanner fetch throws a timeout (AbortError)', async () => {
       const abortError = new DOMException('The operation was aborted', 'AbortError');
       mockFetch.mockRejectedValueOnce(abortError);
 
       const response = await POST(createScanRequest({ file: 'base64data', fileName: 'photo.png' }));
       expect(response.status).toBe(503);
+      const data = await response.json();
+      expect(data.detail).toBe('The operation was aborted');
     });
 
-    it('returns 503 when scanner fetch throws a non-Error value', async () => {
+    it('returns 503 with stringified detail for non-Error throws', async () => {
       mockFetch.mockRejectedValueOnce('plain string error');
 
       const response = await POST(createScanRequest({ file: 'base64data', fileName: 'photo.png' }));
       expect(response.status).toBe(503);
+      const data = await response.json();
+      expect(data.detail).toBe('plain string error');
     });
 
     it('returns 400 when scanner returns 400', async () => {
@@ -193,11 +199,13 @@ describe('POST /api/files/scan', () => {
       expect(data.error).toBe('Invalid scan request');
     });
 
-    it('returns 503 for unexpected scanner status codes', async () => {
+    it('returns 503 with detail mentioning the status for unexpected scanner status codes', async () => {
       mockFetch.mockResolvedValueOnce(mockUpstreamResponse(500, { message: 'internal error' }));
 
       const response = await POST(createScanRequest({ file: 'base64data', fileName: 'photo.png' }));
       expect(response.status).toBe(503);
+      const data = await response.json();
+      expect(data.detail).toContain('500');
       expect(mockLogger.error).toHaveBeenCalledWith(
         'files.scan.upstream.unexpected',
         expect.objectContaining({ fileName: 'photo.png', status: 500 }),
@@ -220,13 +228,15 @@ describe('POST /api/files/scan', () => {
   });
 
   describe('missing config', () => {
-    it('returns 503 when onDemandScanner baseUrl is not configured', async () => {
+    it('returns 503 with detail:config_missing when onDemandScanner baseUrl is not configured', async () => {
       const gasketMock = await import('../../../../../gasket.ts');
       const saved = (gasketMock.default.config as any).onDemandScanner;
       delete (gasketMock.default.config as any).onDemandScanner;
 
       const response = await POST(createScanRequest({ file: 'base64data', fileName: 'photo.png' }));
       expect(response.status).toBe(503);
+      const data = await response.json();
+      expect(data.detail).toBe('config_missing');
       expect(mockLogger.error).toHaveBeenCalledWith(
         'files.scan.config.missing',
         expect.any(Object),
