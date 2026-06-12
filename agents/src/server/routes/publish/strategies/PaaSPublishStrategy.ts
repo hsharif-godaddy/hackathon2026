@@ -1,6 +1,15 @@
 import type { PublishStrategy, PublishContext, BuildResult, DeploymentStrategy } from './PublishStrategy.js';
 import type { DevSupervisorClient, ProcessInfo, PublishRequest, PublishResponse } from '../../../../services/DevSupervisorClient.js';
 import type { ILogger } from '../../../../logging/types.js';
+import {
+  appRestartService,
+  detectPackageManager,
+  readPackageJsonScripts,
+  resolveStartCommand,
+} from '../../../../services/AppRestartService.js';
+
+/** Tracked path that carries the PaaS start command into the publish archive. */
+const PAAS_CONFIG_REPO_PATH = '.airo/config.json';
 
 // =============================================================================
 // PaaS Publish Recovery Configuration
@@ -130,9 +139,17 @@ export class PaaSPublishStrategy implements PublishStrategy {
     // Step 0: Ensure preview is running before proceeding
     await this.ensurePreviewRunning(context);
 
+    // Step 0.4: Resolve and persist a start command into a *committed*
+    // .airo/config.json. Preview boots dev-only apps via the image-floor CMD
+    // (`npm run dev`) with no config, so apps that never went through the
+    // committed-import path arrive here with nothing for paas-run.sh to exec.
+    // This restores the invariant "if it starts in preview, it publishes".
+    await this.ensureStartCommandPersisted(context);
+
     // Step 0.5: Pre-flight — verify the archive will contain a usable start
     // command, so we don't ship a tar that paas-run.sh will reject after a
-    // 2-minute health-check timeout.
+    // 2-minute health-check timeout. After the persist step above this is a
+    // safety net rather than a strict gate.
     await this.preflightStartCommand(context);
 
     // No git operations - generate hex timestamp identifier
@@ -176,14 +193,15 @@ export class PaaSPublishStrategy implements PublishStrategy {
   }
 
   /**
-   * Read the /app workspace via dev-supervisor and confirm the publish
-   * container will find a start command. Mirrors paas-run.sh: prefer
-   * `.airo/config.json` → `runtime.serve.command`, else `package.json` →
-   * `scripts.start`. Emits a diagnostic event with both flags. If neither
-   * is present, throws MissingStartCommandError so the route returns 412
-   * instead of hanging for the full health-check timeout.
+   * Read `/app/.airo/config.json` and `/app/package.json` via dev-supervisor
+   * and report what start command the publish container would find. Mirrors
+   * paas-run.sh: prefer `.airo/config.json` → `runtime.serve.command`, else
+   * `package.json` → `scripts.start`. Returns `null` when the exec itself
+   * fails (infrastructure error) so callers can distinguish that from a
+   * genuinely absent command. Reads the *working tree*, which is what both the
+   * archive and paas-run.sh ultimately operate on.
    */
-  private async preflightStartCommand(context: PublishContext): Promise<void> {
+  private async readPaasStartState(context: PublishContext): Promise<PaasPreflightResult | null> {
     const { logger, tasks, appId } = context;
 
     // `|| true` on each cat keeps the overall exit code 0 when a file is
@@ -200,7 +218,7 @@ export class PaaSPublishStrategy implements PublishStrategy {
         appId,
         stderr: result.stderr?.slice(0, 500),
       });
-      return;
+      return null;
     }
 
     // exitCode === 0 only tells us the shell ran; individual cats may have
@@ -214,20 +232,124 @@ export class PaaSPublishStrategy implements PublishStrategy {
     const serveCommand = extractNonEmptyString(airoConfig, ['runtime', 'serve', 'command']);
     const startScript = extractNonEmptyString(packageJson, ['scripts', 'start']);
 
-    const preflight: PaasPreflightResult = {
+    return {
       hasAiroConfig: isPlainObject(airoConfig),
       serveCommand,
       hasPackageJson: isPlainObject(packageJson),
       hasStartScript: startScript !== null,
       startScript,
     };
+  }
+
+  /**
+   * Ensure the app carries a *committed* `.airo/config.json` with a
+   * `runtime.serve.command` before the archive is built.
+   *
+   * The PaaS archive tars the `/app` working tree with `excludeUntracked`,
+   * which drops anything `git ls-files --others` reports — so an uncommitted
+   * config (e.g. one written by the dev-restart cycle, or none at all for a
+   * scaffolded dev-only app) would never reach the publish container even
+   * though preview ran fine. Here we:
+   *
+   *   1. If no `serve.command` is present, resolve one via the shared fallback
+   *      chain (user → scripts.start → scripts.dev → default — same logic as
+   *      import and restart) and write it with `createPaasConfig`.
+   *   2. Commit `.airo/config.json` (scoped) so it survives `excludeUntracked`
+   *      and ships in the tar.
+   *
+   * An existing `serve.command` is never overwritten — it is only committed if
+   * not already tracked. On an infrastructure read failure we skip and let the
+   * preflight handle reporting.
+   */
+  private async ensureStartCommandPersisted(context: PublishContext): Promise<void> {
+    const { logger, tasks, gitUtils, appPath, appId } = context;
+
+    const state = await this.readPaasStartState(context);
+    if (!state) {
+      // Could not read the workspace — don't blindly write. The preflight runs
+      // next and applies the same null-handling (skip), preserving prior behavior.
+      return;
+    }
+
+    // A committed `scripts.start` already ships in the archive (package.json is
+    // tracked) and satisfies paas-run.sh, so when neither a config serve command
+    // nor a start script exists we must synthesize one from the fallback chain.
+    if (!state.serveCommand && !state.startScript) {
+      const packageManager = await detectPackageManager(tasks);
+      const scripts = await readPackageJsonScripts(tasks, '/app', appId);
+      const { startCommand, serveCommandSource } = resolveStartCommand(
+        undefined,
+        scripts,
+        packageManager
+      );
+
+      logger.info(`route.publish.${this.key}.start-command.resolved`, {
+        appId,
+        packageManager,
+        serveCommandSource,
+        startCommand,
+      });
+
+      await appRestartService.createPaasConfig(
+        appPath,
+        undefined, // buildToolType (deprecated)
+        startCommand,
+        undefined, // productId
+        undefined, // customDevCommand
+        packageManager,
+        serveCommandSource,
+        appId
+      );
+    } else if (!state.serveCommand) {
+      // package.json's scripts.start already covers the runtime — nothing to
+      // persist. (No config file may exist, so don't attempt to commit one.)
+      logger.info(`route.publish.${this.key}.start-command.persisted`, {
+        appId,
+        reason: 'start-script-sufficient',
+        committed: false,
+      });
+      return;
+    }
+
+    // At this point a `.airo/config.json` exists (pre-existing serve command, or
+    // one we just wrote). Commit it so it is tracked and survives the
+    // excludeUntracked archive filter — this also rescues a config written but
+    // never committed by the dev-restart cycle. No-op if already committed.
+    const committed = await gitUtils.commitFileIfChanged(
+      appPath,
+      PAAS_CONFIG_REPO_PATH,
+      'chore(paas): persist runtime serve command for publish',
+    );
+
+    logger.info(`route.publish.${this.key}.start-command.persisted`, {
+      appId,
+      hadServeCommand: state.serveCommand !== null,
+      committed,
+    });
+  }
+
+  /**
+   * Pre-flight safety net: confirm the publish container will find a start
+   * command. Emits a diagnostic event with both flags. If neither
+   * `.airo/config.json` → `runtime.serve.command` nor `package.json` →
+   * `scripts.start` is present, throws MissingStartCommandError so the route
+   * returns 412 instead of hanging for the full health-check timeout. After
+   * {@link ensureStartCommandPersisted} this should normally pass.
+   */
+  private async preflightStartCommand(context: PublishContext): Promise<void> {
+    const { logger, appId } = context;
+
+    const preflight = await this.readPaasStartState(context);
+    if (!preflight) {
+      return; // infrastructure read failure — already logged
+    }
 
     logger.info(`route.publish.${this.key}.preflight.config`, {
       appId,
       ...preflight,
     });
 
-    if (!serveCommand && !startScript) {
+    if (!preflight.serveCommand && !preflight.startScript) {
       logger.error(
         `route.publish.${this.key}.preflight.missing-start-command`,
         { appId, ...preflight }

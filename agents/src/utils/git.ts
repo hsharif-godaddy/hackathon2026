@@ -229,6 +229,53 @@ export class GitUtils {
   }
 
   /**
+   * Stage a single path and commit it (scoped) only if doing so would change
+   * the tree. Returns `true` when a commit was made, `false` when the path was
+   * already committed and unchanged (a no-op, not an error).
+   *
+   * Used to persist sidecar files such as `.airo/config.json` into the tracked
+   * tree. The PaaS publish archive tars the `/app` working tree with
+   * `excludeUntracked`, which drops files listed by `git ls-files --others`;
+   * committing flips the file from "untracked → excluded" to "tracked →
+   * shipped". The scoped `git commit -- <file>` leaves any unrelated staged
+   * entries from an in-flight agent turn untouched.
+   *
+   * Change detection uses `git status --porcelain -- <file>` (stdout non-empty
+   * ⇒ staged/working diff) rather than `git diff --quiet`, because
+   * {@link executeGitCommand} treats a non-zero exit as a failure and triggers
+   * recovery — and `--quiet` deliberately exits 1 when a diff exists.
+   */
+  async commitFileIfChanged(
+    repoPath: string,
+    file: string,
+    message: string,
+    options: GitCommandOptions = {}
+  ): Promise<boolean> {
+    const addResult = await this.addFiles(repoPath, [file], options);
+    if (!addResult.success) {
+      throw new Error(`Failed to stage ${file}: ${addResult.stderr}`);
+    }
+
+    const statusResult = await this.executeGitCommand(
+      ['status', '--porcelain', '--', file],
+      repoPath,
+      options
+    );
+    if (!statusResult.success) {
+      throw new Error(`Failed to check status for ${file}: ${statusResult.stderr}`);
+    }
+    if (statusResult.stdout.trim() === '') {
+      return false; // already committed and unchanged — nothing to do
+    }
+
+    const commitResult = await this.commitFiles(repoPath, message, [file], options);
+    if (!commitResult.success) {
+      throw new Error(`Failed to commit ${file}: ${commitResult.stderr}`);
+    }
+    return true;
+  }
+
+  /**
    * Amend the current HEAD commit message
    */
   async amendCommitMessage(

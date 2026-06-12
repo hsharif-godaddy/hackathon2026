@@ -6,6 +6,7 @@ import {
   MissingStartCommandError,
 } from '../PaaSPublishStrategy.js';
 import type { PublishContext } from '../PublishStrategy.js';
+import { appRestartService } from '../../../../../services/AppRestartService.js';
 
 /**
  * Build a preflight-call stdout blob matching the shape PaaSPublishStrategy
@@ -32,7 +33,23 @@ function mockRuntimeRunning() {
 }
 
 /**
- * Route mocked runCommandSync calls to responses based on a command substring match.
+ * Mutable workspace state the exec router reads from. `createPaasConfig` (spied
+ * in beforeEach) mutates `airoConfig` so a publish-time persist is reflected in
+ * the subsequent preflight read, mirroring the real working-tree round-trip.
+ */
+interface ExecState {
+  airoConfig: object | null;
+  packageJson: object | null;
+  preflightExitCode: number;
+}
+
+let execState: ExecState;
+
+/**
+ * Route mocked runCommandSync calls to responses based on a command substring
+ * match. Handles the preflight/persist read (`airo-preflight-sep`), the
+ * package-manager lock-file probes (`detectPackageManager`), and the scoped
+ * package.json read (`readPackageJsonScripts`).
  */
 function installExecRouter(
   mockTasks: { runCommandSync: ReturnType<typeof vi.fn> },
@@ -42,22 +59,42 @@ function installExecRouter(
     preflightExitCode?: number;
   } = {}
 ): void {
-  const {
-    airoConfig = { runtime: { serve: { command: 'npm start' } } },
-    packageJson = { scripts: { start: 'node server.js' } },
-    preflightExitCode = 0,
-  } = opts;
+  execState = {
+    airoConfig:
+      opts.airoConfig === undefined
+        ? { runtime: { serve: { command: 'npm start' } } }
+        : opts.airoConfig,
+    packageJson:
+      opts.packageJson === undefined ? { scripts: { start: 'node server.js' } } : opts.packageJson,
+    preflightExitCode: opts.preflightExitCode ?? 0,
+  };
 
   mockTasks.runCommandSync.mockImplementation(async function (args: { command: string }) {
+    const ok = (stdout: string, exitCode = 0) => ({
+      stdout,
+      exitCode,
+      stderr: '',
+      timedOut: false,
+      taskId: 'mock',
+      executionTimeMs: 0,
+    });
+
+    // Combined preflight/persist read (cat config + package.json with separator)
     if (args.command.includes('airo-preflight-sep')) {
-      return {
-        stdout: buildPreflightStdout(airoConfig, packageJson),
-        exitCode: preflightExitCode,
-        stderr: '',
-        timedOut: false,
-        taskId: 'mock',
-        executionTimeMs: 0,
-      };
+      return ok(
+        buildPreflightStdout(execState.airoConfig, execState.packageJson),
+        execState.preflightExitCode
+      );
+    }
+    // detectPackageManager lock-file probes: report "not found" → falls back to npm
+    if (args.command.includes('pnpm-lock.yaml') || args.command.includes('yarn.lock')) {
+      return ok('', 1);
+    }
+    // readPackageJsonScripts: scoped `cat "/app/package.json"`
+    if (args.command.includes('package.json')) {
+      return execState.packageJson === null
+        ? ok('', 1)
+        : ok(JSON.stringify(execState.packageJson));
     }
     throw new Error(`Unexpected command: ${args.command}`);
   });
@@ -71,7 +108,9 @@ describe('PaaSPublishStrategy', () => {
   };
   let mockGitUtils: {
     createArchive: ReturnType<typeof vi.fn>;
+    commitFileIfChanged: ReturnType<typeof vi.fn>;
   };
+  let createPaasConfigSpy: ReturnType<typeof vi.spyOn>;
   let mockLogger: {
     info: ReturnType<typeof vi.fn>;
     warn: ReturnType<typeof vi.fn>;
@@ -93,7 +132,23 @@ describe('PaaSPublishStrategy', () => {
         path: '/dist/test-archive.tar.gz',
         commitHash: 'abc123',
       }),
+      commitFileIfChanged: vi.fn().mockResolvedValue(true),
     };
+
+    // Stub the real fs-writing config writer. Reflect the write back into the
+    // exec router's mutable state so the subsequent preflight read sees it,
+    // matching the real working-tree round-trip.
+    createPaasConfigSpy = vi
+      .spyOn(appRestartService, 'createPaasConfig')
+      .mockImplementation(async (_appPath, _bt, startCommand) => {
+        execState.airoConfig = {
+          runtime: {
+            serve: { command: startCommand ?? 'npm start' },
+            build: { command: 'npm run build' },
+            dev: { command: startCommand ?? 'npm start' },
+          },
+        };
+      });
 
     mockLogger = {
       info: vi.fn(),
@@ -114,6 +169,10 @@ describe('PaaSPublishStrategy', () => {
       logger: mockLogger as any,
       runtime: mockRuntime as any,
     };
+  });
+
+  afterEach(() => {
+    createPaasConfigSpy.mockRestore();
   });
 
   describe('prepareBuild', () => {
@@ -333,83 +392,56 @@ describe('PaaSPublishStrategy', () => {
       );
     });
 
-    it('throws MissingStartCommandError and emits event when neither is set', async () => {
+    it('persists a synthesized command (does not throw) when neither serve nor start is set', async () => {
+      // dev-only app: empty serve command + only a dev script. Previously a hard
+      // 412; now the persist step resolves scripts.dev and the preflight passes.
       installExecRouter(mockTasks, {
         airoConfig: { runtime: { serve: { command: '' } } }, // empty ≡ missing
         packageJson: { scripts: { dev: 'vite' } },           // start absent
       });
 
+      await expect(strategy.prepareBuild(mockContext)).resolves.toBeDefined();
+
+      expect(createPaasConfigSpy).toHaveBeenCalledWith(
+        '/tmp/test-app',
+        undefined,
+        'NODE_ENV=development npm run dev',
+        undefined,
+        undefined,
+        'npm',
+        'scripts.dev',
+        'test-app-id'
+      );
+      expect(mockGitUtils.commitFileIfChanged).toHaveBeenCalledWith(
+        '/tmp/test-app',
+        '.airo/config.json',
+        expect.any(String)
+      );
+      expect(mockLogger.error).not.toHaveBeenCalledWith(
+        'route.publish.paas.preflight.missing-start-command',
+        expect.anything()
+      );
+      expect(mockGitUtils.createArchive).toHaveBeenCalled();
+    });
+
+    it('safety net: still throws MissingStartCommandError if the persist write never surfaces a command', async () => {
+      // Simulate a persist that does not make a serve command visible (e.g. the
+      // write silently no-ops) AND no start script — the preflight must still 412.
+      createPaasConfigSpy.mockResolvedValue(undefined); // does NOT mutate execState
+      installExecRouter(mockTasks, {
+        airoConfig: null,
+        packageJson: { scripts: { dev: 'vite' } }, // no start
+      });
+
       const err = await strategy.prepareBuild(mockContext).catch((e) => e);
       expect(err).toBeInstanceOf(MissingStartCommandError);
       expect((err as MissingStartCommandError).statusCode).toBe(412);
-      expect((err as MissingStartCommandError).preflight).toEqual(
-        expect.objectContaining({
-          hasAiroConfig: true,
-          serveCommand: null,
-          hasPackageJson: true,
-          hasStartScript: false,
-        })
-      );
-
       expect(mockLogger.error).toHaveBeenCalledWith(
         'route.publish.paas.preflight.missing-start-command',
-        expect.objectContaining({
-          appId: 'test-app-id',
-          hasAiroConfig: true,
-          serveCommand: null,
-          hasStartScript: false,
-        })
+        expect.objectContaining({ appId: 'test-app-id', serveCommand: null, hasStartScript: false })
       );
-
-      // Archive should NOT have been created — we fail fast before the tar.
+      // Failed fast before the tar.
       expect(mockGitUtils.createArchive).not.toHaveBeenCalled();
-    });
-
-    it('treats malformed JSON the same as missing', async () => {
-      mockTasks.runCommandSync.mockImplementation(async function (args: { command: string }) {
-        if (args.command.includes('airo-preflight-sep')) {
-          return { stdout: '{not json\n---airo-preflight-sep---\nalso not json', exitCode: 0, stderr: '', timedOut: false, taskId: 'mock', executionTimeMs: 0 };
-        }
-        throw new Error('unexpected');
-      });
-
-      const err = await strategy.prepareBuild(mockContext).catch((e) => e);
-      expect(err).toBeInstanceOf(MissingStartCommandError);
-      expect((err as MissingStartCommandError).preflight).toEqual(
-        expect.objectContaining({
-          hasAiroConfig: false,
-          hasPackageJson: false,
-          hasStartScript: false,
-          serveCommand: null,
-        })
-      );
-    });
-
-    it('treats whitespace-only commands as missing', async () => {
-      installExecRouter(mockTasks, {
-        airoConfig: { runtime: { serve: { command: '   ' } } },
-        packageJson: { scripts: { start: '   ' } },
-      });
-
-      await expect(strategy.prepareBuild(mockContext)).rejects.toBeInstanceOf(
-        MissingStartCommandError
-      );
-    });
-
-    it('treats airoConfig with runtime but no serve.command as missing', async () => {
-      // Optional-chaining case: runtime present, serve key absent.
-      installExecRouter(mockTasks, {
-        airoConfig: { runtime: { build: { command: 'npm run build' } } } as any,
-        packageJson: { scripts: { dev: 'vite' } },
-      });
-
-      await expect(strategy.prepareBuild(mockContext)).rejects.toBeInstanceOf(
-        MissingStartCommandError
-      );
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        'route.publish.paas.preflight.config',
-        expect.objectContaining({ hasAiroConfig: true, serveCommand: null }),
-      );
     });
 
     it('passes when airoConfig is valid and package.json is absent entirely', async () => {
@@ -449,6 +481,65 @@ describe('PaaSPublishStrategy', () => {
         }),
       );
       expect(mockGitUtils.createArchive).toHaveBeenCalled();
+    });
+  });
+
+  describe('start command persistence', () => {
+    it('commits an existing serve command without re-resolving (rescues uncommitted restart-path config)', async () => {
+      installExecRouter(mockTasks, {
+        airoConfig: { runtime: { serve: { command: 'node dist/server.js' } } },
+        packageJson: { scripts: {} },
+      });
+
+      await expect(strategy.prepareBuild(mockContext)).resolves.toBeDefined();
+
+      // Existing serve command is preserved — never re-resolved/overwritten.
+      expect(createPaasConfigSpy).not.toHaveBeenCalled();
+      // But still committed so an untracked config survives excludeUntracked.
+      expect(mockGitUtils.commitFileIfChanged).toHaveBeenCalledWith(
+        '/tmp/test-app',
+        '.airo/config.json',
+        expect.any(String)
+      );
+    });
+
+    it('does not write or commit a config when package.json already defines scripts.start', async () => {
+      installExecRouter(mockTasks, {
+        airoConfig: null,
+        packageJson: { scripts: { start: 'node server.js' } },
+      });
+
+      await expect(strategy.prepareBuild(mockContext)).resolves.toBeDefined();
+
+      // scripts.start ships in the tracked package.json — nothing to persist,
+      // and no config file exists to `git add`.
+      expect(createPaasConfigSpy).not.toHaveBeenCalled();
+      expect(mockGitUtils.commitFileIfChanged).not.toHaveBeenCalled();
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'route.publish.paas.start-command.persisted',
+        expect.objectContaining({ reason: 'start-script-sufficient', committed: false })
+      );
+    });
+
+    it('runs persistence before the archive is built', async () => {
+      installExecRouter(mockTasks, {
+        airoConfig: null,
+        packageJson: { scripts: { dev: 'vite' } },
+      });
+
+      const order: string[] = [];
+      mockGitUtils.commitFileIfChanged.mockImplementation(async () => {
+        order.push('commit');
+        return true;
+      });
+      mockGitUtils.createArchive.mockImplementation(async () => {
+        order.push('archive');
+        return { path: '/dist/test-archive.tar.gz', commitHash: 'abc123' };
+      });
+
+      await strategy.prepareBuild(mockContext);
+
+      expect(order).toEqual(['commit', 'archive']);
     });
   });
 

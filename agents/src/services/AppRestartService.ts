@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { Logger } from '../logging/index.js';
 import { TerminalTool } from '../tools/terminal.js';
 import { DevSupervisorClientFactory } from '../utils/dev-supervisor-client-factory.js';
+import { GitUtils } from '../utils/git.js';
 import { createForWorkspace } from '../workspace/index.js';
 import type { WorkspaceTasks } from '../workspace/tasks.js';
 import { measureAppDirSize } from '../utils/container-metrics.js';
@@ -455,6 +456,25 @@ export class AppRestartService {
         serveCommandSource,
         appId
       );
+
+      // Step 4.5: Commit the config so previewed apps carry a *committed*
+      // .airo/config.json into publish. The PaaS archive tars the working tree
+      // with excludeUntracked, so an uncommitted config would be dropped from
+      // the tar. Best-effort — a commit failure must not abort the restart.
+      try {
+        const gitUtils = new GitUtils(workspace.tasks);
+        const committed = await gitUtils.commitFileIfChanged(
+          appPath,
+          '.airo/config.json',
+          'chore(paas): persist runtime serve command',
+        );
+        this.logger.info('app-restart.paas-config.committed', { appId, committed });
+      } catch (error) {
+        this.logger.warn('app-restart.paas-config.commit-failed', {
+          appId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
 
       // Step 5: Restart dev server with resolved start command
       const restartStartTime = Date.now();
