@@ -18,7 +18,7 @@ import { parseAgentCommand } from '@airo/ai-transport';
 
 import multer from 'multer';
 import { AppRepository } from '../../database/index.js';
-import type { CreateAppRequest, UpdateAppRequest } from '../../database/index.js';
+import type { App, CreateAppRequest, UpdateAppRequest } from '../../database/index.js';
 import { DirectoryListingTool, DirectoryListingNotFoundError } from '../../tools/directory-listing.js';
 import { createForWorkspace } from '../../workspace/index.js';
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
@@ -69,10 +69,13 @@ router.get('/', (req: Request, res: Response) => {
     // SECURITY: Only return apps belonging to authenticated siteId
     // unless it's a bypass site (for dev/testing)
     const isBypassSite = BYPASS_SITE_IDS.includes(authenticatedSiteId);
-    const allApps = appRepo.findAll(limit, offset);
-    const apps = isBypassSite
-      ? allApps
-      : allApps.filter(app => app.id === authenticatedSiteId);
+    // Non-bypass sites own at most their own app (app.id === siteId). Wrap the
+    // single lookup in an array so the response shape matches the bypass branch.
+    const apps: App[] = isBypassSite
+      ? appRepo.findAll(limit, offset)
+      : [appRepo.findById(authenticatedSiteId)].filter(
+          (app): app is App => app !== null,
+        );
 
     const totalCount = isBypassSite
       ? appRepo.count()

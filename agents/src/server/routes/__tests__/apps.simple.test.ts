@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 
@@ -9,6 +9,20 @@ vi.mock('../../../services/name-suggestion.js', () => ({
 }));
 
 import { appsRouter } from '../apps.js';
+import { AppRepository } from '../../../database/index.js';
+import type { App } from '../../../database/index.js';
+
+// Build an Express app whose auth context reports the given siteId.
+const createTestAppForSite = (siteId: string): express.Express => {
+  const app = express();
+  app.use(express.json());
+  app.use((req: any, _res: any, next: any) => {
+    req.agentContext = { siteId };
+    next();
+  });
+  app.use('/apps', appsRouter);
+  return app;
+};
 
 // Create test Express app with fake auth context using a bypass siteId
 const createTestApp = () => {
@@ -112,5 +126,52 @@ describe('Apps Routes Basic Tests', () => {
 
     expect(mockSuggestName).toHaveBeenCalledWith('/agent initial-v2');
     expect(response.body.prompt).toBe('/agent initial-v2');
+  });
+});
+
+describe('GET /apps siteId scoping', () => {
+  const siteId = 'realsiteid1';
+
+  const buildOwnedApp = (): App => ({
+    id: siteId,
+    name: 'Owned App',
+    path: `/apps/${siteId}`,
+    port: 4001,
+    status: 'created',
+    publishedUrl: null,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('wraps a non-bypass site’s owned app in an array', async () => {
+    const findByIdSpy = vi
+      .spyOn(AppRepository.prototype, 'findById')
+      .mockReturnValue(buildOwnedApp());
+    vi.spyOn(AppRepository.prototype, 'countBySiteId').mockReturnValue(1);
+
+    const response = await request(createTestAppForSite(siteId))
+      .get('/apps')
+      .expect(200);
+
+    expect(Array.isArray(response.body.apps)).toBe(true);
+    expect(response.body.apps).toHaveLength(1);
+    expect(response.body.apps[0].id).toBe(siteId);
+    expect(findByIdSpy).toHaveBeenCalledWith(siteId);
+  });
+
+  it('returns an empty array (not null) when a non-bypass site owns no app', async () => {
+    vi.spyOn(AppRepository.prototype, 'findById').mockReturnValue(null);
+    vi.spyOn(AppRepository.prototype, 'countBySiteId').mockReturnValue(0);
+
+    const response = await request(createTestAppForSite('orphansite1'))
+      .get('/apps')
+      .expect(200);
+
+    expect(Array.isArray(response.body.apps)).toBe(true);
+    expect(response.body.apps).toHaveLength(0);
   });
 });
