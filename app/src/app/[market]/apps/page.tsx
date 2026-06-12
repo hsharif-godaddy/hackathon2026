@@ -14,11 +14,13 @@ import text from '@ux/text'
 
 import AppCard from '@/app/[market]/apps/AppCard'
 import AcceptTransferDialog from '@/app/[market]/apps/components/AcceptTransferDialog'
+import { PromptModalContent } from '@/app/[market]/apps/components/PromptModalContent'
 import { APPS_GRID_PAGE_SIZE } from '@/app/[market]/apps/constants'
 import { ProtectedRoute } from '@/components/auth'
 import { DevelopmentAdminSection } from '@/components/development'
 import Header from '@/components/layout/Header'
 import { useAuth } from '@/hooks/useAuth'
+import { useHomepageSubmission } from '@/hooks/useHomepageSubmission'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { SiteStatus } from '@/lib/control-plane/types'
@@ -33,9 +35,12 @@ function SitesPageContent() {
   const router = useRouter();
   const { authState } = useAuth();
   const [adminActionLoading, setAdminActionLoading] = useState<string | null>(null)
-  const [isAcceptTransferOpen, setIsAcceptTransferOpen] = useState(false)
+  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false)
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
   const [appsPage, setAppsPage] = useState(1)
   const isTransferEnabled = useSwitchboard('appbuilder-transfer-ownership')
+
+  const hp = useHomepageSubmission({ route: 'apps' })
   // The mobile action bar is fixed at z-60, while the body-portaled SSO modal
   // stacks at z-index auto — hide the bar so it can't cover the login form (AIROBUILD-1878).
   const isSsoLoginOpen = useAuthUIStore((state) => state.isSsoLoginOpen)
@@ -72,7 +77,6 @@ function SitesPageContent() {
     }
     return !isTLA; // Loading - block TLAs by default
   }, [isTransferEnabled, isTLA]);
-
 
   useEffect(() => {
     setAppsPage((p) => Math.min(p, appsTotalPages))
@@ -125,7 +129,7 @@ function SitesPageContent() {
     }
   }
 
-  if (isLoading && !isAcceptTransferOpen) {
+  if (isLoading && !isPromptModalOpen && !isTransferModalOpen) {
     return (
       <Box className="min-h-screen flex items-center justify-center" data-partial="accentAiro">
         <Spinner />
@@ -153,45 +157,43 @@ function SitesPageContent() {
             <div className='flex flex-row gap-2 justify-start items-center'>
               <text.h2 as="title" size={3} text={t('builder_common_projects')} />
               <div>
-                  {totalSites > 0 && (
-                    <Tag emphasis="info">
-                      {String(totalSites)}
-                    </Tag>
-                  )}
-                </div>
+                {totalSites > 0 && (
+                  <Tag emphasis="info">
+                    {String(totalSites)}
+                  </Tag>
+                )}
+              </div>
             </div>
             <text.p size={-1} emphasis="passive">
               {t('builder_apps_title')}
             </text.p>
           </div>
 
-          
-
-          {!isAcceptTransferOpen && !isSsoLoginOpen && (
-            <div className={`fixed bottom-0 left-0 right-0 z-60 bg-intents-ux-box-backgroundColor border-t border-intents-ux-borderColor p-3 flex gap-2 md:static md:z-0 md:bg-transparent md:border-0 md:p-0 ${totalSites === 0 ? 'md:!hidden' : ''}`}>
-            <Button
-              design="primary"
-              size="sm"
-              icon={<PlusIcon />}
-              onClick={() => router.push('/')}
-              data-testid="create-app-card"
-              data-eid={generateClickEID('apps.app_list.new_app')}
-              className="flex-1 md:flex-initial"
-              text={t('builder_apps_create_project')}
-            />
-            {canUseTransfer && (
+          {!isPromptModalOpen && !isTransferModalOpen && !isSsoLoginOpen && (
+            <div className={`fixed bottom-0 left-0 right-0 z-60 bg-intents-ux-box-backgroundColor border-t border-intents-ux-borderColor p-2 flex flex-col gap-1 sm:flex-row md:static md:z-0 md:bg-transparent md:border-0 md:p-0 ${totalSites === 0 ? 'md:!hidden' : ''}`}>
               <Button
-                design="secondary"
+                design="primary"
                 size="sm"
-                icon={<ArrowRightIcon className="rtl:scale-x-[-1]" />}
-                onClick={() => setIsAcceptTransferOpen(true)}
-                data-testid="transfer-app-card"
-                data-eid={generateClickEID('apps.emptystate.accept_transfer')}
+                icon={<PlusIcon />}
+                onClick={() => setIsPromptModalOpen(true)}
+                data-testid="create-app-card"
+                data-eid={generateClickEID('apps.app_list.new_app')}
                 className="flex-1 md:flex-initial"
-                text={t('builder_transfer_accept_button')}
+                text={t('builder_apps_create_project')}
               />
-            )}
-          </div>
+              {canUseTransfer && (
+                <Button
+                  design="secondary"
+                  size="sm"
+                  icon={<ArrowRightIcon className="rtl:scale-x-[-1]" />}
+                  onClick={() => setIsTransferModalOpen(true)}
+                  data-testid="transfer-app-card"
+                  data-eid={generateClickEID('apps.emptystate.accept_transfer')}
+                  className="flex-1 md:flex-initial"
+                  text={t('builder_transfer_accept_button')}
+                />
+              )}
+            </div>
           )}
         </div>
 
@@ -224,7 +226,7 @@ function SitesPageContent() {
                 design="primary"
                 size="sm"
                 icon={<PlusIcon />}
-                onClick={() => router.push('/')}
+                onClick={() => setIsPromptModalOpen(true)}
                 data-testid="create-app-empty-state"
                 data-eid={generateClickEID('apps.emptystate.new_app')}
                 text={t('builder_apps_create_project')}
@@ -234,7 +236,7 @@ function SitesPageContent() {
                   design="secondary"
                   size="sm"
                   icon={<ArrowRightIcon className="rtl:scale-x-[-1]" />}
-                  onClick={() => setIsAcceptTransferOpen(true)}
+                  onClick={() => setIsTransferModalOpen(true)}
                   data-testid="transfer-app-empty-state"
                   data-eid={generateClickEID('apps.emptystate.accept_transfer')}
                   text={t('builder_transfer_accept_button')}
@@ -268,8 +270,15 @@ function SitesPageContent() {
         )}
       </main>
 
-      {canUseTransfer && isAcceptTransferOpen && (
-        <AcceptTransferDialog onClose={() => setIsAcceptTransferOpen(false)} />
+      {isPromptModalOpen && (
+        <PromptModalContent
+          hp={hp}
+          onClose={() => setIsPromptModalOpen(false)}
+        />
+      )}
+
+      {canUseTransfer && isTransferModalOpen && (
+        <AcceptTransferDialog onClose={() => setIsTransferModalOpen(false)} />
       )}
     </div>
   )

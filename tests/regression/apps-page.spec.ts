@@ -136,14 +136,15 @@ test.describe('Apps Page & Navigation', () => {
     await page.keyboard.press('Escape');
 
     // ========================================
-    // STEP 5: Test "Create a new app" navigation
+    // STEP 5: Test "Create a new app" modal
     // ========================================
-    console.log('🏠 Step 5: Testing Create navigation...');
+    console.log('🏠 Step 5: Testing Create modal...');
     // Use create-app-card from action bar (visible on desktop when apps exist)
     await page.getByTestId('create-app-card').click();
-    await expect(page).toHaveURL(/\/$/);
-    await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
-    console.log('  ✓ Navigated to homepage');
+    await page.getByTestId('apps-prompt-input').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
+    console.log('  ✓ Prompt modal opened with input visible');
+    // Close modal before continuing
+    await page.keyboard.press('Escape');
 
     // ========================================
     // STEP 6: Test "Edit" navigation from /apps (skeleton + page load)

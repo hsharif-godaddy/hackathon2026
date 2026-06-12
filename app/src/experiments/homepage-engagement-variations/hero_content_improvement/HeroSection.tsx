@@ -202,6 +202,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
           <AnimatedDisclaimer isVisible={isFocused || isListening || displayText.trim().length > 0} />
 
           <ExamplesSection
+            className="mb-4 mt-3"
             onExampleClick={onExampleClick}
             onTemplateChange={onTemplateChange}
           />

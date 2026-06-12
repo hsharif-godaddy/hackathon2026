@@ -25,8 +25,15 @@ import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import { resolveCreationSource, resolveEntryPoint } from '@/utils/traffic-signals'
 
 type SubmitSource = 'example' | 'text'
+type SubmissionRoute = 'homepage' | 'apps'
 
-export function useHomepageSubmission() {
+interface HomepageSubmissionOptions {
+  route?: SubmissionRoute
+}
+
+export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
+  const route = options?.route ?? 'homepage'
+  const isHomepage = route === 'homepage'
   const t = useTranslations()
   const [promptText, setPromptText] = useState("")
   const router = useRouter()
@@ -117,7 +124,7 @@ export function useHomepageSubmission() {
   const { markEngaged: markHomepageEngaged } = useHomepageBounceTracking(logAnalytics)
 
   useEffect(() => {
-    if (authIsLoading || homepageViewRecordedRef.current) {
+    if (!isHomepage || authIsLoading || homepageViewRecordedRef.current) {
       return
     }
     homepageViewRecordedRef.current = true
@@ -128,9 +135,11 @@ export function useHomepageSubmission() {
       recommendation_task: 'builder_homepage_viewed',
       recommendation_type: 'navigation'
     })();
-  }, [authIsLoading, cohort, logAnalytics])
+  }, [authIsLoading, cohort, isHomepage, logAnalytics])
 
   useEffect(() => {
+    if (!isHomepage) return
+
     function updateScrollMilestones() {
       if (scrollMilestonesLoggedRef.current.size === 4) return
 
@@ -188,7 +197,7 @@ export function useHomepageSubmission() {
     window.addEventListener('scroll', updateScrollMilestones, { passive: true })
     updateScrollMilestones()
     return () => window.removeEventListener('scroll', updateScrollMilestones)
-  }, [logAnalytics])
+  }, [isHomepage, logAnalytics])
 
   const locationParam = searchParams.get('location')
   const itcParam = searchParams.get('itc')
@@ -211,22 +220,22 @@ export function useHomepageSubmission() {
     }
   }, [fqdnValidation.invalidReason])
 
-  // Email deep-link prompt prefill (?initialPromptKey= / ?initialPrompt=) + its
-  // firstprompt.prefill impression. Self-contained; see useDeeplinkPromptPrefill.
   useDeeplinkPromptPrefill({ promptText, onPrefill: setPromptText, logAnalytics })
 
   useEffect(() => {
+    if (!isHomepage) return
     const siteLocation = siteLocationParam || document.referrer;
     if (siteLocation) {
       shipAnalyticsLog('homepage.redirect.source', { siteLocation });
     }
-  }, [siteLocationParam]);
+  }, [isHomepage, siteLocationParam]);
 
   useEffect(() => {
     return () => setIsRedirecting(false)
   }, [])
 
   const savePromptForRetry = useCallback((prompt: string, context: 'login' | 'session-refresh', fqdn?: string) => {
+    if (!isHomepage) return
     try {
       localStorage.setItem('airo-pending-prompt', prompt);
       if (fqdn) {
@@ -238,7 +247,7 @@ export function useHomepageSubmission() {
     } catch (error) {
       logger.warn('homepage.prompt.save.error', { context, error: getErrorMessage(error) });
     }
-  }, [])
+  }, [isHomepage])
 
   const handleStartBuilding = useCallback(async (overridePrompt?: string, overrideFqdn?: string) => {
     let promptToUse = (typeof overridePrompt === 'string' ? overridePrompt : promptTextRef.current).trim()
@@ -343,7 +352,7 @@ export function useHomepageSubmission() {
         ?? null
       setQuickCreateSessionFlags(siteData.id, promptToUse, selectedTemplate, {
         uploadedFiles,
-        entryPoint: resolveEntryPoint([locationParam, itcParam, siteLocationParam], 'aab_homepage'),
+        entryPoint: resolveEntryPoint([locationParam, itcParam, siteLocationParam], isHomepage ? 'aab_homepage' : 'aab_apps'),
         creationSource: resolveCreationSource(primaryUploadedFile, selectedTemplate, submitSourceRef.current),
       })
 
@@ -414,7 +423,7 @@ export function useHomepageSubmission() {
   }, [authIsLoading, isAuthenticated, isLoading, isNewUser, isRedirecting, logAnalytics, markHomepageEngaged, router, savePromptForRetry, selectedTemplate, signIn, t, uploadedFiles])
 
   useEffect(() => {
-    if (!isAuthenticated || authIsLoading || subscriptionsLoading) return
+    if (!isHomepage || !isAuthenticated || authIsLoading || subscriptionsLoading) return
 
     const savedPrompt = localStorage.getItem('airo-pending-prompt')
 
@@ -449,7 +458,7 @@ export function useHomepageSubmission() {
 
       handleStartBuilding(validated.text, restoredFqdn)
     }
-  }, [authIsLoading, handleStartBuilding, isAuthenticated, logAnalytics, promptText, subscriptionsLoading])
+  }, [authIsLoading, handleStartBuilding, isAuthenticated, isHomepage, logAnalytics, promptText, subscriptionsLoading])
 
   const handleExampleClick = (examplePrompt: string) => {
     submitSourceRef.current = 'example'

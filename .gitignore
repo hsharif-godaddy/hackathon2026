@@ -66,6 +66,10 @@ packages/design-extractor/output/
 # Development CA (per-project certificate authority)
 .dev-ca/
 
+# mTLS client certs (local dev)
+**/certs/*.crt
+**/certs/*.key
+
 # BMS dev seed state (written by dev-runner preflight)
 .dev-bms/
 

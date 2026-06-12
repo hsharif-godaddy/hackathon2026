@@ -12,13 +12,47 @@ import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { SiteStatus } from '@/lib/control-plane/types';
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
 import { useSitesStore } from '@/stores/useSitesStore';
-import { createMockSite, mockRouter } from '@/tests/mocks';
+import { createMockSite, mockRouter, mockSearchParams } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import Sites from './page';
 
 const mockPrefetch = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ ...mockRouter(), prefetch: mockPrefetch }),
+  usePathname: () => '/apps',
+  useSearchParams: () => mockSearchParams(),
+}));
+
+vi.mock('@/hooks/useHomepageSubmission', () => ({
+  useHomepageSubmission: vi.fn(function () {
+    return {
+      promptText: '',
+      setPromptText: vi.fn(),
+      selectedTemplate: null,
+      setSelectedTemplate: vi.fn(),
+      isLogoMode: false,
+      isTemplateSelectorEnabled: false,
+      uploadedFiles: [],
+      setUploadedFiles: vi.fn(),
+      isLoading: false,
+      error: null,
+      setHeroError: vi.fn(),
+      showMockLogin: false,
+      setShowMockLogin: vi.fn(),
+      heroSectionRef: { current: null },
+      handleStartBuilding: vi.fn(),
+      handleExampleClick: vi.fn(),
+      logHomepagePricingView: vi.fn(),
+    }
+  }),
+}));
+
+vi.mock('@/app/[market]/apps/components/PromptModalContent', () => ({
+  PromptModalContent: ({ onClose }: { onClose: () => void }) => (
+    <div data-testid="prompt-modal">
+      <button data-testid="prompt-modal-close" onClick={onClose}>Close</button>
+    </div>
+  ),
 }));
 
 vi.mock('@/components/auth', () => ({

@@ -57,6 +57,8 @@ export interface HeroSectionRef {
 }
 
 export interface HeroExamplesProps {
+  className?: string
+  theme?: 'dark' | 'light'
   onExampleClick: (prompt: string) => void
   onTemplateChange?: (template: string) => void
 }

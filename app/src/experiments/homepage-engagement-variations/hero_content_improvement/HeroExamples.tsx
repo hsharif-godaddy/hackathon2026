@@ -7,13 +7,14 @@ import { Example, HeroExamplesProps, LOGO_DESIGNER_TEMPLATE } from '@/app/[marke
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useAnalytics } from '@/hooks/useAnalytics'
+import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { JourneyTracker } from '@/lib/journeyTracker'
 import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
 
-export default function HeroExamples({ onExampleClick, onTemplateChange }: HeroExamplesProps) {
-  const t = useTranslations();
+export default function HeroExamples({ className, theme = 'dark', onExampleClick, onTemplateChange }: HeroExamplesProps) {
+  const t = useTranslations()
   const { isAuthenticated } = useAuthContext()
   const { logAnalytics } = useAnalytics({
     experimentId: EXPERIMENT_IDS.homepageEngagement,
@@ -21,6 +22,7 @@ export default function HeroExamples({ onExampleClick, onTemplateChange }: HeroE
   })
   const [visibleItems, setVisibleItems] = useState<boolean[]>([])
   const showLogoButton = Boolean(useSwitchboard('appbuilder-homepage-make-logo-button'))
+  const { isBelowSmBreakpoint } = useBreakpoints();
 
   const examples = useMemo<Example[]>(() => [
     // Website examples
@@ -178,8 +180,8 @@ export default function HeroExamples({ onExampleClick, onTemplateChange }: HeroE
   }, [displayedExamples.length])
 
   return (
-    <div className="text-center mb-4 mt-3">
-      <text.p size={0} className="opacity-50 mb-2">
+    <div className={clsx('text-center', className)}>
+      <text.p size={isBelowSmBreakpoint ? -1 : 0} className="opacity-50 mb-2">
         {t('builder_homepage_examples_try_these_intro', undefined, 'Describe your own idea above, or try one of these:')}
       </text.p>
       <div className="flex flex-wrap justify-center gap-1 max-w-4xl mx-auto">
@@ -195,7 +197,10 @@ export default function HeroExamples({ onExampleClick, onTemplateChange }: HeroE
               logClickEvent('homepage.examples.example_make_logo')();
               JourneyTracker.current()?.trackMilestone('homepage_example_selected', { slug: 'make_logo' })
             }}
-            className="group bg-ai-dark-transparent px-2 py-0.5 rounded-lg hover:shadow-md transition-all duration-300 text-sm cursor-pointer transform translate-y-0 opacity-100 scale-100"
+            className={clsx(
+              'group px-2 py-0.5 rounded-lg hover:shadow-md transition-all duration-300 text-sm cursor-pointer transform translate-y-0 opacity-100 scale-100',
+              theme === 'dark' ? 'bg-ai-dark-transparent' : 'bg-light-purple hover:bg-light-purple-solid'
+            )}
           >
             <span className="font-medium transition-colors">
               {t('builder_homepage_examples_logo_title', undefined, 'Make me a logo')}
@@ -216,13 +221,16 @@ export default function HeroExamples({ onExampleClick, onTemplateChange }: HeroE
               JourneyTracker.current()?.trackMilestone('homepage_example_selected', { slug: example.slug })
             }}
             className={clsx(
-              'group bg-ai-dark-transparent px-2 py-0.5 rounded-lg hover:shadow-md transition-all duration-300 text-sm cursor-pointer transform',
+              'group px-2 py-0.5 rounded-lg hover:shadow-md transition-all duration-300 text-sm cursor-pointer transform',
+              theme === 'dark' ? 'bg-ai-dark-transparent' : 'bg-light-purple hover:bg-light-purple-solid',
               visibleItems[index]
                 ? 'translate-y-0 opacity-100 scale-100'
                 : 'translate-y-1 opacity-0 scale-98'
             )}
             style={{
-              transition: visibleItems[index] ? 'all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55)' : 'none'
+              transition: visibleItems[index]
+                ? 'transform 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55), opacity 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55)'
+                : 'none'
             }}
           >
             <span className="font-medium transition-colors">
