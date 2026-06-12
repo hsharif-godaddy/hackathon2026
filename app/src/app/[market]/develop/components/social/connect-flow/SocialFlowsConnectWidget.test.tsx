@@ -68,6 +68,10 @@ vi.mock('@social/social-flows', () => ({
     capturedOnComplete = props.onComplete
     return <div data-testid="ig-connect-flow">IGConnectFlow</div>
   },
+  GBPConnectFlow: (props: any) => {
+    capturedOnComplete = props.onComplete
+    return <div data-testid="gbp-connect-flow">GBPConnectFlow</div>
+  },
 }))
 
 import SocialFlowsConnectWidget from './SocialFlowsConnectWidget'
@@ -338,6 +342,104 @@ describe('SocialFlowsConnectWidget', () => {
           screen.getByText('builder_social_linking')
         ).toBeInTheDocument()
       })
+    })
+  })
+
+  describe('Google Business Profile', () => {
+    const defaultProps = {
+      appId: 'test-app-789',
+      platform: 'google',
+      onSuccess: vi.fn(),
+    }
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      capturedOnComplete = undefined
+      mockAssociationsData.associations = []
+    })
+
+    it('renders GBPConnectFlow', () => {
+      render(<SocialFlowsConnectWidget {...defaultProps} />)
+      expect(screen.getByTestId('gbp-connect-flow')).toBeInTheDocument()
+    })
+
+    it('calls onSuccess after successful link', async () => {
+      mockLinkMutateAsync.mockResolvedValue({})
+      render(<SocialFlowsConnectWidget {...defaultProps} />)
+
+      capturedOnComplete!({
+        status: 'SUCCESS',
+        payload: { socialObject: { socialId: 'gbp-social-123' } },
+      })
+
+      await waitFor(() => {
+        expect(mockLinkMutateAsync).toHaveBeenCalledWith({
+          siteId: 'test-app-789',
+          socialId: 'gbp-social-123',
+          platform: 'google',
+        })
+        expect(defaultProps.onSuccess).toHaveBeenCalled()
+      })
+    })
+
+    it('unlinks existing GBP association before linking new one', async () => {
+      mockAssociationsData.associations = [
+        { id: 'assoc-old-gbp', platform: 'GOOGLE_BUSINESS_PROFILE', socialId: 'old-gbp-id' },
+      ]
+      mockUnlinkMutateAsync.mockResolvedValue({})
+      mockLinkMutateAsync.mockResolvedValue({})
+      render(<SocialFlowsConnectWidget {...defaultProps} />)
+
+      capturedOnComplete!({
+        status: 'SUCCESS',
+        payload: { socialObject: { socialId: 'gbp-social-new' } },
+      })
+
+      await waitFor(() => {
+        expect(mockUnlinkMutateAsync).toHaveBeenCalledWith({
+          siteId: 'test-app-789',
+          associationId: 'assoc-old-gbp',
+        })
+        expect(mockLinkMutateAsync).toHaveBeenCalledWith({
+          siteId: 'test-app-789',
+          socialId: 'gbp-social-new',
+          platform: 'google',
+        })
+        expect(defaultProps.onSuccess).toHaveBeenCalled()
+      })
+    })
+
+    it('shows error on failure', async () => {
+      mockLinkMutateAsync.mockRejectedValue(new Error('Network error'))
+      render(<SocialFlowsConnectWidget {...defaultProps} />)
+
+      capturedOnComplete!({
+        status: 'SUCCESS',
+        payload: { socialObject: { socialId: 'gbp-social-123' } },
+      })
+
+      await waitFor(() => {
+        expect(
+          screen.getByText('builder_social_failed_to_connect_platform')
+        ).toBeInTheDocument()
+      })
+      expect(defaultProps.onSuccess).not.toHaveBeenCalled()
+    })
+
+    it('shows error when socialId is missing from payload', async () => {
+      render(<SocialFlowsConnectWidget {...defaultProps} />)
+
+      capturedOnComplete!({
+        status: 'SUCCESS',
+        payload: { socialObject: {} },
+      })
+
+      await waitFor(() => {
+        expect(
+          screen.getByText('builder_social_failed_to_connect_platform')
+        ).toBeInTheDocument()
+      })
+      expect(defaultProps.onSuccess).not.toHaveBeenCalled()
     })
   })
 })

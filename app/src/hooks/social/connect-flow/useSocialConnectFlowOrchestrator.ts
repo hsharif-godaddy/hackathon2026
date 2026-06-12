@@ -8,7 +8,7 @@ import { getErrorMessage } from '@/lib/errors'
 import { logger } from '@/lib/request-context'
 import type { GoogleLocation } from '@/lib/social'
 import { socialV2Client } from '@/lib/social'
-import { getPlatformStrategy, PLATFORM_CONFIG, PLATFORM_TRANSFORMS, PlatformConfig, SocialPlatform } from '@/lib/social-platforms'
+import { ALL_PLATFORM_CONFIG, getPlatformStrategy, PLATFORM_TRANSFORMS, PlatformConfig, SocialPlatform } from '@/lib/social-platforms'
 import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
 import { SocialFlowAction } from '@/types/social'
 import { SOCIAL_SCOPES } from '@/types/social-scopes'
@@ -52,7 +52,7 @@ export interface SocialConnectFlowDerivedState {
 export interface SocialConnectFlowOrchestratorResult {
   flowState: FlowState
   config: PlatformConfig
-  normalizedPlatform: string
+  normalizedPlatform: SocialPlatform
   handlers: SocialConnectFlowHandlers
   derivedState: SocialConnectFlowDerivedState
   authStatus: AuthStatus
@@ -95,9 +95,9 @@ export function useSocialConnectFlowOrchestrator({
     initialUserTokenId
   )
 
-  const normalizedPlatform = PLATFORM_TRANSFORMS.toDisplay(platform)
+  const normalizedPlatform = PLATFORM_TRANSFORMS.toDisplay(platform) as SocialPlatform
   const strategy = getPlatformStrategy(platform)
-  const config = PLATFORM_CONFIG[normalizedPlatform] || { name: platform, Icon: null }
+  const config = ALL_PLATFORM_CONFIG[normalizedPlatform] || { name: platform, Icon: null }
   const isFullscreen = useIsFullscreen()
 
   // Data fetching (enrichedPlatformConnections are pre-filtered to valid connections)
@@ -118,20 +118,21 @@ export function useSocialConnectFlowOrchestrator({
   const createConnectionFlow = useCreateAndLinkConnection()
   const linkMutation = useLinkConnection()
 
-  // Facebook/Instagram use SocialFlowsConnectWidget/IGConnectFlowWidget
-  // which handle their own OAuth — skip the popup-based OAuth flow.
+  // Facebook/Instagram/GBP use SocialFlowsConnectWidget
+  // which handles its own OAuth — skip the popup-based OAuth flow.
   const isFacebookPlatform = normalizedPlatform.toLowerCase() === SocialPlatform.FACEBOOK
   const isInstagramPlatform = normalizedPlatform.toLowerCase() === SocialPlatform.INSTAGRAM
+  const isGBPPlatform = normalizedPlatform.toLowerCase() === SocialPlatform.GOOGLE
 
   const shouldProceedToOAuth = useMemo(() => {
-    if (isFacebookPlatform || isInstagramPlatform) return false
+    if (isFacebookPlatform || isInstagramPlatform || isGBPPlatform) return false
     if (flowState.forceNewConnection) return true
     if (flowState.step === FlowStep.Auth) return true
     if (flowState.step === FlowStep.ValidatingPermissions) return true
     if (isSelectExistingLoading) return false
     if (flowState.showSelectExisting) return false
     return !currentAssociation && platformConnections.length === 0
-  }, [isFacebookPlatform, isInstagramPlatform, flowState.forceNewConnection, flowState.step, flowState.showSelectExisting, isSelectExistingLoading, currentAssociation, platformConnections])
+  }, [isFacebookPlatform, isInstagramPlatform, isGBPPlatform, flowState.forceNewConnection, flowState.step, flowState.showSelectExisting, isSelectExistingLoading, currentAssociation, platformConnections])
 
   const {
     authUrl,
@@ -141,7 +142,7 @@ export function useSocialConnectFlowOrchestrator({
     platformPages,
     isPagesLoading,
   } = useSocialOAuthFlow({
-    platform: normalizedPlatform as SocialPlatform,
+    platform: normalizedPlatform,
     appId,
     state,
     enabled: isActive && shouldProceedToOAuth,
@@ -175,7 +176,7 @@ export function useSocialConnectFlowOrchestrator({
     platform,
     state,
     handleOAuthSuccess,
-    isFacebookPlatform || isInstagramPlatform || !autoOpen || flowState.forceNewConnection || flowState.showSelectExisting || isSelectExistingLoading
+    isFacebookPlatform || isInstagramPlatform || isGBPPlatform || !autoOpen || flowState.forceNewConnection || flowState.showSelectExisting || isSelectExistingLoading
   )
 
   const handleSelectExisting = useCallback(async (socialId: string) => {

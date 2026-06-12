@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Provider } from 'react-redux'
 import { legacy_createStore as createStore } from 'redux'
-import { FBConnectFlow, IGConnectFlow, type onCompletePayload } from '@social/social-flows'
+import { FBConnectFlow, GBPConnectFlow, IGConnectFlow, type onCompletePayload } from '@social/social-flows'
 import Button from '@ux/button'
 import Modal from '@ux/modal'
 import Spinner from '@ux/spinner'
@@ -46,6 +46,7 @@ const SOURCE_APP = 'airo-app-builder'
 const FLOW_COMPONENTS: Record<string, React.ComponentType<any>> = {
   facebook: FBConnectFlow,
   instagram: IGConnectFlow,
+  google: GBPConnectFlow,
 }
 
 type WidgetStatus = 'idle' | 'connecting' | 'linking' | 'error' | 'incomplete'

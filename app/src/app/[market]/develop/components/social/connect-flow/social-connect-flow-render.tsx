@@ -85,7 +85,7 @@ interface GetRenderConfigParams {
   renderState: RenderState
   config: PlatformConfig
   currentConnectionDetails: (SocialConnection | EnrichedSocialConnection) | undefined
-  normalizedPlatform: string
+  normalizedPlatform: SocialPlatform
   enrichedPlatformConnections: Array<SocialConnection | EnrichedSocialConnection>
   isLoadingMetadata: boolean
   connectionsLoadingMetadata: Set<string>
@@ -247,17 +247,18 @@ export function getRenderConfig({
       }
 
     case RenderState.OAuthPrompt: {
-      const isFacebook = platform.toLowerCase() === SocialPlatform.FACEBOOK
-      const isInstagram = platform.toLowerCase() === SocialPlatform.INSTAGRAM
+      const isFacebook = normalizedPlatform === SocialPlatform.FACEBOOK
+      const isInstagram = normalizedPlatform === SocialPlatform.INSTAGRAM
+      const isGBP = normalizedPlatform === SocialPlatform.GOOGLE
 
-      if ((isFacebook || isInstagram) && onSuccess) {
+      if ((isFacebook || isInstagram || isGBP) && onSuccess) {
         return {
           icon: config.Icon,
           platformName: config.name,
           content: (
             <SocialFlowsConnectWidget
               appId={appId}
-              platform={platform.toLowerCase()}
+              platform={normalizedPlatform}
               onSuccess={onSuccess}
             />
           )

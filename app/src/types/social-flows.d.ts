@@ -44,4 +44,21 @@ declare module '@social/social-flows' {
   }
 
   export const IGConnectFlow: FunctionComponent<IGConnectFlowProps>
+
+  interface GBPConnectFlowProps {
+    market: string
+    rootDomain: string
+    sourceApp: string
+    businessName?: string
+    onComplete: (arg: onCompletePayload | undefined) => void
+    onConnection?: (arg: onConnectionPayload | undefined) => void
+    modal?: boolean | null
+    createFlowProps?: object
+    SignInInfoComponent?: object
+    SuccessInfoComponent?: object
+    signInRedirectOpts?: object
+    vnextProps?: object
+  }
+
+  export const GBPConnectFlow: FunctionComponent<GBPConnectFlowProps>
 }
