@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { readAgentUploadAsBase64 } from '../ContextFormatter.js'
+import { ContextFormatter, readAgentUploadAsBase64 } from '../ContextFormatter.js'
 
 vi.mock('fs/promises', () => ({
   readFile: vi.fn().mockResolvedValue(Buffer.from('fake-image-data'))
@@ -78,6 +78,75 @@ describe('ContextFormatter', () => {
       )
 
       expect(result).toBeNull()
+    })
+  })
+
+  // AIROBUILD-1556 — formatAiEditContext surfaces imageInfo (alt + URL) only.
+  // Click-action guidance is owned by the popover prompt builders, NOT this
+  // function — keeping it out keeps non-click-action image edits (Replace,
+  // Modify, border, etc.) free of irrelevant click-action prose.
+  describe('#formatAiEditContext', () => {
+    const baseContext = {
+      elementInfo: { tagName: 'div', className: 'card', id: 'c1', textContent: 'hello' },
+      devContext: { fileName: 'src/pages/index.tsx', componentName: 'HomePage', lineNumber: 42 },
+      selector: '.card#c1',
+    }
+
+    it('omits Image Details when imageInfo is absent', () => {
+      const result = ContextFormatter.formatAiEditContext(baseContext)
+      expect(result).not.toBeNull()
+      expect(result!.content).not.toContain('Image Details:')
+    })
+
+    it('includes alt and Image Details for foreground <img>', () => {
+      const result = ContextFormatter.formatAiEditContext({
+        ...baseContext,
+        elementInfo: { ...baseContext.elementInfo, tagName: 'img' },
+        imageInfo: { type: 'img', currentUrl: '/airo-assets/images/menu/morning-buns', alt: 'Morning Buns' },
+      })
+      expect(result!.content).toContain('Image type: img')
+      expect(result!.content).toContain('Alt text: Morning Buns')
+    })
+
+    it('never appends click-action guidance — that lives in the popover prompt builders', () => {
+      const foreground = ContextFormatter.formatAiEditContext({
+        ...baseContext,
+        elementInfo: { ...baseContext.elementInfo, tagName: 'img' },
+        imageInfo: { type: 'img', currentUrl: '/u', alt: 'x' },
+      })!
+      const background = ContextFormatter.formatAiEditContext({
+        ...baseContext,
+        imageInfo: { type: 'background', currentUrl: '/u', alt: '' },
+      })!
+      expect(foreground.content).not.toContain('Click-Action Guidance')
+      expect(foreground.content).not.toContain('per-item pattern')
+      expect(background.content).not.toContain('Click-Action Guidance')
+    })
+
+    it('truncates oversized alt text and falls back to "none" when missing', () => {
+      const longAlt = 'x'.repeat(500)
+      const withLongAlt = ContextFormatter.formatAiEditContext({
+        ...baseContext,
+        elementInfo: { ...baseContext.elementInfo, tagName: 'img' },
+        imageInfo: { type: 'img', currentUrl: '/u', alt: longAlt },
+      })!
+      expect(withLongAlt.content).toContain('x'.repeat(200))
+      expect(withLongAlt.content).not.toContain('x'.repeat(201))
+
+      const withoutAlt = ContextFormatter.formatAiEditContext({
+        ...baseContext,
+        elementInfo: { ...baseContext.elementInfo, tagName: 'img' },
+        imageInfo: { type: 'img', currentUrl: '/u' },
+      })!
+      expect(withoutAlt.content).toContain('Alt text: none')
+    })
+
+    it('drops invalid imageInfo.type instead of leaking it into the prompt', () => {
+      const result = ContextFormatter.formatAiEditContext({
+        ...baseContext,
+        imageInfo: { type: 'malicious', currentUrl: '/u', alt: 'x' },
+      })
+      expect(result!.content).toContain('Image type: null')
     })
   })
 })

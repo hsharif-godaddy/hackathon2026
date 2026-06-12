@@ -222,6 +222,7 @@ export class ContextFormatter {
     try {
       const elementInfo = aiEditContext.elementInfo || {}
       const devContext = aiEditContext.devContext || {}
+      const imageInfo = aiEditContext.imageInfo
     //   const screenshot = aiEditContext.screenshot
 
       // Sanitize and validate the context data
@@ -237,7 +238,12 @@ export class ContextFormatter {
           fileName: String(devContext.fileName || 'unknown').substring(0, 200),
           componentName: String(devContext.componentName || 'unknown').substring(0, 100),
           lineNumber: Number.isInteger(devContext.lineNumber) ? devContext.lineNumber : 'unknown'
-        }
+        },
+        image: imageInfo && typeof imageInfo === 'object' ? {
+          type: ['img', 'background', 'contains-img', 'sibling-img'].includes(imageInfo.type) ? imageInfo.type : null,
+          currentUrl: imageInfo.currentUrl ? String(imageInfo.currentUrl).substring(0, 500) : null,
+          alt: imageInfo.alt ? String(imageInfo.alt).substring(0, 200) : ''
+        } : null
       }
 
       // Validate screenshot format if present
@@ -271,6 +277,10 @@ export class ContextFormatter {
     //     }
     //   }
 
+      const imageBlock = sanitizedContext.image
+        ? `\nImage Details:\n- Image type: ${sanitizedContext.image.type}\n- Current URL: ${sanitizedContext.image.currentUrl ?? 'unknown'}\n- Alt text: ${sanitizedContext.image.alt || 'none'}\n`
+        : ''
+
       const content = `[AI Edit Context - Selected Element]
 
 Element Details:
@@ -279,7 +289,7 @@ Element Details:
 - ID: ${sanitizedContext.element.id}
 - Text Content: "${sanitizedContext.element.textContent}"
 - CSS Selector: ${sanitizedContext.element.selector}
-
+${imageBlock}
 Source Code Location:
 - File: ${sanitizedContext.source.fileName}
 - Component: ${sanitizedContext.source.componentName}

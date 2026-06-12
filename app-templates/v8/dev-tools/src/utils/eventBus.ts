@@ -46,6 +46,9 @@ export interface BusAiEditContextPayload {
   imageInfo?: {
     type: "img" | "background" | "contains-img" | "sibling-img";
     currentUrl: string | null;
+    /** <img alt="..."> when type === "img" — agent uses this to identify the
+     *  matching data entry in loop-rendered cases. */
+    alt?: string;
   };
   number?: number;
   selectionNumber?: number | null;

@@ -9,13 +9,14 @@ import {
   getNextSelectionNumber,
 } from "../utils/selection-overlay";
 import type { HoveredElement } from "../hooks/useImageHoverDetection";
-import { Bookmark, Image, Pencil, Pointer, Sparkles } from "lucide-react";
+import { Bookmark, Image, MousePointerClick, Pencil, Pointer, Sparkles } from "lucide-react";
 import { isClickable, isTextElement, isTextBlockElement, isListElement } from "../utils/element-detection";
 import { trackEventBus } from "../utils/eventBus";
 import { t } from "../utils/translations";
 import { HoverBar, HoverBarButton } from "./HoverBar";
 import { QuickEditBar } from "./QuickEditBar";
 import { TextFixPopover } from "./TextFixPopover";
+import { ImageActionPopover } from "./ImageActionPopover";
 import TextFixButton from "./TextFixButton";
 import { useTextFix } from "../hooks/useTextFix";
 import { useSpeechBridge } from "../hooks/useSpeechBridge";
@@ -33,6 +34,27 @@ import { findFormatOverrideElement, isLoopRenderedElement } from "../utils/forma
 
 
 const OUTLINE_PAD = 8;
+
+const DIRECT_FOREGROUND_IMAGE_TAGS = new Set(["img", "picture", "svg"]);
+
+// AIROBUILD-1556: object-cover <img> with overlaid siblings = hero backdrop.
+function isBackdropImage(el: HTMLElement): boolean {
+  if (el.tagName.toLowerCase() !== "img") return false;
+  const cs = getComputedStyle(el);
+  if (cs.objectFit !== "cover") return false;
+  const parent = el.parentElement;
+  if (!parent) return false;
+  return Array.from(parent.children).some((c) => c !== el && (c as HTMLElement).offsetWidth > 0);
+}
+
+function findEnclosingLink(el: HTMLElement): { href: string; isInternal: boolean } | null {
+  const a = el.closest("a") as HTMLAnchorElement | null;
+  if (!a) return null;
+  const href = a.getAttribute("href") || "";
+  if (!href) return null;
+  const isInternal = href.startsWith("/") && !href.startsWith("//");
+  return { href, isInternal };
+}
 
 const HOVER_PULSE_STYLE_ID = "airo-hover-pulse-keyframes";
 
@@ -88,8 +110,15 @@ export default function ElementHoverBar({
   const isCommerceIntegrated = !!import.meta.env.VITE_GODADDY_STORE_ID;
   const isUneditableImage = isImage && !element.getAttribute("data-dev-id") && !hoveredElement.isMediaSlot;
   const showImageActions = isImage && !(isCommerceIntegrated && isUneditableImage);
+  // AIROBUILD-1556: foreground <img>/<picture>/<svg> only; backdrops excluded.
+  const isForegroundImage = isImage && DIRECT_FOREGROUND_IMAGE_TAGS.has(element.tagName.toLowerCase());
+  const isBackdrop = isForegroundImage && isBackdropImage(element);
+  const showClickActionAction = showImageActions && isForegroundImage && !isBackdrop && !isVideo;
+  const isImageLoopRendered = isForegroundImage && isLoopRenderedElement(element);
+  const existingLink = isForegroundImage && !isBackdrop ? findEnclosingLink(element) : null;
 
   const [quickEditMode, setQuickEditMode] = useState(false);
+  const [clickActionMode, setClickActionMode] = useState(false);
   // Single source of truth for which Hover Bar popover is open (Color Picker /
   // Size Stepper / Text Align). Children are controlled — opening one
   // implicitly closes any other so they never stack on screen.
@@ -168,6 +197,7 @@ export default function ElementHoverBar({
   // commits and close the bar on first click.
   useEffect(() => {
     setQuickEditMode(false);
+    setClickActionMode(false);
     setOpenMenu(null);
     pendingContextRef.current = null;
     // Cancel any in-flight fix request — the captured toolbarElementRef is
@@ -180,8 +210,8 @@ export default function ElementHoverBar({
 
   // Notify parent when toolbar or quick edit is active so it can freeze the element
   useEffect(() => {
-    onQuickEditModeChange?.(toolbarMode || quickEditMode);
-  }, [toolbarMode, quickEditMode, onQuickEditModeChange]);
+    onQuickEditModeChange?.(toolbarMode || quickEditMode || clickActionMode);
+  }, [toolbarMode, quickEditMode, clickActionMode, onQuickEditModeChange]);
 
   // Toolbar-view impression: fires once per appearance. Deps are [toolbarMode]
   // so this fires on open, not on element retarget within an open toolbar.
@@ -208,7 +238,7 @@ export default function ElementHoverBar({
 
   // Dismiss toolbar/quick edit when clicking outside the bar, the element, or editor overlays
   useEffect(() => {
-    if (!toolbarMode && !quickEditMode) return;
+    if (!toolbarMode && !quickEditMode && !clickActionMode) return;
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (target.closest(".edit-mode-hover-bar")) return;
@@ -218,6 +248,7 @@ export default function ElementHoverBar({
       clearSelectionOverlay();
       setToolbarMode(false);
       setQuickEditMode(false);
+      setClickActionMode(false);
       fix.reset();
       pendingContextRef.current = null;
     };
@@ -225,7 +256,7 @@ export default function ElementHoverBar({
     return () => document.removeEventListener("mousedown", handleClickOutside);
     // Dep on `fix.reset` (stable useCallback), not `fix` — see the
     // element-change effect above for the explanation.
-  }, [toolbarMode, quickEditMode, element, fix.reset]);
+  }, [toolbarMode, quickEditMode, clickActionMode, element, fix.reset]);
 
   // Track toolbar/popover position, updating on scroll/resize so it follows
   // the element. Both surfaces share the same computed style so the popover
@@ -379,9 +410,11 @@ export default function ElementHoverBar({
     };
 
     if (hovered.type === "image") {
+      const imgEl = el.tagName.toLowerCase() === "img" ? (el as HTMLImageElement) : null;
       data.imageInfo = {
-        type: el.tagName.toLowerCase() === "img" ? "img" : "background",
+        type: imgEl ? "img" : "background",
         currentUrl: hovered.imageUrl,
+        alt: imgEl?.alt || "",
       };
     }
 
@@ -421,6 +454,14 @@ export default function ElementHoverBar({
     setQuickEditMode(true);
   }, [buildContextData]);
 
+  // AIROBUILD-1556: same context-capture pattern as Sparkles, opens popover.
+  const handleEditClickAction = useCallback(() => {
+    trackEventBus.click("devtools.toolbar.image_click_action");
+    pendingContextRef.current = buildContextData();
+    setToolbarMode(false);
+    setClickActionMode(true);
+  }, [buildContextData]);
+
   // On submit: send context first so the store is set before QUICK_EDIT_SEND reads it
   const handleQuickEditSubmit = useCallback((prompt: string) => {
     trackEventBus.click("devtools.toolbar.quick_edit_submit");
@@ -435,6 +476,22 @@ export default function ElementHoverBar({
   const handleQuickEditDismiss = useCallback(() => {
     trackEventBus.click("devtools.toolbar.quick_edit_dismiss");
     setQuickEditMode(false);
+  }, []);
+
+  const handleClickActionSubmit = useCallback((prompt: string) => {
+    trackEventBus.click("devtools.toolbar.image_click_action_submit");
+    if (pendingContextRef.current) {
+      send({ type: "EDIT_WITH_AI", data: pendingContextRef.current });
+      pendingContextRef.current = null;
+    }
+    send({ type: "QUICK_EDIT_SEND", data: { prompt } });
+    setClickActionMode(false);
+  }, []);
+
+  const handleClickActionDismiss = useCallback(() => {
+    trackEventBus.click("devtools.toolbar.image_click_action_dismiss");
+    setClickActionMode(false);
+    pendingContextRef.current = null;
   }, []);
 
   // Follow: trigger the element's native click/navigation (for links and buttons)
@@ -502,6 +559,23 @@ export default function ElementHoverBar({
     );
   }
 
+  if (clickActionMode) {
+    const imgEl = element.tagName.toLowerCase() === "img" ? (element as HTMLImageElement) : null;
+    return (
+      <ImageActionPopover
+        style={barStyle}
+        onSubmit={handleClickActionSubmit}
+        onDismiss={handleClickActionDismiss}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+        existingLink={existingLink}
+        isLoopRendered={isImageLoopRendered}
+        targetAlt={imgEl?.alt || ""}
+        targetSrc={imgEl?.getAttribute("src") || ""}
+      />
+    );
+  }
+
   // The Fix-flow diff popover replaces the toolbar at the same anchor point —
   // same pattern as QuickEditBar — so the user's eye doesn't have to track to
   // a different spot to choose Accept/Reject. Both share `barStyle`, which
@@ -543,6 +617,14 @@ export default function ElementHoverBar({
               title={t("devtools_image_modify_title", "Modify image")}
               icon={<Pencil width={15} height={15} />}
               label={t("devtools_image_modify", "Modify")}
+            />
+          )}
+          {showClickActionAction && (
+            <HoverBarButton
+              onClick={handleEditClickAction}
+              title={t("devtools_image_click_action_title", "Set click action")}
+              icon={<MousePointerClick width={15} height={15} />}
+              label={t("devtools_image_click_action", "On click")}
             />
           )}
         </>
