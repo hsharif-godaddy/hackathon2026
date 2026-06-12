@@ -1659,9 +1659,14 @@ function InputActionsPanelThemeSelection({
       ? nbaData.question
       : t('builder_todo_continue_building')
 
+  // Long, user-facing question text (askQuestion prompt or an NBA question) must
+  // wrap so the full question stays readable; short static titles (color/font,
+  // "continue building") keep the compact single-line truncate behavior.
+  const isQuestionTitle = isAskQuestionActive || (nbaSuggestions.length > 0 && !!nbaData?.question)
   const continueBuildingTitle = (
     <PanelSectionTitle
       progress={isAskQuestionActive ? askQuestionProgress : null}
+      multiline={isQuestionTitle}
     >
       {isAskQuestionActive ? (
         <span className="text-foreground">{currentAskQuestionText || nbaData?.question}</span>
