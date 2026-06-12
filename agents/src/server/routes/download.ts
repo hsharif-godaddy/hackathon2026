@@ -22,6 +22,25 @@ const logger = Logger.create({ component: 'download-routes' });
 /** Concurrent dev-supervisor downloads. Bounded so peak memory stays at ~CAP buffers. */
 const DOWNLOAD_CONCURRENCY = 8;
 
+type NameStyle = 'appId' | 'name';
+
+/**
+ * Build the zip's base name, used for both Content-Disposition and the
+ * top-level folder inside the archive.
+ *
+ * - `appId` style → `appId_<id>_<friendlyName>` (or `appId_<id>` if name empty);
+ *    used by internal tools (debug-console) where the id is the primary key.
+ * - `name` style → `<friendlyName>` (or `app-<id>` if name empty); used by the
+ *    customer-facing download path.
+ */
+function buildBaseName(id: string, rawName: string | null | undefined, style: NameStyle): string {
+  const friendlyName = (rawName ?? '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  if (style === 'appId') {
+    return friendlyName ? `appId_${id}_${friendlyName}` : `appId_${id}`;
+  }
+  return friendlyName || `app-${id}`;
+}
+
 /**
  * Run `worker` for each item with at most `cap` in flight at once.
  * Used to bound concurrent dev-supervisor downloads.
@@ -84,10 +103,10 @@ router.get('/apps/:id/zip', validateAppOwnership, requirePermission('canDownload
     );
     const filePaths = [...dirResults.flat(), ...ALLOWED_CONFIG_FILES];
 
-    const rawName = app.name || id;
-    const safeName = rawName.replace(/[^a-zA-Z0-9 ]/g, '').trim() || id;
+    const nameStyle = req.query.nameStyle === 'appId' ? 'appId' : 'name';
+    const baseName = buildBaseName(id, app.name, nameStyle);
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName}.zip"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${baseName}.zip"`);
 
     const archive = archiver('zip', { zlib: { level: 9 } });
 
@@ -111,7 +130,7 @@ router.get('/apps/:id/zip', validateAppOwnership, requirePermission('canDownload
       if (archiveError) return;
       try {
         const result = await workspace.files.download({ path: filePath });
-        archive.append(result.data, { name: filePath });
+        archive.append(result.data, { name: `${baseName}/${filePath}` });
         appendedCount++;
       } catch (err) {
         if (isDevSupervisorNotFound(err)) return;

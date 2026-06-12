@@ -448,7 +448,7 @@ describe('Archive Workspace Integration', () => {
     mockCreateForWorkspace.mockReturnValue({ files: ws });
 
     const response = await request(app)
-      .get(`/apps/${appId}/zip`)
+      .get(`/apps/${appId}/zip?nameStyle=appId`)
       .buffer(true);
 
     expect(response.status).toBe(200);
@@ -473,8 +473,146 @@ describe('Archive Workspace Integration', () => {
     expect(downloadedPaths).not.toContain('components/Foo.tsx');
     expect(downloadedPaths).not.toContain('logo.png');
 
-    expect(mockArchive.append).toHaveBeenCalled();
+    // Filename + in-zip folder share `appId_<id>_<friendlyName>` so unzipping
+    // in ~/Downloads creates a single labeled folder rather than dumping files.
+    const baseName = `appId_${appId}_Test_App`;
+    expect(response.headers['content-disposition']).toBe(
+      `attachment; filename="${baseName}.zip"`,
+    );
+    const archiveEntryNames = mockArchive.append.mock.calls.map((c: any) => c[1].name);
+    expect(archiveEntryNames).toEqual(
+      expect.arrayContaining([
+        `${baseName}/src/index.ts`,
+        `${baseName}/src/components/Foo.tsx`,
+        `${baseName}/public/logo.png`,
+        `${baseName}/package.json`,
+      ]),
+    );
+    // Pin the regression: any entry without the prefix would dump that file
+    // to the unzip target directory.
+    expect(archiveEntryNames).not.toContain('src/index.ts');
+    expect(archiveEntryNames).not.toContain('package.json');
+
     expect(mockArchive.finalize).toHaveBeenCalled();
+  });
+
+  describe('nameStyle=appId (debug-console / internal)', () => {
+    it('falls back to `appId_<id>` when app.name is missing', async () => {
+      mockFindById.mockReturnValue({
+        id: appId,
+        name: '',
+        path: `/tmp/apps/${appId}/app`,
+      });
+      const ws = strictWorkspace({
+        tree: { src: [], public: [] },
+        files: { 'package.json': Buffer.from('{}') },
+      });
+      mockCreateForWorkspace.mockReturnValue({ files: ws });
+
+      const response = await request(app)
+        .get(`/apps/${appId}/zip?nameStyle=appId`)
+        .buffer(true);
+
+      expect(response.status).toBe(200);
+      const baseName = `appId_${appId}`;
+      expect(response.headers['content-disposition']).toBe(
+        `attachment; filename="${baseName}.zip"`,
+      );
+      const archiveEntryNames = mockArchive.append.mock.calls.map((c: any) => c[1].name);
+      expect(archiveEntryNames).toContain(`${baseName}/package.json`);
+    });
+
+    it('sanitizes punctuation and whitespace in app.name into `_`', async () => {
+      mockFindById.mockReturnValue({
+        id: appId,
+        name: "  My App: v2.0!  ",
+        path: `/tmp/apps/${appId}/app`,
+      });
+      const ws = strictWorkspace({
+        tree: { src: [], public: [] },
+        files: { 'package.json': Buffer.from('{}') },
+      });
+      mockCreateForWorkspace.mockReturnValue({ files: ws });
+
+      const response = await request(app)
+        .get(`/apps/${appId}/zip?nameStyle=appId`)
+        .buffer(true);
+
+      expect(response.status).toBe(200);
+      // Runs of non-alphanumeric chars collapse to a single `_`; leading/trailing
+      // underscores are trimmed. ":" between "App" and "v2" becomes one `_`.
+      const baseName = `appId_${appId}_My_App_v2_0`;
+      expect(response.headers['content-disposition']).toBe(
+        `attachment; filename="${baseName}.zip"`,
+      );
+      const archiveEntryNames = mockArchive.append.mock.calls.map((c: any) => c[1].name);
+      expect(archiveEntryNames).toContain(`${baseName}/package.json`);
+    });
+  });
+
+  describe('nameStyle=name (default; customer-facing)', () => {
+    // Default style omits the internal `appId_<id>_` prefix so customers see
+    // a download named after their app, not its internal id.
+    it('uses the sanitized friendly name with no appId prefix', async () => {
+      const ws = strictWorkspace({
+        tree: { src: [], public: [] },
+        files: { 'package.json': Buffer.from('{}') },
+      });
+      mockCreateForWorkspace.mockReturnValue({ files: ws });
+
+      const response = await request(app).get(`/apps/${appId}/zip`).buffer(true);
+
+      expect(response.status).toBe(200);
+      const baseName = 'Test_App';
+      expect(response.headers['content-disposition']).toBe(
+        `attachment; filename="${baseName}.zip"`,
+      );
+      const archiveEntryNames = mockArchive.append.mock.calls.map((c: any) => c[1].name);
+      expect(archiveEntryNames).toContain(`${baseName}/package.json`);
+    });
+
+    it('falls back to `app-<id>` when app.name is missing', async () => {
+      mockFindById.mockReturnValue({
+        id: appId,
+        name: '',
+        path: `/tmp/apps/${appId}/app`,
+      });
+      const ws = strictWorkspace({
+        tree: { src: [], public: [] },
+        files: { 'package.json': Buffer.from('{}') },
+      });
+      mockCreateForWorkspace.mockReturnValue({ files: ws });
+
+      const response = await request(app).get(`/apps/${appId}/zip`).buffer(true);
+
+      expect(response.status).toBe(200);
+      const baseName = `app-${appId}`;
+      expect(response.headers['content-disposition']).toBe(
+        `attachment; filename="${baseName}.zip"`,
+      );
+      const archiveEntryNames = mockArchive.append.mock.calls.map((c: any) => c[1].name);
+      expect(archiveEntryNames).toContain(`${baseName}/package.json`);
+    });
+
+    it('treats unrecognized nameStyle values as default', async () => {
+      const ws = strictWorkspace({
+        tree: { src: [], public: [] },
+        files: { 'package.json': Buffer.from('{}') },
+      });
+      mockCreateForWorkspace.mockReturnValue({ files: ws });
+
+      const response = await request(app)
+        .get(`/apps/${appId}/zip?nameStyle=bogus`)
+        .buffer(true);
+
+      expect(response.status).toBe(200);
+      // 'bogus' is not 'appId', so we fall back to the default `name` style.
+      // This is the safe failure mode: a typo in a caller's query never leaks
+      // the internal id-prefixed name to a customer-facing client.
+      expect(response.headers['content-disposition']).toBe(
+        'attachment; filename="Test_App.zip"',
+      );
+    });
   });
 
   it('returns 500 when workspace.tree throws unexpectedly', async () => {

@@ -252,9 +252,11 @@ export const POST = withCustomerAuth(async (
     });
 
     const downloadUrl = `${site.agent_url}/apps/${siteId}/zip`;
-    const filename = site.name
-      ? `${site.name.replace(/[^a-zA-Z0-9-_]/g, '-')}.zip`
-      : `app-${siteId}.zip`;
+    // Mirror the agent's `name`-style sanitization in
+    // agents/src/server/routes/download.ts → buildBaseName so the browser-saved
+    // .zip name matches the inner folder the agent produces.
+    const friendlyName = (site.name ?? '').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const filename = `${friendlyName || `app-${siteId}`}.zip`;
 
     logger.info('download.redirect.success', {
       siteId,

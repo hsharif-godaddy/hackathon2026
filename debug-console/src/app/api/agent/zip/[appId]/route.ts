@@ -29,6 +29,7 @@ export const GET = withAuth<{ appId: string }>(async function getZip(request: Ne
         const { status, body, headers } = await streamAgentResponse({
             appId,
             path: `/apps/${encodeURIComponent(appId)}/zip`,
+            query: { nameStyle: 'appId' },
             canDownload: true,
             timeoutMs: ZIP_HEADER_TIMEOUT_MS,
             signal: request.signal,

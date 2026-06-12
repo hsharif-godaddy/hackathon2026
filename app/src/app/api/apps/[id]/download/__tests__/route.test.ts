@@ -204,7 +204,7 @@ describe('download POST', function downloadTests() {
       expect(response.status).toBe(200);
       expect(data.downloadUrl).toBe(`${MOCK_V2_SITE.agent_url}/apps/${MOCK_SITE_ID}/zip`);
       expect(data.token).toBe(MOCK_AGENT_TOKEN);
-      expect(data.filename).toBe('Test-Site.zip');
+      expect(data.filename).toBe('Test_Site.zip');
       expect(data.tracked).toBe(true);
       expect(data.exportId).toBe('export-123');
 
@@ -381,7 +381,11 @@ describe('download POST', function downloadTests() {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.filename).toBe('My-App---Special--Test.zip');
+      // Runs of non-alphanumeric chars collapse to a single `_`; matches the
+      // agent's `name`-style sanitization in
+      // agents/src/server/routes/download.ts → buildBaseName so the browser-
+      // saved .zip name and the agent's inner folder agree.
+      expect(data.filename).toBe('My_App_Special_Test.zip');
     });
 
     it('should use site ID for filename when site name is missing', async function fallbackFilename() {
