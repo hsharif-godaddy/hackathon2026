@@ -59,9 +59,8 @@ describe('ChatPaneLoader', () => {
   it('should display loading indicators', () => {
     renderWithProviders(<ChatPaneLoader {...defaultProps} />);
 
-    expect(screen.getByTestId('loader-dot-1')).toBeInTheDocument();
-    expect(screen.getByTestId('loader-dot-2')).toBeInTheDocument();
-    expect(screen.getByTestId('loader-dot-3')).toBeInTheDocument();
+    expect(screen.getByTestId('loader-dots')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('should display timing information', () => {

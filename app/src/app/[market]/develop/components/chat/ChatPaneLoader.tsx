@@ -1,3 +1,4 @@
+import { ThinkingIndicator } from '@airo-ux/pattern-library/primitives/thinking-indicator'
 import Box from '@ux/box'
 import Button from '@ux/button'
 
@@ -101,10 +102,12 @@ export default function ChatPaneLoader({
             gap="sm"
             className="mb-3"
             blockAlignChildren="center"
+            inlineAlignChildren="center"
           >
-            <div data-testid="loader-dot-1" className="w-1.5 h-1.5 bg-ai-light rounded-full"></div>
-            <div data-testid="loader-dot-2" className="w-1.5 h-1.5 bg-ai rounded-full"></div>
-            <div data-testid="loader-dot-3" className="w-1.5 h-1.5 bg-ai-dark rounded-full"></div>
+            <ThinkingIndicator
+              size={1.5}
+              data-testid="loader-dots"
+            />
           </Box>
 
           <Box className="text-sm" gap="sm">
