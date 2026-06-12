@@ -423,3 +423,121 @@ describe('tool_retry pattern', () => {
     expect(patterns.find(p => p.type === PatternType.ToolRetry)).toBeUndefined()
   })
 })
+
+// REAL PRODUCTION TOOL NAMES
+//
+// The agent registers camelCase tool names (terminalCommand, grepSearch,
+// readFile) in allAILibTools. These regression tests pin the detectors to the
+// names actually emitted in production so a future rename can't silently kill a
+// detector again.
+
+describe('real production tool names', () => {
+  it('recognizes terminalCommand failures', () => {
+    const steps = Array.from({ length: 4 }, (_, i) =>
+      createStep([toolError('terminalCommand', { command: 'npm test' })], `call-${i}`)
+    )
+    const patterns = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.TerminalFailures)).toBeDefined()
+  })
+
+  it('recognizes skill-namespaced terminal commands (publishing__bash)', () => {
+    const steps = Array.from({ length: 4 }, (_, i) =>
+      createStep([toolError('publishing__bash', { command: 'make build' })], `call-${i}`)
+    )
+    const patterns = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.TerminalFailures)).toBeDefined()
+  })
+
+  it('recognizes grepSearch spiral', () => {
+    const steps = Array.from({ length: 6 }, (_, i) =>
+      createStep([toolResult('grepSearch', { pattern: 'test' }, 'No matches found')], `call-${i}`)
+    )
+    const patterns = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.GrepSpiral)).toBeDefined()
+  })
+
+  it('recognizes readFile repeated reads', () => {
+    const steps = Array.from({ length: 5 }, (_, i) =>
+      createStep([toolResult('readFile', { path: 'src/a.ts' })], `call-${i}`)
+    )
+    const patterns = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.RepeatedReads)).toBeDefined()
+  })
+})
+
+// COMMAND-AWARE EDITOR CLASSIFICATION
+//
+// str_replace_based_edit_tool is command-dispatched: `view` reads,
+// `str_replace`/`insert` edit, `create` writes. The detectors must classify by
+// command, not just by tool name.
+
+describe('command-aware editor classification', () => {
+  it('treats editor view as a read (repeated_reads fires)', () => {
+    const steps = Array.from({ length: 5 }, (_, i) =>
+      createStep(
+        [toolResult('str_replace_based_edit_tool', { command: 'view', path: 'src/a.ts' })],
+        `call-${i}`
+      )
+    )
+    const patterns = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.RepeatedReads)).toBeDefined()
+    // ...and must NOT be miscounted as repeated edits
+    expect(patterns.find(p => p.type === PatternType.RepeatedEdits)).toBeUndefined()
+  })
+
+  it('does NOT count repeated editor views as edits (no false repeated_edits)', () => {
+    const steps = Array.from({ length: 6 }, (_, i) =>
+      createStep(
+        [toolResult('str_replace_based_edit_tool', { command: 'view', path: 'src/a.ts' })],
+        `call-${i}`
+      )
+    )
+    const patterns = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.RepeatedEdits)).toBeUndefined()
+  })
+
+  it('treats editor str_replace as an edit (repeated_edits fires)', () => {
+    const steps = Array.from({ length: 6 }, (_, i) =>
+      createStep(
+        [toolResult('str_replace_based_edit_tool', { command: 'str_replace', path: 'src/a.ts' })],
+        `call-${i}`
+      )
+    )
+    const patterns = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.RepeatedEdits)).toBeDefined()
+  })
+
+  it('excludes editor create (full-file write) from edit churn', () => {
+    const steps = Array.from({ length: 6 }, (_, i) =>
+      createStep(
+        [toolResult('str_replace_based_edit_tool', { command: 'create', path: 'src/a.ts' })],
+        `call-${i}`
+      )
+    )
+    const patterns = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.RepeatedEdits)).toBeUndefined()
+  })
+
+  it('detects edit_read_loop entirely within the editor (view + str_replace)', () => {
+    // str_replace→view alternating, 8 transitions = 4 cycles
+    const steps = Array.from({ length: 9 }, (_, i) =>
+      createStep(
+        [toolResult('str_replace_based_edit_tool', {
+          command: i % 2 === 0 ? 'str_replace' : 'view',
+          path: 'src/a.ts',
+        })],
+        `call-${i}`
+      )
+    )
+    const patterns = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.EditReadLoop)).toBeDefined()
+  })
+
+  it('defaults to edit when the editor command is missing (back-compat)', () => {
+    const steps = Array.from({ length: 6 }, (_, i) =>
+      createStep([toolResult('str_replace_based_edit_tool', { path: 'src/a.ts' })], `call-${i}`)
+    )
+    const patterns = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.RepeatedEdits)).toBeDefined()
+  })
+})

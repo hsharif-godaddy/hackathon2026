@@ -18,10 +18,9 @@ import {
   PatternType,
   StepContentType,
   isTerminalTool,
-  isEditTool,
-  isReadTool,
   isSearchTool,
   isWorkflowTool,
+  classifyFileOp,
   getToolInput,
   getToolOutput,
   type ExecutionStep,
@@ -178,16 +177,16 @@ function collectOperations(steps: ExecutionStep[]): CollectedOperations {
         })
       }
 
-      // File operations — classify as edit or read
-      // Count on tool-result to represent completed operations
-      // edit-read-edit loop detection only fires for targeted modifications, not full file creation
+      // File operations — classify as edit or read.
+      // Count on tool-result to represent completed operations.
+      // classifyFileOp is command-aware: the editor's `view` is a read,
+      // `str_replace`/`insert` are edits, and `create` (full-file write) is
+      // excluded — edit churn detection only fires for targeted modifications.
       if (item.type === StepContentType.ToolResult) {
-        if (isEditTool(toolName)) {
+        const fileOpKind = classifyFileOp(toolName, input)
+        if (fileOpKind) {
           const filePath = extractFilePath(input)
-          fileOps.push({ callId, toolType: 'edit', filePath, stepIdx })
-        } else if (isReadTool(toolName)) {
-          const filePath = extractFilePath(input)
-          fileOps.push({ callId, toolType: 'read', filePath, stepIdx })
+          fileOps.push({ callId, toolType: fileOpKind, filePath, stepIdx })
         }
       }
 

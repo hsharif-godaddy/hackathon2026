@@ -68,6 +68,27 @@ describe('detectCausalChains', () => {
     expect(result[0]?.errorCallId).toBe('call-2')
   })
 
+  it('does not treat an editor view as a trigger edit', () => {
+    // command: 'view' is a read, so even though an error later mentions the file,
+    // there is no preceding *edit* to blame → no causal chain.
+    const steps = [
+      createStep([toolResult('str_replace_based_edit_tool', { command: 'view', path: 'src/Button.tsx' })], 'call-1'),
+      createStep([toolError('terminalCommand', { command: 'npm test' }, 'Error in Button.tsx: undefined')], 'call-2'),
+    ]
+    const result = detectCausalChains(steps)
+    expect(result).toEqual([])
+  })
+
+  it('treats an editor str_replace (with command) as a trigger edit', () => {
+    const steps = [
+      createStep([toolResult('str_replace_based_edit_tool', { command: 'str_replace', path: 'src/Button.tsx' })], 'call-1'),
+      createStep([toolError('terminalCommand', { command: 'npm test' }, 'Error in Button.tsx: undefined')], 'call-2'),
+    ]
+    const result = detectCausalChains(steps)
+    expect(result).toHaveLength(1)
+    expect(result[0]?.triggerCallId).toBe('call-1')
+  })
+
   it('tracks fix calls that operate on the triggered file', () => {
     const steps = [
       createStep([toolResult('str_replace_based_edit_tool', { path: 'src/Button.tsx' })], 'call-1'),

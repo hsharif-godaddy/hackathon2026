@@ -55,9 +55,19 @@ export const PATTERN_THRESHOLDS = {
  * See FRICTION-FORMULAS.md for rationale.
  */
 // TOOL CLASSIFICATION
+//
+// Names are matched lowercased and skill-namespace-aware (see matchesToolSet),
+// so each set lists the lowercased forms of the real registered tool names from
+// `agents/src/tools/ai-lib-tools/index.ts` (allAILibTools). The agent's tools
+// are camelCase (`terminalCommand`, `grepSearch`, `readFile`); older snake_case
+// aliases are kept as harmless backstops for other/legacy tool names.
+//
+// NOTE: the primary editor `str_replace_based_edit_tool` is command-dispatched
+// (view reads, str_replace/insert edit, create writes). Name-based membership
+// alone cannot tell those apart — use classifyFileOp() for read/edit decisions.
 
 /** Tools that run terminal/shell commands */
-export const TERMINAL_TOOLS = new Set(['terminal', 'bash', 'execute_command'])
+export const TERMINAL_TOOLS = new Set(['terminalcommand', 'terminal', 'bash', 'execute_command'])
 
 /** Tools that edit existing files (targeted modifications) */
 export const EDIT_TOOLS = new Set(['str_replace_based_edit_tool', 'edit'])
@@ -66,10 +76,10 @@ export const EDIT_TOOLS = new Set(['str_replace_based_edit_tool', 'edit'])
 export const WRITE_TOOLS = new Set(['write_to_file'])
 
 /** Tools that read files */
-export const READ_TOOLS = new Set(['read_file'])
+export const READ_TOOLS = new Set(['readfile', 'read_file'])
 
 /** Tools that search for content */
-export const SEARCH_TOOLS = new Set(['grep', 'search_files', 'search', 'ripgrep'])
+export const SEARCH_TOOLS = new Set(['grepsearch', 'grep', 'search_files', 'search', 'ripgrep'])
 
 /** Tools where repeated calls with same args is expected workflow behavior, not a retry */
 export const WORKFLOW_TOOLS = new Set([
@@ -84,6 +94,7 @@ export const FILE_TOOLS = new Set([
   'str_replace_based_edit_tool',
   'edit',
   'write_to_file',
+  'readfile',
   'read_file',
 ])
 
@@ -132,6 +143,44 @@ export function isSearchTool(name: string): boolean {
 /** Check if tool name is a file tool */
 export function isFileTool(name: string): boolean {
   return matchesToolSet(name, FILE_TOOLS)
+}
+
+/** File operation kind for read/edit pattern detection. Excludes writes (creation). */
+export type FileOpKind = 'read' | 'edit'
+
+/**
+ * Read the lowercased `command` from a text-editor tool input.
+ * The editor (`str_replace_based_edit_tool`) dispatches on this field.
+ */
+export function getEditorCommand(input: unknown): string | undefined {
+  if (input && typeof input === 'object') {
+    const command = (input as Record<string, unknown>).command
+    if (typeof command === 'string') return command.toLowerCase()
+  }
+  return undefined
+}
+
+/**
+ * Classify a tool call as a read or an edit of a file, or null if neither.
+ *
+ * The primary editor `str_replace_based_edit_tool` is command-dispatched, so a
+ * tool name alone is ambiguous: `view` reads, `str_replace`/`insert` edit, and
+ * `create` writes a whole file (untracked here, matching how `write_to_file` is
+ * excluded from edit churn). Non-editor read/edit tools fall back to name-based
+ * classification.
+ */
+export function classifyFileOp(name: string, input: unknown): FileOpKind | null {
+  if (matchesToolSet(name, EDIT_TOOLS)) {
+    const command = getEditorCommand(input)
+    if (command === 'view') return 'read'
+    if (command === 'str_replace' || command === 'insert') return 'edit'
+    // 'create' (full-file write) or a missing/unknown command is not counted as
+    // a targeted edit or read.
+    return command === undefined ? 'edit' : null
+  }
+  if (isReadTool(name)) return 'read'
+  if (isEditTool(name)) return 'edit'
+  return null
 }
 
 /** Check if tool name is a workflow tool (repeated calls expected) */

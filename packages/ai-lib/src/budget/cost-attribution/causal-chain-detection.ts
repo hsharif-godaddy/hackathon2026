@@ -19,7 +19,7 @@
 
 import { createLogger } from '@airo/ai-common'
 import {
-  isEditTool,
+  classifyFileOp,
   isFileTool,
   StepContentType,
   getToolInput,
@@ -187,8 +187,14 @@ export function detectCausalChains(steps: ExecutionStep[]): CausalChain[] {
 
     const content = step.content ?? []
     for (const item of content) {
-      // Track successful edits (keep only last 10 - we only check within 5 steps anyway)
-      if (item.type === StepContentType.ToolResult && item.toolName && isEditTool(item.toolName)) {
+      // Track successful edits (keep only last 10 - we only check within 5 steps anyway).
+      // classifyFileOp is command-aware: the editor's `view` is a read, not an
+      // edit, so viewing a file no longer counts as a chain trigger.
+      if (
+        item.type === StepContentType.ToolResult &&
+        item.toolName &&
+        classifyFileOp(item.toolName, getToolInput(item)) === 'edit'
+      ) {
         const filePath = extractFilePath(getToolInput(item))
         if (filePath !== 'unknown') {
           recentEdits.push({ callId, filePath, stepIdx })
