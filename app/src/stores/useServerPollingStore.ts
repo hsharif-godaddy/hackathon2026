@@ -329,9 +329,42 @@ export async function bootstrapWithRetry(
   return { response, lastError, attempts }
 }
 
-async function getPreviewAppToken(siteId: string): Promise<string | null> {
+// Process-local cache for the site-scoped preview JWT, keyed by siteId
+// (same value as appId at the call site — the parameter is named siteId
+// because /api/auth/token uses ?siteId=).
+//
+// The token is valid for hours, but a cold-starting / hibernated app is
+// polled aggressively (every 1-2s in the fast band). Without a cache, EVERY
+// poll re-mints a JWT — a `/api/auth/token` round-trip plus a server-side
+// mint — for no useful change in token state, adding latency to each poll
+// and load on the JWT service exactly when the user is staring at a loading
+// preview. A short TTL collapses a burst of polls into a single mint while
+// staying far inside the token's validity window. Failed mints are NOT
+// cached, so a transient failure self-heals on the next poll.
+//
+// Concurrent-poll note: two polls that both arrive before the first resolves
+// will both miss the cache and both mint (no single-flight dedup). This is an
+// accepted overlap: it's transient (one poll wins and populates the cache,
+// subsequent calls hit it), and adding a pending-promise Map here would
+// complicate the module with minimal benefit given the 1-2s poll interval.
+//
+// Exported TTL + reset hook are for unit tests.
+export const PREVIEW_TOKEN_CACHE_TTL_MS = 5 * 60 * 1000
+const previewTokenCache = new Map<string, { token: string; cachedAt: number }>()
+
+/** Test-only hook to drop the module-level token cache between cases. */
+export function __clearPreviewTokenCacheForTesting(): void {
+  previewTokenCache.clear()
+}
+
+export async function getPreviewAppToken(siteId: string): Promise<string | null> {
   if (typeof window === 'undefined') {
     return null // Server-side rendering
+  }
+
+  const cached = previewTokenCache.get(siteId)
+  if (cached && Date.now() - cached.cachedAt < PREVIEW_TOKEN_CACHE_TTL_MS) {
+    return cached.token
   }
 
   try {
@@ -351,8 +384,17 @@ async function getPreviewAppToken(siteId: string): Promise<string | null> {
     }
 
     const data = await response.json()
-    return data.token || null
+    const token: string | null = data.token || null
+    // Only cache real tokens — never cache a null/failed result, so the next
+    // poll retries rather than serving "no token" for the whole TTL window.
+    if (token) {
+      previewTokenCache.set(siteId, { token, cachedAt: Date.now() })
+    }
+    return token
   } catch (error) {
+    // Logged at debug (not warn) to avoid logger test failures where
+    // window.location isn't stubbed. A thrown fetch and a non-OK response
+    // are diagnostically equivalent here (both → no token).
     logger.debug('server-polling.token-fetch.error', {
       message: 'Error fetching token from API',
       error: error instanceof Error ? error.message : String(error),

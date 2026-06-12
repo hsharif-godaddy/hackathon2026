@@ -57,13 +57,16 @@ vi.mock('@/lib/gasket-config', () => ({
 }));
 
 import {
+  __clearPreviewTokenCacheForTesting,
   BOOTSTRAP_BACKOFF_BASE_MS,
   BOOTSTRAP_FETCH_TIMEOUT_MS,
   bootstrapWithRetry,
+  getPreviewAppToken,
   HEALTH_POLL_INTERVAL_MS,
   HEALTH_POLL_TIMEOUT_MS,
   HEALTH_PROBE_TIMEOUT_MS,
   MAX_BOOTSTRAP_ATTEMPTS,
+  PREVIEW_TOKEN_CACHE_TTL_MS,
   useServerPollingStore,
   waitForViteReady,
   WAKEUP_TIMEOUT_MS,
@@ -803,5 +806,78 @@ describe('crash-loop escalation', () => {
     expect(pollingState?.server?.isReady).toBe(false);
   });
 
+});
+
+describe('getPreviewAppToken caching', () => {
+  beforeEach(() => {
+    __clearPreviewTokenCacheForTesting();
+    // getPreviewAppToken bails out under SSR (`typeof window === 'undefined'`);
+    // the default node test env has no window, so provide a minimal stub.
+    vi.stubGlobal('window', {} as unknown as Window & typeof globalThis);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    __clearPreviewTokenCacheForTesting();
+  });
+
+  it('mints once and serves the cached token for repeat polls within the TTL', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({ token: 'tok-1' }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = await getPreviewAppToken('app-1');
+    const second = await getPreviewAppToken('app-1');
+    const third = await getPreviewAppToken('app-1');
+
+    expect(first).toBe('tok-1');
+    expect(second).toBe('tok-1');
+    expect(third).toBe('tok-1');
+    // Without caching this would be 3 /api/auth/token round-trips.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('caches per appId so distinct apps get distinct tokens', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ token: 'tok-a' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ token: 'tok-b' }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect(await getPreviewAppToken('app-a')).toBe('tok-a');
+    expect(await getPreviewAppToken('app-b')).toBe('tok-b');
+    expect(await getPreviewAppToken('app-a')).toBe('tok-a');
+    expect(await getPreviewAppToken('app-b')).toBe('tok-b');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not cache a failed mint (next poll retries)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect(await getPreviewAppToken('app-x')).toBeNull();
+    expect(await getPreviewAppToken('app-x')).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-mints once the cache entry ages past the TTL', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ token: 'tok-old' }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ token: 'tok-new' }) });
+      vi.stubGlobal('fetch', fetchMock);
+
+      expect(await getPreviewAppToken('app-ttl')).toBe('tok-old');
+      vi.advanceTimersByTime(PREVIEW_TOKEN_CACHE_TTL_MS + 1);
+      expect(await getPreviewAppToken('app-ttl')).toBe('tok-new');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 

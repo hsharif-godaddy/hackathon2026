@@ -1381,6 +1381,23 @@ describe('PreviewPane — Storage Access fallback gating', () => {
     expect(iframe?.src).not.toContain('/airo/storage-access');
   });
 
+  it('redirects to storage-access when WebKit + auth probe detects a 401 login page (post-#4578)', async () => {
+    // dev-supervisor (#4578) now serves a 401 login page instead of a 307 on
+    // auth failure, so the probe must treat 401 as "blocked", not only 307.
+    stubWebKit();
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaque', status: 401 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+    await exhaustBootstrapRetries();
+
+    await vi.advanceTimersByTimeAsync(0);
+    await act(async () => { await Promise.resolve(); });
+
+    const iframe = document.querySelector('iframe');
+    expect(iframe?.src).toContain('/airo/storage-access');
+  });
+
   it('does NOT redirect to storage-access on Chrome even if retries exhausted', async () => {
     stubChrome();
     const fetchMock = vi.fn().mockResolvedValue({ type: 'cors', status: 401 });
@@ -1445,6 +1462,237 @@ describe('PreviewPane — Storage Access fallback gating', () => {
 
     iframe = document.querySelector('iframe');
     expect(iframe?.src).not.toContain('/airo/storage-access');
+  });
+});
+
+describe('PreviewPane — evidence-based recovery (appbuilder-preview-evidence-recovery)', () => {
+  const EVIDENCE_FLAG = 'appbuilder-preview-evidence-recovery';
+  const PROBE_DELAY_MS = 8000;
+  const REFRESH_DEBOUNCE_MS = 500;
+
+  let mockLoggerWarn: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    mockDevelopPageStore.viewMode = ViewMode.PREVIEW;
+    mockDevelopPageStore.publishStates = { 'test-app-123': { isPublishing: false } };
+    mockServerPollingStore.getServerState = vi.fn(function () {
+      return { isReady: true, url: 'http://localhost:3000' };
+    });
+    mockServerPollingStore.isPollingServer = vi.fn(function () { return false; });
+    mockSwitchboardResults[EVIDENCE_FLAG] = true;
+    const { logger } = await import('@/lib/request-context');
+    mockLoggerWarn = logger.warn as ReturnType<typeof vi.fn>;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    delete mockSwitchboardResults[EVIDENCE_FLAG];
+  });
+
+  function bootstrapTimeoutWarns() {
+    return mockLoggerWarn.mock.calls.filter(
+      ([event]) => event === 'preview-pane.iframe.bootstrap-timeout',
+    );
+  }
+
+  async function settle() {
+    await vi.advanceTimersByTimeAsync(0);
+    await act(async () => { await Promise.resolve(); });
+  }
+
+  it('does NOT remount a slow-but-healthy iframe (auth probe returns no 307)', async () => {
+    // The core fix: a healthy preview that is merely slow to signal
+    // IFRAME_READY must never be force-remounted.
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaque' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    // Advance through several probe windows.
+    for (let i = 0; i < 4; i++) {
+      await vi.advanceTimersByTimeAsync(PROBE_DELAY_MS + 1);
+      await settle();
+    }
+
+    expect(bootstrapTimeoutWarns()).toHaveLength(0);
+    const iframe = document.querySelector('iframe');
+    expect(iframe?.src).toContain('localhost:3000');
+    expect(iframe?.src).not.toContain('/airo/storage-access');
+  });
+
+  it('remounts only when the auth probe confirms a 401/403 auth block', async () => {
+    // dev-supervisor now serves 401/403 instead of the old 307 redirect (#4578).
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaque', status: 401 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    await vi.advanceTimersByTimeAsync(PROBE_DELAY_MS + 1);
+    await settle();
+
+    const warns = bootstrapTimeoutWarns();
+    expect(warns.length).toBeGreaterThanOrEqual(1);
+    expect(warns[0][1]).toMatchObject({ appId: 'test-app-123', reason: 'auth-redirect', attempt: 1 });
+  });
+
+  it('does NOT remount or probe after receiving IFRAME_BOOTING', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaque', status: 401 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+    await vi.advanceTimersByTimeAsync(50);
+
+    const iframe = container.querySelector('iframe');
+    expect(iframe).toBeTruthy();
+
+    // App posts its early booting beacon — proves the app JS is executing,
+    // so the iframe is NOT auth-blocked and must not be remounted.
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'IFRAME_BOOTING' },
+          source: iframe!.contentWindow,
+        }),
+      );
+    });
+
+    await vi.advanceTimersByTimeAsync(PROBE_DELAY_MS * 2);
+    await settle();
+
+    expect(bootstrapTimeoutWarns()).toHaveLength(0);
+    const authCheckCalled = fetchMock.mock.calls.some(
+      ([url]) => typeof url === 'string' && url.includes('/airo/auth-check'),
+    );
+    expect(authCheckCalled).toBe(false);
+  });
+
+  it('manual preview-refresh reloads via a single remount (new iframe node)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaque' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+    await vi.advanceTimersByTimeAsync(10);
+    await act(async () => { await Promise.resolve(); });
+
+    const before = container.querySelector('iframe');
+    expect(before).toBeTruthy();
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'preview-refresh' },
+          origin: window.location.origin,
+          source: window,
+        }),
+      );
+    });
+
+    await vi.advanceTimersByTimeAsync(REFRESH_DEBOUNCE_MS + 1);
+    await act(async () => { await Promise.resolve(); });
+
+    const after = container.querySelector('iframe');
+    // Single key-tracked remount, not an in-place src reassignment.
+    expect(after).not.toBe(before);
+  });
+
+  it('does NOT probe or remount when cookieVerified is false (Storage Access bootstrap owns the iframe)', async () => {
+    // Issue: evidence effect was missing the cookieVerified===false guard that
+    // the legacy effect has. Without it, the probe fires every 8s, returns
+    // 401/403 (because the cookie isn't sent), fires bootstrap-timeout warns,
+    // burns the retry budget, and leaves no recovery budget for when the user
+    // actually grants access.
+    mockServerPollingStore.getServerState = vi.fn(function () {
+      return { isReady: true, url: 'http://localhost:3000', cookieVerified: false };
+    });
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaque', status: 401 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    // Advance through several probe windows.
+    for (let i = 0; i < 3; i++) {
+      await vi.advanceTimersByTimeAsync(PROBE_DELAY_MS + 1);
+      await settle();
+    }
+
+    // Probe must NOT fire — Storage Access bootstrap owns the iframe.
+    const authCheckCalled = fetchMock.mock.calls.some(
+      ([url]) => typeof url === 'string' && url.includes('/airo/auth-check'),
+    );
+    expect(authCheckCalled).toBe(false);
+    expect(bootstrapTimeoutWarns()).toHaveLength(0);
+  });
+
+  it('stops probing after MAX_IFRAME_BOOTSTRAP_RETRIES clean probes (slot consumption bounded)', async () => {
+    // The else branch consumes a retry slot even on a clean probe so probing
+    // stays bounded. After MAX slots the effect exits early.
+    const MAX = 3;
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaque', status: 200 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    // Advance MAX+1 probe windows.
+    for (let i = 0; i < MAX + 1; i++) {
+      await vi.advanceTimersByTimeAsync(PROBE_DELAY_MS + 1);
+      await settle();
+    }
+
+    // No remounts (all probes were clean).
+    expect(bootstrapTimeoutWarns()).toHaveLength(0);
+
+    // Probing is bounded to at most MAX+1 probes (MAX slots consumed during
+    // the loop windows, plus at most one from the initial mount). The guard
+    // `bootstrapRetryCount >= MAX` prevents any further probes after that.
+    const probeCount = fetchMock.mock.calls.filter(
+      ([url]) => typeof url === 'string' && url.includes('/airo/auth-check'),
+    ).length;
+    expect(probeCount).toBeGreaterThanOrEqual(MAX);
+    expect(probeCount).toBeLessThanOrEqual(MAX + 1);
+  });
+
+  it('ignores IFRAME_BOOTING from a non-preview-iframe source', async () => {
+    // IFRAME_BOOTING must be validated against the iframe contentWindow —
+    // a message from window itself (or any other source) must not suppress
+    // probing.
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaque', status: 401 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+    await vi.advanceTimersByTimeAsync(50);
+
+    // Post IFRAME_BOOTING from the wrong source (window, not the iframe).
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', {
+        data: { type: 'IFRAME_BOOTING' },
+        source: window, // wrong source — not the preview iframe
+        origin: window.location.origin,
+      }));
+    });
+
+    // Timer should still fire (iframeBooting must NOT have been set).
+    await vi.advanceTimersByTimeAsync(PROBE_DELAY_MS + 1);
+    await settle();
+
+    expect(bootstrapTimeoutWarns().length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('probe request includes cache:no-store to avoid stale auth-check responses', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ type: 'opaque', status: 401 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+    await vi.advanceTimersByTimeAsync(PROBE_DELAY_MS + 1);
+    await settle();
+
+    const probeCall = fetchMock.mock.calls.find(
+      ([url]) => typeof url === 'string' && url.includes('/airo/auth-check'),
+    );
+    expect(probeCall).toBeTruthy();
+    expect(probeCall![1]).toMatchObject({ cache: 'no-store' });
   });
 });
 

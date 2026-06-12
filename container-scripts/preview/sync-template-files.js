@@ -301,6 +301,8 @@ const SYNC_MANIFEST = [
       'bb713c7973458231b47f8d6571b72bb0', // d3b2c3339 - before motion/react optimizeDeps fix
       'c01551a9385c3e0891f2cc2cc3479c69', // 7500c74c7 - motion/react added to dedupe+optimizeDeps (dedupe removed as ineffective)
       '6861d7c711f511108a57129d637bcc33', // 86f24d0f6 (AIROBUILD-1971) - before format override template runtime
+      '2880be775a2ab33ded88ffdd944a1b19', // preview-load fix - before server.warmup added
+      'a229eb3610393644d6d07000792f96bb', // preview-load fix - warmup comment revision (within-branch)
     ],
     force: false,
     syncGroup: 'ssrMigration'

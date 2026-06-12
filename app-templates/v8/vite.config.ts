@@ -119,6 +119,14 @@ export default defineConfig(({ mode, isSsrBuild }) => ({
 		watch: {
 			ignored: ["**/dist/**"],
 		},
+		// Pre-transform the entry chain on dev-server start so the FIRST iframe
+		// request doesn't pay the full cold on-demand transpile cost. Paired with
+		// the container's pre-start `vite optimize` (container-scripts/preview/
+		// nomad_setup.sh), this shrinks the mount→IFRAME_READY window that the
+		// builder's recovery logic waits on.
+		warmup: {
+			clientFiles: ["./src/main.tsx", "./src/App.tsx"],
+		},
 	},
 
 	preview: {

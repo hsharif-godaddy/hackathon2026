@@ -284,6 +284,20 @@ if [ ! -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     fi
 fi
 
+# Pre-warm Vite's dependency-optimization cache (node_modules/.vite) so the
+# FIRST iframe request doesn't pay the full cold cost: dep pre-bundling +
+# on-demand transpile of the entry chain. A cold container has no .vite cache,
+# so without this the first preview load is slow enough that the builder's
+# bootstrap-recovery window can elapse before the app signals readiness.
+# Non-fatal and Vite-agnostic: if warmup fails or the template has no `warmup`
+# script, the dev server simply optimizes lazily on first request as before.
+# Skipped for PaaS (its dependencies arrive via zip/git import, not here).
+if ! is_paas_flow && [ -x "$CUSTOMER_APP_DIR/node_modules/.bin/vite" ]; then
+    log_step "Warming Vite dependency-optimization cache..."
+    ( cd "$CUSTOMER_APP_DIR" && ./node_modules/.bin/vite optimize ) || log_step "Vite warmup failed (rc=$?), continuing"
+    log_step "Vite warmup step complete"
+fi
+
 # Customer env (SYSTEM_MANAGED=false from config.json) is loaded by dev-supervisor from
 # NOMAD_ALLOC_DIR/config.json when starting the process, so no setup here is needed.
 

@@ -8,6 +8,10 @@ export type { RuntimeErrorData, ErrorFixRequestMessage } from './types'
 // Vite plugin for auto-injection
 export { devToolsPlugin } from './vite-plugin'
 
+// Early "I'm alive" beacon for the builder's evidence-based recovery
+export { postIframeBootingBeacon } from './iframe-booting'
+import { postIframeBootingBeacon } from './iframe-booting'
+
 // FullStory injector for development tracking
 export { injectFullStory } from './fullstory-injector'
 
@@ -153,6 +157,11 @@ export function injectPreviewHeader() {
 
 // Auto-inject on import in development
 if (typeof window !== 'undefined') {
+  // Fire the early booting beacon synchronously, BEFORE the deferred
+  // dev-tools React mount below. This tells the builder the frame's own JS
+  // is executing well ahead of the late IFRAME_READY handshake, so it won't
+  // mistake a slow cold-start for an auth-blocked frame and remount us.
+  postIframeBootingBeacon()
   // Use a small delay to ensure DOM is ready
   setTimeout(injectDevelopmentMode, 100)
   injectPreviewHeader()

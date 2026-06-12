@@ -62,6 +62,15 @@ const EVAL_SNAPSHOT_IFRAME_FALLBACK_MS = 8000
 // cookie blocking with no share-token fallback).
 const IFRAME_BOOTSTRAP_RETRY_MS = 3000
 const MAX_IFRAME_BOOTSTRAP_RETRIES = 3
+// Evidence-based recovery (flagged via `appbuilder-preview-evidence-recovery`):
+// cold-start-realistic delay before we even *probe* whether a missing
+// IFRAME_READY is a real auth-block vs a slow-but-healthy load. A cold
+// container (no vite dep-optimization cache) routinely needs longer than the
+// legacy 3s to download + hydrate + lazy-mount dev-tools and post IFRAME_READY,
+// so the legacy timer false-positives and remounts a healthy load — making it
+// slower and producing the "loaded N times in quick succession" symptom.
+// Matches EVAL_SNAPSHOT_IFRAME_FALLBACK_MS (8000).
+const IFRAME_BOOTSTRAP_PROBE_DELAY_MS = 8000
 
 /**
  * Restore iframe state (URL and scroll position) via postMessage.
@@ -130,12 +139,12 @@ function isWebKit(): boolean {
 /**
  * Probe the preview origin's /airo/auth-check endpoint to detect whether the
  * cross-site preview is failing auth (ITP-partitioned cookie). dev-supervisor's
- * JWT middleware now signals this with a direct 401/403 — the prior 307→builder
- * path is gone. This endpoint is not proxied to Node.js, so it's lightweight;
- * auth-check sends CORS headers, so a 401/403 is readable directly. Any other
- * response (or a CORS rejection) falls through to `false`. `redirect:'manual'`
- * is retained defensively so the probe never silently follows an unexpected
- * redirect to the builder and reports a misleading status.
+ * JWT middleware signals this with a direct 401/403 — the prior 307→builder
+ * path is gone (see PR #4578, dev-supervisor/internal/auth/middleware.go
+ * `serveLoginPage`). auth-check sends CORS headers, so a 401/403 is readable
+ * directly. Any other response (or a CORS rejection) falls through to `false`.
+ * `redirect:'manual'` is retained defensively so the probe never silently
+ * follows an unexpected redirect to the builder and reports a misleading status.
  *
  * Do NOT add `mode: 'no-cors'` here: the Fetch spec requires redirect:'follow'
  * under no-cors, and WebKit/Safari enforces it by throwing "No-Cors mode
@@ -150,11 +159,18 @@ async function probePreviewAuth(previewUrl: string): Promise<boolean> {
       method: 'HEAD',
       credentials: 'include',
       redirect: 'manual',
+      cache: 'no-store',
     })
-    // A 401/403 from dev-supervisor's JWT middleware means the preview is
-    // auth-blocked → show the Storage Access fallback.
+    // A 401/403 from dev-supervisor's JWT middleware means the preview is auth-blocked.
     return res.status === 401 || res.status === 403
-  } catch {
+  } catch (err) {
+    // Network error, CORS rejection, or abort. Treat as "not conclusively blocked"
+    // so we don't remount on a transient failure — but log so probe errors are
+    // distinguishable from a genuine clean response in Loki.
+    logger.debug('preview-pane.probe.error', {
+      message: 'probePreviewAuth threw; treating as not-blocked',
+      error: err instanceof Error ? err.message : String(err),
+    })
     return false
   }
 }
@@ -236,6 +252,16 @@ export default function PreviewPane({
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
   /** Switchboard: translucent creation overlay + edit chip behavior. */
   const isPreviewEnhancedOverlaysEnabled = useSwitchboard('appbuilder-preview-enhanced-overlays') === true;
+  /**
+   * Switchboard: evidence-based iframe recovery. When on, a missing
+   * IFRAME_READY no longer blindly remounts the iframe on a 3s timer.
+   * Instead we (a) treat the early IFRAME_BOOTING beacon as proof the app's
+   * own JS is executing (so the frame isn't auth-blocked), and (b) only
+   * remount when an auth probe confirms a 401/403 auth block (dev-supervisor
+   * since #4578). Manual refresh also routes through a single key-tracked
+   * remount.
+   */
+  const isEvidenceRecoveryEnabled = useSwitchboard('appbuilder-preview-evidence-recovery') === true;
 
   const latestNBA = useLatestNBAs();
   const isAwaitingAskQuestion = latestNBA?.source === 'askQuestion';
@@ -313,6 +339,14 @@ export default function PreviewPane({
   // then the bootstrap retry in useServerPollingStore should have
   // settled and the new mount picks up the cookie.
   const [iframeBootstrapped, setIframeBootstrapped] = useState(false)
+  // Evidence-recovery signal (only meaningful when isEvidenceRecoveryEnabled):
+  // `iframeBooting` — the preview app posted its early IFRAME_BOOTING beacon,
+  // proving its own JS is executing (so the frame was NOT 307'd / CSP-blocked).
+  // While booting we never remount; we still wait for IFRAME_READY for the full
+  // handshake. The iframe's native onLoad is deliberately NOT used as a health
+  // signal — dev-supervisor's 401 login page also fires onLoad, so only the
+  // auth probe can distinguish a slow-but-healthy load from an auth-blocked one.
+  const [iframeBooting, setIframeBooting] = useState(false)
   // Separate auto-retry counter so manual retries (handleManualRetry)
   // don't exhaust the auto-retry budget — the manual retry resets this
   // and gives the user another 3 auto-attempts.
@@ -806,6 +840,16 @@ export default function PreviewPane({
         return
       }
 
+      if (event.data?.type === 'IFRAME_BOOTING' && fromPreviewIframe) {
+        // Early lifecycle beacon: the preview app's own entry script is
+        // executing, so the iframe was NOT 307'd to the builder / CSP-blocked.
+        // Suppress evidence-based remount immediately (long before the late
+        // IFRAME_READY handshake), while still waiting for IFRAME_READY for
+        // the full handshake (translations, state restore, etc.).
+        setIframeBooting(true)
+        return
+      }
+
       if (event.data?.type === 'IFRAME_READY' && fromPreviewIframe) {
         // Mark bootstrap complete: this signal only arrives if the
         // preview app's own script ran, which means the iframe didn't
@@ -939,7 +983,16 @@ export default function PreviewPane({
 
         // Debounce refreshes to avoid too many reloads
         refreshTimerRef.current = setTimeout(() => {
-          if (iframeRef.current) {
+          if (isEvidenceRecoveryEnabled) {
+            // Single key-tracked remount: one load, one recovery cycle. The
+            // remount resets the bootstrap/booting/loaded flags (see reset
+            // effect) so the bootstrap logic treats this as a fresh attempt
+            // rather than racing a parallel forced re-mount against an
+            // in-place `src` reassignment. `pendingStateRestore` (set above
+            // from event.data.preserveState) is replayed by handleIframeLoad
+            // once the new iframe loads.
+            setIframeKey((prev) => prev + 1)
+          } else if (iframeRef.current) {
             const iframeSrc = iframeRef.current.src
             iframeRef.current.src = iframeSrc
 
@@ -971,7 +1024,7 @@ export default function PreviewPane({
         scrollRestoreTimerRef.current = null
       }
     }
-  }, [serverState?.isReady, isWaitingForIframeReady, applyCheckoutHint])
+  }, [serverState?.isReady, isWaitingForIframeReady, applyCheckoutHint, isEvidenceRecoveryEnabled])
 
   // Bootstrap-race recovery: if the iframe hasn't signalled IFRAME_READY
   // within the timeout, the most likely cause is the preview_auth cookie
@@ -987,6 +1040,9 @@ export default function PreviewPane({
   // Cap retries to avoid an infinite loop if the failure is permanent
   // (e.g. third-party-cookie blocking with no share-token fallback).
   useEffect(() => {
+    // Legacy path: blind 3s timer that remounts on any missing IFRAME_READY.
+    // Superseded by the evidence-based effect below when the flag is on.
+    if (isEvidenceRecoveryEnabled) return
     if (!previewUrl || !serverState?.isReady) return
     // When the cross-site cookie is ITP-blocked (cookieVerified=false) we
     // deliberately render the dev-supervisor /airo/storage-access bootstrap in
@@ -1014,13 +1070,78 @@ export default function PreviewPane({
     }, IFRAME_BOOTSTRAP_RETRY_MS)
 
     return () => clearTimeout(timer)
-  }, [previewUrl, serverState?.isReady, serverState?.cookieVerified, iframeBootstrapped, bootstrapRetryCount, appId])
+  }, [isEvidenceRecoveryEnabled, previewUrl, serverState?.isReady, serverState?.cookieVerified, iframeBootstrapped, bootstrapRetryCount, appId])
 
-  // Reset bootstrap flag whenever the iframe is re-keyed (forced re-mount)
+  // Evidence-based bootstrap recovery (flagged). Unlike the legacy timer, a
+  // missing IFRAME_READY does NOT imply "broken": a cold-but-healthy preview
+  // is merely slow to post it. We wait IFRAME_BOOTSTRAP_PROBE_DELAY_MS, then
+  // probe the preview origin — and only remount when the probe positively
+  // confirms an auth-block (401/403 from dev-supervisor's JWT middleware).
+  // A clean probe means "slow but healthy" → leave the iframe alone so its
+  // in-flight load can finish (a remount would abort and restart it). The
+  // early IFRAME_BOOTING beacon short-circuits the probe entirely. Probing
+  // is bounded by the retry budget.
+  //
+  // cookieVerified===false guard (mirrors the legacy effect): when ITP has
+  // partitioned the cookie, the polling store deliberately renders the
+  // /airo/storage-access bootstrap in place of the preview app. isReady is
+  // still true in that state, so without this guard the probe would fire
+  // every 8s, get a 401 (cookie not sent), remount on every probe window,
+  // and burn the full retry budget — leaving no recovery budget for the real
+  // iframe after the user taps "Enable preview". Skip while the Storage
+  // Access bootstrap owns the iframe.
+  //
+  // IFRAME_BOOTING + no IFRAME_READY (booting-then-stalled): once iframeBooting
+  // is set, this effect exits early forever. A deliberately non-recovering
+  // decision: a remount won't fix a deterministic hydration crash, and the
+  // in-iframe error overlay surfaces more useful information. The WebKit
+  // storage-access fallback (gated on bootstrapRetryCount>=MAX) cannot fire
+  // either — this is an accepted trade-off for the BOOTING→stalled case.
+  useEffect(() => {
+    if (!isEvidenceRecoveryEnabled) return
+    if (!previewUrl || !serverState?.isReady) return
+    if (iframeBootstrapped) return            // full IFRAME_READY handshake done
+    if (iframeBooting) return                 // app JS executing → not auth-blocked (see booting-stalled note above)
+    if (serverState?.cookieVerified === false) return  // Storage Access bootstrap owns the iframe
+    if (bootstrapRetryCount >= MAX_IFRAME_BOOTSTRAP_RETRIES) return
+
+    let active = true
+    const timer = setTimeout(async () => {
+      const blocked = await probePreviewAuth(previewUrl)
+      if (!active) return
+      if (blocked) {
+        logger.warn('preview-pane.iframe.bootstrap-timeout', {
+          message: 'Auth probe confirmed 401/403 auth block; remounting iframe',
+          appId,
+          attempt: bootstrapRetryCount + 1,
+          reason: 'auth-redirect',
+        })
+        setBootstrapRetryCount((prev) => prev + 1)
+        setIframeKey((prev) => prev + 1)
+      } else {
+        logger.info('preview-pane.iframe.bootstrap-slow', {
+          message: 'Preview slow to signal readiness; auth probe returned clean (no 401/403) — not remounting',
+          appId,
+          attempt: bootstrapRetryCount + 1,
+        })
+        // Consume a slot so probing stays bounded; the iframe is left mounted
+        // to finish loading.
+        setBootstrapRetryCount((prev) => prev + 1)
+      }
+    }, IFRAME_BOOTSTRAP_PROBE_DELAY_MS)
+
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
+  }, [isEvidenceRecoveryEnabled, previewUrl, serverState?.isReady, serverState?.cookieVerified, iframeBootstrapped, iframeBooting, bootstrapRetryCount, appId])
+
+  // Reset bootstrap flags whenever the iframe is re-keyed (forced re-mount)
   // or the URL changes — otherwise the previous "bootstrapped" state would
   // leak across attempts and the retry timer wouldn't fire.
   useEffect(() => {
     setIframeBootstrapped(false)
+    setIframeBooting(false)
   }, [iframeKey, previewUrl])
 
   // Reset the auto-retry budget on URL change. Without this, an app that
