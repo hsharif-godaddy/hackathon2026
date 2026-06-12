@@ -96,6 +96,7 @@ type MetadataRecord = Record<string, unknown> & {
   appId?: string
   conversationId?: string
   subscriptionId?: string
+  fullStorySessionId?: string
 }
 
 /** Defense-in-depth cap for one user turn over chat WebSocket (message + context attachment strings). */
@@ -1987,10 +1988,12 @@ export class WebSocketServer {
       | Record<string, string | string[] | undefined>
       | undefined
     const jwtAgentCtx = socket.handshake?.auth?.agentContext as JwtAgentContextSubset | undefined
+    const fullStorySessionId = extractFullStorySessionIdFromMessageContext(data.context)
     return buildChatSignalsTraceContext({
       ...(handshakeHeaders !== undefined && { headers: handshakeHeaders }),
       ...(jwtAgentCtx != null && { jwtAgentContext: jwtAgentCtx }),
       ...(appId !== undefined && appId.length > 0 && { appId }),
+      ...(fullStorySessionId !== undefined && { fullStorySessionId }),
       logPrefix: 'websocket',
       logFields: { socketId },
       logger: { warn: (event, fields) => this.logger.warn(event, fields) },
@@ -4213,6 +4216,24 @@ function extractAppIdFromMessageContext(context: unknown): string | undefined {
   }
   const metadata = (context as { metadata?: MetadataRecord }).metadata
   return extractAppIdFromMetadata(metadata)
+}
+
+/**
+ * Extract the FullStory session id token from a WS chat-message context.
+ * Mirrors {@link extractAppIdFromMessageContext}: the client carries the token
+ * on `context.metadata.fullStorySessionId`, the WS analogue of the SSE request
+ * body field. Empty strings are dropped so they don't reach the Signals trace.
+ */
+function extractFullStorySessionIdFromMessageContext(context: unknown): string | undefined {
+  if (!context || typeof context !== 'object') {
+    return undefined
+  }
+  const metadata = (context as { metadata?: MetadataRecord }).metadata
+  if (!metadata || typeof metadata !== 'object') {
+    return undefined
+  }
+  const value = metadata.fullStorySessionId
+  return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
 // Re-export interfaces for convenience

@@ -55,6 +55,10 @@ export interface BuildMessageParams<
   /** Set by the rebuild page-selector "Build Page" button so the server can
    *  deterministically build this page from source (AIROBUILD-2104). */
   rebuildBuildPageSlug?: string
+  /** FullStory replay-session token. Travels on context.metadata so the WS
+   *  server can attach it to the Signals/OTel trace, mirroring the SSE request
+   *  body field of the same name. */
+  fullStorySessionId?: string
 }
 
 export class ChatMessageBuilder {
@@ -78,6 +82,7 @@ export class ChatMessageBuilder {
         ...(params.modelOverride && { modelOverride: params.modelOverride }),
         ...(params.market && { market: params.market }),
         ...(params.rebuildBuildPageSlug && { rebuildBuildPageSlug: params.rebuildBuildPageSlug }),
+        ...(params.fullStorySessionId && { fullStorySessionId: params.fullStorySessionId }),
       },
 
       conversation: {

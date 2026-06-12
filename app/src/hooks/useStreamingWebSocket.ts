@@ -11,6 +11,7 @@ import { getMessageOriginForAuthType } from '@airo/shared/auth'
 
 import type { AssetManagerItem } from '@/app/[market]/develop/components/chat/AssetTypes'
 import type { VisualContext } from '@/app/[market]/develop/components/visualContextCapture'
+import { getFullStorySessionId } from '@/components/feedback/utils'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { resolveMessageDefaults } from '@/hooks/resolveMessageDefaults'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -395,10 +396,13 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
         setInstrumentationIntentCategory('rebuild')
       }
 
-      const defaults = await resolveMessageDefaults({
+      const [defaults, fullStorySessionId] = await Promise.all([
+        resolveMessageDefaults({
           modelOverride: options.modelOverride,
           visualContext: options.visualContext,
-      })
+        }),
+        getFullStorySessionId(),
+      ])
 
       try {
         await controller.sendMessage({
@@ -416,6 +420,7 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
           modelOverride: defaults.modelOverride,
           uploadedFileName: options.uploadedFileName,
           market: marketRef.current,
+          ...(fullStorySessionId && { fullStorySessionId }),
         })
       } catch (error) {
         // Convert to structured error with context

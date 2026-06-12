@@ -3462,6 +3462,52 @@ describe('BusinessContext Enrichment', () => {
 })
 
 
+describe('FullStory Session ID Trace Context', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('passes fullStorySessionId from context.metadata into signalsContext', async () => {
+    const httpServer = { close: vi.fn() } as any
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence()
+    })
+
+    await messageHandler({
+      message: 'test',
+      context: { metadata: { appId: 'test-app-id-123', fullStorySessionId: 'fs-abc:def:123' } }
+    })
+
+    expect(mockCreateTraceContext).toHaveBeenCalled()
+    const callArgs = mockCreateTraceContext.mock.calls[0]?.[0]
+    expect(callArgs.signalsContext.fullStorySessionId).toBe('fs-abc:def:123')
+
+    server.close()
+  })
+
+  it('omits fullStorySessionId from signalsContext when absent', async () => {
+    const httpServer = { close: vi.fn() } as any
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: createNoOpPersistence()
+    })
+
+    await messageHandler({
+      message: 'test',
+      context: { metadata: { appId: 'test-app-id-123' } }
+    })
+
+    expect(mockCreateTraceContext).toHaveBeenCalled()
+    const callArgs = mockCreateTraceContext.mock.calls[0]?.[0]
+    expect(callArgs.signalsContext.fullStorySessionId).toBeUndefined()
+
+    server.close()
+  })
+})
+
 describe('WebSocketServer - extractResponseMetadata', () => {
   let server: WebSocketServer
   let httpServer: HTTPServer

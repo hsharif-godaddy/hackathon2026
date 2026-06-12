@@ -554,6 +554,47 @@ describe('ChatMessageBuilder', () => {
     })
   })
 
+  describe('fullStorySessionId', () => {
+    it('includes fullStorySessionId in context.metadata when provided in params', function includesFullStoryWhenProvided() {
+      const params: BuildMessageParams = {
+        content: 'Test',
+        appId: 'app-123',
+        sessionId: 'session-456',
+        fullStorySessionId: 'fs-abc:def:123',
+      }
+
+      const result = builder.build(params)
+
+      expect(result.context?.metadata?.fullStorySessionId).toBe('fs-abc:def:123')
+    })
+
+    it('does not include fullStorySessionId in context.metadata when undefined in params', function omitsFullStoryWhenUndefined() {
+      const params: BuildMessageParams = {
+        content: 'Test',
+        appId: 'app-123',
+        sessionId: 'session-456',
+        fullStorySessionId: undefined,
+      }
+
+      const result = builder.build(params)
+
+      expect(result.context?.metadata).not.toHaveProperty('fullStorySessionId')
+    })
+
+    it('does not include fullStorySessionId in context.metadata when empty string', function omitsFullStoryWhenEmptyString() {
+      const params: BuildMessageParams = {
+        content: 'Test',
+        appId: 'app-123',
+        sessionId: 'session-456',
+        fullStorySessionId: '',
+      }
+
+      const result = builder.build(params)
+
+      expect(result.context?.metadata).not.toHaveProperty('fullStorySessionId')
+    })
+  })
+
   describe('modelOverride', () => {
     it('includes modelOverride in context.metadata when provided in params', function includesModelOverrideWhenProvided() {
       const params: BuildMessageParams = {

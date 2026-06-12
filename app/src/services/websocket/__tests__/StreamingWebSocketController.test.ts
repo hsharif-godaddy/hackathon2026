@@ -308,6 +308,20 @@ describe('StreamingWebSocketController', () => {
       )
     })
 
+    it('should forward fullStorySessionId to ChatMessageBuilder when provided', async () => {
+      await controller.sendMessage({
+        content: 'Hello world',
+        visualContext: null,
+        fullStorySessionId: 'fs-abc:def:123',
+      })
+
+      expect(mockMessageBuilder.build).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fullStorySessionId: 'fs-abc:def:123',
+        })
+      )
+    })
+
     it('should start new stream (Tier 2 action)', async () => {
       await controller.sendMessage({
         content: 'Test',
