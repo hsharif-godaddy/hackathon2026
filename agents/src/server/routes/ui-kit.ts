@@ -9,6 +9,7 @@ import { APP_CONFIG_FILES, APP_DIRECTORIES } from '@airo/shared/app-structure'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { validateAppOwnership } from '../middleware/app-ownership.js'
 import { logger } from '../../logging/index.js'
+import { stampUploadedKitMetadata, findKitMetaFile } from './ui-kit-metadata.js'
 
 const router: Router = Router()
 const appRepo = new AppRepository()
@@ -130,8 +131,9 @@ router.post('/apps/:id/file-upload', (req: Request, res: Response) => {
         const allPaths = Object.keys(zip.files).filter(p => !p.startsWith('__MACOSX/'))
         const commonPrefix = detectCommonPrefix(allPaths)
 
-        // Check for kit-meta.json with and without the common prefix
-        const isUiKit = !!zip.files['kit-meta.json'] || !!zip.files[`${commonPrefix}kit-meta.json`]
+        // Check for kit-meta.json with and without the common prefix.
+        // Shared predicate so detection and metadata id-resolution can't drift.
+        const isUiKit = !!findKitMetaFile(zip, commonPrefix)
         const isAppImport = !isUiKit && detectAppBuilderZip(zip, commonPrefix)
 
         const targetDir = isUiKit
@@ -201,6 +203,11 @@ router.post('/apps/:id/file-upload', (req: Request, res: Response) => {
           logger.warn('route.file-upload.zip.no_files_written', { appId, entryCount: entries.length, isUiKit, isAppImport })
           res.status(422).json({ error: 'No recognizable files found in zip', written: 0, isUiKit, isAppImport })
           return
+        }
+
+        // Record design-kit provenance for UI-kit uploads (best-effort).
+        if (isUiKit) {
+          await stampUploadedKitMetadata(appId, zip, commonPrefix, fileName)
         }
 
         logger.info('route.file-upload.zip.success', { appId, written, isUiKit, isAppImport })

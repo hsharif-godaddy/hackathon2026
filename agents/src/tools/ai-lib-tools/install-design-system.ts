@@ -4,6 +4,8 @@ import { fetchDesignSystemCatalog, resolveDesignSystemBaseUrl } from '../../serv
 import { installDesignSystem } from '../../services/design-system/install.js'
 import { logger } from '../../logging/index.js'
 import { createForWorkspace } from '../../workspace/index.js'
+import { AppMetadataRepository } from '../../database/index.js'
+import type { DesignKitRef } from '../../types/design-kit.js'
 
 export const installDesignSystemAITool: Tool = createTool(
   'Download and install a design system by slug. Extracts to docs/ui-kit/ in the app workspace. After this returns, call loadUiKit to read the design system content and begin building.',
@@ -27,6 +29,25 @@ export const installDesignSystemAITool: Tool = createTool(
         entry,
         baseUrl: resolveDesignSystemBaseUrl(),
       })
+
+      try {
+        // Record the matched catalog entry's stable identity (id + displayName),
+        // plus kitId when the kit has one.
+        const designKit: DesignKitRef = {
+          source: 'catalog',
+          id: entry.id,
+          displayName: entry.displayName,
+          ...(entry.kitId ? { kitId: entry.kitId } : {}),
+        }
+        new AppMetadataRepository().merge(appId, { designKit })
+      } catch (metaErr) {
+        // Metadata is best-effort instrumentation — never fail the install over it.
+        logger.warn('tool.install_design_system.metadata_failed', {
+          appId,
+          slug: result.slug,
+          err: String(metaErr),
+        })
+      }
 
       return `Installed design system \`${result.slug}\` (${result.written} files extracted to docs/ui-kit/). Call \`loadUiKit\` next to read the design system primitives and components.`
     } catch (err) {

@@ -1,7 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname } from 'path'
 import { logger } from '../../logging/index.js'
-import { DesignSystemCatalogSchema, type DesignSystemCatalog } from './types.js'
+import {
+  DesignSystemCatalogEntrySchema,
+  DesignSystemCatalogEnvelopeSchema,
+  type DesignSystemCatalog,
+  type DesignSystemCatalogEntry,
+} from './types.js'
 
 const DEFAULT_CACHE_PATH = 'agents/data/design-system-catalog.json'
 const DEFAULT_TTL_MS = 10 * 60 * 1000
@@ -21,6 +26,35 @@ export interface FetchOptions {
   ttlMs?: number
 }
 
+/**
+ * Validate the catalog entry-by-entry so one malformed kit drops out instead of
+ * failing the whole catalog. The install path gates on `slug`/`tarball`, and the
+ * tracking fields (`id`/`displayName`/`kitId`) are required at the entry level —
+ * so without this, a single bad remote entry would throw on the up-front array
+ * parse and break *every* install. The envelope (version/generatedAt/kits-array)
+ * is still strict: a structurally broken document throws as before.
+ */
+export function parseCatalog(raw: unknown): DesignSystemCatalog {
+  const { version, generatedAt, kits: rawKits } = DesignSystemCatalogEnvelopeSchema.parse(raw)
+  const kits: DesignSystemCatalogEntry[] = []
+  for (const entry of rawKits) {
+    const result = DesignSystemCatalogEntrySchema.safeParse(entry)
+    if (result.success) {
+      kits.push(result.data)
+    } else {
+      // Log each dropped kit with its slug (untouched on the entry) so a future
+      // catalog regression that omits required id/displayName is traceable to the
+      // offending kit — otherwise it silently vanishes from install availability
+      // and the agent's "use the slug verbatim" instruction resolves to "not found".
+      logger.warn('design_system.catalog.entry_dropped', {
+        slug: (entry as { slug?: unknown })?.slug,
+        issues: result.error.issues,
+      })
+    }
+  }
+  return { version, generatedAt, kits }
+}
+
 export async function fetchDesignSystemCatalog(opts: FetchOptions = {}): Promise<DesignSystemCatalog> {
   const cachePath = opts.cachePath ?? DEFAULT_CACHE_PATH
   const ttlMs = opts.ttlMs ?? DEFAULT_TTL_MS
@@ -33,7 +67,7 @@ export async function fetchDesignSystemCatalog(opts: FetchOptions = {}): Promise
     const response = await fetch(url)
     if (!response.ok) throw new Error(`catalog fetch ${response.status}`)
     const raw = await response.json()
-    const parsed = DesignSystemCatalogSchema.parse(raw)
+    const parsed = parseCatalog(raw)
     memCache = { at: now, data: parsed }
     try {
       mkdirSync(dirname(cachePath), { recursive: true })
@@ -50,7 +84,7 @@ export async function fetchDesignSystemCatalog(opts: FetchOptions = {}): Promise
     if (existsSync(cachePath)) {
       try {
         const onDisk = JSON.parse(readFileSync(cachePath, 'utf-8'))
-        const parsed = DesignSystemCatalogSchema.parse(onDisk)
+        const parsed = parseCatalog(onDisk)
         memCache = { at: now, data: parsed }
         return parsed
       } catch (diskErr) {
