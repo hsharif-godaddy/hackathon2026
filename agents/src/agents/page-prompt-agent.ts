@@ -55,7 +55,10 @@ export function selectSystemPromptFiles(opts: PagePromptSystemPromptOptions): st
     ...(opts.isFirstPage ? ['visual-reference.md'] : []),
     ...(opts.useAtlasCrawler ? ['preserve-interactive-patterns.md', 'preserve-forms.md'] : []),
     opts.isFirstPage ? 'homepage-setup.md' : 'inner-page-note.md',
-    'asset-integration.md',
+    // Asset sourcing forks on the same clone-vs-redesign predicate as the design
+    // brief: preserve reuses the source images, redesign keeps only the logo and
+    // pulls fresh imagery for everything else.
+    opts.preserveDesign ? 'asset-integration.md' : 'asset-integration-redesign.md',
     // The redesign brief (design-redesign.md) actively tells the model to add
     // bento grids, differentiation flourishes, and "social proof" sections — on
     // a faithful clone that fabricates sections the source never had. Load the

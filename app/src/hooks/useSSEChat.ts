@@ -11,6 +11,7 @@ import {
   setConversationIdCookie,
 } from '@/hooks/websocket/useWebSocketHelpers'
 import { agentFetch, getAgentToken } from '@/lib/agent-fetch'
+import { readDesignChoiceForCurrentApp } from '@/lib/rebuild-design-choice'
 import { logger } from '@/lib/request-context'
 import { SSETransport } from '@/services/transport/SSETransport'
 import type { SendMessageParams, TransportState } from '@/services/transport/types'
@@ -1090,6 +1091,10 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         getFullStorySessionId(),
       ])
 
+      // Homepage rebuild modal choice (sessionStorage). Carried on the message so the
+      // rebuild honors it even with the intake form off.
+      const rebuildDesignDirection = readDesignChoiceForCurrentApp(activeAppId) ?? undefined
+
       const resolvedSendParams: SendMessageParams = {
         content: options.content,
         sessionId: activeAppId,
@@ -1104,6 +1109,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         isActionRequest: options.isActionRequest,
         customContext: options.customContext,
         rebuildBuildPageSlug: options.rebuildBuildPageSlug,
+        ...(rebuildDesignDirection && { rebuildDesignDirection }),
         budgetServiceEnabled: budgetServiceEnabledRef.current || undefined,
         market: marketRef.current,
         subscriptionId: subscriptionIdRef.current,

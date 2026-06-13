@@ -21,6 +21,22 @@ describe('selectSystemPromptFiles — design fragment gating', () => {
     expect(files).not.toContain('design-preserve.md');
   });
 
+  it('loads asset-integration.md (clone) when preserving, asset-integration-redesign.md when not', () => {
+    const preserve = selectSystemPromptFiles({ isFirstPage: true, useAtlasCrawler: true, preserveDesign: true });
+    expect(preserve).toContain('asset-integration.md');
+    expect(preserve).not.toContain('asset-integration-redesign.md');
+
+    const redesign = selectSystemPromptFiles({ isFirstPage: true, useAtlasCrawler: true, preserveDesign: false });
+    expect(redesign).toContain('asset-integration-redesign.md');
+    expect(redesign).not.toContain('asset-integration.md');
+  });
+
+  it('forks the asset fragment on inner pages too', () => {
+    const redesign = selectSystemPromptFiles({ isFirstPage: false, useAtlasCrawler: false, preserveDesign: false });
+    expect(redesign).toContain('asset-integration-redesign.md');
+    expect(redesign).not.toContain('asset-integration.md');
+  });
+
   it('loads neither design fragment on inner pages, regardless of preserveDesign', () => {
     for (const preserveDesign of [true, false]) {
       const files = selectSystemPromptFiles({ isFirstPage: false, useAtlasCrawler: true, preserveDesign });

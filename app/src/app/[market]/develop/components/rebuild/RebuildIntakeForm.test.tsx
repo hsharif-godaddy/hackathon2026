@@ -6,6 +6,7 @@ import '@testing-library/jest-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
+import { persistPendingDesignChoice, promotePendingDesignChoice } from '@/lib/rebuild-design-choice'
 import RebuildIntakeForm from './RebuildIntakeForm'
 
 const mockMutate = vi.fn()
@@ -94,6 +95,7 @@ describe('RebuildIntakeForm', () => {
     vi.clearAllMocks()
     mockWorkflowStatus.intakeCompleted = false
     mockWorkflowStatus.status = 'awaiting_intake'
+    sessionStorage.clear()
   })
 
   it('renders intake form with scope and design sections', function renderForm() {
@@ -188,6 +190,95 @@ describe('RebuildIntakeForm', () => {
     mockWorkflowStatus.status = 'building'
     const { container } = render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
     expect(container.firstChild).toBeNull()
+  })
+
+  describe('homepage design-choice pre-fill', () => {
+    it('pre-selects modernize when the persisted choice is modernize', async () => {
+      persistPendingDesignChoice('modernize')
+      promotePendingDesignChoice('app-abc')
+
+      render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
+
+      fireEvent.click(screen.getByTestId('rebuild-intake-submit'))
+
+      await waitFor(() => {
+        expect(mockMutate).toHaveBeenCalledWith(
+          { scope: 'homepage_only', designDirection: 'modernize' },
+          expect.any(Object),
+        )
+      })
+    })
+
+    it('pre-selects keep-similar when the persisted choice is keep-similar', async () => {
+      persistPendingDesignChoice('keep-similar')
+      promotePendingDesignChoice('app-abc')
+
+      render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
+
+      fireEvent.click(screen.getByTestId('rebuild-intake-submit'))
+
+      await waitFor(() => {
+        expect(mockMutate).toHaveBeenCalledWith(
+          { scope: 'homepage_only', designDirection: 'keep-similar' },
+          expect.any(Object),
+        )
+      })
+    })
+
+    it('falls back to keep_similar when no choice is persisted', async () => {
+      render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
+
+      fireEvent.click(screen.getByTestId('rebuild-intake-submit'))
+
+      await waitFor(() => {
+        expect(mockMutate).toHaveBeenCalledWith(
+          { scope: 'homepage_only', designDirection: 'keep-similar' },
+          expect.any(Object),
+        )
+      })
+    })
+
+    it('honors the homepage choice when Use recommended defaults is clicked', async () => {
+      persistPendingDesignChoice('modernize')
+      promotePendingDesignChoice('app-abc')
+
+      render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
+
+      fireEvent.click(screen.getByTestId('rebuild-intake-use-defaults'))
+
+      expect(mockTrackSubmitted).toHaveBeenCalledWith({
+        scope: 'homepage_only',
+        designChoice: 'modernize',
+        designDirection: 'modernize',
+        submitSource: 'defaults',
+        sourceUrl: 'https://example.com',
+      })
+
+      await waitFor(() => {
+        expect(mockMutate).toHaveBeenCalledWith(
+          { scope: 'homepage_only', designDirection: 'modernize' },
+          expect.any(Object),
+        )
+      })
+    })
+
+    it('allows the user to override the pre-filled choice', async () => {
+      persistPendingDesignChoice('modernize')
+      promotePendingDesignChoice('app-abc')
+
+      render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
+
+      // Override from pre-filled modernize back to keep_similar
+      fireEvent.click(screen.getByLabelText('default:builder_rebuild_intake_design_keep_similar'))
+      fireEvent.click(screen.getByTestId('rebuild-intake-submit'))
+
+      await waitFor(() => {
+        expect(mockMutate).toHaveBeenCalledWith(
+          { scope: 'homepage_only', designDirection: 'keep-similar' },
+          expect.any(Object),
+        )
+      })
+    })
   })
 
   it.each([

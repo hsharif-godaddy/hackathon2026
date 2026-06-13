@@ -881,6 +881,7 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
           'creation-source',
           'intent-category',
           'in-creation-flow',
+          'rebuild-design-choice',
         ] as const
         for (const key of contextKeys) {
           const value = sessionStorage.getItem(`${key}-${jobId}`)

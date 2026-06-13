@@ -43,7 +43,7 @@ describe('waitForIntake', () => {
     const submitDefaultIntake = vi.fn();
     const service = mockService({ getStatus, submitDefaultIntake });
 
-    const result = await waitForIntake(service, 'app-123', 5_000);
+    const result = await waitForIntake(service, 'app-123', { maxWaitMs: 5_000 });
 
     expect(result.intakeTimedOut).toBe(false);
     expect(result.state).toEqual(completedState);
@@ -56,7 +56,7 @@ describe('waitForIntake', () => {
     const getStatus = vi.fn().mockResolvedValue(scrapingState);
     const service = mockService({ getStatus });
 
-    const result = await waitForIntake(service, 'app-123', 5_000);
+    const result = await waitForIntake(service, 'app-123', { maxWaitMs: 5_000 });
 
     expect(result.intakeTimedOut).toBe(false);
     expect(result.state.status).toBe('scraping');
@@ -74,13 +74,29 @@ describe('waitForIntake', () => {
     const submitDefaultIntake = vi.fn().mockResolvedValue(defaultState);
     const service = mockService({ getStatus, submitDefaultIntake });
 
-    const pending = waitForIntake(service, 'app-123', 1_000);
+    const pending = waitForIntake(service, 'app-123', { maxWaitMs: 1_000 });
     await vi.runAllTimersAsync();
     const result = await pending;
 
     expect(result.intakeTimedOut).toBe(true);
-    expect(submitDefaultIntake).toHaveBeenCalledWith('app-123');
+    expect(submitDefaultIntake).toHaveBeenCalledWith('app-123', undefined);
     expect(result.state).toEqual(defaultState);
+  });
+
+  it('forwards the homepage design direction to submitDefaultIntake on timeout', async function timeoutDirection() {
+    const getStatus = vi.fn().mockResolvedValue(awaitingState());
+    const submitDefaultIntake = vi.fn().mockResolvedValue({
+      ...awaitingState(),
+      intakeCompleted: true,
+      status: 'scraping' as const,
+    });
+    const service = mockService({ getStatus, submitDefaultIntake });
+
+    const pending = waitForIntake(service, 'app-123', { designDirection: 'modernize', maxWaitMs: 1_000 });
+    await vi.runAllTimersAsync();
+    await pending;
+
+    expect(submitDefaultIntake).toHaveBeenCalledWith('app-123', 'modernize');
   });
 
   it('re-reads state on timeout when user submitted during final sleep window', async function timeoutRace() {
@@ -98,7 +114,7 @@ describe('waitForIntake', () => {
     const submitDefaultIntake = vi.fn();
     const service = mockService({ getStatus, submitDefaultIntake });
 
-    const pending = waitForIntake(service, 'app-123', 1_000);
+    const pending = waitForIntake(service, 'app-123', { maxWaitMs: 1_000 });
     await vi.runAllTimersAsync();
     const result = await pending;
 
@@ -123,13 +139,13 @@ describe('waitForIntake', () => {
     });
     const service = mockService({ getStatus, submitDefaultIntake });
 
-    const pending = waitForIntake(service, 'app-123', 1_000);
+    const pending = waitForIntake(service, 'app-123', { maxWaitMs: 1_000 });
     await vi.runAllTimersAsync();
     const result = await pending;
 
     expect(result.intakeTimedOut).toBe(false);
     expect(result.state).toEqual(userSubmitted);
-    expect(submitDefaultIntake).toHaveBeenCalledWith('app-123');
+    expect(submitDefaultIntake).toHaveBeenCalledWith('app-123', undefined);
   });
 
   it('uses 400ms poll cadence for the first 18 iterations', async function pollCadence() {
@@ -141,7 +157,7 @@ describe('waitForIntake', () => {
     });
     const service = mockService({ getStatus, submitDefaultIntake });
 
-    const pending = waitForIntake(service, 'app-123', 10_000);
+    const pending = waitForIntake(service, 'app-123', { maxWaitMs: 10_000 });
     await vi.advanceTimersByTimeAsync(400);
     expect(getStatus).toHaveBeenCalledTimes(2);
     await vi.advanceTimersByTimeAsync(400 * 17);

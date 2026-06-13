@@ -1,8 +1,9 @@
 import clsx from 'clsx'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ArrowRightIcon from '@ux/icon/arrow-right'
 import { text } from '@ux/text'
 
+import RebuildDesignModal from '@/app/[market]/components/RebuildDesignModal'
 import { Example, HeroExamplesProps, LOGO_DESIGNER_TEMPLATE } from '@/app/[market]/components/types'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { EXPERIMENT_IDS } from '@/config/experiments'
@@ -11,7 +12,17 @@ import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { JourneyTracker } from '@/lib/journeyTracker'
+import { persistPendingDesignChoice, type RebuildModalDirection } from '@/lib/rebuild-design-choice'
 import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
+
+const REBUILD_SITE_SLUG = 'rebuild_site'
+
+// Appended to the base rebuild prompt so the chosen direction reaches InitialAgent even
+// when the develop intake form is off. Base prompt is preserved for rebuild detection.
+const REBUILD_PROMPT_HINTS: Record<RebuildModalDirection, string> = {
+  modernize: 'Reimagine it with a fresh, modern design.',
+  'keep-similar': 'Keep the same overall look and feel as my current site.',
+}
 
 export default function HeroExamples({ className, theme = 'dark', onExampleClick, onTemplateChange }: HeroExamplesProps) {
   const t = useTranslations()
@@ -21,8 +32,36 @@ export default function HeroExamples({ className, theme = 'dark', onExampleClick
     baseData: { isAuthenticated },
   })
   const [visibleItems, setVisibleItems] = useState<boolean[]>([])
+  const [rebuildModalOpen, setRebuildModalOpen] = useState(false)
+  const rebuildBasePromptRef = useRef('')
   const showLogoButton = Boolean(useSwitchboard('appbuilder-homepage-make-logo-button'))
   const { isBelowSmBreakpoint } = useBreakpoints();
+
+  function logExampleClick(example: Example) {
+    logAnalytics('homepage.template.click', { templateSlug: example.slug })
+    logClickEvent('homepage.examples.example')()
+    logClickEvent(`homepage.examples.example_${example.slug}`)()
+    JourneyTracker.current()?.trackMilestone('homepage_example_selected', { slug: example.slug })
+  }
+
+  function handleExampleButtonClick(example: Example) {
+    // Rebuild defers prompt entry until the user picks a design direction in the modal.
+    if (example.slug === REBUILD_SITE_SLUG) {
+      logExampleClick(example)
+      rebuildBasePromptRef.current = example.prompt
+      setRebuildModalOpen(true)
+      return
+    }
+    onExampleClick(example.prompt)
+    logExampleClick(example)
+  }
+
+  function handleRebuildDesignSelect(direction: RebuildModalDirection, url: string) {
+    persistPendingDesignChoice(direction)
+    const urlPart = url ? ` at ${url}` : ''
+    onExampleClick(`${rebuildBasePromptRef.current}${urlPart}. ${REBUILD_PROMPT_HINTS[direction]}`)
+    setRebuildModalOpen(false)
+  }
 
   const examples = useMemo<Example[]>(() => [
     // Website examples
@@ -213,13 +252,7 @@ export default function HeroExamples({ className, theme = 'dark', onExampleClick
             key={example.title}
             data-testid="homepage-suggestion-button"
             data-eid={generateClickEID(`homepage.examples.example_${example.slug}`)}
-            onClick={() => {
-              onExampleClick(example.prompt);
-              logAnalytics('homepage.template.click', { templateSlug: example.slug })
-              logClickEvent('homepage.examples.example')();
-              logClickEvent(`homepage.examples.example_${example.slug}`)();
-              JourneyTracker.current()?.trackMilestone('homepage_example_selected', { slug: example.slug })
-            }}
+            onClick={() => handleExampleButtonClick(example)}
             className={clsx(
               'group px-2 py-0.5 rounded-lg hover:shadow-md transition-all duration-300 text-sm cursor-pointer transform',
               theme === 'dark' ? 'bg-ai-dark-transparent' : 'bg-light-purple hover:bg-light-purple-solid',
@@ -240,6 +273,11 @@ export default function HeroExamples({ className, theme = 'dark', onExampleClick
           </button>
         ))}
       </div>
+      <RebuildDesignModal
+        open={rebuildModalOpen}
+        onClose={() => setRebuildModalOpen(false)}
+        onSelect={handleRebuildDesignSelect}
+      />
     </div>
   )
 }

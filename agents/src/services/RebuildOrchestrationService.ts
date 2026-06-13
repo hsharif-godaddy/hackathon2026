@@ -119,9 +119,10 @@ export class RebuildOrchestrationService {
     }
   }
 
-  /** Apply default intake and start scrape (timeout / dismiss fallback). */
-  async submitDefaultIntake(appId: string): Promise<RebuildWorkflowState> {
-    return this.submitIntake(appId, defaultIntakeChoices());
+  /** Apply default intake and start scrape (timeout / dismiss fallback).
+   * Honors the homepage modal design direction when one was captured. */
+  async submitDefaultIntake(appId: string, designDirection?: unknown): Promise<RebuildWorkflowState> {
+    return this.submitIntake(appId, defaultIntakeChoices(designDirection));
   }
 
   private async initializeWorkflow(

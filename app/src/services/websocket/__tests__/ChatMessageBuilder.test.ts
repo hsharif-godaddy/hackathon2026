@@ -84,6 +84,31 @@ describe('ChatMessageBuilder', () => {
       expect(result.context?.metadata && 'rebuildBuildPageSlug' in result.context.metadata).toBe(false)
     })
 
+    it('should put rebuildDesignDirection into context.metadata when provided', () => {
+      const params: BuildMessageParams = {
+        content: 'Rebuild my site',
+        appId: 'app-123',
+        sessionId: 'session-456',
+        rebuildDesignDirection: 'modernize',
+      }
+
+      const result = builder.build(params)
+
+      expect(result.context?.metadata?.rebuildDesignDirection).toBe('modernize')
+    })
+
+    it('should omit rebuildDesignDirection from metadata when not provided', () => {
+      const params: BuildMessageParams = {
+        content: 'Hello',
+        appId: 'app-123',
+        sessionId: 'session-456',
+      }
+
+      const result = builder.build(params)
+
+      expect(result.context?.metadata && 'rebuildDesignDirection' in result.context.metadata).toBe(false)
+    })
+
     it('should include conversationId when provided', () => {
       const params: BuildMessageParams = {
         content: 'Test',

@@ -4,6 +4,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 
+import {
+  persistPendingDesignChoice,
+  readDesignChoiceForId,
+  readPendingDesignChoice,
+} from '@/lib/rebuild-design-choice'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { useHomepageSubmission } from './useHomepageSubmission'
 
@@ -211,6 +216,30 @@ describe('useHomepageSubmission', () => {
       expect(payload).toHaveProperty('submitSource')
       expect(payload).toHaveProperty('promptLength')
       expect(payload).toHaveProperty('msFromPageLoad')
+    })
+  })
+
+  describe('rebuild design-choice promotion', () => {
+    beforeEach(() => {
+      sessionStorage.clear()
+    })
+
+    it('promotes a pending design choice onto the site id after quick-create', async () => {
+      persistPendingDesignChoice('modernize')
+
+      const { result } = renderHook(() => useHomepageSubmission())
+      await act(async () => { await result.current.handleStartBuilding('rebuild my site') })
+
+      // Pending cleared; choice keyed under the resolved site id.
+      expect(readPendingDesignChoice()).toBeNull()
+      expect(readDesignChoiceForId('site-1', null)).toBe('modernize')
+    })
+
+    it('is a no-op when there is no pending choice', async () => {
+      const { result } = renderHook(() => useHomepageSubmission())
+      await act(async () => { await result.current.handleStartBuilding('build me a site') })
+
+      expect(readDesignChoiceForId('site-1', null)).toBeNull()
     })
   })
 

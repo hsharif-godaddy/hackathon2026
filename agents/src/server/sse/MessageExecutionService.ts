@@ -202,6 +202,9 @@ interface ExecuteParams {
   /** Rebuild page-selector "Build Page" slug — substitutes the agent turn input
    *  with the source-built page prompt (AIROBUILD-2104). */
   rebuildBuildPageSlug?: string
+  /** Homepage rebuild modal design direction — applied by websiteRebuild on the
+   *  flag-off and intake-timeout paths. */
+  rebuildDesignDirection?: string
   uploadedFileName?: string
   bmsBudgetId?: string
   budgetSessionId?: string
@@ -1551,7 +1554,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
   private async executeUnderTrace(params: ExecuteParams): Promise<void> {
     const {
       appId, conversationId, content, siteId, agentId,
-      templateId, modelOverride, rebuildBuildPageSlug,
+      templateId, modelOverride, rebuildBuildPageSlug, rebuildDesignDirection,
       visualContext, aiEditContext, aiEditContexts, selectedAssets,
       todoListContext, isActionRequest, customContext, buildErrorContext,
       bmsBudgetId, budgetSessionId, subscriptionId, authType,
@@ -1734,6 +1737,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         ...(agentCtx?.useTestBudget !== undefined && { useTestBudget: agentCtx.useTestBudget }),
         ...(agentCtx?.useAtlasCrawler && { useAtlasCrawler: true }),
         ...(agentCtx?.rebuildIntakeFormEnabled && { rebuildIntakeFormEnabled: true }),
+        ...(rebuildDesignDirection && { rebuildDesignDirection }),
         ...(agentCtx?.marketingCampaignsEnabled && { marketingCampaignsEnabled: true }),
       },
       ...(contextAttachments.length > 0 && { contextAttachments }),

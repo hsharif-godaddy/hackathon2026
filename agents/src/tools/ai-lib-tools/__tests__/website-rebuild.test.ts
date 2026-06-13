@@ -140,4 +140,30 @@ describe('websiteRebuild orchestration', function websiteRebuildOrchestration() 
       designDirection: 'keep-similar',
     }));
   });
+
+  it('applies the homepage design direction on the flag-off path', async function flagOffDirection() {
+    mockWaitForScrapeCompletion.mockResolvedValue(baseState({ stylePreferences: undefined }));
+
+    await run({ rebuildIntakeFormEnabled: false, rebuildDesignDirection: 'modernize' });
+
+    expect(mockSubmitStylePreferences).toHaveBeenCalledWith('app1', expect.objectContaining({
+      designDirection: 'modernize',
+    }));
+  });
+
+  it('falls back to keep-similar for an invalid client design direction', async function invalidDirection() {
+    mockWaitForScrapeCompletion.mockResolvedValue(baseState({ stylePreferences: undefined }));
+
+    await run({ rebuildIntakeFormEnabled: false, rebuildDesignDirection: 'nonsense' });
+
+    expect(mockSubmitStylePreferences).toHaveBeenCalledWith('app1', expect.objectContaining({
+      designDirection: 'keep-similar',
+    }));
+  });
+
+  it('passes the homepage design direction to the intake timeout fallback', async function timeoutDirection() {
+    await run({ rebuildIntakeFormEnabled: true, rebuildDesignDirection: 'modernize' });
+
+    expect(mockWaitForIntake).toHaveBeenCalledWith(expect.anything(), 'app1', { designDirection: 'modernize' });
+  });
 });

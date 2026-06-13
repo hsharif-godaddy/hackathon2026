@@ -15,6 +15,7 @@ import { getFullStorySessionId } from '@/components/feedback/utils'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { resolveMessageDefaults } from '@/hooks/resolveMessageDefaults'
 import { useTranslations } from '@/hooks/useTranslations'
+import { readDesignChoiceForCurrentApp } from '@/lib/rebuild-design-choice'
 import { logger } from '@/lib/request-context'
 import {
   toWebSocketError,
@@ -404,6 +405,10 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
         getFullStorySessionId(),
       ])
 
+      // Homepage rebuild modal choice (sessionStorage). Carried on the message so the
+      // rebuild honors it even with the intake form off.
+      const rebuildDesignDirection = readDesignChoiceForCurrentApp(activeAppId) ?? undefined
+
       try {
         await controller.sendMessage({
           content: options.content,
@@ -416,6 +421,7 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
           askQuestionSkipped: options.askQuestionSkipped,
           customContext: options.customContext,
           rebuildBuildPageSlug: options.rebuildBuildPageSlug,
+          ...(rebuildDesignDirection && { rebuildDesignDirection }),
           templateId: options.templateId,
           modelOverride: defaults.modelOverride,
           uploadedFileName: options.uploadedFileName,

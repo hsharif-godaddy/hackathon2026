@@ -65,3 +65,13 @@ export function trackRebuildIntakeSubmitted({
     sourceUrl,
   })()
 }
+
+/** Homepage "Rebuild my site" chip opened the upfront design-direction modal. */
+export function trackRebuildDesignModalShown() {
+  logImpressionEvent('homepage.rebuild.designmodal')()
+}
+
+/** User picked a design direction in the homepage rebuild modal. */
+export function trackRebuildDesignModalChoice(designDirection: DesignDirection) {
+  logClickEvent('homepage.rebuild.designchoice', { designDirection })()
+}

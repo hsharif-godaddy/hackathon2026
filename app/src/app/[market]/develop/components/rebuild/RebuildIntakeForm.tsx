@@ -14,6 +14,11 @@ import {
   useSubmitRebuildIntake,
 } from '@/app/[market]/develop/hooks/useRebuildIntake'
 import { useTranslations } from '@/hooks/useTranslations'
+import {
+  directionToDesignChoiceId,
+  readDesignChoiceForId,
+  type RebuildModalDirection,
+} from '@/lib/rebuild-design-choice'
 import { defaultMessageForRebuildIntakeKey } from '@/lib/translations/rebuild-intake-defaults'
 import {
   type RebuildIntakeDesignChoiceId,
@@ -51,7 +56,12 @@ export default function RebuildIntakeForm({ appId, sourceUrl }: RebuildIntakeFor
   }
   const queryClient = useQueryClient()
   const [scope, setScope] = useState<RebuildScope>('homepage_only')
-  const [designChoice, setDesignChoice] = useState<DesignChoiceId>('keep_similar')
+  // Design direction captured upfront in the homepage rebuild modal, if any. Seeds the
+  // initial selection AND the "use recommended defaults" path so the choice isn't lost.
+  const [homepageChoice] = useState<RebuildModalDirection | null>(() => readDesignChoiceForId(null, appId))
+  const [designChoice, setDesignChoice] = useState<DesignChoiceId>(() =>
+    homepageChoice ? directionToDesignChoiceId(homepageChoice) : 'keep_similar',
+  )
   const { data: workflowStatus } = useRebuildWorkflowStatus(appId, true)
   const { data: scopeEstimates, isLoading: estimatesLoading, isError: estimatesError } = useRebuildScopeEstimates(appId)
   const submitIntake = useSubmitRebuildIntake(appId)
@@ -258,15 +268,18 @@ export default function RebuildIntakeForm({ appId, sourceUrl }: RebuildIntakeFor
           disabled={submitIntake.isPending}
           onClick={function useDefaults() {
             userSubmittedRef.current = true
+            // Recommended defaults skip the scope decision, but still honor the design
+            // direction the user chose upfront on the homepage (keep-similar otherwise).
+            const designDirection: DesignDirection = homepageChoice ?? 'keep-similar'
             trackRebuildIntakeSubmitted({
               scope: 'homepage_only',
-              designChoice: 'keep_similar',
-              designDirection: 'keep-similar',
+              designChoice: homepageChoice ? directionToDesignChoiceId(homepageChoice) : 'keep_similar',
+              designDirection,
               submitSource: 'defaults',
               sourceUrl,
             })
             submitIntake.mutate(
-              { scope: 'homepage_only', designDirection: 'keep-similar' },
+              { scope: 'homepage_only', designDirection },
               {
                 onSuccess: function invalidate() {
                   void queryClient.invalidateQueries({ queryKey: ['rebuild-status', appId] })

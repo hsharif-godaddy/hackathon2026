@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { Logger } from '../../logging/index.js'
 import { RebuildOrchestrationService } from '../../services/RebuildOrchestrationService.js'
-import { DEFAULT_STYLE_PREFERENCES } from '../../services/rebuild/intake-defaults.js'
+import { stylePreferencesForDirection } from '../../services/rebuild/intake-defaults.js'
 import {
   asRebuildError,
   type RebuildWorkflowState,
@@ -31,6 +31,7 @@ async function ensureStylePreferencesReady(
   service: RebuildOrchestrationService,
   appId: string,
   completedState: RebuildWorkflowState,
+  designDirection?: unknown,
 ): Promise<void> {
   if (completedState.stylePreferences) {
     if (completedState.status === 'style_questions') {
@@ -38,7 +39,8 @@ async function ensureStylePreferencesReady(
     }
     return
   }
-  await service.submitStylePreferences(appId, DEFAULT_STYLE_PREFERENCES)
+  // No intake (flag off) — seed defaults, honoring the homepage modal direction.
+  await service.submitStylePreferences(appId, stylePreferencesForDirection(designDirection))
 }
 
 export const websiteRebuildAITool: Tool = createTool(
@@ -81,12 +83,18 @@ This tool starts the website rebuild process:
     const rebuildIntakeFormEnabled =
       context?.metadata?.rebuildIntakeFormEnabled === true && !app.initialBuildComplete
 
+    // Homepage modal choice, threaded from the client message context. Drives the
+    // design direction on the flag-off path and the intake timeout fallback, so a
+    // "reimagine" rebuild isn't silently defaulted to keep-similar.
+    const rebuildDesignDirection = context?.metadata?.rebuildDesignDirection
+
     logger.info('websiteRebuild.start', {
       appId,
       url: input.url,
       hasStateManager: !!stateManager,
       hasSocketId: !!socketId,
       rebuildIntakeFormEnabled,
+      rebuildDesignDirection: rebuildDesignDirection ?? null,
       initialBuildComplete: !!app.initialBuildComplete,
     })
 
@@ -101,7 +109,7 @@ This tool starts the website rebuild process:
 
     try {
       if (rebuildIntakeFormEnabled) {
-        const intakeResult = await waitForIntake(service, appId)
+        const intakeResult = await waitForIntake(service, appId, { designDirection: rebuildDesignDirection })
         intakeTimedOut = intakeResult.intakeTimedOut
       }
 
@@ -113,7 +121,7 @@ This tool starts the website rebuild process:
         rebuildScope: completedState.rebuildScope,
       })
 
-      await ensureStylePreferencesReady(service, appId, completedState)
+      await ensureStylePreferencesReady(service, appId, completedState, rebuildDesignDirection)
 
       const { slugs, homepagePrompt } = await service.buildUpfrontPagePrompts(appId)
       const upfrontBuildSlugs = slugs.slice(1)

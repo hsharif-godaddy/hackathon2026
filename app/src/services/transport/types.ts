@@ -29,6 +29,9 @@ export interface SendMessageParams {
   modelOverride?: string
   /** Rebuild page-selector "Build Page" slug — server builds it from source (AIROBUILD-2104) */
   rebuildBuildPageSlug?: string
+  /** Homepage rebuild modal design direction ('modernize' | 'keep-similar') — lets the
+   *  rebuild honor the choice even when the intake form is off. */
+  rebuildDesignDirection?: string
   budgetServiceEnabled?: boolean
   subscriptionId?: string
   buildErrorContext?: { error: string; details: string; exitCode?: number } | null

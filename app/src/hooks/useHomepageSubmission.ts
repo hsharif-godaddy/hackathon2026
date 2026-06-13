@@ -19,6 +19,7 @@ import { validateDomainName } from '@/lib/domain-validation'
 import { getErrorMessage } from '@/lib/errors'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { buildDevelopUrl, extractApiError, fetchQuickCreate, type QuickCreateResponse, setQuickCreateSessionFlags, storeUploadedFiles } from '@/lib/quick-create'
+import { promotePendingDesignChoice } from '@/lib/rebuild-design-choice'
 import { logger } from '@/lib/request-context'
 import { validateAndClampPrompt } from '@/lib/waf-validation'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
@@ -355,6 +356,7 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
         entryPoint: resolveEntryPoint([locationParam, itcParam, siteLocationParam], isHomepage ? 'aab_homepage' : 'aab_apps'),
         creationSource: resolveCreationSource(primaryUploadedFile, selectedTemplate, submitSourceRef.current),
       })
+      promotePendingDesignChoice(siteData.id)
 
       const filesToStore = uploadedFiles
         .filter(f => f.zipRaw)

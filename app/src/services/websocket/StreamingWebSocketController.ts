@@ -475,6 +475,7 @@ export class StreamingWebSocketController extends EventEmitter {
     askQuestionSkipped?: boolean
     customContext?: CustomContext
     rebuildBuildPageSlug?: string
+    rebuildDesignDirection?: string
     templateId?: string
     modelOverride?: string
     uploadedFileName?: string
@@ -567,6 +568,7 @@ export class StreamingWebSocketController extends EventEmitter {
         isActionRequest: params.isActionRequest,
         customContext: params.customContext,
         rebuildBuildPageSlug: params.rebuildBuildPageSlug,
+        rebuildDesignDirection: params.rebuildDesignDirection,
         templateId: params.templateId,
         modelOverride: params.modelOverride,
         market: params.market,

@@ -14,11 +14,18 @@ export type WaitForIntakeResult = {
 /**
  * Poll until user submits intake or timeout applies defaults.
  */
+export interface WaitForIntakeOptions {
+  /** Homepage modal design direction, applied if the intake times out. */
+  designDirection?: unknown
+  maxWaitMs?: number
+}
+
 export async function waitForIntake(
   service: RebuildOrchestrationService,
   appId: string,
-  maxWaitMs: number = INTAKE_WAIT_MS,
+  options: WaitForIntakeOptions = {},
 ): Promise<WaitForIntakeResult> {
+  const { designDirection, maxWaitMs = INTAKE_WAIT_MS } = options
   const startTime = Date.now()
   let pollIteration = 0
 
@@ -55,7 +62,7 @@ export async function waitForIntake(
 
   try {
     return {
-      state: await service.submitDefaultIntake(appId),
+      state: await service.submitDefaultIntake(appId, designDirection),
       intakeTimedOut: true,
     }
   } catch (error) {

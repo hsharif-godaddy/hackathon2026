@@ -17,6 +17,9 @@ export interface AgentsAppContext {
     userId?: string
     sessionId?: string
     modelOverride?: string
+    /** Homepage rebuild modal design direction ('modernize' | 'keep-similar'),
+     *  threaded to the rebuild tool so it applies even with the intake form off. */
+    rebuildDesignDirection?: string
     [key: string]: unknown
   }
 

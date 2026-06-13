@@ -266,6 +266,7 @@ export class SSETransport implements ChatTransport {
         isActionRequest: params.isActionRequest,
         customContext: params.customContext,
         rebuildBuildPageSlug: params.rebuildBuildPageSlug,
+        ...(params.rebuildDesignDirection && { rebuildDesignDirection: params.rebuildDesignDirection }),
         budgetServiceEnabled: params.budgetServiceEnabled,
         subscriptionId: params.subscriptionId,
         buildErrorContext: params.buildErrorContext,

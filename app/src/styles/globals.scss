@@ -663,6 +663,21 @@ body:has(#UpgradeLibraryPortal .ux-modal) .tooltip[role="tooltip"] {
     animation: gradient 8s linear infinite;
   }
 
+  /* Subtle staggered entrance for modal content (rebuild design modal).
+     Applied to wrappers so it never competes with hover transforms. */
+  @keyframes rebuild-reveal {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-rebuild-reveal {
+    animation: rebuild-reveal 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-rebuild-reveal { animation: none; }
+  }
+
   /* Animated text shimmer for in-progress labels (e.g. a running sub-agent).
      A light band sweeps across muted text via a clipped gradient. */
   @keyframes text-shimmer {

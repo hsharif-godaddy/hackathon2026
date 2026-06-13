@@ -454,8 +454,14 @@ test.describe('Apps Page & Navigation', () => {
     expect(count).toBeGreaterThanOrEqual(1);
     console.log(`  ✓ Found ${count} suggestion button(s)`);
 
-    // Click first suggestion
-    await suggestionButtons.first().click();
+    // Click a non-rebuild suggestion. The "rebuild_site" chip is featured + shuffled
+    // into a random slot and opens a design-direction modal instead of populating the
+    // prompt, so targeting `.first()` flakes ~1/8 of runs (AIROBUILD-2470).
+    const nonRebuildSuggestion = page
+      .locator('[data-testid="homepage-suggestion-button"]:not([data-eid*="rebuild_site"])')
+      .first();
+    await expect(nonRebuildSuggestion).toBeVisible();
+    await nonRebuildSuggestion.click();
 
     // Prompt should be populated
     await expect(promptInput).not.toHaveValue('');

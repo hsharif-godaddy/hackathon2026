@@ -2009,6 +2009,26 @@ describe('MessageExecutionService', () => {
       const executionContext = deps.contextManager.loadContextMessages.mock.calls[0][0]
       expect(executionContext.metadata.userTimezone).toBeUndefined()
     })
+
+    it('threads rebuildDesignDirection into executionContext metadata for the rebuild tool', async () => {
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, rebuildDesignDirection: 'modernize' })
+
+      const executionContext = deps.contextManager.loadContextMessages.mock.calls[0][0]
+      expect(executionContext.metadata.rebuildDesignDirection).toBe('modernize')
+    })
+
+    it('omits rebuildDesignDirection from metadata when not provided', async () => {
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      const executionContext = deps.contextManager.loadContextMessages.mock.calls[0][0]
+      expect(executionContext.metadata.rebuildDesignDirection).toBeUndefined()
+    })
   })
 
   describe('subscribeStream (late-join)', () => {

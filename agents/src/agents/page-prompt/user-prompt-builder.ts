@@ -30,7 +30,7 @@ import { normalizeAssetPath } from '../../utils/asset-paths.js';
 import { sanitizeEmbeddedText } from './embedded-text-constraint.js';
 import { buildSiteTypeRules } from '../site-type-helpers.js';
 import { extractKeyContent } from './extract-key-content.js';
-import { buildColorInstructions, buildDesignInstructions, buildTypographyInstructions } from './style-instructions.js';
+import { buildColorInstructions, buildDesignInstructions, buildTypographyInstructions, shouldPreserveDesign } from './style-instructions.js';
 
 export interface BuildUserPromptArgs {
   siteMetadata: SiteMetadata;
@@ -48,12 +48,18 @@ export interface BuildUserPromptArgs {
 export function buildUserPrompt(args: BuildUserPromptArgs): string {
   const { siteMetadata, pageContent, stylePreferences, assetManifest, isFirstPage, hasScreenshot } = args;
 
+  const preserveDesign = shouldPreserveDesign(stylePreferences);
+
   // Sort once by placement so both the dimensioned list and the categorized
   // section map operate on the same top-N slice (MAX_ASSETS_IN_PROMPT cap).
+  // Reimagine is a fresh redesign: only the logo is offered back (so the brand
+  // stays recognizable); listing the source photos here just tempts the agent to
+  // reuse them despite the "use fresh imagery" directive. Clone keeps all assets.
   const orderedAssets = [...assetManifest.assets]
     .sort((a, b) => placementOrder(a.placement) - placementOrder(b.placement));
-  const categorizedAssets = categorizeAssets(orderedAssets);
-  const assetsList = renderAssetList(orderedAssets);
+  const promptAssets = preserveDesign ? orderedAssets : orderedAssets.filter(isLikelyLogo);
+  const categorizedAssets = categorizeAssets(promptAssets);
+  const assetsList = renderAssetList(promptAssets);
 
   // 4KB cap on the verbose full-content reference — the extracted key content
   // and the categorized assets are the load-bearing inputs; the full text is
@@ -64,6 +70,15 @@ export function buildUserPrompt(args: BuildUserPromptArgs): string {
   const colorInstructions = isFirstPage ? buildColorInstructions(stylePreferences, siteMetadata, hasScreenshot) : '';
   const designInstructions = isFirstPage ? buildDesignInstructions(stylePreferences, siteMetadata, hasScreenshot) : '';
   const typographyInstructions = buildTypographyInstructions(stylePreferences, siteMetadata);
+
+  // Asset sourcing forks on the same clone-vs-redesign predicate everything else
+  // keys off. keep-similar reuses the scraped images verbatim (AIROBUILD-2104:
+  // never fabricate). modernize is a reimagining — keep the source logo so the
+  // brand stays recognizable, but pull fresh imagery for everything else.
+  const assetDirectiveNum = isFirstPage ? '5' : '4';
+  const assetDirective = shouldPreserveDesign(stylePreferences)
+    ? `${assetDirectiveNum}. **USE IMPORTED ASSETS — DO NOT GENERATE NEW IMAGES** - The source site's images are already downloaded and listed above with paths like \`/assets/images/[filename]\`. Use those paths directly in the code. Do NOT use the media tool to search for or generate replacement images. Only search for stock images if a section genuinely has no suitable imported image AND the design requires one.`
+    : `${assetDirectiveNum}. **REIMAGINE WITH FRESH IMAGERY** - This is a redesign, not a clone. Keep the source **logo** (listed above with a \`/assets/images/[filename]\` path) so the brand stays recognizable. For everything else — hero, sections, backgrounds — choose fresh imagery that fits the new design: use the media tool to search for modern stock photos. Do not feel bound to reuse the source site's photos.`;
 
   const siteType = siteMetadata.siteType ?? 'content';
   const siteTypeRules = buildSiteTypeRules(siteType, isFirstPage);
@@ -139,7 +154,7 @@ ${isFirstPage ? '4' : '3'}. **CHOOSE APPROPRIATELY SIZED IMAGES** - Check the di
    - For feature images: Use images 300px+ wide
    - Only use small images (<100px) for icons or decorative elements
 
-${isFirstPage ? '5' : '4'}. **USE IMPORTED ASSETS — DO NOT GENERATE NEW IMAGES** - The source site's images are already downloaded and listed above with paths like \`/assets/images/[filename]\`. Use those paths directly in the code. Do NOT use the media tool to search for or generate replacement images. Only search for stock images if a section genuinely has no suitable imported image AND the design requires one.
+${assetDirective}
 
 ${isFirstPage ? `6. **HOMEPAGE STRUCTURE**:
    - **HEADER**: Include explicit requirements for header with logo, navigation, and any CTAs
@@ -250,6 +265,23 @@ export function buildContactBlock(contact: SiteContactInfo): string {
 }
 
 // ----- Asset categorization + listing -------------------------------------
+
+/**
+ * Logo/brand-mark heuristic — the one source asset reimagine keeps so the brand
+ * stays recognizable.
+ *
+ * The Atlas `inHeader` placement is the most reliable cue and the only one that
+ * catches wide wordmark exports (e.g. 1000x250), which the `logo-suitable` size
+ * bucket (maxDim < 300) misses. The size + "logo"-in-path/alt checks remain as
+ * fallbacks for legacy scrapes without placement signals.
+ */
+export function isLikelyLogo(asset: AssetInfo): boolean {
+  if (asset.type !== 'image') return false;
+  if (asset.placement?.inHeader) return true;
+  if (getSizeCategory(asset.dimensions) === 'logo-suitable') return true;
+  const haystack = `${asset.altText ?? ''} ${asset.localPath ?? ''} ${asset.description ?? ''}`.toLowerCase();
+  return haystack.includes('logo');
+}
 
 /** Bucket label based on a "fits-on-screen" interpretation of asset dimensions. */
 export function getSizeCategory(dimensions?: { width: number; height: number }): string {
