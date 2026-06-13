@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=https://schemastore.docs.im.int.godaddy.com/json/setup-certificates.json
+#
+# Certificate config consumed by `gdcorp-actions/setup-certificates@v1` from
+# `.github/workflows/cert-renewal.yml`. Each entry declares one cert; the
+# action handles PCP issuance/renewal and ACM import idempotently.
+#
+# Add a new cert by appending an entry under `certificates:`. Add a new
+# deployment target by adding an entry under `accounts:` and referencing it.
+
+defaults:
+  projectId: 8606 # airo-builder PCP project ID (distinct from Katana pcpAppId; matches the existing cert's projectId in PCP)
+  renewalThresholdDays: 30
+  acm:
+    enabled: true
+    regions: [us-west-2]
+
+accounts:
+  dev-private:
+    # Team-owned deploy role (not GD-AWS-SSG-Deploy-Role): has acm:*
+    # including AddTagsToCertificate, which setup-certificates needs to
+    # stamp its tracking tag. The Katana SSG role lacks the tag write.
+    roleArn: arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy
+
+certificates:
+  - commonName: console.airo-builder.int.test-gdcorp.tools
+    description: debug-console server cert — test env (Katana dev-private)
+    tags: [console, dev-private, console-dev-private]
+    accounts: [dev-private]
+
+  # TODO — add entries for other Katana apps in this repo as their cert
+  # lifecycles are audited:
+  #   app                  (pcpAppId 6082)
+  #   blog                 (pcpAppId 7389)
+  #   budget-service       (pcpAppId 7357)
+  #   notification-service (pcpAppId 7676)
+  #   airo-builder-stripe  (pcpAppId 7571)
+  # Legacy console.airo-builder.{test-,}godaddy.com hostnames are intentionally
+  # NOT covered — natural expiry is the forcing function for retiring them.

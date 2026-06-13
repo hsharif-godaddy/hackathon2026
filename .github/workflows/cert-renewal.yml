@@ -1,0 +1,93 @@
+name: Cert Renewal
+
+# Provision and renew GoDaddy PCP-issued certificates and re-import them into
+# AWS ACM via gdcorp-actions/setup-certificates. The cert list and per-account
+# role mapping live in `.github/certificates.yml`; this file only orchestrates.
+#
+# Idempotent: the action no-ops unless a cert is within `renewalThresholdDays`
+# of expiring, or `force_renewal` is set on a manual dispatch.
+
+on:
+  schedule:
+    # 09:17 UTC — off the :00 hour to avoid bunching with other corp jobs.
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag filter — env (`dev-private`), app (`console`), or individual slug (`console-dev-private`)
+        required: false
+        type: string
+        default: dev-private
+      dry_run:
+        description: Simulate without making changes
+        type: boolean
+        default: false
+      force_renewal:
+        description: Force renewal even if outside the renewal threshold
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  scheduled:
+    name: Renew certificates [scheduled]
+    if: github.event_name == 'schedule' || github.event_name == 'push'
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Get IAM JWT for PCP Cert API
+        id: jwt
+        uses: gdcorp-actions/sso-awsiam-jwt@4fa027318def6898322564a008818dad427387b2 # 2.0.0
+
+      - name: Issue / renew / import to ACM
+        id: certs
+        uses: gdcorp-actions/setup-certificates@8a9f3ddc597877cc2216a8c590a4d65dddc66600 # v1
+        with:
+          sso-token: ${{ steps.jwt.outputs.jwt }}
+          config-file: .github/certificates.yml
+          tags: dev-private
+
+      - name: Summary
+        run: |
+          echo "::notice::results=${{ steps.certs.outputs.results }}"
+
+  dispatched:
+    name: Renew certificates [${{ inputs.tag }}]
+    if: github.event_name == 'workflow_dispatch'
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Get IAM JWT for PCP Cert API
+        id: jwt
+        uses: gdcorp-actions/sso-awsiam-jwt@4fa027318def6898322564a008818dad427387b2 # 2.0.0
+
+      - name: Issue / renew / import to ACM
+        id: certs
+        uses: gdcorp-actions/setup-certificates@8a9f3ddc597877cc2216a8c590a4d65dddc66600 # v1
+        with:
+          sso-token: ${{ steps.jwt.outputs.jwt }}
+          config-file: .github/certificates.yml
+          tags: ${{ inputs.tag }}
+          dry-run: ${{ inputs.dry_run }}
+          force-renewal: ${{ inputs.force_renewal }}
+
+      - name: Summary
+        run: |
+          echo "::notice::results=${{ steps.certs.outputs.results }}"
