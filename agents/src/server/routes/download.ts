@@ -126,6 +126,7 @@ router.get('/apps/:id/zip', validateAppOwnership, requirePermission('canDownload
     archive.pipe(res);
 
     let appendedCount = 0;
+    let failedCount = 0;
     await withConcurrency(filePaths, DOWNLOAD_CONCURRENCY, async (filePath) => {
       if (archiveError) return;
       try {
@@ -134,9 +135,22 @@ router.get('/apps/:id/zip', validateAppOwnership, requirePermission('canDownload
         appendedCount++;
       } catch (err) {
         if (isDevSupervisorNotFound(err)) return;
-        throw err;
+        // Skip not rethrow: a rethrow bypasses archive.finalize() and
+        // res.destroy() ships a zip with no central directory.
+        failedCount++;
+        logger.warn('route.apps.zip.file.failed', {
+          appId: id,
+          filePath,
+          errorMessage: err instanceof Error ? err.message : String(err),
+        });
       }
     });
+
+    // Total-failure floor: skip-on-fail per file is correct, but a
+    // 0-files-succeeded "success" is misleading — fail the response.
+    if (appendedCount === 0 && failedCount > 0) {
+      throw new Error(`zip download failed: all ${failedCount} files failed to download`);
+    }
 
     await archive.finalize();
 
@@ -149,6 +163,7 @@ router.get('/apps/:id/zip', validateAppOwnership, requirePermission('canDownload
       appId: id,
       size: archive.pointer(),
       fileCount: appendedCount,
+      failedCount,
     });
 
     return;

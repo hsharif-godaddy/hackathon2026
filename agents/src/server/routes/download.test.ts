@@ -629,15 +629,30 @@ describe('Archive Workspace Integration', () => {
     expect(response.body.error).toBe('Failed to create zip archive');
   });
 
-  it('destroys the response when a file download fails mid-stream after pipe', async () => {
+  it('skips a single failing file and completes the archive instead of destroying the response', async () => {
+    // The previous incarnation of this test pinned the OLD behavior — that a
+    // single download failure caused res.destroy() and a corrupt zip on the
+    // client. That fragility was a real prod bug (one bad file = client gets
+    // a structurally invalid zip with no central directory). The fix logs the
+    // failure and lets the archive finalize cleanly, so the user gets a
+    // valid zip with the surviving files. See download.archive.test.ts for
+    // the real-archiver counterpart that asserts the resulting zip parses.
     const ws = strictWorkspace({
-      tree: { src: [{ path: 'src/index.ts', kind: 'file' }], public: [] },
-      files: { 'src/index.ts': new Error('disk read failure') },
+      tree: {
+        src: [
+          { path: 'src/index.ts', kind: 'file' },
+          { path: 'src/broken.ts', kind: 'file' },
+        ],
+        public: [],
+      },
+      files: {
+        'src/index.ts': Buffer.from('export {}'),
+        'src/broken.ts': new Error('disk read failure'),
+        'package.json': Buffer.from('{}'),
+      },
     });
     mockCreateForWorkspace.mockReturnValue({ files: ws });
 
-    // pipe writes some bytes (so headersSent === true) but doesn't end —
-    // route's catch path must call res.destroy(err).
     let destroyedWith: Error | undefined;
     mockArchive.pipe.mockImplementation(function pipeImpl(target: any) {
       const origDestroy = target.destroy?.bind(target);
@@ -645,16 +660,22 @@ describe('Archive Workspace Integration', () => {
         if (err) destroyedWith = err;
         if (origDestroy) origDestroy(err);
       };
-      target.write(Buffer.from('zip-header'));
+      process.nextTick(() => {
+        target.write(Buffer.from('zip'));
+        target.end();
+      });
     });
 
-    // res.destroy(err) surfaces to supertest as a socket hang-up — that's
-    // exactly what the production client sees, and the absence of a clean
-    // 200+body is the signal we care about.
-    await request(app).get(`/apps/${appId}/zip`).buffer(true).catch(() => undefined);
+    const response = await request(app).get(`/apps/${appId}/zip`).buffer(true);
 
-    expect(destroyedWith).toBeInstanceOf(Error);
-    expect(destroyedWith?.message).toBe('disk read failure');
+    expect(response.status).toBe(200);
+    expect(destroyedWith).toBeUndefined();
+    expect(mockArchive.finalize).toHaveBeenCalled();
+
+    const archiveEntryNames = mockArchive.append.mock.calls.map((c: any) => c[1].name);
+    expect(archiveEntryNames).toContain('Test_App/src/index.ts');
+    expect(archiveEntryNames).toContain('Test_App/package.json');
+    expect(archiveEntryNames).not.toContain('Test_App/src/broken.ts');
   });
 
   it('rethrows archive errors after finalize so success is not logged on a poisoned archive', async () => {
