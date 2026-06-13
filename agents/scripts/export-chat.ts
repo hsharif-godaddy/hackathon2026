@@ -7,7 +7,7 @@
  * JOMAX, the agents service sees only its normal internal-service auth.
  *
  * For the dev environment, edit BASE_URL to
- *   https://console.airo-builder.test-godaddy.com
+ *   https://console.airo-builder.int.test-gdcorp.tools
  *
  * Usage:
  *   JOMAX_TOKEN=<token> pnpm tsx scripts/export-chat.ts <appId> [--detail=summary|full]

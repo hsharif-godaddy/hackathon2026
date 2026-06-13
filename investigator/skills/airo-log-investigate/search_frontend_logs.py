@@ -63,6 +63,8 @@ CONSOLE_BASE = "https://console.airo-builder.godaddy.com"
 ALLOWED_CONSOLE_HOSTS = {
     "console.airo-builder.godaddy.com",
     "console.airo-builder.test-godaddy.com",
+    "console.airo-builder.int.test-gdcorp.tools",
+    "console.airo-builder.int.gdcorp.tools",
 }
 DEFAULT_OUTPUT_DIR = "/tmp/airo-log-investigate"
 

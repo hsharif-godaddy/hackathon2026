@@ -43,7 +43,7 @@ describe('sso-host', () => {
         });
 
         it('routes test-gdcorp.tools subdomains to sso.test-gdcorp.tools', () => {
-            expect(getSsoHost('console.airo-builder.test-gdcorp.tools')).toBe(TEST_GDCORP);
+            expect(getSsoHost('console.airo-builder.int.test-gdcorp.tools')).toBe(TEST_GDCORP);
             expect(getSsoHost('switchboard.int.test-gdcorp.tools')).toBe(TEST_GDCORP);
         });
 
@@ -91,7 +91,6 @@ describe('sso-host', () => {
         it('strips the gdcorp.tools zone suffix to derive the app prefix', () => {
             expect(getSsoApp('console.airo-builder.gdcorp.tools')).toBe('console.airo-builder');
             expect(getSsoApp('console.airo-builder.dev-gdcorp.tools')).toBe('console.airo-builder');
-            expect(getSsoApp('console.airo-builder.test-gdcorp.tools')).toBe('console.airo-builder');
         });
 
         it('strips the godaddy.com zone suffix to derive the app prefix', () => {
@@ -103,6 +102,11 @@ describe('sso-host', () => {
         it('preserves multi-segment app prefixes (e.g. local.* for /etc/hosts overrides)', () => {
             expect(getSsoApp('local.console.airo-builder.dev-gdcorp.tools')).toBe('local.console.airo-builder');
             expect(getSsoApp('local.console.airo-builder.dev-gdcorp.tools:3443')).toBe('local.console.airo-builder');
+        });
+
+        it('preserves the int. segment for the deployed gdcorp.tools internal-tools hostnames', () => {
+            expect(getSsoApp('console.airo-builder.int.test-gdcorp.tools')).toBe('console.airo-builder.int');
+            expect(getSsoApp('console.airo-builder.int.gdcorp.tools')).toBe('console.airo-builder.int');
         });
 
         it('falls back to console.airo-builder for unknown / apex / lookalike hosts', () => {
@@ -136,6 +140,16 @@ describe('sso-host', () => {
             const url = new URL(buildSsoLoginUrl('console.airo-builder.gdcorp.tools'));
             expect(url.origin + url.pathname).toBe(`https://${PROD_GDCORP}/`);
             expect(url.searchParams.get('app')).toBe('console.airo-builder');
+            expect(url.searchParams.get('port')).toBeNull();
+        });
+
+        it('routes the deployed test internal-tools host to sso.test-gdcorp.tools with app=console.airo-builder.int', () => {
+            const url = new URL(buildSsoLoginUrl('console.airo-builder.int.test-gdcorp.tools', '/apps/abc'));
+            expect(url.origin + url.pathname).toBe(`https://${TEST_GDCORP}/`);
+            expect(url.searchParams.get('app')).toBe('console.airo-builder.int');
+            expect(url.searchParams.get('realm')).toBe('jomax');
+            expect(url.searchParams.get('referrer')).toBe('sso');
+            expect(url.searchParams.get('path')).toBe('/apps/abc');
             expect(url.searchParams.get('port')).toBeNull();
         });
 

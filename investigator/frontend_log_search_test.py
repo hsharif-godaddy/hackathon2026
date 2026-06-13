@@ -284,6 +284,14 @@ class FrontendLogSearchTest(unittest.TestCase):
             search_frontend_logs.validate_console_base("https://console.airo-builder.test-godaddy.com"),
             "https://console.airo-builder.test-godaddy.com",
         )
+        self.assertEqual(
+            search_frontend_logs.validate_console_base("https://console.airo-builder.int.test-gdcorp.tools"),
+            "https://console.airo-builder.int.test-gdcorp.tools",
+        )
+        self.assertEqual(
+            search_frontend_logs.validate_console_base("https://console.airo-builder.int.gdcorp.tools"),
+            "https://console.airo-builder.int.gdcorp.tools",
+        )
 
         for value in (
             "http://console.airo-builder.godaddy.com",

@@ -253,7 +253,7 @@ const devConfig: Config = {
   airoBuilderEsApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/AIRO_BUILDER_ES_API_KEY',
   jwtSecretsName: 'dev-airo-jwt-keys',
   platformGraphBuilderRoleArn: 'arn:aws:iam::754151945003:role/GD-AWS-USA-GD-AiroBuilde-CICD',
-  debugConsoleBaseUrl: 'https://console.airo-builder.test-godaddy.com',
+  debugConsoleBaseUrl: 'https://console.airo-builder.int.test-gdcorp.tools',
   ssoEndpoint: 'https://sso.test-godaddy.com/v1/secure/api/token',
   vpnIps: {
     "165.1.180.132/31": "Prisma External (India West)",
@@ -351,7 +351,7 @@ const testConfig: Config = {
   lokiApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/LOKI_API_KEY',
   airoBuilderEsApiKeySecret: '/Katana/Secrets/airobuilde/console/dev-private/AIRO_BUILDER_ES_API_KEY',
   jwtSecretsName: 'test-airo-jwt-keys',
-  debugConsoleBaseUrl: 'https://console.airo-builder.test-godaddy.com',
+  debugConsoleBaseUrl: 'https://console.airo-builder.int.test-gdcorp.tools',
   ssoEndpoint: 'https://sso.test-godaddy.com/v1/secure/api/token',
   vpnIps: {},
   awsIamJwtAccount: ['333184933228'],

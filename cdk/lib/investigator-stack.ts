@@ -49,7 +49,7 @@ export class AiroInvestigatorStack extends GDStack {
     const corsAllowedOrigins: string[] = config.envName === 'prod'
       ? ['https://console.airo-builder.godaddy.com']
       : [
-        'https://console.airo-builder.test-godaddy.com',
+        'https://console.airo-builder.int.test-gdcorp.tools',
         'http://localhost:3000',
         'http://localhost:8080',
       ];
@@ -260,7 +260,7 @@ export class AiroInvestigatorStack extends GDStack {
         // dev-private runs hit the test console instead of production.
         CONSOLE_BASE: config.envName === 'prod'
           ? 'https://console.airo-builder.godaddy.com'
-          : 'https://console.airo-builder.test-godaddy.com',
+          : 'https://console.airo-builder.int.test-gdcorp.tools',
         // GoCode proxy validator rejects Anthropic API fields it doesn't
         // understand. Claude CLI >=2.1 sends the beta `context_management`
         // field (automatic compaction), and the proxy returns

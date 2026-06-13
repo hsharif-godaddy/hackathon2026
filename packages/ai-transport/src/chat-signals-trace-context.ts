@@ -36,7 +36,7 @@ function screenshotUrlsForApp(appId: string | undefined): {
   }
   const isNonProd = apiUrl.includes('dev') || apiUrl.includes('test')
   const host = isNonProd
-    ? 'https://console.airo-builder.test-godaddy.com'
+    ? 'https://console.airo-builder.int.test-gdcorp.tools'
     : 'https://console.airo-builder.godaddy.com'
   return {
     screenshotUrl: `${host}/api/screenshots/default/${encodeURIComponent(appId)}`,

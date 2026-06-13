@@ -3396,10 +3396,10 @@ describe('BusinessContext Enrichment', () => {
 
     const callArgs = mockCreateTraceContext.mock.calls[0]?.[0]
     expect(callArgs.businessContext.data.defaultScreenshotUrl).toBe(
-      'https://console.airo-builder.test-godaddy.com/api/screenshots/default/test-app-id-123'
+      'https://console.airo-builder.int.test-gdcorp.tools/api/screenshots/default/test-app-id-123'
     )
     expect(callArgs.businessContext.data.listPublishedSnapshotsUrl).toBe(
-      'https://console.airo-builder.test-godaddy.com/api/screenshots/publishes/test-app-id-123'
+      'https://console.airo-builder.int.test-gdcorp.tools/api/screenshots/publishes/test-app-id-123'
     )
 
     vi.unstubAllEnvs()
