@@ -5,13 +5,22 @@ import { join } from 'node:path';
 import { KinesisClient, ListShardsCommand, type Shard } from '@aws-sdk/client-kinesis';
 
 import { startSwitchboardClient, stopSwitchboardClient } from './clients/switchboard.js';
+import { EXPIRY_EID, REMINDER_EID } from './clients/deferred-kinesis.js';
+import { getPermanentFailureCount } from './consumer/deferred.js';
 import { config } from './config.js';
+import { startTimerConsumer } from './consumer/deferred.js';
 import { createKinesisClient, startShardConsumer } from './consumer/kinesis.js';
 import { logger } from './logger.js';
 
 const HEALTH_PORT = 8080;
 // Re-list shards every minute to pick up child shards created by a reshard
 const SHARD_POLL_INTERVAL_MS = 60_000;
+
+// Reminder records are replayed 48h after being written (24h before the 72h expiry).
+const REMINDER_SEEK_MS = 48 * 60 * 60 * 1_000;
+
+// Expiry records are replayed 72h after being written.
+const EXPIRY_SEEK_MS = 72 * 60 * 60 * 1_000;
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -25,7 +34,9 @@ function startHealthServer(): ReturnType<typeof createServer> {
     { cert: readFileSync(join(certsDir, 'server.crt')), key: readFileSync(join(certsDir, 'server.key')) },
     (req, res) => {
       if (req.method === 'GET' && req.url === '/health') {
-        json(res, 200, { status: 'ok' });
+        const failureCount = getPermanentFailureCount();
+        const status = failureCount > 0 ? 'degraded' : 'ok';
+        json(res, 200, { status, permanentFailureCount: failureCount });
         return;
       }
 
@@ -50,6 +61,8 @@ async function listOpenShards(kinesisClient: KinesisClient): Promise<Shard[]> {
 async function start(): Promise<void> {
   logger.info('notification-service.startup.begin', {
     stream: config.KINESIS_STREAM_NAME,
+    reminderStream: config.REMINDER_KINESIS_STREAM_NAME,
+    expiryStream: config.EXPIRY_KINESIS_STREAM_NAME,
     awsRegion: config.AWS_REGION,
     mgmtBaseUrl: config.MGMT_AIRO_BASE_URL,
     messagingBaseUrl: config.MESSAGING_BASE_URL,
@@ -63,7 +76,7 @@ async function start(): Promise<void> {
 
   const kinesisClient = createKinesisClient();
 
-  // Verify the stream is reachable and has open shards before entering the supervisor loop
+  // Verify the main stream is reachable and has open shards before entering the supervisor loop
   const initialShards = await listOpenShards(kinesisClient);
   if (initialShards.length === 0) {
     logger.error('notification-service.kinesis.no_shards', { stream: config.KINESIS_STREAM_NAME });
@@ -94,9 +107,26 @@ async function start(): Promise<void> {
   process.once('SIGTERM', () => shutdown('SIGTERM'));
   process.once('SIGINT', () => shutdown('SIGINT'));
 
-  // Supervisor loop: re-list open shards each tick so child shards created by a
-  // reshard are discovered without a redeploy. Events are filtered inside processEvent
-  // based on the Switchboard flag (all events vs TLA-only).
+  // Reminder consumer: replays records from the 72h reminder stream at AT_TIMESTAMP(now − 48h).
+  startTimerConsumer(
+    kinesisClient,
+    config.REMINDER_KINESIS_STREAM_NAME,
+    REMINDER_SEEK_MS,
+    REMINDER_EID,
+    consumersController.signal,
+  );
+
+  // Expiry consumer: replays records from the 96h expiry stream at AT_TIMESTAMP(now − 72h).
+  startTimerConsumer(
+    kinesisClient,
+    config.EXPIRY_KINESIS_STREAM_NAME,
+    EXPIRY_SEEK_MS,
+    EXPIRY_EID,
+    consumersController.signal,
+  );
+
+  // Supervisor loop: re-list open shards each tick so reshards are discovered without a redeploy.
+  // Events are filtered inside processEvent based on the Switchboard flag.
   while (!processShutdown) {
     try {
       const openShards = await listOpenShards(kinesisClient);

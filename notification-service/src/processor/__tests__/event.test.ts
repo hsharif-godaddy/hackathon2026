@@ -8,6 +8,8 @@ const mockGetTransferMetadata = vi.fn();
 const mockGetPublishedAppCount = vi.fn();
 const mockGetAppCount = vi.fn();
 const mockGetCustomer = vi.fn();
+const mockPutReminderRecord = vi.fn();
+const mockPutExpiryRecord = vi.fn();
 
 vi.mock('../../extractor/index.js', () => ({ extract: mockExtract }));
 const mockIsServiceEnabled = vi.fn();
@@ -23,6 +25,10 @@ vi.mock('../../clients/mgmt.js', () => ({
   getTransferMetadata: mockGetTransferMetadata,
 }));
 vi.mock('../../clients/pie.js', () => ({ getCustomer: mockGetCustomer }));
+vi.mock('../../clients/deferred-kinesis.js', () => ({
+  putReminderRecord: mockPutReminderRecord,
+  putExpiryRecord: mockPutExpiryRecord,
+}));
 vi.mock('../../config.js', () => ({ config: { APP_BASE_URL: 'https://test.example.com' } }));
 vi.mock('../../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -57,6 +63,8 @@ beforeEach(() => {
   mockGetTemplateConfig.mockReturnValue([TEMPLATE]);
   mockIsServiceEnabled.mockReturnValue(true);
   mockSendMessage.mockResolvedValue(undefined);
+  mockPutReminderRecord.mockResolvedValue(undefined);
+  mockPutExpiryRecord.mockResolvedValue(undefined);
 });
 
 describe('notification-service', () => {
@@ -162,6 +170,72 @@ describe('notification-service', () => {
       mockGetPublishedAppCount.mockResolvedValue(2);
       mockGetTemplateConfig.mockReturnValue([{ ...TEMPLATE, guard: ['first_app', 'no_published_app'] }]);
       expect(await processEvent({})).toBe('skipped');
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('sends when for_tla guard passes (shopperId length 3)', async () => {
+      mockGetCustomer.mockResolvedValue({ shopperId: 'abc', email: 'tla@example.com' });
+      mockGetTemplateConfig.mockReturnValue([{ ...TEMPLATE, guard: 'for_tla' }]);
+      expect(await processEvent({})).toBe('sent');
+      expect(mockSendMessage).toHaveBeenCalledOnce();
+    });
+
+    it('skips when for_tla guard fails (shopperId longer than 3)', async () => {
+      mockGetCustomer.mockResolvedValue({ shopperId: '123456', email: 'user@example.com' });
+      mockGetTemplateConfig.mockReturnValue([{ ...TEMPLATE, guard: 'for_tla' }]);
+      expect(await processEvent({})).toBe('skipped');
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('sends when for_tla combined with another guard and both pass', async () => {
+      mockGetCustomer.mockResolvedValue({ shopperId: 'abc', email: 'tla@example.com' });
+      mockGetAppCount.mockResolvedValue(1);
+      mockGetTemplateConfig.mockReturnValue([{ ...TEMPLATE, guard: ['for_tla', 'first_app'] }]);
+      expect(await processEvent({})).toBe('sent');
+      expect(mockSendMessage).toHaveBeenCalledOnce();
+    });
+
+    it('skips when for_tla passes but another guard in the array fails', async () => {
+      mockGetCustomer.mockResolvedValue({ shopperId: 'abc', email: 'tla@example.com' });
+      mockGetAppCount.mockResolvedValue(5);
+      mockGetTemplateConfig.mockReturnValue([{ ...TEMPLATE, guard: ['for_tla', 'first_app'] }]);
+      expect(await processEvent({})).toBe('skipped');
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('sends when transfer_pending guard passes (status is initiated)', async () => {
+      mockGetTransferMetadata.mockResolvedValue({ ...INITIATE_TRANSFER, status: 'initiated' });
+      mockGetTemplateConfig.mockReturnValue([{ ...TEMPLATE, guard: 'transfer_pending' }]);
+      expect(await processEvent({})).toBe('sent');
+      expect(mockSendMessage).toHaveBeenCalledOnce();
+    });
+
+    it('sends when transfer_pending guard passes (status is expired)', async () => {
+      mockGetTransferMetadata.mockResolvedValue({ ...INITIATE_TRANSFER, status: 'expired' });
+      mockGetTemplateConfig.mockReturnValue([{ ...TEMPLATE, guard: 'transfer_pending' }]);
+      expect(await processEvent({})).toBe('sent');
+      expect(mockSendMessage).toHaveBeenCalledOnce();
+    });
+
+    it('skips when transfer_pending guard fails (status is accepted)', async () => {
+      mockGetTransferMetadata.mockResolvedValue({ ...INITIATE_TRANSFER, status: 'accepted' });
+      mockGetTemplateConfig.mockReturnValue([{ ...TEMPLATE, guard: 'transfer_pending' }]);
+      expect(await processEvent({})).toBe('skipped');
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('skips when transfer_pending guard fails (status is cancelled)', async () => {
+      mockGetTransferMetadata.mockResolvedValue({ ...INITIATE_TRANSFER, status: 'cancelled' });
+      mockGetTemplateConfig.mockReturnValue([{ ...TEMPLATE, guard: 'transfer_pending' }]);
+      expect(await processEvent({})).toBe('skipped');
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('skips when transfer_pending guard has no appId', async () => {
+      mockExtract.mockReturnValue({ eid: 'app.published', customerId: 'cust-1' });
+      mockGetTemplateConfig.mockReturnValue([{ ...TEMPLATE, guard: 'transfer_pending' }]);
+      expect(await processEvent({})).toBe('skipped');
+      expect(mockGetTransferMetadata).not.toHaveBeenCalled();
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
@@ -286,6 +360,73 @@ describe('notification-service', () => {
       expect(mockSendMessage).toHaveBeenCalledWith('cust-1', expect.objectContaining({
         substitutionValues: { foo: '##nonexistent_key##' },
       }));
+    });
+
+    it('puts reminder and expiry records on deferred stream after initiate_success', async () => {
+      mockExtract.mockReturnValue({
+        eid: 'appbuilder.apps.transfer.initiate_success.click',
+        customerId: 'cust-1',
+        appId: 'app-1',
+      });
+      expect(await processEvent({})).toBe('sent');
+      expect(mockPutReminderRecord).toHaveBeenCalledOnce();
+      expect(mockPutReminderRecord).toHaveBeenCalledWith('app-1', 'cust-1');
+      expect(mockPutExpiryRecord).toHaveBeenCalledOnce();
+      expect(mockPutExpiryRecord).toHaveBeenCalledWith('app-1', 'cust-1');
+    });
+
+    it('does not put deferred records for non-initiate events', async () => {
+      expect(await processEvent({})).toBe('sent');
+      expect(mockPutReminderRecord).not.toHaveBeenCalled();
+      expect(mockPutExpiryRecord).not.toHaveBeenCalled();
+    });
+
+    it('logs deferred put failure without failing the event', async () => {
+      mockExtract.mockReturnValue({
+        eid: 'appbuilder.apps.transfer.initiate_success.click',
+        customerId: 'cust-1',
+        appId: 'app-1',
+      });
+      mockPutReminderRecord.mockRejectedValue(new Error('kinesis unavailable'));
+      await expect(processEvent({})).resolves.toBe('sent');
+    });
+
+    it('logs expiry put failure independently without failing reminder put', async () => {
+      mockExtract.mockReturnValue({
+        eid: 'appbuilder.apps.transfer.initiate_success.click',
+        customerId: 'cust-1',
+        appId: 'app-1',
+      });
+      mockPutExpiryRecord.mockRejectedValue(new Error('kinesis unavailable'));
+      await expect(processEvent({})).resolves.toBe('sent');
+      expect(mockPutReminderRecord).toHaveBeenCalledOnce();
+    });
+
+    it('sends when requiredGuard transfer_pending passes (status initiated)', async () => {
+      mockGetTransferMetadata.mockResolvedValue({ ...INITIATE_TRANSFER, status: 'initiated' });
+      expect(await processEvent({}, 'transfer_pending')).toBe('sent');
+      expect(mockSendMessage).toHaveBeenCalledOnce();
+    });
+
+    it('sends when requiredGuard transfer_pending passes (status expired)', async () => {
+      mockGetTransferMetadata.mockResolvedValue({ ...INITIATE_TRANSFER, status: 'expired' });
+      expect(await processEvent({}, 'transfer_pending')).toBe('sent');
+      expect(mockSendMessage).toHaveBeenCalledOnce();
+    });
+
+    it('skips when requiredGuard transfer_pending fails even if Switchboard template has no guard', async () => {
+      mockGetTransferMetadata.mockResolvedValue({ ...INITIATE_TRANSFER, status: 'accepted' });
+      expect(await processEvent({}, 'transfer_pending')).toBe('skipped');
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('requiredGuard is evaluated before Switchboard template guards', async () => {
+      mockGetTransferMetadata.mockResolvedValue({ ...INITIATE_TRANSFER, status: 'accepted' });
+      mockGetTemplateConfig.mockReturnValue([{ ...TEMPLATE, guard: 'first_app' }]);
+      mockGetAppCount.mockResolvedValue(1);
+      expect(await processEvent({}, 'transfer_pending')).toBe('skipped');
+      expect(mockGetAppCount).not.toHaveBeenCalled();
+      expect(mockSendMessage).not.toHaveBeenCalled();
     });
   });
 });

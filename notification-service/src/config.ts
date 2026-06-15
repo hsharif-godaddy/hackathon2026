@@ -3,6 +3,12 @@ import { z } from 'zod';
 const schema = z.object({
   KINESIS_STREAM_NAME: z.string().min(1),
 
+  /** 72h-retention stream — reminder records replayed at AT_TIMESTAMP(now − 48h). */
+  REMINDER_KINESIS_STREAM_NAME: z.string().min(1),
+
+  /** 96h-retention stream — expiry records replayed at AT_TIMESTAMP(now − 72h). */
+  EXPIRY_KINESIS_STREAM_NAME: z.string().min(1),
+
   MGMT_AIRO_BASE_URL: z.string().url(),
   MGMT_CERT: z.string().min(1),
   MGMT_KEY: z.string().min(1),

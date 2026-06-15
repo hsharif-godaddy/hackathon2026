@@ -24,7 +24,7 @@ interface KinesisConfig {
   };
   crossAccount: {
     /**
-     * EventBridge cross-account producer role ARNs granted PutRecord(s) on the stream.
+     * EventBridge cross-account producer role ARNs granted PutRecord(s) on the main stream.
      * Each entry is an eventbus-custom-eventbus-cross-account role in a producing AWS account.
      * dev:  924341083046 (dev-private cell), 334617369240 (test cell), 207848954651 (staging cell)
      * test: 334617369240 (test cell)
@@ -32,8 +32,9 @@ interface KinesisConfig {
      */
     producerRoleArns: string[];
     /**
-     * Consumer role ARNs granted read access to the stream (ListShards, GetRecords, etc.).
-     * Add the Katana ECS task role for any service consuming from this stream.
+     * Consumer role ARNs granted read access to the main stream and read+write access
+     * to the reminder and expiry streams. Add the Katana ECS task role for the
+     * notification service.
      */
     consumerRoleArns: string[];
   };
@@ -81,8 +82,48 @@ function validate(raw: unknown): KinesisConfig {
   return raw as KinesisConfig;
 }
 
+/** Grants consumer roles read+write on an internal stream (no cross-account producers). */
+function addInternalStreamPolicy(
+  stream: kinesis.Stream,
+  consumerRoleArns: string[],
+): void {
+  if (consumerRoleArns.length === 0) return;
+  stream.addToResourcePolicy(
+    new iam.PolicyStatement({
+      actions: [
+        'kinesis:DescribeStream',
+        'kinesis:DescribeStreamSummary',
+        'kinesis:GetRecords',
+        'kinesis:GetShardIterator',
+        'kinesis:ListShards',
+        'kinesis:PutRecord',
+        'kinesis:PutRecords',
+      ],
+      principals: consumerRoleArns.map(arn => new iam.ArnPrincipal(arn)),
+      effect: iam.Effect.ALLOW,
+      resources: [stream.streamArn],
+    }),
+  );
+}
+
 export class TransactionalEventsKinesisStack extends GDStack {
   public readonly kinesisStream: kinesis.Stream;
+
+  /**
+   * Internal stream for 24h reminder emails.
+   * Notification service writes one record per transfer initiation; the timer consumer
+   * replays records at AT_TIMESTAMP(now − 48h) to fire the reminder 24h before expiry.
+   * 72h retention keeps records available through the 48h processing window with headroom.
+   */
+  public readonly reminderStream: kinesis.Stream;
+
+  /**
+   * Internal stream for 72h expiry emails.
+   * Notification service writes one record per transfer initiation; the timer consumer
+   * replays records at AT_TIMESTAMP(now − 72h) to fire the expiry email to the sender.
+   * 96h retention keeps records available through the 72h processing window with headroom.
+   */
+  public readonly expiryStream: kinesis.Stream;
 
   constructor(scope: Construct, id: string, props: TransactionalEventsKinesisProps) {
     super(scope, id, props);
@@ -102,6 +143,26 @@ export class TransactionalEventsKinesisStack extends GDStack {
     };
 
     this.kinesisStream = new kinesis.Stream(this, 'TransactionalEventsStream', streamProps);
+
+    this.reminderStream = new kinesis.Stream(this, 'TransferReminderStream', {
+      streamName: `transfer-reminder-stream-${config.envName}`,
+      retentionPeriod: Duration.hours(72),
+      streamMode: kinesis.StreamMode.PROVISIONED,
+      shardCount: 1,
+      ...(props.kmsKey
+        ? { encryption: kinesis.StreamEncryption.KMS, encryptionKey: props.kmsKey }
+        : {}),
+    });
+
+    this.expiryStream = new kinesis.Stream(this, 'TransferExpiryStream', {
+      streamName: `transfer-expiry-stream-${config.envName}`,
+      retentionPeriod: Duration.hours(96),
+      streamMode: kinesis.StreamMode.PROVISIONED,
+      shardCount: 1,
+      ...(props.kmsKey
+        ? { encryption: kinesis.StreamEncryption.KMS, encryptionKey: props.kmsKey }
+        : {}),
+    });
 
     if (kinesisConfig.crossAccount.producerRoleArns.length > 0) {
       this.kinesisStream.addToResourcePolicy(
@@ -137,6 +198,9 @@ export class TransactionalEventsKinesisStack extends GDStack {
       );
     }
 
+    addInternalStreamPolicy(this.reminderStream, consumerRoleArns);
+    addInternalStreamPolicy(this.expiryStream, consumerRoleArns);
+
     new ssm.StringParameter(this, 'StreamArnParameter', {
       parameterName: `/transactional-events/kinesis/${config.envName}/stream-arn`,
       stringValue: this.kinesisStream.streamArn,
@@ -148,6 +212,34 @@ export class TransactionalEventsKinesisStack extends GDStack {
       parameterName: `/transactional-events/kinesis/${config.envName}/stream-name`,
       stringValue: this.kinesisStream.streamName,
       description: 'Transactional Events Kinesis Stream Name',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, 'ReminderStreamNameParameter', {
+      parameterName: `/transactional-events/kinesis/${config.envName}/reminder-stream-name`,
+      stringValue: this.reminderStream.streamName,
+      description: 'Transfer Reminder Kinesis Stream Name',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, 'ReminderStreamArnParameter', {
+      parameterName: `/transactional-events/kinesis/${config.envName}/reminder-stream-arn`,
+      stringValue: this.reminderStream.streamArn,
+      description: 'Transfer Reminder Kinesis Stream ARN',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, 'ExpiryStreamNameParameter', {
+      parameterName: `/transactional-events/kinesis/${config.envName}/expiry-stream-name`,
+      stringValue: this.expiryStream.streamName,
+      description: 'Transfer Expiry Kinesis Stream Name',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, 'ExpiryStreamArnParameter', {
+      parameterName: `/transactional-events/kinesis/${config.envName}/expiry-stream-arn`,
+      stringValue: this.expiryStream.streamArn,
+      description: 'Transfer Expiry Kinesis Stream ARN',
       tier: ssm.ParameterTier.STANDARD,
     });
 
@@ -178,6 +270,30 @@ export class TransactionalEventsKinesisStack extends GDStack {
     new CfnOutput(this, 'KinesisEncryptionEnabled', {
       value: (props.kmsKey !== undefined).toString(),
       description: 'Whether KMS encryption is enabled',
+    });
+
+    new CfnOutput(this, 'ReminderStreamName', {
+      value: this.reminderStream.streamName,
+      description: 'Transfer Reminder Kinesis Stream Name (72h retention, 1 shard)',
+      exportName: `${config.envName}-transfer-reminder-stream-name`,
+    });
+
+    new CfnOutput(this, 'ReminderStreamArn', {
+      value: this.reminderStream.streamArn,
+      description: 'Transfer Reminder Kinesis Stream ARN',
+      exportName: `${config.envName}-transfer-reminder-stream-arn`,
+    });
+
+    new CfnOutput(this, 'ExpiryStreamName', {
+      value: this.expiryStream.streamName,
+      description: 'Transfer Expiry Kinesis Stream Name (96h retention, 1 shard)',
+      exportName: `${config.envName}-transfer-expiry-stream-name`,
+    });
+
+    new CfnOutput(this, 'ExpiryStreamArn', {
+      value: this.expiryStream.streamArn,
+      description: 'Transfer Expiry Kinesis Stream ARN',
+      exportName: `${config.envName}-transfer-expiry-stream-arn`,
     });
 
     if (kinesisConfig.crossAccount.producerRoleArns.length > 0) {

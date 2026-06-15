@@ -1,7 +1,8 @@
+import { putExpiryRecord, putReminderRecord } from '../clients/deferred-kinesis.js';
 import { getApp, getAppCount, getPublishedAppCount, getTransferMetadata } from '../clients/mgmt.js';
 import { sendMessage } from '../clients/messaging.js';
 import { getCustomer } from '../clients/pie.js';
-import { getTemplateConfig, isServiceEnabled, type TemplateConfig } from '../clients/switchboard.js';
+import { getTemplateConfig, isServiceEnabled, type GuardName, type TemplateConfig } from '../clients/switchboard.js';
 import { config } from '../config.js';
 import { extract, type ExtractedEvent } from '../extractor/index.js';
 import { logger } from '../logger.js';
@@ -16,10 +17,8 @@ interface ResolverContext {
 
 type Resolver = (ctx: ResolverContext) => Promise<string | null>;
 
-/**
- * Registry mapping placeholder names (the part between ## markers) to resolver functions.
- * Add a new entry here to support a new placeholder from Switchboard — no other changes needed.
- */
+/** Maps ##key## placeholder names to resolver functions. Add an entry here to support a new
+ * Switchboard placeholder — no other changes needed. */
 const RESOLVERS: Record<string, Resolver> = {
   app_name: async ({ appId }) => {
     if (!appId) {
@@ -97,13 +96,8 @@ function parsePlaceholder(value: string): string | null {
   return PLACEHOLDER_RE.exec(value)?.[1] ?? null;
 }
 
-/**
- * Resolves all substitution values that contain ##key## placeholders.
- * Runs all resolutions in parallel.
- *
- * Returns null if any required placeholder could not be resolved
- * (signals the caller to skip the event).
- */
+/** Resolves ##key## placeholders in substitutionValues in parallel.
+ * Returns null if any required placeholder cannot be resolved (caller should skip). */
 async function resolveSubstitutions(
   substitutionValues: Record<string, string>,
   ctx: ResolverContext,
@@ -145,14 +139,8 @@ async function resolveSubstitutions(
   return result;
 }
 
-/**
- * Resolves the customerId to use when dispatching the email for a given template.
- * - 'event_customer' (default): use the event's customerId (the transfer initiator).
- * - 'transfer_target': use the transfer's targetCustomerId (the invited recipient).
- *
- * Returns null if the target customer cannot be determined (e.g. transfer not found),
- * which causes the caller to skip that template.
- */
+/** Resolves the customerId to dispatch the email to based on templateConfig.target.
+ * Returns null when the target cannot be determined (caller skips the template). */
 async function resolveTargetCustomerId(
   templateConfig: TemplateConfig,
   ctx: ResolverContext,
@@ -232,23 +220,41 @@ async function evaluateGuard(guard: string, ctx: ResolverContext): Promise<boole
     return passed;
   }
 
+  if (guard === 'for_tla') {
+    const customer = await getCustomer(ctx.customerId);
+    const passed = customer.shopperId.length === 3;
+    logger.info('processor.guard.for_tla', {
+      customerId: ctx.customerId,
+      appId: ctx.appId,
+      shopperId: customer.shopperId,
+      passed,
+    });
+    return passed;
+  }
+
+  if (guard === 'transfer_pending') {
+    if (!ctx.appId) {
+      logger.error('processor.guard.transfer_pending.no_appId', { customerId: ctx.customerId });
+      return false;
+    }
+    const transfer = await getTransferMetadata(ctx.appId, ctx.customerId);
+    const passed = transfer.status === 'initiated' || transfer.status === 'expired';
+    logger.info('processor.guard.transfer_pending', {
+      customerId: ctx.customerId,
+      appId: ctx.appId,
+      transferStatus: transfer.status,
+      passed,
+    });
+    return passed;
+  }
+
   logger.error('processor.guard.unknown', { guard, ...ctx });
   return false;
 }
 
-/**
- * Processes a single raw Kinesis event through the full notification pipeline.
- *
- * An event may trigger multiple emails (e.g. one to the sender, one to the recipient).
- * Each template is processed sequentially; individual templates are skipped when their
- * substitutions or target customer cannot be resolved, without aborting the others.
- *
- * Returns 'skipped' when the event is missing required fields, has no registered templates,
- * or all templates were skipped.
- * Returns 'sent' when at least one email was dispatched.
- * Throws on unexpected errors — callers should catch and log.
- */
-export async function processEvent(raw: unknown): Promise<'sent' | 'skipped'> {
+/** Processes a raw Kinesis event through the full notification pipeline: template lookup,
+ * guard evaluation, substitution resolution, and email dispatch. Returns 'sent' or 'skipped'. */
+export async function processEvent(raw: unknown, requiredGuard?: GuardName): Promise<'sent' | 'skipped'> {
   const extracted: ExtractedEvent | null = extract(raw);
   if (!extracted) {
     logger.info('processor.event.skipped', { reason: 'missing_fields' });
@@ -271,6 +277,15 @@ export async function processEvent(raw: unknown): Promise<'sent' | 'skipped'> {
       return 'skipped';
     }
     logger.info('processor.event.tla_allowed', { eid, customerId, shopperId: customer.shopperId });
+  }
+
+  // Deferred-stream callers pass a requiredGuard that is enforced regardless of Switchboard config,
+  // ensuring transfer status is always checked even if the template config omits the guard.
+  if (requiredGuard) {
+    if (!await evaluateGuard(requiredGuard, { customerId, appId })) {
+      logger.info('processor.event.skipped', { reason: 'required_guard_failed', requiredGuard, eid, customerId, appId });
+      return 'skipped';
+    }
   }
 
   const templateConfigs = getTemplateConfig(eid);
@@ -347,6 +362,24 @@ export async function processEvent(raw: unknown): Promise<'sent' | 'skipped'> {
         error: err instanceof Error ? err.message : String(err),
         stack: err instanceof Error ? err.stack : undefined,
       });
+    }
+  }
+
+  if (eid === 'appbuilder.apps.transfer.initiate_success.click' && appId) {
+    const results = await Promise.allSettled([
+      putReminderRecord(appId, customerId),
+      putExpiryRecord(appId, customerId),
+    ]);
+    for (const [label, result] of [['reminder', results[0]], ['expiry', results[1]]] as const) {
+      if (result.status === 'rejected') {
+        logger.error('processor.event.deferred_put_failed', {
+          eid,
+          appId,
+          customerId,
+          stream: label,
+          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+        });
+      }
     }
   }
 

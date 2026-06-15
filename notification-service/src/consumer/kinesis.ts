@@ -15,11 +15,8 @@ const MAX_RECORDS_PER_POLL = 100;
 const MAX_BACKOFF_MS = 60_000;
 const BACKOFF_BASE_MS = 500;
 
-/**
- * Errors that indicate a permanent infrastructure failure (revoked IAM, KMS key
- * disabled/deleted, etc.). Retrying is pointless — exit so ECS can restart the
- * container and surface the alarm via its health-check / restart-count metrics.
- */
+/** Permanent infrastructure errors (revoked IAM, KMS issues). Retrying is pointless — exit so
+ * ECS restarts the container and surfaces the alarm via health-check metrics. */
 const PROCESS_FATAL_ERROR_NAMES = new Set([
   'AccessDeniedException',
   'KMSAccessDeniedException',
@@ -29,11 +26,8 @@ const PROCESS_FATAL_ERROR_NAMES = new Set([
   'KMSOptInRequired',
 ]);
 
-/**
- * Errors that are fatal for a single shard but not for the process. The shard
- * loop exits cleanly; the supervisor will re-list shards on the next tick and
- * start consumers for any valid replacement shards.
- */
+/** Errors fatal to one shard but not the process. The shard loop exits; the supervisor
+ * re-lists shards on the next tick and starts consumers for replacement shards. */
 const SHARD_FATAL_ERROR_NAMES = new Set([
   'ResourceNotFoundException',
   'InvalidArgumentException',

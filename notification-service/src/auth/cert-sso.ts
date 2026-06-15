@@ -69,7 +69,6 @@ export function clearCertSsoCache(): void {
   logger.debug('cert-sso.token.cache_cleared');
   cache.token = '';
   cache.expiresAt = 0;
-  // Intentionally leave refreshPromise intact: if a refresh is already in-flight,
-  // nulling it here breaks the single-flight invariant — concurrent callers would
-  // each start their own refresh instead of coalescing onto the existing one.
+  // Intentionally leave refreshPromise intact — nulling it would break the single-flight invariant,
+  // causing concurrent callers to each start a new refresh instead of coalescing.
 }

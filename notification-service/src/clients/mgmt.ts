@@ -126,11 +126,8 @@ async function fetchCustomerTree(customerId: string): Promise<CustomerTreeRespon
   return res.json() as Promise<CustomerTreeResponse>;
 }
 
-/**
- * Returns the number of published apps for the given customer by querying the
- * customer tree endpoint. Used to determine whether a publish event is the
- * customer's first ever published app.
- */
+/** Returns the number of published apps for the given customer via the customer tree endpoint.
+ * Used to determine whether a publish event is the customer's first published app. */
 export async function getPublishedAppCount(customerId: string): Promise<number> {
   logger.info('mgmt.getPublishedAppCount.start', { customerId });
   const tree = await fetchCustomerTree(customerId);

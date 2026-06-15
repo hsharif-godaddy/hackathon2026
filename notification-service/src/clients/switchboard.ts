@@ -3,30 +3,17 @@ import { destroyAllClients, getClient, startClient } from '@switchboard/client';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 
-export type GuardName = 'first_app' | 'first_published_app' | 'no_published_app';
+export type GuardName = 'first_app' | 'first_published_app' | 'for_tla' | 'no_published_app' | 'transfer_pending';
 
 export interface TemplateConfig {
   templateNamespaceKey: string;
   templateTypeKey: string;
   substitutionValues?: Record<string, string>;
-  /**
-   * Controls which customerId is used when dispatching the email.
-   * - 'event_customer' (default): send to the customerId from the Kinesis event.
-   * - 'transfer_target': event customerId = sourceCustomerId; look up transfer to send to targetCustomerId.
-   *   Falls back to event customerId when it is already the targetCustomerId (accept events).
-   * - 'transfer_source': event customerId = targetCustomerId; look up transfer to send to sourceCustomerId.
-   */
+  /** Controls which customerId the email is dispatched to: 'event_customer' (default),
+   * 'transfer_target' (looks up targetCustomerId), or 'transfer_source' (looks up sourceCustomerId). */
   target?: 'event_customer' | 'transfer_target' | 'transfer_source';
-  /**
-   * Optional guard(s) that must ALL pass before the email is sent.
-   * Accepts a single guard name or an array; all guards must pass (AND logic).
-   * - 'first_published_app': only send if this is the customer's first published app
-   *   (published app count == 1 at time of event).
-   * - 'no_published_app': only send if the customer has no published apps yet
-   *   (published app count == 0 at time of event).
-   * - 'first_app': only send if the customer has at most 1 app total (published or not).
-   *   Used to welcome new users on their first app creation.
-   */
+  /** Optional guard(s) — all must pass (AND logic) before the email is sent. Accepts a single
+   * name or an array. Each guard is evaluated live against mgmt-airo at send time. */
   guard?: GuardName | GuardName[];
 }
 
@@ -88,12 +75,8 @@ export function isServiceEnabled(): boolean {
   );
 }
 
-/**
- * Returns the template configs for the given eid by looking them up in the
- * `appbuilder-email-template-mapping` setting cached locally by the SDK.
- * Supports both a single TemplateConfig object and an array of TemplateConfig objects.
- * Returns null when the eid has no registered mapping.
- */
+/** Returns template configs for the given eid from the cached Switchboard mapping.
+ * Returns null when the eid has no registered mapping. */
 export function getTemplateConfig(eid: string): TemplateConfig[] | null {
   const mapping = getClient().getValue<TemplateMapping>(
     config.SWITCHBOARD_APP,
