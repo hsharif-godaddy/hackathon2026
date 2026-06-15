@@ -1419,7 +1419,7 @@ function DevelopPageContent() {
               <PostPublishGoLiveModal appId={appId} />
 
               {/* Content area - takes remaining space after banner */}
-              <div className="flex-1 relative min-h-0">
+              <div className="flex-1 relative min-h-0 isolate">
                 {/* Preview/Code View */}
                 <div
                   id="preview-pane-container"
