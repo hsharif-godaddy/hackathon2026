@@ -74,6 +74,27 @@ describe('SEO generation eval (static prompt assertions)', () => {
       expect(primerLower).toContain('authoritative business identity');
     });
 
+    it('RUBICON-343: homepage emits the WebSite/Organization/WebPage baseline @graph with dates', () => {
+      // Failure prevented: agent emits a single fitting type instead of the
+      // required universal baseline triad on the homepage.
+      expect(primer).toContain('@graph');
+      expect(primer).toContain('WebSite');
+      expect(primer).toContain('WebPage');
+      expect(primer).toContain('Organization');
+      expect(primer).toContain('datePublished');
+      expect(primer).toContain('dateModified');
+      expect(primerLower).toContain('only when the brief gives a real location');
+    });
+
+    it('RUBICON-344: new pages use a page-purpose type and reference the site Organization', () => {
+      // Failure prevented: sub-pages re-declare Organization or omit the
+      // page-purpose type / entity reference.
+      expect(primer).toContain('AboutPage');
+      expect(primer).toContain('ContactPage');
+      expect(primer).toContain('@id');
+      expect(primerLower).toContain('rather than re-declaring');
+    });
+
     it('AC4: image hygiene attributes are required on every img', () => {
       // Failure prevented: missing width/height (CLS), missing alt
       // (accessibility), missing fetchpriority on LCP (LCP regression).
@@ -109,10 +130,12 @@ describe('SEO generation eval (static prompt assertions)', () => {
     });
   });
 
-  describe('seo skill — unchanged from main', () => {
+  describe('seo skill — identity & auto-load preserved', () => {
     it('keeps the description, whenToUse, and intents identical to main', () => {
-      // No skill-body changes in this PR. Skill auto-load behavior on
-      // new-page tasks matches main verbatim.
+      // Skill identity/auto-load markers are unchanged; only the JSON-LD
+      // schema section is intentionally synced to the triad/@id baseline
+      // (asserted below). The skill is loaded on-demand during develop/SEO
+      // sessions, so its schema guidance must match the always-loaded primer.
       expect(skill).toContain(
         'description: SEO analysis, optimization, and v8 implementation patterns',
       );
@@ -121,6 +144,19 @@ describe('SEO generation eval (static prompt assertions)', () => {
       );
       expect(skill).toContain('# SEO Analysis & Optimization Skill');
       expect(skill).toContain('Implementing SEO in the v8 Template');
+    });
+  });
+
+  describe('seo skill — schema section synced to the triad/@id baseline', () => {
+    it('teaches the homepage WebSite/Organization/WebPage @graph and @id entity references', () => {
+      // Prevents drift from the develop primer: if the skill reverts to the old
+      // single-@type-per-page pattern, the on-demand SEO/audit path would
+      // contradict what the primer generates at create.
+      expect(skill).toContain('@graph');
+      expect(skill).toContain('WebSite');
+      expect(skill).toContain('WebPage');
+      expect(skill).toContain('isPartOf');
+      expect(skill).toContain('rather than re-declaring them');
     });
   });
 

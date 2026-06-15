@@ -524,8 +524,12 @@ export default function AboutPage() {
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'AboutPage',
+    '@id': `${canonicalUrl}#webpage`,
     name: title,
     url: canonicalUrl,
+    // reference the homepage entities by @id — don't re-declare the Organization
+    isPartOf: { '@id': 'https://acme.example/#website' },
+    about: { '@id': 'https://acme.example/#organization' },
   };
 
   return (
@@ -554,12 +558,17 @@ export default function AboutPage() {
 Inject JSON-LD inside `<Helmet>`. Always wrap the object with `JSON.stringify` - never handwrite the JSON string.
 
 ```tsx
+// Homepage: emit ONE @graph with the WebSite + Organization + WebPage baseline,
+// linked by @id. Add a more specific business type (e.g. LocalBusiness) only when
+// the business has a real physical location.
+const site = 'https://acme.example';
 const jsonLd = {
   '@context': 'https://schema.org',
-  '@type': 'Organization',
-  name: 'Acme Consulting',
-  url: 'https://acme.example',
-  logo: 'https://acme.example/logo.png',
+  '@graph': [
+    { '@type': 'WebSite', '@id': `${site}/#website`, name: 'Acme Consulting', url: `${site}/` },
+    { '@type': 'Organization', '@id': `${site}/#organization`, name: 'Acme Consulting', url: `${site}/`, logo: `${site}/logo.png` },
+    { '@type': 'WebPage', '@id': `${site}/#webpage`, url: `${site}/`, isPartOf: { '@id': `${site}/#website` }, about: { '@id': `${site}/#organization` }, datePublished: 'YYYY-MM-DD', dateModified: 'YYYY-MM-DD' }, // dates: real build date, replace the placeholder
+  ],
 };
 
 <Helmet>
@@ -569,19 +578,22 @@ const jsonLd = {
 
 ### Schema types
 
-| @type            | Use on                                                   |
-| ---------------- | -------------------------------------------------------- |
-| `Person`         | Personal portfolio or author pages                       |
-| `Organization`   | Company home page                                        |
-| `WebSite`        | Site root (add `potentialAction` if the site has search) |
-| `Article`        | News or editorial article                                |
-| `BlogPosting`    | Blog post (prefer over `Article` for blogs)              |
-| `Product`        | E-commerce product page                                  |
-| `FAQPage`        | Pages with Q&A content                                   |
-| `LocalBusiness`  | Physical location-based business                         |
-| `BreadcrumbList` | Deep pages - add alongside the page-specific schema      |
+The homepage always emits the `WebSite` + `Organization` + `WebPage` triad shown above (one `@graph`, linked by `@id`). Use this table to pick a more specific business type for the homepage `Organization` when one applies, and the page-purpose `@type` for other pages:
 
-Pick the appropriate `@type` and fill required properties per schema.org. Keep the JSON-LD block minimal and accurate - don't invent data the business doesn't have.
+| @type                        | Use on                                                                  |
+| ---------------------------- | ----------------------------------------------------------------------- |
+| `Organization`               | Homepage business entity (baseline triad; use a subtype below if one fits) |
+| `WebSite`                    | Homepage (baseline triad; add `potentialAction` if the site has search) |
+| `LocalBusiness`              | Homepage business node — only when the business has a real location     |
+| `Person`                     | Personal portfolio or author pages                                      |
+| `Article`                    | News or editorial article                                               |
+| `BlogPosting`                | Blog post (prefer over `Article` for blogs)                             |
+| `Product`                    | E-commerce product page                                                 |
+| `FAQPage`                    | Pages with Q&A content                                                  |
+| `AboutPage` / `ContactPage`  | About / contact routes                                                  |
+| `BreadcrumbList`             | Deep pages - add alongside the page-specific schema                     |
+
+**Other pages** emit their page-purpose `@type` and reference the homepage `Organization`/`WebSite` by `@id` (`isPartOf` / `about`) **rather than re-declaring them**. Fill required properties per schema.org; keep blocks minimal and accurate — don't invent data the business doesn't have (no fabricated phone, address, or hours).
 
 ## 3. Image hygiene
 
