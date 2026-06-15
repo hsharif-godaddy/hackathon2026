@@ -134,7 +134,7 @@ export class BudgetServiceLakeExportStack extends GDStack {
 
     this.exportLambda = new lambda.Function(this, 'ExportLambda', {
       functionName: `${config.envName}-budget-export`,
-      description: 'Daily snapshot of budget-service Postgres tables to S3 (JSONL.gz, Hive-partitioned)',
+      description: 'Daily snapshot of budget-service Postgres tables to S3 (Parquet, Hive-partitioned)',
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: 'app.lambda_handler',
       // Bundle Python deps from a fully self-contained tarball — every
@@ -165,7 +165,7 @@ export class BudgetServiceLakeExportStack extends GDStack {
         },
       }),
       timeout: cdk.Duration.minutes(15),
-      memorySize: 1024,
+      memorySize: 4096,
       role: exportRole,
       logGroup,
       vpc,

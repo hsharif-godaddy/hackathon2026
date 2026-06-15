@@ -61,6 +61,24 @@ TABLE_COLUMNS: dict[str, dict] = {
             ("updated_at", "update_utc_ts"),
         ],
     },
+    "budget_session_cln": {
+        "pg_table": "budget_sessions",
+        "columns": [
+            ("id", "session_id"),
+            ("budget_id", "budget_id"),
+            ("reconciled_at", "reconcile_utc_ts"),
+            ("created_at", "create_utc_ts"),
+            ("updated_at", "update_utc_ts"),
+        ],
+    },
+    "budget_session_report_cln": {
+        "pg_table": "budget_session_reports",
+        "columns": [
+            ("id", "report_id"),
+            ("session_id", "session_id"),
+            ("created_at", "create_utc_ts"),
+        ],
+    },
     "budget_session_report_item_cln": {
         "pg_table": "budget_session_report_items",
         "columns": [
@@ -78,6 +96,17 @@ TABLE_COLUMNS: dict[str, dict] = {
             ("report_item_id", "report_item_id"),
             ("budget_item_id", "budget_item_id"),
             ("credits_used", "credit_used"),
+        ],
+    },
+    "budget_item_credit_ledger_cln": {
+        "pg_table": "budget_item_credit_ledger",
+        "columns": [
+            ("id", "ledger_entry_id"),
+            ("budget_item_id", "budget_item_id"),
+            ("entry_kind", "entry_kind_name"),
+            ("credits_delta", "credit_delta_value"),
+            ("report_item_id", "report_item_id"),
+            ("created_at", "create_utc_ts"),
         ],
     },
 }
