@@ -29,7 +29,7 @@ describe('prompt-tax portfolio suite', () => {
 
   it('builds one scenario per arm', () => {
     expect(scenarios).toHaveLength(PORTFOLIO_ARMS.length);
-    expect(scenarios).toHaveLength(7);
+    expect(scenarios).toHaveLength(2);
   });
 
   it('names every scenario pt-portfolio-<arm> under the prompt-tax suite', () => {
@@ -37,11 +37,6 @@ describe('prompt-tax portfolio suite', () => {
     expect(names).toEqual(
       [
         'pt-portfolio-control',
-        'pt-portfolio-compressed',
-        'pt-portfolio-emotional',
-        'pt-portfolio-persona',
-        'pt-portfolio-generic',
-        'pt-portfolio-haiku',
         'pt-portfolio-blind',
       ].sort(),
     );
@@ -67,24 +62,16 @@ describe('prompt-tax portfolio suite', () => {
     expect(control?.agentProfile).toBeUndefined();
     expect(control?.persona?.name).toBe('standard');
 
-    // Profile-swap arms: agentProfile set, persona stays standard.
-    const profileArms: Record<string, string> = {
-      'pt-portfolio-compressed': 'compressed-develop',
-      'pt-portfolio-emotional': 'emotional-develop',
-      'pt-portfolio-persona': 'persona-develop',
-      'pt-portfolio-generic': 'generic-develop',
-      'pt-portfolio-haiku': 'haiku-develop',
-    };
-    for (const [name, profile] of Object.entries(profileArms)) {
-      const s = byName.get(name);
-      expect(s?.agentProfile).toBe(profile);
-      expect(s?.persona?.name).toBe('standard');
-    }
-
-    // Persona-swap arm: persona changes, no agentProfile.
+    // Persona-swap arm: persona changes, no agentProfile. (The five
+    // develop-agent profile-swap arms were retired with their profiles; see
+    // portfolio-arms.ts. No arm references an agentProfile until one is re-added.)
     const blind = byName.get('pt-portfolio-blind');
     expect(blind?.agentProfile).toBeUndefined();
     expect(blind?.persona?.name).toBe('blind-review');
+
+    // Guard: no surviving arm points at a develop profile (would silently
+    // collapse to control if the profile is absent).
+    expect(scenarios.every((s) => s.agentProfile === undefined)).toBe(true);
   });
 
   it('includes all required evaluators on every arm', () => {
