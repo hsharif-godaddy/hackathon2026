@@ -75,9 +75,6 @@ catalogs:
     '@types/supertest':
       specifier: ^7.2.0
       version: 7.2.0
-    '@types/tar':
-      specifier: ^7.0.87
-      version: 7.0.87
     '@types/ws':
       specifier: ^8.18.1
       version: 8.18.1
@@ -323,9 +320,6 @@ importers:
       '@ai-sdk/mcp':
         specifier: ^1.0.42
         version: 1.0.42(zod@4.4.3)
-      '@ai-sdk/openai':
-        specifier: 'catalog:'
-        version: 3.0.63(zod@4.4.3)
       '@airo/ai-common':
         specifier: workspace:*
         version: link:../packages/ai-common
@@ -380,9 +374,6 @@ importers:
       '@opentelemetry/sdk-node':
         specifier: '>=0.217.0'
         version: 0.217.0(@opentelemetry/api@1.9.1)
-      '@qdrant/js-client-rest':
-        specifier: ^1.17.0
-        version: 1.18.0(typescript@5.9.3)
       '@signals/otel-sdk':
         specifier: ^0.2.2
         version: 0.2.2(@opentelemetry/api@1.9.1)
@@ -392,9 +383,6 @@ importers:
       ai:
         specifier: 'catalog:'
         version: 6.0.177(zod@4.4.3)
-      ai-tokenizer:
-        specifier: 'catalog:'
-        version: 1.0.6(ai@6.0.177(zod@4.4.3))
       archiver:
         specifier: ^7.0.1
         version: 7.0.1
@@ -407,9 +395,6 @@ importers:
       cors:
         specifier: ^2.8.6
         version: 2.8.6
-      diff:
-        specifier: 'catalog:'
-        version: 8.0.4
       elastic-apm-node:
         specifier: ^4.15.0
         version: 4.15.0
@@ -425,9 +410,6 @@ importers:
       gd-auth:
         specifier: 'catalog:'
         version: 1.5.0
-      glob:
-        specifier: '>=10.5.0 <11 || >=11.1.0'
-        version: 13.0.6
       gray-matter:
         specifier: 'catalog:'
         version: 4.0.3
@@ -446,15 +428,6 @@ importers:
       jszip:
         specifier: 'catalog:'
         version: 3.10.1
-      jwt-decode:
-        specifier: 'catalog:'
-        version: 4.0.0
-      magic-string:
-        specifier: 'catalog:'
-        version: 0.30.17
-      minimatch:
-        specifier: ^10.2.5
-        version: 10.2.5
       multer:
         specifier: 'catalog:'
         version: 2.1.1
@@ -470,9 +443,6 @@ importers:
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
-      rsa-pem-from-mod-exp:
-        specifier: ^0.8.6
-        version: 0.8.6
       sharp:
         specifier: ^0.34.5
         version: 0.34.5
@@ -537,9 +507,6 @@ importers:
       '@types/supertest':
         specifier: 'catalog:'
         version: 7.2.0
-      '@types/tar':
-        specifier: 'catalog:'
-        version: 7.0.87
       '@types/ws':
         specifier: 'catalog:'
         version: 8.18.1
@@ -5057,16 +5024,6 @@ packages:
       react: 19.1.0
       react-dom: 19.1.0
 
-  '@qdrant/js-client-rest@1.18.0':
-    resolution: {integrity: sha512-/0dqX5uV9chC1DnYSnU4gNMrDqse/pt6hHg3Rqqpl5isH7xl1xSNvffjzBoxycDD79luWn7Ho6Rh/61sOs5DNw==}
-    engines: {node: '>=18.17.0', pnpm: '>=8'}
-    peerDependencies:
-      typescript: '>=4.7'
-
-  '@qdrant/openapi-typescript-fetch@1.2.6':
-    resolution: {integrity: sha512-oQG/FejNpItrxRHoyctYvT3rwGZOnK4jr3JdppO/c78ktDvkWiPXPHNsrDf33K9sZdRb6PR7gi4noIapu5q4HA==}
-    engines: {node: '>=18.0.0', pnpm: '>=8'}
-
   '@radix-ui/primitive@1.1.3':
     resolution: {integrity: sha512-JTF99U/6XIjCBo0wqkU5sK10glYe27MRRsfwoiq5zzOEZLHU3A3KCMa5X/azekYRCJ0HlwI0crAXS/5dEHTzDg==}
 
@@ -6404,10 +6361,6 @@ packages:
 
   '@types/supertest@7.2.0':
     resolution: {integrity: sha512-uh2Lv57xvggst6lCqNdFAmDSvoMG7M/HDtX4iUCquxQ5EGPtaPM5PL5Hmi7LCvOG8db7YaCPNJEeoI8s/WzIQw==}
-
-  '@types/tar@7.0.87':
-    resolution: {integrity: sha512-3IxNBV8LeY5oi2ZFpvAhOtW1+mHswkzM7BuisVrwJgPv67GBO2rkLPQlEKtzfHuLdhDDczhkCZeT+RuizMay4A==}
-    deprecated: This is a stub types definition. tar provides its own type definitions, so you do not need this installed.
 
   '@types/tedious@4.0.14':
     resolution: {integrity: sha512-KHPsfX/FoVbUGbyYvk1q9MMQHLPeRZhRJZdO45Q4YjvFkv4hMNghCWTvy7rdKessBsmtz4euWCWAB6/tVpI1Iw==}
@@ -12295,9 +12248,6 @@ packages:
   rsa-pem-from-mod-exp@0.8.4:
     resolution: {integrity: sha512-tIU9uofdormBO48by/1Q7XT61eUsK/Ucz6I7/yHslLeQVK+dKWMHVh59eqosvPvDP7U0v71MX9KCL/dNFK5uyA==}
 
-  rsa-pem-from-mod-exp@0.8.6:
-    resolution: {integrity: sha512-c5ouQkOvGHF1qomUUDJGFcXsomeSO2gbEs6hVhMAtlkE1CuaZase/WzoaKFG/EZQuNmq6pw/EMCeEnDvOgCJYQ==}
-
   rslog@1.3.2:
     resolution: {integrity: sha512-1YyYXBvN0a2b1MSIDLwDTqqgjDzRKxUg/S/+KO6EAgbtZW1B3fdLHAMhEEtvk1patJYMqcRvlp3HQwnxj7AdGQ==}
 
@@ -18007,14 +17957,6 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  '@qdrant/js-client-rest@1.18.0(typescript@5.9.3)':
-    dependencies:
-      '@qdrant/openapi-typescript-fetch': 1.2.6
-      typescript: 5.9.3
-      undici: 6.25.0
-
-  '@qdrant/openapi-typescript-fetch@1.2.6': {}
-
   '@radix-ui/primitive@1.1.3': {}
 
   '@radix-ui/react-accordion@1.2.12(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
@@ -19382,10 +19324,6 @@ snapshots:
     dependencies:
       '@types/methods': 1.1.4
       '@types/superagent': 8.1.9
-
-  '@types/tar@7.0.87':
-    dependencies:
-      tar: 7.5.15
 
   '@types/tedious@4.0.14':
     dependencies:
@@ -26688,8 +26626,6 @@ snapshots:
   rrweb-cssom@0.8.0: {}
 
   rsa-pem-from-mod-exp@0.8.4: {}
-
-  rsa-pem-from-mod-exp@0.8.6: {}
 
   rslog@1.3.2: {}
 
