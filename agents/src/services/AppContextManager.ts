@@ -439,9 +439,8 @@ Note: This is the current project context including dependencies and design syst
       return null;
     }
 
-    const timestamp = new Date().toISOString();
     let secretsContext = `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-    secretsContext += `🔐 LIVE SECRETS STATE - REFRESHED ON THIS MESSAGE (${timestamp})\n`;
+    secretsContext += `🔐 LIVE SECRETS STATE - REFRESHED ON THIS MESSAGE\n`;
     secretsContext += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
     secretsContext += "⚠️  IMPORTANT: This list is regenerated fresh on EVERY message you receive.\n";
     secretsContext += "⚠️  This is NOT a snapshot from session start - it's the CURRENT state RIGHT NOW.\n";

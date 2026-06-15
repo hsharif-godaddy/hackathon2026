@@ -79,9 +79,17 @@ export interface AssembleMessagesInput {
 }
 
 export interface AssembleMessagesResult {
-  /** Before-history context messages — passed as the `context` param to streamGenerate. */
+  /** Before-history context messages — passed (with afterHistory) as the `context` param to streamGenerate. */
   beforeHistory: Array<{ role: string; content: unknown; cachePoint?: { type: 'ephemeral' } }>
-  /** Assembled messages array — history + preflight + afterHistory + extraAfterHistory. */
+  /**
+   * After-history context (volatile: secrets, media slots, RAG, TODO, memory).
+   * Tagged insertionOrder:'after_history' so the LLM pipeline places it AFTER the
+   * cache breakpoint. MUST be routed through the `context` param (not `messages`),
+   * otherwise it lands in the cached conversation prefix and invalidates the cache
+   * every turn (see context-normalization.defaultConvertToLlm).
+   */
+  afterHistory: Array<{ role: string; content: unknown; cachePoint?: { type: 'ephemeral' }; insertionOrder: 'after_history' }>
+  /** Assembled conversation array — history + preflight only (the stable, cacheable prefix). */
   messages: Array<{ role: string; content: unknown; cachePoint?: { type: 'ephemeral' }; tool_calls?: unknown[] }>
   /** Leading tool messages that were stripped (includes tool_call_id for logging). */
   strippedOrphanTools: Array<{ role: string; tool_call_id?: string; [k: string]: unknown }>
@@ -91,25 +99,32 @@ export interface AssembleMessagesResult {
  * Assemble the final message arrays for an LLM call. Shared between WS and SSE
  * transports to ensure identical message ordering and validation.
  *
- * Order: [...conversationHistory, ...preflightMessages, ...afterHistoryContext, ...extraAfterHistory]
- * Then: strip any leading orphan tool messages.
+ * `messages` holds ONLY the stable conversation prefix (history + preflight) so the
+ * cache breakpoint lands on the last history message. All volatile after-history
+ * content (context after_history + extraAfterHistory) is returned separately in
+ * `afterHistory`, tagged so the pipeline appends it AFTER the breakpoint. Final wire
+ * order (reconstructed downstream) stays: before, history, preflight, after, user.
  */
 export function assembleMessages(input: AssembleMessagesInput): AssembleMessagesResult {
   const { contextMessages, conversationHistory, extraAfterHistory, preflightMessages, currentPrompt } = input
 
   const beforeHistory: AssembleMessagesResult['beforeHistory'] = []
-  const afterHistoryContext: Array<{ role: string; content: unknown; cachePoint?: { type: 'ephemeral' } }> = []
+  const afterHistory: AssembleMessagesResult['afterHistory'] = []
 
   for (const msg of contextMessages) {
-    const converted = {
-      role: msg.role,
-      content: msg.content,
-      ...(msg.cachePoint && { cachePoint: msg.cachePoint }),
-    }
     if (msg.insertionOrder === 'before_history') {
-      beforeHistory.push(converted)
+      beforeHistory.push({
+        role: msg.role,
+        content: msg.content,
+        ...(msg.cachePoint && { cachePoint: msg.cachePoint }),
+      })
     } else {
-      afterHistoryContext.push(converted)
+      afterHistory.push({
+        role: msg.role,
+        content: msg.content,
+        ...(msg.cachePoint && { cachePoint: msg.cachePoint }),
+        insertionOrder: 'after_history',
+      })
     }
   }
 
@@ -131,13 +146,20 @@ export function assembleMessages(input: AssembleMessagesInput): AssembleMessages
     messages.push(...preflightMessages)
   }
 
-  messages.push(...afterHistoryContext)
-
+  // extraAfterHistory is volatile (RAG/TODO/memory) — keep it out of the cached
+  // prefix by appending after the after_history context, in the same group.
   if (extraAfterHistory && extraAfterHistory.length > 0) {
-    messages.push(...extraAfterHistory)
+    for (const msg of extraAfterHistory) {
+      afterHistory.push({
+        role: msg.role,
+        content: msg.content,
+        ...(msg.cachePoint && { cachePoint: msg.cachePoint }),
+        insertionOrder: 'after_history',
+      })
+    }
   }
 
   const strippedOrphanTools = stripLeadingOrphanTools(messages)
 
-  return { beforeHistory, messages, strippedOrphanTools: strippedOrphanTools }
+  return { beforeHistory, afterHistory, messages, strippedOrphanTools }
 }

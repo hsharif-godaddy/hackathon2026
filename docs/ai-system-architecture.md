@@ -322,15 +322,16 @@ agents/src/prompts/
   fragments/             Composable fragments
 ```
 
-**Assembly flow** in `BaseAgent` (`agents/src/base/base-agent.ts`):
+**System prompt flow** in ai-lib agents, for example `agents/src/agents/develop-agent.ts`:
 
 ```mermaid
 flowchart LR
-    Base["Load base prompt<br/>{agent-id}.md"] --> Template["Insert template description<br/>at {{TEMPLATE_DESCRIPTION}}"]
-    Template --> Fragments["Append fragments<br/>from promptComposition config"]
-    Fragments --> Customize["customizeSystemPrompt()<br/>(agent-specific overrides)"]
-    Customize --> Final["Final system prompt"]
+    Base["Load agent prompt fragments"] --> Shared["Append shared fragments<br/>and model behavior"]
+    Shared --> Skills["Append static skill guidance"]
+    Skills --> Final["Final ToolLoopAgent system prompt"]
 ```
+
+Template descriptions are intentionally injected separately as `before_history` context by `AILibContextManager`, not embedded in the ToolLoopAgent system prompt.
 
 ### Dynamic Context Injection
 
@@ -361,32 +362,35 @@ Anthropic caches message prefixes - the contiguous token sequence from the start
 ```
 +------------------------------------------------------------------+
 | Segment 1: System Prompt (system role)            CACHE POINT 1  |
-|   Base agent instructions + template description                 |
+|   Base agent instructions + stable prompt fragments              |
 +------------------------------------------------------------------+
-| Segment 2: Memory Summary (user role)             CACHE POINT 2  |
+| Segment 2: Template Description (system role)                    |
+|   Per-template context, insertionOrder: before_history           |
++------------------------------------------------------------------+
+| Segment 3: Memory Summary (user role)             CACHE POINT 2  |
 |   Summarized conversation history                                |
 +------------------------------------------------------------------+
-| Segment 3: Conversation History                                  |
+| Segment 4: Conversation History                                  |
 |   Previous user/assistant/tool exchanges                         |
 |   - Intermediate stepping stone              CACHE POINT 3       |
 |   - Last history message                     CACHE POINT 4       |
 |                                                                  |
 | ================ CACHE BOUNDARY ================================ |
 +------------------------------------------------------------------+
-| Segment 4: App Context (user role)                               |
+| Segment 5: App Context (user role)                               |
 |   Package info, color scheme, secrets, media slots               |
 +------------------------------------------------------------------+
-| Segment 5: KnowB Results (user role)                             |
+| Segment 6: KnowB Results (user role)                             |
 +------------------------------------------------------------------+
-| Segment 6: Todo Context (user role)                              |
+| Segment 7: Todo Context (user role)                              |
 +------------------------------------------------------------------+
-| Segment 7: Dynamic Data (user role)                              |
+| Segment 8: Dynamic Data (user role)                              |
 +------------------------------------------------------------------+
-| Segment 8: Current User Message                                  |
+| Segment 9: Current User Message                                  |
 +------------------------------------------------------------------+
 ```
 
-Everything above the cache boundary forms the stable prefix. Everything below can change freely without invalidating the cache.
+Everything above the cache boundary forms the stable prefix. Template description participates in that prefix but does not consume a separate cache breakpoint. Everything below can change freely without invalidating the cache.
 
 ### Breakpoint Strategy
 

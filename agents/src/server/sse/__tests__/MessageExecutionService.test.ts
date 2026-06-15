@@ -667,11 +667,26 @@ describe('MessageExecutionService', () => {
         streamGenerate,
         getName: vi.fn().mockReturnValue('AI Developer'),
       })
+      deps.contextManager.loadContextMessages.mockResolvedValue({
+        contextMessages: [
+          { role: 'system', content: 'System prompt', insertionOrder: 'before_history', cachePoint: { type: 'ephemeral' } },
+          { role: 'user', content: 'App context', insertionOrder: 'after_history' },
+        ],
+        formattedContexts: [],
+      })
       service = new MessageExecutionService(deps as any)
 
       await service.execute(DEFAULT_PARAMS)
 
       expect(streamGenerate).toHaveBeenCalledTimes(2)
+      const retryOpts = streamGenerate.mock.calls[1]![1]
+      expect(retryOpts.context).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'system', content: 'System prompt' }),
+        expect.objectContaining({ content: 'App context', insertionOrder: 'after_history' }),
+      ]))
+      expect(retryOpts.messages ?? []).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ content: 'App context' }),
+      ]))
       expect(deps.eventChannel.publish).toHaveBeenCalledWith(
         'conv_1',
         expect.objectContaining({ type: 'step_start' })
@@ -1906,7 +1921,7 @@ describe('MessageExecutionService', () => {
   })
 
   describe('context message ordering', () => {
-    it('splits before_history and after_history context', async () => {
+    it('routes both before_history and after_history through context (after_history tagged), keeping messages free of volatile content', async () => {
       deps.contextManager.loadContextMessages.mockResolvedValue({
         contextMessages: [
           { role: 'system', content: 'System prompt', insertionOrder: 'before_history', cachePoint: { type: 'ephemeral' } },
@@ -1919,11 +1934,17 @@ describe('MessageExecutionService', () => {
 
       const call = deps.getAgent().streamGenerate.mock.calls[0]
       const opts = call[1]
+      // before_history rides context first, untagged (defaults to before in the pipeline)
       expect(opts.context).toEqual(expect.arrayContaining([
         expect.objectContaining({ role: 'system', content: 'System prompt' })
       ]))
       expect(opts.context[0]).not.toHaveProperty('insertionOrder')
-      expect(opts.messages).toEqual(expect.arrayContaining([
+      // after_history also rides context, tagged so the pipeline places it past the cache breakpoint
+      expect(opts.context).toEqual(expect.arrayContaining([
+        expect.objectContaining({ content: 'App context', insertionOrder: 'after_history' })
+      ]))
+      // volatile after_history must NOT leak into the cacheable conversation array
+      expect(opts.messages ?? []).not.toEqual(expect.arrayContaining([
         expect.objectContaining({ content: 'App context' })
       ]))
     })

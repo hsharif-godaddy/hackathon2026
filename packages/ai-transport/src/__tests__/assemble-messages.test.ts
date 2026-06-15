@@ -46,7 +46,7 @@ describe('stripLeadingOrphanTools', () => {
 })
 
 describe('assembleMessages', () => {
-  it('splits context by insertionOrder', () => {
+  it('splits context by insertionOrder: before→beforeHistory, after→afterHistory (NOT messages)', () => {
     const result = assembleMessages({
       contextMessages: [
         { role: 'user', content: 'before', insertionOrder: 'before_history' },
@@ -56,11 +56,14 @@ describe('assembleMessages', () => {
     })
     expect(result.beforeHistory).toHaveLength(1)
     expect(result.beforeHistory[0]!.content).toBe('before')
-    expect(result.messages).toHaveLength(1)
-    expect(result.messages[0]!.content).toBe('after')
+    // after_history must stay OUT of the cacheable conversation array
+    expect(result.messages).toHaveLength(0)
+    expect(result.afterHistory).toHaveLength(1)
+    expect(result.afterHistory[0]!.content).toBe('after')
+    expect(result.afterHistory[0]!.insertionOrder).toBe('after_history')
   })
 
-  it('treats missing insertionOrder as after_history', () => {
+  it('treats missing insertionOrder as after_history (routed to afterHistory, tagged)', () => {
     const result = assembleMessages({
       contextMessages: [
         { role: 'user', content: 'no-order' },
@@ -68,8 +71,10 @@ describe('assembleMessages', () => {
       conversationHistory: [],
     })
     expect(result.beforeHistory).toHaveLength(0)
-    expect(result.messages).toHaveLength(1)
-    expect(result.messages[0]!.content).toBe('no-order')
+    expect(result.messages).toHaveLength(0)
+    expect(result.afterHistory).toHaveLength(1)
+    expect(result.afterHistory[0]!.content).toBe('no-order')
+    expect(result.afterHistory[0]!.insertionOrder).toBe('after_history')
   })
 
   it('preserves cachePoint on context messages', () => {
@@ -97,7 +102,7 @@ describe('assembleMessages', () => {
     expect(result.messages[2]!.tool_calls).toBeUndefined()
   })
 
-  it('orders: history, preflight, afterHistory, extraAfterHistory', () => {
+  it('messages holds only the stable prefix (history + preflight); volatile content moves to afterHistory', () => {
     const result = assembleMessages({
       contextMessages: [
         { role: 'user', content: 'after-ctx', insertionOrder: 'after_history' },
@@ -112,9 +117,41 @@ describe('assembleMessages', () => {
         { role: 'user', content: 'rag-context' },
       ],
     })
-    expect(result.messages.map(m => m.content)).toEqual([
-      'history', 'preflight', 'after-ctx', 'rag-context',
-    ])
+    // Cacheable prefix only
+    expect(result.messages.map(m => m.content)).toEqual(['history', 'preflight'])
+    // Volatile tail, in order: context after_history then extraAfterHistory, all tagged
+    expect(result.afterHistory.map(m => m.content)).toEqual(['after-ctx', 'rag-context'])
+    expect(result.afterHistory.every(m => m.insertionOrder === 'after_history')).toBe(true)
+  })
+
+  it('preserves cachePoint when routing extraAfterHistory into afterHistory', () => {
+    const result = assembleMessages({
+      contextMessages: [],
+      conversationHistory: [{ role: 'user', content: 'history' }],
+      extraAfterHistory: [
+        { role: 'user', content: 'rag', cachePoint: { type: 'ephemeral' } },
+      ],
+    })
+    expect(result.afterHistory).toHaveLength(1)
+    expect(result.afterHistory[0]!.cachePoint).toEqual({ type: 'ephemeral' })
+    expect(result.afterHistory[0]!.insertionOrder).toBe('after_history')
+  })
+
+  it('preserves cachePoint when routing after_history context into afterHistory', () => {
+    const result = assembleMessages({
+      contextMessages: [
+        { role: 'user', content: 'volatile ctx', insertionOrder: 'after_history', cachePoint: { type: 'ephemeral' } },
+      ],
+      conversationHistory: [{ role: 'user', content: 'history' }],
+    })
+
+    expect(result.messages.map(m => m.content)).toEqual(['history'])
+    expect(result.afterHistory).toHaveLength(1)
+    expect(result.afterHistory[0]).toEqual(expect.objectContaining({
+      content: 'volatile ctx',
+      cachePoint: { type: 'ephemeral' },
+      insertionOrder: 'after_history',
+    }))
   })
 
   it('strips orphan leading tool messages and returns them', () => {
@@ -146,6 +183,7 @@ describe('assembleMessages', () => {
       conversationHistory: [],
     })
     expect(result.beforeHistory).toHaveLength(0)
+    expect(result.afterHistory).toHaveLength(0)
     expect(result.messages).toHaveLength(0)
     expect(result.strippedOrphanTools).toHaveLength(0)
   })

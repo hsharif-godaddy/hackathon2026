@@ -88,6 +88,7 @@ async function setupServerWithConnection(
     messagePersistence?: any
     messageMiddleware?: any
     getEffectiveAgentMessage?: any
+    contextProvider?: any
   },
   eventName: 'chat' | 'chat_message' = 'chat'
 ): Promise<{ server: WebSocketServer; messageHandler: (data: any) => Promise<void> }> {
@@ -3806,6 +3807,48 @@ describe('WebSocketServer - current-message dedup and first-turn preflight', fun
         'earlier',
         'reply',
       ])
+    } finally {
+      server.close()
+    }
+  })
+
+  it('routes before_history and after_history through context while keeping messages free of volatile content', async () => {
+    const contextProvider = {
+      loadContextMessages: vi.fn().mockResolvedValue([
+        { role: 'system', content: 'System prompt', insertionOrder: 'before_history', cachePoint: { type: 'ephemeral' } },
+        { role: 'user', content: 'App context', insertionOrder: 'after_history' },
+      ]),
+    }
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      contextProvider,
+    })
+
+    try {
+      await messageHandler({
+        message: 'hello',
+        conversationHistory: [
+          { role: 'user', content: 'earlier' },
+          { role: 'assistant', content: 'reply' },
+        ],
+      })
+
+      const [, options] = mockAgent.streamGenerate.mock.calls[0]
+      expect(contextProvider.loadContextMessages).toHaveBeenCalled()
+      expect(options.context).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'system', content: 'System prompt' }),
+        expect.objectContaining({ content: 'App context', insertionOrder: 'after_history' }),
+      ]))
+      expect(options.context[0]).not.toHaveProperty('insertionOrder')
+      expect((options.messages ?? []).map((m: { content: unknown }) => m.content)).toEqual([
+        'earlier',
+        'reply',
+      ])
+      expect(options.messages ?? []).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ content: 'App context' }),
+      ]))
     } finally {
       server.close()
     }

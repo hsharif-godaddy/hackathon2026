@@ -241,8 +241,8 @@ When `POST /:appId/:conversationId/messages` arrives:
 2. **Budget pre-check** - if `budgetServiceEnabled`, check BMS balance (402 on exceeded)
 3. **Persist user message** - save to conversation_messages table
 4. **Load history** - `ConversationHistoryLoader` with 40k token budget, compression strategies, AI SDK formatting
-5. **Load context** - split by `insertionOrder`: `before_history` (system prompts) and `after_history` (app context)
-6. **Assemble messages** - `[conversation history] + [after_history context]` as `messages`, `before_history` as `context`
+5. **Load context** - split by `insertionOrder`: `before_history` (system/template context) and `after_history` (app context, RAG, todos, dynamic data)
+6. **Assemble messages** - `[conversation history]` as `messages`; `before_history + after_history` as `context` so the LLM pipeline places after-history content past the cache breakpoint
 7. **Stream** - `agent.streamGenerate(content, {context, messages, executionContext, abortSignal})`
 8. **Process parts** - `StreamPartProcessor` dispatches to event channel
 9. **Persist response** - accumulated content, segments, tool calls saved to DB

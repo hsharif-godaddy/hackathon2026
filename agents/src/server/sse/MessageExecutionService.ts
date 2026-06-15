@@ -1035,7 +1035,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       preflightMessages: preflightMessages.length > 0 ? preflightMessages : undefined,
       currentPrompt: message,
     })
-    const beforeHistory = assembled.beforeHistory
+    // before_history + after_history both ride the `context` param; the LLM pipeline
+    // re-splits them by insertionOrder, placing after_history past the cache breakpoint.
+    // Only history + preflight go into `messages` (the stable, cacheable prefix).
+    const contextMessages = [...assembled.beforeHistory, ...assembled.afterHistory]
     const messages = assembled.messages
 
     for (const removed of assembled.strippedOrphanTools) {
@@ -1174,7 +1177,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       try {
         return await invocation.runUnder(async () =>
           agent.streamGenerate(retryPrompt, {
-            ...(beforeHistory.length > 0 && { context: beforeHistory }),
+            ...(contextMessages.length > 0 && { context: contextMessages }),
             messages: retryMessages,
             executionContext: executionContextWithTrace,
             ...(processedFiles && processedFiles.length > 0 && { files: processedFiles }),
@@ -1198,7 +1201,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       try {
         streamResult = await invocation.runUnder(async () =>
           agent.streamGenerate(message, {
-            ...(beforeHistory.length > 0 && { context: beforeHistory }),
+            ...(contextMessages.length > 0 && { context: contextMessages }),
             ...(messages.length > 0 && { messages }),
             executionContext: executionContextWithTrace,
             ...(processedFiles && processedFiles.length > 0 && { files: processedFiles }),

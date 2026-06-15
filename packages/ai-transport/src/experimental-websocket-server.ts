@@ -3249,7 +3249,11 @@ export class WebSocketServer {
       }
     }
 
+    // before_history + after_history both ride the `context` param; the LLM pipeline
+    // re-splits them by insertionOrder, placing after_history past the cache breakpoint.
+    // Only history + preflight go into `messages` (the stable, cacheable prefix).
     contextMessages.push(...assembled.beforeHistory as PipelineContextMessage[])
+    contextMessages.push(...assembled.afterHistory as PipelineContextMessage[])
     messages.push(...assembled.messages as ModelMessage[])
 
     this.logger.info('message.assembly.complete', {
