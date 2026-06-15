@@ -114,10 +114,12 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const [open, setOpen] = useState(false);
   const [publishResult, setPublishResult] = useState<'success' | 'failed' | null>(null);
   const [isFixingBuildError, setIsFixingBuildError] = useState(false);
+  const [securityFooterDismissed, setSecurityFooterDismissed] = useState(false);
   const openRef = useRef(false);
   const prevAppIdRef = useRef<string | null>(null);
   const prevPublishingRef = useRef(false);
   const lastHandledPublishPopoverRequestRef = useRef<{ appId: string | null; nonce: number }>({ appId: null, nonce: 0 });
+
   const pathname = usePathname();
   const isDevelopPage = pathname?.includes('/develop');
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
@@ -581,6 +583,8 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     const wasPublishing = prevPublishingRef.current;
     prevPublishingRef.current = !!isPublishingOrDeploying;
 
+    if (!wasPublishing && isPublishingOrDeploying) setSecurityFooterDismissed(false);
+
     const prevBuildErrorDetails = prevBuildErrorDetailsRef.current;
     prevBuildErrorDetailsRef.current = buildErrorDetails;
     const buildErrorDetailsUpdated = prevBuildErrorDetails !== buildErrorDetails;
@@ -737,7 +741,9 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     setOpen(false);
     setActiveChatTab(ChatTab.SETTINGS);
     setActiveSettingsSection(SettingsSection.SECURITY);
-  }, [setOpen, setActiveChatTab, setActiveSettingsSection]);
+    if (currentAppId) setSecurityAnalysisResult(currentAppId, null);
+    setSecurityFooterDismissed(true);
+  }, [setOpen, setActiveChatTab, setActiveSettingsSection, currentAppId, setSecurityAnalysisResult]);
 
   const handleGoLiveInChat = useCallback(() => {
     if (!currentAppId || !isGoLiveFeatureEnabled || isPreLaunchCheckFromPublishDisabled) {
@@ -1066,7 +1072,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
               />
             )}
 
-            {isSecurityScanUiEnabled && (
+            {isSecurityScanUiEnabled && !securityFooterDismissed && (isPublishingOrDeploying || isSecurityAnalysisRunning || securityAnalysisResult !== null) && (
               <>
                 <Separator />
                 <div className='-mx-3 -mb-3 px-3 py-3 bg-intents-ux-boxLowContrast-backgroundColor rounded-b-md flex items-start gap-2'>
