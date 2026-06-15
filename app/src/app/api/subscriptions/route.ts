@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { createCorsOptionsHandler, withCorsHeaders } from '@/lib/cors';
+import { CORS_ROUTES, createCorsOptionsHandler } from '@/lib/cors';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
@@ -11,7 +11,7 @@ import { getPlanFromSubscription } from '@/utils/credits';
 export const dynamic = 'force-dynamic';
 
 // CORS preflight handler
-export const OPTIONS = createCorsOptionsHandler();
+export const OPTIONS = createCorsOptionsHandler(CORS_ROUTES.GET_SUBSCRIPTIONS);
 
 /**
  * GET /api/subscriptions - Get all subscriptions with best subscription selection
@@ -32,12 +32,10 @@ export const GET = withCustomerAuth(async (
   request: NextRequest,
   authContext: CustomerAuthContext
 ): Promise<NextResponse> => {
-  const origin = request.headers.get('origin');
-
   try {
     // JWT required
     if (!authContext.jwt) {
-      return withCorsHeaders(NextResponse.json({ error: 'Authentication token required' }, { status: 401 }), origin);
+      return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
     }
 
     const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
@@ -79,13 +77,10 @@ export const GET = withCustomerAuth(async (
       customerId: authContext.user.customerId
     });
 
-    return withCorsHeaders(NextResponse.json({
+    return NextResponse.json({
       success: true,
-      data: {
-        subscriptions: subscriptionsWithPlan,
-        active: bestSubscription
-      }
-    }), origin);
+      data: { subscriptions: subscriptionsWithPlan, active: bestSubscription },
+    });
 
   } catch (error) {
     // mgmt-airo returns 403 exclusively for unregistered customers ("Customer not
@@ -97,13 +92,7 @@ export const GET = withCustomerAuth(async (
         customerId: authContext.user.customerId,
         errorMessage: error.message,
       });
-      return withCorsHeaders(NextResponse.json({
-        success: true,
-        data: {
-          subscriptions: [],
-          active: null,
-        }
-      }), origin);
+      return NextResponse.json({ success: true, data: { subscriptions: [], active: null } });
     }
 
     const isAuthError = error instanceof AiroHttpError && error.status === 401;
@@ -114,15 +103,14 @@ export const GET = withCustomerAuth(async (
     });
 
     if (error instanceof AiroHttpError) {
-      return withCorsHeaders(NextResponse.json(
-        { error: error.status === 404 ? 'No subscriptions found' : 'Failed to fetch subscriptions' },
+      return NextResponse.json(
+        {
+          error: error.status === 404 ? 'No subscriptions found' : 'Failed to fetch subscriptions',
+        },
         { status: error.status ?? 500 }
-      ), origin);
+      );
     }
 
-    return withCorsHeaders(NextResponse.json(
-      { error: 'Failed to fetch subscriptions' },
-      { status: 500 }
-    ), origin);
+    return NextResponse.json({ error: 'Failed to fetch subscriptions' }, { status: 500 });
   }
-});
+}, { addCorsHeaders: true, corsRoute: CORS_ROUTES.GET_SUBSCRIPTIONS });

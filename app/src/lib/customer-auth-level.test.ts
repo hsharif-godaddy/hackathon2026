@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { isFeatureEnabled } from '@/lib/features';
+import * as cors from './cors';
 
 const mockAuthenticate = vi.fn();
 const mockExtractToken = vi.fn();
@@ -234,6 +235,49 @@ describe('withCustomerAuth level option', () => {
     await wrappedHandler(request);
 
     expect(mockAuthenticate).toHaveBeenCalledWith('test-token', undefined);
+  });
+});
+
+describe('withCustomerAuth addCorsHeaders option', () => {
+  const withCorsHeadersSpy = vi.spyOn(cors, 'withCorsHeaders');
+  const whitelistedOrigin = 'https://start.godaddy.com';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    withCorsHeadersSpy.mockReset();
+  });
+
+  it('should call withCorsHeaders and set CORS headers if addCorsHeaders is true and origin is whitelisted', async () => {
+    const { withCustomerAuth } = await import('./customer-auth');
+    const handler = vi.fn().mockResolvedValue(new Response('ok'));
+
+    const wrappedHandler = withCustomerAuth(handler, { addCorsHeaders: true, corsRoute: 'QUICK_CREATE' });
+    const request = new NextRequest('http://localhost/api/test', {
+      headers: { cookie: 'auth_idp=test-token', origin: whitelistedOrigin }
+    });
+
+    const response = await wrappedHandler(request);
+
+    expect(withCorsHeadersSpy).toHaveBeenCalledExactlyOnceWith(response, whitelistedOrigin, 'QUICK_CREATE');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(whitelistedOrigin);
+  });
+
+  it('should call withCorsHeaders and not set CORS headers if origin is unknown', async () => {
+    const { withCustomerAuth } = await import('./customer-auth');
+    const handler = vi.fn().mockResolvedValue(new Response('ok'));
+
+    const wrappedHandler = withCustomerAuth(handler, { addCorsHeaders: true, corsRoute: 'QUICK_CREATE' });
+    const request = new NextRequest('http://localhost/api/test', {
+      headers: { cookie: 'auth_idp=test-token', origin: 'https://unknown-origin.godaddy.com' }
+    });
+
+    const response = await wrappedHandler(request);
+
+    expect(withCorsHeadersSpy).toHaveBeenCalledExactlyOnceWith(response, 'https://unknown-origin.godaddy.com', 'QUICK_CREATE');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
   });
 });
 
@@ -535,3 +579,4 @@ describe('withCustomerAuth handler-throws path', () => {
     );
   });
 });
+

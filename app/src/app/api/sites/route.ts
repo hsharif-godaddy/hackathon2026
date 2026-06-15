@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { handleControlPlaneError } from '@/lib/control-plane/error-handler';
-import { createCorsOptionsHandler, withCorsHeaders } from '@/lib/cors';
+import { CORS_ROUTES, createCorsOptionsHandler } from '@/lib/cors';
 import {
   createCustomerAuthError,
   type CustomerAuthContext,
@@ -16,10 +16,10 @@ import { injectShareTokenIntoPreviewUrl } from '@/lib/share/inject-preview-token
 export const dynamic = 'force-dynamic';
 
 // CORS preflight handler
-export const OPTIONS = createCorsOptionsHandler();
+export const OPTIONS = createCorsOptionsHandler(CORS_ROUTES.GET_SITES);
 
 // GET /api/sites - Get sites using control plane adapter
-async function handleGetSites(request: NextRequest, jwt: string, origin: string | null) {
+async function handleGetSites(request: NextRequest, jwt: string) {
   const { searchParams } = new URL(request.url);
   const siteId = searchParams.get('site_id');
 
@@ -29,7 +29,7 @@ async function handleGetSites(request: NextRequest, jwt: string, origin: string 
     // Get specific site
     const site = await adapter.getSite(siteId, jwt);
     if (!site) {
-      return withCorsHeaders(NextResponse.json({ error: 'Site not found' }, { status: 404 }), origin);
+      return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
 
     // This single-site path is the on-demand share-token injection point: the
@@ -49,12 +49,9 @@ async function handleGetSites(request: NextRequest, jwt: string, origin: string 
         site.agent_url,
         site.preview_url,
       );
-      return withCorsHeaders(
-        NextResponse.json({ ...site, preview_url: previewUrl }),
-        origin,
-      );
+      return NextResponse.json({ ...site, preview_url: previewUrl });
     }
-    return withCorsHeaders(NextResponse.json(site), origin);
+    return NextResponse.json(site);
   }
 
   // List all sites — return the control-plane payload as-is. A list GET
@@ -63,25 +60,23 @@ async function handleGetSites(request: NextRequest, jwt: string, origin: string 
   // via the ?site_id= path above when a preview is actually opened (see the
   // Projects-page AppCard preview button).
   const sites = await adapter.listSites(jwt);
-  return withCorsHeaders(NextResponse.json(sites), origin);
+  return NextResponse.json(sites);
 }
 
 // Authenticated GET for production
 export const GET = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
-  const origin = request.headers.get('origin');
-
   try {
     // JWT token required
     if (!authContext.jwt) {
-      return withCorsHeaders(NextResponse.json({ error: 'Authentication token required' }, { status: 401 }), origin);
+      return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
     }
 
-    return await handleGetSites(request, authContext.jwt, origin);
+    return await handleGetSites(request, authContext.jwt);
   } catch (error) {
     const errorResponse = handleControlPlaneError(error, 'sites.fetch');
-    return withCorsHeaders(errorResponse, origin);
+    return errorResponse;
   }
-});
+}, { addCorsHeaders: true, corsRoute: CORS_ROUTES.GET_SITES });
 
 // POST /api/sites - Authenticated customers can create sites in their own account only
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {

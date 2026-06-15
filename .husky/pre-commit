@@ -23,6 +23,11 @@ else
   [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" || true
 fi
 
+# Load FNM if it is available and neither mise nor NVM were loaded
+if [ -z "$MISE_NODE_DIR" ] && [ ! -s "$NVM_DIR/nvm.sh" ] && command -v fnm > /dev/null 2>&1; then
+  eval "$(fnm env --use-on-cd)"
+fi
+
 # Run template-sync validation FIRST. This protects customer apps from
 # silent base-template drift and is more critical than style/lint checks
 # — keeping it ahead means it still runs even if a developer is racing

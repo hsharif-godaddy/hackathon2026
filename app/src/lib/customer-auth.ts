@@ -15,7 +15,7 @@ import {
   setApmUserContext,
   startApmTransaction
 } from '@/lib/apm-context';
-import { withCorsHeaders } from '@/lib/cors';
+import { CORS_ROUTES, withCorsHeaders } from '@/lib/cors';
 import { isFeatureEnabled } from '@/lib/features';
 import { extractTokenFromRequest } from '@/lib/gd-auth-service';
 import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
@@ -227,18 +227,29 @@ export async function authenticateCustomer(request: NextRequest, level?: 1 | 2 |
  * - Sets verified cid/appId labels after successful authentication
  * - The early unverified cid is for observability only, not a security signal
  */
-interface WithCustomerAuthOptions {
+interface WithCustomerAuthBaseOptions {
   level?: 1 | 2 | 3;
+}
+
+interface WithCustomerAuthNoCorsOptions {
+  addCorsHeaders?: never;
+  corsRoute?: never;
+}
+
+interface WithCustomerAuthCorsOptions {
+  addCorsHeaders: true;
+  corsRoute: keyof typeof CORS_ROUTES
 }
 
 export function withCustomerAuth<T extends unknown[]>(
   handler: (request: NextRequest, context: CustomerAuthContext, ...args: T) => Promise<NextResponse>,
-  options?: WithCustomerAuthOptions
+  options?: WithCustomerAuthBaseOptions & ( WithCustomerAuthNoCorsOptions | WithCustomerAuthCorsOptions )
 ) {
   return async (request: NextRequest, ...args: T): Promise<NextResponse> => {
     const txName = `${request.method} ${request.nextUrl.pathname}`;
     const transaction = startApmTransaction(txName, 'request');
     let cidSetEarly = false;
+    const origin = request.headers.get('origin');
 
     // Initialize context early so all logs during auth automatically carry request metadata.
     // customerId/shopperId start undefined; pre-decode may fill them from the unvalidated token,
@@ -272,20 +283,18 @@ export function withCustomerAuth<T extends unknown[]>(
           if (!authContext.isAuthenticated) {
             const unauthContext = authContext as UnauthenticatedCustomerContext;
             transaction?.end('HTTP 401');
-            // This 401 short-circuits before the handler's withCorsHeaders runs, so apply
-            // it here or allowlisted cross-origin callers get a masked CORS error, not the 401.
-            return withCorsHeaders(
-              NextResponse.json(
-                {
-                  error: 'Unauthorized',
-                  message: unauthContext.error,
-                  requiresAuth: true,
-                  ...(unauthContext.authReason !== undefined ? { authReason: unauthContext.authReason } : {})
-                },
-                { status: 401 }
-              ),
-              request.headers.get('origin')
+            const unauthedResponse = NextResponse.json(
+              {
+                error: 'Unauthorized',
+                message: unauthContext.error,
+                requiresAuth: true,
+                ...(unauthContext.authReason !== undefined ? { authReason: unauthContext.authReason } : {})
+              },
+              { status: 401 }
             );
+            return options?.addCorsHeaders
+              ? withCorsHeaders(unauthedResponse, origin, options.corsRoute)
+              : unauthedResponse;
           }
 
           // Overwrite pre-decoded context values with validated auth results
@@ -337,7 +346,9 @@ export function withCustomerAuth<T extends unknown[]>(
             transaction?.end(`HTTP ${status}`);
           }
 
-          return response;
+          return options?.addCorsHeaders
+            ? withCorsHeaders(response, origin, options.corsRoute)
+            : response;
         } catch (error) {
           // Safety net: any uncaught mgmt-airo 401 bubbling out of a route
           // handler should surface as the standard SSO re-auth response,
@@ -348,9 +359,9 @@ export function withCustomerAuth<T extends unknown[]>(
           const authResponse = mgmtAiro401Response(error, 'auth.handler.mgmt-airo.hbi-expired');
           if (authResponse) {
             transaction?.end('HTTP 401');
-            // Same CORS treatment as the early-return 401 above: this 401 also
-            // short-circuits past the handler's own withCorsHeaders wrapping.
-            return withCorsHeaders(authResponse, request.headers.get('origin'));
+            return options?.addCorsHeaders
+              ? withCorsHeaders(authResponse, origin, options.corsRoute)
+              : authResponse;
           }
 
           // Log here (inside run()) so the ALS store is still active and context fields are present

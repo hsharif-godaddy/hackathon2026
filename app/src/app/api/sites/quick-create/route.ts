@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchHivemindCohorts, getBudgetServiceCohort } from '@/lib/budget-service-experiment';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { CreateSiteParams } from '@/lib/control-plane/types';
+import { CORS_ROUTES, createCorsOptionsHandler } from '@/lib/cors';
 import {
   createCustomerAuthError,
   type CustomerAuthContext,
@@ -16,6 +17,9 @@ import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { AIRO_PRODUCT_IDS } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { getByteLength, MAX_PROMPT_BYTES } from '@/lib/waf-validation';
+
+// CORS preflight handler
+export const OPTIONS = createCorsOptionsHandler(CORS_ROUTES.QUICK_CREATE);
 
 // POST /api/sites/quick-create - Fast site creation
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
@@ -171,4 +175,4 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       { status: 500 }
     );
   }
-});
+}, { addCorsHeaders: true, corsRoute: CORS_ROUTES.QUICK_CREATE });
