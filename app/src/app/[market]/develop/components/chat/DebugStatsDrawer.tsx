@@ -1,6 +1,7 @@
 'use client'
 
 import { type ReactElement } from 'react'
+import { FloatingPanel } from '@airo-ux/pattern-library/surfaces/floating-panel'
 import Button from '@ux/button'
 import Tag from '@ux/tag'
 
@@ -80,48 +81,52 @@ export function DebugStatsPanel(): ReactElement | null {
   const retryState = useStreamingConversationStore((s) => s.retryState)
   const streamingState = useStreamingState()
 
-  if (!enabled || !open) return null
+  if (!enabled) return null
 
   const transport = sseFlag === true ? 'SSE' : 'WS'
   const totalCost = state.calls.reduce((sum, c) => sum + c.costUsd, 0)
 
   return (
-    <div
+    <FloatingPanel
+      show={open}
+      onClose={() => setOpen(false)}
+      title="Debug stats"
       data-testid="debug-stats-panel"
-      className="absolute inset-x-2 bottom-2 h-4/5 z-40 bg-intents-ux-box-backgroundColor shadow-md rounded-lg flex flex-col p-3 overflow-hidden text-[10px] font-mono"
+      defaultSize={{ width: 360, height: 480 }}
+      defaultPosition={{ x: 24, y: 96 }}
+      footer={
+        <div className="flex items-center justify-between gap-2 text-[10px] font-mono">
+          <span className="font-semibold tabular-nums">Total: ${totalCost.toFixed(4)}</span>
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground font-sans"
+            onClick={() => dispatch({ type: 'CLEAR' })}
+          >
+            Clear
+          </button>
+        </div>
+      }
     >
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-semibold font-sans">Debug stats</span>
-        <button
-          type="button"
-          aria-label="Close debug stats"
-          className="text-[10px] text-muted-foreground hover:text-foreground font-sans"
-          onClick={() => setOpen(false)}
-        >
-          Close
-        </button>
-      </div>
-
-      <section className="mb-2 flex flex-wrap items-center gap-1" data-testid="debug-stats-connection-info">
-        <Tag size="sm" emphasis={transport === 'SSE' ? 'info' : 'highlight'} data-testid="debug-stats-transport-badge">
-          {transport}
-        </Tag>
-        <Tag size="sm" emphasis={wsState.connected ? 'success' : 'critical'}>
-          {wsState.connected ? 'connected' : wsState.status}
-        </Tag>
-        {streamingState !== 'idle' && (
-          <Tag size="sm" emphasis="warning">
-            {streamingState}
+      <div className="text-[10px] font-mono">
+        <section className="mb-2 flex flex-wrap items-center gap-1" data-testid="debug-stats-connection-info">
+          <Tag size="sm" emphasis={transport === 'SSE' ? 'info' : 'highlight'} data-testid="debug-stats-transport-badge">
+            {transport}
           </Tag>
-        )}
-        {retryState.isRetrying && (
-          <Tag size="sm" emphasis="critical">
-            {`retry #${retryState.retryCount}`}
+          <Tag size="sm" emphasis={wsState.connected ? 'success' : 'critical'}>
+            {wsState.connected ? 'connected' : wsState.status}
           </Tag>
-        )}
-      </section>
+          {streamingState !== 'idle' && (
+            <Tag size="sm" emphasis="warning">
+              {streamingState}
+            </Tag>
+          )}
+          {retryState.isRetrying && (
+            <Tag size="sm" emphasis="critical">
+              {`retry #${retryState.retryCount}`}
+            </Tag>
+          )}
+        </section>
 
-      <div className="flex-1 overflow-auto min-h-0">
         {state.calls.length === 0 ? (
           <div className="text-muted-foreground text-center py-4 font-sans text-xs">No LLM calls yet</div>
         ) : (
@@ -144,30 +149,6 @@ export function DebugStatsPanel(): ReactElement | null {
           </table>
         )}
       </div>
-
-      <footer className="mt-2 flex items-center justify-between gap-2 pt-2 border-t border-border">
-        <span className="font-semibold tabular-nums">
-          Total: ${totalCost.toFixed(4)}
-        </span>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground font-sans"
-            onClick={() => dispatch({ type: 'CLEAR' })}
-          >
-            Clear
-          </button>
-          <button
-            type="button"
-            aria-label="Close debug stats"
-            data-testid="debug-stats-close-footer"
-            className="px-2 py-0.5 rounded border border-border text-foreground hover:bg-muted font-sans"
-            onClick={() => setOpen(false)}
-          >
-            Close
-          </button>
-        </div>
-      </footer>
-    </div>
+    </FloatingPanel>
   )
 }

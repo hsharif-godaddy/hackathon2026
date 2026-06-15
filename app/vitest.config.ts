@@ -38,22 +38,26 @@ function hasLinkedAiroComponents(): boolean {
 
 const USING_LINKED_AIRO_COMPONENTS = hasLinkedAiroComponents();
 
-const SCSS_STUB_PREFIX = '\0vitest-scss-stub:';
+const STYLE_STUB_PREFIX = '\0vitest-style-stub:';
 
 /**
  * Next.js expects PostCSS plugin names as strings; Vite 6 rejects that when it loads
- * postcss.config.mjs for imported `.scss`. Short-circuit SCSS to an empty module in tests.
+ * postcss.config.mjs to process an imported stylesheet (`Invalid PostCSS Plugin`).
+ * Short-circuit `.scss` AND `.css` imports to an empty module in tests so the PostCSS
+ * pipeline never runs. `.css` matters for inlined node-module deps such as
+ * @godaddy/antares, which ships side-effect `import './styles.css'` reached via
+ * @ux/* / pattern-library components (e.g. FloatingPanel → PanelChrome).
  */
-function vitestStubScss() {
+function vitestStubStyles() {
   return {
-    name: 'vitest-stub-scss',
+    name: 'vitest-stub-styles',
     enforce: 'pre' as const,
     resolveId(id, importer) {
-      if (id.startsWith(SCSS_STUB_PREFIX)) {
+      if (id.startsWith(STYLE_STUB_PREFIX)) {
         return id;
       }
       const clean = id.split('?')[0];
-      if (!clean.endsWith('.scss')) {
+      if (!/\.(scss|css)$/i.test(clean)) {
         return undefined;
       }
       const resolved = path.isAbsolute(clean)
@@ -61,12 +65,12 @@ function vitestStubScss() {
         : importer
           ? path.resolve(path.dirname(importer), clean)
           : clean;
-      // Virtual id must not end in `.scss` or Vite's CSS pipeline still runs PostCSS on it.
-      const withoutExt = resolved.replace(/\.scss$/i, '');
-      return `${SCSS_STUB_PREFIX}${withoutExt}`;
+      // Virtual id must not end in `.scss`/`.css` or Vite's CSS pipeline still runs PostCSS on it.
+      const withoutExt = resolved.replace(/\.(scss|css)$/i, '');
+      return `${STYLE_STUB_PREFIX}${withoutExt}`;
     },
     load(id) {
-      if (id.startsWith(SCSS_STUB_PREFIX)) {
+      if (id.startsWith(STYLE_STUB_PREFIX)) {
         return 'export default {}';
       }
     },
@@ -89,7 +93,7 @@ const availableCores = os.cpus().length;
 const optimalForks = Math.max(1, Math.min(3, Math.floor(availableCores / 2)));
 
 export default defineConfig({
-  plugins: [vitestStubScss(), react()],
+  plugins: [vitestStubStyles(), react()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -142,12 +146,17 @@ export default defineConfig({
     // (pnpm.overrides `link:`), its @ux/* peer deps live under the linked
     // repo's node_modules and must go through vite's transform to share
     // React with the consumer — otherwise Node resolves a second copy.
+    // @godaddy/antares is the UXCore2 implementation that @ux/* re-exports from;
+    // it ships `.css` side-effect imports, so it must be inlined too. Otherwise
+    // Node externalizes it and throws `Unknown file extension ".css"` the moment
+    // a test renders a component that reaches it (e.g. FloatingPanel via PanelChrome).
     server: {
       deps: {
         inline: [
           '@airo/ai-lib',
           '@airo/ai-transport',
           '@airo-ux/pattern-library',
+          '@godaddy/antares',
           /^@ux\//,
         ],
       },

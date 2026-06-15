@@ -8,5 +8,8 @@
 @import '@airo-ux/pattern-library/input/secrets-form/styles';
 @import '@airo-ux/pattern-library/input/prompt-stage/styles';
 @import '@airo-ux/pattern-library/surfaces/floating-footer/styles';
+/* FloatingPanel (debug stats drawer) requires BOTH its own styles and panel-chrome styles */
+@import '@airo-ux/pattern-library/surfaces/floating-panel/styles';
+@import '@airo-ux/pattern-library/surfaces/panel-chrome/styles';
 /* Required by Canvas.Status used in PreviewPane.tsx — do not remove without removing the component usage */
 @import '@airo-ux/pattern-library/surfaces/canvas/styles';

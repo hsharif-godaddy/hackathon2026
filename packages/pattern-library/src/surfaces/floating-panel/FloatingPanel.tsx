@@ -581,6 +581,11 @@ function FloatingPanelRoot({
 
   // ── Snap indicator state ──────────────────────────────────────────────
   const [snapTarget, setSnapTarget] = useState<FloatingPanelDockedTo>(null);
+  // True while a pointer drag/resize is in progress. Drives a transparent
+  // full-viewport shield (see Path C below) that keeps pointer events in this
+  // document instead of letting an <iframe> the panel is dragged over (e.g. a
+  // builder preview) swallow react-rnd's document-level move events.
+  const [isInteracting, setIsInteracting] = useState(false);
 
   // ── Portal mount target ───────────────────────────────────────────────
   const [mountTarget, setMountTarget] = useState<HTMLElement | null>(
@@ -904,6 +909,7 @@ function FloatingPanelRoot({
   // ── Drag stop ─────────────────────────────────────────────────────────
   const handleDragStop = useCallback(
     (_e: unknown, data: { x: number; y: number }) => {
+      setIsInteracting(false);
       clearZoneHighlights();
       setSnapTarget(null);
 
@@ -944,6 +950,7 @@ function FloatingPanelRoot({
       _delta: unknown,
       pos: { x: number; y: number },
     ) => {
+      setIsInteracting(false);
       const next: FloatingPanelSize = {
         width: elementRef.offsetWidth,
         height: elementRef.offsetHeight,
@@ -956,6 +963,11 @@ function FloatingPanelRoot({
     },
     [isSizeControlled, isPosControlled, onSizeChange, onPositionChange],
   );
+
+  // Drag/resize start — raise the iframe shield for the duration of the gesture.
+  const handleInteractionStart = useCallback(() => {
+    setIsInteracting(true);
+  }, []);
 
   // ── Docked-edge resize ────────────────────────────────────────────────
   // When the panel is docked to the left or right viewport edge, dragging
@@ -1320,6 +1332,14 @@ function FloatingPanelRoot({
 
   const content = (
     <>
+      {/* While dragging/resizing, a transparent shield covers the viewport so
+          the cursor never crosses into a page <iframe> (which would swallow
+          react-rnd's document-level move events and freeze the gesture). The
+          Rnd panel is a later sibling in the same z-layer, so it still paints
+          on top and stays fully interactive. */}
+      {isInteracting && (
+        <div className="airo-surfaces-floating-panel__drag-shield" aria-hidden="true" />
+      )}
       {snapIndicator}
       <Rnd
         ref={rndRef}
@@ -1332,8 +1352,10 @@ function FloatingPanelRoot({
         maxHeight={maxSize?.height}
         bounds={bounds}
         dragHandleClassName="airo-surfaces-panel-chrome__header"
+        onDragStart={handleInteractionStart}
         onDrag={handleDrag}
         onDragStop={handleDragStop}
+        onResizeStart={handleInteractionStart}
         onResizeStop={handleResizeStop}
         enableResizing={{
           top: true,

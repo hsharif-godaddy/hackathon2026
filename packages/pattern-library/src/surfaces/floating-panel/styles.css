@@ -47,6 +47,19 @@
   z-index: 200;
 }
 
+/* Transparent shield rendered over the whole viewport while the panel is being
+ * dragged or resized. It sits in the same z-layer as the panel (z-index: 200),
+ * but the Rnd panel is a later sibling so it still paints on top. Its job is to
+ * cover any page <iframe> (e.g. a builder preview) so the cursor stays over
+ * this document during the gesture — without it, react-rnd's document-level
+ * pointer-move listeners stop firing the moment the cursor enters the iframe
+ * and the drag/resize freezes. */
+.airo-surfaces-floating-panel__drag-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+}
+
 /* The chrome root fills the Rnd container. Height must be 100% so the
  * scrollable content region in PanelChrome grows to the full panel height
  * instead of collapsing to content size. */

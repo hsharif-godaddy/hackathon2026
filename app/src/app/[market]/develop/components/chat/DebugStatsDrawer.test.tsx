@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { useEffect } from 'react'
+import { type ReactNode,useEffect } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 
@@ -9,6 +9,31 @@ import { DebugStatsPanel, DebugStatsToggleButton } from './DebugStatsDrawer'
 vi.mock('@ux/tag', () => ({
   default: ({ children, ...props }: { children: string; [key: string]: unknown }) => <span {...props}>{children}</span>,
 }))
+// FloatingPanel (drag/resize chrome) has its own tests in @airo-ux/pattern-library.
+// Mock it to a passthrough so these tests stay focused on the debug-stats content.
+vi.mock('@airo-ux/pattern-library/surfaces/floating-panel', () => ({
+  FloatingPanel: ({
+    show,
+    title,
+    children,
+    footer,
+    ...props
+  }: {
+    show?: boolean
+    title?: ReactNode
+    children?: ReactNode
+    footer?: ReactNode
+    [key: string]: unknown
+  }) =>
+    show === false ? null : (
+      <div {...props}>
+        <span>{title}</span>
+        {children}
+        {footer}
+      </div>
+    ),
+}))
+vi.mock('@airo-ux/pattern-library/surfaces/floating-panel/styles', () => ({}))
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(),
 }))

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRef, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -21,8 +21,10 @@ vi.mock('@ux/icon/async-icon.js', () => ({
 type RndProps = {
   children?: React.ReactNode;
   className?: string;
+  onDragStart?: (e: unknown, data: { x: number; y: number }) => void;
   onDrag?: (e: unknown, data: { x: number; y: number }) => void;
   onDragStop?: (e: unknown, data: { x: number; y: number }) => void;
+  onResizeStart?: (e: unknown, dir: unknown, ref: HTMLElement) => void;
   onResizeStop?: (
     e: unknown,
     dir: unknown,
@@ -703,6 +705,40 @@ describe('FloatingPanel — drag and resize handlers', () => {
     Object.defineProperty(fakeEl, 'offsetHeight', { value: 640 });
     rndCallbacks.onResizeStop?.({}, 'right', fakeEl, {}, { x: 0, y: 0 });
     expect(onSizeChange).toHaveBeenCalledWith({ width: 480, height: 640 });
+  });
+});
+
+// ── Iframe shield during drag/resize ──────────────────────────────────────
+// react-rnd listens for pointer-move on the document; if the cursor crosses
+// into a page <iframe> mid-gesture the iframe swallows those events and the
+// drag/resize freezes. FloatingPanel renders a transparent viewport-covering
+// shield for the duration of the gesture to keep events in this document.
+
+describe('FloatingPanel — iframe shield', () => {
+  const shield = () => document.querySelector('.airo-surfaces-floating-panel__drag-shield');
+
+  it('does not render the shield when idle', () => {
+    renderFloatingPanel();
+    expect(shield()).not.toBeInTheDocument();
+  });
+
+  it('shows the shield while dragging and removes it on drag stop', () => {
+    renderFloatingPanel();
+    act(() => rndCallbacks.onDragStart?.({}, { x: 0, y: 0 }));
+    expect(shield()).toBeInTheDocument();
+    act(() => rndCallbacks.onDragStop?.({}, { x: 120, y: 80 }));
+    expect(shield()).not.toBeInTheDocument();
+  });
+
+  it('shows the shield while resizing and removes it on resize stop', () => {
+    renderFloatingPanel();
+    act(() => rndCallbacks.onResizeStart?.({}, 'right', document.createElement('div')));
+    expect(shield()).toBeInTheDocument();
+    const fakeEl = document.createElement('div');
+    Object.defineProperty(fakeEl, 'offsetWidth', { value: 400 });
+    Object.defineProperty(fakeEl, 'offsetHeight', { value: 500 });
+    act(() => rndCallbacks.onResizeStop?.({}, 'right', fakeEl, {}, { x: 0, y: 0 }));
+    expect(shield()).not.toBeInTheDocument();
   });
 });
 
