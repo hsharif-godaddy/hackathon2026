@@ -235,6 +235,50 @@ describe('registerSkillTools', () => {
       expect(result).toEqual({ success: true, postId: '123' })
     })
 
+    it('should not set toModelOutput when the option is omitted', () => {
+      const toolDef: SkillToolDefinition = {
+        name: 'plain',
+        description: 'No projection',
+        parameters: z.object({}),
+        execute: vi.fn()
+      }
+
+      const registry = registerSkillTools('media', [toolDef])
+
+      expect((registry.tools['media__plain'] as any).toModelOutput).toBeUndefined()
+    })
+
+    it('should forward toModelOutput so only the projected output reaches the model', () => {
+      const toModelOutput = vi.fn(function project({ output }: { output: unknown }) {
+        return {
+          type: 'text' as const,
+          value: JSON.stringify({ kept: (output as { kept?: unknown }).kept })
+        }
+      })
+
+      const toolDef: SkillToolDefinition = {
+        name: 'projecting',
+        description: 'Projects output down for the model',
+        parameters: z.object({}),
+        execute: vi.fn(),
+        toModelOutput
+      }
+
+      const registry = registerSkillTools('media', [toolDef])
+      const tool = registry.tools['media__projecting'] as any
+
+      expect(tool.toModelOutput).toBe(toModelOutput)
+
+      const projected = tool.toModelOutput({
+        toolCallId: '1',
+        input: {},
+        output: { kept: 1, dropped: 'big-blob' }
+      })
+
+      expect(projected).toEqual({ type: 'text', value: JSON.stringify({ kept: 1 }) })
+      expect(projected.value).not.toContain('big-blob')
+    })
+
     it('should pass context from executionOptions to execute function', async () => {
       const executeFn = vi.fn().mockResolvedValue('done')
 

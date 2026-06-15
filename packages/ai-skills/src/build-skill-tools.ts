@@ -18,6 +18,14 @@ export interface SkillToolDefinition {
   description: string
   parameters: z.ZodSchema<any>
   execute: (input: any, context?: any) => Promise<any> | any
+  /**
+   * Projects the (full) execute output down to what is sent to the language
+   * model. The full output still reaches the UI/stream; only the model-facing
+   * tool-result message uses this projection. Use it to strip context the model
+   * cannot use (e.g. asset URLs the text-only agent can't see) while keeping the
+   * UI's structuredContent intact.
+   */
+  toModelOutput?: Tool<any, any>['toModelOutput']
   config?: {
     timeout?: number
     requiresApp?: boolean
@@ -278,7 +286,8 @@ export function registerSkillTools(
         }
 
         return output
-      }
+      },
+      ...(toolDef.toModelOutput ? { toModelOutput: toolDef.toModelOutput } : {})
     })
   }
 

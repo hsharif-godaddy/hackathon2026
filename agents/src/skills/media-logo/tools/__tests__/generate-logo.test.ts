@@ -593,4 +593,62 @@ describe('media-logo generate_logo tool', () => {
       expect(result.structuredContent).toMatchObject({ status: 'superseded' });
     });
   });
+
+  describe('#toModelOutput', () => {
+    it('is defined on the tool', async () => {
+      const { generateLogoTool } = await import('../index.js');
+      expect(typeof generateLogoTool.toModelOutput).toBe('function');
+    });
+
+    it('projects a completed result to a lean model view (status + slots, no internal ids)', async () => {
+      const { generateLogoTool } = await import('../index.js');
+
+      // Representative completed execute() output (async job model on main).
+      const full = {
+        text: 'Logo generated and saved to the brand slots.',
+        structuredContent: {
+          started: true,
+          jobId: 'job-1',
+          slots: ['logo/horizontal'],
+          status: 'completed',
+          logoId: 'logo-xyz',
+        },
+      };
+
+      const projected = generateLogoTool.toModelOutput!({
+        toolCallId: '1',
+        input: { prompt: 'logo', layout: 'horizontal' },
+        output: full,
+      });
+
+      expect(projected.type).toBe('text');
+      const lean = JSON.parse(projected.value);
+
+      expect(lean).toMatchObject({
+        text: 'Logo generated and saved to the brand slots.',
+        status: 'completed',
+        slots: ['logo/horizontal'],
+        slotSaveFailed: false,
+      });
+
+      // Internal job/logo bookkeeping never reaches the model.
+      expect(lean.jobId).toBeUndefined();
+      expect(lean.logoId).toBeUndefined();
+      expect(lean.started).toBeUndefined();
+      expect(projected.value).not.toContain('job-1');
+      expect(projected.value).not.toContain('logo-xyz');
+    });
+
+    it('passes an error result through unchanged', async () => {
+      const { generateLogoTool } = await import('../index.js');
+
+      const projected = generateLogoTool.toModelOutput!({
+        toolCallId: '1',
+        input: { prompt: 'logo', layout: 'horizontal' },
+        output: { error: 'Logo generation failed' },
+      });
+
+      expect(JSON.parse(projected.value)).toEqual({ error: 'Logo generation failed' });
+    });
+  });
 });

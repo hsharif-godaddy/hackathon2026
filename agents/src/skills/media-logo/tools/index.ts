@@ -444,6 +444,26 @@ export const generateLogoTool: SkillToolDefinition = {
     };
   },
 
+  // The text-only agent can't see images and doesn't need the internal job
+  // bookkeeping (started/jobId/logoId). It references logos via the slot paths
+  // in `slots` plus the `text` ack. The full structuredContent still reaches the
+  // UI/Brand Book; only the model-facing result is projected down.
+  toModelOutput: ({ output }) => {
+    const o = (output ?? {}) as Record<string, unknown>;
+    if (o.error) return { type: 'text', value: JSON.stringify({ error: o.error }) };
+
+    const sc = (o.structuredContent ?? {}) as Record<string, unknown>;
+    const lean: Record<string, unknown> = {
+      ...(o.text ? { text: o.text } : {}),
+      status: sc.status,
+      slots: sc.slots,
+      slotSaveFailed: Boolean(sc.slotSaveFailed),
+      ...(Array.isArray(sc.failedLayouts) && sc.failedLayouts.length ? { failedLayouts: sc.failedLayouts } : {}),
+      ...(Array.isArray(sc.skippedLayouts) && sc.skippedLayouts.length ? { skippedLayouts: sc.skippedLayouts } : {}),
+    };
+    return { type: 'text', value: JSON.stringify(lean) };
+  },
+
   config: {
     timeout: 240_000,
   },
