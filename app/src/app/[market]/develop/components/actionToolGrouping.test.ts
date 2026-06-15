@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
-import { groupConsecutiveActionTools, isActionToolGroupEligible } from './actionToolGrouping'
+import { groupConsecutiveActionTools, isActionToolGroupEligible, isSystemHiddenToolCall } from './actionToolGrouping'
 import type { ContentBlock } from './contentBlocks'
 
 function createToolCall(overrides: Partial<ToolCall> = {}): ToolCall {
@@ -34,6 +34,15 @@ describe('actionToolGrouping', () => {
     expect(isActionToolGroupEligible(createToolCall({ name: 'unknownNewTool' }))).toBe(false)
     expect(isActionToolGroupEligible(createToolCall({ name: 'media-image__generate_image' }))).toBe(false)
     expect(isActionToolGroupEligible(createToolCall({ name: 'widgetRender' }))).toBe(false)
+  })
+
+  it('flags system/internal tools as hidden and leaves user-facing tools visible', () => {
+    expect(isSystemHiddenToolCall(createToolCall({ name: 'setWizardStep' }))).toBe(true)
+    // snake_case variants canonicalize to the same camelCase name
+    expect(isSystemHiddenToolCall(createToolCall({ name: 'set_wizard_step' }))).toBe(true)
+    expect(isSystemHiddenToolCall(createToolCall({ name: 'viewLogs' }))).toBe(false)
+    expect(isSystemHiddenToolCall(createToolCall({ name: 'todoList' }))).toBe(false)
+    expect(isSystemHiddenToolCall(undefined)).toBe(false)
   })
 
   it('groups consecutive eligible actions into a single action-group block', () => {

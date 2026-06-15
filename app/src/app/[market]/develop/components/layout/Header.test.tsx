@@ -38,9 +38,12 @@ const mockServerState = {
 };
 
 const mockSwitchboardResults: Record<string, boolean> = {};
+const mockSwitchboardValues: Record<string, string> = {};
 
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: (feature: string) => mockSwitchboardResults[feature] ?? false,
+  getSwitchboardFlag: (feature: string) => mockSwitchboardResults[feature] ?? false,
+  getSwitchboardValue: (feature: string) => mockSwitchboardValues[feature],
 }));
 
 vi.mock('next/navigation', () => ({
@@ -138,6 +141,9 @@ describe('DevelopHeader', () => {
     vi.clearAllMocks();
     for (const key of Object.keys(mockSwitchboardResults)) {
       delete mockSwitchboardResults[key];
+    }
+    for (const key of Object.keys(mockSwitchboardValues)) {
+      delete mockSwitchboardValues[key];
     }
     mockDevelopStore.chatPaneWidth = 400;
     mockDevelopStore.isMobile = false;

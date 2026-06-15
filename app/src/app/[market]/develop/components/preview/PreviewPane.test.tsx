@@ -159,10 +159,13 @@ vi.mock('@/contexts/WebSocketContext', () => ({
 }));
 
 const mockSwitchboardResults: Record<string, boolean> = {};
+const mockSwitchboardValues: Record<string, string> = {};
 const EDITING_CHIP_FLAG = 'appbuilder-preview-enhanced-overlays';
 
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: (feature: string) => mockSwitchboardResults[feature] ?? false,
+  getSwitchboardFlag: (feature: string) => mockSwitchboardResults[feature] ?? false,
+  getSwitchboardValue: (feature: string) => mockSwitchboardValues[feature],
 }));
 
 vi.mock('next/dynamic', async () => {
@@ -261,6 +264,9 @@ describe('PreviewPane', () => {
     mockDevelopPageStore.isVersionHistoryOpen = false;
     for (const key of Object.keys(mockSwitchboardResults)) {
       delete mockSwitchboardResults[key];
+    }
+    for (const key of Object.keys(mockSwitchboardValues)) {
+      delete mockSwitchboardValues[key];
     }
     mockUseImpression.mockReset();
     mockUseLatestNBAs.mockReset();
@@ -1723,6 +1729,9 @@ describe('publish-snapshot-request handling', function publishSnapshotHandlingTe
     for (const key of Object.keys(mockSwitchboardResults)) {
       delete mockSwitchboardResults[key];
     }
+    for (const key of Object.keys(mockSwitchboardValues)) {
+      delete mockSwitchboardValues[key];
+    }
   })
 
   afterEach(() => {
@@ -1978,6 +1987,9 @@ describe('first-build time-estimate pill', () => {
     mockDevelopPageStore.mobileMode = MobileMode.PREVIEW;
     for (const key of Object.keys(mockSwitchboardResults)) {
       delete mockSwitchboardResults[key];
+    }
+    for (const key of Object.keys(mockSwitchboardValues)) {
+      delete mockSwitchboardValues[key];
     }
     mockUseLatestNBAs.mockReturnValue(null);
     mockInitialAgentCohort.current = undefined;

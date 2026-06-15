@@ -40,8 +40,10 @@
 @import "@ux/icon/edit/index.css";
 @import "@ux/icon/editor-larger/index.css";
 @import "@ux/icon/facebook/index.css";
+@import "@ux/icon/fingerprint/index.css";
 @import "@ux/icon/folder/index.css";
 @import "@ux/icon/folder-open/index.css";
+@import "@ux/icon/fonts-pairing/index.css";
 @import "@ux/icon/forward/index.css";
 @import "@ux/icon/gd-the-go/index.css";
 @import "@ux/icon/google/index.css";
@@ -51,6 +53,7 @@
 @import "@ux/icon/hide/index.css";
 @import "@ux/icon/history/index.css";
 @import "@ux/icon/image/index.css";
+@import "@ux/icon/image-gallery/index.css";
 @import "@ux/icon/information/index.css";
 @import "@ux/icon/inline-edit/index.css";
 @import "@ux/icon/instagram/index.css";
@@ -75,6 +78,7 @@
 @import "@ux/icon/send/index.css";
 @import "@ux/icon/server/index.css";
 @import "@ux/icon/settings/index.css";
+@import "@ux/icon/shapes/index.css";
 @import "@ux/icon/share/index.css";
 @import "@ux/icon/show/index.css";
 @import "@ux/icon/shield-check/index.css";

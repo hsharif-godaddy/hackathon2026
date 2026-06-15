@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { createTool, PROVIDER_TOOL_FALLBACK } from '@airo/ai-lib';
 import type { Tool, AgentContext } from '@airo/ai-lib';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
+import { translateDockerPath } from '../../utils/path-helper.js';
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
 import { runPostEditHandlers } from './post-edit-handlers.js';
 import { isFileBlocked } from '../read-file.js';
@@ -90,7 +91,17 @@ async function isFileImmutableViaWorkspace(
 }
 
 async function executeTextEditor(input: TextEditorInput, context: AgentContext | undefined): Promise<string> {
-  const { command, path, view_range, old_str, new_str, file_text, insert_line, insert_text } = input;
+  const { command, path: rawPath, view_range, old_str, new_str, file_text, insert_line, insert_text } = input;
+
+  // Normalize agent-supplied paths to workspace-relative. Models often pass an
+  // absolute or container-style path ("/app/public/x", "/public/x" — primed by the
+  // many "/airo-assets/…", "/brand-tokens.css" URLs around the showcase). The raw
+  // path is forwarded to the dev-supervisor, which treats absolute paths literally
+  // and rejects anything not under /app ("path escapes base directory /app").
+  // translateDockerPath strips a leading "/app/" or "/" so the path resolves inside
+  // the workspace; "../" traversal is still blocked downstream by resolveFilePath and
+  // the dev-supervisor. Use this normalized path for every command and check below.
+  const path = translateDockerPath(rawPath);
 
   const appId = context?.metadata?.appId as string;
   if (!appId) {

@@ -244,6 +244,48 @@ describe('textEditorAITool — blocked path wiring', function textEditorSecurity
     );
   });
 
+  it('normalizes a leading-slash absolute create path to workspace-relative before writing', async function createLeadingSlash() {
+    // Regression: the agent emitted "/public/brand-showcase.html" (primed by the
+    // many "/airo-assets/…" URLs around the showcase). The raw path was forwarded to
+    // the dev-supervisor, which treated it as absolute and rejected it with
+    // "path escapes base directory /app". The path must be normalized to relative.
+    vi.mocked(handleCreate).mockResolvedValue('created');
+
+    await textEditorAITool.execute(
+      {
+        command: 'create',
+        path: '/public/brand-showcase.html',
+        file_text: '<html></html>',
+      },
+      createExecutionOptions(appId),
+    );
+
+    expect(handleCreate).toHaveBeenCalledWith(
+      mockFiles,
+      'public/brand-showcase.html',
+      '<html></html>',
+    );
+  });
+
+  it('normalizes a /app-prefixed create path to workspace-relative before writing', async function createAppPrefix() {
+    vi.mocked(handleCreate).mockResolvedValue('created');
+
+    await textEditorAITool.execute(
+      {
+        command: 'create',
+        path: '/app/public/brand-showcase.html',
+        file_text: '<html></html>',
+      },
+      createExecutionOptions(appId),
+    );
+
+    expect(handleCreate).toHaveBeenCalledWith(
+      mockFiles,
+      'public/brand-showcase.html',
+      '<html></html>',
+    );
+  });
+
   it('invokes handleStrReplace for non-blocked paths after guardrails', async function strReplaceAllowed() {
     vi.mocked(handleStrReplace).mockResolvedValue('ok');
 

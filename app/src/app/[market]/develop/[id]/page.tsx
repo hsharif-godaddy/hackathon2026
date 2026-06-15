@@ -16,6 +16,8 @@ import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import { DevelopCreditsModal, PaywallErrorFallback, RenewalPollingModal, UpgradePollingModal } from '@/app/[market]/develop/components/paywall'
 import { CdsEsmPreload } from '@/app/[market]/develop/components/paywall/CdsEsmPreload'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
+import { DesignKitWizard } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitWizard'
+import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import PreviewPane, { type PublishSnapshotRequestDetail } from '@/app/[market]/develop/components/preview/PreviewPane'
 import ResizableDivider from '@/app/[market]/develop/components/ResizableDivider'
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
@@ -194,6 +196,24 @@ function DevelopPageContent() {
     })()
   }, [appId])
 
+  // The design-kit wizard lives in the "Logo & Brand" (BRAND) tab. Resolved here
+  // (rather than at its original site below) because the logo-designer auto-switch
+  // effect just below also consumes it: an app that is BOTH a logo-designer template
+  // AND on the design-kit profile must not have its BRAND tab yanked to Preview by
+  // the wizard's own file writes (showcase HTML, brand-tokens.css).
+  const showDesignKitWizard = useIsDesignKitWizardProfile()
+
+  // previewUrl for the design-kit wizard's Step-4 showcase iframe
+  // (`${previewUrl}/brand-showcase.html`). Sourced from the same server-polling
+  // store PreviewPane reads, via a reactive primitive selector so this re-renders
+  // when the ready URL changes; null until the preview server is ready. The wizard
+  // renders in the BRAND overlay below (a stable parent), not inside PreviewPane,
+  // so previewUrl is resolved here rather than passed down through PreviewPane.
+  const designKitPreviewUrl = useServerPollingStore((state) => {
+    const server = appId ? state.servers.get(appId)?.server : null
+    return server?.isReady ? server.url : null
+  })
+
   // Logo-designer handoff → website build: switch Brand → Preview when the
   // first page file edit lands. localStorage-gated per appId so a reload after
   // we've already switched once doesn't re-hijack a tab the user has since
@@ -201,6 +221,9 @@ function DevelopPageContent() {
   useEffect(() => {
     if (!appId) return
     if (!isLogoDesignerApp(appId)) return
+    // A design-kit-wizard session lives in BRAND and writes files itself (showcase
+    // HTML, brand-tokens.css); don't let that first edit auto-switch it to Preview.
+    if (showDesignKitWizard) return
     if (!init.context.hasSeenFirstFileEdit) return
     if (hasAutoSwitchedLogoDesignerPreview(appId)) return
 
@@ -209,7 +232,7 @@ function DevelopPageContent() {
     if (currentViewMode === ViewMode.BRAND) {
       setViewMode(ViewMode.PREVIEW)
     }
-  }, [init.context.hasSeenFirstFileEdit, appId])
+  }, [init.context.hasSeenFirstFileEdit, appId, showDesignKitWizard])
 
   // Hibernation handling - auto-resume when app is hibernated
   const appDetails = useAppDetails(appId);
@@ -259,7 +282,13 @@ function DevelopPageContent() {
     },
     [isInboxEnabled, brandId, isLoadingAccount]
   )
-  useView({ getViewAvailability })
+  // Land design-kit sessions on the BRAND tab by default (showDesignKitWizard is
+  // resolved above, alongside the logo-designer auto-switch guard that also uses it).
+  const resolveInitialViewMode = useCallback(
+    (): ViewMode | null => (showDesignKitWizard ? ViewMode.BRAND : null),
+    [showDesignKitWizard]
+  )
+  useView({ getViewAvailability, resolveInitialViewMode })
 
   // Eval snapshot capture - captures screenshot on first build completion
   const { triggerEvalSnapshot, handleEvalViewportScreenshot } = useEvalSnapshotCapture({ appId })
@@ -1419,7 +1448,8 @@ function DevelopPageContent() {
                     onAskAiroToFix={sendPreviewFixRequest}
                   />
                 </div>
-                {/* Brand Book overlay — mounted here (a stable parent) rather than inside
+                {/* Brand overlay (Brand Book, or the design-kit wizard when the app is on
+                    the design-kit profile) — mounted here (a stable parent) rather than inside
                     PreviewPane so it is NOT torn down and re-mounted when PreviewPane flips
                     between its preview-server readiness branches mid-generation. PreviewPane
                     keeps the underlying preview/code mounted-but-inert while BRAND is active. */}
@@ -1428,7 +1458,9 @@ function DevelopPageContent() {
                     className="absolute inset-0 z-20 overflow-hidden rounded-lg md:rounded-b-none"
                     data-testid="brand-book-overlay"
                   >
-                    <BrandBookView appId={appId} />
+                    {showDesignKitWizard
+                      ? <DesignKitWizard appId={appId} previewUrl={designKitPreviewUrl ?? undefined} />
+                      : <BrandBookView appId={appId} />}
                   </div>
                 )}
               </div>

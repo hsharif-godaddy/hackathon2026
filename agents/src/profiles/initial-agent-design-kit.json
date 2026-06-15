@@ -1,0 +1,7 @@
+{
+  "name": "initial-agent-design-kit",
+  "description": "Initial agent variant: Design Kit Wizard. Questions the user, plans the kit/colours/fonts/keywords/logo, then pauses for interactive editing before building the brand showcase and handing off to develop.",
+  "properties": {
+    "initial.promptVersion": "design-kit"
+  }
+}

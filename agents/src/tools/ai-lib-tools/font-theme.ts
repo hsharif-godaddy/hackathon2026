@@ -6,6 +6,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 
+import { FONT_THEMES, type FontCategory, type FontInfo } from '@airo/shared/fonts'
+// Re-export to preserve this module's public API: callers (and tests) historically
+// imported FONT_THEMES from font-theme.ts before it moved to @airo/shared/fonts.
+export { FONT_THEMES }
+
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { getKvMemoryStore } from '../../memory/adapters/index.js'
 import { customerIdFromContext, workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
@@ -18,8 +23,6 @@ import { logger } from '../../logging/index.js'
 
 const appRepo = new AppRepository()
 const memoryStore = getKvMemoryStore()
-
-type FontCategory = 'serif' | 'sans-serif' | 'monospace' | 'cursive' | 'fantasy'
 
 /**
  * Get CSS fallback fonts for a given category
@@ -268,6 +271,32 @@ export async function validateAndFilterFonts(
 }
 
 /**
+ * Validate a heading+body pairing against the live Google Fonts API.
+ * Reuses the module's URL builder, HTTP validator, and LRU cache so repeat
+ * selections are free. Returns the same shape as validateGoogleFontUrl.
+ */
+export async function validateFontPairing(
+  headerFont: { name: string; weights?: string[] },
+  bodyFont: { name: string; weights?: string[] }
+): Promise<{ valid: boolean; networkError: boolean }> {
+  const url = buildGoogleFontsUrl([
+    { name: headerFont.name, weights: headerFont.weights ?? ['400', '700'] },
+    { name: bodyFont.name, weights: bodyFont.weights ?? ['400'] }
+  ])
+
+  const cached = fontValidationCache.get(url)
+  if (cached !== undefined) {
+    return { valid: cached, networkError: false }
+  }
+
+  const result = await validateGoogleFontUrl(url, `${headerFont.name} / ${bodyFont.name}`)
+  if (!result.networkError) {
+    fontValidationCache.set(url, result.valid)
+  }
+  return result
+}
+
+/**
  * Fallback function to detect font category when LLM doesn't provide it
  */
 function detectFontCategory(fontName: string): FontCategory {
@@ -498,12 +527,6 @@ Return ONLY the JSON object with the fonts array containing headerFont and bodyF
   }
 }
 
-interface FontInfo {
-  name: string
-  weights: string[]
-  category: FontCategory
-}
-
 interface FontTheme {
   id: string
   name: string
@@ -533,89 +556,6 @@ export function normalizeFontTheme(theme: FontTheme): { headerFont: FontInfo; bo
     throw new Error('FontTheme must have either headerFont/bodyFont or font field')
   }
   return { headerFont: theme.font, bodyFont: theme.font }
-}
-
-/**
- * Professional font theme presets for websites with header/body pairings
- */
-export const FONT_THEMES: Record<string, {
-  name: string
-  description: string
-  headerFont: {
-    name: string
-    weights: string[]
-    category: FontCategory
-  }
-  bodyFont: {
-    name: string
-    weights: string[]
-    category: FontCategory
-  }
-  // Legacy field for backwards compatibility
-  font?: {
-    name: string
-    weights: string[]
-    category: FontCategory
-    fallback: string
-    googleFontsUrl: string
-  }
-}> = {
-  'modern-professional': {
-    name: 'Modern Professional',
-    description: 'Clean sans-serif pairing. Perfect for tech, SaaS, and corporate sites.',
-    headerFont: {
-      name: 'Montserrat',
-      weights: ['600', '700'],
-      category: 'sans-serif'
-    },
-    bodyFont: {
-      name: 'Inter',
-      weights: ['400', '500', '600'],
-      category: 'sans-serif'
-    }
-  },
-  'elegant-serif': {
-    name: 'Elegant Serif',
-    description: 'Sophisticated serif pairing. Ideal for publishing, blogs, and editorial.',
-    headerFont: {
-      name: 'Playfair Display',
-      weights: ['600', '700'],
-      category: 'serif'
-    },
-    bodyFont: {
-      name: 'Lora',
-      weights: ['400', '500', '600'],
-      category: 'serif'
-    }
-  },
-  'bold-modern': {
-    name: 'Bold Modern',
-    description: 'Strong geometric headers with readable body. Great for agencies and portfolios.',
-    headerFont: {
-      name: 'Bebas Neue',
-      weights: ['400'],
-      category: 'sans-serif'
-    },
-    bodyFont: {
-      name: 'Work Sans',
-      weights: ['400', '500', '600'],
-      category: 'sans-serif'
-    }
-  },
-  'classic-formal': {
-    name: 'Classic Formal',
-    description: 'Traditional serif headers with clean body. Excellent for law, finance, luxury.',
-    headerFont: {
-      name: 'Merriweather',
-      weights: ['700', '900'],
-      category: 'serif'
-    },
-    bodyFont: {
-      name: 'Source Sans 3',
-      weights: ['400', '500', '600'],
-      category: 'sans-serif'
-    }
-  }
 }
 
 /**
@@ -963,6 +903,7 @@ MODE SELECTION GUIDE:
         // Persist to memory table for brand-data API (BrandDataTypography shape)
         try {
           await memoryStore.set(workspaceScopeFromAppId(appId, customerIdFromContext(context)), 'brand.typography', {
+            name: selectedFont.name,
             heading: { family: selectedFont.headerFont.name, weights: selectedFont.headerFont.weights },
             body: { family: selectedFont.bodyFont.name, weights: selectedFont.bodyFont.weights },
           })
@@ -1296,6 +1237,7 @@ MODE SELECTION GUIDE:
       // Persist to memory table for brand-data API (BrandDataTypography shape)
       try {
         await memoryStore.set(workspaceScopeFromAppId(appId, customerIdFromContext(context)), 'brand.typography', {
+          name: themeName,
           heading: { family: headerFont.name, weights: headerFont.weights },
           body: { family: bodyFont.name, weights: bodyFont.weights },
         })

@@ -11,6 +11,9 @@ import { Router, Request, Response } from 'express';
 import { log } from '../../logging/index.js';
 import { getKvMemoryStore } from '../../memory/adapters/index.js';
 import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js';
+import { getBrandMoodImages } from '../../services/media/brand-mood-images.js';
+import { AppMetadataRepository } from '../../database/index.js';
+import type { DesignKitRef } from '../../types/design-kit.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 import {
@@ -62,6 +65,7 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
     const [
       paletteResult, typographyResult, identityResult,
       personalityResult, voiceResult, iconographyResult, layoutResult, audienceResult,
+      summaryResult, imageryResult, wizardResult, moodImages,
     ] = await Promise.all([
       memory.get(scope, 'brand.colors.palette'),
       memory.get(scope, 'brand.typography'),
@@ -71,6 +75,10 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
       memory.get(scope, 'design.iconography'),
       memory.get(scope, 'design.layout'),
       memory.get(scope, 'design.audience'),
+      memory.get(scope, 'brand.summary'),
+      memory.get(scope, 'brand.imagery'),
+      memory.get(scope, 'brand.wizard.step'),
+      getBrandMoodImages(appId!),
     ]);
 
     // Log memory read failures so DB issues surface in monitoring
@@ -83,11 +91,28 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
       { key: 'design.iconography', result: iconographyResult },
       { key: 'design.layout', result: layoutResult },
       { key: 'design.audience', result: audienceResult },
+      { key: 'brand.summary', result: summaryResult },
+      { key: 'brand.imagery', result: imageryResult },
+      { key: 'brand.wizard.step', result: wizardResult },
     ];
     for (const { key, result } of allResults) {
       if (!result.success) {
         contextLogger.warn('brandData.route.memoryRead.failed', { appId, key, error: result.error });
       }
+    }
+
+    // The chosen design kit is sourced from app metadata (`designKit`), written
+    // by the catalog-install tool and the ui-kit upload route — the single source
+    // of truth for the wizard's "Design kit" row. Best-effort: a metadata read
+    // failure degrades the kit row to empty, it never fails the brand-data response.
+    let designKit: DesignKitRef | undefined;
+    try {
+      designKit = new AppMetadataRepository().get(appId!).designKit as DesignKitRef | undefined;
+    } catch (err) {
+      contextLogger.warn('brandData.route.designKit.read.failed', {
+        appId,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     const identity = identityResult.exists ? identityResult.value as BrandIdentityData : null;
@@ -119,6 +144,16 @@ router.get('/apps/:id/brand-data', validateAppOwnership, async (req: Request, re
       photography: identity?.photography,
       mission: identity?.mission,
       toneMatrix: identity?.toneMatrix ? { contexts: identity.toneMatrix } : undefined,
+      summary: summaryResult.exists ? summaryResult.value as BrandData['summary'] : undefined,
+      // Merge the keyword (from memory) with the mood-image set (from the media
+      // manifest) so both halves of "imagery" come back in one field.
+      imagery: ((): BrandData['imagery'] => {
+        const base = imageryResult.exists ? imageryResult.value as BrandData['imagery'] : undefined;
+        if (!base && moodImages.length === 0) return undefined;
+        return { ...(base ?? {}), ...(moodImages.length > 0 ? { moodImages } : {}) };
+      })(),
+      wizard: wizardResult.exists ? wizardResult.value as BrandData['wizard'] : undefined,
+      kit: designKit?.displayName ? { name: designKit.displayName } : undefined,
     };
 
     res.json(brandData);

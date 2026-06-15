@@ -4,11 +4,12 @@ import express, { type Express, type Request, type Response, type NextFunction }
 
 // Hoist mocks to top level
 const {
-  mockMemoryGet,
+  mockMemoryGet, mockMetadataGet,
   mockParseBrandPersonality, mockParseBrandVoice, mockExtractTagline,
   mockParseBrandIconography, mockParseBrandLayout, mockParseBrandAudience,
 } = vi.hoisted(() => ({
   mockMemoryGet: vi.fn(),
+  mockMetadataGet: vi.fn(),
   mockParseBrandPersonality: vi.fn(),
   mockParseBrandVoice: vi.fn(),
   mockExtractTagline: vi.fn(),
@@ -23,6 +24,11 @@ vi.mock('../../../memory/adapters/index.js', () => ({
   }; }),
 }));
 
+// The chosen design kit is read from app metadata (designKit), not memory.
+vi.mock('../../../database/index.js', () => ({
+  AppMetadataRepository: class { get = mockMetadataGet },
+}));
+
 // Mock validateAppOwnership as passthrough
 vi.mock('../../middleware/app-ownership.js', () => ({
   validateAppOwnership: (_req: Request, _res: Response, next: NextFunction) => next(),
@@ -34,6 +40,15 @@ vi.mock('../../../logging/index.js', () => ({
     forApp: vi.fn().mockReturnValue({}),
     error: vi.fn(),
   },
+  // The shared brand-mood-images helper (now used by brand-data.ts) creates a
+  // module-level Logger at import; provide it so importing the route doesn't throw.
+  Logger: { create: () => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
+}));
+
+// Mock the media manifest service — no manifest exists in unit tests, so the
+// brand-mood image set resolves empty (keyword-only imagery path).
+vi.mock('../../../services/MediaManifestService.js', () => ({
+  mediaManifestService: { getManifest: vi.fn().mockResolvedValue({ success: false }) },
 }));
 
 // Mock brand-data-parsers
@@ -71,6 +86,7 @@ describe('Brand Data Route', () => {
     mockParseBrandIconography.mockReturnValue({ style: 'minimal', tags: ['outlined', 'geometric'] });
     mockParseBrandLayout.mockReturnValue({ grid: '12-column', spacing: 'compact', components: 'cards, navigation, hero' });
     mockParseBrandAudience.mockReturnValue({ description: 'parsed audience' });
+    mockMetadataGet.mockReturnValue({});
   });
 
   afterEach(() => {
@@ -122,6 +138,18 @@ describe('Brand Data Route', () => {
         mission: identity.mission,
         toneMatrix: { contexts: identity.toneMatrix },
       });
+    });
+
+    it('surfaces the chosen kit name from designKit app metadata', async () => {
+      mockMemoryGet.mockResolvedValue(noResult);
+      mockMetadataGet.mockReturnValue({
+        designKit: { source: 'catalog', id: 'kit-1', displayName: 'Modern Bento' },
+      });
+
+      const response = await request(app).get(`/apps/${testAppId}/brand-data`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.kit).toEqual({ name: 'Modern Bento' });
     });
 
     it('should fall back to parsed markdown when no structured identity data exists', async () => {
@@ -259,6 +287,40 @@ describe('Brand Data Route', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.brandName).toBe('Your Brand');
+    });
+
+    it('surfaces brand.summary, brand.imagery, and brand.wizard.step', async () => {
+      const summary = { text: 'A calm, considered brand.' };
+      const imagery = { keyword: 'minimal neutral, airy whites' };
+      const wizard = { step: 3 };
+
+      mockMemoryGet.mockImplementation(function (_scope: unknown, key: string) {
+        const map: Record<string, unknown> = {
+          'brand.summary': summary,
+          'brand.imagery': imagery,
+          'brand.wizard.step': wizard,
+        };
+        if (key in map) return Promise.resolve(memoryResult(map[key]));
+        return Promise.resolve(noResult);
+      });
+
+      const response = await request(app).get(`/apps/${testAppId}/brand-data`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.summary).toEqual(summary);
+      expect(response.body.imagery).toEqual(imagery);
+      expect(response.body.wizard).toEqual(wizard);
+    });
+
+    it('omits summary, imagery, and wizard when the keys are absent', async () => {
+      mockMemoryGet.mockResolvedValue(noResult);
+
+      const response = await request(app).get(`/apps/${testAppId}/brand-data`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.summary).toBeUndefined();
+      expect(response.body.imagery).toBeUndefined();
+      expect(response.body.wizard).toBeUndefined();
     });
   });
 });

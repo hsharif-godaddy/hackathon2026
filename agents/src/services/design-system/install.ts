@@ -1,12 +1,14 @@
 import { mkdirSync, writeFileSync, rmSync, readdirSync, cpSync, existsSync, readFileSync } from 'fs'
 import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
-import { join, normalize, resolve, basename, relative } from 'path'
+import { join, normalize, resolve, basename, relative, sep } from 'path'
 import { createHash } from 'crypto'
 import { x as extractTar } from 'tar'
 import { logger } from '../../logging/index.js'
 import type { WorkspaceClient } from '../../workspace/index.js'
 import type { DesignSystemCatalogEntry } from './types.js'
+import { extractKitTokens } from './kit-tokens.js'
+import type { BrandKitTokens } from '@airo/shared/brand-data'
 
 const UPLOAD_CONCURRENCY = 8
 
@@ -19,6 +21,8 @@ export interface InstallDesignSystemInput {
 export interface InstallDesignSystemResult {
   slug: string
   written: number
+  /** Element shape tokens parsed from the kit's anchor.json (if present). */
+  tokens?: BrandKitTokens
 }
 
 function isSafeRel(rel: string): boolean {
@@ -123,7 +127,7 @@ export async function installDesignSystem(input: InstallDesignSystemInput): Prom
       const src = join(extractDir, extractedEntry.name)
       const dest = join(assembledDir, extractedEntry.name)
       const destResolved = resolve(dest)
-      if (!normalize(destResolved).startsWith(assembledResolved)) {
+      if (destResolved !== assembledResolved && !normalize(destResolved).startsWith(assembledResolved + sep)) {
         logger.warn('design_system.install.escape_attempt_skipped', { path: extractedEntry.name, slug: entry.slug })
         continue
       }
@@ -140,7 +144,19 @@ export async function installDesignSystem(input: InstallDesignSystemInput): Prom
       await workspace.files.upload({ path: `docs/ui-kit/${relPath}`, data })
     })
 
-    return { slug: entry.slug, written: filePaths.length }
+    // Parse the kit's anchor.json (if present) into compact element shape tokens
+    // for the wizard's Elements preview. Best-effort + non-fatal.
+    let tokens: BrandKitTokens | undefined
+    try {
+      const anchorPath = join(assembledDir, 'anchor.json')
+      if (existsSync(anchorPath)) {
+        tokens = extractKitTokens(JSON.parse(readFileSync(anchorPath, 'utf-8')))
+      }
+    } catch (err) {
+      logger.warn('design_system.install.anchor_parse_failed', { slug: entry.slug, err: String(err) })
+    }
+
+    return { slug: entry.slug, written: filePaths.length, tokens }
   } finally {
     rmSync(stage, { recursive: true, force: true })
   }

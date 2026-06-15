@@ -18,6 +18,7 @@ import { DEBUG_TURN_STATS_EVENT, type DebugTurnStatsEvent } from '@airo/shared/w
 
 import {
   AgentsAvailableHandler,
+  BuildPhaseHandler,
   CatchupCompleteHandler,
   CatchupStatusHandler,
   ChunkHandler,
@@ -426,6 +427,7 @@ export class TransportSupervisor extends EventEmitter {
     registry.register(new ClientActionHandler())
     registry.register(new ValidationMessageHandler())
     registry.register(new VideoHandler())
+    registry.register(new BuildPhaseHandler())
     registry.register(new LogoHandler())
 
     const messageContext: MessageContext = {

@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { isEmployeeAuthType } from '@airo/shared/auth'
 import { BudgetErrorType } from '@airo/shared/budget'
 
-import { groupConsecutiveActionTools, groupConsecutiveMediaTools } from '@/app/[market]/develop/components/actionToolGrouping'
+import { groupConsecutiveActionTools, groupConsecutiveMediaTools, isSystemHiddenToolCall } from '@/app/[market]/develop/components/actionToolGrouping'
 import BudgetExceededBanner from '@/app/[market]/develop/components/chat/BudgetExceededBanner'
 import type { ContentBlock } from '@/app/[market]/develop/components/contentBlocks'
 import MessageContentRenderer from '@/app/[market]/develop/components/MessageContentRenderer'
@@ -208,14 +208,19 @@ export default function StreamingIntegratedResponse({
       })
     }
 
+    // System tools (e.g. setWizardStep) drive UI state only — never render them.
+    // Drop them before grouping so they don't act as boundaries that split
+    // consecutive action tools into separate groups.
+    const visibleBlocks = blocks.filter((block) => !(block.type === 'tool' && isSystemHiddenToolCall(block.toolCall)))
+
     // Filter suggestedResponse and askQuestion tool blocks before grouping so they
     // don't act as boundaries that split consecutive action tools into separate groups.
     // When chat plans are enabled, NBAs are shown in InputActionsPanel — always filter.
     // Otherwise, show these only on the last assistant message.
     const chatAreaTools = new Set(['suggestedResponse', 'askQuestion'])
     const filteredBlocks = (isLastAssistantMessage && !areChatPlansEnabled)
-      ? blocks
-      : blocks.filter((block) => !(block.type === 'tool' && chatAreaTools.has(block.toolCall?.name ?? '')))
+      ? visibleBlocks
+      : visibleBlocks.filter((block) => !(block.type === 'tool' && chatAreaTools.has(block.toolCall?.name ?? '')))
 
     // Order matters here: media tools must be collapsed into tool-group blocks first,
     // then compact action rows are grouped. Reversing this would let raw media tool

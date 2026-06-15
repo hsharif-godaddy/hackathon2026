@@ -341,6 +341,34 @@ export async function createInitialAgent(
     tools.fontTheme = allAILibTools.fontTheme
   }
 
+  // Design Kit Wizard variant: design tools + brand tools + logo skill + wizard stepper
+  const isDesignKitVariant = isNamedVariant && trimmedPromptVersion.startsWith('design-kit')
+  if (isDesignKitVariant) {
+    tools.listDesignSystems = allAILibTools.listDesignSystems
+    tools.installDesignSystem = allAILibTools.installDesignSystem
+    tools.loadUiKit = allAILibTools.loadUiKit
+    tools.colorScheme = allAILibTools.colorScheme
+    tools.fontTheme = allAILibTools.fontTheme
+    // Design-kit-owned consolidated brand tool (identity + imagery keyword +
+    // summary, plus a one-shot `get`) — replaces the shared brandBook +
+    // memorySet/memoryRead so the wizard stays isolated from production tooling.
+    tools.brand = allAILibTools.brand
+    tools.skill = allAILibTools.skill
+    tools.media = allAILibTools.media
+    tools.setWizardStep = allAILibTools.setWizardStep
+    // Step 4 writes the brand showcase to public/brand-showcase.html itself, so the
+    // wizard needs the file editor. Without it the agent cannot author the showcase
+    // (it was observed trying to load a nonexistent "file-edit" skill as a workaround,
+    // which also left public/brand-showcase.html unwritten so the iframe fell back to
+    // the site index).
+    tools.str_replace_based_edit_tool = allAILibTools.str_replace_based_edit_tool
+    // The wizard never rebuilds an existing site. websiteRebuild performs an
+    // unconditional switchAgent(...,'develop') with no step gating, which would
+    // hard-hand-off mid-wizard — the exact bug we're preventing. Remove it so the
+    // ONLY route to develop is the Step-5 handoff.
+    delete tools.websiteRebuild
+  }
+
   if (handoffTool) {
     tools.handoff = handoffTool
   }
@@ -402,11 +430,15 @@ export async function createInitialAgent(
     // Stop after tools that need user confirmation before continuing
     stopAfterTools: [
       ...(handoffTool ? ['handoff'] : []),
-      ...(templateId !== 'logo-designer' ? ['websiteRebuild'] : []),
+      ...(templateId !== 'logo-designer' && !isDesignKitVariant ? ['websiteRebuild'] : []),
       'askQuestion',
     ],
 
-    maxSteps: 10,
+    // The Design Kit Wizard fires many tools in a single assembly turn (install
+    // kit, colors, fonts, project name, logo, imagery, voice, summary, plus the
+    // setWizardStep transitions), so it needs a higher step budget than the
+    // standard initial agent or it stops before the kit is fully assembled.
+    maxSteps: isDesignKitVariant ? 20 : 10,
     temperature: 0.5,
     maxOutputTokens: 8000,
     timeout: { stepMs: 600_000 },

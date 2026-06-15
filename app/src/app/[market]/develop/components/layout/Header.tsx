@@ -21,6 +21,7 @@ import Tag from '@ux/tag';
 import { ButtonGroup } from '@/app/[market]/develop/components/ButtonGroup';
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import ShareLink from '@/app/[market]/develop/components/layout/ShareLink';
+import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import DeviceSelector from '@/app/[market]/develop/components/preview/DeviceSelector'
 import { MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
@@ -62,6 +63,10 @@ interface DevelopHeaderProps {
 export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) {
   const t = useTranslations();
   const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook');
+  // The design-kit wizard renders inside the "Logo & Brand" tab, so the tab must be
+  // visible whenever the wizard profile is active (gated on the appbuilder-agent-profile
+  // switchboard value), even if the generic brandbook flag is off.
+  const showDesignKitWizard = useIsDesignKitWizardProfile();
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
   const isHelpButtonEnabled = useSwitchboard('appbuilder-help-button');
@@ -191,7 +196,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                     disabled={isVersionHistoryOpen}
                   />
                 )}
-                {isBrandBookEnabled && (
+                {(isBrandBookEnabled || showDesignKitWizard) && (
                   <ButtonGroup.Item
                     value={ViewMode.BRAND}
                     icon={<ColorPaletteIcon className="size-2.5" />}

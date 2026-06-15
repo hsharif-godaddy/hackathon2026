@@ -57,6 +57,24 @@ export function isMediaSlotTool(name?: string): boolean {
 // todoList operations whose renderer returns null
 const TODO_LIST_HIDDEN_OPS = new Set(['mark_done', 'mark_undone', 'mark_in_progress', 'show_list'])
 
+// System/internal tools the agent calls purely to drive builder UI state —
+// e.g. setWizardStep advances the design-kit wizard stepper. They carry no
+// user-facing meaning and must never render in the chat transcript.
+// camelCase canonical form (matches toCamelCase normalization).
+const SYSTEM_HIDDEN_TOOL_NAMES = new Set([
+  'setWizardStep',
+])
+
+/**
+ * True when a tool call is an internal/system tool that should never appear in
+ * the chat transcript — it exists only to drive a UI side effect. Callers
+ * filter these out of the rendered tool stream entirely.
+ */
+export function isSystemHiddenToolCall(toolCall?: ToolCall): boolean {
+  if (!toolCall?.name) return false
+  return SYSTEM_HIDDEN_TOOL_NAMES.has(toCamelCase(toolCall.name))
+}
+
 export function isActionToolGroupEligible(toolCall?: ToolCall): boolean {
   if (!toolCall?.name) return false
 

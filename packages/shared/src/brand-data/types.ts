@@ -42,6 +42,8 @@ export interface BrandDataPalette {
 }
 
 export interface BrandDataTypography {
+  /** Friendly name of the chosen font pairing, e.g. "Modern Professional". */
+  name?: string;
   heading?: { family: string; weights: string[] };
   body?: { family: string; weights: string[] };
 }
@@ -97,6 +99,56 @@ export interface BrandDataToneMatrix {
   }>;
 }
 
+export interface BrandDataSummary {
+  text?: string;
+}
+
+export interface BrandDataMoodImage {
+  /** Media-manifest slot path, e.g. "brand/mood-1". */
+  slot: string;
+  /** Current resolved image URL for the slot (manifest `currentUrl`). */
+  url: string;
+}
+
+export interface BrandDataImagery {
+  /** A single descriptor phrase used as the stock-search key, e.g.
+   * "Minimal neutral fashion lifestyle, airy whites, soft textures, quiet luxury". */
+  keyword?: string;
+  /** Cohesive brand-mood image set — the visual identity that conveys the
+   * brand's look & feel. Resolved from the media-manifest `brand/mood-*` slots
+   * (deterministic; not agent-written). */
+  moodImages?: BrandDataMoodImage[];
+}
+
+export interface BrandDataWizard {
+  /** Active wizard step, 1–5. */
+  step?: 1 | 2 | 3 | 4 | 5;
+}
+
+/**
+ * Compact element "shape language" parsed from the installed kit's `anchor.json`
+ * (radius / shadow / button casing). Lets the wizard's Elements preview render
+ * the kit's actual shapes — driven by the user's live palette + fonts. Absent
+ * for kits that ship no anchor.json or whose tokens couldn't be parsed.
+ */
+export interface BrandKitTokens {
+  /** Corner radius (px) for general surfaces — cards, inputs, tags. */
+  radiusBase?: number;
+  /** Corner radius (px) for buttons (the kit's "subtle" radius). */
+  radiusButton?: number;
+  /** True when the kit's resting shadow is "none" (flat by default). */
+  flat?: boolean;
+  /** Whether buttons / labels are set UPPERCASE. */
+  uppercase?: boolean;
+  /** Letter-spacing for buttons / labels, e.g. "0.12em". */
+  tracking?: string;
+}
+
+export interface BrandDataKit {
+  /** Friendly name of the chosen design system / kit, e.g. "Volt". */
+  name?: string;
+}
+
 export interface BrandData {
   version: number;
   brandName?: string;
@@ -111,4 +163,8 @@ export interface BrandData {
   photography?: BrandDataPhotography;
   mission?: BrandDataMission;
   toneMatrix?: BrandDataToneMatrix;
+  summary?: BrandDataSummary;
+  imagery?: BrandDataImagery;
+  wizard?: BrandDataWizard;
+  kit?: BrandDataKit;
 }

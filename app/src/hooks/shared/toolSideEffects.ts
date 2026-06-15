@@ -24,7 +24,7 @@ import { useUpfrontRebuildBuildQueueStore } from '@/stores/useUpfrontRebuildBuil
 import { logImpressionEvent, setInstrumentationBusinessName, setInstrumentationIntentCategory } from '@/utils/instrumentation'
 import { readIntentCategoryFromSession } from '@/utils/traffic-signals'
 
-const BRAND_UPDATE_TOOLS = new Set(['colorScheme', 'fontTheme', 'setProjectName', 'brandBook'])
+const BRAND_UPDATE_TOOLS = new Set(['colorScheme', 'fontTheme', 'setProjectName', 'brandBook', 'brand', 'installDesignSystem'])
 
 const REBUILD_INTENT_PATTERN = /\b(rebuild|redesign|start\s+over|redo|recreate)\b/i
 
@@ -37,6 +37,15 @@ function isBrandMemorySet(tool: { name: string; input?: any }): boolean {
   if (tool.name !== 'memorySet') return false
   const key = tool.input?.key
   return typeof key === 'string' && (key.startsWith('design.') || key.startsWith('brand.'))
+}
+
+// A `media` search into a brand-scoped slot (e.g. "brand/mood-1") is part of the
+// brand kit — refetch brand-data so the mood imagery surfaces live. Other media
+// slots (page heroes, etc.) don't touch brand-data, so they're ignored.
+function isBrandMedia(tool: { name: string; input?: any }): boolean {
+  if (tool.name !== 'media') return false
+  const slot = tool.input?.slot
+  return typeof slot === 'string' && slot.startsWith('brand/')
 }
 
 // File operation tool names (mirrored from FileOperationHandler)
@@ -267,7 +276,7 @@ export async function handleToolResultSideEffects(
   }
 
   // Brand data refresh (Brand Book UI)
-  if (!hasError && (BRAND_UPDATE_TOOLS.has(tool.name) || isBrandMemorySet(tool))) {
+  if (!hasError && (BRAND_UPDATE_TOOLS.has(tool.name) || isBrandMemorySet(tool) || isBrandMedia(tool))) {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent(BRAND_DATA_UPDATED_EVENT, { detail: { appId } }))
     }

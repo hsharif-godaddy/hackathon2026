@@ -32,7 +32,9 @@ export const installDesignSystemAITool: Tool = createTool(
 
       try {
         // Record the matched catalog entry's stable identity (id + displayName),
-        // plus kitId when the kit has one.
+        // plus kitId when the kit has one. This is the single source of truth for
+        // the chosen kit: the brand-data route reads `designKit` to surface the
+        // wizard's "Design kit" row, and it doubles as provenance/instrumentation.
         const designKit: DesignKitRef = {
           source: 'catalog',
           id: entry.id,

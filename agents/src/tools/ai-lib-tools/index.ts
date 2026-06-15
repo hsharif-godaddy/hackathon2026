@@ -49,12 +49,14 @@ export { websiteRebuildAITool } from './website-rebuild.js';
 export { rebuildPageSelectorAITool } from './rebuild-page-selector.js';
 export { mediaSlotAITool } from './media-slot.js';
 export { brandIdentityAITool } from './brand-identity.js';
+export { brandAITool } from './brand.js';
 export { httpCheckAITool } from './http-check.js';
 export { listDesignSystemsAITool } from './list-design-systems.js'
 export { installDesignSystemAITool } from './install-design-system.js'
 export { showDocAITool } from './show-doc.js';
 export { runAgentAITool, awaitAgentsAITool } from './run-agent.js'
 export { returnToParentAITool } from './return-to-parent.js';
+export { setWizardStepAITool } from './set-wizard-step.js';
 
 // Re-import for registry
 import { textEditorAITool } from './text-editor.js';
@@ -99,12 +101,14 @@ import { websiteRebuildAITool } from './website-rebuild.js';
 import { rebuildPageSelectorAITool } from './rebuild-page-selector.js';
 import { mediaSlotAITool } from './media-slot.js';
 import { brandIdentityAITool } from './brand-identity.js';
+import { brandAITool } from './brand.js';
 import { httpCheckAITool } from './http-check.js';
 import { listDesignSystemsAITool } from './list-design-systems.js';
 import { installDesignSystemAITool } from './install-design-system.js';
 import { showDocAITool } from './show-doc.js';
 import { runAgentAITool, awaitAgentsAITool } from './run-agent.js'
 import { returnToParentAITool } from './return-to-parent.js';
+import { setWizardStepAITool } from './set-wizard-step.js';
 import { screenshotAITool } from './screenshot.js';
 import { crawlPagesAITool } from './crawl-pages.js';
 import { registerPostEditHandler } from './post-edit-handlers.js';
@@ -160,6 +164,7 @@ export const allAILibTools: Record<string, Tool> = {
   rebuildPageSelector: rebuildPageSelectorAITool,
   media: mediaSlotAITool,
   brandBook: brandIdentityAITool,
+  brand: brandAITool,
   loadUiKit: loadUiKitAITool,
   httpCheck: httpCheckAITool,
   listDesignSystems: listDesignSystemsAITool,
@@ -168,6 +173,7 @@ export const allAILibTools: Record<string, Tool> = {
   runAgent: runAgentAITool,
   awaitAgents: awaitAgentsAITool,
   returnToParent: returnToParentAITool,
+  setWizardStep: setWizardStepAITool,
   screenshot: screenshotAITool,
   crawlPages: crawlPagesAITool,
 };

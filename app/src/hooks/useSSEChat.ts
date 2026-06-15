@@ -38,6 +38,7 @@ import { logImpressionEvent, setInstrumentationIntentCategory } from '@/utils/in
 import { readIntentCategoryFromSession } from '@/utils/traffic-signals'
 import { ensureFreshToken } from './github/useGitHubTokenHealth'
 import { resolveMessageDefaults } from './resolveMessageDefaults'
+import { handleBuildPhaseNotification } from './shared/buildPhaseNotification'
 import {
   checkNewPageCreation,
   handleCommitComplete,
@@ -744,6 +745,13 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   clientAppId: store.currentAppId,
                   t: tRef.current,
                   logPrefix: 'sse.video',
+                })
+              } else if (type === 'build_phase') {
+                // Shared with the WS BuildPhaseHandler: advance the design-kit wizard stepper.
+                handleBuildPhaseNotification({
+                  raw: event.data as Record<string, unknown>,
+                  clientAppId: store.currentAppId ?? '',
+                  logPrefix: 'sse.build_phase',
                 })
               } else if (type === 'logo') {
                 // Shared with the WS LogoHandler: store update (chat card swap),

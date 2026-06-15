@@ -2,6 +2,7 @@
 
 import React from 'react'
 
+import { isSystemHiddenToolCall } from '@/app/[market]/develop/components/actionToolGrouping'
 import ToolRenderer from '@/app/[market]/develop/components/ToolRenderer'
 import WidgetRenderer from '@/app/[market]/develop/components/WidgetRenderer'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -23,6 +24,13 @@ interface MessageToolCallsRendererProps {
  * @returns React element for the tool call
  */
 function renderToolCall(toolCall: ToolCall, index?: number, isActiveStream?: boolean, isLastAssistantMessage?: boolean, chatPlansEnabled?: boolean) {
+  // System tools (e.g. setWizardStep) drive UI state only — never render in chat.
+  // Guards the fallback path where StreamingIntegratedResponse renders raw
+  // segments (a message whose only tool is system-hidden has no grouped blocks).
+  if (isSystemHiddenToolCall(toolCall)) {
+    return null
+  }
+
   // When chat plans are enabled, NBAs live in InputActionsPanel — never render in message stream.
   // Otherwise, only render suggestedResponse on the last assistant message.
   if (toolCall.name === 'suggestedResponse' && (!isLastAssistantMessage || chatPlansEnabled)) {

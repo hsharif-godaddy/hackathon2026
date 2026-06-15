@@ -35,6 +35,7 @@ export { default as dbImportRouter } from './db-import.js';
 export { runtimeErrorsRouter } from './runtime-errors.js';
 export { default as formatOverridesRouter } from './format-overrides.js';
 export { default as brandDataRouter } from './brand-data.js';
+export { default as designKitRouter } from './design-kit.js';
 export { default as rebuildRouter } from './rebuild.js';
 export { default as nextActionsRouter } from './next-actions.js';
 export { default as feedbackRouter } from './feedback.js';

@@ -1,0 +1,13 @@
+{
+  "base": "3.0",
+  "preflightTools": ["listDesignSystems"],
+  "files": [
+    { "src": "variant", "file": "role.md" },
+    { "src": "base", "file": "identity.md" },
+    { "src": "variant", "file": "workflow-override.md" },
+    { "src": "base", "file": "project-name.md" },
+    { "src": "variant", "file": "questioning-phase1.md" },
+    { "src": "variant", "file": "wizard-flow.md" },
+    { "src": "variant", "file": "brand-showcase.md" }
+  ]
+}

@@ -167,4 +167,76 @@ describe('useView', () => {
       expect(params.get('tab')).toBe('history');
     });
   });
+
+  describe('resolveInitialViewMode (initial default)', () => {
+    it('lands on the resolved initial mode on a fresh load with no view param', async () => {
+      renderHook(() =>
+        useView({ getViewAvailability: allAvailable, resolveInitialViewMode: () => ViewMode.BRAND })
+      );
+
+      await waitFor(() => {
+        expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
+      });
+      expect(useDevelopPageStore.getState().viewInitializedForPathname).toBe('/develop/app-123');
+    });
+
+    it('leaves the default viewMode when resolveInitialViewMode returns null', async () => {
+      renderHook(() =>
+        useView({ getViewAvailability: allAvailable, resolveInitialViewMode: () => null })
+      );
+
+      await waitFor(() => {
+        expect(useDevelopPageStore.getState().viewInitializedForPathname).toBe('/develop/app-123');
+      });
+      expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.EDIT);
+    });
+
+    it('lets a valid ?view deep link win over the initial default', async () => {
+      window.history.replaceState(null, '', '/develop/app-123?view=inbox');
+
+      renderHook(() =>
+        useView({ getViewAvailability: allAvailable, resolveInitialViewMode: () => ViewMode.BRAND })
+      );
+
+      await waitFor(() => {
+        expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.INBOX);
+      });
+    });
+
+    it('applies the initial default when an unavailable ?view is stripped', async () => {
+      window.history.replaceState(null, '', '/develop/app-123?view=inbox');
+
+      const getViewAvailability = (mode: ViewMode): ViewAvailability =>
+        mode === ViewMode.INBOX ? { available: false, resolving: false } : allAvailable();
+
+      renderHook(() => useView({ getViewAvailability, resolveInitialViewMode: () => ViewMode.BRAND }));
+
+      await waitFor(() => {
+        expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
+      });
+      expect(new URLSearchParams(window.location.search).has('view')).toBe(false);
+    });
+
+    it('does not snap back to the initial default after the user changes tabs', async () => {
+      const { rerender } = renderHook(() =>
+        useView({ getViewAvailability: allAvailable, resolveInitialViewMode: () => ViewMode.BRAND })
+      );
+
+      await waitFor(() => {
+        expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
+      });
+
+      // User navigates away from the default tab.
+      act(() => {
+        useDevelopPageStore.getState().setViewMode(ViewMode.EDIT);
+      });
+      rerender();
+
+      // The per-pathname init guard prevents the default from re-applying.
+      await waitFor(() => {
+        expect(useDevelopPageStore.getState().viewInitializedForPathname).toBe('/develop/app-123');
+      });
+      expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.EDIT);
+    });
+  });
 });

@@ -5,6 +5,7 @@
  */
 
 export * from './AgentsAvailableHandler'
+export * from './BuildPhaseHandler'
 export * from './CatchupCompleteHandler'
 export * from './CatchupStatusHandler'
 export * from './ChunkHandler'

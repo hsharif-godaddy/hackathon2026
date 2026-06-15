@@ -787,6 +787,77 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
       expect(screen.getByRole('button', { name: 'Show 2 actions' })).toBeInTheDocument();
     });
 
+    it('hides setWizardStep and does not let it split an action group', function hidesSetWizardStepInGroup() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={{
+            id: 'msg-wizard-1',
+            role: 'assistant',
+            content: '',
+            timestamp: new Date(),
+            segments: [
+              {
+                id: 'seg-1',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'logs', name: 'viewLogs', input: {}, status: 'completed' }
+              },
+              {
+                id: 'seg-2',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'wizard', name: 'setWizardStep', input: { step: 3 }, status: 'completed' }
+              },
+              {
+                id: 'seg-3',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'restart', name: 'serverRestart', input: {}, status: 'completed' }
+              }
+            ]
+          }}
+          streamingState="idle"
+        />
+      );
+
+      // setWizardStep is filtered before grouping, so viewLogs + serverRestart
+      // collapse into one 2-action group — proving the wizard tool neither
+      // rendered nor acted as a group boundary.
+      expect(screen.getByRole('button', { name: 'Show 2 actions' })).toBeInTheDocument();
+    });
+
+    it('renders nothing for a lone setWizardStep tool call (raw-segment fallback path)', function hidesLoneSetWizardStep() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={{
+            id: 'msg-wizard-2',
+            role: 'assistant',
+            content: '',
+            timestamp: new Date(),
+            segments: [
+              {
+                id: 'seg-1',
+                type: 'tool_call',
+                content: '',
+                timestamp: new Date(),
+                toolCall: { id: 'wizard', name: 'setWizardStep', input: { step: 1 }, status: 'completed' }
+              }
+            ]
+          }}
+          streamingState="idle"
+        />
+      );
+
+      // With the only tool filtered out, chronologicalContent is empty and the
+      // component falls back to rendering raw segments via MessageToolCallsRenderer —
+      // which must also suppress the system tool (DefaultToolRenderer would
+      // otherwise show a "SetWizardStep" row).
+      expect(screen.queryByText(/SetWizardStep/i)).not.toBeInTheDocument();
+    });
+
     it('dedupes blocks when tool_start and tool_call segments share an id', function dedupesAcrossSegmentTypes() {
       renderWithProviders(
         <StreamingIntegratedResponse
