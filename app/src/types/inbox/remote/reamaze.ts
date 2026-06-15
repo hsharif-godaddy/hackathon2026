@@ -31,6 +31,10 @@ export interface ConversationsResponse {
   conversations: Conversation[]
   /** Total number of pages; the last page is `pageCount` (pages are 1-indexed). */
   pageCount: number
+  /** Number of conversations per page (Reamaze default: 30). */
+  pageSize: number
+  /** Number of conversations silently dropped due to transformation errors. */
+  droppedCount: number
 }
 
 export interface ConversationMessagesResponse {

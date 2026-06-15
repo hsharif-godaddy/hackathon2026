@@ -328,4 +328,4 @@ export const POST = withCustomerAuth(async (
   });
 
   return NextResponse.json({ message });
-});
+}, { level: 3 });

@@ -27,7 +27,6 @@ export function InboxConversationDetailHeader({
   const isPending = resolve.isPending || unresolve.isPending;
   const canResolve = resolve.canExecute(conversation);
   const canUnresolve = unresolve.canExecute(conversation);
-  const hasAction = canResolve || canUnresolve;
 
   const handleAction = (): void => {
     if (canUnresolve) {
@@ -55,18 +54,16 @@ export function InboxConversationDetailHeader({
         <ConversationOriginLine conversation={conversation} />
       </div>
 
-      {hasAction && (
-        <div className='shrink-0 self-center'>
-          <Button
-            design={canUnresolve ? 'secondary' : 'primary'}
-            size='sm'
-            text={canUnresolve ? t('builder_inbox_unresolve') : t('builder_inbox_resolve')}
-            disabled={isPending}
-            onClick={handleAction}
-            data-testid={canUnresolve ? 'conversation-detail-unresolve' : 'conversation-detail-resolve'}
-          />
-        </div>
-      )}
+      <div className='shrink-0 self-center'>
+        <Button
+          design={canUnresolve ? 'secondary' : 'primary'}
+          size='sm'
+          text={canUnresolve ? t('builder_inbox_unresolve') : t('builder_inbox_resolve')}
+          disabled={isPending}
+          onClick={handleAction}
+          data-testid={canUnresolve ? 'conversation-detail-unresolve' : 'conversation-detail-resolve'}
+        />
+      </div>
     </header>
   );
 }

@@ -13,6 +13,8 @@ import { ApiErrorCode } from '@/utils/api-errors';
 
 export const dynamic = 'force-dynamic';
 
+const INT_ID_RE = /^\d+$/;
+
 export const GET = withCustomerAuth(async (
   request: NextRequest,
   authContext: CustomerAuthContext,
@@ -35,7 +37,6 @@ export const GET = withCustomerAuth(async (
     );
   }
 
-  const INT_ID_RE = /^\d+$/;
   if (!conversationId || !INT_ID_RE.test(conversationId)) {
     return NextResponse.json(
       { error: 'conversationId (numeric ID) is required' },

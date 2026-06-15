@@ -57,6 +57,56 @@ describe('GET /api/inbox/conversations', () => {
       expect(response.status).toBe(400);
       expect(data.error).toContain('UUID');
     });
+
+    it('returns 400 when page is zero', async () => {
+      const request = makeRequest({ brandId: '550e8400-e29b-41d4-a716-446655440000', page: '0' });
+      const response = await GET(request, createAuthContext('jwt-token'));
+      const data = await response.json();
+      expect(response.status).toBe(400);
+      expect(data.error).toContain('page');
+    });
+
+    it('returns 400 when page is negative', async () => {
+      const request = makeRequest({ brandId: '550e8400-e29b-41d4-a716-446655440000', page: '-1' });
+      const response = await GET(request, createAuthContext('jwt-token'));
+      const data = await response.json();
+      expect(response.status).toBe(400);
+      expect(data.error).toContain('page');
+    });
+
+    it('returns 400 when page is not a number', async () => {
+      const request = makeRequest({ brandId: '550e8400-e29b-41d4-a716-446655440000', page: 'abc' });
+      const response = await GET(request, createAuthContext('jwt-token'));
+      const data = await response.json();
+      expect(response.status).toBe(400);
+      expect(data.error).toContain('page');
+    });
+
+    it('returns 400 when page is a decimal', async () => {
+      const request = makeRequest({ brandId: '550e8400-e29b-41d4-a716-446655440000', page: '1.5' });
+      const response = await GET(request, createAuthContext('jwt-token'));
+      const data = await response.json();
+      expect(response.status).toBe(400);
+      expect(data.error).toContain('page');
+    });
+
+    it('accepts valid page parameter', async () => {
+      mockFetch.mockResolvedValue(new Response(JSON.stringify({ conversations: [] }), { status: 200 }));
+      const request = makeRequest({ brandId: '550e8400-e29b-41d4-a716-446655440000', page: '3' });
+      const response = await GET(request, createAuthContext('jwt-token'));
+      expect(response.status).toBe(200);
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toContain('page=3');
+    });
+
+    it('succeeds without page parameter', async () => {
+      mockFetch.mockResolvedValue(new Response(JSON.stringify({ conversations: [] }), { status: 200 }));
+      const request = makeRequest({ brandId: '550e8400-e29b-41d4-a716-446655440000' });
+      const response = await GET(request, createAuthContext('jwt-token'));
+      expect(response.status).toBe(200);
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).not.toContain('page=');
+    });
   });
 
   describe('validation — filter', () => {

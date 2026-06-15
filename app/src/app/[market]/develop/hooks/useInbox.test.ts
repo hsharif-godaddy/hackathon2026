@@ -161,7 +161,7 @@ describe('getInboxConversations', () => {
     expect(url.searchParams.has('filter')).toBe(false);
   });
 
-  it('throws when more than 20% of conversations fail to transform', async () => {
+  it('drops all conversations that fail to transform and reports droppedCount', async () => {
     mockConvertConversation.mockImplementation(() => {
       throw new Error('transform failed');
     });
@@ -171,9 +171,9 @@ describe('getInboxConversations', () => {
       new Response(JSON.stringify({ conversations, page_count: 1 }), { status: 200 }),
     );
 
-    await expect(
-      getInboxConversations({ brandId: BRAND_ID }),
-    ).rejects.toThrow('Conversation transform failure');
+    const result = await getInboxConversations({ brandId: BRAND_ID });
+    expect(result.conversations).toHaveLength(0);
+    expect(result.droppedCount).toBe(4);
 
     mockConvertConversation.mockImplementation((c: unknown) => c);
   });

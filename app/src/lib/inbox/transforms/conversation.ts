@@ -149,11 +149,11 @@ const getOriginalChannel = (
 
 const deriveConversationStatus = (numericStatus: number, conversationId: number): ConversationStatus => {
   switch (numericStatus) {
-    case 0: return 'unresolved'
+    case 0: case 7: return 'unresolved'
     case 3: case 9: return 'spam'
     case 4: return 'archived'
     case 5: return 'onHold'
-    case 1: case 2: case 6: case 7: case 8: return 'resolved'
+    case 1: case 2: case 6: case 8: return 'resolved'
     default:
       console.warn('inbox.conversation.unknownStatus', { conversationId, status: numericStatus })
       return 'resolved'

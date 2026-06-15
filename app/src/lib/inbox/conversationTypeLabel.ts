@@ -1,5 +1,11 @@
-import { isGuideBotConversation } from '@/lib/inbox/isGuideBotConversation';
+import { ChannelIconKind, channelIconKindFor } from '@/lib/inbox/channelIcon';
 import { Conversation } from '@/types/inbox/local/conversation';
+
+const CHANNEL_LABEL_KEYS: Record<ChannelIconKind, string> = {
+  guidebot: 'builder_inbox_channel_guidebot',
+  contact: 'builder_inbox_channel_contactform',
+  chat: 'builder_inbox_channel_chat',
+};
 
 /**
  * Returns the i18n key for the conversation's channel-type label. Callers are
@@ -7,11 +13,5 @@ import { Conversation } from '@/types/inbox/local/conversation';
  * use the translation hook.
  */
 export function conversationTypeLabel(conversation: Conversation): string {
-  if (isGuideBotConversation(conversation)) {
-    return 'builder_inbox_channel_guidebot';
-  }
-  if (conversation.messageType === 'contactForm' || conversation.form?.title) {
-    return 'builder_inbox_channel_contactform';
-  }
-  return 'builder_inbox_channel_chat';
+  return CHANNEL_LABEL_KEYS[channelIconKindFor(conversation)];
 }

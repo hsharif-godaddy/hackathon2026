@@ -29,8 +29,16 @@ export function InboxConversationRow({
 
   return (
     <div
-      className='flex cursor-pointer items-center gap-2 border-b border-ux-border-subtle px-3 py-1.5 transition-colors hover:bg-ux-surface-raised'
+      role='button'
+      tabIndex={0}
+      className='flex cursor-pointer items-center gap-2 border-b border-ux-border-subtle px-3 py-1.5 transition-colors hover:bg-ux-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-ux-border-focus'
       onClick={() => onClick(conversation.id)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick(conversation.id);
+        }
+      }}
     >
       <div
         role='img'

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { useInboxConversation, useInboxConversationMessages, useSendInboxReply } from '@/app/[market]/develop/hooks/useInbox';
+import { useInboxConversation, useSendInboxReply } from '@/app/[market]/develop/hooks/useInbox';
 import { useTranslations } from '@/hooks/useTranslations';
 import { isGuideBotConversation } from '@/lib/inbox/isGuideBotConversation';
 import { IntString, UuidString } from '@/types/inbox/local/core';
@@ -24,16 +24,6 @@ export function InboxConversationDetail({
   const t = useTranslations();
   const [body, setBody] = useState('');
   const [sendError, setSendError] = useState(false);
-
-  const {
-    isLoading: messagesLoading,
-    isError: messagesIsError,
-    error: messagesError,
-    data: messagesData
-  } = useInboxConversationMessages(
-    conversationId,
-    brandId,
-  );
 
   const {
     isLoading: conversationLoading,
@@ -65,9 +55,7 @@ export function InboxConversationDetail({
     [sendReply.mutate],
   );
 
-  const messages = messagesData?.messages ?? [];
-
-  if (messagesLoading || conversationLoading ) {
+  if (conversationLoading) {
     return (
       <div className='flex flex-1 items-center justify-center'>
         <div className='text-ux-text-primary'>{t('builder_common_loading')}</div>
@@ -75,17 +63,7 @@ export function InboxConversationDetail({
     );
   }
 
-  if (messagesIsError) {
-    return (
-      <div className='flex flex-1 items-center justify-center px-4'>
-        <div className='text-center text-ux-text-error'>
-          {messagesError instanceof Error ? messagesError.message : t('builder_inbox_messages_load_error')}
-        </div>
-      </div>
-    );
-  }
-
-  if (conversationIsError) {
+  if (conversationIsError || !conversation) {
     return (
       <div className='flex flex-1 items-center justify-center px-4'>
         <div className='text-center text-ux-text-error'>
@@ -114,7 +92,8 @@ export function InboxConversationDetail({
       />
 
       <InboxConversationMessageThread
-        messages={messages}
+        conversationId={conversationId}
+        brandId={brandId}
         conversation={conversation}
       />
 

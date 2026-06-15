@@ -1,10 +1,13 @@
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
+import { type InfiniteData, useInfiniteQuery, type UseInfiniteQueryResult,useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
+import Growl from '@ux/growl'
 
+import { useTranslations } from '@/hooks/useTranslations'
 import { queryKeys } from '@/lib/inbox/constants/queryKeys'
 import { ThreadedMessagePageChildren } from '@/lib/inbox/http/response/core'
 import { convertConversation } from '@/lib/inbox/transforms/conversation'
 import { convertMessage } from '@/lib/inbox/transforms/message'
 import { convertStaff } from '@/lib/inbox/transforms/staff'
+import { logger } from '@/lib/request-context'
 import { Conversation } from '@/types/inbox/local/conversation'
 import { IntString, IsoDateTimeString, UuidString } from '@/types/inbox/local/core'
 import { InboxConversationStatusFilter } from '@/types/inbox/local/inboxConversationStatusFilter'
@@ -25,6 +28,31 @@ import {
   UpdateEmailNotificationsRequest,
   UpdateStaffNotificationEmailRequest,
 } from '@/types/inbox/remote/reamaze'
+
+interface RemoteConversationsApiResponse {
+  readonly conversations: unknown
+  readonly page_count?: unknown
+  readonly page_size?: unknown
+}
+
+interface RemoteConversationApiResponse {
+  readonly conversation?: unknown
+}
+
+interface RemoteMessagesApiResponse {
+  readonly messages: unknown
+  readonly total_count: number
+}
+
+const DEFAULT_PAGE_SIZE = 30
+
+/**
+ * Validates that an unknown value is a positive number, returning either the
+ * validated number or a provided fallback.
+ */
+function positiveNumberOrDefault(value: unknown, fallback: number): number {
+  return typeof value === 'number' && value > 0 ? value : fallback
+}
 
 export async function getInboxConversations(params: ConversationsRequest): Promise<ConversationsResponse> {
   if (!params.brandId) {
@@ -49,49 +77,64 @@ export async function getInboxConversations(params: ConversationsRequest): Promi
     throw new Error(data.error || `Failed to get conversations: ${response.status}`);
   }
 
-  const remoteResponse = await response.json()
+  const remoteResponse: RemoteConversationsApiResponse = await response.json()
 
   if (!Array.isArray(remoteResponse?.conversations)) {
     throw new Error('Invalid conversations response format: conversations is not an array')
   }
 
-  const total = remoteResponse.conversations.length
+  const rawConversations = remoteResponse.conversations as RemoteConversation[]
+  const conversations: Conversation[] = []
+  let droppedCount = 0
 
-  const conversations = remoteResponse.conversations.flatMap((c: RemoteConversation) => {
+  for (const c of rawConversations) {
     try {
-      return [convertConversation(c)]
+      conversations.push(convertConversation(c))
     } catch (err) {
+      droppedCount += 1
       const e = err instanceof Error ? err : new Error(String(err))
-      console.error('Failed to transform conversation:', {
+      logger.error('inbox.conversations.transform.failed', {
         conversationId: c?.id,
         error: e.message,
+        brandId: params.brandId,
       })
-      return []
     }
-  })
-
-  const failureCount = total - conversations.length
-
-  if (total > 0 && failureCount > Math.ceil(total * 0.2)) {
-    throw new Error(
-      `Conversation transform failure: ${failureCount}/${total} conversations failed to parse`,
-    )
   }
 
-  // Reamaze returns the total number of pages; fall back to a single page when
-  // it is absent. The last page is `pageCount` (pages are 1-indexed).
-  const pageCount =
-    typeof remoteResponse.page_count === 'number' && remoteResponse.page_count > 0
-      ? remoteResponse.page_count
-      : 1
+  if (droppedCount > 0) {
+    logger.warn('inbox.conversations.transform.partialFailure', {
+      droppedCount,
+      totalCount: rawConversations.length,
+      brandId: params.brandId,
+    })
+  }
+
+  const pageCount: number = positiveNumberOrDefault(remoteResponse.page_count, 1)
+  const pageSize: number = positiveNumberOrDefault(remoteResponse.page_size, DEFAULT_PAGE_SIZE)
+
+  if (pageCount === 1 && remoteResponse.page_count !== 1) {
+    logger.warn('inbox.conversations.pageCountFallback', {
+      rawPageCount: remoteResponse.page_count,
+      brandId: params.brandId,
+    })
+  }
+
+  if (pageSize === DEFAULT_PAGE_SIZE && remoteResponse.page_size !== DEFAULT_PAGE_SIZE) {
+    logger.warn('inbox.conversations.pageSizeFallback', {
+      rawPageSize: remoteResponse.page_size,
+      brandId: params.brandId,
+    })
+  }
 
   return {
     conversations,
     pageCount,
+    pageSize,
+    droppedCount,
   }
 }
 
-async function getInboxConversation(params: ConversationRequest): Promise<Conversation> {
+export async function getInboxConversation(params: ConversationRequest): Promise<Conversation> {
   if (!params.conversationId) {
     throw new Error('Conversation ID is required')
   }
@@ -113,22 +156,21 @@ async function getInboxConversation(params: ConversationRequest): Promise<Conver
     throw new Error(data.error || `Failed to get conversation: ${response.status}`);
   }
 
-  const remoteResponse = await response.json()
+  const remoteResponse: RemoteConversationApiResponse = await response.json()
 
   if (!remoteResponse?.conversation || typeof remoteResponse.conversation !== 'object') {
     throw new Error('Invalid conversation response format: conversation is missing')
   }
 
   try {
-    return convertConversation(remoteResponse.conversation)
-  } catch (transformError) {
-    throw new Error(
-      `Failed to transform conversation: ${transformError instanceof Error ? transformError.message : 'Unknown transformation error'}`,
-    )
+    return convertConversation(remoteResponse.conversation as RemoteConversation)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown transformation error'
+    throw new Error(`Failed to transform conversation: ${message}`)
   }
 }
 
-async function getInboxConversationMessages(params: ConversationMessagesRequest): Promise<ConversationMessagesResponse> {
+export async function getInboxConversationMessages(params: ConversationMessagesRequest): Promise<ConversationMessagesResponse> {
   if (!params.id) {
     throw new Error('Conversation ID is required')
   }
@@ -158,12 +200,13 @@ async function getInboxConversationMessages(params: ConversationMessagesRequest)
   })
 
   if (!response.ok) {
+    const data: Record<string, unknown> = await response.json().catch(() => ({}));
     throw new Error(
-      `Failed to get conversation messages by ID: ${response.status}`,
+      (data.error as string) || `Failed to get conversation messages: ${response.status}`,
     )
   }
 
-  const remoteResponse = await response.json()
+  const remoteResponse: RemoteMessagesApiResponse = await response.json()
 
   if (!Array.isArray(remoteResponse?.messages)) {
     throw new Error('Invalid messages response format: messages is not an array')
@@ -206,11 +249,10 @@ async function getInboxConversationMessages(params: ConversationMessagesRequest)
       buildChildren(message)
     }
 
-    let isChild = false
-    const items = remoteResponse.messages.map((message: RemoteMessage) => {
-      isChild = isChild || !!message.parent_message_id
-      return convertMessage(message)
-    })
+    const isChild = remoteResponse.messages.some(
+      (message: RemoteMessage) => !!message.parent_message_id
+    )
+    const items = remoteResponse.messages.map((message: RemoteMessage) => convertMessage(message))
 
     if (isChild && params.childrenFetchData?.parentMessageId) {
       hasChildren = true
@@ -228,10 +270,9 @@ async function getInboxConversationMessages(params: ConversationMessagesRequest)
       until: getUntil(items),
       children: hasChildren ? children : undefined,
     }
-  } catch (transformError) {
-    throw new Error(
-      `Failed to transform conversation messages data: ${transformError instanceof Error ? transformError.message : 'Unknown transformation error'}`,
-    )
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown transformation error'
+    throw new Error(`Failed to transform conversation messages data: ${message}`)
   }
 }
 
@@ -244,10 +285,7 @@ export function useInboxConversations(
     queryKey: queryKeys.inboxConversations(brandId, page, filter),
     queryFn: () => getInboxConversations({ brandId, page, filter }),
     staleTime: 60_000,
-    retry: (failureCount, error) => {
-      console.error('Error fetching conversations:', error)
-      return failureCount < 3
-    },
+    retry: (failureCount) => failureCount < 3,
     enabled: !!brandId
   })
 }
@@ -255,48 +293,50 @@ export function useInboxConversations(
 export function useInboxConversation(
   brandId: UuidString,
   conversationId: IntString
-) {
+): UseQueryResult<Conversation, Error> {
   return useQuery({
     queryKey: queryKeys.inboxConversation(brandId, conversationId),
     queryFn: () => getInboxConversation({ brandId, conversationId }),
     staleTime: 60_000,
-    retry: (failureCount, error) => {
-      console.error('Error fetching conversation:', error)
-      return failureCount < 3
-    },
-    enabled: !!conversationId
+    retry: (failureCount) => failureCount < 3,
+    enabled: !!conversationId && !!brandId
   })
 }
 
-export function useInboxConversationMessages(
+export function useInfiniteInboxConversationMessages(
   conversationId: IntString,
   brandId: UuidString,
-  until?: IsoDateTimeString,
-  childrenFetchData?: {
-    until: IsoDateTimeString | undefined
-    parentMessageId: IntString | undefined
-  },
-) {
-  return useQuery({
-    queryKey: queryKeys.inboxConversationMessages(
-      conversationId,
-      brandId,
-      until,
-      childrenFetchData,
-    ),
-    queryFn: () =>
+): UseInfiniteQueryResult<InfiniteData<ConversationMessagesResponse, IsoDateTimeString | undefined>, Error> {
+  return useInfiniteQuery<
+    ConversationMessagesResponse,
+    Error,
+    InfiniteData<ConversationMessagesResponse, IsoDateTimeString | undefined>,
+    ReturnType<typeof queryKeys.inboxConversationMessagesInfinite>,
+    IsoDateTimeString | undefined
+  >({
+    queryKey: queryKeys.inboxConversationMessagesInfinite(conversationId, brandId),
+    queryFn: ({ pageParam }) =>
       getInboxConversationMessages({
         id: conversationId,
         brandId,
-        until,
-        childrenFetchData,
+        until: pageParam,
       }),
-    staleTime: 60_000,
-    retry: (failureCount, error) => {
-      console.error('Error fetching conversation messages:', error)
-      return failureCount < 3
+    initialPageParam: undefined,
+    getNextPageParam: (lastPage) => {
+      if (!lastPage.hasMore) return undefined
+      if (lastPage.messages.length === 0) return undefined
+      if (!lastPage.until) {
+        logger.warn('inbox.messages.pagination.cursorMissing', {
+          hasMore: lastPage.hasMore,
+          messageCount: lastPage.messages.length,
+        })
+        return undefined
+      }
+      return lastPage.until
     },
-    enabled: !!conversationId, // Only run query if conversationId is provided
+    staleTime: 60_000,
+    retry: (failureCount) => failureCount < 3,
+    enabled: !!conversationId && !!brandId,
   })
 }
 
@@ -325,13 +365,27 @@ export async function sendInboxReply(params: SendReplyRequest): Promise<SendRepl
 
 export function useSendInboxReply(brandId: UuidString, conversationId: IntString) {
   const queryClient = useQueryClient()
+  const t = useTranslations()
 
   return useMutation({
     mutationFn: (params: Omit<SendReplyRequest, 'brandId' | 'conversationId'>) =>
       sendInboxReply({ ...params, brandId, conversationId }),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: queryKeys.inboxConversationMessages(conversationId, brandId),
+        queryKey: queryKeys.inboxConversationMessagesInfinite(conversationId, brandId),
+      })
+    },
+    onError: (error: Error) => {
+      logger.error('inbox.reply.send.failed', {
+        brandId,
+        conversationId,
+        error: error.message,
+      })
+      Growl.addGrowlMessage({
+        id: `inbox-reply-send-error-${conversationId}`,
+        title: t('builder_inbox_reply_send_error'),
+        emphasis: 'critical',
+        lifetime: 5000,
       })
     },
   })

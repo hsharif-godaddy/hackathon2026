@@ -147,6 +147,53 @@ and does the invalidation itself. Rejected to keep `usePusher` a generic transpo
    `useConversationMessages`. The existing `useInboxConversationMessages` carries a
    threaded-children shape we may or may not need on day one.
 
+## Resolved Open Items
+
+### Item 2: List pagination — page-based with `useQuery`
+
+**Decision:** Use server-side page-based pagination (`?page=N`) with a standard
+`useQuery`, not `useInfiniteQuery`. The conversation list renders one page at a time
+with `@ux/pagination` controls (prev/next) rather than an infinite-scroll
+"load more" pattern.
+
+**Rationale:** The Reamaze API returns `page_count` and `page_size` in its response,
+making offset-based pagination natural. An infinite/accumulating list would hold
+stale conversations in memory across pages and complicate the status filter (which
+resets to page 1). Discrete pages keep memory bounded and align with the
+`@ux/pagination` component the design system provides.
+
+The `until` cursor parameter is retained in the API route for backward compatibility
+but is no longer used by the client for list pagination.
+
+### Item 3: Detail message hook — new `useInfiniteInboxConversationMessages`
+
+**Decision:** Create a new `useInfiniteQuery`-based hook rather than refactoring the
+existing `useInboxConversationMessages`.
+
+**Rationale:**
+
+1. **Different query primitive.** The message thread needs reverse-chronological
+   infinite scroll (user scrolls up to load older messages). This requires
+   `useInfiniteQuery` which accumulates pages and exposes `fetchNextPage` /
+   `hasNextPage`. The existing hook uses `useQuery` (single page, caller-managed
+   cursor) — a fundamentally different return-type contract.
+
+2. **The existing hook serves a second use case.** `useInboxConversationMessages`
+   accepts `childrenFetchData` for fetching threaded child messages (replies to a
+   specific parent). This is a distinct query pattern (fetch children of message X)
+   that does not fit infinite scroll semantics. Refactoring the existing hook would
+   either break this contract or require overloading one hook with two pagination
+   strategies.
+
+3. **Separate query keys enable independent cache control.** The infinite query
+   accumulates pages keyed by `['reamaze', 'inboxConversationMessagesInfinite', id,
+   brandId]`. Invalidation on send-reply clears the accumulated pages without
+   affecting any future threaded-children queries that use the original key.
+
+**Cleanup note:** If threaded-children fetching is not needed on the current
+surface, the old `useInboxConversationMessages` export and its corresponding
+invalidation in `useSendInboxReply` should be removed to avoid dead code.
+
 ## Non-goals
 
 - No unrelated refactoring of the existing inbox hooks beyond what this wiring

@@ -26,18 +26,14 @@ describe('ACTION_REGISTRY', () => {
   describe('resolve', () => {
     const { resolve } = ACTION_REGISTRY;
 
-    it('canExecute returns true for unresolved conversations', () => {
-      const conversation = makeConversation({ status: 'unresolved' });
-      expect(resolve.canExecute(conversation)).toBe(true);
+    it('canExecute returns true for any non-resolved status', () => {
+      for (const status of ['unresolved', 'onHold', 'archived', 'spam'] as const) {
+        expect(resolve.canExecute(makeConversation({ status }))).toBe(true);
+      }
     });
 
     it('canExecute returns false for resolved conversations', () => {
       const conversation = makeConversation({ status: 'resolved' });
-      expect(resolve.canExecute(conversation)).toBe(false);
-    });
-
-    it.each(['archived', 'spam', 'onHold'] as const)('canExecute returns false for %s conversations', (status) => {
-      const conversation = makeConversation({ status });
       expect(resolve.canExecute(conversation)).toBe(false);
     });
 
@@ -58,19 +54,15 @@ describe('ACTION_REGISTRY', () => {
   describe('unresolve', () => {
     const { unresolve } = ACTION_REGISTRY;
 
-    it('canExecute returns true for resolved conversations', () => {
+    it('canExecute returns true only for resolved conversations', () => {
       const conversation = makeConversation({ status: 'resolved' });
       expect(unresolve.canExecute(conversation)).toBe(true);
     });
 
-    it('canExecute returns false for unresolved conversations', () => {
-      const conversation = makeConversation({ status: 'unresolved' });
-      expect(unresolve.canExecute(conversation)).toBe(false);
-    });
-
-    it.each(['archived', 'spam', 'onHold'] as const)('canExecute returns false for %s conversations', (status) => {
-      const conversation = makeConversation({ status });
-      expect(unresolve.canExecute(conversation)).toBe(false);
+    it('canExecute returns false for any non-resolved status', () => {
+      for (const status of ['unresolved', 'onHold', 'archived', 'spam'] as const) {
+        expect(unresolve.canExecute(makeConversation({ status }))).toBe(false);
+      }
     });
 
     it('optimisticTransform sets status to unresolved', () => {

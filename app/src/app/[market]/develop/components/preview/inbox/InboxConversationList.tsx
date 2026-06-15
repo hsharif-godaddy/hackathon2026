@@ -1,11 +1,13 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import Growl from '@ux/growl';
 
 import { useTranslations } from '@/hooks/useTranslations';
 import { IntString, UuidString } from '@/types/inbox/local/core';
 import { type InboxConversationStatusFilter } from '@/types/inbox/local/inboxConversationStatusFilter';
+import { InboxConversationListPagination } from './InboxConversationListPagination';
 import { InboxConversationRow } from './InboxConversationRow';
 import { InboxConversationStatusFilters } from './InboxConversationStatusFilters';
 import { InboxNotificationSettings } from './InboxNotificationSettings';
@@ -41,6 +43,23 @@ export function InboxConversationList({
   const { data, isLoading, error } = useInboxConversations(brandId, currentPage, statusFilter);
   const conversations = data?.conversations ?? [];
   const pageCount = data?.pageCount ?? 1;
+  const droppedCount = data?.droppedCount ?? 0;
+
+  const handlePageChange = useCallback(function handlePageChange(newPage: number) {
+    setPageDirection(newPage > currentPage ? 1 : -1);
+    setCurrentPage(newPage);
+    listScrollRef.current?.scrollTo({ top: 0 });
+  }, [currentPage]);
+
+  useEffect(() => {
+    if (droppedCount === 0) return;
+    Growl.addGrowlMessage({
+      id: 'inbox-conversations-partial-error',
+      title: t('builder_inbox_conversations_partial_error'),
+      emphasis: 'warning',
+      lifetime: 5000,
+    });
+  }, [droppedCount, t]);
 
   if (isLoading) {
     return (
@@ -105,6 +124,12 @@ export function InboxConversationList({
           </AnimatePresence>
         )}
       </div>
+
+      <InboxConversationListPagination
+        currentPage={currentPage}
+        totalPages={pageCount}
+        onPageChange={handlePageChange}
+      />
     </div>
   );
 }

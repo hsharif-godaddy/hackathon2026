@@ -101,11 +101,11 @@ describe('convertConversation status mapping', () => {
     expect(result.status).toBe(expectedStatus)
   })
 
-  it('defaults to resolved for a non-mapped status (botAssigned = 7)', () => {
+  it('defaults to unresolved for a non-mapped status (botAssigned = 7)', () => {
     const result = convertConversation(makeRemoteConversation({ status: 7 }))
     expect(result.isArchived).toBe(false)
     expect(result.isSpam).toBe(false)
-    expect(result.status).toBe('resolved')
+    expect(result.status).toBe('unresolved')
   })
 })
 

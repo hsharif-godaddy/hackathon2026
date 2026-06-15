@@ -44,6 +44,16 @@ export const queryKeys = {
       until,
       childrenFetchData,
     ] as const,
+  inboxConversationMessagesInfinite: (
+    id: IntString,
+    brandId: UuidString,
+  ) =>
+    [
+      ...queryKeys.all,
+      'inboxConversationMessagesInfinite',
+      id,
+      brandId,
+    ] as const,
   inboxStaff: (brandId: UuidString) =>
     [
       ...queryKeys.all,
