@@ -15,8 +15,9 @@ import type {
   StoredContextAttachment,
 } from '../../interfaces/conversation-store.js';
 import type { WorkspaceScope } from '../../interfaces/scope.js';
+import { workspaceScopeFromAppId } from '../../interfaces/scope.js';
 import { AsmConversationLifecycleStore } from './asm-conversation-store.js';
-import { AsmMessageStore } from './asm-message-store.js';
+import { AsmMessageStore, AsmConversationNotFoundError } from './asm-message-store.js';
 import { extractHttpStatus } from './asm-client-wrapper.js';
 import { getActiveAgentContext } from '../../../lib/agent-context-storage.js';
 
@@ -156,7 +157,9 @@ export class DualWriteConversationLifecycleStore implements ConversationLifecycl
 export class DualWriteMessageStore implements MessageStore {
   constructor(
     private readonly primary: MessageStore,
-    private readonly asm: AsmMessageStore
+    private readonly asm: AsmMessageStore,
+    private readonly sqliteConversations: ConversationLifecycleStore,
+    private readonly asmConversations: AsmConversationLifecycleStore
   ) {}
 
   async addMessage(
@@ -273,7 +276,8 @@ export class DualWriteMessageStore implements MessageStore {
     message: ConversationMessage,
     customerId?: string
   ): void {
-    if (message.sender === 'user' && !isUuid(customerId)) {
+    const scopedCustomerId = customerId ?? getActiveAgentContext()?.customerId;
+    if (message.sender === 'user' && !isUuid(scopedCustomerId)) {
       logger.warn('asm.dualwrite.user_mirror_skipped.invalid_customer_id', {
         conversationId,
         messageId: message.id,
@@ -282,15 +286,47 @@ export class DualWriteMessageStore implements MessageStore {
     }
     enqueueMirror(
       { operation: 'message.upsert', conversationId, messageId: message.id },
-      async () => {
-        // SQLite is the source of truth and has already assembled the complete
-        // message; hand it to ASM as a finished snapshot. No buffering / flush
-        // lifecycle — that machinery is reserved for ASM standalone mode.
-        await this.asm.mirrorCompleteMessage(conversationId, message, {
-          customerId,
-          agentId: message.metadata?.agentId as string | undefined,
-        });
-      }
+      () => this.mirrorMessageWithConversationRecovery(conversationId, message, scopedCustomerId)
+    );
+  }
+
+  private async mirrorMessageWithConversationRecovery(
+    conversationId: string,
+    message: ConversationMessage,
+    customerId?: string
+  ): Promise<void> {
+    const participantContext = {
+      customerId,
+      agentId: message.metadata?.agentId as string | undefined,
+    };
+    try {
+      await this.asm.mirrorCompleteMessage(conversationId, message, participantContext);
+    } catch (error: unknown) {
+      if (!(error instanceof AsmConversationNotFoundError)) throw error;
+      // Bounded recovery: recreate from SQLite once, then retry the mirror once.
+      // If ASM still reports the conversation missing, mirror() logs and the
+      // ordered queue moves on to later writes.
+      await this.recreateAsmConversation(conversationId, customerId);
+      await this.asm.mirrorCompleteMessage(conversationId, message, participantContext);
+    }
+  }
+
+  private async recreateAsmConversation(conversationId: string, customerId?: string): Promise<void> {
+    const conversation = await this.sqliteConversations.getById(conversationId);
+    if (!conversation) {
+      throw new Error(`cannot recreate ASM conversation ${conversationId}: no SQLite record`);
+    }
+    const scope: WorkspaceScope = workspaceScopeFromAppId(conversation.appId, customerId);
+    logger.warn('asm.dualwrite.conversation_recreated', {
+      conversationId,
+      appId: conversation.appId,
+      agentId: conversation.agentId,
+    });
+    await this.asmConversations.create(
+      scope,
+      conversation.agentId,
+      conversation.title,
+      conversationId
     );
   }
 }
@@ -298,7 +334,7 @@ export class DualWriteMessageStore implements MessageStore {
 async function mirror(telemetry: MirrorTelemetry, task: () => Promise<void>): Promise<void> {
   const start = Date.now();
   try {
-    // No task-level timeout here: the ASM SDK client is constructed with a 30s
+    // No task-level timeout here: the ASM SDK client is constructed with a 5s
     // per-request timeout (see adapters/index.ts) and AsmClientWrapper.withRetry
     await task();
     logger.info('asm.dualwrite.write.ok', { ...telemetry, durationMs: Date.now() - start });

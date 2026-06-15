@@ -49,7 +49,7 @@ function getClientWrapper(): AsmClientWrapper {
           return token;
         },
       },
-      settings: { timeout: 30_000 },
+      settings: { timeout: 5_000 },
     });
     clientWrapper = new AsmClientWrapper(asmClient);
   }

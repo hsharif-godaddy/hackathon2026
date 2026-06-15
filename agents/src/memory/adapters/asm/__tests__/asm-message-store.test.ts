@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AsmMessageStore } from '../asm-message-store.js';
+import { AsmMessageStore, AsmConversationNotFoundError } from '../asm-message-store.js';
 import type { AsmClientWrapper } from '../asm-client-wrapper.js';
 import type { ConversationMessage } from '../../../../database/schema.js';
 import type { Message } from '@gd-asm/asm-client';
@@ -203,6 +203,13 @@ describe('AsmMessageStore', function storeTests() {
   it('should throw when addMessages rejects with network error', async function flushNetworkError() {
     mockClient.addMessages.mockRejectedValue(new Error('ECONNREFUSED'));
     await expect(store.addMessage('conv-1', 'user', 'test')).rejects.toThrow('ECONNREFUSED');
+  });
+
+  it('should throw AsmConversationNotFoundError when addMessages returns null (conversation missing)', async function flushNullNotFound() {
+    mockClient.addMessages.mockResolvedValue(null);
+    await expect(store.addMessage('conv-1', 'user', 'test')).rejects.toBeInstanceOf(
+      AsmConversationNotFoundError
+    );
   });
 
   it('should return flushed message from getMessageById', async function flushedLookup() {

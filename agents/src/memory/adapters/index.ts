@@ -81,8 +81,18 @@ export function getMessageStore(): MessageStore {
       messageStore = getAsmMessageStore();
     } else {
       const sqlite = new SqliteMessageStore(getSharedConversationRepo());
-      const asm = tryGetAsm('message_store', () => getAsmMessageStore() as AsmMessageStore);
-      messageStore = asm ? new DualWriteMessageStore(sqlite, asm) : sqlite;
+      const asm = tryGetAsm('message_store', () => ({
+        messages: getAsmMessageStore() as AsmMessageStore,
+        conversations: getAsmConversationLifecycleStore() as AsmConversationLifecycleStore,
+      }));
+      messageStore = asm
+        ? new DualWriteMessageStore(
+            sqlite,
+            asm.messages,
+            new SqliteConversationLifecycleStore(getSharedConversationRepo()),
+            asm.conversations
+          )
+        : sqlite;
     }
   }
   return messageStore;

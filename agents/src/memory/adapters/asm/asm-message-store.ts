@@ -34,6 +34,13 @@ interface ParticipantContext {
   agentId?: string;
 }
 
+export class AsmConversationNotFoundError extends Error {
+  constructor(public readonly conversationId: string, reason?: string) {
+    super(`ASM conversation not found: ${conversationId}${reason ? ` (${reason})` : ''}`);
+    this.name = 'AsmConversationNotFoundError';
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -344,7 +351,6 @@ export class AsmMessageStore implements MessageStore {
       const resp = await this.client.addMessages(conversationId, [asmMsg]);
       if (!resp?.success) {
         const reason = resp?.message ?? 'unknown';
-        const err = new Error(`ASM addMessages failed: ${reason}`);
         logger.error('asm.message.flush_rejected', {
           messageId: asmMsg.id ?? message.id,
           conversationId,
@@ -352,7 +358,10 @@ export class AsmMessageStore implements MessageStore {
           response: resp,
           payloadBytes: payloadJson.length,
         });
-        throw err;
+        if (resp === null) {
+          throw new AsmConversationNotFoundError(conversationId, reason);
+        }
+        throw new Error(`ASM addMessages failed: ${reason}`);
       }
       lastFlushedId = asmMsg.id ?? undefined;
     }

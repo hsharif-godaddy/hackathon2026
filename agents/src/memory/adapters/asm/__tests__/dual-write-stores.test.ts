@@ -7,6 +7,7 @@ import {
 } from '../dual-write-stores.js';
 import type { AsmConversationLifecycleStore } from '../asm-conversation-store.js';
 import type { AsmMessageStore } from '../asm-message-store.js';
+import { AsmConversationNotFoundError } from '../asm-message-store.js';
 import { logger } from '../../../../logging/index.js';
 import { runWithAgentContext } from '../../../../lib/agent-context-storage.js';
 import type { AgentContext } from '../../../../server/middleware/jwt-auth.js';
@@ -65,7 +66,9 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     const asm = makeAsmMessageMock();
     const store = new DualWriteMessageStore(
       primary as never,
-      asm as unknown as AsmMessageStore
+      asm as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     await expect(
@@ -91,7 +94,9 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     const asm = makeAsmMessageMock();
     const store = new DualWriteMessageStore(
       primary as never,
-      asm as unknown as AsmMessageStore
+      asm as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     await runWithAgentContext(ctxWith(true), async () => {
@@ -113,7 +118,9 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     const asm = makeAsmMessageMock();
     const store = new DualWriteMessageStore(
       primary as never,
-      asm as unknown as AsmMessageStore
+      asm as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     await store.addMessage('conv-1', 'user', 'hello', { customerId: VALID_CUSTOMER_UUID });
@@ -128,7 +135,9 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     const asm = makeAsmMessageMock();
     const store = new DualWriteMessageStore(
       primary as never,
-      asm as unknown as AsmMessageStore
+      asm as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     await store.addMessage('conv-1', 'user', 'hello');
@@ -144,13 +153,40 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     const asm = makeAsmMessageMock();
     const store = new DualWriteMessageStore(
       primary as never,
-      asm as unknown as AsmMessageStore
+      asm as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     await store.addMessage('conv-1', 'user', 'hello', { customerId: 'not-a-uuid' });
     await flushPromises();
 
     expect(asm.mirrorCompleteMessage).not.toHaveBeenCalled();
+  });
+
+  it('should mirror a user message using the agent-context customerId when no explicit option is given', async function userMirrorContextFallback() {
+    const message = makeMessage({ id: 'sqlite-msg-1', sender: 'user', content: 'hello' });
+    const primary = { addMessage: vi.fn().mockResolvedValue(message) };
+    const asm = makeAsmMessageMock();
+    const store = new DualWriteMessageStore(
+      primary as never,
+      asm as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
+    );
+
+    // No explicit options.customerId — the valid customerId lives only in the
+    // ambient agent context. The guard must validate the resolved value.
+    await runWithAgentContext({ ...ctxWith(true), customerId: VALID_CUSTOMER_UUID }, async () => {
+      await store.addMessage('conv-1', 'user', 'hello');
+      await flushPromises();
+    });
+
+    expect(asm.mirrorCompleteMessage).toHaveBeenCalledWith(
+      'conv-1',
+      expect.objectContaining({ id: message.id, sender: 'user', content: 'hello' }),
+      expect.objectContaining({ customerId: VALID_CUSTOMER_UUID })
+    );
   });
 
   it('should not mirror an in-progress agent placeholder (mirror waits for finalize)', async function skipInProgressPlaceholder() {
@@ -166,7 +202,9 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     const asm = makeAsmMessageMock();
     const store = new DualWriteMessageStore(
       primary as never,
-      asm as unknown as AsmMessageStore
+      asm as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     await store.addMessage('conv-1', 'agent', '', { metadata: { inProgress: true } });
@@ -182,7 +220,9 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     const asm = makeAsmMessageMock();
     const store = new DualWriteMessageStore(
       primary as never,
-      asm as unknown as AsmMessageStore
+      asm as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     await store.addMessage('conv-1', 'agent', 'reply');
@@ -207,7 +247,9 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     const asm = makeAsmMessageMock();
     const store = new DualWriteMessageStore(
       primary as never,
-      asm as unknown as AsmMessageStore
+      asm as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     await store.addMessage('conv-1', 'agent', 'reply', { agentId: 'develop' });
@@ -244,7 +286,9 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     const asmMessage = makeAsmMessageMock();
     const messageStore = new DualWriteMessageStore(
       messagePrimary as never,
-      asmMessage as unknown as AsmMessageStore
+      asmMessage as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     await lifecycleStore.create(scope, 'agent-1', 'Title');
@@ -276,7 +320,9 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     const asm = makeAsmMessageMock();
     const store = new DualWriteMessageStore(
       primary as never,
-      asm as unknown as AsmMessageStore
+      asm as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     await store.updateMessage('agent-1', { content: 'partial' });
@@ -301,7 +347,9 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     const asm = makeAsmMessageMock();
     const store = new DualWriteMessageStore(
       primary as never,
-      asm as unknown as AsmMessageStore
+      asm as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     await store.updateMessage('agent-1', {
@@ -337,7 +385,9 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     const asm = makeAsmMessageMock();
     const store = new DualWriteMessageStore(
       primary as never,
-      asm as unknown as AsmMessageStore
+      asm as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     await store.updateMessageMetadata('agent-1', { commitHash: 'abc123' });
@@ -387,7 +437,9 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     const asm = makeAsmMessageMock();
     const store = new DualWriteMessageStore(
       primary as never,
-      asm as unknown as AsmMessageStore
+      asm as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     // Finalize, then a post-finalize metadata patch — same message/conversation.
@@ -416,7 +468,9 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     const asm = makeAsmMessageMock();
     const store = new DualWriteMessageStore(
       primary as never,
-      asm as unknown as AsmMessageStore
+      asm as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     await store.deleteMessage('msg-del');
@@ -435,7 +489,9 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     asm.mirrorCompleteMessage.mockRejectedValueOnce(new Error('ASM down'));
     const store = new DualWriteMessageStore(
       primary as never,
-      asm as unknown as AsmMessageStore
+      asm as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     await expect(
@@ -486,7 +542,9 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     });
     const messageStore = new DualWriteMessageStore(
       messagePrimary as never,
-      asmMessage as unknown as AsmMessageStore
+      asmMessage as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     await lifecycleStore.create(scope, 'agent-1', 'Title');
@@ -506,7 +564,9 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
     asm.mirrorCompleteMessage.mockRejectedValueOnce(new TypeError('bad input'));
     const store = new DualWriteMessageStore(
       primary as never,
-      asm as unknown as AsmMessageStore
+      asm as unknown as AsmMessageStore,
+      makeSqliteLifecycleMock() as never,
+      makeAsmLifecycleMock() as unknown as AsmConversationLifecycleStore
     );
 
     const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
@@ -533,6 +593,166 @@ describe('dual-write ASM stores', function dualWriteStoreTests() {
       warnSpy.mockRestore();
     }
   });
+
+  it('should recreate the ASM conversation from SQLite and retry when ASM reports it missing', async function recreateOnMissing() {
+    const message = makeMessage({ id: 'sqlite-msg-1', sender: 'user', content: 'hello' });
+    const primary = { addMessage: vi.fn().mockResolvedValue(message) };
+    const asm = makeAsmMessageMock();
+    asm.mirrorCompleteMessage
+      .mockRejectedValueOnce(new AsmConversationNotFoundError('conv-1'))
+      .mockResolvedValueOnce(undefined);
+    const sqliteConversations = makeSqliteLifecycleMock(
+      makeConversation({ id: 'conv-1', appId: 'app-1', agentId: 'develop', title: 'My App' })
+    );
+    const asmConversations = makeAsmLifecycleMock();
+    const store = new DualWriteMessageStore(
+      primary as never,
+      asm as unknown as AsmMessageStore,
+      sqliteConversations as never,
+      asmConversations as unknown as AsmConversationLifecycleStore
+    );
+
+    await store.addMessage('conv-1', 'user', 'hello', { customerId: VALID_CUSTOMER_UUID });
+    await flushPromises();
+
+    expect(sqliteConversations.getById).toHaveBeenCalledWith('conv-1');
+    // Recreated with the SQLite record's appId/agentId/title and the SAME id,
+    // scoped to the customer from the message mirror.
+    expect(asmConversations.create).toHaveBeenCalledWith(
+      { kind: 'resolved', appId: 'app-1', customerId: VALID_CUSTOMER_UUID },
+      'develop',
+      'My App',
+      'conv-1'
+    );
+    // Message is retried once after the conversation is recreated.
+    expect(asm.mirrorCompleteMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('should give up after one recreate retry and continue later mirrors', async function boundedRecreateRetry() {
+    const primary = {
+      addMessage: vi
+        .fn()
+        .mockResolvedValueOnce(
+          makeMessage({ id: 'msg-first', sender: 'agent', content: 'first' })
+        )
+        .mockResolvedValueOnce(
+          makeMessage({ id: 'msg-second', sender: 'agent', content: 'second' })
+        ),
+    };
+    const asm = makeAsmMessageMock();
+    asm.mirrorCompleteMessage
+      .mockRejectedValueOnce(new AsmConversationNotFoundError('conv-1'))
+      .mockRejectedValueOnce(new AsmConversationNotFoundError('conv-1'))
+      .mockResolvedValueOnce(undefined);
+    const sqliteConversations = makeSqliteLifecycleMock(
+      makeConversation({ id: 'conv-1', appId: 'app-1', agentId: 'develop', title: 'My App' })
+    );
+    const asmConversations = makeAsmLifecycleMock();
+    const store = new DualWriteMessageStore(
+      primary as never,
+      asm as unknown as AsmMessageStore,
+      sqliteConversations as never,
+      asmConversations as unknown as AsmConversationLifecycleStore
+    );
+    const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+
+    try {
+      await store.addMessage('conv-1', 'agent', 'first');
+      await store.addMessage('conv-1', 'agent', 'second');
+      await flushPromises();
+      await flushPromises();
+
+      expect(sqliteConversations.getById).toHaveBeenCalledTimes(1);
+      expect(asmConversations.create).toHaveBeenCalledTimes(1);
+      expect(asm.mirrorCompleteMessage).toHaveBeenCalledTimes(3);
+      const errorCalls = errorSpy.mock.calls.filter(
+        ([event]) => event === 'asm.dualwrite.write.failure'
+      );
+      expect(errorCalls).toHaveLength(1);
+      expect(errorCalls[0]?.[1]).toMatchObject({
+        operation: 'message.upsert',
+        conversationId: 'conv-1',
+        messageId: 'msg-first',
+      });
+    } finally {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('should NOT recreate the conversation on a generic ASM failure', async function noRecreateOnGenericFailure() {
+    const message = makeMessage({ id: 'sqlite-msg-1', sender: 'agent', content: 'reply' });
+    const primary = { addMessage: vi.fn().mockResolvedValue(message) };
+    const asm = makeAsmMessageMock();
+    asm.mirrorCompleteMessage.mockRejectedValueOnce(new Error('ASM down'));
+    const sqliteConversations = makeSqliteLifecycleMock();
+    const asmConversations = makeAsmLifecycleMock();
+    const store = new DualWriteMessageStore(
+      primary as never,
+      asm as unknown as AsmMessageStore,
+      sqliteConversations as never,
+      asmConversations as unknown as AsmConversationLifecycleStore
+    );
+
+    await store.addMessage('conv-1', 'agent', 'reply');
+    await flushPromises();
+
+    expect(asmConversations.create).not.toHaveBeenCalled();
+    expect(asm.mirrorCompleteMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('should recreate with a local scope when no customerId is available', async function recreateLocalScope() {
+    const message = makeMessage({ id: 'agent-msg-1', sender: 'agent', content: 'reply' });
+    const primary = { addMessage: vi.fn().mockResolvedValue(message) };
+    const asm = makeAsmMessageMock();
+    asm.mirrorCompleteMessage
+      .mockRejectedValueOnce(new AsmConversationNotFoundError('conv-1'))
+      .mockResolvedValueOnce(undefined);
+    const sqliteConversations = makeSqliteLifecycleMock(
+      makeConversation({ id: 'conv-1', appId: 'app-1', agentId: 'develop' })
+    );
+    const asmConversations = makeAsmLifecycleMock();
+    const store = new DualWriteMessageStore(
+      primary as never,
+      asm as unknown as AsmMessageStore,
+      sqliteConversations as never,
+      asmConversations as unknown as AsmConversationLifecycleStore
+    );
+
+    await store.addMessage('conv-1', 'agent', 'reply');
+    await flushPromises();
+
+    expect(asmConversations.create).toHaveBeenCalledWith(
+      { kind: 'local', appId: 'app-1' },
+      'develop',
+      'Title',
+      'conv-1'
+    );
+    expect(asm.mirrorCompleteMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('should give up (no retry) when SQLite has no record for the missing conversation', async function noSqliteRecord() {
+    const message = makeMessage({ id: 'agent-msg-1', sender: 'agent', content: 'reply' });
+    const primary = { addMessage: vi.fn().mockResolvedValue(message) };
+    const asm = makeAsmMessageMock();
+    asm.mirrorCompleteMessage.mockRejectedValueOnce(new AsmConversationNotFoundError('conv-1'));
+    const sqliteConversations = makeSqliteLifecycleMock(null);
+    const asmConversations = makeAsmLifecycleMock();
+    const store = new DualWriteMessageStore(
+      primary as never,
+      asm as unknown as AsmMessageStore,
+      sqliteConversations as never,
+      asmConversations as unknown as AsmConversationLifecycleStore
+    );
+
+    await store.addMessage('conv-1', 'agent', 'reply');
+    await flushPromises();
+
+    expect(asmConversations.create).not.toHaveBeenCalled();
+    // Only the initial attempt — no retry without a source record.
+    expect(asm.mirrorCompleteMessage).toHaveBeenCalledTimes(1);
+  });
 });
 
 function makeAsmMessageMock(): {
@@ -543,6 +763,16 @@ function makeAsmMessageMock(): {
     mirrorCompleteMessage: vi.fn().mockResolvedValue(undefined),
     deleteMessage: vi.fn().mockResolvedValue(undefined),
   };
+}
+
+function makeSqliteLifecycleMock(
+  conversation: Conversation | null = makeConversation()
+): { getById: ReturnType<typeof vi.fn> } {
+  return { getById: vi.fn().mockResolvedValue(conversation) };
+}
+
+function makeAsmLifecycleMock(): { create: ReturnType<typeof vi.fn> } {
+  return { create: vi.fn().mockResolvedValue(undefined) };
 }
 
 function makeConversation(overrides: Partial<Conversation> = {}): Conversation {
