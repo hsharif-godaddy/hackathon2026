@@ -170,9 +170,18 @@ export const useSiteCreationStore = create<SiteCreationStore>()(
           state.error = null
         })
 
+        // Use a level-1 (not level-3) preflight here. This is the first/preview
+        // deployment of a brand-new app: the operation is LOW_RISK and the
+        // server-side POST /api/sites/[id]/deploy route only requires level 1
+        // (withCustomerAuth with no { level: 3 }). A level-3 preflight forced an
+        // HBI re-auth (SSO prompt) during creation for valid-but-older-than-12h
+        // persistent sessions, which is unnecessary for this route. Publish keeps
+        // its own level-3 preflight (see usePublishApp.ts / publishAction.ts) and
+        // is unaffected by this — startDeployment is only ever invoked via the
+        // creation flow (initializeSite from useInitialization), never publish.
         const deployResponse = await appFetch(`/api/sites/${siteId}/deploy`, {
           method: 'POST'
-        }, { authLevel: 3 })
+        }, { authLevel: 1 })
 
         if (!deployResponse.ok) {
           const errorData = await deployResponse.json().catch(() => ({}))
