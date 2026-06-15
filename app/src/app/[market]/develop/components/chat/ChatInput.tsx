@@ -129,6 +129,11 @@ interface ChatInputProps {
   userMessages?: string[]
   activeColorSchemeSuggest?: ActiveColorSchemeSuggest | null
   activeFontThemeSuggest?: ActiveFontThemeSuggest | null
+  /** Flag: appbuilder-queue. When true, the send button stays enabled while
+   *  the agent is busy so the user can stage follow-ups in the queue. */
+  isQueueEnabled?: boolean
+  /** Queue is at QUEUE_MAX; gate submit while busy. */
+  isQueueFull?: boolean
 }
 
 export default function ChatInput({
@@ -164,6 +169,8 @@ export default function ChatInput({
   userMessages = [],
   activeColorSchemeSuggest = null,
   activeFontThemeSuggest = null,
+  isQueueEnabled = false,
+  isQueueFull = false,
 }: ChatInputProps) {
   const t = useTranslations();
   // Drives the sequential multi-page rebuild queue. Mounted here — not in
@@ -365,6 +372,9 @@ export default function ChatInput({
   function getPlaceholder() {
     if (isBudgetExceeded) return t('builder_chatinput_budget_exceeded');
     if (isDisabled && !isStreaming) return loadingMessage ?? t('builder_chatinput_processing');
+    if (isQueueEnabled && (isStreaming || isAwaitingStream) && !isQueueFull) {
+      return t('builder_chatinput_queue_placeholder');
+    }
     return t('builder_chatinput_ask_airo');
   }
 
@@ -376,14 +386,21 @@ export default function ChatInput({
   const isPromptDisabled =
     Boolean(isDisabled) && !isStreaming
 
+  // While the agent is busy, swap the action button to Send only once the
+  // user has typed something — empty input keeps the Stop button accessible.
+  const isQueueModeActive =
+    isQueueEnabled && (isStreaming || isAwaitingStream) && canSubmit
+
   const submitGated =
     !canSubmit ||
     uploadingStagedFileIds.length > 0 ||
-    (isAwaitingStream && !isStreaming && !onStopGeneration)
+    (isAwaitingStream && !isStreaming && !onStopGeneration) ||
+    (isQueueModeActive && isQueueFull)
 
   function handlePromptSubmit(_value: string) {
     if (uploadingStagedFileIds.length > 0) return
-    if ((isStreaming || isAwaitingStream) && onStopGeneration) return
+    if (!isQueueModeActive && (isStreaming || isAwaitingStream) && onStopGeneration) return
+    if (isQueueModeActive && isQueueFull) return
     handleSend()
   }
 
@@ -613,7 +630,7 @@ export default function ChatInput({
   useLayoutEffect(function syncActionButtonAttrs() {
     const btn = findPromptBoxActionButton(composerCardRef.current)
     if (!btn) return
-    const isPending = Boolean((isStreaming || isAwaitingStream) && onStopGeneration)
+    const isPending = !isQueueModeActive && Boolean((isStreaming || isAwaitingStream) && onStopGeneration)
     if (isPending) {
       btn.setAttribute('data-testid', 'chat-stop-button')
       btn.removeAttribute('id')
@@ -623,7 +640,7 @@ export default function ChatInput({
       btn.id = 'chat-send-button'
       btn.toggleAttribute('disabled', submitGated || isPromptDisabled || Boolean(isBudgetExceeded))
     }
-  }, [isStreaming, isAwaitingStream, onStopGeneration, submitGated, isPromptDisabled, isBudgetExceeded])
+  }, [isStreaming, isAwaitingStream, onStopGeneration, submitGated, isPromptDisabled, isBudgetExceeded, isQueueModeActive])
 
   return (
     <div className="px-2 sm:px-3 md:px-0 mt-1 mt-auto pb-1">
@@ -761,7 +778,7 @@ export default function ChatInput({
             }}
             onSubmit={handlePromptSubmit}
             onStop={handlePromptStop}
-            pending={Boolean((isStreaming || isAwaitingStream) && onStopGeneration)}
+            pending={!isQueueModeActive && Boolean((isStreaming || isAwaitingStream) && onStopGeneration)}
             disabled={isPromptDisabled}
             isListening={isListening}
             isBudgetExceeded={Boolean(isBudgetExceeded)}

@@ -581,7 +581,14 @@ test.describe('Develop Page', () => {
     console.log('🎉 All develop page tests passed!');
   });
 
-  // Skip: backend does not reliably cancel agent — re-enable once AIROBUILD-1235 is fixed
+  // Skip: backend does not reliably cancel agent — re-enable once AIROBUILD-1235 is fixed.
+  //
+  // appbuilder-queue caveat: when re-enabling, this test as written assumes
+  // chat-stop-button is the only mid-stream testid. Under appbuilder-queue
+  // (AIROBUILD-1944), ChatInput swaps to chat-send-button as soon as the
+  // user types text mid-stream (Send-to-queue mode). Either disable the
+  // flag for this test (Switchboard override) or fill the message AFTER
+  // capturing the stop button to avoid the testid flip.
   test.skip('Stop button during streaming', async ({ page }) => {
     await page.goto('/');
     const promptInput = page.getByTestId('homepage-prompt-input');

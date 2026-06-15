@@ -9,6 +9,7 @@ import Growl from '@ux/growl';
 
 import { ChatTab } from '@/app/[market]/develop/components/types';
 import { getFileUploadAgent } from '@/lib/file-agent';
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore';
 import { mockInstrumentation } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import { MAX_FILE_SIZE, MAX_TOTAL_ASSETS } from '@/utils/file-upload-validation';
@@ -214,9 +215,17 @@ const mockChatTabs = {
 vi.mock('@/stores/useStreamingConversationStore', () => {
   const mockPersistHistory = vi.fn()
   const mockResolvedSecretsComposerToolCallIds: Record<string, true> = {}
+  const queueState = {
+    enqueueMessage: vi.fn(() => true),
+    setQueuePaused: vi.fn(),
+    takeNextQueuedMessage: vi.fn(() => null),
+    retryState: { isRetrying: false, retryCount: 0 },
+    queuedMessages: [] as unknown[],
+  }
 
   function streamingGetState() {
     return {
+      ...queueState,
       aiEditContext: mockStreamingStore.aiEditContext,
       currentAppId: mockStreamingStore.currentAppId,
       persistHistory: mockPersistHistory,
@@ -230,6 +239,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => {
   Object.assign(useStreamingConversationStore, { getState: streamingGetState })
 
   return {
+    QUEUE_MAX: 10,
     useMessages: () => mockStreamingStore.messages,
     useActiveStream: () => mockStreamingStore.activeStream,
     useInputValue: () => mockStreamingStore.inputValue,
@@ -244,10 +254,10 @@ vi.mock('@/stores/useStreamingConversationStore', () => {
     useBudgetExceeded: () => mockStreamingStore.activeStream?.budgetExceeded === true || mockStreamingStore.messages[mockStreamingStore.messages.length - 1]?.budgetExceeded === true,
     useSetInputValue: () => mockStreamingStore.setInputValue,
     useSetAiEditContext: () => mockStreamingStore.setAiEditContext,
-    useStreamingConversationStore: Object.assign(
-      (selector: (s: Record<string, unknown>) => unknown) => selector({ retryState: { isRetrying: false, retryCount: 0 } }),
-      { getState: () => ({ aiEditContext: mockStreamingStore.aiEditContext }) }
-    ),
+    useQueuedMessages: () => [],
+    useIsQueuePaused: () => false,
+    useQueueLength: () => 0,
+    useStreamingConversationStore,
     useRemoveAiEditContext: () => mockStreamingStore.removeAiEditContext,
     useClearAiEditContexts: () => mockStreamingStore.clearAiEditContexts,
     useSetBuildErrorContext: () => mockStreamingStore.setBuildErrorContext,
@@ -1117,6 +1127,44 @@ describe('ChatPane', () => {
         'builder_chatfiles_error_max_attachments'
       )
     })
+  });
+
+  describe('queue-while-busy cap rejection', () => {
+    it('does not clear input or call sendMessage when enqueueMessage rejects at cap', async () => {
+      mockSwitchboardValues['appbuilder-queue'] = true;
+      mockStreamingStore.isActivelyStreaming = true;
+      mockStreamingStore.inputValue = 'hello';
+
+      const enqueueMessage = useStreamingConversationStore.getState().enqueueMessage;
+      vi.mocked(enqueueMessage).mockReturnValueOnce(false);
+
+      const { user } = renderWithProviders(
+        <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Send' }));
+
+      expect(enqueueMessage).toHaveBeenCalledTimes(1);
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect(mockStreamingStore.setInputValue).not.toHaveBeenCalled();
+    });
+
+    it('clears input when enqueueMessage accepts the message', async () => {
+      mockSwitchboardValues['appbuilder-queue'] = true;
+      mockStreamingStore.isActivelyStreaming = true;
+      mockStreamingStore.inputValue = 'hello';
+
+      const enqueueMessage = useStreamingConversationStore.getState().enqueueMessage;
+
+      const { user } = renderWithProviders(
+        <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Send' }));
+
+      expect(enqueueMessage).toHaveBeenCalledTimes(1);
+      expect(mockStreamingStore.setInputValue).toHaveBeenCalledWith('');
+    });
   });
 
   describe('uploadError context reset', function uploadErrorContextReset() {

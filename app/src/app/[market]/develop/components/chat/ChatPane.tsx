@@ -20,6 +20,7 @@ import {
 } from '@/app/[market]/develop/components/chat/DebugStatsContext';
 import { DebugStatsPanel } from '@/app/[market]/develop/components/chat/DebugStatsDrawer';
 import { UploadedFile } from '@/app/[market]/develop/components/chat/FileUploadButton';
+import QueuedMessagesStrip from '@/app/[market]/develop/components/chat/QueuedMessagesStrip';
 import { useSecretsComposerTakeover } from '@/app/[market]/develop/components/chat/secrets';
 import {
   getStagedFilePreviewUrl,
@@ -46,6 +47,7 @@ import { useAotPreload } from '@/hooks/useAotPreload';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useConversionEvent } from '@/hooks/useConversionEvent';
 import { useCreditGrants } from '@/hooks/useCreditGrants';
+import { useQueueProcessor } from '@/hooks/useQueueProcessor';
 import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
@@ -57,6 +59,7 @@ import { getConversationIdFromCookie } from '@/hooks/websocket/useWebSocketHelpe
 import ChatBanner from '@/lib/ChatBanner';
 import { getFileUploadAgent } from '@/lib/file-agent';
 import { shipAnalyticsLog } from '@/lib/logging';
+import { cloneQueueablePayload } from '@/lib/messageQueue';
 import { createPostPublishPreLaunchAssistantMessage } from '@/lib/post-publish-prelaunch-ask-question';
 import { logger } from '@/lib/request-context';
 import { appService } from '@/services/AppService';
@@ -64,6 +67,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useGitStore } from '@/stores/useGitStore'
 import { useSiteStore } from '@/stores/useSiteStore';
 import {
+  QUEUE_MAX,
   useActiveStream,
   useAiEditContext,
   useAiEditContexts,
@@ -76,6 +80,7 @@ import {
   useIsActivelyStreaming,
   useIsLoading,
   useMessages,
+  useQueueLength,
   useRemoveAiEditContext,
   useSetAiEditContext,
   useSetBuildErrorContext,
@@ -250,6 +255,29 @@ function ChatPaneInner({
   const isMultiElementSelect = useDevelopPageStore((state) => state.isMultiSelectEnabled);
   const setBuildErrorContext = useSetBuildErrorContext();
   const setCurrentAppId = useSetCurrentAppId();
+
+  // Flag: appbuilder-queue
+  const isQueueEnabled = Boolean(useSwitchboard('appbuilder-queue'));
+  const queueLength = useQueueLength();
+  const isQueueFull = queueLength >= QUEUE_MAX;
+  const enqueueMessage = useStreamingConversationStore((s) => s.enqueueMessage);
+
+  useQueueProcessor({ enabled: isQueueEnabled, sendMessage, isAwaitingStream });
+
+  useEffect(
+    function warnOnTabCloseWithQueuedMessages() {
+      if (!isQueueEnabled) return
+      if (queueLength === 0) return
+      const handler = (e: BeforeUnloadEvent) => {
+        e.preventDefault()
+        e.returnValue = '' // required to trigger the native confirm dialog
+        return ''
+      }
+      window.addEventListener('beforeunload', handler)
+      return () => window.removeEventListener('beforeunload', handler)
+    },
+    [isQueueEnabled, queueLength],
+  );
 
   const { data: subscription } = useSubscription();
   useConversionEvent();
@@ -966,11 +994,13 @@ function ChatPaneInner({
         });
         handleClearAllAiEditContexts();
       } else {
-        const sendOptions: Parameters<typeof sendMessage>[0] = {
+        const sendOptions: SendMessageOptions = {
           content: outboundContent,
           aiEditContext: isMultiElementSelect
             ? undefined
-            : { ...safeAiEditContext, screenshot: null },
+            : safeAiEditContext
+              ? { ...safeAiEditContext, screenshot: null }
+              : undefined,
           aiEditContexts:
             isMultiElementSelect && safeAiEditContexts.length > 0
               ? safeAiEditContexts.map((c) => ({ ...c, screenshot: null }))
@@ -978,7 +1008,28 @@ function ChatPaneInner({
           selectedAssets: mergedAssets,
           customContext: mergedCustomContext,
           rebuildBuildPageSlug: options?.rebuildBuildPageSlug,
+          isActionRequest: options?.isActionRequest,
+          askQuestionSkipped: options?.askQuestionSkipped,
         };
+
+        if (isQueueEnabled && (isStreaming || isAwaitingStream)) {
+          const enqueued = enqueueMessage(cloneQueueablePayload(sendOptions));
+          if (!enqueued) {
+            logger.warn('chat-pane.queue.cap-hit', { appId, queueLength });
+            return;
+          }
+          setInputValue('');
+          if (isMultiElementSelect && safeAiEditContexts.length > 0) {
+            handleClearAllAiEditContexts();
+          } else if (safeAiEditContext) {
+            handleClearAiEditContext();
+          }
+          if (selectedAssets.length > 0) handleClearSelectedAsset();
+          if (referencedFiles.length > 0) handleClearReferencedFiles();
+          if (safeBuildErrorContext) handleClearBuildErrorContext();
+          return;
+        }
+
         void sendMessage(sendOptions);
 
         // Clear contexts only for user input sends
@@ -1034,6 +1085,12 @@ function ChatPaneInner({
       t,
       handleUploadError,
       showTransientAttachmentBanner,
+      isQueueEnabled,
+      isStreaming,
+      isAwaitingStream,
+      queueLength,
+      enqueueMessage,
+      setInputValue,
     ]
   );
 
@@ -1419,6 +1476,7 @@ function ChatPaneInner({
               </ChatBanner>
             </div>
           )}
+          {isQueueEnabled && <QueuedMessagesStrip />}
           <ChatComposerSlot
             activeColorSchemeSuggest={activeColorSchemeSuggest}
             activeFontThemeSuggest={activeFontThemeSuggest}
@@ -1449,6 +1507,8 @@ function ChatPaneInner({
             onLargePasteDetected={handleLargePasteDetected}
             mediaLimitError={uploadError}
             userMessages={userMessages}
+            isQueueEnabled={isQueueEnabled}
+            isQueueFull={isQueueFull}
             secretsComposer={showSecretsComposer ? activeSecretsRequest : null}
             secretsComposerConversationId={secretsComposerConversationId ?? undefined}
           />
@@ -1551,6 +1611,7 @@ function ChatPaneInner({
                 </ChatBanner>
               </div>
             )}
+            {isQueueEnabled && <QueuedMessagesStrip />}
             <ChatComposerSlot
               activeColorSchemeSuggest={activeColorSchemeSuggest}
               activeFontThemeSuggest={activeFontThemeSuggest}
@@ -1584,6 +1645,8 @@ function ChatPaneInner({
               onLargePasteDetected={handleLargePasteDetected}
               mediaLimitError={uploadError}
               userMessages={userMessages}
+              isQueueEnabled={isQueueEnabled}
+              isQueueFull={isQueueFull}
               secretsComposer={showSecretsComposer ? activeSecretsRequest : null}
               secretsComposerConversationId={secretsComposerConversationId ?? undefined}
             />

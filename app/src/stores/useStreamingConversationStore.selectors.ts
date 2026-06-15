@@ -153,6 +153,11 @@ export const useSetStreamingState = () => useStreamingConversationStore(state =>
 export const useHistoryLoadingComplete = () => useStreamingConversationStore(state => state.historyLoadingComplete)
 export const useSetHistoryLoadingComplete = () => useStreamingConversationStore(state => state.setHistoryLoadingComplete)
 
+// Queue selectors
+export const useQueuedMessages = () => useStreamingConversationStore(state => state.queuedMessages)
+export const useIsQueuePaused = () => useStreamingConversationStore(state => state.queuePaused)
+export const useQueueLength = () => useStreamingConversationStore(state => state.queuedMessages.length)
+
 // Connection retry selectors
 export const useConnectionRetry = () => useStreamingConversationStore(state => state.connectionRetry)
 export const useStartConnectionRetry = () => useStreamingConversationStore(state => state.startConnectionRetry)

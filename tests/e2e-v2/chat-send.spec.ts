@@ -160,6 +160,12 @@ test.describe('E2E v2 - Chat send', () => {
     // instead and Enter is a no-op, so without this wait the
     // transcript-text assertion below times out at 30s on a fresh app
     // whose initial gen is still in flight.
+    //
+    // appbuilder-queue caveat: when the queue flag is on AND the user
+    // has typed text, ChatInput swaps the action button back to
+    // chat-send-button mid-stream (Send-to-queue mode). This test
+    // gates with the input empty, so the testid stays chat-stop-button
+    // during streaming as expected.
     await expect(page.getByTestId('chat-send-button')).toBeVisible({
       timeout: INITIAL_GEN_TIMEOUT_MS,
     });

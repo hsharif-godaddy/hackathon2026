@@ -7,6 +7,7 @@
 import type { MessageOrigin } from '@airo/shared/auth'
 
 import type { AiEditContext } from '@/app/[market]/develop/components/types'
+import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
 import type { ValidationStatus } from '@/stores/validationToolCall'
 import type { StructuredError } from '@/types/errors'
 
@@ -154,6 +155,24 @@ export interface ChatMessage {
   }
 }
 
+/** Hard cap on queued messages. Flag: appbuilder-queue. */
+export const QUEUE_MAX = 10
+
+/**
+ * Queue-replayable subset of SendMessageOptions. visualContext is excluded by
+ * intent — it's iframe-live state and would be stale after the queue wait.
+ * Adding a field to SendMessageOptions automatically widens this type, so the
+ * builder in lib/messageQueue.ts (and any future consumer) sees it at compile
+ * time instead of silently dropping it on replay.
+ */
+export type QueuedSendPayload = Omit<SendMessageOptions, 'visualContext'>
+
+/** Snapshot of a queued user message; replayed verbatim on STREAM_COMPLETE. */
+export interface QueuedMessage extends QueuedSendPayload {
+  id: string
+  enqueuedAt: number
+}
+
 // WebSocket connection state
 export interface WebSocketState {
   connected: boolean
@@ -242,10 +261,27 @@ export interface StreamingConversationState {
   // Subagent events keyed by tool ID
   subagentEvents: Record<string, Array<{ event: string; agent: string; detail: string }>>
 
+  queuedMessages: QueuedMessage[]
+  queuePaused: boolean
+
   // === CORE STREAMING ACTIONS ===
 
   addSubagentEvent: (toolId: string, event: { event: string; agent: string; detail: string }) => void
   clearSubagentEvents: () => void
+
+  // === MESSAGE QUEUE ACTIONS ===
+
+  /** Returns false when at QUEUE_MAX. */
+  enqueueMessage: (message: Omit<QueuedMessage, 'id' | 'enqueuedAt'>) => boolean
+  removeQueuedMessage: (id: string) => void
+  updateQueuedMessage: (id: string, content: string) => void
+  moveQueuedMessage: (fromIndex: number, toIndex: number) => void
+  /** Removes and returns the head; null if empty or paused. */
+  takeNextQueuedMessage: () => QueuedMessage | null
+  /** Re-prepends a previously-dequeued message after a send failure. */
+  requeueMessage: (message: QueuedMessage) => void
+  setQueuePaused: (paused: boolean) => void
+  clearQueue: () => void
 
   // Stream lifecycle
   startNewStream: (

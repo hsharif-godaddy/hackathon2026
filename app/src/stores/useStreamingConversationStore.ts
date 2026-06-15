@@ -23,11 +23,13 @@ import type { StructuredError } from '@/types/errors'
 import { generateId, mergeToolCallData, normalizeConversationMessages } from './conversation-normalization'
 import type {
   ChatMessage,
+  QueuedMessage,
   StreamingConversationState,
   StreamingMessage,
   StreamSegment,
   ToolCall,
 } from './useStreamingConversationStore.types'
+import { QUEUE_MAX } from './useStreamingConversationStore.types'
 
 // Re-export all store types to preserve the public import surface.
 export type {
@@ -37,6 +39,8 @@ export type {
   ConnectionRetryState,
   Conversation,
   PlanItem,
+  QueuedMessage,
+  QueuedSendPayload,
   RecoveryState,
   RetryState,
   ServerCapabilities,
@@ -47,6 +51,7 @@ export type {
   ToolStatus,
   WebSocketState,
 } from './useStreamingConversationStore.types'
+export { QUEUE_MAX } from './useStreamingConversationStore.types'
 
 // Pure conversation-normalization helpers live in ./conversation-normalization.
 // Re-export the public ones to preserve the import surface.
@@ -100,6 +105,73 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   serverCapabilities: null,
   resolvedSecretsComposerToolCallIds: {},
   subagentEvents: {},
+  queuedMessages: [],
+  queuePaused: false,
+
+  // === MESSAGE QUEUE ACTIONS ===
+
+  enqueueMessage: (message) => {
+    const current = get().queuedMessages
+    if (current.length >= QUEUE_MAX) {
+      logger.warn('queue.enqueue.rejected-cap', { length: current.length, cap: QUEUE_MAX })
+      return false
+    }
+    const queued: QueuedMessage = {
+      ...message,
+      id: generateId(),
+      enqueuedAt: Date.now(),
+    }
+    set({ queuedMessages: [...current, queued] })
+    return true
+  },
+
+  removeQueuedMessage: (id) => {
+    set({ queuedMessages: get().queuedMessages.filter(q => q.id !== id) })
+  },
+
+  updateQueuedMessage: (id, content) => {
+    const trimmed = content.trim()
+    if (!trimmed) return
+    set({
+      queuedMessages: get().queuedMessages.map(q =>
+        q.id === id ? { ...q, content: trimmed } : q,
+      ),
+    })
+  },
+
+  moveQueuedMessage: (fromIndex, toIndex) => {
+    const list = get().queuedMessages
+    if (fromIndex === toIndex) return
+    if (fromIndex < 0 || fromIndex >= list.length) return
+    if (toIndex < 0 || toIndex >= list.length) return
+    const moved = list[fromIndex]!
+    const next = list.slice()
+    next.splice(fromIndex, 1)
+    next.splice(toIndex, 0, moved)
+    set({ queuedMessages: next })
+  },
+
+  takeNextQueuedMessage: () => {
+    const { queuedMessages, queuePaused } = get()
+    if (queuePaused || queuedMessages.length === 0) return null
+    const head = queuedMessages[0]!
+    set({ queuedMessages: queuedMessages.slice(1) })
+    return head
+  },
+
+  requeueMessage: (message) => {
+    set({ queuedMessages: [message, ...get().queuedMessages] })
+  },
+
+  setQueuePaused: (paused) => {
+    if (get().queuePaused === paused) return
+    set({ queuePaused: paused })
+  },
+
+  clearQueue: () => {
+    if (get().queuedMessages.length === 0 && !get().queuePaused) return
+    set({ queuedMessages: [], queuePaused: false })
+  },
 
   // === CORE STREAMING ACTIONS ===
 
@@ -790,6 +862,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         historyNextCursor: null,
         historyLoadingMore: false,
         serverCapabilities: null, // Reset capabilities when switching apps
+        queuedMessages: [],
+        queuePaused: false,
         resolvedSecretsComposerToolCallIds,
       };
     });
@@ -1011,6 +1085,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       serverCapabilities: null,
       historyLoadRequested: false,
       historyLoadingComplete: false,
+      queuedMessages: [],
+      queuePaused: false,
       resolvedSecretsComposerToolCallIds: {},
     });
   },
