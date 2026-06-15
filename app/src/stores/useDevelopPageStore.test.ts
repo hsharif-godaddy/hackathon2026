@@ -1237,6 +1237,11 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
   });
 
   describe('#resetForNewApp', function resetForNewAppTests() {
+    afterEach(function clearBrandFirstFlowState() {
+      delete (window as unknown as { gasketData?: unknown }).gasketData;
+      sessionStorage.clear();
+    });
+
     it('should land in preview with editing disabled so the toggle and iframe agree', function resetSyncsEditMode() {
       // Simulate the default-initialized store (viewMode EDIT, edit enabled)
       // that exists before the first build navigates into the develop page.
@@ -1255,6 +1260,62 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       expect(state.viewMode).toBe(ViewMode.PREVIEW);
       // The bug: viewMode flips to PREVIEW but isEditModeEnabled stayed true,
       // so the iframe got EDIT_MODE_ENABLED and showed the hover bar.
+      expect(state.isEditModeEnabled).toBe(false);
+    });
+
+    it('preserves the BRAND tab for the logo-designer template', function preservesLogoDesignerBrand() {
+      // The logo-designer flow sets ViewMode.BRAND before resetForNewApp runs;
+      // resetting to PREVIEW would flash "Logo & Brand" then yank it to Preview.
+      sessionStorage.setItem('initial-job-id-app-logo', 'job-logo');
+      sessionStorage.setItem('initial-template-job-logo', 'logo-designer');
+
+      act(function setup() {
+        useDevelopPageStore.setState({ viewMode: ViewMode.BRAND });
+      });
+
+      act(function reset() {
+        useDevelopPageStore.getState().resetForNewApp('app-logo');
+      });
+
+      expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
+    });
+
+    it('preserves the BRAND tab for the design-kit wizard profile', function preservesDesignKitBrand() {
+      // The design-kit wizard lands on BRAND via useView.resolveInitialViewMode,
+      // gated on the appbuilder-agent-profile Switchboard value. resetForNewApp
+      // must not override it to PREVIEW during the jobId->realAppId re-init, even
+      // though the app is NOT a logo-designer template.
+      (window as unknown as { gasketData?: unknown }).gasketData = {
+        switchboard: { 'appbuilder-agent-profile': 'initial-agent-design-kit' },
+      };
+
+      act(function setup() {
+        useDevelopPageStore.setState({ viewMode: ViewMode.BRAND });
+      });
+
+      act(function reset() {
+        useDevelopPageStore.getState().resetForNewApp('app-design-kit');
+      });
+
+      expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.BRAND);
+    });
+
+    it('still lands a plain app in PREVIEW when the design-kit profile is not active', function plainAppPreview() {
+      // A non-design-kit agent-profile value must not trigger BRAND preservation.
+      (window as unknown as { gasketData?: unknown }).gasketData = {
+        switchboard: { 'appbuilder-agent-profile': 'initial-agent-design-system' },
+      };
+
+      act(function setup() {
+        useDevelopPageStore.setState({ viewMode: ViewMode.EDIT, isEditModeEnabled: true });
+      });
+
+      act(function reset() {
+        useDevelopPageStore.getState().resetForNewApp('app-plain');
+      });
+
+      const state = useDevelopPageStore.getState();
+      expect(state.viewMode).toBe(ViewMode.PREVIEW);
       expect(state.isEditModeEnabled).toBe(false);
     });
   });
