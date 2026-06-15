@@ -2,7 +2,7 @@ import { getDatabase } from '../connection.js'
 import type { Database } from 'better-sqlite3'
 import { randomUUID } from 'crypto'
 
-export type CampaignStatus = 'draft' | 'ready' | 'active' | 'completed' | 'archived'
+export type CampaignStatus = 'draft' | 'ready' | 'launched' | 'active' | 'completed' | 'archived'
 export type ArtifactType = 'landing-page' | 'banner' | 'content-only'
 export type AssetType = 'landing-page' | 'banner' | 'blog' | 'social' | 'email' | 'ad'
 export type AssetStatus = 'draft' | 'scheduled' | 'published' | 'sent'
@@ -142,7 +142,7 @@ export class CampaignRepository {
       input.appId,
       input.name,
       input.campaignType,
-      input.status || 'active',
+      input.status || 'draft',
       input.offer,
       input.startDate,
       input.endDate,
@@ -238,7 +238,7 @@ export class CampaignRepository {
       appId: row.app_id,
       name: row.name,
       campaignType: row.campaign_type as ArtifactType,
-      status: row.status as CampaignStatus,
+      status: (row.status === 'active' ? 'launched' : row.status) as CampaignStatus,
       offer: row.offer,
       startDate: row.start_date,
       endDate: row.end_date,

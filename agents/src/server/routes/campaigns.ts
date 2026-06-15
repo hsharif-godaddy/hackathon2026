@@ -1,22 +1,12 @@
-import { Router, Request, Response, NextFunction, IRouter } from 'express'
+import { Router, Request, Response, IRouter } from 'express'
 import { CampaignRepository } from '../../database/repositories/CampaignRepository.js'
 import type { CreateCampaignInput, CreateAssetInput } from '../../database/repositories/CampaignRepository.js'
 import { Logger } from '../../logging/index.js'
-import type { AuthenticatedRequest } from '../middleware/jwt-auth.js'
 import { validateAppOwnership } from '../middleware/app-ownership.js'
 
 const router: IRouter = Router()
 const campaignRepo = new CampaignRepository()
 const logger = Logger.create({ component: 'campaigns-routes' })
-
-router.use((req: Request, res: Response, next: NextFunction): void => {
-  const authReq = req as AuthenticatedRequest
-  if (!authReq.agentContext?.marketingCampaignsEnabled) {
-    res.status(403).json({ error: 'Marketing campaigns feature is not enabled' })
-    return
-  }
-  next()
-})
 
 router.use('/:id([a-z0-9]{10})', validateAppOwnership)
 
@@ -133,7 +123,7 @@ router.post('/:id/:campaignId/generate', (req: Request, res: Response): void => 
 router.post('/:id/:campaignId/launch', (req: Request, res: Response): void => {
   try {
     const campaignId = req.params.campaignId as string
-    const campaign = campaignRepo.update(campaignId, { status: 'active' })
+    const campaign = campaignRepo.update(campaignId, { status: 'launched' })
 
     if (!campaign) {
       res.status(404).json({ error: 'Campaign not found' })

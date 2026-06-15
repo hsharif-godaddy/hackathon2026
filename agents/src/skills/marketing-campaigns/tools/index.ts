@@ -44,7 +44,7 @@ CRITICAL RULES:
 - Only proceed to content generation after the user clicks "Approve"`,
   parameters: z.object({
     name: z.string().describe('Campaign name'),
-    offer: z.string().describe('The campaign offer or goal'),
+    offer: z.string().describe('The campaign offer or goal — keep to 5 words or fewer (e.g. "Increase revenue by 2x")'),
     startDate: z.string().describe('Campaign start date (YYYY-MM-DD)'),
     endDate: z.string().describe('Campaign end date (YYYY-MM-DD)'),
     campaignType: z.enum(['landing-page', 'banner', 'content-only']).describe('Type of site artifact'),
@@ -104,7 +104,7 @@ DO NOT call this tool:
 - Before content generation is complete`,
   parameters: z.object({
     name: z.string().describe('Campaign name'),
-    offer: z.string().describe('The campaign offer or goal'),
+    offer: z.string().describe('The campaign offer or goal — keep to 5 words or fewer (e.g. "Increase revenue by 2x")'),
     startDate: z.string().describe('Campaign start date (YYYY-MM-DD)'),
     endDate: z.string().describe('Campaign end date (YYYY-MM-DD)'),
     campaignType: z.enum(['landing-page', 'banner', 'content-only']).default('content-only').describe('Type of campaign artifact'),
@@ -196,7 +196,7 @@ This tool finds the existing campaign plan and updates it to "ready" status with
   parameters: z.object({
     name: z.string().describe('Campaign name — must match the existing plan name'),
     campaignType: z.enum(['landing-page', 'banner', 'content-only']).describe('Type of site artifact created'),
-    offer: z.string().describe('The campaign offer/message'),
+    offer: z.string().describe('The campaign offer or goal — keep to 5 words or fewer (e.g. "Increase revenue by 2x")'),
     startDate: z.string().describe('Campaign start date (YYYY-MM-DD)'),
     endDate: z.string().describe('Campaign end date (YYYY-MM-DD)'),
     landingPagePath: z.string().optional().describe('Route path if landing page was created'),

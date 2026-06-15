@@ -1,48 +1,27 @@
 'use client'
 
+import { useIntl } from 'react-intl'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Modal from '@ux/modal'
 import Tag from '@ux/tag'
 import text from '@ux/text'
 
-interface CampaignAsset {
-  id: string
-  assetType: 'landing-page' | 'banner' | 'blog' | 'social' | 'email' | 'ad'
-  assetRef: string
-  title: string
-  scheduledDate?: string
-  status: 'draft' | 'scheduled' | 'published' | 'sent'
-  contentPreview?: string
-  imageUrl?: string
-}
-
-interface Campaign {
-  id: string
-  name: string
-  campaignType: 'landing-page' | 'banner' | 'content-only'
-  status: 'draft' | 'ready' | 'active' | 'completed' | 'archived'
-  offer: string
-  startDate: string
-  endDate: string
-  landingPagePath?: string
-  assets?: CampaignAsset[]
-}
+import CampaignStatusBadge from '@/app/[market]/develop/components/settings/Campaigns/CampaignStatusBadge'
+import {
+  assetTypeLabel,
+  CAMPAIGN_KEYS,
+  translateCampaignKey,
+} from '@/app/[market]/develop/components/settings/Campaigns/copy'
+import { formatCampaignDate } from '@/app/[market]/develop/components/settings/Campaigns/dates'
+import type { Campaign, CampaignAsset } from '@/app/[market]/develop/components/settings/Campaigns/types'
+import { useTranslations } from '@/hooks/useTranslations'
 
 interface CampaignDetailModalProps {
   campaign: Campaign
   isOpen: boolean
   onClose: () => void
   onDelete?: () => void
-}
-
-const ASSET_TYPE_LABELS: Record<string, string> = {
-  'landing-page': 'Landing Page',
-  'banner': 'Banner',
-  'blog': 'Blog Post',
-  'social': 'Social Post',
-  'email': 'Email',
-  'ad': 'Ad Copy',
 }
 
 const ASSET_TYPE_ICONS: Record<string, string> = {
@@ -61,13 +40,10 @@ const STATUS_EMPHASIS: Record<string, 'info' | 'success' | 'warning' | 'neutral'
   sent: 'success',
 }
 
-function formatDate(dateStr: string): string {
-  if (!dateStr) return ''
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
 export default function CampaignDetailModal({ campaign, isOpen, onClose, onDelete }: CampaignDetailModalProps) {
+  const t = useTranslations()
+  const intl = useIntl()
+
   if (!isOpen) return null
 
   const assets = campaign.assets || []
@@ -81,32 +57,27 @@ export default function CampaignDetailModal({ campaign, isOpen, onClose, onDelet
   return (
     <Modal title={campaign.name} onClose={onClose} centered>
       <Box gap="md">
-        {/* Status and dates */}
         <Box orientation="horizontal" gap="sm" blockAlignChildren="center">
-          <Tag emphasis={campaign.status === 'active' ? 'success' : campaign.status === 'ready' ? 'info' : campaign.status === 'draft' ? 'warning' : 'neutral'}>
-            {campaign.status === 'draft' ? 'Plan Review' : campaign.status === 'ready' ? 'Ready to Launch' : campaign.status}
-          </Tag>
+          <CampaignStatusBadge status={campaign.status} />
           <text.span as="caption">
-            {formatDate(campaign.startDate)} — {formatDate(campaign.endDate)}
+            {formatCampaignDate(intl, campaign.startDate)} — {formatCampaignDate(intl, campaign.endDate)}
           </text.span>
         </Box>
 
-        {/* Offer */}
         <Box gap="sm" inlinePadding="md" blockPadding="md" className="border-0 intents-ux-boxLowContrast rounded-lg">
-          <text.strong as="caption">Campaign Goal</text.strong>
+          <text.strong as="caption">{translateCampaignKey(t, CAMPAIGN_KEYS.goal)}</text.strong>
           <text.p>{campaign.offer}</text.p>
           {campaign.landingPagePath && (
             <text.span as="caption" emphasis="passive">
-              Landing page: {campaign.landingPagePath}
+              {translateCampaignKey(t, CAMPAIGN_KEYS.landingPage, { path: campaign.landingPagePath })}
             </text.span>
           )}
         </Box>
 
-        {/* Assets grouped by type */}
         {Object.entries(groupedAssets).map(([type, typeAssets]) => (
           <Box key={type} gap="sm">
             <text.strong as="caption">
-              {ASSET_TYPE_ICONS[type] || ''} {ASSET_TYPE_LABELS[type] || type} ({typeAssets.length})
+              {ASSET_TYPE_ICONS[type] || ''} {assetTypeLabel(t, type)} ({typeAssets.length})
             </text.strong>
             <Box gap="sm">
               {typeAssets.map((asset) => (
@@ -136,7 +107,7 @@ export default function CampaignDetailModal({ campaign, isOpen, onClose, onDelet
                     )}
                     {asset.scheduledDate && (
                       <text.span as="caption" emphasis="passive">
-                        {formatDate(asset.scheduledDate)}
+                        {formatCampaignDate(intl, asset.scheduledDate)}
                       </text.span>
                     )}
                   </Box>
@@ -151,17 +122,16 @@ export default function CampaignDetailModal({ campaign, isOpen, onClose, onDelet
 
         {assets.length === 0 && (
           <Box inlinePadding="md" blockPadding="lg" className="text-center">
-            <text.span emphasis="passive">No content pieces in this campaign yet.</text.span>
+            <text.span emphasis="passive">{translateCampaignKey(t, CAMPAIGN_KEYS.noContent)}</text.span>
           </Box>
         )}
 
-        {/* Actions */}
         <Box orientation="horizontal" gap="md" inlineAlignChildren="end" className="pt-2 border-t border-intents-ux-border-default">
           {onDelete && (
             <Button
               design="tertiary"
               size="sm"
-              text="Delete Campaign"
+              text={translateCampaignKey(t, CAMPAIGN_KEYS.delete)}
               onClick={onDelete}
             />
           )}
@@ -169,7 +139,7 @@ export default function CampaignDetailModal({ campaign, isOpen, onClose, onDelet
           <Button
             design="secondary"
             size="sm"
-            text="Close"
+            text={translateCampaignKey(t, CAMPAIGN_KEYS.close)}
             onClick={onClose}
           />
         </Box>
