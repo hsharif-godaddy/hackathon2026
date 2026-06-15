@@ -790,8 +790,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     if (!selectedDomain) {
       return;
     }
-    const connected = await handleConnectDomain(selectedDomain);
-    if (connected) {
+    const success = await handleConnectDomain(selectedDomain);
+    if (success) {
       setShowConnectSelectedConfirmation(false);
     }
   }
@@ -1355,7 +1355,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
 
       {showConnectSelectedConfirmation && selectedDomain && (
         <Modal
-          onClose={() => setShowConnectSelectedConfirmation(false)}
+          onClose={() => !modifyDomainsMutation.isPending && setShowConnectSelectedConfirmation(false)}
           title={t('builder_domain_connect_confirmation_title')}
           centered
         >
@@ -1363,18 +1363,18 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
             <text.span as="paragraph">
               {t('builder_domain_connect_confirmation_description')}
             </text.span>
-            {connectMutationErrorMessage && (
-              <text.p className="text-intents-ux-text-destructive">
-                {connectMutationErrorMessage}
-              </text.p>
-            )}
             <Box orientation="horizontal" gap="md" className="justify-center">
               <Button
                 design="primary"
                 onClick={() => void handleConfirmConnectSelected()}
-                text={t('builder_custom_domain_modal_button_continue')}
+                text={
+                  modifyDomainsMutation.isPending
+                    ? t('builder_domain_attach_connecting')
+                    : t('builder_custom_domain_modal_button_continue')
+                }
                 data-eid={generateClickEID(`settings.domains.connect_continue`)}
                 size="sm"
+                disabled={modifyDomainsMutation.isPending}
               />
               <Button
                 design="secondary"
@@ -1382,6 +1382,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                 text={t('builder_custom_domain_modal_button_cancel')}
                 data-eid={generateClickEID(`settings.domains.connect_cancel`)}
                 size="sm"
+                disabled={modifyDomainsMutation.isPending}
               />
             </Box>
           </Box>
