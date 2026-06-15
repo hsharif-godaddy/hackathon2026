@@ -31,6 +31,7 @@ import { useChatPaneLoadingState } from '@/app/[market]/develop/hooks/useChatPan
 import { useDevToolsBusBindings } from '@/app/[market]/develop/hooks/useDevToolsBusBindings'
 import { useDevToolsSpeechBridge } from '@/app/[market]/develop/hooks/useDevToolsSpeechBridge'
 import { useEvalSnapshotCapture } from '@/app/[market]/develop/hooks/useEvalSnapshotCapture'
+import { useInboxRealtime } from '@/app/[market]/develop/hooks/useInboxRealtime'
 import { useInitialBuildRevealSignals } from '@/app/[market]/develop/hooks/useInitialBuildRevealSignals'
 import { deriveIsAwaitingStream, useInitialization } from '@/app/[market]/develop/hooks/useInitialization'
 import { usePublishSnapshotCapture } from '@/app/[market]/develop/hooks/usePublishSnapshotCapture'
@@ -261,17 +262,27 @@ function DevelopPageContent() {
   }, [hibernation.resumeComplete, appId, archiveRestore.archiveRestoreComplete]);
 
   // Fetch inbox account data early and sync to store
-  const { brandId, accountId, isLoading: isLoadingAccount, error: accountError } = useInboxAccount(appId)
+  const { brandId, accountId, isLoading: isLoadingAccount } = useInboxAccount(appId)
   const setInboxBrandId = useDevelopPageStore((state) => state.setInboxBrandId)
-  const setInboxAccountId = useDevelopPageStore((state) => state.setInboxAccountId)
 
   useEffect(() => {
     setInboxBrandId(brandId)
-    setInboxAccountId(accountId)
-  }, [brandId, accountId, isLoadingAccount, accountError, setInboxBrandId, setInboxAccountId])
+  }, [brandId, setInboxBrandId])
 
   // Deep-link the Inbox view via ?view=inbox (see useView).
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button')
+
+  // Single Pusher subscription for the whole builder session, so the inbox
+  // unread badge stays fresh even when the inbox view is closed. Gated on the
+  // feature flag so non-inbox users open no connection.
+  //
+  // Realtime requires accountId (the channel is presence-admin-account-${id}),
+  // which for legacy apps is backfilled asynchronously after brandId resolves.
+  // During that window — and for apps with no Reamaze account at all — there is
+  // no socket, and the badge degrades to its initial fetch + refetchOnWindowFocus.
+  // That still works because the count endpoint is keyed on brandId, not accountId.
+  // `?? undefined` keeps the loading-state `null` out of the string-typed option.
+  useInboxRealtime({ accountId: isInboxEnabled ? accountId ?? undefined : undefined })
   const isSecurityScanUiEnabled = useSwitchboard('appbuilder-security-scan-ui') === true
   const getViewAvailability = useCallback(
     (mode: ViewMode): ViewAvailability => {

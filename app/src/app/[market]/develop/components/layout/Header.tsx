@@ -20,11 +20,13 @@ import Tag from '@ux/tag';
 
 import { ButtonGroup } from '@/app/[market]/develop/components/ButtonGroup';
 import IconButton from '@/app/[market]/develop/components/IconButton';
+import { InboxUnreadBadge } from '@/app/[market]/develop/components/layout/InboxUnreadBadge';
 import ShareLink from '@/app/[market]/develop/components/layout/ShareLink';
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import DeviceSelector from '@/app/[market]/develop/components/preview/DeviceSelector'
 import { MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
+import { useInboxUnreadCount } from '@/app/[market]/develop/hooks/useInbox'
 import { AiroLogo } from '@/components/layout/AiroLogo';
 import AppPublish from '@/components/layout/AppPublish';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
@@ -82,6 +84,9 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   });
 
   const inboxBrandId = useDevelopPageStore((state) => state.inboxBrandId)
+  const { data: inboxUnreadCount = 0 } = useInboxUnreadCount(
+    isInboxEnabled && inboxBrandId ? inboxBrandId : undefined,
+  )
   const chatPaneWidth = useDevelopPageStore((state) => state.chatPaneWidth)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
   const viewMode = useDevelopPageStore((state) => state.viewMode)
@@ -209,6 +214,9 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                     value={ViewMode.INBOX}
                     icon={<ConversationsIcon className="size-2.5" />}
                     label={t('builder_preview_button_inbox')}
+                    cornerBadge={
+                      inboxUnreadCount > 0 ? <InboxUnreadBadge count={inboxUnreadCount} /> : undefined
+                    }
                   />
                 )}
               </ButtonGroup>

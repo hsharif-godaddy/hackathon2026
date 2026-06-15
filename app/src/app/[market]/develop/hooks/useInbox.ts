@@ -276,6 +276,53 @@ export async function getInboxConversationMessages(params: ConversationMessagesR
   }
 }
 
+export async function getInboxUnreadCount(brandId: UuidString): Promise<number> {
+  if (!brandId) {
+    throw new Error('Brand ID is required')
+  }
+
+  const url = new URL('/api/inbox/conversations/counts', window.location.origin)
+  url.searchParams.set('brandId', brandId)
+
+  const response = await fetch(url.toString(), { credentials: 'include' })
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}))
+    // Carry the upstream status so the query's retry policy can skip 4xx.
+    const error = new Error(
+      data.error || `Failed to get unread count: ${response.status}`,
+    ) as Error & { status?: number }
+    error.status = response.status
+    throw error
+  }
+
+  const data = await response.json()
+  return Number.isFinite(data?.total_count) ? data.total_count : 0
+}
+
+export function useInboxUnreadCount(
+  brandId: UuidString | undefined,
+): UseQueryResult<number, Error> {
+  return useQuery({
+    queryKey: queryKeys.inboxUnreadCount(brandId as UuidString),
+    queryFn: () => getInboxUnreadCount(brandId as UuidString),
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
+    retry: (failureCount, error) => {
+      // Client errors (401/403/404/429, …) won't succeed on retry — retrying
+      // only hammers the endpoint and can worsen a rate-limit. Retry transient
+      // failures (5xx, network) up to 3 times. Log once, on the terminal attempt.
+      const status = (error as Error & { status?: number }).status
+      const isClientError = status !== undefined && status >= 400 && status < 500
+      const willRetry = !isClientError && failureCount < 3
+      if (!willRetry) {
+        console.error('Error fetching unread count:', error)
+      }
+      return willRetry
+    },
+    enabled: !!brandId,
+  })
+}
+
 export function useInboxConversations(
   brandId: UuidString,
   page?: number,
