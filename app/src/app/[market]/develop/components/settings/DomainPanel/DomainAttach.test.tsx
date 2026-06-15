@@ -18,6 +18,23 @@ vi.mock('@ux/modal', () => ({
   },
 }));
 
+vi.mock('@ux/field-frame', () => ({
+  default: ({ children, className, ...props }: any) => <div className={className} {...props}>{children}</div>,
+}));
+
+vi.mock('@ux/text-entry', () => ({
+  default: ({ value, onChange, placeholder, 'aria-label': ariaLabel, id, ...props }: any) => (
+    <input
+      id={id}
+      value={value ?? ''}
+      onChange={(e) => onChange?.(e.target.value)}
+      placeholder={placeholder}
+      aria-label={ariaLabel}
+      {...props}
+    />
+  ),
+}));
+
 // -- Hook mocks --
 
 const domainAttachSwitchboardTestState = vi.hoisted(function hoistedSwitchboardState() {
@@ -967,10 +984,15 @@ describe('DomainAttach', function domainAttachTests() {
     expect(screen.getByRole('tab', { name: 'builder_domain_attach_tab_external' })).toBeInTheDocument();
   });
 
-  it('does not scroll domain list when five or fewer domain rows are shown', async function noScrollForShortList() {
+  it('renders the domain list inside a fixed-height scroll area', async function listIsScrollArea() {
     const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+
     vi.mocked(useDomainsQuery).mockReturnValue({
-      data: Array.from({ length: 5 }, (_, index) => ({ domain: `domain-${index}.com` })),
+      data: [
+        { domain: 'alpha.com', name: 'alpha.com' },
+        { domain: 'beta.com', name: 'beta.com' },
+        { domain: 'gamma.com', name: 'gamma.com' },
+      ],
       isLoading: false,
       error: null,
       isFetched: true,
@@ -992,13 +1014,20 @@ describe('DomainAttach', function domainAttachTests() {
       expect(screen.getByTestId('domain-attach-list')).toBeInTheDocument();
     });
 
-    expect(screen.getByTestId('domain-attach-list')).not.toHaveClass('overflow-y-auto');
+    expect(screen.getByTestId('domain-attach-list')).toHaveClass('overflow-y-auto');
   });
 
-  it('scrolls domain list when more than five domain rows are shown', async function scrollsLongList() {
+  it('paginates the domain list when the count exceeds one page', async function paginatesLongList() {
     const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+
+    // 16 domains > DOMAIN_LIST_PER_PAGE (15), so the last one spills to page two.
+    const manyDomains = Array.from({ length: 16 }, (_unused, index) => {
+      const fqdn = `domain-${String(index + 1).padStart(2, '0')}.com`;
+      return { domain: fqdn, name: fqdn };
+    });
+
     vi.mocked(useDomainsQuery).mockReturnValue({
-      data: Array.from({ length: 6 }, (_, index) => ({ domain: `domain-${index}.com` })),
+      data: manyDomains,
       isLoading: false,
       error: null,
       isFetched: true,
@@ -1017,7 +1046,90 @@ describe('DomainAttach', function domainAttachTests() {
     );
 
     await waitFor(function waitForDomainList() {
-      expect(screen.getByTestId('domain-attach-list')).toHaveClass('overflow-y-auto');
+      expect(screen.getByTestId('domain-attach-list')).toBeInTheDocument();
+    });
+
+    // The first page renders the earlier entries while the 16th is held on page two.
+    expect(screen.getByLabelText('domain-01.com')).toBeInTheDocument();
+    expect(screen.queryByLabelText('domain-16.com')).not.toBeInTheDocument();
+  });
+
+  it('filters the domain list to matching domains when a search query is entered', async function filtersBySearchQuery() {
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [
+        { domain: 'alpha.com', name: 'alpha.com' },
+        { domain: 'beta.com', name: 'beta.com' },
+        { domain: 'gamma.com', name: 'gamma.com' },
+      ],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForDomains() {
+      expect(screen.getByLabelText('alpha.com')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText('builder_domain_list_search_placeholder');
+    fireEvent.change(searchInput, { target: { value: 'alpha' } });
+
+    await waitFor(function waitForFilter() {
+      expect(screen.getByLabelText('alpha.com')).toBeInTheDocument();
+      expect(screen.queryByLabelText('beta.com')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('gamma.com')).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows a no-results message when the search query matches no domains', async function showsNoResultsMessage() {
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [
+        { domain: 'alpha.com', name: 'alpha.com' },
+        { domain: 'beta.com', name: 'beta.com' },
+        { domain: 'gamma.com', name: 'gamma.com' },
+      ],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForDomains() {
+      expect(screen.getByLabelText('alpha.com')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText('builder_domain_list_search_placeholder');
+    fireEvent.change(searchInput, { target: { value: 'zzz-no-match' } });
+
+    await waitFor(function waitForEmptyState() {
+      expect(screen.getByText('builder_domain_list_no_results')).toBeInTheDocument();
+      expect(screen.queryByLabelText('alpha.com')).not.toBeInTheDocument();
     });
   });
 

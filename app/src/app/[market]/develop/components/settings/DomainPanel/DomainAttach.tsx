@@ -2,10 +2,14 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react"
 import { FormattedMessage } from 'react-intl';
 import Box from "@ux/box";
 import Button from "@ux/button";
+import FieldFrame from "@ux/field-frame";
+import SearchIcon from "@ux/icon/search";
 import Modal from "@ux/modal";
+import Pagination from "@ux/pagination";
 import Skeleton from "@ux/skeleton";
 import Tabs from "@ux/tabs";
 import text from "@ux/text";
+import TextEntry from "@ux/text-entry";
 import TextInput from "@ux/text-input";
 
 import DomainDNS from "@/app/[market]/develop/components/settings/components/DomainDNS";
@@ -58,7 +62,10 @@ import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
 
-const MAX_VISIBLE_DOMAIN_ROWS = 5;
+// The domain list is a compact fixed-height scroll area (~5-6 rows visible);
+// it holds up to one page of domains, and we paginate once the count exceeds it.
+const DOMAIN_LIST_PER_PAGE = 15;
+const DOMAIN_LIST_SCROLL_CLASS = 'overflow-y-auto max-h-[calc(5.5*3.5rem+5*0.5rem)] pe-1';
 
 const DOMAIN_ATTACH_TAB_PANEL_CLASS = 'pt-3';
 const DOMAIN_ATTACH_TAB_PANELS_GRID_CLASS = 'grid w-full';
@@ -91,6 +98,14 @@ type CustomerDomainEntry = {
   customerDomain: Domain;
   connectedDomains: AppDomain[];
 };
+
+// A single paginatable unit in the domain list. A connected customer domain
+// (which may include subdomains) counts as one unit.
+type DomainListUnit =
+  | { kind: 'connectedCustomer'; entry: CustomerDomainEntry }
+  | { kind: 'connectedCustom'; appDomain: AppDomain }
+  | { kind: 'availableCustom'; appDomain: AppDomain }
+  | { kind: 'availableCustomer'; entry: CustomerDomainEntry };
 
 /**
  * Get error message from unknown error type
@@ -127,6 +142,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const isDomainTransferEnabled = useSwitchboard('appbuilder-domain-transfer');
   const [customDomain, setCustomDomain] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [domainPage, setDomainPage] = useState(1);
   const [customDomainError, setCustomDomainError] = useState<string | null>(null);
   const [debouncedDomain, setDebouncedDomain] = useState('');
   const [showAddConfirmation, setShowAddConfirmation] = useState(false);
@@ -713,19 +730,45 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     )
     : [];
 
-  // Separate connected vs available domains
-  const connectedCustomerDomains = customerDomainEntries.filter(
+  // Separate connected vs available domains (unfiltered base lists).
+  // These drive the row count / Connect-tab visibility, so they must ignore
+  // the search query (otherwise searching could hide the whole Connect tab).
+  const connectedCustomerDomainsAll = customerDomainEntries.filter(
     entry => entry.connectedDomains.length > 0
   );
-  const availableCustomerDomains = customerDomainEntries.filter(
+  const availableCustomerDomainsAll = customerDomainEntries.filter(
     entry => entry.connectedDomains.length === 0
   );
-  const connectedCustomDomains = customDomains.filter(
+  const connectedCustomDomainsAll = customDomains.filter(
     d => d.status === DomainStatus.ACTIVE || d.status === DomainStatus.PENDING
   );
-  const availableCustomDomains = customDomains.filter(
+  const availableCustomDomainsAll = customDomains.filter(
     d => d.status !== DomainStatus.ACTIVE && d.status !== DomainStatus.PENDING
   );
+
+  // Search-box filter applied to the rendered lists.
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const matchesCustomerEntry = (entry: CustomerDomainEntry) => {
+    if (!normalizedSearch) return true;
+    const name = (entry.customerDomain.domain || entry.customerDomain.name || '').toLowerCase();
+    if (name.includes(normalizedSearch)) return true;
+    return entry.connectedDomains.some(
+      (d) => d.fqdn?.toLowerCase().includes(normalizedSearch),
+    );
+  };
+  const matchesAppDomain = (appDomain: AppDomain) =>
+    !normalizedSearch || Boolean(appDomain.fqdn?.toLowerCase().includes(normalizedSearch));
+
+  // Filtered lists actually rendered in the UI.
+  const connectedCustomerDomains = connectedCustomerDomainsAll.filter(matchesCustomerEntry);
+  const availableCustomerDomains = availableCustomerDomainsAll.filter(matchesCustomerEntry);
+  const connectedCustomDomains = connectedCustomDomainsAll.filter(matchesAppDomain);
+  const availableCustomDomains = availableCustomDomainsAll.filter(matchesAppDomain);
+  const hasVisibleDomains =
+    connectedCustomerDomains.length > 0 ||
+    availableCustomerDomains.length > 0 ||
+    connectedCustomDomains.length > 0 ||
+    availableCustomDomains.length > 0;
   const hasActiveOrPendingCustomDomain = customDomains.some(
     (d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE,
   );
@@ -829,23 +872,50 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         return 0;
       }
       return countDomainListRows(
-        connectedCustomerDomains,
-        connectedCustomDomains,
-        availableCustomDomains,
-        availableCustomerDomains,
+        connectedCustomerDomainsAll,
+        connectedCustomDomainsAll,
+        availableCustomDomainsAll,
+        availableCustomerDomainsAll,
       );
     },
     [
       isLoading,
       error,
-      connectedCustomerDomains,
-      connectedCustomDomains,
-      availableCustomDomains,
-      availableCustomerDomains,
+      connectedCustomerDomainsAll,
+      connectedCustomDomainsAll,
+      availableCustomDomainsAll,
+      availableCustomerDomainsAll,
     ],
   );
 
-  const isDomainListScrollable = domainRowCount > MAX_VISIBLE_DOMAIN_ROWS;
+  // Flatten the four domain groups into a single ordered list of paginatable
+  // units (a connected customer domain + its subdomains counts as one unit).
+  const domainListUnits = useMemo<DomainListUnit[]>(
+    () => [
+      ...connectedCustomerDomains.map((entry): DomainListUnit => ({ kind: 'connectedCustomer', entry })),
+      ...connectedCustomDomains.map((appDomain): DomainListUnit => ({ kind: 'connectedCustom', appDomain })),
+      ...availableCustomDomains.map((appDomain): DomainListUnit => ({ kind: 'availableCustom', appDomain })),
+      ...availableCustomerDomains.map((entry): DomainListUnit => ({ kind: 'availableCustomer', entry })),
+    ],
+    [connectedCustomerDomains, connectedCustomDomains, availableCustomDomains, availableCustomerDomains],
+  );
+
+  const totalDomainUnits = domainListUnits.length;
+  const showDomainPagination = totalDomainUnits > DOMAIN_LIST_PER_PAGE;
+  const domainTotalPages = Math.max(1, Math.ceil(totalDomainUnits / DOMAIN_LIST_PER_PAGE));
+  const currentDomainPage = Math.min(Math.max(1, domainPage), domainTotalPages);
+  const domainStartIndex = (currentDomainPage - 1) * DOMAIN_LIST_PER_PAGE;
+  const visibleDomainUnits = showDomainPagination
+    ? domainListUnits.slice(domainStartIndex, domainStartIndex + DOMAIN_LIST_PER_PAGE)
+    : domainListUnits;
+
+  // Reset to the first page whenever the search query changes.
+  useEffect(
+    function resetDomainPageOnSearch() {
+      setDomainPage(1);
+    },
+    [normalizedSearch],
+  );
 
   const hideConnectTab = isDomainDataReady && !error && domainRowCount === 0;
 
@@ -887,6 +957,97 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   );
 
   const buyDomainUrl = `https://www.${getRootDomain()}/domains?itc=${encodeURIComponent(PAYWALL_ITC.ATTACH_DOMAIN)}`;
+
+  function renderDomainUnit(unit: DomainListUnit) {
+    if (unit.kind === 'connectedCustomer') {
+      const { entry } = unit;
+      const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
+      const rootAppDomain = entry.connectedDomains.find(
+        (d) => normalizeFqdn(d.fqdn) === normalizeFqdn(domainName),
+      );
+      return (
+        <Box key={`connected-customer-domain-${domainName}`} gap="sm">
+          <DomainItem
+            domain={entry.customerDomain}
+            appDomain={rootAppDomain}
+            siteId={currentAppId}
+            appId={currentAppId}
+            onConnect={handleConnectDomain}
+            onDisconnect={handleDisconnectDomain}
+            isLoading={modifyDomainsMutation.isPending}
+            disableConnect={isDomainMutationBusy}
+            radioMode
+            isSelected={selectedDomain === domainName}
+            onSelect={setSelectedDomain}
+            mutationError={modifyDomainsMutation.error}
+          />
+          {entry.connectedDomains
+            .filter((d) => normalizeFqdn(d.fqdn) !== normalizeFqdn(domainName))
+            .map((subdomain, subIndex) => (
+              <DomainItem
+                key={`connected-subdomain-${subIndex}-${subdomain.fqdn}`}
+                domain={{ domain: subdomain.fqdn, name: subdomain.fqdn }}
+                appDomain={subdomain}
+                siteId={currentAppId}
+                appId={currentAppId}
+                onConnect={handleConnectDomain}
+                onDisconnect={handleDisconnectDomain}
+                isLoading={modifyDomainsMutation.isPending}
+                disableConnect={isDomainMutationBusy}
+                isCustomDomain
+                radioMode
+                isSelected={selectedDomain === subdomain.fqdn}
+                onSelect={setSelectedDomain}
+                mutationError={modifyDomainsMutation.error}
+              />
+            ))}
+        </Box>
+      );
+    }
+
+    if (unit.kind === 'connectedCustom' || unit.kind === 'availableCustom') {
+      const { appDomain } = unit;
+      return (
+        <DomainItem
+          key={`${unit.kind}-${appDomain.fqdn}`}
+          domain={{ domain: appDomain.fqdn, name: appDomain.fqdn }}
+          appDomain={appDomain}
+          siteId={currentAppId}
+          appId={currentAppId}
+          onConnect={handleConnectDomain}
+          onDisconnect={handleDisconnectDomain}
+          isLoading={modifyDomainsMutation.isPending}
+          disableConnect={isDomainMutationBusy}
+          isCustomDomain
+          mutationError={modifyDomainsMutation.error}
+        />
+      );
+    }
+
+    const { entry } = unit;
+    const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
+    return (
+      <DomainItem
+        key={`available-customer-domain-${domainName}`}
+        domain={entry.customerDomain}
+        appDomain={undefined}
+        siteId={currentAppId}
+        appId={currentAppId}
+        onConnect={handleConnectDomain}
+        onDisconnect={handleDisconnectDomain}
+        isLoading={modifyDomainsMutation.isPending}
+        disableConnect={isDomainMutationBusy}
+        radioMode
+        isSelected={selectedDomain === domainName}
+        onSelect={setSelectedDomain}
+        mutationError={modifyDomainsMutation.error}
+      />
+    );
+  }
+
+  function handleDomainPageChange(newOffset: number) {
+    setDomainPage(Math.floor(newOffset / DOMAIN_LIST_PER_PAGE) + 1);
+  }
 
   return (
     <SettingsSection
@@ -941,133 +1102,38 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                     {connectMutationErrorMessage}
                   </text.p>
                 )}
+                {!isLoading && !error && domainRowCount > 1 && (
+                  <FieldFrame className="w-[360px] max-w-full focus-within:[outline:5px_auto_-webkit-focus-ring-color] [&_.ux-text-entry-shell]:!outline-none">
+                    <TextEntry
+                      visualSize="sm"
+                      stretch
+                      id="domain-search-input"
+                      placeholder={t('builder_domain_list_search_placeholder')}
+                      aria-label={t('builder_domain_list_search_placeholder')}
+                      value={searchQuery}
+                      onChange={(value: string) => setSearchQuery(value)}
+                    />
+                    <div className="flex items-center pe-1">
+                      <SearchIcon className="size-[20px] shrink-0 opacity-60" />
+                    </div>
+                  </FieldFrame>
+                )}
                 <Box
                   data-testid="domain-attach-list"
                   orientation="vertical"
                   gap="sm"
-                  className={cn(
-                    'min-w-0 overflow-x-hidden',
-                    isDomainListScrollable &&
-                      'max-h-[calc((5*3.5rem+4*0.5rem)*0.9)] overflow-y-auto pr-0.5',
-                  )}
+                  className={cn("min-w-0 overflow-x-hidden", DOMAIN_LIST_SCROLL_CLASS)}
                 >
-                  {!isLoading && !error && connectedCustomerDomains.map((entry, index) => {
-                    const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
-
-                    return (
-                      <Box key={`connected-customer-domain-${index}-${domainName}`} gap="sm">
-                        {(() => {
-                          const rootAppDomain = entry.connectedDomains.find(
-                            (d) => normalizeFqdn(d.fqdn) === normalizeFqdn(domainName),
-                          );
-                          return (
-                            <DomainItem
-                              domain={entry.customerDomain}
-                              appDomain={rootAppDomain}
-                              siteId={currentAppId}
-                              appId={currentAppId}
-                              onConnect={handleConnectDomain}
-                              onDisconnect={handleDisconnectDomain}
-                              isLoading={modifyDomainsMutation.isPending}
-                              disableConnect={isDomainMutationBusy}
-                              radioMode
-                              isSelected={selectedDomain === domainName}
-                              onSelect={setSelectedDomain}
-                              mutationError={modifyDomainsMutation.error}
-                            />
-                          );
-                        })()}
-
-                        {entry.connectedDomains
-                          .filter((d) => normalizeFqdn(d.fqdn) !== normalizeFqdn(domainName))
-                          .map((subdomain, subIndex) => (
-                            <DomainItem
-                              key={`connected-subdomain-${index}-${subIndex}-${subdomain.fqdn}`}
-                              domain={{
-                                domain: subdomain.fqdn,
-                                name: subdomain.fqdn,
-                              }}
-                              appDomain={subdomain}
-                              siteId={currentAppId}
-                              appId={currentAppId}
-                              onConnect={handleConnectDomain}
-                              onDisconnect={handleDisconnectDomain}
-                              isLoading={modifyDomainsMutation.isPending}
-                              disableConnect={isDomainMutationBusy}
-                              isCustomDomain={true}
-                              radioMode
-                              isSelected={selectedDomain === subdomain.fqdn}
-                              onSelect={setSelectedDomain}
-                              mutationError={modifyDomainsMutation.error}
-                            />
-                          ))}
-                      </Box>
-                    );
-                  })}
-
-                  {!isLoading && !error && connectedCustomDomains.map((appDomain, index) => (
-                    <DomainItem
-                      key={`connected-custom-domain-${index}-${appDomain.fqdn}`}
-                      domain={{
-                        domain: appDomain.fqdn,
-                        name: appDomain.fqdn,
-                      }}
-                      appDomain={appDomain}
-                      siteId={currentAppId}
-                      appId={currentAppId}
-                      onConnect={handleConnectDomain}
-                      onDisconnect={handleDisconnectDomain}
-                      isLoading={modifyDomainsMutation.isPending}
-                      disableConnect={isDomainMutationBusy}
-                      isCustomDomain={true}
-                      mutationError={modifyDomainsMutation.error}
-                    />
-                  ))}
-
-                  {!isLoading && !error && availableCustomDomains.map((appDomain, index) => (
-                    <DomainItem
-                      key={`available-custom-domain-${index}-${appDomain.fqdn}`}
-                      domain={{
-                        domain: appDomain.fqdn,
-                        name: appDomain.fqdn,
-                      }}
-                      appDomain={appDomain}
-                      siteId={currentAppId}
-                      appId={currentAppId}
-                      onConnect={handleConnectDomain}
-                      onDisconnect={handleDisconnectDomain}
-                      isLoading={modifyDomainsMutation.isPending}
-                      disableConnect={isDomainMutationBusy}
-                      isCustomDomain={true}
-                      mutationError={modifyDomainsMutation.error}
-                    />
-                  ))}
-
-                  {!isLoading && !error && availableCustomerDomains.map((entry, index) => {
-                    const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
-
-                    return (
-                      <DomainItem
-                        key={`available-customer-domain-${index}-${domainName}`}
-                        domain={entry.customerDomain}
-                        appDomain={undefined}
-                        siteId={currentAppId}
-                        appId={currentAppId}
-                        onConnect={handleConnectDomain}
-                        onDisconnect={handleDisconnectDomain}
-                        isLoading={modifyDomainsMutation.isPending}
-                        disableConnect={isDomainMutationBusy}
-                        radioMode
-                        isSelected={selectedDomain === domainName}
-                        onSelect={setSelectedDomain}
-                        mutationError={modifyDomainsMutation.error}
-                      />
-                    );
-                  })}
+                  {!isLoading && !error && normalizedSearch && !hasVisibleDomains && (
+                    <text.p className="text-intents-ux-text-secondaryColor">
+                      {t('builder_domain_list_no_results', { query: searchQuery })}
+                    </text.p>
+                  )}
+                  {!isLoading && !error && visibleDomainUnits.map((unit) => renderDomainUnit(unit))}
                 </Box>
 
                 {!isLoading && !error && (
-                  <Box orientation="horizontal" gap="sm" className="pt-1 flex-wrap">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                     <Button
                       text={t('builder_domain_button_connect')}
                       design="primary"
@@ -1076,7 +1142,19 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                       onClick={handleConnectSelectedClick}
                       data-eid={generateClickEID(`settings.domains.connect_selected`)}
                     />
-                  </Box>
+                    {showDomainPagination && (
+                      <Pagination
+                        visualSize="sm"
+                        className="!gap-1 [&>.ux-button]:!p-0 [&>.ux-button]:!min-w-0"
+                        limit={DOMAIN_LIST_PER_PAGE}
+                        offset={domainStartIndex}
+                        total={totalDomainUnits}
+                        onChange={handleDomainPageChange}
+                        atStart={currentDomainPage === 1}
+                        atEnd={currentDomainPage === domainTotalPages}
+                      />
+                    )}
+                  </div>
                 )}
               </Box>
 
@@ -1204,7 +1282,28 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
             {!isLoading && !error && domains.length === 0 && (
               <text.p>{t('builder_custom_domain_no_domains')}</text.p>
             )}
-            <Box data-testid="domain-attach-list" orientation="vertical" gap="sm" className="min-w-0 overflow-x-hidden">
+            {!isLoading && !error && domainRowCount > 1 && (
+              <FieldFrame className="w-[360px] max-w-full focus-within:[outline:5px_auto_-webkit-focus-ring-color] [&_.ux-text-entry-shell]:!outline-none">
+                <TextEntry
+                  visualSize="sm"
+                  stretch
+                  id="domain-search-input-legacy"
+                  placeholder={t('builder_domain_list_search_placeholder')}
+                  aria-label={t('builder_domain_list_search_placeholder')}
+                  value={searchQuery}
+                  onChange={(value: string) => setSearchQuery(value)}
+                />
+                <div className="flex items-center pe-1">
+                  <SearchIcon className="size-[20px] shrink-0 opacity-60" />
+                </div>
+              </FieldFrame>
+            )}
+            <Box data-testid="domain-attach-list" orientation="vertical" gap="sm" className={cn("min-w-0 overflow-x-hidden", DOMAIN_LIST_SCROLL_CLASS)}>
+              {!isLoading && !error && normalizedSearch && !hasVisibleDomains && (
+                <text.p className="text-intents-ux-text-secondaryColor">
+                  {t('builder_domain_list_no_results', { query: searchQuery })}
+                </text.p>
+              )}
               {!isLoading && !error && connectedCustomerDomains.map((entry, index) => {
                 const domainName = entry.customerDomain.domain || entry.customerDomain.name || '';
                 return (
