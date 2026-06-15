@@ -1,18 +1,25 @@
 /**
- * Tests for base-tool.ts context propagation.
+ * Tests for base-tool.ts: context propagation + toModelOutput projection.
  *
- * Validates that:
+ * Context propagation validates that:
  * - toolCallId is injected into context.metadata.toolId
- * - Context mutation works when metadata already exists
- * - Context mutation works when metadata is initially undefined
- * - No context mutation when toolCallId is absent
- * - No crash when context is undefined
+ * - Context mutation works when metadata already exists / is initially undefined
+ * - No context mutation when toolCallId is absent; no crash when context is undefined
  * - All three API surfaces (BaseTool, createTool, toAISDKTool) behave consistently
+ *
+ * toModelOutput validates that the optional projection is forwarded so only the
+ * lean projected output reaches the model.
  */
 import { describe, it, expect, vi } from 'vitest'
 import { z } from 'zod'
 import { BaseTool, createTool, toAISDKTool } from '../base-tool.js'
 import type { AgentContext, ToolDefinition } from '../../core/types.js'
+
+type ToModelOutput = (options: {
+  toolCallId: string
+  input: unknown
+  output: unknown
+}) => { type: string; value: string }
 
 class TestTool extends BaseTool {
   readonly name = 'test'
@@ -156,5 +163,40 @@ describe('toAISDKTool context propagation', () => {
 
     // Verify mutation happened on the original object
     expect((context.metadata as any).toolId).toBe('tc-4')
+  })
+})
+
+describe('createTool', () => {
+  describe('#toModelOutput', () => {
+    it('does not set toModelOutput when the option is omitted', () => {
+      const t = createTool('desc', z.object({ a: z.string() }), async () => 'ok')
+      expect((t as Record<string, unknown>).toModelOutput).toBeUndefined()
+    })
+
+    it('forwards toModelOutput so only the projected output reaches the model', () => {
+      const t = createTool(
+        'desc',
+        z.object({ a: z.string() }),
+        async () => JSON.stringify({ keep: 1, drop: 'big-blob' }),
+        {
+          toModelOutput: ({ output }) => {
+            const full = JSON.parse(output as string)
+            return { type: 'text', value: JSON.stringify({ keep: full.keep }) }
+          },
+        }
+      )
+
+      const toModelOutput = (t as unknown as { toModelOutput: ToModelOutput }).toModelOutput
+      expect(toModelOutput).toBeTypeOf('function')
+
+      const projected = toModelOutput({
+        toolCallId: 'call-1',
+        input: { a: 'x' },
+        output: JSON.stringify({ keep: 1, drop: 'big-blob' }),
+      })
+
+      expect(projected).toEqual({ type: 'text', value: JSON.stringify({ keep: 1 }) })
+      expect(projected.value).not.toContain('big-blob')
+    })
   })
 })

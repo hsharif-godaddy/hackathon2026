@@ -209,5 +209,24 @@ EXAMPLES:
     }
 
     return JSON.stringify(response, null, 2);
+  },
+  {
+    // The agent model is text-only — it cannot see images, so resolvedUrl,
+    // thumbnailUrl and the alternatives array are useless to it (and echoing raw
+    // Getty URLs back tempts hardcoding instead of using the swappable slotUrl).
+    // The full payload above still reaches the UI/stream; only the model-facing
+    // tool-result is projected down to what's needed to write code.
+    toModelOutput: ({ output }) => {
+      const full = (typeof output === 'string' ? JSON.parse(output) : output) as Record<string, unknown>;
+      const lean: Record<string, unknown> = {
+        success: full.success,
+        slot: full.slot,
+        slotUrl: full.slotUrl,
+        mediaType: full.mediaType,
+      };
+      if (full.searchQuery) lean.searchQuery = full.searchQuery;
+      if (full.note) lean.note = full.note;
+      return { type: 'text', value: JSON.stringify(lean) };
+    },
   }
 );

@@ -68,6 +68,14 @@ export function createTool<T extends z.ZodType<any, any>>(
   execute: (input: z.infer<T>, context?: AgentContext) => Promise<unknown>,
   options?: {
     providerOptions?: Record<string, unknown>
+    /**
+     * Projects the (full) execute output down to what is sent to the language
+     * model. The full output still reaches the UI/stream; only the model-facing
+     * tool-result message uses this projection. Use it to strip context the
+     * model cannot use (e.g. image URLs, base64) while keeping the UI payload
+     * intact.
+     */
+    toModelOutput?: Tool<z.infer<T>, unknown>['toModelOutput']
   }
 ): Tool {
   return tool<z.infer<T>, unknown>({
@@ -83,7 +91,8 @@ export function createTool<T extends z.ZodType<any, any>>(
       }
       return execute(input, context)
     },
-    ...(options?.providerOptions ? { providerOptions: options.providerOptions as NonNullable<Tool['providerOptions']> } : {})
+    ...(options?.providerOptions ? { providerOptions: options.providerOptions as NonNullable<Tool['providerOptions']> } : {}),
+    ...(options?.toModelOutput ? { toModelOutput: options.toModelOutput } : {})
   })
 }
 
