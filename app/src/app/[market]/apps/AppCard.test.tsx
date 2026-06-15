@@ -5,7 +5,7 @@ import '@testing-library/jest-dom';
 
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL } from '@/config/switchboard-flags';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
@@ -382,7 +382,11 @@ describe('AppCard', () => {
     // fetches the token-injected URL for just this app via ?site_id=, then
     // navigates the tab to it.
     function stubPreviewWindow() {
-      const fakeWindow = { location: { href: '' }, opener: {} as unknown };
+      const fakeWindow = {
+        location: { href: '' },
+        opener: {} as unknown,
+        document: { write: vi.fn(), close: vi.fn() },
+      };
       mockWindowOpen.mockReturnValue(fakeWindow as unknown as Window);
       return fakeWindow;
     }
@@ -544,6 +548,8 @@ describe('AppCard', () => {
       await user.click(cornerButton);
 
       expect(mockWindowOpen).toHaveBeenCalledTimes(1);
+      // Both triggers + both clicks deduped onto the single in-flight request.
+      expect(appFetch).toHaveBeenCalledTimes(1);
     });
 
     it('prefetches the token-injected URL on hover and reuses it on click without a second fetch', async () => {
@@ -577,6 +583,174 @@ describe('AppCard', () => {
         expect(fakeWindow.location.href).toBe('https://preview.test/app?airoShareToken=tok123');
       });
       expect(appFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('reuses the prefetched URL on click with airoPreview appended when the preview header flag is on', async () => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
+        return flag === 'appbuilder-preview-header';
+      });
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ ...mockSite, preview_url: 'https://preview.test/app?airoShareToken=tok123' }),
+      } as Response);
+      const fakeWindow = stubPreviewWindow();
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      const cornerButton = screen.getByTestId('app-card-preview-button');
+
+      await user.hover(cornerButton);
+      await waitFor(() => expect(appFetch).toHaveBeenCalledTimes(1));
+
+      // Reuse path + flag on: withPreviewParam is applied at click time (current
+      // render's flag), not baked into the cached token URL.
+      await user.click(cornerButton);
+      await waitFor(() => {
+        expect(fakeWindow.location.href).toBe('https://preview.test/app?airoShareToken=tok123&airoPreview=1');
+      });
+      expect(appFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('reuses a single in-flight prefetch when clicked before the prefetch resolves', async () => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
+        if (flag === 'appbuilder-preview-header') return false;
+        return true;
+      });
+      // Manually-controlled deferred: appFetch stays pending until we resolve it,
+      // so the hover-prefetch is still in flight when the click lands.
+      let resolveFetch!: (res: Response) => void;
+      const pending = new Promise<Response>((resolve) => { resolveFetch = resolve; });
+      // mockReturnValueOnce → a regressed second fetch hits the default
+      // (undefined) and fails the count assertion below, surfacing the regression.
+      vi.mocked(appFetch).mockReturnValueOnce(pending);
+
+      const fakeWindow = stubPreviewWindow();
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      const cornerButton = screen.getByTestId('app-card-preview-button');
+
+      // Hover starts the prefetch (one fetch, still pending).
+      await user.hover(cornerButton);
+      await waitFor(() => expect(appFetch).toHaveBeenCalledTimes(1));
+
+      // Click while the prefetch is in flight — must dedupe onto the same request.
+      await user.click(cornerButton);
+      expect(appFetch).toHaveBeenCalledTimes(1);
+
+      // Resolve; the click path navigates the tab with the resolved token.
+      resolveFetch({
+        ok: true,
+        status: 200,
+        json: async () => ({ ...mockSite, preview_url: 'https://preview.test/app?airoShareToken=tok123' }),
+      } as Response);
+
+      await waitFor(() => {
+        expect(fakeWindow.location.href).toBe('https://preview.test/app?airoShareToken=tok123');
+      });
+      expect(appFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('refetches on click when an earlier prefetch failed (no poisoned cache)', async () => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
+        if (flag === 'appbuilder-preview-header') return false;
+        return true;
+      });
+      // First (prefetch) attempt rejects; second (click) attempt succeeds.
+      vi.mocked(appFetch)
+        .mockRejectedValueOnce(new Error('network down'))
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ ...mockSite, preview_url: 'https://preview.test/app?airoShareToken=tok123' }),
+        } as Response);
+
+      const fakeWindow = stubPreviewWindow();
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      const cornerButton = screen.getByTestId('app-card-preview-button');
+
+      await user.hover(cornerButton);
+      await waitFor(() => expect(appFetch).toHaveBeenCalledTimes(1)); // prefetch failed, ref cleared
+
+      await user.click(cornerButton);
+      // Click did not reuse the failed attempt — it fetched fresh and navigated.
+      await waitFor(() => {
+        expect(fakeWindow.location.href).toBe('https://preview.test/app?airoShareToken=tok123');
+      });
+      expect(appFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('warms the token on pointerdown even without a prior hover (touch path)', async () => {
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ ...mockSite, preview_url: 'https://preview.test/app?airoShareToken=tok123' }),
+      } as Response);
+      stubPreviewWindow();
+
+      renderWithProviders(<AppCard site={mockSite} />);
+      const cornerButton = screen.getByTestId('app-card-preview-button');
+
+      // No hover → onPointerEnter never fires; onPointerDown is the only signal.
+      fireEvent.pointerDown(cornerButton);
+
+      await waitFor(() => {
+        expect(appFetch).toHaveBeenCalledWith(
+          `/api/sites?site_id=${mockSite.id}`,
+          expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        );
+      });
+      expect(appFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows a loading spinner in the opened tab instead of a blank page', async () => {
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ ...mockSite, preview_url: 'https://preview.test/app?airoShareToken=tok123' }),
+      } as Response);
+      const fakeWindow = stubPreviewWindow();
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      await user.click(screen.getByTestId('app-card-preview-button'));
+
+      // The synchronously-opened tab is filled with the spinner page before the
+      // token resolves, so it never shows blank.
+      expect(fakeWindow.document.write).toHaveBeenCalledWith(
+        expect.stringContaining('airo-preview-spinner'),
+      );
+
+      // …and once the token resolves the tab navigates away from the spinner.
+      await waitFor(() => {
+        expect(fakeWindow.location.href).toContain('airoShareToken=tok123');
+      });
+    });
+
+    it('still navigates the opened tab when the loading-page write is blocked', async () => {
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
+        if (flag === 'appbuilder-preview-header') return false;
+        return true;
+      });
+      vi.mocked(appFetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ ...mockSite, preview_url: 'https://preview.test/app?airoShareToken=tok123' }),
+      } as Response);
+      // Some environments block document.write on about:blank; renderPreviewLoadingTab
+      // swallows it and navigation must still proceed (graceful degradation).
+      const fakeWindow = {
+        location: { href: '' },
+        opener: {} as unknown,
+        document: { write: vi.fn(() => { throw new Error('write blocked'); }), close: vi.fn() },
+      };
+      mockWindowOpen.mockReturnValue(fakeWindow as unknown as Window);
+
+      const { user } = renderWithProviders(<AppCard site={mockSite} />);
+      await user.click(screen.getByTestId('app-card-preview-button'));
+
+      await waitFor(() => {
+        expect(fakeWindow.location.href).toBe('https://preview.test/app?airoShareToken=tok123');
+      });
     });
 
     it('should open published URL in new window when visit site is clicked', async () => {

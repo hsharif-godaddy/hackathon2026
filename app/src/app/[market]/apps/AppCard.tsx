@@ -19,6 +19,7 @@ import WebsiteIcon from '@ux/icon/website'
 import WindowNewIcon from '@ux/icon/window-new'
 import { Menu, MenuButton, MenuItem, MenuList, MenuSeparator } from '@ux/menu'
 import Modal from '@ux/modal'
+import Spinner from '@ux/spinner'
 import Tag from '@ux/tag'
 import text from '@ux/text'
 import TextInput from '@ux/text-input'
@@ -49,6 +50,36 @@ import { getAppScreenshotUrl, hasBeenPublished, isPreviewHibernated } from '@/ut
 // /api/sites list response). The list endpoint now returns the control-plane
 // payload as-is; the share token is fetched only when a preview is opened.
 const PREVIEW_TOKEN_TIMEOUT_MS = 5000
+
+// Discriminated result of resolving a preview share token. `url` is the
+// token-injected preview_url (or null on any failure); the rest carry failure
+// detail for the click-path log (the prefetch ignores them).
+type TokenResult = { url: string | null; reason?: string; status?: number; message?: string }
+
+// Minimal self-contained loading page written into the synchronously-opened
+// preview tab so the user sees a spinner instead of a blank page while the
+// share token resolves. Replaced the moment we navigate the tab to the preview
+// URL. Inline-only (no external assets) since about:blank has no origin; adapts
+// to the OS color scheme to avoid a white flash in dark mode.
+const PREVIEW_LOADING_HTML = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="light dark"><title>Loading preview…</title><style>
+html,body{height:100%;margin:0}
+body{display:flex;align-items:center;justify-content:center;background:#ffffff;font-family:system-ui,-apple-system,sans-serif}
+@media(prefers-color-scheme:dark){body{background:#1d1d1f}}
+.airo-preview-spinner{width:40px;height:40px;border:4px solid rgba(128,128,128,.3);border-top-color:rgba(128,128,128,.9);border-radius:50%;animation:airo-preview-spin .8s linear infinite}
+@keyframes airo-preview-spin{to{transform:rotate(360deg)}}
+</style></head><body><div class="airo-preview-spinner" role="status" aria-label="Loading preview"></div></body></html>`
+
+// Fill a freshly window.open()'d tab with the loading page. Best-effort: some
+// environments restrict document.write on about:blank — skip silently if so.
+function renderPreviewLoadingTab(win: Window): void {
+  try {
+    win.document.write(PREVIEW_LOADING_HTML)
+    win.document.close()
+  } catch {
+    // No-op: the tab simply stays blank until navigation, as before.
+  }
+}
 
 // Navigate a tab that was opened synchronously on click (to preserve the
 // user-activation gesture). If the original synchronous open was blocked
@@ -110,7 +141,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
   // round-trip. AppCard is keyed by site.id in the list, so this ref is
   // per-app and needs no invalidation.
   const prefetchedPreviewUrlRef = useRef<string | null>(null)
-  const prefetchInFlightRef = useRef(false)
+  const previewTokenPromiseRef = useRef<Promise<TokenResult> | null>(null)
   const deleteSite = useSitesStore((state) => state.deleteSite)
   const fetchAllSites = useSitesStore((state) => state.fetchAllSites)
   const refreshSites = useSitesStore((state) => state.refreshSites)
@@ -122,31 +153,57 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
   const suspendedComplianceBannerEnabled = useSwitchboard('appbuilder-suspended-compliance-banner')
   const unpublishMutation = useUnpublishApp()
 
-  // Warm the on-demand preview token on hover/focus of a preview control, so
-  // the eventual click can navigate the tab immediately. Best-effort: failures
-  // are swallowed and openPreview will fetch on click if this didn't land.
-  const prefetchPreviewUrl = useCallback(() => {
-    if (!site.preview_url) return
-    if (prefetchedPreviewUrlRef.current || prefetchInFlightRef.current) return
-    prefetchInFlightRef.current = true
-    void (async () => {
+  // Resolve the token-injected preview_url for THIS app. Single source of truth
+  // for both the hover/focus/pointer-down prefetch and the click path, so a
+  // click that lands during an in-flight prefetch reuses that one request
+  // instead of firing a second ?site_id= fetch. Never throws and never logs —
+  // callers decide what to do with the discriminated result.
+  const fetchPreviewToken = useCallback((): Promise<TokenResult> => {
+    if (prefetchedPreviewUrlRef.current) {
+      return Promise.resolve({ url: prefetchedPreviewUrlRef.current })
+    }
+    if (previewTokenPromiseRef.current) {
+      return previewTokenPromiseRef.current
+    }
+    const promise = (async (): Promise<TokenResult> => {
       try {
         const res = await appFetch(
           `/api/sites?site_id=${encodeURIComponent(site.id)}`,
           { signal: AbortSignal.timeout(PREVIEW_TOKEN_TIMEOUT_MS) },
         )
-        if (!res.ok) return
+        if (!res.ok) return { url: null, reason: 'http', status: res.status }
         const data = (await res.json()) as { preview_url?: unknown }
         if (typeof data.preview_url === 'string') {
           prefetchedPreviewUrlRef.current = data.preview_url
+          return { url: data.preview_url }
         }
-      } catch {
-        // Best-effort warm-up; openPreview fetches on click if this missed.
+        return { url: null, reason: 'no-preview-url' }
+      } catch (error) {
+        return {
+          url: null,
+          reason: error instanceof Error ? error.name : 'unknown',
+          message: error instanceof Error ? error.message : String(error),
+        }
       } finally {
-        prefetchInFlightRef.current = false
+        // Clear the in-flight handle on success and failure. The resolved URL
+        // is cached in prefetchedPreviewUrlRef only on success, so a failed
+        // attempt leaves no poison — the next call refetches.
+        previewTokenPromiseRef.current = null
       }
     })()
-  }, [site.id, site.preview_url])
+    // Assign synchronously (before returning) so same-tick callers —
+    // pointerenter + pointerdown + focus — dedupe onto this one request.
+    previewTokenPromiseRef.current = promise
+    return promise
+  }, [site.id])
+
+  // Warm the preview token on hover/focus/pointer-down of a preview control so
+  // the click can navigate immediately. Best-effort and silent; the click path
+  // logs failures.
+  const prefetchPreviewUrl = useCallback(() => {
+    if (!site.preview_url) return
+    void fetchPreviewToken()
+  }, [site.preview_url, fetchPreviewToken])
 
   // Open the live preview in a new tab, using the hover/focus-prefetched
   // token-injected URL when it's ready, otherwise fetching on demand for this
@@ -162,7 +219,13 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
     // window.open() after an await is blocked by popup blockers (notably
     // Safari). The tab shows blank, then navigates once the token resolves.
     const win = window.open('about:blank', '_blank')
-    if (win) win.opener = null
+    if (win) {
+      win.opener = null
+      // Show a spinner in the opened tab so it isn't blank while the token
+      // resolves. Prefetch makes the warm case instant; this covers the cold/
+      // slow case where the fetch hasn't landed by click time.
+      renderPreviewLoadingTab(win)
+    }
 
     openingPreviewRef.current = true
     setIsOpeningPreview(true)
@@ -170,53 +233,36 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
     // Bare URL (matching today's withPreviewParam behavior) used as the
     // fallback if the token fetch fails, times out, or returns nothing.
     const fallbackUrl = isPreviewHeaderEnabled ? withPreviewParam(previewUrl) : previewUrl
-    // Use the hover/focus-prefetched URL when it landed; else fetch now.
-    const prefetched = prefetchedPreviewUrlRef.current
 
     void (async () => {
       try {
-        let injected: string | null = prefetched
-        if (!injected) {
-          const res = await appFetch(
-            `/api/sites?site_id=${encodeURIComponent(site.id)}`,
-            { signal: AbortSignal.timeout(PREVIEW_TOKEN_TIMEOUT_MS) },
-          )
-          if (!res.ok) {
-            // Best-effort token: on any non-OK (including a 401 from an expired
-            // SSO session) fall back to the bare URL rather than forcing a
-            // re-auth interruption on a low-stakes preview click. Log the status
-            // so a 401 isn't an invisible failure in Loki.
-            logger.warn('apps.preview.tokenFetch.failed', {
-              appId: site.id,
-              reason: 'http',
-              status: res.status,
-            })
-            navigatePreviewWindow(win, fallbackUrl, site.id)
-            return
-          }
-          const data = (await res.json()) as { preview_url?: unknown }
-          injected = typeof data.preview_url === 'string' ? data.preview_url : null
+        // Reuses the in-flight hover/focus/pointer-down prefetch if there is
+        // one, or the cached result, else fetches now. Never throws.
+        const r = await fetchPreviewToken()
+        if (!r.url) {
+          // Best-effort token: any non-OK (incl. a 401 from an expired SSO
+          // session), timeout, network, parse, or missing-preview_url failure
+          // falls back to the bare URL rather than forcing a re-auth
+          // interruption on a low-stakes preview click. Keep the reason/status
+          // discriminators so failures aren't invisible in Loki.
+          logger.warn('apps.preview.tokenFetch.failed', {
+            appId: site.id,
+            reason: r.reason ?? 'unknown',
+            ...(r.status !== undefined ? { status: r.status } : {}),
+            ...(r.message ? { error: r.message } : {}),
+          })
+          navigatePreviewWindow(win, fallbackUrl, site.id)
+          return
         }
-        const finalUrl = injected
-          ? (isPreviewHeaderEnabled ? withPreviewParam(injected) : injected)
-          : fallbackUrl
-        navigatePreviewWindow(win, finalUrl, site.id)
-      } catch (error) {
-        // Discriminate timeout (TimeoutError) / network (TypeError) / JSON
-        // parse (SyntaxError) so benign timeouts are separable from real
-        // failures in Loki.
-        logger.warn('apps.preview.tokenFetch.failed', {
-          appId: site.id,
-          reason: error instanceof Error ? error.name : 'unknown',
-          error: error instanceof Error ? error.message : String(error),
-        })
-        navigatePreviewWindow(win, fallbackUrl, site.id)
+        // Apply withPreviewParam here at the current render's flag value — never
+        // inside the cached resolver (avoids a stale-flag closure).
+        navigatePreviewWindow(win, isPreviewHeaderEnabled ? withPreviewParam(r.url) : r.url, site.id)
       } finally {
         openingPreviewRef.current = false
         setIsOpeningPreview(false)
       }
     })()
-  }, [site.id, site.preview_url, isPreviewHeaderEnabled])
+  }, [site.id, site.preview_url, isPreviewHeaderEnabled, fetchPreviewToken])
 
   const fetchTransferStatus = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -491,9 +537,10 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
         <Button
           design="secondary"
           size="sm"
-          icon={<WindowNewIcon />}
+          icon={isOpeningPreview ? <Spinner size="sm" /> : <WindowNewIcon />}
           onClick={openPreview}
           onPointerEnter={prefetchPreviewUrl}
+          onPointerDown={prefetchPreviewUrl}
           onFocus={prefetchPreviewUrl}
           disabled={isOpeningPreview}
           data-eid={generateClickEID('apps.app.preview_corner')}
@@ -555,6 +602,7 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
             <MenuItem
               onClick={openPreview}
               onPointerEnter={prefetchPreviewUrl}
+              onPointerDown={prefetchPreviewUrl}
               onFocus={prefetchPreviewUrl}
               data-eid={generateClickEID('apps.app.view')}
               data-testid="app-card-view-button"
