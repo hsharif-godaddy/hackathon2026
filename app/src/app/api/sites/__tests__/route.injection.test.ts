@@ -1,8 +1,12 @@
 /**
- * Tests for the airoShareToken injection path on the /api/sites endpoint
- * (both list and ?site_id= variants). Same mitigation as
- * /api/sites/[id] — see lib/share/inject-preview-token.ts. Splitting these
- * tests out of the existing route.test.ts keeps the mock surface focused.
+ * Tests for the airoShareToken injection path on the /api/sites endpoint.
+ *
+ * The list GET returns the control-plane payload as-is (no per-app token
+ * injection) — keeping an un-paginated list lightweight and avoiding stalls
+ * on hibernated/unreachable agents. The token is injected on-demand only on
+ * the ?site_id= single-site path, which the Projects-page preview button
+ * calls when a preview is opened. Same mitigation as /api/sites/[id] — see
+ * lib/share/inject-preview-token.ts.
  */
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,13 +15,11 @@ const {
   mockGetSite,
   mockListSites,
   mockAgentFetch,
-  mockCheckSwitchboardFlag,
   mockLogger,
 } = vi.hoisted(() => ({
   mockGetSite: vi.fn(),
   mockListSites: vi.fn(),
   mockAgentFetch: vi.fn(),
-  mockCheckSwitchboardFlag: vi.fn(),
   mockLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
@@ -28,9 +30,6 @@ vi.mock('@/lib/control-plane', () => ({
   }; }),
 }));
 vi.mock('@/lib/agent-fetch', () => ({ agentFetch: mockAgentFetch }));
-vi.mock('@/lib/switchboard/server', () => ({
-  checkSwitchboardFlag: mockCheckSwitchboardFlag,
-}));
 vi.mock('@/lib/request-context', () => ({ logger: mockLogger }));
 vi.mock('@/lib/translations/server-intl', () => ({
   detectTranslationLocale: vi.fn().mockResolvedValue('en-US'),
@@ -64,143 +63,50 @@ const SITE_PENDING = {
   // No preview_url / agent_url yet — still provisioning.
 };
 
-describe('GET /api/sites (list) — preview_url airoShareToken injection', () => {
+describe('GET /api/sites (list) — returns control-plane payload as-is', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     __clearTokenCacheForTesting();
-    mockCheckSwitchboardFlag.mockResolvedValue(true);
   });
 
-  it('injects token into preview_url for each site (in parallel)', async () => {
-    mockListSites.mockResolvedValue([{ ...SITE_A }, { ...SITE_B }]);
-    // First call (for SITE_A): returns active token.
-    mockAgentFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        tokens: [{ token: 'token-a', expiresAt: FUTURE }],
-      }),
-    });
-    // Second call (for SITE_B): also returns active token.
-    mockAgentFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        tokens: [{ token: 'token-b', expiresAt: FUTURE }],
-      }),
-    });
-
-    const res = await GET(new NextRequest('http://localhost/api/sites'));
-    const body = await res.json();
-
-    expect(body).toHaveLength(2);
-    expect(body[0].preview_url).toBe(`${SITE_A.preview_url}/?airoShareToken=token-a`);
-    expect(body[1].preview_url).toBe(`${SITE_B.preview_url}/?airoShareToken=token-b`);
-    // Both list calls fired — proof Promise.all worked.
-    expect(mockAgentFetch).toHaveBeenCalledTimes(2);
-  });
-
-  it('skips injection for sites missing preview_url or agent_url', async () => {
-    mockListSites.mockResolvedValue([{ ...SITE_A }, { ...SITE_PENDING }]);
-    mockAgentFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        tokens: [{ token: 'token-a', expiresAt: FUTURE }],
-      }),
-    });
-
-    const res = await GET(new NextRequest('http://localhost/api/sites'));
-    const body = await res.json();
-
-    expect(body).toHaveLength(2);
-    expect(body[0].preview_url).toContain('?airoShareToken=token-a');
-    // Pending app: preview_url stays undefined (no injection)
-    expect(body[1].preview_url).toBeUndefined();
-    // Only one agent call fired — for SITE_A, not for the pending app.
-    expect(mockAgentFetch).toHaveBeenCalledTimes(1);
-  });
-
-  it('falls back to bare preview_url when one site\'s injection fails (others succeed)', async () => {
-    mockListSites.mockResolvedValue([{ ...SITE_A }, { ...SITE_B }]);
-    // Promise.all schedules calls for SITE_A and SITE_B in parallel and the
-    // observed call order isn't guaranteed, so route by URL rather than
-    // queueing mockResolvedValueOnce.
-    mockAgentFetch.mockImplementation(async function (url: string) {
-      if (url.includes(SITE_A.id)) {
-        return { ok: false, status: 500, text: async () => 'err' };
-      }
-      if (url.includes(SITE_B.id)) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            tokens: [{ token: 'token-b', expiresAt: FUTURE }],
-          }),
-        };
-      }
-      throw new Error(`Unexpected agentFetch URL: ${url}`);
-    });
-
-    const res = await GET(new NextRequest('http://localhost/api/sites'));
-    const body = await res.json();
-
-    // SITE_A bare (both list + mint failed → fail-open), SITE_B has token.
-    // Critically, Promise.all completed despite SITE_A's failure path.
-    expect(body[0].preview_url).toBe(SITE_A.preview_url);
-    expect(body[1].preview_url).toContain('?airoShareToken=token-b');
-  });
-
-  it('returns bare list when the appbuilder-share-links flag is off', async () => {
-    mockCheckSwitchboardFlag.mockResolvedValue(false);
-    mockListSites.mockResolvedValue([{ ...SITE_A }, { ...SITE_B }]);
-
-    const res = await GET(new NextRequest('http://localhost/api/sites'));
-    const body = await res.json();
-
-    expect(body[0].preview_url).toBe(SITE_A.preview_url);
-    expect(body[1].preview_url).toBe(SITE_B.preview_url);
-    // No agent calls — short-circuited above the loop.
-    expect(mockAgentFetch).not.toHaveBeenCalled();
-  });
-
-  it('returns bare list + logs when Switchboard lookup throws (does not 500)', async () => {
-    // Switchboard outage must not take down /api/sites. Treat lookup
-    // failures as flag-off so the route still returns the site list.
-    mockCheckSwitchboardFlag.mockRejectedValue(new Error('Atlas fetch failed'));
+  it('returns the site list verbatim with no per-site token injection', async () => {
     mockListSites.mockResolvedValue([{ ...SITE_A }, { ...SITE_B }]);
 
     const res = await GET(new NextRequest('http://localhost/api/sites'));
     const body = await res.json();
 
     expect(res.status).toBe(200);
+    expect(body).toHaveLength(2);
+    // preview_url returned exactly as the control plane provided it — no
+    // ?airoShareToken= appended. Tokens are injected on-demand via the
+    // ?site_id= path when a preview is opened.
     expect(body[0].preview_url).toBe(SITE_A.preview_url);
     expect(body[1].preview_url).toBe(SITE_B.preview_url);
-    expect(mockAgentFetch).not.toHaveBeenCalled();
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      'share.previewUrl.flag.lookupError',
-      expect.objectContaining({ error: 'Atlas fetch failed' }),
-    );
+    expect(body[0].published_url).toBe(SITE_A.published_url);
+    expect(body[1].published_url).toBe(SITE_B.published_url);
   });
 
-  it('does not modify any published_url', async () => {
+  it('does no per-app backend work: no agent calls on the list path', async () => {
+    // A list GET must stay lightweight (this endpoint is intentionally
+    // un-paginated). Iterating to mint/rotate tokens per app — including for
+    // hibernated apps whose agent is down — is exactly what made it slow.
     mockListSites.mockResolvedValue([{ ...SITE_A }, { ...SITE_B }]);
-    mockAgentFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({ tokens: [{ token: 'token-a', expiresAt: FUTURE }] }),
-    });
-    mockAgentFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({ tokens: [{ token: 'token-b', expiresAt: FUTURE }] }),
-    });
+
+    await GET(new NextRequest('http://localhost/api/sites'));
+
+    expect(mockAgentFetch).not.toHaveBeenCalled();
+  });
+
+  it('returns sites that are still provisioning unchanged', async () => {
+    mockListSites.mockResolvedValue([{ ...SITE_A }, { ...SITE_PENDING }]);
 
     const res = await GET(new NextRequest('http://localhost/api/sites'));
     const body = await res.json();
 
-    expect(body[0].published_url).toBe(SITE_A.published_url);
-    expect(body[1].published_url).toBe(SITE_B.published_url);
+    expect(body).toHaveLength(2);
+    expect(body[0].preview_url).toBe(SITE_A.preview_url);
+    expect(body[1].preview_url).toBeUndefined();
+    expect(mockAgentFetch).not.toHaveBeenCalled();
   });
 });
 
@@ -208,10 +114,11 @@ describe('GET /api/sites?site_id=<id> — preview_url airoShareToken injection',
   beforeEach(() => {
     vi.clearAllMocks();
     __clearTokenCacheForTesting();
-    mockCheckSwitchboardFlag.mockResolvedValue(true);
   });
 
-  it('injects token for the single site (?site_id= variant)', async () => {
+  it('injects token for the single site unconditionally (?site_id= variant)', async () => {
+    // The appbuilder-share-links rollout is complete, so the single-site path
+    // always injects when preview_url + agent_url are present — no flag gate.
     mockGetSite.mockResolvedValue({ ...SITE_A });
     mockAgentFetch.mockResolvedValueOnce({
       ok: true,
@@ -225,14 +132,14 @@ describe('GET /api/sites?site_id=<id> — preview_url airoShareToken injection',
     expect(body.preview_url).toBe(`${SITE_A.preview_url}/?airoShareToken=token-a`);
   });
 
-  it('returns bare preview_url when flag is off (?site_id= variant)', async () => {
-    mockCheckSwitchboardFlag.mockResolvedValue(false);
-    mockGetSite.mockResolvedValue({ ...SITE_A });
+  it('returns the bare site (no injection) when it has no preview_url/agent_url', async () => {
+    mockGetSite.mockResolvedValue({ ...SITE_PENDING });
 
-    const res = await GET(new NextRequest(`http://localhost/api/sites?site_id=${SITE_A.id}`));
+    const res = await GET(new NextRequest(`http://localhost/api/sites?site_id=${SITE_PENDING.id}`));
     const body = await res.json();
 
-    expect(body.preview_url).toBe(SITE_A.preview_url);
+    expect(body.id).toBe(SITE_PENDING.id);
+    expect(body.preview_url).toBeUndefined();
     expect(mockAgentFetch).not.toHaveBeenCalled();
   });
 

@@ -63,18 +63,13 @@ vi.mock('@/lib/control-plane', () => ({
   getControlPlaneAdapter: vi.fn()
 }));
 
-// Switchboard flag is consulted in handleGetSites for the
-// airoShareToken-injection path (see lib/share/inject-preview-token.ts).
-// Default to off in this file so the existing auth/error tests aren't
-// perturbed by per-site agentFetch calls. The injection path itself is
-// tested in __tests__/route.injection.test.ts.
-vi.mock('@/lib/switchboard/server', () => ({
-  checkSwitchboardFlag: vi.fn().mockResolvedValue(false),
-}));
-
-// Mock agentFetch — when injection runs (flag-on tests), it calls into
-// the real injectShareTokenIntoPreviewUrl helper which uses agentFetch
-// for the share-token list/mint contract.
+// The airoShareToken-injection path runs on the single-site ?site_id= variant
+// (the list returns the control-plane payload as-is, with no per-app work).
+// The auth/error/screenshot tests below use sites without preview_url/agent_url
+// so injection doesn't run; injection itself is covered in
+// __tests__/route.injection.test.ts. Mock agentFetch anyway — the single-site
+// injection path calls into the real injectShareTokenIntoPreviewUrl helper,
+// which uses agentFetch for the share-token list/mint contract.
 vi.mock('@/lib/agent-fetch', () => ({
   agentFetch: vi.fn(),
 }));

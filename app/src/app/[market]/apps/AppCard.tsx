@@ -45,6 +45,25 @@ import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
 import { withPreviewParam } from '@/utils/previewUrl'
 import { getAppScreenshotUrl, hasBeenPublished, isPreviewHibernated } from '@/utils/site'
 
+// On-demand preview-token fetch (replacing the old per-app injection on the
+// /api/sites list response). The list endpoint now returns the control-plane
+// payload as-is; the share token is fetched only when a preview is opened.
+const PREVIEW_TOKEN_TIMEOUT_MS = 5000
+
+// Navigate a tab that was opened synchronously on click (to preserve the
+// user-activation gesture). If the original synchronous open was blocked
+// (win === null), the user clicked Preview and saw nothing happen — log it so
+// it's diagnosable, then attempt a fresh open as a best effort (the retry has
+// lost the gesture and will usually be blocked too).
+function navigatePreviewWindow(win: Window | null, url: string, appId: string): void {
+  if (win) {
+    win.location.href = url
+    return
+  }
+  logger.warn('apps.preview.popupBlocked', { appId })
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
 interface AlertState {
   siteId: string | null
   type: 'delete' | 'cancel-transfer' | null
@@ -82,8 +101,16 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
   const [transferBlockedReason, setTransferBlockedReason] = useState<string | null>(null)
   const [newName, setNewName] = useState(site.name || '')
   const [renameError, setRenameError] = useState<string | null>(null)
+  const [isOpeningPreview, setIsOpeningPreview] = useState(false)
 
   const menuClosedRef = useRef(false)
+  const openingPreviewRef = useRef(false)
+  // Token-injected preview_url warmed on hover/focus of a preview control so
+  // the click can navigate the tab immediately instead of waiting on the
+  // round-trip. AppCard is keyed by site.id in the list, so this ref is
+  // per-app and needs no invalidation.
+  const prefetchedPreviewUrlRef = useRef<string | null>(null)
+  const prefetchInFlightRef = useRef(false)
   const deleteSite = useSitesStore((state) => state.deleteSite)
   const fetchAllSites = useSitesStore((state) => state.fetchAllSites)
   const refreshSites = useSitesStore((state) => state.refreshSites)
@@ -94,6 +121,102 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
   const { data: subscription } = useSubscription()
   const suspendedComplianceBannerEnabled = useSwitchboard('appbuilder-suspended-compliance-banner')
   const unpublishMutation = useUnpublishApp()
+
+  // Warm the on-demand preview token on hover/focus of a preview control, so
+  // the eventual click can navigate the tab immediately. Best-effort: failures
+  // are swallowed and openPreview will fetch on click if this didn't land.
+  const prefetchPreviewUrl = useCallback(() => {
+    if (!site.preview_url) return
+    if (prefetchedPreviewUrlRef.current || prefetchInFlightRef.current) return
+    prefetchInFlightRef.current = true
+    void (async () => {
+      try {
+        const res = await appFetch(
+          `/api/sites?site_id=${encodeURIComponent(site.id)}`,
+          { signal: AbortSignal.timeout(PREVIEW_TOKEN_TIMEOUT_MS) },
+        )
+        if (!res.ok) return
+        const data = (await res.json()) as { preview_url?: unknown }
+        if (typeof data.preview_url === 'string') {
+          prefetchedPreviewUrlRef.current = data.preview_url
+        }
+      } catch {
+        // Best-effort warm-up; openPreview fetches on click if this missed.
+      } finally {
+        prefetchInFlightRef.current = false
+      }
+    })()
+  }, [site.id, site.preview_url])
+
+  // Open the live preview in a new tab, using the hover/focus-prefetched
+  // token-injected URL when it's ready, otherwise fetching on demand for this
+  // one app. The token is no longer injected on the /api/sites list response
+  // (that made the un-paginated list O(N) agent round-trips and stalled on
+  // hibernated/unreachable agents); we resolve it via the single-site
+  // ?site_id= path only when a preview is opened.
+  const openPreview = useCallback(() => {
+    const previewUrl = site.preview_url
+    if (!previewUrl || openingPreviewRef.current) return
+
+    // Open synchronously so the browser keeps the user-activation gesture —
+    // window.open() after an await is blocked by popup blockers (notably
+    // Safari). The tab shows blank, then navigates once the token resolves.
+    const win = window.open('about:blank', '_blank')
+    if (win) win.opener = null
+
+    openingPreviewRef.current = true
+    setIsOpeningPreview(true)
+
+    // Bare URL (matching today's withPreviewParam behavior) used as the
+    // fallback if the token fetch fails, times out, or returns nothing.
+    const fallbackUrl = isPreviewHeaderEnabled ? withPreviewParam(previewUrl) : previewUrl
+    // Use the hover/focus-prefetched URL when it landed; else fetch now.
+    const prefetched = prefetchedPreviewUrlRef.current
+
+    void (async () => {
+      try {
+        let injected: string | null = prefetched
+        if (!injected) {
+          const res = await appFetch(
+            `/api/sites?site_id=${encodeURIComponent(site.id)}`,
+            { signal: AbortSignal.timeout(PREVIEW_TOKEN_TIMEOUT_MS) },
+          )
+          if (!res.ok) {
+            // Best-effort token: on any non-OK (including a 401 from an expired
+            // SSO session) fall back to the bare URL rather than forcing a
+            // re-auth interruption on a low-stakes preview click. Log the status
+            // so a 401 isn't an invisible failure in Loki.
+            logger.warn('apps.preview.tokenFetch.failed', {
+              appId: site.id,
+              reason: 'http',
+              status: res.status,
+            })
+            navigatePreviewWindow(win, fallbackUrl, site.id)
+            return
+          }
+          const data = (await res.json()) as { preview_url?: unknown }
+          injected = typeof data.preview_url === 'string' ? data.preview_url : null
+        }
+        const finalUrl = injected
+          ? (isPreviewHeaderEnabled ? withPreviewParam(injected) : injected)
+          : fallbackUrl
+        navigatePreviewWindow(win, finalUrl, site.id)
+      } catch (error) {
+        // Discriminate timeout (TimeoutError) / network (TypeError) / JSON
+        // parse (SyntaxError) so benign timeouts are separable from real
+        // failures in Loki.
+        logger.warn('apps.preview.tokenFetch.failed', {
+          appId: site.id,
+          reason: error instanceof Error ? error.name : 'unknown',
+          error: error instanceof Error ? error.message : String(error),
+        })
+        navigatePreviewWindow(win, fallbackUrl, site.id)
+      } finally {
+        openingPreviewRef.current = false
+        setIsOpeningPreview(false)
+      }
+    })()
+  }, [site.id, site.preview_url, isPreviewHeaderEnabled])
 
   const fetchTransferStatus = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -369,7 +492,10 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
           design="secondary"
           size="sm"
           icon={<WindowNewIcon />}
-          onClick={() => window.open(isPreviewHeaderEnabled ? withPreviewParam(site.preview_url) : site.preview_url, '_blank', 'noopener,noreferrer')}
+          onClick={openPreview}
+          onPointerEnter={prefetchPreviewUrl}
+          onFocus={prefetchPreviewUrl}
+          disabled={isOpeningPreview}
           data-eid={generateClickEID('apps.app.preview_corner')}
           data-testid="app-card-preview-button"
           aria-label={t('builder_apps_menu_preview')}
@@ -427,7 +553,9 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
           )}
           {site.status === SiteStatus.Running && site.preview_url && !isPreviewHibernated(site) && (
             <MenuItem
-              onClick={() => window.open(isPreviewHeaderEnabled ? withPreviewParam(site.preview_url) : site.preview_url, '_blank', 'noopener,noreferrer')}
+              onClick={openPreview}
+              onPointerEnter={prefetchPreviewUrl}
+              onFocus={prefetchPreviewUrl}
               data-eid={generateClickEID('apps.app.view')}
               data-testid="app-card-view-button"
             >

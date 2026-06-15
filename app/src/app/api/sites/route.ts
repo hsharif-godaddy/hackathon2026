@@ -11,7 +11,6 @@ import {
 import { resolveMarketId } from '@/lib/market/resolve-market';
 import { logger } from '@/lib/request-context';
 import { injectShareTokenIntoPreviewUrl } from '@/lib/share/inject-preview-token';
-import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 
 // Force dynamic rendering to prevent database calls during build
 export const dynamic = 'force-dynamic';
@@ -26,35 +25,25 @@ async function handleGetSites(request: NextRequest, jwt: string, origin: string 
 
   const adapter = getControlPlaneAdapter();
 
-  // Hoist the Switchboard flag check above the per-site loop — single
-  // in-memory lookup is fine to call once per site, but agreeing on the
-  // result up front lets us skip the per-site work entirely when off.
-  // See lib/share/inject-preview-token.ts for context on why preview_url
-  // gets the token injected (3PC-blocking browsers).
-  //
-  // checkSwitchboardFlag can throw on Switchboard outages — treat that as
-  // "flag off" so a transient Switchboard failure can't take down the
-  // entire site list fetch. The injection is a best-effort enhancement.
-  let flagEnabled = false;
-  try {
-    flagEnabled = await checkSwitchboardFlag('appbuilder-share-links', request);
-  } catch (err) {
-    logger.warn('share.previewUrl.flag.lookupError', {
-      error: err instanceof Error ? err.message : 'Unknown switchboard error',
-    });
-  }
-
   if (siteId) {
     // Get specific site
     const site = await adapter.getSite(siteId, jwt);
     if (!site) {
       return withCorsHeaders(NextResponse.json({ error: 'Site not found' }, { status: 404 }), origin);
     }
-    // Spread (don't mutate the adapter-returned object) — matches the list
-    // path below and the project's "immutable data flows across
-    // architectural boundaries" guideline. The current V2 adapter returns
-    // fresh objects per call, but consistency keeps that assumption local.
-    if (flagEnabled && site.preview_url && site.agent_url) {
+
+    // This single-site path is the on-demand share-token injection point: the
+    // apps list (below) returns the control-plane payload as-is, and the
+    // Projects-page preview button fetches ?site_id=<id> when a preview is
+    // opened. Keeping injection off the list keeps an un-paginated list GET
+    // lightweight (no per-app agent round-trips). The appbuilder-share-links
+    // rollout is complete, so injection is no longer flag-gated — see
+    // lib/share/inject-preview-token.ts for why preview_url gets the token
+    // (3PC-blocking browsers / dev-supervisor auth).
+    //
+    // Spread (don't mutate the adapter-returned object) — the project's
+    // "immutable data flows across architectural boundaries" guideline.
+    if (site.preview_url && site.agent_url) {
       const previewUrl = await injectShareTokenIntoPreviewUrl(
         siteId,
         site.agent_url,
@@ -68,28 +57,12 @@ async function handleGetSites(request: NextRequest, jwt: string, origin: string 
     return withCorsHeaders(NextResponse.json(site), origin);
   }
 
-  // List all sites
+  // List all sites — return the control-plane payload as-is. A list GET
+  // must stay lightweight and this endpoint is intentionally un-paginated,
+  // so there is no per-site work here: share tokens are injected on-demand
+  // via the ?site_id= path above when a preview is actually opened (see the
+  // Projects-page AppCard preview button).
   const sites = await adapter.listSites(jwt);
-
-  // Inject in parallel for sites that have both agent_url and preview_url.
-  // Each lookup is a fast SQLite read on agents; mints are rare (1× per
-  // app per ~7 days). Promise.all is safe — the helper catches its own
-  // errors and falls back to the bare URL, so no rejection bubbles up.
-  if (flagEnabled) {
-    const updated = await Promise.all(
-      sites.map(async (site) => {
-        if (!site.preview_url || !site.agent_url) return site;
-        const previewUrl = await injectShareTokenIntoPreviewUrl(
-          site.id,
-          site.agent_url,
-          site.preview_url,
-        );
-        return { ...site, preview_url: previewUrl };
-      }),
-    );
-    return withCorsHeaders(NextResponse.json(updated), origin);
-  }
-
   return withCorsHeaders(NextResponse.json(sites), origin);
 }
 
