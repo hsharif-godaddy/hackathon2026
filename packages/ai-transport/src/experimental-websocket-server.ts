@@ -52,7 +52,7 @@ import {
 } from './stream-timing-tracker.js'
 import { ChunkTimeoutGuard } from './chunk-timeout-guard.js'
 import { decideChunkTimeoutFinalization } from './chunk-timeout-finalization.js'
-import { runPostStreamValidation, turnEndedWithStopAfterTool, type ValidationMessageEventData } from './post-stream-validation-runner.js'
+import { runPostStreamValidation, type ValidationMessageEventData } from './post-stream-validation-runner.js'
 import { invokeBudgetRecoveryCallback, buildContinuationPrompt, MAX_BUDGET_RETRIES } from './budget-recovery.js'
 import { parseAgentCommand } from './agent-command-parser.js'
 import { trackTurnSnapshotEvent, type TurnSnapshotState } from './turn-snapshot-tracker.js'
@@ -2331,8 +2331,12 @@ export class WebSocketServer {
             }))
             : []
 
+          // Forward `stopAfterTools` to the validator so it can apply the
+          // combined gate (skip iff stop-after AND clean tree). Skipping
+          // here unconditionally on stop-after lets unvalidated edits ship
+          // when a turn edits files and ends with `askQuestion` — see the
+          // post-stream-validator combined-gate logic for the truth table.
           const stopAfterTools = this.config.agents.getConfig?.(name)?.stopAfterTools
-          if (turnEndedWithStopAfterTool(validatorToolCalls, stopAfterTools)) return
           const resolvedAgentName = name || this.config.defaultAgent || 'unknown'
           const conversation = this.getConversation(socketId)
 
@@ -2344,6 +2348,7 @@ export class WebSocketServer {
             toolCalls: validatorToolCalls,
             abortSignal,
             iteration: currentLoopIteration,
+            ...(stopAfterTools !== undefined && { stopAfterTools }),
             emitChunk: async (text: string) => {
               if (!text) return
               await this.publishToEventChannel(

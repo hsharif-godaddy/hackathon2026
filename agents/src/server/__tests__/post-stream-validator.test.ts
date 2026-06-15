@@ -268,6 +268,352 @@ describe('createPostStreamValidator', () => {
     expect(emitValidationStart).toHaveBeenCalledTimes(1);
     expect(mocks.runTypecheck).toHaveBeenCalledTimes(1);
     expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
+    // Non-stop-after dirty turn must NOT emit the ran_despite_stop_after log.
+    expect(mocks.logger.warn).not.toHaveBeenCalledWith(
+      'agent.post_stream_validator.ran_despite_stop_after',
+      expect.anything()
+    );
+  });
+
+  // ─── Combined stop-after + uncommitted-changes gate ───────────────────────
+  // Bug repro: a turn that edits files and ends with a stop-after tool
+  // (e.g. develop's end-of-build `askQuestion`) used to bypass validation
+  // entirely because the transport's stop-after gate fired before the
+  // validator's has-changes gate. The fix moves the stop-after check into
+  // the validator so the two gates compose: skip iff (stop-after AND no
+  // uncommitted changes). Tests below pin the four-quadrant truth table;
+  // the failing one drives the implementation in step 2 of the plan.
+  describe('combined gate: stop-after tools + uncommitted changes', () => {
+    it('skips with reason "stop_after_no_changes" when last tool is stop-after AND tree is clean', async () => {
+      const { deps, mocks } = makeDeps({ hasUncommittedChanges: false });
+      const validator = createPostStreamValidator(deps);
+      const emitValidationStart = vi.fn(async function () {});
+      const result = await validator(
+        makeArgs({
+          emitValidationStart,
+          toolCalls: [{ toolName: 'readFile' }, { toolName: 'askQuestion' }],
+          stopAfterTools: ['askQuestion']
+        })
+      );
+      expect(result).toEqual({ skipped: true, reason: 'stop_after_no_changes' });
+      expect(mocks.runTypecheck).not.toHaveBeenCalled();
+      expect(mocks.pollRuntimeErrors).not.toHaveBeenCalled();
+      expect(emitValidationStart).not.toHaveBeenCalled();
+    });
+
+    it('runs both phases when last tool is stop-after AND tree has uncommitted edits', async () => {
+      // The Rebu repro: agent edited files this turn, then asked a question.
+      // Validation must still run so a parse error in the just-written file
+      // surfaces as a continuation prompt rather than a blank preview.
+      const { deps, mocks } = makeDeps({ hasUncommittedChanges: true });
+      const validator = createPostStreamValidator(deps);
+      const emitValidationStart = vi.fn(async function () {});
+      const result = await validator(
+        makeArgs({
+          emitValidationStart,
+          toolCalls: [
+            { toolName: 'str_replace_based_edit_tool' },
+            { toolName: 'askQuestion' }
+          ],
+          stopAfterTools: ['askQuestion']
+        })
+      );
+      expect(result).toBeUndefined();
+      expect(emitValidationStart).toHaveBeenCalledTimes(1);
+      expect(mocks.runTypecheck).toHaveBeenCalledTimes(1);
+      expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
+      // Observability: fix path must emit the ran_despite_stop_after warn log.
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        'agent.post_stream_validator.ran_despite_stop_after',
+        expect.objectContaining({ lastTool: 'askQuestion' })
+      );
+    });
+
+    it('still skips with reason "no_uncommitted_changes" when last tool is NOT stop-after AND tree is clean', async () => {
+      // Regression guard: clean-tree skip path keeps its original reason
+      // for read-only turns so existing log dashboards / metrics don't shift.
+      const { deps, mocks } = makeDeps({ hasUncommittedChanges: false });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(
+        makeArgs({
+          toolCalls: [{ toolName: 'searchFiles' }, { toolName: 'readFile' }],
+          stopAfterTools: ['askQuestion']
+        })
+      );
+      expect(result).toEqual({ skipped: true, reason: 'no_uncommitted_changes' });
+      expect(mocks.runTypecheck).not.toHaveBeenCalled();
+      expect(mocks.pollRuntimeErrors).not.toHaveBeenCalled();
+    });
+
+    it('runs both phases when no stop-after tools are configured AND tree has uncommitted edits', async () => {
+      // Regression guard: the new gate must not change behavior for agents
+      // that don't declare `stopAfterTools` (e.g. internal/test agents).
+      const { deps, mocks } = makeDeps({ hasUncommittedChanges: true });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(
+        makeArgs({
+          toolCalls: [{ toolName: 'str_replace_based_edit_tool' }],
+          stopAfterTools: undefined
+        })
+      );
+      expect(result).toBeUndefined();
+      expect(mocks.runTypecheck).toHaveBeenCalledTimes(1);
+      expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
+    });
+
+    // End-to-end (unit test variant):
+    // Turn edits a .tsx file containing an unescaped apostrophe inside a
+    // single-quoted string ('you're'), then ends with `askQuestion`.
+    // Before the fix: transport gate short-circuited → validator never ran
+    // → parse error reached the preview as a blank screen.
+    // After the fix: validator runs, tsc returns the parse error, and
+    // `createPostStreamValidator` returns a continuationPrompt so the agent
+    // loop self-corrects before the user sees anything broken.
+    it('returns a continuation prompt for a tsc parse error when the turn ended with askQuestion', async () => {
+      const parseError = {
+        file: 'src/pages/index.tsx',
+        line: 42,
+        column: 50,
+        code: 'TS1002',
+        message: "Unterminated string literal."
+      };
+      const { deps, mocks } = makeDeps({
+        hasUncommittedChanges: true,
+        typecheckResult: { ok: false, errors: [parseError] }
+      });
+      const validator = createPostStreamValidator(deps);
+      const emitValidationStart = vi.fn(async function () {});
+
+      const result = await validator(
+        makeArgs({
+          emitValidationStart,
+          toolCalls: [
+            { toolName: 'str_replace_based_edit_tool', args: { command: 'create', path: 'src/pages/index.tsx' } },
+            { toolName: 'askQuestion', args: { question: 'What do you think of the design?' } }
+          ],
+          stopAfterTools: ['askQuestion']
+        })
+      );
+
+      // Validator must have run (not skipped on stop-after).
+      expect(emitValidationStart).toHaveBeenCalledTimes(1);
+      expect(mocks.runTypecheck).toHaveBeenCalledTimes(1);
+
+      // Parse error must surface as a continuation prompt so the agent loop
+      // fixes it before the user's preview renders the broken page.
+      expect(result).toMatchObject({
+        continuationPrompt: expect.stringContaining('src/pages/index.tsx')
+      });
+      expect(result).toMatchObject({
+        continuationPrompt: expect.stringContaining('TS1002')
+      });
+      expect(result).toMatchObject({
+        continuationPrompt: expect.stringContaining('Unterminated string literal')
+      });
+    });
+  });
+
+  // ─── Auto restart-after-fix: HMR limbo recovery ──────────────────────────
+  // Concrete production failure this guards against: file A has a parse
+  // error; file B imports A; Vite drops B's HMR update because the dep
+  // graph is broken. Validator continuation fixes A, but Vite never
+  // retries B's dropped update, so the browser runs a stale B (e.g.
+  // routes.tsx without the new /about route). A graceful preview restart
+  // after the fix-then-clean iteration forces a fresh module load and
+  // closes the HMR limbo.
+  describe('auto restart-after-fix', () => {
+    it('restarts the preview when phases come back clean AND tsc retry counter > 0', async () => {
+      const restartPreview = vi.fn(async function () { return { success: true } });
+      const { deps, mocks } = makeDeps({
+        hasUncommittedChanges: true,
+        tscRetryCount: 1,                              // prior iteration found tsc errors
+        typecheckResult: { ok: true, errors: [] },     // this iteration is clean
+        runtimeResult: { ok: true, errors: [] },
+        restartPreview
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toBeUndefined();
+      expect(restartPreview).toHaveBeenCalledTimes(1);
+      expect(restartPreview).toHaveBeenCalledWith(APP_ID, expect.any(Object));
+      expect(mocks.logger.info).toHaveBeenCalledWith(
+        'agent.post_stream_validator.restart_after_fix.success',
+        expect.objectContaining({ appId: APP_ID })
+      );
+    });
+
+    it('restarts the preview when phases come back clean AND runtime retry counter > 0', async () => {
+      const restartPreview = vi.fn(async function () { return { success: true } });
+      const { deps } = makeDeps({
+        hasUncommittedChanges: true,
+        rtRetryCount: 1,                               // prior iteration found runtime errors
+        typecheckResult: { ok: true, errors: [] },
+        runtimeResult: { ok: true, errors: [] },
+        restartPreview
+      });
+      const validator = createPostStreamValidator(deps);
+      await validator(makeArgs());
+      expect(restartPreview).toHaveBeenCalledTimes(1);
+    });
+
+    it('does NOT restart when phases come back clean AND no retries occurred this turn', async () => {
+      // Plain happy path: agent edited files, no errors found, no fix needed.
+      // No HMR limbo to recover from, so no restart cost should be paid.
+      const restartPreview = vi.fn(async function () { return { success: true } });
+      const { deps } = makeDeps({
+        hasUncommittedChanges: true,
+        typecheckResult: { ok: true, errors: [] },
+        runtimeResult: { ok: true, errors: [] },
+        restartPreview
+      });
+      const validator = createPostStreamValidator(deps);
+      await validator(makeArgs());
+      expect(restartPreview).not.toHaveBeenCalled();
+    });
+
+    it('does NOT restart when validator returns a continuation (errors still present)', async () => {
+      // Mid-fix iteration: errors found, returning continuationPrompt.
+      // The fix may still be in flight; restarting now would interrupt it.
+      const restartPreview = vi.fn(async function () { return { success: true } });
+      const { deps } = makeDeps({
+        hasUncommittedChanges: true,
+        typecheckResult: { ok: false, errors: [{ file: 'a.ts', line: 1, column: 1, code: 'TS1002', message: 'x' }] },
+        restartPreview
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toMatchObject({ continuationPrompt: expect.any(String) });
+      expect(restartPreview).not.toHaveBeenCalled();
+    });
+
+    it('logs "unavailable" warn and does NOT restart when restartPreview is not configured on deps', async () => {
+      // Production always wires `restartPreview`; a missing callback means
+      // a regression in `buildSharedPostStreamValidator` and HMR limbo
+      // would silently linger. The validator must surface this so an
+      // operator can attribute the gap.
+      const { deps, mocks } = makeDeps({
+        hasUncommittedChanges: true,
+        tscRetryCount: 1,
+        typecheckResult: { ok: true, errors: [] },
+        runtimeResult: { ok: true, errors: [] }
+        // no restartPreview override → deps.runtimeErrors.restartPreview is undefined
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toBeUndefined();
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        'agent.post_stream_validator.restart_after_fix.unavailable',
+        expect.objectContaining({
+          appId: APP_ID,
+          tscRetries: 1,
+          reason: 'restartPreview_not_configured'
+        })
+      );
+    });
+
+    it('does NOT restart when the abort signal fires mid-flight (after phases, before restart check)', async () => {
+      // Genuine coverage of the `!abortSignal.aborted` guard at the restart
+      // condition. Aborting BEFORE invoke would short-circuit at the
+      // top-level abort check and never reach this guard. Instead, abort
+      // from inside a phase mock so both phases run normally with an
+      // unaborted signal, then the signal is aborted before the composite's
+      // post-phase restart-decision block.
+      const restartPreview = vi.fn(async function () { return { success: true } });
+      const ac = new AbortController();
+      const { deps } = makeDeps({
+        hasUncommittedChanges: true,
+        tscRetryCount: 1,
+        typecheckResult: { ok: true, errors: [] },
+        runtimeResult: { ok: true, errors: [] },
+        restartPreview
+      });
+      // Abort from inside the runTypecheck mock so the signal flips to
+      // aborted while phases are running. Both phases still complete
+      // (Promise.all preserves the originally-stubbed clean results).
+      (deps.typecheck.typecheckService.runTypecheck as unknown as ReturnType<typeof vi.fn>)
+        .mockImplementationOnce(async () => {
+          ac.abort();
+          return { ok: true, errors: [] };
+        });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs({ abortSignal: ac.signal }));
+      expect(result).toBeUndefined();
+      expect(restartPreview).not.toHaveBeenCalled();
+    });
+
+    it('does NOT double-restart when the runtime phase already restarted in-phase (alreadyRestartedDuringPhase)', async () => {
+      // Stale-HMR recovery on the 2nd runtime-phase run already restarted
+      // the preview when its re-poll resolved cleanly. The composite must
+      // see `restartedDuringPhase: true` on the rtOutcome and suppress its
+      // own auto-restart so the supervisor isn't kicked twice in a turn.
+      //
+      // Setup: rtRetryCount=1 + runtime errors present + clean re-poll →
+      // runtime phase calls restartPreview once and returns
+      // `{ kind: 'clean', restartedDuringPhase: true }`. Composite then
+      // checks fixedErrorsThisChain (true) but should suppress the second
+      // restart because of the in-phase flag.
+      const restartPreview = vi.fn(async function () { return { success: true } });
+      const runtimeErrors = [
+        { name: 'TypeError', message: 'obj is undefined', timestamp: 1 }
+      ];
+      const { deps } = makeDeps({
+        hasUncommittedChanges: true,
+        rtRetryCount: 1,
+        runtimeResult: { ok: false, errors: runtimeErrors },
+        rePollResult: { ok: true, errors: [] },
+        previousCycleId: 100,
+        restartPreview,
+        typecheckResult: { ok: true, errors: [] }
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toBeUndefined();
+      // The runtime phase's in-phase restart fired exactly once; the
+      // composite did NOT add a second.
+      expect(restartPreview).toHaveBeenCalledTimes(1);
+    });
+
+    it('logs failure with reason="restart_unsuccessful" when restartPreview reports unsuccess', async () => {
+      // Fail-open: the typecheck and runtime checks already passed; a
+      // restart hiccup must not change the validator's return value. The
+      // `reason: 'restart_unsuccessful'` discriminator separates supervisor-
+      // declined restarts from thrown exceptions in Loki attribution and
+      // matches the convention in `attemptRestartAndRepoll`.
+      const restartPreview = vi.fn(async function () { return { success: false, error: 'supervisor unreachable' } });
+      const { deps, mocks } = makeDeps({
+        hasUncommittedChanges: true,
+        tscRetryCount: 1,
+        typecheckResult: { ok: true, errors: [] },
+        runtimeResult: { ok: true, errors: [] },
+        restartPreview
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toBeUndefined();
+      expect(restartPreview).toHaveBeenCalledTimes(1);
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        'agent.post_stream_validator.restart_after_fix.failed',
+        expect.objectContaining({ reason: 'restart_unsuccessful', error: 'supervisor unreachable' })
+      );
+    });
+
+    it('logs failure with reason="restart_threw" when restartPreview throws and still returns success', async () => {
+      const restartPreview = vi.fn(async function () { throw new Error('boom') });
+      const { deps, mocks } = makeDeps({
+        hasUncommittedChanges: true,
+        tscRetryCount: 1,
+        typecheckResult: { ok: true, errors: [] },
+        runtimeResult: { ok: true, errors: [] },
+        restartPreview
+      });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toBeUndefined();
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        'agent.post_stream_validator.restart_after_fix.failed',
+        expect.objectContaining({ reason: 'restart_threw', error: 'boom' })
+      );
+    });
   });
 
   it('falls through to running both phases when the change-check itself throws', async () => {

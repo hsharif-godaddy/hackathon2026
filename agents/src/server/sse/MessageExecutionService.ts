@@ -12,7 +12,6 @@ import {
   emitTurnError,
   classifyTurnError,
   runPostStreamValidation,
-  turnEndedWithStopAfterTool,
   withBudgetRecovery,
   redactSkillOutput,
   toolMetadataFields,
@@ -1981,9 +1980,11 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
               .filter((e: any) => e.type === 'tool_start' && e.data?.tool)
               .map((e: any) => ({ toolName: e.data.tool.name, args: e.data.tool.input }))
 
+            // Forward `stopAfterTools` to the validator so it can apply the
+            // combined gate (skip iff stop-after AND clean tree). Mirrors the
+            // WS transport in `experimental-websocket-server.ts`.
             const agent = this.deps.getAgent(agentName)
             const stopAfterTools = agent?.getConfig?.()?.stopAfterTools
-            if (turnEndedWithStopAfterTool(toolCalls, stopAfterTools)) return
 
             const result = await runPostStreamValidation({
               validator: this.deps.postStreamValidator!,
@@ -1993,6 +1994,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
               toolCalls,
               abortSignal: abortController.signal,
               iteration: currentIteration,
+              ...(stopAfterTools !== undefined && { stopAfterTools }),
               emitChunk: async (text) => {
                 if (!text) return
                 await this.publishNonTerminal(appId, conversationId, {

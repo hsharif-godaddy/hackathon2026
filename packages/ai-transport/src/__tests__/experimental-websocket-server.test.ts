@@ -4270,11 +4270,28 @@ describe('WebSocketServer - postStreamValidator continuation', () => {
     server.close()
   })
 
-  it('skips validation when the last tool call is a stop-after tool', async () => {
+  // The transport used to skip the validator unconditionally when the last
+  // tool was a stop-after tool. That meant a turn that edited files and
+  // ended with `askQuestion` (the develop agent's natural end-of-build
+  // flow) shipped unvalidated — a parse error in the just-written file
+  // reached the preview as a blank screen.
+  //
+  // The transport now always invokes the validator and forwards
+  // `stopAfterTools` via the runner. The validator combines this with its
+  // has-uncommitted-changes gate to decide whether to skip. See the
+  // validator-level coverage in
+  // `agents/src/server/__tests__/post-stream-validator.test.ts`
+  // (`describe('combined gate: stop-after tools + uncommitted changes')`).
+  it('invokes the validator and forwards stopAfterTools when the last tool is a stop-after tool', async () => {
     ;(mockAgent.streamGenerate as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce(mockSingleShotStream('asking user'))
+      .mockResolvedValueOnce(mockSingleShotStream('after fix'))
 
-    const postStreamValidator = vi.fn().mockResolvedValueOnce({ continuationPrompt: 'should not fire' })
+    // Validator stub: first call returns clean (so the loop terminates),
+    // mirroring the validator's combined-gate decision when the tree is
+    // dirty but no errors exist. Test asserts the validator was called and
+    // received the agent's stop-after list.
+    const postStreamValidator = vi.fn().mockResolvedValueOnce(undefined)
 
     const agentsWithConfig = {
       ...mockAgents,
@@ -4291,15 +4308,26 @@ describe('WebSocketServer - postStreamValidator continuation', () => {
     ;(server as any).getConversation = (id: string) => {
       const conv = origGetConversation(id)
       if (conv) {
-        conv.pendingToolCalls = new Map([['call-1', { name: 'askQuestion', input: { question: 'What theme?' } }]])
+        conv.pendingToolCalls = new Map([
+          ['call-1', { name: 'str_replace_based_edit_tool', input: { command: 'create', path: 'src/pages/index.tsx' } }],
+          ['call-2', { name: 'askQuestion', input: { question: 'What theme?' } }],
+        ])
       }
       return conv
     }
 
     await messageHandler({ message: 'initial', agentId: 'test-agent' })
 
-    expect(postStreamValidator).not.toHaveBeenCalled()
-    expect(mockAgent.streamGenerate).toHaveBeenCalledTimes(1)
+    expect(postStreamValidator).toHaveBeenCalledTimes(1)
+    const validatorArgs = postStreamValidator.mock.calls[0]![0] as {
+      toolCalls: Array<{ toolName: string }>
+      stopAfterTools?: readonly string[]
+    }
+    expect(validatorArgs.toolCalls.map((tc) => tc.toolName)).toEqual([
+      'str_replace_based_edit_tool',
+      'askQuestion',
+    ])
+    expect(validatorArgs.stopAfterTools).toEqual(['askQuestion'])
 
     server.close()
   })

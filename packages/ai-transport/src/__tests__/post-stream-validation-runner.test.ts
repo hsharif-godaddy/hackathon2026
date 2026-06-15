@@ -3,6 +3,7 @@ import {
   runPostStreamValidation,
   turnEndedWithStopAfterTool,
   type PostStreamValidatorFn,
+  type PostStreamValidatorInput,
   type ValidationMessageEventData,
 } from '../post-stream-validation-runner.js'
 
@@ -139,6 +140,96 @@ describe('runPostStreamValidation', () => {
     })
 
     expect(calls).toHaveLength(0)
+  })
+
+  // Suggestion 2: pin the stopAfterTools forwarding contract at the runner
+  // seam. Per ai-transport/CLAUDE.md, shared behaviour belongs in shared
+  // package tests, not just covered transitively via transport tests.
+  it('forwards stopAfterTools to the validator when provided', async () => {
+    let capturedInput: PostStreamValidatorInput | undefined
+    const validator: PostStreamValidatorFn = async (input) => {
+      capturedInput = input
+      return undefined
+    }
+
+    await runPostStreamValidation({
+      ...baseParams(),
+      stopAfterTools: ['askQuestion'],
+      validator,
+      publishValidationMessage: vi.fn(async () => true),
+    })
+
+    expect(capturedInput?.stopAfterTools).toEqual(['askQuestion'])
+  })
+
+  it('omits stopAfterTools key from validator input when not provided', async () => {
+    // The conditional spread `...(stopAfterTools !== undefined && { stopAfterTools })`
+    // must produce an absent key, not present-and-undefined, so the validator
+    // can distinguish "transport didn't supply it" from "explicitly empty".
+    let capturedInput: PostStreamValidatorInput | undefined
+    const validator: PostStreamValidatorFn = async (input) => {
+      capturedInput = input
+      return undefined
+    }
+
+    await runPostStreamValidation({
+      ...baseParams(),
+      validator,
+      publishValidationMessage: vi.fn(async () => true),
+    })
+
+    expect('stopAfterTools' in (capturedInput ?? {})).toBe(false)
+  })
+
+  // Step D: helper-level coverage for the `stop_after_no_changes` skip reason.
+  // The validator returns this when the turn ended with a stop-after tool AND
+  // the working tree is clean — the preserved PR #3985 intent. The runner
+  // must treat it as a silent clean skip: no status events, no warn log, no
+  // continuation. Mirrors the existing `no_uncommitted_changes` behavior.
+  it('emits no status events and returns null for stop_after_no_changes skip', async () => {
+    const { publish, calls } = makePublishCapture()
+    const logger = makeLogger()
+    const validator: PostStreamValidatorFn = async () => ({
+      skipped: true,
+      reason: 'stop_after_no_changes'
+    })
+
+    const result = await runPostStreamValidation({
+      ...baseParams(),
+      validator,
+      logger,
+      publishValidationMessage: publish,
+    })
+
+    expect(result).toBeNull()
+    expect(calls).toHaveLength(0)
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      'post_stream_validator.unhandled_skipped_result',
+      expect.anything()
+    )
+  })
+
+  it('emits no status events and returns null for no_uncommitted_changes skip', async () => {
+    const { publish, calls } = makePublishCapture()
+    const logger = makeLogger()
+    const validator: PostStreamValidatorFn = async () => ({
+      skipped: true,
+      reason: 'no_uncommitted_changes'
+    })
+
+    const result = await runPostStreamValidation({
+      ...baseParams(),
+      validator,
+      logger,
+      publishValidationMessage: publish,
+    })
+
+    expect(result).toBeNull()
+    expect(calls).toHaveLength(0)
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      'post_stream_validator.unhandled_skipped_result',
+      expect.anything()
+    )
   })
 
   it('logs info (not error) and skips error publish when validator throws post-abort', async () => {

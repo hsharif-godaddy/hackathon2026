@@ -40,6 +40,7 @@ import { GitUtils } from '../utils/git.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { createForWorkspace } from '../workspace/index.js';
 import { checkPreviewHealth } from '../utils/preview-health-check.js';
+import { turnEndedWithStopAfterTool } from '@airo/ai-transport';
 
 type PhaseLogger = Pick<ILogger, 'info' | 'warn'>;
 
@@ -51,6 +52,14 @@ export interface PostStreamValidatorArgs {
   abortSignal: AbortSignal;
   emitChunk: (text: string) => Promise<void>;
   emitValidationStart?: () => Promise<void>;
+  /**
+   * Stop-after tool names for the resolved agent (e.g. `['askQuestion']`).
+   * Supplied by the transport. The validator combines this with the
+   * uncommitted-changes gate so it can skip on stop-after only when the
+   * working tree is clean — otherwise edits made on the same turn that ends
+   * with `askQuestion` would land unvalidated.
+   */
+  stopAfterTools?: readonly string[];
 }
 
 export type PostStreamValidatorResult =
@@ -61,7 +70,7 @@ export type PostStreamValidatorResult =
 type PhaseOutcome =
   | { kind: 'continue'; message: string }
   | { kind: 'exhausted'; message: string }
-  | { kind: 'clean' };
+  | { kind: 'clean'; restartedDuringPhase?: boolean };
 
 const MAX_ERRORS_IN_VALIDATION_MESSAGE = 50;
 const MAX_RUNTIME_STACK_FRAMES_IN_VALIDATION_MESSAGE = 4;
@@ -590,7 +599,10 @@ export async function runRuntimeErrorPhase(
     if (restartOutcome.result) {
       result = restartOutcome.result;
       if (result.ok) {
-        return { kind: 'clean' };
+        // Stale-HMR recovery already restarted the preview as part of
+        // resolving these errors. Tell the composite so its auto
+        // restart-after-fix doesn't fire a redundant second restart.
+        return { kind: 'clean', restartedDuringPhase: true };
       }
     }
     // restartOutcome.result === null: restart failed or beacon never
@@ -782,22 +794,52 @@ export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps
       });
       hasChanges = true;
     }
+    // Hoist once: used in both the clean-tree skip and the dirty-tree
+    // observability log below.
+    const endedWithStopAfter = turnEndedWithStopAfterTool(
+      args.toolCalls,
+      args.stopAfterTools
+    );
+
     if (!hasChanges) {
+      // Combined gate: when the turn ended with a stop-after tool
+      // (e.g. `askQuestion`) we still want to skip on a clean tree —
+      // there's nothing to validate AND the user explicitly paused.
+      // Distinguish the two clean-tree skip reasons in the log/return
+      // so dashboards can attribute them. The transport used to gate
+      // on stop-after alone, which silently dropped validation when a
+      // turn edited files and ended with `askQuestion`; that decision
+      // now lives here, paired with the has-changes signal.
+      const reason = endedWithStopAfter ? 'stop_after_no_changes' : 'no_uncommitted_changes';
       logger.info('agent.typecheck.skipped', {
         socketId,
         appId,
         conversationId,
         agentName,
-        reason: 'no_uncommitted_changes'
+        reason
       });
       logger.info('agent.runtime_errors.skipped', {
         socketId,
         appId,
         conversationId,
         agentName,
-        reason: 'no_uncommitted_changes'
+        reason
       });
-      return { skipped: true, reason: 'no_uncommitted_changes' };
+      return { skipped: true, reason };
+    }
+
+    // Observability: when a stop-after tool fired but the tree is dirty,
+    // the old transport gate would have silently skipped validation. Log
+    // at warn so Loki can quantify how often the fix matters in production:
+    //   {job="airo-agents"} |= "post_stream_validator.ran_despite_stop_after"
+    if (endedWithStopAfter) {
+      logger.warn('agent.post_stream_validator.ran_despite_stop_after', {
+        socketId,
+        appId,
+        conversationId,
+        agentName,
+        lastTool: args.toolCalls[args.toolCalls.length - 1]?.toolName
+      });
     }
 
     await args.emitValidationStart?.();
@@ -845,6 +887,92 @@ export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps
         });
       }
       return { skipped: true, reason: 'exhausted', message: exhaustedMessage };
+    }
+
+    // Both phases came back clean. If the agent reached this point because
+    // it fixed errors that an earlier validator iteration surfaced (retry
+    // counters > 0), restart the preview to recover any HMR updates that
+    // were dropped during the broken window.
+    //
+    // Concretely: when file A has a parse error and file B imports A, Vite's
+    // HMR refuses to apply B's update because the dependency graph is
+    // broken. Vite never retries dropped HMR updates, so the in-memory
+    // module graph stays stale even after A is fixed — leaving the browser
+    // running an old version of B (e.g. routes.tsx without the new route).
+    // A graceful restart forces a fresh module load and clears the limbo.
+    //
+    // Fail-open: a restart failure is logged but does not change the
+    // validator's return — the typecheck and runtime checks already
+    // succeeded; the worst case is that the user has to refresh manually.
+    const tscRetries = typecheck.retryCounters.get(socketId) ?? 0;
+    const rtRetries = runtimeErrors.retryCounters.get(socketId) ?? 0;
+    const fixedErrorsThisChain = tscRetries > 0 || rtRetries > 0;
+    const alreadyRestartedDuringPhase =
+      (tscOutcome.kind === 'clean' && tscOutcome.restartedDuringPhase === true) ||
+      (rtOutcome.kind === 'clean' && rtOutcome.restartedDuringPhase === true);
+    const shouldAttemptRestart =
+      fixedErrorsThisChain && !alreadyRestartedDuringPhase && !abortSignal.aborted;
+
+    if (shouldAttemptRestart && runtimeErrors.restartPreview) {
+      logger.info('agent.post_stream_validator.restart_after_fix.begin', {
+        socketId,
+        appId,
+        conversationId,
+        agentName,
+        tscRetries,
+        rtRetries
+      });
+      try {
+        const restartResult = await runtimeErrors.restartPreview(appId, abortSignal);
+        if (restartResult.success) {
+          logger.info('agent.post_stream_validator.restart_after_fix.success', {
+            socketId,
+            appId,
+            conversationId,
+            agentName
+          });
+        } else {
+          // `restart_unsuccessful` — supervisor accepted the call but
+          // reported failure (e.g. graceful restart declined). Field name
+          // and value mirror the convention in `attemptRestartAndRepoll`
+          // above, so Loki splits clean refusals from crashes consistently
+          // across the file.
+          logger.warn('agent.post_stream_validator.restart_after_fix.failed', {
+            socketId,
+            appId,
+            conversationId,
+            agentName,
+            reason: 'restart_unsuccessful',
+            error: restartResult.error
+          });
+        }
+      } catch (err) {
+        // `restart_threw` — restartPreview itself threw (network error,
+        // workspace lookup failed, etc.). Mirrors the existing
+        // `attemptRestartAndRepoll` discriminator.
+        logger.warn('agent.post_stream_validator.restart_after_fix.failed', {
+          socketId,
+          appId,
+          conversationId,
+          agentName,
+          reason: 'restart_threw',
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    } else if (shouldAttemptRestart) {
+      // restartPreview is not wired on deps. Production always injects it
+      // (`buildSharedPostStreamValidator`); a missing callback here means a
+      // wiring regression and HMR limbo would silently linger after an
+      // auto-fix. Surface at warn so monitoring can attribute the gap.
+      logger.warn('agent.post_stream_validator.restart_after_fix.unavailable', {
+        socketId,
+        appId,
+        conversationId,
+        agentName,
+        tscRetries,
+        rtRetries,
+        reason: 'restartPreview_not_configured'
+      });
     }
 
     return;

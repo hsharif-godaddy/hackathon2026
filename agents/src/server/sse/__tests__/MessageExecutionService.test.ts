@@ -3663,9 +3663,18 @@ describe('MessageExecutionService', () => {
   })
 
   describe('postStreamValidator + stopAfterTools', () => {
-    it('skips validation when last tool call is a stop-after tool', async () => {
+    // SSE used to skip the validator unconditionally when the last tool was
+    // a stop-after tool, mirroring the (now-removed) WS gate. That meant a
+    // turn that edited files and ended with `askQuestion` shipped
+    // unvalidated. SSE now always invokes the validator and forwards
+    // `stopAfterTools` so the validator can apply the combined gate
+    // (skip iff stop-after AND clean tree). Validator-level coverage lives
+    // in `agents/src/server/__tests__/post-stream-validator.test.ts`.
+    it('invokes the validator and forwards stopAfterTools when last tool is a stop-after tool', async () => {
       const postStreamValidator = vi.fn().mockResolvedValue(undefined)
       deps = createMockDeps([
+        { type: 'tool-input-start', id: 'tid-edit', toolName: 'str_replace_based_edit_tool' },
+        { type: 'tool-call', id: 'tid-edit', toolName: 'str_replace_based_edit_tool', args: JSON.stringify({ command: 'create', path: 'src/pages/index.tsx' }) },
         { type: 'tool-input-start', id: 'tid-ask', toolName: 'askQuestion' },
         { type: 'tool-call', id: 'tid-ask', toolName: 'askQuestion', args: JSON.stringify({ question: 'What theme?' }) },
       ])
@@ -3679,7 +3688,16 @@ describe('MessageExecutionService', () => {
 
       await service.execute(DEFAULT_PARAMS)
 
-      expect(postStreamValidator).not.toHaveBeenCalled()
+      expect(postStreamValidator).toHaveBeenCalledTimes(1)
+      const validatorArgs = postStreamValidator.mock.calls[0]![0] as {
+        toolCalls: Array<{ toolName: string }>
+        stopAfterTools?: readonly string[]
+      }
+      expect(validatorArgs.toolCalls.map((tc) => tc.toolName)).toEqual([
+        'str_replace_based_edit_tool',
+        'askQuestion',
+      ])
+      expect(validatorArgs.stopAfterTools).toEqual(['askQuestion'])
     })
 
     it('runs validation when last tool call is NOT a stop-after tool', async () => {

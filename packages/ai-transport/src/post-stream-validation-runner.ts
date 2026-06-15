@@ -3,7 +3,7 @@
  *  validation should be skipped. */
 export function turnEndedWithStopAfterTool(
   toolCalls: Array<{ toolName: string }>,
-  stopAfterTools: string[] | undefined,
+  stopAfterTools: readonly string[] | undefined,
 ): boolean {
   if (!stopAfterTools || stopAfterTools.length === 0 || toolCalls.length === 0) return false
   const lastTool = toolCalls[toolCalls.length - 1]!
@@ -32,6 +32,15 @@ export interface PostStreamValidatorInput {
   abortSignal: AbortSignal
   emitChunk: (text: string) => Promise<void>
   emitValidationStart?: () => Promise<void>
+  /**
+   * Stop-after tool names for the resolved agent (e.g. `['askQuestion']`).
+   * The transport supplies this so the validator can apply a combined gate:
+   * skip iff (last tool is stop-after AND working tree is clean). Skipping
+   * unconditionally on stop-after lets unvalidated edits ship when a turn
+   * edits files and ends with `askQuestion`; gating only on dirty tree
+   * surfaces pre-existing errors that hijack intentional pauses.
+   */
+  stopAfterTools?: readonly string[]
 }
 
 export type PostStreamValidatorResult =
@@ -57,6 +66,8 @@ export interface RunPostStreamValidationParams {
   toolCalls: Array<{ toolName: string; args?: unknown }>
   abortSignal: AbortSignal
   iteration: number
+  /** Stop-after tool names for the resolved agent. Forwarded to the validator. */
+  stopAfterTools?: readonly string[]
   /** Publish a `chunk` event appended to the in-flight assistant message. */
   emitChunk: (text: string) => Promise<void>
   /** Publish a `validation_message` event. Return true when the event was delivered. */
@@ -86,7 +97,8 @@ export async function runPostStreamValidation(
 ): Promise<RunPostStreamValidationResult | null> {
   const {
     validator, socketId, agentName, context, toolCalls, abortSignal, iteration,
-    emitChunk, publishValidationMessage, persistValidationMessage, logger, logContext,
+    stopAfterTools, emitChunk, publishValidationMessage, persistValidationMessage,
+    logger, logContext,
   } = params
 
   const validationId = `post_stream_validation_${iteration}_${Date.now()}`
@@ -114,6 +126,7 @@ export async function runPostStreamValidation(
       toolCalls,
       abortSignal,
       emitChunk,
+      ...(stopAfterTools !== undefined && { stopAfterTools }),
       emitValidationStart: async () => {
         validationStarted = await emitStatus('running', 'Validating code...')
       },
@@ -178,6 +191,16 @@ export async function runPostStreamValidation(
         await emitStatus('error', 'Validation could not resolve all issues.')
       } else if (!skippedResult) {
         await emitStatus('completed', 'No issues found.')
+      } else if (
+        skippedResult.reason === 'no_uncommitted_changes' ||
+        skippedResult.reason === 'stop_after_no_changes' ||
+        skippedResult.reason === 'initial_agent'
+      ) {
+        // Intentional no-op: clean skip before emitValidationStart was called,
+        // so validationStarted is false and there is no status event to emit.
+        // Explicit branch prevents these known reasons from falling into the
+        // unhandled-reason warn+error path below if a future refactor changes
+        // when emitValidationStart is invoked.
       } else {
         logger.warn('post_stream_validator.unhandled_skipped_result', {
           ...(logContext ?? {}),
