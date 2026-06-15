@@ -6,7 +6,6 @@ import Box from '@ux/box';
 import { text } from '@ux/text';
 
 import { useAuthContext } from '@/components/providers/AuthProvider';
-import { EXPERIMENT_IDS } from '@/config/experiments';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { useTranslations } from '@/hooks/useTranslations';
 import { generateClickEID } from '@/utils/instrumentation';
@@ -22,7 +21,7 @@ export function HeroScrollButton({
 }: HeroScrollButtonProps) {
   const t = useTranslations();
   const { isAuthenticated } = useAuthContext();
-  const { logAnalytics } = useAnalytics({ experimentId: EXPERIMENT_IDS.homepageEngagement, baseData: { isAuthenticated } });
+  const { logAnalytics } = useAnalytics({ baseData: { isAuthenticated } });
 
   const handleClick = useCallback(() => {
     logAnalytics(

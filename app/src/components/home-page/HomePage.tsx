@@ -5,13 +5,13 @@ import clsx from 'clsx'
 import HelpSection from '@/app/[market]/components/HelpSection'
 import InfraSection from '@/app/[market]/components/InfraSection'
 import { MockLoginDialog } from '@/components/auth/MockLogin'
+import HeroSection from '@/components/home-page/HeroSection'
+import StartSection from '@/components/home-page/StartSection'
 import FAQSection from '@/components/layout/FAQSection'
 import FeaturesSection from '@/components/layout/Features'
 import Header from '@/components/layout/Header'
 import PricingSection from '@/components/layout/PricingSection'
 import { UpgradeModal } from '@/components/upgrade/UpgradeModal'
-import StartSection from '@/experiments/homepage-engagement-variations/hero_content_improvement/StartSection'
-import HeroSection from '@/experiments/homepage-engagement-variations/start_building/HeroSection'
 import { useHomepageSubmission } from '@/hooks/useHomepageSubmission'
 import { usePaywallDeeplinkWithStore } from '@/hooks/usePaywallDeeplinkWithStore'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -22,7 +22,7 @@ interface HomeContentProps {
   serverFeatures: ServerFeatureFlags
 }
 
-export function StartBuildingHomePage({ serverFeatures }: HomeContentProps) {
+export function HomePage({ serverFeatures }: HomeContentProps) {
   const t = useTranslations()
   const hp = useHomepageSubmission()
   usePaywallDeeplinkWithStore()
@@ -34,7 +34,7 @@ export function StartBuildingHomePage({ serverFeatures }: HomeContentProps) {
           'isolate relative w-full overflow-hidden',
           'bg-gradient bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor',
         )}
-        data-homepage-variation="start_building"
+
       >
         <div className="w-full h-full relative">
           <Header

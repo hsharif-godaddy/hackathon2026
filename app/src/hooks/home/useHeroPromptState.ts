@@ -3,7 +3,6 @@
 import { type ChangeEvent, type KeyboardEvent, type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useAuthContext } from '@/components/providers/AuthProvider'
-import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useAnalytics } from '@/hooks/useAnalytics'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTextareaHoverTracking } from '@/hooks/useTextareaHoverTracking'
@@ -58,7 +57,6 @@ export function useHeroPromptState({
   const isTemplateSelectorEnabled = useSwitchboard('appbuilder-template-selector')
   const { isAuthenticated } = useAuthContext()
   const { logAnalytics } = useAnalytics({
-    experimentId: EXPERIMENT_IDS.homepageEngagement,
     baseData: { isAuthenticated },
   })
   const [isTyping, setIsTyping] = useState(false)

@@ -6,7 +6,6 @@ import { text } from '@ux/text'
 import RebuildDesignModal from '@/app/[market]/components/RebuildDesignModal'
 import { Example, HeroExamplesProps, LOGO_DESIGNER_TEMPLATE } from '@/app/[market]/components/types'
 import { useAuthContext } from '@/components/providers/AuthProvider'
-import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useAnalytics } from '@/hooks/useAnalytics'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -28,7 +27,6 @@ export default function HeroExamples({ className, theme = 'dark', onExampleClick
   const t = useTranslations()
   const { isAuthenticated } = useAuthContext()
   const { logAnalytics } = useAnalytics({
-    experimentId: EXPERIMENT_IDS.homepageEngagement,
     baseData: { isAuthenticated },
   })
   const [visibleItems, setVisibleItems] = useState<boolean[]>([])

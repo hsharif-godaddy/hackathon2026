@@ -6,7 +6,7 @@ import Spinner from '@ux/spinner'
 
 import { CdsEsmPreload } from '@/app/[market]/develop/components/paywall'
 import ErrorBoundary from '@/components/ErrorBoundary'
-import { HomePageByCohort } from '@/experiments/homepage-engagement-variations'
+import { HomePage } from '@/components/home-page/HomePage'
 import type { ServerFeatureFlags } from '@/lib/server-features'
 
 function hasFiles(e: React.DragEvent): boolean {
@@ -37,7 +37,7 @@ export default function HomeContent({ serverFeatures }: HomeContentProps) {
           <Spinner />
         </Box>
       }>
-        <HomePageByCohort serverFeatures={serverFeatures} />
+        <HomePage serverFeatures={serverFeatures} />
       </Suspense>
       <ErrorBoundary fallback={() => null}>
         <CdsEsmPreload />

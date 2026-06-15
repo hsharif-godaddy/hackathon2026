@@ -14,8 +14,7 @@ import { PromptErrorAlert } from '@/components/home/PromptErrorAlert'
 import { PromptInputErrors } from '@/components/home/PromptInputErrors'
 import { SpeechToggleButton } from '@/components/home/SpeechToggleButton'
 import { SubmitInitialPrompt } from '@/components/home/SubmitInitialPrompt'
-import { HOMEPAGE_ENGAGEMENT_COHORT_IDS } from '@/experiments/homepage-engagement-variations/cohort-ids'
-import ExamplesSection from '@/experiments/homepage-engagement-variations/hero_content_improvement/HeroExamples'
+import ExamplesSection from '@/components/home-page/HeroExamples'
 import { useAnimatedPlaceholder } from '@/hooks/home/useAnimatedPlaceholder'
 import { useFileUploadState } from '@/hooks/home/useFileUploadState'
 import { useHeroPromptState } from '@/hooks/home/useHeroPromptState'
@@ -39,7 +38,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   uploadedFiles,
   onFilesChange,
 }, ref) => {
-  useImpression('homepage.firstprompt.view', { customProperties: { variant: HOMEPAGE_ENGAGEMENT_COHORT_IDS.LETS_BUILD_IT } })
+  useImpression('homepage.firstprompt.view')
   const t = useTranslations()
   const { isBelowSmBreakpoint, isMdBreakpoint } = useBreakpoints()
 
@@ -181,7 +180,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                     onClick={handleStartBuilding}
                     disabled={!displayText.trim() || isLoading || isTyping || isOverLimit}
                     isLoading={isLoading}
-                    text={t('builder_homepage_submit_cta_lets_build_it', undefined, "Let's Build It")}
+                    text={t('builder_homepage_submit_cta_generate', undefined, 'Generate')}
                   />
                 </Box>
               </Box>

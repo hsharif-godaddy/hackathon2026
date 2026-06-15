@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
 import { LOGO_DESIGNER_TEMPLATE } from '@/app/[market]/components/types';
-import HeroExamples from '@/experiments/homepage-engagement-variations/hero_content_improvement/HeroExamples';
+import HeroExamples from '@/components/home-page/HeroExamples';
 import { readPendingDesignChoice } from '@/lib/rebuild-design-choice';
 import { renderWithProviders } from '@/tests/test-utils';
 
@@ -57,7 +57,7 @@ function getRebuildButton(): HTMLElement {
   return screen.getByText(REBUILD_TITLE).closest('button') as HTMLElement;
 }
 
-describe('HeroExamples (hero_content_improvement)', () => {
+describe('HeroExamples', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     sessionStorage.clear();

@@ -5,7 +5,6 @@ import React, { useEffect, useRef, useState } from 'react'
 import text from '@ux/text'
 
 import PageSection from '@/components/layout/PageSection'
-import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useAnalytics } from '@/hooks/useAnalytics'
 import { useTranslations } from '@/hooks/useTranslations'
 import { generateClickEID } from '@/utils/instrumentation'
@@ -96,7 +95,7 @@ function AnimatedFAQItem({ index, onToggle }: AnimatedFAQItemProps) {
 
 export default function FAQSection() {
   const t = useTranslations();
-  const { logAnalytics } = useAnalytics({ experimentId: EXPERIMENT_IDS.homepageEngagement })
+  const { logAnalytics } = useAnalytics({})
   const sectionRef = useRef<HTMLDivElement>(null)
   const isFaqSectionInView = useInView(sectionRef, { once: true, amount: 0.2 })
   const hasLoggedViewRef = useRef(false)

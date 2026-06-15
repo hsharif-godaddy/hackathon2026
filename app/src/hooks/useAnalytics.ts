@@ -7,7 +7,7 @@ import { logActionEvent, logClickEvent, logImpressionEvent } from '@/utils/instr
 import { getVisitorIdFromCookie } from '@/utils/visitor-id'
 
 export interface UseAnalyticsOptions {
-  experimentId: string
+  experimentId?: string
   baseData?: Record<string, unknown>
 }
 
@@ -31,7 +31,7 @@ export function useAnalytics({ experimentId, baseData = {} }: UseAnalyticsOption
   const baseDataRef = useRef(baseData)
   baseDataRef.current = baseData
 
-  const { cohort } = useHivemind(experimentId)
+  const { cohort } = useHivemind(experimentId ?? '')
   const cohortValue = cohort ?? INELIGIBLE_COHORT
 
   const logAnalytics = useCallback(

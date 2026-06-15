@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { HeroSectionRef, LOGO_DESIGNER_TEMPLATE, type UploadedDesignFile, validateTemplate } from '@/app/[market]/components/types'
 import { useAuthContext } from '@/components/providers/AuthProvider'
-import { EXPERIMENT_IDS } from '@/config/experiments'
 import { useAnalytics } from '@/hooks/useAnalytics'
 import { useAuthGateTracking } from '@/hooks/useAuthGateTracking'
 import { useDeeplinkPromptPrefill } from '@/hooks/useDeeplinkPromptPrefill'
@@ -80,7 +79,6 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
   const { subscriptions, isLoading: subscriptionsLoading, isError: subscriptionsError } = useSubscription({ enabled: isAuthenticated })
   const isNewUser = !subscriptionsLoading && !subscriptionsError && subscriptions.length === 0
   const { cohort, logAnalytics } = useAnalytics({
-    experimentId: EXPERIMENT_IDS.homepageEngagement,
     baseData: { isAuthenticated },
   })
   const { signIn } = useSsoSignIn()

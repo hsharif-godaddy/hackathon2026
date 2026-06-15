@@ -5,7 +5,7 @@ import '@testing-library/jest-dom';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { EXPERIMENT_IDS, INELIGIBLE_COHORT } from '@/config/experiments';
+import { INELIGIBLE_COHORT } from '@/config/experiments';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { renderHookWithProviders } from '@/tests/test-utils';
 
@@ -35,12 +35,11 @@ describe('useAnalytics', () => {
     mockUseHivemind.mockReturnValue({ cohort: undefined, data: undefined, experiment: undefined });
     const { result } = renderHookWithProviders(() =>
       useAnalytics({
-        experimentId: EXPERIMENT_IDS.homepageEngagement,
         baseData: { isAuthenticated: false },
       }),
     );
     result.current.logAnalytics('homepage.view', { step: 1 });
-    expect(mockUseHivemind).toHaveBeenCalledWith(EXPERIMENT_IDS.homepageEngagement);
+    expect(mockUseHivemind).toHaveBeenCalledWith('');
     expect(shipAnalyticsLog).toHaveBeenCalledWith('homepage.view', {
       isAuthenticated: false,
       step: 1,
@@ -48,13 +47,14 @@ describe('useAnalytics', () => {
     });
   });
 
-  it('sends Hivemind cohort when present', function withCohort() {
-    mockUseHivemind.mockReturnValue({ cohort: 'light_homepage', data: {}, experiment: undefined });
+  it('sends Hivemind cohort when experimentId is provided', function withCohort() {
+    mockUseHivemind.mockReturnValue({ cohort: 'treatment', data: {}, experiment: undefined });
     const { result } = renderHookWithProviders(() =>
-      useAnalytics({ experimentId: EXPERIMENT_IDS.homepageEngagement }),
+      useAnalytics({ experimentId: 'some-active-experiment' }),
     );
     result.current.logAnalytics('homepage.view', {});
-    expect(shipAnalyticsLog).toHaveBeenCalledWith('homepage.view', { cohort: 'light_homepage' });
+    expect(mockUseHivemind).toHaveBeenCalledWith('some-active-experiment');
+    expect(shipAnalyticsLog).toHaveBeenCalledWith('homepage.view', { cohort: 'treatment' });
   });
 
   it('uses latest baseData after rerender', function baseDataRef() {
@@ -62,7 +62,6 @@ describe('useAnalytics', () => {
     const { result, rerender } = renderHookWithProviders(
       (props: { auth: boolean }) =>
         useAnalytics({
-          experimentId: EXPERIMENT_IDS.homepageEngagement,
           baseData: { isAuthenticated: props.auth },
         }),
       { initialProps: { auth: false } },
@@ -77,20 +76,20 @@ describe('useAnalytics', () => {
   it('exposes cohort from hook', function cohortReturn() {
     mockUseHivemind.mockReturnValue({ cohort: 'original', data: undefined, experiment: undefined });
     const { result } = renderHookWithProviders(() =>
-      useAnalytics({ experimentId: EXPERIMENT_IDS.homepageEngagement }),
+      useAnalytics({}),
     );
     expect(result.current.cohort).toBe('original');
   });
 
   it('includes visitorId in ship log when visitor cookie has vid', function shipVisitorId() {
     document.cookie = 'visitor=vid%3Dship-vid-id; path=/';
-    mockUseHivemind.mockReturnValue({ cohort: 'light_homepage', data: {}, experiment: undefined });
+    mockUseHivemind.mockReturnValue({ cohort: 'c', data: {}, experiment: undefined });
     const { result } = renderHookWithProviders(() =>
-      useAnalytics({ experimentId: EXPERIMENT_IDS.homepageEngagement }),
+      useAnalytics({}),
     );
     result.current.logAnalytics('homepage.view', {});
     expect(shipAnalyticsLog).toHaveBeenCalledWith('homepage.view', {
-      cohort: 'light_homepage',
+      cohort: 'c',
       visitorId: 'ship-vid-id',
     });
   });
