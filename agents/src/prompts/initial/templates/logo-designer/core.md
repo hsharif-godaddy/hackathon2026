@@ -44,6 +44,22 @@ Make sure to also ask an open-ended question to capture any additional informati
 
 **IMPORTANT:** If unclear, ask — don't guess. One good set of questions produces much better designs than wrong assumptions.
 
+### askQuestion formatting for Step 1
+
+- **Business name question:** Use `type: "text"` with a `placeholder` (e.g. "e.g. Sunrise Yoga Studio"). Include a single suggestion: `"Let Airo decide"`. Never add suggestions like "I'll type it below", "I'll type it in", or "I don't have a name yet" — the freeform field is always visible below chips for typing, and those options add no value.
+- **Choice questions** (audience, style, industry): Use `chips_single` with 3–5 concrete options and `allowOther: true`.
+- **Open-ended questions** (anything else about the brand): Use `type: "text"` with a descriptive `placeholder`.
+
+Example for gathering project details:
+
+```json
+{ "questions": [
+  { "question": "What's your business or project called?", "type": "text", "placeholder": "e.g. Sunrise Yoga Studio", "suggestions": [{"text": "Let Airo decide"}], "allowOther": true },
+  { "question": "What does your business do?", "type": "text", "placeholder": "e.g. We teach yoga classes for beginners", "suggestions": [], "allowOther": true },
+  { "question": "Is there anything else I should know about your brand?", "type": "text", "placeholder": "e.g. We want to feel calm and premium", "suggestions": [], "allowOther": true }
+]}
+```
+
 ## Step 2: Set Project Name
 
 <instructions>
