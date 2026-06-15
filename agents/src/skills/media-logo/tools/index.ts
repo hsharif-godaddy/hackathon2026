@@ -404,6 +404,8 @@ export const generateLogoTool: SkillToolDefinition = {
             slots: result.slots,
             status: 'completed',
             logoId: outcome.logoId,
+            logo: outcome.logo,
+            sessionId: outcome.sessionId,
             ...(outcome.slotSaveFailed
               ? { slotSaveFailed: true, failedLayouts: outcome.failedLayouts }
               : {}),

@@ -539,19 +539,21 @@ describe('media-logo generate_logo tool', () => {
       });
 
     it('waits for the run to settle and returns the completed result', async () => {
-      withOutcome({ status: 'completed', jobId: 'job-1', logoId: 'logo-xyz', slotSaveFailed: false, failedLayouts: [] });
+      const mockLogo = { id: 'logo-xyz', urls: { horizontal: { transparent: 'https://cdn/t.png' } } };
+      withOutcome({ status: 'completed', jobId: 'job-1', logoId: 'logo-xyz', logo: mockLogo, sessionId: 'sess-1', slotSaveFailed: false, failedLayouts: [] });
       const { generateLogoTool } = await import('../index.js');
       const result = await generateLogoTool.execute(
         { prompt: 'logo', layout: 'horizontal', background: false }, baseContext,
       );
       expect(result.error).toBeUndefined();
       expect(result.structuredContent).toMatchObject({
-        started: true, jobId: 'job-1', slots: ['logo/horizontal'], status: 'completed', logoId: 'logo-xyz',
+        started: true, jobId: 'job-1', slots: ['logo/horizontal'], status: 'completed', logoId: 'logo-xyz', logo: mockLogo, sessionId: 'sess-1',
       });
     });
 
     it('surfaces a partial slot-save failure instead of reporting clean success', async () => {
-      withOutcome({ status: 'completed', jobId: 'job-1', logoId: 'logo-xyz', slotSaveFailed: true, failedLayouts: ['vertical'] });
+      const mockLogo = { id: 'logo-xyz', urls: { horizontal: { transparent: 'https://cdn/t.png' } } };
+      withOutcome({ status: 'completed', jobId: 'job-1', logoId: 'logo-xyz', logo: mockLogo, sessionId: 'sess-1', slotSaveFailed: true, failedLayouts: ['vertical'] });
       const { generateLogoTool } = await import('../index.js');
       const result = await generateLogoTool.execute(
         { prompt: 'logo', layout: 'all', background: false }, baseContext,

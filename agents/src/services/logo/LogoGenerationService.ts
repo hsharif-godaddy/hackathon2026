@@ -7,7 +7,7 @@ import { getSSERegistry } from '../../server/sse/registry-singleton.js'
 import { createForWorkspace } from '../../workspace/index.js'
 import type { WorkspaceFiles } from '../../workspace/files.js'
 import type { MediaSlot } from '../MediaManifestService.js'
-import { logoService, type LogoLayout, type LogoSessionResponse } from '../LogoService.js'
+import { logoService, type LogoLayout, type LogoSessionResponse, type ProcessedLogo } from '../LogoService.js'
 import { readLogoJob, writeLogoJob, type LogoJob } from './logo-job-state.js'
 import { ensureShimmerAssets } from './logo-shimmer.js'
 import { LOGO_SLOT_PATHS, saveLogoToSlots, snapshotSlots, placeShimmerSlots, revertSlots } from './logo-slots.js'
@@ -34,6 +34,8 @@ export type LogoRunOutcome =
       status: 'completed'
       jobId: string
       logoId: string
+      logo: ProcessedLogo
+      sessionId: string
       slotSaveFailed: boolean
       failedLayouts: LogoLayout[]
       skippedLayouts: LogoLayout[]
@@ -336,7 +338,7 @@ class LogoGenerationService {
     logger.info('logo.worker.complete', {
       appId, jobId, sessionId: response.sessionId, logoId: response.logo.id, durationMs: Date.now() - startedAt,
     })
-    return { status: 'completed', jobId, logoId: response.logo.id, slotSaveFailed, failedLayouts, skippedLayouts }
+    return { status: 'completed', jobId, logoId: response.logo.id, logo: response.logo, sessionId: response.sessionId, slotSaveFailed, failedLayouts, skippedLayouts }
   }
 
   private async fail(
