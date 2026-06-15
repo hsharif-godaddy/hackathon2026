@@ -247,7 +247,19 @@ Wait for the user's response:
   2. Call `media-logo__generate_logo({ prompt: "Reformat for a square layout, preserving the existing icon design and arranging the text as required", layout: "square", background: false })` to produce a square companion of the current logo.
   3. If `generate_logo` returns an `error`, surface it to the user and offer to retry. Do NOT call `set_venture_logo` in that case.
   4. On success, call `media-logo__set_venture_logo({})`.
-  5. Reply with one short message: "Logo set! You can close this window — your dashboard will now show the new logo."
+  5. Reply with a short confirmation: "Done — your logo is set! Your dashboard will now show the new logo."
+  6. Then ask again, but WITHOUT "Set as my logo" (they just did it):
+     ```
+     askQuestion({
+       question: "What would you like to do next?",
+       suggestions: [
+         { text: "Build a website with this logo", trackingId: "logo_designer_build_website" },
+         "Edit or refine this logo",
+         "Try a different logo style"
+       ]
+     })
+     ```
+     If the user subsequently edits or restyles the logo, re-present the full Step 7 options (including "Set as my logo") since the logo has changed.
 - **Anything else outside brand/logo scope** (e.g., "buy a domain") → hand off to the initial agent
   </instructions>
 
