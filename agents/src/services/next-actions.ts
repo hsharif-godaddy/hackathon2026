@@ -3,6 +3,7 @@ import { getModel } from '@airo/ai-lib'
 import { generateText } from 'ai'
 
 import { AppRepository } from '../database/repositories/AppRepository.js'
+import { MemoryRepository } from '../database/repositories/MemoryRepository.js'
 import { getConversationTokenStore, getSummaryStore } from '../memory/adapters/index.js'
 import type { ConversationTokenStore, SummaryStore } from '../memory/interfaces/index.js'
 import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js'
@@ -50,6 +51,7 @@ Rules:
 
 export class NextActionsService {
   private appRepo = new AppRepository()
+  private memoryRepository = new MemoryRepository()
 
   constructor(
     private summaryStore: SummaryStore = getSummaryStore(),
@@ -110,7 +112,30 @@ export class NextActionsService {
 
     // 3. App state
     const isPublished = !!app.publishedUrl
-    contextParts.push(`=== APP STATE ===\nPublished: ${isPublished}${isPublished ? ` (${app.publishedUrl})` : ''}`)
+    let hasCustomDomain: boolean | null = null // null = lookup not attempted or failed
+
+    if (isPublished) {
+      try {
+        const domainsResult = await this.memoryRepository.get(appId, 'site.domains')
+        if (domainsResult.success && domainsResult.exists) {
+          hasCustomDomain = Array.isArray(domainsResult.value) && domainsResult.value.length > 0
+        } else {
+          hasCustomDomain = false
+        }
+      } catch (error) {
+        logger.warn('next-actions.domains.lookup-failed', { appId, error })
+      }
+    }
+
+    let appState = `Published: ${isPublished}${isPublished ? ` (${app.publishedUrl})` : ''}`
+    if (isPublished) {
+      if (hasCustomDomain === null) {
+        appState += `\nCustom domain: unknown`
+      } else {
+        appState += `\nCustom domain: ${hasCustomDomain ? 'attached' : 'none'}`
+      }
+    }
+    contextParts.push(`=== APP STATE ===\n${appState}`)
 
     // 4. Todo lists
     const todoLists = await this.todoListStore.getAllLists(scope)
@@ -133,6 +158,7 @@ export class NextActionsService {
       appId,
       hasSummary: !!summary,
       isPublished,
+      hasCustomDomain,
       todoListCount: todoLists.length,
       contextLength: userPrompt.length,
     })

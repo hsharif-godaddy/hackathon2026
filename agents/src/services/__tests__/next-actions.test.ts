@@ -8,6 +8,7 @@ const {
   mockGetRecentMessagesForApp,
   mockGetAllLists,
   mockGenerateText,
+  mockMemoryGet,
 } = vi.hoisted(() => ({
   mockFindById: vi.fn(),
   mockFindLatestForApp: vi.fn(),
@@ -15,6 +16,7 @@ const {
   mockGetRecentMessagesForApp: vi.fn(),
   mockGetAllLists: vi.fn(),
   mockGenerateText: vi.fn(),
+  mockMemoryGet: vi.fn(),
 }))
 
 vi.mock('@airo/ai-lib', () => ({
@@ -28,6 +30,12 @@ vi.mock('ai', () => ({
 vi.mock('../../database/repositories/AppRepository.js', () => ({
   AppRepository: vi.fn().mockImplementation(function () { return {
     findById: mockFindById,
+  }; }),
+}))
+
+vi.mock('../../database/repositories/MemoryRepository.js', () => ({
+  MemoryRepository: vi.fn().mockImplementation(function () { return {
+    get: mockMemoryGet,
   }; }),
 }))
 
@@ -71,11 +79,12 @@ describe('NextActionsService', () => {
     vi.clearAllMocks()
     service = new NextActionsService()
 
-    // Default: app exists, no summary, no todos
+    // Default: app exists, no summary, no todos, no custom domains
     mockFindById.mockReturnValue({ id: appId })
     mockFindLatestForApp.mockResolvedValue(null)
     mockGetRecentMessagesForApp.mockResolvedValue([])
     mockGetAllLists.mockReturnValue([])
+    mockMemoryGet.mockResolvedValue({ success: true, exists: false })
     mockGenerateText.mockResolvedValue({
       text: '[{"text": "Add a contact page"}]',
       usage: { totalTokens: 100 },
@@ -236,6 +245,51 @@ describe('NextActionsService', () => {
 
       const prompt = mockGenerateText.mock.calls[0][0].prompt as string
       expect(prompt).not.toContain('SECRETS JUST SAVED')
+    })
+
+    it('should report custom domain as attached when one is connected', async () => {
+      mockFindById.mockReturnValue({ id: appId, publishedUrl: 'https://example.com' })
+      mockMemoryGet.mockResolvedValue({
+        success: true,
+        exists: true,
+        value: [{ fqdn: 'mysite.com', isPrimary: true, status: 'active' }],
+      })
+
+      await service.generateNextActions(appId)
+
+      const prompt = mockGenerateText.mock.calls[0][0].prompt as string
+      expect(prompt).toContain('Custom domain: attached')
+    })
+
+    it('should report custom domain as none when none are stored', async () => {
+      mockFindById.mockReturnValue({ id: appId, publishedUrl: 'https://example.com' })
+      mockMemoryGet.mockResolvedValue({ success: true, exists: false })
+
+      await service.generateNextActions(appId)
+
+      const prompt = mockGenerateText.mock.calls[0][0].prompt as string
+      expect(prompt).toContain('Custom domain: none')
+    })
+
+    it('should report custom domain as unknown when memory repository throws', async () => {
+      mockFindById.mockReturnValue({ id: appId, publishedUrl: 'https://example.com' })
+      mockMemoryGet.mockRejectedValue(new Error('DB error'))
+
+      const result = await service.generateNextActions(appId)
+
+      expect(result.suggestions).toBeDefined()
+      const prompt = mockGenerateText.mock.calls[0][0].prompt as string
+      expect(prompt).toContain('Custom domain: unknown')
+    })
+
+    it('should skip domain lookup and omit custom domain line when app is not published', async () => {
+      mockFindById.mockReturnValue({ id: appId, publishedUrl: undefined })
+
+      await service.generateNextActions(appId)
+
+      expect(mockMemoryGet).not.toHaveBeenCalled()
+      const prompt = mockGenerateText.mock.calls[0][0].prompt as string
+      expect(prompt).not.toContain('Custom domains')
     })
 
     it('should pass correct parameters to generateText', async () => {
