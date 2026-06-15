@@ -158,23 +158,23 @@ export { withBudgetRecovery, invokeBudgetRecoveryCallback, buildContinuationProm
 export type { BudgetRecoveryCallback, BudgetRecoveryResult, BudgetRecoveryStreamOptions } from './budget-recovery.js'
 
 // OTel trace/span ID capture (for correlating client feedback to Langfuse)
-export { getCurrentTraceIds } from './otel-trace-ids.js'
-export type { TraceIds } from './otel-trace-ids.js'
+export { getCurrentTraceIds } from './observability/otel-trace-ids.js'
+export type { TraceIds } from './observability/otel-trace-ids.js'
 
 // Signals + OTEL trace context for chat transports (WS handshake, SSE request)
 export {
   buildChatSignalsTraceContext,
   BUSINESS_CONTEXT_SCHEMA_ID,
-} from './chat-signals-trace-context.js'
+} from './observability/signals-trace-context.js'
 export type {
   ChatSignalsTraceLogPrefix,
   ChatSignalsTraceLogger,
   JwtAgentContextSubset,
-} from './chat-signals-trace-context.js'
+} from './observability/signals-trace-context.js'
 
 // LLM provider inference for OTEL invocation spans
-export { inferProviderFromModelName } from './infer-llm-provider.js'
-export type { ChatLlmProvider } from './infer-llm-provider.js'
+export { inferProviderFromModelName } from './observability/infer-llm-provider.js'
+export type { ChatLlmProvider } from './observability/infer-llm-provider.js'
 
 // Turn-level error classification (shared by WS catch block + SSE outer catch).
 export { analyzeStreamError, isNetworkError } from './analyze-stream-error.js'
@@ -185,6 +185,11 @@ export { classifyStreamBudgetError, isToolValidationError } from './classify-str
 export type { StreamBudgetErrorResult, BudgetErrorSource } from './classify-stream-error.js'
 
 // Turn-level observability primitives (invocation span + error emission).
+export {
+  AGENT_SERVICE_ID,
+  AGENT_SERVICE_NAME,
+  MULTI_AGENT_SYSTEM,
+} from './observability/agent-identity.js'
 export { recordTokenUsageObservability } from './token-usage-observability.js'
 export type {
   TokenUsageObservabilityParams,
@@ -192,7 +197,7 @@ export type {
   TokenUsageObservabilityLogger,
   TokenUsageApmTracker,
 } from './token-usage-observability.js'
-export { formatAgentId, emitTurnError, createAgentInvocation } from './agent-invocation.js'
+export { emitTurnError, createAgentInvocation } from './observability/agent-invocation.js'
 export type {
   EmitTurnErrorOptions,
   TurnErrorLogger,
@@ -201,7 +206,7 @@ export type {
   InvocationEndSuccess,
   InvocationUsage,
   AgentForInvocation,
-} from './agent-invocation.js'
+} from './observability/agent-invocation.js'
 
 // Agent Execution Loop
 export { executeAgentLoop, AgentNotFoundError, MAX_HANDOFFS } from './agent-execution-loop.js'

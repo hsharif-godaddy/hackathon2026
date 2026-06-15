@@ -25,13 +25,20 @@ vi.mock('@godaddy/agent-observability-events', async () => {
   }
 })
 
-import { emitError, createAgentInvocationSpan } from '@godaddy/agent-otel-sdk'
+import { emitError, createAgentContext, createAgentInvocationSpan } from '@godaddy/agent-otel-sdk'
 import { createError } from '@godaddy/agent-observability-events'
-import { formatAgentId, emitTurnError, createAgentInvocation } from '../agent-invocation.js'
+import {
+  AGENT_SERVICE_ID,
+  AGENT_SERVICE_NAME,
+  MULTI_AGENT_SYSTEM,
+} from '../agent-identity.js'
+import { emitTurnError, createAgentInvocation } from '../agent-invocation.js'
 
-describe('formatAgentId', () => {
-  it('prepends the airo-app-builder prefix', () => {
-    expect(formatAgentId('develop')).toBe('airo-app-builder-develop')
+describe('agent observability identity', () => {
+  it('defines the Airo App Builder service identity constants', () => {
+    expect(AGENT_SERVICE_ID).toBe('643efd2d-2dbe-461a-9d2e-188baab483a0')
+    expect(AGENT_SERVICE_NAME).toBe('Airo App Builder')
+    expect(MULTI_AGENT_SYSTEM).toBe('airo-app-builder')
   })
 })
 
@@ -49,7 +56,7 @@ describe('emitTurnError', () => {
     const err = new Error('kaboom')
     emitTurnError({
       conversationId: 'conv_1',
-      agentId: 'airo-app-builder-develop',
+      specialistKey: 'develop',
       error: err,
       errorType: 'RETRY_ERROR',
       isRetryable: true,
@@ -65,7 +72,7 @@ describe('emitTurnError', () => {
     }))
     expect(vi.mocked(emitError)).toHaveBeenCalledWith({
       conversationId: 'conv_1',
-      agentId: 'airo-app-builder-develop',
+      specialistKey: 'develop',
       eventData: { kind: 'error', input: expect.any(Object) },
     })
   })
@@ -77,7 +84,7 @@ describe('emitTurnError', () => {
     class DbErrorImpl extends Error { override name = 'db.connection' }
     emitTurnError({
       conversationId: 'conv_1',
-      agentId: 'a',
+      specialistKey: 'develop',
       error: new DbErrorImpl('bad'),
       logger,
     })
@@ -91,7 +98,7 @@ describe('emitTurnError', () => {
   it('coerces non-Error throws with String() and defaults errorType to "Error"', () => {
     emitTurnError({
       conversationId: 'conv_1',
-      agentId: 'a',
+      specialistKey: 'develop',
       error: 'bare string thrown',
       logger,
     })
@@ -107,7 +114,7 @@ describe('emitTurnError', () => {
     const err = new Error('no stack here')
     Object.defineProperty(err, 'stack', { value: '', configurable: true })
     emitTurnError({
-      conversationId: 'conv_1', agentId: 'a', error: err, logger,
+      conversationId: 'conv_1', specialistKey: 'develop', error: err, logger,
     })
     expect(vi.mocked(createError).mock.calls[0]![0]).not.toHaveProperty('errorStack')
   })
@@ -115,12 +122,12 @@ describe('emitTurnError', () => {
   it('swallows telemetry failures and logs a warning with telemetryError field populated', () => {
     vi.mocked(emitError).mockImplementation(function () { throw new Error('telemetry down') })
     expect(() => emitTurnError({
-      conversationId: 'c', agentId: 'a', error: new Error('x'), logger,
+      conversationId: 'c', specialistKey: 'develop', error: new Error('x'), logger,
     })).not.toThrow()
     // Pin the telemetryError payload so a typo in the field name is caught.
     expect(warn).toHaveBeenCalledWith('turn.error.telemetry_emit_failed', {
       conversationId: 'c',
-      agentId: 'a',
+      specialistKey: 'develop',
       telemetryError: 'telemetry down',
     })
   })
@@ -134,11 +141,11 @@ describe('emitTurnError', () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(function () {})
     try {
       expect(() => emitTurnError({
-        conversationId: 'c', agentId: 'a', error: new Error('x'), logger: throwingLogger,
+        conversationId: 'c', specialistKey: 'develop', error: new Error('x'), logger: throwingLogger,
       })).not.toThrow()
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         'turn.error.telemetry_emit_failed',
-        { conversationId: 'c', agentId: 'a', telemetryError: 'telemetry down' },
+        { conversationId: 'c', specialistKey: 'develop', telemetryError: 'telemetry down' },
       )
     } finally {
       consoleErrorSpy.mockRestore()
@@ -153,6 +160,21 @@ describe('createAgentInvocation', () => {
     spanEndCalls.length = 0
     logger.warn.mockReset()
     vi.mocked(createAgentInvocationSpan).mockClear()
+    vi.mocked(createAgentContext).mockClear()
+  })
+
+  it('creates agent context with conversationId and specialist routing key', () => {
+    createAgentInvocation({
+      agent: { getConfig: () => ({ modelName: 'claude-sonnet-4-6' }) },
+      agentName: 'develop',
+      prompt: 'hi',
+      conversationId: 'conv_1',
+      logger,
+    })
+    expect(vi.mocked(createAgentContext)).toHaveBeenCalledWith({
+      conversationId: 'conv_1',
+      specialistKey: 'develop',
+    })
   })
 
   it('exposes a context and calls endSuccess exactly once with provided fields', () => {
@@ -251,7 +273,7 @@ describe('createAgentInvocation', () => {
       expect(() => inv.endSuccess({ outputText: 'ok', responseType: 'llm_reply' })).not.toThrow()
       expect(logger.warn).toHaveBeenCalledWith('agent.invocation.end_failed', {
         conversationId: 'conv_1',
-        agentId: 'airo-app-builder-develop',
+        specialistKey: 'develop',
         telemetryError: 'otel sdk exploded',
       })
       expect(inv.ended).toBe(true)
@@ -290,7 +312,7 @@ describe('createAgentInvocation', () => {
         expect(() => inv.endAborted({ outputText: '', responseType: 'tool_call' })).not.toThrow()
         expect(consoleErrorSpy).toHaveBeenCalledWith('agent.invocation.end_failed', expect.objectContaining({
           conversationId: 'conv_1',
-          agentId: 'airo-app-builder-develop',
+          specialistKey: 'develop',
           telemetryError: 'otel sdk exploded',
         }))
       } finally {
@@ -309,7 +331,7 @@ describe('createAgentInvocation', () => {
       inv.endSuccess({ outputText: '', responseType: 'tool_call' })
       const payload = (logger.warn as any).mock.calls[0][1]
       expect(payload).not.toHaveProperty('conversationId')
-      expect(payload).toMatchObject({ agentId: 'airo-app-builder-develop' })
+      expect(payload).toMatchObject({ specialistKey: 'develop' })
     })
   })
 })

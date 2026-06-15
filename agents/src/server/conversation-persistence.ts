@@ -505,7 +505,7 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
     if (isNewConversation) {
       emitConversationStart({
         conversationId,
-        agentId: `airo-app-builder-${context.agentName}`,
+        specialistKey: context.agentName,
       })
     }
 

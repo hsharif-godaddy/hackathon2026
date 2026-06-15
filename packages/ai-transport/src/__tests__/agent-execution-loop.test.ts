@@ -6,6 +6,7 @@ vi.mock('@godaddy/agent-otel-sdk', async () => {
 })
 
 import { emitHandoff } from '@godaddy/agent-otel-sdk'
+import { AGENT_SERVICE_ID, AGENT_SERVICE_NAME } from '../observability/agent-identity.js'
 import {
   executeAgentLoop,
   AgentNotFoundError,
@@ -290,20 +291,31 @@ describe('executeAgentLoop observability', () => {
     vi.mocked(emitHandoff).mockReset()
   })
 
-  it('emits handoff with formatted agent IDs when observability is provided', async () => {
+  it('emits handoff with service identity and specialist keys when observability is provided', async () => {
     const cb = baseCallbacks({
       getHandoffDetails: vi.fn()
         .mockReturnValueOnce({ newAgentName: 'marketing', handoffPrompt: 'continue' })
         .mockReturnValue(null),
     })
-    await executeAgentLoop('develop', 'hi', cb, {
-      conversationId: 'conv_1',
-      getAgentId: (n) => `airo-app-builder-${n}`,
-    })
+    await executeAgentLoop('develop', 'hi', cb, { conversationId: 'conv_1' })
     expect(vi.mocked(emitHandoff)).toHaveBeenCalledTimes(1)
     expect(vi.mocked(emitHandoff)).toHaveBeenCalledWith(expect.objectContaining({
       conversationId: 'conv_1',
-      agentId: 'airo-app-builder-develop',
+      specialistKey: 'develop',
+      eventData: expect.objectContaining({
+        data: expect.objectContaining({
+          fromAgent: {
+            id: AGENT_SERVICE_ID,
+            name: AGENT_SERVICE_NAME,
+            specialistKey: 'develop',
+          },
+          toAgent: {
+            id: AGENT_SERVICE_ID,
+            name: AGENT_SERVICE_NAME,
+            specialistKey: 'marketing',
+          },
+        }),
+      }),
     }))
     expect(cb.onHandoff).toHaveBeenCalledWith('develop', 'marketing')
   })
@@ -325,10 +337,7 @@ describe('executeAgentLoop observability', () => {
         .mockReturnValueOnce({ newAgentName: 'marketing', handoffPrompt: 'p' })
         .mockReturnValue(null),
     })
-    const result = await executeAgentLoop('develop', 'hi', cb, {
-      conversationId: 'conv_1',
-      getAgentId: (n) => `airo-app-builder-${n}`,
-    })
+    const result = await executeAgentLoop('develop', 'hi', cb, { conversationId: 'conv_1' })
     expect(result.termination).toBe('completed')
     expect(cb.onHandoff).toHaveBeenCalled()
   })
@@ -343,7 +352,6 @@ describe('executeAgentLoop observability', () => {
     })
     await executeAgentLoop('develop', 'hi', cb, {
       conversationId: 'conv_1',
-      getAgentId: (n) => `airo-app-builder-${n}`,
       onTelemetryError,
     })
     expect(onTelemetryError).toHaveBeenCalledWith('handoff.telemetry_emit_failed', {
@@ -366,7 +374,6 @@ describe('executeAgentLoop observability', () => {
     })
     const result = await executeAgentLoop('develop', 'hi', cb, {
       conversationId: 'conv_1',
-      getAgentId: (n) => `airo-app-builder-${n}`,
       onTelemetryError,
     })
     expect(result.termination).toBe('completed')

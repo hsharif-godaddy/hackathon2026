@@ -1,6 +1,8 @@
 import { emitHandoff } from '@godaddy/agent-otel-sdk'
 import { createHandoff } from '@godaddy/agent-observability-events'
 
+import { AGENT_SERVICE_ID, AGENT_SERVICE_NAME } from './observability/agent-identity.js'
+
 /** Loop-wide observability options. When provided, the loop emits
  * `emitHandoff` around each handoff boundary. Telemetry failures are
  * caught inside the loop and never propagate — observability is
@@ -14,7 +16,6 @@ import { createHandoff } from '@godaddy/agent-observability-events'
  * throw from the handler. */
 export interface LoopObservabilityOptions {
   conversationId: string
-  getAgentId: (agentName: string) => string
   onTelemetryError?: (event: string, fields: Record<string, unknown>) => void
 }
 
@@ -120,12 +121,14 @@ export async function executeAgentLoop<TAgent = unknown>(
       try {
         emitHandoff({
           conversationId: observability.conversationId,
-          agentId: observability.getAgentId(agentName),
+          specialistKey: agentName,
           eventData: createHandoff({
-            fromAgentId: observability.getAgentId(agentName),
-            fromAgentName: agentName,
-            toAgentId: observability.getAgentId(handoff.newAgentName),
-            toAgentName: handoff.newAgentName,
+            fromAgentId: AGENT_SERVICE_ID,
+            fromAgentName: AGENT_SERVICE_NAME,
+            fromAgentSpecialistKey: agentName,
+            toAgentId: AGENT_SERVICE_ID,
+            toAgentName: AGENT_SERVICE_NAME,
+            toAgentSpecialistKey: handoff.newAgentName,
             reason: 'Agent handoff',
             routingMethod: 'llm',
           }),

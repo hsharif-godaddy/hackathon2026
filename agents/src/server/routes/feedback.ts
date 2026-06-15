@@ -87,11 +87,6 @@ const FeedbackRequestSchema = z.object({
   observationId: z.string().min(1).max(128).optional(),
   appId: z.string().min(1).max(128),
   conversationId: z.string().min(1).max(128),
-  // Raw agent name from the rated turn (e.g. 'InitialAgent'). Caller should
-  // pull this from the complete WS event. Optional because not every surface
-  // can identify the producing agent; the canonical `airo-app-builder-` prefix
-  // is applied server-side to match the rest of the observability stack.
-  agentName: z.string().min(1).max(64).optional(),
   eventCreationTimestamp: z.string().regex(EVENT_CREATION_TIMESTAMP_REGEX).optional(),
   rating: z.number().int().optional(),
   feedbackCategory: z.string().min(1).max(256).optional(),
@@ -122,20 +117,12 @@ router.post(
       observationId,
       appId,
       conversationId,
-      agentName,
       eventCreationTimestamp,
       rating,
       feedbackCategory,
       feedbackText,
       hasDetailedFeedback,
     } = parseResult.data;
-
-    // Canonicalize to `airo-app-builder-{name}` so feedback events carry the
-    // same agentId convention as invocation spans, handoffs, and conversation
-    // lifecycle events (see experimental-websocket-server.ts:3155 `getAgentId`).
-    // Fall back to `unknown` when the caller couldn't identify the producing
-    // agent — keeps the field stable for downstream aggregation.
-    const agentId = `airo-app-builder-${agentName || 'unknown'}`;
 
     // Seed OTel context from client-sent IDs so the event stitches to the
     // existing Langfuse trace instead of creating a new one. Cost attribution
@@ -184,7 +171,9 @@ router.post(
 
     otelContext.with(traceCtx, () => {
       otelContext.with(
-        createAgentContext({ conversationId, agentId, agentName }),
+        createAgentContext({
+          conversationId,
+        }),
         () => {
           emitUserFeedback({
             eventData: createUserFeedback({
@@ -210,7 +199,6 @@ router.post(
       traceId: validTraceId,
       observationId: validSpanId,
       conversationId,
-      agentId,
     });
 
     return res.status(200).json({ success: true });

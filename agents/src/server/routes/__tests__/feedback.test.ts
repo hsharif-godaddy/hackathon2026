@@ -126,6 +126,7 @@ describe('feedback route', () => {
         },
       }),
     );
+    expect(createAgentContext).toHaveBeenCalledWith({ conversationId: 'conv-xyz-789' });
   });
 
   it('parses eventCreationTimestamp into a Date for createUserFeedback', async () => {
@@ -177,33 +178,6 @@ describe('feedback route', () => {
       expect.objectContaining({
         targetLevel: 'invocation',
         targetId: 'invocation-abc-123',
-      }),
-    );
-  });
-
-  it('canonicalizes agentName to airo-app-builder-{name} when provided', async () => {
-    const { default: feedbackRouter } = await import('../feedback.js');
-    const app = buildApp(feedbackRouter);
-
-    await request(app).post('/feedback').send({ ...validBody, agentName: 'InitialAgent' });
-
-    expect(createAgentContext).toHaveBeenCalledWith(
-      expect.objectContaining({
-        conversationId: 'conv-xyz-789',
-        agentId: 'airo-app-builder-InitialAgent',
-      }),
-    );
-  });
-
-  it('falls back to airo-app-builder-unknown when agentName is omitted', async () => {
-    const { default: feedbackRouter } = await import('../feedback.js');
-    const app = buildApp(feedbackRouter);
-
-    await request(app).post('/feedback').send(validBody);
-
-    expect(createAgentContext).toHaveBeenCalledWith(
-      expect.objectContaining({
-        agentId: 'airo-app-builder-unknown',
       }),
     );
   });

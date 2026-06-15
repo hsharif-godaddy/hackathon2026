@@ -41,10 +41,9 @@ vi.mock('@/config/dynamic-api', () => ({
 }));
 
 let mockAgentTargetId: string | null = 'airo-app-builder-InitialAgent';
-let mockTraceIds: { traceId: string; observationId: string; agentName?: string } | null = {
+let mockTraceIds: { traceId: string; observationId: string } | null = {
   traceId: 'trace-1',
   observationId: 'obs-1',
-  agentName: 'InitialAgent',
 };
 
 const mockShowThanksBanner = vi.fn();
@@ -85,7 +84,7 @@ describe('AgentWorkFeedbackBanner', function bannerTests() {
     vi.clearAllMocks();
     mockAgentFetch.mockResolvedValue({ ok: true, status: 200 });
     mockAgentTargetId = 'airo-app-builder-InitialAgent';
-    mockTraceIds = { traceId: 'trace-1', observationId: 'obs-1', agentName: 'InitialAgent' };
+    mockTraceIds = { traceId: 'trace-1', observationId: 'obs-1' };
   });
 
   it('returns null when agentTargetId is missing', function noAgent() {

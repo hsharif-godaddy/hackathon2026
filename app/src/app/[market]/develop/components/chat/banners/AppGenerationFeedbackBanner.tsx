@@ -70,7 +70,6 @@ export default function AppGenerationFeedbackBanner() {
       appId,
       ...(traceIds?.traceId && { traceId: traceIds.traceId }),
       ...(traceIds?.observationId && { observationId: traceIds.observationId }),
-      ...(traceIds?.agentName && { agentName: traceIds.agentName }),
     })
 
     // Missing conversationId means the WS cookie flow broke upstream — close

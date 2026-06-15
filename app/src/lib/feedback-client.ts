@@ -36,10 +36,6 @@ export interface SubmitFeedbackInput {
    * same reason as traceId. */
   observationId?: string
   appId: string
-  /** Raw agent name that produced the turn, e.g. 'InitialAgent' — pulled from
-   * the complete WS event. Optional for surfaces that can't identify the
-   * producing agent; backend canonicalizes to the repo-scoped form. */
-  agentName?: string
   /** When the client triggered feedback (ISO-8601 UTC). Server defaults if omitted. */
   eventCreationTimestamp?: string
   /** Optional numeric rating (e.g. 1–5). */
@@ -76,7 +72,6 @@ export interface SubmitFeedbackResult {
 export interface InvocationFeedbackTraceIds {
   traceId?: string;
   observationId?: string;
-  agentName?: string;
 }
 
 export async function submitFeedback(input: SubmitFeedbackInput): Promise<SubmitFeedbackResult> {
@@ -96,7 +91,6 @@ export async function submitFeedback(input: SubmitFeedbackInput): Promise<Submit
         conversationId,
         ...(input.traceId !== undefined && { traceId: input.traceId }),
         ...(input.observationId !== undefined && { observationId: input.observationId }),
-        ...(input.agentName !== undefined && { agentName: input.agentName }),
         ...(input.eventCreationTimestamp !== undefined && {
           eventCreationTimestamp: input.eventCreationTimestamp,
         }),

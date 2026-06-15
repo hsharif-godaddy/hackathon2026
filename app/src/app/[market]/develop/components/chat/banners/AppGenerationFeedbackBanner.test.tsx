@@ -29,10 +29,9 @@ vi.mock('@/hooks/websocket/useWebSocketHelpers', () => ({
 const mockMarkSubmitted = vi.fn()
 const mockSetShowBanner = vi.fn()
 
-let mockTraceIds: { traceId: string; observationId: string; agentName?: string } | null = {
+let mockTraceIds: { traceId: string; observationId: string } | null = {
   traceId: 'trace-1',
   observationId: 'obs-1',
-  agentName: 'InitialAgent',
 }
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
@@ -59,7 +58,7 @@ describe('AppGenerationFeedbackBanner', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockAgentFetch.mockResolvedValue({ ok: true, status: 200 })
-    mockTraceIds = { traceId: 'trace-1', observationId: 'obs-1', agentName: 'InitialAgent' }
+    mockTraceIds = { traceId: 'trace-1', observationId: 'obs-1' }
   })
 
   afterEach(() => {
@@ -93,7 +92,6 @@ describe('AppGenerationFeedbackBanner', () => {
       observationId: 'obs-1',
       appId: 'app-1',
       conversationId: 'conv-1',
-      agentName: 'InitialAgent',
     })
 
     await waitFor(() => {
@@ -166,6 +164,5 @@ describe('AppGenerationFeedbackBanner', () => {
     })
     expect(body).not.toHaveProperty('traceId')
     expect(body).not.toHaveProperty('observationId')
-    expect(body).not.toHaveProperty('agentName')
   })
 })

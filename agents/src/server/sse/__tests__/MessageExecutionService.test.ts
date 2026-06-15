@@ -249,7 +249,7 @@ describe('MessageExecutionService', () => {
       expect(mockEmitConversationStart).toHaveBeenCalledTimes(1)
       expect(mockEmitConversationStart).toHaveBeenCalledWith({
         conversationId: 'conv_1',
-        agentId: 'airo-app-builder-develop',
+        specialistKey: 'develop',
       })
     })
 

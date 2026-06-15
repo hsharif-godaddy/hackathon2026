@@ -2298,8 +2298,6 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
         // Catches payload-build, conversationId lookup, and serializer throws (all code
         // defects). OTel SDK emit failures are fire-and-forget inside emitCustomEvent.
         try {
-          // TODO(jvogt): replace with a unified app-wide agentId once instrumentation is consolidated.
-          const agentId = 'airo-app-builder-cost-attribution'
           const conversationId = budgetReportConversationCache.get(originalSocketId)?.conversationId
           if (!conversationId) {
             // Without conversationId the OTel SDK silently drops the event. Logging here
@@ -2325,7 +2323,7 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             : undefined
 
           otelContext.with(
-            createAgentContext({ conversationId, agentId }),
+            createAgentContext({ conversationId }),
             () => {
               emitCostAttributionResult({
                 budgetId,

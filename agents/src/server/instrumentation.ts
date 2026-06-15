@@ -2,6 +2,11 @@ import { NodeSDK } from "@opentelemetry/sdk-node";
 import type { SpanProcessor } from "@opentelemetry/sdk-trace-node";
 import { GDEnvEnum } from '@godaddy/agent-observability-events';
 import { createAgentSpanProcessor } from '@godaddy/agent-otel-sdk';
+import {
+  AGENT_SERVICE_ID,
+  AGENT_SERVICE_NAME,
+  MULTI_AGENT_SYSTEM,
+} from '@airo/ai-transport';
 
 import { logger, toPinoLogger } from '../logging/index.js';
 import { resolveEnv } from '../utils/gd-env.js';
@@ -31,6 +36,11 @@ if (observabilityEnabled || langfuseConfigured) {
             },
             context: {
               userType: 'c1',
+            },
+            agent: {
+              agentId: AGENT_SERVICE_ID,
+              agentName: AGENT_SERVICE_NAME,
+              multiAgentSystem: MULTI_AGENT_SYSTEM,
             },
           },
         },

@@ -8,7 +8,6 @@ import {
   buildChatSignalsTraceContext,
   createAgentInvocation,
   getCurrentTraceIds,
-  formatAgentId,
   emitTurnError,
   classifyTurnError,
   runPostStreamValidation,
@@ -677,7 +676,6 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       }
 
       try {
-        const agentId = 'airo-app-builder-cost-attribution'
         const attribution = buildAttributionPayload({
           attributionResult,
           totalCost: session.costTotal,
@@ -689,7 +687,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           : undefined
 
         otelContext.with(
-          createAgentContext({ conversationId, agentId }),
+          createAgentContext({ conversationId }),
           () => {
             emitCostAttributionResult({
               budgetId,
@@ -1544,12 +1542,12 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
   private emitConversationStartIfFirstTurn(
     lifecycleContext: LifecycleContext | undefined,
     conversationId: string,
-    resolvedAgentId: string,
+    specialistKey: string,
   ): void {
     if (!lifecycleContext?.isInitialPrompt) return
     emitConversationStart({
       conversationId,
-      agentId: formatAgentId(resolvedAgentId),
+      specialistKey,
     })
   }
 
@@ -2043,7 +2041,6 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         }),
       }, {
         conversationId,
-        getAgentId: formatAgentId,
         onTelemetryError: (event, fields) => logger.warn(event, fields),
       })
 
@@ -2384,7 +2381,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         })
         emitTurnError({
           conversationId,
-          agentId: formatAgentId(resolvedAgentId),
+          specialistKey: resolvedAgentId,
           error: err,
           ...(errorType !== undefined && { errorType }),
           errorPhase: 'execution',

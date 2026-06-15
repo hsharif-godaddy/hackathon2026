@@ -247,7 +247,6 @@ export function InvocationFeedbackProvider({
         ...(traceIds?.observationId !== undefined && {
           observationId: traceIds.observationId,
         }),
-        ...(traceIds?.agentName !== undefined && { agentName: traceIds.agentName }),
         eventCreationTimestamp,
         ...schemaPayload,
       });

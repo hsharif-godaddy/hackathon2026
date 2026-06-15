@@ -67,7 +67,7 @@ function renderPerMessageProvider() {
     <InvocationFeedbackProvider
       appId="app-1"
       messageId="msg-1"
-      traceIds={{ traceId: 'trace-1', observationId: 'obs-1', agentName: 'InitialAgent' }}
+      traceIds={{ traceId: 'trace-1', observationId: 'obs-1' }}
       flow="per-message"
     >
       <InvocationFeedbackControls />

@@ -19,7 +19,7 @@ import { StreamPartProcessor } from './stream-part-processor.js'
 import { awaitResponseMetadata } from './response-metadata-capture.js'
 import { redactSkillOutput } from './redact-skill-output.js'
 import { toolMetadataFields, type ResolveToolMetadata } from './tool-metadata.js'
-import { getCurrentTraceIds } from './otel-trace-ids.js'
+import { getCurrentTraceIds } from './observability/otel-trace-ids.js'
 import type { AgentsCollection } from '@airo/ai-lib'
 import type { HandoffStateManager } from '@airo/ai-lib'
 import {
@@ -40,9 +40,9 @@ import { ConnectionStateManager, type ConnectionStateData } from './connection-s
 import { ConnectionRecoveryManager } from './connection-recovery-manager.js'
 import { executeAgentLoop, AgentNotFoundError } from './agent-execution-loop.js'
 import { context as otelContext, trace, type Context } from '@opentelemetry/api'
-import { buildChatSignalsTraceContext, type JwtAgentContextSubset } from './chat-signals-trace-context.js'
-import { inferProviderFromModelName, type ChatLlmProvider } from './infer-llm-provider.js'
-import { createAgentInvocation, emitTurnError } from './agent-invocation.js'
+import { buildChatSignalsTraceContext, type JwtAgentContextSubset } from './observability/signals-trace-context.js'
+import { inferProviderFromModelName, type ChatLlmProvider } from './observability/infer-llm-provider.js'
+import { createAgentInvocation, emitTurnError } from './observability/agent-invocation.js'
 import { analyzeStreamError, isNetworkError } from './analyze-stream-error.js'
 import { classifyTurnError } from './classify-turn-error.js'
 import { classifyStreamBudgetError, isToolValidationError } from './classify-stream-error.js'
@@ -2018,7 +2018,7 @@ export class WebSocketServer {
       ...(fullStorySessionId !== undefined && { fullStorySessionId }),
       logPrefix: 'websocket',
       logFields: { socketId },
-      logger: { warn: (event, fields) => this.logger.warn(event, fields) },
+      logger: { warn: (event: string, fields: Record<string, unknown>) => this.logger.warn(event, fields) },
     })
   }
 
@@ -2474,7 +2474,6 @@ export class WebSocketServer {
         isAborted: () => abortSignal.aborted,
       }, conversationIdForCleanup ? {
         conversationId: conversationIdForCleanup,
-        getAgentId: (n) => this.getAgentId(n),
         onTelemetryError: (event, fields) => this.logger.warn(event, fields),
       } : undefined)
       agentName = loopResult.finalAgentName
@@ -2629,12 +2628,12 @@ export class WebSocketServer {
       if (conversationIdForCleanup) {
         emitTurnError({
           conversationId: conversationIdForCleanup,
-          agentId: this.getAgentId(agentName),
+          specialistKey: agentName || this.config.defaultAgent,
           error,
           errorType: errorType || error?.constructor?.name || 'Error',
           errorPhase: 'execution',
           isRetryable: classified.isRetryable,
-          logger: { warn: (event, fields) => this.logger.warn(event, fields) },
+          logger: { warn: (event: string, fields: Record<string, unknown>) => this.logger.warn(event, fields) },
         })
       }
 
@@ -2735,10 +2734,6 @@ export class WebSocketServer {
       // - On disconnect: cleanupConversation() removes entries when client disconnects
       // This keeps state available between turns while ensuring eventual cleanup.
     }
-  }
-
-  private getAgentId(name?: string): string {
-    return `airo-app-builder-${name || this.config.defaultAgent || 'unknown'}`
   }
 
   /**
@@ -3425,7 +3420,7 @@ export class WebSocketServer {
       agentName,
       prompt: originalPrompt,
       ...(conversationId !== undefined && { conversationId }),
-      logger: { warn: (event, fields) => this.logger.warn(event, fields) },
+      logger: { warn: (event: string, fields: Record<string, unknown>) => this.logger.warn(event, fields) },
     })
 
     // Get abort signal from state manager for stream cancellation.

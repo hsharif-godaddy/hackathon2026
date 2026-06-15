@@ -91,7 +91,7 @@ function renderMetadata(
     usedFreeGrants?: boolean;
     messageId?: string;
     messageMetadata?: Record<string, unknown>;
-    traceIds?: { traceId?: string; observationId?: string; agentName?: string } | null;
+    traceIds?: { traceId?: string; observationId?: string; } | null;
     onUndo?: () => void;
     onRestore?: () => void;
   } = {}
@@ -418,7 +418,6 @@ describe('ResponseMetadata', function responseMetadataTests() {
         traceIds: {
           traceId: '0123456789abcdef0123456789abcdef',
           observationId: 'fedcba9876543210',
-          agentName: 'develop',
         },
       });
 
@@ -438,7 +437,6 @@ describe('ResponseMetadata', function responseMetadataTests() {
           appId: 'test-app-id',
           traceId: '0123456789abcdef0123456789abcdef',
           observationId: 'fedcba9876543210',
-          agentName: 'develop',
         })
       );
     });

@@ -10,7 +10,7 @@ import {
   captureResponseMetadata,
   awaitResponseMetadata,
   type ResponseMetadata,
-} from './response-metadata-capture.js'
+} from '../response-metadata-capture.js'
 
 /** Minimal logger contract used by emitTurnError's fallback path. Named
  * after the sole consumer to avoid confusion with
@@ -24,18 +24,10 @@ export interface TurnErrorLogger {
   warn: (event: string, data: Record<string, unknown>) => void
 }
 
-const AGENT_ID_PREFIX = 'airo-app-builder-'
-
-/** Canonical agent ID used by all Langfuse/observability events in this
- * project. Both WS and SSE must produce the same string so invocations
- * from either transport group under the same agent in Langfuse. */
-export function formatAgentId(agentName: string): string {
-  return `${AGENT_ID_PREFIX}${agentName}`
-}
-
 export interface EmitTurnErrorOptions {
   conversationId: string
-  agentId: string
+  /** Active specialist routing key (e.g. develop, initial-v3). Omit when unknown. */
+  specialistKey?: string | undefined
   error: unknown
   /** Caller-provided classification (e.g. 'RETRY_ERROR', 'BUDGET_SERVICE_ERROR',
    * 'AgentNotFoundError'). Defaults to `error.name` for Error instances (the
@@ -57,13 +49,13 @@ export interface EmitTurnErrorOptions {
  * series. Error classification is transport-specific (WS: HTTP status +
  * budget-service categorization; SSE: generic). */
 export function emitTurnError(opts: EmitTurnErrorOptions): void {
-  const { conversationId, agentId, error, errorType, errorPhase, isRetryable, logger } = opts
+  const { conversationId, specialistKey, error, errorType, errorPhase, isRetryable, logger } = opts
   try {
     const errorMessage = error instanceof Error ? error.message : String(error)
     const resolvedErrorType = errorType ?? (error instanceof Error ? error.name : 'Error')
     emitError({
       conversationId,
-      agentId,
+      specialistKey,
       eventData: createError({
         errorType: resolvedErrorType,
         errorMessage,
@@ -85,11 +77,11 @@ export function emitTurnError(opts: EmitTurnErrorOptions): void {
     try {
       logger.warn('turn.error.telemetry_emit_failed', {
         conversationId,
-        agentId,
+        specialistKey,
         telemetryError,
       })
     } catch {
-      try { console.error('turn.error.telemetry_emit_failed', { conversationId, agentId, telemetryError }) } catch { /* last-resort — preserve Never-throws contract */ }
+      try { console.error('turn.error.telemetry_emit_failed', { conversationId, specialistKey, telemetryError }) } catch { /* last-resort — preserve Never-throws contract */ }
     }
   }
 }
@@ -180,7 +172,7 @@ export function createAgentInvocation(opts: AgentInvocationOptions): AgentInvoca
 
   const agentCtx = createAgentContext({
     ...(conversationId !== undefined && { conversationId }),
-    agentId: formatAgentId(agentName),
+    specialistKey: agentName,
   })
   const invocation = otelContext.with(agentCtx, () =>
     createAgentInvocationSpan({
@@ -206,7 +198,7 @@ export function createAgentInvocation(opts: AgentInvocationOptions): AgentInvoca
       const telemetryError = err instanceof Error ? err.message : String(err)
       const data = {
         ...(conversationId !== undefined && { conversationId }),
-        agentId: formatAgentId(agentName),
+        specialistKey: agentName,
         telemetryError,
       }
       try {

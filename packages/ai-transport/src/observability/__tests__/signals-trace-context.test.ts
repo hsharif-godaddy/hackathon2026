@@ -1,7 +1,7 @@
 import { context as otelContext } from '@opentelemetry/api'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { buildChatSignalsTraceContext } from '../chat-signals-trace-context.js'
+import { buildChatSignalsTraceContext } from '../signals-trace-context.js'
 
 vi.mock('@signals/sdk', () => ({
   getSignalsContext: vi.fn(),

@@ -37,7 +37,6 @@ function traceSnapshotForBanner(
     return {
       traceId: fromMessage.traceId,
       observationId: fromMessage.observationId,
-      ...(fromMessage.agentName && { agentName: fromMessage.agentName }),
     };
   }
   return null;

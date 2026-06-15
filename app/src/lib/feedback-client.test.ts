@@ -68,20 +68,6 @@ describe('submitFeedback', () => {
     expect(body.feedback).toBe('negative')
   })
 
-  it('forwards agentName when the caller supplies it', async () => {
-    await submitFeedback({ ...baseInput, agentName: 'InitialAgent' })
-
-    const body = JSON.parse(mockAgentFetch.mock.calls[0][1].body as string)
-    expect(body.agentName).toBe('InitialAgent')
-  })
-
-  it('omits agentName from the body when not provided', async () => {
-    await submitFeedback(baseInput)
-
-    const body = JSON.parse(mockAgentFetch.mock.calls[0][1].body as string)
-    expect(body).not.toHaveProperty('agentName')
-  })
-
   it('omits traceId and observationId when the caller does not supply them', async () => {
     const { traceId: _t, observationId: _o, ...inputWithoutTraceIds } = baseInput
     await submitFeedback(inputWithoutTraceIds)
