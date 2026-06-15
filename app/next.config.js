@@ -62,7 +62,6 @@ export default gasket.actions.getNextConfig({
       'framer-motion',
       'zod',
       '@tanstack/react-query',
-      '@tanstack/react-table',
     ],
   },
   logging: {
