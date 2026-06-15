@@ -21,7 +21,14 @@ import { allAILibTools } from '../tools/ai-lib-tools/index.js'
 import { getPersistentAssetPaths } from '../utils/persistent-assets.js'
 import { skills } from '../services/features.js'
 import { profileFlag, activeProfileName } from '../profiles/profile-accessor.js'
+import {
+  EVAL_PROMPT_VARIANTS,
+  resolveEvalPromptVariants,
+  injectedFileNames,
+  replacedFragmentNames,
+} from './develop-prompt-variants.js'
 import { readFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 
 /**
  * Develop Agent - AI developer for building web applications
@@ -149,6 +156,34 @@ async function buildDevelopSystemPrompt(
   // Get modular prompt paths using helper utility
   const paths = getModularPromptPaths(import.meta.url);
 
+  // Eval prompt variants. The injection plumbing for offline A/Bs: a gosym eval
+  // run swaps or adds a develop-prompt fragment for one build, gated by a profile
+  // flag. Inert by default (no flag set → empty resolution → byte-identical to
+  // prod) and fail-closed (a set-but-missing variant or an invalid replace target
+  // throws, rather than silently running control and corrupting the trial). The
+  // variants table and resolution rules live in develop-prompt-variants.ts; see
+  // src/prompts/develop/experiments/README.md for the workflow.
+  const variants = resolveEvalPromptVariants({
+    variants: EVAL_PROMPT_VARIANTS,
+    isFlagSet: (flag) => profileFlag(flag, false),
+    resolveVariantPath: (fileName) => paths.getAgentFile('develop/experiments', fileName),
+    exists: existsSync,
+  });
+
+  // Resolve a canonical fragment to its `replace` variant when one is active,
+  // else the canonical path. Routed through every replaceable .file() below so a
+  // replace variant works for any fragment in REPLACEABLE_FRAGMENTS, not just two.
+  const resolveFragment = (canonicalName: string, canonicalPath: string): string =>
+    variants.replacements.get(canonicalName) ?? canonicalPath;
+
+  // PREPEND variants inject before core.md, so apply them here (before the main
+  // promptBuilder composition below). APPEND variants run after the technical
+  // fragments; REPLACE variants are consulted inline by resolveFragment.
+  for (const prependPath of variants.prependPaths) {
+    promptBuilder.file(prependPath);
+  }
+
+  // Get available skills list with whenToUse guidance
   const skillLoader = new SkillLoaderTool();
   const skillsResult = await skillLoader.listSkills({ market: options?.market, agentId: 'develop' });
   const skillsSection = skillsResult.success && skillsResult.skills?.length
@@ -170,9 +205,12 @@ async function buildDevelopSystemPrompt(
 
   // Load consolidated prompt sections
   // Order: Identity → Voice → Technical details
+  // core.md and communication.md may be swapped by a 'replace' experiment arm;
+  // security.md is never replaceable (tenant/security constraints must survive
+  // verbatim).
   promptBuilder
-    .file(paths.getAgentFile('develop', 'core.md'))
-    .file(paths.getSharedFile('communication.md'))
+    .file(resolveFragment('core.md', paths.getAgentFile('develop', 'core.md')))
+    .file(resolveFragment('communication.md', paths.getSharedFile('communication.md')))
     .file(paths.getSharedFile('security.md'))
 
   for (const behavior of activeBehaviorPrompts) {
@@ -181,7 +219,7 @@ async function buildDevelopSystemPrompt(
 
   promptBuilder
     .template(filesystemTemplate) // Use template instead of file for dynamic path interpolation
-    .file(paths.getAgentFile('develop', 'font-theme.md')) // Font theme tool documentation
+    .file(resolveFragment('font-theme.md', paths.getAgentFile('develop', 'font-theme.md'))) // Font theme tool documentation
     //.file(paths.getAgentFile('develop', 'design.md'))
 
   if (profileFlag('develop.promptOptimization', true)) {
@@ -193,11 +231,24 @@ async function buildDevelopSystemPrompt(
   }
 
   promptBuilder
-    .file(paths.getAgentFile('develop', 'handoff.md'))
-    .file(paths.getAgentFile('develop', 'backend.md'))
-    .file(paths.getAgentFile('develop', 'frontend.md'))
-    .file(paths.getAgentFile('develop', 'seo.md'))
-    .file(paths.getAgentFile('develop', 'secrets.md')) // Secrets management for API keys and credentials
+    .file(resolveFragment('handoff.md', paths.getAgentFile('develop', 'handoff.md')))
+    .file(resolveFragment('backend.md', paths.getAgentFile('develop', 'backend.md')))
+    .file(resolveFragment('frontend.md', paths.getAgentFile('develop', 'frontend.md')))
+    .file(resolveFragment('seo.md', paths.getAgentFile('develop', 'seo.md')))
+    .file(resolveFragment('secrets.md', paths.getAgentFile('develop', 'secrets.md'))) // Secrets management for API keys and credentials
+
+  // APPEND variants run after the technical fragments. Log hard evidence of what
+  // this build actually did: which variant flags applied, and the concrete files
+  // injected / fragments replaced — so an eval run is attributable and
+  // reproducible (default-off → all false / empty arrays).
+  for (const appendPath of variants.appendPaths) {
+    promptBuilder.file(appendPath);
+  }
+  logger.info('develop_agent.prompt.eval_variant', {
+    active: variants.active,
+    injectedFiles: injectedFileNames(variants),
+    replacedFragments: replacedFragmentNames(variants),
+  });
 
   // Skills section at end of prompt for emphasis — agent decides from this list directly
   if (skillsSection) {

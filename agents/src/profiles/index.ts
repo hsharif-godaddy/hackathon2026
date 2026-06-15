@@ -18,6 +18,12 @@ import initialAgentDesignSystemProfile from './initial-agent-design-system.json'
 import initialAgentDesignSystemHomepageBuildProfile from './initial-agent-design-system-homepage-build.json' with { type: 'json' }
 import initialAgentDesignKitProfile from './initial-agent-design-kit.json' with { type: 'json' }
 
+// NOTE: develop-agent eval prompt variants (develop-prompt-variants.ts) are
+// deliberately NOT registered here. This registry is the allowlist for both
+// `GET /profiles` and JWT `resolveProfile` on real WS/SSE sessions, so a profile
+// added here is selectable in production. To run an eval variant, register a
+// profile in your eval setup; do not add it to this shipped list. See
+// agents/src/prompts/develop/experiments/README.md.
 const rawProfiles: unknown[] = [
   experimentalProfile,
   newInitialAgentProfile,

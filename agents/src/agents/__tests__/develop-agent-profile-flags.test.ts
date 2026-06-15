@@ -198,4 +198,35 @@ describe('develop-agent profile flag gating (resolver-driven)', () => {
       expect(hasSuggestedResponse).toBe(true)
     })
   })
+
+  // Eval-prompt-variant wiring into buildDevelopSystemPrompt. The resolution
+  // rules (fail-closed, replace-any-fragment, allow-list) are unit-tested in
+  // develop-prompt-variants.test.ts; here we assert the builder is inert by
+  // default and that an active variant flows through end to end. Fragments load
+  // when the system resolver fires, so assert via resolveUnderProfile.
+  describe('eval prompt variant wiring', () => {
+    it('injects no variant fragment and keeps canonical core.md with no active profile', async () => {
+      await resolveUnderProfile(undefined)
+      const hasVariant = loadedFiles.some(f => f.includes('/experiments/'))
+      const hasCanonicalCore = loadedFiles.some(
+        f => f.includes('develop/core.md') && !f.includes('/experiments/')
+      )
+      expect(hasVariant).toBe(false)
+      expect(hasCanonicalCore).toBe(true)
+    })
+
+    it('injects the example append variant when its flag is set on the active profile', async () => {
+      // example-develop is intentionally NOT in the shipped registry; the flag
+      // is set directly here to exercise the builder wiring for the variant
+      // table's example row (example-arm.md ships, so the existsSync guard passes).
+      const profile: ProfileData = {
+        name: 'test-example-variant',
+        description: 'test profile enabling the example eval prompt variant',
+        properties: { 'develop.exampleArm': true }
+      }
+      await resolveUnderProfile(profile)
+      const hasExampleArm = loadedFiles.some(f => f.includes('experiments/example-arm.md'))
+      expect(hasExampleArm).toBe(true)
+    })
+  })
 })
