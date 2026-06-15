@@ -83,14 +83,17 @@ export const GET = withCustomerAuth(async (
     });
 
   } catch (error) {
-    // mgmt-airo returns 403 exclusively for unregistered customers ("Customer not
-    // registered with Airo"). If that contract ever changes, the logged errorMessage
-    // will surface the new reason in ES. See PR #2665.
-    if (error instanceof AiroHttpError && error.status === 403) {
+    // mgmt-airo returns 403 for unregistered customers ("Customer not registered
+    // with Airo") and 404 when a subscription doesn't exist yet (e.g. first app
+    // creation while provisioning). Both are treated as empty subscriptions.
+    // During the 403→404 migration we must support both. See PR #2665.
+    // TODO: Remove 403 once the 403 -> 404 migration is complete.
+    if (error instanceof AiroHttpError && (error.status === 403 || error.status === 404)) {
       logger.info('subscriptions.api.not-registered', {
-        message: 'Customer not registered - returning empty subscriptions',
+        message: 'Customer not registered or subscription not found - returning empty subscriptions',
         customerId: authContext.user.customerId,
         errorMessage: error.message,
+        statusCode: error.status,
       });
       return NextResponse.json({ success: true, data: { subscriptions: [], active: null } });
     }
@@ -104,9 +107,7 @@ export const GET = withCustomerAuth(async (
 
     if (error instanceof AiroHttpError) {
       return NextResponse.json(
-        {
-          error: error.status === 404 ? 'No subscriptions found' : 'Failed to fetch subscriptions',
-        },
+        { error: 'Failed to fetch subscriptions' },
         { status: error.status ?? 500 }
       );
     }

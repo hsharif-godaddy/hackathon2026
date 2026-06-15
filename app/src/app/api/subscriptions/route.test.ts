@@ -210,20 +210,27 @@ describe('GET /api/subscriptions', function describeRoute() {
       }));
     });
 
-    it('should return 404 when AiroHttpError with 404 status', async function notFound() {
+    it('should return empty subscriptions on 404 (subscription not found during provisioning)', async function notFound404() {
       const request = new NextRequest('http://localhost/api/subscriptions');
       const authContext = createAuthContext('jwt-token');
+      const { logger } = await import('@/lib/request-context');
 
       const { AiroHttpError } = await import('@/lib/mgmt-airo');
       mockClient.getSubscriptions.mockRejectedValue(
-        new AiroHttpError(404, 'Not Found', 'No subscriptions found')
+        new AiroHttpError(404, 'Not Found', 'Subscription not found')
       );
 
       const response = await GET(request, authContext);
       const data = await response.json();
 
-      expect(response.status).toBe(404);
-      expect(data.error).toBe('No subscriptions found');
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.data.subscriptions).toEqual([]);
+      expect(data.data.active).toBe(null);
+      expect(logger.info).toHaveBeenCalledWith('subscriptions.api.not-registered', expect.objectContaining({
+        customerId: 'test-customer-123',
+        statusCode: 404,
+      }));
     });
   });
 
