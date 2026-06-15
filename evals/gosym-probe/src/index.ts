@@ -43,6 +43,7 @@ import {
   STABILITY_TRIALS,
 } from './scenarios/types.js';
 import { ProgressReporter } from './util/progress-reporter.js';
+import { downloadLogoSnapshots } from './util/download-logo-snapshots.js';
 import { scenarioToInfo, scanBaselinesDir, scanRunsDir, loadRunDetail } from './util/list-commands.js';
 import type {
   Scenario,
@@ -603,8 +604,25 @@ async function main(): Promise<void> {
     trialIndicesByScenario,
     getTrialOutputDir: (scenarioName, trialIndex) =>
       store.ensureTrialDir(dirName, scenarioName, trialIndex),
-    writePartialTrial: (scenarioName, trialIndex, transcript) =>
-      store.writePartialTrial(dirName, scenarioName, trialIndex, transcript),
+    writePartialTrial: async (scenarioName, trialIndex, transcript, setupCtx) => {
+      await store.writePartialTrial(dirName, scenarioName, trialIndex, transcript);
+      if (setupCtx.previewUrl) {
+        const trialDir = await store.ensureTrialDir(dirName, scenarioName, trialIndex);
+        const p = downloadLogoSnapshots(
+          transcript.turns,
+          setupCtx.previewUrl,
+          trialDir,
+          config.playwright.ignoreHttpsErrors,
+        ).catch((err: unknown) => {
+          console.warn(
+            '[logo-snapshots] Download failed for %s trial %d:',
+            scenarioName, trialIndex,
+            err instanceof Error ? err.message : String(err),
+          );
+        });
+        pendingWrites.push(p);
+      }
+    },
     onPartialWriteFailed: (scenarioName, trialIndex, error) => {
       writeFailures.push({ scenarioName, trialIndex, error });
     },

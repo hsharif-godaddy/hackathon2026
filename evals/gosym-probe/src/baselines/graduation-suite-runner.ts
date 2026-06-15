@@ -22,6 +22,7 @@ import type { RunMetadata } from '../store/types.js';
 import type { ScenarioResult, TrialResult } from '../runner/types.js';
 import type { TrialLifecycle } from '../clients/trial-lifecycle.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
+import { downloadLogoSnapshots } from '../util/download-logo-snapshots.js';
 
 export interface GraduationSuiteRunResult {
   results: GraduationResult[];
@@ -214,8 +215,22 @@ export class GraduationSuiteRunner {
       trialIndicesByScenario,
       getTrialOutputDir: (scenarioName, trialIndex) =>
         store.ensureTrialDir(sharedDirName, scenarioName, trialIndex),
-      writePartialTrial: (scenarioName, trialIndex, transcript) =>
-        store.writePartialTrial(sharedDirName, scenarioName, trialIndex, transcript),
+      writePartialTrial: async (scenarioName, trialIndex, transcript, setupCtx) => {
+        await store.writePartialTrial(sharedDirName, scenarioName, trialIndex, transcript);
+        if (setupCtx.previewUrl) {
+          const trialDir = await store.ensureTrialDir(sharedDirName, scenarioName, trialIndex);
+          const p = downloadLogoSnapshots(
+            transcript.turns,
+            setupCtx.previewUrl,
+            trialDir,
+            config.playwright.ignoreHttpsErrors,
+          ).catch((err: unknown) => {
+            this.log('[logo-snapshots] Download failed for %s trial %d:', scenarioName, trialIndex,
+              err instanceof Error ? err.message : String(err));
+          });
+          pendingWrites.push(p);
+        }
+      },
     });
 
     // SuiteRunner returns partial results when a scenario has zero completed

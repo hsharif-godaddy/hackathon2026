@@ -2119,10 +2119,10 @@ describe('SuiteRunner — writePartialTrial error handling', () => {
 
     // Override Simulation mock to invoke onConversationComplete during run
     (Simulation as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      function (opts: { onConversationComplete?: (idx: number, t: Transcript) => Promise<void> }) { return {
+      function (opts: { onConversationComplete?: (idx: number, t: Transcript, ctx: object) => Promise<void> }) { return {
         run: async (trialIndex: number) => {
           if (opts.onConversationComplete) {
-            await opts.onConversationComplete(trialIndex, makeTranscript());
+            await opts.onConversationComplete(trialIndex, makeTranscript(), {});
           }
           return makeTranscript();
         },
@@ -2141,7 +2141,7 @@ describe('SuiteRunner — writePartialTrial error handling', () => {
 
     expect(results).toHaveLength(1);
     expect(writePartialTrial).toHaveBeenCalledWith(
-      'test-scenario', 0, expect.any(Object),
+      'test-scenario', 0, expect.any(Object), expect.any(Object),
     );
     expect(onPartialWriteFailed).toHaveBeenCalledWith(
       'test-scenario', 0, writeErr,

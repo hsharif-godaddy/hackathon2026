@@ -88,10 +88,13 @@ export interface SimulationOptions {
    * Awaited so the caller can flush conversation data to disk before the
    * 90-second capture window starts. Must not throw; SuiteRunner
    * guarantees this for the standard wiring by wrapping in try/catch.
+   * Receives the setup context so callers can use per-trial resources
+   * (e.g. previewUrl) while the app is still alive.
    */
   onConversationComplete?: (
     trialIndex: number,
     partialTranscript: Transcript,
+    setupContext: SetupContext,
   ) => Promise<void>;
 }
 
@@ -199,7 +202,7 @@ export class Simulation {
       });
 
       if (this.options.onConversationComplete) {
-        await this.options.onConversationComplete(trialIndex, builder.build());
+        await this.options.onConversationComplete(trialIndex, builder.build(), setupResult ?? {});
       }
 
       await this.runCapture(trialIndex, setupResult, builder);

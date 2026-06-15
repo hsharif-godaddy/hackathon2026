@@ -4,7 +4,7 @@ import type { SimulationCaptureContext } from './simulation.js';
 import { TrialAggregator } from './trial-aggregator.js';
 import { RegressionComparator } from '../baselines/regression-comparator.js';
 import { enrichScoreModePassRates } from '../baselines/score-mode-enricher.js';
-import type { Scenario } from '../scenarios/types.js';
+import type { Scenario, SetupContext } from '../scenarios/types.js';
 import type { ScenarioResult, TrialResult } from './types.js';
 import type { ResolvedConfig } from '../../config/index.js';
 import type { AgentClient } from '../clients/agent-client.js';
@@ -135,13 +135,15 @@ export interface SuiteRunnerOptions {
   ) => Promise<string>;
   /**
    * Persists conversation data after the conversation loop and before capture.
-   * Receives the scenario name, trial index, and partial transcript (no snapshot).
+   * Receives the scenario name, trial index, partial transcript (no snapshot),
+   * and setup context (e.g. previewUrl) while per-trial resources are still live.
    * Fires whenever provided, regardless of capture configuration.
    */
   writePartialTrial?: (
     scenarioName: string,
     trialIndex: number,
     transcript: Transcript,
+    setupContext: SetupContext,
   ) => Promise<void>;
   /** Invoked when writePartialTrial fails, for failure tracking. */
   onPartialWriteFailed?: (
@@ -525,9 +527,9 @@ export class SuiteRunner {
           : undefined;
       const { writePartialTrial } = this.options;
       const onConversationComplete = writePartialTrial
-        ? async (idx: number, partialTranscript: Transcript) => {
+        ? async (idx: number, partialTranscript: Transcript, setupCtx: SetupContext) => {
             try {
-              await writePartialTrial(scenario.name, idx, partialTranscript);
+              await writePartialTrial(scenario.name, idx, partialTranscript, setupCtx);
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err);
               console.warn(

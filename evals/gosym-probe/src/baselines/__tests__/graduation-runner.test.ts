@@ -971,7 +971,7 @@ describe('GraduationRunner', () => {
       const suiteRunnerOpts = vi.mocked(SuiteRunner).mock.calls[0][0];
       const fakeTranscript = makeTranscript(0);
       await suiteRunnerOpts.writePartialTrial!(
-        'test-scenario', 0, fakeTranscript,
+        'test-scenario', 0, fakeTranscript, {},
       );
 
       expect(mockStore.writePartialTrial).toHaveBeenCalledWith(

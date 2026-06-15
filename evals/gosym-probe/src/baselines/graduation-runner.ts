@@ -17,6 +17,7 @@ import type { BaselineSaveOptions } from './baseline-store.js';
 import { pickGitFields } from './types.js';
 import type { TrialLifecycle } from '../clients/trial-lifecycle.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
+import { downloadLogoSnapshots } from '../util/download-logo-snapshots.js';
 
 interface BaselineStore {
   save(
@@ -123,6 +124,8 @@ export class GraduationRunner {
       }
     }
 
+    const pendingDownloads: Promise<void>[] = [];
+
     const runner = new SuiteRunner({
       scenarios: [scenario],
       config,
@@ -137,12 +140,27 @@ export class GraduationRunner {
       ...(store && dirName && {
         getTrialOutputDir: (scenarioName, trialIndex) =>
           store.ensureTrialDir(dirName, scenarioName, trialIndex),
-        writePartialTrial: (scenarioName, trialIndex, transcript) =>
-          store.writePartialTrial(dirName, scenarioName, trialIndex, transcript),
+        writePartialTrial: async (scenarioName, trialIndex, transcript, setupCtx) => {
+          await store.writePartialTrial(dirName, scenarioName, trialIndex, transcript);
+          if (setupCtx.previewUrl) {
+            const trialDir = await store.ensureTrialDir(dirName, scenarioName, trialIndex);
+            const p = downloadLogoSnapshots(
+              transcript.turns,
+              setupCtx.previewUrl,
+              trialDir,
+              config.playwright.ignoreHttpsErrors,
+            ).catch((err: unknown) => {
+              log('[logo-snapshots] Download failed for %s trial %d:', scenarioName, trialIndex,
+                err instanceof Error ? err.message : String(err));
+            });
+            pendingDownloads.push(p);
+          }
+        },
       }),
     });
 
     const [result] = await runner.run();
+    await Promise.allSettled(pendingDownloads);
     result.stabilityLevel = stabilityLevel;
 
     if (store && dirName) {
