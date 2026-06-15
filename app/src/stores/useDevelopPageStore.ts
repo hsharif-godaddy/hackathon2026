@@ -1038,11 +1038,24 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.selectedProfile = null
         state.feedbackInitialStep = null
         state.docsPath = null
-        state.viewMode = ViewMode.PREVIEW
-        // Keep isEditModeEnabled in sync with the PREVIEW viewMode. Otherwise a
-        // freshly-built app lands on the Preview toggle while the iframe still
-        // receives EDIT_MODE_ENABLED on IFRAME_READY and shows the hover bar.
-        state.isEditModeEnabled = false
+
+        // Reset viewMode to PREVIEW unless the logo-designer flow already set
+        // it to BRAND. The logo-designer effect sets ViewMode.BRAND before this
+        // runs; blindly overriding it causes the "Logo & Brand" tab to flash
+        // then switch to Preview.
+        const jobId = typeof window !== 'undefined'
+          ? sessionStorage.getItem(`initial-job-id-${appId}`)
+          : null
+        const template = jobId
+          ? sessionStorage.getItem(`initial-template-${jobId}`)
+          : null
+        if (template !== 'logo-designer') {
+          state.viewMode = ViewMode.PREVIEW
+          // Keep isEditModeEnabled in sync with the PREVIEW viewMode. Otherwise a
+          // freshly-built app lands on the Preview toggle while the iframe still
+          // receives EDIT_MODE_ENABLED on IFRAME_READY and shows the hover bar.
+          state.isEditModeEnabled = false
+        }
       })
     },
 
