@@ -1,0 +1,80 @@
+metadata:
+  name: Skill Loader - AI Agent
+  version: 1.0.0
+
+cases:
+  # --- Positive: ai-agent skill should load ---
+
+  - id: custom-ai-chatbot
+    prompt: 'I want to build a custom AI chatbot using my OpenAI API key'
+    expectedSkill: ai-agent
+    tags: [positive]
+    rationale: Explicit custom AI chatbot with own API key — clear ai-agent signal
+
+  - id: ai-agent-with-tools
+    prompt: 'Build me an AI agent that can call my APIs and search my database'
+    expectedSkill: ai-agent
+    tags: [positive]
+    rationale: Agent with tool use is exclusively ai-agent territory
+
+  - id: openai-chatbot
+    prompt: 'Add a chatbot powered by OpenAI to my app'
+    expectedSkill: ai-agent
+    tags: [positive]
+    rationale: Explicit OpenAI provider mention signals custom AI solution
+
+  - id: anthropic-assistant
+    prompt: 'I want to add an AI assistant using Claude from Anthropic'
+    expectedSkill: ai-agent
+    tags: [positive]
+    rationale: Explicit Anthropic/Claude mention signals custom AI solution
+
+  - id: ai-answers-questions
+    prompt: 'I want an AI that can answer questions about my product data'
+    expectedSkill: ai-agent
+    tags: [positive]
+    rationale: AI answering questions about custom data requires tool use / RAG — ai-agent
+
+  - id: streaming-ai-chat
+    prompt: 'Add a streaming AI chat interface with my own API key'
+    expectedSkill: ai-agent
+    tags: [positive]
+    rationale: Own API key + AI chat is explicitly custom — ai-agent
+
+  - id: agent-tool-calling
+    prompt: 'I need a chatbot that can call external APIs and look up inventory'
+    expectedSkill: ai-agent
+    tags: [positive]
+    rationale: Tool calling / API integration is ai-agent exclusive
+
+  - id: build-own-chatbot
+    prompt: 'I want to build my own chatbot from scratch with Gemini'
+    expectedSkill: ai-agent
+    tags: [positive]
+    rationale: Build from scratch + specific provider = custom AI solution
+
+  - id: ai-search-data
+    prompt: 'Add an AI agent that can search my data and answer customer questions'
+    expectedSkill: ai-agent
+    tags: [positive]
+    rationale: AI agent searching custom data requires tool use — ai-agent
+
+  # --- Positive: harder cases ---
+
+  - id: conversational-ai-with-tools
+    prompt: 'I need conversational AI that can check order status and process returns'
+    expectedSkill: ai-agent
+    tags: [positive, hard]
+    rationale: Tool use (check orders, process returns) makes this ai-agent despite conversational framing
+
+  - id: ai-assistant-custom-knowledge
+    prompt: 'Build me an AI assistant that knows about my specific products and can recommend them'
+    expectedSkill: ai-agent
+    tags: [positive, hard]
+    rationale: Custom knowledge base + recommendations implies RAG/tools — ai-agent
+
+  - id: gpt-integration
+    prompt: 'Can you integrate GPT into my site so users can ask it questions?'
+    expectedSkill: ai-agent
+    tags: [positive, hard]
+    rationale: GPT integration is a custom AI solution even without saying "API key"

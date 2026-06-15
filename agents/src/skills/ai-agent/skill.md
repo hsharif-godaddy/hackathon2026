@@ -1,19 +1,21 @@
 ---
 name: ai-agent
 description: >-
-  Add a streaming AI chatbot or agent to your app. Supports simple Q&A chat,
-  multi-turn conversations, and autonomous agents with tool use (API calls,
-  database queries, real-time data lookups). Providers: OpenAI, Anthropic, Google.
+  Add a custom AI chatbot or autonomous agent to your app using your own API key.
+  Supports streaming chat, multi-turn conversations, and agents with tool use
+  (API calls, database queries, real-time data lookups). Providers: OpenAI, Anthropic, Google.
 whenToUse: >-
-  User wants to add a chatbot, AI assistant, conversational AI, or an agent
-  that can call tools and APIs. Phrases like "add a chatbot", "AI chat",
-  "chat with AI", "add an AI assistant", "build an agent", "AI agent",
-  "agent that can call APIs", "agent that can search my data", "chat feature",
-  "AI that can answer questions about my app".
+  User explicitly wants a CUSTOM AI-powered chatbot built with their own API key
+  (OpenAI, Anthropic, or Google), or an autonomous agent that can call tools and APIs.
+  NOT for general "add chat" or "add messaging" requests — those should use the
+  inbox skill instead. Use this skill only for phrases like "custom AI chatbot",
+  "build my own chatbot with OpenAI", "AI agent that calls APIs", "chatbot with tool use",
+  "agent that can search my data", "AI that can answer questions about my app",
+  "I want to use my own API key for chat".
 dependencies:
   - ai
 intents:
-  - AI chatbot/AI assistant/AI agent
+  - custom AI chatbot/AI agent with tools/build my own AI chatbot
 ---
 
 # AI Chatbot/Agent Skill

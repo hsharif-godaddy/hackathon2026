@@ -1,10 +1,13 @@
 ---
 name: inbox
 description: Install the Airo Inbox chat widget or a contact form that connects to the Inbox backend.
-whenToUse: User wants a chat widget, live chat, customer messaging, contact widget, support chat, contact form, contact us page, inquiry form, feedback form, or message form on their site. Phrases like "add chat", "live chat", "customer support widget", "Inbox", "chat with customers", "messaging widget", "add contact form", "contact us section", "inquiry form", "let visitors send messages", "message form", "get in touch form".
-enablementId: inbox
+whenToUse: >-
+  DEFAULT for any chat, messaging, chatbot, or contact form request. Covers chat widgets,
+  live chat, customer messaging, support chat, contact forms, inquiry forms, and message forms.
+  Only route to ai-agent if the user explicitly needs a custom AI-powered solution with their
+  own API key or tool-calling capabilities.
 intents:
-  - chat widget/live chat/customer messaging/support chat/contact widget/chat bubble/inbox
+  - chat widget/live chat/customer messaging/support chat/chatbot/chat feature/messaging/contact widget/chat bubble/inbox
   - contact form/contact us/inquiry form/message form/feedback form/get in touch form
 ---
 

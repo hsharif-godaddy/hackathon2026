@@ -1,9 +1,15 @@
 ---
 name: email
 description: Send transactional email through the Airo email gateway
-whenToUse: User wants to send emails, add email functionality, or implement notifications via email. Phrases like "send email", "email notification", "contact form", "email when", "transactional email", "email relay", "nodemailer", "smtp" (legacy phrasings — see Migrating from Nodemailer below).
+whenToUse: >-
+  User wants to send transactional emails, add email-sending functionality, or implement
+  notifications via email. Phrases like "send email", "email notification", "email when",
+  "transactional email", "email relay", "nodemailer", "smtp" (legacy phrasings — see
+  Migrating from Nodemailer below). NOT for contact forms — those should use the inbox
+  skill, which provides a managed contact form with built-in email notifications and
+  threaded replies.
 intents:
-  - send email/email notification/transactional email/contact-form-with-backend
+  - send email/email notification/transactional email/email relay
 ---
 
 # Email via the Airo Email Gateway

@@ -1,0 +1,136 @@
+metadata:
+  name: Skill Loader - Inbox
+  version: 1.0.0
+
+cases:
+  # --- Positive: inbox skill should load ---
+
+  - id: add-chat-widget
+    prompt: 'Add a chat widget to my site'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Generic chat widget request — inbox is the default
+
+  - id: live-chat
+    prompt: 'I want live chat on my website'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Live chat is a core inbox intent
+
+  - id: customer-messaging
+    prompt: 'Add customer messaging to my app'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Customer messaging maps directly to inbox
+
+  - id: support-chat
+    prompt: 'I need a support chat for my customers'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Support chat is a managed feature provided by inbox
+
+  - id: chat-bubble
+    prompt: 'Can you add a chat bubble in the bottom right corner?'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Chat bubble is the visual form of the inbox widget
+
+  - id: contact-widget
+    prompt: 'Add a contact widget so visitors can reach me'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Contact widget for visitor communication is inbox territory
+
+  - id: chat-with-customers
+    prompt: 'I want to be able to chat with my customers'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Chatting with customers is the core inbox use case
+
+  - id: messaging-feature
+    prompt: 'Add a messaging feature to the site'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Generic messaging feature defaults to inbox
+
+  - id: customer-support-widget
+    prompt: 'I need a customer support widget'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Customer support widget is an inbox feature
+
+  # --- Positive: ambiguous chatbot phrases that should still route here ---
+
+  - id: add-chatbot-generic
+    prompt: 'Add a chatbot to my site'
+    expectedSkill: inbox
+    tags: [positive, hard]
+    rationale: Generic chatbot request without AI/custom qualifiers defaults to inbox
+
+  - id: chat-feature-generic
+    prompt: 'I want a chat feature on my website'
+    expectedSkill: inbox
+    tags: [positive, hard]
+    rationale: Generic chat feature request defaults to inbox
+
+  - id: add-chat-no-qualifier
+    prompt: 'Add chat to my app'
+    expectedSkill: inbox
+    tags: [positive, hard]
+    rationale: Minimal chat request with no AI qualifier — inbox is the default
+
+  - id: visitor-chat
+    prompt: 'I want visitors to be able to message me from the site'
+    expectedSkill: inbox
+    tags: [positive, hard]
+    rationale: Visitor-to-owner messaging is inbox, not AI agent
+
+  - id: chat-for-questions
+    prompt: 'Add a way for customers to ask questions on my site'
+    expectedSkill: inbox
+    tags: [positive, hard]
+    rationale: Customer questions via chat is an inbox use case — no AI implied
+
+  - id: helpdesk-chat
+    prompt: 'I need a helpdesk chat on my site'
+    expectedSkill: inbox
+    tags: [positive, hard]
+    rationale: Helpdesk chat is human-to-human support — inbox territory
+
+  - id: real-time-chat
+    prompt: 'Can you add real-time chat so I can talk to visitors?'
+    expectedSkill: inbox
+    tags: [positive, hard]
+    rationale: Real-time human chat is inbox, not AI
+
+  # --- Positive: contact form phrases that should route here ---
+
+  - id: add-contact-form
+    prompt: 'Add a contact form to my site'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Contact forms are handled by inbox (managed backend with email notifications)
+
+  - id: contact-us-page
+    prompt: 'I need a contact us page'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Contact us page is a contact form — inbox territory
+
+  - id: visitor-message-form
+    prompt: 'Add a form where visitors can send me messages'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Visitor-to-owner messaging form is inbox with contact form backend
+
+  - id: inquiry-form
+    prompt: 'I want an inquiry form on my website'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Inquiry form is a contact form variant — inbox handles it
+
+  - id: get-in-touch-form
+    prompt: 'Add a get in touch form to the site'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Get in touch form is a contact form — inbox provides managed backend

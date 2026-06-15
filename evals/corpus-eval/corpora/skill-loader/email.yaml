@@ -1,0 +1,56 @@
+metadata:
+  name: Skill Loader - Email
+  version: 1.0.0
+
+cases:
+  # --- Positive: email skill should load ---
+
+  - id: send-email-notification
+    prompt: 'Send an email notification when a new order comes in'
+    expectedSkill: email
+    tags: [positive]
+    rationale: Event-triggered email notification is a transactional email use case
+
+  - id: transactional-email
+    prompt: 'I need to send transactional emails from my app'
+    expectedSkill: email
+    tags: [positive]
+    rationale: Explicit transactional email request
+
+  - id: add-email-functionality
+    prompt: 'Add email functionality to my app'
+    expectedSkill: email
+    tags: [positive]
+    rationale: Generic email-sending functionality is the email skill's core purpose
+
+  - id: welcome-email
+    prompt: 'Send a welcome email when users sign up'
+    expectedSkill: email
+    tags: [positive]
+    rationale: User lifecycle email is a transactional email use case
+
+  - id: order-confirmation-email
+    prompt: 'I want to send order confirmation emails to customers'
+    expectedSkill: email
+    tags: [positive]
+    rationale: Order confirmations are transactional email
+
+  - id: nodemailer-migration
+    prompt: 'I have nodemailer set up and want to migrate to the platform email'
+    expectedSkill: email
+    tags: [positive]
+    rationale: Nodemailer migration is explicitly handled by the email skill
+
+  # --- Negative: should NOT route to email (should go to inbox) ---
+
+  - id: contact-form-generic
+    prompt: 'Add a contact form to my site'
+    expectedSkill: inbox
+    tags: [negative]
+    rationale: Generic contact form should use inbox (managed backend with email notifications built in)
+
+  - id: visitors-contact-me
+    prompt: 'I want visitors to be able to contact me'
+    expectedSkill: inbox
+    tags: [negative]
+    rationale: Visitor-to-owner contact is inbox territory, not raw email sending

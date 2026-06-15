@@ -350,7 +350,6 @@ export const agents = {
 export const profileGatedSkills: Set<string> = new Set([
   // Add skill enablementIds here as they adopt profile-based gating.
   'complianceDocs',
-  'inbox',
   'ssrMigration',
   // Note: the `stripe` skill is NOT gated at the skill level — it always loads.
   // Its v2 platform-managed tools are gated by the `skill.stripe-v2.enabled`
