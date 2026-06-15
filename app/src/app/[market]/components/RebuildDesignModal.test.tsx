@@ -41,6 +41,12 @@ vi.mock('@ux/box', () => ({
   default: ({ children, ...props }: React.ComponentProps<'div'>) => <div {...props}>{children}</div>,
 }))
 
+vi.mock('@ux/button', () => ({
+  default: ({ text, onClick, disabled, ...props }: { text: string; onClick?: () => void; disabled?: boolean }) => (
+    <button type="button" onClick={onClick} disabled={disabled} {...props}>{text}</button>
+  ),
+}))
+
 vi.mock('@ux/text', () => ({
   default: {
     span: ({ children, ...props }: React.ComponentProps<'span'>) => <span {...props}>{children}</span>,
@@ -74,26 +80,52 @@ describe('RebuildDesignModal', () => {
     expect(mockTrackShown).toHaveBeenCalledTimes(1)
   })
 
-  it('selecting Reimagine calls onSelect with modernize and the typed url', () => {
+  it('disables Continue until a direction is selected, then fires onSelect with it', () => {
     const onSelect = vi.fn()
     render(<RebuildDesignModal open onClose={vi.fn()} onSelect={onSelect} />)
+
+    const continueBtn = screen.getByTestId('rebuild-design-continue')
+    expect(continueBtn).toBeDisabled()
 
     fireEvent.change(screen.getByTestId('rebuild-design-url-input'), {
       target: { value: 'https://example.com' },
     })
     fireEvent.click(screen.getByTestId('rebuild-design-option-modernize'))
 
+    expect(continueBtn).not.toBeDisabled()
+    expect(onSelect).not.toHaveBeenCalled() // selection alone does not submit
+
+    fireEvent.click(continueBtn)
     expect(onSelect).toHaveBeenCalledWith('modernize', 'https://example.com')
     expect(mockTrackChoice).toHaveBeenCalledWith('modernize')
   })
 
-  it('selecting Keep my current look passes an empty url when input is blank', () => {
+  it('passes an empty url when the input is blank', () => {
     const onSelect = vi.fn()
     render(<RebuildDesignModal open onClose={vi.fn()} onSelect={onSelect} />)
 
     fireEvent.click(screen.getByTestId('rebuild-design-option-keep-similar'))
+    fireEvent.click(screen.getByTestId('rebuild-design-continue'))
 
     expect(onSelect).toHaveBeenCalledWith('keep-similar', '')
-    expect(mockTrackChoice).toHaveBeenCalledWith('keep-similar')
+  })
+
+  it('pre-fills url and pre-selects direction from props (deep link)', () => {
+    const onSelect = vi.fn()
+    render(
+      <RebuildDesignModal
+        open
+        onClose={vi.fn()}
+        onSelect={onSelect}
+        initialUrl="https://example.com"
+        initialDirection="keep-similar"
+      />,
+    )
+
+    expect((screen.getByTestId('rebuild-design-url-input') as HTMLInputElement).value).toBe('https://example.com')
+    // Pre-selected → Continue immediately enabled and commits the pre-set direction.
+    expect(screen.getByTestId('rebuild-design-continue')).not.toBeDisabled()
+    fireEvent.click(screen.getByTestId('rebuild-design-continue'))
+    expect(onSelect).toHaveBeenCalledWith('keep-similar', 'https://example.com')
   })
 })

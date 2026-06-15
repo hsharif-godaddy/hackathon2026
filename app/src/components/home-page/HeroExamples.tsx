@@ -5,9 +5,11 @@ import { text } from '@ux/text'
 
 import RebuildDesignModal from '@/app/[market]/components/RebuildDesignModal'
 import { Example, HeroExamplesProps, LOGO_DESIGNER_TEMPLATE } from '@/app/[market]/components/types'
+import { trackRebuildDeeplinkShown } from '@/app/[market]/develop/components/rebuild/rebuildIntakeInstrumentation'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { useAnalytics } from '@/hooks/useAnalytics'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
+import { useRebuildDeeplink } from '@/hooks/useRebuildDeeplink'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { JourneyTracker } from '@/lib/journeyTracker'
@@ -31,9 +33,26 @@ export default function HeroExamples({ className, theme = 'dark', onExampleClick
   })
   const [visibleItems, setVisibleItems] = useState<boolean[]>([])
   const [rebuildModalOpen, setRebuildModalOpen] = useState(false)
+  // Pre-fill values for the modal — empty for the chip path, set for a deep link.
+  const [rebuildModalUrl, setRebuildModalUrl] = useState('')
+  const [deeplinkDirection, setDeeplinkDirection] = useState<RebuildModalDirection | null>(null)
   const rebuildBasePromptRef = useRef('')
   const showLogoButton = Boolean(useSwitchboard('appbuilder-homepage-make-logo-button'))
   const { isBelowSmBreakpoint } = useBreakpoints();
+
+  // Switchers deep link: open the rebuild modal pre-filled with the user's domain
+  // (and direction, if the link sets it). Fires once.
+  const rebuildDeeplink = useRebuildDeeplink()
+  const deeplinkOpenedRef = useRef(false)
+  useEffect(() => {
+    if (!rebuildDeeplink || deeplinkOpenedRef.current) return
+    deeplinkOpenedRef.current = true
+    rebuildBasePromptRef.current = t('builder_homepage_examples_rebuild_prompt')
+    setRebuildModalUrl(rebuildDeeplink.url)
+    setDeeplinkDirection(rebuildDeeplink.designDirection ?? null)
+    setRebuildModalOpen(true)
+    trackRebuildDeeplinkShown(rebuildDeeplink.designDirection)
+  }, [rebuildDeeplink, t])
 
   function logExampleClick(example: Example) {
     logAnalytics('homepage.template.click', { templateSlug: example.slug })
@@ -47,6 +66,8 @@ export default function HeroExamples({ className, theme = 'dark', onExampleClick
     if (example.slug === REBUILD_SITE_SLUG) {
       logExampleClick(example)
       rebuildBasePromptRef.current = example.prompt
+      setRebuildModalUrl('')
+      setDeeplinkDirection(null)
       setRebuildModalOpen(true)
       return
     }
@@ -275,6 +296,8 @@ export default function HeroExamples({ className, theme = 'dark', onExampleClick
         open={rebuildModalOpen}
         onClose={() => setRebuildModalOpen(false)}
         onSelect={handleRebuildDesignSelect}
+        initialUrl={rebuildModalUrl}
+        initialDirection={deeplinkDirection}
       />
     </div>
   )

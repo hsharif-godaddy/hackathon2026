@@ -39,11 +39,27 @@ vi.mock('@/utils/instrumentation', () => ({
   logClickEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
-// Isolate HeroExamples' wiring from the real modal: expose two select buttons.
+const mockTrackDeeplinkShown = vi.hoisted(() => vi.fn());
+vi.mock('@/app/[market]/develop/components/rebuild/rebuildIntakeInstrumentation', () => ({
+  trackRebuildDeeplinkShown: mockTrackDeeplinkShown,
+}));
+
+const mockUseRebuildDeeplink = vi.hoisted(() =>
+  vi.fn(() => null as null | { url: string; designDirection?: string }),
+);
+vi.mock('@/hooks/useRebuildDeeplink', () => ({ useRebuildDeeplink: mockUseRebuildDeeplink }));
+
+// Isolate HeroExamples' wiring from the real modal: expose the select buttons and
+// surface the pre-fill props so the deep-link path is assertable.
 vi.mock('@/app/[market]/components/RebuildDesignModal', () => ({
-  default: ({ open, onSelect }: { open: boolean; onSelect: (d: string, url: string) => void }) =>
+  default: ({ open, onSelect, initialUrl, initialDirection }: {
+    open: boolean
+    onSelect: (d: string, url: string) => void
+    initialUrl?: string
+    initialDirection?: string | null
+  }) =>
     open ? (
-      <div data-testid="rebuild-design-modal">
+      <div data-testid="rebuild-design-modal" data-initial-url={initialUrl} data-initial-direction={initialDirection ?? ''}>
         <button data-testid="mock-select-modernize" onClick={() => onSelect('modernize', 'https://test.com')}>m</button>
         <button data-testid="mock-select-keep" onClick={() => onSelect('keep-similar', '')}>k</button>
       </div>
@@ -61,6 +77,31 @@ describe('HeroExamples', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     sessionStorage.clear();
+    mockUseRebuildDeeplink.mockReturnValue(null);
+  });
+
+  describe('rebuild deep link', () => {
+    it('auto-opens the modal pre-filled when a deep link is present', async () => {
+      mockUseSwitchboard.mockReturnValue(false);
+      mockUseRebuildDeeplink.mockReturnValue({ url: 'https://example.com', designDirection: 'keep-similar' });
+      renderWithProviders(<HeroExamples onExampleClick={vi.fn()} />);
+
+      const modal = await screen.findByTestId('rebuild-design-modal');
+      expect(modal).toHaveAttribute('data-initial-url', 'https://example.com');
+      expect(modal).toHaveAttribute('data-initial-direction', 'keep-similar');
+      expect(mockTrackDeeplinkShown).toHaveBeenCalledWith('keep-similar');
+    });
+
+    it('does not open the modal when there is no deep link', async () => {
+      mockUseSwitchboard.mockReturnValue(false);
+      mockUseRebuildDeeplink.mockReturnValue(null);
+      renderWithProviders(<HeroExamples onExampleClick={vi.fn()} />);
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('homepage-suggestion-button').length).toBeGreaterThan(0);
+      }, { timeout: 4000 });
+      expect(screen.queryByTestId('rebuild-design-modal')).not.toBeInTheDocument();
+    });
   });
 
   describe('rebuild design branch', () => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Box from '@ux/box'
+import Button from '@ux/button'
 import ArrowRightIcon from '@ux/icon/arrow-right'
 import Modal from '@ux/modal'
 import text from '@ux/text'
@@ -18,6 +19,10 @@ interface RebuildDesignModalProps {
   open: boolean
   onClose: () => void
   onSelect: (direction: RebuildModalDirection, url: string) => void
+  /** Pre-fill the source URL (Switchers deep link). */
+  initialUrl?: string
+  /** Pre-select a direction (Switchers deep link); user can still change it. */
+  initialDirection?: RebuildModalDirection | null
 }
 
 // Reimagine first — the more aspirational framing, and the option Sales steers toward.
@@ -34,9 +39,17 @@ const OPTIONS: { direction: RebuildModalDirection; labelKey: string; descKey: st
   },
 ]
 
-export default function RebuildDesignModal({ open, onClose, onSelect }: RebuildDesignModalProps) {
+export default function RebuildDesignModal({
+  open,
+  onClose,
+  onSelect,
+  initialUrl = '',
+  initialDirection = null,
+}: RebuildDesignModalProps) {
   const t = useTranslations()
   const [url, setUrl] = useState('')
+  // Select-then-confirm: a card click selects (highlights); Continue commits.
+  const [selected, setSelected] = useState<RebuildModalDirection | null>(null)
 
   function tr(key: string) {
     return t(key, undefined, defaultMessageForRebuildIntakeKey(key))
@@ -45,9 +58,10 @@ export default function RebuildDesignModal({ open, onClose, onSelect }: RebuildD
   useEffect(() => {
     if (open) {
       trackRebuildDesignModalShown()
-      setUrl('')
+      setUrl(initialUrl)
+      setSelected(initialDirection)
     }
-  }, [open])
+  }, [open, initialUrl, initialDirection])
 
   if (!open) return null
 
@@ -70,35 +84,55 @@ export default function RebuildDesignModal({ open, onClose, onSelect }: RebuildD
             autoFocus
           />
         </div>
-        {OPTIONS.map((option, index) => (
-          // Wrapper owns the entrance (opacity + lift) so it never competes with
-          // the button's hover transform.
-          <div
-            key={option.direction}
-            className="animate-rebuild-reveal"
-            style={{ animationDelay: `${120 + index * 70}ms` }}
-          >
-            <button
-              type="button"
-              data-testid={`rebuild-design-option-${option.direction}`}
-              onClick={() => {
-                trackRebuildDesignModalChoice(option.direction)
-                onSelect(option.direction, url.trim())
-              }}
-              className="group flex w-full items-center gap-2 text-start p-2 rounded-lg border border-border cursor-pointer transition-all duration-200 ease-out hover:border-primary hover:shadow-md hover:-translate-y-px active:translate-y-0 focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
+        {OPTIONS.map((option, index) => {
+          const isSelected = selected === option.direction
+          return (
+            // Wrapper owns the entrance (opacity + lift) so it never competes with
+            // the button's hover transform.
+            <div
+              key={option.direction}
+              className="animate-rebuild-reveal"
+              style={{ animationDelay: `${120 + index * 70}ms` }}
             >
-              <span className="flex-1 min-w-0">
-                <text.span size={0} className="font-semibold block">
-                  {tr(option.labelKey)}
-                </text.span>
-                <text.span size={-1} emphasis="passive" className="block">
-                  {tr(option.descKey)}
-                </text.span>
-              </span>
-              <ArrowRightIcon className="w-2 h-2 shrink-0 opacity-0 -translate-x-1 transition-all duration-200 text-muted-foreground group-hover:opacity-100 group-hover:translate-x-0 rtl:scale-x-[-1]" />
-            </button>
-          </div>
-        ))}
+              <button
+                type="button"
+                aria-pressed={isSelected}
+                data-testid={`rebuild-design-option-${option.direction}`}
+                onClick={() => setSelected(option.direction)}
+                className={`group flex w-full items-center gap-2 text-start p-2 rounded-lg border cursor-pointer transition-all duration-200 ease-out hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+                  isSelected ? 'border-primary shadow-sm' : 'border-border hover:border-primary'
+                }`}
+              >
+                <span className="flex-1 min-w-0">
+                  <text.span size={0} className="font-semibold block">
+                    {tr(option.labelKey)}
+                  </text.span>
+                  <text.span size={-1} emphasis="passive" className="block">
+                    {tr(option.descKey)}
+                  </text.span>
+                </span>
+                <ArrowRightIcon
+                  className={`w-2 h-2 shrink-0 transition-all duration-200 text-muted-foreground rtl:scale-x-[-1] ${
+                    isSelected
+                      ? 'opacity-100 translate-x-0'
+                      : 'opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          )
+        })}
+        <Button
+          data-testid="rebuild-design-continue"
+          design="primary"
+          disabled={!selected}
+          text={t('builder_common_continue', undefined, 'Continue')}
+          onClick={() => {
+            if (!selected) return
+            trackRebuildDesignModalChoice(selected)
+            onSelect(selected, url.trim())
+          }}
+        />
       </Box>
     </Modal>
   )

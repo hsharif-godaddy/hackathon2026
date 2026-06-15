@@ -75,3 +75,10 @@ export function trackRebuildDesignModalShown() {
 export function trackRebuildDesignModalChoice(designDirection: DesignDirection) {
   logClickEvent('homepage.rebuild.designchoice', { designDirection })()
 }
+
+/** Homepage opened the rebuild modal from a Switchers deep link. */
+export function trackRebuildDeeplinkShown(designDirection?: DesignDirection) {
+  logImpressionEvent('homepage.rebuild.deeplink', {
+    ...(designDirection && { designDirection }),
+  })()
+}
