@@ -122,13 +122,11 @@ catalog:
 # Audit suppressions — advisories that can't be resolved via overrides.
 # - GHSA-gxw8-54vm-j6h5, GHSA-mr89-h5vv-pr3v: false-positive malware flags on internal @gdcorp-digitalcare/* packages
 # - GHSA-r7x9-8ph7-w8cg, GHSA-cvhv-6xm6-c3v4, GHSA-w5cr-2qhr-jqc5: workspace name "agents" collides with Cloudflare's npm "agents" package
-# - GHSA-67mh-4wv8-2f99: esbuild <0.25.0 via @module-federation (breaking major, can't override)
 # - GHSA-j687-52p2-xcff, GHSA-xr5h-phrj-8vxv: astro <6.x in blog/ (major version, separate upgrade)
 # - GHSA-w5hq-g745-h8pq: uuid <11.1.1 in GoDaddy internal packages (major version, can't override)
 # - GHSA-pxg6-pf52-xh8x: cookie <0.7.0 in @social/social-flows (breaking semver, owned by another team)
 auditConfig:
   ignoreGhsas:
-    - GHSA-67mh-4wv8-2f99
     - GHSA-cvhv-6xm6-c3v4
     - GHSA-gxw8-54vm-j6h5
     - GHSA-j687-52p2-xcff
