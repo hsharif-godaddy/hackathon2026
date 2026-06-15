@@ -20,6 +20,8 @@
     "lint": "turbo run lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "knip": "knip",
+    "knip:fix": "knip --fix",
     "test": "./scripts/test.sh",
     "test:e2e": "./scripts/e2e.sh",
     "e2e:v2:test": "./scripts/e2e.sh --env=test --project=e2e-v2",
@@ -53,6 +55,7 @@
     "@testla/cli": "0.6.4",
     "gray-matter": "catalog:",
     "husky": "^8.0.3",
+    "knip": "catalog:",
     "lint-staged": "^15.5.2",
     "prettier": "catalog:",
     "turbo": "^2.9.14"

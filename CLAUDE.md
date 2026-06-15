@@ -69,6 +69,8 @@ pnpm typecheck / lint / test / build     # build/typecheck/lint use Turborepo (c
 
 **Updating dependencies:** `pnpm update --recursive` expands every `"foo": "catalog:"` reference in workspace package.json files to the resolved literal version, defeating the catalog's purpose as a single source of truth. For cataloged deps, edit the version in `pnpm-workspace.yaml` under `catalog:` and run `pnpm install` — the lockfile re-resolves and the `catalog:` references stay intact. Use `pnpm update` only for deps that are NOT in the catalog, and audit the resulting diff for unwanted `catalog:` → literal swaps before committing.
 
+**Auditing dependencies:** `pnpm knip` reports unused deps/exports/files (config in `knip.jsonc`; `pnpm knip:fix` auto-removes — review the diff). Findings are candidates: gasket plugins and other string/convention-loaded code surface as false positives, so verify with a precise `from '<pkg>'` grep before removing, and add confirmed ones to `ignoreDependencies` with a comment.
+
 **Supply-chain settings (`.npmrc`):** `minimum-release-age=10080` (7 days) quarantines newly published packages; `minimum-release-age-exclude=@airo/*,@airo-ux/*` bypasses quarantine for team-owned scopes only (broader GoDaddy scopes stay quarantined by design). `block-exotic-subdeps=true` rejects git:/tarball transitive specifiers. If a Dependabot PR or `pnpm install` blocks on `ERR_PNPM_NO_MATURE_MATCHING_VERSION`, wait out the quarantine or — if genuinely urgent — add the specific package to `minimum-release-age-exclude`, not the whole scope.
 
 **Test filtering (Vitest, not Jest):**

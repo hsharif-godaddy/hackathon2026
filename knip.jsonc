@@ -1,0 +1,79 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+
+  // Knip audits each workspace for unused dependencies, exports, and files.
+  // Run `pnpm knip` for the full report, or `pnpm knip --workspace app` to
+  // focus on one package. See README / https://knip.dev for flags (--fix,
+  // --dependencies, --include exports, etc.).
+  //
+  // SCOPE: the default run covers the build-relevant workspaces only
+  // (app, agents, and the @airo/@airo-ux packages). Peripheral workspaces are
+  // ignored below to keep the first signal actionable — remove an entry from
+  // `ignoreWorkspaces` to start auditing it.
+  "ignoreWorkspaces": [
+    "blog",
+    "cdk",
+    "debug-console",
+    "fanout",
+    "notification-service",
+    "design-rag",
+    "ts-bridge",
+    "evals/**"
+  ],
+
+  // Dependencies that are genuinely used but invisible to static analysis
+  // (loaded by string/convention, required by config, or build-time only).
+  // Add entries here with a comment when a real false-positive is confirmed.
+  "ignoreDependencies": [],
+
+  // System binaries invoked at runtime via execa/child_process — not npm
+  // packages, so not "unlisted dependencies".
+  "ignoreBinaries": ["ffmpeg"],
+
+  "workspaces": {
+    "agents": {
+      // Express service. Production entry is src/server/app.ts (see `start`
+      // script); src/index.ts is the built main field. The scripts/ dir holds
+      // standalone tsx tools, and load-env.cjs bootstraps env before start.
+      // The server entry, main field, and vitest tests are auto-detected;
+      // only the standalone scripts/ tools need to be declared.
+      "entry": ["scripts/**/*.{ts,mjs,cjs}"],
+      // Exclude skill template payloads: these files are copied verbatim into
+      // generated customer apps, so they are not part of the agents service's
+      // own import graph and would otherwise show as false "unused files".
+      "project": [
+        "src/**/*.{ts,tsx}",
+        "!src/skills/**/templates/**",
+        "!src/skills/**/*-templates/**"
+      ]
+    },
+
+    "app": {
+      // Next.js (App Router) — the next plugin auto-detects src/app, next.config,
+      // middleware, server.ts and gasket.ts. These are the gasket runtime config
+      // files (intl, otel, cds, gasket-data, edge) that pull in @gasket/* runtime
+      // libs by convention, plus the node build scripts.
+      "entry": [
+        "gasket.edge.ts",
+        "gasket-data.js",
+        "intl.ts",
+        "intl.js",
+        "otel-setup.js",
+        "cds.host.esm.config.js",
+        "scripts/**/*.{js,mjs,ts}"
+      ],
+      // Confirmed-used but not statically reachable from an entry:
+      "ignoreDependencies": [
+        // Reached at runtime through @godaddy/gasket-plugin-switchboard's
+        // in-process client (peer-style), never imported directly in app
+        // source — so knip can't see it. (See the header comment in
+        // app/src/lib/switchboard/server.ts for how the plugin tree is used.)
+        "@switchboard/client",
+        // Babel helper runtime injected into transpiled output at build time.
+        "@babel/runtime",
+        // Consumed by the build toolchain via browserslist resolution, not imported.
+        "@godaddy/browserslist-config"
+      ]
+    }
+  }
+}
