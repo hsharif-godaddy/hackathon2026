@@ -191,8 +191,13 @@ describe('InputActionsPanel', () => {
     vi.mocked(TodoListStore.useViewState).mockReturnValue(null)
     vi.mocked(useLatestNBAsModule.useLatestNBAs).mockReturnValue(null)
     vi.mocked(useSecretsComposerTakeoverModule.useSecretsComposerTakeover).mockReturnValue(null)
-    vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.PREVIEW, isMobile: false }); }
-    )
+    vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) {
+      return selector({
+        viewMode: ViewMode.PREVIEW,
+        isMobile: false,
+        app: { id: 'test-app-id', initialBuildComplete: false },
+      })
+    })
   })
 
   describe('askQuestion with plan items', () => {
@@ -338,7 +343,7 @@ describe('InputActionsPanel', () => {
       expect(screen.queryByText('Location & hours page')).not.toBeInTheDocument()
     })
 
-    it('reports hideComposerPrompt when askQuestion is active in the theme path', async () => {
+    it('reports hideComposerPrompt for in-turn askQuestion before first build completes', async () => {
       const onHideComposerPromptChange = vi.fn()
       renderWithProviders(
         <InputActionsPanel onHideComposerPromptChange={onHideComposerPromptChange} />,
@@ -347,7 +352,7 @@ describe('InputActionsPanel', () => {
       await waitFor(() => expect(onHideComposerPromptChange).toHaveBeenCalledWith(true))
     })
 
-    it('reports hideComposerPrompt when askQuestion is active in the legacy path', async () => {
+    it('reports hideComposerPrompt for in-turn askQuestion in the legacy path', async () => {
       vi.mocked(Switchboard.useSwitchboard).mockImplementation(function (flag: string) {
         if (flag === 'airo-builder-theme-selection-chat') return false
         if (flag === 'airo-builder-font-selection-chat') return false
@@ -359,6 +364,24 @@ describe('InputActionsPanel', () => {
       )
 
       await waitFor(() => expect(onHideComposerPromptChange).toHaveBeenCalledWith(true))
+    })
+
+    it('keeps composer prompt visible for post-build continue-building askQuestion', async () => {
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) {
+        return selector({
+          viewMode: ViewMode.PREVIEW,
+          isMobile: false,
+          app: { id: 'test-app-id', initialBuildComplete: true },
+        })
+      })
+      const onHideComposerPromptChange = vi.fn()
+      renderWithProviders(
+        <InputActionsPanel onHideComposerPromptChange={onHideComposerPromptChange} />,
+      )
+
+      await waitFor(() => expect(onHideComposerPromptChange).toHaveBeenCalled())
+      expect(onHideComposerPromptChange).not.toHaveBeenCalledWith(true)
+      expect(onHideComposerPromptChange).toHaveBeenLastCalledWith(false)
     })
 
     it('does not hide composer prompt for NBA suggestions', async () => {
@@ -376,7 +399,7 @@ describe('InputActionsPanel', () => {
       expect(screen.getByText('Add a contact page')).toBeInTheDocument()
     })
 
-    it('restores composer prompt when askQuestion collapsible is collapsed', async () => {
+    it('restores composer prompt when in-turn askQuestion collapsible is collapsed', async () => {
       const onHideComposerPromptChange = vi.fn()
       const { user } = renderWithProviders(
         <InputActionsPanel onHideComposerPromptChange={onHideComposerPromptChange} />,

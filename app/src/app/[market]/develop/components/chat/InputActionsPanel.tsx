@@ -94,14 +94,22 @@ type InputActionsPanelProps = {
   /** External trigger to collapse the panel (e.g., when chat input grows) */
   shouldCollapse?: boolean
   /**
-   * Fired when Initial/Follow-up askQuestion UI should replace the free-text
-   * PromptBox (true) or when the composer prompt should return (false).
-   * NBA and next-action Continue Building surfaces do not hide the prompt.
+   * Fired when in-turn Initial/Follow-up askQuestion UI (before first build
+   * completes) should replace the free-text PromptBox (true), or when the
+   * composer prompt should return (false). Idle Continue Building NBAs —
+   * including post-build design feedback askQuestion — do not hide the prompt.
    */
   onHideComposerPromptChange?: (hidden: boolean) => void
   // FBF props (internal, passed from wrapper to variants)
   feedbackActive?: boolean
   feedback?: import('./useFirstBuildFeedback').UseFirstBuildFeedbackResult | null
+}
+
+function shouldHideComposerForAskQuestion(
+  isAskQuestionActive: boolean,
+  initialBuildComplete: boolean | undefined,
+): boolean {
+  return isAskQuestionActive && initialBuildComplete !== true
 }
 
 function usePublishHideComposerPrompt(
@@ -177,6 +185,7 @@ function InputActionsPanelLegacy({
   const isStreaming = useIsActivelyStreaming()
   const isLoading = useIsLoading()
   const isProcessing = isStreaming || isLoading
+  const initialBuildComplete = useDevelopPageStore((state) => state.app?.initialBuildComplete)
 
   const [fullPlanExpanded, setFullPlanExpanded] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -361,7 +370,10 @@ function InputActionsPanelLegacy({
   const showOtherInput = nbaData?.source === 'askQuestion' && nbaData?.allowOther
   const isAskQuestionActive = isAskQuestionNBA(nbaData) && !!nbaData?.toolResult && !askQuestionCompleted
 
-  usePublishHideComposerPrompt(isAskQuestionActive, onHideComposerPromptChange)
+  usePublishHideComposerPrompt(
+    shouldHideComposerForAskQuestion(isAskQuestionActive, initialBuildComplete),
+    onHideComposerPromptChange,
+  )
 
   const nbaCombinedChoiceListRef = useRef<HTMLDivElement>(null)
   const focusNBAChoiceOptionByIndex = useCallback(
@@ -1079,6 +1091,7 @@ function InputActionsPanelThemeSelection({
   const messages = useMessages()
   const viewMode = useDevelopPageStore((state) => state.viewMode)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
+  const initialBuildComplete = useDevelopPageStore((state) => state.app?.initialBuildComplete)
   const appId = useAppIdFromParams()
 
   const nbaDataRaw = useLatestNBAs(feedbackActive)
@@ -1216,7 +1229,10 @@ function InputActionsPanelThemeSelection({
   }, [isAskQuestionActive, nbaData?.toolResult])
 
   const hideComposerPrompt =
-    isAskQuestionActive && continueBuildingExpanded && !showColor && !showFont
+    shouldHideComposerForAskQuestion(isAskQuestionActive, initialBuildComplete) &&
+    continueBuildingExpanded &&
+    !showColor &&
+    !showFont
   usePublishHideComposerPrompt(hideComposerPrompt, onHideComposerPromptChange)
 
   // Prepend the current applied theme to the suggestions if it exists, filtering duplicates by name
