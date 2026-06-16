@@ -1738,6 +1738,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         ...(agentCtx?.useAtlasCrawler && { useAtlasCrawler: true }),
         ...(agentCtx?.rebuildIntakeFormEnabled && { rebuildIntakeFormEnabled: true }),
         ...(rebuildDesignDirection && { rebuildDesignDirection }),
+        ...(content && { _userMessage: content }),
         ...(agentCtx?.marketingCampaignsEnabled && { marketingCampaignsEnabled: true }),
       },
       ...(contextAttachments.length > 0 && { contextAttachments }),

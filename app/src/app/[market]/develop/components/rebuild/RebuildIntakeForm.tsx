@@ -40,7 +40,8 @@ const DESIGN_OPTIONS: { id: DesignChoiceId; labelKey: string }[] = [
 ]
 
 function designChoiceToDirection(id: DesignChoiceId): DesignDirection {
-  if (id === 'airo_decide' || id === 'keep_similar') return 'keep-similar'
+  if (id === 'keep_similar') return 'keep-similar'
+  if (id === 'airo_decide') return 'modernize'
   return id
 }
 
@@ -60,7 +61,7 @@ export default function RebuildIntakeForm({ appId, sourceUrl }: RebuildIntakeFor
   // initial selection AND the "use recommended defaults" path so the choice isn't lost.
   const [homepageChoice] = useState<RebuildModalDirection | null>(() => readDesignChoiceForId(null, appId))
   const [designChoice, setDesignChoice] = useState<DesignChoiceId>(() =>
-    homepageChoice ? directionToDesignChoiceId(homepageChoice) : 'keep_similar',
+    homepageChoice ? directionToDesignChoiceId(homepageChoice) : 'modernize',
   )
   const { data: workflowStatus } = useRebuildWorkflowStatus(appId, true)
   const { data: scopeEstimates, isLoading: estimatesLoading, isError: estimatesError } = useRebuildScopeEstimates(appId)
@@ -269,11 +270,11 @@ export default function RebuildIntakeForm({ appId, sourceUrl }: RebuildIntakeFor
           onClick={function useDefaults() {
             userSubmittedRef.current = true
             // Recommended defaults skip the scope decision, but still honor the design
-            // direction the user chose upfront on the homepage (keep-similar otherwise).
-            const designDirection: DesignDirection = homepageChoice ?? 'keep-similar'
+            // direction the user chose upfront on the homepage (modernize otherwise).
+            const designDirection: DesignDirection = homepageChoice ?? 'modernize'
             trackRebuildIntakeSubmitted({
               scope: 'homepage_only',
-              designChoice: homepageChoice ? directionToDesignChoiceId(homepageChoice) : 'keep_similar',
+              designChoice: homepageChoice ? directionToDesignChoiceId(homepageChoice) : 'modernize',
               designDirection,
               submitSource: 'defaults',
               sourceUrl,

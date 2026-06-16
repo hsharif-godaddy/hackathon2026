@@ -58,8 +58,8 @@ describe('rebuildIntakeInstrumentation', function rebuildIntakeInstrumentationTe
     expect(mockLogImpressionEvent).toHaveBeenCalledTimes(1)
     expect(mockLogImpressionEvent).toHaveBeenCalledWith('develop.rebuild.intaketimeout', {
       scope: 'homepage_only',
-      designChoice: 'keep_similar',
-      designDirection: 'keep-similar',
+      designChoice: 'modernize',
+      designDirection: 'modernize',
       submitSource: 'timeout',
       sourceUrl: 'https://example.com',
     })

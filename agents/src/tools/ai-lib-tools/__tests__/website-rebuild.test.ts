@@ -137,6 +137,32 @@ describe('websiteRebuild orchestration', function websiteRebuildOrchestration() 
     await run({ rebuildIntakeFormEnabled: false });
 
     expect(mockSubmitStylePreferences).toHaveBeenCalledWith('app1', expect.objectContaining({
+      designDirection: 'modernize',
+    }));
+  });
+
+  it('infers modernize from user message when no client direction', async function messageModernize() {
+    mockWaitForScrapeCompletion.mockResolvedValue(baseState({ stylePreferences: undefined }));
+
+    await run({
+      rebuildIntakeFormEnabled: false,
+      _userMessage: 'rebuild and modernize my site: https://example.com',
+    });
+
+    expect(mockSubmitStylePreferences).toHaveBeenCalledWith('app1', expect.objectContaining({
+      designDirection: 'modernize',
+    }));
+  });
+
+  it('infers keep-similar from user message when no client direction', async function messageClone() {
+    mockWaitForScrapeCompletion.mockResolvedValue(baseState({ stylePreferences: undefined }));
+
+    await run({
+      rebuildIntakeFormEnabled: false,
+      _userMessage: 'rebuild my site, keep a similar look',
+    });
+
+    expect(mockSubmitStylePreferences).toHaveBeenCalledWith('app1', expect.objectContaining({
       designDirection: 'keep-similar',
     }));
   });
@@ -151,18 +177,27 @@ describe('websiteRebuild orchestration', function websiteRebuildOrchestration() 
     }));
   });
 
-  it('falls back to keep-similar for an invalid client design direction', async function invalidDirection() {
+  it('falls back to modernize for an invalid client design direction', async function invalidDirection() {
     mockWaitForScrapeCompletion.mockResolvedValue(baseState({ stylePreferences: undefined }));
 
     await run({ rebuildIntakeFormEnabled: false, rebuildDesignDirection: 'nonsense' });
 
     expect(mockSubmitStylePreferences).toHaveBeenCalledWith('app1', expect.objectContaining({
-      designDirection: 'keep-similar',
+      designDirection: 'modernize',
     }));
   });
 
-  it('passes the homepage design direction to the intake timeout fallback', async function timeoutDirection() {
+  it('passes resolved design direction to the intake timeout fallback', async function timeoutDirection() {
     await run({ rebuildIntakeFormEnabled: true, rebuildDesignDirection: 'modernize' });
+
+    expect(mockWaitForIntake).toHaveBeenCalledWith(expect.anything(), 'app1', { designDirection: 'modernize' });
+  });
+
+  it('passes inferred modernize direction to intake when message contains modernize', async function timeoutInferred() {
+    await run({
+      rebuildIntakeFormEnabled: true,
+      _userMessage: 'rebuild and modernize my site',
+    });
 
     expect(mockWaitForIntake).toHaveBeenCalledWith(expect.anything(), 'app1', { designDirection: 'modernize' });
   });

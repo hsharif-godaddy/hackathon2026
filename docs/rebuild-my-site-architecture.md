@@ -431,7 +431,7 @@ The `websiteRebuild` tool polls for background scrape completion:
 
 ## Key Design Decisions
 
-1. **Default style preferences** — Auto-applied (`keep-similar`/`keep-original`/`responsive`). The `style_questions` state exists but is skipped.
+1. **Default style preferences** — `designDirection` resolves in order: (1) valid client choice (`rebuildDesignDirection` from the homepage modal or intake submit), (2) prompt keyword inference (`modernize` / `reimagine` / scoped `refresh the design` vs clone / negated-modernize / `as-is` phrases), (3) default `modernize`. Applied on intake timeout, intake-form-off, and when scrape completes without stored preferences. Other defaults: `keep-original` colors/typography, `responsive` layout. The `style_questions` state exists but is skipped.
 
 2. **Homepage-first strategy** — Homepage gets full setup (colors, fonts, nav, footer). Inner pages only generate content-area prompts.
 

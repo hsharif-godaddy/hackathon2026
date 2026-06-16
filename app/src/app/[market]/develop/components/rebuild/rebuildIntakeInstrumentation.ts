@@ -36,8 +36,8 @@ export function trackRebuildIntakeTimedOut(sourceUrl: string) {
   loggedIntakeTimeouts.add(key)
   logImpressionEvent('develop.rebuild.intaketimeout', {
     scope: 'homepage_only',
-    designChoice: 'keep_similar',
-    designDirection: 'keep-similar',
+    designChoice: 'modernize',
+    designDirection: 'modernize',
     submitSource: 'timeout',
     sourceUrl,
   })()

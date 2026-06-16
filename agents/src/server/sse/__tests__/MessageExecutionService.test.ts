@@ -2050,6 +2050,29 @@ describe('MessageExecutionService', () => {
       const executionContext = deps.contextManager.loadContextMessages.mock.calls[0][0]
       expect(executionContext.metadata.rebuildDesignDirection).toBeUndefined()
     })
+
+    it('threads _userMessage into executionContext metadata for rebuild prompt inference', async () => {
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        content: 'rebuild my site, keep a similar look',
+      })
+
+      const executionContext = deps.contextManager.loadContextMessages.mock.calls[0][0]
+      expect(executionContext.metadata._userMessage).toBe('rebuild my site, keep a similar look')
+    })
+
+    it('omits _userMessage from metadata when content is empty', async () => {
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, content: '' })
+
+      const executionContext = deps.contextManager.loadContextMessages.mock.calls[0][0]
+      expect(executionContext.metadata._userMessage).toBeUndefined()
+    })
   })
 
   describe('subscribeStream (late-join)', () => {

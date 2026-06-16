@@ -123,15 +123,15 @@ describe('RebuildIntakeForm', () => {
 
     expect(mockTrackSubmitted).toHaveBeenCalledWith({
       scope: 'homepage_only',
-      designChoice: 'keep_similar',
-      designDirection: 'keep-similar',
+      designChoice: 'modernize',
+      designDirection: 'modernize',
       submitSource: 'submit',
       sourceUrl: 'https://example.com',
     })
 
     await waitFor(() => {
       expect(mockMutate).toHaveBeenCalledWith(
-        { scope: 'homepage_only', designDirection: 'keep-similar' },
+        { scope: 'homepage_only', designDirection: 'modernize' },
         expect.any(Object),
       )
     })
@@ -144,15 +144,15 @@ describe('RebuildIntakeForm', () => {
 
     expect(mockTrackSubmitted).toHaveBeenCalledWith({
       scope: 'homepage_only',
-      designChoice: 'keep_similar',
-      designDirection: 'keep-similar',
+      designChoice: 'modernize',
+      designDirection: 'modernize',
       submitSource: 'defaults',
       sourceUrl: 'https://example.com',
     })
 
     await waitFor(() => {
       expect(mockMutate).toHaveBeenCalledWith(
-        { scope: 'homepage_only', designDirection: 'keep-similar' },
+        { scope: 'homepage_only', designDirection: 'modernize' },
         expect.any(Object),
       )
     })
@@ -225,14 +225,14 @@ describe('RebuildIntakeForm', () => {
       })
     })
 
-    it('falls back to keep_similar when no choice is persisted', async () => {
+    it('falls back to modernize when no choice is persisted', async () => {
       render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
 
       fireEvent.click(screen.getByTestId('rebuild-intake-submit'))
 
       await waitFor(() => {
         expect(mockMutate).toHaveBeenCalledWith(
-          { scope: 'homepage_only', designDirection: 'keep-similar' },
+          { scope: 'homepage_only', designDirection: 'modernize' },
           expect.any(Object),
         )
       })
@@ -282,7 +282,7 @@ describe('RebuildIntakeForm', () => {
   })
 
   it.each([
-    ['default:builder_rebuild_intake_design_airo_decide', 'keep-similar'],
+    ['default:builder_rebuild_intake_design_airo_decide', 'modernize'],
     ['default:builder_rebuild_intake_design_keep_similar', 'keep-similar'],
     ['default:builder_rebuild_intake_design_modernize', 'modernize'],
     ['default:builder_rebuild_intake_design_simplify', 'simplify'],
@@ -298,6 +298,21 @@ describe('RebuildIntakeForm', () => {
         { scope: 'homepage_only', designDirection: expectedDirection },
         expect.any(Object),
       )
+    })
+  })
+
+  it('keeps airo_decide as analytics designChoice while submitting modernize direction', async function airoDecideAnalytics() {
+    render(<RebuildIntakeForm appId="app-abc" sourceUrl="https://example.com" />)
+
+    fireEvent.click(screen.getByLabelText('default:builder_rebuild_intake_design_airo_decide'))
+    fireEvent.click(screen.getByTestId('rebuild-intake-submit'))
+
+    expect(mockTrackSubmitted).toHaveBeenCalledWith({
+      scope: 'homepage_only',
+      designChoice: 'airo_decide',
+      designDirection: 'modernize',
+      submitSource: 'submit',
+      sourceUrl: 'https://example.com',
     })
   })
 })

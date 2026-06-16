@@ -189,14 +189,14 @@ develop.initialBuild.start        ← create flow begins
 | `develop.rebuild.intakeform` | impression | Rebuild intake form renders (scope + design) | `sourceUrl` |
 | `develop.rebuild.intakeform.error` | impression | Scope estimates failed or returned empty while awaiting intake | `sourceUrl`, `reason` (`fetch_failed` \| `empty_estimates`) |
 | `develop.rebuild.intakesubmit` | click | User clicks **Start rebuild** on intake form | `scope`, `designChoice`, `designDirection`, `submitSource` (`submit`), `sourceUrl` |
-| `develop.rebuild.intakedefaults` | click | User clicks **Use recommended defaults** | `scope` (`homepage_only`), `designChoice` (`keep_similar`), `designDirection` (`keep-similar`), `submitSource` (`defaults`), `sourceUrl` |
-| `develop.rebuild.intaketimeout` | impression | Backend auto-applies defaults after 10-minute intake wait | `scope` (`homepage_only`), `designChoice` (`keep_similar`), `designDirection` (`keep-similar`), `submitSource` (`timeout`), `sourceUrl` |
+| `develop.rebuild.intakedefaults` | click | User clicks **Use recommended defaults** | `scope` (`homepage_only`), `designChoice` (`modernize` when no homepage modal choice), `designDirection` (`modernize` when no homepage modal choice), `submitSource` (`defaults`), `sourceUrl` |
+| `develop.rebuild.intaketimeout` | impression | Backend auto-applies defaults after 10-minute intake wait | `scope` (`homepage_only`), `designChoice` (`modernize`), `designDirection` (`modernize`), `submitSource` (`timeout`), `sourceUrl` |
 
 **Intake selection fields (product reporting):**
 
 - **`scope`** — `homepage_only` \| `small` \| `large`
 - **`designChoice`** — UI radio id: `airo_decide` \| `keep_similar` \| `modernize` \| `simplify` \| `bold`
-- **`designDirection`** — value sent to agents API (`airo_decide` maps to `keep-similar`)
+- **`designDirection`** — value sent to agents API (`airo_decide` maps to `modernize`; default when unspecified is `modernize`)
 
 ### Edit
 

@@ -76,14 +76,14 @@ describe('RebuildOrchestrationService intake', () => {
     );
   });
 
-  it('submitDefaultIntake applies homepage_only and keep-similar defaults', async () => {
+  it('submitDefaultIntake applies homepage_only and modernize defaults', async () => {
     const service = new RebuildOrchestrationService(appDir);
     await service.beginRebuild('app-123', 'https://example.com');
 
     const state = await service.submitDefaultIntake('app-123');
 
     expect(state.rebuildScope).toBe('homepage_only');
-    expect(state.stylePreferences?.designDirection).toBe('keep-similar');
+    expect(state.stylePreferences?.designDirection).toBe('modernize');
     expect(state.status).toBe('scraping');
   });
 });

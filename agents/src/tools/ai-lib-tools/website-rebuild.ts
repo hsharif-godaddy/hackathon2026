@@ -4,7 +4,10 @@ import { z } from 'zod'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
 import { Logger } from '../../logging/index.js'
 import { RebuildOrchestrationService } from '../../services/RebuildOrchestrationService.js'
-import { stylePreferencesForDirection } from '../../services/rebuild/intake-defaults.js'
+import {
+  resolveDesignDirection,
+  stylePreferencesForDirection,
+} from '../../services/rebuild/intake-defaults.js'
 import {
   asRebuildError,
   type RebuildWorkflowState,
@@ -32,6 +35,7 @@ async function ensureStylePreferencesReady(
   appId: string,
   completedState: RebuildWorkflowState,
   designDirection?: unknown,
+  userMessage?: unknown,
 ): Promise<void> {
   if (completedState.stylePreferences) {
     if (completedState.status === 'style_questions') {
@@ -39,8 +43,8 @@ async function ensureStylePreferencesReady(
     }
     return
   }
-  // No intake (flag off) — seed defaults, honoring the homepage modal direction.
-  await service.submitStylePreferences(appId, stylePreferencesForDirection(designDirection))
+  // No intake (flag off) — seed defaults from modal choice, prompt keywords, or modernize default.
+  await service.submitStylePreferences(appId, stylePreferencesForDirection(designDirection, userMessage))
 }
 
 export const websiteRebuildAITool: Tool = createTool(
@@ -83,10 +87,11 @@ This tool starts the website rebuild process:
     const rebuildIntakeFormEnabled =
       context?.metadata?.rebuildIntakeFormEnabled === true && !app.initialBuildComplete
 
-    // Homepage modal choice, threaded from the client message context. Drives the
-    // design direction on the flag-off path and the intake timeout fallback, so a
-    // "reimagine" rebuild isn't silently defaulted to keep-similar.
+    // Homepage modal choice, threaded from the client message context. Prompt keywords
+    // fill the gap when users type free-text (e.g. "rebuild and modernize") without the modal.
     const rebuildDesignDirection = context?.metadata?.rebuildDesignDirection
+    const userMessage = context?.metadata?._userMessage
+    const resolvedDesignDirection = resolveDesignDirection(rebuildDesignDirection, userMessage)
 
     logger.info('websiteRebuild.start', {
       appId,
@@ -95,6 +100,7 @@ This tool starts the website rebuild process:
       hasSocketId: !!socketId,
       rebuildIntakeFormEnabled,
       rebuildDesignDirection: rebuildDesignDirection ?? null,
+      resolvedDesignDirection,
       initialBuildComplete: !!app.initialBuildComplete,
     })
 
@@ -109,7 +115,7 @@ This tool starts the website rebuild process:
 
     try {
       if (rebuildIntakeFormEnabled) {
-        const intakeResult = await waitForIntake(service, appId, { designDirection: rebuildDesignDirection })
+        const intakeResult = await waitForIntake(service, appId, { designDirection: resolvedDesignDirection })
         intakeTimedOut = intakeResult.intakeTimedOut
       }
 
@@ -121,7 +127,7 @@ This tool starts the website rebuild process:
         rebuildScope: completedState.rebuildScope,
       })
 
-      await ensureStylePreferencesReady(service, appId, completedState, rebuildDesignDirection)
+      await ensureStylePreferencesReady(service, appId, completedState, rebuildDesignDirection, userMessage)
 
       const { slugs, homepagePrompt } = await service.buildUpfrontPagePrompts(appId)
       const upfrontBuildSlugs = slugs.slice(1)
