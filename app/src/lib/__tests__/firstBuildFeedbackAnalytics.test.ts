@@ -18,7 +18,6 @@ import {
   trackCloseSelection,
   trackFeedbackResponse,
   trackFeedbackShown,
-  trackFollowupResponse,
   trackOffbaseAction,
 } from '../firstBuildFeedbackAnalytics'
 
@@ -45,42 +44,42 @@ describe('firstBuildFeedbackAnalytics', () => {
     )
   })
 
-  it('trackFollowupResponse fires click with step and hadChipSelection', () => {
-    trackFollowupResponse('close_followup', true, 'app123')
-    expect(mockLogClick).toHaveBeenCalledWith(
-      'develop.first_build_feedback.close_followup.submit',
-      { appId: 'app123', hadChipSelection: true }
-    )
-  })
-
-  it('trackCloseSelection fires click with color_scheme selection', () => {
+  it('trackCloseSelection fires click with color_scheme — 3-part EID (parseEID requires exactly 2 dots)', () => {
     trackCloseSelection('color_scheme', 'app123')
     expect(mockLogClick).toHaveBeenCalledWith(
-      'develop.first_build_feedback.close.color_scheme',
+      'develop.first_build_feedback.close_color_scheme',
       { appId: 'app123' }
     )
   })
 
-  it('trackCloseSelection fires click with skipped selection', () => {
+  it('trackCloseSelection fires click with fonts', () => {
+    trackCloseSelection('fonts', 'app123')
+    expect(mockLogClick).toHaveBeenCalledWith(
+      'develop.first_build_feedback.close_fonts',
+      { appId: 'app123' }
+    )
+  })
+
+  it('trackCloseSelection fires click with skipped', () => {
     trackCloseSelection('skipped', 'app123')
     expect(mockLogClick).toHaveBeenCalledWith(
-      'develop.first_build_feedback.close.skipped',
+      'develop.first_build_feedback.close_skipped',
       { appId: 'app123' }
     )
   })
 
-  it('trackOffbaseAction fires click with submit action', () => {
+  it('trackOffbaseAction fires click with submit — 3-part EID', () => {
     trackOffbaseAction('submit', 'app123')
     expect(mockLogClick).toHaveBeenCalledWith(
-      'develop.first_build_feedback.offbase.submit',
+      'develop.first_build_feedback.offbase_submit',
       { appId: 'app123' }
     )
   })
 
-  it('trackOffbaseAction fires click with skipped action', () => {
+  it('trackOffbaseAction fires click with skipped', () => {
     trackOffbaseAction('skipped', 'app123')
     expect(mockLogClick).toHaveBeenCalledWith(
-      'develop.first_build_feedback.offbase.skipped',
+      'develop.first_build_feedback.offbase_skipped',
       { appId: 'app123' }
     )
   })
