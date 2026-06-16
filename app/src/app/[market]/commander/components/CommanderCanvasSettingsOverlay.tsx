@@ -50,7 +50,7 @@ export function CommanderCanvasSettingsOverlay() {
         transition={SHEET_TRANSITION}
         aria-hidden={!isActiveSettings}
         className={clsx(
-          'absolute top-0 bottom-0 right-2.5 left-1 flex flex-col p-2.5 rounded-t-lg overflow-hidden shadow-lg bg-intents-ux-box-backgroundColor',
+          'absolute top-0 bottom-0 right-1 left-1 flex flex-col p-2.5 rounded-t-lg overflow-hidden shadow-lg bg-intents-ux-box-backgroundColor',
           isActiveSettings ? 'pointer-events-auto' : 'pointer-events-none',
         )}
       >
@@ -73,7 +73,7 @@ export function CommanderCanvasSettingsOverlay() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={SHEET_TRANSITION}
-          className="absolute top-0 bottom-0 right-2.5 left-1 flex flex-col px-2.5 rounded-t-lg overflow-hidden shadow-lg bg-intents-ux-box-backgroundColor"
+          className="absolute top-0 bottom-0 right-1 left-1 flex flex-col px-2.5 rounded-t-lg overflow-hidden shadow-lg bg-intents-ux-box-backgroundColor"
         >
           <div className="flex items-center justify-end py-1.5 shrink-0">
             <Button

@@ -169,7 +169,7 @@ export function Commander({ appId, chatPane }: CommanderProps) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="pt-3 pb-2 px-2 shrink-0 flex items-center gap-1.5"
+              className="p-2 shrink-0 flex items-center gap-1.5"
             >
               <CommanderLogo appId={appId} source="commander-panel" />
             </motion.div>

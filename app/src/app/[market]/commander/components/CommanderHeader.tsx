@@ -89,7 +89,7 @@ export default function CommanderHeader({ desktopLogo, mobileLogo }: CommanderHe
       </motion.div>
 
       {!isMobile && (
-        <div className="p-1.5 md:p-2.5 grow">
+        <div className="px-1.5 py-1 md:px-2.5 md:py-1 grow">
           <Box
             orientation="horizontal"
             blockAlignChildren="spaceBetween"

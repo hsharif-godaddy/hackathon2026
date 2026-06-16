@@ -121,14 +121,14 @@ export function CommanderShell({
       >
         <CommanderHeader desktopLogo={desktopLogo} mobileLogo={mobileLogo} />
         <div className="relative flex-1 min-h-0 overflow-hidden">
-          <div id="preview-pane-container" className="absolute inset-0 flex flex-col isolate">
+          <div id="preview-pane-container" className="absolute inset-0 flex flex-col isolate [&>div]:pe-1!">
             {previewPaneNode}
           </div>
           {isBrandActive && appId && (
             <div
               className={
                 isCanvasTabsEnabled
-                  ? 'absolute top-0 bottom-0 right-2.5 left-1 rounded-t-lg overflow-hidden shadow-lg'
+                  ? 'absolute top-0 bottom-0 right-1 left-1 rounded-t-lg overflow-hidden shadow-lg'
                   : 'absolute inset-0 z-20 overflow-hidden rounded-lg md:rounded-b-none'
               }
               data-testid="brand-book-overlay"
