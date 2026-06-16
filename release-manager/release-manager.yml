@@ -219,6 +219,7 @@ pipeline:
           name: E2E Tests (Prod)
           group: validate-prod
           advisory: true # prod already live; failure does not withhold the release tag
+          test_summary: true # render per-suite counts + failed tests from the run's e2e-summary artifact
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
           active_run_check: false
@@ -231,6 +232,7 @@ pipeline:
           name: Regression Tests (Prod)
           group: validate-prod
           advisory: true # prod already live; failure does not withhold the release tag
+          test_summary: true # render per-suite counts + failed tests from the run's e2e-summary artifact
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
           active_run_check: false
