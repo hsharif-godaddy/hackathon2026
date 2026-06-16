@@ -26,6 +26,17 @@ func clearEnv(t *testing.T) {
 	t.Setenv("AUTH_TYPE", "none")
 }
 
+// setDeployedEnv sets ENVIRONMENT plus the TLS paths Load() now requires for
+// any non-local environment (security-review: no plain-HTTP fallback in
+// deployed envs). Tests focused on unrelated config can call this instead of
+// repeating the cert/key boilerplate.
+func setDeployedEnv(t *testing.T, env string) {
+	t.Helper()
+	t.Setenv("ENVIRONMENT", env)
+	t.Setenv("SERVER_CERT_PATH", "/tmp/cert.pem")
+	t.Setenv("SERVER_KEY_PATH", "/tmp/key.pem")
+}
+
 func TestLoadDefaults(t *testing.T) {
 	clearEnv(t)
 	cfg, err := Load()
@@ -117,6 +128,9 @@ func TestLoadNormalizesEnumWhitespaceAndCase(t *testing.T) {
 	t.Setenv("ENVIRONMENT", "  dev  ")
 	t.Setenv("LOG_LEVEL", " DEBUG ")
 	t.Setenv("LOG_FORMAT", " Text ")
+	// "  dev  " trims to a deployed env; satisfy the TLS-required check.
+	t.Setenv("SERVER_CERT_PATH", "/tmp/cert.pem")
+	t.Setenv("SERVER_KEY_PATH", "/tmp/key.pem")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -163,6 +177,44 @@ func TestLoadAcceptsBothTLSPaths(t *testing.T) {
 	}
 	if cfg.TLSCertPath != "/tmp/cert.pem" || cfg.TLSKeyPath != "/tmp/key.pem" {
 		t.Errorf("TLS paths: cert=%q key=%q", cfg.TLSCertPath, cfg.TLSKeyPath)
+	}
+}
+
+// TestLoadRequiresTLSInDeployedEnvs locks in the security-review contract
+// (no plain-HTTP fallback in deployed environments). Local stays
+// plain-HTTP-allowed for dev convenience; dev/test/prod must error out at
+// startup if SERVER_CERT_PATH / SERVER_KEY_PATH aren't set, so a build or
+// env-var passthrough regression can't silently produce a non-TLS prod task.
+func TestLoadRequiresTLSInDeployedEnvs(t *testing.T) {
+	for _, env := range []string{"dev", "test", "prod"} {
+		t.Run(env, func(t *testing.T) {
+			clearEnv(t)
+			t.Setenv("ENVIRONMENT", env)
+			// dev/test/prod also require SSO_HOST when AUTH_TYPE=jwt; clearEnv
+			// sets AUTH_TYPE=none so the TLS check is what fails first.
+			_, err := Load()
+			if err == nil {
+				t.Fatalf("ENVIRONMENT=%s: want error when TLS paths unset, got nil", env)
+			}
+			if !strings.Contains(err.Error(), "SERVER_CERT_PATH") {
+				t.Errorf("ENVIRONMENT=%s: error should mention SERVER_CERT_PATH; got %q", env, err)
+			}
+		})
+	}
+}
+
+// TestLoadAllowsPlainHTTPOnlyForLocal complements the deployed-env test:
+// Environment=local with TLS unset must succeed (the documented local-dev
+// path). Together these two tests pin the policy boundary.
+func TestLoadAllowsPlainHTTPOnlyForLocal(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("ENVIRONMENT", "local")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.TLSCertPath != "" || cfg.TLSKeyPath != "" {
+		t.Errorf("local TLS paths should default empty; got cert=%q key=%q", cfg.TLSCertPath, cfg.TLSKeyPath)
 	}
 }
 
@@ -446,7 +498,7 @@ func TestLoadHostingCertAuthAcceptsBothPEM(t *testing.T) {
 
 func TestLoadStripeClientDefaultsToFake(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("ENVIRONMENT", "dev")
+	setDeployedEnv(t, "dev")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -458,7 +510,7 @@ func TestLoadStripeClientDefaultsToFake(t *testing.T) {
 
 func TestLoadStripeClientAcceptsReal(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("ENVIRONMENT", "dev")
+	setDeployedEnv(t, "dev")
 	t.Setenv("STRIPE_CLIENT", "real")
 	cfg, err := Load()
 	if err != nil {
@@ -482,7 +534,7 @@ func TestLoadStripeClientNormalizesCaseAndWhitespace(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.raw, func(t *testing.T) {
 			clearEnv(t)
-			t.Setenv("ENVIRONMENT", "dev")
+			setDeployedEnv(t, "dev")
 			t.Setenv("STRIPE_CLIENT", c.raw)
 			cfg, err := Load()
 			if err != nil {
@@ -497,7 +549,7 @@ func TestLoadStripeClientNormalizesCaseAndWhitespace(t *testing.T) {
 
 func TestLoadStripeClientRejectsInvalidEnum(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("ENVIRONMENT", "dev")
+	setDeployedEnv(t, "dev")
 	t.Setenv("STRIPE_CLIENT", "mock")
 	_, err := Load()
 	if err == nil {
@@ -525,7 +577,7 @@ func TestLoadStripeClientForcesFakeInLocalEnv(t *testing.T) {
 
 func TestLoadStripeAPIBaseURLAndVersionPassThrough(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("ENVIRONMENT", "dev")
+	setDeployedEnv(t, "dev")
 	t.Setenv("STRIPE_API_BASE_URL", "https://api.stripe.test")
 	t.Setenv("STRIPE_API_VERSION", "2024-12-01.preview")
 	cfg, err := Load()
@@ -544,7 +596,7 @@ func TestLoadStripeAPIDefaultsAreEmpty(t *testing.T) {
 	// Empty defaults so the wiring layer falls back to stripeapi's
 	// own defaults (https://api.stripe.com, pinned preview version).
 	clearEnv(t)
-	t.Setenv("ENVIRONMENT", "dev")
+	setDeployedEnv(t, "dev")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)

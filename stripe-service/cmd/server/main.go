@@ -139,13 +139,24 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	errCh := make(chan error, 1)
-	tlsEnabled := cfg.TLSCertPath != "" && cfg.TLSKeyPath != ""
+	// TLS is required in every deployed environment — config.Load enforces
+	// SERVER_CERT_PATH and SERVER_KEY_PATH whenever ENVIRONMENT != local, so by
+	// the time we get here, plain HTTP is reachable only with ENVIRONMENT=local
+	// and both TLS paths empty. Listening explicitly on each branch (rather
+	// than a tlsEnabled flag) keeps the security-sensitive choice grep-able and
+	// removes any implicit fallback for a deployed instance.
 	go func() {
 		var err error
-		if tlsEnabled {
+		switch {
+		case cfg.TLSCertPath != "":
 			err = httpSrv.ListenAndServeTLS(cfg.TLSCertPath, cfg.TLSKeyPath)
-		} else {
+		case cfg.Environment == config.EnvLocal:
 			err = httpSrv.ListenAndServe()
+		default:
+			// Defense-in-depth: config.Load should have already errored, but
+			// if a future refactor weakens that check we refuse to start
+			// rather than silently fall back to plain HTTP.
+			err = fmt.Errorf("refusing to start: TLS is required when ENVIRONMENT=%s", cfg.Environment)
 		}
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err

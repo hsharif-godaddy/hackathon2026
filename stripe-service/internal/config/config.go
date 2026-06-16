@@ -170,6 +170,14 @@ func Load() (Config, error) {
 	if (cfg.TLSCertPath != "") != (cfg.TLSKeyPath != "") {
 		return Config{}, fmt.Errorf("SERVER_CERT_PATH and SERVER_KEY_PATH must both be set or both empty")
 	}
+	// TLS is mandatory in every deployed environment — there must be no path
+	// by which stripe-service starts in plain HTTP outside local dev. The
+	// container image (Dockerfile) bakes both paths in, so prod/test/dev get
+	// TLS by construction; this check makes that contract explicit and fails
+	// loud if an env-var passthrough or build change ever drops the cert.
+	if cfg.Environment != EnvLocal && (cfg.TLSCertPath == "" || cfg.TLSKeyPath == "") {
+		return Config{}, fmt.Errorf("SERVER_CERT_PATH and SERVER_KEY_PATH are required when ENVIRONMENT=%s", cfg.Environment)
+	}
 	if cfg.AuthType, err = parseAuthType(getEnv("AUTH_TYPE", "jwt")); err != nil {
 		return Config{}, err
 	}
