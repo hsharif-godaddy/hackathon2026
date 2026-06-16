@@ -108,7 +108,6 @@ export function PromptModalContent({ hp, onClose }: PromptModalContentProps) {
       </div>
       <ExamplesSection
         theme="light"
-        className="mb-4 mt-3"
         onExampleClick={hp.handleExampleClick}
         onTemplateChange={hp.setSelectedTemplate}
       />
