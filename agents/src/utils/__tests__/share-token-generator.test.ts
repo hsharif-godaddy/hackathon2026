@@ -89,18 +89,35 @@ describe('generateShareToken', () => {
   });
 
   describe('Security Properties', () => {
-    it('should have sufficient entropy (72 bits for 12 chars)', () => {
-      // 12 characters of base64url = 72 bits of entropy
-      // 2^72 ≈ 4.7 × 10^21 combinations
-      const token = generateShareToken(12);
+    it('should have sufficient entropy (near-uniform character distribution)', () => {
+      // base64url draws from a 64-symbol alphabet, so the theoretical maximum
+      // Shannon entropy is log2(64) = 6 bits per character. A CSPRNG-backed
+      // generator should produce a near-uniform distribution across that
+      // alphabet. We measure entropy over a large aggregate sample: a single
+      // 12-char token has far too few symbols to estimate entropy reliably,
+      // which made the previous single-sample heuristic flaky.
+      const sampleCount: number = 2000;
+      const chars: string[] = [];
+      for (let i = 0; i < sampleCount; i++) {
+        chars.push(...generateShareToken(12));
+      }
 
-      // Verify it's truly random by checking it's not sequential
-      const charCodes = Array.from(token).map(c => c.charCodeAt(0));
-      const differences = charCodes.slice(1).map((code, i) => Math.abs(code - charCodes[i]));
-      const avgDifference = differences.reduce((a, b) => a + b, 0) / differences.length;
+      const frequencies: Map<string, number> = new Map();
+      for (const char of chars) {
+        frequencies.set(char, (frequencies.get(char) ?? 0) + 1);
+      }
 
-      // Average difference should be > 10 for good randomness
-      expect(avgDifference).toBeGreaterThan(10);
+      const total: number = chars.length;
+      let entropy: number = 0;
+      for (const count of frequencies.values()) {
+        const probability: number = count / total;
+        entropy -= probability * Math.log2(probability);
+      }
+
+      // Sits just under the 6.0 theoretical max in practice; 5.5 leaves ample
+      // margin against sampling noise while still catching a genuinely
+      // low-entropy (e.g. sequential or biased) generator.
+      expect(entropy).toBeGreaterThan(5.5);
     });
 
     it('should not contain predictable patterns', () => {
