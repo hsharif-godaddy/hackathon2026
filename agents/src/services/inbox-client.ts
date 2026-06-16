@@ -61,13 +61,16 @@ type Operation =
   | 'create_embeddable'
   | 'update_embeddable'
   | 'list_categories'
-  | 'create_category';
+  | 'create_category'
+  | 'get_staff'
+  | 'update_staff';
 
 interface DispatchParams {
   operation: Operation;
   appId: string;
   brandId?: string;
   embeddableId?: number;
+  staffId?: number;
   body?: unknown;
 }
 
@@ -92,6 +95,7 @@ export async function dispatch<T>(
         operation: args.operation,
         ...(args.brandId && { brandId: args.brandId }),
         ...(args.embeddableId !== undefined && { embeddableId: args.embeddableId }),
+        ...(args.staffId !== undefined && { staffId: args.staffId }),
         ...(args.body !== undefined && { body: args.body }),
       },
       timeoutMs: 30_000,
@@ -307,5 +311,62 @@ export async function createCategory(
     return { success: false, error: 'Inbox response missing category.id' };
   }
   return { success: true, data: category };
+}
+
+// ----------------------------------------------------------------------------
+// Staff types
+// ----------------------------------------------------------------------------
+
+export interface Staff {
+  id: number;
+  notification_email: string | null;
+}
+
+export interface UpdateStaffInput {
+  notification_email?: string;
+}
+
+// ----------------------------------------------------------------------------
+// Staff operations (brand-scoped)
+// ----------------------------------------------------------------------------
+
+export async function getStaff(
+  client: IClientActionService,
+  appId: string,
+  brandId: string,
+): Promise<InboxResult<Staff>> {
+  const result = await dispatch<{ staff?: Staff } & Staff>(client, {
+    operation: 'get_staff',
+    appId,
+    brandId,
+  });
+  if (!result.success) return result;
+  const staff = result.data.staff ?? (result.data as Staff);
+  if (typeof staff?.id !== 'number') {
+    return { success: false, error: 'Inbox response missing staff.id' };
+  }
+  return { success: true, data: staff };
+}
+
+export async function updateStaff(
+  client: IClientActionService,
+  appId: string,
+  brandId: string,
+  staffId: number,
+  fields: UpdateStaffInput,
+): Promise<InboxResult<Staff>> {
+  const result = await dispatch<{ staff?: Staff } & Staff>(client, {
+    operation: 'update_staff',
+    appId,
+    brandId,
+    staffId,
+    body: fields,
+  });
+  if (!result.success) return result;
+  const staff = result.data.staff ?? (result.data as Staff);
+  if (typeof staff?.id !== 'number') {
+    return { success: false, error: 'Inbox response missing staff.id' };
+  }
+  return { success: true, data: staff };
 }
 

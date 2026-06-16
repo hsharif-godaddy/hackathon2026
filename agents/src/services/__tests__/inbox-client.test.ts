@@ -7,7 +7,7 @@ vi.mock('../../logging/index.js', () => ({
 const mockExecuteAction = vi.fn();
 const mockClient = { executeAction: mockExecuteAction } as any;
 
-const { listEmbeddables, createEmbeddable, updateEmbeddable, listAccounts, activateAccount, listCategories, createCategory } =
+const { listEmbeddables, createEmbeddable, updateEmbeddable, listAccounts, activateAccount, listCategories, createCategory, getStaff, updateStaff } =
   await import('../inbox-client.js');
 
 describe('inbox-client', () => {
@@ -525,6 +525,144 @@ describe('inbox-client', () => {
           }),
         }),
       );
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // getStaff
+  // --------------------------------------------------------------------------
+
+  describe('getStaff', () => {
+    it('passes brandId in dispatch params', async () => {
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 200, data: { staff: { id: 7, notification_email: 'a@b.com' } } },
+      });
+
+      await getStaff(mockClient, 'app-1', 'brand-1');
+
+      expect(mockExecuteAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({
+            operation: 'get_staff',
+            brandId: 'brand-1',
+          }),
+        }),
+      );
+    });
+
+    it('handles response with nested staff field', async () => {
+      const staff = { id: 7, notification_email: 'a@b.com' };
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 200, data: { staff } },
+      });
+
+      const result = await getStaff(mockClient, 'app-1', 'brand-1');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toEqual(staff);
+      }
+    });
+
+    it('handles flat response (no staff wrapper)', async () => {
+      const staff = { id: 7, notification_email: null };
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 200, data: staff },
+      });
+
+      const result = await getStaff(mockClient, 'app-1', 'brand-1');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.id).toBe(7);
+      }
+    });
+
+    it('returns error when response is missing staff.id', async () => {
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 200, data: { notification_email: 'a@b.com' } },
+      });
+
+      const result = await getStaff(mockClient, 'app-1', 'brand-1');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('missing staff.id');
+      }
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // updateStaff
+  // --------------------------------------------------------------------------
+
+  describe('updateStaff', () => {
+    it('passes staffId and body in dispatch params', async () => {
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 200, data: { staff: { id: 7, notification_email: 'new@b.com' } } },
+      });
+
+      await updateStaff(mockClient, 'app-1', 'brand-1', 7, { notification_email: 'new@b.com' });
+
+      expect(mockExecuteAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({
+            operation: 'update_staff',
+            brandId: 'brand-1',
+            staffId: 7,
+            body: { notification_email: 'new@b.com' },
+          }),
+        }),
+      );
+    });
+
+    it('handles response with nested staff field', async () => {
+      const staff = { id: 7, notification_email: 'new@b.com' };
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 200, data: { staff } },
+      });
+
+      const result = await updateStaff(mockClient, 'app-1', 'brand-1', 7, { notification_email: 'new@b.com' });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toEqual(staff);
+      }
+    });
+
+    it('handles flat response (no staff wrapper)', async () => {
+      const staff = { id: 7, notification_email: 'new@b.com' };
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 200, data: staff },
+      });
+
+      const result = await updateStaff(mockClient, 'app-1', 'brand-1', 7, { notification_email: 'new@b.com' });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.id).toBe(7);
+      }
+    });
+
+    it('returns error when response is missing staff.id', async () => {
+      mockExecuteAction.mockResolvedValue({
+        success: true,
+        result: { status: 200, data: { notification_email: 'new@b.com' } },
+      });
+
+      const result = await updateStaff(mockClient, 'app-1', 'brand-1', 7, { notification_email: 'new@b.com' });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('missing staff.id');
+      }
     });
   });
 });

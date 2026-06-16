@@ -33,6 +33,8 @@ const mockCreateEmbeddable = vi.fn();
 const mockUpdateEmbeddable = vi.fn();
 const mockListCategories = vi.fn();
 const mockCreateCategory = vi.fn();
+const mockGetStaff = vi.fn();
+const mockUpdateStaff = vi.fn();
 vi.mock('../../../../services/inbox-client.js', () => ({
   listAccounts: (...args: unknown[]) => mockListAccounts(...args),
   activateAccount: (...args: unknown[]) => mockActivateAccount(...args),
@@ -41,6 +43,8 @@ vi.mock('../../../../services/inbox-client.js', () => ({
   updateEmbeddable: (...args: unknown[]) => mockUpdateEmbeddable(...args),
   listCategories: (...args: unknown[]) => mockListCategories(...args),
   createCategory: (...args: unknown[]) => mockCreateCategory(...args),
+  getStaff: (...args: unknown[]) => mockGetStaff(...args),
+  updateStaff: (...args: unknown[]) => mockUpdateStaff(...args),
 }));
 
 const mockAccess = vi.fn();
@@ -71,7 +75,7 @@ vi.mock('../../../../utils/entry-api-sync.js', () => ({
   regenerateEntryApiRegistrations: (...args: unknown[]) => mockRegenerateEntryApiRegistrations(...args),
 }));
 
-const { discoverAccountTool, setupWidgetTool, updateWidgetConfigTool, setupFormTool, setFormEmailTool } =
+const { discoverAccountTool, setupWidgetTool, updateWidgetConfigTool, setupFormTool, setFormEmailTool, getStaffSettingsTool, updateStaffSettingsTool } =
   await import('../index.js');
 
 // --- Test helpers ---
@@ -1027,6 +1031,159 @@ describe('inbox skill tools', () => {
       const result = await setFormEmailTool.execute({ formName: 'support', email: 'x@test.com' }, context);
 
       expect(result.error).toContain('Form "support" not found');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // get_staff_settings
+  // --------------------------------------------------------------------------
+
+  describe('get_staff_settings', () => {
+    beforeEach(() => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'a1b2c3d4-0000-4000-8000-000000000001' });
+        }
+        return Promise.resolve({ exists: false });
+      });
+    });
+
+    it('has correct tool definition', () => {
+      expect(getStaffSettingsTool.name).toBe('get_staff_settings');
+      expect(getStaffSettingsTool.execute).toBeTypeOf('function');
+    });
+
+    it('returns error when appId is missing', async () => {
+      const result = await getStaffSettingsTool.execute({}, {});
+      expect(result.error).toContain('App ID required');
+    });
+
+    it('returns error when brand is not configured', async () => {
+      mockMemoryGet.mockResolvedValue({ exists: false });
+
+      const result = await getStaffSettingsTool.execute({}, context);
+
+      expect(result.error).toContain('No Inbox account configured');
+    });
+
+    it('returns error when client is not available', async () => {
+      mockGetActionService.mockReturnValue(null);
+
+      const result = await getStaffSettingsTool.execute({}, context);
+
+      expect(result.error).toContain('ClientActionService not available');
+    });
+
+    it('returns error when getStaff fails', async () => {
+      mockGetStaff.mockResolvedValue({ success: false, error: 'Timeout' });
+
+      const result = await getStaffSettingsTool.execute({}, context);
+
+      expect(result.error).toContain('Timeout');
+    });
+
+    it('returns notification email on success', async () => {
+      mockGetStaff.mockResolvedValue({
+        success: true,
+        data: { id: 42, notification_email: 'jane@mail.com' },
+      });
+
+      const result = await getStaffSettingsTool.execute({}, context);
+
+      expect(result.success).toBe(true);
+      expect(result.notificationEmail).toBe('jane@mail.com');
+    });
+
+    it('returns null notification email when not set', async () => {
+      mockGetStaff.mockResolvedValue({
+        success: true,
+        data: { id: 42, notification_email: null },
+      });
+
+      const result = await getStaffSettingsTool.execute({}, context);
+
+      expect(result.success).toBe(true);
+      expect(result.notificationEmail).toBeNull();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // update_staff_settings
+  // --------------------------------------------------------------------------
+
+  describe('update_staff_settings', () => {
+    beforeEach(() => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.brandId') {
+          return Promise.resolve({ exists: true, value: 'a1b2c3d4-0000-4000-8000-000000000001' });
+        }
+        return Promise.resolve({ exists: false });
+      });
+      mockGetStaff.mockResolvedValue({
+        success: true,
+        data: { id: 42, notification_email: 'old@example.com' },
+      });
+      mockUpdateStaff.mockResolvedValue({
+        success: true,
+        data: { id: 42, notification_email: 'new@example.com' },
+      });
+    });
+
+    it('has correct tool definition', () => {
+      expect(updateStaffSettingsTool.name).toBe('update_staff_settings');
+      expect(updateStaffSettingsTool.execute).toBeTypeOf('function');
+    });
+
+    it('returns error when appId is missing', async () => {
+      const result = await updateStaffSettingsTool.execute({ notificationEmail: 'x@test.com' }, {});
+      expect(result.error).toContain('App ID required');
+    });
+
+    it('returns error when brand is not configured', async () => {
+      mockMemoryGet.mockResolvedValue({ exists: false });
+
+      const result = await updateStaffSettingsTool.execute({ notificationEmail: 'x@test.com' }, context);
+
+      expect(result.error).toContain('No Inbox account configured');
+    });
+
+    it('returns error when client is not available', async () => {
+      mockGetActionService.mockReturnValue(null);
+
+      const result = await updateStaffSettingsTool.execute({ notificationEmail: 'x@test.com' }, context);
+
+      expect(result.error).toContain('ClientActionService not available');
+    });
+
+    it('returns error when getStaff fails', async () => {
+      mockGetStaff.mockResolvedValue({ success: false, error: 'Network error' });
+
+      const result = await updateStaffSettingsTool.execute({ notificationEmail: 'x@test.com' }, context);
+
+      expect(result.error).toContain('Network error');
+    });
+
+    it('returns error when updateStaff fails', async () => {
+      mockUpdateStaff.mockResolvedValue({ success: false, error: 'Forbidden' });
+
+      const result = await updateStaffSettingsTool.execute({ notificationEmail: 'x@test.com' }, context);
+
+      expect(result.error).toContain('Forbidden');
+    });
+
+    it('updates notification email successfully', async () => {
+      const result = await updateStaffSettingsTool.execute({ notificationEmail: 'new@example.com' }, context);
+
+      expect(result.success).toBe(true);
+      expect(result.notificationEmail).toBe('new@example.com');
+      expect(mockGetStaff).toHaveBeenCalledWith(mockClient, 'app-123', 'a1b2c3d4-0000-4000-8000-000000000001');
+      expect(mockUpdateStaff).toHaveBeenCalledWith(
+        mockClient,
+        'app-123',
+        'a1b2c3d4-0000-4000-8000-000000000001',
+        42,
+        { notification_email: 'new@example.com' },
+      );
     });
   });
 });

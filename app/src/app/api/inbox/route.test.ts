@@ -115,6 +115,14 @@ describe('POST /api/inbox', () => {
       expect(response.status).toBe(400);
       expect(data.error).toContain('embeddableId');
     });
+
+    it('returns 400 when staffId missing for update_staff', async () => {
+      const request = makeRequest({ operation: 'update_staff', brandId: '550e8400-e29b-41d4-a716-446655440000' });
+      const response = await POST(request, createAuthContext('jwt-token'));
+      const data = await response.json();
+      expect(response.status).toBe(400);
+      expect(data.error).toContain('staffId');
+    });
   });
 
   // --------------------------------------------------------------------------
@@ -168,6 +176,28 @@ describe('POST /api/inbox', () => {
       await POST(request, createAuthContext('jwt-token'));
       const url = mockFetch.mock.calls[0][0] as string;
       expect(url).toContain('/embeddables/42');
+    });
+
+    it('resolves get_staff to /staff/self', async () => {
+      mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+      const request = makeRequest(
+        { operation: 'get_staff', brandId: '550e8400-e29b-41d4-a716-446655440000' },
+        'local.gasket.dev-godaddy.com:8443',
+      );
+      await POST(request, createAuthContext('jwt-token'));
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toContain('/staff/self');
+    });
+
+    it('includes staffId in update_staff URL', async () => {
+      mockFetch.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+      const request = makeRequest(
+        { operation: 'update_staff', brandId: '550e8400-e29b-41d4-a716-446655440000', staffId: 7, body: {} },
+        'local.gasket.dev-godaddy.com:8443',
+      );
+      await POST(request, createAuthContext('jwt-token'));
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toContain('/staff/7');
     });
 
     it('uses BFF path for activate_account', async () => {

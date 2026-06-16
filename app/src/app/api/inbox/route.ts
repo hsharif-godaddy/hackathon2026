@@ -9,9 +9,10 @@
  * No cert / service identity involved.
  *
  * Request body:
- *   { operation: 'list_accounts' | 'activate_account' | 'list_embeddables' | 'create_embeddable' | 'update_embeddable' | 'list_categories' | 'create_category' | 'pusher_auth',
- *     brandId?: string,        // required for brand-scoped operations (embeddables, pusher_auth)
+ *   { operation: 'list_accounts' | 'activate_account' | 'list_embeddables' | 'create_embeddable' | 'update_embeddable' | 'list_categories' | 'create_category' | 'get_staff' | 'update_staff' | 'pusher_auth',
+ *     brandId?: string,        // required for brand-scoped operations (embeddables, staff, pusher_auth)
  *     embeddableId?: number,   // required for update_embeddable
+ *     staffId?: number,        // required for update_staff
  *     body?: unknown,          // required for create/update operations and pusher_auth ({ socket_id, channel_name })
  *   }
  *
@@ -37,12 +38,15 @@ type InboxOperation =
   | 'update_embeddable'
   | 'list_categories'
   | 'create_category'
+  | 'get_staff'
+  | 'update_staff'
   | 'pusher_auth';
 
 interface InboxRequest {
   operation: InboxOperation;
   brandId?: string;
   embeddableId?: number;
+  staffId?: number;
   body?: unknown;
 }
 
@@ -68,6 +72,13 @@ function resolveRequest(req: InboxRequest): { method: 'GET' | 'POST' | 'PUT'; pa
       return { method: 'GET', path: '/categories' };
     case 'create_category':
       return { method: 'POST', path: '/categories' };
+    case 'get_staff':
+      return { method: 'GET', path: '/staff/self' };
+    case 'update_staff':
+      if (typeof req.staffId !== 'number') {
+        return { error: 'staffId (number) is required for update_staff' };
+      }
+      return { method: 'PUT', path: `/staff/${req.staffId}` };
     case 'pusher_auth':
       return { method: 'POST', path: '/pusher_authentication/auth' };
     default:

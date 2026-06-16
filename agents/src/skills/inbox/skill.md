@@ -1,6 +1,6 @@
 ---
 name: inbox
-description: Install the Airo Inbox chat widget or a contact form that connects to the Inbox backend.
+description: Install the Airo Inbox chat widget or a contact form that connects to the Inbox backend, and manage staff settings (notification email).
 whenToUse: >-
   DEFAULT for any chat, messaging, chatbot, or contact form request. Covers chat widgets,
   live chat, customer messaging, support chat, contact forms, inquiry forms, and message forms.
@@ -9,6 +9,7 @@ whenToUse: >-
 intents:
   - chat widget/live chat/customer messaging/support chat/chatbot/chat feature/messaging/contact widget/chat bubble/inbox
   - contact form/contact us/inquiry form/message form/feedback form/get in touch form
+  - notification email/change notification email/update notification email/inbox email/email notifications settings/check notification email/staff settings
 ---
 
 # Airo Inbox
@@ -248,6 +249,30 @@ The form MUST POST JSON to `/api/contact/{formName}` matching:
 **Do NOT concatenate extra fields into the message body** (e.g. `[${topic}] ${message}` is wrong). Each field must be its own key in `conversation.data` so it appears as structured metadata in the inbox.
 
 The server route handles all backend communication — the form only needs to POST the shape above.
+
+---
+
+## Staff Settings
+
+Read or update the **account-level** notification email. This is the default address where chat messages and contact form submissions are delivered. Requires `discover_account` to have run first.
+
+If the user wants a **different** notification email for a specific form only, use `set_form_email` instead — that sets a per-form override without changing the account default.
+
+### Check current settings
+
+```typescript
+inbox__get_staff_settings({});
+```
+
+Returns `{ notificationEmail }`. Use this when the user asks what email notifications go to.
+
+### Update settings
+
+```typescript
+inbox__update_staff_settings({ notificationEmail: "jane@mail.com" });
+```
+
+Changes the account-level notification email. Applies to all chat messages and any contact forms that don't have a per-form override via `set_form_email`.
 
 ---
 

@@ -134,3 +134,41 @@ cases:
     expectedSkill: inbox
     tags: [positive]
     rationale: Get in touch form is a contact form — inbox provides managed backend
+
+  # --- Positive: notification email / staff settings phrases ---
+
+  - id: change-notification-email
+    prompt: 'Change my notification email'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Notification email is an inbox staff setting
+
+  - id: update-notification-email
+    prompt: 'Update the email where I get notifications'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Notification delivery email is managed by inbox staff settings
+
+  - id: check-notification-email
+    prompt: 'What email are my notifications going to?'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Checking current notification email uses get_staff_settings
+
+  - id: inbox-email-settings
+    prompt: 'Where do I change my inbox email settings?'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Inbox email settings maps directly to staff settings
+
+  - id: chat-notifications-email
+    prompt: 'I want chat notifications sent to a different email'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Chat notification routing is an inbox staff setting
+
+  - id: form-notification-different-email
+    prompt: 'Send contact form submissions to support@mybusiness.com'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Per-form notification email routing is handled by inbox set_form_email

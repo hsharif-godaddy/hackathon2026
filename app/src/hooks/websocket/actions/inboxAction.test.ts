@@ -73,6 +73,18 @@ describe('inboxAction', () => {
         inboxAction({ operation: 'update_embeddable', brandId: 'x', embeddableId: '42' } as any),
       ).rejects.toThrow('embeddableId (number) is required for update_embeddable');
     });
+
+    it('throws when update_staff is missing staffId', async () => {
+      await expect(
+        inboxAction({ operation: 'update_staff', brandId: 'x' } as any),
+      ).rejects.toThrow('staffId (number) is required for update_staff');
+    });
+
+    it('throws when update_staff has non-numeric staffId', async () => {
+      await expect(
+        inboxAction({ operation: 'update_staff', brandId: 'x', staffId: '7' } as any),
+      ).rejects.toThrow('staffId (number) is required for update_staff');
+    });
   });
 
   // --------------------------------------------------------------------------
@@ -103,6 +115,34 @@ describe('inboxAction', () => {
             brandId: 'acme',
             embeddableId: 5,
             body: { foo: 'bar' },
+          }),
+        },
+      );
+    });
+
+    it('includes staffId in forwarded body for update_staff', async () => {
+      mockAppFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ status: 200, data: { staff: { id: 7 } } }),
+      });
+
+      await inboxAction({
+        operation: 'update_staff',
+        brandId: 'acme',
+        staffId: 7,
+        body: { notification_email: 'a@b.com' },
+      } as any);
+
+      expect(mockAppFetch).toHaveBeenCalledWith(
+        '/api/inbox',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            operation: 'update_staff',
+            brandId: 'acme',
+            staffId: 7,
+            body: { notification_email: 'a@b.com' },
           }),
         },
       );

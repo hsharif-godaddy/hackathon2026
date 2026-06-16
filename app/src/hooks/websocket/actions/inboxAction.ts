@@ -15,20 +15,24 @@ import { logger } from '@/lib/request-context';
 import type { ClientActionExecutor } from './types';
 
 interface InboxParams {
-  operation: 'list_accounts' | 'activate_account' | 'list_embeddables' | 'create_embeddable' | 'update_embeddable' | 'list_categories' | 'create_category';
+  operation: 'list_accounts' | 'activate_account' | 'list_embeddables' | 'create_embeddable' | 'update_embeddable' | 'list_categories' | 'create_category' | 'get_staff' | 'update_staff';
   brandId?: string;
   embeddableId?: number;
+  staffId?: number;
   body?: unknown;
 }
 
 export const inboxAction: ClientActionExecutor = async (params) => {
-  const { operation, brandId, embeddableId, body } = params as unknown as InboxParams;
+  const { operation, brandId, embeddableId, staffId, body } = params as unknown as InboxParams;
 
   if (!operation || typeof operation !== 'string') {
     throw new Error('operation is required and must be a string');
   }
   if (operation === 'update_embeddable' && typeof embeddableId !== 'number') {
     throw new Error('embeddableId (number) is required for update_embeddable');
+  }
+  if (operation === 'update_staff' && typeof staffId !== 'number') {
+    throw new Error('staffId (number) is required for update_staff');
   }
 
   try {
@@ -39,7 +43,7 @@ export const inboxAction: ClientActionExecutor = async (params) => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ operation, brandId, embeddableId, body }),
+        body: JSON.stringify({ operation, brandId, embeddableId, staffId, body }),
       },
     );
 

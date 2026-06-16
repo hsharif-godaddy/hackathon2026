@@ -4,11 +4,13 @@
  * Tools for connecting an Inbox chat widget to the site.
  * The account ID is persisted in memory under `integrations.inbox.brandId`.
  *
- *   discover_account       — find or auto-create the account for this app
- *   setup_widget           — find/create the default embeddable, write config
- *   update_widget_config   — sync widget settings to backend + config file
- *   setup_form             — install contact form route + config (auto-ensures email channel)
- *   set_form_email         — set or remove the notification email for a contact form
+ *   discover_account        — find or auto-create the account for this app
+ *   setup_widget            — find/create the default embeddable, write config
+ *   update_widget_config    — sync widget settings to backend + config file
+ *   setup_form              — install contact form route + config (auto-ensures email channel)
+ *   set_form_email          — set or remove the notification email for a contact form
+ *   get_staff_settings      — fetch current staff settings (notification email)
+ *   update_staff_settings   — update staff settings (notification email)
  *
  * Tools own the config file (src/lib/inboxChat.config.json). They read it,
  * merge changes, and write it back. The agent never edits the config directly.
@@ -33,6 +35,8 @@ import {
   updateEmbeddable,
   listCategories,
   createCategory,
+  getStaff,
+  updateStaff,
   type UpdateEmbeddableInput,
 } from '../../../services/inbox-client.js';
 import { readWidgetConfig, writeWidgetConfig } from './widget-config.js';
@@ -70,6 +74,33 @@ function getClient(ctx?: ToolContext): IClientActionService | null {
   const socketId = ctx?.socketId;
   if (!socketId || typeof socketId !== 'string') return null;
   return getActionService(socketId);
+}
+
+interface InboxContext {
+  appId: string;
+  brandId: string;
+  client: IClientActionService;
+}
+
+async function withInboxContext(
+  context: ToolContext | undefined,
+  fn: (ctx: InboxContext) => Promise<Record<string, unknown>>,
+): Promise<Record<string, unknown>> {
+  const appId = getAppId(context);
+  if (!appId) return { error: 'App ID required. Pass context.metadata.appId.' };
+
+  const brandRead = await memoryRepo.get(appId, MEM_BRAND_ID);
+  if (!brandRead.exists) {
+    return { error: 'No Inbox account configured. Run inbox__discover_account first.' };
+  }
+  const brandId = brandRead.value as string;
+
+  const client = getClient(context);
+  if (!client) {
+    return { error: 'ClientActionService not available — tool requires an authenticated websocket session.' };
+  }
+
+  return fn({ appId, brandId, client });
 }
 
 // ============================================================================
@@ -672,7 +703,7 @@ export const setFormEmailTool: SkillToolDefinition = {
       logger.warn('inbox.skill.set_form_email.dist_config_write_failed', { appId, error: msg });
     }
 
-    logger.info('inbox.skill.set_form_email.success', { appId, formName: input.formName, email: input.email ?? null });
+    logger.info('inbox.skill.set_form_email.success', { appId, formName: input.formName });
 
     return {
       success: true,
@@ -681,4 +712,75 @@ export const setFormEmailTool: SkillToolDefinition = {
     };
   },
   config: { requiresApp: true, timeout: 15_000 },
+};
+
+// ============================================================================
+// get_staff_settings — fetch current inbox staff settings
+// ============================================================================
+
+export const getStaffSettingsTool: SkillToolDefinition = {
+  name: 'get_staff_settings',
+  description:
+    'Fetch the current Inbox staff settings for this user, including the notification email. ' +
+    'Use this when the user asks what their notification email is set to. ' +
+    'Requires discover_account to have run first.',
+
+  parameters: z.object({}),
+  execute: async (_input: Record<string, never>, context?: ToolContext) => {
+    return withInboxContext(context, async ({ appId, brandId, client }) => {
+      const staffResult = await getStaff(client, appId, brandId);
+      if (!staffResult.success) {
+        return { error: `Failed to fetch staff settings: ${staffResult.error}` };
+      }
+
+      logger.info('inbox.skill.get_staff_settings.success', { appId, brandId });
+
+      return {
+        success: true,
+        notificationEmail: staffResult.data.notification_email,
+      };
+    });
+  },
+  config: { requiresApp: true, timeout: 30_000 },
+};
+
+// ============================================================================
+// update_staff_settings — update inbox staff settings
+// ============================================================================
+
+export const updateStaffSettingsTool: SkillToolDefinition = {
+  name: 'update_staff_settings',
+  description:
+    'Update Inbox staff settings. Currently supports changing the notification email ' +
+    '(where chat messages and contact form submissions are delivered). ' +
+    'Requires discover_account to have run first.',
+
+  parameters: z.object({
+    notificationEmail: z
+      .string()
+      .email()
+      .describe('New notification email address (e.g. "jane@mail.com")'),
+  }),
+  execute: async (input: { notificationEmail: string }, context?: ToolContext) => {
+    return withInboxContext(context, async ({ appId, brandId, client }) => {
+      const staffResult = await getStaff(client, appId, brandId);
+      if (!staffResult.success) {
+        return { error: `Failed to fetch staff info: ${staffResult.error}` };
+      }
+
+      const staffId = staffResult.data.id;
+      const updateResult = await updateStaff(client, appId, brandId, staffId, { notification_email: input.notificationEmail });
+      if (!updateResult.success) {
+        return { error: `Failed to update staff settings: ${updateResult.error}` };
+      }
+
+      logger.info('inbox.skill.update_staff_settings.success', { appId, brandId, staffId });
+
+      return {
+        success: true,
+        notificationEmail: updateResult.data.notification_email,
+      };
+    });
+  },
+  config: { requiresApp: true, timeout: 30_000 },
 };
