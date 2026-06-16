@@ -192,6 +192,21 @@ if [ -f "$CUSTOMER_APP_DIR/.git/config" ]; then
     /management-scripts/sync-package-additions.js "$BASE_APP_DIR/package.json" "package.json"
     git add package.json && git commit -m "Sync upstream package.json $(date +%s)" || true
 
+    # RUBICON-373 — telemetry-only observation of the /robots.txt handler
+    # shape. NO writes; outputs one structured `observe-robots-handler.completed`
+    # event per startup, tagged with SITE_ID, so fleet-wide queries can size
+    # shape distribution. Set DISABLE_ROBOTS_HANDLER_TELEMETRY=1 to opt out.
+    # Set LOG_ROBOTS_HANDLER_BODY=1 to additionally log the handler body for
+    # `unknown_shape` and `parse_failed` events (privacy-sensitive — review
+    # before enabling fleet-wide). Both flags use a strict "=1" check so that
+    # `=0` / `=false` / etc. don't accidentally invert the intent.
+    if [ "${DISABLE_ROBOTS_HANDLER_TELEMETRY}" != "1" ]; then
+        log_step "Observing /robots.txt handler shape (telemetry only)..."
+        node /management-scripts/observe-robots-handler.js "$CUSTOMER_APP_DIR" || true
+    else
+        log_step "Skipping /robots.txt handler telemetry (DISABLE_ROBOTS_HANDLER_TELEMETRY=1)"
+    fi
+
     if [ ! -d "$CUSTOMER_APP_DIR/node_modules" ]; then
         # Dependencies missing (ephemeral disk wiped node_modules)
         log_step "Installing dependencies with npm install (this may take a few minutes)..."
