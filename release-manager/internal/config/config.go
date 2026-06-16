@@ -84,7 +84,12 @@ type Stage struct {
 	// for the test-phase validate stages (e2e / regression / sim-eval /
 	// health-check) so a reviewer decides at the prod gate rather than the run
 	// hard-failing — matching the GHA design where those were advisory.
-	Advisory      bool              `yaml:"advisory"`
+	Advisory bool `yaml:"advisory"`
+	// TestSummary opts a stage into fetching the dispatched run's `e2e-summary`
+	// artifact and rendering a per-suite test breakdown (counts + failed test
+	// names) beneath the stage line in Slack. Best-effort: a missing/unparseable
+	// artifact is ignored. Set on the e2e / regression validate stages.
+	TestSummary   bool              `yaml:"test_summary"`
 	Inputs        map[string]string `yaml:"inputs"`
 	Outputs       map[string]Output `yaml:"outputs"`
 	Matrix        []MatrixEntry     `yaml:"matrix"`

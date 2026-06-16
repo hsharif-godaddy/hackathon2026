@@ -25,6 +25,17 @@ func (d *DryRunner) Logs(ctx context.Context, repo string, runID int64) (string,
 	return d.Real.Logs(ctx, repo, runID)
 }
 
+// DownloadArtifactFile delegates to Real (a read-only operation) so a dry-run
+// renders the same per-suite test-summary block the live path would, sourced
+// from whichever past run the dry-run stage resolved. Yields no summary if the
+// underlying runner doesn't support artifact download.
+func (d *DryRunner) DownloadArtifactFile(ctx context.Context, repo string, runID int64, artifactName, fileName string) ([]byte, error) {
+	if ad, ok := d.Real.(ArtifactDownloader); ok {
+		return ad.DownloadArtifactFile(ctx, repo, runID, artifactName, fileName)
+	}
+	return nil, fmt.Errorf("underlying runner does not support artifact download")
+}
+
 func (d *DryRunner) ListRuns(ctx context.Context, repo, workflow, status string, limit int) ([]RunListEntry, error) {
 	return d.Real.ListRuns(ctx, repo, workflow, status, limit)
 }

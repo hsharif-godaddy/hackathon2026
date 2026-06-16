@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -75,6 +76,17 @@ type Approval struct {
 // runner that doesn't implement it simply yields no attribution.
 type Approver interface {
 	RunApprovals(ctx context.Context, repo string, runID int64) ([]Approval, error)
+}
+
+// ArtifactDownloader is the OPTIONAL capability of fetching one file from a
+// completed run's uploaded artifact. Only LiveRunner implements it (DryRunner
+// delegates); callers type-assert (`r.(gh.ArtifactDownloader)`) so the
+// test/pipeline fakes don't have to grow a method they never exercise. A runner
+// that doesn't implement it simply yields no per-suite test summary. Used to
+// read the `e2e-summary` artifact's summary.json so the release thread can show
+// a per-suite breakdown without scraping multi-megabyte run logs.
+type ArtifactDownloader interface {
+	DownloadArtifactFile(ctx context.Context, repo string, runID int64, artifactName, fileName string) ([]byte, error)
 }
 
 // Runner defines the interface for executing gh CLI commands.
@@ -174,6 +186,31 @@ func (r *LiveRunner) Logs(ctx context.Context, repo string, runID int64) (string
 	}
 	return output, nil
 }
+
+// DownloadArtifactFile downloads a single named artifact from a completed run
+// into a temp dir and returns the contents of fileName within it. Satisfies the
+// optional ArtifactDownloader capability.
+func (r *LiveRunner) DownloadArtifactFile(ctx context.Context, repo string, runID int64, artifactName, fileName string) ([]byte, error) {
+	dir, err := os.MkdirTemp("", "rm-artifact-")
+	if err != nil {
+		return nil, fmt.Errorf("creating temp dir: %w", err)
+	}
+	defer os.RemoveAll(dir)
+
+	if _, err := r.executeRepo(ctx, repo, "run", "download", fmt.Sprintf("%d", runID),
+		"--repo", repo, "--name", artifactName, "--dir", dir); err != nil {
+		return nil, fmt.Errorf("downloading artifact %q from run %d: %w", artifactName, runID, err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, fileName))
+	if err != nil {
+		return nil, fmt.Errorf("reading %s from artifact %q: %w", fileName, artifactName, err)
+	}
+	return data, nil
+}
+
+// Compile-time assertion that LiveRunner provides the optional capability.
+var _ ArtifactDownloader = (*LiveRunner)(nil)
 
 func (r *LiveRunner) ListRuns(ctx context.Context, repo, workflow, status string, limit int) ([]RunListEntry, error) {
 	args := []string{"run", "list",

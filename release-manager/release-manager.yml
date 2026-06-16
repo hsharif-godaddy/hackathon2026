@@ -99,6 +99,7 @@ pipeline:
           name: E2E Tests
           group: validate
           advisory: true # surfaced for the reviewer; does not block the prod gate
+          test_summary: true # render per-suite counts + failed tests from the run's e2e-summary artifact
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
           active_run_check: false
@@ -111,6 +112,7 @@ pipeline:
           name: Regression Tests
           group: validate
           advisory: true # surfaced for the reviewer; does not block the prod gate
+          test_summary: true # render per-suite counts + failed tests from the run's e2e-summary artifact
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
           active_run_check: false

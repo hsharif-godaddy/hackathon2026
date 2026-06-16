@@ -108,10 +108,17 @@ export default defineConfig({
   // a `blob` report that the workflow's `merge-reports` job stitches into one
   // HTML report. PLAYWRIGHT_BLOB_REPORT is set by the workflow only when
   // total_shards > 1, so non-sharded CI keeps the `github` reporter unchanged.
+  //
+  // The `json` reporter is added on top in CI so the workflow's `summarize`
+  // job can aggregate per-suite pass/fail/skip counts and failed test names
+  // across shards (each entry carries `projectName`, giving authoritative
+  // e2e-vs-regression grouping). It lands in test-results/ — already uploaded
+  // per shard — and is purely additive (Testla still reads the JUnit file).
+  // Sharded runs suffix the filename so per-shard files stay distinct.
   reporter: process.env.CI
     ? (process.env.PLAYWRIGHT_BLOB_REPORT
-        ? [['list'], ['blob'], ['./tests/reporters/elasticsearch-reporter.ts'], ['junit', { outputFile: `test-results/junit-shard-${process.env.SHARD || '1'}.xml` }]]
-        : [['list'], ['github'], ['./tests/reporters/elasticsearch-reporter.ts'], ['junit', { outputFile: 'test-results/junit.xml' }]])
+        ? [['list'], ['blob'], ['./tests/reporters/elasticsearch-reporter.ts'], ['junit', { outputFile: `test-results/junit-shard-${process.env.SHARD || '1'}.xml` }], ['json', { outputFile: `test-results/results-shard-${process.env.SHARD || '1'}.json` }]]
+        : [['list'], ['github'], ['./tests/reporters/elasticsearch-reporter.ts'], ['junit', { outputFile: 'test-results/junit.xml' }], ['json', { outputFile: 'test-results/results.json' }]])
     : [['list'], ['html'], ['./tests/reporters/elasticsearch-reporter.ts']],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {

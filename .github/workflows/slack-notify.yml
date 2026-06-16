@@ -87,19 +87,34 @@ jobs:
           echo "✅ Webhook configured for ${{ steps.config.outputs.env_type }} environment"
 
       - name: Send notification to Slack
+        # Dynamic values are passed through env (never interpolated inline into
+        # the run script) and the JSON payload is assembled with `jq`, so an
+        # arbitrary message body — e.g. failed test titles containing double
+        # quotes, backslashes, or newlines — is correctly JSON-escaped instead
+        # of breaking the request (or injecting into the shell).
         env:
           SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
+          SLACK_COLOR: ${{ steps.config.outputs.color }}
+          SLACK_TITLE: "${{ steps.config.outputs.emoji }} ${{ inputs.title }} ${{ steps.config.outputs.status }}"
+          SLACK_TEXT: ${{ inputs.message }}
+          SLACK_FOOTER: "${{ inputs.footer }} | ${{ steps.config.outputs.env_type }}"
         run: |
-          curl -X POST "$SLACK_WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "attachments": [
+          payload=$(jq -n \
+            --arg color "$SLACK_COLOR" \
+            --arg title "$SLACK_TITLE" \
+            --arg text "$SLACK_TEXT" \
+            --arg footer "$SLACK_FOOTER" \
+            '{
+              attachments: [
                 {
-                  "color": "${{ steps.config.outputs.color }}",
-                  "title": "${{ steps.config.outputs.emoji }} ${{ inputs.title }} ${{ steps.config.outputs.status }}",
-                  "text": "${{ inputs.message }}",
-                  "footer": "${{ inputs.footer }} | ${{ steps.config.outputs.env_type }}",
-                  "footer_icon": "https://platform.slack-edge.com/img/default_application_icon.png"
+                  color: $color,
+                  title: $title,
+                  text: $text,
+                  footer: $footer,
+                  footer_icon: "https://platform.slack-edge.com/img/default_application_icon.png"
                 }
               ]
-            }'
+            }')
+          curl -sS -X POST "$SLACK_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            --data "$payload"

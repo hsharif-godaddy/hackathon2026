@@ -693,6 +693,71 @@ jobs:
           path: playwright-report
           retention-days: 30
 
+  # Aggregate the per-shard Playwright JSON reports into a single per-suite
+  # summary (counts + failed test names, grouped by Playwright project so
+  # e2e and regression are reported separately) and surface it three ways:
+  #   1. The GitHub run summary (this run's Summary page) — what the release
+  #      approver lands on via the release thread's "View Run" link.
+  #   2. The `e2e-summary` artifact — downloaded + rendered by the
+  #      release-manager in the release Slack thread.
+  #   3. The `message` output — consumed by slack-notify below.
+  # Runs `always()` so the run page always carries a summary (success or fail);
+  # the script is defensive and never fails the job.
+  summarize:
+    name: Summarize results
+    needs: [prepare, test, merge-reports, host-paas-e2e]
+    if: always()
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+    outputs:
+      # slack-notify gates on the job results (test/merge/host-paas) rather than
+      # this script's verdict, so a summarize crash can't silence a real failure
+      # — only `message` is consumed downstream. The script still prints
+      # notify=/overall= to the step log for human debugging.
+      message: ${{ steps.summary.outputs.message }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+
+      - name: Download test result artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        # No artifacts (e.g. every shard crashed before uploading) must not
+        # fail the summary — the script reports an infra failure instead.
+        continue-on-error: true
+        with:
+          path: downloaded-results
+          # Matches test-results-e2e-shard-* and test-results-regression-shard-*.
+          pattern: test-results-*
+
+      - name: Build summary
+        id: summary
+        env:
+          RESULTS_DIR: downloaded-results
+          TEST_RESULT: ${{ needs.test.result }}
+          MERGE_RESULT: ${{ needs.merge-reports.result }}
+          HOSTPAAS_RESULT: ${{ needs.host-paas-e2e.result }}
+          ENVIRONMENT: ${{ needs.test.outputs.environment }}
+          TRIGGER: ${{ github.event_name == 'schedule' && 'Scheduled' || (github.event_name == 'workflow_dispatch' && github.event.inputs.post_promotion == 'true' && 'Post-Promotion' || 'Manual') }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SUMMARY_JSON_OUT: e2e-summary/summary.json
+        run: node tests/scripts/summarize-e2e-results.mjs
+
+      - name: Upload e2e summary artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: e2e-summary
+          path: e2e-summary/summary.json
+          retention-days: 30
+
   slack-notify:
     name: Send Slack Notification
     # Fire when *either* the test matrix or the merge-reports job fails.
@@ -703,7 +768,7 @@ jobs:
     # `skipped` (merge-reports doesn't run when total=1) doesn't match
     # `== 'failure'`, so single-shard runs aren't affected.
     if: always() && (needs.test.result == 'failure' || needs.merge-reports.result == 'failure' || needs.host-paas-e2e.result == 'failure')
-    needs: [test, merge-reports, host-paas-e2e]
+    needs: [test, merge-reports, host-paas-e2e, summarize]
     uses: ./.github/workflows/slack-notify.yml
     permissions:
       id-token: write
@@ -716,9 +781,8 @@ jobs:
       result: failure
       environment: ${{ needs.test.outputs.environment }}
       title: 'E2E Tests - ${{ needs.test.outputs.environment }} (by ${{ github.actor }})'
-      message: |
-        *Environment:* ${{ needs.test.outputs.environment }}
-        *Trigger:* ${{ github.event_name == 'schedule' && 'Scheduled' || (github.event_name == 'workflow_dispatch' && github.event.inputs.post_promotion == 'true' && 'Post-Promotion' || 'Manual') }}
-        *Actor:* ${{ github.actor }}
-        *Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>
+      # Per-suite breakdown (counts + failed test names) built by the
+      # summarize job. Falls back to a minimal body if that output is empty
+      # (e.g. summarize itself errored) so the channel still gets pinged.
+      message: ${{ needs.summarize.outputs.message || format('E2E run failed — check {0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
       footer: 'airo-app-builder | E2E Tests'

@@ -541,6 +541,47 @@ func TestProgressNoneComplete(t *testing.T) {
 	}
 }
 
+// adRunner extends mockRunner with the optional ArtifactDownloader capability.
+type adRunner struct {
+	mockRunner
+	downloadFn func(ctx context.Context, repo string, runID int64, artifactName, fileName string) ([]byte, error)
+}
+
+func (a *adRunner) DownloadArtifactFile(ctx context.Context, repo string, runID int64, artifactName, fileName string) ([]byte, error) {
+	return a.downloadFn(ctx, repo, runID, artifactName, fileName)
+}
+
+func TestDryRunnerDownloadArtifactDelegates(t *testing.T) {
+	called := false
+	real := &adRunner{downloadFn: func(_ context.Context, _ string, _ int64, name, file string) ([]byte, error) {
+		called = true
+		if name != "e2e-summary" || file != "summary.json" {
+			t.Errorf("unexpected args: name=%s file=%s", name, file)
+		}
+		return []byte("{}"), nil
+	}}
+
+	dry := &DryRunner{Real: real}
+	data, err := dry.DownloadArtifactFile(context.Background(), "org/repo", 1, "e2e-summary", "summary.json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !called {
+		t.Error("DownloadArtifactFile was not delegated to real runner")
+	}
+	if string(data) != "{}" {
+		t.Errorf("got %q, want %q", data, "{}")
+	}
+}
+
+func TestDryRunnerDownloadArtifactUnsupported(t *testing.T) {
+	// mockRunner does not implement ArtifactDownloader → graceful error.
+	dry := &DryRunner{Real: &mockRunner{}}
+	if _, err := dry.DownloadArtifactFile(context.Background(), "org/repo", 1, "e2e-summary", "summary.json"); err == nil {
+		t.Error("expected error when underlying runner lacks artifact download")
+	}
+}
+
 func TestDryRunnerCompare(t *testing.T) {
 	called := false
 	real := &mockRunner{

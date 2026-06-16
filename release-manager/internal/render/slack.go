@@ -8,10 +8,12 @@ package render
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/airo-ai-builder/release-manager/internal/pipeline"
+	"github.com/airo-ai-builder/release-manager/internal/testreport"
 )
 
 // Slack's markdown_text renderer strips leading ASCII spaces and collapses
@@ -25,8 +27,13 @@ import (
 // Exported so the tui package can keep referencing the same constants its
 // tests assert against.
 const (
-	Nbsp      = "  "
-	Nbspx2    = "    "
+	Nbsp   = "  "
+	Nbspx2 = "    "
+	// Nbspx3 indents one level deeper than Nbspx2 for failed-test bullets under
+	// a suite line. Built by concatenation so it reuses the exact (no-break)
+	// space character of the others rather than risking an ASCII space that
+	// Slack would strip.
+	Nbspx3    = Nbspx2 + Nbsp
 	BlankLine = string(rune(0x200B))
 )
 
@@ -166,11 +173,17 @@ func writeStage(sb *strings.Builder, sr *pipeline.StageRun) {
 		line += fmt.Sprintf(" — [View Run](%s)", sr.RunURL)
 	}
 
-	if sr.Error != "" {
+	// When a per-suite test summary was attached AND it will actually render
+	// detail, the breakdown carries the failure info, so suppress the generic
+	// "run concluded with X" noise. A parsed-but-empty report must not swallow
+	// the only failure detail, so fall back to the error in that case.
+	if sr.Error != "" && !sr.TestReport.HasRenderableContent() {
 		line += " — " + sr.Error
 	}
 
 	sb.WriteString(line + "\n")
+
+	writeTestReport(sb, sr.TestReport)
 
 	for _, mr := range sr.MatrixRuns {
 		mrLine := fmt.Sprintf("%s%s %s", Nbspx2, Emoji(mr.State), FormatMatrixInputs(mr.Inputs))
@@ -182,6 +195,70 @@ func writeStage(sb *strings.Builder, sr *pipeline.StageRun) {
 		}
 		sb.WriteString(mrLine + "\n")
 	}
+}
+
+// writeTestReport renders the per-suite e2e/regression breakdown beneath a
+// stage line when the stage opted into test_summary and a summary was fetched.
+// Each suite gets a counts line (indented one level past the stage), with
+// failed test names bulleted a further level in; the external host-paas job is
+// reported pass/fail only. No-op when tr is nil.
+func writeTestReport(sb *strings.Builder, tr *testreport.Summary) {
+	if tr == nil {
+		return
+	}
+
+	for _, s := range tr.Suites {
+		line := fmt.Sprintf("%s%s %s — %s", Nbspx2, suiteEmoji(s.Status), s.Label, suiteCounts(s))
+		if len(s.FailedShards) > 0 {
+			line += " · failed shard(s): " + joinInts(s.FailedShards)
+		}
+		sb.WriteString(line + "\n")
+
+		for _, t := range s.FailedTests {
+			sb.WriteString(Nbspx3 + "• " + t + "\n")
+		}
+		if s.FailedTestsOverflow > 0 {
+			sb.WriteString(fmt.Sprintf("%s• …and %d more\n", Nbspx3, s.FailedTestsOverflow))
+		}
+	}
+
+	if tr.HostPaas.Present {
+		sb.WriteString(fmt.Sprintf("%s%s Host-PaaS e2e — %s\n", Nbspx2, suiteEmoji(tr.HostPaas.Status), tr.HostPaas.Status))
+	}
+
+	// Only meaningful when there were no per-suite results to show.
+	if tr.InfraFailure && len(tr.Suites) == 0 {
+		sb.WriteString(Nbspx2 + ":x: run failed before tests produced results (setup/infra)\n")
+	}
+}
+
+// suiteEmoji maps a "passed"/"failed" status to its Slack emoji.
+func suiteEmoji(status string) string {
+	if status == "failed" {
+		return ":x:"
+	}
+	return ":white_check_mark:"
+}
+
+// suiteCounts renders a suite's tallies, omitting the skipped clause when zero
+// and showing the failed-first ordering only when there are failures.
+func suiteCounts(s testreport.Suite) string {
+	if s.Failed > 0 {
+		return fmt.Sprintf("%d failed, %d passed, %d skipped (%d total)", s.Failed, s.Passed, s.Skipped, s.Total)
+	}
+	if s.Skipped > 0 {
+		return fmt.Sprintf("%d passed, %d skipped (%d total)", s.Passed, s.Skipped, s.Total)
+	}
+	return fmt.Sprintf("%d passed (%d total)", s.Passed, s.Total)
+}
+
+// joinInts renders a sorted shard list like "3, 6".
+func joinInts(xs []int) string {
+	parts := make([]string, len(xs))
+	for i, x := range xs {
+		parts[i] = strconv.Itoa(x)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // WriteDeployValues shows artifact/image values for environments after the

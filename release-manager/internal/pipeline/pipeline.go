@@ -14,6 +14,14 @@ import (
 	"github.com/airo-ai-builder/release-manager/internal/config"
 	"github.com/airo-ai-builder/release-manager/internal/gh"
 	"github.com/airo-ai-builder/release-manager/internal/logger"
+	"github.com/airo-ai-builder/release-manager/internal/testreport"
+)
+
+// Artifact name + file written by the playwright-e2e summarize job, fetched for
+// stages with `test_summary: true`.
+const (
+	testSummaryArtifact = "e2e-summary"
+	testSummaryFile     = "summary.json"
 )
 
 type StageState int
@@ -85,6 +93,11 @@ type StageRun struct {
 
 	// For matrix stages, tracks each sub-run.
 	MatrixRuns []MatrixRun
+
+	// TestReport holds the per-suite E2E breakdown for stages with
+	// `test_summary: true` (downloaded from the run's `e2e-summary` artifact).
+	// nil when not opted in or when the fetch/parse failed (best-effort).
+	TestReport *testreport.Summary
 }
 
 type MatrixRun struct {
@@ -378,6 +391,10 @@ func (p *Pipeline) RunStage(ctx context.Context, idx int) error {
 		return err
 	}
 
+	// Attach the per-suite E2E breakdown for opted-in (advisory) stages — both
+	// on pass and fail — so the Slack thread shows counts + failed test names.
+	p.attachTestSummary(ctx, idx)
+
 	if status.Conclusion != "success" {
 		p.failStage(idx, fmt.Sprintf("run concluded with %s", status.Conclusion))
 		return fmt.Errorf("stage %q failed: %s", sr.Stage.ID, status.Conclusion)
@@ -461,6 +478,10 @@ func (p *Pipeline) runDryStage(ctx context.Context, idx int, resolvedInputs map[
 	p.mu.Unlock()
 
 	p.simulateProgress(ctx, idx)
+
+	// Render the test breakdown in dry-run too (from the resolved past run's
+	// artifact, if present) so operators can preview the format.
+	p.attachTestSummary(ctx, idx)
 
 	if len(sr.Stage.Outputs) > 0 {
 		p.mu.Lock()
@@ -749,6 +770,47 @@ func (p *Pipeline) parseOutputs(ctx context.Context, idx int) error {
 	}
 
 	return nil
+}
+
+// attachTestSummary downloads the `e2e-summary` artifact for a stage with
+// `test_summary: true` and attaches the parsed per-suite breakdown to the
+// StageRun. Best-effort: a runner without the optional ArtifactDownloader
+// capability, a missing artifact, or a parse error is logged and ignored —
+// these stages are advisory, so reporting detail must never affect the gate.
+func (p *Pipeline) attachTestSummary(ctx context.Context, idx int) {
+	p.mu.RLock()
+	sr := p.stages[idx]
+	enabled := sr.Stage.TestSummary
+	repo := sr.Stage.Repo
+	runID := sr.RunID
+	name := sr.Stage.Name
+	p.mu.RUnlock()
+
+	if !enabled || runID == 0 {
+		return
+	}
+
+	downloader, ok := p.Runner.(gh.ArtifactDownloader)
+	if !ok {
+		return
+	}
+
+	data, err := downloader.DownloadArtifactFile(ctx, repo, runID, testSummaryArtifact, testSummaryFile)
+	if err != nil {
+		logger.Log("stage.test-summary: [%s] %s — could not download %s: %v", sr.Env, name, testSummaryArtifact, err)
+		return
+	}
+
+	summary, err := testreport.Parse(data)
+	if err != nil {
+		logger.Log("stage.test-summary: [%s] %s — could not parse summary: %v", sr.Env, name, err)
+		return
+	}
+
+	p.mu.Lock()
+	sr.TestReport = summary
+	p.mu.Unlock()
+	logger.Log("stage.test-summary: [%s] %s — attached (overall=%s, suites=%d)", sr.Env, name, summary.Overall, len(summary.Suites))
 }
 
 func (p *Pipeline) failStage(idx int, errMsg string) {

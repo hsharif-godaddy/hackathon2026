@@ -7,6 +7,7 @@ import (
 
 	"github.com/airo-ai-builder/release-manager/internal/config"
 	"github.com/airo-ai-builder/release-manager/internal/pipeline"
+	"github.com/airo-ai-builder/release-manager/internal/testreport"
 )
 
 func TestFormatDuration(t *testing.T) {
@@ -224,6 +225,74 @@ func TestMessageApprovedBy(t *testing.T) {
 	plain := Message(State{Operator: "alice", Branch: "main"})
 	if strings.Contains(plain, "approved by") || !strings.Contains(plain, ":spinner_: *In progress...*") {
 		t.Errorf("no-approver message should show the generic spinner: %q", plain)
+	}
+}
+
+func TestMessageTestReportBreakdown(t *testing.T) {
+	sr := stage("test", "Regression Tests", pipeline.StateFailed, 25*time.Minute, "https://x/runs/3775")
+	sr.Error = "run concluded with failure" // should be suppressed once a report is attached
+	sr.TestReport = &testreport.Summary{
+		Overall: "failure",
+		Suites: []testreport.Suite{
+			{Key: "regression", Label: "AAB regression", Status: "failed",
+				Total: 30, Passed: 27, Failed: 1, Skipped: 2,
+				FailedShards: []int{6},
+				FailedTests:  []string{"develop-media.spec.ts › uploads an image"}},
+		},
+		HostPaas: testreport.HostPaas{Present: true, Status: "failed"},
+	}
+
+	out := Message(State{
+		Operator: "alice", Branch: "main",
+		EnvOrder: []string{"test"},
+		Stages:   []*pipeline.StageRun{sr},
+	})
+
+	for _, want := range []string{
+		Nbspx2 + ":x: AAB regression — 1 failed, 27 passed, 2 skipped (30 total) · failed shard(s): 6\n",
+		Nbspx3 + "• develop-media.spec.ts › uploads an image\n",
+		Nbspx2 + ":x: Host-PaaS e2e — failed\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered message missing %q:\n%s", want, out)
+		}
+	}
+	// Generic stage error must be suppressed when a per-suite report is present.
+	if strings.Contains(out, "run concluded with failure") {
+		t.Errorf("generic error should be suppressed when TestReport is set:\n%s", out)
+	}
+}
+
+func TestMessageTestReportPassedCounts(t *testing.T) {
+	sr := stage("test", "E2E Tests", pipeline.StateSuccess, 7*time.Minute, "https://x/runs/1")
+	sr.TestReport = &testreport.Summary{
+		Overall: "success",
+		Suites: []testreport.Suite{
+			{Key: "e2e", Label: "AAB e2e", Status: "passed", Total: 1, Passed: 1},
+		},
+		HostPaas: testreport.HostPaas{Present: true, Status: "passed"},
+	}
+
+	out := Message(State{Operator: "alice", Branch: "main", EnvOrder: []string{"test"}, Stages: []*pipeline.StageRun{sr}})
+	if !strings.Contains(out, Nbspx2+":white_check_mark: AAB e2e — 1 passed (1 total)\n") {
+		t.Errorf("missing passed-suite counts line:\n%s", out)
+	}
+	if !strings.Contains(out, Nbspx2+":white_check_mark: Host-PaaS e2e — passed\n") {
+		t.Errorf("missing host-paas passed line:\n%s", out)
+	}
+}
+
+func TestMessageTestReportEmptyKeepsError(t *testing.T) {
+	// A non-nil but content-free report (no suites, no host-paas, not infra)
+	// must NOT swallow the generic stage error — otherwise the failed stage
+	// line would carry no detail at all.
+	sr := stage("test", "Regression Tests", pipeline.StateFailed, time.Minute, "https://x/runs/9")
+	sr.Error = "run concluded with failure"
+	sr.TestReport = &testreport.Summary{Overall: "failure"} // empty
+
+	out := Message(State{Operator: "alice", Branch: "main", EnvOrder: []string{"test"}, Stages: []*pipeline.StageRun{sr}})
+	if !strings.Contains(out, "run concluded with failure") {
+		t.Errorf("empty report should not suppress the generic error:\n%s", out)
 	}
 }
 
