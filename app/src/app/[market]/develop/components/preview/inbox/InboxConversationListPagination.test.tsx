@@ -9,6 +9,10 @@ import userEvent from '@testing-library/user-event';
 
 import { InboxConversationListPagination } from './InboxConversationListPagination';
 
+vi.mock('@/hooks/useTranslations', () => ({
+  useTranslations: () => (key: string) => key,
+}));
+
 describe('InboxConversationListPagination', () => {
   it('renders current page and total', () => {
     render(
@@ -23,8 +27,8 @@ describe('InboxConversationListPagination', () => {
       <InboxConversationListPagination currentPage={1} totalPages={3} onPageChange={vi.fn()} />,
     );
 
-    expect(screen.getByLabelText('Previous page')).toBeDisabled();
-    expect(screen.getByLabelText('Next page')).toBeEnabled();
+    expect(screen.getByLabelText('builder_inbox_pagination_previous')).toBeDisabled();
+    expect(screen.getByLabelText('builder_inbox_pagination_next')).toBeEnabled();
   });
 
   it('disables next button on last page', () => {
@@ -32,8 +36,8 @@ describe('InboxConversationListPagination', () => {
       <InboxConversationListPagination currentPage={3} totalPages={3} onPageChange={vi.fn()} />,
     );
 
-    expect(screen.getByLabelText('Previous page')).toBeEnabled();
-    expect(screen.getByLabelText('Next page')).toBeDisabled();
+    expect(screen.getByLabelText('builder_inbox_pagination_previous')).toBeEnabled();
+    expect(screen.getByLabelText('builder_inbox_pagination_next')).toBeDisabled();
   });
 
   it('disables both buttons when there is only one page', () => {
@@ -41,8 +45,8 @@ describe('InboxConversationListPagination', () => {
       <InboxConversationListPagination currentPage={1} totalPages={1} onPageChange={vi.fn()} />,
     );
 
-    expect(screen.getByLabelText('Previous page')).toBeDisabled();
-    expect(screen.getByLabelText('Next page')).toBeDisabled();
+    expect(screen.getByLabelText('builder_inbox_pagination_previous')).toBeDisabled();
+    expect(screen.getByLabelText('builder_inbox_pagination_next')).toBeDisabled();
   });
 
   it('calls onPageChange with next page when clicking next', async () => {
@@ -51,7 +55,7 @@ describe('InboxConversationListPagination', () => {
       <InboxConversationListPagination currentPage={2} totalPages={5} onPageChange={onPageChange} />,
     );
 
-    await userEvent.click(screen.getByLabelText('Next page'));
+    await userEvent.click(screen.getByLabelText('builder_inbox_pagination_next'));
 
     expect(onPageChange).toHaveBeenCalledWith(3);
   });
@@ -62,7 +66,7 @@ describe('InboxConversationListPagination', () => {
       <InboxConversationListPagination currentPage={3} totalPages={5} onPageChange={onPageChange} />,
     );
 
-    await userEvent.click(screen.getByLabelText('Previous page'));
+    await userEvent.click(screen.getByLabelText('builder_inbox_pagination_previous'));
 
     expect(onPageChange).toHaveBeenCalledWith(2);
   });

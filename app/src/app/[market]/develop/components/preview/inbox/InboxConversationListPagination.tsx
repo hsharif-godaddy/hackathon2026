@@ -3,6 +3,8 @@
 import ChevronLeftIcon from '@ux/icon/chevron-left';
 import ChevronRightIcon from '@ux/icon/chevron-right';
 
+import { useTranslations } from '@/hooks/useTranslations';
+
 interface InboxConversationListPaginationProps {
   currentPage: number;
   totalPages: number;
@@ -14,6 +16,7 @@ export function InboxConversationListPagination({
   totalPages,
   onPageChange,
 }: InboxConversationListPaginationProps) {
+  const t = useTranslations();
   const atStart: boolean = currentPage === 1;
   const atEnd: boolean = currentPage >= totalPages;
 
@@ -21,11 +24,11 @@ export function InboxConversationListPagination({
     <nav
       className="flex shrink-0 items-center justify-center gap-0.5 border-t border-ux-border-subtle bg-ux-surface-base py-1"
       data-testid="conversation-list-pagination"
-      aria-label="Conversation list pagination"
+      aria-label={t('builder_inbox_pagination_label', undefined, 'Conversation list pagination')}
     >
       <button
         type="button"
-        aria-label="Previous page"
+        aria-label={t('builder_inbox_pagination_previous', undefined, 'Previous page')}
         disabled={atStart}
         onClick={() => onPageChange(currentPage - 1)}
         className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-ux-text-primary transition-colors hover:bg-ux-surface-raised disabled:cursor-not-allowed disabled:opacity-40"
@@ -39,7 +42,7 @@ export function InboxConversationListPagination({
       </span>
       <button
         type="button"
-        aria-label="Next page"
+        aria-label={t('builder_inbox_pagination_next', undefined, 'Next page')}
         disabled={atEnd}
         onClick={() => onPageChange(currentPage + 1)}
         className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-ux-text-primary transition-colors hover:bg-ux-surface-raised disabled:cursor-not-allowed disabled:opacity-40"
