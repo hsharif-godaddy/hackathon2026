@@ -26,7 +26,7 @@ import {
   type ExecutionStep,
   type PatternResult,
 } from './types.js'
-import { getCorrelationId } from './failure-extraction.js'
+import { getCorrelationId, isSoftToolFailure } from './failure-extraction.js'
 import { createLogger } from '@airo/ai-common'
 
 const logger = createLogger('pattern-detection')
@@ -172,7 +172,7 @@ function collectOperations(steps: ExecutionStep[]): CollectedOperations {
       if (isTerminalTool(toolName) && (item.type === StepContentType.ToolResult || item.type === StepContentType.ToolError)) {
         terminalOps.push({
           callId,
-          failed: item.type === StepContentType.ToolError,
+          failed: item.type === StepContentType.ToolError || isSoftToolFailure(item),
           stepIdx,
         })
       }

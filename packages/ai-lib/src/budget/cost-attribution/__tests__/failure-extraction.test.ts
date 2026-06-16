@@ -69,6 +69,39 @@ describe('extractFailedCallIds', () => {
     expect(result.has('call-2')).toBe(true)
   })
 
+  it('extracts correlation ID for JSON-string soft failures', () => {
+    const steps = [
+      createStep([toolResult('terminalCommand', { command: 'npm test' }, JSON.stringify({
+        success: false,
+        exitCode: 1,
+        stderr: 'tests failed',
+      }))], 'call-1'),
+    ]
+    const result = extractFailedCallIds(steps)
+    expect(result.size).toBe(1)
+    expect(result.has('call-1')).toBe(true)
+  })
+
+  it('extracts correlation ID for nonzero exitCode results', () => {
+    const steps = [
+      createStep([toolResult('terminalCommand', { command: 'npm test' }, { exitCode: 2 })], 'call-1'),
+    ]
+    const result = extractFailedCallIds(steps)
+    expect(result.size).toBe(1)
+    expect(result.has('call-1')).toBe(true)
+  })
+
+  it('treats explicit success true as authoritative over nonzero exitCode', () => {
+    const steps = [
+      createStep([toolResult('terminalCommand', { command: 'git diff --exit-code' }, {
+        success: true,
+        exitCode: 1,
+      })], 'call-1'),
+    ]
+    const result = extractFailedCallIds(steps)
+    expect(result.size).toBe(0)
+  })
+
   it('extracts both hard and soft failures', () => {
     const steps = [
       createStep([toolError('terminal', { command: 'npm build' })], 'call-1'),
@@ -195,6 +228,17 @@ describe('extractFailedTargets', () => {
     ]
     const result = extractFailedTargets(steps)
     expect(result).toContain('src/missing.ts')
+  })
+
+  it('extracts terminal target from JSON-string soft failures', () => {
+    const steps = [
+      createStep([toolResult('terminalCommand', { command: 'npm test --watch' }, JSON.stringify({
+        success: false,
+        exitCode: 1,
+      }))], 'call-1'),
+    ]
+    const result = extractFailedTargets(steps)
+    expect(result).toContain('npm')
   })
 
   it('deduplicates targets', () => {

@@ -27,7 +27,13 @@ import {
   type CausalChain,
   type StepContentItem,
 } from './types.js'
-import { getCorrelationId, hasWordBoundaryMatch } from './failure-extraction.js'
+import {
+  getCorrelationId,
+  getToolFailureText,
+  hasWordBoundaryMatch,
+  isToolFailure,
+  isSoftToolFailure,
+} from './failure-extraction.js'
 
 const logger = createLogger('causal-chain-detection')
 
@@ -37,22 +43,6 @@ function extractFilePath(args: unknown): string {
   if (!args || typeof args !== 'object') return 'unknown'
   const obj = args as Record<string, unknown>
   return String(obj.path ?? obj.file_path ?? obj.filePath ?? 'unknown')
-}
-
-function extractErrorText(error: unknown): string {
-  if (typeof error === 'string') return error
-  if (error && typeof error === 'object') {
-    const obj = error as Record<string, unknown>
-    if (typeof obj.message === 'string') return obj.message
-    if (typeof obj.stderr === 'string') return obj.stderr
-    if (typeof obj.stdout === 'string') return obj.stdout
-    try {
-      return JSON.stringify(error)
-    } catch {
-      return String(error)
-    }
-  }
-  return String(error)
 }
 
 // CAUSAL RELATIONSHIP DETECTION
@@ -135,7 +125,7 @@ function getErrorToolName(steps: ExecutionStep[], errorCallId: string): string |
   if (!step) return undefined
   const content = step.content ?? []
   for (const item of content) {
-    if (item.type === StepContentType.ToolError && item.toolName) {
+    if (isToolFailure(item) && item.toolName) {
       return item.toolName
     }
   }
@@ -193,6 +183,7 @@ export function detectCausalChains(steps: ExecutionStep[]): CausalChain[] {
       if (
         item.type === StepContentType.ToolResult &&
         item.toolName &&
+        !isSoftToolFailure(item) &&
         classifyFileOp(item.toolName, getToolInput(item)) === 'edit'
       ) {
         const filePath = extractFilePath(getToolInput(item))
@@ -206,8 +197,8 @@ export function detectCausalChains(steps: ExecutionStep[]): CausalChain[] {
       }
 
       // Check if error is causally related to a recent edit
-      if (item.type === StepContentType.ToolError) {
-        const errorText = extractErrorText(item.error)
+      if (isToolFailure(item)) {
+        const errorText = getToolFailureText(item)
 
         // Look for causal connection: error mentions recently edited file
         // Only check edits from the last 5 steps to avoid false positives
@@ -260,6 +251,7 @@ export function detectCausalChains(steps: ExecutionStep[]): CausalChain[] {
           item.type === StepContentType.ToolResult &&
           item.toolName &&
           errorToolName &&
+          !isSoftToolFailure(item) &&
           item.toolName.toLowerCase() === errorToolName.toLowerCase()
         ) {
           // For file tools, verify same target; for non-file tools, any success counts

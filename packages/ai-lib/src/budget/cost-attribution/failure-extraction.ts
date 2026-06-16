@@ -41,21 +41,75 @@ function isToolError(item: StepContentItem): boolean {
 }
 
 /**
- * Check if a tool-result contains a soft failure ({ success: false }).
+ * Parse JSON-string tool output into an object when tools return
+ * `JSON.stringify(...)` instead of structured output.
+ */
+function normalizeToolOutput(output: unknown): unknown {
+  if (typeof output !== 'string') return output
+  try {
+    return JSON.parse(output)
+  } catch {
+    return output
+  }
+}
+
+/**
+ * Get normalized tool output from a step content item.
+ */
+export function getNormalizedToolOutput(item: StepContentItem): unknown {
+  return normalizeToolOutput(getToolOutput(item))
+}
+
+function nonzeroExitCode(exitCode: unknown): boolean {
+  if (typeof exitCode === 'number') return exitCode !== 0
+  if (typeof exitCode === 'string' && exitCode.trim() !== '') {
+    const parsed = Number(exitCode)
+    return Number.isFinite(parsed) && parsed !== 0
+  }
+  return false
+}
+
+function extractFailureText(error: unknown): string {
+  if (typeof error === 'string') return error
+  if (error && typeof error === 'object') {
+    const obj = error as Record<string, unknown>
+    if (typeof obj.error === 'string') return obj.error
+    if (typeof obj.message === 'string') return obj.message
+    if (typeof obj.stderr === 'string') return obj.stderr
+    if (typeof obj.stdout === 'string') return obj.stdout
+
+    return ''
+  }
+  return String(error)
+}
+
+/**
+ * Extract error text from a hard or soft tool failure.
+ */
+export function getToolFailureText(item: StepContentItem): string {
+  if (item.type === StepContentType.ToolError) return extractFailureText(item.error)
+  return extractFailureText(getNormalizedToolOutput(item))
+}
+
+/**
+ * Check if a tool-result contains a soft failure.
+ * Explicit `success` wins; exitCode is a fallback for tools that do not set it.
  * Catches tools that handle errors internally and return a result
  * instead of throwing — invisible to tool-error detection.
  */
-function isSoftToolFailure(item: StepContentItem): boolean {
+export function isSoftToolFailure(item: StepContentItem): boolean {
   if (item.type !== StepContentType.ToolResult) return false
-  const output = getToolOutput(item)
+  const output = getNormalizedToolOutput(item)
   if (!output || typeof output !== 'object') return false
-  return (output as Record<string, unknown>).success === false
+  const obj = output as Record<string, unknown>
+  if (typeof obj.success === 'boolean') return obj.success === false
+  return nonzeroExitCode(obj.exitCode)
 }
 
 /**
  * Check if a step content item represents a failure (hard or soft).
  */
-function isToolFailure(item: StepContentItem): boolean {
+export function isToolFailure(item: StepContentItem): boolean {
   return isToolError(item) || isSoftToolFailure(item)
 }
 

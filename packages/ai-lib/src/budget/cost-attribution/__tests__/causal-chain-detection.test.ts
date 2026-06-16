@@ -68,6 +68,45 @@ describe('detectCausalChains', () => {
     expect(result[0]?.errorCallId).toBe('call-2')
   })
 
+  it('detects causal chain from JSON-string soft terminal failure', () => {
+    const steps = [
+      createStep([toolResult('str_replace_based_edit_tool', { command: 'str_replace', path: 'src/Button.tsx' })], 'call-1'),
+      createStep([toolResult('terminalCommand', { command: 'npm test' }, JSON.stringify({
+        success: false,
+        exitCode: 1,
+        stderr: 'Error in Button.tsx: undefined',
+      }))], 'call-2'),
+      createStep([toolResult('read_file', { path: 'src/Button.tsx' })], 'call-3'),
+      createStep([toolResult('terminalCommand', { command: 'npm test' }, JSON.stringify({
+        success: true,
+        exitCode: 0,
+        stdout: 'tests passed',
+      }))], 'call-4'),
+    ]
+    const result = detectCausalChains(steps)
+    expect(result).toHaveLength(1)
+    expect(result[0]?.triggerCallId).toBe('call-1')
+    expect(result[0]?.errorCallId).toBe('call-2')
+    expect(result[0]?.fixCallIds).toContain('call-3')
+    expect(result[0]?.verificationCallId).toBe('call-4')
+  })
+
+  it('does not treat a soft-failed retry as verification', () => {
+    const steps = [
+      createStep([toolResult('str_replace_based_edit_tool', { command: 'str_replace', path: 'src/Button.tsx' })], 'call-1'),
+      createStep([toolResult('terminalCommand', { command: 'npm test' }, {
+        success: false,
+        exitCode: 1,
+        stderr: 'Error in Button.tsx',
+      })], 'call-2'),
+      createStep([toolResult('terminalCommand', { command: 'npm test' }, { success: false, exitCode: 1 })], 'call-3'),
+      createStep([toolResult('terminalCommand', { command: 'npm test' }, { success: true, exitCode: 0 })], 'call-4'),
+    ]
+    const result = detectCausalChains(steps)
+    expect(result).toHaveLength(1)
+    expect(result[0]?.verificationCallId).toBe('call-4')
+  })
+
   it('does not treat an editor view as a trigger edit', () => {
     // command: 'view' is a read, so even though an error later mentions the file,
     // there is no preceding *edit* to blame → no causal chain.

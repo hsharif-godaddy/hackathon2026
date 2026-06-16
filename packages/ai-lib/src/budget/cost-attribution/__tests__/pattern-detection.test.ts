@@ -253,6 +253,39 @@ describe('terminal_failures pattern', () => {
     const patterns = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.TerminalFailures)).toBeDefined()
   })
+
+  it('counts JSON-string terminal soft failures', () => {
+    const steps = Array.from({ length: 4 }, (_, i) =>
+      createStep([toolResult('terminalCommand', { command: 'npm test' }, JSON.stringify({
+        success: false,
+        exitCode: 1,
+        stderr: 'tests failed',
+      }))], `call-${i}`)
+    )
+    const patterns = detectHighConfidencePatterns(steps)
+    const pattern = patterns.find(p => p.type === PatternType.TerminalFailures)
+    expect(pattern).toBeDefined()
+    expect(pattern!.callIds).toEqual(['call-0', 'call-1', 'call-2', 'call-3'])
+  })
+
+  it('counts nonzero exitCode terminal results as failures', () => {
+    const steps = Array.from({ length: 4 }, (_, i) =>
+      createStep([toolResult('terminalCommand', { command: 'npm test' }, { exitCode: 1 })], `call-${i}`)
+    )
+    const patterns = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.TerminalFailures)).toBeDefined()
+  })
+
+  it('does not count explicit success true with nonzero exitCode as a failure', () => {
+    const steps = Array.from({ length: 4 }, (_, i) =>
+      createStep([toolResult('terminalCommand', { command: 'git diff --exit-code' }, {
+        success: true,
+        exitCode: 1,
+      })], `call-${i}`)
+    )
+    const patterns = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.TerminalFailures)).toBeUndefined()
+  })
 })
 
 // EDIT-READ LOOPS
