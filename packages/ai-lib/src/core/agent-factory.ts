@@ -23,63 +23,48 @@ import { createDuplicateResponseStopCondition } from './duplicate-detection.js'
 import { getModelInfo, mergeProviderOptions } from '../utils/model-normalization.js'
 import { createLogger, serializeError, isBudgetExceededAPIError, BudgetExceededError, retryWithBackoff, type RetryContext } from '@airo/ai-common'
 import { addCacheControlToSystemPrompt, logCachingStats } from '../utils/prompt-caching.js'
-import { getModel, llmMetadataContext, type LitellmMetadata } from '../providers/unified-provider.js'
+import { getModel, llmMetadataContext } from '../providers/unified-provider.js'
 import { getActiveModelOverride } from './model-override-context.js'
 import {
-  buildLitellmMetadataFromContext,
-  LlmCallSource,
   grantSessionManager,
   isGrantsExhausted,
   GrantErrorCode,
 } from '@airo/ai-grants'
 import type { ExecutionContext } from '@airo/ai-grants'
+import {
+  filterSerializableValues,
+  hasSuccessfulToolCall,
+  extractLitellmMetadata,
+  detectToolNativeProvider,
+  readResolvedTurnState,
+  RESOLVED_TURN_STATE,
+} from './agent-factory-helpers.js'
+import type {
+  StreamResultWithValidation,
+  HandoffContext,
+  HandoffResult,
+  HandoffHistoryEntry,
+  AgentCallOptions,
+  ResolvedTurnState,
+} from './agent-factory-types.js'
+
+// Re-export the public surface that moved to the extracted modules.
+export { hasSuccessfulToolCall }
+export type {
+  StreamResultWithValidation,
+  HandoffContext,
+  HandoffResult,
+  HandoffHistoryEntry,
+}
+export type {
+  BeforeToolExecutionHook,
+  AfterToolExecutionHook,
+  AgentHandoffConfig,
+  MessageWithCachePoint,
+} from './agent-factory-types.js'
 
 const logger = createLogger('agent-factory')
 
-/**
- * Filter an object to only include JSON-serializable values (primitives, plain objects, arrays).
- * Strips class instances, functions, Timeouts, Maps, etc. that would cause issues during logging.
- */
-function filterSerializableValues(obj: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(obj)) {
-    if (value === null || value === undefined) {
-      result[key] = value
-    } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-      result[key] = value
-    } else if (Array.isArray(value)) {
-      result[key] = value
-    } else if (typeof value === 'object' && value.constructor === Object) {
-      result[key] = value
-    }
-    // Skip: class instances, functions, Maps, Sets, Timeouts, etc.
-  }
-  return result
-}
-
-/**
- * Like the AI SDK's `hasToolCall`, but only triggers when the tool call
- * is considered successful because it produced a matching `tool-result`.
- * This allows the LLM to retry when a stopAfterTools call results in a
- * `tool-error` (for example, when a tool call fails validation).
- */
-export function hasSuccessfulToolCall(toolName: string) {
-  return ({ steps }: { steps: Array<{ content: Array<{ type: string; toolName?: string; toolCallId?: string }> }> }): boolean => {
-    for (const step of steps) {
-      const matchingCall = step.content.find(
-        item => item.type === 'tool-call' && item.toolName === toolName
-      )
-      if (!matchingCall) continue
-
-      // Only stop if the tool call produced a successful result
-      const hasResult = step.content.some(
-        item => item.type === 'tool-result' && item.toolCallId === matchingCall.toolCallId
-      )
-      if (hasResult) return true
-    }
-    return false
-  }
-}
 
 /**
  * Maximum grant retry attempts to prevent infinite loops
@@ -90,163 +75,12 @@ const MAX_GRANT_RETRIES = 3;
 const GRANTS_EXHAUSTED_MESSAGE = 'All credit grants have been exhausted. Please purchase more credits.';
 
 /**
- * Extract LiteLLM metadata from execution context for per-request cost tracking
- * Uses the new grant-aware buildLitellmMetadataFromContext helper.
- *
- * @param executionContext - The execution context passed from the caller
- * @param agentId - The keyword identifier of the current agent (e.g., 'develop', 'initial')
- * @returns LiteLLM metadata object with grant user or fallback to customerId
- */
-function extractLitellmMetadata(
-  executionContext?: Record<string, unknown>,
-  agentId?: string
-): LitellmMetadata | null {
-  return buildLitellmMetadataFromContext(executionContext, {
-    agentId,
-    source: LlmCallSource.UserChat,
-  })
-}
-
-/**
- * Extended stream result type for tool validation errors
- * Allows marking mock streams with validation error flags
- */
-export interface StreamResultWithValidation {
-  textStream: AsyncIterable<string>
-  baseStream?: unknown
-
-  response?: PromiseLike<{ id: string; timestamp: Date; modelId: string; headers?: Record<string, string>; body?: any }>
-  getFinalResult: () => Promise<any>
-  isToolValidationError?: boolean
-  validationErrorMessage?: string
-}
-
-/**
- * Tool execution hook function types
- */
-export type BeforeToolExecutionHook = (toolName: string, args: unknown, context?: AgentContext) => Promise<unknown> | unknown
-export type AfterToolExecutionHook = (toolName: string, args: unknown, result: unknown, toolCallError: unknown, context?: AgentContext) => Promise<unknown> | unknown
-
-/**
- * Agent handoff configuration
- */
-export interface AgentHandoffConfig {
-  /** Name/identifier of the target agent */
-  agentName: string
-  /** Description of when this handoff should be used */
-  description?: string
-  /** Whether to include conversation context in handoff */
-  includeContext?: boolean
-}
-
-/**
- * Handoff execution context
- */
-export interface HandoffContext {
-  /** Task description for the target agent */
-  task: string
-  /** Additional context data */
-  context?: Record<string, unknown> | undefined
-  /** Parameters to pass to the target agent */
-  parameters?: Record<string, unknown> | undefined
-  /** Metadata about the handoff */
-  metadata?: {
-    sourceAgent: string
-    timestamp: string
-    reason?: string | undefined
-  } | undefined
-}
-
-/**
- * Handoff execution result
- */
-export interface HandoffResult {
-  /** Whether the handoff was successful */
-  success: boolean
-  /** Result from the target agent */
-  result?: unknown
-  /** Error message if handoff failed */
-  error?: string
-  /** Handoff execution details */
-  handoffDetails: {
-    sourceAgent: string
-    targetAgent: string
-    timestamp: string
-    context: HandoffContext
-  }
-}
-
-/**
- * Handoff history entry
- */
-export interface HandoffHistoryEntry {
-  /** Unique identifier for this handoff */
-  id: string
-  /** Source agent name */
-  sourceAgent: string
-  /** Target agent name */
-  targetAgent: string
-  /** Timestamp of handoff */
-  timestamp: string
-  /** Task description */
-  task: string
-  /** Handoff context */
-  context: HandoffContext
-  /** Result of the handoff */
-  result?: HandoffResult
-  /** Status of the handoff */
-  status: 'pending' | 'completed' | 'failed'
-}
-
-/**
  * Configuration for creating an agent
  */
 
 /**
  * Wrapper around ToolLoopAgent to provide consistent API
  */
-/**
- * Call options type for ToolLoopAgent
- * Empty object for now - can be extended for dynamic model selection
- */
-type AgentCallOptions = {
-  executionContext?: Record<string, unknown> | undefined
-  contextMessages?: PipelineContextMessage[]
-  conversationMessages?: ModelMessage[]
-  files?: ProcessedFile[]
-  basePrompt?: string
-}
-
-/**
- * Cache point metadata structure (stored format)
- */
-interface CachePointMetadata {
-  type: 'ephemeral'
-}
-
-/**
- * Provider-specific options with proper type structure
- */
-interface ProviderOptions {
-  anthropic?: {
-    cacheControl?: { type: string }
-
-    [key: string]: any
-  }
-
-  [key: string]: any
-}
-
-/**
- * Message with cache point metadata (stored format from conversation history)
- * Using type alias instead of interface extends to support union types
- *
- * @internal - For future type safety improvements
- */
-export type MessageWithCachePoint = ModelMessage & {
-  cachePoint?: CachePointMetadata
-  providerOptions?: ProviderOptions
-}
 
 /**
  * Symbol used to attach a provider-agnostic fallback tool to a provider-specific tool.
@@ -256,32 +90,6 @@ export type MessageWithCachePoint = ModelMessage & {
  */
 export const PROVIDER_TOOL_FALLBACK: unique symbol = Symbol.for('ailib.providerToolFallback')
 
-/**
- * Inspect a Vercel AI SDK tool and return the provider it was defined for, if any.
- * Provider-defined tools have `type: 'provider'` and an `id` like `anthropic.text_editor_20250728`;
- * the prefix before the first `.` is the native provider.
- */
-function detectToolNativeProvider(tool: unknown): string | undefined {
-  if (!tool || typeof tool !== 'object') return undefined
-  const t = tool as { type?: unknown; id?: unknown }
-  if (t.type !== 'provider' && t.type !== 'provider-defined') return undefined
-  if (typeof t.id !== 'string') return undefined
-  const dot = t.id.indexOf('.')
-  return dot > 0 ? t.id.slice(0, dot) : undefined
-}
-
-interface ResolvedTurnState {
-  system?: string
-  activeTools?: string[]
-}
-// Symbol-keyed so the slot can't collide with any caller-supplied AgentContext field.
-const RESOLVED_TURN_STATE = Symbol('airo.resolvedTurnState')
-
-function readResolvedTurnState(experimentalContext: unknown): ResolvedTurnState | undefined {
-  if (experimentalContext === null || typeof experimentalContext !== 'object') return undefined
-  const slot = (experimentalContext as Record<PropertyKey, unknown>)[RESOLVED_TURN_STATE]
-  return (slot && typeof slot === 'object') ? slot as ResolvedTurnState : undefined
-}
 
 export class AgentWrapper {
   // Using explicit empty call options type instead of 'any' to avoid 'as never' casts
