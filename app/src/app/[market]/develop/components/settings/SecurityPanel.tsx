@@ -17,6 +17,7 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSecurityQuickFixHandoffStore } from '@/stores/useSecurityQuickFixHandoffStore';
 import { useServerPollingStore } from '@/stores/useServerPollingStore';
 import { formatDate } from '@/utils/common';
+import { generateClickEID } from '@/utils/instrumentation';
 import SecurityResults from './components/security/SecurityResults';
 
 /**
@@ -100,6 +101,7 @@ export default function SecurityPanel() {
 
     if (!acquireSecurityAnalysisLock(appId)) return;
 
+    shipAnalyticsLog('security.run_analysis_clicked', { appId });
     setLastScannedAt(null);
     setError(null);
     setErrorTitle(null);
@@ -159,6 +161,7 @@ export default function SecurityPanel() {
               icon={<WandIcon />}
               disabled={!isReady || isAnyAnalysisRunning || isQuickFixInProgress || isLoadingStoredReport}
               onClick={handleRunAnalysis}
+              data-eid={generateClickEID('security.analysis_panel.run_analysis')}
               text={t('builder_settings_security_analysis_run')}
             />
           )

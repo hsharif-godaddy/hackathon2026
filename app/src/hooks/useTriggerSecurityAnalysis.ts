@@ -27,6 +27,7 @@ export function useTriggerSecurityAnalysis() {
       return;
     }
 
+    shipAnalyticsLog('security.scan_initiated', { appId });
     fetch('/api/security-analysis', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

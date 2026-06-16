@@ -17,9 +17,11 @@ import { type StructuredVulnerability } from '@/app/api/security-analysis/transf
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
+import { shipAnalyticsLog } from '@/lib/logging';
 import { logger } from '@/lib/request-context';
 import { type SecurityAnalysisRunResult } from '@/lib/security-analysis';
 import { TodoListService } from '@/services/TodoListService';
+import { generateClickEID } from '@/utils/instrumentation';
 
 type TranslateFn = ReturnType<typeof useTranslations>;
 
@@ -386,6 +388,7 @@ export default function SecurityResults({
       return;
     }
 
+    shipAnalyticsLog('security.ask_airo_to_fix_clicked', { appId, selectedCount: checkedVulnerabilities.size });
     setIsCreatingTodoList(true);
 
     try {
@@ -479,6 +482,7 @@ export default function SecurityResults({
                   design="secondary"
                   disabled={isCreatingTodoList}
                   onClick={handleSelectAll}
+                  data-eid={generateClickEID('security.analysis_panel.select_all')}
                   text={areAllSelected() ? t('builder_common_deselect_all') : t('builder_common_select_all')}
                 />
                 <Button
@@ -487,6 +491,7 @@ export default function SecurityResults({
                   design="primary"
                   onClick={handleQuickFix}
                   disabled={checkedVulnerabilities.size === 0 || isCreatingTodoList}
+                  data-eid={generateClickEID('security.analysis_panel.ask_airo_to_fix')}
                   text={
                     isCreatingTodoList
                       ? t('builder_common_creating')

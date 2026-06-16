@@ -204,7 +204,10 @@ export default function AppPublish({ location = 'develop' }: { location?: string
               size='sm'
               text={t('builder_security_scan_view_fixes')}
               stretch
+              data-eid={generateClickEID('security.growl.view_fixes')}
               onClick={() => {
+                shipAnalyticsLog('security.growl.view_fixes_clicked', { ...(clickContext ?? {}) });
+                logClickEvent('security.growl.view_fixes', clickContext)();
                 Growl.removeGrowlMessage('security-scan-issues');
                 setActiveChatTab(ChatTab.SETTINGS);
                 setActiveSettingsSection(SettingsSection.SECURITY);
@@ -214,7 +217,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
         </Box>
       ),
     });
-  }, [t, setActiveChatTab, setActiveSettingsSection]);
+  }, [t, clickContext, setActiveChatTab, setActiveSettingsSection]);
 
   const handlePaywallPurchaseSuccess = useCallback(async () => {
     setPendingOpenAfterUpgrade(true);
@@ -738,12 +741,14 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   }, [clickContext, handleMobileModeChange, handleViewModeChange, hasUnsavedChanges, isMobile, isTopLevelDomainEnabled, location, setActiveChatTab, setActiveSettingsSection, setOpen]);
 
   const handleViewSecurityFixes = useCallback(() => {
+    shipAnalyticsLog('security.publish_footer.view_fixes_clicked', { ...(clickContext ?? {}) });
+    logClickEvent('security.publish_footer.view_fixes', clickContext)();
     setOpen(false);
     setActiveChatTab(ChatTab.SETTINGS);
     setActiveSettingsSection(SettingsSection.SECURITY);
     if (currentAppId) setSecurityAnalysisResult(currentAppId, null);
     setSecurityFooterDismissed(true);
-  }, [setOpen, setActiveChatTab, setActiveSettingsSection, currentAppId, setSecurityAnalysisResult]);
+  }, [clickContext, setOpen, setActiveChatTab, setActiveSettingsSection, currentAppId, setSecurityAnalysisResult]);
 
   const handleGoLiveInChat = useCallback(() => {
     if (!currentAppId || !isGoLiveFeatureEnabled || isPreLaunchCheckFromPublishDisabled) {
@@ -1093,6 +1098,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
                       <button
                         type='button'
                         onClick={handleViewSecurityFixes}
+                        data-eid={generateClickEID('security.publish_footer.view_fixes')}
                         className='inline-flex items-center gap-0.5 self-start text-intents-ux-link-foregroundColor hover:cursor-pointer'
                       >
                         <text.span size={-1}>{t('builder_security_scan_view_fixes')}</text.span>
