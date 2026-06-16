@@ -33,10 +33,11 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { cn } from '@/lib/utils'
-import { logClickEvent } from '@/utils/instrumentation'
+import { logActionEvent, logClickEvent } from '@/utils/instrumentation'
 
 const PROMPT_BOX_EDITOR_SELECTOR = '.airo-input-prompt-box__entry'
 const PROMPT_BOX_ACTION_BUTTON_SELECTOR = '.airo-input-prompt-box__action button'
+const STOP_BUTTON_ARIA_DISABLED_CLASSES = ['opacity-25', 'cursor-not-allowed'] as const
 
 /**
  * Locate the PromptBox inner contenteditable inside the composer card.
@@ -213,6 +214,7 @@ export default function ChatInput({
   // — onChange("") fires synchronously inside the same event handler, before
   // any microtask runs. See [[chat-input-stop-flow]].
   const isStopFlowRef = useRef(false)
+  const stopDisabledEnteredAtRef = useRef<number | null>(null)
 
   const { handleArrowUp, handleArrowDown, resetNavigation, exitNavigationMode, navRevision } =
     useChatHistoryNavigation({
@@ -419,7 +421,12 @@ export default function ChatInput({
   // microtask — `onChange("")` runs synchronously inside the same event
   // handler, before any microtask fires.
   function handlePromptStop() {
-    if (!isStreaming) return
+    if (!isStreaming) {
+      if (isAwaitingStream && onStopGeneration) {
+        logActionEvent({ eid: 'develop.prompt.stop', action: 'disabled', customProperties: clickContext })()
+      }
+      return
+    }
     logClickEvent('develop.prompt.stop', clickContext)()
     isStopFlowRef.current = true
     onStopGeneration?.()
@@ -631,16 +638,67 @@ export default function ChatInput({
     const btn = findPromptBoxActionButton(composerCardRef.current)
     if (!btn) return
     const isPending = !isQueueModeActive && Boolean((isStreaming || isAwaitingStream) && onStopGeneration)
+    const isAwaitingNotStreaming = Boolean(isAwaitingStream && !isStreaming && onStopGeneration)
     if (isPending) {
       btn.setAttribute('data-testid', 'chat-stop-button')
       btn.removeAttribute('id')
-      btn.toggleAttribute('disabled', isAwaitingStream && !isStreaming)
+      if (isAwaitingNotStreaming) {
+        btn.removeAttribute('disabled')
+        btn.setAttribute('aria-disabled', 'true')
+        btn.setAttribute('tabindex', '-1')
+        btn.classList.add(...STOP_BUTTON_ARIA_DISABLED_CLASSES)
+      } else {
+        btn.removeAttribute('aria-disabled')
+        btn.removeAttribute('tabindex')
+        btn.classList.remove(...STOP_BUTTON_ARIA_DISABLED_CLASSES)
+        btn.toggleAttribute('disabled', false)
+      }
     } else {
       btn.setAttribute('data-testid', 'chat-send-button')
       btn.id = 'chat-send-button'
+      btn.removeAttribute('aria-disabled')
+      btn.removeAttribute('tabindex')
+      btn.classList.remove(...STOP_BUTTON_ARIA_DISABLED_CLASSES)
       btn.toggleAttribute('disabled', submitGated || isPromptDisabled || Boolean(isBudgetExceeded))
     }
   }, [isStreaming, isAwaitingStream, onStopGeneration, submitGated, isPromptDisabled, isBudgetExceeded, isQueueModeActive])
+
+  useEffect(function trackStopButtonDisabledTransitions() {
+    const isStopVisible = !isQueueModeActive && Boolean((isStreaming || isAwaitingStream) && onStopGeneration)
+    const isStopDisabled = isStopVisible && Boolean(isAwaitingStream && !isStreaming)
+
+    if (isStopDisabled) {
+      if (stopDisabledEnteredAtRef.current == null) {
+        const disabledAt = Date.now()
+        stopDisabledEnteredAtRef.current = disabledAt
+        logActionEvent({
+          eid: 'develop.prompt.stop',
+          action: 'load',
+          customProperties: { ...clickContext, disabledAt },
+        })()
+      }
+      return
+    }
+
+    if (stopDisabledEnteredAtRef.current != null && isStreaming && isStopVisible) {
+      const enabledAt = Date.now()
+      logActionEvent({
+        eid: 'develop.prompt.stop',
+        action: 'focus',
+        customProperties: {
+          ...clickContext,
+          enabledAt,
+          disabledDurationMs: enabledAt - stopDisabledEnteredAtRef.current,
+        },
+      })()
+      stopDisabledEnteredAtRef.current = null
+      return
+    }
+
+    if (!isStopVisible) {
+      stopDisabledEnteredAtRef.current = null
+    }
+  }, [isAwaitingStream, isStreaming, onStopGeneration, clickContext, isQueueModeActive])
 
   return (
     <div className="px-2 sm:px-3 md:px-0 mt-1 mt-auto pb-1">

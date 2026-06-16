@@ -423,6 +423,30 @@ describe('instrumentation utilities', () => {
       expect(mockDataLayer).toHaveLength(1);
     });
 
+    it('should handle disabled action', () => {
+      const logAction = logActionEvent({ eid: 'product.section.widget', action: 'disabled' });
+      logAction();
+
+      expect(mockDataLayer).toHaveLength(1);
+      expect(mockDataLayer[0]).toEqual({
+        schema: 'add_element_action',
+        data: {
+          element: {
+            area: 'appbuilder',
+            product: 'product',
+            section: 'section',
+            widget: 'widget',
+            action: 'disabled',
+          },
+          traffic: {
+            eid: 'appbuilder.product.section.widget.disabled',
+            customProperties: {},
+          },
+        },
+        targets: ['fullstory'],
+      });
+    });
+
     it('should not push event without action', () => {
       const logAction = logActionEvent({ eid: 'product.section.widget' } as any);
       logAction();

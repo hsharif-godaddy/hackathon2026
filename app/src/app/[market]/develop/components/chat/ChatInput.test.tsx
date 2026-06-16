@@ -9,7 +9,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { MediaType } from '@/app/[market]/develop/components/chat/AssetTypes';
 import { renderWithProviders } from '@/tests/test-utils';
-import { logClickEvent } from '@/utils/instrumentation';
+import { logActionEvent, logClickEvent } from '@/utils/instrumentation';
 import ChatInput from './ChatInput';
 
 const mockDevelopStore = {
@@ -29,6 +29,7 @@ const mockUseSwitchboard = vi.hoisted(() => vi.fn(function (feature: string) {
 
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn(function (id: string) { return id; }),
+  logActionEvent: vi.fn(function () { return vi.fn(); }),
   logClickEvent: vi.fn(function () { return vi.fn(); }),
 }));
 vi.mock('@/stores/useDevelopPageStore', () => ({
@@ -473,15 +474,116 @@ describe('ChatInput', () => {
 
     const stopButton = screen.getByTestId('chat-stop-button');
     expect(stopButton).toBeInTheDocument();
-    expect(stopButton).toBeDisabled();
+    expect(stopButton).toHaveAttribute('aria-disabled', 'true');
+    expect(stopButton).toHaveAttribute('tabindex', '-1');
+    expect(stopButton).not.toBeDisabled();
     expect(screen.queryByTestId('chat-send-button')).not.toBeInTheDocument();
   });
 
-  // fireEvent.click bypasses the native `disabled` attribute (unlike user-event's
-  // click which respects it), so this verifies the JS-level `if (!isStreaming) return`
-  // guard inside onClick — the second line of defense if a future button wrapper
-  // ever fails to forward `disabled` to the underlying <button>.
-  it('should not call onStopGeneration when the disabled stop button is force-clicked while not streaming', () => {
+  it('should log stop disabled enter action when awaiting stream starts', () => {
+    const { rerender } = renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        appId="app-xyz"
+        isStreaming={false}
+        isAwaitingStream={false}
+        onStopGeneration={vi.fn()}
+      />
+    );
+
+    rerender(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        appId="app-xyz"
+        isStreaming={false}
+        isAwaitingStream={true}
+        onStopGeneration={vi.fn()}
+      />
+    );
+
+    expect(vi.mocked(logActionEvent)).toHaveBeenCalledWith({
+      eid: 'develop.prompt.stop',
+      action: 'load',
+      customProperties: expect.objectContaining({
+        appId: 'app-xyz',
+        disabledAt: expect.any(Number),
+      }),
+    });
+  });
+
+  it('should not re-fire stop disabled load action when still awaiting stream on rerender', () => {
+    const { rerender } = renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        appId="app-xyz"
+        isStreaming={false}
+        isAwaitingStream={true}
+        onStopGeneration={vi.fn()}
+      />
+    );
+
+    vi.mocked(logActionEvent).mockClear();
+
+    rerender(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Updated prompt"
+        appId="app-xyz"
+        isStreaming={false}
+        isAwaitingStream={true}
+        onStopGeneration={vi.fn()}
+      />
+    );
+
+    expect(vi.mocked(logActionEvent)).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'load' }),
+    );
+  });
+
+  it('should log stop enabled action with disabled duration when streaming starts', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+
+    const { rerender } = renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        appId="app-xyz"
+        isStreaming={false}
+        isAwaitingStream={true}
+        onStopGeneration={vi.fn()}
+      />
+    );
+
+    vi.setSystemTime(new Date('2024-01-01T00:00:05.000Z'));
+    rerender(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        appId="app-xyz"
+        isStreaming={true}
+        isAwaitingStream={true}
+        onStopGeneration={vi.fn()}
+      />
+    );
+
+    expect(vi.mocked(logActionEvent)).toHaveBeenCalledWith({
+      eid: 'develop.prompt.stop',
+      action: 'focus',
+      customProperties: expect.objectContaining({
+        appId: 'app-xyz',
+        enabledAt: Date.parse('2024-01-01T00:00:05.000Z'),
+        disabledDurationMs: 5000,
+      }),
+    });
+
+    vi.useRealTimers();
+  });
+
+  it('should not call onStopGeneration when the disabled stop button is clicked while not streaming', () => {
     const onStopGeneration = vi.fn();
     renderWithProviders(
       <ChatInput
@@ -497,6 +599,68 @@ describe('ChatInput', () => {
 
     expect(onStopGeneration).not.toHaveBeenCalled();
     expect(vi.mocked(logClickEvent)).not.toHaveBeenCalledWith('develop.prompt.stop', expect.anything());
+    expect(vi.mocked(logActionEvent)).toHaveBeenCalledWith({
+      eid: 'develop.prompt.stop',
+      action: 'disabled',
+      customProperties: undefined,
+    });
+  });
+
+  it('should log disabled stop action on click while awaiting stream', () => {
+    renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        appId="app-xyz"
+        isStreaming={false}
+        isAwaitingStream={true}
+        onStopGeneration={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('chat-stop-button'));
+
+    expect(vi.mocked(logActionEvent)).toHaveBeenCalledWith({
+      eid: 'develop.prompt.stop',
+      action: 'disabled',
+      customProperties: { appId: 'app-xyz' },
+    });
+  });
+
+  it('should not log disabled stop action on click when stop is enabled', () => {
+    renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        isStreaming={true}
+        isAwaitingStream={true}
+        onStopGeneration={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('chat-stop-button'));
+
+    expect(vi.mocked(logActionEvent)).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'disabled' }),
+    );
+  });
+
+  it('should not log disabled stop action on click when not awaiting stream', () => {
+    renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        isStreaming={false}
+        isAwaitingStream={false}
+        onStopGeneration={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('chat-send-button'));
+
+    expect(vi.mocked(logActionEvent)).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'disabled' }),
+    );
   });
 
   it('should render enabled stop button when both isAwaitingStream and isStreaming are true', () => {

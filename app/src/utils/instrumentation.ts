@@ -262,7 +262,7 @@ const DEFAULT_AREA = 'appbuilder';
 
 interface EventActionProps {
   eid: string;
-  action?: 'blur' | 'drag' | 'focus' | 'hover' | 'load' | 'scroll';
+  action?: 'blur' | 'disabled' | 'drag' | 'focus' | 'hover' | 'load' | 'scroll';
   customProperties?: Record<string, boolean | string | number>;
 }
 
