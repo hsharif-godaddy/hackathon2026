@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+// Mirror of DkimOnboardingStatus in agents DkimOnboardingRepository — keep in sync (separate services, no shared type pkg).
+export type DkimOnboardingStatus = 'pending' | 'active' | 'failed';
+
 export const DkimApiActivateResponseSchema = z.object({
   executionArn: z.string(),
 });
@@ -38,6 +41,11 @@ export type DkimActivateOutcome =
   | { result: 'accepted'; executionArn: string }
   | { result: 'skipped'; reason: 'feature_flag_off' | 'unsupported_origin' }
   | { result: 'failed'; error: string };
+
+export type DkimOnboardOutcome =
+  | DkimActivateOutcome
+  | { result: 'noop'; reason: 'already_active' | 'in_progress' }
+  | { result: 'skipped'; reason: 'not_internal' | 'no_agent_url' };
 
 export type DkimDeactivateOutcome =
   | { result: 'deactivated'; executionArn: string }

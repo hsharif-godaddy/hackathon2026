@@ -369,6 +369,7 @@ export function initializeSchema(db: Database): void {
   createConversationSummariesTable(db);
   createGitRemoteConfigTable(db);
   createShareTokensTable(db);
+  createDkimOnboardingTable(db);
   createSeoQualityScoresTable(db);
 
   // Apply migrations BEFORE creating indexes (migrations may alter schema)
@@ -697,6 +698,27 @@ function createShareTokensTable(db: Database): void {
 }
 
 /**
+ * Create the dkim_onboarding table for durable DKIM onboarding state per (app, domain)
+ */
+function createDkimOnboardingTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS dkim_onboarding (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      domain TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'active', 'failed')),
+      execution_arn TEXT,
+      last_error TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      -- UNIQUE(app_id, domain) also serves as the app_id-prefix index (no separate index needed).
+      UNIQUE(app_id, domain),
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+    )
+  `);
+}
+
+/**
  * Create the social_associations table for social platform connections
  * Stores connections between apps and social media accounts
  */
@@ -975,6 +997,9 @@ function createIndexes(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_share_tokens_expires_at ON share_tokens(expires_at)
   `);
 
+  // DKIM onboarding: no separate app_id index needed — UNIQUE(app_id, domain)
+  // already provides a composite index whose leftmost prefix covers app_id lookups.
+
   // seo_quality_scores table indexes
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_seo_quality_scores_app_id ON seo_quality_scores(app_id)
@@ -1102,6 +1127,17 @@ function createTriggers(db: Database): void {
     FOR EACH ROW
     BEGIN
       UPDATE social_posts SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END
+  `);
+
+  // Safety net: repository UPDATEs already set updated_at = CURRENT_TIMESTAMP explicitly;
+  // this trigger guarantees the column stays fresh for any future UPDATE that omits it.
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS update_dkim_onboarding_updated_at
+    AFTER UPDATE ON dkim_onboarding
+    FOR EACH ROW
+    BEGIN
+      UPDATE dkim_onboarding SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
     END
   `);
 }

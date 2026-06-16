@@ -23,7 +23,6 @@ import {
 import DomainPurchaseWidget from '@/app/[market]/develop/components/widgets/DomainPurchaseWidget';
 import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
-import { clearDkimOnboardRecord } from '@/hooks/useDkimAutoOnboard';
 import { useDomainDnsOwnership } from '@/hooks/useDomainDnsOwnership';
 import { useDomainPolling } from '@/hooks/useDomainPolling';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
@@ -472,10 +471,6 @@ export default function DomainAttachWidget({
       setDisconnectSuccessMessage(
         t('builder_domain_disconnect_success', {}, 'Domain has been disconnected')
       );
-
-      if (appId && domainName) {
-        clearDkimOnboardRecord(appId, domainName);
-      }
 
       // Best-effort DKIM teardown — see DomainAttach.tsx for design notes.
       // Only fires when the feature flag is on to avoid wasted round-trips.

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
+import { DkimAgentClient } from '@/lib/dkim/dkim-agent-client';
 import { DkimService } from '@/lib/dkim/dkim-service';
 import { AiroHttpError } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
@@ -17,11 +18,12 @@ export const POST = withCustomerAuth(async (
 ): Promise<NextResponse> => {
   const { id: appId } = await params;
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
-  const domain = body.domain;
+  const rawDomain = body.domain;
 
-  if (!domain || typeof domain !== 'string') {
+  if (!rawDomain || typeof rawDomain !== 'string') {
     return NextResponse.json({ error: 'domain is required' }, { status: 400 });
   }
+  const domain = rawDomain.toLowerCase();
 
   // Early flag check — see onboard/route.ts for rationale. Short-circuits
   // before getSite to avoid wasted upstream load when the feature is off.
@@ -46,6 +48,19 @@ export const POST = withCustomerAuth(async (
       domain,
       shopperId: authContext.user.shopperId,
     }, request);
+
+    const durableEnabled = await checkSwitchboardFlag('appbuilder-dkim-durable-state', request);
+    if (durableEnabled) {
+      // Tear down the durable onboarding row so a future re-attach can re-onboard.
+      // Best-effort: never fail the offboard response on a teardown error.
+      try {
+        if (site.agent_url) {
+          await new DkimAgentClient(site.agent_url, appId).deleteRow(domain);
+        }
+      } catch (e) {
+        logger.error('dkim.offboard.deleteRow.failed', { appId, domain, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
 
     return NextResponse.json(outcome);
   } catch (err) {

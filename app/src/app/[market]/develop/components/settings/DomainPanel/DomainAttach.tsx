@@ -25,7 +25,7 @@ import {
 import type { AppDetailsResponse, AppDomain } from '@/hooks/useAppDetails';
 import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
-import { clearDkimOnboardRecord, useDkimAutoOnboard } from '@/hooks/useDkimAutoOnboard';
+import { useDkimAutoOnboard } from '@/hooks/useDkimAutoOnboard';
 import { useDomainDnsOwnership } from '@/hooks/useDomainDnsOwnership';
 import { type Domain, useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainTransfer } from '@/hooks/useDomainTransfer';
@@ -609,10 +609,6 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
       setDisconnectSuccessMessage(
         t('builder_domain_disconnect_success', {}, 'Domain has been disconnected')
       );
-
-      if (currentAppId && domainName) {
-        clearDkimOnboardRecord(currentAppId, domainName);
-      }
 
       // Best-effort DKIM teardown — only fires when the feature flag is on.
       // When the flag is off, the route would return {result:'skipped'}
