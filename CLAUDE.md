@@ -52,7 +52,9 @@ if (options.token && options.repoUrl) {
 
 Additional: `app-templates/` (v8 template), `packages/design-extractor/` (PDF RAG), `tests/` (Playwright E2E tests), `debug-console/` (internal dev-team dashboard — review pragmatically, see [debug-console/CLAUDE.md](debug-console/CLAUDE.md))
 
-See service-specific CLAUDE.md files: [agents/](agents/CLAUDE.md), [app/](app/CLAUDE.md), [dev-supervisor/](dev-supervisor/CLAUDE.md), [local-control-plane/](local-control-plane/CLAUDE.md), [go-agent/](go-agent/CLAUDE.md), [packages/ai-transport/](packages/ai-transport/CLAUDE.md), [debug-console/](debug-console/CLAUDE.md), [budget-service/](budget-service/CLAUDE.md)
+Supporting services (run independently of the core dev loop): `dev-runner/` (Go TUI that `pnpm run dev` builds and execs — orchestrates the local processes), `notification-service/` (Node), `stripe-service/` (Go, billing), `design-rag/` (Node, design RAG), `fanout/` (Node), `investigator/` (Node), `release-manager/` (Go, `pnpm run release`), `cdk/` (Node, infra), `blog/` (Node). The full workspace package list is in `pnpm-workspace.yaml`.
+
+See service-specific CLAUDE.md files: [agents/](agents/CLAUDE.md), [app/](app/CLAUDE.md), [dev-supervisor/](dev-supervisor/CLAUDE.md), [local-control-plane/](local-control-plane/CLAUDE.md), [go-agent/](go-agent/CLAUDE.md), [packages/ai-transport/](packages/ai-transport/CLAUDE.md), [debug-console/](debug-console/CLAUDE.md), [budget-service/](budget-service/CLAUDE.md), [dev-runner/](dev-runner/CLAUDE.md), [notification-service/](notification-service/CLAUDE.md)
 
 ## Publish Flow & Container Architecture
 
@@ -136,6 +138,20 @@ Translation keys are validated during pre-commit (blocks on missing keys). Fetch
 - [ ] Backward compatibility verified
 - [ ] **UI changes:** E2E tests in `tests/e2e/`, `tests/e2e-v2/`, and `tests/regression/` updated if `data-testid` or user flows changed (during the e2e/e2e-v2 overlap, both must be kept in sync)
 - [ ] **dev-supervisor only:** `make check` passes
+
+## Code Conventions
+
+`.cursor/rules/*.mdc` encode mandatory conventions (most are `alwaysApply: true`) that this repo enforces but aren't repeated here. Read the relevant rule before writing code in that area:
+
+- **structured-logging** — `console.log` is prohibited; use the structured logger (see Logging above).
+- **function-naming**, **import-naming**, **import-sorting** — naming/aliasing rules and import ordering.
+- **no-single-use-variables**, **minimal-scope**, **comments** — inline single-use values, keep changes literal/minimal, prefer self-documenting code over comments.
+- **line-trimming** — no trailing whitespace, no consecutive blank lines, no trailing blank lines at EOF.
+- **async-over-sync** — prefer async APIs over synchronous (blocking) calls.
+- **nodejs-core-modules** — always `node:` prefix for core modules.
+- **dependency-validation** — every imported package must be declared in that package's `package.json`.
+- **test-implementation**, **test-structure** — no placeholder tests; required test organization.
+- **react** (`*.tsx`), **uxcore-tailwind** (`app/src/**`) — component architecture and UXCore Tailwind intent classes.
 
 ## Engineering Guidelines
 
