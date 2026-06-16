@@ -172,7 +172,8 @@ const SYNC_MANIFEST = [
       'c23c35c1239baf9990b60ac54c7c4b97', // d4d5fb79 - i18n round
       '4bdc954c07b1310fbe273850f54e6abb', // pre-consent-event dispatch
       'bdf3ad168393a08d96f177bc28d77163', // AIROBUILD-2057 - before data-airo-non-editable opt-out
-      '0b543cad5a0ef93bfcf87e1e2bede6e6'  // #4699 - hide-in-preview DEV guard (reverted)
+      '0b543cad5a0ef93bfcf87e1e2bede6e6', // #4699 - hide-in-preview DEV guard (reverted)
+      '24c734353145cdb86e173e7186323847'  // RUBICON-418 - before "Learn more" link removal
     ],
     force: false
   },
