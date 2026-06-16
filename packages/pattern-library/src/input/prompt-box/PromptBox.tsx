@@ -98,6 +98,13 @@ export interface PromptBoxProps
   pending?: boolean;
   /** Disables the field and action button. @default false */
   disabled?: boolean;
+  /**
+   * When `true`, Enter or the send button fires `onSubmit` even when the
+   * trimmed field value is empty. Use when attachments staged outside the
+   * field (e.g. chat composer thumbnails) are sufficient to send.
+   * @default false
+   */
+  allowEmptySubmit?: boolean;
   /** Placeholder shown when the field is empty. */
   placeholder?: string;
   /**
@@ -407,6 +414,7 @@ function PromptBoxRoot(
     onChange,
     pending = false,
     disabled = false,
+    allowEmptySubmit = false,
     placeholder,
     appearance = 'default',
     beforeSubmit,
@@ -566,7 +574,7 @@ function PromptBoxRoot(
 
   const handleSubmit = useCallback(() => {
     const trimmed = currentValueRef.current.trim();
-    if (!trimmed || disabled) return;
+    if (disabled || (!trimmed && !allowEmptySubmit)) return;
 
     if (pending) {
       onQueue?.(trimmed);
@@ -577,7 +585,7 @@ function PromptBoxRoot(
     setSuggestionsOpen(false);
     setActiveIndex(-1);
     if (!isControlled) setInternalValue('');
-  }, [disabled, pending, onQueue, onSubmit, isControlled]);
+  }, [allowEmptySubmit, disabled, pending, onQueue, onSubmit, isControlled]);
 
   const handleStop = useCallback(() => {
     onStop?.();

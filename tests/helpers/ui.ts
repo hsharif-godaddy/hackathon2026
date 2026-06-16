@@ -437,3 +437,46 @@ export async function dismissGoLiveModalIfPresent(page: Page, waitTime = GO_LIVE
   console.log('No Go Live modal appeared (republish or already gone live)');
   return false;
 }
+
+const SSE_TRANSPORT_FLAG = 'app-builder-sse-transport';
+
+/**
+ * Force WebSocket chat transport for the browser context. Call before the first
+ * navigation — useChatTransport locks onto the switchboard flag at develop mount.
+ */
+export async function forceWebSocketTransport(page: Page): Promise<void> {
+  await page.addInitScript((flagKey: string) => {
+    function patchSwitchboard(value: unknown): unknown {
+      if (value && typeof value === 'object') {
+        const record = value as { switchboard?: Record<string, unknown> };
+        if (record.switchboard) {
+          record.switchboard[flagKey] = false;
+        }
+      }
+      return value;
+    }
+
+    let stored: unknown;
+    Object.defineProperty(window, 'gasketData', {
+      configurable: true,
+      enumerable: true,
+      get() {
+        return stored;
+      },
+      set(value: unknown) {
+        stored = patchSwitchboard(value);
+      },
+    });
+  }, SSE_TRANSPORT_FLAG);
+}
+
+/** Assert the SSE transport switchboard flag is off (default WS cohort). */
+export async function expectWebSocketTransport(page: Page): Promise<void> {
+  const sseEnabled = await page.evaluate(
+    (flagKey: string) =>
+      (window as unknown as { gasketData?: { switchboard?: Record<string, unknown> } }).gasketData
+        ?.switchboard?.[flagKey] === true,
+    SSE_TRANSPORT_FLAG,
+  );
+  expect(sseEnabled, 'Chat transport must be WebSocket (app-builder-sse-transport off)').toBe(false);
+}

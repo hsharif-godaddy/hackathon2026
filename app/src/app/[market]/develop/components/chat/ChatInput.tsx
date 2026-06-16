@@ -33,6 +33,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { cn } from '@/lib/utils'
+import { hasComposerAttachments, hasComposerSendPayload } from '@/services/websocket/composerAttachments'
 import { logActionEvent, logClickEvent } from '@/utils/instrumentation'
 
 const PROMPT_BOX_EDITOR_SELECTOR = '.airo-input-prompt-box__entry'
@@ -374,7 +375,9 @@ export default function ChatInput({
     }
   }, [onScreenshotCaptured, onUploadError])
 
-  const canSubmit = Boolean(inputValue?.trim())
+  const composerAttachments = { stagedFiles, selectedAssets, referencedFiles }
+  const hasAttachments = hasComposerAttachments(composerAttachments)
+  const canSubmit = hasComposerSendPayload(inputValue, composerAttachments)
 
   function getPlaceholder() {
     if (isBudgetExceeded) return t('builder_chatinput_budget_exceeded');
@@ -841,6 +844,7 @@ export default function ChatInput({
             }}
             onSubmit={handlePromptSubmit}
             onStop={handlePromptStop}
+            allowEmptySubmit={hasAttachments}
             pending={!isQueueModeActive && Boolean((isStreaming || isAwaitingStream) && onStopGeneration)}
             disabled={isPromptDisabled}
             isListening={isListening}

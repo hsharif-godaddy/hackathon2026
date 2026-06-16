@@ -165,6 +165,17 @@ describe('PromptBox', () => {
       expect(onSubmit).not.toHaveBeenCalled();
     });
 
+    it('fires onSubmit with empty string when allowEmptySubmit is true', async () => {
+      const user = userEvent.setup();
+      const onSubmit = vi.fn();
+      renderBox({ onSubmit, allowEmptySubmit: true, submitLabel: 'Send' });
+
+      await user.click(screen.getByRole('button', { name: 'Send' }));
+
+      expect(onSubmit).toHaveBeenCalledOnce();
+      expect(onSubmit).toHaveBeenCalledWith('');
+    });
+
     it('does not fire onSubmit when disabled', () => {
       const onSubmit = vi.fn();
       render(<ControlledBox initialValue="Hello" onSubmit={onSubmit} disabled />);

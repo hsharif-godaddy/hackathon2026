@@ -276,7 +276,7 @@ describe('ChatInput', () => {
     expect(sendButton).not.toBeDisabled();
   });
 
-  it('should disable send when staged files exist without message text', () => {
+  it('should enable send when staged files exist without message text', () => {
     renderWithProviders(
       <ChatInput
         {...defaultProps}
@@ -292,10 +292,33 @@ describe('ChatInput', () => {
       />
     );
 
-    expect(screen.getByTestId('chat-send-button')).toBeDisabled();
+    expect(screen.getByTestId('chat-send-button')).not.toBeDisabled();
   });
 
-  it('should disable send when only selectedAssets present without text', () => {
+  it('should call onSendMessage when send clicked with staged files only', async function sendStagedOnly() {
+    const onSendMessage = vi.fn();
+    const { user } = renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue=""
+        onSendMessage={onSendMessage}
+        stagedFiles={[
+          {
+            id: 's1',
+            file: new File(['x'], 'a.png', { type: 'image/png' }),
+            previewUrl: 'blob:mock',
+          },
+        ]}
+        onRemoveStagedFile={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByTestId('chat-send-button'));
+
+    expect(onSendMessage).toHaveBeenCalledOnce();
+  });
+
+  it('should enable send when only selectedAssets present without text', () => {
     renderWithProviders(
       <ChatInput
         {...defaultProps}
@@ -317,10 +340,10 @@ describe('ChatInput', () => {
       />
     );
 
-    expect(screen.getByTestId('chat-send-button')).toBeDisabled();
+    expect(screen.getByTestId('chat-send-button')).not.toBeDisabled();
   });
 
-  it('should disable send button when input is empty even if referenced files are present', () => {
+  it('should enable send when referenced files exist without message text', () => {
     renderWithProviders(
       <ChatInput
         {...defaultProps}
@@ -329,10 +352,10 @@ describe('ChatInput', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: 'builder_chatinput_send' })).toBeDisabled();
+    expect(screen.getByTestId('chat-send-button')).not.toBeDisabled();
   });
 
-  it('should not call onSendMessage via Enter when input is empty even if referenced files are present', async function sendWithRefsOnly() {
+  it('should call onSendMessage when send clicked with referenced files only', async function sendRefsOnly() {
     const onSendMessage = vi.fn();
     const { user } = renderWithProviders(
       <ChatInput
@@ -343,11 +366,9 @@ describe('ChatInput', () => {
       />
     );
 
-    const textarea = screen.getByRole('textbox');
-    await user.click(textarea);
-    await user.keyboard('{Enter}');
+    await user.click(screen.getByTestId('chat-send-button'));
 
-    expect(onSendMessage).not.toHaveBeenCalled();
+    expect(onSendMessage).toHaveBeenCalledOnce();
   });
 
   it('should render stop button instead of send button when streaming', () => {

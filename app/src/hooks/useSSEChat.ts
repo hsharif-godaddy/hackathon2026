@@ -15,6 +15,7 @@ import { readDesignChoiceForCurrentApp } from '@/lib/rebuild-design-choice'
 import { logger } from '@/lib/request-context'
 import { SSETransport } from '@/services/transport/SSETransport'
 import type { SendMessageParams, TransportState } from '@/services/transport/types'
+import { hasComposerSendPayload } from '@/services/websocket/composerAttachments'
 import {
   bufferStoreUpdate,
   bufferTextChunk,
@@ -1047,12 +1048,12 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
       return
     }
 
+    if (!hasComposerSendPayload(options.content, {
+      selectedAssets: options.selectedAssets,
+      referencedFiles: options.customContext?.referencedFiles,
+    })) return
+
     const hasText = Boolean(options.content?.trim())
-    const hasReferencedFiles = (options.customContext?.referencedFiles?.length ?? 0) > 0
-    const hasSelectedAssets = (options.selectedAssets?.length ?? 0) > 0
-    if (!hasText && !hasReferencedFiles && !hasSelectedAssets) {
-      return
-    }
 
     if (!activeAppId) {
       logger.error('sse.send_message.no_app_id', {})

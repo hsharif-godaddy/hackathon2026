@@ -70,6 +70,7 @@ import { cloneQueueablePayload } from '@/lib/messageQueue';
 import { createPostPublishPreLaunchAssistantMessage } from '@/lib/post-publish-prelaunch-ask-question';
 import { logger } from '@/lib/request-context';
 import { appService } from '@/services/AppService';
+import { hasComposerSendPayload } from '@/services/websocket/composerAttachments';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useGitStore } from '@/stores/useGitStore'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore';
@@ -745,7 +746,7 @@ function ChatPaneInner({
         children: t(
           'builder_chat_large_paste_growl_description',
           undefined,
-          'Your paste was attached as a file below. You can add a short message, then send.'
+          'Your paste was attached as a file below. Send now or add a short message first.'
         ),
         emphasis: 'info',
         lifetime: 5000,
@@ -852,7 +853,7 @@ function ChatPaneInner({
     async (content?: string, options?: SendChatMessageOptions) => {
       const messageToSend = content ?? inputValue;
       const userInitiated = content === undefined;
-      const hasText = Boolean(messageToSend?.trim());
+      const composerAttachments = { stagedFiles, selectedAssets, referencedFiles };
 
       logger.debug('chat-pane.send-message', {
         message: 'ChatPane handleSendMessage called',
@@ -860,7 +861,7 @@ function ChatPaneInner({
         hasSendMessageFunction: !!sendMessage,
       });
 
-      if (!hasText) {
+      if (!hasComposerSendPayload(messageToSend, composerAttachments)) {
         logger.error('chat-pane.send-message.empty-content', {
           appId,
           userInitiated,
@@ -875,7 +876,7 @@ function ChatPaneInner({
         setUploadError(null);
       }
 
-      const outboundContent = messageToSend.trim();
+      const outboundContent = messageToSend?.trim() ?? '';
 
       let mergedAssets: AssetManagerItem[] | undefined =
         selectedAssets.length > 0 ? [...selectedAssets] : undefined;

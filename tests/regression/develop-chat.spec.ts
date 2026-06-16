@@ -1,13 +1,14 @@
 /**
  * Develop Page — publish lockout & attachment staging.
  *
- * Focused regression coverage for the two develop-page behaviors NOT exercised
+ * Focused regression coverage for develop-page behaviors NOT exercised
  * by the e2e-v2 suite:
  *   1. History interactions (commit select, restore, date-group toggle, load
  *      more) are disabled while a publish is in flight, and re-enable when it
  *      completes.
- *   2. The chat input stages dropped / pasted file attachments and keeps Send
- *      disabled until prompt text is present.
+ *   2. The chat input stages dropped / pasted file attachments and enables Send
+ *      when attachments are present (prompt text optional).
+ *   3. Attachment-only send (upload → transcript) on WebSocket transport.
  *
  * The previous "Full UI Flow" mega-test also covered component render, preview
  * controls, chat-input states, send-via-click/Enter and page-reload recovery —
@@ -18,9 +19,11 @@
  * check, and the settings-popover toggle mechanics — low-value chrome, not
  * re-homed.)
  *
- * Coverage gap (unchanged): staged-file SEND (uploadChatFiles → agent
- * multipart) is not exercised — it needs a live agent and is high flake risk.
- * Only drop/paste staging is validated.
+ * Step 6c exercises attachment-only send on the default WebSocket transport;
+ * SSE cohort is forced off via forceWebSocketTransport so a green run is not a
+ * false positive from the SSE path. Live-agent upload remains high flake risk —
+ * transcript and AI completion waits use AI_RESPONSE_TIMEOUT_MS. Prefer nightly
+ * if 6c flakes in CI smoke.
  */
 import type { Page } from '@playwright/test';
 
@@ -39,6 +42,8 @@ import {
 import {
   dismissOverlays,
   expectPublishSuccessVisible,
+  expectWebSocketTransport,
+  forceWebSocketTransport,
   logTestResult,
   logTestStart,
   waitForDevelopPage,
@@ -216,9 +221,10 @@ test.describe('Develop Page', () => {
   });
 
   test('Chat input stages dropped and pasted attachments', async ({ page }, testInfo) => {
-    // One AI wait (initial generation); the staging assertions are client-side.
-    testInfo.setTimeout(AI_RESPONSE_TIMEOUT_MS + 120_000);
+    // One AI wait for initial generation; step 6c adds a second AI wait for attachment-only send.
+    testInfo.setTimeout(AI_RESPONSE_TIMEOUT_MS * 2 + 180_000);
 
+    await forceWebSocketTransport(page);
     await createDevelopApp(page);
 
     await dismissOverlays(page);
@@ -248,17 +254,17 @@ test.describe('Develop Page', () => {
       );
     }, tinyPngBase64);
 
-    await expect(page.getByTestId('chat-send-button')).toBeDisabled();
+    await expect(page.getByTestId('chat-send-button')).not.toBeDisabled();
     await expect(chatInputCard.getByRole('img', { name: 'e2e-drop.png' })).toBeVisible({
       timeout: DEFAULT_TIMEOUT,
     });
-    console.log('  ✓ Drop stages file; send stays disabled until prompt text is entered');
+    console.log('  ✓ Drop onto chat input stages file; send enabled without prompt text');
 
     await chatInput.fill('e2e prompt');
     await expect(page.getByTestId('chat-send-button')).not.toBeDisabled();
     await chatInput.clear();
-    await expect(page.getByTestId('chat-send-button')).toBeDisabled();
-    console.log('  ✓ Send enables once prompt text is entered with a staged attachment');
+    await expect(page.getByTestId('chat-send-button')).not.toBeDisabled();
+    console.log('  ✓ Send stays enabled with staged drop attachment when prompt text is cleared');
 
     await page.getByTestId('chat-staged-file-clear').first().click();
     await expect(page.getByTestId('chat-send-button')).toBeDisabled();
@@ -278,20 +284,64 @@ test.describe('Develop Page', () => {
       el.dispatchEvent(ev);
     });
 
-    await expect(page.getByTestId('chat-send-button')).toBeDisabled();
+    await expect(page.getByTestId('chat-send-button')).not.toBeDisabled();
     await expect(page.getByText('e2e-paste.txt', { exact: true })).toBeVisible({
       timeout: DEFAULT_TIMEOUT,
     });
-    console.log('  ✓ Paste stages attachment; send stays disabled until prompt text');
+    console.log('  ✓ Paste file from clipboard stages attachment; send enabled without prompt text');
 
     await chatInput.fill('e2e prompt');
     await expect(page.getByTestId('chat-send-button')).not.toBeDisabled();
     await chatInput.clear();
-    await expect(page.getByTestId('chat-send-button')).toBeDisabled();
+    await expect(page.getByTestId('chat-send-button')).not.toBeDisabled();
+    console.log('  ✓ Send stays enabled with pasted attachment when prompt text is cleared');
 
     await page.getByTestId('chat-staged-file-clear').first().click();
     await expect(page.getByTestId('chat-send-button')).toBeDisabled();
     console.log('  ✓ Cleared staged paste attachment');
+
+    // --- Send staged attachment without prompt text (happy path, WS transport) ---
+    await dismissOverlays(page);
+    console.log('📎 Step 6c: Sending attachment-only message (WebSocket transport)...');
+
+    await expectWebSocketTransport(page);
+
+    await chatInput.clear();
+    await expect(page.getByTestId('chat-send-button')).toBeDisabled();
+
+    await chatInputCard.evaluate((el, b64: string) => {
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const file = new File([bytes], 'e2e-drop.png', { type: 'image/png' });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      el.dispatchEvent(
+        new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt })
+      );
+    }, tinyPngBase64);
+
+    await expect(page.getByTestId('chat-send-button')).not.toBeDisabled();
+    await expect(chatInputCard.getByRole('img', { name: 'e2e-drop.png' })).toBeVisible({
+      timeout: DEFAULT_TIMEOUT,
+    });
+
+    const emptyPromptText = await chatInput.evaluate((el) =>
+      el instanceof HTMLTextAreaElement ? el.value : ((el as HTMLElement).innerText ?? ''),
+    );
+    expect(emptyPromptText.trim()).toBe('');
+
+    await page.getByTestId('chat-send-button').click({ force: true });
+
+    const attachmentOnlyTranscript = page.getByTestId('chat-transcript');
+    await expect(attachmentOnlyTranscript.getByRole('img', { name: 'e2e-drop.png' })).toBeVisible({
+      timeout: AI_RESPONSE_TIMEOUT_MS,
+    });
+    await expect(chatInputCard.getByRole('img', { name: 'e2e-drop.png' })).not.toBeVisible({
+      timeout: DEFAULT_TIMEOUT,
+    });
+    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    console.log('  ✓ Attachment-only send: upload completed and AI response finished');
   });
 
   // Skip: backend does not reliably cancel agent — re-enable once AIROBUILD-1235 is fixed.

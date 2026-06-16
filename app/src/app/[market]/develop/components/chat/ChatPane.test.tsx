@@ -534,7 +534,7 @@ describe('ChatPane', () => {
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
-    it('should not call sendMessage when referenced files exist but prompt text is empty', async function refsWithoutPrompt() {
+    it('should call sendMessage when referenced files exist but prompt text is empty', async function refsWithoutPrompt() {
       const { user } = renderWithProviders(
         <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />
       );
@@ -547,7 +547,7 @@ describe('ChatPane', () => {
 
       await user.click(screen.getByRole('button', { name: 'Send' }));
 
-      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect(mockSendMessage).toHaveBeenCalledOnce();
     });
   });
 

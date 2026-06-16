@@ -111,6 +111,12 @@ const SYNC_MANIFEST = [
     force: false,
   },
   {
+    file: 'src/lib/__tests__/analytics-consent.test.ts',
+    description: 'Runtime coverage for analytics consent helpers',
+    known_hashes: [],
+    force: false,
+  },
+  {
     file: 'src/main.tsx',
     description: 'Client entry; hydrateRoot when SSR markup present, createRoot otherwise',
     known_hashes: [

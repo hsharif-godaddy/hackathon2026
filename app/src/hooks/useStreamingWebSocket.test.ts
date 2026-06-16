@@ -400,20 +400,31 @@ describe('useStreamingWebSocket', () => {
       expect(mockSetIsLoadingAction).not.toHaveBeenCalled();
     });
 
-    it('should not send when content is empty even if selectedAssets are present', async () => {
+    it('should send when content is empty but selectedAssets are present', async () => {
       vi.useFakeTimers();
+      const { StreamingWebSocketController } = await import('@/services/websocket/StreamingWebSocketController');
+      const sendMessageSpy = vi.spyOn(StreamingWebSocketController.prototype, 'sendMessage');
       const { hook } = await setupWebSocketWithApp('test-app-assets-only');
 
       mockSetIsLoadingAction.mockClear();
 
+      const selectedAssets = [{ imageUrl: 'https://example.com/a.jpg' } as any];
       await act(async () => {
         await hook.result.current.actions.send({
           content: '',
-          selectedAssets: [{ imageUrl: 'https://example.com/a.jpg' } as any],
+          selectedAssets,
         });
       });
 
-      expect(mockSetIsLoadingAction).not.toHaveBeenCalled();
+      expect(mockSetIsLoadingAction).toHaveBeenCalledWith(true);
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: '',
+          selectedAssets,
+        })
+      );
+
+      sendMessageSpy.mockRestore();
       vi.useRealTimers();
     });
 

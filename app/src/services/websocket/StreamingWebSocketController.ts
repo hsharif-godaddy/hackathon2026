@@ -45,6 +45,7 @@ import {
   type CustomContext,
   type TodoContext,
 } from './ChatMessageBuilder'
+import { hasComposerSendPayload } from './composerAttachments'
 import { ConnectionManager } from './ConnectionManager'
 import { NetworkQualityMonitor } from './NetworkQualityMonitor'
 import { StoreSyncAdapter } from './StoreSyncAdapter'
@@ -484,10 +485,13 @@ export class StreamingWebSocketController extends EventEmitter {
   }): Promise<void> {
     const { content } = params
 
-    const hasText = Boolean(content.trim())
-    const hasReferencedFiles = (params.customContext?.referencedFiles?.length ?? 0) > 0
-    const hasSelectedAssets = (params.selectedAssets?.length ?? 0) > 0
-    if ((!hasText && !hasReferencedFiles && !hasSelectedAssets) || !this.currentAppId) {
+    if (
+      !hasComposerSendPayload(content, {
+        selectedAssets: params.selectedAssets,
+        referencedFiles: params.customContext?.referencedFiles,
+      })
+      || !this.currentAppId
+    ) {
       return
     }
 

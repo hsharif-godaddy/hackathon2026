@@ -28,6 +28,7 @@ import type {
   TodoContext,
 } from '@/services/websocket/ChatMessageBuilder'
 import { ChatMessageBuilder } from '@/services/websocket/ChatMessageBuilder'
+import { hasComposerSendPayload } from '@/services/websocket/composerAttachments'
 import { ConnectionManager } from '@/services/websocket/ConnectionManager'
 import {
   cancelDeferredRegistryDestroy,
@@ -377,11 +378,14 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
         return
       }
 
-      if (!options.content?.trim()) {
+      if (!hasComposerSendPayload(options.content, {
+        selectedAssets: options.selectedAssets,
+        referencedFiles: options.customContext?.referencedFiles,
+      })) {
         const error = new WebSocketError(WebSocketErrorCode.MESSAGE_EMPTY, {
-          context: { appId: activeAppId }
+          context: { appId: activeAppId },
         })
-        logger.error('websocket.send_message.empty_content', error.toLogObject())
+        logger.warn('websocket.send_message.empty_content', error.toLogObject())
         return
       }
 
