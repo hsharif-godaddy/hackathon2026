@@ -46,7 +46,8 @@ jobs:
     if: >
       needs.check-back-merge.outputs.skip != 'true' &&
       github.event.pull_request.draft == false &&
-      github.event.sender.type != 'Bot'
+      ( github.event.sender.type != 'Bot' ||
+        github.event.pull_request.user.login == 'airo-scout[bot]' )
     uses: gdcorp-actions/gd-claude-code-action/.github/workflows/secure-claude-code.yml@e56ec6c5aeb92b60166868098e9cf59e0f35e872 # v2.17.1
     with:
       runner_group: ${{ vars.CLAUDE_RUNNER_GROUP }}
