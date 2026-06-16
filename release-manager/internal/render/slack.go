@@ -100,7 +100,11 @@ func Message(s State) string {
 			for _, n := range s.ReleaseNotes {
 				line := fmt.Sprintf("• #%d %s", n.Number, n.Title)
 				if n.Author != "" {
-					line += " — @" + n.Author
+					if strings.HasSuffix(n.Author, "-godaddy") {
+						line += fmt.Sprintf(" - `%s` (@%s)", n.Author, strings.TrimSuffix(n.Author, "-godaddy"))
+					} else {
+						line += fmt.Sprintf(" - `%s`", n.Author)
+					}
 				}
 				sb.WriteString(line + "\n")
 			}

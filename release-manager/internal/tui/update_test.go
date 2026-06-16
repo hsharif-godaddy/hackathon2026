@@ -849,8 +849,8 @@ func TestSlackMessageReleaseNotes(t *testing.T) {
 	for _, want := range []string{
 		"**Release Notes** (2 PRs)",
 		"[Full diff](https://github.com/org/repo/compare/a...b)",
-		"• #100 fix: first bug — @alice",
-		"• #200 feat: new feature — @bob",
+		"• #100 fix: first bug - `alice`",
+		"• #200 feat: new feature - `bob`",
 	} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("expected %q in output, got:\n%s", want, msg)

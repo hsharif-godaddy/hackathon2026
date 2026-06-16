@@ -131,7 +131,7 @@ func TestMessageGolden(t *testing.T) {
 	var want strings.Builder
 	want.WriteString(":rocket: **alice** is deploying `main` (`abc1234`)\n")
 	want.WriteString("\n" + BlankLine + "\n**Release Notes** (1 PRs) — [Full diff](https://x/compare)\n")
-	want.WriteString("• #42 Add thing — @bob\n")
+	want.WriteString("• #42 Add thing - `bob`\n")
 	want.WriteString("\n" + BlankLine + "\n**TEST**\n")
 	// test is envOrder[0] → no deploy-values block.
 	want.WriteString(Nbsp + ":white_check_mark: Deploy App (5s) — [View Run](https://x/runs/1)\n")
@@ -310,4 +310,46 @@ func TestMessageRejectedAttribution(t *testing.T) {
 	if !strings.Contains(out, ":no_entry: **Release rejected by @matkinson-godaddy — e2e tests are failing**") {
 		t.Errorf("rejected message missing attributed no_entry line: %q", out)
 	}
+}
+
+func TestReleaseNoteAuthorFormat(t *testing.T) {
+	base := State{
+		Operator: "alice",
+		Branch:   "main",
+		EnvOrder: []string{"test"},
+		Stages:   []*pipeline.StageRun{stage("test", "Deploy", pipeline.StateSuccess, 0, "")},
+	}
+
+	t.Run("godaddy suffix links to GitHub user", func(t *testing.T) {
+		s := base
+		s.ReleaseNotes = []pipeline.ReleaseNote{{Number: 10, Title: "Fix bug", Author: "jdoe-godaddy"}}
+		out := Message(s)
+		if !strings.Contains(out, "• #10 Fix bug - `jdoe-godaddy` (@jdoe)") {
+			t.Errorf("godaddy author not formatted correctly:\n%s", out)
+		}
+	})
+
+	t.Run("non-godaddy author rendered as code", func(t *testing.T) {
+		s := base
+		s.ReleaseNotes = []pipeline.ReleaseNote{{Number: 11, Title: "Add feature", Author: "external-user"}}
+		out := Message(s)
+		if !strings.Contains(out, "• #11 Add feature - `external-user`") {
+			t.Errorf("non-godaddy author not formatted correctly:\n%s", out)
+		}
+		if strings.Contains(out, "(@") {
+			t.Errorf("non-godaddy author should not have a GitHub mention:\n%s", out)
+		}
+	})
+
+	t.Run("empty author omitted", func(t *testing.T) {
+		s := base
+		s.ReleaseNotes = []pipeline.ReleaseNote{{Number: 12, Title: "Cleanup"}}
+		out := Message(s)
+		if strings.Contains(out, "• #12 Cleanup -") || strings.Contains(out, "• #12 Cleanup `") {
+			t.Errorf("empty author should produce no suffix:\n%s", out)
+		}
+		if !strings.Contains(out, "• #12 Cleanup\n") {
+			t.Errorf("empty author line missing or malformed:\n%s", out)
+		}
+	})
 }
