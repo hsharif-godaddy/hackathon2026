@@ -63,15 +63,18 @@ jobs:
   scout:
     needs: guard
     if: needs.guard.outputs.skip == 'false'
-    permissions:
-      contents: write
+    # No job-level `permissions:` — setting it narrows ALL unlisted scopes to `none`,
+    # which starves the reusable workflow's nested jobs (they need actions:read,
+    # checks:read, issues:write, pull-requests:write). Inherit the repo default like
+    # claude-code-review.yml does.
     uses: gdcorp-actions/gd-claude-code-action/.github/workflows/secure-claude-code.yml@e56ec6c5aeb92b60166868098e9cf59e0f35e872 # v2.17.1
     with:
       runner_group: ${{ vars.CLAUDE_RUNNER_GROUP }}
       runner_labels_json: '["self-hosted"]'
       gocode_environment: prod
       model: 'claude-opus-4-8[1m]'
-      track_progress: 'true'
+      # track_progress is only valid for pull_request/issue events; Scout runs on
+      # schedule/workflow_dispatch, so it must stay off (else the action errors).
       max_turns: '120'
       prompt: |
         <context>
