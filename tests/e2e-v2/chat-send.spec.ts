@@ -12,6 +12,7 @@
  * (created in `beforeAll`, deleted in `afterAll`) and each test's
  * transcript assertion expects the message it just sent.
  */
+import type { Page } from '@playwright/test';
 import { test, expect } from '../helpers/test-fixtures';
 
 import { deleteApp, evictOldestE2eAppsToFitLimit } from '../helpers/api';
@@ -26,6 +27,66 @@ import {
 import { dismissOverlays, logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
 
 const SPEC_NAME = 'chat-send';
+
+/**
+ * Send one chat message and wait for the AI response to finish — robustly.
+ *
+ * The send/stop control is a SINGLE button element whose `data-testid` is
+ * swapped imperatively in a useEffect (ChatInput.tsx) between
+ * `chat-send-button` (idle) and `chat-stop-button` (awaiting/streaming). Two
+ * flakes this guards against, both seen on prod runs:
+ *
+ *  1. The idle send button can be VISIBLE BUT DISABLED — submit stays gated
+ *     until the input validates. Pressing Enter / clicking while disabled is a
+ *     silent no-op, so the message never reaches the transcript and the
+ *     transcript assertion times out. Gate on `toBeEnabled` (after filling),
+ *     not just `toBeVisible`, before submitting.
+ *  2. Re-querying `chat-send-button` for "stream ended" races the imperative
+ *     testid swap. Track the stop button instead: it becomes visible when the
+ *     response starts streaming and `toBeHidden` once it ends (toBeHidden also
+ *     tolerates the element no longer existing after it flips back to send).
+ *
+ * appbuilder-queue caveat (AIROBUILD-1944): with the queue flag on AND text in
+ * the input, ChatInput swaps the action button back to `chat-send-button`
+ * mid-stream (Send-to-queue mode). This helper clears the input as soon as it
+ * submits, so the input is empty while the response streams and the button
+ * stays `chat-stop-button` as the stop-button gate expects.
+ */
+async function sendChatMessage(
+  page: Page,
+  opts: { message: string; via: 'enter' | 'button'; readyTimeoutMs: number },
+): Promise<void> {
+  const chatInput = page.getByTestId('chat-input-textarea');
+  const transcript = page.getByTestId('chat-transcript');
+  const sendButton = page.getByTestId('chat-send-button');
+  const stopButton = page.getByTestId('chat-stop-button');
+
+  // Ready for input: idle send button present (initial app gen / prior stream
+  // finished — while either is in flight the button carries the stop testid).
+  await expect(sendButton).toBeVisible({ timeout: opts.readyTimeoutMs });
+
+  await chatInput.clear();
+  await chatInput.fill(opts.message);
+
+  // Must be ENABLED before submit — a visible-but-disabled send button makes
+  // Enter/click a silent no-op (the root cause of the transcript-timeout flake).
+  await expect(sendButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
+
+  if (opts.via === 'enter') await chatInput.press('Enter');
+  else await sendButton.click({ force: true });
+
+  // The submitted message lands in the transcript (fast, deterministic).
+  await expect(transcript.getByText(opts.message, { exact: true })).toBeVisible({
+    timeout: DEFAULT_TIMEOUT,
+  });
+
+  // Response streaming started (stop button shown) then ended (stop hidden).
+  // Splitting these gives a faster, more diagnostic signal than waiting on the
+  // idle send button to reappear, and the long timeout applies only to the
+  // actual AI response phase.
+  await expect(stopButton).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+  await expect(stopButton).toBeHidden({ timeout: AI_RESPONSE_TIMEOUT_MS });
+}
 
 test.describe.configure({ mode: 'serial' });
 
@@ -150,35 +211,15 @@ test.describe('E2E v2 - Chat send', () => {
 
     await dismissOverlays(page);
 
-    const chatInput = page.getByTestId('chat-input-textarea');
-    const transcript = page.getByTestId('chat-transcript');
-    const message = 'Add a footer';
-
-    // Gate on chat-send-button visibility — confirms initial AI app
-    // generation finished and the streaming UI rolled back to the idle
-    // send button. While streaming, ChatInput renders chat-stop-button
-    // instead and Enter is a no-op, so without this wait the
-    // transcript-text assertion below times out at 30s on a fresh app
-    // whose initial gen is still in flight.
-    //
-    // appbuilder-queue caveat: when the queue flag is on AND the user
-    // has typed text, ChatInput swaps the action button back to
-    // chat-send-button mid-stream (Send-to-queue mode). This test
-    // gates with the input empty, so the testid stays chat-stop-button
-    // during streaming as expected.
-    await expect(page.getByTestId('chat-send-button')).toBeVisible({
-      timeout: INITIAL_GEN_TIMEOUT_MS,
+    // First send waits out the fresh app's initial AI generation (readiness),
+    // then exercises the Enter-key submit + full send→stream→idle cycle. The
+    // helper gates on an ENABLED send button before pressing Enter so a
+    // visible-but-disabled button can't silently swallow the submit.
+    await sendChatMessage(page, {
+      message: 'Add a footer',
+      via: 'enter',
+      readyTimeoutMs: INITIAL_GEN_TIMEOUT_MS,
     });
-
-    await chatInput.clear();
-    await chatInput.fill(message);
-    await chatInput.press('Enter');
-
-    await expect(transcript.getByText(message, { exact: true })).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-
-    // chat-send-button being visible again indicates the AI response stream
-    // ended and the input is ready for the next message.
-    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
 
     await ensureAuthenticated(page);
   });
@@ -189,20 +230,13 @@ test.describe('E2E v2 - Chat send', () => {
 
     await dismissOverlays(page);
 
-    const chatInput = page.getByTestId('chat-input-textarea');
-    const transcript = page.getByTestId('chat-transcript');
-    const message = 'Add a header section';
-
-    // Gate on idle send-button before clicking — see Enter-key test above.
-    await expect(page.getByTestId('chat-send-button')).toBeVisible({
-      timeout: AI_RESPONSE_TIMEOUT_MS,
+    // Runs after the Enter-key test (serial, same app), so initial gen is done
+    // — readiness is the prior stream settling, not a cold gen. Exercises the
+    // send-button click path through the same robust send→stream→idle cycle.
+    await sendChatMessage(page, {
+      message: 'Add a header section',
+      via: 'button',
+      readyTimeoutMs: AI_RESPONSE_TIMEOUT_MS,
     });
-
-    await chatInput.clear();
-    await chatInput.fill(message);
-    await page.getByTestId('chat-send-button').click({ force: true });
-
-    await expect(transcript.getByText(message, { exact: true })).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
   });
 });

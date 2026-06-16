@@ -255,6 +255,25 @@ export async function waitForChatInput(page: Page, options?: WaitForChatInputOpt
     await expect(page.getByTestId('preview-iframe')).toHaveAttribute('src', /.+/);
   }
 
+  // A MULTI-STEP clarifying-question card ("...1/3", "...2/3", "...3/3") can
+  // take over the chat pane and collapse the chat input — while it's shown,
+  // chat-input-textarea never becomes visible and the wait below times out.
+  // Each Skip advances to the NEXT question (confirmed via failure screenshot:
+  // one skip went 1/3 -> 2/3), so skip through all of them until the card is
+  // gone. Best-effort: the card only appears on some loads, so absence is the
+  // common (no-op) case. Bounded loop (cap > question count) so a stuck card
+  // can't spin forever.
+  const askSkip = page.getByTestId('ask-question-skip');
+  let skipped = false;
+  for (let i = 0; i < 5; i++) {
+    if (!(await askSkip.isVisible({ timeout: SHORT_TIMEOUT }).catch(() => false))) break;
+    await askSkip.click({ force: true }).catch(() => {});
+    skipped = true;
+    // Let the next question render or the card dismiss before re-checking.
+    await page.waitForTimeout(500);
+  }
+  if (skipped) console.log('  ✓ Skipped clarifying-question card');
+
   const chatInput = page.getByTestId('chat-input-textarea');
   await chatInput.waitFor({ state: 'visible', timeout: CHAT_INPUT_TIMEOUT });
 
