@@ -177,6 +177,7 @@ export function isDevToolsElement(element: HTMLElement): boolean {
     !!element.closest("[data-airo-dev-tools]") ||
     !!element.closest("[data-airo-non-editable]") ||
     !!element.closest(".edit-mode-hover-bar") ||
+    !!element.closest(".edit-mode-link-follow-bar") ||
     !!element.closest("[id^='ai-select-overlay']")
   );
 }

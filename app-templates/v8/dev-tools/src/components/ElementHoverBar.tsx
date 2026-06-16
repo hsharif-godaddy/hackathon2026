@@ -9,11 +9,19 @@ import {
   getNextSelectionNumber,
 } from "../utils/selection-overlay";
 import type { HoveredElement } from "../hooks/useImageHoverDetection";
-import { Bookmark, Image, MousePointerClick, Pencil, Pointer, Sparkles } from "lucide-react";
+import { Bookmark, Image, MousePointerClick, Pencil, Sparkles } from "lucide-react";
 import { isClickable, isTextElement, isTextBlockElement, isListElement } from "../utils/element-detection";
+import { followClickableElement, resolveFollowTarget } from "../utils/link-follow";
+import {
+  computeHoverBarStyle,
+  computeLinkFollowBarStyle,
+  OUTLINE_PAD,
+  type VerticalPlacement,
+} from "../utils/hover-bar-placement";
 import { trackEventBus } from "../utils/eventBus";
 import { t } from "../utils/translations";
 import { HoverBar, HoverBarButton } from "./HoverBar";
+import { LinkFollowBar } from "./LinkFollowBar";
 import { QuickEditBar } from "./QuickEditBar";
 import { TextFixPopover } from "./TextFixPopover";
 import { ImageActionPopover } from "./ImageActionPopover";
@@ -32,8 +40,6 @@ import { nextOpenMenu, type HoverBarMenuId } from "../utils/popover-coordinator"
 import FormatOverrideControls from "./FormatOverrideControls";
 import { findFormatOverrideElement, isLoopRenderedElement } from "../utils/formatOverrideMessages";
 
-
-const OUTLINE_PAD = 8;
 
 const DIRECT_FOREGROUND_IMAGE_TAGS = new Set(["img", "picture", "svg"]);
 
@@ -242,6 +248,7 @@ export default function ElementHoverBar({
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (target.closest(".edit-mode-hover-bar")) return;
+      if (target.closest(".edit-mode-link-follow-bar")) return;
       if (element.contains(target)) return;
       if (target.closest("[data-dev-tools]") || target.closest("[data-airo-dev-tools]")) return;
       // Clear scroll-to-media selection overlay on click outside
@@ -271,58 +278,28 @@ export default function ElementHoverBar({
   // above. That's acceptable; the alternative (toolbar above, popover below)
   // is the bug we're fixing here.
   const [barStyle, setBarStyle] = useState<React.CSSProperties>({});
+  const [linkBarStyle, setLinkBarStyle] = useState<React.CSSProperties>({});
+  const [linkBarPlacement, setLinkBarPlacement] = useState<VerticalPlacement>("below");
   useEffect(() => {
-    const MIN_CLEARANCE_ABOVE = 200;
-    const computeBarStyle = (): React.CSSProperties => {
-      const r = element.getBoundingClientRect();
-      const GAP = 8;
-      const EDGE_MARGIN = 16; // Minimum distance from viewport edge
-      const centerX = r.left + r.width / 2;
-      const hasSpaceAbove = r.top > MIN_CLEARANCE_ABOVE;
-
-      // Estimate bar width (approximate, can be adjusted based on actual measurements)
-      const estimatedBarWidth = 350;
-      const halfBarWidth = estimatedBarWidth / 2;
-
-      // Determine horizontal position
-      let leftPos = centerX;
-      let horizontalTransform = "translateX(-50%)";
-
-      // Check if centered position would overflow left edge
-      if (centerX - halfBarWidth < EDGE_MARGIN) {
-        leftPos = r.left;
-        horizontalTransform = "translateX(0)";
-      }
-      // Check if centered position would overflow right edge
-      else if (centerX + halfBarWidth > window.innerWidth - EDGE_MARGIN) {
-        leftPos = r.right;
-        horizontalTransform = "translateX(-100%)";
-      }
-
-      const style: React.CSSProperties = {
-        position: "fixed",
-        left: `${leftPos}px`,
-        transform: horizontalTransform,
+    const update = () => {
+      const rect = element.getBoundingClientRect();
+      const bounds = {
+        top: rect.top,
+        left: rect.left,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
       };
-      if (hasSpaceAbove) {
-        style.top = `${r.top - GAP - OUTLINE_PAD}px`;
-        style.transform = horizontalTransform === "translateX(-50%)"
-          ? "translate(-50%, -100%)"
-          : horizontalTransform === "translateX(0)"
-          ? "translate(0, -100%)"
-          : "translate(-100%, -100%)";
-      } else {
-        style.top = `${r.bottom + GAP + OUTLINE_PAD}px`;
-      }
-      return style;
+      const viewport = { width: window.innerWidth, height: window.innerHeight };
+      const toolbar = computeHoverBarStyle(bounds, viewport);
+      const linkBar = computeLinkFollowBarStyle(bounds, toolbar.placement, viewport);
+      setBarStyle(toolbar.style);
+      setLinkBarStyle(linkBar.style);
+      setLinkBarPlacement(linkBar.placement);
     };
-    setBarStyle(computeBarStyle());
-    const update = () => setBarStyle(computeBarStyle());
+    update();
     window.addEventListener("scroll", update, true);
     window.addEventListener("resize", update);
-    // Track element size changes (stepper / class toggles can grow or shrink
-    // the bounding box without firing a window resize) so the bar stays
-    // pinned above/below the element instead of drifting.
     const elementResizeObserver = new ResizeObserver(update);
     elementResizeObserver.observe(element);
     return () => {
@@ -494,19 +471,15 @@ export default function ElementHoverBar({
     pendingContextRef.current = null;
   }, []);
 
-  // Follow: trigger the element's native click/navigation (for links and buttons)
   const elementIsClickable = isClickable(element);
+  const followTarget = elementIsClickable
+    ? resolveFollowTarget(toolbarElementRef.current || element)
+    : null;
   const handleFollow = useCallback(() => {
     const el = toolbarElementRef.current;
     if (!el) return;
-
-    const anchor = el.closest("a") as HTMLAnchorElement | null;
-    if (anchor?.href) {
-      window.location.href = anchor.href;
-    } else {
-      // For buttons/role="button" — dispatch a click bypassing edit mode
-      el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    }
+    trackEventBus.click("devtools.link_follow.open");
+    followClickableElement(el);
   }, []);
 
   // Fix (proofread): see useTextFix for the request lifecycle. We capture the
@@ -602,67 +575,72 @@ export default function ElementHoverBar({
   if (!toolbarMode) return null;
 
   return (
-    <HoverBar style={barStyle} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
-      {showImageActions && (
-        <>
-          <HoverBarButton
-            onClick={handleReplace}
-            title={t("devtools_image_replace_title", "Replace image")}
-            icon={<Image width={15} height={15} />}
-            label={t("devtools_image_replace", "Replace")}
-          />
-          {!isVideo && (
+    <>
+      <HoverBar style={barStyle} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+        {showImageActions && (
+          <>
             <HoverBarButton
-              onClick={handleModify}
-              title={t("devtools_image_modify_title", "Modify image")}
-              icon={<Pencil width={15} height={15} />}
-              label={t("devtools_image_modify", "Modify")}
+              onClick={handleReplace}
+              title={t("devtools_image_replace_title", "Replace image")}
+              icon={<Image width={15} height={15} />}
+              label={t("devtools_image_replace", "Replace")}
             />
-          )}
-          {showClickActionAction && (
-            <HoverBarButton
-              onClick={handleEditClickAction}
-              title={t("devtools_image_click_action_title", "Set click action")}
-              icon={<MousePointerClick width={15} height={15} />}
-              label={t("devtools_image_click_action", "On click")}
-            />
-          )}
-        </>
-      )}
-      {isBoundTextFormatEligible && (
-        <FormatOverrideControls selectedElement={boundFormatElement} colorMenu={menuController("color")} />
-      )}
-      {elementIsText && (
-        <>
-          <BoldButton selectedElement={targetEl} />
-          <ItalicButton selectedElement={targetEl} />
-          <TextColorButton selectedElement={targetEl} {...menuController("color")} />
-          <TextSizeStepperButton selectedElement={targetEl} {...menuController("size")} />
-          <FontFamilyButton selectedElement={targetEl} {...menuController("font")} />
-          {isTextBlockElement(element) && (
-            <TextAlignButton selectedElement={targetEl} {...menuController("align")} />
-          )}
-          {fixEligible && <TextFixButton state={fix.state} onFix={handleFix} />}
-        </>
-      )}
-      {!isLoopRendered && isListElement(element) && <ListTypeButton selectedElement={targetEl} {...menuController("list")} />}
-      <HoverBarButton
-        onClick={handleReference}
-        title={t("devtools_reference_title", "Add as reference")}
-        icon={<Bookmark width={15} height={15} />}
-      />
-      {elementIsClickable && (
+            {!isVideo && (
+              <HoverBarButton
+                onClick={handleModify}
+                title={t("devtools_image_modify_title", "Modify image")}
+                icon={<Pencil width={15} height={15} />}
+                label={t("devtools_image_modify", "Modify")}
+              />
+            )}
+            {showClickActionAction && (
+              <HoverBarButton
+                onClick={handleEditClickAction}
+                title={t("devtools_image_click_action_title", "Set click action")}
+                icon={<MousePointerClick width={15} height={15} />}
+                label={t("devtools_image_click_action", "On click")}
+              />
+            )}
+          </>
+        )}
+        {isBoundTextFormatEligible && (
+          <FormatOverrideControls selectedElement={boundFormatElement} colorMenu={menuController("color")} />
+        )}
+        {elementIsText && (
+          <>
+            <BoldButton selectedElement={targetEl} />
+            <ItalicButton selectedElement={targetEl} />
+            <TextColorButton selectedElement={targetEl} {...menuController("color")} />
+            <TextSizeStepperButton selectedElement={targetEl} {...menuController("size")} />
+            <FontFamilyButton selectedElement={targetEl} {...menuController("font")} />
+            {isTextBlockElement(element) && (
+              <TextAlignButton selectedElement={targetEl} {...menuController("align")} />
+            )}
+            {fixEligible && <TextFixButton state={fix.state} onFix={handleFix} />}
+          </>
+        )}
+        {!isLoopRendered && isListElement(element) && <ListTypeButton selectedElement={targetEl} {...menuController("list")} />}
         <HoverBarButton
-          onClick={handleFollow}
-          title={t("devtools_follow_link_title", "Follow link")}
-          icon={<Pointer width={15} height={15} />}
+          onClick={handleReference}
+          title={t("devtools_reference_title", "Add as reference")}
+          icon={<Bookmark width={15} height={15} />}
+        />
+        <HoverBarButton
+          onClick={handleEditWithAI}
+          title={t("devtools_edit_with_ai", "Edit with AI")}
+          icon={<Sparkles width={15} height={15} style={{ color: "var(--color-accent-purple)" }} />}
+        />
+      </HoverBar>
+      {followTarget && (
+        <LinkFollowBar
+          style={linkBarStyle}
+          placement={linkBarPlacement}
+          target={followTarget}
+          onFollow={handleFollow}
+          onMouseEnter={onMouseEnter}
+          onMouseLeave={onMouseLeave}
         />
       )}
-      <HoverBarButton
-        onClick={handleEditWithAI}
-        title={t("devtools_edit_with_ai", "Edit with AI")}
-        icon={<Sparkles width={15} height={15} style={{ color: "var(--color-accent-purple)" }} />}
-      />
-    </HoverBar>
+    </>
   );
 }

@@ -271,6 +271,7 @@ export function useImageHoverDetection(
 
       const relatedTarget = e.relatedTarget as HTMLElement | null;
       if (relatedTarget?.closest(".edit-mode-hover-bar")) return;
+      if (relatedTarget?.closest(".edit-mode-link-follow-bar")) return;
 
       // If the mouse is still within the hovered element's bounds, keep the bar.
       const currentEl = hoveredElementRef.current?.element ?? hoveredImageRef.current?.element;

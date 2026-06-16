@@ -213,6 +213,28 @@ describe('ElementHoverBar - Commerce product image gating', () => {
   });
 });
 
+describe('ElementHoverBar - link follow bar', () => {
+  it('shows link follow bar below links and removes toolbar follow icon', async () => {
+    const detection = await import('../../utils/element-detection');
+    vi.mocked(detection.isClickable).mockReturnValue(true);
+
+    const anchor = document.createElement('a');
+    anchor.href = 'https://loom.com/share/c587cabe155a499fa63ae88fe0d61d23';
+    anchor.textContent = 'Loom';
+    anchor.getBoundingClientRect = vi.fn(() => ({
+      top: 100, left: 100, width: 120, height: 24, right: 220, bottom: 124, x: 100, y: 100, toJSON: () => {},
+    } as DOMRect));
+    document.body.appendChild(anchor);
+
+    renderHoverBar({ type: 'content', element: anchor });
+    openToolbar(anchor);
+
+    expect(screen.queryByTitle('Follow link')).toBeNull();
+    expect(await screen.findByTestId('devtools-link-follow-destination')).not.toBeNull();
+    expect(screen.getByText(/Go to: loom\.com\/share\//)).toBeTruthy();
+  });
+});
+
 describe('ElementHoverBar - bound text formatting gating', () => {
   it('shows bound format controls for eligible bound text', async () => {
     const detection = await import('../../utils/element-detection');

@@ -102,6 +102,7 @@ export function useHoverHint(
 		const handleMouseOut = (e: MouseEvent) => {
 			const related = e.relatedTarget as HTMLElement | null;
 			if (related?.closest(".edit-mode-hover-bar")) return;
+			if (related?.closest(".edit-mode-link-follow-bar")) return;
 			if (hoveredEl && e.target === hoveredEl) {
 				hideTimer = setTimeout(clearHover, 300);
 			}
