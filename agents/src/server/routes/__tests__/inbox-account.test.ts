@@ -320,7 +320,7 @@ describe('POST /apps/:id/inbox-account', () => {
     app.use(inboxAccountRouter);
   });
 
-  it('persists accountId to scoped memory and returns it', async () => {
+  it('persists accountId to scoped memory and returns it (no brandId)', async () => {
     const accountId = 'https://account.reamaze.example/account-123';
     mockMemoryStore.set.mockResolvedValue({ success: true });
 
@@ -329,7 +329,7 @@ describe('POST /apps/:id/inbox-account', () => {
       .send({ accountId })
       .expect(200);
 
-    expect(response.body).toEqual({ accountId });
+    expect(response.body).toEqual({ accountId, brandId: null });
     expect(mockMemoryStore.set).toHaveBeenCalledWith(
       expect.objectContaining({
         appId: 'test-app-id',
@@ -337,6 +337,76 @@ describe('POST /apps/:id/inbox-account', () => {
       }),
       'integrations.inbox.accountId',
       accountId
+    );
+    // brandId not supplied → brand memory key is left untouched
+    expect(mockMemoryStore.set).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'integrations.inbox.brandId',
+      expect.anything()
+    );
+  });
+
+  it('persists both accountId and brandId when brandId is supplied', async () => {
+    const accountId = 'https://account.reamaze.example/account-123';
+    const brandId = 'https://brand.reamaze.example/brand-789';
+    mockMemoryStore.set.mockResolvedValue({ success: true });
+
+    const response = await request(app)
+      .post('/apps/test-app-id/inbox-account')
+      .send({ accountId, brandId })
+      .expect(200);
+
+    expect(response.body).toEqual({ accountId, brandId });
+    expect(mockMemoryStore.set).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: 'test-app-id', customerId: 'test-customer-id' }),
+      'integrations.inbox.accountId',
+      accountId
+    );
+    expect(mockMemoryStore.set).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: 'test-app-id', customerId: 'test-customer-id' }),
+      'integrations.inbox.brandId',
+      brandId
+    );
+  });
+
+  it('ignores a blank brandId and persists accountId only', async () => {
+    const accountId = 'https://account.reamaze.example/account-123';
+    mockMemoryStore.set.mockResolvedValue({ success: true });
+
+    const response = await request(app)
+      .post('/apps/test-app-id/inbox-account')
+      .send({ accountId, brandId: '   ' })
+      .expect(200);
+
+    expect(response.body).toEqual({ accountId, brandId: null });
+    expect(mockMemoryStore.set).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'integrations.inbox.brandId',
+      expect.anything()
+    );
+  });
+
+  it('returns 500 when the brandId write fails', async () => {
+    const accountId = 'https://account.reamaze.example/account-123';
+    mockMemoryStore.set.mockImplementation((_scope, key) => {
+      if (key === 'integrations.inbox.brandId') {
+        return Promise.resolve({ success: false, error: 'db error' });
+      }
+      return Promise.resolve({ success: true });
+    });
+
+    const response = await request(app)
+      .post('/apps/test-app-id/inbox-account')
+      .send({ accountId, brandId: 'https://brand.reamaze.example/brand-789' })
+      .expect(500);
+
+    expect(response.body).toMatchObject({ error: expect.any(String) });
+    // brandId is written before accountId, so a brandId failure must abort before the accountId
+    // write — leaving the app in its prior (pre-heal) state rather than accountId-without-brandId.
+    expect(mockMemoryStore.set).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'integrations.inbox.accountId',
+      expect.anything()
     );
   });
 

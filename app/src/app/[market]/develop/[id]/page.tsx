@@ -263,16 +263,18 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
     }
   }, [hibernation.resumeComplete, appId, archiveRestore.archiveRestoreComplete]);
 
+  // Gate the Conversations account read + async backfill polling behind the same flag as the
+  // inbox UI, so non-inbox users issue no inbox-account requests. Passing undefined disables both
+  // queries inside the hook until the flag resolves true.
+  const isInboxEnabled = useSwitchboard('app-builder-inbox-button')
+
   // Fetch inbox account data early and sync to store
-  const { brandId, accountId, isLoading: isLoadingAccount } = useInboxAccount(appId)
+  const { brandId, accountId, isLoading: isLoadingAccount } = useInboxAccount(isInboxEnabled ? appId : undefined)
   const setInboxBrandId = useDevelopPageStore((state) => state.setInboxBrandId)
 
   useEffect(() => {
     setInboxBrandId(brandId)
   }, [brandId, setInboxBrandId])
-
-  // Deep-link the Inbox view via ?view=inbox (see useView).
-  const isInboxEnabled = useSwitchboard('app-builder-inbox-button')
 
   // Single Pusher subscription for the whole builder session, so the inbox
   // unread badge stays fresh even when the inbox view is closed. Gated on the

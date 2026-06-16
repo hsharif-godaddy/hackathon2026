@@ -108,42 +108,52 @@ router.get('/apps/:id/inbox-account', validateAppOwnership, async (req: Request,
 
 /**
  * POST /apps/:id/inbox-account
- * Persists the linked inbox accountId to the memory table.
+ * Persists the linked inbox accountId (and optionally brandId) to the memory table.
  *
- * Used to backfill legacy apps that have a brandId in memory but no accountId (the
- * accountId key was added after brandId). The browser resolves the accountId via Reamaze
- * (which requires the user's SSO session the agent lacks) and posts it here to persist.
+ * Used to backfill legacy apps that are missing their brandId, accountId, or both. The browser
+ * resolves the account via Reamaze (which requires the user's SSO session the agent lacks),
+ * matching by aabAppId, and posts the resolved pointers here to persist. brandId is optional —
+ * supply it to heal an app whose brandId is also missing from memory.
  *
- * The client-supplied accountId is trusted: validateAppOwnership guarantees the caller owns
- * this app, and the value only ever lands in this app's own memory namespace.
+ * The client-supplied values are trusted: validateAppOwnership guarantees the caller owns
+ * this app, and the values only ever land in this app's own memory namespace.
  */
 router.post('/apps/:id/inbox-account', validateAppOwnership, async (req: Request, res: Response): Promise<void> => {
   const { id: appId } = req.params;
   const contextLogger = log.forApp(appId!);
 
-  const { accountId } = req.body as { accountId?: unknown };
+  const { accountId, brandId } = req.body as { accountId?: unknown; brandId?: unknown };
   if (typeof accountId !== 'string' || accountId.trim().length === 0) {
     res.status(400).json({ error: 'accountId is required and must be a non-empty string' });
     return;
   }
+  const resolvedBrandId: string | null =
+    typeof brandId === 'string' && brandId.trim().length > 0 ? brandId.trim() : null;
 
   try {
     const customerId = (req as AuthenticatedRequest).agentContext?.customerId;
     const scope = workspaceScopeFromAppId(appId!, customerId);
 
-    const result = await memory.set(scope, MEM_ACCOUNT_ID, accountId);
-    if (!result.success) {
-      contextLogger.error('inboxAccount.route.set.failed', {
-        appId,
-        key: MEM_ACCOUNT_ID,
-        error: result.error,
-      });
-      res.status(500).json({ error: 'Failed to persist inbox account data' });
-      return;
+    // These two writes are not transactional, so persist brandId BEFORE accountId: accountId is
+    // the pointer that gates the healed Conversations view, so writing it last means a partial
+    // failure can only ever leave the app in its prior (pre-heal) state — never accountId without
+    // brandId, which would keep the client re-polling. A re-attempt next mount re-writes both
+    // idempotently. brandId is skipped when not supplied (heal accountId only).
+    const writes: Array<[string, string]> = [];
+    if (resolvedBrandId !== null) writes.push([MEM_BRAND_ID, resolvedBrandId]);
+    writes.push([MEM_ACCOUNT_ID, accountId]);
+
+    for (const [key, value] of writes) {
+      const result = await memory.set(scope, key, value);
+      if (!result.success) {
+        contextLogger.error('inboxAccount.route.set.failed', { appId, key, error: result.error });
+        res.status(500).json({ error: 'Failed to persist inbox account data' });
+        return;
+      }
     }
 
-    contextLogger.info('inboxAccount.route.set.success', { appId, accountId });
-    res.json({ accountId });
+    contextLogger.info('inboxAccount.route.set.success', { appId, accountId, brandId: resolvedBrandId });
+    res.json({ accountId, brandId: resolvedBrandId });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     contextLogger.error('inboxAccount.route.set.error', {
