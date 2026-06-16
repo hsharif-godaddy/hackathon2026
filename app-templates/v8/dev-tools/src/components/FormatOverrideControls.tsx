@@ -15,10 +15,13 @@ import {
   type FormatOverrideMarks,
 } from "../utils/formatOverrideMessages";
 import type { PopoverController } from "../utils/popover-coordinator";
+import type { VerticalPlacement } from "../utils/hover-bar-placement";
 
 interface FormatOverrideControlsProps {
   selectedElement: HTMLElement | null;
   colorMenu: PopoverController;
+  /** Direction the popover should open relative to the button. Defaults to "below". */
+  popoverPlacement?: VerticalPlacement;
 }
 
 const DEFAULT_COLOR = "#000000";
@@ -35,7 +38,7 @@ function readInitialMarks(selectedElement: HTMLElement | null): Required<FormatO
   return normalizeMarks(selectedElement ? readCurrentFormatOverrideMarks(selectedElement) : {});
 }
 
-export default function FormatOverrideControls({ selectedElement, colorMenu }: FormatOverrideControlsProps) {
+export default function FormatOverrideControls({ selectedElement, colorMenu, popoverPlacement = "below" }: FormatOverrideControlsProps) {
   const [marks, setMarks] = useState<Required<FormatOverrideMarks>>(() => readInitialMarks(selectedElement));
   const marksRef = useRef(marks);
   const latestEditRef = useRef(0);
@@ -129,7 +132,7 @@ export default function FormatOverrideControls({ selectedElement, colorMenu }: F
         icon={<Italic width={15} height={15} />}
         active={marks.italic}
       />
-      <div className="relative flex items-stretch">
+      <div style={{ position: "relative", display: "flex", alignItems: "stretch" }}>
         <HoverBarButton
           onClick={toggleColorMenu}
           title={t("devtools_text_color_title", "Text color")}
@@ -151,7 +154,9 @@ export default function FormatOverrideControls({ selectedElement, colorMenu }: F
             data-airo-dev-tools=""
             style={{
               position: "absolute",
-              top: "calc(100% + 4px)",
+              ...(popoverPlacement === "above"
+                ? { bottom: "calc(100% + 4px)" }
+                : { top: "calc(100% + 4px)" }),
               left: 0,
               zIndex: 100002,
             }}

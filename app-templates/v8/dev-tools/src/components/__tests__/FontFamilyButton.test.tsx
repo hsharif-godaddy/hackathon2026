@@ -228,4 +228,44 @@ describe('FontFamilyButton', () => {
       expect(screen.getByText('No fonts available')).not.toBeNull();
     });
   });
+
+  describe('popoverPlacement', () => {
+    it('positions the font picker above when popoverPlacement is "above"', () => {
+      const el = makeHeading();
+      render(createElement(FontFamilyButton, {
+        selectedElement: el,
+        isOpen: true,
+        onOpenChange: vi.fn(),
+        popoverPlacement: 'above',
+      }));
+      // FontPicker renders a list; find its wrapper via the data-airo-dev-tools attribute
+      const pickerWrapper = document.querySelector('[data-airo-dev-tools]') as HTMLElement;
+      expect(pickerWrapper.style.bottom).toBe('calc(100% + 4px)');
+      expect(pickerWrapper.style.top).toBe('');
+    });
+
+    it('positions the font picker below when popoverPlacement is "below"', () => {
+      const el = makeHeading();
+      render(createElement(FontFamilyButton, {
+        selectedElement: el,
+        isOpen: true,
+        onOpenChange: vi.fn(),
+        popoverPlacement: 'below',
+      }));
+      const pickerWrapper = document.querySelector('[data-airo-dev-tools]') as HTMLElement;
+      expect(pickerWrapper.style.top).toBe('calc(100% + 4px)');
+      expect(pickerWrapper.style.bottom).toBe('');
+    });
+
+    it('defaults to below when popoverPlacement is not provided', () => {
+      const el = makeHeading();
+      render(createElement(FontFamilyButton, {
+        selectedElement: el,
+        isOpen: true,
+        onOpenChange: vi.fn(),
+      }));
+      const pickerWrapper = document.querySelector('[data-airo-dev-tools]') as HTMLElement;
+      expect(pickerWrapper.style.top).toBe('calc(100% + 4px)');
+    });
+  });
 });

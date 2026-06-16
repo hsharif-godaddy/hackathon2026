@@ -6,6 +6,7 @@ import { addStyleEditListener, StyleMessageEventType } from "../utils/elementSty
 import { extractDevContext, generatePreciseSelector, getElementClassName } from "../utils/element-helpers";
 import { getFontList, recordRecentFont, FontOption, FontList } from "../utils/getFontList";
 import { trackEventBus } from "../utils/eventBus";
+import type { VerticalPlacement } from "../utils/hover-bar-placement";
 import FontPicker from "./FontPicker";
 import { Type } from "lucide-react";
 
@@ -13,6 +14,8 @@ interface FontFamilyButtonProps {
   selectedElement: HTMLElement | null;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Direction the popover should open relative to the button. Defaults to "below". */
+  popoverPlacement?: VerticalPlacement;
 }
 
 /**
@@ -21,9 +24,10 @@ interface FontFamilyButtonProps {
  * Applies the chosen font as an inline style, persists via
  * STYLE_UPDATED postMessage, and rolls back on STYLE_EDIT_FAILED.
  */
-export default function FontFamilyButton({ selectedElement, isOpen, onOpenChange }: FontFamilyButtonProps) {
+export default function FontFamilyButton({ selectedElement, isOpen, onOpenChange, popoverPlacement = "below" }: FontFamilyButtonProps) {
   const [fontList, setFontList] = useState<FontList>({ theme: [], recent: [], custom: [] });
   const [activeFont, setActiveFont] = useState<string>("");
+
   // Immutable snapshot of the font when the picker opened — used for rollback on failure.
   const originalFontRef = useRef<string>("");
   // Tracks the last successfully committed font during this picker session.
@@ -128,7 +132,7 @@ export default function FontFamilyButton({ selectedElement, isOpen, onOpenChange
   }, [selectedElement, onOpenChange]);
 
   return (
-    <div className="relative flex items-stretch">
+    <div style={{ position: "relative", display: "flex", alignItems: "stretch" }}>
       <HoverBarButton
         onClick={toggleMenu}
         title={t("devtools_font_family_title", "Font family")}
@@ -137,9 +141,12 @@ export default function FontFamilyButton({ selectedElement, isOpen, onOpenChange
       />
       {isOpen && (
         <div
+          data-airo-dev-tools=""
           style={{
             position: "absolute",
-            top: "calc(100% + 4px)",
+            ...(popoverPlacement === "above"
+              ? { bottom: "calc(100% + 4px)" }
+              : { top: "calc(100% + 4px)" }),
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 100002,

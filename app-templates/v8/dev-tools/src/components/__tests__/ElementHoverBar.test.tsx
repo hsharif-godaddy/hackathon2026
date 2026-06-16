@@ -6,6 +6,7 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { createElement } from 'react';
 import type { HoveredElement } from '../../hooks/useImageHoverDetection';
 import { safePostMessage } from '../../utils/postMessage';
+import { computePopoverPlacement } from '../ElementHoverBar';
 
 type ImageHoveredElement = Extract<HoveredElement, { type: 'image' }>;
 
@@ -389,5 +390,27 @@ describe('ElementHoverBar - tracking', () => {
     openToolbar(img);
     fireEvent.click(screen.getByTitle('Edit with AI'));
     expect(findTrackCall('devtools.toolbar.sparkles')).toBeTruthy();
+  });
+});
+
+describe('computePopoverPlacement', () => {
+  it('returns "below" when there is enough space below', () => {
+    expect(computePopoverPlacement(400, 500, 360)).toBe('below');
+  });
+
+  it('returns "above" when not enough space below but enough above', () => {
+    expect(computePopoverPlacement(100, 500, 360)).toBe('above');
+  });
+
+  it('returns "below" as fallback when neither direction fits', () => {
+    expect(computePopoverPlacement(100, 100, 360)).toBe('below');
+  });
+
+  it('returns "below" when space below exactly equals picker height', () => {
+    expect(computePopoverPlacement(360, 200, 360)).toBe('below');
+  });
+
+  it('returns "above" when space below is 1px short', () => {
+    expect(computePopoverPlacement(359, 400, 360)).toBe('above');
   });
 });

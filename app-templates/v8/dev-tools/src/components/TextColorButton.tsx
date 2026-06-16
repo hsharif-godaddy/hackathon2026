@@ -6,6 +6,7 @@ import { extractDevContext, generatePreciseSelector, getElementClassName } from 
 import { extractThemeColors } from "../utils/text-editing-helpers";
 import { rgbToHex, normalizeHex } from "../utils/color";
 import { send, trackEventBus } from "../utils/eventBus";
+import type { VerticalPlacement } from "../utils/hover-bar-placement";
 import ColorPicker from "./ColorPicker";
 
 const DEFAULT_COLOR = "#000000";
@@ -16,6 +17,8 @@ interface TextColorButtonProps {
    *  Color Picker / Size Stepper / Text Align never stack on top of each other. */
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Direction the popover should open relative to the button. Defaults to "below". */
+  popoverPlacement?: VerticalPlacement;
 }
 
 /**
@@ -51,7 +54,7 @@ function parseComputedColor(computed: string): string | null {
  *
  * Parent (`ElementHoverBar`) is responsible for gating to text elements.
  */
-export default function TextColorButton({ selectedElement, isOpen, onOpenChange }: TextColorButtonProps) {
+export default function TextColorButton({ selectedElement, isOpen, onOpenChange, popoverPlacement = "below" }: TextColorButtonProps) {
   const [themeColors, setThemeColors] = useState<string[]>([]);
   const [, forceRender] = useState(0);
 
@@ -209,7 +212,7 @@ export default function TextColorButton({ selectedElement, isOpen, onOpenChange 
   }, [selectedElement]);
 
   return (
-    <div className="relative flex items-stretch">
+    <div style={{ position: "relative", display: "flex", alignItems: "stretch" }}>
       <HoverBarButton
         onClick={toggleMenu}
         title={t("devtools_text_color_title", "Text color")}
@@ -232,7 +235,9 @@ export default function TextColorButton({ selectedElement, isOpen, onOpenChange 
           data-airo-dev-tools=""
           style={{
             position: "absolute",
-            top: "calc(100% + 4px)",
+            ...(popoverPlacement === "above"
+              ? { bottom: "calc(100% + 4px)" }
+              : { top: "calc(100% + 4px)" }),
             left: 0,
             zIndex: 100002,
           }}

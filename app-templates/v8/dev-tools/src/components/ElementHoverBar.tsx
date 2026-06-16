@@ -41,6 +41,20 @@ import FormatOverrideControls from "./FormatOverrideControls";
 import { findFormatOverrideElement, isLoopRenderedElement } from "../utils/formatOverrideMessages";
 
 
+/**
+ * Determine popover placement given available space.
+ * Prefer below; flip above only if below doesn't fit but above does.
+ */
+export function computePopoverPlacement(
+  spaceBelow: number,
+  spaceAbove: number,
+  pickerHeight: number,
+): VerticalPlacement {
+  if (spaceBelow >= pickerHeight) return "below";
+  if (spaceAbove >= pickerHeight) return "above";
+  return "below";
+}
+
 const DIRECT_FOREGROUND_IMAGE_TAGS = new Set(["img", "picture", "svg"]);
 
 // AIROBUILD-1556: object-cover <img> with overlaid siblings = hero backdrop.
@@ -280,7 +294,15 @@ export default function ElementHoverBar({
   const [barStyle, setBarStyle] = useState<React.CSSProperties>({});
   const [linkBarStyle, setLinkBarStyle] = useState<React.CSSProperties>({});
   const [linkBarPlacement, setLinkBarPlacement] = useState<VerticalPlacement>("below");
+  // Direction child popovers should open — separate for color (shorter) and font (taller).
+  const [colorPickerPlacement, setColorPickerPlacement] = useState<VerticalPlacement>("below");
+  const [fontPickerPlacement, setFontPickerPlacement] = useState<VerticalPlacement>("below");
   useEffect(() => {
+    const GAP = 8;
+    // Derived from ColorPicker's maxHeight.
+    const COLOR_PICKER_HEIGHT = 280;
+    // Derived from FontPicker's maxHeight style (360px)
+    const FONT_PICKER_HEIGHT = 360;
     const update = () => {
       const rect = element.getBoundingClientRect();
       const bounds = {
@@ -296,6 +318,23 @@ export default function ElementHoverBar({
       setBarStyle(toolbar.style);
       setLinkBarStyle(linkBar.style);
       setLinkBarPlacement(linkBar.placement);
+
+      // Determine popover direction for tall pickers (color/font):
+      // 1. If enough space below → show below
+      // 2. Else if enough space above → show above
+      // 3. Else (neither fits) → show below (better to clip at bottom than top)
+      const placedAbove = toolbar.placement === "above";
+      const barHeight = document.querySelector('.edit-mode-hover-bar')?.getBoundingClientRect().height ?? 44;
+      const barBottomY = placedAbove
+        ? (rect.top - GAP - OUTLINE_PAD) // bar translateY(-100%) makes this its bottom edge
+        : (rect.bottom + GAP + OUTLINE_PAD + barHeight);
+      const spaceBelow = viewport.height - barBottomY;
+      const barTopY = placedAbove
+        ? (rect.top - GAP - OUTLINE_PAD - barHeight)
+        : (rect.bottom + GAP + OUTLINE_PAD);
+      const spaceAbove = barTopY;
+      setColorPickerPlacement(computePopoverPlacement(spaceBelow, spaceAbove, COLOR_PICKER_HEIGHT));
+      setFontPickerPlacement(computePopoverPlacement(spaceBelow, spaceAbove, FONT_PICKER_HEIGHT));
     };
     update();
     window.addEventListener("scroll", update, true);
@@ -604,15 +643,15 @@ export default function ElementHoverBar({
           </>
         )}
         {isBoundTextFormatEligible && (
-          <FormatOverrideControls selectedElement={boundFormatElement} colorMenu={menuController("color")} />
+          <FormatOverrideControls selectedElement={boundFormatElement} colorMenu={menuController("color")} popoverPlacement={colorPickerPlacement} />
         )}
         {elementIsText && (
           <>
             <BoldButton selectedElement={targetEl} />
             <ItalicButton selectedElement={targetEl} />
-            <TextColorButton selectedElement={targetEl} {...menuController("color")} />
+            <TextColorButton selectedElement={targetEl} {...menuController("color")} popoverPlacement={colorPickerPlacement} />
             <TextSizeStepperButton selectedElement={targetEl} {...menuController("size")} />
-            <FontFamilyButton selectedElement={targetEl} {...menuController("font")} />
+            <FontFamilyButton selectedElement={targetEl} {...menuController("font")} popoverPlacement={fontPickerPlacement} />
             {isTextBlockElement(element) && (
               <TextAlignButton selectedElement={targetEl} {...menuController("align")} />
             )}

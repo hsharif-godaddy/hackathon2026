@@ -268,4 +268,43 @@ describe('TextColorButton', () => {
       expect(paragraphB.style.color).toBe('rgb(0, 0, 255)');
     });
   });
+
+  describe('popoverPlacement', () => {
+    it('positions the color picker above when popoverPlacement is "above"', () => {
+      const paragraph = makeParagraph();
+      render(reactCreateElement(TextColorButton, {
+        selectedElement: paragraph,
+        isOpen: true,
+        onOpenChange: vi.fn(),
+        popoverPlacement: 'above',
+      }));
+      const pickerWrapper = screen.getByTestId('color-picker').parentElement!;
+      expect(pickerWrapper.style.bottom).toBe('calc(100% + 4px)');
+      expect(pickerWrapper.style.top).toBe('');
+    });
+
+    it('positions the color picker below when popoverPlacement is "below"', () => {
+      const paragraph = makeParagraph();
+      render(reactCreateElement(TextColorButton, {
+        selectedElement: paragraph,
+        isOpen: true,
+        onOpenChange: vi.fn(),
+        popoverPlacement: 'below',
+      }));
+      const pickerWrapper = screen.getByTestId('color-picker').parentElement!;
+      expect(pickerWrapper.style.top).toBe('calc(100% + 4px)');
+      expect(pickerWrapper.style.bottom).toBe('');
+    });
+
+    it('defaults to below when popoverPlacement is not provided', () => {
+      const paragraph = makeParagraph();
+      render(reactCreateElement(TextColorButton, {
+        selectedElement: paragraph,
+        isOpen: true,
+        onOpenChange: vi.fn(),
+      }));
+      const pickerWrapper = screen.getByTestId('color-picker').parentElement!;
+      expect(pickerWrapper.style.top).toBe('calc(100% + 4px)');
+    });
+  });
 });
