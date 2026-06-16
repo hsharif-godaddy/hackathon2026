@@ -14,7 +14,15 @@ import { generateClickEID } from '@/utils/instrumentation';
 import { getAppScreenshotUrl } from '@/utils/site';
 
 
-export default function AppItem({site, dataEid}: {site: Site, dataEid?: string}) {
+export default function AppItem({
+  site,
+  dataEid,
+  onSelect,
+}: {
+  site: Site
+  dataEid?: string
+  onSelect?: (siteId: string) => void
+}) {
   const router = useRouter();
   const params = useParams();
 
@@ -23,7 +31,9 @@ export default function AppItem({site, dataEid}: {site: Site, dataEid?: string})
   return (
     <button
       key={site.id}
-      onClick={() => router.push(`/develop/${site.id}?siteId=${site.id}`)}
+      onClick={() =>
+        onSelect ? onSelect(site.id) : router.push(`/develop/${site.id}?siteId=${site.id}`)
+      }
       data-eid={dataEid ?? null}
       className={clsx(
         "w-full text-left leading-tight group rounded-sm hover:cursor-pointer transition-all duration-300", {

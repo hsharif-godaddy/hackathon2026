@@ -37,6 +37,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
+import { useCommanderCanvasTabsEnabled } from '@/stores/useCommanderStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { postMessageToIframe } from '@/utils/postMessage'
@@ -250,6 +251,8 @@ export default function PreviewPane({
   const isDomainBarEnabled = useSwitchboard('appbuilder-domain-bar');
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
+  const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook') === true;
+  const isCanvasTabsEnabled = useCommanderCanvasTabsEnabled();
   /** Switchboard: translucent creation overlay + edit chip behavior. */
   const isPreviewEnhancedOverlaysEnabled = useSwitchboard('appbuilder-preview-enhanced-overlays') === true;
   /**
@@ -353,6 +356,12 @@ export default function PreviewPane({
   const [isAuthBlocked, setIsAuthBlocked] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const previewShellRef = useRef<HTMLDivElement>(null)
+  const hasMountedBrandRef = useRef(false)
+  const hasMountedDomainRef = useRef(false)
+  const hasMountedInboxRef = useRef(false)
+  if (viewMode === ViewMode.BRAND) hasMountedBrandRef.current = true
+  if (viewMode === ViewMode.DOMAIN) hasMountedDomainRef.current = true
+  if (viewMode === ViewMode.INBOX) hasMountedInboxRef.current = true
 
   // State preservation for iframe navigation and scroll position
   const [pendingStateRestore, setPendingStateRestore] = useState<{
@@ -1267,7 +1276,13 @@ export default function PreviewPane({
     )
   }
 
-  if (viewMode === ViewMode.DOMAIN && isTopLevelDomainEnabled) {
+  // With canvas-tabs flag on AND the preview server ready, skip the DOMAIN/INBOX
+  // early returns so the success-state branch can mount these surfaces as overlays
+  // alongside Preview/Code/Brand. Switching tabs then becomes a visibility toggle
+  // instead of a remount.
+  const canvasTabsOverlayMode = Boolean(isCanvasTabsEnabled && previewUrl && serverState?.isReady)
+
+  if (viewMode === ViewMode.DOMAIN && isTopLevelDomainEnabled && !canvasTabsOverlayMode) {
     return (
       <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
         <div className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor">
@@ -1281,7 +1296,7 @@ export default function PreviewPane({
     )
   }
 
-  if (isInboxEnabled && inboxBrandId && viewMode === ViewMode.INBOX) {
+  if (isInboxEnabled && inboxBrandId && viewMode === ViewMode.INBOX && !canvasTabsOverlayMode) {
     return (
       <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
         <div className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor">
@@ -1431,6 +1446,41 @@ export default function PreviewPane({
                     (see page.tsx) so it survives this component's readiness branch
                     switches. The preview/code below stays mounted-but-inert under it. */}
 
+                {/* Domain canvas overlay (canvas-tabs flag only). */}
+                {isCanvasTabsEnabled && isTopLevelDomainEnabled && hasMountedDomainRef.current && (
+                  <div
+                    aria-hidden={viewMode !== ViewMode.DOMAIN}
+                    inert={viewMode !== ViewMode.DOMAIN || undefined}
+                    className={clsx(
+                      'absolute inset-0 w-full h-full z-10 rounded-lg md:rounded-b-none overflow-auto bg-intents-ux-box-backgroundColor border transition-opacity duration-200',
+                      viewMode === ViewMode.DOMAIN
+                        ? 'opacity-100 pointer-events-auto'
+                        : 'opacity-0 pointer-events-none',
+                    )}
+                  >
+                    <div className="mx-auto max-w-[960px] p-6">
+                      <ErrorBoundary>
+                        <DomainPanel />
+                      </ErrorBoundary>
+                    </div>
+                  </div>
+                )}
+
+                {isCanvasTabsEnabled && isInboxEnabled && inboxBrandId && hasMountedInboxRef.current && (
+                  <div
+                    aria-hidden={viewMode !== ViewMode.INBOX}
+                    inert={viewMode !== ViewMode.INBOX || undefined}
+                    className={clsx(
+                      'absolute inset-0 w-full h-full z-10 rounded-lg md:rounded-b-none overflow-auto bg-intents-ux-box-backgroundColor border transition-opacity duration-200',
+                      viewMode === ViewMode.INBOX
+                        ? 'opacity-100 pointer-events-auto'
+                        : 'opacity-0 pointer-events-none',
+                    )}
+                  >
+                    <Inbox brandId={inboxBrandId} />
+                  </div>
+                )}
+
                 {/* Preview View (DomainBar + iframe) */}
                 <motion.div
                   className="absolute inset-0 w-full h-full flex flex-col"
@@ -1450,7 +1500,7 @@ export default function PreviewPane({
                     <div
                       ref={previewShellRef}
                       className={clsx(
-                        'relative border rounded-lg md:rounded-b-none bg-intents-ux-boxLowContrast-backgroundColor overflow-hidden transition-shadow duration-200', {
+                        'relative border border-b-0 rounded-lg md:rounded-b-none bg-intents-ux-boxLowContrast-backgroundColor overflow-hidden transition-shadow duration-200', {
                           'w-full h-full': isFullSize || isMobile,
                           'my-auto': !isFullSize && !isMobile,
                         }

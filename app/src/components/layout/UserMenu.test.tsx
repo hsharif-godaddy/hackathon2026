@@ -49,7 +49,7 @@ const mockUseAuthContext = vi.fn();
 const mockLogClickEvent = vi.fn(function () { return vi.fn(); });
 const mockLogImpressionEvent = vi.fn(function (_eid: string) { return vi.fn(); });
 
-const mockUsePathname = vi.fn(function () { return '/develop'; });
+const mockUsePathname = vi.fn(function () { return '/en-US/develop/test-app-123'; });
 
 vi.mock('next/navigation', () => ({
   usePathname: () => mockUsePathname(),
@@ -185,7 +185,7 @@ describe('UserMenu', function userMenuTests() {
         expect(mockOpen).not.toHaveBeenCalled();
       } finally {
         mockOpen.mockRestore();
-        mockUsePathname.mockReturnValue('/develop');
+        mockUsePathname.mockReturnValue('/en-US/develop/test-app-123');
       }
     });
 

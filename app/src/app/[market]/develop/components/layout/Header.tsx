@@ -19,6 +19,7 @@ import WorldIcon from '@ux/icon/world'
 import Tag from '@ux/tag';
 
 import { ButtonGroup } from '@/app/[market]/develop/components/ButtonGroup';
+import { MOBILE_MODE_EID_MAP, VIEW_MODE_EID_MAP } from '@/app/[market]/develop/components/headerEids';
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import { InboxUnreadBadge } from '@/app/[market]/develop/components/layout/InboxUnreadBadge';
 import ShareLink from '@/app/[market]/develop/components/layout/ShareLink';
@@ -39,20 +40,6 @@ import { useTranslations } from '@/hooks/useTranslations';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { logClickEvent } from '@/utils/instrumentation'
-
-const VIEW_MODE_EID_MAP: Record<string, string> = {
-  [ViewMode.PREVIEW]: 'develop.header.iframe',
-  [ViewMode.EDIT]: 'develop.header.edit_mode',
-  [ViewMode.CODE]: 'develop.header.code_editor',
-  [ViewMode.BRAND]: 'develop.header.brand_book',
-  [ViewMode.DOMAIN]: 'develop.header.domain_view',
-  [ViewMode.INBOX]: 'develop.header.inbox'
-};
-
-const MOBILE_MODE_EID_MAP: Record<string, string> = {
-  [MobileMode.TOOLS]: 'develop.mobile_header.tools',
-  [MobileMode.PREVIEW]: 'develop.mobile_header.preview',
-};
 
 // Tailwind fragment for the Preview/Edit toggle.
 // Transparent inactive state lets the rail bg show through so the pill reads as one toggle.
@@ -110,10 +97,23 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
     if (VIEW_MODE_EID_MAP[value]) logClickEvent(VIEW_MODE_EID_MAP[value], clickContext)()
   }
 
+  const logoBlock = (
+    <div className="flex items-center gap-1" data-partial="componentAiro">
+      <Link
+        href="/"
+        className="flex items-center"
+        onClick={() => logClickEvent(`${location}.header.airo_ai_link`, clickContext)()}
+      >
+        <AiroLogo className="relative" />
+      </Link>
+      <Tag emphasis="highlight" highcontrast>{t('builder_beta')}</Tag>
+    </div>
+  );
+
   return (
     <header data-testid="airo-header" className="flex">
       <motion.div
-        className="p-1.5 md:ps-2.5 md:pe-0 shrink-0 flex items-center gap-1.5"
+        className="shrink-0 flex items-center gap-1.5 p-1.5 md:ps-2.5 md:pe-0"
         animate={{
           width: (isChatPaneCollapsed || isMobile) ? 'auto' : `${chatPaneWidth}px`,
           justifyContent: isChatPaneCollapsed ? 'flex-start' : 'space-between'
@@ -124,16 +124,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
           damping: 30
         }}
       >
-        <div className="flex items-center gap-1" data-partial="componentAiro">
-          <Link
-            href="/"
-            className="flex items-center"
-            onClick={() => logClickEvent(`${location}.header.airo_ai_link`, clickContext)()}
-          >
-            <AiroLogo className="relative" />
-          </Link>
-          <Tag emphasis="highlight" highcontrast>{t('builder_beta')}</Tag>
-        </div>
+        {logoBlock}
         {!isMobile && (
           <motion.div layout>
             <IconButton

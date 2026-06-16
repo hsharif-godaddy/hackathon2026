@@ -25,6 +25,7 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useVenture } from '@/hooks/useVenture';
+import { isBuilderPagePath } from '@/lib/builder-route';
 import {
   Popover,
   PopoverContent,
@@ -61,7 +62,7 @@ export default function UserMenu({ onShowMockLogin, location = 'unknown' }: User
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   const pathname = usePathname();
-  const isDevelopPage = pathname?.includes('/develop');
+  const isDevelopPage = isBuilderPagePath(pathname);
 
   const {
     isAuthenticated,

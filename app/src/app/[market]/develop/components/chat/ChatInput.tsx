@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useIntl } from 'react-intl'
 import { PromptBox, type PromptBoxHandle } from '@airo-ux/pattern-library/input/prompt-box'
 import { FloatingFooter } from '@airo-ux/pattern-library/surfaces/floating-footer'
@@ -135,6 +135,10 @@ interface ChatInputProps {
   isQueueEnabled?: boolean
   /** Queue is at QUEUE_MAX; gate submit while busy. */
   isQueueFull?: boolean
+  composerSlots?: {
+    toolbarStart?: ReactNode
+    toolbarEnd?: ReactNode
+  }
 }
 
 export default function ChatInput({
@@ -172,6 +176,7 @@ export default function ChatInput({
   activeFontThemeSuggest = null,
   isQueueEnabled = false,
   isQueueFull = false,
+  composerSlots,
 }: ChatInputProps) {
   const t = useTranslations();
   // Drives the sequential multi-page rebuild queue. Mounted here — not in
@@ -852,37 +857,50 @@ export default function ChatInput({
             onArrowDown={handlePromptArrowDown}
             onMentionRemoved={handleMentionRemoved}
             toolbarStart={
-              <div className="flex items-center">
-                {appId && onStageFiles && (
-                  <ChatAttachmentMenu
-                    appId={appId}
-                    onStageFiles={onStageFiles}
-                    onScreenshotCaptured={onScreenshotCaptured}
-                    onFileReferencesSelected={onFileReferencesSelected}
-                    onUploadError={onUploadError}
-                    disabled={(Boolean(isDisabled) && !isStreaming) || Boolean(isBudgetExceeded) || !canAddAsset}
-                  />
-                )}
-                <DebugStatsToggleButton />
-                {isChatGaugeEnabled && <UsageGauge appId={appId} />}
-              </div>
+              composerSlots?.toolbarStart ?? (
+                <div className="flex items-center">
+                  {appId && onStageFiles && (
+                    <ChatAttachmentMenu
+                      appId={appId}
+                      onStageFiles={onStageFiles}
+                      onScreenshotCaptured={onScreenshotCaptured}
+                      onFileReferencesSelected={onFileReferencesSelected}
+                      onUploadError={onUploadError}
+                      disabled={(Boolean(isDisabled) && !isStreaming) || Boolean(isBudgetExceeded) || !canAddAsset}
+                    />
+                  )}
+                  <DebugStatsToggleButton />
+                  {isChatGaugeEnabled && <UsageGauge appId={appId} />}
+                </div>
+              )
             }
-            beforeSubmit={isSpeechSupported ? (
-              <Button
-                onClick={() => {
-                  logClickEvent('develop.prompt.speech', clickContext)()
-                  toggleSpeech()
-                }}
-                onMouseDown={(e) => e.preventDefault()}
-                disabled={(Boolean(isDisabled) && !isStreaming) || Boolean(isBudgetExceeded)}
-                design={isListening ? 'critical' : 'tertiary'}
-                active={isListening}
-                icon={isListening ? <StopIcon /> : <MicIcon />}
-                size="sm"
-                aria-label={isListening ? t('builder_homepage_hero_stop_listening', undefined, 'Stop listening') : t('builder_chatinput_start_listening', undefined, 'Start listening')}
-                aria-pressed={isListening}
-              />
-            ) : null}
+            beforeSubmit={(() => {
+              const micButton = isSpeechSupported ? (
+                <Button
+                  onClick={() => {
+                    logClickEvent('develop.prompt.speech', clickContext)()
+                    toggleSpeech()
+                  }}
+                  onMouseDown={(e) => e.preventDefault()}
+                  disabled={(Boolean(isDisabled) && !isStreaming) || Boolean(isBudgetExceeded)}
+                  design={isListening ? 'critical' : 'tertiary'}
+                  active={isListening}
+                  icon={isListening ? <StopIcon /> : <MicIcon />}
+                  size="sm"
+                  aria-label={isListening ? t('builder_homepage_hero_stop_listening', undefined, 'Stop listening') : t('builder_chatinput_start_listening', undefined, 'Start listening')}
+                  aria-pressed={isListening}
+                />
+              ) : null
+              if (composerSlots?.toolbarEnd) {
+                return (
+                  <div className="flex items-center gap-0.5 me-1">
+                    {composerSlots.toolbarEnd}
+                    {micButton}
+                  </div>
+                )
+              }
+              return micButton
+            })()}
           />
           )}
         </FloatingFooter>

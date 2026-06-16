@@ -36,6 +36,12 @@ export default function MediaPanel() {
   const clearMediaReturnState = useMediaSlotDialogStore((state) => state.clearMediaReturnState)
   const openEditorForSlot = useMediaSlotDialogStore((state) => state.openEditorForSlot)
   const clearEditorSlot = useMediaSlotDialogStore((state) => state.clearEditorSlot)
+  const setCurrentSlotName = useMediaSlotDialogStore((state) => state.setCurrentSlotName)
+
+  useEffect(function syncCurrentSlotNameToStore() {
+    setCurrentSlotName(activeSlotName)
+    return () => setCurrentSlotName(null)
+  }, [activeSlotName, setCurrentSlotName])
 
   const activeChatTab = useDevelopPageStore((state) => state.activeChatTab)
 

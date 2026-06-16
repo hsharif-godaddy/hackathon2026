@@ -19,6 +19,7 @@ import UserMenu from '@/components/layout/UserMenu';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useBreakpoints } from '@/hooks/useBreakpoints';
 import { useTranslations } from '@/hooks/useTranslations';
+import { isBuilderPagePath } from '@/lib/builder-route';
 import { generateClickEID } from '@/utils/instrumentation';
 
 export default function Header({ actions, onShowMockLogin, location = 'unknown', className }: HeaderProps) {
@@ -26,7 +27,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown',
   const { isAuthenticated, isLoading } = useAuthContext();
   const { isBelowSmBreakpoint } = useBreakpoints();
   const pathname = usePathname();
-  const isDevelopPage = pathname?.includes('/develop');
+  const isDevelopPage = isBuilderPagePath(pathname);
 
   // Only show authenticated UI components when auth is confirmed (not loading) and user is authenticated
   // This prevents authenticated API calls from being made

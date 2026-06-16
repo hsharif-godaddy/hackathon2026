@@ -26,6 +26,7 @@ const SecurityPanel = dynamic(() => import('@/app/[market]/develop/components/se
 const SocialPanel = dynamic(() => import('@/app/[market]/develop/components/settings/social/SocialPanel'), { loading: () => <PanelSkeleton /> })
 const GitHubPanel = dynamic(() => import('@/app/[market]/develop/components/settings/GitHubPanel'), { loading: () => <PanelSkeleton /> })
 const VisualScanPanel = dynamic(() => import('@/app/[market]/develop/components/settings/VisualScanPanel'), { loading: () => <PanelSkeleton /> })
+const AnalyticsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel'), { loading: () => <SettingsLoadingState fullPage /> })
 
 export default function SettingsView() {
   const { activeSettingsSection } = useChatTabs()
@@ -41,6 +42,7 @@ export default function SettingsView() {
   const isMarketingEnabled = useSwitchboard('appbuilder-settings-marketing');
   const isGitHubEnabled = useSwitchboard('appbuilder-github-sync');
   const isCampaignsEnabled = useSwitchboard('appbuilder-marketing-campaigns');
+  const isAnalyticsEnabled = useSwitchboard('appbuilder-analytics');
 
   const sectionSkeleton = <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={activeSettingsSection} />
 
@@ -79,6 +81,9 @@ export default function SettingsView() {
       case SettingsSection.CAMPAIGNS:
         if (isCampaignsEnabled === undefined) return sectionSkeleton;
         return isCampaignsEnabled ? <CampaignsPanel /> : null;
+      case SettingsSection.ANALYTICS:
+        if (isAnalyticsEnabled === undefined) return sectionSkeleton;
+        return isAnalyticsEnabled ? <AnalyticsPanel /> : null;
       case SettingsSection.FEEDBACK:
       default:
         if (isProjectEnabled === undefined) return sectionSkeleton;

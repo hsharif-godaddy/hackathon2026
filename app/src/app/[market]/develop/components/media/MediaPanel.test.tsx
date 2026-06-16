@@ -68,6 +68,7 @@ const mockMediaSlotDialogStore = {
   clearMediaReturnState: vi.fn(),
   openEditorForSlot: null as string | null,
   clearEditorSlot: vi.fn(),
+  setCurrentSlotName: vi.fn(),
 };
 
 vi.mock('@/stores/useMediaSlotDialogStore', () => ({

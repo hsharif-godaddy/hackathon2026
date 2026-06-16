@@ -37,6 +37,14 @@ interface MediaSlotDialogState {
   mediaScrollCurrentIndex: number;
 
   /**
+   * Slot currently displayed by MediaPanel, or null when on the grid.
+   * MediaPanel keeps this in sync; consumers (e.g. CommanderTabBackButton)
+   * read it to suppress redundant back UI when MediaPanel renders its own.
+   */
+  currentSlotName: string | null;
+  setCurrentSlotName: (slotName: string | null) => void;
+
+  /**
    * Navigate the media panel to a specific slot (or `__GRID__` for the
    * grid view). Snapshots the active chat tab + mobileMode synchronously
    * — call BEFORE `setActiveChatTab(MEDIAS)` so the source tab is
@@ -59,6 +67,11 @@ export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
   openEditorForSlot: null,
   mediaScrollTotalMatches: 0,
   mediaScrollCurrentIndex: 0,
+  currentSlotName: null,
+
+  setCurrentSlotName: (slotName: string | null) => {
+    set({ currentSlotName: slotName });
+  },
 
   navigateToSlot: (slotName: string, options?: { openEditor?: boolean }) => {
     // Snapshot source tab for back-breadcrumb. `openEditor` is real-slot only.

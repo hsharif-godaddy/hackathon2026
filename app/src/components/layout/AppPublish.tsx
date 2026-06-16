@@ -42,6 +42,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { useTriggerSecurityAnalysis } from '@/hooks/useTriggerSecurityAnalysis';
 import { useIsUpgradePolling } from '@/hooks/useUpgradePurchase';
+import { isBuilderPagePath } from '@/lib/builder-route';
 import { JourneyTracker } from '@/lib/journeyTracker';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
@@ -121,7 +122,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const lastHandledPublishPopoverRequestRef = useRef<{ appId: string | null; nonce: number }>({ appId: null, nonce: 0 });
 
   const pathname = usePathname();
-  const isDevelopPage = pathname?.includes('/develop');
+  const isDevelopPage = isBuilderPagePath(pathname);
   const { setActiveChatTab, setActiveSettingsSection } = useChatTabs();
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const isMobile = useDevelopPageStore((state) => state.isMobile);

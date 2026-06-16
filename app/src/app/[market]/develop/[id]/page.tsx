@@ -7,6 +7,8 @@ import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { useQueryClient } from '@tanstack/react-query'
 import Growl from '@ux/growl'
 
+import { CommanderShell } from '@/app/[market]/commander/components/CommanderShell'
+import { BuilderLayout } from '@/app/[market]/commander/types'
 import ChatPane from '@/app/[market]/develop/components/chat/ChatPane'
 import ChatPaneLoader, { ImageReloadLoaderPhase, ResumeLoaderPhase } from '@/app/[market]/develop/components/chat/ChatPaneLoader'
 import ChatToolbar from '@/app/[market]/develop/components/chat/ChatToolbar'
@@ -139,7 +141,7 @@ const SettingsView = dynamic(importSettingsView, { loading: () => <SettingsLoadi
 
 const aotImports = [importFeedback, importFirstPublishCongratsModal, importPublishLimitModal, importSettingsView]
 
-function DevelopPageContent() {
+function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: BuilderLayout }) {
   const t = useTranslations();
   const searchParams = useSearchParams()
   const todoListIdParam = searchParams.get('todoListId')
@@ -1370,6 +1372,51 @@ function DevelopPageContent() {
         } : undefined}
         onDragEnter={handleDragEnter}
       >
+        <PostPublishGoLiveModal appId={appId} />
+        {layout === BuilderLayout.Commander ? (
+          <CommanderShell
+            appId={appId}
+            isMobile={isMobile}
+            chatPaneNode={
+              <ChatPane
+                sendMessage={ws.actions.send}
+                stopGeneration={ws.actions.stop}
+                isCreateFlowSession={isCreateFlowSession}
+                hasInitialPrompt={init.context.hasInitialPrompt}
+                isAwaitingStream={isAwaitingStream}
+                initialPromptText={init.context.initialPromptText}
+                loadingMessage={chatLoadingMessage}
+                layout={layout}
+                onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+              />
+            }
+            previewPaneNode={
+              <PreviewPane
+                onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+                isMutatingFiles={isMutatingFiles}
+                isProcessing={isProcessing}
+                showBuildingOverlay={init.ui.showPreviewLoader && viewMode !== ViewMode.BRAND}
+                isHibernated={hibernation.isHibernated}
+                isResuming={hibernation.isResuming}
+                resumeFailed={hibernation.resumeFailed}
+                onRetryResume={() => hibernation.resume()}
+                archiveGatePending={archiveRestore.archiveGatePending}
+                archiveResumeFailed={archiveRestore.archiveRestoreFailed}
+                onRetryArchiveRestore={() => archiveRestore.restoreFromArchive()}
+                showArchiveResumeMessage={
+                  archiveRestore.isArchivedForRestore || archiveRestore.isRestoringFromArchive
+                }
+                isImageReloading={imageReadiness.isImageUpdating}
+                imageReloadFailed={!!imageReadiness.error}
+                onRetryImageReload={() => imageReadiness.retry()}
+                isMobile={isMobile}
+                onPublishSnapshot={handlePublishSnapshot}
+                onAskAiroToFix={sendPreviewFixRequest}
+              />
+            }
+          />
+        ) : (
+          <>
         <DevelopHeader onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })} />
 
         {/* Desktop Layout */}
@@ -1400,6 +1447,8 @@ function DevelopPageContent() {
                 isAwaitingStream={isAwaitingStream}
                 initialPromptText={init.context.initialPromptText}
                 loadingMessage={chatLoadingMessage}
+                layout={layout}
+                onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
               />
             </motion.div>
 
@@ -1427,8 +1476,6 @@ function DevelopPageContent() {
                 ease: [0.4, 0, 0.2, 1]
               }}
             >
-              <PostPublishGoLiveModal appId={appId} />
-
               {/* Content area - takes remaining space after banner */}
               <div className="flex-1 relative min-h-0 isolate">
                 {/* Preview/Code View */}
@@ -1521,8 +1568,6 @@ function DevelopPageContent() {
                 />
               ) : (
                 <>
-                  <PostPublishGoLiveModal appId={appId} />
-
                   {/* Content area - takes remaining space after banner */}
                   <div className="flex-1 relative min-h-0">
                     {/* Preview Tab */}
@@ -1575,6 +1620,8 @@ function DevelopPageContent() {
                         isAwaitingStream={isAwaitingStream}
                         initialPromptText={init.context.initialPromptText}
                         loadingMessage={chatLoadingMessage}
+                        layout={layout}
+                        onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
                       />
                     </div>
 
@@ -1644,6 +1691,8 @@ function DevelopPageContent() {
               onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
             />
           </div>
+        )}
+          </>
         )}
 
         {openFeedbackId === FEEDBACK_ID && (
@@ -1717,11 +1766,11 @@ function DevelopPageContent() {
   )
 }
 
-export default function Develop() {
+export default function Develop({ layout = BuilderLayout.Develop }: { layout?: BuilderLayout } = {}) {
   return (
     <ProtectedRoute loadingFallback={<DevelopSkeleton isFallback={true} />}>
       <Suspense fallback={<DevelopSkeleton isFallback={true} />}>
-        <DevelopPageContent />
+        <DevelopPageContent layout={layout} />
       </Suspense>
     </ProtectedRoute>
   );

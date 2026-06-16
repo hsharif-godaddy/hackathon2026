@@ -18,7 +18,6 @@ interface IconButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElem
   id?: string
   showLabelWhenActive?: boolean
   showLabelAlways?: boolean
-  /** Transparent background; ring still indicates `active` when not inverted. */
   ghost?: boolean
 }
 
@@ -55,7 +54,7 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconB
   }, [forwardedRef])
 
   const tooltipComponent = (
-    <Tooltip anchorRef={internalRef} portalElem={document.body}>
+    <Tooltip anchorRef={internalRef} portalElem={document.body} className="z-50!">
       <div className="flex flex-col gap-0 p-1">
         <div className="text-sm font-bold leading-none">{label}</div>
         {tooltipDescription && <div className="text-sm font-thin">{tooltipDescription}</div>}
@@ -74,21 +73,22 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconB
       className={clsx(
         "flex gap-0 items-center relative leading-none transition-all duration-200", {
           "bg-intents-ux-box-backgroundColor": !inverted && !ghost,
-          "bg-transparent": !inverted && ghost,
+          "bg-transparent": !inverted && ghost && !active,
           "bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-boxLowContrast-foregroundColor": inverted && !ghost,
           "bg-transparent text-intents-ux-boxLowContrast-foregroundColor": inverted && ghost,
           "p-1.5 rounded-lg": size === 'default',
           "p-[6px] rounded-md": size === 'sm',
           "mr-2 after:absolute after:-right-1.5 after:top-0 after:bottom-0 after:block after:content after:w-px after:bg-intents-ux-box-borderColor": separator,
-          // Ring on neutral surface so @ux/icon (fill=currentColor) stays visible; filled high-contrast
-          // bg often produced a solid block with no visible glyph in light themes.
-          // Ring when active on default surface, or ghost inverted (no solid fill).
           "text-intents-ux-box-foregroundColor shadow-md ring-1 ring-inset ring-intents-ux-box-borderColor":
-            active && (!inverted || ghost),
+            active && !inverted && !ghost,
           "bg-intents-ux-box-backgroundColor text-intents-ux-box-foregroundColor shadow-md":
             active && inverted && !ghost,
+          "bg-intents-ux-boxHighContrast-backgroundColor text-intents-ux-boxHighContrast-foregroundColor":
+            active && !inverted && ghost,
           "opacity-25 pointer-events-none": disabled,
-          "hover:shadow-md hover:cursor-pointer": !disabled && onClick,
+          "hover:cursor-pointer": !disabled && !active && onClick,
+          "hover:shadow-md": !disabled && onClick && !ghost,
+          "hover:bg-intents-ux-actionHovered-backgroundColor": !disabled && onClick && ghost && !active,
         },
         className
       )}

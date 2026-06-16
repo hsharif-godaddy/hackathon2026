@@ -1,13 +1,20 @@
 'use client';
 
+import { clsx } from 'clsx';
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { isEmployeeAuthType } from '@airo/shared/auth';
 import Growl from '@ux/growl';
 
+import CommanderChatRow from '@/app/[market]/commander/components/chat/CommanderChatRow';
+import CommanderComposerLeft from '@/app/[market]/commander/components/chat/CommanderComposerLeft';
+import CommanderTabBackButton from '@/app/[market]/commander/components/chat/CommanderTabBackButton';
+import { useCommanderLayout } from '@/app/[market]/commander/components/CommanderLayoutContext';
+import { BuilderLayout } from '@/app/[market]/commander/types';
 import { AssetManagerItem, MediaType } from '@/app/[market]/develop/components/chat/AssetTypes';
 import ChatBanners from '@/app/[market]/develop/components/chat/banners/ChatBanners';
+import ChatAttachmentMenu from '@/app/[market]/develop/components/chat/ChatAttachmentMenu';
 import ChatComposerSlot from '@/app/[market]/develop/components/chat/ChatComposerSlot';
 import {
   ChatContext,
@@ -65,6 +72,7 @@ import { logger } from '@/lib/request-context';
 import { appService } from '@/services/AppService';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useGitStore } from '@/stores/useGitStore'
+import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import {
   QUEUE_MAX,
@@ -138,6 +146,8 @@ interface ChatPaneProps {
   isAwaitingStream?: boolean;
   loadingMessage?: string | null;
   initialPromptText?: string | null;
+  layout?: BuilderLayout;
+  onPreviewRefresh?: () => void;
 }
 
 function mapUploadedFilesToAssetItems(files: UploadedFile[], agentUrl: string): AssetManagerItem[] {
@@ -230,6 +240,8 @@ function ChatPaneInner({
   isAwaitingStream = false,
   loadingMessage = null,
   initialPromptText = null,
+  layout = BuilderLayout.Develop,
+  onPreviewRefresh,
 }: ChatPaneProps) {
   const t = useTranslations();
   useDebugStatsBridge();
@@ -286,6 +298,9 @@ function ChatPaneInner({
   const isGoLiveFeatureEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE) === true;
   const isFontSelectionChatEnabled = useSwitchboard('airo-builder-font-selection-chat');
   const isPurchaseIntentClassifierEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_PURCHASE_INTENT_CLASSIFIER) === true;
+  const isCommanderChatFlagEnabled = useSwitchboard('appbuilder-commander-chat') === true;
+  const isCommanderChatEnabled = layout === BuilderLayout.Commander && isCommanderChatFlagEnabled;
+  const mediaCurrentSlotName = useMediaSlotDialogStore((state) => state.currentSlotName);
 
   // Unified grants fetch - works for both BMS and legacy paths
   const { data: grants, isFetching: isGrantsFetching } = useCreditGrants({
@@ -1104,6 +1119,37 @@ function ChatPaneInner({
 
   useUpfrontRebuildBuildQueue(appId, isStreaming || isLoading, handleSendMessage);
 
+  const commanderLayout = useCommanderLayout();
+  const planTrackerWrapperRef = useRef<HTMLDivElement | null>(null);
+  const belowMessagesWrapperRef = useRef<HTMLDivElement | null>(null);
+  const commanderChatRowWrapperRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!commanderLayout) return;
+    if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return;
+
+    const targets = [
+      planTrackerWrapperRef.current,
+      belowMessagesWrapperRef.current,
+      commanderChatRowWrapperRef.current,
+    ].filter((el): el is HTMLDivElement => el !== null);
+    if (targets.length === 0) return;
+
+    const report = () => {
+      const sum = targets.reduce((acc, el) => acc + el.offsetHeight, 0);
+      commanderLayout.reportNonMessagesHeight(sum);
+    };
+
+    const observer = new ResizeObserver(report);
+    targets.forEach((el) => observer.observe(el));
+    report();
+
+    return () => {
+      observer.disconnect();
+      commanderLayout.reportNonMessagesHeight(0);
+    };
+  }, [commanderLayout, isCommanderChatEnabled, activeChatTab]);
+
   // Handle asset selection from AssetManager
   const handleAssetSelect = useCallback(
     (items: AssetManagerItem[]) => {
@@ -1389,6 +1435,37 @@ function ChatPaneInner({
     [appId, t, agentUrl, showTransientAttachmentBanner]
   );
 
+  const commanderComposerSlots = useMemo(() => {
+    if (!isCommanderChatEnabled) return undefined;
+    return {
+      toolbarStart: (
+        <div className="flex items-center gap-0.5">
+          <CommanderComposerLeft appId={appId} />
+          {appId && handleStageFiles && (
+            <ChatAttachmentMenu
+              appId={appId}
+              onStageFiles={handleStageFiles}
+              onScreenshotCaptured={handleScreenshotCaptured}
+              onFileReferencesSelected={handleFileReferencesSelected}
+              onUploadError={handleAttachmentMenuError}
+              disabled={isProcessing || budgetExceeded}
+            />
+          )}
+        </div>
+      ),
+      toolbarEnd: null,
+    };
+  }, [
+    isCommanderChatEnabled,
+    appId,
+    handleStageFiles,
+    handleScreenshotCaptured,
+    handleFileReferencesSelected,
+    handleAttachmentMenuError,
+    isProcessing,
+    budgetExceeded,
+  ]);
+
   // Listen for error fix requests from PreviewPaneSimple
   useEffect(() => {
     const handleErrorFixEvent = (event: CustomEvent) => {
@@ -1511,7 +1588,11 @@ function ChatPaneInner({
             isQueueFull={isQueueFull}
             secretsComposer={showSecretsComposer ? activeSecretsRequest : null}
             secretsComposerConversationId={secretsComposerConversationId ?? undefined}
+            composerSlots={commanderComposerSlots}
           />
+          {isCommanderChatEnabled && (
+            <CommanderChatRow appId={appId} onPreviewRefresh={onPreviewRefresh} />
+          )}
           <DebugStatsPanel />
         </div>
       </ChatContext.Provider>
@@ -1522,13 +1603,18 @@ function ChatPaneInner({
     <ChatContext.Provider value={chatContextValue}>
       <div
         data-media-delete-overlay-boundary
-        className="flex-1 flex flex-col h-full p-0 md:ps-2 md:pb-2 gap-1"
+        className={clsx("flex-1 flex flex-col h-full p-0 md:ps-2", {
+          'gap-1 md:pb-2': !isCommanderChatEnabled,
+          'md:pb-1': isCommanderChatEnabled,
+        })}
       >
-        <PlanTracker
-          developmentPlan={developmentPlan}
-          expandedPlan={expandedPlan}
-          onToggleExpandedPlan={toggleExpandedPlan}
-        />
+        <div ref={planTrackerWrapperRef} className="shrink-0">
+          <PlanTracker
+            developmentPlan={developmentPlan}
+            expandedPlan={expandedPlan}
+            onToggleExpandedPlan={toggleExpandedPlan}
+          />
+        </div>
 
         {/* Chat Tab - Keep mounted, hide with CSS */}
         <div
@@ -1545,6 +1631,7 @@ function ChatPaneInner({
             transcriptContainerVisible={activeChatTab === ChatTab.CHAT}
           />
 
+          <div ref={belowMessagesWrapperRef} className="flex flex-col shrink-0">
           {safeBuildErrorContext && (
             <div className="mx-2 rounded-md overflow-hidden border">
               <div className="p-1.5">
@@ -1649,9 +1736,11 @@ function ChatPaneInner({
               isQueueFull={isQueueFull}
               secretsComposer={showSecretsComposer ? activeSecretsRequest : null}
               secretsComposerConversationId={secretsComposerConversationId ?? undefined}
+              composerSlots={commanderComposerSlots}
             />
           </div>
           <DebugStatsPanel />
+          </div>
         </div>
 
         {/* History Tab - Mount on first visit, then CSS-hide to preserve state */}
@@ -1660,6 +1749,9 @@ function ChatPaneInner({
             className="flex flex-col flex-1 min-h-0"
             style={{ display: activeChatTab === ChatTab.HISTORY ? 'flex' : 'none' }}
           >
+            {isCommanderChatEnabled && (
+              <CommanderTabBackButton appId={appId} fromTab={ChatTab.HISTORY} />
+            )}
             <VersionHistory />
           </div>
         )}
@@ -1670,6 +1762,9 @@ function ChatPaneInner({
             className="flex flex-col flex-1 min-h-0"
             style={{ display: activeChatTab === ChatTab.MEDIAS ? 'flex' : 'none' }}
           >
+            {isCommanderChatEnabled && !mediaCurrentSlotName && (
+              <CommanderTabBackButton appId={appId} fromTab={ChatTab.MEDIAS} />
+            )}
             <MediaPanel />
           </div>
         )}
@@ -1694,7 +1789,13 @@ function ChatPaneInner({
           </div>
         )}
 
-        <ChatToolbar />
+        {isCommanderChatEnabled ? (
+          <div ref={commanderChatRowWrapperRef} className="shrink-0">
+            <CommanderChatRow appId={appId} onPreviewRefresh={onPreviewRefresh} />
+          </div>
+        ) : (
+          <ChatToolbar />
+        )}
       </div>
     </ChatContext.Provider>
   );

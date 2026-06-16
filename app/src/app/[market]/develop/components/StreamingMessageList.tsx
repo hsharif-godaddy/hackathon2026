@@ -791,7 +791,7 @@ export default function StreamingMessageList({
   }
 
   return (
-    <div ref={containerRef} data-testid="chat-transcript" className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-2 md:px-0 pt-3 md:pt-1 pb-4 gap-1" onScroll={handleScroll}>
+    <div ref={containerRef} data-testid="chat-transcript" className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-2 md:px-0 pt-3 md:pt-1 pb-1 gap-1" onScroll={handleScroll}>
       {/* Skeleton while initial history loads — matches the empty-state skeleton treatment */}
       {!historyLoadingComplete && (
         <Box orientation="vertical" gap="lg" className="pt-2 pb-1">

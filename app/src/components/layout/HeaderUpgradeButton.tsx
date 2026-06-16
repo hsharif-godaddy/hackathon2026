@@ -13,6 +13,7 @@ import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
+import { isBuilderPagePath } from '@/lib/builder-route';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { canUpgradePlan, isPaidPlanForGrants, PAYWALL_ITC } from '@/lib/paywall/shared';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
@@ -30,7 +31,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
   const [open, setOpen] = useState(false);
   const { isBelowSmBreakpoint } = useBreakpoints();
   const pathname = usePathname();
-  const isDevelopPage = pathname?.includes('/develop/');
+  const isDevelopPage = isBuilderPagePath(pathname);
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal);
 
