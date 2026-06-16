@@ -6,6 +6,7 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
+import { INVOCATION_FEEDBACK_FLYOUT_HEIGHT_FLAG } from '@/app/[market]/develop/components/invocation-feedback/constants';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { renderWithProviders } from '@/tests/test-utils';
 import * as instrumentation from '@/utils/instrumentation';
@@ -139,12 +140,30 @@ function getFeedbackIcon(button: HTMLElement) {
   return button.querySelector('svg.uxicon-svg-container');
 }
 
+function mockSwitchboardFlags({
+  perMessageFeedback = true,
+  flyoutHeight = false,
+}: {
+  perMessageFeedback?: boolean;
+  flyoutHeight?: boolean;
+} = {}) {
+  vi.mocked(useSwitchboard).mockImplementation(function (feature: string) {
+    if (feature === 'appbuilder-per-message-feedback') {
+      return perMessageFeedback;
+    }
+    if (feature === INVOCATION_FEEDBACK_FLYOUT_HEIGHT_FLAG) {
+      return flyoutHeight;
+    }
+    return true;
+  });
+}
+
 describe('ResponseMetadata', function responseMetadataTests() {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSubmitFeedback.mockResolvedValue({ ok: true });
     mockPatchMessageFeedbackMetadata.mockResolvedValue({ ok: true });
-    vi.mocked(useSwitchboard).mockReturnValue(true);
+    mockSwitchboardFlags();
   });
 
   describe('switchboard gating', function switchboardGatingTests() {
@@ -495,7 +514,7 @@ describe('ResponseMetadata', function responseMetadataTests() {
       expect(mockShowThanksBanner).not.toHaveBeenCalled();
     });
 
-    it('should close panel and show thanks banner when a reason is selected', async function reasonSelected() {
+    it('should close panel and show thanks banner when a reason is submitted', async function reasonSubmitted() {
       const { user } = renderMetadata();
 
       await user.click(getThumbsDownButton());
@@ -539,12 +558,17 @@ describe('ResponseMetadata', function responseMetadataTests() {
     });
 
     it('should show other feedback input when Other is selected', async function otherInput() {
+      mockSwitchboardFlags({ flyoutHeight: true });
       const { user } = renderMetadata();
 
       await user.click(getThumbsDownButton());
       await user.click(screen.getByRole('radio', { name: /^Other$/i }));
 
-      expect(screen.getByPlaceholderText(/Share your feedback/i)).toBeInTheDocument();
+      const input = screen.getByPlaceholderText(/Share your feedback/i);
+      expect(input).toBeInTheDocument();
+      await waitFor(() => {
+        expect(input).toHaveFocus();
+      });
       expect(screen.getByRole('button', { name: /^Submit$/i })).toBeDisabled();
     });
 

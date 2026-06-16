@@ -11,6 +11,7 @@ import {
   useState,
 } from 'react';
 
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import {
   type FeedbackValue,
   type InvocationFeedbackTraceIds,
@@ -23,6 +24,7 @@ import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore';
 import { logClickEvent } from '@/utils/instrumentation';
+import { INVOCATION_FEEDBACK_FLYOUT_HEIGHT_FLAG } from './constants';
 import { getScrollParent } from './getScrollParent';
 import {
   feedbackCategoryForReason,
@@ -113,6 +115,7 @@ export function InvocationFeedbackProvider({
     (state) => state.showResponseFeedbackThanksBannerTemporarily
   );
   const mergeMessageMetadata = useStreamingConversationStore((state) => state.mergeMessageMetadata);
+  const isFlyoutHeightEnabled = useSwitchboard(INVOCATION_FEEDBACK_FLYOUT_HEIGHT_FLAG) ?? false;
 
   const [feedback, setFeedback] = useState<InvocationFeedbackVote>(initialFeedback);
   const [isNegativeFeedbackOpen, setIsNegativeFeedbackOpen] = useState(false);
@@ -121,11 +124,15 @@ export function InvocationFeedbackProvider({
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const feedbackPanelRef = useRef<HTMLDivElement | null>(null);
   const isSubmittingRef = useRef(false);
+  const selectedReasonRef = useRef<FeedbackReason | null>(null);
 
   const clearNegativeFeedbackDraft = useCallback(function clearNegativeFeedbackDraft() {
+    if (isFlyoutHeightEnabled) {
+      selectedReasonRef.current = null;
+    }
     setNegativeFeedbackReason(null);
     setOtherFeedback('');
-  }, []);
+  }, [isFlyoutHeightEnabled]);
 
   useEffect(
     function syncInitialFeedback() {
@@ -458,6 +465,9 @@ export function InvocationFeedbackProvider({
         clearNegativeFeedbackDraft();
         setFeedback('negative');
         if (flow === 'agent-work') {
+          if (isFlyoutHeightEnabled) {
+            selectedReasonRef.current = 'other';
+          }
           setNegativeFeedbackReason('other');
         }
         setIsNegativeFeedbackOpen(true);
@@ -472,11 +482,15 @@ export function InvocationFeedbackProvider({
       feedback,
       flow,
       persistMessageFeedbackMetadata,
+      isFlyoutHeightEnabled,
     ]
   );
 
   const handleReasonSelect = useCallback(
     function handleReasonSelect(reason: FeedbackReason) {
+      if (isFlyoutHeightEnabled) {
+        selectedReasonRef.current = reason;
+      }
       setNegativeFeedbackReason(reason);
       if (reason === 'other') {
         setOtherFeedback('');
@@ -486,7 +500,7 @@ export function InvocationFeedbackProvider({
       setIsNegativeFeedbackOpen(false);
       void completeNegativeFeedback(reason);
     },
-    [completeNegativeFeedback]
+    [completeNegativeFeedback, isFlyoutHeightEnabled]
   );
 
   const handleOtherFeedbackChange = useCallback(function handleOtherFeedbackChange(value: string) {

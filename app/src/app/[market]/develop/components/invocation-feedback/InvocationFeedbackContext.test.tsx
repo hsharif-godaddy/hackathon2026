@@ -7,6 +7,7 @@ import { useEffect, useRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { renderWithProviders } from '@/tests/test-utils';
 import {
   InvocationFeedbackProvider,
@@ -19,6 +20,11 @@ const mockSubmitFeedback = vi.fn();
 const mockShipAnalyticsLog = vi.fn();
 const mockPatchMessageFeedbackMetadata = vi.fn();
 const mockMergeMessageMetadata = vi.fn();
+
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: vi.fn(function () { return false; }),
+  getSwitchboardFlag: vi.fn(function () { return false; }),
+}));
 
 vi.mock('@/hooks/websocket/useWebSocketHelpers', () => ({
   getConversationIdFromCookie: () => 'conv-1',
