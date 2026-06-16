@@ -622,13 +622,27 @@ export async function loginIfNeeded(page: Page, timeout: number = SSO_TIMEOUT): 
   // never appeared (the menu showed "Sign Out" instead). Wait for the
   // popover-open data-state, and surface a clear error if it doesn't open.
   const openPopover = page.locator('[data-slot="popover-content"][data-state="open"]');
-  try {
-    await openPopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
-  } catch {
-    throw new Error(
-      'loginIfNeeded: user-menu popover did not open after click — likely covered by another overlay. ' +
-      'Call `dismissOverlays(page)` (or close `Projects` explicitly) before `loginIfNeeded(page)`.',
-    );
+  const popoverOpened = await openPopover
+    .waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT })
+    .then(() => true)
+    .catch(() => false);
+
+  if (!popoverOpened) {
+    // The force-click landed at covered coordinates — the auto-opening
+    // "Projects" popover (or another overlay) was over the user-menu trigger.
+    // Dismiss overlays and retry the click ONCE before giving up. Escape closes
+    // the Projects popover; we inline it rather than calling dismissOverlays()
+    // to avoid a circular import (ui.ts already imports from this module).
+    for (let i = 0; i < 3; i++) await page.keyboard.press('Escape');
+    await menuTrigger.click({ force: true });
+    try {
+      await openPopover.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+    } catch {
+      throw new Error(
+        'loginIfNeeded: user-menu popover did not open even after dismissing overlays — ' +
+        'still covered by another overlay. Call `dismissOverlays(page)` before `loginIfNeeded(page)`.',
+      );
+    }
   }
 
   // Now that we know the popover is open, both Sign Out (authed) and
