@@ -270,6 +270,18 @@ describe('VersionHistory', () => {
     });
   });
 
+  it('shows i18n switch error copy instead of technical commitSelectionError', async function switchErrorCopy() {
+    mockGitStore.commitSelectionError = 'Failed to return to latest version: 400';
+
+    renderWithProviders(<VersionHistory />);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_version_history_switch_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_version_history_switch_error_description')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(mockGitStore.commitSelectionError!)).not.toBeInTheDocument();
+  });
+
   it('does not trigger auto-select on re-render when commits array has same data', async () => {
     // Set up initial state where auto-select has already run
     mockGitStore.getSelectedCommitHash.mockReturnValue('new-hash');

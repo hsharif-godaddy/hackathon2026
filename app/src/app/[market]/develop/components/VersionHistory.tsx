@@ -567,8 +567,20 @@ export default function VersionHistory() {
             emphasis="critical"
             onClose={() => setCommitSelectionError(null)}
           >
-            <div className="font-semibold">Failed to switch version</div>
-            <div className="text-sm mt-0.5">{commitSelectionError}</div>
+            <div className="font-semibold">
+              {t(
+                'builder_version_history_switch_error_title',
+                undefined,
+                'Failed to switch version'
+              )}
+            </div>
+            <div className="text-sm mt-0.5">
+              {t(
+                'builder_version_history_switch_error_description',
+                undefined,
+                "You can't switch between versions while Airo is actively building."
+              )}
+            </div>
           </Alert>
         )}
 
