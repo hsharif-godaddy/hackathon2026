@@ -53,6 +53,9 @@ jobs:
       runner_group: ${{ vars.CLAUDE_RUNNER_GROUP }}
       runner_labels_json: '["self-hosted"]'
       gocode_environment: prod
+      # Allow the Airo Scout cleanup bot to be reviewed (the action blocks bot
+      # actors by default). Both forms cover stripped/full-login matching.
+      allowed_bots: 'airo-scout,airo-scout[bot]'
       # Pin to Opus 4.8 (1M context); without this the gateway default applies
       model: 'claude-opus-4-8[1m]'
       track_progress: 'true'
