@@ -57,27 +57,42 @@ export function InboxConversationMessageThread({
 
   const messages = data?.pages.flatMap((page) => page.messages) ?? [];
 
-  if (isLoading) {
-    return (
-      <div
-        className='flex flex-1 items-center justify-center bg-ux-surface-base'
-        data-testid='conversation-message-thread'
-      >
-        <span className='text-ux-text-secondary'>{t('builder_common_loading')}</span>
-      </div>
-    );
-  }
+  function renderContent() {
+    if (isLoading) {
+      return (
+        <div className='flex flex-1 items-center justify-center'>
+          <span className='text-ux-text-secondary'>{t('builder_common_loading')}</span>
+        </div>
+      );
+    }
 
-  if (isError && !hasLoadedMessages) {
+    if (isError && !hasLoadedMessages) {
+      return (
+        <div className='flex flex-1 items-center justify-center px-4'>
+          <span className='text-center text-ux-text-error'>
+            {error instanceof Error ? error.message : t('builder_inbox_messages_load_error')}
+          </span>
+        </div>
+      );
+    }
+
     return (
-      <div
-        className='flex flex-1 items-center justify-center bg-ux-surface-base px-4'
-        data-testid='conversation-message-thread'
-      >
-        <span className='text-center text-ux-text-error'>
-          {error instanceof Error ? error.message : t('builder_inbox_messages_load_error')}
-        </span>
-      </div>
+      <>
+        {messages.map((message, index) => (
+          <InboxMessageBubble
+            key={message.id}
+            message={message}
+            conversation={conversation}
+            isFirstMessage={index === messages.length - 1 && !hasNextPage}
+          />
+        ))}
+
+        {isFetchingNextPage && (
+          <div className='flex justify-center py-2'>
+            <span className='text-xs text-ux-text-secondary'>{t('builder_common_loading')}</span>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -87,21 +102,7 @@ export function InboxConversationMessageThread({
       className='flex flex-1 flex-col-reverse gap-1 overflow-y-auto bg-ux-surface-base px-3 py-3'
       data-testid='conversation-message-thread'
     >
-      {messages.map((message, index) => (
-        <InboxMessageBubble
-          key={message.id}
-          message={message}
-          conversation={conversation}
-          isFirstMessage={index === messages.length - 1 && !hasNextPage}
-        />
-      ))}
-
-      {isFetchingNextPage && (
-        <div className='flex justify-center py-2'>
-          <span className='text-xs text-ux-text-secondary'>{t('builder_common_loading')}</span>
-        </div>
-      )}
-
+      {renderContent()}
       <div ref={sentinelRef} className='h-px shrink-0' aria-hidden='true' />
     </div>
   );
