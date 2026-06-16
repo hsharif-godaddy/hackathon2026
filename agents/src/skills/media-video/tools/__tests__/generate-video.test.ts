@@ -47,6 +47,10 @@ vi.mock('../../../../services/MediaManifestService.js', () => ({
   },
 }));
 
+vi.mock('../../../../services/MediaCaptionService.js', () => ({
+  captionFromPrompt: vi.fn().mockResolvedValue('test caption'),
+}));
+
 describe('generateVideoTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();

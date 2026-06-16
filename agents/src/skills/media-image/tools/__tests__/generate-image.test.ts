@@ -47,6 +47,10 @@ vi.mock('../../../../services/MediaManifestService.js', () => ({
   },
 }));
 
+vi.mock('../../../../services/MediaCaptionService.js', () => ({
+  captionFromPrompt: vi.fn().mockResolvedValue('test caption'),
+}));
+
 describe('generateImageTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -232,7 +236,8 @@ describe('generateImageTool', () => {
         expect.objectContaining({
           mediaType: 'generated',
           currentUrl: 'https://cdn/img1.png',
-          searchQuery: 'A sunset',
+          searchQuery: 'test caption',
+          caption: 'test caption',
           alternatives: ['/old.jpg', 'https://cdn/img2.png', '/alt.jpg'],
           aiGeneratedUrls: ['https://cdn/img1.png', 'https://cdn/img2.png'],
           userModified: true,

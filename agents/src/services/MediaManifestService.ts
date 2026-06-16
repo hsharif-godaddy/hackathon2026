@@ -45,6 +45,8 @@ export interface MediaSlot {
   /** For videos: thumbnail image URL for preview display */
   thumbnailUrl?: string;
   searchQuery: string;
+  /** Concise descriptive caption (max ~6 words). Used as alt text, default search query, and UI sublabel. */
+  caption?: string;
   requestedSize?: MediaSize;
   // Search filters used to find this media (stored for re-search context)
   orientations?: string;
@@ -999,6 +1001,8 @@ export class MediaManifestService {
       }
 
       // Update the slot
+      const urlChanged = newCurrentUrl !== existingSlot.currentUrl;
+
       const updatedSlot: MediaSlot = {
         ...existingSlot,
         currentUrl: newCurrentUrl,
@@ -1015,10 +1019,15 @@ export class MediaManifestService {
         // Update mediaType when swapping between image and video (preserve logo/generated)
         ...resolveMediaTypeUpdate(existingSlot.mediaType, isVideo, isImage),
         ...(options.searchQuery !== undefined && { searchQuery: options.searchQuery }),
+        // Update caption only when searchQuery is explicitly provided (preserves AI-generated captions)
+        ...(options.searchQuery !== undefined && { caption: options.searchQuery || undefined }),
         // naturalOrientation describes the upload that set it; any URL swap (alternative
         // pick, AI revert) invalidates it. Cleared here so downstream consumers don't
         // size a horizontal AI logo as if it were the prior square upload.
-        ...(newCurrentUrl !== existingSlot.currentUrl ? { naturalOrientation: undefined } : {}),
+        ...(urlChanged ? { naturalOrientation: undefined } : {}),
+        // Clear stale caption when URL changes without an explicit searchQuery —
+        // prevents the previous image's caption from being used as alt text for the new image.
+        ...(urlChanged && options.searchQuery === undefined ? { caption: undefined } : {}),
       };
 
       manifest[slotName] = updatedSlot;
@@ -1162,6 +1171,7 @@ export class MediaManifestService {
         userModified: true,
         lastUpdated: nowIso,
         searchQuery: '', // upload is unrelated to any prior search term
+        caption: undefined, // clear stale caption — async captioning will re-generate
         gettyId: undefined, // Uploaded image has no Getty ID
         // A user-driven upload drops any in-progress logo job marker — the
         // background job (if any) is no longer the source of this slot's content.
@@ -1223,6 +1233,57 @@ export class MediaManifestService {
         manifest,
         commitHash,
       };
+    } finally {
+      releaseLock();
+    }
+  }
+
+  /**
+   * Update only the caption field of a slot (used by fire-and-forget captioning after upload/generation).
+   * @param forUrl If provided, only applies caption if the slot's currentUrl still matches (guards against TOCTOU).
+   */
+  async updateSlotCaption(
+    appId: string,
+    slotName: string,
+    caption: string,
+    forUrl?: string
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!caption.trim()) return { success: false, error: 'Caption is empty' };
+
+    const app = this.appRepository.findById(appId);
+    if (!app) return { success: false, error: `App not found: ${appId}` };
+
+    const releaseLock = await acquireLock(appId);
+    try {
+      const manifestPath = this.getManifestPath(app.path);
+      let manifest: MediaManifest = {};
+      try {
+        const content = await fs.readFile(manifestPath, 'utf-8');
+        manifest = JSON.parse(content);
+      } catch {
+        return { success: false, error: 'Manifest not found' };
+      }
+
+      const slot = manifest[slotName];
+      if (!slot) return { success: false, error: `Slot not found: ${slotName}` };
+
+      // TOCTOU guard: if the image was swapped since captioning started, skip
+      if (forUrl && slot.currentUrl !== forUrl) {
+        return { success: false, error: 'Slot URL changed since captioning started' };
+      }
+
+      slot.caption = caption;
+      // If no search query exists, also set it so Getty auto-search works
+      if (!slot.searchQuery) {
+        slot.searchQuery = caption;
+      }
+
+      await this.writeManifest(manifestPath, manifest);
+
+      // Commit the caption update so the manifest change isn't left dangling
+      const commitHash = await this.commitManifestChange(appId, slotName, 'update');
+      logger.info('media_manifest.caption_updated', { appId, slotName, caption, commitHash });
+      return { success: true };
     } finally {
       releaseLock();
     }

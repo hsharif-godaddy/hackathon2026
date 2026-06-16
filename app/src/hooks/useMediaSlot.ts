@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { GetSlotResponse, MediaSlot } from '@/app/[market]/develop/components/media/types';
 import { dynamicApiConfigService } from '@/config/dynamic-api';
@@ -23,6 +23,8 @@ interface UseMediaSlotResult {
   error: string | null;
   /** Refetch the slot data */
   refetch: () => Promise<void>;
+  /** Update the cached slot data directly (avoids redundant network refetch) */
+  setSlotData: (slot: MediaSlot) => void;
 }
 
 /**
@@ -45,6 +47,7 @@ export function useMediaSlot({
   slotName,
   enabled = true,
 }: UseMediaSlotOptions): UseMediaSlotResult {
+  const queryClient = useQueryClient();
   const queryKey = ['mediaSlot', appId, slotName];
 
   const query = useQuery({
@@ -97,7 +100,7 @@ export function useMediaSlot({
       }
     },
     enabled: enabled && !!appId && !!slotName,
-    staleTime: 0, // Always fetch fresh data
+    staleTime: 30_000, // Fresh for 30s; mutations update cache directly
     gcTime: 5 * 60 * 1000, // Cache for 5 minutes
     retry: 1,
   });
@@ -108,6 +111,9 @@ export function useMediaSlot({
     error: query.error instanceof Error ? query.error.message : null,
     refetch: async () => {
       await query.refetch();
+    },
+    setSlotData: (slot: MediaSlot) => {
+      queryClient.setQueryData(queryKey, slot);
     },
   };
 }

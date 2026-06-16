@@ -5,6 +5,7 @@ import type { SkillToolDefinition } from '@airo/ai-skills';
 import { imagegenService } from '../../../services/ImagegenService.js';
 import { appRepository } from '../../../database/repositories/index.js';
 import { mediaManifestService, type MediaSlot } from '../../../services/MediaManifestService.js';
+import { captionFromPrompt } from '../../../services/MediaCaptionService.js';
 
 const GenerateVideoInputSchema = z.object({
   prompt: z
@@ -88,16 +89,13 @@ export const generateVideoTool: SkillToolDefinition = {
     let manifestWriteSuccess = false;
     if (appId && normalizedSlot) {
       try {
-      // Resolve slot name: if it doesn't exist in manifest, try to find an exact path-suffix match.
-      // Only match when the candidate ends with the full normalized path AND the preceding char is '/' or start-of-string,
-      // preventing partial segment collisions (e.g. "about/hero" must not match "pages/home/hero").
+      // Resolve slot name: find the matching existing slot in the manifest.
       const existingManifest = await mediaManifestService.getManifest(appId);
       if (existingManifest.success && existingManifest.manifest) {
         const manifestSlots = Object.keys(existingManifest.manifest);
         if (!manifestSlots.includes(normalizedSlot)) {
           const match = manifestSlots.find((s) => {
             if (s === normalizedSlot) return true;
-            // Full-segment suffix: candidate must end with "/normalizedSlot"
             return s.endsWith('/' + normalizedSlot);
           });
           if (match) {
@@ -116,11 +114,13 @@ export const generateVideoTool: SkillToolDefinition = {
       const existingSlot = existingManifest.manifest?.[normalizedSlot];
       const previousAiUrls = existingSlot?.aiGeneratedUrls || [];
       const mergedAiUrls = [result.url, ...previousAiUrls.filter((u: string) => u !== result.url)].slice(0, 20);
+      const caption = await captionFromPrompt(input.prompt);
       const slotEntry: MediaSlot = {
         ...existingSlot,
         mediaType: 'video',
         currentUrl: result.url,
-        searchQuery: input.prompt,
+        searchQuery: caption,
+        caption,
         alternatives: existingSlot?.alternatives || [],
         aiGeneratedUrls: mergedAiUrls,
         userModified: true,

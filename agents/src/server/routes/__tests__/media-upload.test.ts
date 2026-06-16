@@ -13,9 +13,15 @@ vi.mock('../../middleware/app-ownership.js', () => ({
   validateAppOwnership: vi.fn(function (req, res, next) { return next(); }),
 }));
 
-// Mock persistent assets helper to use test paths
-vi.mock('../../../utils/persistent-assets.js', () => ({
-  getPersistentPublicDir: vi.fn(function (appPath: string) { return `${appPath}/public`; }),
+// Mock workspace API to intercept file operations
+const mockWorkspaceFiles = {
+  upload: vi.fn().mockResolvedValue({ bytesWritten: 100 }),
+  delete: vi.fn().mockResolvedValue(undefined),
+  download: vi.fn().mockResolvedValue({ data: Buffer.from(''), contentType: 'image/jpeg' }),
+  stat: vi.fn().mockResolvedValue({ entries: [] }),
+};
+vi.mock('../../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn(function () { return { files: mockWorkspaceFiles }; }),
 }));
 
 // Mock dependencies
@@ -23,6 +29,7 @@ vi.mock('../../../services/MediaManifestService.js', () => ({
   mediaManifestService: {
     getSlot: vi.fn(),
     updateSlotWithUpload: vi.fn(),
+    updateSlotCaption: vi.fn().mockResolvedValue({ success: true }),
     getManifest: vi.fn(),
     updateSlot: vi.fn(),
     removeUploadedUrls: vi.fn(),
@@ -30,11 +37,16 @@ vi.mock('../../../services/MediaManifestService.js', () => ({
   },
 }));
 
-vi.mock('../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(function () { return {
-    findById: vi.fn().mockReturnValue({ id: 'test-app', path: '/tmp/test-app' }),
-  }; }),
-}));
+vi.mock('../../../services/media-upload-deletion.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../services/media-upload-deletion.js')>();
+  return {
+    ...actual,
+    deletePersistentUploadFiles: vi.fn().mockResolvedValue({
+      deletedPersistentUrls: [],
+      failedPersistentUrls: [],
+    }),
+  };
+});
 
 vi.mock('../../../services/FileUploadService.js', () => ({
   fileUploadService: {
@@ -55,6 +67,12 @@ vi.mock('fs/promises', () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
   rename: vi.fn().mockResolvedValue(undefined),
   unlink: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../../services/MediaCaptionService.js', () => ({
+  generateImageCaptionFromBuffer: vi.fn().mockResolvedValue('test image caption'),
+  generateVideoCaptionFromBuffer: vi.fn().mockResolvedValue('test video caption'),
+  captionFromPrompt: vi.fn().mockResolvedValue('test prompt caption'),
 }));
 
 describe('POST /media/:appId/slots/:slotName/upload', () => {
@@ -521,7 +539,6 @@ describe('POST /media/:appId/slots/:slotName/upload — overwriteFilename', () =
   it('overwrites sibling files and returns affectedSlots for same-source slots (Case B)', async () => {
     const { mediaManifestService } = await import('../../../services/MediaManifestService.js');
     const { fileUploadService } = await import('../../../services/FileUploadService.js');
-    const fs = await import('fs/promises');
 
     const espressoFilename = 'menu-espresso-abc12345.jpg';
     const latteFilename = 'menu-latte-def67890.jpg';
@@ -551,9 +568,9 @@ describe('POST /media/:appId/slots/:slotName/upload — overwriteFilename', () =
     expect(response.status).toBe(200);
     expect(response.body.affectedSlots).toEqual(['menu/latte']);
 
-    // Should have written the sibling file (menu-latte-def67890.jpg) too
-    const writeFileCalls = vi.mocked(fs.default.writeFile).mock.calls.map(([p]) => p as string);
-    expect(writeFileCalls.some((p) => p.includes(latteFilename))).toBe(true);
+    // Should have written the sibling file via workspace API
+    const uploadCalls = mockWorkspaceFiles.upload.mock.calls.map(([opts]: [{ path: string }]) => opts.path);
+    expect(uploadCalls.some((p: string) => p.includes(latteFilename))).toBe(true);
   });
 
   it('rejects overwriteFilename containing a path separator', async () => {
@@ -853,7 +870,7 @@ describe('DELETE /media/:appId/uploads/:filename', () => {
   it('removes manifest references before deleting the chat upload file', async () => {
     const { mediaManifestService } = await import('../../../services/MediaManifestService.js');
     const { fileUploadService } = await import('../../../services/FileUploadService.js');
-    const fs = await import('fs/promises');
+    const { deletePersistentUploadFiles } = await import('../../../services/media-upload-deletion.js');
 
     vi.mocked(mediaManifestService.getManifest).mockResolvedValue({
       success: true,
@@ -867,6 +884,10 @@ describe('DELETE /media/:appId/uploads/:filename', () => {
       success: true,
       affectedSlots: ['hero'],
       removedUrls: ['/airo-assets/uploads/hero-upload.jpg'],
+    });
+    vi.mocked(deletePersistentUploadFiles).mockResolvedValue({
+      deletedPersistentUrls: ['/airo-assets/uploads/hero-upload.jpg'],
+      failedPersistentUrls: [],
     });
     vi.mocked(fileUploadService.deleteUploadedFile).mockResolvedValue({
       deleted: true,
@@ -886,7 +907,9 @@ describe('DELETE /media/:appId/uploads/:filename', () => {
     expect(mediaManifestService.removeUploadedUrls).toHaveBeenCalledWith('test-app', [
       '/airo-assets/uploads/hero-upload.jpg',
     ]);
-    expect(fs.default.unlink).toHaveBeenCalledWith('/tmp/test-app/public/media/hero-upload.jpg');
+    expect(deletePersistentUploadFiles).toHaveBeenCalledWith('test-app', [
+      '/airo-assets/uploads/hero-upload.jpg',
+    ]);
     expect(fileUploadService.deleteUploadedFile).toHaveBeenCalledWith(
       'test-app',
       'chat-upload.jpg'
@@ -896,7 +919,7 @@ describe('DELETE /media/:appId/uploads/:filename', () => {
   it('returns conflict and leaves files alone when manifest cleanup cannot replace an active slot', async () => {
     const { mediaManifestService } = await import('../../../services/MediaManifestService.js');
     const { fileUploadService } = await import('../../../services/FileUploadService.js');
-    const fs = await import('fs/promises');
+    const { deletePersistentUploadFiles } = await import('../../../services/media-upload-deletion.js');
 
     vi.mocked(mediaManifestService.getManifest).mockResolvedValue({
       success: true,
@@ -917,7 +940,7 @@ describe('DELETE /media/:appId/uploads/:filename', () => {
 
     expect(response.status).toBe(409);
     expect(response.body.error).toContain('Cannot delete upload');
-    expect(fs.default.unlink).not.toHaveBeenCalled();
+    expect(deletePersistentUploadFiles).not.toHaveBeenCalled();
     expect(fileUploadService.deleteUploadedFile).not.toHaveBeenCalled();
   });
 

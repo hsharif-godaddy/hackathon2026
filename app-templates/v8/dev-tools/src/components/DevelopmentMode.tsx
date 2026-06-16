@@ -241,7 +241,7 @@ export default function DevelopmentMode() {
     // Media version cache-busting via MutationObserver
     // Watches for dynamically added/changed images and applies version params
     // Use a single mutable state object to avoid closure-capture drift when async callbacks update values
-    const mediaState = { versions: {} as Record<string, string>, types: {} as Record<string, string> }
+    const mediaState = { versions: {} as Record<string, string>, types: {} as Record<string, string>, captions: {} as Record<string, string> }
     // Track slots recently updated by RELOAD_MEDIA_SLOT to prevent HMR-driven patchAllImages
     // from reverting them with stale manifest data (race between postMessage and file-watcher)
     const recentSlotOverrides: Record<string, number> = {}
@@ -285,8 +285,16 @@ export default function DevelopmentMode() {
       const patched = applyVersionToUrl(img.src)
       if (patched) img.src = patched
 
-      // Check if this image's slot has mediaType 'video' — if so, add a <video> sibling
+      // Apply caption as alt text if the image doesn't already have meaningful alt
       const extracted = extractSlotPath(img.src)
+      if (extracted) {
+        const caption = mediaState.captions[extracted.slotPath]
+        if (caption && (!img.alt || img.alt === '' || img.alt === 'image')) {
+          img.alt = caption
+        }
+      }
+
+      // Check if this image's slot has mediaType 'video' — if so, add a <video> sibling
       if (extracted && mediaState.types[extracted.slotPath] === 'video') {
         if (img.getAttribute('data-airo-video-patched')) return
         const videoUrl = new URL(window.location.origin + SLOT_URL_PREFIX_VIDEOS + extracted.slotPath)
@@ -315,6 +323,9 @@ export default function DevelopmentMode() {
       video.style.cssText = img.style.cssText
       if (img.width) video.width = img.width
       if (img.height) video.height = img.height
+      // Apply caption as accessible label
+      const caption = mediaState.captions[slotPath]
+      if (caption) video.setAttribute('aria-label', caption)
       video.setAttribute('data-airo-video', '')
       video.setAttribute('data-slot', slotPath)
       img.setAttribute('data-airo-video-patched', 'true')
@@ -474,12 +485,27 @@ export default function DevelopmentMode() {
     // older apps without the mediaVersionsPlugin will gracefully fall back via .catch()
     if (import.meta.env.MODE === 'development') {
       const mediaVersionsModule = 'virtual:' + 'media-versions'
-      import(/* @vite-ignore */ mediaVersionsModule).then(({ getVersions, getMediaTypes, onVersionsUpdate }) => {
+      import(/* @vite-ignore */ mediaVersionsModule).then(({ getVersions, getMediaTypes, getCaptions, onVersionsUpdate }) => {
         mediaState.versions = getVersions()
         mediaState.types = getMediaTypes()
+        mediaState.captions = getCaptions?.() || {}
         patchAllImages()
-        mediaVersionsCleanup = onVersionsUpdate((newVersions: Record<string, string>, newMediaTypes: Record<string, string>) => {
+        mediaVersionsCleanup = onVersionsUpdate((newVersions: Record<string, string>, newMediaTypes: Record<string, string>, newCaptions?: Record<string, string>) => {
           mediaState.versions = newVersions
+          // Apply new captions but preserve recent RELOAD_MEDIA_SLOT overrides
+          if (newCaptions) {
+            const now = Date.now()
+            for (const [slot, cap] of Object.entries(newCaptions)) {
+              const overrideTime = recentSlotOverrides[slot]
+              if (overrideTime && now - overrideTime < 5000) continue
+              mediaState.captions[slot] = cap
+            }
+            for (const slot of Object.keys(mediaState.captions)) {
+              if (!(slot in newCaptions) && !recentSlotOverrides[slot]) {
+                delete mediaState.captions[slot]
+              }
+            }
+          }
           // Apply new mediaTypes but preserve recent RELOAD_MEDIA_SLOT overrides
           // (prevents stale file-watcher data from reverting explicit swaps)
           const now = Date.now()
@@ -502,10 +528,11 @@ export default function DevelopmentMode() {
       }).catch(() => {
         // Virtual module not available (e.g. CORS error through dev-supervisor proxy) —
         // fall back to fetching /airo-media.json directly for mediaTypes
-        fetch('/airo-media.json').then(r => r.ok ? r.json() : {}).then((manifest: Record<string, { lastUpdated?: string; mediaType?: string }>) => {
+        fetch('/airo-media.json').then(r => r.ok ? r.json() : {}).then((manifest: Record<string, { lastUpdated?: string; mediaType?: string; caption?: string }>) => {
           for (const [slot, data] of Object.entries(manifest)) {
             if (data.lastUpdated) mediaState.versions[slot] = String(new Date(data.lastUpdated).getTime())
             if (data.mediaType) mediaState.types[slot] = data.mediaType
+            if (data.caption) mediaState.captions[slot] = data.caption
           }
           patchAllImages()
         }).catch(() => { /* no manifest available */ })

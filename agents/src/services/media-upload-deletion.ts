@@ -1,7 +1,7 @@
 import { getFilenameFromUploadUrl } from '@airo/shared/media';
-import fs from 'fs/promises';
-import path from 'path';
-import { getPersistentPublicDir } from '../utils/persistent-assets.js';
+import { createForWorkspace } from '../workspace/index.js';
+import { isDevSupervisorNotFound } from '../services/DevSupervisorClient.js';
+import { logger } from '../logging/index.js';
 import type { MediaManifest, MediaSlot } from './MediaManifestService.js';
 
 export function collectUploadUrlsForFilenameFromSlot(
@@ -62,36 +62,40 @@ export function collectUploadUrlsForFilename(
 }
 
 export async function deletePersistentUploadFiles(
-  appPath: string,
+  appId: string,
   uploadUrls: string[]
 ): Promise<{
   deletedPersistentUrls: string[];
   failedPersistentUrls: string[];
 }> {
-  const mediaDir = path.join(getPersistentPublicDir(appPath), 'media');
-  const resolvedMediaDir = path.resolve(mediaDir);
+  const workspace = createForWorkspace(appId, 'preview');
   const deletedPersistentUrls: string[] = [];
   const failedPersistentUrls: string[] = [];
+
+  if (!workspace) {
+    logger.warn('media_upload_deletion.workspace_unreachable', { appId, urlCount: uploadUrls.length });
+    return { deletedPersistentUrls, failedPersistentUrls: [...uploadUrls] };
+  }
 
   for (const uploadUrl of uploadUrls) {
     const filename = getFilenameFromUploadUrl(uploadUrl);
     if (!filename) continue;
 
-    const filePath = path.join(mediaDir, filename); // nosemgrep: path-join-resolve-traversal
-    const resolvedFilePath = path.resolve(filePath); // nosemgrep: path-join-resolve-traversal
-    if (!resolvedFilePath.startsWith(resolvedMediaDir + path.sep)) {
-      failedPersistentUrls.push(uploadUrl);
-      continue;
-    }
-
+    const mediaPath = `public/assets/media/${filename}`;
     try {
-      await fs.unlink(resolvedFilePath); // nosemgrep: path-traversal
+      await workspace.files.delete({ path: mediaPath });
       deletedPersistentUrls.push(uploadUrl);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      if (isDevSupervisorNotFound(error)) {
+        // File already gone — treat as successfully deleted
         deletedPersistentUrls.push(uploadUrl);
         continue;
       }
+      logger.warn('media_upload_deletion.delete_failed', {
+        appId,
+        mediaPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
       failedPersistentUrls.push(uploadUrl);
     }
   }

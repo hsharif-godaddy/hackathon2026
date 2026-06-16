@@ -142,7 +142,7 @@ export function MediaSlotDetail({
   // which cache-busts upload thumbnails that were overwritten in-place.
   const [cacheBustTs] = useState(() => Date.now())
 
-  const { slot, isLoading, error, refetch } = useMediaSlot({
+  const { slot, isLoading, error, refetch, setSlotData } = useMediaSlot({
     appId,
     slotName,
     enabled,
@@ -167,6 +167,7 @@ export function MediaSlotDetail({
   const [selectedUploadFile, setSelectedUploadFile] = useState<{ filename: string; mimeType?: string | null; signedUrl?: string; fullSignedUrl?: string } | null>(null)
   const [isSwapping, setIsSwapping] = useState(false)
   const [isApplyingUpload, setIsApplyingUpload] = useState(false)
+  const [awaitingCaption, setAwaitingCaption] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [alternativesOpen, setAlternativesOpen] = useState(true)
   const [aiGeneratedOpen, setAiGeneratedOpen] = useState(true)
@@ -254,18 +255,26 @@ export function MediaSlotDetail({
     }
   }, [slot?.mediaType, isVideoEnabled])
 
-  // Pre-populate search query from the slot's stored search query and auto-run it once.
+  // Clear caption skeleton when caption arrives (via WS push or refetch)
+  useEffect(function clearCaptionSkeleton() {
+    if (awaitingCaption && slot?.caption) {
+      setAwaitingCaption(false)
+    }
+  }, [awaitingCaption, slot?.caption])
+
+  // Pre-populate search query from the slot's stored search query (or caption as fallback) and auto-run it once.
   // Skip for logo/generated slots — their alternatives are generated logos, not Getty images.
   const isGeneratedContent = slot?.mediaType === 'logo' || slot?.mediaType === 'generated'
   useEffect(function initSearchQuery() {
     if (!isImageSearchEnabled) return
     if (isGeneratedContent) return
-    if (slot?.searchQuery && !hasAutoSearchedRef.current) {
+    const initialQuery = slot?.searchQuery || slot?.caption
+    if (initialQuery && !hasAutoSearchedRef.current) {
       hasAutoSearchedRef.current = true
-      setSearchQuery(slot.searchQuery)
-      void triggerSearchRef.current({ query: slot.searchQuery })
+      setSearchQuery(initialQuery)
+      void triggerSearchRef.current({ query: initialQuery })
     }
-  }, [slot?.searchQuery, isGeneratedContent, isImageSearchEnabled])
+  }, [slot?.searchQuery, slot?.caption, isGeneratedContent, isImageSearchEnabled])
 
   const isEmbedded = useIsEmbedded()
   const getServerState = useServerPollingStore((state) => state.getServerState)
@@ -488,8 +497,9 @@ export function MediaSlotDetail({
             ...((isExternal || isAiVideo) && {
               allowExternalUrl: true,
               ...(selectedSearchGettyId && { gettyId: selectedSearchGettyId }),
-              ...(committedQuery && { searchQuery: committedQuery }),
             }),
+            // Pass searchQuery: non-empty sets as caption; empty triggers async re-captioning.
+            searchQuery: committedQuery || '',
             // Signal video/image to the backend so mediaType can transition correctly
             isVideo: !!(isVideo || isAiVideo),
           }),
@@ -501,6 +511,7 @@ export function MediaSlotDetail({
         throw new Error(errorData.error || `Failed to swap image: ${response.status}`)
       }
 
+      const responseData = await response.json()
       logger.info('media_slot_detail.swap_success', { appId, slotName, newUrl: swapUrl })
 
       // Use RELOAD_MEDIA_SLOT with the correct isVideo flag.
@@ -509,8 +520,18 @@ export function MediaSlotDetail({
       const swapIsVideo = isVideo || isAiVideo
       reloadPreviewSlot(slotName, { isVideo: swapIsVideo })
 
-      await refetch()
+      // Use response slot data directly (caption arrives async via WS or delayed refetch)
+      if (responseData.slot) {
+        setSlotData(responseData.slot)
+      } else {
+        await refetch()
+      }
       await refetchManifest()
+
+      // Show skeleton while async captioning runs
+      setAwaitingCaption(true)
+      setTimeout(() => { void refetch().then(() => setAwaitingCaption(false)) }, 4000)
+
       setSelectedUrl(null)
       setSelectedSearchGettyId(null)
     } catch (err) {
@@ -523,16 +544,22 @@ export function MediaSlotDetail({
     } finally {
       setIsSwapping(false)
     }
-  }, [appId, slotName, slot, selectedUrl, selectedSearchGettyId, committedQuery, searchVideoUrls, manifest, reloadPreviewSlot, refetch, refetchManifest, t])
+  }, [appId, slotName, slot, selectedUrl, selectedSearchGettyId, committedQuery, searchVideoUrls, manifest, reloadPreviewSlot, refetch, refetchManifest, setSlotData, t])
 
   const handleUploadSuccess = useCallback((opts?: { isVideo?: boolean }) => {
     reloadPreviewSlot(slotName, opts?.isVideo ? { isVideo: true } : undefined)
     setUploadsRefreshKey((k) => k + 1)
+    // Clear stale caption so skeleton shows immediately while async captioning runs
+    if (slot) {
+      setSlotData({ ...slot, caption: undefined, searchQuery: '' })
+    }
+    setAwaitingCaption(true)
     void refetch()
     void refetchManifest()
+    setTimeout(() => { void refetch().then(() => setAwaitingCaption(false)) }, 4000)
     setSelectedUrl(null)
     setSelectedUploadFile(null)
-  }, [slotName, reloadPreviewSlot, refetch, refetchManifest])
+  }, [slotName, slot, reloadPreviewSlot, refetch, refetchManifest, setSlotData])
 
   const handleUploadDeleteSuccess = useCallback(
     (result: DeleteUploadResult) => {
@@ -585,12 +612,23 @@ export function MediaSlotDetail({
           throw new Error(errorData.error || 'Upload failed')
         }
 
+        const responseData = await response.json()
         const isVideo = file.mimeType?.startsWith('video/') ?? false
         logger.info('media_slot_detail.upload_from_chat_success', { appId, slotName, filename: file.filename, isVideo })
         logImpressionEvent('uploads.mediaslot.success')()
         reloadPreviewSlot(slotName, isVideo ? { isVideo: true } : undefined)
-        await refetch()
+        // Use response slot data directly (caption arrives async via WS or delayed refetch)
+        if (responseData.slot) {
+          setSlotData(responseData.slot)
+        } else {
+          await refetch()
+        }
         await refetchManifest()
+
+        // Show skeleton while async captioning runs
+        setAwaitingCaption(true)
+        setTimeout(() => { void refetch().then(() => setAwaitingCaption(false)) }, 4000)
+
         setSelectedUploadFile(null)
         setSelectedUrl(null)
       } catch (err) {
@@ -605,7 +643,7 @@ export function MediaSlotDetail({
         setIsApplyingUpload(false)
       }
     },
-    [appId, slotName, reloadPreviewSlot, refetch, refetchManifest, t]
+    [appId, slotName, reloadPreviewSlot, refetch, refetchManifest, setSlotData, t]
   )
 
   // In-flight async logo job. SHARED CONTRACT: when currentUrl is a real hosted https logo this is
@@ -840,9 +878,11 @@ export function MediaSlotDetail({
                 )}
               </div>
 
-              {slot.searchQuery && (
-                <p className="text-sm italic mt-1">{slot.searchQuery}</p>
-              )}
+              {(slot.searchQuery || slot.caption) ? (
+                <p className="text-sm italic mt-1">{slot.searchQuery || slot.caption}</p>
+              ) : awaitingCaption ? (
+                <Skeleton width="140px" height="16px" className="mt-1" />
+              ) : null}
             </div>
 
             {/* In-flight async logo job. Regeneration: show the existing logo (dimmed) under an

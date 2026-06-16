@@ -30,6 +30,7 @@ import {
   HistoryLoadedHandler,
   HistoryMessageHandler,
   LogoHandler,
+  MediaCaptionHandler,
   MessageHandlerRegistry,
   RecoveryStatusHandler,
   ReplayCompleteHandler,
@@ -427,6 +428,7 @@ export class TransportSupervisor extends EventEmitter {
     registry.register(new ClientActionHandler())
     registry.register(new ValidationMessageHandler())
     registry.register(new VideoHandler())
+    registry.register(new MediaCaptionHandler())
     registry.register(new BuildPhaseHandler())
     registry.register(new LogoHandler())
 

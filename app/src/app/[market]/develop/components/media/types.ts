@@ -18,6 +18,8 @@ export interface MediaSlot {
   thumbnailUrl?: string;
   /** Search query used to find this media */
   searchQuery: string;
+  /** Concise descriptive caption (max ~6 words). Used as alt text, default search query, and UI sublabel. */
+  caption?: string;
   /** Requested size constraints */
   requestedSize?: {
     width: number;

@@ -5,6 +5,7 @@ import type { SkillToolDefinition } from '@airo/ai-skills';
 import { imagegenService } from '../../../services/ImagegenService.js';
 import { appRepository } from '../../../database/repositories/index.js';
 import { mediaManifestService, type MediaSlot } from '../../../services/MediaManifestService.js';
+import { captionFromPrompt } from '../../../services/MediaCaptionService.js';
 
 // Keep in sync with editImageTool.config.validate which uses isAllowedLogoUrl() to block logo editing
 const LOGO_PATH_PATTERN = /genai-assistant\/.*logo/i;
@@ -158,11 +159,13 @@ export const generateImageTool: SkillToolDefinition = {
             mergedAlternatives.unshift(existingSlot.currentUrl);
           }
 
+          const caption = await captionFromPrompt(input.prompt);
           const slotEntry: MediaSlot = {
             ...existingSlot,
             mediaType: 'generated',
             currentUrl: primaryUrl,
-            searchQuery: input.prompt,
+            searchQuery: caption,
+            caption,
             alternatives: mergedAlternatives,
             aiGeneratedUrls: mergedAiUrls,
             userModified: true,

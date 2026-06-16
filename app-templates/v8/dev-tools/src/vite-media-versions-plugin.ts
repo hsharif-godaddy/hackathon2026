@@ -16,28 +16,33 @@ export function mediaVersionsPlugin(): Plugin {
   let manifestPath = '';
   let currentVersions: Record<string, string> = {};
   let currentMediaTypes: Record<string, string> = {};
+  let currentCaptions: Record<string, string> = {};
 
-  function extractData(): { versions: Record<string, string>; mediaTypes: Record<string, string> } {
+  function extractData(): { versions: Record<string, string>; mediaTypes: Record<string, string>; captions: Record<string, string> } {
     try {
       if (fs.existsSync(manifestPath)) {
         const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
         const versions: Record<string, string> = {};
         const mediaTypes: Record<string, string> = {};
+        const captions: Record<string, string> = {};
         for (const [slotName, slot] of Object.entries(manifest)) {
-          const s = slot as { lastUpdated?: string; mediaType?: string };
+          const s = slot as { lastUpdated?: string; mediaType?: string; caption?: string };
           if (s.lastUpdated) {
             versions[slotName] = String(new Date(s.lastUpdated).getTime());
           }
           if (s.mediaType) {
             mediaTypes[slotName] = s.mediaType;
           }
+          if (s.caption) {
+            captions[slotName] = s.caption;
+          }
         }
-        return { versions, mediaTypes };
+        return { versions, mediaTypes, captions };
       }
     } catch {
       // File may be mid-write or malformed
     }
-    return { versions: {}, mediaTypes: {} };
+    return { versions: {}, mediaTypes: {}, captions: {} };
   }
 
   function startWatching(server: { ws: { send: (event: string, data: unknown) => void }; httpServer?: { on: (event: string, cb: () => void) => void } | null }) {
@@ -45,12 +50,14 @@ export function mediaVersionsPlugin(): Plugin {
       const watcher = fs.watch(manifestPath, () => {
         // Small delay to ensure atomic rename is complete
         setTimeout(() => {
-          const { versions, mediaTypes } = extractData();
+          const { versions, mediaTypes, captions } = extractData();
           if (JSON.stringify(versions) !== JSON.stringify(currentVersions) ||
-              JSON.stringify(mediaTypes) !== JSON.stringify(currentMediaTypes)) {
+              JSON.stringify(mediaTypes) !== JSON.stringify(currentMediaTypes) ||
+              JSON.stringify(captions) !== JSON.stringify(currentCaptions)) {
             currentVersions = versions;
             currentMediaTypes = mediaTypes;
-            server.ws.send('media-versions-update', { versions: currentVersions, mediaTypes: currentMediaTypes });
+            currentCaptions = captions;
+            server.ws.send('media-versions-update', { versions: currentVersions, mediaTypes: currentMediaTypes, captions: currentCaptions });
           }
         }, 50);
       });
@@ -64,7 +71,8 @@ export function mediaVersionsPlugin(): Plugin {
           const data = extractData();
           currentVersions = data.versions;
           currentMediaTypes = data.mediaTypes;
-          server.ws.send('media-versions-update', { versions: currentVersions, mediaTypes: currentMediaTypes });
+          currentCaptions = data.captions;
+          server.ws.send('media-versions-update', { versions: currentVersions, mediaTypes: currentMediaTypes, captions: currentCaptions });
           startWatching(server);
         }
       });
@@ -81,6 +89,7 @@ export function mediaVersionsPlugin(): Plugin {
       const data = extractData();
       currentVersions = data.versions;
       currentMediaTypes = data.mediaTypes;
+      currentCaptions = data.captions;
       startWatching(server);
 
       // Serve /airo-media.json from project root so airo-video-slots.js can fetch it
@@ -117,6 +126,7 @@ export function mediaVersionsPlugin(): Plugin {
         return `
           let versions = ${JSON.stringify(currentVersions)};
           let mediaTypes = ${JSON.stringify(currentMediaTypes)};
+          let captions = ${JSON.stringify(currentCaptions)};
           const listeners = [];
 
           export function getVersions() {
@@ -125,6 +135,10 @@ export function mediaVersionsPlugin(): Plugin {
 
           export function getMediaTypes() {
             return mediaTypes;
+          }
+
+          export function getCaptions() {
+            return captions;
           }
 
           export function onVersionsUpdate(cb) {
@@ -139,7 +153,8 @@ export function mediaVersionsPlugin(): Plugin {
             import.meta.hot.on('media-versions-update', (data) => {
               versions = data.versions;
               mediaTypes = data.mediaTypes;
-              listeners.forEach(cb => cb(versions, mediaTypes));
+              captions = data.captions || {};
+              listeners.forEach(cb => cb(versions, mediaTypes, captions));
             });
           }
         `;

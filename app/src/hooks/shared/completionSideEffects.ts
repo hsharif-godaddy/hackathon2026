@@ -73,16 +73,16 @@ export async function checkNewPageCreation(): Promise<void> {
  */
 export function invalidateMediaManifestIfNeeded(appId: string): void {
   const { messages } = useStreamingConversationStore.getState()
-  const lastMsg = messages[messages.length - 1]
 
-  const hadMediaTools = lastMsg?.role === 'assistant' &&
-    lastMsg.toolCalls?.some((tc) =>
-      tc.name === 'media' ||
-      tc.name.startsWith('media__') ||
-      tc.name.startsWith('media-image__') ||
-      tc.name.startsWith('media-video__') ||
-      tc.name.startsWith('media-logo__')
-    )
+  // Only check the last assistant message (current turn) to avoid session-long invalidation
+  const lastAssistantMsg = messages.findLast((msg) => msg.role === 'assistant')
+  const hadMediaTools = lastAssistantMsg?.toolCalls?.some((tc) =>
+    tc.name === 'media' ||
+    tc.name.startsWith('media__') ||
+    tc.name.startsWith('media-image__') ||
+    tc.name.startsWith('media-video__') ||
+    tc.name.startsWith('media-logo__')
+  )
 
   if (hadMediaTools) {
     const client = getQueryClient()

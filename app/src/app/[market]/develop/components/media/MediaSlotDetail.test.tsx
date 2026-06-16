@@ -173,7 +173,7 @@ describe('MediaSlotDetail', () => {
         'https://agent.example.com/media/app-123/slots/hero/image',
         expect.objectContaining({
           method: 'PUT',
-          body: JSON.stringify({ newUrl: '/img2.jpg', isVideo: false }),
+          body: JSON.stringify({ newUrl: '/img2.jpg', searchQuery: 'test query', isVideo: false }),
         })
       );
     });

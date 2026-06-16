@@ -12,7 +12,6 @@ import { Router, Request, Response, IRouter } from 'express';
 import multer from 'multer';
 import rateLimit from 'express-rate-limit';
 import crypto from 'crypto';
-import path from 'path';
 import fs from 'fs/promises';
 import sharp from 'sharp';
 import {
@@ -29,10 +28,77 @@ import {
   deletePersistentUploadFiles,
 } from '../../services/media-upload-deletion.js';
 import { normalizeSearchQuery } from '../../services/image-search/normalize.js';
-import { AppRepository } from '../../database/repositories/AppRepository.js';
+
 import { logger } from '../../logging/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
-import { getPersistentPublicDir } from '../../utils/persistent-assets.js';
+import { createForWorkspace } from '../../workspace/index.js';
+import { generateImageCaptionFromBuffer, generateVideoCaptionFromBuffer } from '../../services/MediaCaptionService.js';
+import { emitToApp } from '../ai-lib-websocket-server.js';
+
+// Image-level caption cache: persistent URL → caption.
+// Prevents re-captioning the same image across slots or on swap-back.
+const CAPTION_CACHE_MAX = 500;
+const imageCaptionCache = new Map<string, string>();
+
+function setCaptionCache(url: string, caption: string): void {
+  if (imageCaptionCache.size >= CAPTION_CACHE_MAX) {
+    // Evict oldest entry (first inserted)
+    const firstKey = imageCaptionCache.keys().next().value;
+    if (firstKey) imageCaptionCache.delete(firstKey);
+  }
+  imageCaptionCache.set(url, caption);
+}
+
+/**
+ * Fire-and-forget: generate a caption asynchronously, persist it, and push to the client via WS.
+ */
+function captionAsync(opts: {
+  appId: string;
+  slotName: string;
+  url: string;
+  getBuffer: () => Promise<{ buffer: Buffer; mimeType: string; filename: string } | null> | null;
+  isVideo: boolean;
+}): void {
+  const { appId, slotName, url, getBuffer, isVideo } = opts;
+
+  // Skip if already cached — still persist + push in case this is a new slot referencing the same URL
+  if (imageCaptionCache.has(url)) {
+    const cached = imageCaptionCache.get(url)!;
+    mediaManifestService.updateSlotCaption(appId, slotName, cached, url).then(() => {
+      emitToApp(appId, 'message', { type: 'media_caption', content: '', data: { appId, slotName, caption: cached } });
+    }).catch(() => {});
+    return;
+  }
+
+  void (async () => {
+    try {
+      let caption: string | null = null;
+
+      if (isVideo) {
+        const result = getBuffer ? await getBuffer() : null;
+        caption = await generateVideoCaptionFromBuffer(result?.buffer ?? null, slotName);
+      } else {
+        const result = getBuffer ? await getBuffer() : null;
+        if (!result) return;
+        caption = await generateImageCaptionFromBuffer(result.buffer, result.mimeType, result.filename);
+      }
+
+      if (!caption) return;
+
+      setCaptionCache(url, caption);
+      const persist = await mediaManifestService.updateSlotCaption(appId, slotName, caption, url);
+      if (persist.success) {
+        emitToApp(appId, 'message', { type: 'media_caption', content: '', data: { appId, slotName, caption } });
+      }
+    } catch (err) {
+      logger.warn('route.media.caption_async_failed', {
+        appId,
+        slotName,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  })();
+}
 
 const router: IRouter = Router();
 
@@ -100,6 +166,8 @@ const ALLOWED_MEDIA_TYPES: Record<string, string> = {
   ...ALLOWED_IMAGE_TYPES,
   ...ALLOWED_VIDEO_TYPES,
 };
+
+
 
 // Magic byte signatures for image validation
 const IMAGE_SIGNATURES: Array<{ mime: string; bytes: number[] }> = [
@@ -583,15 +651,6 @@ router.delete('/:appId/uploads/:filename', async (req: Request, res: Response) =
   }
 
   try {
-    const appRepository = new AppRepository();
-    const app = appRepository.findById(appId);
-    if (!app) {
-      return res.status(404).json({
-        success: false,
-        error: `App not found: ${appId}`,
-      });
-    }
-
     const manifestResult = await mediaManifestService.getManifest(appId);
     if (!manifestResult.success) {
       return res.status(500).json({
@@ -619,7 +678,7 @@ router.delete('/:appId/uploads/:filename', async (req: Request, res: Response) =
     }
 
     const { deletedPersistentUrls, failedPersistentUrls } = await deletePersistentUploadFiles(
-      app.path,
+      appId,
       uploadUrls
     );
     const chatDeleteResult = await fileUploadService.deleteUploadedFile(appId, filename);
@@ -891,6 +950,30 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
       });
     }
 
+    // Fire-and-forget async captioning — result pushed via WS `media_caption` event.
+    const hasSearchCaption = typeof searchQuery === 'string' && searchQuery.trim();
+    const isLogo = result.slot?.mediaType === 'logo';
+    if (!hasSearchCaption && !isLogo && result.slot?.currentUrl) {
+      const slotUrl = result.slot.currentUrl;
+      const swapFilename = getFilenameFromUploadUrl(slotUrl);
+      const isSwapVideo = result.slot.mediaType === 'video';
+      captionAsync({
+        appId,
+        slotName,
+        url: slotUrl,
+        isVideo: !!isSwapVideo,
+        getBuffer: swapFilename
+          ? async () => {
+              const workspace = createForWorkspace(appId, 'preview');
+              if (!workspace) return null;
+              const mediaPath = `public/assets/media/${swapFilename}`;
+              const { data, contentType } = await workspace.files.download({ path: mediaPath });
+              return { buffer: data, mimeType: contentType, filename: swapFilename };
+            }
+          : () => Promise.resolve(null),
+      });
+    }
+
     return res.json({
       success: true,
       slot: result.slot,
@@ -967,6 +1050,7 @@ router.post(
       // Validate the slot exists
       const slotResult = await mediaManifestService.getSlot(appId, slotName);
       if (!slotResult.success) {
+        logger.warn('route.media.apply_upload.slot_not_found', { appId, slotName });
         return res.status(404).json({ success: false, error: `Slot not found: ${slotName}` });
       }
 
@@ -975,6 +1059,7 @@ router.post(
       const matchingFile = uploadedFiles.find((f) => f.filename === filename);
 
       if (!matchingFile) {
+        logger.warn('route.media.apply_upload.file_not_found', { appId, slotName, filename });
         return res.status(404).json({ success: false, error: 'Upload file not found' });
       }
 
@@ -999,6 +1084,7 @@ router.post(
       }
 
       if (!sourceFilePath) {
+        logger.warn('route.media.apply_upload.file_not_on_disk', { appId, slotName, filename });
         return res.status(404).json({ success: false, error: 'Upload file not found on disk' });
       }
 
@@ -1037,33 +1123,18 @@ router.post(
         }
       }
 
-      // Generate filename and write to persistent media directory
-      const appRepository = new AppRepository();
-      const app = appRepository.findById(appId);
-      if (!app) {
-        return res.status(404).json({ success: false, error: `App not found: ${appId}` });
+      // Generate filename and write to persistent media directory via workspace API
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
+        return res.status(404).json({ success: false, error: `App workspace not found: ${appId}` });
       }
 
       const sanitizedSlot = slotName.replace(/\//g, '-').replace(/[^a-zA-Z0-9-]/g, '');
       const hash = crypto.createHash('sha256').update(outputBuffer).digest('hex').slice(0, 8);
       const mediaFilename = `${sanitizedSlot}-${hash}.${ext}`;
+      const mediaPath = `public/assets/media/${mediaFilename}`;
 
-      // mediaFilename is derived from sanitizedSlot (alphanumeric+dash only) and a content
-      // hash — no raw user input reaches path.join. Defense-in-depth check below confirms
-      // the resolved path stays inside mediaDir.
-      const mediaDir = path.join(getPersistentPublicDir(app.path), 'media'); // nosemgrep: path-traversal
-      await fs.mkdir(mediaDir, { recursive: true });
-
-      const filePath = path.join(mediaDir, mediaFilename); // nosemgrep: path-traversal
-      const resolvedMediaDir = path.resolve(mediaDir); // nosemgrep: path-traversal
-      const resolvedFilePath = path.resolve(filePath); // nosemgrep: path-traversal
-      if (!resolvedFilePath.startsWith(resolvedMediaDir + path.sep)) {
-        return res.status(400).json({ success: false, error: 'Invalid file path' });
-      }
-
-      const tempPath = `${filePath}.tmp.${Date.now()}`; // nosemgrep: path-traversal
-      await fs.writeFile(tempPath, outputBuffer); // nosemgrep: path-traversal
-      await fs.rename(tempPath, filePath); // nosemgrep: path-traversal
+      await workspace.files.upload({ path: mediaPath, data: outputBuffer });
 
       const uploadedUrl = `${AIRO_ASSET_UPLOADS_URL_PREFIX}${mediaFilename}`;
 
@@ -1083,7 +1154,7 @@ router.post(
       );
 
       if (!updateResult.success) {
-        await fs.unlink(filePath).catch(() => {}); // nosemgrep: path-traversal
+        await workspace.files.delete({ path: mediaPath }).catch(() => {});
         return res.status(500).json({
           success: false,
           error: updateResult.error || 'Failed to update manifest',
@@ -1096,6 +1167,22 @@ router.post(
         uploadedUrl,
         sourceFilename: filename,
       });
+
+      // Fire-and-forget async captioning — result pushed via WS `media_caption` event.
+      const isLogo = updateResult.slot?.mediaType === 'logo';
+      if (!isLogo) {
+        const captionMimeType = isVideo
+          ? (matchingFile.mimeType ?? 'video/mp4')
+          : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+        const captionBuffer = outputBuffer;
+        captionAsync({
+          appId,
+          slotName,
+          url: uploadedUrl,
+          isVideo,
+          getBuffer: async () => ({ buffer: captionBuffer, mimeType: captionMimeType, filename: mediaFilename }),
+        });
+      }
 
       return res.json({
         success: true,
@@ -1225,10 +1312,9 @@ router.post(
         });
       }
 
-      // Get app path for storage
-      const appRepository = new AppRepository();
-      const app = appRepository.findById(appId);
-      if (!app) {
+      // Get workspace client for file operations
+      const workspace = createForWorkspace(appId, 'preview');
+      if (!workspace) {
         logger.warn('route.media.upload.app_not_found', { appId, slotName });
         return res.status(404).json({
           success: false,
@@ -1310,44 +1396,15 @@ router.post(
         filename = `${sanitizedSlot}-${hash}.${ext}`;
       }
 
-      // Ensure persistent media directory exists
-      const persistentDir = getPersistentPublicDir(app.path);
-      const mediaDir = path.join(persistentDir, 'media');
+      // Write to workspace via dev-supervisor (handles path sandboxing)
+      const mediaPath = `public/assets/media/${filename}`;
       logger.debug('route.media.upload.write_file', {
         appId,
         slotName,
-        appPath: app.path,
-        mediaDir,
+        mediaPath,
         filename,
       });
-      await fs.mkdir(mediaDir, { recursive: true });
-
-      // Build file path and verify it stays within media directory (defense in depth)
-      const filePath = path.join(mediaDir, filename);
-      const resolvedMediaDir = path.resolve(mediaDir);
-      const resolvedFilePath = path.resolve(filePath);
-      if (!resolvedFilePath.startsWith(resolvedMediaDir + path.sep)) {
-        logger.error(
-          'route.media.upload.path_escape_attempt',
-          {
-            appId,
-            slotName,
-            filename,
-            resolvedFilePath,
-            resolvedMediaDir,
-          },
-          { tags: ['security', 'path-traversal-attempt'] }
-        );
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid file path',
-        });
-      }
-
-      // Atomic write: write to temp file first, then rename
-      const tempPath = `${filePath}.tmp.${Date.now()}`;
-      await fs.writeFile(tempPath, outputBuffer);
-      await fs.rename(tempPath, filePath);
+      await workspace.files.upload({ path: mediaPath, data: outputBuffer });
 
       // Build the URL (using airo-assets proxy pattern)
       const uploadedUrl = `${AIRO_ASSET_UPLOADS_URL_PREFIX}${filename}`;
@@ -1424,13 +1481,9 @@ router.post(
               for (const siblingUrl of siblingUrls) {
                 const siblingFilename = getFilenameFromUploadUrl(siblingUrl);
                 if (!siblingFilename) continue;
-                const siblingFilePath = path.join(mediaDir, siblingFilename); // nosemgrep: path-join-resolve-traversal
-                const resolvedSibling = path.resolve(siblingFilePath); // nosemgrep: path-join-resolve-traversal
-                if (!resolvedSibling.startsWith(resolvedMediaDir + path.sep)) continue;
+                const siblingMediaPath = `public/assets/media/${siblingFilename}`;
                 try {
-                  const siblingTempPath = `${siblingFilePath}.tmp.${Date.now()}`;
-                  await fs.writeFile(siblingTempPath, outputBuffer);
-                  await fs.rename(siblingTempPath, siblingFilePath);
+                  await workspace.files.upload({ path: siblingMediaPath, data: outputBuffer });
                   logger.debug('route.media.upload.cross_slot_overwrite', {
                     appId,
                     slotName,
@@ -1537,7 +1590,7 @@ router.post(
           error: updateResult.error,
         });
         // Clean up the written file on failure
-        await fs.unlink(filePath).catch(() => {});
+        await workspace.files.delete({ path: mediaPath }).catch(() => {});
         return res.status(500).json({
           success: false,
           error: updateResult.error || 'Failed to update manifest',
@@ -1551,6 +1604,20 @@ router.post(
         size: file.size,
         chatUploadFilename,
       });
+
+      // Fire-and-forget async captioning — result pushed via WS `media_caption` event.
+      const isLogoUpload = updateResult.slot?.mediaType === 'logo';
+      if (!isLogoUpload) {
+        const uploadBuffer = file.buffer;
+        const uploadMime = file.mimetype;
+        captionAsync({
+          appId,
+          slotName,
+          url: uploadedUrl,
+          isVideo: isVideoUpload,
+          getBuffer: async () => ({ buffer: uploadBuffer, mimeType: uploadMime, filename }),
+        });
+      }
 
       return res.json({
         success: true,

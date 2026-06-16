@@ -6,10 +6,10 @@ vi.mock("../../middleware/app-ownership.js", () => ({
   validateAppOwnership: vi.fn(function (_req: unknown, _res: unknown, next: () => void) { return next(); }),
 }));
 
-vi.mock("../../../logging/index.js", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-  Logger: { create: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
-}));
+vi.mock("../../../logging/index.js", () => {
+  const makeMockLogger = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => makeMockLogger() });
+  return { logger: makeMockLogger(), Logger: { create: makeMockLogger } };
+});
 
 vi.mock("../../../services/FileUploadService.js", () => ({
   fileUploadService: { listUploadedFiles: vi.fn(), getAppUploadsDir: vi.fn(), getFilePath: vi.fn() },
