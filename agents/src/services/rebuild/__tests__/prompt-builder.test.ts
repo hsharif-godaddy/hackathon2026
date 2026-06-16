@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
   AssetManifest,
@@ -23,6 +23,15 @@ vi.mock('../../../agents/page-prompt-agent.js', () => ({
       cleanup: vi.fn(async () => undefined),
     };
   },
+}));
+
+const { mockFindById } = vi.hoisted(() => ({
+  mockFindById: vi.fn(),
+}));
+vi.mock('../../../database/repositories/AppRepository.js', () => ({
+  AppRepository: vi.fn(function appRepository(this: unknown) {
+    return { findById: mockFindById };
+  }),
 }));
 
 const analyzePageAssetsMock = vi.fn();
@@ -223,5 +232,58 @@ describe('RebuildPromptBuilder.buildPage — BuildPageResult fields', () => {
     expect(result.pageTitle).toBe(resolvePageTitle('About Us', 'about'));
     expect(result.imageCount).toBe(3);
     expect(result.prompt).toBe('GENERATED PROMPT');
+  });
+});
+
+describe('RebuildPromptBuilder.buildPage — rebuild Langfuse tagging (Leg A)', () => {
+  const pageContent: PageContent = {
+    url: 'https://example.com/',
+    slug: 'homepage',
+    title: 'Home',
+    content: '<h1>Home</h1>',
+    sanitizedContent: 'Home',
+    structure: { hasHeader: true, hasFooter: true, hasSidebar: false, sections: [], navigation: [] },
+    metadata: { title: 'Home' },
+    scrapedAt: '2024-01-01T00:00:00Z',
+  };
+
+  const sourceSiteData = {
+    metadata: baseSiteMetadata,
+    pages: { homepage: pageContent },
+    assets: [],
+    sitemap: { pages: [{ slug: 'homepage', url: 'https://example.com/', scraped: true, source: 'crawl' }] },
+  } as unknown as SourceSiteData;
+
+  beforeEach(() => {
+    generateMock.mockClear();
+    analyzePageAssetsMock.mockResolvedValue({ pageAssets: [], analyzedImageCount: 0 });
+    mockFindById.mockReturnValue({
+      subscriptionId: 'sub-123',
+      customerId: 'cust-456',
+    });
+  });
+
+  it('threads isRebuildFlow executionContext into PagePromptAgent.generate', async () => {
+    const persistence = {
+      loadSourceSiteData: vi.fn(async () => sourceSiteData),
+    } as unknown as PagePersistenceService;
+
+    const builder = new RebuildPromptBuilder('/app', '/app/.source-site', persistence, false);
+    const state = {
+      stylePreferences: baseStylePreferences,
+      pagesBuilt: [],
+    } as unknown as RebuildWorkflowState;
+
+    await builder.buildPage('app123', 'homepage', state);
+
+    expect(generateMock).toHaveBeenCalledOnce();
+    expect(generateMock.mock.calls[0][6]).toEqual({
+      metadata: {
+        appId: 'app123',
+        isRebuildFlow: true,
+        subscriptionId: 'sub-123',
+        customerId: 'cust-456',
+      },
+    });
   });
 });

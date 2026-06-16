@@ -173,7 +173,8 @@ export class PagePromptAgent {
     stylePreferences: StylePreferences,
     assetManifest: AssetManifest,
     isFirstPage: boolean = true,
-    screenshotBase64?: string
+    screenshotBase64?: string,
+    executionContext?: Record<string, unknown>,
   ): Promise<string> {
     const agent = this.getAgent()
     // Process the screenshot first so the prompt can reflect whether an image
@@ -183,7 +184,10 @@ export class PagePromptAgent {
     const files = await processScreenshot(screenshotBase64)
     const hasScreenshot = files.length > 0
     const prompt = buildUserPrompt({ siteMetadata, pageContent, stylePreferences, assetManifest, isFirstPage, hasScreenshot })
-    const result = await agent.generate(prompt, hasScreenshot ? { files } : {})
+    const result = await agent.generate(prompt, {
+      ...(executionContext && { executionContext }),
+      ...(hasScreenshot && { files }),
+    })
 
     // PagePromptAgent's rewrite drops the per-asset "do NOT overlay" note that
     // buildUserPrompt emits, so re-assert it deterministically after generation —

@@ -79,6 +79,10 @@ This tool starts the website rebuild process:
       throw new Error('App ID is required for website rebuild')
     }
 
+    if (context?.metadata && typeof context.metadata === 'object') {
+      (context.metadata as Record<string, unknown>).isRebuildFlow = true
+    }
+
     const app = await appRepo.findById(appId)
     if (!app) {
       throw new Error(`App not found: ${appId}`)

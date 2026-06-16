@@ -165,6 +165,60 @@ describe('build-metadata', function tests() {
       expect(result?.tags).toContain('agent:test-agent')
     })
 
+    it('should include rebuild tag when isRebuildFlow is set', function rebuildFlow() {
+      const context = {
+        socketId: 'test-session',
+        metadata: {
+          appId: 'app-1',
+          customerId: 'customer-123',
+          isRebuildFlow: true,
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, {
+        source: LlmCallSource.UserChat,
+        agentId: 'develop',
+      })
+
+      expect(result?.tags).toContain('rebuild')
+    })
+
+    it('should include rebuild tag when rebuildBuildPageSlug is set', function rebuildPageSlug() {
+      const context = {
+        socketId: 'test-session',
+        metadata: {
+          appId: 'app-1',
+          customerId: 'customer-123',
+          rebuildBuildPageSlug: 'about',
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, {
+        source: LlmCallSource.UserChat,
+        agentId: 'develop',
+      })
+
+      expect(result?.tags).toContain('rebuild')
+    })
+
+    it('should omit rebuild tag for normal develop builds', function normalDevelop() {
+      const context = {
+        socketId: 'test-session',
+        metadata: {
+          appId: 'app-1',
+          customerId: 'customer-123',
+          hasUnbuiltRebuildPages: true,
+        },
+      }
+
+      const result = buildLitellmMetadataFromContext(context, {
+        source: LlmCallSource.UserChat,
+        agentId: 'develop',
+      })
+
+      expect(result?.tags).not.toContain('rebuild')
+    })
+
     it('should include mode:grants tag when budgetServiceEnabled is false', function modeGrants() {
       const context = {
         socketId: 'test-session',

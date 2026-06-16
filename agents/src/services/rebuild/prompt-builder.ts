@@ -13,6 +13,7 @@ import path from 'node:path';
 
 import { PagePromptAgent } from '../../agents/page-prompt-agent.js';
 import { shouldPreserveDesign } from '../../agents/page-prompt/style-instructions.js';
+import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { Logger } from '../../logging/index.js';
 import {
   type AssetManifest,
@@ -31,6 +32,7 @@ import { AssetProcessingService } from '../AssetProcessingService.js';
 import type { PagePersistenceService } from './page-persistence.js';
 
 const logger = Logger.create({ component: 'rebuild-orchestration-service' });
+const appRepo = new AppRepository();
 
 export interface BuildPageResult {
   prompt: string;
@@ -117,6 +119,7 @@ export class RebuildPromptBuilder {
     const screenshotBase64 = isFirstPage ? await this.loadHomepageScreenshot(appId, pageSlug) : undefined;
 
     const prompt = await this.runPagePromptAgent(
+      appId,
       sourceSiteData.metadata,
       pageContent,
       state.stylePreferences,
@@ -211,6 +214,7 @@ export class RebuildPromptBuilder {
   }
 
   private async runPagePromptAgent(
+    appId: string,
     siteMetadata: SiteMetadata,
     pageContent: PageContent,
     stylePreferences: StylePreferences,
@@ -223,6 +227,15 @@ export class RebuildPromptBuilder {
     // same predicate the user-prompt design block keys off, so the two stay
     // in sync.
     const preserveDesign = shouldPreserveDesign(stylePreferences);
+    const app = appRepo.findById(appId);
+    const executionContext = {
+      metadata: {
+        appId,
+        isRebuildFlow: true,
+        ...(app?.subscriptionId && { subscriptionId: app.subscriptionId }),
+        ...(app?.customerId && { customerId: app.customerId }),
+      },
+    };
     const promptAgent = new PagePromptAgent({ isFirstPage, useAtlasCrawler: this.useAtlas, preserveDesign });
     await promptAgent.initialize();
     try {
@@ -233,6 +246,7 @@ export class RebuildPromptBuilder {
         pageAssetManifest,
         isFirstPage,
         screenshotBase64,
+        executionContext,
       );
     } finally {
       await promptAgent.cleanup();

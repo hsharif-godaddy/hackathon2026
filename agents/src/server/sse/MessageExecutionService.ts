@@ -1071,15 +1071,19 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     if (invocationSpan && fullStorySessionId) {
       invocationSpan.setAttribute('langfuse.trace.metadata.fullStorySessionId', fullStorySessionId)
     }
+    // Mutate metadata in place (mirrors WS at experimental-websocket-server.ts).
+    // Spreading into a new metadata object breaks tool writes such as
+    // websiteRebuild's isRebuildFlow flag — the handoff develop leg would
+    // rebuild tags from the stale executionContext.metadata snapshot.
+    if (!executionContext.metadata || typeof executionContext.metadata !== 'object') {
+      executionContext.metadata = {}
+    }
+    if (traceId) {
+      (executionContext.metadata as Record<string, unknown>).traceId = traceId
+    }
     const executionContextWithTrace: Record<string, unknown> = {
       socketId: sseSocketId,
       ...executionContext,
-      ...(traceId && {
-        metadata: {
-          ...((executionContext.metadata as Record<string, unknown> | undefined) ?? {}),
-          traceId,
-        },
-      }),
     }
 
     const throwChunkTimeoutError = (): never => {
@@ -1749,6 +1753,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         ...(agentCtx?.useAtlasCrawler && { useAtlasCrawler: true }),
         ...(agentCtx?.rebuildIntakeFormEnabled && { rebuildIntakeFormEnabled: true }),
         ...(rebuildDesignDirection && { rebuildDesignDirection }),
+        ...(rebuildBuildPageSlug && { rebuildBuildPageSlug, isRebuildFlow: true }),
         ...(content && { _userMessage: content }),
         ...(agentCtx?.marketingCampaignsEnabled && { marketingCampaignsEnabled: true }),
       },

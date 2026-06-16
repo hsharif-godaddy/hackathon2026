@@ -57,6 +57,12 @@ export interface ExecutionContextMetadata {
   /** Whether app has unbuilt rebuild pages */
   hasUnbuiltRebuildPages?: boolean
 
+  /** Explicit rebuild-flow marker (e.g. website-rebuild tool or page-build turn) */
+  isRebuildFlow?: boolean
+
+  /** Rebuild page slug when the client triggers a deterministic page build */
+  rebuildBuildPageSlug?: string
+
   /** Budget Service flag from JWT */
   budgetServiceEnabled?: boolean
 
@@ -76,6 +82,11 @@ export { LlmCallSource, GrantErrorCode } from '@airo/shared/grants'
 interface MetadataOptions {
   agentId?: string | undefined
   source?: LlmCallSource | string
+}
+
+function isRebuildFlow(metadata: ExecutionContextMetadata): boolean {
+  if (metadata.isRebuildFlow === true) return true
+  return typeof metadata.rebuildBuildPageSlug === 'string' && metadata.rebuildBuildPageSlug.length > 0
 }
 
 // Module-level APM reference (set via setAPM)
@@ -130,6 +141,7 @@ export function buildLitellmMetadataFromContext(
   tags.push(`source:${options?.source ?? LlmCallSource.UserChat}`)
   if (options?.agentId) tags.push(`agent:${options.agentId}`)
   tags.push(metadata.budgetServiceEnabled ? 'mode:bms' : 'mode:grants')
+  if (isRebuildFlow(metadata)) tags.push('rebuild')
 
   // BMS session fields for GoCode cost reporting (x-gocode-budget-* headers)
   // Only present when budget service is enabled and session was created

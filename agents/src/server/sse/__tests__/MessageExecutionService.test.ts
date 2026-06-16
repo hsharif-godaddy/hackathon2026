@@ -2138,6 +2138,17 @@ describe('MessageExecutionService', () => {
       expect(executionContext.metadata.rebuildDesignDirection).toBeUndefined()
     })
 
+    it('threads rebuildBuildPageSlug and isRebuildFlow into executionContext metadata', async () => {
+      deps = createMockDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, rebuildBuildPageSlug: 'about' })
+
+      const executionContext = deps.contextManager.loadContextMessages.mock.calls[0][0]
+      expect(executionContext.metadata.rebuildBuildPageSlug).toBe('about')
+      expect(executionContext.metadata.isRebuildFlow).toBe(true)
+    })
+
     it('threads _userMessage into executionContext metadata for rebuild prompt inference', async () => {
       deps = createMockDeps()
       service = new MessageExecutionService(deps as any)
@@ -2352,6 +2363,38 @@ describe('MessageExecutionService', () => {
       )
       expect(deps.eventChannel.markMessageEventsPersisted).toHaveBeenCalledWith('conv_1', 'agent-msg-1')
       expect(deps.eventChannel.markMessageEventsPersisted).toHaveBeenCalledWith('conv_1', 'agent-msg-2')
+    })
+
+    it('preserves isRebuildFlow on executionContext metadata across handoff turns', async () => {
+      deps.stateManager.getCurrentAgent.mockReturnValue('develop')
+      deps.stateManager.getLastHandoffPrompt.mockReturnValue('Build the homepage')
+
+      const streamGenerate = vi.fn().mockImplementation(function (_message: string, opts: { executionContext: { metadata: Record<string, unknown> } }) {
+        opts.executionContext.metadata.isRebuildFlow = true
+        return Promise.resolve({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([
+            { type: 'text-delta', text: 'chunk' },
+          ]),
+          getFinalResult: vi.fn().mockResolvedValue({ finishReason: 'complete' }),
+        })
+      })
+      deps.getAgent.mockImplementation(function (name?: string) {
+        return {
+          streamGenerate,
+          getName: vi.fn().mockReturnValue(name ?? 'initial'),
+        }
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute({ ...DEFAULT_PARAMS, agentId: 'initial' })
+
+      expect(streamGenerate).toHaveBeenCalledTimes(2)
+      const firstMetadata = streamGenerate.mock.calls[0][1].executionContext.metadata
+      const secondMetadata = streamGenerate.mock.calls[1][1].executionContext.metadata
+      expect(firstMetadata.isRebuildFlow).toBe(true)
+      expect(secondMetadata.isRebuildFlow).toBe(true)
+      expect(firstMetadata).toBe(secondMetadata)
     })
 
     it("invokes runMessageEndHooks with reason: 'error' when chunk timeout aborts the stream", async () => {
