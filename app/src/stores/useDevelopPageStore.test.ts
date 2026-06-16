@@ -809,7 +809,7 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       expect(useDevelopPageStore.getState().selectedModel).toBeNull();
     });
 
-    it('should reset selectedModel on resetForNewApp', function resetsOnAppSwitch() {
+    it('should rehydrate selectedModel from the per-app map on resetForNewApp (null when no saved entry)', function rehydratesOnAppSwitch() {
       act(function select() {
         useDevelopPageStore.getState().setSelectedModel('claude-sonnet-4-5');
       });
@@ -818,6 +818,95 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       });
 
       expect(useDevelopPageStore.getState().selectedModel).toBeNull();
+    });
+  });
+
+  describe('#model persistence per app', function modelPersistenceTests() {
+    beforeEach(function clearPersistedModels() {
+      act(function reset() {
+        useDevelopPageStore.setState({
+          currentAppId: null,
+          selectedModel: null,
+          modelByAppId: {},
+        });
+      });
+    });
+
+    it('restores the persisted model when the same app is re-initialized', function restoresOnReload() {
+      act(function loadApp() {
+        useDevelopPageStore.getState().resetForNewApp('app-1');
+      });
+      act(function select() {
+        useDevelopPageStore.getState().setSelectedModel('claude-sonnet-4-5');
+      });
+
+      // Simulate a reload: the live selection is cleared, but initializePage
+      // re-runs resetForNewApp for the same app.
+      act(function clearLive() {
+        useDevelopPageStore.setState({ selectedModel: null });
+      });
+      act(function reinitialize() {
+        useDevelopPageStore.getState().resetForNewApp('app-1');
+      });
+
+      expect(useDevelopPageStore.getState().selectedModel).toBe('claude-sonnet-4-5');
+    });
+
+    it('does not leak the model selection across apps', function noCrossAppLeak() {
+      act(function loadApp1() {
+        useDevelopPageStore.getState().resetForNewApp('app-1');
+      });
+      act(function selectForApp1() {
+        useDevelopPageStore.getState().setSelectedModel('model-1');
+      });
+
+      act(function switchToApp2() {
+        useDevelopPageStore.getState().resetForNewApp('app-2');
+      });
+      expect(useDevelopPageStore.getState().selectedModel).toBeNull();
+
+      act(function selectForApp2() {
+        useDevelopPageStore.getState().setSelectedModel('model-2');
+      });
+
+      act(function backToApp1() {
+        useDevelopPageStore.getState().resetForNewApp('app-1');
+      });
+      expect(useDevelopPageStore.getState().selectedModel).toBe('model-1');
+
+      act(function backToApp2() {
+        useDevelopPageStore.getState().resetForNewApp('app-2');
+      });
+      expect(useDevelopPageStore.getState().selectedModel).toBe('model-2');
+    });
+
+    it('clears the persisted entry when the model is reset to default', function clearPersists() {
+      act(function loadApp() {
+        useDevelopPageStore.getState().resetForNewApp('app-1');
+      });
+      act(function select() {
+        useDevelopPageStore.getState().setSelectedModel('claude-sonnet-4-5');
+      });
+      expect(useDevelopPageStore.getState().modelByAppId).toEqual({ 'app-1': 'claude-sonnet-4-5' });
+
+      act(function clear() {
+        useDevelopPageStore.getState().setSelectedModel(null);
+      });
+      expect(useDevelopPageStore.getState().modelByAppId).toEqual({});
+
+      act(function reinitialize() {
+        useDevelopPageStore.getState().resetForNewApp('app-1');
+      });
+      expect(useDevelopPageStore.getState().selectedModel).toBeNull();
+    });
+
+    it('does not persist a selection made before an app is loaded', function noOpWithoutApp() {
+      // currentAppId is null — no app loaded yet.
+      act(function select() {
+        useDevelopPageStore.getState().setSelectedModel('claude-sonnet-4-5');
+      });
+
+      expect(useDevelopPageStore.getState().modelByAppId).toEqual({});
     });
   });
 

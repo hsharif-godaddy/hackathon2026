@@ -10,7 +10,7 @@ export function isDesignKitWizardProfile(profile: string | null | undefined): bo
  * Whether the Design Kit Wizard is active for this session.
  *
  * The agent profile is now server-resolved and JWT-only (the per-project
- * ProfileSelector + useDevelopPageStore.selectedProfile were removed in main's
+ * ProfileSelector and its store state were removed in main's
  * deterministic-resolution refactor). We read the same Switchboard value the
  * server uses to pick the profile — `appbuilder-agent-profile` — and treat the
  * value `initial-agent-design-kit` as "in the design kit agent".

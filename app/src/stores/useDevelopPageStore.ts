@@ -232,9 +232,15 @@ interface DevelopPageStore {
   isRestarting: boolean
   hasUnsavedChanges: boolean
 
-  // Model override (per-project)
+  // Model override (per-project). `selectedModel` is the live selection for the
+  // current app; `modelByAppId` is the persisted per-app memory so the choice
+  // survives a browser reload (the selector is internal/operator-gated).
+  // Note: an entry is added per app a non-default model is chosen for and only
+  // removed on clear-to-default (never on app deletion), so the map grows
+  // unbounded in principle — negligible given the gating and tiny entries, but
+  // revisit (prune on app deletion) if the selector ever ships broadly.
   selectedModel: string | null
-  selectedProfile: string | null
+  modelByAppId: Record<string, string>
 
   // Conversations brand ID
   conversationsBrandId: string | null
@@ -350,7 +356,6 @@ interface DevelopPageStore {
   setIsChatPaneCollapsed: (collapsed: boolean) => void
   setHasUnsavedChanges: (hasChanges: boolean) => void
   setSelectedModel: (model: string | null) => void
-  setSelectedProfile: (profile: string | null) => void
   setConversationsBrandId: (brandId: string | null) => void
   setInboxBrandId: (brandId: string | null) => void
   setIsMobile: (isMobile: boolean) => void
@@ -505,7 +510,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     isRestarting: false,
     hasUnsavedChanges: false,
     selectedModel: null,
-    selectedProfile: null,
+    modelByAppId: {},
     conversationsBrandId: null,
     inboxBrandId: null,
     isVersionHistoryOpen: false,
@@ -592,8 +597,18 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     setChatPaneWidth: (width) => set((state) => { state.chatPaneWidth = width }),
     setIsChatPaneCollapsed: (collapsed) => set((state) => { state.isChatPaneCollapsed = collapsed }),
     setHasUnsavedChanges: (hasChanges) => set((state) => { state.hasUnsavedChanges = hasChanges }),
-    setSelectedModel: (model) => set((state) => { state.selectedModel = model }),
-    setSelectedProfile: (profile) => set((state) => { state.selectedProfile = profile }),
+    setSelectedModel: (model) => set((state) => {
+      state.selectedModel = model
+      // Remember the choice per app so it survives a reload. No-op until an
+      // app is loaded (currentAppId is set by resetForNewApp).
+      if (state.currentAppId) {
+        if (model) {
+          state.modelByAppId[state.currentAppId] = model
+        } else {
+          delete state.modelByAppId[state.currentAppId]
+        }
+      }
+    }),
     setConversationsBrandId: (brandId) => set((state) => { state.conversationsBrandId = brandId }),
     setInboxBrandId: (brandId) => set((state) => { state.inboxBrandId = brandId }),
     setIsMobile: (isMobile) => {
@@ -1031,8 +1046,10 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.loadingError = null
         state.autoSendTriggered = false
         state.hasUnsavedChanges = false
-        state.selectedModel = null
-        state.selectedProfile = null
+        // Restore the per-app model override (persisted) rather than clearing it,
+        // so a reload or app-switch keeps the user's selection. Falls back to
+        // null (system default) for apps with no saved choice.
+        state.selectedModel = state.modelByAppId[appId] ?? null
         state.feedbackInitialStep = null
         state.docsPath = null
 
@@ -1374,7 +1391,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     },
   })), {
     name: 'airo-builder.develop-page-store.v1',
-    partialize: () => ({}),
+    // Persist only the per-app model memory; all other UI/session state stays
+    // transient and out of localStorage.
+    partialize: (state) => ({ modelByAppId: state.modelByAppId }),
   }),
     { name: 'DevelopPageStore' }
   )
