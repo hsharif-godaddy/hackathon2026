@@ -25,10 +25,16 @@ Quick one-liner (requires sudo):
 echo "127.0.0.1 local.console.airo-builder.dev-gdcorp.tools" | sudo tee -a /etc/hosts
 ```
 
-### 2. Generate a local self-signed certificate
+### 2. (Automatic) Local self-signed certificate
 
-The server reads `certs/server.key` and `certs/server.crt` (override with
-`SERVER_KEY_PATH` / `SERVER_CERT_PATH`). Generate them with:
+In local dev the server **self-generates** `certs/server.key` and
+`certs/server.crt` on first run (via `openssl`), so you normally don't need to
+do anything here. Override the paths with `SERVER_KEY_PATH` / `SERVER_CERT_PATH`,
+or generate them by hand if `openssl` isn't on your `PATH`:
+
+> Auto-generation only triggers when the files are **absent**. If you have an
+> older cert that produces a browser warning (wrong hostname after a host
+> migration, or expired), `rm -rf certs/` to force a fresh one on next start.
 
 ```bash
 mkdir -p certs
@@ -39,7 +45,8 @@ openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
   -addext "subjectAltName=DNS:local.console.airo-builder.dev-gdcorp.tools,DNS:localhost,IP:127.0.0.1"
 ```
 
-(Optional) Trust the cert in macOS Keychain so the browser stops warning:
+(Optional) Trust the cert in macOS Keychain so the browser stops warning
+(re-run after the cert is regenerated):
 
 ```bash
 sudo security add-trusted-cert -d -r trustRoot \

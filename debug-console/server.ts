@@ -13,6 +13,7 @@ import { installDevFetchInstrumentation } from './src/lib/dev-fetch-instrumentat
 installDevFetchInstrumentation();
 
 import { logger } from './src/lib/logger';
+import { ensureDevCerts } from './src/lib/dev-certs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -28,6 +29,15 @@ const handle = app.getRequestHandler();
 app.prepare().then(() => {
     const keyPath = process.env.SERVER_KEY_PATH || join(__dirname, 'certs', 'server.key');
     const certPath = process.env.SERVER_CERT_PATH || join(__dirname, 'certs', 'server.crt');
+
+    // In local dev, self-generate a self-signed cert on first run so developers
+    // don't have to run the README's openssl command by hand. Gated to dev:
+    // deployed environments (NODE_ENV=production) provide real certs, and test
+    // runs fall back to plain HTTP below. A generation failure is non-fatal —
+    // the read below then hits the existing "missing cert" handling.
+    if (dev && !isTest) {
+        ensureDevCerts(keyPath, certPath);
+    }
 
     let server: HttpsServer | HttpServer;
 
