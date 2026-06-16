@@ -296,6 +296,7 @@ func (s *Server) setupRoutes() {
 	wsFilesRouter.HandleFunc("/insert", s.handleWorkspaceFilesInsert).Methods("POST")
 	wsFilesRouter.HandleFunc("/delete", s.handleWorkspaceFilesDelete).Methods("POST")
 	wsFilesRouter.HandleFunc("/move", s.handleWorkspaceFilesMove).Methods("POST")
+	wsFilesRouter.HandleFunc("/archive", s.handleWorkspaceFilesArchive).Methods("POST")
 
 	// Binary upload registered separately — needs 100MB limit, not the 10MB JSON limit
 	s.router.Handle("/workspace/files/upload", wsFilesUploadMiddleware(

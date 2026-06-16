@@ -1,3 +1,5 @@
+import type { Readable } from 'node:stream';
+
 /**
  * Single tree entry. `path` is **workspace-rooted** — i.e. relative to the
  * workspace root, with `TreeOptions.path` already joined in. A
@@ -145,6 +147,21 @@ export interface DownloadResult {
   contentType: string;
 }
 
+export interface ArchiveOptions {
+  /** Workspace-relative directories to walk recursively. Missing dirs are skipped. */
+  dirs?: string[];
+  /** Workspace-relative files to include. Missing files are skipped. */
+  files?: string[];
+  /** Top-level folder name inside the zip (e.g. entries become `<prefix>/src/x.ts`). */
+  prefix?: string;
+}
+
+export interface ArchiveResult {
+  /** Raw zip byte stream. Pipe straight to an HTTP response. */
+  stream: Readable;
+  contentType: string;
+}
+
 export interface StatOptions {
   paths: string[];
 }
@@ -198,4 +215,9 @@ export interface WorkspaceFiles {
   move(options: MoveOptions): Promise<void>;
   upload(options: FileUploadOptions): Promise<WriteResult>;
   download(options: DownloadOptions): Promise<DownloadResult>;
+  /**
+   * Stream a zip of the given dirs/files, assembled server-side. Unlike
+   * download(), there is no per-file size cap — use this for bulk export.
+   */
+  archive(options: ArchiveOptions): Promise<ArchiveResult>;
 }

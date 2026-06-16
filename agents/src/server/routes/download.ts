@@ -3,24 +3,23 @@
  *
  * Handles app download/zip operations with JWT-based authorization.
  * Requires canDownload permission in JWT claims (Airo Plus subscription).
+ *
+ * The zip is assembled server-side by dev-supervisor (WorkspaceFiles.archive)
+ * and streamed straight through this route — no per-file size cap, no in-memory
+ * buffering of file contents in the agent.
  */
 
 import { Router, Request, Response } from 'express';
-import archiver from 'archiver';
 import { AppRepository } from '../../database/index.js';
 import { Logger, log } from '../../logging/index.js';
 import { ALLOWED_DIRECTORIES, ALLOWED_CONFIG_FILES } from '../../config/app-download.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { requirePermission } from '../middleware/require-permission.js';
-import { createForWorkspace, type WorkspaceClient } from '../../workspace/index.js';
-import { isDevSupervisorNotFound } from '../../services/DevSupervisorClient.js';
+import { createForWorkspace } from '../../workspace/index.js';
 
 const router: Router = Router();
 const appRepo = new AppRepository();
 const logger = Logger.create({ component: 'download-routes' });
-
-/** Concurrent dev-supervisor downloads. Bounded so peak memory stays at ~CAP buffers. */
-const DOWNLOAD_CONCURRENCY = 8;
 
 type NameStyle = 'appId' | 'name';
 
@@ -42,32 +41,10 @@ function buildBaseName(id: string, rawName: string | null | undefined, style: Na
 }
 
 /**
- * Run `worker` for each item with at most `cap` in flight at once.
- * Used to bound concurrent dev-supervisor downloads.
- */
-async function withConcurrency<T>(
-  items: readonly T[],
-  cap: number,
-  worker: (item: T) => Promise<void>,
-): Promise<void> {
-  const queue = [...items];
-  await Promise.all(
-    Array.from({ length: Math.min(cap, queue.length) }, async () => {
-      while (queue.length > 0) {
-        const item = queue.shift();
-        if (item === undefined) break;
-        await worker(item);
-      }
-    }),
-  );
-}
-
-/**
  * GET /apps/:id/zip - Stream a zip archive of the user-facing app files.
  *
- * The archive is assembled by walking the workspace via dev-supervisor
- * (WorkspaceFiles.tree + WorkspaceFiles.download). The agent process no
- * longer reads the host filesystem directly.
+ * dev-supervisor walks the allowlisted dirs/files on the workspace filesystem
+ * and streams the zip; this route proxies that stream to the client.
  */
 router.get('/apps/:id/zip', validateAppOwnership, requirePermission('canDownload'), async (req: Request, res: Response) => {
   const id = req.params.id as string;
@@ -91,81 +68,59 @@ router.get('/apps/:id/zip', validateAppOwnership, requirePermission('canDownload
       });
     }
 
-    logger.info('route.apps.zip.begin', {
-      appId: id,
-      includedDirs: ALLOWED_DIRECTORIES,
+    const nameStyle: NameStyle = req.query.nameStyle === 'appId' ? 'appId' : 'name';
+    const baseName = buildBaseName(id, app.name, nameStyle);
+
+    logger.info('route.apps.zip.begin', { appId: id, includedDirs: ALLOWED_DIRECTORIES });
+
+    // archive() resolves once dev-supervisor has responded 2xx and started
+    // streaming. A pre-stream failure (path validation, supervisor down)
+    // rejects here BEFORE we touch the response, so we can still send a clean
+    // JSON error.
+    const result = await workspace.files.archive({
+      dirs: [...ALLOWED_DIRECTORIES],
+      files: [...ALLOWED_CONFIG_FILES],
+      prefix: baseName,
     });
 
-    // Walk each allowlisted directory in parallel.
-    // Each tree() call is bounded by dev-supervisor's defaultMaxEntries (1000).
-    const dirResults = await Promise.all(
-      ALLOWED_DIRECTORIES.map((dir) => listDirectoryFiles(workspace, dir, id)),
-    );
-    const filePaths = [...dirResults.flat(), ...ALLOWED_CONFIG_FILES];
-
-    const nameStyle = req.query.nameStyle === 'appId' ? 'appId' : 'name';
-    const baseName = buildBaseName(id, app.name, nameStyle);
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${baseName}.zip"`);
 
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    // Each request logs exactly one terminal outcome — success, stream failure,
+    // or client disconnect — whichever fires first.
+    let settled = false;
+    const settle = (emit: () => void): void => {
+      if (settled) return;
+      settled = true;
+      emit();
+    };
 
-    let archiveError: Error | null = null;
-    archive.on('warning', (err) => {
-      logger.warn('route.apps.zip.archive.warning', {
-        appId: id,
-        code: (err as { code?: string }).code,
-        message: err.message,
-      });
+    result.stream.on('error', (err: Error) => {
+      // Failure after headers were sent — destroy the socket so the client sees
+      // a truncated transfer, not a structurally-valid (but incomplete) zip.
+      settle(() => log.error(contextLogger, 'route.apps.zip.stream.failure', err, { appId: id }));
+      res.destroy(err);
     });
-    archive.on('error', (err) => {
-      archiveError = err;
-      log.error(contextLogger, 'route.apps.zip.archive.failure', err, { appId: id });
+
+    // 'finish' fires once the whole response has been flushed to the client —
+    // the accurate success signal. The source stream's 'end' fires earlier
+    // (before the bytes are flushed) and never fires at all on a disconnect.
+    res.on('finish', () => {
+      settle(() => logger.info('route.apps.zip.success', { appId: id }));
     });
 
-    archive.pipe(res);
-
-    let appendedCount = 0;
-    let failedCount = 0;
-    await withConcurrency(filePaths, DOWNLOAD_CONCURRENCY, async (filePath) => {
-      if (archiveError) return;
-      try {
-        const result = await workspace.files.download({ path: filePath });
-        archive.append(result.data, { name: `${baseName}/${filePath}` });
-        appendedCount++;
-      } catch (err) {
-        if (isDevSupervisorNotFound(err)) return;
-        // Skip not rethrow: a rethrow bypasses archive.finalize() and
-        // res.destroy() ships a zip with no central directory.
-        failedCount++;
-        logger.warn('route.apps.zip.file.failed', {
-          appId: id,
-          filePath,
-          errorMessage: err instanceof Error ? err.message : String(err),
-        });
+    res.on('close', () => {
+      if (!res.writableFinished) {
+        // Client went away before the response finished (e.g. the browser tab
+        // closed). Release the upstream dev-supervisor connection so it doesn't
+        // drain in the background, and record it — a disconnect is neither a
+        // success nor a server error.
+        result.stream.destroy();
+        settle(() => logger.warn('route.apps.zip.aborted', { appId: id, reason: 'client_disconnected' }));
       }
     });
 
-    // Total-failure floor: skip-on-fail per file is correct, but a
-    // 0-files-succeeded "success" is misleading — fail the response.
-    if (appendedCount === 0 && failedCount > 0) {
-      throw new Error(`zip download failed: all ${failedCount} files failed to download`);
-    }
-
-    await archive.finalize();
-
-    // archive.on('error') captured into archiveError; rethrow so the outer
-    // catch destroys the response instead of cleanly ending it (which would
-    // emit HTTP 200 + a corrupt zip + a misleading success log).
-    if (archiveError) throw archiveError;
-
-    logger.info('route.apps.zip.success', {
-      appId: id,
-      size: archive.pointer(),
-      fileCount: appendedCount,
-      failedCount,
-    });
-
+    result.stream.pipe(res);
     return;
   } catch (error) {
     log.error(contextLogger, 'route.apps.zip.failure', error as Error, {
@@ -181,34 +136,9 @@ router.get('/apps/:id/zip', validateAppOwnership, requirePermission('canDownload
         details: error instanceof Error ? error.message : 'Unknown error',
       });
     }
-    // Headers already flushed — destroy the socket so the client sees a
-    // truncated transfer instead of believing the (corrupt) zip is complete.
     res.destroy(error as Error);
     return;
   }
 });
-
-async function listDirectoryFiles(
-  workspace: WorkspaceClient,
-  dir: string,
-  appId: string,
-): Promise<string[]> {
-  try {
-    const tree = await workspace.files.tree({ path: dir, recursive: true });
-    if (tree.truncated) {
-      logger.warn('route.apps.zip.tree.truncated', {
-        appId,
-        dir,
-        entryCount: tree.entries.length,
-      });
-    }
-    return tree.entries
-      .filter((e) => e.kind === 'file')
-      .map((e) => e.path);
-  } catch (err) {
-    if (isDevSupervisorNotFound(err)) return [];
-    throw err;
-  }
-}
 
 export default router;

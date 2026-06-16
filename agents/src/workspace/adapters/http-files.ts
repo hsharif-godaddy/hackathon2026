@@ -20,6 +20,8 @@ import type {
   FileUploadOptions,
   DownloadOptions,
   DownloadResult,
+  ArchiveOptions,
+  ArchiveResult,
 } from '../files.js';
 
 export class HttpFiles implements WorkspaceFiles {
@@ -88,5 +90,17 @@ export class HttpFiles implements WorkspaceFiles {
       data: response.data,
       contentType: response.contentType,
     };
+  }
+
+  async archive(options: ArchiveOptions): Promise<ArchiveResult> {
+    const { stream, contentType } = await this.client.postStream(
+      '/workspace/files/archive',
+      {
+        dirs: options.dirs ?? [],
+        files: options.files ?? [],
+        prefix: options.prefix ?? '',
+      },
+    );
+    return { stream, contentType };
   }
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bufio"
 	"bytes"
 	"context"
@@ -46,6 +47,10 @@ const (
 	wsFilesMaxMaxResults     = 1000
 
 	wsFilesMaxStatPaths = 100
+
+	// Archive backstops — not normal-path limits, just runaway/zip-bomb guards.
+	wsFilesMaxArchiveBytes   = 2 * 1024 * 1024 * 1024 // 2GB total uncompressed cap
+	wsFilesMaxArchiveEntries = 50000                  // total entry-count cap
 )
 
 // --- Shared infrastructure ---
@@ -58,6 +63,15 @@ func (s *Server) fsBaseDir() string {
 	return "/app"
 }
 
+// resolveDir returns dir with symlinks resolved, falling back to the original
+// path when resolution fails (e.g. the directory doesn't exist).
+func resolveDir(dir string) string {
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		return resolved
+	}
+	return dir
+}
+
 // isDirSafeToDescend checks if a directory is safe to recurse into
 // by resolving symlinks and verifying the target stays within the sandbox.
 func isDirSafeToDescend(absPath string, sandboxDir string) bool {
@@ -65,10 +79,7 @@ func isDirSafeToDescend(absPath string, sandboxDir string) bool {
 	if err != nil {
 		return false
 	}
-	realSandbox := sandboxDir
-	if rb, evalErr := filepath.EvalSymlinks(sandboxDir); evalErr == nil {
-		realSandbox = rb
-	}
+	realSandbox := resolveDir(sandboxDir)
 	return realPath == realSandbox || strings.HasPrefix(realPath, realSandbox+"/")
 }
 
@@ -258,6 +269,16 @@ type wsFilesStatEntry struct {
 
 type wsFilesStatResponse struct {
 	Entries []wsFilesStatEntry `json:"entries"`
+}
+
+// wsFilesArchiveRequest is a product-agnostic "zip these paths" request. The
+// caller (the agent) supplies the allowlist; dirs are walked recursively and
+// files are added if present. prefix becomes the top-level folder inside the
+// zip (e.g. "myapp/src/index.ts").
+type wsFilesArchiveRequest struct {
+	Dirs   []string `json:"dirs,omitempty"`
+	Files  []string `json:"files,omitempty"`
+	Prefix string   `json:"prefix,omitempty"`
 }
 
 // --- Middleware ---
@@ -584,6 +605,10 @@ func (s *Server) handleWorkspaceFilesView(w http.ResponseWriter, r *http.Request
 	info, err := os.Stat(resolved)
 	if err != nil {
 		s.sendWsFilesError(w, "workspace.files.view", req.Path, err)
+		return
+	}
+	if info.IsDir() {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", "path is a directory")
 		return
 	}
 	if info.Size() > wsFilesMaxReadBytes {
@@ -1264,6 +1289,206 @@ func (s *Server) handleWorkspaceFilesDownload(w http.ResponseWriter, r *http.Req
 	if _, err := io.Copy(w, f); err != nil {
 		slog.Error("workspace.files.download.stream_failed", "path", path, "error", err)
 	}
+}
+
+// handleWorkspaceFilesArchive streams a zip of the requested dirs/files built
+// directly from the workspace filesystem. It writes the zip to the response as
+// it walks (O(1) memory) and applies NO per-file size cap — unlike view/download,
+// which cap at wsFilesMaxReadBytes.
+//
+// Failure model:
+//   - A file that fails to OPEN is logged and skipped (no bytes written for it),
+//     so one unreadable file does not abort the whole archive.
+//   - If EVERY matched file fails to open (zero entries written, but failures
+//     occurred), nothing has been flushed yet, so we return a clean JSON error
+//     instead of a misleading 200 + empty zip (the "total-failure floor").
+//   - A failure AFTER an entry's bytes have started streaming (Create/Copy error,
+//     or a final Close error) is unrecoverable — the status line is already sent —
+//     so we panic(http.ErrAbortHandler) to abort the connection. The client sees a
+//     truncated transfer, never a clean 200 wrapping a corrupt zip.
+func (s *Server) handleWorkspaceFilesArchive(w http.ResponseWriter, r *http.Request) {
+	var req wsFilesArchiveRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.sendError(w, http.StatusBadRequest, "invalid_request", "Invalid JSON payload")
+		return
+	}
+	if len(req.Dirs) == 0 && len(req.Files) == 0 {
+		s.sendError(w, http.StatusBadRequest, "validation_failed", "dirs or files is required")
+		return
+	}
+
+	base := s.fsBaseDir()
+	// ValidateFilePath returns symlink-resolved absolute paths; rebasing entry
+	// names against the unresolved base would inject ".." on a symlinked base
+	// (macOS /var, a symlinked prod /app), so resolve the base too.
+	resolvedBase := resolveDir(base)
+
+	resolvedDirs := make([]string, 0, len(req.Dirs))
+	for _, d := range req.Dirs {
+		resolved, err := validation.ValidateFilePath(d, base)
+		if err != nil {
+			s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
+			return
+		}
+		resolvedDirs = append(resolvedDirs, resolved)
+	}
+	resolvedFiles := make([]string, 0, len(req.Files))
+	for _, f := range req.Files {
+		resolved, err := validation.ValidateFilePath(f, base)
+		if err != nil {
+			s.sendError(w, http.StatusBadRequest, "validation_failed", err.Error())
+			return
+		}
+		resolvedFiles = append(resolvedFiles, resolved)
+	}
+
+	ab := &wsArchiveBuilder{
+		w:            w,
+		resolvedBase: resolvedBase,
+		prefix:       strings.Trim(req.Prefix, "/"),
+	}
+
+	for _, dirAbs := range resolvedDirs {
+		if ab.limitHit {
+			break
+		}
+		_ = filepath.WalkDir(dirAbs, ab.walkFunc)
+	}
+	for _, fileAbs := range resolvedFiles {
+		if ab.limitHit {
+			break
+		}
+		info, err := os.Lstat(fileAbs)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		ab.addFile(fileAbs)
+	}
+
+	// Total-failure floor: every matched file failed to open. Nothing flushed yet
+	// (zw is nil), so return a clean error rather than a misleading 200 + empty zip.
+	if ab.zw == nil {
+		if ab.failedCount > 0 {
+			slog.Error("workspace.files.archive.all_failed",
+				"entry_count", ab.entryCount, "failed_count", ab.failedCount, "total_bytes", ab.totalBytes)
+			s.sendError(w, http.StatusInternalServerError, "archive_failed",
+				fmt.Sprintf("all %d files failed to read", ab.failedCount))
+			return
+		}
+		// Nothing matched at all — emit a valid empty zip (200).
+		ab.ensureWriter()
+	}
+
+	if err := ab.zw.Close(); err != nil {
+		slog.Error("workspace.files.archive.close_failed", "error", err.Error(),
+			"entry_count", ab.entryCount, "failed_count", ab.failedCount, "total_bytes", ab.totalBytes)
+		panic(http.ErrAbortHandler)
+	}
+
+	if ab.limitHit {
+		slog.Warn("workspace.files.archive.limit_hit",
+			"entry_count", ab.entryCount, "total_bytes", ab.totalBytes)
+	}
+	slog.Info("workspace.files.archive.success",
+		"entry_count", ab.entryCount, "failed_count", ab.failedCount, "total_bytes", ab.totalBytes)
+}
+
+// wsArchiveBuilder holds the mutable state for a single streamed-zip response.
+// Its methods are extracted from handleWorkspaceFilesArchive so the handler
+// stays under the gocyclo limit; behavior is identical to the inlined closures.
+type wsArchiveBuilder struct {
+	w            http.ResponseWriter
+	resolvedBase string
+	prefix       string
+
+	zw          *zip.Writer
+	entryCount  int
+	totalBytes  int64
+	failedCount int
+	limitHit    bool
+}
+
+// ensureWriter lazily commits the response to a streamed zip. Called only once
+// at least one file has been opened successfully, so a walk that opens zero
+// files leaves the response un-flushed and can still return JSON.
+func (ab *wsArchiveBuilder) ensureWriter() {
+	if ab.zw == nil {
+		ab.w.Header().Set("Content-Type", "application/zip")
+		ab.zw = zip.NewWriter(ab.w)
+	}
+}
+
+// recordSkip logs and counts a file that could not be opened. The walk
+// continues — one unreadable file must not abort the whole archive.
+func (ab *wsArchiveBuilder) recordSkip(absPath string, err error) {
+	ab.failedCount++
+	slog.Warn("workspace.files.archive.file.failed", "path", absPath, "error", err.Error())
+}
+
+// addFile opens absPath and streams it into the zip under prefix/<rel>. An open
+// failure is logged, counted, and skipped. A failure AFTER the entry's bytes
+// have started streaming (Create/Copy) is unrecoverable — the status line is
+// already sent — so it panics with http.ErrAbortHandler to abort the connection
+// rather than deliver a clean 200 wrapping a corrupt zip.
+func (ab *wsArchiveBuilder) addFile(absPath string) {
+	if ab.entryCount >= wsFilesMaxArchiveEntries || ab.totalBytes >= wsFilesMaxArchiveBytes {
+		ab.limitHit = true
+		return
+	}
+
+	rel, err := filepath.Rel(ab.resolvedBase, absPath)
+	if err != nil {
+		ab.recordSkip(absPath, err)
+		return
+	}
+	f, err := os.Open(absPath)
+	if err != nil {
+		ab.recordSkip(absPath, err)
+		return
+	}
+	defer f.Close()
+
+	name := rel
+	if ab.prefix != "" {
+		name = ab.prefix + "/" + rel
+	}
+
+	ab.ensureWriter() // first successful open commits us to a 200 + zip stream
+
+	entry, err := ab.zw.Create(name)
+	if err != nil {
+		slog.Error("workspace.files.archive.entry_failed", "path", absPath, "error", err.Error(),
+			"entry_count", ab.entryCount, "failed_count", ab.failedCount, "total_bytes", ab.totalBytes)
+		panic(http.ErrAbortHandler)
+	}
+	n, err := io.Copy(entry, f)
+	if err != nil {
+		slog.Error("workspace.files.archive.copy_failed", "path", absPath, "error", err.Error(),
+			"entry_count", ab.entryCount, "failed_count", ab.failedCount, "total_bytes", ab.totalBytes)
+		panic(http.ErrAbortHandler)
+	}
+	ab.entryCount++
+	ab.totalBytes += n
+}
+
+// walkFunc is a filepath.WalkDir callback that adds regular files to the
+// archive, skipping directories, symlinks, and special files.
+func (ab *wsArchiveBuilder) walkFunc(p string, d fs.DirEntry, err error) error {
+	if ab.limitHit {
+		return filepath.SkipAll
+	}
+	if err != nil {
+		slog.Debug("workspace.files.archive.walk.skip", "path", p, "error", err.Error())
+		if d != nil && d.IsDir() {
+			return filepath.SkipDir
+		}
+		return nil
+	}
+	if d.IsDir() || d.Type()&fs.ModeSymlink != 0 || !d.Type().IsRegular() {
+		return nil
+	}
+	ab.addFile(p)
+	return nil
 }
 
 // wsFilesUploadMiddleware limits binary upload body size separately from JSON endpoints.

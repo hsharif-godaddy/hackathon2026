@@ -1114,9 +1114,13 @@ export class DevSupervisorClient {
     method: string,
     requestPath: string,
     headers?: Record<string, string>,
+    body?: string,
   ): Promise<{ stream: http.IncomingMessage; contentType: string; contentLength: number }> {
     return new Promise((resolve, reject) => {
       const reqHeaders: Record<string, string> = { ...headers };
+      if (body !== undefined) {
+        reqHeaders['Content-Length'] = String(Buffer.byteLength(body));
+      }
 
       let options: http.RequestOptions;
 
@@ -1180,8 +1184,30 @@ export class DevSupervisorClient {
         req.destroy(new Error(`Request timeout after ${timeout}ms: ${method} ${requestPath}`));
       }, timeout);
 
+      if (body !== undefined) {
+        req.write(body);
+      }
       req.end();
     });
+  }
+
+  /**
+   * POST a JSON body and return the response stream directly (no buffering).
+   * For endpoints whose response is large and should be piped to an HTTP
+   * response — e.g. /workspace/files/archive streams a zip. Non-2xx responses
+   * reject with a DevSupervisorError (error body consumed and parsed), so a
+   * pre-stream failure surfaces before any bytes are piped.
+   */
+  async postStream(
+    requestPath: string,
+    data: unknown,
+  ): Promise<{ stream: http.IncomingMessage; contentType: string; contentLength: number }> {
+    return this.requestStream(
+      'POST',
+      requestPath,
+      { 'Content-Type': 'application/json', Accept: 'application/zip' },
+      JSON.stringify(data ?? {}),
+    );
   }
 
   /**

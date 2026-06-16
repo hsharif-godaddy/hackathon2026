@@ -1,10 +1,12 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -101,6 +103,16 @@ func TestWorkspaceFilesView_PathTraversal(t *testing.T) {
 	w := postJSON(t, server.handleWorkspaceFilesView, map[string]any{"path": "../../../etc/passwd"})
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for path traversal, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestWorkspaceFilesView_Directory(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	os.MkdirAll(filepath.Join(dir, "subdir"), 0o755)
+
+	w := postJSON(t, server.handleWorkspaceFilesView, map[string]any{"path": "subdir"})
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for a directory path, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -1175,5 +1187,210 @@ func TestWorkspaceFilesStat_TooManyPaths(t *testing.T) {
 	w := postJSON(t, server.handleWorkspaceFilesStat, map[string]any{"paths": paths})
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for too many paths, got %d", w.Code)
+	}
+}
+
+// --- Archive tests ---
+
+// readZipFromRecorder parses the recorder body as a zip and returns a map of
+// entry name -> uncompressed bytes.
+func readZipFromRecorder(t *testing.T, w *httptest.ResponseRecorder) map[string][]byte {
+	t.Helper()
+	body := w.Body.Bytes()
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("body is not a valid zip (%v); status=%d body=%d bytes", err, w.Code, len(body))
+	}
+	out := map[string][]byte{}
+	for _, f := range zr.File {
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatalf("open zip entry %s: %v", f.Name, err)
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatalf("read zip entry %s: %v", f.Name, err)
+		}
+		out[f.Name] = data
+	}
+	return out
+}
+
+func TestWorkspaceFilesArchive_Basic(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	os.MkdirAll(filepath.Join(dir, "src", "components"), 0o755)
+	os.WriteFile(filepath.Join(dir, "src", "index.ts"), []byte("export {}\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "src", "components", "Foo.tsx"), []byte("export const Foo = () => null\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "package.json"), []byte("{}\n"), 0o644)
+
+	w := postJSON(t, server.handleWorkspaceFilesArchive, map[string]any{
+		"dirs":   []string{"src"},
+		"files":  []string{"package.json", "missing-config.json"},
+		"prefix": "myapp",
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/zip" {
+		t.Errorf("expected application/zip, got %q", ct)
+	}
+
+	entries := readZipFromRecorder(t, w)
+	want := []string{
+		"myapp/src/index.ts",
+		"myapp/src/components/Foo.tsx",
+		"myapp/package.json",
+	}
+	for _, name := range want {
+		if _, ok := entries[name]; !ok {
+			t.Errorf("missing zip entry %q; got %v", name, keysOf(entries))
+		}
+	}
+	// Missing config file is skipped silently, not an error.
+	if _, ok := entries["myapp/missing-config.json"]; ok {
+		t.Error("missing-config.json should be skipped")
+	}
+	if got := string(entries["myapp/src/index.ts"]); got != "export {}\n" {
+		t.Errorf("content mismatch for src/index.ts: %q", got)
+	}
+}
+
+func keysOf(m map[string][]byte) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+func TestWorkspaceFilesArchive_PathTraversalRejected(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+	w := postJSON(t, server.handleWorkspaceFilesArchive, map[string]any{
+		"dirs": []string{"../../../etc"},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for traversal, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestWorkspaceFilesArchive_EmptyRequest(t *testing.T) {
+	server, _ := newTestServerWithDir(t)
+	w := postJSON(t, server.handleWorkspaceFilesArchive, map[string]any{})
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for empty request, got %d", w.Code)
+	}
+}
+
+func TestWorkspaceFilesArchive_NoSizeCap(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	os.MkdirAll(filepath.Join(dir, "public"), 0o755)
+	// 15MB file — would 413 on view/download, must be included here.
+	big := make([]byte, 15*1024*1024)
+	os.WriteFile(filepath.Join(dir, "public", "big.bin"), big, 0o644)
+
+	w := postJSON(t, server.handleWorkspaceFilesArchive, map[string]any{
+		"dirs":   []string{"public"},
+		"prefix": "app",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	entries := readZipFromRecorder(t, w)
+	if got := len(entries["app/public/big.bin"]); got != 15*1024*1024 {
+		t.Errorf("expected 15MB entry, got %d bytes", got)
+	}
+}
+
+func TestWorkspaceFilesArchive_SkipsSymlinks(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	os.MkdirAll(filepath.Join(dir, "src"), 0o755)
+	os.WriteFile(filepath.Join(dir, "src", "real.ts"), []byte("ok\n"), 0o644)
+	// Symlink pointing outside the sandbox must not be followed into the zip.
+	os.Symlink("/etc/hostname", filepath.Join(dir, "src", "escape.ts"))
+
+	w := postJSON(t, server.handleWorkspaceFilesArchive, map[string]any{
+		"dirs":   []string{"src"},
+		"prefix": "app",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	entries := readZipFromRecorder(t, w)
+	if _, ok := entries["app/src/real.ts"]; !ok {
+		t.Error("expected real.ts in archive")
+	}
+	if _, ok := entries["app/src/escape.ts"]; ok {
+		t.Error("symlink escape.ts must be skipped, not followed")
+	}
+}
+
+func TestWorkspaceFilesArchive_SkipsUnreadableFile(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	os.MkdirAll(filepath.Join(dir, "src"), 0o755)
+	os.WriteFile(filepath.Join(dir, "src", "ok.ts"), []byte("ok\n"), 0o644)
+	// 0o000 → owner lacks read bit; os.Open returns EACCES for a non-root user
+	// (CI + local run as a non-root host user), exercising the skip-and-finalize
+	// path. The rest of the archive must still produce a valid zip.
+	unreadable := filepath.Join(dir, "src", "secret.ts")
+	os.WriteFile(unreadable, []byte("nope\n"), 0o000)
+	t.Cleanup(func() { os.Chmod(unreadable, 0o644) }) // so t.TempDir cleanup can remove it
+
+	w := postJSON(t, server.handleWorkspaceFilesArchive, map[string]any{
+		"dirs":   []string{"src"},
+		"prefix": "app",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	// Body must still parse as a valid zip (central directory written) with the
+	// readable file present and the unreadable one skipped.
+	entries := readZipFromRecorder(t, w)
+	if _, ok := entries["app/src/ok.ts"]; !ok {
+		t.Error("expected ok.ts in archive")
+	}
+	if _, ok := entries["app/src/secret.ts"]; ok {
+		t.Error("unreadable secret.ts must be skipped, not included")
+	}
+}
+
+func TestWorkspaceFilesArchive_AllFilesFailReturns500(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	os.MkdirAll(filepath.Join(dir, "src"), 0o755)
+	// The only matched file is unreadable (0o000) → every open fails → total-failure
+	// floor: a clean 500, not a 200 + empty zip.
+	unreadable := filepath.Join(dir, "src", "secret.ts")
+	os.WriteFile(unreadable, []byte("nope\n"), 0o000)
+	t.Cleanup(func() { os.Chmod(unreadable, 0o644) })
+
+	w := postJSON(t, server.handleWorkspaceFilesArchive, map[string]any{
+		"dirs":   []string{"src"},
+		"prefix": "app",
+	})
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when all files fail, got %d: %s", w.Code, w.Body.String())
+	}
+	// Body must be a JSON error, not zip bytes.
+	if ct := w.Header().Get("Content-Type"); ct == "application/zip" {
+		t.Errorf("expected JSON error content-type, got application/zip")
+	}
+}
+
+func TestWorkspaceFilesArchive_EmptyButValidZip(t *testing.T) {
+	server, dir := newTestServerWithDir(t)
+	os.MkdirAll(filepath.Join(dir, "src"), 0o755) // empty dir, no files matched, no failures
+
+	w := postJSON(t, server.handleWorkspaceFilesArchive, map[string]any{
+		"dirs":   []string{"src"},
+		"prefix": "app",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for empty-but-valid archive, got %d: %s", w.Code, w.Body.String())
+	}
+	// Must still be a structurally valid (empty) zip.
+	entries := readZipFromRecorder(t, w)
+	if len(entries) != 0 {
+		t.Errorf("expected 0 entries, got %d", len(entries))
 	}
 }

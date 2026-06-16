@@ -4,8 +4,7 @@
  * Tests JWT-based authorization and archive error handling for app download operations
  */
 
-import { EventEmitter } from 'node:events';
-import { PassThrough } from 'node:stream';
+import { Readable } from 'node:stream';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
@@ -14,7 +13,6 @@ import type { AuthenticatedRequest } from '../middleware/jwt-auth.js';
 
 // Mock dependencies BEFORE imports
 const mockFindById = vi.fn();
-const mockArchiverFn = vi.fn();
 const mockCreateForWorkspace = vi.fn();
 
 vi.mock('../../database/index.js', () => ({
@@ -47,10 +45,6 @@ vi.mock('../../logging/index.js', () => ({
 vi.mock('../../config/app-download.js', () => ({
   ALLOWED_DIRECTORIES: ['src', 'public'],
   ALLOWED_CONFIG_FILES: ['package.json', '.env.example']
-}));
-
-vi.mock('archiver', () => ({
-  default: mockArchiverFn,
 }));
 
 // Import after mocks
@@ -331,7 +325,6 @@ describe('Download Route Authorization', () => {
 
 describe('Archive Workspace Integration', () => {
   let app: Express;
-  let mockArchive: EventEmitter & Record<string, any>;
   const appId = 'klmnopqrst';
 
   function createPermittedApp(): Express {
@@ -344,364 +337,102 @@ describe('Archive Workspace Integration', () => {
         canPublish: false,
         isE2S: false,
         exp: Math.floor(Date.now() / 1000) + 3600,
-        iat: Math.floor(Date.now() / 1000)
-      };
+        iat: Math.floor(Date.now() / 1000),
+      } as any;
       next();
     });
     testApp.use('/', downloadRouter);
     return testApp;
   }
 
-  function makeArchive() {
-    const archive: any = Object.assign(new EventEmitter(), {
-      pipe: vi.fn(function pipeImpl(this: PassThrough, target: any) {
-        // Default: emit a tiny payload and end the response stream so
-        // supertest sees a finished response.
-        process.nextTick(() => {
-          target.write(Buffer.from('zip'));
-          target.end();
-        });
-      }),
-      append: vi.fn(),
-      finalize: vi.fn().mockResolvedValue(undefined),
-      pointer: vi.fn(function () { return 1234; }),
+  // A workspace whose archive() returns a Readable of the given bytes. Captures
+  // the options it was called with for assertions.
+  function streamingWorkspace(zipBytes: Buffer) {
+    const calls: Array<Record<string, unknown>> = [];
+    const archive = vi.fn(async (options: Record<string, unknown>) => {
+      calls.push(options);
+      return { stream: Readable.from([zipBytes]), contentType: 'application/zip' };
     });
-    return archive;
+    return { files: { archive }, calls };
   }
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    mockArchive = makeArchive();
-    mockArchiverFn.mockReturnValue(mockArchive);
-
     mockFindById.mockReturnValue({
       id: appId,
       name: 'Test App',
       path: `/tmp/apps/${appId}/app`,
     });
-
     app = createPermittedApp();
   });
 
   it('returns 503 when workspace is unavailable', async () => {
     mockCreateForWorkspace.mockReturnValue(null);
 
-    const response = await request(app)
-      .get(`/apps/${appId}/zip`)
-      .expect(503);
-
+    const response = await request(app).get(`/apps/${appId}/zip`).expect(503);
     expect(response.body.error).toBe('App workspace is not available');
   });
 
-  /**
-   * Build a strict, Map-keyed workspace mock so unknown paths reject. Encodes
-   * dev-supervisor's contract: tree returns workspace-rooted entries (the
-   * request `path` is already joined in); download paths are workspace-root
-   * relative. Both flow through unchanged.
-   */
-  function strictWorkspace(opts: {
-    tree?: Record<string, Array<{ path: string; kind: 'file' | 'directory' }>>;
-    files?: Record<string, Buffer | Error>;
-  }) {
-    const treeMap = new Map(Object.entries(opts.tree ?? {}));
-    const fileMap = new Map(Object.entries(opts.files ?? {}));
-
-    const tree = vi.fn(async function ({ path }: { path: string }) {
-      const entries = treeMap.get(path);
-      if (!entries) {
-        const err: any = new (await import('../../services/DevSupervisorClient.js')).DevSupervisorError('not_found', 404, `${path}: not found`);
-        throw err;
-      }
-      return { entries: entries.map((e) => ({ ...e, size: 1, modifiedAt: '' })), truncated: false };
-    });
-
-    const download = vi.fn(async function ({ path }: { path: string }) {
-      const data = fileMap.get(path);
-      if (data instanceof Error) throw data;
-      if (!data) {
-        const err: any = new (await import('../../services/DevSupervisorClient.js')).DevSupervisorError('not_found', 404, `${path}: not found`);
-        throw err;
-      }
-      return { data, contentType: 'application/octet-stream' };
-    });
-
-    return { tree, download };
-  }
-
-  it('streams a zip archive built from workspace files', async () => {
-    const ws = strictWorkspace({
-      tree: {
-        src: [
-          { path: 'src/index.ts', kind: 'file' },
-          { path: 'src/components/Foo.tsx', kind: 'file' },
-        ],
-        public: [{ path: 'public/logo.png', kind: 'file' }],
-      },
-      files: {
-        'src/index.ts': Buffer.from('export {}'),
-        'src/components/Foo.tsx': Buffer.from('export const Foo = () => null'),
-        'public/logo.png': Buffer.from('PNG'),
-        'package.json': Buffer.from('{}'),
-      },
-    });
-    mockCreateForWorkspace.mockReturnValue({ files: ws });
+  it('pipes the archive stream through with zip headers and the allowlist', async () => {
+    const ws = streamingWorkspace(Buffer.from('PK\x03\x04 fake-zip-bytes'));
+    mockCreateForWorkspace.mockReturnValue(ws);
 
     const response = await request(app)
       .get(`/apps/${appId}/zip?nameStyle=appId`)
-      .buffer(true);
+      .buffer(true)
+      .parse((res, cb) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c) => chunks.push(c as Buffer));
+        res.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
 
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toBe('application/zip');
-    expect(ws.tree).toHaveBeenCalledWith({ path: 'src', recursive: true });
-    expect(ws.tree).toHaveBeenCalledWith({ path: 'public', recursive: true });
-
-    // Tree entries flow straight through to download with no transformation.
-    const downloadedPaths = ws.download.mock.calls.map((c) => c[0].path);
-    expect(downloadedPaths).toEqual(
-      expect.arrayContaining([
-        'src/index.ts',
-        'src/components/Foo.tsx',
-        'public/logo.png',
-        'package.json',
-      ]),
-    );
-    // Pin the bug shape directly: a re-added `${dir}/` re-prefix would emit
-    // the bare entry path alongside the workspace-rooted one. arrayContaining
-    // wouldn't catch that, so assert the bare forms never reach download.
-    expect(downloadedPaths).not.toContain('index.ts');
-    expect(downloadedPaths).not.toContain('components/Foo.tsx');
-    expect(downloadedPaths).not.toContain('logo.png');
-
-    // Filename + in-zip folder share `appId_<id>_<friendlyName>` so unzipping
-    // in ~/Downloads creates a single labeled folder rather than dumping files.
-    const baseName = `appId_${appId}_Test_App`;
     expect(response.headers['content-disposition']).toBe(
-      `attachment; filename="${baseName}.zip"`,
+      'attachment; filename="appId_klmnopqrst_Test_App.zip"',
     );
-    const archiveEntryNames = mockArchive.append.mock.calls.map((c: any) => c[1].name);
-    expect(archiveEntryNames).toEqual(
-      expect.arrayContaining([
-        `${baseName}/src/index.ts`,
-        `${baseName}/src/components/Foo.tsx`,
-        `${baseName}/public/logo.png`,
-        `${baseName}/package.json`,
-      ]),
-    );
-    // Pin the regression: any entry without the prefix would dump that file
-    // to the unzip target directory.
-    expect(archiveEntryNames).not.toContain('src/index.ts');
-    expect(archiveEntryNames).not.toContain('package.json');
-
-    expect(mockArchive.finalize).toHaveBeenCalled();
-  });
-
-  describe('nameStyle=appId (debug-console / internal)', () => {
-    it('falls back to `appId_<id>` when app.name is missing', async () => {
-      mockFindById.mockReturnValue({
-        id: appId,
-        name: '',
-        path: `/tmp/apps/${appId}/app`,
-      });
-      const ws = strictWorkspace({
-        tree: { src: [], public: [] },
-        files: { 'package.json': Buffer.from('{}') },
-      });
-      mockCreateForWorkspace.mockReturnValue({ files: ws });
-
-      const response = await request(app)
-        .get(`/apps/${appId}/zip?nameStyle=appId`)
-        .buffer(true);
-
-      expect(response.status).toBe(200);
-      const baseName = `appId_${appId}`;
-      expect(response.headers['content-disposition']).toBe(
-        `attachment; filename="${baseName}.zip"`,
-      );
-      const archiveEntryNames = mockArchive.append.mock.calls.map((c: any) => c[1].name);
-      expect(archiveEntryNames).toContain(`${baseName}/package.json`);
-    });
-
-    it('sanitizes punctuation and whitespace in app.name into `_`', async () => {
-      mockFindById.mockReturnValue({
-        id: appId,
-        name: "  My App: v2.0!  ",
-        path: `/tmp/apps/${appId}/app`,
-      });
-      const ws = strictWorkspace({
-        tree: { src: [], public: [] },
-        files: { 'package.json': Buffer.from('{}') },
-      });
-      mockCreateForWorkspace.mockReturnValue({ files: ws });
-
-      const response = await request(app)
-        .get(`/apps/${appId}/zip?nameStyle=appId`)
-        .buffer(true);
-
-      expect(response.status).toBe(200);
-      // Runs of non-alphanumeric chars collapse to a single `_`; leading/trailing
-      // underscores are trimmed. ":" between "App" and "v2" becomes one `_`.
-      const baseName = `appId_${appId}_My_App_v2_0`;
-      expect(response.headers['content-disposition']).toBe(
-        `attachment; filename="${baseName}.zip"`,
-      );
-      const archiveEntryNames = mockArchive.append.mock.calls.map((c: any) => c[1].name);
-      expect(archiveEntryNames).toContain(`${baseName}/package.json`);
+    // Bytes arrive intact (proxy is byte-faithful).
+    expect((response.body as Buffer).toString()).toBe('PK\x03\x04 fake-zip-bytes');
+    // The route passes the allowlist + baseName prefix straight through.
+    expect(ws.calls[0]).toEqual({
+      dirs: ['src', 'public'],
+      files: ['package.json', '.env.example'],
+      prefix: 'appId_klmnopqrst_Test_App',
     });
   });
 
-  describe('nameStyle=name (default; customer-facing)', () => {
-    // Default style omits the internal `appId_<id>_` prefix so customers see
-    // a download named after their app, not its internal id.
-    it('uses the sanitized friendly name with no appId prefix', async () => {
-      const ws = strictWorkspace({
-        tree: { src: [], public: [] },
-        files: { 'package.json': Buffer.from('{}') },
-      });
-      mockCreateForWorkspace.mockReturnValue({ files: ws });
-
-      const response = await request(app).get(`/apps/${appId}/zip`).buffer(true);
-
-      expect(response.status).toBe(200);
-      const baseName = 'Test_App';
-      expect(response.headers['content-disposition']).toBe(
-        `attachment; filename="${baseName}.zip"`,
-      );
-      const archiveEntryNames = mockArchive.append.mock.calls.map((c: any) => c[1].name);
-      expect(archiveEntryNames).toContain(`${baseName}/package.json`);
-    });
-
-    it('falls back to `app-<id>` when app.name is missing', async () => {
-      mockFindById.mockReturnValue({
-        id: appId,
-        name: '',
-        path: `/tmp/apps/${appId}/app`,
-      });
-      const ws = strictWorkspace({
-        tree: { src: [], public: [] },
-        files: { 'package.json': Buffer.from('{}') },
-      });
-      mockCreateForWorkspace.mockReturnValue({ files: ws });
-
-      const response = await request(app).get(`/apps/${appId}/zip`).buffer(true);
-
-      expect(response.status).toBe(200);
-      const baseName = `app-${appId}`;
-      expect(response.headers['content-disposition']).toBe(
-        `attachment; filename="${baseName}.zip"`,
-      );
-      const archiveEntryNames = mockArchive.append.mock.calls.map((c: any) => c[1].name);
-      expect(archiveEntryNames).toContain(`${baseName}/package.json`);
-    });
-
-    it('treats unrecognized nameStyle values as default', async () => {
-      const ws = strictWorkspace({
-        tree: { src: [], public: [] },
-        files: { 'package.json': Buffer.from('{}') },
-      });
-      mockCreateForWorkspace.mockReturnValue({ files: ws });
-
-      const response = await request(app)
-        .get(`/apps/${appId}/zip?nameStyle=bogus`)
-        .buffer(true);
-
-      expect(response.status).toBe(200);
-      // 'bogus' is not 'appId', so we fall back to the default `name` style.
-      // This is the safe failure mode: a typo in a caller's query never leaks
-      // the internal id-prefixed name to a customer-facing client.
-      expect(response.headers['content-disposition']).toBe(
-        'attachment; filename="Test_App.zip"',
-      );
-    });
-  });
-
-  it('returns 500 when workspace.tree throws unexpectedly', async () => {
-    const treeMock = vi.fn().mockRejectedValue(new Error('upstream boom'));
-    const downloadMock = vi.fn();
-    mockCreateForWorkspace.mockReturnValue({
-      files: { tree: treeMock, download: downloadMock },
-    });
-
-    const response = await request(app)
-      .get(`/apps/${appId}/zip`)
-      .expect(500);
-
-    expect(response.body.error).toBe('Failed to create zip archive');
-  });
-
-  it('skips a single failing file and completes the archive instead of destroying the response', async () => {
-    // The previous incarnation of this test pinned the OLD behavior — that a
-    // single download failure caused res.destroy() and a corrupt zip on the
-    // client. That fragility was a real prod bug (one bad file = client gets
-    // a structurally invalid zip with no central directory). The fix logs the
-    // failure and lets the archive finalize cleanly, so the user gets a
-    // valid zip with the surviving files. See download.archive.test.ts for
-    // the real-archiver counterpart that asserts the resulting zip parses.
-    const ws = strictWorkspace({
-      tree: {
-        src: [
-          { path: 'src/index.ts', kind: 'file' },
-          { path: 'src/broken.ts', kind: 'file' },
-        ],
-        public: [],
-      },
-      files: {
-        'src/index.ts': Buffer.from('export {}'),
-        'src/broken.ts': new Error('disk read failure'),
-        'package.json': Buffer.from('{}'),
-      },
-    });
-    mockCreateForWorkspace.mockReturnValue({ files: ws });
-
-    let destroyedWith: Error | undefined;
-    mockArchive.pipe.mockImplementation(function pipeImpl(target: any) {
-      const origDestroy = target.destroy?.bind(target);
-      target.destroy = (err?: Error) => {
-        if (err) destroyedWith = err;
-        if (origDestroy) origDestroy(err);
-      };
-      process.nextTick(() => {
-        target.write(Buffer.from('zip'));
-        target.end();
-      });
-    });
+  it('uses the customer-facing name (no appId prefix) by default', async () => {
+    const ws = streamingWorkspace(Buffer.from('PK'));
+    mockCreateForWorkspace.mockReturnValue(ws);
 
     const response = await request(app).get(`/apps/${appId}/zip`).buffer(true);
 
     expect(response.status).toBe(200);
-    expect(destroyedWith).toBeUndefined();
-    expect(mockArchive.finalize).toHaveBeenCalled();
-
-    const archiveEntryNames = mockArchive.append.mock.calls.map((c: any) => c[1].name);
-    expect(archiveEntryNames).toContain('Test_App/src/index.ts');
-    expect(archiveEntryNames).toContain('Test_App/package.json');
-    expect(archiveEntryNames).not.toContain('Test_App/src/broken.ts');
+    expect(response.headers['content-disposition']).toBe(
+      'attachment; filename="Test_App.zip"',
+    );
+    expect(ws.calls[0].prefix).toBe('Test_App');
   });
 
-  it('rethrows archive errors after finalize so success is not logged on a poisoned archive', async () => {
-    const ws = strictWorkspace({
-      tree: { src: [], public: [] },
-      files: { 'package.json': Buffer.from('{}') },
-    });
-    mockCreateForWorkspace.mockReturnValue({ files: ws });
+  it('falls back to app-<id> when name is empty (default style)', async () => {
+    mockFindById.mockReturnValue({ id: appId, name: '', path: `/tmp/apps/${appId}/app` });
+    const ws = streamingWorkspace(Buffer.from('PK'));
+    mockCreateForWorkspace.mockReturnValue(ws);
 
-    let destroyedWith: Error | undefined;
-    mockArchive.pipe.mockImplementation(function pipeImpl(target: any) {
-      const origDestroy = target.destroy?.bind(target);
-      target.destroy = (err?: Error) => {
-        if (err) destroyedWith = err;
-        if (origDestroy) origDestroy(err);
-      };
-      target.write(Buffer.from('zip-header'));
-    });
+    const response = await request(app).get(`/apps/${appId}/zip`).buffer(true);
 
-    mockArchive.finalize.mockImplementation(async function () {
-      mockArchive.emit('error', new Error('zip corruption'));
-    });
+    expect(response.status).toBe(200);
+    expect(response.headers['content-disposition']).toBe(
+      `attachment; filename="app-${appId}.zip"`,
+    );
+  });
 
-    await request(app).get(`/apps/${appId}/zip`).buffer(true).catch(() => undefined);
+  it('returns 500 when archive() rejects before streaming', async () => {
+    const archive = vi.fn().mockRejectedValue(new Error('supervisor down'));
+    mockCreateForWorkspace.mockReturnValue({ files: { archive } });
 
-    expect(destroyedWith).toBeInstanceOf(Error);
-    expect(destroyedWith?.message).toBe('zip corruption');
+    const response = await request(app).get(`/apps/${appId}/zip`).expect(500);
+    expect(response.body.error).toBe('Failed to create zip archive');
   });
 });
+
