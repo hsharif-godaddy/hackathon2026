@@ -126,6 +126,97 @@ func TestLoad_EmptyKeyIDFile(t *testing.T) {
 	assert.Contains(t, err.Error(), "empty")
 }
 
+func TestLoad_PrefersMountWhenPresent(t *testing.T) {
+	allocMat := testkeys.Generate(t)
+	mountMat := testkeys.Generate(t)
+
+	t.Setenv(envKeyPath, allocMat.KeyPath)
+	t.Setenv(envCertPath, allocMat.CertPath)
+	t.Setenv(envKeyIDPath, allocMat.KeyIDPath)
+	t.Setenv(envMountKeyPath, mountMat.KeyPath)
+	t.Setenv(envMountCertPath, mountMat.CertPath)
+	t.Setenv(envMountKeyIDPath, mountMat.KeyIDPath)
+
+	s, err := Load()
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	assert.Equal(t, mountMat.KeyID, s.KeyID(), "mount material wins when fully present")
+	assert.NotEqual(t, allocMat.KeyID, mountMat.KeyID, "fixtures must differ for the assertion to mean anything")
+}
+
+func TestLoad_FallsBackToAllocWhenMountFileMissing(t *testing.T) {
+	allocMat := testkeys.Generate(t)
+
+	t.Setenv(envKeyPath, allocMat.KeyPath)
+	t.Setenv(envCertPath, allocMat.CertPath)
+	t.Setenv(envKeyIDPath, allocMat.KeyIDPath)
+	// Mount env vars set, but the files don't exist on disk.
+	missingDir := t.TempDir()
+	t.Setenv(envMountKeyPath, filepath.Join(missingDir, "key.pem"))
+	t.Setenv(envMountCertPath, filepath.Join(missingDir, "cert.pem"))
+	t.Setenv(envMountKeyIDPath, filepath.Join(missingDir, "key-id"))
+
+	s, err := Load()
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	assert.Equal(t, allocMat.KeyID, s.KeyID(), "falls back to alloc when mount files are absent")
+}
+
+func TestLoad_FallsBackToAllocWhenMountPartiallyConfigured(t *testing.T) {
+	allocMat := testkeys.Generate(t)
+	mountMat := testkeys.Generate(t)
+
+	t.Setenv(envKeyPath, allocMat.KeyPath)
+	t.Setenv(envCertPath, allocMat.CertPath)
+	t.Setenv(envKeyIDPath, allocMat.KeyIDPath)
+	// Only the mount key path is set — cert/key-id mount paths are empty,
+	// so the all-or-nothing gate must reject the mount and use alloc.
+	t.Setenv(envMountKeyPath, mountMat.KeyPath)
+
+	s, err := Load()
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	assert.Equal(t, allocMat.KeyID, s.KeyID(), "partial mount config falls back to alloc")
+}
+
+func TestLoad_FallsBackToAllocWhenMountPathIsDir(t *testing.T) {
+	allocMat := testkeys.Generate(t)
+	mountMat := testkeys.Generate(t)
+
+	t.Setenv(envKeyPath, allocMat.KeyPath)
+	t.Setenv(envCertPath, allocMat.CertPath)
+	t.Setenv(envKeyIDPath, allocMat.KeyIDPath)
+	// Mount cert/key-id are valid files, but the private-key mount path is a
+	// directory (a misprovisioned host). The gate must reject the mount and
+	// fall back to alloc rather than hard-failing when Load reads the key.
+	t.Setenv(envMountKeyPath, t.TempDir())
+	t.Setenv(envMountCertPath, mountMat.CertPath)
+	t.Setenv(envMountKeyIDPath, mountMat.KeyIDPath)
+
+	s, err := Load()
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	assert.Equal(t, allocMat.KeyID, s.KeyID(), "directory at a mount path falls back to alloc")
+}
+
+func TestLoad_MountOnlyWhenAllocUnset(t *testing.T) {
+	mountMat := testkeys.Generate(t)
+
+	// No alloc env vars — only the mount source is configured. This is
+	// the end-state after the prestart fetch is retired.
+	t.Setenv(envKeyPath, "")
+	t.Setenv(envCertPath, "")
+	t.Setenv(envKeyIDPath, "")
+	t.Setenv(envMountKeyPath, mountMat.KeyPath)
+	t.Setenv(envMountCertPath, mountMat.CertPath)
+	t.Setenv(envMountKeyIDPath, mountMat.KeyIDPath)
+
+	s, err := Load()
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	assert.Equal(t, mountMat.KeyID, s.KeyID())
+}
+
 func TestSignMessage_NilSigner(t *testing.T) {
 	body := []byte("Subject: test\r\n\r\nbody\r\n")
 	var s *Signer // nil

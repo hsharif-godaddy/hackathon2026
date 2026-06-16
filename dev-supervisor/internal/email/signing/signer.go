@@ -85,6 +85,18 @@ const (
 	envCertPath  = "JWS_CERT_PATH"
 	envKeyIDPath = "JWS_KEY_ID_PATH"
 
+	// envMount* name an alternate signing-material source: a per-cell
+	// host bind-mount populated once per host (not per alloc) instead of
+	// the prestart ASM fetch into ${NOMAD_ALLOC_DIR}. When all three are
+	// set AND present on disk, Load prefers them over the alloc paths and
+	// falls back to alloc otherwise — so the platform can migrate cells
+	// to the mount one at a time without a flag day. Once the
+	// "jws.signing.source" startup field stops reporting "alloc" across
+	// the fleet, the prestart fetch (and the alloc paths) can be removed.
+	envMountKeyPath   = "JWS_MOUNT_PRIVATE_KEY_PATH"
+	envMountCertPath  = "JWS_MOUNT_CERT_PATH"
+	envMountKeyIDPath = "JWS_MOUNT_KEY_ID_PATH"
+
 	// envCellID and envNomadDC source the cell identifier used in
 	// startup / sign-failure logs. The cell is NOT in the JWS payload —
 	// the relay's payload schema doesn't include it — but it remains a
@@ -94,7 +106,7 @@ const (
 
 	// canonicalBodyMaxBytes mirrors the EXIM_BODY_VISIBLE_BYTES constant
 	// in the cPanel script. The first 5000 bytes of the body (UTF-8
-	// safe-decoded) feed the canonical-hash pipeline; everything past
+	// safe-decoded) feed the canonical-hash pipeline, everything past
 	// that is ignored.
 	canonicalBodyMaxBytes = 5000
 
@@ -134,25 +146,27 @@ type Signer struct {
 
 // Load reads the per-cell signing material from the env-named paths.
 //
-// Returns (nil, nil) when JWS_PRIVATE_KEY_PATH is empty: the caller
-// treats this as "signing disabled" (local dev, Mailpit). This is
-// distinct from (nil, error), which means the env asked for signing
-// but the material couldn't be loaded — startup logs the error and
-// continues unsigned, but operators see the failure.
+// The source is resolved by resolveSigningPaths: the host bind-mount
+// (JWS_MOUNT_*_PATH) wins when fully present, otherwise the per-alloc
+// prestart paths (JWS_*_PATH) are used.
+//
+// Returns (nil, nil) when no key path is configured on either source:
+// the caller treats this as "signing disabled" (local dev, Mailpit).
+// This is distinct from (nil, error), which means the env asked for
+// signing but the material couldn't be loaded — startup logs the error
+// and continues unsigned, but operators see the failure.
 //
 // Cell ID is sourced from CELL_ID first, then NOMAD_DC. An empty cell
 // is permitted (used only for logs) but logged at warn.
 func Load() (*Signer, error) {
-	keyPath := strings.TrimSpace(config.GetEnvStringWithDefault(envKeyPath, ""))
+	keyPath, certPath, keyIDPath, source := resolveSigningPaths()
 	if keyPath == "" {
 		return nil, nil //nolint:nilnil // nil signer + nil error = signing disabled (intentional API contract)
 	}
 
-	certPath := strings.TrimSpace(config.GetEnvStringWithDefault(envCertPath, ""))
 	if certPath == "" {
 		return nil, fmt.Errorf("%s set but %s is empty", envKeyPath, envCertPath)
 	}
-	keyIDPath := strings.TrimSpace(config.GetEnvStringWithDefault(envKeyIDPath, ""))
 	if keyIDPath == "" {
 		return nil, fmt.Errorf("%s set but %s is empty", envKeyPath, envKeyIDPath)
 	}
@@ -183,7 +197,9 @@ func Load() (*Signer, error) {
 	// attempt to chmod it to world-readable before reading. This is a
 	// belt-and-suspenders fix: the prestart SHOULD write 444 (per the
 	// libsonnet), but if an older prestart ran with 400, this unblocks
-	// signing without requiring another full alloc cycle.
+	// signing without requiring another full alloc cycle. On the mount
+	// source the files sit on a read-only bind-mount, so the chmod fails
+	// — that is benign (logged at info) as long as the host wrote 0444.
 	if os.Getenv("DEV_SUPERVISOR_SANDBOX_ENABLED") == "true" {
 		for _, p := range []string{keyPath, certPath, keyIDPath} {
 			//nolint:gosec // G302: world-readable is safe because Landlock blocks customer access
@@ -234,6 +250,7 @@ func Load() (*Signer, error) {
 	}
 
 	slog.Info("jws.signing.load_success",
+		"source", source,
 		"key_path", keyPath,
 		"cert_path", certPath,
 		"key_id", keyID,
@@ -249,8 +266,8 @@ func Load() (*Signer, error) {
 	}
 	statusPath := allocDir + "/jws-signing-status.json"
 	statusJSON := fmt.Sprintf(
-		`{"loaded":true,"key_path":%q,"cert_path":%q,"key_id":%q,"cell_id":%q,"error":""}`,
-		keyPath, certPath, keyID, cellID,
+		`{"loaded":true,"source":%q,"key_path":%q,"cert_path":%q,"key_id":%q,"cell_id":%q,"error":""}`,
+		source, keyPath, certPath, keyID, cellID,
 	)
 	if err := os.WriteFile(statusPath, []byte(statusJSON+"\n"), 0600); err != nil {
 		slog.Warn("jws.signing.status_write_failed", "path", statusPath, "error", err)
@@ -262,6 +279,80 @@ func Load() (*Signer, error) {
 		keyID:        keyID,
 		cellID:       cellID,
 	}, nil
+}
+
+// resolveSigningPaths picks the signing-material source. The per-cell
+// host bind-mount (JWS_MOUNT_*_PATH) wins when all three paths are set
+// and present on disk; otherwise Load falls back to the per-alloc
+// prestart paths (JWS_*_PATH). Returns the chosen triple plus a source
+// label ("mount" or "alloc") that Load stamps onto its startup log and
+// status file — operators watch for the "alloc" label disappearing
+// fleet-wide before the prestart fetch is retired.
+//
+// The mount gate is all-or-nothing: a partially configured or
+// not-yet-populated mount falls through to alloc rather than mixing a
+// mount key with an alloc cert from a different rotation.
+func resolveSigningPaths() (string, string, string, string) {
+	mountKey := strings.TrimSpace(config.GetEnvStringWithDefault(envMountKeyPath, ""))
+	mountCert := strings.TrimSpace(config.GetEnvStringWithDefault(envMountCertPath, ""))
+	mountKeyID := strings.TrimSpace(config.GetEnvStringWithDefault(envMountKeyIDPath, ""))
+
+	if mountKey != "" && mountCert != "" && mountKeyID != "" && allFilesExist(mountKey, mountCert, mountKeyID) {
+		return mountKey, mountCert, mountKeyID, "mount"
+	}
+
+	allocKey := strings.TrimSpace(config.GetEnvStringWithDefault(envKeyPath, ""))
+
+	// Surface why the mount wasn't used, and whether alloc is even
+	// configured. allocKeyConfigured matters because a fallback that reports
+	// "using alloc" while alloc is unset is misleading — Load then returns a
+	// nil signer, i.e. signing is silently OFF, not falling back.
+	switch {
+	case mountKey != "" && mountCert != "" && mountKeyID != "":
+		// Fully configured but the material isn't present/usable on disk
+		// yet. This is the expected steady state on a host that mhp-core has
+		// flipped on before pioneer-infra has staged the per-cell material,
+		// so log at INFO to avoid drowning a controlled rollout in warnings.
+		// The event name is unchanged so the "is fallback still happening?"
+		// rollout metric still counts it.
+		slog.Info("jws.signing.mount_fallback",
+			"reason", "mount enabled but material not on host yet; using alloc (expected during rollout)",
+			"mount_key_path", mountKey,
+			"mount_cert_path", mountCert,
+			"mount_key_id_path", mountKeyID,
+			"alloc_key_configured", allocKey != "",
+		)
+	case mountKey != "" || mountCert != "" || mountKeyID != "":
+		// Only some of the three mount paths are set. mhp-core's template
+		// sets all three together, so a partial set is anomalous (drift or a
+		// manual edit) — surface at WARN.
+		slog.Warn("jws.signing.mount_fallback",
+			"reason", "mount paths partially configured; using alloc",
+			"mount_key_path", mountKey,
+			"mount_cert_path", mountCert,
+			"mount_key_id_path", mountKeyID,
+			"alloc_key_configured", allocKey != "",
+		)
+	}
+
+	return allocKey,
+		strings.TrimSpace(config.GetEnvStringWithDefault(envCertPath, "")),
+		strings.TrimSpace(config.GetEnvStringWithDefault(envKeyIDPath, "")),
+		"alloc"
+}
+
+func allFilesExist(paths ...string) bool {
+	for _, p := range paths {
+		// IsDir guard: os.Stat succeeds on a directory, so without this a
+		// path that is accidentally a directory (e.g. misprovisioned host)
+		// would pass the gate, pick source="mount", then hard-fail in
+		// loadRSAKey with no fallback. Reject it so Load falls back to alloc.
+		info, err := os.Stat(p)
+		if err != nil || info.IsDir() {
+			return false
+		}
+	}
+	return true
 }
 
 // NewForTesting constructs a Signer from in-memory PEM bytes. Used by
