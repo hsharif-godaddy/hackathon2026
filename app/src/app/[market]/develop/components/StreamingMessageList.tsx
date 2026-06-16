@@ -51,6 +51,12 @@ interface StreamingMessageListProps {
 
 const SCROLL_NEAR_BOTTOM_THRESHOLD = 150
 
+const CHAT_TRANSCRIPT_SCROLL_CLASS =
+  'flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-2 md:px-0 pt-3 md:pt-1 gap-1'
+
+const CHAT_TRANSCRIPT_MASK_CLASS =
+  '[mask-image:linear-gradient(to_bottom,black_0,black_calc(100%_-_clamp(16px,4%,40px)),transparent_100%)]'
+
 export default function StreamingMessageList({
   allMessages,
   isCreateFlowSession = false,
@@ -754,7 +760,7 @@ export default function StreamingMessageList({
     // Creation flow with initial prompt: show the user's prompt as a real message + thinking indicator
     if (hasInitialPrompt && initialPromptText && allMessages.length === 0) {
       return (
-        <div ref={containerRef} data-testid="chat-transcript" className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-2 md:px-0 pt-3 md:pt-1 pb-4 gap-1" onScroll={handleScroll}>
+        <div ref={containerRef} data-testid="chat-transcript" className={`${CHAT_TRANSCRIPT_SCROLL_CLASS} pb-4 ${CHAT_TRANSCRIPT_MASK_CLASS}`} onScroll={handleScroll}>
           <StreamingMessage
             message={{ id: 'initial-prompt', role: 'user', content: initialPromptText, timestamp: new Date() } satisfies ChatMessage}
           />
@@ -791,7 +797,7 @@ export default function StreamingMessageList({
   }
 
   return (
-    <div ref={containerRef} data-testid="chat-transcript" className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden px-2 md:px-0 pt-3 md:pt-1 pb-1 gap-1" onScroll={handleScroll}>
+    <div ref={containerRef} data-testid="chat-transcript" className={`${CHAT_TRANSCRIPT_SCROLL_CLASS} pb-1 ${CHAT_TRANSCRIPT_MASK_CLASS}`} onScroll={handleScroll}>
       {/* Skeleton while initial history loads — matches the empty-state skeleton treatment */}
       {!historyLoadingComplete && (
         <Box orientation="vertical" gap="lg" className="pt-2 pb-1">
