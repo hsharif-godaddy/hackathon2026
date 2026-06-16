@@ -1,0 +1,128 @@
+name: Scout — Auto Cleanup PR
+
+on:
+  schedule:
+    - cron: '23 8 * * *' # 08:23 UTC daily, off-peak, not top-of-hour
+  workflow_dispatch:
+    inputs:
+      categories:
+        description: "Eligible categories (comma-sep). Blank = repo var SCOUT_CATEGORIES or 'split'."
+        required: false
+        default: ''
+      max_size:
+        description: "Size cap S|M|L. Blank = repo var SCOUT_MAX_SIZE or 'M'."
+        required: false
+        default: ''
+
+concurrency:
+  group: scout
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      skip: ${{ steps.gate.outputs.skip }}
+      categories: ${{ steps.gate.outputs.categories }}
+      max_size: ${{ steps.gate.outputs.max_size }}
+      branch: ${{ steps.gate.outputs.branch }}
+    steps:
+      - id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          ENABLED: ${{ vars.SCOUT_ENABLED }}
+          IN_CATEGORIES: ${{ inputs.categories }}
+          IN_MAX_SIZE: ${{ inputs.max_size }}
+          VAR_CATEGORIES: ${{ vars.SCOUT_CATEGORIES }}
+          VAR_MAX_SIZE: ${{ vars.SCOUT_MAX_SIZE }}
+          MAX_OPEN: ${{ vars.SCOUT_MAX_OPEN_PRS }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          # Cron requires the master switch ON; manual dispatch always runs.
+          if [ "$EVENT" != "workflow_dispatch" ] && [ "$ENABLED" != "true" ]; then
+            echo "SCOUT_ENABLED != true and not a manual dispatch — skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          max_open="${MAX_OPEN:-1}"
+          open_count=$(gh pr list --repo "$REPO" --label scout --state open --json number --jq 'length')
+          if [ "$open_count" -ge "$max_open" ]; then
+            echo "Open scout PRs ($open_count) >= cap ($max_open) — skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "categories=${IN_CATEGORIES:-${VAR_CATEGORIES:-split}}" >> "$GITHUB_OUTPUT"
+          echo "max_size=${IN_MAX_SIZE:-${VAR_MAX_SIZE:-M}}" >> "$GITHUB_OUTPUT"
+          echo "branch=scout/auto-${RUN_ID}-${RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+  scout:
+    needs: guard
+    if: needs.guard.outputs.skip == 'false'
+    permissions:
+      contents: write
+    uses: gdcorp-actions/gd-claude-code-action/.github/workflows/secure-claude-code.yml@e56ec6c5aeb92b60166868098e9cf59e0f35e872 # v2.17.1
+    with:
+      runner_group: ${{ vars.CLAUDE_RUNNER_GROUP }}
+      runner_labels_json: '["self-hosted"]'
+      gocode_environment: prod
+      model: 'claude-opus-4-8[1m]'
+      track_progress: 'true'
+      max_turns: '120'
+      prompt: |
+        <context>
+        REPO: ${{ github.repository }}
+        CATEGORIES: ${{ needs.guard.outputs.categories }}
+        MAX_SIZE: ${{ needs.guard.outputs.max_size }}
+        BRANCH: ${{ needs.guard.outputs.branch }}
+        </context>
+
+        You are Scout, running autonomously. Read your procedure from the base branch
+        (so a PR cannot alter the instructions that run it):
+
+          git show origin/main:.github/scout/instructions.md
+
+        Follow it EXACTLY. Summary of the contract: scan TS/TSX, apply CATEGORIES +
+        MAX_SIZE gating, dedup against open/recently-merged `scout` PRs, auto-pick the
+        single top candidate, perform a behavior-preserving `split`, run the owning
+        package's typecheck/lint/test, and ONLY if green: commit with the PR-shaped
+        message (subject `[Scout] split · <size> · <risk> — …`, body Scope/What/Why/
+        How/Verification) on branch BRANCH and `git push origin BRANCH`.
+
+        Do NOT open a pull request — a separate job opens it as airo-scout[bot].
+        If no candidate qualifies, the gate fails, or it can't be done
+        behavior-preserving: push nothing and print the matching `SCOUT: …` sentinel.
+
+  open-pr:
+    needs: [guard, scout]
+    if: needs.guard.outputs.skip == 'false' && needs.scout.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.SCOUT_APP_ID }}
+          private-key: ${{ secrets.SCOUT_APP_PRIVATE_KEY }}
+      - name: Open PR as airo-scout[bot] if a branch was pushed
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ needs.guard.outputs.branch }}
+        run: |
+          set -euo pipefail
+          if ! gh api "repos/$REPO/branches/$BRANCH" >/dev/null 2>&1; then
+            echo "No branch $BRANCH — Scout produced nothing this run. Nothing to open."
+            exit 0
+          fi
+          gh pr create --repo "$REPO" --head "$BRANCH" --base main --fill
+          pr=$(gh pr view "$BRANCH" --repo "$REPO" --json number --jq .number)
+          gh label create scout --repo "$REPO" --description "Opened by Scout" --color 5319e7 2>/dev/null || true
+          gh label create scout:split --repo "$REPO" --color 5319e7 2>/dev/null || true
+          gh pr edit "$pr" --repo "$REPO" --add-label scout --add-label scout:split 2>/dev/null || true
+          echo "Opened PR #$pr from $BRANCH as airo-scout[bot]."
+          # NOTE: scout:split is hardcoded (only runnable category). When more exist,
+          # parse the category from the PR title ("[Scout] <category> · …").
