@@ -19,6 +19,7 @@
 import type {
   AssetInfo,
   AssetManifest,
+  ContentLink,
   ImagePlacement,
   NavigationItem,
   PageContent,
@@ -85,6 +86,7 @@ export function buildUserPrompt(args: BuildUserPromptArgs): string {
 
   const patternsBlock = buildPatternsBlock(pageContent.structure.interactivePatterns);
   const formsBlock = buildFormsBlock(pageContent.structure.forms);
+  const contentLinksBlock = buildContentLinksBlock(pageContent.structure.contentLinks);
   const navigationBlock = buildNavigationBlock(pageContent.structure.navigation);
   const footerNavBlock = isFirstPage ? buildFooterNavBlock(siteMetadata.footerNavigation) : '';
   const contactBlock = isFirstPage && siteMetadata.contact
@@ -119,7 +121,7 @@ ${typographyInstructions}
 PAGE CONTENT TO REBUILD:
 - Title: ${pageContent.title}
 - URL: ${pageContent.url}
-${patternsBlock}${formsBlock}${navigationBlock}${footerNavBlock}${contactBlock}
+${patternsBlock}${formsBlock}${contentLinksBlock}${navigationBlock}${footerNavBlock}${contactBlock}
 === EXTRACTED KEY CONTENT (use this for the rebuild) ===
 ${extractedContent}
 
@@ -183,6 +185,18 @@ export function buildPatternsBlock(patterns: PageContent['structure']['interacti
     p => `- ${p.type} (${p.occurrences} match${p.occurrences === 1 ? '' : 'es'}; evidence: \`${p.evidence}\`)`
   );
   return `\n=== DETECTED INTERACTIVE PATTERNS (from source HTML — preserve in the rebuild) ===\n${lines.join('\n')}\n`;
+}
+
+export function buildContentLinksBlock(contentLinks: ContentLink[] | undefined): string {
+  if (!contentLinks || contentLinks.length === 0) return '';
+  const lines = contentLinks.map(
+    link => `- "${link.label}" → ${link.url}${link.isExternal ? ' (external)' : ''}`,
+  );
+  return `\n=== IN-CONTENT DOCUMENT LINKS (preserve exactly — use these absolute URLs in body copy) ===\n${lines.join('\n')}\n
+**CRITICAL: Use the exact absolute URLs above for in-content document links. Do NOT rewrite them to internal routes, path-only URLs, or fabricated #-anchors.**
+- Implement each link with the anchor text shown and href set to the exact URL above
+- Use target="_blank" rel="noopener noreferrer" on every document link
+`;
 }
 
 export function buildFormsBlock(forms: PageContent['structure']['forms']): string {

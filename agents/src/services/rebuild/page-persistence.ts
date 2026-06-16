@@ -15,6 +15,7 @@ import { Logger } from '../../logging/index.js';
 import { detectInteractivePatterns } from '../interactive-pattern-detector.js';
 import {
   type AssetManifest,
+  type ContentLink,
   type FormHint,
   type NavigationItem,
   type PageContent,
@@ -33,6 +34,7 @@ export interface SavePageInput {
   html?: string;
   screenshotBase64?: string;
   forms?: FormHint[];
+  contentLinks?: ContentLink[];
   metadata?: PageMetadata;
 }
 
@@ -79,6 +81,7 @@ export class PagePersistenceService {
     }
     const interactivePatterns = useAtlas ? detectInteractivePatterns(page.html) : [];
     const forms = useAtlas ? (page.forms ?? []) : [];
+    const contentLinks = useAtlas ? (page.contentLinks ?? []) : [];
 
     const pageContent: PageContent = {
       url: page.url,
@@ -95,6 +98,7 @@ export class PagePersistenceService {
         navigation,
         ...(interactivePatterns.length > 0 ? { interactivePatterns } : {}),
         ...(forms.length > 0 ? { forms } : {}),
+        ...(contentLinks.length > 0 ? { contentLinks } : {}),
       },
       metadata: page.metadata ?? { title },
       scrapedAt: new Date().toISOString(),
@@ -114,6 +118,15 @@ export class PagePersistenceService {
         slug,
         formCount: forms.length,
         summary: forms.map(f => `${f.method.toUpperCase()}->${f.action ?? '(no action)'} (${f.fields.length} fields)`),
+      });
+    }
+
+    if (contentLinks.length > 0) {
+      logger.debug('rebuild-orchestration.document-links-detected', {
+        url: page.url,
+        slug,
+        linkCount: contentLinks.length,
+        summary: contentLinks.map(link => `"${link.label}" -> ${link.url}`),
       });
     }
 

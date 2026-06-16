@@ -291,6 +291,7 @@ export function buildPageSpec(
     },
     detectedPatterns: pageContent.structure.interactivePatterns ?? [],
     forms: pageContent.structure.forms ?? [],
+    contentLinks: pageContent.structure.contentLinks ?? [],
     assets: normalizedAssets,
     stylePreferences,
     pageContent: {

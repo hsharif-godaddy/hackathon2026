@@ -137,6 +137,42 @@ describe('buildPageSpec', () => {
 
     expect(spec.forms[0]).toMatchObject({ id: 'contact-form', className: 'main-form wide' });
   });
+
+  it('includes contentLinks in the spec when present on PageContent', () => {
+    const pageContent: PageContent = {
+      url: 'https://example.com/cakes',
+      slug: 'cakes',
+      title: 'Cakes',
+      content: '<h1>Cakes</h1>',
+      sanitizedContent: '<h1>Cakes</h1>',
+      structure: {
+        hasHeader: true,
+        hasFooter: true,
+        hasSidebar: false,
+        sections: [],
+        navigation: [],
+        contentLinks: [
+          {
+            label: 'Menu PDF',
+            url: 'https://example.com/files/menu.pdf',
+            isExternal: false,
+          },
+        ],
+      },
+      metadata: { title: 'Cakes' },
+      scrapedAt: '2024-01-01T00:00:00Z',
+    };
+
+    const spec = buildPageSpec('cakes', pageContent, baseSiteMetadata, baseStylePreferences, emptyAssetManifest, false);
+
+    expect(spec.contentLinks).toEqual([
+      {
+        label: 'Menu PDF',
+        url: 'https://example.com/files/menu.pdf',
+        isExternal: false,
+      },
+    ]);
+  });
 });
 
 describe('RebuildPromptBuilder.buildPage — BuildPageResult fields', () => {

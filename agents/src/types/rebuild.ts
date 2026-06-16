@@ -141,6 +141,9 @@ export interface PageStructure {
    * so newsletter/contact/booking forms get rebuilt as real <form> elements
    * (not visual mockups). Also the comparator for the eval rubric's Forms dimension. */
   forms?: FormHint[];
+  /** In-content links to documents (PDFs, etc.) from Atlas page.links — absolute
+   * source URLs the develop agent must preserve verbatim in body copy. */
+  contentLinks?: ContentLink[];
 }
 
 export interface FormFieldHint {
@@ -200,6 +203,7 @@ export interface PageBuildSpec {
   };
   detectedPatterns: InteractivePattern[];
   forms: FormHint[];
+  contentLinks: ContentLink[];
   /** Page-relevant assets with paths normalized to public form (`/assets/...`). */
   assets: SpecAssetManifest;
   /** Intake-form preferences (fidelity dial inputs once that lands). */
@@ -224,6 +228,16 @@ export interface PageSection {
  * Navigation item
  */
 export interface NavigationItem {
+  label: string;
+  url: string;
+  isExternal: boolean;
+}
+
+/**
+ * In-content link to a document on the source site (PDF, Office file, etc.).
+ * `url` is always the absolute source target — never a path-normalized route.
+ */
+export interface ContentLink {
   label: string;
   url: string;
   isExternal: boolean;

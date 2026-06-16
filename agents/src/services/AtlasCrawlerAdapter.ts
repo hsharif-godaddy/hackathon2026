@@ -12,6 +12,7 @@ import {
   WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE,
   createRebuildError,
 } from '../types/rebuild.js';
+import { mapAtlasDocumentLinks } from './rebuild/document-links.js';
 import type {
   FormHint,
   ImagePlacement,
@@ -558,6 +559,7 @@ export class AtlasCrawlerAdapter {
   private mapToPageScrapeResults(result: AtlasCrawlResult): PageScrapeResult[] {
     return result.pages.map(page => {
       const forms = mapAtlasForms(page.visual?.forms);
+      const contentLinks = mapAtlasDocumentLinks(page.links, page.url);
       const metadata = this.mapPageMetadata(page);
       return {
         url: page.url,
@@ -565,6 +567,7 @@ export class AtlasCrawlerAdapter {
         sanitizedContent: page.text ?? '',
         html: page.html,
         ...(forms.length > 0 ? { forms } : {}),
+        ...(contentLinks.length > 0 ? { contentLinks } : {}),
         ...(metadata ? { metadata } : {}),
       };
     });

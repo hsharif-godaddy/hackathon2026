@@ -186,6 +186,7 @@ export class RebuildOrchestrationService {
         html: page.html,
         screenshotBase64: page.screenshotBase64,
         forms: page.forms,
+        contentLinks: page.contentLinks,
         metadata: page.metadata,
       },
       rootPath,

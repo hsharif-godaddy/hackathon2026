@@ -190,6 +190,42 @@ describe('PagePersistenceService.savePage (Atlas branch)', () => {
     expect(saved.structure.forms).toEqual(forms);
   });
 
+  it('attaches contentLinks to the persisted JSON when useAtlas=true and links supplied', async () => {
+    const contentLinks = [
+      {
+        label: 'Menu PDF',
+        url: 'https://example.com/files/menu.pdf',
+        isExternal: false,
+      },
+    ];
+    await persistence.savePage(
+      { url: 'https://example.com/cakes', sanitizedContent: 'Cakes', html: '<p>hi</p>', contentLinks },
+      'cakes',
+      [],
+      true,
+    );
+    const saved = JSON.parse(await readFile(path.join(sourceSiteDir, 'pages', 'cakes.json'), 'utf-8'));
+    expect(saved.structure.contentLinks).toEqual(contentLinks);
+  });
+
+  it('drops supplied contentLinks when useAtlas=false', async () => {
+    const contentLinks = [
+      {
+        label: 'Menu PDF',
+        url: 'https://example.com/files/menu.pdf',
+        isExternal: false,
+      },
+    ];
+    await persistence.savePage(
+      { url: 'https://example.com/cakes', sanitizedContent: 'Cakes', html: '<p>hi</p>', contentLinks },
+      'cakes',
+      [],
+      false,
+    );
+    const saved = JSON.parse(await readFile(path.join(sourceSiteDir, 'pages', 'cakes.json'), 'utf-8'));
+    expect(saved.structure.contentLinks).toBeUndefined();
+  });
+
   it('drops supplied forms when useAtlas=false (legacy path never attaches structured forms)', async () => {
     const forms = [
       {

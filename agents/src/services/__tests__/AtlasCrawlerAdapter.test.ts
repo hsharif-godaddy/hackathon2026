@@ -408,6 +408,41 @@ describe('AtlasCrawlerAdapter', () => {
       });
     });
 
+    it('propagates in-content document links from Atlas page.links to PageScrapeResult', async () => {
+      const mockResult = createMockCrawlResult({
+        pages: [
+          createMockPage({
+            url: 'https://urbancookies.com/cakes',
+            path: '/cakes',
+            links: [
+              { url: '/files/cake-cutting-guide.pdf', text: 'printer-friendly cake cutting guide', isInternal: true },
+              { url: 'https://urbancookies.com/files/menu.pdf', text: 'printer-friendly menu', isInternal: true },
+              { url: '/order', text: 'Order online', isInternal: true },
+            ],
+          }),
+        ],
+      });
+
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ jobId: 'job-docs', status: 'pending' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'completed' }) });
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockResult });
+
+      const output = await adapter.crawlSite('https://urbancookies.com');
+
+      expect(output.pages[0]?.contentLinks).toEqual([
+        {
+          label: 'printer-friendly cake cutting guide',
+          url: 'https://urbancookies.com/files/cake-cutting-guide.pdf',
+          isExternal: false,
+        },
+        {
+          label: 'printer-friendly menu',
+          url: 'https://urbancookies.com/files/menu.pdf',
+          isExternal: false,
+        },
+      ]);
+    });
+
     it('omits absent metadata fields rather than setting undefined', async () => {
       const mockResult = createMockCrawlResult({
         pages: [
