@@ -2,6 +2,7 @@ import { APICallError, RetryError } from 'ai'
 import { BudgetExceededError } from '@airo/ai-common'
 import { isBudgetServiceError, mapBudgetErrorToResponse, type BudgetErrorType } from '@airo/shared/budget'
 import { AgentNotFoundError } from './agent-execution-loop.js'
+import { isUpstreamTimeoutError } from './analyze-stream-error.js'
 
 /** Canonical set of errorType strings `classifyTurnError` can return.
  * Narrowed over `string` so consumers that branch on the errorType
@@ -79,6 +80,9 @@ export function classifyTurnError(error: unknown): ClassifiedTurnError {
     return {
       ...(statusCode !== undefined && { statusCode }),
       isRetryable: statusCode === 503 || statusCode === 429,
+      ...(isUpstreamTimeoutError(error) && {
+        clientMessage: 'The AI took too long to respond and the request timed out. Please send your message again.',
+      }),
     }
   }
 

@@ -925,6 +925,67 @@ describe('MessageExecutionService', () => {
       return error
     }
 
+    // GoCode's ~304s request-timeout HTTP response: a real APICallError-shaped
+    // error (isNetworkError:false) carrying statusCode 408. isUpstreamTimeoutError matches it.
+    const make408Error = (): Error =>
+      Object.assign(new Error('request timeout'), { statusCode: 408, responseBody: 'request timeout' })
+
+    it('soft-commits accumulated content on a 408 upstream timeout (complete:incomplete, getFinalResult skipped)', async () => {
+      deps = createMockDeps()
+      const getFinalResult = vi.fn().mockImplementation(() => new Promise(() => {}))
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockReturnValue({
+          textStream: (async function* () {
+            yield 'partial answer'
+            throw make408Error()
+          })(),
+          getFinalResult,
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.eventChannel.publish).not.toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({ type: 'error' }),
+      )
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'complete',
+          data: expect.objectContaining({ finishReason: 'incomplete' }),
+        }),
+      )
+      expect(getFinalResult).not.toHaveBeenCalled()
+      expect(mockInvocationEnd).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false, finishReason: 'incomplete' }),
+      )
+    })
+
+    it('fails fast (error terminal) on a 408 upstream timeout with no content', async () => {
+      deps = createMockDeps()
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockReturnValue({
+          // eslint-disable-next-line require-yield
+          textStream: (async function* () {
+            throw make408Error()
+          })(),
+          getFinalResult: vi.fn(),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({ type: 'error' }),
+      )
+    })
+
     it('soft-commits accumulated content on premature close (complete:incomplete, no error, getFinalResult skipped)', async () => {
       deps = createMockDeps()
       const getFinalResult = vi.fn().mockImplementation(() => new Promise(() => {}))
@@ -1037,6 +1098,32 @@ describe('MessageExecutionService', () => {
         }),
       )
       // Honest error span (getFinalResult failed) behind the soft 'incomplete' wire reason.
+      expect(mockInvocationEnd).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false, finishReason: 'incomplete' }),
+      )
+    })
+
+    it('soft-commits when getFinalResult throws a 408 upstream timeout after content (complete:incomplete, honest error span)', async () => {
+      deps = createMockDeps()
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([{ type: 'text-delta', text: 'partial answer' }]),
+          getFinalResult: vi.fn().mockRejectedValue(make408Error()),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'complete',
+          data: expect.objectContaining({ finishReason: 'incomplete' }),
+        }),
+      )
       expect(mockInvocationEnd).toHaveBeenCalledWith(
         expect.objectContaining({ success: false, finishReason: 'incomplete' }),
       )

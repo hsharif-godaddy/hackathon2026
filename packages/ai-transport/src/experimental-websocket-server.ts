@@ -43,7 +43,7 @@ import { context as otelContext, trace, type Context } from '@opentelemetry/api'
 import { buildChatSignalsTraceContext, type JwtAgentContextSubset } from './observability/signals-trace-context.js'
 import { inferProviderFromModelName, type ChatLlmProvider } from './observability/infer-llm-provider.js'
 import { createAgentInvocation, emitTurnError } from './observability/agent-invocation.js'
-import { analyzeStreamError, isNetworkError } from './analyze-stream-error.js'
+import { analyzeStreamError, isNetworkError, isUpstreamTimeoutError } from './analyze-stream-error.js'
 import { classifyTurnError } from './classify-turn-error.js'
 import { classifyStreamBudgetError, isToolValidationError } from './classify-stream-error.js'
 import {
@@ -4018,21 +4018,24 @@ Please try again with corrected formatting.`
       }
 
       // Premature upstream close (undici `terminated`, socket reset, body
-      // timeout) that did NOT abort the signal — GoCode dropped the connection
-      // rather than us cancelling. If content already streamed, soft-commit it
-      // (finishReason 'incomplete') so the client shows the gentle "may be
-      // incomplete" advisory instead of a hard "connection dropped" error.
+      // timeout) OR an upstream request-timeout HTTP response (GoCode 408 /
+      // gateway 504) that did NOT abort the signal. If content already
+      // streamed, soft-commit it (finishReason 'incomplete') so the client
+      // shows the gentle "may be incomplete" advisory instead of a hard error.
       // This is the flag-independent counterpart to the chunk_timeout
       // soft-commit above: it fires whether or not the gap-timer is enabled.
       // No content → fall through to the normal error path (preserving today's
       // behaviour). BudgetExceededError is not a network error, so it falls
       // through to the budget branch below.
-      if (isNetworkError(postStreamError)) {
+      const upstreamTimeout = isUpstreamTimeoutError(postStreamError)
+      if (isNetworkError(postStreamError) || upstreamTimeout) {
         const content = this.getConversation(socket.id)?.accumulatedContent ?? ''
         const outcome = decideChunkTimeoutFinalization({ isFinished: false, hasContent: content.length > 0 })
         if (outcome.kind === 'finalize') {
           this.logger.warn('stream.premature_close.soft_commit', {
             socketId: socket.id, agentName, step: currentStep, finishReason: outcome.finishReason,
+            trigger: upstreamTimeout ? 'upstream_timeout' : 'network_close',
+            statusCode: (postStreamError as { statusCode?: number }).statusCode,
           })
           // Honest error span (the upstream DID fail); the soft wire-facing
           // finishReason travels to completeConversation via pendingSoftCommitReason.

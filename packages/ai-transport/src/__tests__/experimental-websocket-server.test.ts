@@ -4764,6 +4764,101 @@ describe('premature close (network) finalization', () => {
     server.close()
   })
 
+  // GoCode ~304s request-timeout HTTP response — isUpstreamTimeoutError matches (statusCode 408).
+  const make408Error = (): Error =>
+    Object.assign(new Error('request timeout'), { statusCode: 408, responseBody: 'request timeout' })
+
+  it('408 upstream timeout with content → complete with finishReason incomplete, no error, getFinalResult skipped', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-408-content'),
+      startAgentTurn: vi.fn().mockResolvedValue('msg-408-content'),
+    })
+
+    const getFinalResult = vi.fn()
+    mockAgent.streamGenerate = vi.fn().mockResolvedValueOnce({
+      baseStream: null,
+      textStream: (async function* () {
+        yield 'partial response text'
+        throw make408Error()
+      })(),
+      getFinalResult,
+    })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence,
+    })
+
+    await messageHandler({
+      message: 'Test message',
+      agentId: 'test-agent',
+      context: { metadata: { appId: 'test-app' } },
+    })
+
+    const allEmits = mockSocket.emit.mock.calls
+    const completeEvents = allEmits.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'complete'
+    )
+    const errorEvents = allEmits.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'error'
+    )
+
+    expect(completeEvents).toHaveLength(1)
+    expect(completeEvents[0][1].data.finishReason).toBe('incomplete')
+    expect(errorEvents).toHaveLength(0)
+    expect(getFinalResult).not.toHaveBeenCalled()
+
+    server.close()
+  })
+
+  it('408 upstream timeout with no content → error terminal (fail fast), not a false complete:incomplete', async () => {
+    const mockPersistence = createMockPersistence({
+      startConversation: vi.fn().mockResolvedValue('conv-408-empty'),
+      startAgentTurn: vi.fn().mockResolvedValue('msg-408-empty'),
+    })
+
+    // Upstream 408 before any content — must fall through to the hard error path.
+    const getFinalResult = vi.fn()
+    mockAgent.streamGenerate = vi.fn().mockResolvedValueOnce({
+      baseStream: null,
+      // eslint-disable-next-line require-yield
+      textStream: (async function* () {
+        throw make408Error()
+      })(),
+      getFinalResult,
+    })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+      messagePersistence: mockPersistence,
+    })
+
+    await messageHandler({
+      message: 'Test message',
+      agentId: 'test-agent',
+      context: { metadata: { appId: 'test-app' } },
+    })
+
+    const allEmits = mockSocket.emit.mock.calls
+    const errorEvents = allEmits.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'error'
+    )
+    const completeEvents = allEmits.filter(
+      (call: any[]) => call[0] === 'message' && call[1]?.type === 'complete'
+    )
+
+    expect(errorEvents.length).toBeGreaterThan(0)
+    const incompleteCompletes = completeEvents.filter(
+      (call: any[]) => call[1]?.data?.finishReason === 'incomplete'
+    )
+    expect(incompleteCompletes).toHaveLength(0)
+    expect(getFinalResult).not.toHaveBeenCalled()
+
+    server.close()
+  })
+
   it('does not leak the soft-commit reason into the next turn on a reused socket', async () => {
     const mockPersistence = createMockPersistence({
       startConversation: vi.fn().mockResolvedValue('conv-pc-reuse'),

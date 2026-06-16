@@ -177,7 +177,7 @@ export { inferProviderFromModelName } from './observability/infer-llm-provider.j
 export type { ChatLlmProvider } from './observability/infer-llm-provider.js'
 
 // Turn-level error classification (shared by WS catch block + SSE outer catch).
-export { analyzeStreamError, isNetworkError } from './analyze-stream-error.js'
+export { analyzeStreamError, isNetworkError, isUpstreamTimeoutError } from './analyze-stream-error.js'
 export type { AnalyzedStreamError } from './analyze-stream-error.js'
 export { classifyTurnError } from './classify-turn-error.js'
 export type { ClassifiedTurnError, TurnErrorType } from './classify-turn-error.js'

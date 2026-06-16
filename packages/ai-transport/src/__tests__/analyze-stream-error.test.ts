@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { analyzeStreamError, isNetworkError } from '../analyze-stream-error.js'
+import { analyzeStreamError, isNetworkError, isUpstreamTimeoutError } from '../analyze-stream-error.js'
 
 describe('isNetworkError', () => {
   it('returns false for null/undefined', () => {
@@ -119,5 +119,34 @@ describe('analyzeStreamError', () => {
     const info = analyzeStreamError(err)
     expect(info.causeChain).toHaveLength(1)
     expect(info.causeChain[0]).toBe('Socket: [non-serializable object]')
+  })
+})
+
+describe('isUpstreamTimeoutError', () => {
+  it('returns false for null/undefined', () => {
+    expect(isUpstreamTimeoutError(null)).toBe(false)
+    expect(isUpstreamTimeoutError(undefined)).toBe(false)
+  })
+
+  it('returns true for statusCode 408 (GoCode request timeout)', () => {
+    expect(isUpstreamTimeoutError(Object.assign(new Error('request timeout'), { statusCode: 408 }))).toBe(true)
+  })
+
+  it('returns true for statusCode 504 (gateway timeout)', () => {
+    expect(isUpstreamTimeoutError(Object.assign(new Error('gateway timeout'), { statusCode: 504 }))).toBe(true)
+  })
+
+  it('returns false for other status codes', () => {
+    expect(isUpstreamTimeoutError(Object.assign(new Error('x'), { statusCode: 400 }))).toBe(false)
+    expect(isUpstreamTimeoutError(Object.assign(new Error('x'), { statusCode: 429 }))).toBe(false)
+    expect(isUpstreamTimeoutError(Object.assign(new Error('x'), { statusCode: 500 }))).toBe(false)
+  })
+
+  it('returns false for a network error with no statusCode', () => {
+    expect(isUpstreamTimeoutError(new TypeError('terminated'))).toBe(false)
+  })
+
+  it('returns false for a non-error value', () => {
+    expect(isUpstreamTimeoutError('just a string')).toBe(false)
   })
 })

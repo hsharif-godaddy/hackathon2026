@@ -66,6 +66,24 @@ describe('classifyTurnError', () => {
     expect(classifyTurnError(err)).toEqual({ statusCode: 400, isRetryable: false })
   })
 
+  it('classifies APICallError: 408 is not retryable but carries a friendly timeout message', () => {
+    const err = new APICallError({ message: 'Request Timeout', url: 'https://x', requestBodyValues: {}, statusCode: 408 })
+    expect(classifyTurnError(err)).toEqual({
+      statusCode: 408,
+      isRetryable: false,
+      clientMessage: 'The AI took too long to respond and the request timed out. Please send your message again.',
+    })
+  })
+
+  it('classifies APICallError: 504 carries the friendly timeout message', () => {
+    const err = new APICallError({ message: 'Gateway Timeout', url: 'https://x', requestBodyValues: {}, statusCode: 504 })
+    expect(classifyTurnError(err)).toEqual({
+      statusCode: 504,
+      isRetryable: false,
+      clientMessage: 'The AI took too long to respond and the request timed out. Please send your message again.',
+    })
+  })
+
   it('returns isRetryable: false for unknown errors', () => {
     expect(classifyTurnError(new Error('unknown'))).toEqual({ isRetryable: false })
     expect(classifyTurnError('string throw')).toEqual({ isRetryable: false })

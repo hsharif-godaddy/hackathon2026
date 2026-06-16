@@ -44,6 +44,22 @@ export function isNetworkError(error: unknown): boolean {
   return isNetworkErrorName || hasNetworkMessage
 }
 
+/** HTTP status codes the upstream model proxy (GoCode) returns when it
+ * enforces its own ~304s request timeout: 408 (request timeout) and 504
+ * (gateway timeout). Distinct from `isNetworkError` — these arrive as a real
+ * HTTP response (`isNetworkError: false`), e.g. AI-SDK `APICallError`. */
+const UPSTREAM_TIMEOUT_STATUS_CODES = new Set([408, 504])
+
+/** True when `error` carries an HTTP status code indicating the upstream
+ * proxy timed the request out. Used to route these through the same
+ * content-gated soft-commit seam as network-level premature closes, instead
+ * of surfacing a raw "Request Timeout" error to the user. */
+export function isUpstreamTimeoutError(error: unknown): boolean {
+  if (!error) return false
+  const statusCode = (error as { statusCode?: number })?.statusCode
+  return statusCode !== undefined && UPSTREAM_TIMEOUT_STATUS_CODES.has(statusCode)
+}
+
 /** Walk up to 5 levels of `error.cause` to surface the root network/socket
  * error. Extracts `statusCode` + truncated `responseBody` off AI-SDK
  * `APICallError`-shaped errors. Pure — no I/O, no logging. */

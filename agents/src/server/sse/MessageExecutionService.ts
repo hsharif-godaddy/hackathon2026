@@ -18,6 +18,7 @@ import {
   runPreflightTools,
   analyzeStreamError,
   isNetworkError,
+  isUpstreamTimeoutError,
   classifyStreamBudgetError,
   isToolValidationError,
   assembleMessages,
@@ -1117,14 +1118,14 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     }
 
     // On a premature upstream close (undici `terminated`, socket reset, body
-    // timeout — anything isNetworkError matches) where content already arrived,
-    // soft-commit it via the same seam as chunk_timeout instead of surfacing a
-    // hard "connection dropped" error. This is the flag-independent counterpart
-    // to handleChunkTimeout: it fires whether or not the gap-timer is enabled.
-    // Returns true if soft-committed (caller stops reading); false → caller
-    // rethrows (not a network close, or no content to commit → fail fast).
+    // timeout — anything isNetworkError matches) OR an upstream request-timeout
+    // HTTP response (GoCode 408 / gateway 504 — isUpstreamTimeoutError matches)
+    // where content already arrived, soft-commit it via the same seam as
+    // chunk_timeout instead of surfacing a hard error. Returns true if
+    // soft-committed (caller stops reading); false → caller rethrows.
     const handlePrematureClose = (err: unknown): boolean => {
-      if (!isNetworkError(err)) return false
+      const upstreamTimeout = isUpstreamTimeoutError(err)
+      if (!isNetworkError(err) && !upstreamTimeout) return false
       const outcome = decideChunkTimeoutFinalization({
         isFinished: processor.isFinished(),
         hasContent: processor.getAccumulatedContent().length > 0,
@@ -1133,7 +1134,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       chunkTimeoutFinishReason = outcome.finishReason
       prematureCloseError = err
       logger.warn('sse.stream.premature_close.soft_commit', {
-        appId, conversationId, agentName, finishReason: outcome.finishReason, ...errorFields(err),
+        appId, conversationId, agentName, finishReason: outcome.finishReason,
+        trigger: upstreamTimeout ? 'upstream_timeout' : 'network_close',
+        statusCode: (err as { statusCode?: number }).statusCode,
+        ...errorFields(err),
       })
       return true
     }
@@ -1388,13 +1392,20 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           // all (its outer catch handles it); SSE keeps the wrap for callers
           // that inspect finishReason but surfaces the failure to telemetry.
           finalResultError = err
-          if (isNetworkError(err) && processor.getAccumulatedContent().length > 0) {
-            // Premature close while fetching the final result, but content
-            // already streamed: soft-commit it. The Langfuse span is still
+          const upstreamTimeout = isUpstreamTimeoutError(err)
+          if ((isNetworkError(err) || upstreamTimeout) && processor.getAccumulatedContent().length > 0) {
+            // Premature close or upstream 408/504 timeout while fetching the
+            // final result, but content already streamed: soft-commit it. The
+            // Langfuse span is still
             // recorded as endError below (it WAS an upstream failure), while
             // the wire-facing finishReason carried in the return is
             // 'incomplete' → client renders the gentle soft advisory.
-            logger.warn('sse.execution.getFinalResult.premature_close', { appId, conversationId, ...errorFields(err) })
+            logger.warn('sse.execution.getFinalResult.premature_close', {
+              appId, conversationId,
+              trigger: upstreamTimeout ? 'upstream_timeout' : 'network_close',
+              statusCode: (err as { statusCode?: number }).statusCode,
+              ...errorFields(err),
+            })
             finishReason = 'incomplete'
           } else {
             logger.warn('sse.execution.getFinalResult.failed', { appId, conversationId, ...errorFields(err) })
