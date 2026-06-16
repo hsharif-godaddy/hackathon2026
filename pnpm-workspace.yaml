@@ -107,7 +107,7 @@ catalog:
   socket.io: ^4.8.3
   socket.io-client: ^4.8.3
   supertest: ^7.2.2
-  tar: ^7.5.15
+  tar: ^7.5.16
   tsx: ^4.21.0
   typescript: 5.9.3
   uuid: ^11.1.1
