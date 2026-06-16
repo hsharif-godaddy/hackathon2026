@@ -106,6 +106,10 @@ make build                         # builds bin/stripe-service
 curl http://localhost:8443/health  # sanity check
 ```
 
+For the full local loop — agent + app wired to a local stripe-service running
+against **real Stripe test mode**, with webhooks tunneled via the Stripe CLI —
+see [docs/local-development.md](docs/local-development.md).
+
 ### Diagnostic probe
 
 `GET /v1/_probe` runs a zero-side-effect `Describe*` call against each backing
