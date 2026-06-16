@@ -81,20 +81,18 @@ export function InboxConversationMessageThread({
     );
   }
 
-  const chronologicalMessages = [...messages].reverse();
-
   return (
     <div
       ref={containerRef}
       className='flex flex-1 flex-col-reverse gap-1 overflow-y-auto bg-ux-surface-base px-3 py-3'
       data-testid='conversation-message-thread'
     >
-      {chronologicalMessages.map((message) => (
+      {messages.map((message, index) => (
         <InboxMessageBubble
           key={message.id}
           message={message}
           conversation={conversation}
-          isFirstMessage={message.id === chronologicalMessages[0]?.id}
+          isFirstMessage={index === messages.length - 1 && !hasNextPage}
         />
       ))}
 
