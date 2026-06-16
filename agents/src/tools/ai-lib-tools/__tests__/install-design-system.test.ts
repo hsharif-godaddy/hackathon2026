@@ -32,6 +32,58 @@ describe('installDesignSystem tool', () => {
     expect(out).toMatch(/not found in catalog/i)
   })
 
+  it('resolves the entry case-insensitively (catalog slug "Terra", input "terra")', async () => {
+    const installSpy = vi.fn().mockResolvedValue({ slug: 'Terra', written: 7 })
+    const terra = { ...ENTRY, slug: 'Terra', id: 'e3979a61-4a99-4e30-8169-ffe06c73a1bc', displayName: 'Terra' }
+    vi.doMock('../../../services/design-system/catalog.js', () => ({
+      fetchDesignSystemCatalog: vi.fn().mockResolvedValue({ version: 1, generatedAt: '', kits: [terra] }),
+      resolveDesignSystemBaseUrl: () => 'http://x/brand-kits',
+    }))
+    vi.doMock('../../../services/design-system/install.js', () => ({ installDesignSystem: installSpy }))
+    vi.doMock('../../../workspace/index.js', () => ({ createForWorkspace: vi.fn().mockReturnValue(mockWorkspace) }))
+    vi.doMock('../../../database/index.js', () => ({ AppMetadataRepository: class { merge = vi.fn() } }))
+
+    const { installDesignSystemAITool } = await import('../install-design-system.js')
+    const out = await installDesignSystemAITool.execute({ slug: 'terra' }, { experimental_context: { metadata: { appId: 'a' } } } as any) as string
+
+    expect(installSpy).toHaveBeenCalledWith(expect.objectContaining({ entry: terra }))
+    expect(out).toContain('loadUiKit')
+  })
+
+  it('resolves by id when the input is the catalog id', async () => {
+    const installSpy = vi.fn().mockResolvedValue({ slug: 'modern-bento', written: 7 })
+    vi.doMock('../../../services/design-system/catalog.js', () => ({
+      fetchDesignSystemCatalog: vi.fn().mockResolvedValue({ version: 1, generatedAt: '', kits: [ENTRY] }),
+      resolveDesignSystemBaseUrl: () => 'http://x/brand-kits',
+    }))
+    vi.doMock('../../../services/design-system/install.js', () => ({ installDesignSystem: installSpy }))
+    vi.doMock('../../../workspace/index.js', () => ({ createForWorkspace: vi.fn().mockReturnValue(mockWorkspace) }))
+    vi.doMock('../../../database/index.js', () => ({ AppMetadataRepository: class { merge = vi.fn() } }))
+
+    const { installDesignSystemAITool } = await import('../install-design-system.js')
+    const out = await installDesignSystemAITool.execute({ slug: ENTRY.id }, { experimental_context: { metadata: { appId: 'a' } } } as any) as string
+
+    expect(installSpy).toHaveBeenCalledWith(expect.objectContaining({ entry: ENTRY }))
+    expect(out).toContain('loadUiKit')
+  })
+
+  it('resolves by displayName when the input is the human label', async () => {
+    const installSpy = vi.fn().mockResolvedValue({ slug: 'modern-bento', written: 7 })
+    vi.doMock('../../../services/design-system/catalog.js', () => ({
+      fetchDesignSystemCatalog: vi.fn().mockResolvedValue({ version: 1, generatedAt: '', kits: [ENTRY] }),
+      resolveDesignSystemBaseUrl: () => 'http://x/brand-kits',
+    }))
+    vi.doMock('../../../services/design-system/install.js', () => ({ installDesignSystem: installSpy }))
+    vi.doMock('../../../workspace/index.js', () => ({ createForWorkspace: vi.fn().mockReturnValue(mockWorkspace) }))
+    vi.doMock('../../../database/index.js', () => ({ AppMetadataRepository: class { merge = vi.fn() } }))
+
+    const { installDesignSystemAITool } = await import('../install-design-system.js')
+    const out = await installDesignSystemAITool.execute({ slug: 'modern bento' }, { experimental_context: { metadata: { appId: 'a' } } } as any) as string
+
+    expect(installSpy).toHaveBeenCalledWith(expect.objectContaining({ entry: ENTRY }))
+    expect(out).toContain('loadUiKit')
+  })
+
   it('installs and returns success message', async () => {
     const installSpy = vi.fn().mockResolvedValue({ slug: 'modern-bento', written: 7 })
     vi.doMock('../../../services/design-system/catalog.js', () => ({

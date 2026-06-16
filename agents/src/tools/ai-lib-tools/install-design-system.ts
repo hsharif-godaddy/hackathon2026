@@ -8,9 +8,9 @@ import { AppMetadataRepository } from '../../database/index.js'
 import type { DesignKitRef } from '../../types/design-kit.js'
 
 export const installDesignSystemAITool: Tool = createTool(
-  'Download and install a design system by slug. Extracts to docs/ui-kit/ in the app workspace. After this returns, call loadUiKit to read the design system content and begin building.',
+  'Download and install a design system from the catalog. Extracts to docs/ui-kit/ in the app workspace. After this returns, call loadUiKit to read the design system content and begin building.',
   z.object({
-    slug: z.string().min(1).describe('The catalog slug, e.g. "modern-bento"'),
+    slug: z.string().min(1).describe('The catalog id, slug, or displayName (case-insensitive), e.g. "Terra"'),
   }),
   async (input, context) => {
     const appId = context?.metadata?.appId as string | undefined
@@ -21,7 +21,16 @@ export const installDesignSystemAITool: Tool = createTool(
       if (!workspace) return `Error: workspace unavailable for app '${appId}'`
 
       const catalog = await fetchDesignSystemCatalog()
-      const entry = catalog.kits.find(k => k.slug === input.slug)
+      // Resolve against id/slug/displayName, case-insensitively. `slug` is being
+      // deprecated and its casing now tracks `displayName` (e.g. "Terra", not
+      // "terra"), so an exact slug match is brittle — the agent or a manual entry
+      // routinely passes a normalized-case value. `id` is the stable join key.
+      const needle = input.slug.trim().toLowerCase()
+      const entry = catalog.kits.find(
+        k => k.id.toLowerCase() === needle
+          || k.slug.toLowerCase() === needle
+          || k.displayName.toLowerCase() === needle,
+      )
       if (!entry) return `Error: design system '${input.slug}' not found in catalog.`
 
       const result = await installDesignSystem({
