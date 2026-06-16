@@ -16,6 +16,8 @@ const TIMER_INTERVAL_MS = 5 * 60 * 1_000;
 // streamHighWaterMarks, not this overlap. Duplicates are suppressed by processedSequences.
 const WINDOW_MS = TIMER_INTERVAL_MS + 2 * 60 * 1_000;
 
+const STALE_GUARD_GRACE_MS = 60 * 60 * 1_000;
+
 // TTL for the processed-sequence cache. Must cover at least WINDOW_MS so overlap re-reads are always caught.
 const SEQUENCE_CACHE_TTL_MS = WINDOW_MS + 60 * 1_000;
 // Hard cap per stream. Map preserves insertion order, so the oldest entries are trimmed first.
@@ -105,13 +107,14 @@ async function processEventWithRetry(raw: unknown, context: { streamName: string
 
 
 /** Reads one shard from seekTimestamp up to WINDOW_MS, forwarding records matching allowedEid
- * to processEvent. Deduplicates via processedSequences. */
+ * to processEvent. Deduplicates via processedSequences. Records older than maxAgeMs are dropped. */
 async function processWindow(
   client: KinesisClient,
   streamName: string,
   shardId: string,
   seekTimestamp: Date,
   allowedEid: string,
+  maxAgeMs: number,
 ): Promise<void> {
   const cutoff = new Date(seekTimestamp.getTime() + WINDOW_MS);
   const seqCache = getStreamCache(streamName);
@@ -161,6 +164,22 @@ async function processWindow(
       if (record.ApproximateArrivalTimestamp && record.ApproximateArrivalTimestamp > cutoff) {
         pastWindow = true;
         break;
+      }
+
+      // A record this old missed its delivery window — sending it now would fire a confusing late email.
+      if (record.ApproximateArrivalTimestamp) {
+        const ageMs = Date.now() - record.ApproximateArrivalTimestamp.getTime();
+        if (ageMs > maxAgeMs) {
+          logger.warn('deferred.window.record_stale_dropped', {
+            streamName,
+            shardId,
+            sequenceNumber: record.SequenceNumber,
+            allowedEid,
+            ageMs,
+            maxAgeMs,
+          });
+          continue;
+        }
       }
 
       if (!record.Data) continue;
@@ -245,7 +264,7 @@ async function tick(
   });
 
   await Promise.all(
-    shardIds.map(shardId => processWindow(client, streamName, shardId, seekTimestamp, allowedEid)),
+    shardIds.map(shardId => processWindow(client, streamName, shardId, seekTimestamp, allowedEid, seekMs + STALE_GUARD_GRACE_MS)),
   );
 
   // Advance the high-water mark by TIMER_INTERVAL_MS (not WINDOW_MS) so the next window
