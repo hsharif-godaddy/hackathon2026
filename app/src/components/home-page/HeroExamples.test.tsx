@@ -142,7 +142,7 @@ describe('HeroExamples', () => {
       expect(screen.queryByTestId('rebuild-design-modal')).not.toBeInTheDocument();
     });
 
-    it('persists keep-similar when Keep my current look is selected', async () => {
+    it('persists keep-similar when Clone my existing site is selected', async () => {
       mockUseSwitchboard.mockReturnValue(false);
       const onExampleClick = vi.fn();
       const { user } = renderWithProviders(<HeroExamples onExampleClick={onExampleClick} />);

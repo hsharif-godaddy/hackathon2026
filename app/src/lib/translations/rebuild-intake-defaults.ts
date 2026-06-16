@@ -32,8 +32,8 @@ export const REBUILD_INTAKE_DEFAULT_MESSAGES: Record<string, string> = {
   builder_rebuild_design_modal_title: 'How should we rebuild your site?',
   builder_rebuild_design_option_modernize_label: 'Reimagine my site',
   builder_rebuild_design_option_modernize_description: 'A fresh, modern redesign',
-  builder_rebuild_design_option_keep_similar_label: 'Keep my current look',
-  builder_rebuild_design_option_keep_similar_description: 'Rebuild with my existing design & content',
+  builder_rebuild_design_option_keep_similar_label: 'Clone my existing site',
+  builder_rebuild_design_option_keep_similar_description: 'A faithful copy of my design & content',
 };
 
 export function defaultMessageForRebuildIntakeKey(key: string): string | undefined {
