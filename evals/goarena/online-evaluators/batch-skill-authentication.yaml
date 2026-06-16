@@ -1,0 +1,589 @@
+---
+evaluatorId: "airo-batch-skill-authentication"
+name: "Batch Authentication Skill Evaluator"
+description: "Session-level batch evaluator for production traces. Assesses whether the authentication skill was correctly loaded, procedural guidelines followed, required questions asked, and the auth flow completed successfully."
+
+type: llm
+customOutputSchema: true
+
+scoreType: NUMERIC
+scoreName: "auth_session_outcome_score"
+scoreConfig:
+  min: 0
+  max: 100
+
+llmConfig:
+  model: gpt-5.2
+  temperature: 0
+  maxTokens: 8000
+
+staticContext: |
+  You are a senior QA analyst specializing in conversational AI agents for
+  software-building products. You evaluate entire user sessions (not single
+  turns) against the authentication skill's operational contract. You only
+  judge behavior evidenced by the conversation or tool-call record. When
+  evidence is ambiguous, mark the dimension as "inferred" with reasoning.
+  Never assume or hallucinate steps that are not present in the transcript.
+
+steps:
+  # Step 1: Determine whether this session is auth-related and which flow applies.
+  # Runs fast (maxTokens: 400) — output feeds steps 2 and 3.
+  - id: relevance_gate
+    llmConfig:
+      model: gpt-5.2
+      temperature: 0
+      maxTokens: 400
+    template: |
+      {{staticContext}}
+
+      Review this production session and answer two questions:
+      1. Is the session primarily about authentication? (isAuthRelated)
+      2. Which single authentication flow best describes the user's intent? (authFlow)
+
+      Deterministic signals already detected from tool-call patterns:
+      - relevance_keyword_match: {{criteria.relevanceKeywordMatch}}
+      - skill_usage_detected: {{criteria.skillDetected}}
+      - detection_evidence: {{criteria.skillEvidence}}
+      - auth_skill_install_call_found: {{criteria.authSkillInstalled}}
+      - request_secrets_call_found: {{criteria.secretsRequested}}
+
+      Use these as strong evidence. Set isAuthRelated=true if ANY user turn expresses
+      authentication intent. If skill_usage_detected=true or auth_skill_install_call_found=true,
+      isAuthRelated is almost certainly true.
+
+      authFlow allowed values:
+      email_password_auth | oauth_google_auth | oauth_apple_auth | oauth_github_auth |
+      oauth_generic_auth | mixed_auth_auth | password_reset_auth | mfa_auth | sso_auth |
+      route_protection_auth | session_lifetime_auth | logout_auth | other_auth | non_auth_session
+
+      Session:
+      {{workflow}}
+    output:
+      kind: json
+      schema:
+        type: object
+        required: [isAuthRelated, authFlow]
+        properties:
+          isAuthRelated:
+            type: boolean
+          authFlow:
+            type: string
+            enum:
+              - email_password_auth
+              - oauth_google_auth
+              - oauth_apple_auth
+              - oauth_github_auth
+              - oauth_generic_auth
+              - mixed_auth_auth
+              - password_reset_auth
+              - mfa_auth
+              - sso_auth
+              - route_protection_auth
+              - session_lifetime_auth
+              - logout_auth
+              - other_auth
+              - non_auth_session
+        additionalProperties: false
+
+  # Step 2: Grade the session on quality metrics for the detected flow.
+  # Reads step 1 output (authFlow) to focus on flow-specific requirements.
+  # maxTokens left at evaluator default (8000) for detailed analysis.
+  - id: checklist_and_coverage
+    template: |
+      {{staticContext}}
+
+      This session was classified as: authFlow={{steps.relevance_gate.authFlow}}, isAuthRelated={{steps.relevance_gate.isAuthRelated}}
+
+      {{#if steps.relevance_gate.isAuthRelated}}
+      # Authentication Skill Context
+
+      - The skill adds BetterAuth authentication (Email/Password, OAuth, or both).
+      - The agent should ALWAYS run skill({ action: 'install', skill: 'authentication' }) first.
+      - The agent should ask the user first: "What authentication method: Email/Password, OAuth, or both?"
+      - If OAuth is chosen, the agent should ask which provider.
+      - The database skill must be installed before authentication (BetterAuth depends on it).
+      - The agent should always request BETTER_AUTH_SECRET via requestSecrets() with defaultValue 'auto:hex64'.
+      - For OAuth flows, request provider credentials (client ID, client secret) via requestSecrets().
+      - For OAuth flows, provide callback URL guidance: {app-url}/api/auth/callback/{provider}.
+      - Login should be the landing page and protected routes should be discussed WITH THE USER.
+      - After setup, the agent should ask which routes to protect and whether public routes or logout button placement are needed.
+      - The database schema must include 4 BetterAuth tables: user, session, account, verification.
+      - Run db:generate && db:migrate after adding the schema tables.
+      - Do NOT create custom auth context providers or duplicate auth route files.
+      - Do NOT install better-call or other better-auth sub-dependencies manually.
+      - Do NOT create additional API route files under src/server/api/auth/.
+
+      # Evidence Source Definitions
+
+      For each required info item, classify how the agent obtained it:
+      - "asked" = agent posed a direct question AND waited for the user's reply before acting.
+      - "provided" = user supplied the information unprompted.
+      - "inferred" = agent assumed or deduced without explicitly asking.
+      - "missing" = the information was never addressed at all.
+
+      # Deterministic Signals
+
+      - skill_usage_detected: {{criteria.skillDetected}}
+      - detection_evidence: {{criteria.skillEvidence}}
+
+      # Flow Requirements for {{steps.relevance_gate.authFlow}}
+
+      ## email_password_auth: auth_method, database_prereq, better_auth_secret, login_signup_routes, routes_to_protect
+      ## oauth_google_auth: oauth_provider, database_prereq, better_auth_secret, oauth_client_id, oauth_client_secret, callback_guidance, routes_to_protect
+      ## oauth_apple_auth: oauth_provider, database_prereq, better_auth_secret, oauth_client_id, oauth_client_secret, callback_guidance, routes_to_protect
+      ## oauth_github_auth: oauth_provider, database_prereq, better_auth_secret, oauth_client_id, oauth_client_secret, callback_guidance, routes_to_protect
+      ## oauth_generic_auth: oauth_provider, database_prereq, better_auth_secret, oauth_client_id, oauth_client_secret, callback_guidance, routes_to_protect
+      ## mixed_auth_auth: auth_method, oauth_provider, database_prereq, better_auth_secret, oauth_client_id, oauth_client_secret, callback_guidance, routes_to_protect
+      ## password_reset_auth: auth_method, email_delivery_dependency, database_prereq, better_auth_secret
+      ## mfa_auth: auth_method, mfa_requirement, database_prereq
+      ## sso_auth: sso_provider, auth_method, database_prereq, callback_guidance
+      ## route_protection_auth: auth_method, database_prereq, better_auth_secret, routes_to_protect
+      ## session_lifetime_auth: auth_method, session_lifetime_requirement
+      ## logout_auth: logout_location, protected_routes_context
+      ## other_auth: auth_method
+      ## non_auth_session: (none)
+
+      # 10-Item Evaluation Checklist
+
+      1. AUTH_REQUEST_CORRECTLY_DETECTED: Did the agent correctly recognize that the user wanted an auth-related workflow?
+      2. CORRECT_AUTH_FLOW_IDENTIFIED: Did the agent guide through the correct authentication flow?
+      3. AUTH_DISCOVERY_QUESTIONS_ASKED: Did the agent ask the essential discovery questions required by the flow?
+      4. REQUIRED_INFO_COLLECTED: Was the required authentication information collected, provided, or correctly inferred?
+      5. AUTH_SKILL_USED_WHEN_NEEDED: Did the agent use the authentication skill when called for?
+      6. PREREQUISITES_HANDLED: Did the agent handle the database prerequisite AND add required schema tables and run migrations?
+      7. SECRET_HANDLING_CORRECT: Did the agent request BETTER_AUTH_SECRET and provider credentials when appropriate?
+      8. ROUTE_PROTECTION_FOLLOW_UP: Did the agent ask which routes should be protected when relevant?
+      9. CLARIFICATIONS_HANDLED_EFFECTIVELY: Did the agent handle user clarifications effectively?
+      10. AGENT_DID_NOT_CREATE_CONFUSION: Did the agent avoid contributing to user confusion or frustration?
+
+      # Error Categories
+      MISSED_AUTH_DETECTION | WRONG_AUTH_FLOW | MISSING_DISCOVERY_QUESTIONS | REQUIRED_INFO_GAP |
+      AUTH_SKILL_NOT_USED | PREREQUISITE_NOT_HANDLED | SECRET_HANDLING_GAP | ROUTE_PROTECTION_FOLLOW_UP_MISSED |
+      CLARIFICATION_HANDLING_GAP | AGENT_CAUSED_CONFUSION | USER_CONFUSION_SIGNAL | USER_FRUSTRATION_SIGNAL |
+      USER_ABANDONMENT_SIGNAL | USER_PIVOT_SIGNAL
+
+      Grade the session on the required fields below. For checklistPassRate: count passing checklist items / 10.
+      For coverageRatio: count requirementCoverage items that are NOT "missing" / total items for this flow
+      (non_auth_session → coverageRatio=1, missingRequirementCount=0). For errorCount: number of distinct
+      errors detected. For primaryErrorCategory: category of the most critical error, or "none".
+
+      {{/if}}
+      {{#unless steps.relevance_gate.isAuthRelated}}
+      This session is not about authentication (authFlow: {{steps.relevance_gate.authFlow}}).
+      Grade all checklist items as pass=true (not applicable), coverageRatio=1,
+      missingRequirementCount=0, errorCount=0, primaryErrorCategory="none".
+      {{/unless}}
+
+      Session:
+      {{workflow}}
+    output:
+      kind: json
+      schema:
+        type: object
+        required:
+          - checklistPassRate
+          - coverageRatio
+          - missingRequirementCount
+          - errorCount
+          - primaryErrorCategory
+          - clarificationHandling
+          - askedClarifyingQuestions
+          - userConfusion
+          - userFrustration
+          - userAbandoned
+          - userPivoted
+          - agentContributedToConfusion
+        properties:
+          checklistPassRate:
+            type: number
+          coverageRatio:
+            type: number
+          missingRequirementCount:
+            type: integer
+          errorCount:
+            type: integer
+          primaryErrorCategory:
+            type: string
+            enum:
+              - none
+              - MISSED_AUTH_DETECTION
+              - WRONG_AUTH_FLOW
+              - MISSING_DISCOVERY_QUESTIONS
+              - REQUIRED_INFO_GAP
+              - AUTH_SKILL_NOT_USED
+              - PREREQUISITE_NOT_HANDLED
+              - SECRET_HANDLING_GAP
+              - ROUTE_PROTECTION_FOLLOW_UP_MISSED
+              - CLARIFICATION_HANDLING_GAP
+              - AGENT_CAUSED_CONFUSION
+              - USER_CONFUSION_SIGNAL
+              - USER_FRUSTRATION_SIGNAL
+              - USER_ABANDONMENT_SIGNAL
+              - USER_PIVOT_SIGNAL
+          clarificationHandling:
+            type: string
+            enum: [good, mixed, poor, not_applicable]
+          askedClarifyingQuestions:
+            type: boolean
+          userConfusion:
+            type: boolean
+          userFrustration:
+            type: boolean
+          userAbandoned:
+            type: boolean
+          userPivoted:
+            type: boolean
+          agentContributedToConfusion:
+            type: boolean
+
+  # Step 3: Compute the composite score from step 2 metrics.
+  # No workflow needed — synthesizes purely from structured step outputs.
+  - id: score
+    llmConfig:
+      model: gpt-5.2
+      temperature: 0
+      maxTokens: 800
+    template: |
+      {{staticContext}}
+
+      Compute each score breakdown component using the rubric. The composite score field will be
+      computed automatically as their sum — focus on getting each component correct.
+
+      # Inputs
+
+      Flow: {{steps.relevance_gate.authFlow}}
+      isAuthRelated: {{steps.relevance_gate.isAuthRelated}}
+      authSkillInstalled (deterministic): {{criteria.authSkillInstalled}}
+      secretsRequested (deterministic): {{criteria.secretsRequested}}
+      skill_usage_detected: {{criteria.skillDetected}}
+
+      checklistPassRate: {{steps.checklist_and_coverage.checklistPassRate}}
+      coverageRatio: {{steps.checklist_and_coverage.coverageRatio}}
+      clarificationHandling: {{steps.checklist_and_coverage.clarificationHandling}}
+      agentContributedToConfusion: {{steps.checklist_and_coverage.agentContributedToConfusion}}
+      userConfusion: {{steps.checklist_and_coverage.userConfusion}}
+      userFrustration: {{steps.checklist_and_coverage.userFrustration}}
+      userAbandoned: {{steps.checklist_and_coverage.userAbandoned}}
+      userPivoted: {{steps.checklist_and_coverage.userPivoted}}
+      primaryErrorCategory: {{steps.checklist_and_coverage.primaryErrorCategory}}
+
+      # Component rubric
+
+      skillLoading (0–15):
+        If authFlow="non_auth_session":
+          authSkillInstalled=false → 15 (correctly skipped)
+          authSkillInstalled=true  → 5  (unnecessary invocation)
+        Else (auth session):
+          authSkillInstalled=true  → 15
+          authSkillInstalled=false → 0
+
+      proceduralAdherence (0–25):
+        = floor(checklistPassRate × 25)
+
+      questionCoverage (0–30):
+        = floor(coverageRatio × 30)
+
+      agentBehavior (0–15):
+        good=15, mixed=8, poor=0, not_applicable=12
+        subtract 5 if agentContributedToConfusion=true (clamp to 0)
+
+      userSignalsInverse (0–15):
+        start=15; subtract: confusion×5, frustration×5, abandoned×8, pivoted×4 (clamp to 0)
+
+      # Other required fields
+
+      score: your best estimate of the total (the runner will override with the exact sum)
+      summary: 1–2 sentence summary of what the agent did well or poorly
+      outcome: one of successful_completion | partial_progress | agent_missed_required_questions |
+        incorrect_flow_guidance | auth_skill_not_used | user_confusion_or_frustration |
+        user_abandoned_or_pivoted | unsupported_or_ambiguous_request | non_auth_session
+      authSkillShouldBeUsed: isAuthRelated=true
+      authSkillUsed: authSkillInstalled=true OR skill_usage_detected=true
+      correctFlowGuidance: primaryErrorCategory="none" OR primaryErrorCategory="USER_CONFUSION_SIGNAL"
+      confidence: your confidence in this evaluation (0–1)
+    output:
+      kind: score
+      schema:
+        type: object
+        required:
+          - score
+          - summary
+          - outcome
+          - confidence
+          - authSkillShouldBeUsed
+          - authSkillUsed
+          - correctFlowGuidance
+          - skillLoading
+          - proceduralAdherence
+          - questionCoverage
+          - agentBehavior
+          - userSignalsInverse
+        properties:
+          score:
+            type: number
+          summary:
+            type: string
+          outcome:
+            type: string
+            enum:
+              - successful_completion
+              - partial_progress
+              - agent_missed_required_questions
+              - incorrect_flow_guidance
+              - auth_skill_not_used
+              - user_confusion_or_frustration
+              - user_abandoned_or_pivoted
+              - unsupported_or_ambiguous_request
+              - non_auth_session
+          confidence:
+            type: number
+          authSkillShouldBeUsed:
+            type: boolean
+          authSkillUsed:
+            type: boolean
+          correctFlowGuidance:
+            type: boolean
+          skillLoading:
+            type: number
+          proceduralAdherence:
+            type: number
+          questionCoverage:
+            type: number
+          agentBehavior:
+            type: number
+          userSignalsInverse:
+            type: number
+
+criteriaSchema:
+  type: object
+  properties:
+    relevanceKeywordMatch:
+      type: boolean
+      description: "Pre-detected: true if any user message matches relevance keywords"
+    skillDetected:
+      type: boolean
+      description: "Pre-detected: true if skill install evidence found in observations"
+    skillEvidence:
+      type: string
+      description: "Pre-detected: evidence string or 'none'"
+    authSkillInstalled:
+      type: boolean
+      description: "Deterministic: auth skill install call found in trace tool invocations"
+    secretsRequested:
+      type: boolean
+      description: "Deterministic: requestSecrets() call found in trace tool invocations"
+    batchConfig:
+      type: object
+      description: "Fast-path detection config — detectionKeywords, detectionToolPatterns, namedSignals, scoreMapping"
+  additionalProperties: false
+
+onlineConfig:
+  enabled: true
+  version: "v3"
+  scope: trace
+  target:
+    langfuseProjectIds:
+      - REPLACE_LANGFUSE_PROJECT_ID
+  metadataFilters:
+    tagsAnyOf:
+      - airo-app-builder
+  # batchConfig drives fast-path signal detection and score mapping.
+  # Stored inside criteria (Record<string, unknown>) so it flows through load-online-evaluators
+  # → DynamoDB unchanged with no schema changes.
+  criteria:
+    batchConfig:
+      # Sessions without any keyword match AND no tool pattern match skip the LLM (fast path).
+      # Mirrors skill.md `whenToUse` frontmatter in agents/src/skills/authentication/skill.md.
+      # Update both together when the skill's trigger conditions change.
+      detectionKeywords:
+        - "login"
+        - "log in"
+        - "sign in"
+        - "signup"
+        - "sign up"
+        - "authentication"
+        - "auth"
+        - "password reset"
+        - "forgot password"
+        - "google sign-in"
+        - "google login"
+        - "apple sign-in"
+        - "apple login"
+        - "oauth"
+        - "user accounts"
+        - "password protect"
+        - "members only"
+        - "private page"
+        - "protect route"
+        - "route protection"
+        - "logout"
+        - "sign out"
+        - "mfa"
+        - "2fa"
+        - "two factor"
+        - "sso"
+        - "saml"
+      detectionToolPatterns:
+        - "skill({ action: 'install', skill: 'authentication'"
+        - 'skill({ action: "install", skill: "authentication"'
+        - "skill({ action: 'load', skill: 'authentication'"
+        - 'skill({ action: "load", skill: "authentication"'
+        - '"skill":"authentication"'
+        - "'skill':'authentication'"
+        - "authentication/skill.md"
+        - "authentication/templates/"
+      # namedSignals: YAML-declared deterministic checks against tool invocations.
+      # Each produces a named boolean in criteria, injected before any LLM call.
+      # toolNameContains: case-insensitive substring match on inv.name
+      # toolInputContainsAll: all strings must appear in the serialized inv.input (AND logic)
+      namedSignals:
+        - name: authSkillInstalled
+          toolNameContains: "skill"
+          toolInputContainsAll: ["install", "authentication"]
+        - name: secretsRequested
+          toolNameContains: "requestsecrets"
+      # computedScores: override named output fields with a deterministic formula.
+      # Applied after all step outputs are merged, so component values are always available.
+      # Prevents LLM arithmetic drift — the runner enforces the exact sum.
+      computedScores:
+        - name: score
+          formula: sum
+          components:
+            - skillLoading
+            - proceduralAdherence
+            - questionCoverage
+            - agentBehavior
+            - userSignalsInverse
+      # scoreMapping maps LLM output fields (from merged step outputs) → Langfuse score names.
+      # sourceField uses dot-notation for nested fields; flat names match step output properties.
+      # Steps 1–3 output fields are merged before applying this mapping (later steps win on collision).
+      scoreMapping:
+        # Classification scores — written for every session including fast-path non-auth sessions.
+        - langfuseName: "auth_session_relevant"
+          sourceField: "isAuthRelated"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "Was this session about authentication? Use as filter key: auth_session_relevant=1 selects LLM-evaluated sessions; fast-path sessions receive 0."
+        - langfuseName: "auth_flow"
+          sourceField: "authFlow"
+          type: CATEGORICAL
+          nonMatchValue: "non_auth_session"
+          description: "Which authentication flow did the user request?"
+        # Quality scores — only meaningful for sessions where auth_session_relevant=1.
+        # Fast-path non-auth sessions receive the nonMatchValue default (0 / sentinel string).
+        # Always filter by auth_session_relevant=1 before aggregating these metrics in Langfuse.
+        - langfuseName: "auth_skill_should_be_used"
+          sourceField: "authSkillShouldBeUsed"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "Should the agent have invoked the authentication skill?"
+        - langfuseName: "auth_skill_used"
+          sourceField: "authSkillUsed"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "Did the agent actually invoke the authentication skill?"
+        - langfuseName: "auth_correct_flow_guidance"
+          sourceField: "correctFlowGuidance"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "Did the agent guide the user through the correct auth flow?"
+        - langfuseName: "auth_checklist_pass_rate"
+          sourceField: "checklistPassRate"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "Fraction of the 10-item quality checklist the agent passed (0–1)"
+        - langfuseName: "auth_required_info_coverage"
+          sourceField: "coverageRatio"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "Fraction of required auth info items collected, asked, or inferred (0–1)"
+        - langfuseName: "auth_missing_requirement_count"
+          sourceField: "missingRequirementCount"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "Number of required auth info items the agent failed to collect"
+        - langfuseName: "auth_error_count"
+          sourceField: "errorCount"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "Number of distinct auth quality errors detected in the session"
+        - langfuseName: "auth_primary_error_category"
+          sourceField: "primaryErrorCategory"
+          type: CATEGORICAL
+          nonMatchValue: "none"
+          description: "The most significant error category detected, or 'none'"
+        - langfuseName: "auth_session_outcome"
+          sourceField: "outcome"
+          type: CATEGORICAL
+          nonMatchValue: "non_auth_session"
+          description: "Overall session outcome classification"
+        - langfuseName: "auth_user_asked_clarifying_questions"
+          sourceField: "askedClarifyingQuestions"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "Did the user ask clarifying questions during the session?"
+        - langfuseName: "auth_user_confusion"
+          sourceField: "userConfusion"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "Did the user show signs of confusion?"
+        - langfuseName: "auth_user_frustration"
+          sourceField: "userFrustration"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "Did the user express frustration?"
+        - langfuseName: "auth_user_abandonment"
+          sourceField: "userAbandoned"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "Did the user abandon the auth flow before completion?"
+        - langfuseName: "auth_user_pivot"
+          sourceField: "userPivoted"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "Did the user pivot away from auth to a different task?"
+        - langfuseName: "auth_agent_contributed_to_confusion"
+          sourceField: "agentContributedToConfusion"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "Did the agent's responses contribute to user confusion?"
+        - langfuseName: "auth_composite_score"
+          sourceField: "score"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "Overall authentication quality score (0–100)"
+        - langfuseName: "auth_confidence"
+          sourceField: "confidence"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "LLM judge confidence in its evaluation (0–1)"
+        - langfuseName: "auth_clarification_handling"
+          sourceField: "clarificationHandling"
+          type: CATEGORICAL
+          nonMatchValue: "not_applicable"
+          description: "How well the agent handled user clarifications and follow-ups"
+        - langfuseName: "auth_score_skill_loading"
+          sourceField: "skillLoading"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "Did the agent invoke the auth skill correctly? (0–15)"
+        - langfuseName: "auth_score_procedural_adherence"
+          sourceField: "proceduralAdherence"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "Did the agent follow the correct flow steps? (0–25)"
+        - langfuseName: "auth_score_question_coverage"
+          sourceField: "questionCoverage"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "Did the agent ask all required discovery questions? (0–30)"
+        - langfuseName: "auth_score_agent_behavior"
+          sourceField: "agentBehavior"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "Overall agent response quality during the auth flow (0–15)"
+        - langfuseName: "auth_score_user_signals"
+          sourceField: "userSignalsInverse"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "Inverse of confusion, frustration, and abandonment signals (0–15)"
