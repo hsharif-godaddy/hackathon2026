@@ -14,9 +14,9 @@
 import { test, expect } from '../helpers/test-fixtures';
 
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
-import { handleSsoLogin, openUserMenu, ensureAuthenticated } from '../helpers/auth';
+import { handleSsoLogin, ensureAuthenticated, loginIfNeeded } from '../helpers/auth';
 import { LONG_TIMEOUT, CHAT_INPUT_TIMEOUT, DEFAULT_TIMEOUT, PREVIEW_TIMEOUT, APPS_GRID_PAGE_SIZE, E2E_NO_DELETE, getSpecPrefix } from '../helpers/constants';
-import { dismissBanners, logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
+import { dismissBanners, dismissOverlays, logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
 
 /** Spec prefixes used by `getSpecPrefix(...)` calls in this describe block. */
 const SPEC_PREFIXES = ['apps-page'] as const;
@@ -259,8 +259,12 @@ test.describe('Apps Page & Navigation', () => {
     console.log('🎉 All apps page tests passed!');
   });
 
-  // Skip: UXCore Next/Prev button label mismatch — re-enable once UXCore fixes button names
-  test.skip('Apps Page Pagination - Next/Prev navigation with intercepted API', async ({ page }) => {
+  // Re-enabled (VNEXT-80869). The cited UXCore Next/Prev label mismatch no
+  // longer applies — @ux/pagination renders the exact 'Go to next page' /
+  // 'Go to previous page' aria-labels this test uses. The real fixes were the
+  // login flow (loginIfNeeded) and dismissing the cookie banner that overlays
+  // the bottom-anchored pagination nav.
+  test('Apps Page Pagination - Next/Prev navigation with intercepted API', async ({ page }) => {
     const TOTAL_SITES = APPS_GRID_PAGE_SIZE + 2;
 
     // ========================================
@@ -271,13 +275,17 @@ test.describe('Apps Page & Navigation', () => {
     const promptInput = page.getByTestId('homepage-prompt-input');
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
 
-    await openUserMenu(page);
-    await page
-      .locator('[data-slot="popover-content"][data-state="open"]')
-      .getByRole('button', { name: /sign\s*in|builder_common_signin/i })
-      .click();
-    await handleSsoLogin(page);
-    await page.waitForURL('**/', { timeout: LONG_TIMEOUT });
+    // Authenticate via the robust helper rather than the manual
+    // openUserMenu + popover sign-in-button click + handleSsoLogin sequence,
+    // which flaked here (the popover sign-in button click timed out at 30s).
+    // loginIfNeeded validates the popover actually opened, handles
+    // already-authed state, and retries.
+    await loginIfNeeded(page);
+    // Clear the post-auth "Projects" popover (auto-opens for accounts with
+    // existing apps) so it can't overlay later interactions — consistent with
+    // the rest of the suite (e.g. develop-publish.spec.ts).
+    await dismissOverlays(page);
+    await expect(page.getByTestId('airo-header')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
     console.log('✅ Authenticated');
 
@@ -316,6 +324,11 @@ test.describe('Apps Page & Navigation', () => {
       console.log('📋 Step 3: Verifying first page...');
       await page.goto('/apps');
       await page.getByTestId('app-card-edit-button').first().waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+
+      // The cookie-consent banner is fixed to the bottom of the viewport and
+      // overlays the pagination nav (also bottom-anchored), so clicking
+      // Next/Prev fails actionability ("not visible/stable") until it's gone.
+      await dismissOverlays(page);
 
       const firstPageCards = await page.getByTestId('app-card-edit-button').count();
       expect(firstPageCards).toBe(APPS_GRID_PAGE_SIZE);
@@ -376,15 +389,13 @@ test.describe('Apps Page & Navigation', () => {
     }
   });
 
-  // TODO(@hdewan): re-enable once prod homepage initial-load issue is sorted.
-  // CI run 25675567980 against --env=prod showed the homepage stuck on a
-  // `<main><status>Your content is loading</status></main>` shell with no
-  // header rendered — the `airo-header > user-menu-trigger` never attached,
-  // so every auth-driven path (loginIfNeeded, triggerSignIn) times out at
-  // 30s. Not a test-code bug; either a transient CDN/auth state during that
-  // run window or a real homepage rendering regression on prod. Skipped to
-  // keep CI green until investigated.
-  test.skip('Homepage Prompt Input - Validation & Suggestions', async ({ page }) => {
+  // Re-enabled (VNEXT-80869). Previously skipped after prod CI run 25675567980
+  // hung on the auth-loading shell (`airo-header` never attached) using the
+  // manual openUserMenu + handleSsoLogin sequence. Hardened: authenticate via
+  // the robust `loginIfNeeded` helper, then gate on `airo-header` visibility so
+  // a recurrence of the loading-shell stall fails fast/deterministically
+  // instead of hanging on the prompt-input wait.
+  test('Homepage Prompt Input - Validation & Suggestions', async ({ page }) => {
     // ========================================
     // STEP 1: Navigate and login
     // ========================================
@@ -394,16 +405,20 @@ test.describe('Apps Page & Navigation', () => {
     const promptInput = page.getByTestId('homepage-prompt-input');
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
 
-    // Trigger login via user menu
-    await openUserMenu(page);
-    await page
-      .locator('[data-slot="popover-content"][data-state="open"]')
-      .getByRole('button', { name: /sign\s*in|builder_common_signin/i })
-      .click();
-    await handleSsoLogin(page);
+    // Authenticate on the homepage via the robust helper — it validates the
+    // user-menu popover actually opened, detects an already-authed session, and
+    // retries, unlike the manual openUserMenu + sign-in-button + handleSsoLogin
+    // sequence that stalled when the homepage hung on the auth-loading shell.
+    await loginIfNeeded(page);
+    // Clear the post-auth "Projects" popover (auto-opens for accounts with
+    // existing apps) so it can't overlay the suggestion buttons clicked below.
+    await dismissOverlays(page);
 
-    // Wait for redirect back to homepage
-    await page.waitForURL('**/', { timeout: LONG_TIMEOUT });
+    // Fast-fail readiness gate: the reason this test was skipped is that the
+    // homepage occasionally hangs on the auth-loading shell where `airo-header`
+    // never attaches. Assert it here so that failure is deterministic at
+    // DEFAULT_TIMEOUT rather than a 60s hang on the prompt-input wait below.
+    await expect(page.getByTestId('airo-header')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
     console.log('✅ Logged in successfully');
 
@@ -513,20 +528,33 @@ test.describe('Apps Page & Navigation', () => {
   });
 
   test('Homepage Template Selector - URL sync persists across reload', async ({ page }) => {
+    // The chip selector is gated by the appbuilder-template-selector switchboard
+    // flag (read client-side via useSwitchboard from window.gasketData.switchboard;
+    // gates <TemplateSelector> in HeroSection). It's off by default in test/prod,
+    // so force it on for this test. A defineProperty setter is used so the server's
+    // inline `window.gasketData = {…}` assignment can't clobber the injected value —
+    // it merges the flag into whatever the server assigns, regardless of timing.
+    await page.addInitScript(() => {
+      let gd: { switchboard?: Record<string, unknown> } | undefined;
+      Object.defineProperty(window, 'gasketData', {
+        configurable: true,
+        get: () => gd,
+        set: (v: { switchboard?: Record<string, unknown> } | undefined) => {
+          gd = v || {};
+          gd.switchboard = { ...(gd.switchboard || {}), 'appbuilder-template-selector': true };
+        },
+      });
+    });
+
     console.log('🧭 Step 1: Navigate to homepage with no template param...');
     await page.goto('/');
 
     const promptInput = page.getByTestId('homepage-prompt-input');
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
 
-    // Chip selector is gated by the appbuilder-template-selector switchboard flag.
-    // Read it directly from gasket-data so a missing chip means a real render failure,
-    // not "flag off" — only skip when the flag is deterministically off.
-    const flagEnabled = await page.evaluate(
-      () => (window as unknown as { gasketData?: { switchboard?: Record<string, unknown> } }).gasketData?.switchboard?.['appbuilder-template-selector'] === true,
-    );
-    test.skip(!flagEnabled, 'appbuilder-template-selector flag is off in this env');
-
+    // Flag forced on above, so the chip must render. Assert it directly (no
+    // conditional skip) — a missing chip is now a real failure (flag injection
+    // or render regression), not "flag off in this env".
     const logoChip = page.getByTestId('template-chip-logo-designer');
     await expect(logoChip).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
