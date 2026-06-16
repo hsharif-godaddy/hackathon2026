@@ -549,6 +549,15 @@ export class AILibContextManager {
                 })
             }
 
+            if (appContextResult.commerceContext) {
+                messages.push({
+                    role: 'user',
+                    content: appContextResult.commerceContext,
+                    type: 'app_context_commerce',
+                    insertionOrder: 'after_history'
+                })
+            }
+
             if (messages.length === 0) {
                 contextLogger.debug('context.app.build.empty', {
                     reason: 'AppContextManager returned no content'
@@ -562,6 +571,7 @@ export class AILibContextManager {
                 mediaSlotsContextLength: appContextResult.mediaSlotsContext?.length || 0,
                 gitStatusContextLength: appContextResult.gitStatusContext?.length || 0,
                 publishStateContextLength: appContextResult.publishStateContext?.length || 0,
+                commerceContextLength: appContextResult.commerceContext?.length || 0,
                 totalMessages: messages.length
             })
 
@@ -572,7 +582,8 @@ export class AILibContextManager {
                     secretsContext: appContextResult.secretsContext,
                     mediaSlotsContext: appContextResult.mediaSlotsContext,
                     gitStatusContext: appContextResult.gitStatusContext,
-                    publishStateContext: appContextResult.publishStateContext
+                    publishStateContext: appContextResult.publishStateContext,
+                    commerceContext: appContextResult.commerceContext
                 })
             }
 

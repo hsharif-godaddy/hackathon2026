@@ -42,6 +42,10 @@ export class AppContextRemovalStrategy implements CompressionStrategy {
       /^NO SECRETS CURRENTLY CONFIGURED/m,                        // Empty secrets state
       /^CURRENTLY CONFIGURED SECRETS:/m,          // Secrets list confirmation
       /^\[Current Project Context\]/m,               // Project context header (escaped brackets)
+      /^\[Media Slots\]/m,               // Media slots context header
+      /^## Git Status/m,                 // Git status context header
+      /^## App Status/m,                 // Publish state context header
+      /^## Commerce Binding/m,           // Commerce binding context header
       /^Directory Structure:/m,                   // Directory structure header
     ];
 

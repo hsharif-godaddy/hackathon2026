@@ -46,6 +46,7 @@ const ACTION_GROUP_TOOL_NAMES = new Set([
   'commerceCommerceStoreList',
   'commerceCommerceStoreGet',
   'commerceCommerceStoreChannelsGet',
+  'commerceCommerceStoreChannelEnsure',
   // Hidden tools (render as null) — must be groupable so they don't break action groups
   'returnToParent',
 ])

@@ -187,6 +187,8 @@ export function getToolDisplayName(toolName: string): string {
       return 'Getting Commerce store'
     case 'commerce__commerce_store_channels_get':
       return 'Getting Commerce channels'
+    case 'commerce__commerce_store_channel_ensure':
+      return 'Connecting Commerce channel'
     case 'restore':
       return 'User Restore Commit'
     default: {

@@ -41,7 +41,7 @@ export interface EnhancedAgentContext {
 export interface ContextMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
-  type?: 'app_context_stable' | 'app_context_secrets' | 'app_context_media_slots' | 'app_context_git_status' | 'app_context_publish_state' | 'ai_edit_context' | 'visual_context' | 'conversation_history' | 'selected_assets_context' | 'build_error_context'
+  type?: 'app_context_stable' | 'app_context_secrets' | 'app_context_media_slots' | 'app_context_git_status' | 'app_context_publish_state' | 'app_context_commerce' | 'ai_edit_context' | 'visual_context' | 'conversation_history' | 'selected_assets_context' | 'build_error_context'
   insertionOrder?: 'before_history' | 'after_history'
   cachePoint?: { type: 'ephemeral' }
 }

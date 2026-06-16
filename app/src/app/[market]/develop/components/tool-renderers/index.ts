@@ -83,6 +83,7 @@ export const toolRendererRegistry = {
   commerce__commerce_store_list: CommerceMcpToolRenderer,
   commerce__commerce_store_get: CommerceMcpToolRenderer,
   commerce__commerce_store_channels_get: CommerceMcpToolRenderer,
+  commerce__commerce_store_channel_ensure: CommerceMcpToolRenderer,
   commerceSearchTools: CommerceMcpToolRenderer,
   commerce_search_tools: CommerceMcpToolRenderer,
   commerceExecuteTool: CommerceMcpToolRenderer,

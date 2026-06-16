@@ -10,14 +10,27 @@ The `commerce` skill exposes every Commerce MCP core/global tool that is always 
 - `commerce__commerce_store_list` — list all stores for the customer
 - `commerce__commerce_store_get` — get a specific store by ID
 - `commerce__commerce_store_channels_get` — get channels for a store
+- `commerce__commerce_store_channel_ensure` — ensure the Airo App Builder channel for the current app
 - `commerce__search_tools` — discover catalog, inventory, price, media, order tools
 - `commerce__execute_tool` — execute a discovered tool by name with arguments
 
 Use direct store tools for store setup/discovery/channel work. Use `search_tools` + `execute_tool` for catalog, inventory, price, media, category/list, and order operations.
 
+## Durable AppBuilder Binding
+
+AppBuilder owns the current Commerce target in SQLite as an app-scoped binding. GoDaddy Commerce tools only report what is available upstream; they do not decide which business, store, or channel this AppBuilder app should work against.
+
+There are no agent-facing binding get/set tools. `commerce_store_setup` reads the durable AppBuilder binding internally and returns `selectedCommerceResources` when a saved selection exists. Treat that tool-returned selection as the current AppBuilder target only if its status is appropriate:
+
+- `channel_ready` — safe to use for Commerce mutations.
+- `store_bound` or `channel_pending` — call `commerce_store_channel_ensure` before Commerce mutations.
+- `business_bound` — run setup/discovery within that business before selecting a store.
+
+When the user chooses a different business or store, run the normal store setup/selection flow with the chosen `businessId`, `storeId`, or `storePreference`. Successful `commerce_store_setup` and `commerce_store_channel_ensure` calls persist the binding automatically and also project it to `.airo/commerce-context.json` for generated app code. Management panels may also switch the SQLite binding directly; the next `commerce_store_setup` call returns that selection.
+
 ## Store Setup Workflow
 
-**Never ask the user anything before calling `commerce_store_setup`.** Always call it first (no params) to discover store state. The tool response determines what to ask.
+Call `commerce_store_setup` first unless the current tool flow already returned the business, store, and channel IDs needed for the operation. If it returns `selectedCommerceResources.status: "channel_ready"` and the user did not ask to switch stores, use that selection. If there is no channel-ready selection, or if the user asks to connect/switch stores, continue the setup/discovery flow from the tool response. The tool response determines what to ask.
 
 ## Airo App Builder Channel Contract
 
@@ -29,7 +42,7 @@ A Commerce store is ready for Airo App Builder only after `commerce_store_channe
 </commerce_store_ready_contract>
 
 <mandatory_sequence id="setup_then_channel_ensure">
-<trigger>`commerce_store_setup` returns a `storeId`.</trigger>
+<trigger>`commerce_store_setup` returns a `storeId` without `selectedCommerceResources.status: "channel_ready"` for that same store.</trigger>
 <required_next_action>Call `commerce_store_channel_ensure` with that `storeId` before any other Commerce, catalog, inventory, order, template-pack install, or user-facing readiness step.</required_next_action>
 <store_choice_flow>If setup returns `storeChoiceRequired`, wait for the user's choice, call `commerce_store_setup` again with the chosen `storePreference`, then ensure the channel on the resolved `storeId`.</store_choice_flow>
 <failure_behavior>If channel ensure fails or returns a non-matching channel, stop the Commerce flow and explain in plain language that this app could not be connected to the store.</failure_behavior>
@@ -82,11 +95,11 @@ Tell the user in plain language: their store is connected but they need to finis
 
 ## Step 4 — After successful setup
 
-When `commerce_store_setup` returns a `storeId`, the next tool call must be `commerce_store_channel_ensure` with that store ID.
+When `commerce_store_setup` returns a `storeId` without `selectedCommerceResources.status: "channel_ready"` for that same store, the next tool call must be `commerce_store_channel_ensure` with that store ID.
 
 Reuse the returned `storeId`, `channelId`, and `locationId` for the rest of the flow. Do NOT call `commerce_store_setup` again in the same flow to recover `channelId` or re-check the store.
 
-**Multi-store rule:** Never save `storeId` to persistent app memory. Always rediscover via `commerce_store_setup` at the start of each new conversation and whenever the user asks to manage products or connect a store mid-conversation — even if a `storeId` is already in context. Re-running `commerce_store_setup` is the only safe way to detect multiple businesses/stores and present the correct choice.
+**Multi-store rule:** Persist only AppBuilder's selected target through the Commerce binding. Do not treat the binding as a mirror of all GoDaddy Commerce stores. Rediscover with `commerce_store_setup` when the user wants to connect, switch, or disambiguate stores.
 
 **Store selection matrix:**
 

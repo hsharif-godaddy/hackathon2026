@@ -1,8 +1,14 @@
 import { z } from 'zod';
 import type { SkillToolDefinition } from '@airo/ai-skills';
 
+import {
+  AppCommerceBindingRepository,
+  type UpsertAppCommerceBindingParams,
+} from '../../../database/repositories/AppCommerceBindingRepository.js';
+import type { AppCommerceBinding } from '../../../database/schema.js';
 import { logger } from '../../../logging/index.js';
 import { getActionService } from '../../../server/agent-runtime.js';
+import { createForWorkspace } from '../../../workspace/index.js';
 
 const COMMERCE_SERVER_ID = 'commerce';
 // Browser/BFF MCP calls can include first-hit Next.js compilation, OAuth exchange,
@@ -27,6 +33,33 @@ interface ClientActionContext {
 }
 
 type UnknownRecord = Record<string, unknown>;
+
+interface CommerceBindingData {
+  businessId?: string;
+  businessName?: string;
+  storeId: string;
+  storeName?: string;
+  storeUrl?: string;
+  channelId?: string;
+  channelName?: string;
+  defaultLocationId?: string;
+}
+
+interface SelectedCommerceResources {
+  configured: boolean;
+  status: AppCommerceBinding['status'];
+  commerceSetupReady: boolean;
+  businessId: string | null;
+  businessName: string | null;
+  storeId: string | null;
+  storeName: string | null;
+  storeUrl: string | null;
+  channelId: string | null;
+  channelName: string | null;
+  defaultLocationId: string | null;
+  source: AppCommerceBinding['source'];
+  lastVerifiedAt: string | null;
+}
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -86,12 +119,17 @@ function requireSocketId(context: unknown): string {
 }
 
 function requireAppId(context: unknown): string {
-  const typedContext = context as ClientActionContext | undefined;
-  const appId = typedContext?.metadata?.appId ?? typedContext?.appId;
-  if (typeof appId !== 'string' || appId.length === 0) {
+  const appId = getAppId(context);
+  if (!appId) {
     throw new Error('App ID required to bind the Airo App Builder channel');
   }
   return appId;
+}
+
+function getAppId(context: unknown): string | undefined {
+  const typedContext = context as ClientActionContext | undefined;
+  const appId = typedContext?.metadata?.appId ?? typedContext?.appId;
+  return typeof appId === 'string' && appId.length > 0 ? appId : undefined;
 }
 
 function getStringField(record: UnknownRecord, fields: string[]): string | undefined {
@@ -198,6 +236,291 @@ function logDispatchError(toolName: string, err: unknown): void {
     toolName,
     error: formatToolError(err),
   });
+}
+
+function normalizeStoreSetupInput(input: Record<string, unknown>): Record<string, unknown> {
+  if (input.storePreference !== 'new') return input;
+
+  const { storeId: _storeId, storeUrl: _storeUrl, ...setupInput } = input;
+  return setupInput;
+}
+
+function readCurrentCommerceBinding(context: unknown): AppCommerceBinding | null {
+  const appId = getAppId(context);
+  if (!appId) return null;
+
+  try {
+    return new AppCommerceBindingRepository().findByAppId(appId);
+  } catch (err) {
+    logger.warn('commerce_skill.app_commerce_binding.read_failed', {
+      appId,
+      error: formatToolError(err),
+    });
+    return null;
+  }
+}
+
+function selectedCommerceResourcesFromBinding(binding: AppCommerceBinding): SelectedCommerceResources {
+  return {
+    configured: true,
+    status: binding.status,
+    commerceSetupReady: binding.status === 'channel_ready',
+    businessId: binding.businessId ?? null,
+    businessName: binding.businessName ?? null,
+    storeId: binding.storeId ?? null,
+    storeName: binding.storeName ?? null,
+    storeUrl: binding.storeUrl ?? null,
+    channelId: binding.channelId ?? null,
+    channelName: binding.channelName ?? null,
+    defaultLocationId: binding.defaultLocationId ?? null,
+    source: binding.source,
+    lastVerifiedAt: binding.lastVerifiedAt?.toISOString() ?? null,
+  };
+}
+
+function attachSelectedCommerceResources(
+  result: unknown,
+  binding: AppCommerceBinding | null
+): unknown {
+  if (!binding) return result;
+
+  const selectedCommerceResources = selectedCommerceResourcesFromBinding(binding);
+  if (isRecord(result)) {
+    return {
+      ...result,
+      selectedCommerceResources,
+    };
+  }
+
+  return {
+    data: result,
+    selectedCommerceResources,
+  };
+}
+
+function hasStringInput(input: Record<string, unknown>, field: string): boolean {
+  return typeof input[field] === 'string' && input[field].length > 0;
+}
+
+function applyCommerceBindingDefaultsToStoreSetupInput(
+  input: Record<string, unknown>,
+  binding: AppCommerceBinding | null
+): Record<string, unknown> {
+  const setupInput = normalizeStoreSetupInput(input);
+  if (!binding) return setupInput;
+
+  const hydratedInput = { ...setupInput };
+  if (!hasStringInput(hydratedInput, 'businessId') && binding.businessId) {
+    hydratedInput.businessId = binding.businessId;
+  }
+
+  if (input.storePreference === 'new') {
+    return hydratedInput;
+  }
+
+  if (
+    !hasStringInput(hydratedInput, 'storeId') &&
+    !hasStringInput(hydratedInput, 'storeUrl') &&
+    binding.storeId
+  ) {
+    hydratedInput.storeId = binding.storeId;
+  }
+
+  return hydratedInput;
+}
+
+function setupDataFromResult(result: unknown): UnknownRecord | undefined {
+  if (!isRecord(result)) return undefined;
+  return isRecord(result.data) ? result.data : result;
+}
+
+function commerceBindingDataFromResult(
+  result: unknown,
+  defaults: UnknownRecord = {}
+): CommerceBindingData | undefined {
+  const resultData = setupDataFromResult(result);
+  if (!resultData) return undefined;
+  if (resultData.storeChoiceRequired === true || resultData.businessChoiceRequired === true) {
+    return undefined;
+  }
+
+  const channel =
+    nestedRecord(resultData, 'channel') ??
+    nestedRecord(resultData, 'salesChannel') ??
+    nestedRecord(resultData, 'appChannel');
+  const business =
+    nestedRecord(resultData, 'business') ??
+    nestedRecord(resultData, 'owningBusiness') ??
+    nestedRecord(resultData, 'owning_business');
+  const contextData = {
+    ...defaults,
+    ...resultData,
+    ...(channel ?? {}),
+  };
+  const storeId = getStringField(contextData, ['storeId', 'store_id']);
+  if (!storeId) return undefined;
+
+  return {
+    businessId:
+      getStringField(contextData, [
+        'businessId',
+        'business_id',
+        'owningBusinessId',
+        'owning_business_id',
+      ]) ?? (business ? getStringField(business, ['id', 'businessId', 'business_id']) : undefined),
+    businessName:
+      getStringField(contextData, ['businessName', 'business_name', 'owningBusinessName']) ??
+      (business ? getStringField(business, ['name', 'displayName', 'display_name']) : undefined),
+    storeId,
+    storeName: getStringField(contextData, [
+      'storeName',
+      'store_name',
+      'displayName',
+      'display_name',
+    ]),
+    storeUrl: getStringField(contextData, [
+      'storeUrl',
+      'store_url',
+      'commerceHomeUrl',
+      'commerce_home_url',
+      'manageUrl',
+      'dashboardUrl',
+    ]),
+    channelId: getStringField(contextData, [
+      'channelId',
+      'defaultChannelId',
+      'externalChannelId',
+      'channel_id',
+    ]),
+    channelName: getStringField(contextData, ['channelName', 'channel_name', 'name']),
+    defaultLocationId: getStringField(contextData, [
+      'defaultLocationId',
+      'locationId',
+      'default_location_id',
+    ]),
+  };
+}
+
+async function projectCommerceBindingToWorkspace(appId: string, binding: AppCommerceBinding): Promise<void> {
+  const workspace = createForWorkspace(appId, 'preview');
+  if (!workspace) return;
+
+  const content = JSON.stringify({
+    version: 1,
+    appId,
+    businessId: binding.businessId ?? null,
+    businessName: binding.businessName ?? null,
+    storeId: binding.storeId ?? null,
+    storeName: binding.storeName ?? null,
+    storeUrl: binding.storeUrl ?? null,
+    channelId: binding.channelId ?? null,
+    channelName: binding.channelName ?? null,
+    defaultLocationId: binding.defaultLocationId ?? null,
+    status: binding.status,
+    source: binding.source,
+    updatedAt: binding.updatedAt.toISOString(),
+  }, null, 2);
+
+  await workspace.files.write({
+    path: '.airo/commerce-context.json',
+    content: `${content}\n`,
+  });
+}
+
+async function persistCommerceBindingFromToolResult(
+  context: unknown,
+  result: unknown,
+  defaults: UnknownRecord = {},
+  source: 'commerce_store_setup' | 'commerce_store_channel_ensure'
+): Promise<AppCommerceBinding | null> {
+  const appId = getAppId(context);
+  if (!appId) return null;
+
+  const data = commerceBindingDataFromResult(result, defaults);
+  if (!data) return null;
+
+  const isChannelReady = source === 'commerce_store_channel_ensure' && typeof data.channelId === 'string';
+
+  try {
+    const repository = new AppCommerceBindingRepository();
+    const previous = repository.findByAppId(appId);
+    const previousChannelBinding =
+      source === 'commerce_store_setup' &&
+      previous?.status === 'channel_ready' &&
+      previous.storeId === data.storeId &&
+      typeof previous.channelId === 'string'
+        ? previous
+        : null;
+    const upsertParams: UpsertAppCommerceBindingParams = {
+      appId,
+      storeId: data.storeId,
+      status: isChannelReady || previousChannelBinding ? 'channel_ready' : 'store_bound',
+      source: isChannelReady
+        ? 'tool_channel_ensure'
+        : previousChannelBinding
+          ? previousChannelBinding.source
+          : 'tool_setup',
+      lastVerifiedAt: isChannelReady
+        ? new Date()
+        : previousChannelBinding
+          ? previousChannelBinding.lastVerifiedAt
+          : undefined,
+      verificationError: null,
+      eventType: isChannelReady ? 'ensured_channel' : 'selected_store',
+      actorType: 'agent',
+      reason: source,
+      metadata: { source },
+    };
+
+    if (data.businessId !== undefined) upsertParams.businessId = data.businessId;
+    if (data.businessName !== undefined) upsertParams.businessName = data.businessName;
+    if (data.storeName !== undefined) upsertParams.storeName = data.storeName;
+    if (data.storeUrl !== undefined) upsertParams.storeUrl = data.storeUrl;
+    if (data.defaultLocationId !== undefined) {
+      upsertParams.defaultLocationId = data.defaultLocationId;
+    }
+
+    if (isChannelReady) {
+      upsertParams.channelId = data.channelId;
+      if (data.channelName !== undefined) upsertParams.channelName = data.channelName;
+    } else if (source === 'commerce_store_setup') {
+      if (previousChannelBinding) {
+        upsertParams.channelId = previousChannelBinding.channelId;
+        upsertParams.channelName = previousChannelBinding.channelName;
+      } else {
+        upsertParams.channelId = null;
+        upsertParams.channelName = null;
+      }
+    }
+
+    const binding = repository.upsert(upsertParams);
+
+    try {
+      await projectCommerceBindingToWorkspace(appId, binding);
+    } catch (projectionError) {
+      logger.warn('commerce_skill.app_commerce_binding.workspace_projection_failed', {
+        appId,
+        storeId: data.storeId,
+        source,
+        error: formatToolError(projectionError),
+      });
+    }
+
+    return binding;
+  } catch (err) {
+    const logData = {
+      appId,
+      storeId: data.storeId,
+      source,
+      error: formatToolError(err),
+    };
+    if (source === 'commerce_store_channel_ensure') {
+      logger.error('commerce_skill.app_commerce_binding.persist_failed', logData);
+    } else {
+      logger.warn('commerce_skill.app_commerce_binding.persist_failed', logData);
+    }
+    return null;
+  }
 }
 
 async function callCommerceMcpTool(
@@ -434,7 +757,20 @@ export const commerceStoreSetupTool: SkillToolDefinition = {
   config: { timeout: 185_000 },
   async execute(input, context) {
     try {
-      return await callCommerceMcpTool(context, 'commerce_store_setup', input);
+      const currentBinding = readCurrentCommerceBinding(context);
+      const setupInput = applyCommerceBindingDefaultsToStoreSetupInput(input, currentBinding);
+      const result = await callCommerceMcpTool(
+        context,
+        'commerce_store_setup',
+        setupInput
+      );
+      const persistedBinding = await persistCommerceBindingFromToolResult(
+        context,
+        result,
+        setupInput,
+        'commerce_store_setup'
+      );
+      return attachSelectedCommerceResources(result, persistedBinding ?? currentBinding);
     } catch (err) {
       logDispatchError('commerce_store_setup', err);
       return `commerce__commerce_store_setup error: ${formatToolError(err)}`;
@@ -552,8 +888,17 @@ export const commerceStoreChannelEnsureTool: SkillToolDefinition = {
         return `commerce__commerce_store_channel_ensure error: Commerce did not return a valid Airo App Builder channel for this app.`;
       }
       const ensuredChannel = isRecord(result) ? result : {};
+      const persistedBinding = await persistCommerceBindingFromToolResult(
+        context,
+        result,
+        { storeId: input.storeId, channelName },
+        'commerce_store_channel_ensure'
+      );
       return {
         ...ensuredChannel,
+        ...(persistedBinding
+          ? { selectedCommerceResources: selectedCommerceResourcesFromBinding(persistedBinding) }
+          : {}),
         commerceSetupReady: true,
         NEXT_STEP:
           `Write VITE_GODADDY_STORE_ID, VITE_GODADDY_CHANNEL_ID, GODADDY_API_BASE_URL, and VITE_GODADDY_CURRENCY_CODE from the setup/channel results, then classify the user's original request. For catalog, product detail, shop, or cart UI, the next skill calls must be ${COMMERCE_UI_TEMPLATE_LOAD_ACTION} and then ${COMMERCE_UI_TEMPLATE_INSTALL_ACTION} before writing UI, catalog hooks, or Commerce API code. If checkout is also needed, also use ${GODADDY_PAYMENTS_TEMPLATE_INSTALL_ACTION}. Do not create catalog/cart proxy routes manually.`,

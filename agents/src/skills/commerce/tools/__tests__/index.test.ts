@@ -1,12 +1,36 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockExecuteAction, mockGetActionService } = vi.hoisted(() => ({
+const {
+  mockExecuteAction,
+  mockFindBindingByAppId,
+  mockCreateForWorkspace,
+  mockGetActionService,
+  mockUpsertBinding,
+  mockWorkspaceWrite,
+} = vi.hoisted(() => ({
   mockExecuteAction: vi.fn(),
+  mockFindBindingByAppId: vi.fn(),
+  mockCreateForWorkspace: vi.fn(),
   mockGetActionService: vi.fn(),
+  mockUpsertBinding: vi.fn(),
+  mockWorkspaceWrite: vi.fn(),
 }));
 
 vi.mock('../../../../server/agent-runtime.js', () => ({
   getActionService: mockGetActionService,
+}));
+
+vi.mock('../../../../database/repositories/AppCommerceBindingRepository.js', () => ({
+  AppCommerceBindingRepository: vi.fn().mockImplementation(function () {
+    return {
+      findByAppId: mockFindBindingByAppId,
+      upsert: mockUpsertBinding,
+    };
+  }),
+}));
+
+vi.mock('../../../../workspace/index.js', () => ({
+  createForWorkspace: mockCreateForWorkspace,
 }));
 
 const {
@@ -33,10 +57,34 @@ function runTool(
 describe('commerce skill MCP tools', () => {
   beforeEach(() => {
     mockExecuteAction.mockReset();
+    mockFindBindingByAppId.mockReset();
     mockGetActionService.mockReset();
+    mockUpsertBinding.mockReset();
     mockGetActionService.mockReturnValue({
       executeAction: mockExecuteAction,
     });
+    mockCreateForWorkspace.mockReturnValue({
+      files: {
+        write: mockWorkspaceWrite,
+      },
+    });
+    mockWorkspaceWrite.mockResolvedValue({ bytesWritten: 100 });
+    mockFindBindingByAppId.mockReturnValue(null);
+    mockUpsertBinding.mockImplementation((params) => ({
+      appId: params.appId,
+      businessId: params.businessId ?? null,
+      businessName: params.businessName ?? null,
+      storeId: params.storeId ?? null,
+      storeName: params.storeName ?? null,
+      storeUrl: params.storeUrl ?? null,
+      channelId: params.channelId ?? null,
+      channelName: params.channelName ?? null,
+      defaultLocationId: params.defaultLocationId ?? null,
+      status: params.status,
+      source: params.source,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }));
   });
 
   it('exports all Commerce MCP core/global tools', () => {
@@ -225,6 +273,13 @@ describe('commerce skill MCP tools', () => {
 
     expect(result).toEqual(expect.objectContaining({
       ...channel,
+      selectedCommerceResources: expect.objectContaining({
+        configured: true,
+        storeId: 'store-1',
+        channelId: 'channel-1',
+        status: 'channel_ready',
+        commerceSetupReady: true,
+      }),
       commerceSetupReady: true,
       requiredNextActions: expect.arrayContaining([
         expect.stringContaining("skill({ action: 'load', skill: 'commerce/ui' })"),
@@ -281,6 +336,14 @@ describe('commerce skill MCP tools', () => {
         },
       })
     );
+    expect(mockUpsertBinding).toHaveBeenCalledWith(expect.objectContaining({
+      appId: 'app-1',
+      storeId: 'store-1',
+      channelId: 'channel-1',
+      status: 'channel_ready',
+      source: 'tool_channel_ensure',
+      eventType: 'ensured_channel',
+    }));
   });
 
   it('accepts deployed Commerce MCP ensure summaries that omit channel subtype', async () => {
@@ -417,6 +480,181 @@ describe('commerce skill MCP tools', () => {
             params: {
               name: 'commerce_store_channels_get',
               arguments: { storeId: 'store-1', defaultOnly: true },
+            },
+          }),
+        }),
+      })
+    );
+  });
+
+  it('persists a store-bound app commerce binding after store setup resolves a store', async () => {
+    mockExecuteAction.mockResolvedValueOnce({
+      success: true,
+      result: {
+        structuredContent: {
+          data: {
+            businessId: 'business-1',
+            businessName: 'Haven & Co.',
+            storeId: 'store-1',
+            displayName: 'Haven Store',
+            channelId: 'unverified-channel',
+          },
+        },
+      },
+    });
+
+    const result = await runTool(
+      commerceStoreSetupTool,
+      { storeName: 'Haven Store', storePreference: 'existing' },
+      { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+    );
+
+    expect(mockUpsertBinding).toHaveBeenCalledWith(expect.objectContaining({
+      appId: 'app-1',
+      businessId: 'business-1',
+      businessName: 'Haven & Co.',
+      storeId: 'store-1',
+      storeName: 'Haven Store',
+      channelId: null,
+      status: 'store_bound',
+      source: 'tool_setup',
+      eventType: 'selected_store',
+    }));
+    expect(result).toEqual(expect.objectContaining({
+      selectedCommerceResources: expect.objectContaining({
+        configured: true,
+        businessId: 'business-1',
+        storeId: 'store-1',
+        channelId: null,
+        status: 'store_bound',
+        commerceSetupReady: false,
+      }),
+    }));
+  });
+
+  it('uses the durable AppBuilder binding as store setup defaults and returns it', async () => {
+    const savedBinding = {
+      appId: 'app-1',
+      businessId: 'business-1',
+      businessName: 'Haven & Co.',
+      storeId: 'store-1',
+      storeName: 'Haven Store',
+      storeUrl: 'https://commerce.godaddy.com/stores/store-1',
+      channelId: 'channel-1',
+      channelName: 'Airo App Builder',
+      defaultLocationId: 'location-1',
+      status: 'channel_ready',
+      source: 'tool_channel_ensure',
+      lastVerifiedAt: new Date('2026-06-15T12:00:00.000Z'),
+      createdAt: new Date('2026-06-15T11:00:00.000Z'),
+      updatedAt: new Date('2026-06-15T12:00:00.000Z'),
+    };
+    mockFindBindingByAppId.mockReturnValue(savedBinding);
+    mockUpsertBinding.mockImplementationOnce((params) => ({
+      ...savedBinding,
+      ...params,
+      businessId: params.businessId ?? savedBinding.businessId,
+      businessName: params.businessName ?? savedBinding.businessName,
+      storeName: params.storeName ?? savedBinding.storeName,
+      storeUrl: params.storeUrl ?? savedBinding.storeUrl,
+      defaultLocationId: params.defaultLocationId ?? savedBinding.defaultLocationId,
+    }));
+    mockExecuteAction.mockResolvedValueOnce({
+      success: true,
+      result: {
+        structuredContent: {
+          data: {
+            storeId: 'store-1',
+            displayName: 'Haven Store',
+          },
+        },
+      },
+    });
+
+    const result = await runTool(
+      commerceStoreSetupTool,
+      {},
+      { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+    );
+
+    expect(mockExecuteAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          request: expect.objectContaining({
+            params: {
+              name: 'commerce_store_setup',
+              arguments: {
+                businessId: 'business-1',
+                storeId: 'store-1',
+              },
+            },
+          }),
+        }),
+      })
+    );
+    expect(mockUpsertBinding).toHaveBeenCalledWith(expect.objectContaining({
+      appId: 'app-1',
+      businessId: 'business-1',
+      storeId: 'store-1',
+      channelId: 'channel-1',
+      channelName: 'Airo App Builder',
+      status: 'channel_ready',
+      source: 'tool_channel_ensure',
+    }));
+    expect(result).toEqual(expect.objectContaining({
+      selectedCommerceResources: expect.objectContaining({
+        configured: true,
+        businessId: 'business-1',
+        storeId: 'store-1',
+        channelId: 'channel-1',
+        defaultLocationId: 'location-1',
+        status: 'channel_ready',
+        commerceSetupReady: true,
+        lastVerifiedAt: '2026-06-15T12:00:00.000Z',
+      }),
+    }));
+  });
+
+  it('does not pass stale existing store identifiers when the user chooses a new store', async () => {
+    mockFindBindingByAppId.mockReturnValue({
+      appId: 'app-1',
+      businessId: 'business-1',
+      storeId: 'saved-store-id',
+      channelId: 'saved-channel-id',
+      status: 'channel_ready',
+      source: 'tool_channel_ensure',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    mockExecuteAction.mockResolvedValueOnce({
+      success: true,
+      result: {
+        structuredContent: {
+          data: {
+            storeId: 'new-store-id',
+          },
+        },
+      },
+    });
+
+    await runTool(commerceStoreSetupTool, {
+      storeName: 'Airo Shop',
+      storePreference: 'new',
+      storeId: 'stale-existing-store-id',
+      storeUrl: 'https://commerce.godaddy.com/stores/stale-existing-store-id',
+    }, { socketId: 'socket-1', metadata: { appId: 'app-1' } });
+
+    expect(mockExecuteAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          request: expect.objectContaining({
+            params: {
+              name: 'commerce_store_setup',
+              arguments: {
+                businessId: 'business-1',
+                storeName: 'Airo Shop',
+                storePreference: 'new',
+              },
             },
           }),
         }),

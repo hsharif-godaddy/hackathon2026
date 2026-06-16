@@ -197,6 +197,78 @@ export interface GitRemoteConfig {
   updatedAt: Date;
 }
 
+export type AppCommerceBindingStatus =
+  | 'business_bound'
+  | 'store_bound'
+  // Reserved for async flows that bind a store before channel ensure completes.
+  | 'channel_pending'
+  | 'channel_ready'
+  | 'invalid';
+
+export type AppCommerceBindingSource =
+  | 'user_selected'
+  | 'tool_setup'
+  | 'tool_discovery'
+  | 'tool_channel_ensure'
+  | 'migration'
+  | 'env_fallback'
+  | 'unknown';
+
+/**
+ * Durable AppBuilder-owned relationship between an app and Commerce resources.
+ *
+ * Rows are sparse: no row means Commerce has not been configured for the app.
+ * Do not treat this as a mirror of GoDaddy Commerce data; it is the current
+ * target AppBuilder should work against.
+ *
+ * Optional fields support partial update construction; nulls represent
+ * intentionally cleared or unavailable persisted values.
+ */
+export interface AppCommerceBinding {
+  appId: string;
+  businessId?: string | null;
+  businessName?: string | null;
+  storeId?: string | null;
+  storeName?: string | null;
+  storeUrl?: string | null;
+  channelId?: string | null;
+  channelName?: string | null;
+  defaultLocationId?: string | null;
+  status: AppCommerceBindingStatus;
+  source: AppCommerceBindingSource;
+  lastVerifiedAt?: Date | null;
+  verificationError?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type AppCommerceBindingEventType =
+  | 'selected_business'
+  | 'selected_store'
+  | 'created_store'
+  | 'ensured_channel'
+  | 'cleared_binding'
+  | 'verified'
+  | 'verification_failed';
+
+export type AppCommerceBindingActorType = 'agent' | 'user' | 'system' | 'migration';
+
+export interface AppCommerceBindingEvent {
+  id: string;
+  appId: string;
+  eventType: AppCommerceBindingEventType;
+  previousBusinessId?: string | null;
+  previousStoreId?: string | null;
+  previousChannelId?: string | null;
+  nextBusinessId?: string | null;
+  nextStoreId?: string | null;
+  nextChannelId?: string | null;
+  actorType: AppCommerceBindingActorType;
+  reason?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: Date;
+}
+
 /**
  * Share token for public preview access
  * Allows time-limited access to preview apps without authentication
@@ -369,6 +441,8 @@ export function initializeSchema(db: Database): void {
   createConversationSummariesTable(db);
   createGitRemoteConfigTable(db);
   createShareTokensTable(db);
+  createAppCommerceBindingsTable(db);
+  createAppCommerceBindingEventsTable(db);
   createDkimOnboardingTable(db);
   createSeoQualityScoresTable(db);
 
@@ -698,6 +772,93 @@ function createShareTokensTable(db: Database): void {
 }
 
 /**
+ * Create the app_commerce_bindings table.
+ *
+ * This stores AppBuilder's selected Commerce target per app. It is intentionally
+ * sparse: apps without commerce have no row.
+ */
+function createAppCommerceBindingsTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS app_commerce_bindings (
+      app_id TEXT PRIMARY KEY,
+      business_id TEXT,
+      business_name TEXT,
+      store_id TEXT,
+      store_name TEXT,
+      store_url TEXT,
+      channel_id TEXT,
+      channel_name TEXT,
+      default_location_id TEXT,
+      status TEXT NOT NULL CHECK(status IN (
+        'business_bound',
+        'store_bound',
+        'channel_pending',
+        'channel_ready',
+        'invalid'
+      )),
+      source TEXT NOT NULL DEFAULT 'unknown' CHECK(source IN (
+        'user_selected',
+        'tool_setup',
+        'tool_discovery',
+        'tool_channel_ensure',
+        'migration',
+        'env_fallback',
+        'unknown'
+      )),
+      last_verified_at DATETIME,
+      verification_error TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE,
+      CHECK (
+        status != 'business_bound'
+        OR business_id IS NOT NULL
+      ),
+      CHECK (
+        status NOT IN ('store_bound', 'channel_pending', 'channel_ready')
+        OR store_id IS NOT NULL
+      ),
+      CHECK (
+        status != 'channel_ready'
+        OR (store_id IS NOT NULL AND channel_id IS NOT NULL)
+      )
+    )
+  `);
+}
+
+/**
+ * Create the app_commerce_binding_events table for audit/debug history.
+ */
+function createAppCommerceBindingEventsTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS app_commerce_binding_events (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      event_type TEXT NOT NULL CHECK(event_type IN (
+        'selected_business',
+        'selected_store',
+        'created_store',
+        'ensured_channel',
+        'cleared_binding',
+        'verified',
+        'verification_failed'
+      )),
+      previous_business_id TEXT,
+      previous_store_id TEXT,
+      previous_channel_id TEXT,
+      next_business_id TEXT,
+      next_store_id TEXT,
+      next_channel_id TEXT,
+      actor_type TEXT NOT NULL CHECK(actor_type IN ('agent', 'user', 'system', 'migration')),
+      reason TEXT,
+      metadata TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
+    )
+  `);
+}
+
+/**
  * Create the dkim_onboarding table for durable DKIM onboarding state per (app, domain)
  */
 function createDkimOnboardingTable(db: Database): void {
@@ -997,6 +1158,24 @@ function createIndexes(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_share_tokens_expires_at ON share_tokens(expires_at)
   `);
 
+  // App Commerce bindings table indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_app_commerce_bindings_business_id ON app_commerce_bindings(business_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_app_commerce_bindings_store_id ON app_commerce_bindings(store_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_app_commerce_bindings_status ON app_commerce_bindings(status)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_app_commerce_binding_events_app_created
+    ON app_commerce_binding_events(app_id, created_at DESC)
+  `);
+
   // DKIM onboarding: no separate app_id index needed — UNIQUE(app_id, domain)
   // already provides a composite index whose leftmost prefix covers app_id lookups.
 
@@ -1127,6 +1306,16 @@ function createTriggers(db: Database): void {
     FOR EACH ROW
     BEGIN
       UPDATE social_posts SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END
+  `);
+
+  // Trigger to automatically update updated_at on app_commerce_bindings
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS update_app_commerce_bindings_updated_at
+    AFTER UPDATE ON app_commerce_bindings
+    FOR EACH ROW
+    BEGIN
+      UPDATE app_commerce_bindings SET updated_at = CURRENT_TIMESTAMP WHERE app_id = NEW.app_id;
     END
   `);
 
@@ -1651,6 +1840,10 @@ function applyMigrations(db: Database): void {
 
   // Add purpose column to share_tokens for archive-snapshot share tokens
   migrateShareTokensPurpose(db);
+
+  // Create AppBuilder Commerce binding tables for existing databases
+  createAppCommerceBindingsTable(db);
+  createAppCommerceBindingEventsTable(db);
 
   // Create seo_quality_scores table for existing databases — RUBICON-143
   createSeoQualityScoresTable(db);

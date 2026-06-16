@@ -45,16 +45,24 @@ describe('Database Schema Integration Tests', () => {
 
       const tableNames = tables.map(t => t.name);
       expect(tableNames).toEqual([
+        'app_commerce_binding_events',
+        'app_commerce_bindings',
+        'app_metadata',
         'apps',
+        'blog_posts',
         'conversation_messages',
         'conversation_summaries',
         'conversations',
+        'db_import_jobs',
         'file_context',
         'git_remote_config',
         'import_jobs',
         'memory',
         'oauth_tokens',
+        'routes',
         'running_processes',
+        'seo_quality_scores',
+        'share_tokens',
         'social_associations',
         'social_posts'
       ]);
@@ -121,6 +129,11 @@ describe('Database Schema Integration Tests', () => {
       expect(indexNames).toContain('idx_conversation_messages_conversation_id');
       expect(indexNames).toContain('idx_conversation_messages_created_at');
 
+      expect(indexNames).toContain('idx_app_commerce_bindings_business_id');
+      expect(indexNames).toContain('idx_app_commerce_bindings_store_id');
+      expect(indexNames).toContain('idx_app_commerce_bindings_status');
+      expect(indexNames).toContain('idx_app_commerce_binding_events_app_created');
+
       expect(indexNames).toContain('idx_social_associations_app_id');
       expect(indexNames).toContain('idx_social_associations_app_platform');
       expect(indexNames).toContain('idx_social_posts_app_id');
@@ -144,6 +157,7 @@ describe('Database Schema Integration Tests', () => {
 
       // Verify all expected triggers exist
       expect(triggerNames).toContain('update_apps_updated_at');
+      expect(triggerNames).toContain('update_app_commerce_bindings_updated_at');
       expect(triggerNames).toContain('update_conversations_updated_at');
       expect(triggerNames).toContain('update_social_posts_updated_at');
     });
@@ -335,7 +349,7 @@ describe('Database Schema Integration Tests', () => {
         ORDER BY name
       `).all() as { name: string }[];
 
-      expect(tables).toHaveLength(13); // Should still have exactly 13 tables
+      expect(tables).toHaveLength(20); // Should still have exactly the expected tables
     });
 
     it('backfills share_tokens.purpose to "user" on a pre-existing populated table', () => {

@@ -3,6 +3,7 @@ export * from './schema.js';
 export * from './connection.js';
 export * from './repositories/AppMetadataRepository.js';
 export * from './repositories/AppRepository.js';
+export * from './repositories/AppCommerceBindingRepository.js';
 export * from './repositories/BlogPostRepository.js';
 export * from './repositories/ConversationRepository.js';
 export * from './repositories/FileContextRepository.js';

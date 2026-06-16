@@ -5,6 +5,7 @@ import { appContextEvents } from '../logging/events/index.js';
 import { SecretsManagementTool } from '../tools/secrets-management-tool.js';
 import { mediaManifestService, type MediaSlot } from './MediaManifestService.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
+import { AppCommerceBindingRepository } from '../database/repositories/AppCommerceBindingRepository.js';
 import { MemoryRepository } from '../database/repositories/MemoryRepository.js';
 import { getKvMemoryStore } from '../memory/adapters/index.js';
 import type { KvMemoryStore } from '../memory/interfaces/index.js';
@@ -27,6 +28,8 @@ export interface AppContextResult {
   gitStatusContext: string | null;
   /** Publish state context - whether app is published and its URL */
   publishStateContext: string | null;
+  /** Commerce binding context - selected business/store/channel for this app */
+  commerceContext: string | null;
 }
 
 /**
@@ -39,10 +42,12 @@ export interface AppContextResult {
  */
 export class AppContextManager {
   private appRepository: AppRepository;
+  private appCommerceBindingRepository: AppCommerceBindingRepository;
   private memoryRepository: MemoryRepository;
 
   constructor(private kvMemoryStore: KvMemoryStore = getKvMemoryStore()) {
     this.appRepository = new AppRepository();
+    this.appCommerceBindingRepository = new AppCommerceBindingRepository();
     this.memoryRepository = new MemoryRepository();
   }
 
@@ -58,7 +63,7 @@ export class AppContextManager {
     try {
       // Only generate context if we have an app context
       if (!appId || !appPath) {
-        return { stableContext: null, secretsContext: null, mediaSlotsContext: null, gitStatusContext: null, publishStateContext: null };
+        return { stableContext: null, secretsContext: null, mediaSlotsContext: null, gitStatusContext: null, publishStateContext: null, commerceContext: null };
       }
 
       appContextEvents.generateBegin(logger, { appId, directoryPath: appPath });
@@ -67,13 +72,14 @@ export class AppContextManager {
       // Note: Directory listing removed to prevent cache invalidation on file changes.
       // Agents should use the directoryListing tool when they need to explore the file structure.
       const customerId = customerIdFromContext(context);
-      const [packageInfo, designSystemInfo, secretsInfo, mediaSlotsInfo, gitStatusInfo, publishStateInfo] = await Promise.all([
+      const [packageInfo, designSystemInfo, secretsInfo, mediaSlotsInfo, gitStatusInfo, publishStateInfo, commerceInfo] = await Promise.all([
         this.getPackageInfo(context),
         this.getDesignSystemInfo(appId, customerId),
         this.getSecretsInfo(appId),
         this.getMediaSlotsInfo(appId),
         this.getGitStatusInfo(appId),
         this.getPublishStateInfo(appId),
+        this.getCommerceBindingInfo(appId),
       ]);
 
       // Format stable context (package info, design system) - after_history to avoid cache invalidation
@@ -85,6 +91,7 @@ export class AppContextManager {
       const mediaSlotsContext = this.formatMediaSlotsSection(mediaSlotsInfo);
       const gitStatusContext = this.formatGitStatusSection(gitStatusInfo);
       const publishStateContext = this.formatPublishStateSection(publishStateInfo);
+      const commerceContext = this.formatCommerceBindingSection(commerceInfo);
 
       // Log successful generation
       const generateData: any = {
@@ -96,7 +103,8 @@ export class AppContextManager {
         secretsContextSize: secretsContext?.length || 0,
         mediaSlotsContextSize: mediaSlotsContext?.length || 0,
         gitStatusContextSize: gitStatusContext?.length || 0,
-        publishStateContextSize: publishStateContext?.length || 0
+        publishStateContextSize: publishStateContext?.length || 0,
+        commerceContextSize: commerceContext?.length || 0
       };
 
       if (packageInfo?.name) {
@@ -116,13 +124,14 @@ export class AppContextManager {
         secretsContext,
         mediaSlotsContext,
         gitStatusContext,
-        publishStateContext
+        publishStateContext,
+        commerceContext
       };
 
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       appContextEvents.generateFailure(logger, err, { appId, directoryPath: appPath });
-      return { stableContext: null, secretsContext: null, mediaSlotsContext: null, gitStatusContext: null, publishStateContext: null };
+      return { stableContext: null, secretsContext: null, mediaSlotsContext: null, gitStatusContext: null, publishStateContext: null, commerceContext: null };
     }
   }
 
@@ -635,6 +644,86 @@ Note: This is the current project context including dependencies and design syst
       section += `\n- Custom domains: ${domainList}`;
     }
     return section;
+  }
+
+  /**
+   * Get the durable AppBuilder Commerce binding for this app.
+   */
+  private async getCommerceBindingInfo(appId: string): Promise<{
+    businessId: string | null;
+    businessName: string | null;
+    storeId: string | null;
+    storeName: string | null;
+    channelId: string | null;
+    channelName: string | null;
+    defaultLocationId: string | null;
+    status: string;
+    source: string;
+    lastVerifiedAt: Date | null;
+  } | null> {
+    try {
+      const binding = this.appCommerceBindingRepository.findByAppId(appId);
+      if (!binding) return null;
+
+      return {
+        businessId: binding.businessId ?? null,
+        businessName: binding.businessName ?? null,
+        storeId: binding.storeId ?? null,
+        storeName: binding.storeName ?? null,
+        channelId: binding.channelId ?? null,
+        channelName: binding.channelName ?? null,
+        defaultLocationId: binding.defaultLocationId ?? null,
+        status: binding.status,
+        source: binding.source,
+        lastVerifiedAt: binding.lastVerifiedAt ?? null,
+      };
+    } catch (error) {
+      logger.warn('app.context.commerceBinding.failure', {
+        appId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Format Commerce binding information into a compact dynamic section.
+   */
+  private formatCommerceBindingSection(commerceInfo: {
+    businessId: string | null;
+    businessName: string | null;
+    storeId: string | null;
+    storeName: string | null;
+    channelId: string | null;
+    channelName: string | null;
+    defaultLocationId: string | null;
+    status: string;
+    source: string;
+    lastVerifiedAt: Date | null;
+  } | null): string | null {
+    if (!commerceInfo) return null;
+
+    const parts: string[] = ['## Commerce Binding'];
+    parts.push(`- Status: ${commerceInfo.status}`);
+    if (commerceInfo.businessId) {
+      parts.push(`- Business: ${commerceInfo.businessName ? `${commerceInfo.businessName} ` : ''}(${commerceInfo.businessId})`);
+    }
+    if (commerceInfo.storeId) {
+      parts.push(`- Store: ${commerceInfo.storeName ? `${commerceInfo.storeName} ` : ''}(${commerceInfo.storeId})`);
+    }
+    if (commerceInfo.channelId) {
+      parts.push(`- Channel: ${commerceInfo.channelName ? `${commerceInfo.channelName} ` : ''}(${commerceInfo.channelId})`);
+    }
+    if (commerceInfo.defaultLocationId) {
+      parts.push(`- Default location: ${commerceInfo.defaultLocationId}`);
+    }
+    parts.push(`- Source: ${commerceInfo.source}`);
+    if (commerceInfo.lastVerifiedAt) {
+      parts.push(`- Last verified: ${commerceInfo.lastVerifiedAt.toISOString()}`);
+    }
+    parts.push('- Continuity context only. Use commerce_store_setup for the authoritative selectedCommerceResources tool result before Commerce mutations.');
+
+    return parts.join('\n');
   }
 
   /**

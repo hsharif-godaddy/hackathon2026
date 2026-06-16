@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { MessageCompressor, type CompressionStrategy, type CompressionContext } from '../MessageCompressor.js';
 import type { LLMMessage, OpenAIMessage } from '../../ConversationHistoryLoader.js';
+import { AppContextRemovalStrategy } from '../strategies/AppContextRemovalStrategy.js';
 
 function userMsg(content: string): OpenAIMessage {
   return { role: 'user', content };
@@ -106,5 +107,21 @@ describe('MessageCompressor stableRegionEnd', () => {
     const result = compressor.compressMessages(messages, undefined, 0);
 
     expect((result.messages[0] as OpenAIMessage).content).toBe('[compressed]');
+  });
+
+  it('should remove dynamic app context sections from history', () => {
+    const compressor = new MessageCompressor();
+    compressor.registerStrategy(new AppContextRemovalStrategy());
+
+    const messages: LLMMessage[] = [
+      userMsg('## Commerce Binding\n- Store: Haven Store (store-1)'),
+      userMsg('## Git Status\n- Branch: main'),
+      userMsg('normal user request'),
+    ];
+
+    const result = compressor.compressMessages(messages);
+
+    expect(result.messages).toHaveLength(1);
+    expect((result.messages[0] as OpenAIMessage).content).toBe('normal user request');
   });
 });
