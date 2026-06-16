@@ -12,6 +12,8 @@ import { ShareTokenRepository } from './ShareTokenRepository.js';
 import { RouteRepository } from './RouteRepository.js';
 import { BlogPostRepository } from './BlogPostRepository.js';
 import { AppCommerceBindingRepository } from './AppCommerceBindingRepository.js';
+import { SimpleCampaignRepository } from './SimpleCampaignRepository.js';
+import { MarketingUtmRepository } from './MarketingUtmRepository.js';
 
 // Create singleton instances
 export const appRepository = new AppRepository();
@@ -24,6 +26,8 @@ export const socialAssociationRepository = new SocialAssociationRepository();
 export const socialPostRepository = new SocialPostRepository();
 export const shareTokenRepository = new ShareTokenRepository();
 export const appCommerceBindingRepository = new AppCommerceBindingRepository();
+export const simpleCampaignRepository = new SimpleCampaignRepository();
+export const marketingUtmRepository = new MarketingUtmRepository();
 
 // Also export the classes for direct instantiation if needed
 export { AppRepository } from './AppRepository.js';
@@ -38,3 +42,5 @@ export { ShareTokenRepository } from './ShareTokenRepository.js';
 export { RouteRepository } from './RouteRepository.js';
 export { BlogPostRepository } from './BlogPostRepository.js';
 export { AppCommerceBindingRepository } from './AppCommerceBindingRepository.js';
+export { SimpleCampaignRepository } from './SimpleCampaignRepository.js';
+export { MarketingUtmRepository } from './MarketingUtmRepository.js';

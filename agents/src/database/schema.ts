@@ -394,6 +394,149 @@ export interface AppMetadataRow {
   updated_at: string;
 }
 
+// SimpleCampaign types
+//
+// "SimpleCampaign" intentionally collapses the campaign + activation/flight into a
+// single object (per the 2026-06-10 data-model review). This naming leaves room for
+// a future richer campaign structure that rolls up under a parent MarketingPlan
+// without having to rename this model.
+// Domain enums. These are the single source of truth for the allowed values; the
+// evolving ones (status, content type/status, utm_medium) seed small lookup tables
+// that the DB foreign-keys against — so the value set can change with a code-only
+// edit (re-seed) instead of a CHECK-constraint table rebuild, which SQLite cannot do
+// in place.
+export enum SimpleCampaignStatus {
+  Draft = 'draft',
+  Ready = 'ready',
+  Scheduled = 'scheduled',
+  Active = 'active',
+  Completed = 'completed',
+  Archived = 'archived',
+}
+export enum SimpleCampaignContentType {
+  LandingPage = 'landing-page',
+  Banner = 'banner',
+  Blog = 'blog',
+  Social = 'social',
+  Email = 'email',
+  Ad = 'ad',
+}
+export enum SimpleCampaignContentStatus {
+  Draft = 'draft',
+  Scheduled = 'scheduled',
+  Published = 'published',
+  Failed = 'failed',
+}
+
+// Who authored a campaign artifact — a customer action or the agent/automation.
+export enum CampaignActor {
+  User = 'user',
+  Agent = 'agent',
+}
+
+// UTM attribution vocabularies (Unified C2 Traffic Attribution Model).
+// These live on the marketing_utm table (keyed by the target content row), NOT on the
+// campaign or the campaign-content row: UTM applies to any marketing content (even
+// outside a campaign), and a single piece of content fans out per platform — so
+// utm_source/utm_medium are per target.
+//
+// utm_medium is a closed channel-class vocabulary → backed by the utm_medium lookup
+// table (DB foreign key). utm_source is intentionally an enum ONLY, with NO lookup
+// table / FK: the seo-offsite-<placement> family is dynamic (placements are minted at
+// the channel adapter, not known up front), so a closed FK set would reject otherwise
+// valid values. utm_source is validated at the channel adapter layer instead.
+export enum UtmMedium {
+  Cpc = 'cpc',
+  PaidSocial = 'paid_social',
+  OrganicSocial = 'organic_social',
+  Email = 'email',
+  Blog = 'blog',
+  Seo = 'seo',
+  Aeo = 'aeo',
+  Geo = 'geo',
+  Referral = 'referral',
+  Display = 'display',
+  Video = 'video',
+}
+export enum UtmSource {
+  GoogleAds = 'google-ads',
+  BingAds = 'bing-ads',
+  MetaAds = 'meta-ads',
+  LinkedInAds = 'linkedin-ads',
+  TikTokAds = 'tiktok-ads',
+  PinterestAds = 'pinterest-ads',
+  YelpAds = 'yelp-ads',
+  Facebook = 'facebook',
+  Instagram = 'instagram',
+  X = 'x',
+  LinkedIn = 'linkedin',
+  TikTok = 'tiktok',
+  YouTube = 'youtube',
+  Pinterest = 'pinterest',
+  GemEmail = 'gem-email',
+  BlogWm = 'blog-wm',
+  BlogMwp = 'blog-mwp',
+  BlogStatic = 'blog-static',
+  BlogAab = 'blog-aab',
+  SeoOnsite = 'seo-onsite',
+}
+
+export interface SimpleCampaign {
+  id: string;
+  appId: string;
+  // Placeholder for a future MarketingPlan parent so simple campaigns can become its
+  // children later. Nullable; no FK yet (the marketing_plan table does not exist).
+  marketingPlanId: string | null;
+  name: string;
+  status: SimpleCampaignStatus;
+  offer: string | null;
+  goal: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  launchedAt: string | null;
+  completedAt: string | null;
+  createdBy: CampaignActor | null;
+  updatedBy: CampaignActor | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Campaign content is a reference/tracking layer — a thin projection over the real
+// content (blog_posts, social_posts, app source, …) surfacing only what the campaign
+// card needs. contentRefId points to the content location; full content stays in its
+// system of record.
+export interface SimpleCampaignContent {
+  id: string;
+  simpleCampaignId: string;
+  assetType: SimpleCampaignContentType;
+  contentRefId: string | null;
+  title: string;
+  scheduledDate: string | null;
+  status: SimpleCampaignContentStatus;
+  contentPreview: string | null;
+  imageUrl: string | null;
+  createdBy: CampaignActor | null;
+  createdAt: string;
+}
+
+// marketing_utm records the UTM attribution for one published target (a blog post,
+// a per-platform social post, a future ad/email). It exists independent of campaigns
+// — utm_campaign/simple_campaign_id are only populated when the target is part of a
+// campaign. utm_campaign is the HMAC of simpleCampaignId hashed with the global
+// UTM_SALT (see campaign-utm-signer) — one stable value per campaign, no per-row salt.
+export interface UTMAttributionParams {
+  id: string;
+  contentRefId: string; // references the target content row id (social_posts.id, blog_posts.id, …)
+  simpleCampaignId: string | null;
+  utmSource: UtmSource | null;
+  utmMedium: UtmMedium | null;
+  utmCampaign: string | null;
+  utmContent: string | null;
+  utmTerm: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ==================================================================================
 // Database Schema Management Functions
 // ==================================================================================
@@ -445,6 +588,12 @@ export function initializeSchema(db: Database): void {
   createAppCommerceBindingEventsTable(db);
   createDkimOnboardingTable(db);
   createSeoQualityScoresTable(db);
+  // Bring any pre-merge campaign tables up to the current column shape (data-preserving)
+  // BEFORE the create* + index calls below, which assume the current columns.
+  migrateCampaignTablesToCurrentSchema(db);
+  createSimpleCampaignTable(db);
+  createSimpleCampaignContentTable(db);
+  createMarketingUtmTable(db);
 
   // Apply migrations BEFORE creating indexes (migrations may alter schema)
   // Note: oauth_tokens and social tables creation moved to migrations
@@ -946,9 +1095,6 @@ function createRoutesTable(db: Database): void {
  * Create blog posts table
  */
 function createBlogPostsTable(db: Database): void {
-  // Blog posts table
-  // TODO: Add FK constraint for campaign_id when campaigns table is implemented
-  //       FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
   db.exec(`
     CREATE TABLE IF NOT EXISTS blog_posts (
       id TEXT PRIMARY KEY,
@@ -965,7 +1111,173 @@ function createBlogPostsTable(db: Database): void {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE,
+      FOREIGN KEY (campaign_id) REFERENCES simple_campaign(id) ON DELETE SET NULL,
       UNIQUE(app_id, slug)
+    )
+  `);
+}
+
+/**
+ * Bring campaign tables from a PRE-MERGE build up to the current schema **without losing
+ * data** (the feature ran in prod behind a flag, so these tables may hold real rows).
+ * Earlier iterations used different column names — `campaign_id` (→ `simple_campaign_id`),
+ * `external_ref`/`external_id` (→ `content_ref_id`) — carried a per-row `salt_id` (now a
+ * global static salt), and predated `marketing_plan_id`. We rename/add/drop columns in
+ * place (ALTER TABLE), preserving rows, rather than dropping the tables.
+ *
+ * Notes:
+ * - Runs BEFORE the create* calls so the columns are current before createIndexes().
+ * - Idempotent: every step is guarded on the actual current columns, so it is a no-op on
+ *   a fresh DB (tables absent) and on a current DB (already migrated).
+ * - The intermediate enum lookup tables (simple_campaign_status, …) are intentionally
+ *   LEFT in place: a column in an older build may still FOREIGN KEY them, and dropping
+ *   would require a full table rebuild. They are harmless (current code neither reads nor
+ *   writes them); only the abandoned plural tables (never used) are dropped.
+ */
+function migrateCampaignTablesToCurrentSchema(db: Database): void {
+  const tableExists = (name: string): boolean =>
+    !!db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`).get(name);
+  const columns = (table: string): string[] =>
+    (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+
+  // simple_campaign: add the marketing_plan_id placeholder if an older build omitted it.
+  if (tableExists('simple_campaign')) {
+    const cols: string[] = columns('simple_campaign');
+    if (!cols.includes('marketing_plan_id')) {
+      db.exec(`ALTER TABLE simple_campaign ADD COLUMN marketing_plan_id TEXT`);
+      logger.info('database.migration.campaign-schema.add-marketing-plan-id', {});
+    }
+  }
+
+  // simple_campaign_content: rename old columns to the current names (rows preserved).
+  if (tableExists('simple_campaign_content')) {
+    const cols: string[] = columns('simple_campaign_content');
+    if (cols.includes('campaign_id') && !cols.includes('simple_campaign_id')) {
+      db.exec(`ALTER TABLE simple_campaign_content RENAME COLUMN campaign_id TO simple_campaign_id`);
+    }
+    if (cols.includes('external_ref') && !cols.includes('content_ref_id')) {
+      db.exec(`ALTER TABLE simple_campaign_content RENAME COLUMN external_ref TO content_ref_id`);
+    }
+  }
+
+  // marketing_utm: rename old columns and drop the obsolete per-row salt_id.
+  if (tableExists('marketing_utm')) {
+    const cols: string[] = columns('marketing_utm');
+    if (cols.includes('external_id') && !cols.includes('content_ref_id')) {
+      db.exec(`ALTER TABLE marketing_utm RENAME COLUMN external_id TO content_ref_id`);
+    }
+    if (cols.includes('campaign_id') && !cols.includes('simple_campaign_id')) {
+      db.exec(`ALTER TABLE marketing_utm RENAME COLUMN campaign_id TO simple_campaign_id`);
+    }
+    if (columns('marketing_utm').includes('salt_id')) {
+      db.exec(`ALTER TABLE marketing_utm DROP COLUMN salt_id`);
+    }
+  }
+
+  // Drop the abandoned plural tables from the earliest naming attempt (no FK refs, never
+  // used by current code). IF EXISTS keeps this a no-op everywhere else.
+  for (const table of ['simple_campaigns', 'simple_campaign_assets']) {
+    if (tableExists(table)) {
+      db.exec(`DROP TABLE ${table}`);
+      logger.info('database.migration.campaign-schema.drop-legacy-table', { table });
+    }
+  }
+}
+
+/**
+ * Create the simple_campaign table for marketing campaign records.
+ * See the SimpleCampaign interface for why this is "simple" (campaign + activation
+ * collapsed into one object, leaving room for a future MarketingPlan parent).
+ *
+ * Enum columns (status here, asset_type/status on content, utm_medium on utm) are plain
+ * TEXT validated in the app layer against the TS enums — NOT a DB CHECK or lookup table.
+ * SQLite can't alter a CHECK in place and a lookup would force a migration to add a
+ * value, so the enum stays the single source of truth and adding a value is code-only.
+ * created_at/updated_at/status are set by the app layer (no DB defaults). No ON DELETE
+ * CASCADE on app_id: the SQLite DB is per-app, so deleting the app drops the whole file.
+ */
+function createSimpleCampaignTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS simple_campaign (
+      id TEXT PRIMARY KEY,
+      app_id TEXT NOT NULL,
+      marketing_plan_id TEXT,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL,
+      offer TEXT,
+      goal TEXT,
+      start_date DATETIME,
+      end_date DATETIME,
+      launched_at DATETIME,
+      completed_at DATETIME,
+      created_by TEXT CHECK(created_by IS NULL OR created_by IN ('user', 'agent')),
+      updated_by TEXT CHECK(updated_by IS NULL OR updated_by IN ('user', 'agent')),
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      FOREIGN KEY (app_id) REFERENCES apps(id)
+    )
+  `);
+}
+
+/**
+ * simple_campaign_content is a reference/tracking layer — it does NOT store content.
+ * Actual content lives elsewhere by asset_type:
+ *   - blog:         blog_posts table (content_markdown column)
+ *   - social:       social_posts table (payload column)
+ *   - landing-page: app source files (committed via git)
+ *   - banner:       app source files (committed via git)
+ *   - email/ad:     future — external service TBD
+ * content_ref_id points to the content location (post ID, slug, file path, etc.).
+ * asset_type/status are plain TEXT validated in the app layer (see the enum note on
+ * createSimpleCampaignTable); created_at is app-set (no DB default). The
+ * simple_campaign_id FK keeps ON DELETE CASCADE so deleting one campaign removes its
+ * content rows.
+ */
+function createSimpleCampaignContentTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS simple_campaign_content (
+      id TEXT PRIMARY KEY,
+      simple_campaign_id TEXT NOT NULL,
+      asset_type TEXT NOT NULL,
+      content_ref_id TEXT,
+      title TEXT NOT NULL,
+      scheduled_date DATETIME,
+      status TEXT NOT NULL,
+      content_preview TEXT,
+      image_url TEXT,
+      created_by TEXT CHECK(created_by IS NULL OR created_by IN ('user', 'agent')),
+      created_at DATETIME NOT NULL,
+      FOREIGN KEY (simple_campaign_id) REFERENCES simple_campaign(id) ON DELETE CASCADE
+    )
+  `);
+}
+
+/**
+ * marketing_utm holds UTM attribution per published target (a blog post, a
+ * per-platform social post, a future ad/email). It is independent of campaigns:
+ * utm_source/utm_medium are always set, while simple_campaign_id/utm_campaign are
+ * populated only when the target belongs to a campaign. utm_campaign is the HMAC of
+ * simpleCampaignId hashed with the global UTM_SALT (see utils/campaign-utm-signer) —
+ * one stable value per campaign, with no per-row salt to store. content_ref_id is a
+ * polymorphic reference to the target content row (social_posts.id, blog_posts.id, …)
+ * — not a hard FK since it spans tables. utm_source/utm_medium are plain TEXT validated
+ * in the app layer (utm_medium against the enum; utm_source's seo-offsite-<placement>
+ * family is dynamic). created_at/updated_at are app-set (no DB default).
+ */
+function createMarketingUtmTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS marketing_utm (
+      id TEXT PRIMARY KEY,
+      content_ref_id TEXT NOT NULL,
+      simple_campaign_id TEXT,
+      utm_source TEXT,
+      utm_medium TEXT,
+      utm_campaign TEXT,
+      utm_content TEXT,
+      utm_term TEXT,
+      created_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL,
+      FOREIGN KEY (simple_campaign_id) REFERENCES simple_campaign(id) ON DELETE SET NULL
     )
   `);
 }
@@ -1147,6 +1459,33 @@ function createIndexes(db: Database): void {
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_blog_posts_campaign_id ON blog_posts(campaign_id)
+  `);
+
+  // Simple campaign table indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_simple_campaign_app_id ON simple_campaign(app_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_simple_campaign_status ON simple_campaign(status)
+  `);
+
+  // Simple campaign content table indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_simple_campaign_content_simple_campaign_id ON simple_campaign_content(simple_campaign_id)
+  `);
+
+  // Marketing UTM table indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_marketing_utm_content_ref_id ON marketing_utm(content_ref_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_marketing_utm_simple_campaign_id ON marketing_utm(simple_campaign_id)
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_marketing_utm_utm_campaign ON marketing_utm(utm_campaign)
   `);
 
   // Share tokens table indexes

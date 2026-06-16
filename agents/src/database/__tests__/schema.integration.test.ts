@@ -54,15 +54,19 @@ describe('Database Schema Integration Tests', () => {
         'conversation_summaries',
         'conversations',
         'db_import_jobs',
+        'dkim_onboarding',
         'file_context',
         'git_remote_config',
         'import_jobs',
+        'marketing_utm',
         'memory',
         'oauth_tokens',
         'routes',
         'running_processes',
         'seo_quality_scores',
         'share_tokens',
+        'simple_campaign',
+        'simple_campaign_content',
         'social_associations',
         'social_posts'
       ]);
@@ -349,7 +353,7 @@ describe('Database Schema Integration Tests', () => {
         ORDER BY name
       `).all() as { name: string }[];
 
-      expect(tables).toHaveLength(20); // Should still have exactly the expected tables
+      expect(tables).toHaveLength(24); // core tables incl. main's app_commerce_* + dkim_onboarding and our campaign tables
     });
 
     it('backfills share_tokens.purpose to "user" on a pre-existing populated table', () => {
@@ -434,6 +438,57 @@ describe('Database Schema Integration Tests', () => {
         SELECT purpose FROM share_tokens WHERE token = ?
       `).get('snap-token') as { purpose: string };
       expect(row.purpose).toBe('archive_snapshot');
+    });
+
+    it('migrates pre-rename campaign tables to the current schema, preserving rows', () => {
+      // Start from the current schema, seed a row, then mangle the tables back to a
+      // pre-merge shape (old column names, salt_id present, no marketing_plan_id, plural
+      // tables). Re-running initializeSchema must exercise the data-preserving migration.
+      initializeSchema(testDb);
+      testDb.prepare(`INSERT INTO apps (id, name, path, port) VALUES (?, ?, ?, ?)`).run('app-mig', 'App', '/tmp', 5000);
+      testDb.prepare(`INSERT INTO simple_campaign (id, app_id, name, status, created_at, updated_at) VALUES (?, ?, 'C', 'draft', 't', 't')`).run('camp_mig', 'app-mig');
+      testDb.prepare(`INSERT INTO simple_campaign_content (id, simple_campaign_id, asset_type, content_ref_id, title, status, created_at) VALUES (?, ?, 'blog', '/b', 'T', 'draft', 't')`).run('cont_mig', 'camp_mig');
+      testDb.prepare(`INSERT INTO marketing_utm (id, content_ref_id, simple_campaign_id, created_at, updated_at) VALUES (?, ?, ?, 't', 't')`).run('mutm_mig', 'cont_mig', 'camp_mig');
+
+      // Mangle → old shape.
+      testDb.exec(`ALTER TABLE simple_campaign_content RENAME COLUMN simple_campaign_id TO campaign_id`);
+      testDb.exec(`ALTER TABLE simple_campaign_content RENAME COLUMN content_ref_id TO external_ref`);
+      testDb.exec(`ALTER TABLE marketing_utm RENAME COLUMN content_ref_id TO external_id`);
+      testDb.exec(`ALTER TABLE marketing_utm RENAME COLUMN simple_campaign_id TO campaign_id`);
+      testDb.exec(`ALTER TABLE marketing_utm ADD COLUMN salt_id TEXT`);
+      testDb.exec(`ALTER TABLE simple_campaign DROP COLUMN marketing_plan_id`);
+      testDb.exec(`CREATE TABLE simple_campaigns (id TEXT)`);
+      testDb.exec(`CREATE TABLE simple_campaign_assets (id TEXT)`);
+
+      // Re-run twice → triggers the migration, then proves idempotency.
+      initializeSchema(testDb);
+      initializeSchema(testDb);
+
+      const contentCols = (testDb.prepare(`PRAGMA table_info(simple_campaign_content)`).all() as { name: string }[]).map(c => c.name);
+      expect(contentCols).toContain('simple_campaign_id');
+      expect(contentCols).toContain('content_ref_id');
+      expect(contentCols).not.toContain('campaign_id');
+      expect(contentCols).not.toContain('external_ref');
+
+      const utmCols = (testDb.prepare(`PRAGMA table_info(marketing_utm)`).all() as { name: string }[]).map(c => c.name);
+      expect(utmCols).toContain('content_ref_id');
+      expect(utmCols).toContain('simple_campaign_id');
+      expect(utmCols).not.toContain('salt_id');
+      expect(utmCols).not.toContain('external_id');
+
+      const campCols = (testDb.prepare(`PRAGMA table_info(simple_campaign)`).all() as { name: string }[]).map(c => c.name);
+      expect(campCols).toContain('marketing_plan_id');
+
+      // Rows preserved, values carried across the rename.
+      const content = testDb.prepare(`SELECT simple_campaign_id, content_ref_id FROM simple_campaign_content WHERE id = ?`).get('cont_mig');
+      expect(content).toEqual({ simple_campaign_id: 'camp_mig', content_ref_id: '/b' });
+      const utm = testDb.prepare(`SELECT content_ref_id, simple_campaign_id FROM marketing_utm WHERE id = ?`).get('mutm_mig');
+      expect(utm).toEqual({ content_ref_id: 'cont_mig', simple_campaign_id: 'camp_mig' });
+
+      // Abandoned plural tables dropped.
+      const tableNames = (testDb.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all() as { name: string }[]).map(t => t.name);
+      expect(tableNames).not.toContain('simple_campaigns');
+      expect(tableNames).not.toContain('simple_campaign_assets');
     });
   });
 

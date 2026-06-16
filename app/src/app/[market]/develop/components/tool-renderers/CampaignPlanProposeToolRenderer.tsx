@@ -21,7 +21,6 @@ interface CampaignPlan {
   offer: string
   startDate: string
   endDate: string
-  campaignType: 'landing-page' | 'banner' | 'content-only'
   landingPagePath?: string
   assets: PlannedAsset[]
   assumptions?: string[]

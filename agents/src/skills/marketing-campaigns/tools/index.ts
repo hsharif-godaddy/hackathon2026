@@ -2,13 +2,15 @@ import { z } from 'zod'
 import type { SkillToolDefinition } from '@airo/ai-skills'
 
 import { Logger } from '../../../logging/index.js'
-import { CampaignRepository } from '../../../database/repositories/CampaignRepository.js'
-import type { CreateCampaignInput, CreateAssetInput } from '../../../database/repositories/CampaignRepository.js'
+import { SimpleCampaignRepository } from '../../../database/repositories/SimpleCampaignRepository.js'
+import type { CreateSimpleCampaignParams, CreateSimpleCampaignContentParams } from '../../../database/repositories/SimpleCampaignRepository.js'
+import { SimpleCampaignStatus } from '../../../database/schema.js'
+import type { SimpleCampaignContentType, SimpleCampaignContentStatus } from '../../../database/schema.js'
 import { MediaSearchTool } from '../../../tools/media-search-tool.js'
 
 const logger = Logger.create({ component: 'marketing-campaigns-tools' })
 
-const campaignRepo = new CampaignRepository()
+const campaignRepo = new SimpleCampaignRepository()
 const mediaSearch = new MediaSearchTool()
 
 function isCampaignsEnabled(context: any): boolean {
@@ -47,8 +49,6 @@ CRITICAL RULES:
     offer: z.string().describe('The campaign offer or goal — keep to 5 words or fewer (e.g. "Increase revenue by 2x")'),
     startDate: z.string().describe('Campaign start date (YYYY-MM-DD)'),
     endDate: z.string().describe('Campaign end date (YYYY-MM-DD)'),
-    campaignType: z.enum(['landing-page', 'banner', 'content-only']).describe('Type of site artifact'),
-    landingPagePath: z.string().optional().describe('Route path if a landing page is planned'),
     assets: z.array(plannedAssetSchema).min(1).describe('List of planned content pieces'),
     assumptions: z.array(z.string()).min(1).describe('3-4 short plain-language assumptions you inferred about the business (audience, main goal, what to feature). Rendered on the card under "Here\'s what I\'m assuming — tell me if any of this is off" so the owner can correct a wrong guess before anything is built.'),
     whyThisMix: z.string().describe('One or two plain sentences explaining why this channel mix serves their goal and what the key assets do (e.g. landing page = one place to buy, blog = search traffic over time, social = reach your followers). No jargon.'),
@@ -79,8 +79,6 @@ CRITICAL RULES:
           offer: input.offer,
           startDate: input.startDate,
           endDate: input.endDate,
-          campaignType: input.campaignType,
-          landingPagePath: input.landingPagePath,
           assets: input.assets,
           assumptions: input.assumptions,
           whyThisMix: input.whyThisMix,
@@ -107,15 +105,13 @@ DO NOT call this tool:
     offer: z.string().describe('The campaign offer or goal — keep to 5 words or fewer (e.g. "Increase revenue by 2x")'),
     startDate: z.string().describe('Campaign start date (YYYY-MM-DD)'),
     endDate: z.string().describe('Campaign end date (YYYY-MM-DD)'),
-    campaignType: z.enum(['landing-page', 'banner', 'content-only']).default('content-only').describe('Type of campaign artifact'),
-    landingPagePath: z.string().optional().describe('Route path if a landing page is planned'),
     plannedContent: z.array(z.object({
       assetType: z.enum(['landing-page', 'banner', 'blog', 'social', 'email', 'ad']).describe('Content channel'),
       title: z.string().describe('Planned content title or headline'),
       scheduledDate: z.string().optional().describe('Planned publish date (YYYY-MM-DD)'),
       contentPreview: z.string().optional().describe('Brief description of what this content will cover'),
       imageUrl: z.string().optional().describe('URL of the image used for this content piece'),
-      status: z.enum(['draft', 'scheduled', 'published', 'sent']).optional().describe("Publish status shown on the card badge. Use 'scheduled' for built site assets (landing page, blog) that go out at launch, and 'draft' for social/email/ad that still need the user to publish. Never 'published'/'sent' before the user launches."),
+      status: z.enum(['draft', 'scheduled', 'published', 'failed']).optional().describe("Publish status shown on the card badge. Use 'scheduled' for built site assets (landing page, blog) that go out at launch, and 'draft' for social/email/ad that still need the user to publish. Never 'published' before the user launches."),
     })).describe('List of planned content items for the campaign'),
   }),
   async execute(args, context) {
@@ -130,23 +126,26 @@ DO NOT call this tool:
       return JSON.stringify({ success: false, error: 'No appId in context' })
     }
 
-    const existingDrafts = campaignRepo.listByApp(appId).filter(c => c.status === 'draft')
+    const existingDrafts = campaignRepo.findByAppId(appId).filter(c => c.status === 'draft')
     for (const draft of existingDrafts) {
       campaignRepo.delete(draft.id)
     }
 
-    const campaignInput: CreateCampaignInput = {
+    const campaignInput: CreateSimpleCampaignParams = {
       appId,
       name: args.name,
-      campaignType: args.campaignType,
       offer: args.offer,
       startDate: args.startDate,
       endDate: args.endDate,
-      landingPagePath: args.landingPagePath,
-      status: 'ready',
     }
 
     const campaign = campaignRepo.create(campaignInput)
+
+    // campaignPlanCreate is the terminal SUMMARY tool; its card shows a "Launch
+    // Campaign" button. launch() requires status 'ready' (not 'draft'), so move the
+    // freshly-created draft to ready here. transition() returns the updated campaign,
+    // so we reuse it for the widget instead of re-reading from the DB.
+    const readyCampaign = campaignRepo.transition(campaign.id, SimpleCampaignStatus.Ready)
 
     for (const item of args.plannedContent) {
       let imageUrl: string | undefined = item.imageUrl
@@ -162,50 +161,49 @@ DO NOT call this tool:
         }
       }
 
-      const assetInput: CreateAssetInput = {
-        campaignId: campaign.id,
-        assetType: item.assetType,
-        assetRef: item.scheduledDate || 'planned',
+      // contentRefId holds a real content identifier only; it is intentionally left
+      // null here. These rows are the card's tracking projection (title/type/date/
+      // status) — the pointer to the actual content row is captured later when a
+      // resolver wires asset_type + contentRefId to the live content.
+      const assetInput: CreateSimpleCampaignContentParams = {
+        simpleCampaignId: campaign.id,
+        assetType: item.assetType as SimpleCampaignContentType,
         title: item.title,
         scheduledDate: item.scheduledDate,
-        status: item.status ?? 'scheduled',
+        status: (item.status ?? 'scheduled') as SimpleCampaignContentStatus,
         contentPreview: item.contentPreview,
         imageUrl,
       }
-      campaignRepo.addAsset(assetInput)
+      campaignRepo.addContent(assetInput)
     }
-
-    const saved = campaignRepo.getById(campaign.id)
 
     return {
       success: true,
       widget: {
         widgetType: 'campaign-plan',
-        widgetData: { campaign: saved },
+        widgetData: { campaign: readyCampaign },
       },
-      campaign: saved,
+      campaign: readyCampaign,
     }
   }
 }
 
 export const campaignCreate: SkillToolDefinition = {
   name: 'campaignCreate',
-  description: `Save generated campaign content and mark the campaign as ready for launch. Call this AFTER all campaign assets have been generated (landing page built, blog posts written, social posts created).
+  description: `Save a generated campaign and mark it ready for launch. Call this AFTER all campaign assets have been generated (landing page built, blog posts written, social posts created).
 
-This tool finds the existing campaign plan and updates it to "ready" status with the actual generated assets. It does NOT create a new campaign — it completes the existing one.`,
+This tool persists the campaign record together with its actual generated assets (each asset carries a real contentRef) and marks it "ready".`,
   parameters: z.object({
     name: z.string().describe('Campaign name — must match the existing plan name'),
-    campaignType: z.enum(['landing-page', 'banner', 'content-only']).describe('Type of site artifact created'),
     offer: z.string().describe('The campaign offer or goal — keep to 5 words or fewer (e.g. "Increase revenue by 2x")'),
     startDate: z.string().describe('Campaign start date (YYYY-MM-DD)'),
     endDate: z.string().describe('Campaign end date (YYYY-MM-DD)'),
-    landingPagePath: z.string().optional().describe('Route path if landing page was created'),
     assets: z.array(z.object({
       assetType: z.enum(['landing-page', 'banner', 'blog', 'social', 'email', 'ad']).describe('Type of asset'),
-      assetRef: z.string().describe('Reference: file path for blogs/pages, post ID for social, or description for email/ad'),
+      externalRef: z.string().describe('Reference: file path for blogs/pages, post ID for social, or description for email/ad'),
       title: z.string().describe('Asset title or headline'),
       scheduledDate: z.string().optional().describe('Scheduled publish/send date (YYYY-MM-DD)'),
-      status: z.enum(['draft', 'scheduled', 'published', 'sent']).optional().describe('Current status'),
+      status: z.enum(['draft', 'scheduled', 'published', 'failed']).optional().describe('Current status'),
       contentPreview: z.string().optional().describe('Brief content preview'),
       imageUrl: z.string().optional().describe('URL of the image used for this content'),
     })).describe('All campaign assets to track'),
@@ -222,65 +220,19 @@ This tool finds the existing campaign plan and updates it to "ready" status with
       return JSON.stringify({ success: false, error: 'No appId in context' })
     }
 
-    const existing = campaignRepo.listByApp(appId)
-    const draftCampaign = existing.find(c => c.status === 'draft' || c.status === 'ready')
-
-    if (draftCampaign) {
-      campaignRepo.update(draftCampaign.id, {
-        status: 'ready',
-        landingPagePath: args.landingPagePath,
-      })
-
-      campaignRepo.deleteAssetsByCampaign(draftCampaign.id)
-
-      for (const asset of args.assets) {
-        let imageUrl: string | undefined = asset.imageUrl
-        if (!imageUrl) {
-          try {
-            const searchQuery = `${asset.title} ${args.name}`.slice(0, 60)
-            const result = await mediaSearch.searchMedia(searchQuery, 'image', 1, appId)
-            if (result.success) {
-              imageUrl = result.url || (result.urls && result.urls[0]) || undefined
-            }
-          } catch {
-            // Fall through without image
-          }
-        }
-
-        const assetInput: CreateAssetInput = {
-          campaignId: draftCampaign.id,
-          assetType: asset.assetType,
-          assetRef: asset.assetRef,
-          title: asset.title,
-          scheduledDate: asset.scheduledDate,
-          status: asset.status || 'scheduled',
-          contentPreview: asset.contentPreview,
-          imageUrl,
-        }
-        campaignRepo.addAsset(assetInput)
-      }
-
-      const saved = campaignRepo.getById(draftCampaign.id)
-      return {
-        success: true,
-        widget: {
-          widgetType: 'campaign-plan',
-          widgetData: { campaign: saved },
-        },
-        campaign: saved,
-      }
-    }
-
+    // Create the campaign and attach its (already-generated, real) content. We do NOT
+    // look up and reuse a prior draft: that made the result depend on there being
+    // exactly one draft, and forced a delete-then-recreate of placeholder content.
+    // Each call persists a fresh campaign with the real assets it was given.
     const campaign = campaignRepo.create({
       appId,
       name: args.name,
-      campaignType: args.campaignType,
       offer: args.offer,
       startDate: args.startDate,
       endDate: args.endDate,
-      landingPagePath: args.landingPagePath,
-      status: 'ready',
     })
+
+    const readyCampaign = campaignRepo.transition(campaign.id, SimpleCampaignStatus.Ready)
 
     for (const asset of args.assets) {
       let imageUrl: string | undefined = asset.imageUrl
@@ -296,27 +248,26 @@ This tool finds the existing campaign plan and updates it to "ready" status with
         }
       }
 
-      const assetInput: CreateAssetInput = {
-        campaignId: campaign.id,
-        assetType: asset.assetType,
-        assetRef: asset.assetRef,
+      const assetInput: CreateSimpleCampaignContentParams = {
+        simpleCampaignId: campaign.id,
+        assetType: asset.assetType as SimpleCampaignContentType,
+        contentRefId: asset.externalRef,
         title: asset.title,
         scheduledDate: asset.scheduledDate,
-        status: asset.status || 'scheduled',
+        status: (asset.status || 'scheduled') as SimpleCampaignContentStatus,
         contentPreview: asset.contentPreview,
         imageUrl,
       }
-      campaignRepo.addAsset(assetInput)
+      campaignRepo.addContent(assetInput)
     }
 
-    const saved = campaignRepo.getById(campaign.id)
     return {
       success: true,
       widget: {
         widgetType: 'campaign-plan',
-        widgetData: { campaign: saved },
+        widgetData: { campaign: readyCampaign },
       },
-      campaign: saved,
+      campaign: readyCampaign,
     }
   }
 }
