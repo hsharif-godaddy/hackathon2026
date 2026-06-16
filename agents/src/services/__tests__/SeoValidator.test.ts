@@ -21,7 +21,7 @@ const FULL_HTML = `<!doctype html>
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://example.com/img.png">
 <link rel="canonical" href="https://example.com/">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Example"}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Example","url":"https://example.com/"}</script>
 </head>
 <body>
 <h1>Hello</h1>

@@ -1,12 +1,19 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import text from '@ux/text'
 
+import { ButtonGroup } from '@/app/[market]/develop/components/ButtonGroup'
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
 import ToolModal from '@/app/[market]/develop/components/tool-renderers/ToolModal'
+import {
+  issuesForCategory,
+  type SeoAuditIssueCategory,
+  splitIssuesByCategory,
+} from '@/app/[market]/develop/components/widgets/seo-audit-issue-category'
+import { whyForSeoAuditIssue } from '@/app/[market]/develop/components/widgets/seo-audit-issue-why'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
 
@@ -54,6 +61,8 @@ export type SeoAuditReportView = {
     issueCount: number
   }
   strategy?: SeoStrategyView
+  schemaAeoByRoute?: Record<string, { types: string[]; fields: string[] }>
+  schemaTypesByRoute?: Record<string, string[]>
 }
 
 function resolveAuditMode(report: SeoAuditReportView): SeoAuditMode {
@@ -74,13 +83,77 @@ export type SeoAuditReportWidgetProps = {
 type RouteRow = {
   path: string
   issueCount: number
+  seoIssueCount: number
+  aeoIssueCount: number
+  seoIssues: SeoAuditIssueView[]
+  aeoIssues: SeoAuditIssueView[]
   entries: SeoPageAuditView[]
 }
 
 type TranslateFn = ReturnType<typeof useTranslations>
 
+const ISSUE_TABLE_COLUMNS = 'grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] gap-2 items-center'
+const ISSUE_VIEW_TOGGLE_INACTIVE = '[&[aria-checked=false]]:!bg-transparent'
+const AUDIT_PURPLE_PANEL =
+  'rounded-md border border-[color-mix(in_srgb,var(--color-light-purple-solid)_35%,transparent)] bg-light-purple'
+
+function AccordionChevron({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 16 16"
+      className={`h-2.5 w-2.5 shrink-0 text-muted-foreground transition-transform duration-200 ${
+        expanded ? 'rotate-180' : ''
+      }`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 6l4 4 4-4" />
+    </svg>
+  )
+}
+
 function formatRoute(path: string): string {
-  return path === '/' ? '/' : path
+  return path
+}
+
+function formatIssueCount(count: number, t: TranslateFn): string {
+  return t(
+    'builder_seo_audit_issue_count',
+    { count },
+    '{count, plural, one {# issue} other {# issues}}',
+  )
+}
+
+function ModalRouteLabel({ path, t }: { path: string; t: TranslateFn }) {
+  if (path === '/') {
+    return (
+      <span className="truncate font-mono text-sm text-foreground">
+        <span className="font-semibold">/</span>
+        <span className="font-normal text-intents-ux-feedbackHighContrastPassive-feedbackColor">
+          {' '}
+          ({t('builder_seo_audit_route_homepage', undefined, 'Homepage')})
+        </span>
+      </span>
+    )
+  }
+
+  return (
+    <span className="truncate font-mono text-sm font-semibold text-foreground">{path}</span>
+  )
+}
+
+function IssueCountBadge({ count, t }: { count: number; t: TranslateFn }) {
+  const label = formatIssueCount(count, t)
+  const colorClass =
+    count > 0
+      ? 'text-intents-ux-feedbackHighContrastCritical-feedbackColor'
+      : 'text-intents-ux-feedbackHighContrastSuccess-feedbackColor'
+
+  return <span className={`shrink-0 text-xs font-medium ${colorClass}`}>{label}</span>
 }
 
 function mergePagesByRoute(pages: SeoPageAuditView[]): RouteRow[] {
@@ -94,9 +167,14 @@ function mergePagesByRoute(pages: SeoPageAuditView[]): RouteRow[] {
   return [...byPath.entries()]
     .map(([path, entries]) => {
       const issues = entries.flatMap(e => e.issues)
+      const { seo, aeo } = splitIssuesByCategory(issues)
       return {
         path,
         issueCount: issues.length,
+        seoIssueCount: seo.length,
+        aeoIssueCount: aeo.length,
+        seoIssues: seo,
+        aeoIssues: aeo,
         entries,
       }
     })
@@ -108,6 +186,26 @@ function mergePagesByRoute(pages: SeoPageAuditView[]): RouteRow[] {
     })
 }
 
+function getRouteIssuesForView(row: RouteRow, issueView: SeoAuditIssueCategory): SeoAuditIssueView[] {
+  const seen = new Set<string>()
+  const issues: SeoAuditIssueView[] = []
+
+  for (const entry of row.entries) {
+    for (const issue of issuesForCategory(entry.issues, issueView)) {
+      if (!seen.has(issue.code)) {
+        seen.add(issue.code)
+        issues.push(issue)
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    return issues
+  }
+
+  return issueView === 'seo' ? row.seoIssues : row.aeoIssues
+}
+
 function layerLabel(layer: SeoPageAuditView['layer'], t: TranslateFn): string {
   if (layer === 'published') {
     return t('builder_seo_audit_layer_published', undefined, 'Published site')
@@ -116,73 +214,33 @@ function layerLabel(layer: SeoPageAuditView['layer'], t: TranslateFn): string {
   return t('builder_seo_audit_layer_source', undefined, 'Source code')
 }
 
-function StrategyLabeledLine({
-  label,
-  value,
-  compact,
-}: {
-  label: string
-  value: string
-  compact?: boolean
-}) {
-  return (
-    <p className={`text-muted-foreground m-0 ${compact ? 'mt-1 line-clamp-2' : 'mt-2'}`}>
-      <span className="font-medium text-foreground">{label}: </span>
-      {value}
-    </p>
-  )
+function scannedUrlHeading(auditMode: Exclude<SeoAuditMode, 'source-only'>, t: TranslateFn): string {
+  if (auditMode === 'preview') {
+    return t('builder_seo_audit_scanned_url_preview', undefined, 'Scanned URL (preview)')
+  }
+  return t('builder_seo_audit_scanned_url_published', undefined, 'Scanned URL (published)')
 }
 
-function StrategyContextBrief({
-  strategy,
-  compact,
+function AuditSiteSourceBanner({
+  auditMode,
+  htmlBaseUrl,
   t,
 }: {
-  strategy: SeoStrategyView
-  compact?: boolean
+  auditMode: SeoAuditMode
+  htmlBaseUrl?: string | null
   t: TranslateFn
 }) {
-  const { businessInfo } = strategy
-  const keywords = strategy.targetKeywords ?? []
-  const keywordsText =
-    compact && keywords.length > 8
-      ? `${keywords.slice(0, 8).join(', ')} ${t('builder_seo_audit_strategy_keywords_overflow', { count: keywords.length - 8 }, '(+{count} more)')}`
-      : keywords.join(', ')
+  if (auditMode === 'source-only' || !htmlBaseUrl) {
+    return null
+  }
 
   return (
-    <div className={compact ? 'text-xs' : 'text-sm'}>
-      <p className={`font-medium text-foreground m-0 ${compact ? 'text-xs' : 'text-sm'}`}>
-        {businessInfo.name}
-      </p>
-      {businessInfo.type ? (
-        <StrategyLabeledLine
-          label={t('builder_seo_audit_strategy_business_type', undefined, 'Business type')}
-          value={businessInfo.type}
-          compact={compact}
-        />
-      ) : null}
-      {businessInfo.targetAudience ? (
-        <StrategyLabeledLine
-          label={t('builder_seo_audit_strategy_target_audience', undefined, 'Target audience')}
-          value={businessInfo.targetAudience}
-          compact={compact}
-        />
-      ) : null}
-      {businessInfo.location ? (
-        <StrategyLabeledLine
-          label={t('builder_seo_audit_strategy_location', undefined, 'Location')}
-          value={businessInfo.location}
-          compact={compact}
-        />
-      ) : null}
-      {keywords.length > 0 ? (
-        <StrategyLabeledLine
-          label={t('builder_seo_audit_strategy_keywords', undefined, 'Keywords')}
-          value={keywordsText}
-          compact={compact}
-        />
-      ) : null}
-    </div>
+    <p className="m-0 flex min-w-0 items-baseline gap-1.5 text-xs leading-snug text-intents-ux-feedbackHighContrastPassive-feedbackColor">
+      <span className="shrink-0 font-medium text-intents-ux-box-foregroundColor">
+        {scannedUrlHeading(auditMode, t)}
+      </span>
+      <span className="min-w-0 truncate font-mono text-[11px]">{htmlBaseUrl}</span>
+    </p>
   )
 }
 
@@ -230,93 +288,386 @@ function auditCardStatusLine(report: SeoAuditReportView, allRoutesPassed: boolea
   )
 }
 
+function IssueTabIntro({ issueView, t }: { issueView: SeoAuditIssueCategory; t: TranslateFn }) {
+  const copy =
+    issueView === 'seo'
+      ? t(
+          'builder_seo_audit_tab_intro_seo',
+          undefined,
+          'SEO helps search engines find and rank your pages using titles, headings, metadata, and social previews.',
+        )
+      : t(
+          'builder_seo_audit_tab_intro_aeo',
+          undefined,
+          'AEO helps AI and rich results understand your pages using structured JSON-LD, consistent URLs, and entity data.',
+        )
+
+  return (
+    <div className={`flex items-start gap-1.5 px-3 py-2 text-xs leading-relaxed text-intents-ux-box-foregroundColor ${AUDIT_PURPLE_PANEL}`}>
+      <svg
+        aria-hidden
+        viewBox="0 0 16 16"
+        className="size-2 shrink-0 translate-y-[2px] text-intents-ux-box-foregroundColor"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.25"
+      >
+        <circle cx="8" cy="8" r="6.25" />
+        <path d="M8 7v4" strokeLinecap="round" />
+        <circle cx="8" cy="5.25" r="0.75" fill="currentColor" stroke="none" />
+      </svg>
+      <p className="m-0">{copy}</p>
+    </div>
+  )
+}
+
+function RouteIssueCategoryList({
+  issues,
+  listKey,
+  t,
+}: {
+  issues: SeoAuditIssueView[]
+  listKey: string
+  t: TranslateFn
+}) {
+  if (issues.length === 0) {
+    return null
+  }
+
+  return (
+    <ul className="m-0 list-none space-y-3 pl-0 text-sm text-foreground">
+      {issues.map(issue => {
+        const why = whyForSeoAuditIssue(issue.code, t)
+        return (
+          <li key={`${listKey}-${issue.code}`}>
+            <p className="m-0 font-medium">{issue.label}</p>
+            {why ? <p className="m-0 mt-0.5 text-xs leading-snug text-muted-foreground">{why}</p> : null}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+function formatSchemaTypeList(types: string[] | undefined, t: TranslateFn): string {
+  if (!types?.length) {
+    return t('builder_seo_audit_schema_none', undefined, 'None')
+  }
+  return types.join(', ')
+}
+
+function SchemaGuidanceSummary({
+  presentTypes,
+  recommendedTypes,
+  recommendedFields,
+  showTopBorder,
+  t,
+}: {
+  presentTypes?: string[]
+  recommendedTypes?: string[]
+  recommendedFields?: string[]
+  showTopBorder: boolean
+  t: TranslateFn
+}) {
+  if (!recommendedTypes?.length && !recommendedFields?.length) {
+    return null
+  }
+
+  return (
+    <div
+      className={`mt-2 text-xs ${showTopBorder ? 'border-t border-border pt-2' : ''}`}
+    >
+      <p className="m-0 mb-1.5 font-medium text-foreground">
+        {t('builder_seo_audit_schema_status_heading', undefined, 'JSON-LD status on this page')}
+      </p>
+      <dl className="m-0 space-y-1">
+        <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-2 gap-y-1">
+          <dt className="text-muted-foreground">
+            {t('builder_seo_audit_schema_present', undefined, 'Present')}
+          </dt>
+          <dd className="m-0 font-mono text-foreground">{formatSchemaTypeList(presentTypes, t)}</dd>
+          {recommendedTypes?.length ? (
+            <>
+              <dt className="text-muted-foreground">
+                {t('builder_seo_audit_schema_recommended_types', undefined, 'Recommended types')}
+              </dt>
+              <dd className="m-0 font-mono text-foreground">{recommendedTypes.join(', ')}</dd>
+            </>
+          ) : null}
+          {recommendedFields?.length ? (
+            <>
+              <dt className="text-muted-foreground">
+                {t('builder_seo_audit_schema_recommended_fields', undefined, 'Recommended fields')}
+              </dt>
+              <dd className="m-0 font-mono text-foreground">{recommendedFields.join(', ')}</dd>
+            </>
+          ) : null}
+        </div>
+      </dl>
+    </div>
+  )
+}
+
+function ModalRouteAccordionItem({
+  row,
+  issueView,
+  expanded,
+  onToggle,
+  t,
+  schemaAeoByRoute,
+  schemaTypesByRoute,
+}: {
+  row: RouteRow
+  issueView: SeoAuditIssueCategory
+  expanded: boolean
+  onToggle: () => void
+  t: TranslateFn
+  schemaAeoByRoute?: Record<string, { types: string[]; fields: string[] }>
+  schemaTypesByRoute?: Record<string, string[]>
+}) {
+  const activeCount = issueView === 'seo' ? row.seoIssueCount : row.aeoIssueCount
+  const routeGuidance = schemaAeoByRoute?.[row.path]
+  const presentTypes = schemaTypesByRoute?.[row.path]
+  const issues = getRouteIssuesForView(row, issueView)
+  const routeId = `seo-audit-route-${row.path.replace(/\//g, '_') || 'home'}`
+
+  return (
+    <section
+      id={routeId}
+      className="scroll-mt-2 rounded-md border border-intents-ux-box-borderColor bg-background"
+    >
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={`${routeId}-panel`}
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-muted/40"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <AccordionChevron expanded={expanded} />
+          <ModalRouteLabel path={row.path} t={t} />
+        </span>
+        <IssueCountBadge count={activeCount} t={t} />
+      </button>
+
+      {expanded ? (
+        <div id={`${routeId}-panel`} className="border-t border-border px-3 py-2.5">
+          {issues.length > 0 ? (
+            <div className="space-y-3">
+              {row.entries.map(entry => {
+                const entryIssues = issuesForCategory(entry.issues, issueView)
+                if (entryIssues.length === 0) {
+                  return null
+                }
+
+                return (
+                  <div key={`${row.path}-${entry.layer}`}>
+                    {entry.layer === 'source' ? (
+                      <p className="m-0 mb-1 text-xs font-medium text-muted-foreground">
+                        {layerLabel(entry.layer, t)}
+                      </p>
+                    ) : null}
+                    <RouteIssueCategoryList
+                      issues={entryIssues}
+                      listKey={`${row.path}-${entry.layer}-${issueView}`}
+                      t={t}
+                    />
+                  </div>
+                )
+              })}
+              {issues.length > 0 &&
+              row.entries.every(entry => issuesForCategory(entry.issues, issueView).length === 0) ? (
+                <RouteIssueCategoryList issues={issues} listKey={`${row.path}-${issueView}-merged`} t={t} />
+              ) : null}
+            </div>
+          ) : issueView === 'aeo' && routeGuidance ? null : (
+            <p className="m-0 text-sm text-muted-foreground">
+              {issueView === 'seo'
+                ? t('builder_seo_audit_empty_seo', undefined, 'No SEO issues found on checked routes.')
+                : t('builder_seo_audit_empty_aeo', undefined, 'No AEO issues found on checked routes.')}
+            </p>
+          )}
+
+          {issueView === 'aeo' && routeGuidance ? (
+            <SchemaGuidanceSummary
+              presentTypes={presentTypes}
+              recommendedTypes={routeGuidance.types}
+              recommendedFields={routeGuidance.fields}
+              showTopBorder={issues.length > 0}
+              t={t}
+            />
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+function ModalRouteAccordionList({
+  rows,
+  issueView,
+  t,
+  schemaAeoByRoute,
+  schemaTypesByRoute,
+}: {
+  rows: RouteRow[]
+  issueView: SeoAuditIssueCategory
+  t: TranslateFn
+  schemaAeoByRoute?: Record<string, { types: string[]; fields: string[] }>
+  schemaTypesByRoute?: Record<string, string[]>
+}) {
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set())
+
+  useEffect(() => {
+    setExpandedPaths(new Set())
+  }, [issueView, rows])
+
+  function togglePath(path: string) {
+    setExpandedPaths(prev => {
+      const next = new Set(prev)
+      if (next.has(path)) {
+        next.delete(path)
+      } else {
+        next.add(path)
+      }
+      return next
+    })
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {rows.map(row => (
+        <ModalRouteAccordionItem
+          key={row.path}
+          row={row}
+          issueView={issueView}
+          expanded={expandedPaths.has(row.path)}
+          onToggle={() => togglePath(row.path)}
+          t={t}
+          schemaAeoByRoute={schemaAeoByRoute}
+          schemaTypesByRoute={schemaTypesByRoute}
+        />
+      ))}
+    </div>
+  )
+}
+
 type SeoAuditDetailsModalProps = {
   isOpen: boolean
   onClose: () => void
   rows: RouteRow[]
   auditMode: SeoAuditMode
-  strategy?: SeoStrategyView
+  htmlBaseUrl?: string | null
+  schemaAeoByRoute?: Record<string, { types: string[]; fields: string[] }>
+  schemaTypesByRoute?: Record<string, string[]>
   t: TranslateFn
 }
 
-function SeoAuditDetailsModal({ isOpen, onClose, rows, auditMode, strategy, t }: SeoAuditDetailsModalProps) {
-  const displayRows = rows.filter(r => r.issueCount > 0)
-  const modeHint = auditModeBanner(auditMode, t)
+function SeoAuditDetailsModal({
+  isOpen,
+  onClose,
+  rows,
+  auditMode,
+  htmlBaseUrl,
+  schemaAeoByRoute,
+  schemaTypesByRoute,
+  t,
+}: SeoAuditDetailsModalProps) {
+  const [issueView, setIssueView] = useState<SeoAuditIssueCategory>('seo')
+
+  const seoRows = useMemo(() => rows.filter(row => row.seoIssueCount > 0), [rows])
+  const aeoRows = useMemo(() => {
+    if (schemaAeoByRoute) {
+      return rows.filter(row => Boolean(schemaAeoByRoute[row.path]) || row.aeoIssueCount > 0)
+    }
+    return rows.filter(row => row.aeoIssueCount > 0)
+  }, [rows, schemaAeoByRoute])
+
+  function closeModal() {
+    setIssueView('seo')
+    onClose()
+  }
 
   return (
-    <ToolModal isOpen={isOpen} onClose={onClose} title={t('builder_seo_audit_modal_title', undefined, 'SEO audit details')}>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-          <div className="flex flex-col gap-4">
-            {strategy ? (
-              <section className="rounded-md border border-border bg-muted/30 px-3 py-2">
-                <h3 className="text-xs font-semibold text-muted-foreground m-0 mb-2 uppercase tracking-wide">
-                  {t('builder_seo_audit_strategy_heading', undefined, 'Strategy')}
-                </h3>
-                <StrategyContextBrief strategy={strategy} compact t={t} />
-              </section>
-            ) : null}
+    <ToolModal
+      isOpen={isOpen}
+      onClose={closeModal}
+      title={t('builder_seo_aeo_audit_modal_title', undefined, 'SEO / AEO audit details')}
+    >
+      <div className="flex h-[70vh] max-h-[70vh] min-w-0 w-full flex-col gap-2 overflow-hidden pb-2">
+        <div className="flex shrink-0 flex-col gap-2">
+          <ButtonGroup
+            value={issueView}
+            onChange={value => setIssueView(value as SeoAuditIssueCategory)}
+            className="w-fit self-center"
+          >
+            <ButtonGroup.Item
+              value="seo"
+              label={t('builder_seo_audit_tab_seo', undefined, 'SEO')}
+              showLabelAlways
+              className={ISSUE_VIEW_TOGGLE_INACTIVE}
+            />
+            <ButtonGroup.Item
+              value="aeo"
+              label={t('builder_seo_audit_tab_aeo', undefined, 'AEO')}
+              showLabelAlways
+              className={ISSUE_VIEW_TOGGLE_INACTIVE}
+            />
+          </ButtonGroup>
 
-            {displayRows.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                {modeHint ? (
-                  <p className="text-xs text-muted-foreground m-0">{modeHint}</p>
-                ) : null}
-                <h3 className="text-sm font-semibold m-0">{t('builder_seo_audit_modal_issues_heading', undefined, 'Issues by page')}</h3>
-              </div>
-            ) : modeHint ? (
-              <p className="text-xs text-muted-foreground m-0">{modeHint}</p>
-            ) : null}
-            {displayRows.length === 0 ? (
-              <p className="text-sm text-muted-foreground m-0">
-                {strategy
-                  ? t(
-                      'builder_seo_audit_modal_no_technical_issues',
+          <AuditSiteSourceBanner auditMode={auditMode} htmlBaseUrl={htmlBaseUrl} t={t} />
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto border-t border-intents-ux-box-borderColor pt-2">
+          <h3 className="mb-2 text-sm font-semibold m-0">
+            {t('builder_seo_audit_modal_issues_heading', undefined, 'Issues by page')}
+          </h3>
+          <div className="grid min-w-0 grid-cols-1">
+            <div
+              className={`col-start-1 row-start-1 flex min-w-0 flex-col gap-2 ${issueView !== 'seo' ? 'invisible pointer-events-none' : ''}`}
+              aria-hidden={issueView !== 'seo'}
+            >
+              <IssueTabIntro issueView="seo" t={t} />
+              {seoRows.length === 0 ? (
+                <div className="rounded-md border border-dashed border-intents-ux-box-borderColor px-4 py-6">
+                  <p className="text-sm text-intents-ux-feedbackHighContrastPassive-feedbackColor m-0 text-center">
+                    {t(
+                      'builder_seo_audit_empty_seo',
                       undefined,
-                      'No technical issues found on checked routes.',
-                    )
-                  : t('builder_seo_audit_modal_empty', undefined, 'No pages to show.')}
-              </p>
-            ) : (
-              displayRows.map(row => (
-                <section
-                  key={row.path}
-                  id={`seo-audit-route-${row.path.replace(/\//g, '_') || 'home'}`}
-                  className="scroll-mt-2"
-                >
-                  <div className="flex items-baseline justify-between gap-2 border-b border-border pb-1 mb-2">
-                    <h3 className="text-sm font-semibold m-0 font-mono">{formatRoute(row.path)}</h3>
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      {row.issueCount === 0
-                        ? t('builder_seo_audit_modal_passed', undefined, 'Passed')
-                        : t('builder_seo_audit_modal_issue_count', { count: row.issueCount }, '{count} issue(s)')}
-                    </span>
-                  </div>
+                      'No SEO issues found on checked routes.',
+                    )}
+                  </p>
+                </div>
+              ) : (
+                <ModalRouteAccordionList rows={seoRows} issueView="seo" t={t} />
+              )}
+            </div>
 
-                  {row.issueCount === 0 ? (
-                    <p className="text-xs text-muted-foreground m-0">{t('builder_seo_audit_modal_no_issues', undefined, 'No issues found for this route.')}</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {row.entries.map(entry => (
-                        <div key={`${row.path}-${entry.layer}`}>
-                          <p className="text-xs font-medium text-muted-foreground m-0 mb-1">
-                            {layerLabel(entry.layer, t)}
-                            {entry.url ? (
-                              <span className="font-normal block truncate text-[11px] mt-0.5">{entry.url}</span>
-                            ) : null}
-                          </p>
-                          <ul className="m-0 pl-4 list-disc space-y-1 text-sm text-foreground">
-                            {entry.issues.map(issue => (
-                              <li key={`${entry.layer}-${issue.code}`}>{issue.label}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
-              ))
-            )}
+            <div
+              className={`col-start-1 row-start-1 flex min-w-0 flex-col gap-2 ${issueView !== 'aeo' ? 'invisible pointer-events-none' : ''}`}
+              aria-hidden={issueView !== 'aeo'}
+            >
+              <IssueTabIntro issueView="aeo" t={t} />
+              {aeoRows.length === 0 ? (
+                <div className="rounded-md border border-dashed border-intents-ux-box-borderColor px-4 py-6">
+                  <p className="text-sm text-intents-ux-feedbackHighContrastPassive-feedbackColor m-0 text-center">
+                    {t(
+                      'builder_seo_audit_empty_aeo',
+                      undefined,
+                      'No AEO issues found on checked routes.',
+                    )}
+                  </p>
+                </div>
+              ) : (
+                <ModalRouteAccordionList
+                  rows={aeoRows}
+                  issueView="aeo"
+                  t={t}
+                  schemaAeoByRoute={schemaAeoByRoute}
+                  schemaTypesByRoute={schemaTypesByRoute}
+                />
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -351,16 +702,44 @@ export default function SeoAuditReportWidget({
     const strategyNote = report.strategy?.analysisGuidance
       ? [`Strategy context from the report:\n${report.strategy.analysisGuidance}`]
       : []
+    const schemaHints = report.schemaAeoByRoute
+      ? Object.entries(report.schemaAeoByRoute)
+          .map(
+            ([path, guidance]) =>
+              `${path}: types ${guidance.types.join(', ')}; fields ${guidance.fields.join(', ')}`,
+          )
+          .join('\n')
+      : ''
+    const schemaNote = schemaHints
+      ? [
+          `Recommended JSON-LD per route (from audit modal — not separate audit issues):\n${schemaHints}`,
+          'If Present @types do not match the recommended types for a route, replace or add JSON-LD using a recommended @type (one per page is enough). Add recommended fields when you have accurate data — do not invent values.',
+        ]
+      : []
+    const publishedBase = report.htmlBaseUrl ?? report.publishedBaseUrl ?? null
+    const urlFixNote = publishedBase
+      ? [
+          `Published base URL for this audit: ${publishedBase}. Set canonical, og:url, and JSON-LD url per page with new URL(routePath, publishedBase).href — never example.com, acme.example, or other placeholder hosts.`,
+        ]
+      : [
+          'Set canonical, og:url, and JSON-LD url from the published URL in App Status (new URL(routePath, publishedBase).href) — never example.com or placeholder hosts.',
+        ]
     void sendUserMessage(
-      t('builder_seo_audit_fix_user_message', undefined, 'Fix the SEO issues from the audit report.'),
+      t(
+        'builder_seo_aeo_audit_fix_user_message',
+        undefined,
+        'Fix all SEO and AEO issues from the audit report.',
+      ),
       {
         isActionRequest: true,
         customContext: {
           type: 'seo_audit_fix',
           data: {
             instructions: [
-              'Fix every issue listed in the SEO audit report in the conversation above.',
+              'Fix every SEO and AEO issue listed in the audit report in the conversation above.',
               'Work through each route and issue from that report.',
+              ...schemaNote,
+              ...urlFixNote,
               ...strategyNote,
               'Do not call seoAnalysis or seo__audit again unless the user asks for a new audit.',
               auditMode === 'published'
@@ -379,8 +758,10 @@ export default function SeoAuditReportWidget({
     <>
       <Box gap="md" className="rounded-lg border border-border bg-card p-3 my-2 shadow-sm flex flex-col">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <text.p className="font-semibold text-base m-0">{t('builder_seo_audit_title', undefined, 'SEO audit report')}</text.p>
-          {(problemRows.length > 0 || report.strategy) && (
+          <text.p className="font-semibold text-base m-0">
+            {t('builder_seo_aeo_audit_report_title', undefined, 'SEO / AEO audit report')}
+          </text.p>
+          {(problemRows.length > 0 || Boolean(report.schemaAeoByRoute)) && (
             <Button
               design="secondary"
               size="small"
@@ -392,31 +773,27 @@ export default function SeoAuditReportWidget({
 
         {statusLine ? <p className="text-sm text-muted-foreground m-0 leading-snug">{statusLine}</p> : null}
 
-        {report.strategy ? (
-          <div className="rounded-md border border-border bg-muted/30 px-3 py-2">
-            <p className="text-xs font-medium text-muted-foreground m-0 mb-1">
-              {t('builder_seo_audit_strategy_heading', undefined, 'Strategy')}
-            </p>
-            <StrategyContextBrief strategy={report.strategy} compact t={t} />
-          </div>
-        ) : null}
-
         {problemRows.length > 0 ? (
           <div className="rounded-md border border-border overflow-hidden">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border-b border-border">
+            <div
+              className={`${ISSUE_TABLE_COLUMNS} px-3 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border-b border-border`}
+            >
               <span>{t('builder_seo_audit_col_route', undefined, 'Route')}</span>
-              <span className="text-right">{t('builder_seo_audit_col_issues', undefined, 'Issues')}</span>
+              <span className="text-right">{t('builder_seo_audit_col_seo', undefined, 'SEO')}</span>
+              <span className="text-right">{t('builder_seo_audit_col_aeo', undefined, 'AEO')}</span>
             </div>
             <ul className="m-0 p-0 list-none max-h-48 overflow-y-auto divide-y divide-border">
               {problemRows.map(row => (
-                <li
-                  key={row.path}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2.5 items-center text-sm bg-background"
-                >
+                <li key={row.path} className={`${ISSUE_TABLE_COLUMNS} px-3 py-2.5 text-sm bg-background`}>
                   <span className="font-mono font-medium text-foreground truncate min-w-0">
                     {formatRoute(row.path)}
                   </span>
-                  <span className="text-sm font-semibold tabular-nums text-foreground">{row.issueCount}</span>
+                  <span className="text-xs text-foreground text-right leading-tight">
+                    {formatIssueCount(row.seoIssueCount, t)}
+                  </span>
+                  <span className="text-xs text-foreground text-right leading-tight">
+                    {formatIssueCount(row.aeoIssueCount, t)}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -430,9 +807,17 @@ export default function SeoAuditReportWidget({
             disabled={!canClickFix}
             onClick={handleFixClick}
             data-app-id={appId}
-            text={t('builder_seo_audit_fix_button', undefined, 'Fix SEO issues')}
+            text={t('builder_seo_audit_fix_button', undefined, 'Fix SEO & AEO issues')}
           />
         )}
+
+        <p className="text-xs text-muted-foreground m-0 leading-snug">
+          {t(
+            'builder_seo_audit_recheck_hint',
+            undefined,
+            'Run this check again after you add pages, publish changes, or update your business info.',
+          )}
+        </p>
       </Box>
 
       <SeoAuditDetailsModal
@@ -440,7 +825,9 @@ export default function SeoAuditReportWidget({
         onClose={() => setModalOpen(false)}
         rows={routeRows}
         auditMode={auditMode}
-        strategy={report.strategy}
+        htmlBaseUrl={report.htmlBaseUrl ?? report.publishedBaseUrl}
+        schemaAeoByRoute={report.schemaAeoByRoute}
+        schemaTypesByRoute={report.schemaTypesByRoute}
         t={t}
       />
     </>

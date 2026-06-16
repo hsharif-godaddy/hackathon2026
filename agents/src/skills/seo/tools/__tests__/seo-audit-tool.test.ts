@@ -10,7 +10,16 @@ vi.mock('../../../../database/repositories/AppRepository.js', () => ({
   }; }),
 }));
 
+vi.mock('../../../../services/site-published-url.js', () => ({
+  resolveSiteSeoContextFromToolContext: vi.fn().mockResolvedValue({
+    publishedUrl: 'https://example.com',
+    previewUrl: null,
+    isPublished: true,
+  }),
+}));
+
 vi.mock('../../../../services/seo-audit.js', () => ({
+  buildSeoAuditExecutionContext: vi.fn().mockReturnValue(undefined),
   getCachedSeoAuditReport: vi.fn().mockReturnValue(null),
   runAndCacheSeoAudit: vi.fn().mockResolvedValue({
     appId: 'test-app',

@@ -3,6 +3,16 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
+const recommendAeoSchemaTypesMock = vi.hoisted(() => vi.fn());
+
+vi.mock('../aeo-schema-recommendations.js', () => ({
+  recommendAeoSchemaTypes: recommendAeoSchemaTypesMock,
+  extractRoutePageSignals: vi.fn((html: string, path: string) => ({
+    path,
+    title: 'My Page',
+  })),
+}));
+
 import {
   parseSeoRoutePaths,
   discoverSeoRoutes,
@@ -28,7 +38,7 @@ const FULL_HTML = `<!doctype html>
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://example.com/img.png">
 <link rel="canonical" href="https://example.com/about">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite"}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Example","url":"https://example.com/about"}</script>
 </head><body><h1>Hi</h1></body></html>`;
 
 describe('seo-audit', () => {
@@ -322,6 +332,59 @@ describe('seo-audit', () => {
     expect(report.strategy?.targetKeywords).toEqual(['todo app']);
     expect(report.strategy?.analysisGuidance).toContain('Todo Co');
     expect(report.auditMode).toBe('source-only');
+  });
+
+  it('runSeoAudit flags orphaned registry routes without page files', async () => {
+    const appPath = mkdtempSync(join(tmpdir(), 'seo-app-'));
+    const pagesDir = join(appPath, 'src', 'pages');
+    mkdirSync(pagesDir, { recursive: true });
+    writeFileSync(join(pagesDir, 'index.tsx'), `export default function Home() { return <div />; }`);
+    const libDir = join(appPath, 'src', 'lib');
+    mkdirSync(libDir, { recursive: true });
+    writeFileSync(
+      join(libDir, 'seo-routes.ts'),
+      `export const seoRoutes = [{ path: "/" }, { path: "/legacy" }];`,
+    );
+
+    const report = await runSeoAudit({
+      appId: 'test-app',
+      appPath,
+      publishedUrl: null,
+      includeSourceScan: false,
+    });
+
+    const legacy = report.pages.find(p => p.path === '/legacy');
+    expect(legacy?.issues.some(i => i.code === 'orphaned-seo-route')).toBe(true);
+  });
+
+  it('runSeoAudit attaches LLM schema recommendations when executionContext is provided', async () => {
+    recommendAeoSchemaTypesMock.mockResolvedValue({
+      '/': { types: ['WebSite', 'Organization'], fields: ['name', 'url'] },
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(FULL_HTML, { status: 200, headers: { 'content-type': 'text/html' } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const appPath = mkdtempSync(join(tmpdir(), 'seo-app-'));
+    const libDir = join(appPath, 'src', 'lib');
+    mkdirSync(libDir, { recursive: true });
+    writeFileSync(join(libDir, 'seo-routes.ts'), `export const seoRoutes = [{ path: "/" }];`);
+
+    const report = await runSeoAudit({
+      appId: 'test-app',
+      appPath,
+      publishedUrl: 'https://example.com',
+      isPublished: true,
+      includeSourceScan: false,
+      executionContext: { metadata: { appId: 'test-app', subscriptionId: 'sub-1' } },
+    });
+
+    expect(recommendAeoSchemaTypesMock).toHaveBeenCalled();
+    expect(report.schemaAeoByRoute).toEqual({
+      '/': { types: ['WebSite', 'Organization'], fields: ['name', 'url'] },
+    });
   });
 
   it('logPublishedSeoAudit fetches published routes and logs audit-complete', async () => {

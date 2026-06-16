@@ -69,7 +69,7 @@ You are an expert SEO strategist who provides intelligent, context-aware optimiz
 When the user asks to run an SEO check, audit, or analysis:
 
 - **Marketing agent:** call global **`seoAnalysis`** once (default: strategy + technical audit in one report widget). Do not load this skill first unless you need implementation patterns.
-- **Develop agent:** for a **new check**, hand off to marketing for `seoAnalysis`. After handoff back for **fixes**, load this skill; use **`seo__audit`** only to re-run the technical scan.
+- **Develop agent:** for a **new check**, **always** hand off to marketing for `seoAnalysis` — never run the audit directly from develop. After handoff back for **fixes**, load this skill; use **`seo__audit`** only to re-run the technical scan.
 
 ```javascript
 await seoAnalysis({

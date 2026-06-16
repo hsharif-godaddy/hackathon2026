@@ -32,6 +32,13 @@ export const SEO_CHECK_LABELS: Record<string, string> = {
   'unexpected-noindex': 'Page is noindex (hidden from search)',
   'missing-helmet': 'No Helmet / head tags detected in page source',
   'missing-seo-route': 'Route not registered in seo-routes.ts',
+  'orphaned-seo-route': 'Route registered in seo-routes.ts but no matching page file',
+  'aeo-missing-schema-type': 'JSON-LD is missing a schema @type',
+  'aeo-url-mismatch:head': 'Canonical URL and og:url do not match',
+  'aeo-url-mismatch:jsonld': 'JSON-LD url does not match the page canonical URL',
+  'aeo-url-mismatch:canonical-page': 'Canonical URL does not match the published page URL',
+  'aeo-url-mismatch:og-page': 'Open Graph URL does not match the published page URL',
+  'aeo-url-mismatch:jsonld-page': 'JSON-LD url does not match the published page URL',
 };
 
 export function labelForSeoCheck(code: string): string {

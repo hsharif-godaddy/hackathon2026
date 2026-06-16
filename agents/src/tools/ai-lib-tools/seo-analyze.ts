@@ -1,7 +1,7 @@
 import { createTool } from '@airo/ai-lib';
 import { z } from 'zod';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
-import { formatSeoAuditSummary, runSeoCheck } from '../../services/seo-audit.js';
+import { formatSeoAuditSummary, buildSeoAuditExecutionContext, runSeoCheck } from '../../services/seo-audit.js';
 import { resolveSiteSeoContextFromToolContext } from '../../services/site-published-url.js';
 import {
   buildSeoStrategyContext,
@@ -70,6 +70,7 @@ export const seoAnalyze = createTool(
           useCachedAudit: useCachedAudit !== false,
           strategyInput,
           appDisplayName: app.name,
+          executionContext: buildSeoAuditExecutionContext(context),
         });
 
         const summary = formatSeoAuditSummary(report);

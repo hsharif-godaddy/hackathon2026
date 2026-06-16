@@ -27,6 +27,7 @@ export enum LlmCallSource {
   ServiceDomainSeedSuggestion = 'service:domain-seed-suggestion',
   ServiceSummarization = 'service:summarization',
   ServiceEmbeddings = 'service:embeddings',
+  ServiceSeoAudit = 'service:seo-audit',
   AgentAssessment = 'agent:assessment',
 }
 

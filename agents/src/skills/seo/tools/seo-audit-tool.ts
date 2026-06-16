@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { AppRepository } from '../../../database/repositories/AppRepository.js';
 import { Logger } from '../../../logging/index.js';
 import {
+  buildSeoAuditExecutionContext,
   formatSeoAuditSummary,
   getCachedSeoAuditReport,
   runAndCacheSeoAudit,
@@ -67,6 +68,9 @@ STOP after this tool: do NOT edit files in the same turn. The UI shows a "Fix SE
       report = await runAndCacheSeoAudit({
         appPath: app.path,
         ...cacheLookup,
+        executionContext: buildSeoAuditExecutionContext(
+          context as { socketId?: string; metadata?: Record<string, unknown> },
+        ),
       });
     } else {
       logger.info('seo.skill.audit.cache-hit', { appId });
