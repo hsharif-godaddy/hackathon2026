@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag filter — env (`dev-private`), app (`console`), or individual slug (`console-dev-private`)
+        description: Tag filter — env (`dev-private`/`test`/`prod`), app (`console`/`stripe`/`budget-service`), or individual slug (`stripe-prod`)
         required: false
         type: string
         default: dev-private
@@ -37,8 +37,15 @@ permissions:
 
 jobs:
   scheduled:
-    name: Renew certificates [scheduled]
+    name: Renew certificates [scheduled / ${{ matrix.env }}]
     if: github.event_name == 'schedule' || github.event_name == 'push'
+    # fail-fast: false — one account's failure (e.g. role drift) shouldn't
+    # block renewal in the others. Each env writes to its own AWS account,
+    # so the jobs are independent.
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [dev-private, test, prod]
     runs-on:
       labels:
         - airo-cicd-runners
@@ -57,11 +64,11 @@ jobs:
         with:
           sso-token: ${{ steps.jwt.outputs.jwt }}
           config-file: .github/certificates.yml
-          tags: dev-private
+          tags: ${{ matrix.env }}
 
       - name: Summary
         run: |
-          echo "::notice::results=${{ steps.certs.outputs.results }}"
+          echo "::notice::env=${{ matrix.env }} results=${{ steps.certs.outputs.results }}"
 
   dispatched:
     name: Renew certificates [${{ inputs.tag }}]

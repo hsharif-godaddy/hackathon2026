@@ -20,19 +20,106 @@ accounts:
     # including AddTagsToCertificate, which setup-certificates needs to
     # stamp its tracking tag. The Katana SSG role lacks the tag write.
     roleArn: arn:aws:iam::694282668781:role/GD-AWS-USA-GD-AiroBuilde-Dev-Private-Deploy
+  test:
+    # Katana TEST cluster account (Katana awsAccountId 1080). Hosts the
+    # `test` envs of airo-builder-stripe, blog, budget-service, and
+    # c2-analytics-agent (NOT app/test or notification-service/test —
+    # those run inside the dev-private account).
+    roleArn: arn:aws:iam::269423819739:role/GD-AWS-USA-GD-AiroBuilde-Test-Deploy
+  prod:
+    roleArn: arn:aws:iam::644094189644:role/GD-AWS-USA-GD-AiroBuilde-Prod-Deploy
 
 certificates:
+  # ── dev-private (account 694282668781) ───────────────────────────────
+
   - commonName: console.airo-builder.int.test-gdcorp.tools
     description: debug-console server cert — test env (Katana dev-private)
     tags: [console, dev-private, console-dev-private]
     accounts: [dev-private]
 
-  # TODO — add entries for other Katana apps in this repo as their cert
-  # lifecycles are audited:
-  #   app                  (pcpAppId 6082)
-  #   blog                 (pcpAppId 7389)
-  #   budget-service       (pcpAppId 7357)
-  #   notification-service (pcpAppId 7676)
-  #   airo-builder-stripe  (pcpAppId 7571)
+  - commonName: clickhouse-dev.airo-builder.dev-godaddy.com
+    description: clickhouse server cert — dev-private
+    tags: [clickhouse, dev-private, clickhouse-dev-private]
+    accounts: [dev-private]
+
+  - commonName: budget-service.airo-builder.dev-godaddy.com
+    description: budget-service public hostname — dev-private
+    tags: [budget-service, dev-private, budget-service-dev-private]
+    accounts: [dev-private]
+
+  - commonName: budget-service.api.int.dev-godaddy.com
+    description: budget-service internal API — dev-private
+    tags: [budget-service, dev-private, budget-service-api-dev-private]
+    accounts: [dev-private]
+
+  - commonName: stripe.airo-builder.dev-godaddy.com
+    description: stripe-service public hostname — dev-private
+    tags: [stripe, dev-private, stripe-dev-private]
+    accounts: [dev-private]
+
+  - commonName: pre-test-airo-builder.test-godaddy.com
+    description: app pre-test env (Katana app/pre-test inside dev-private account)
+    tags: [app, dev-private, app-pre-test]
+    accounts: [dev-private]
+
+  # ── test (account 269423819739) ──────────────────────────────────────
+
+  - commonName: budget-service.airo-builder.test-godaddy.com
+    description: budget-service public hostname — test
+    tags: [budget-service, test, budget-service-test]
+    accounts: [test]
+
+  - commonName: budget-service.api.int.test-godaddy.com
+    description: budget-service internal API — test
+    tags: [budget-service, test, budget-service-api-test]
+    accounts: [test]
+
+  - commonName: stripe.airo-builder.test-godaddy.com
+    description: stripe-service public hostname — test
+    tags: [stripe, test, stripe-test]
+    accounts: [test]
+
+  # ── prod (account 644094189644) ──────────────────────────────────────
+
+  - commonName: console.airo-builder.int.gdcorp.tools
+    description: debug-console server cert — prod (replacement for legacy console.airo-builder.godaddy.com)
+    tags: [console, prod, console-prod]
+    accounts: [prod]
+
+  - commonName: clickhouse.airo-builder.godaddy.com
+    description: clickhouse server cert — prod
+    tags: [clickhouse, prod, clickhouse-prod]
+    accounts: [prod]
+
+  - commonName: budget-service.airo-builder.godaddy.com
+    description: budget-service public hostname — prod
+    tags: [budget-service, prod, budget-service-prod]
+    accounts: [prod]
+
+  - commonName: budget-service.api.int.godaddy.com
+    description: budget-service internal API — prod
+    tags: [budget-service, prod, budget-service-api-prod]
+    accounts: [prod]
+
+  - commonName: stripe.airo-builder.godaddy.com
+    description: stripe-service public hostname — prod
+    tags: [stripe, prod, stripe-prod]
+    accounts: [prod]
+
   # Legacy console.airo-builder.{test-,}godaddy.com hostnames are intentionally
   # NOT covered — natural expiry is the forcing function for retiring them.
+  # (Replacement: console.airo-builder.int.{test-,}gdcorp.tools.)
+  #
+  # Other ACM imports observed but excluded from rotation because they are
+  # `InUse: false` and look like retirable leftovers (audit before deleting):
+  #   dev-private: knowledge.airo-builder.dev-godaddy.com,
+  #                airo-builder.dev-godaddy.com,
+  #                airo-builder.test-godaddy.com,
+  #                budge-service.airo-builder.dev-godaddy.com (typo cert),
+  #                pre-dev-airo-builder.test-godaddy.com,
+  #                airo-dev-console.test-godaddy.com,
+  #                image-search.airo-builder.dev-godaddy.com
+  #   test:        airo-builder.test-godaddy.com
+  #   prod:        knowledge.airo-builder.godaddy.com,
+  #                airo-builder.godaddy.com (the wildcard *.godaddy.com edge
+  #                cert serves this hostname; this imported cert is unused)
