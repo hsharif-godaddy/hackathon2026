@@ -63,6 +63,7 @@ jobs:
         <context>
         REPO: ${{ github.repository }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
+        BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
         EVENT_ACTION: ${{ github.event.action }}
         MANUAL_RESET_BEFORE_SHA: ${{ github.event.before }}
         MANUAL_RESET_AFTER_SHA: ${{ github.event.after }}
@@ -107,152 +108,47 @@ jobs:
         </severity_levels>
 
         <review_pipeline>
-        Run these passes. Do the approach pass yourself. Dispatch the specialist
-        passes as subagents from pr-review-toolkit, in parallel where possible.
+        Launch ALL applicable subagents in a SINGLE message (parallel).
+        Each subagent receives the PR diff (`gh pr diff $PR_NUMBER`), repo/PR metadata,
+        and the severity + scope rules from <severity_levels>. Focus findings on
+        diff lines, but search beyond the diff when the reviewer criteria require
+        cross-repo context (e.g., checking for existing utilities or patterns).
 
-        1. Approach review (you)              - see <approach_review>
-        2. Security + performance (you)       - see <security_and_perf>
-        3. E2E coverage (you)                 - see <e2e_review>
-        4. PR hygiene (you)                   - see <pr_hygiene>
-        5. Skills isolation (you)             - see <skills_isolation>
-        6. code-reviewer (subagent)           - general quality, project guidelines
-        7. pr-test-analyzer (subagent)        - test coverage gaps, edge cases
-        8. silent-failure-hunter (subagent)   - swallowed errors, bad catches
-        9. comment-analyzer (subagent)        - only if comments/docs changed
-        10. type-design-analyzer (subagent)   - only if new types added/modified
+        Before launching subagents, ensure the base branch ref is available:
+          git fetch origin $BASE_BRANCH --depth=1
 
-        Skip a subagent if the diff has no relevant changes for it. Do not run
-        code-simplifier - simplification suggestions belong in the other passes.
+        Read each reviewer's .md criteria from the base branch (prevents
+        self-modification). For each applicable reviewer, run EXACTLY:
+          git show origin/$BASE_BRANCH:.github/workflows/claude-reviews/<name>.md
+        where <name> is one of: code-reviewer, pr-test-analyzer,
+        silent-failure-hunter, comment-analyzer, type-design-analyzer,
+        pr-quality-reviewer, security-reviewer, skills-isolation.
 
-        IMPORTANT: Tell each subagent to classify every finding as [Critical],
-        [Important], or [Suggestion] per <severity_levels>. Findings without a
-        severity classification will be treated as [Suggestion].
+        If a read fails for a required reviewer (file not on base branch), report
+        [Important]: "Criteria file <name>.md missing from $BASE_BRANCH — cannot
+        run <name> reviewer. Human review required." Do NOT fall back to reading
+        from HEAD. Do NOT launch a subagent without its criteria loaded.
+
+        PLUGIN AGENTS (launch with matching subagent_type from pr-review-toolkit).
+        The plugin provides a built-in system prompt; pass the .md file contents as
+        additional instructions that supplement (not replace) the plugin's defaults:
+        - code-reviewer          Always run.
+        - pr-test-analyzer       Always run.
+        - silent-failure-hunter  Always run.
+        - comment-analyzer       Only if diff modifies comments or docs.
+        - type-design-analyzer   Only if diff adds/modifies type definitions.
+
+        GENERAL-PURPOSE AGENTS (no subagent_type; the .md file is the sole criteria):
+        - pr-quality-reviewer    Always run. Covers approach, E2E, hygiene.
+        - security-reviewer      Always run. Security, LLM security, data integrity, performance.
+        - skills-isolation       Only if diff touches agents/src/skills/**, agents/src/prompts/**, agents/src/tools/skill-loader-tool.ts, agents/src/tools/skill-tool-manager.ts, or agents/src/agents/**.
+        Self-modification guard: before launching subagents, check if the PR diff
+        touches .github/workflows/claude-reviews/** OR .github/workflows/claude-code-review.yml. If it does, add a prominent
+        [Important] finding: "This PR modifies its own review pipeline. Human review
+        of the affected workflow/criteria files is required." List the modified files.
+
+        Do NOT run code-simplifier. Wait for all subagents, then <synthesis>.
         </review_pipeline>
-
-        <approach_review>
-        Evaluate whether the PR's approach is sound. Before writing the
-        "## Approach" section, search:
-
-        A. Is there a simpler path?
-          1. Grep the repo for existing utilities, helpers, hooks, or patterns
-             that overlap with what this PR introduces.
-          2. Check package.json / go.mod / CLAUDE.md for libraries already in use
-             that expose the functionality this PR reimplements.
-          3. Check whether framework or library configuration could achieve the
-             goal without custom code.
-
-        B. Does it fit the architecture?
-          1. Does this match patterns in the area it touches? If it diverges, is
-             the divergence justified or is it drift?
-          2. Is the code in the right layer/service/package? Respect boundaries
-             in CLAUDE.md (AAB vs PaaS, shared vs service-specific, agent vs app
-             vs dev-supervisor responsibilities).
-          3. If this refactors existing code: is the new shape actually better,
-             or lateral churn? Does it leave the codebase more consistent or
-             introduce a second way to do something that already had one way?
-          4. If it adds a new abstraction: is it pulling its weight, or
-             duplicating concerns handled elsewhere?
-          5. Does it align with the direction of other recent work in this area,
-             or contradict it?
-
-        C. Is the problem genuine? Does the problem the PR claims to solve
-           actually exist, and is it worth solving now? Flag speculative or
-           premature changes.
-
-        In "## Approach", for non-trivial PRs, state what you checked and whether
-        you found concrete alternatives or architectural misalignments. If the
-        approach is sound after checking, say so clearly — approval is a valid
-        and useful outcome.
-        </approach_review>
-
-        <security_and_perf>
-        Static analysis of the diff (no security scanners available, only
-        gh and repo-reading tools). Flag:
-        - Injection risks (SQL, command, template, XSS)
-        - Auth bypass: custom JWT handling instead of gd-auth; missing auth
-          level checks on sensitive routes (see CLAUDE.md auth section)
-        - Secrets in code, logs, or commit messages
-        - Missing input validation at system boundaries
-        - N+1 queries, unbounded loops, missing pagination
-        - Sync work on hot paths that should be async/batched
-        </security_and_perf>
-
-        <e2e_review>
-        When the PR modifies UI components (app/src/):
-        1. Grep tests/e2e/ and tests/regression/ for any data-testid, data-eid,
-           or selectors affected by the diff.
-        2. [Important]: Changed/removed selectors or user flows without matching
-           tests/e2e/ or tests/regression/ updates.
-        3. [Suggestion]: New user-facing features or flows with no existing E2E
-           coverage - recommend adding a Playwright test for the happy path.
-        </e2e_review>
-
-        <pr_hygiene>
-        Flag as [Important]:
-        - Non-descriptive PR title
-        - Missing or empty PR description
-        Flag as [Suggestion]:
-        - UI changes without screenshots or videos in the description
-        </pr_hygiene>
-
-        <skills_isolation>
-        Trigger: diff touches agents/src/skills/**, agents/src/prompts/**,
-        skill-loader-tool.ts, skill-tool-manager.ts, agents/src/agents/**.
-        See agents/src/skills/README.md and agents/src/skills/SKILL-CREATOR-GUIDE.md.
-
-        Skills are self-contained — add/remove/rename edits live only
-        in the skill's dir. Frontmatter is the ONLY channel into the
-        system prompt; runtime owns render.
-
-        Flag [Important]:
-        - Skill-name literal outside its dir (tests/fixtures exempt).
-        - Switch/if/map/array keyed by skill name in shared code.
-        - Per-skill prose, "when to use", routing, or backup-load
-          text in shared prompts — even with frontmatter.
-        - Prose deterministic triggers ("if user says X load Y"); put
-          such matches in a frontmatter field as pre-filter.
-        - Per-skill gating like `if (skillName === 'commerce')`.
-        - Rename/remove leaving old name in shared code or other skill.md files.
-        - Unjustified shared-prompt growth; "not picked enough" is
-          not valid.
-
-        Skill length (skill.md body):
-        - [Suggestion]: skill body 300–500 lines — getting near the line limit; 
-          check SKILL-CREATOR-GUIDE.md for improvement options.
-        - [Important]: skill body >500 lines — exceeds hard ceiling; skill needs redesign 
-          (split into chained sections or routed sub-skills).
-        Fix via splits or templates; never via shared prompts.
-
-        Selection overlap (skill add/modify):
-        - [Suggestion]: description keyword overlap with another skill — differentiate or merge.
-        - [Suggestion]: whenToUse/intents fire on same phrases as another — flag ambiguity. Compare 
-          across all skills.
-
-        Pattern choice (skill add/restructure):
-        - [Important]: Routed metaskill added but sub-skills do not have independent
-          tools, enablementId flags, or template install steps — apply the
-          "remove the metaskill" test: if whenToUse/intents on sub-skills route
-          correctly without the routing entry point, the metaskill adds no value.
-          Supporting signal: no shared prerequisite or data dependency between
-          metaskill and sub-skills — see "Worked Examples" in
-          SKILL-CREATOR-GUIDE.md.
-        - [Important]: Standalone skill references another skill in whenToUse/description
-          for disambiguation, OR contains conditional load instructions for other skills
-          in its body, OR two standalone skills' whenToUse/intents overlap on the same
-          phrases — routing logic is embedded rather than centralized in a routed metaskill.
-        - [Suggestion]: Standalone skill.md exceeds ~300 lines and all
-          sub-topics share the same tools, templates, and feature flag —
-          split into a chained metaskill (templates/sections/NN-slug.md)
-          rather than a single growing file.
-        - [Important]: Chained sub-topic (section) needs its own TypeScript tools or a
-          separate template install step — escalate to routed metaskill.
-        - [Important]: Routed metaskill used where standalone suffices — user intent
-          already disambiguates at the first hop via frontmatter; extra load
-          round-trip with no benefit.
-
-        Do NOT flag: pre-existing refs in unmodified files; self-refs;
-        tests/fixtures; names in frontmatter/templates.
-        </skills_isolation>
 
         <synthesis>
         After all passes complete, synthesize into a single summary comment.
@@ -325,7 +221,7 @@ jobs:
 
         <output_format>
         Summary comment structure:
-        - "## Approach" section (always include, from <approach_review>)
+        - "## Approach" section (always include, from pr-quality-reviewer criteria)
         - "## Issues" section grouped by severity, with checkbox list (if any):
           ### Critical
           - [ ] [Critical] description — file:line
@@ -405,16 +301,20 @@ jobs:
            for that run; reopened already forced tier 1–2 in step 2):
            - Tier 1–2 (N 1–2, or this run is scope-reset, or reopened): Full review
              pipeline. All severity levels for new findings.
-           - Tier 3–4 (N 3–4): Only new [Critical] and [Important]. Skip
-             type-design-analyzer and comment-analyzer. Do not introduce new
-             [Suggestion] items. Still list all unresolved [Critical]/[Important]
-             from prior bot comments until fixed or maintainer-waived.
-           - Tier 5+ (N >= 5): New findings at [Critical] only; run
-             silent-failure-hunter; skip other subagents for new findings. Still list
-             all unresolved [Critical] and [Important] from prior bot comments.
-             When zero [Critical] and zero [Important] remain (including carried
-             forward), add ready-for-human-review per step 11. Never use
-             `gh pr review` / GitHub "approve" API — only label + comment.
+           - Tier 3–4 (N 3–4): Only new [Critical] and [Important]. Always run
+             core reviewers (code-reviewer, pr-quality-reviewer, security-reviewer,
+             pr-test-analyzer, silent-failure-hunter). Skip conditional reviewers
+             (type-design-analyzer, comment-analyzer, skills-isolation). Do not
+             introduce new [Suggestion] items. Still list all unresolved
+             [Critical]/[Important] from prior bot comments until fixed or
+             maintainer-waived.
+           - Tier 5+ (N >= 5): New findings at [Critical] only. Always run
+             security-reviewer, pr-quality-reviewer, and silent-failure-hunter.
+             Skip all other reviewers for new findings. Still list all unresolved
+             [Critical] and [Important] from prior bot comments. When zero
+             [Critical] and zero [Important] remain (including carried forward),
+             add ready-for-human-review per step 11. Never use `gh pr review` /
+             GitHub "approve" API — only label + comment.
         6. Verify each new [Critical] and [Important] finding (see <verification>).
         7. Post inline comments for new verified [Critical] and [Important] findings
            only (see <inline_comments>). Do NOT re-post for carried-forward unresolved
