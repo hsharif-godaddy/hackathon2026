@@ -11,6 +11,7 @@ import Header from '@/components/layout/Header'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { useSafariClass } from '@/hooks/useSafariClass'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
+import { useSubscription } from '@/hooks/useSubscription'
 import { useTranslations } from '@/hooks/useTranslations'
 import { getErrorMessage } from '@/lib/errors'
 import { isFeatureEnabled } from '@/lib/features'
@@ -50,6 +51,12 @@ function LandingPageContent({ data }: LandingPageProps) {
   const { signIn } = useSsoSignIn()
   const setRedirectUrl = useAuthUIStore((state) => state.setRedirectUrl)
 
+  const slug = data.route.useCase
+
+  const { subscriptions, isLoading: subscriptionsLoading, isError: subscriptionsError } = useSubscription({ enabled: isAuthenticated })
+  const isNewUser = isAuthenticated && !subscriptionsLoading && !subscriptionsError && subscriptions.length === 0
+  const hasLoggedNewUserRef = useRef(false)
+
   const signInFromLanding = useCallback(() => {
     if (typeof window === 'undefined') {
       signIn({ onShowMockLogin: () => setShowMockLogin(true) })
@@ -66,8 +73,6 @@ function LandingPageContent({ data }: LandingPageProps) {
 
   useSafariClass()
 
-  const slug = data.route.useCase
-
   useEffect(() => {
     const campaignItc = landingItc(slug)
     if (campaignItc) {
@@ -83,6 +88,17 @@ function LandingPageContent({ data }: LandingPageProps) {
       recommendation_type: 'navigation'
     })();
   }, [slug])
+
+  useEffect(() => {
+    if (hasLoggedNewUserRef.current || !isNewUser) return
+    logImpressionEvent(`landing-${slug}.newUser.view`)()
+    logAiroHQEvent({
+      category: 'impression',
+      recommendation_task: `builder_landing_${slug}_new_user_view`,
+      recommendation_type: 'navigation'
+    })()
+    hasLoggedNewUserRef.current = true
+  }, [isNewUser, slug])
 
   useEffect(() => {
     return () => setIsRedirecting(false)
@@ -134,7 +150,7 @@ function LandingPageContent({ data }: LandingPageProps) {
         return;
       }
 
-      const createSiteResponse = await fetchQuickCreate(promptToUse)
+      const createSiteResponse = await fetchQuickCreate(promptToUse, undefined, { source: 'landing_page' })
 
       if (!createSiteResponse.ok) {
         if (createSiteResponse.status === 401) {

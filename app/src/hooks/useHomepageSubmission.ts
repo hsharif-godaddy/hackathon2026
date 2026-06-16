@@ -323,7 +323,7 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
       const createSiteResponse = await fetchQuickCreate(
         promptToUse,
         undefined,
-        fqdnToUse ? { fqdn: fqdnToUse } : undefined,
+        { source: 'homepage', ...(fqdnToUse && { fqdn: fqdnToUse }) },
       )
 
       if (!createSiteResponse.ok) {

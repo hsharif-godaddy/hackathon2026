@@ -53,7 +53,7 @@ export async function createSiteAndRedirect(
       hasProductId: !!productId,
     })
 
-    const createSiteResponse = await fetchQuickCreate(normalizedPrompt, undefined, { productId })
+    const createSiteResponse = await fetchQuickCreate(normalizedPrompt, undefined, { productId, source })
 
     if (createSiteResponse.status === 401) {
       logger.info('site-creation.auth-required', { source })

@@ -8,12 +8,6 @@ import {
 
 import { checkBmsMigration, shouldCheckBmsMigration } from '@/lib/bms-migration';
 import { getBudgetServiceClient } from '@/lib/budget-service/client';
-import {
-  fetchHivemindCohorts,
-  getBudgetServiceCohort,
-  isBudgetServiceExperimentTreatment,
-  logBudgetServiceExperimentTriggered,
-} from '@/lib/budget-service-experiment';
 import { adaptBudgetToGrants } from '@/lib/credit-adapter';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
@@ -63,8 +57,8 @@ export const GET = withCustomerAuth(async (
     const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
     const mgmtClient = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt });
 
-    // Four-lever BMS migration check (same logic as agent-token route):
-    // 1. app-builder-budget-service flag (for NEW users)
+    // BMS migration check:
+    // 1. app-builder-budget-service flag (for NEW users — those signed up with bmsActive:true)
     // 2. app-builder-bms-existing flag (for EXISTING migrated users)
     // 3. bmsBudgetId present on subscription
     // 4. bms-migration attribute with migrationDate (distinguishes existing from new)
@@ -84,22 +78,6 @@ export const GET = withCustomerAuth(async (
         error: error instanceof Error ? error.message : String(error),
       });
     }
-    const hivemindCohorts = await fetchHivemindCohorts(request);
-    const budgetServiceCohort = getBudgetServiceCohort(hivemindCohorts);
-    const budgetServiceExperimentEnabled = isBudgetServiceExperimentTreatment(
-      isBudgetFlagEnabled,
-      budgetServiceCohort,
-    );
-
-    if (isBudgetFlagEnabled) {
-      logBudgetServiceExperimentTriggered(budgetServiceCohort, { subscriptionId });
-      if (!budgetServiceExperimentEnabled) {
-        logger.info('credits.grants.api.experiment-grants-default', {
-          subscriptionId,
-          cohortId: budgetServiceCohort ?? 'none',
-        });
-      }
-    }
 
     const budgetClient = getBudgetServiceClient(request.headers);
 
@@ -107,7 +85,7 @@ export const GET = withCustomerAuth(async (
     let source: CreditsSource;
 
     const bmsMigrationFlags = {
-      budgetServiceEnabled: budgetServiceExperimentEnabled,
+      budgetServiceEnabled: isBudgetFlagEnabled,
       bmsExistingEnabled: isBmsExistingEnabled,
     };
 
@@ -152,7 +130,7 @@ export const GET = withCustomerAuth(async (
       logger.info('credits.grants.api.sourceSelection', {
         subscriptionId,
         source: 'grants',
-        reason: !budgetClient ? 'no budget client' : 'both flags disabled',
+        reason: !budgetClient ? 'no budget client' : 'flags disabled',
       });
     }
 

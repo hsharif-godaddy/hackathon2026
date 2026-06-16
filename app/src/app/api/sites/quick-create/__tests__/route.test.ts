@@ -8,11 +8,13 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 const mockFetchHivemindCohorts = vi.fn().mockResolvedValue(undefined);
-const mockGetBudgetServiceCohort = vi.fn().mockReturnValue(undefined);
+const mockGetGrantsHoldoutCohort = vi.fn().mockReturnValue(undefined);
+const mockGetBmsLaunchAACohort = vi.fn().mockReturnValue(undefined);
 
 vi.mock('@/lib/budget-service-experiment', () => ({
   fetchHivemindCohorts: (...args: unknown[]) => mockFetchHivemindCohorts(...args),
-  getBudgetServiceCohort: (...args: unknown[]) => mockGetBudgetServiceCohort(...args),
+  getGrantsHoldoutCohort: (...args: unknown[]) => mockGetGrantsHoldoutCohort(...args),
+  getBmsLaunchAACohort: (...args: unknown[]) => mockGetBmsLaunchAACohort(...args),
 }));
 
 const mockCreateSite = vi.fn();
@@ -53,7 +55,7 @@ function makeRequest(body: Record<string, unknown>) {
   });
 }
 
-describe('/api/sites/quick-create budget service cohort', () => {
+describe('/api/sites/quick-create grants holdout cohort', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreateSite.mockResolvedValue({
@@ -62,27 +64,71 @@ describe('/api/sites/quick-create budget service cohort', () => {
     });
   });
 
-  it('passes resolved cohort to createSite', async () => {
-    mockFetchHivemindCohorts.mockResolvedValue({ 'airo-build-budget-service': 'on' });
-    mockGetBudgetServiceCohort.mockReturnValue('on');
+  it('passes holdout cohort to createSite when user is in holdout', async function holdoutCohort() {
+    mockFetchHivemindCohorts.mockResolvedValue({ 'airo-app-builder-grants-holdout': 'holdout' });
+    mockGetGrantsHoldoutCohort.mockReturnValue('holdout');
 
     const { POST } = await import('../route');
     await POST(makeRequest({ initialPrompt: 'test' }));
 
     expect(mockCreateSite).toHaveBeenCalledWith(
-      expect.objectContaining({ budgetServiceCohort: 'on' })
+      expect.objectContaining({ grantsHoldoutCohort: 'holdout' })
     );
   });
 
-  it('passes undefined cohort when not in experiment', async () => {
+  it('passes undefined cohort when user is not in holdout experiment', async function noCohort() {
     mockFetchHivemindCohorts.mockResolvedValue(undefined);
-    mockGetBudgetServiceCohort.mockReturnValue(undefined);
+    mockGetGrantsHoldoutCohort.mockReturnValue(undefined);
 
     const { POST } = await import('../route');
     await POST(makeRequest({ initialPrompt: 'test' }));
 
     expect(mockCreateSite).toHaveBeenCalledWith(
-      expect.objectContaining({ budgetServiceCohort: undefined })
+      expect.objectContaining({ grantsHoldoutCohort: undefined })
+    );
+  });
+
+  it('skips holdout cohort and passes undefined for homepage source', async function homepageSource() {
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', source: 'homepage' }));
+
+    expect(mockFetchHivemindCohorts).toHaveBeenCalled();
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ grantsHoldoutCohort: undefined })
+    );
+  });
+
+  it('passes bmsLaunchAACohort to createSite for homepage source', async function homepageAACohort() {
+    mockGetBmsLaunchAACohort.mockReturnValue('bms');
+
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', source: 'homepage' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ bmsLaunchAACohort: 'bms' })
+    );
+  });
+
+  it('passes undefined bmsLaunchAACohort for non-homepage source', async function nonHomepageAACohort() {
+    mockGetBmsLaunchAACohort.mockReturnValue('bms');
+
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ bmsLaunchAACohort: undefined })
+    );
+  });
+
+  it('treats unknown source as non-homepage (falls back to grants holdout path)', async function unknownSource() {
+    mockGetGrantsHoldoutCohort.mockReturnValue('holdout');
+    mockGetBmsLaunchAACohort.mockReturnValue('bms');
+
+    const { POST } = await import('../route');
+    await POST(makeRequest({ initialPrompt: 'test', source: 'forged-value' }));
+
+    expect(mockCreateSite).toHaveBeenCalledWith(
+      expect.objectContaining({ grantsHoldoutCohort: 'holdout', bmsLaunchAACohort: undefined })
     );
   });
 });

@@ -14,6 +14,8 @@ export interface QuickCreateResponse {
 interface FetchQuickCreateOptions {
   productId?: string
   fqdn?: string
+  /** Entry point source passed to the BFF. Used to gate experiment bucketing (e.g. 'homepage' skips grants holdout). */
+  source?: string
 }
 
 export async function fetchQuickCreate(prompt: string, fetchOptions?: AppFetchOptions, options?: FetchQuickCreateOptions) {
@@ -25,6 +27,7 @@ export async function fetchQuickCreate(prompt: string, fetchOptions?: AppFetchOp
       itc: getItcOverride() ?? undefined,
       ...(options?.productId && { productId: options.productId }),
       ...(options?.fqdn && { fqdn: options.fqdn }),
+      ...(options?.source && { source: options.source }),
     }),
   }, fetchOptions)
 }

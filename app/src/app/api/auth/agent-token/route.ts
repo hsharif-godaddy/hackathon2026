@@ -15,10 +15,6 @@ import { EXPERIMENT_IDS, INITIAL_AGENT_COHORT_TO_PROFILE } from '@/config/experi
 import { checkBmsMigration, getMigrationDate, shouldCheckBmsMigration } from '@/lib/bms-migration';
 import {
   fetchHivemindCohorts,
-  getBudgetServiceCohort,
-  isBudgetServiceExperimentTreatment,
-  logBudgetServiceExperimentTriggered,
-  logBudgetServiceGrantsDefault,
   normalizeHivemindCohort,
 } from '@/lib/budget-service-experiment';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
@@ -388,27 +384,6 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     }
 
     const hivemindCohorts = await fetchHivemindCohorts(request);
-    const budgetServiceSwitchboardEnabled = budgetServiceEnabled;
-    const budgetServiceCohort = getBudgetServiceCohort(hivemindCohorts);
-    const budgetServiceExperimentEnabled = isBudgetServiceExperimentTreatment(
-      budgetServiceSwitchboardEnabled,
-      budgetServiceCohort,
-    );
-    if (budgetServiceSwitchboardEnabled) {
-      logBudgetServiceExperimentTriggered(budgetServiceCohort, {
-        siteId: body.siteId,
-        customerId: user.customerId,
-      });
-      if (!budgetServiceExperimentEnabled) {
-        logBudgetServiceGrantsDefault(budgetServiceCohort, {
-          siteId: body.siteId,
-          customerId: user.customerId,
-          reason: 'cohort-not-on',
-        });
-      }
-    }
-    // JWT must reflect experiment treatment, not raw switchboard (existing-user path uses bmsExisting).
-    budgetServiceEnabled = budgetServiceExperimentEnabled;
 
     // Hivemind initial-agent experiment: cohort → agent profile.
     //
@@ -474,7 +449,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // If fetch fails, bmsBudgetId stays undefined (cost assigned to GoDaddy)
     let bmsBudgetId: string | undefined;
     const bmsMigrationFlags = {
-      budgetServiceEnabled: budgetServiceExperimentEnabled,
+      budgetServiceEnabled,
       bmsExistingEnabled,
     };
     if (shouldCheckBmsMigration(bmsMigrationFlags) && subscriptionId) {

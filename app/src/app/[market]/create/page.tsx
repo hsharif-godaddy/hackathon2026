@@ -6,12 +6,15 @@ import Box from '@ux/box'
 import Spinner from '@ux/spinner'
 
 import { validateTemplate } from '@/app/[market]/components/types'
+import { useAuthContext } from '@/components/providers/AuthProvider'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
+import { useSubscription } from '@/hooks/useSubscription'
 import { ITC_QUERY_PARAM } from '@/lib/itc'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { createSiteAndRedirect } from '@/lib/site-creation'
 import { useAuthUIStore } from '@/stores/useAuthUIStore'
+import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import { resolveEntryPoint } from '@/utils/traffic-signals'
 
 function CreatePageContent() {
@@ -26,6 +29,31 @@ function CreatePageContent() {
   const initialPrompt = searchParams.get('initialPrompt')
   const rawTemplate = searchParams.get('template')
   const template = validateTemplate(rawTemplate) !== 'default' ? rawTemplate : null
+
+  const { isAuthenticated } = useAuthContext()
+  const { subscriptions, isLoading: subscriptionsLoading, isError: subscriptionsError } = useSubscription({ enabled: isAuthenticated })
+  const isNewUser = isAuthenticated && !subscriptionsLoading && !subscriptionsError && subscriptions.length === 0
+  const hasLoggedNewUserRef = useRef(false)
+
+  useEffect(() => {
+    logImpressionEvent('create.page.view')();
+    logAiroHQEvent({
+      category: 'impression',
+      recommendation_task: 'builder_create_page_view',
+      recommendation_type: 'navigation'
+    })();
+  }, [])
+
+  useEffect(() => {
+    if (hasLoggedNewUserRef.current || !isNewUser) return
+    logImpressionEvent('create.newUser.view')()
+    logAiroHQEvent({
+      category: 'impression',
+      recommendation_task: 'builder_create_new_user_view',
+      recommendation_type: 'navigation'
+    })()
+    hasLoggedNewUserRef.current = true
+  }, [isNewUser])
 
   // Handle SSO modal dismiss - redirect to homepage with prompt
   useEffect(() => {

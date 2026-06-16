@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { fetchHivemindCohorts, getBudgetServiceCohort } from '@/lib/budget-service-experiment';
+import { fetchHivemindCohorts, getBmsLaunchAACohort, getGrantsHoldoutCohort } from '@/lib/budget-service-experiment';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { CreateSiteParams } from '@/lib/control-plane/types';
 import { CORS_ROUTES, createCorsOptionsHandler } from '@/lib/cors';
@@ -18,6 +18,8 @@ import { AIRO_PRODUCT_IDS } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { getByteLength, MAX_PROMPT_BYTES } from '@/lib/waf-validation';
 
+const VALID_SOURCES = new Set(['homepage', 'create-page', 'landing_page']);
+
 // CORS preflight handler
 export const OPTIONS = createCorsOptionsHandler(CORS_ROUTES.QUICK_CREATE);
 
@@ -25,7 +27,7 @@ export const OPTIONS = createCorsOptionsHandler(CORS_ROUTES.QUICK_CREATE);
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext) => {
   try {
     const body = await request.json();
-    const { prompt, initialPrompt, productId, itc: rawItc, datacenter: rawDatacenter, fqdn: rawFqdn } = body;
+    const { prompt, initialPrompt, productId, itc: rawItc, datacenter: rawDatacenter, fqdn: rawFqdn, source } = body;
     const validItc = typeof rawItc === 'string' && rawItc.length > 0 && rawItc.length <= 128 && /^[a-zA-Z0-9_-]+$/.test(rawItc) ? rawItc : undefined;
     const validDatacenter =
       typeof rawDatacenter === 'string' && rawDatacenter.trim().length > 0 ? rawDatacenter.trim() : undefined;
@@ -104,7 +106,11 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     const adapter = getControlPlaneAdapter();
 
     const hivemindCohorts = await fetchHivemindCohorts(request);
-    const budgetServiceCohort = getBudgetServiceCohort(hivemindCohorts);
+    const validSource = typeof source === 'string' && VALID_SOURCES.has(source) ? source : undefined;
+    if (source && !validSource) {
+      logger.warn('sites.quick-create.unknown-source', { source, accountId: account_id });
+    }
+    const isHomepage = validSource === 'homepage';
 
     const createSiteParams: CreateSiteParams = {
       accountId: account_id,
@@ -113,7 +119,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       productId,
       marketId,
       headers: request.headers,
-      budgetServiceCohort,
+      grantsHoldoutCohort: isHomepage ? undefined : getGrantsHoldoutCohort(hivemindCohorts),
+      bmsLaunchAACohort: isHomepage ? getBmsLaunchAACohort(hivemindCohorts) : undefined,
       ...(validItc && { itc: validItc }),
       ...(validDatacenter && { datacenter: validDatacenter }),
       ...(validFqdn && { fqdn: validFqdn }),
@@ -124,7 +131,12 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       throw new Error(result.error || 'Failed to create site');
     }
 
-    logger.info('sites.quick-create.success', { appId: result.siteId, type: result.type });
+    logger.info('sites.quick-create.success', {
+      appId: result.siteId,
+      type: result.type,
+      grantsHoldoutCohort: createSiteParams.grantsHoldoutCohort,
+      bmsLaunchAACohort: createSiteParams.bmsLaunchAACohort,
+    });
 
     // Note: quick-create returns a jobId (type: 'job'), real appId is resolved later via polling
     if (result.type === 'job') {

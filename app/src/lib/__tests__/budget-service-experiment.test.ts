@@ -1,25 +1,24 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  BUDGET_SERVICE_BMS_COHORT,
-  BUDGET_SERVICE_GRANTS_COHORT,
   EXPERIMENT_IDS,
 } from '@/config/experiments';
 import {
-  getBudgetServiceCohort,
-  isBudgetServiceExperimentTreatment,
+  getBmsLaunchAACohort,
+  getGrantsHoldoutCohort,
+  isGrantsHoldoutParticipant,
   normalizeHivemindCohort,
 } from '@/lib/budget-service-experiment';
 
 describe('budget-service-experiment', () => {
   describe('#normalizeHivemindCohort', function normalize() {
     it('returns flat string cohorts', function flatString() {
-      expect(normalizeHivemindCohort('on')).toBe('on');
+      expect(normalizeHivemindCohort('holdout')).toBe('holdout');
       expect(normalizeHivemindCohort('off')).toBe('off');
     });
 
     it('extracts cohortId from Hivemind experiment objects', function objectShape() {
-      expect(normalizeHivemindCohort({ cohortId: 'on' })).toBe('on');
+      expect(normalizeHivemindCohort({ cohortId: 'holdout' })).toBe('holdout');
       expect(normalizeHivemindCohort({ cohortId: 'off' })).toBe('off');
     });
 
@@ -30,42 +29,54 @@ describe('budget-service-experiment', () => {
     });
   });
 
-  describe('#isBudgetServiceExperimentTreatment', function treatment() {
-    it('returns false when switchboard flag is off', function flagOff() {
-      expect(isBudgetServiceExperimentTreatment(false, 'on')).toBe(false);
-      expect(isBudgetServiceExperimentTreatment(false, 'off')).toBe(false);
+  describe('#isGrantsHoldoutParticipant', function treatment() {
+    it('returns true for any valid cohort (A/A — both arms use grants)', function validCohorts() {
+      expect(isGrantsHoldoutParticipant('on')).toBe(true);
+      expect(isGrantsHoldoutParticipant('off')).toBe(true);
     });
 
-    it('returns true only when switchboard is on and cohort is on', function onCohort() {
-      expect(isBudgetServiceExperimentTreatment(true, 'on')).toBe(true);
+    it('returns false for excluded cohorts and undefined', function excluded() {
+      expect(isGrantsHoldoutParticipant('ineligible')).toBe(false);
+      expect(isGrantsHoldoutParticipant('unassigned')).toBe(false);
+      expect(isGrantsHoldoutParticipant('not_bucketed')).toBe(false);
+      expect(isGrantsHoldoutParticipant(undefined)).toBe(false);
     });
 
-    it('returns false when switchboard is on but cohort is off', function offCohort() {
-      expect(isBudgetServiceExperimentTreatment(true, 'off')).toBe(false);
-    });
-
-    it('returns false when switchboard is on but cohort is ineligible', function ineligible() {
-      expect(isBudgetServiceExperimentTreatment(true, 'ineligible')).toBe(false);
-    });
-
-    it('returns false when switchboard is on but cohort is missing', function noCohort() {
-      expect(isBudgetServiceExperimentTreatment(true, undefined)).toBe(false);
+    it('returns false for unexpected cohort strings', function unexpected() {
+      expect(isGrantsHoldoutParticipant('onn')).toBe(false);
+      expect(isGrantsHoldoutParticipant('new_cohort')).toBe(false);
     });
   });
 
-  describe('#getBudgetServiceCohort', function cohort() {
-    it('reads on/off cohort from hivemind map (string or object)', function readCohort() {
+  describe('#getBmsLaunchAACohort', function aacohort() {
+    it('reads cohort from hivemind map for the A/A experiment', function readCohort() {
       expect(
-        getBudgetServiceCohort({ [EXPERIMENT_IDS.budgetService]: 'on' }),
-      ).toBe(BUDGET_SERVICE_BMS_COHORT);
+        getBmsLaunchAACohort({ [EXPERIMENT_IDS.bmsLaunchAA]: 'bms' }),
+      ).toBe('bms');
       expect(
-        getBudgetServiceCohort({ [EXPERIMENT_IDS.budgetService]: { cohortId: 'off' } }),
-      ).toBe(BUDGET_SERVICE_GRANTS_COHORT);
+        getBmsLaunchAACohort({ [EXPERIMENT_IDS.bmsLaunchAA]: { cohortId: 'grants' } }),
+      ).toBe('grants');
     });
 
     it('returns undefined for missing or empty input', function missingKey() {
-      expect(getBudgetServiceCohort(undefined)).toBe(undefined);
-      expect(getBudgetServiceCohort({})).toBe(undefined);
+      expect(getBmsLaunchAACohort(undefined)).toBe(undefined);
+      expect(getBmsLaunchAACohort({})).toBe(undefined);
+    });
+  });
+
+  describe('#getGrantsHoldoutCohort', function cohort() {
+    it('reads cohort from hivemind map (string or object)', function readCohort() {
+      expect(
+        getGrantsHoldoutCohort({ [EXPERIMENT_IDS.grantsHoldout]: 'on' }),
+      ).toBe('on');
+      expect(
+        getGrantsHoldoutCohort({ [EXPERIMENT_IDS.grantsHoldout]: { cohortId: 'off' } }),
+      ).toBe('off');
+    });
+
+    it('returns undefined for missing or empty input', function missingKey() {
+      expect(getGrantsHoldoutCohort(undefined)).toBe(undefined);
+      expect(getGrantsHoldoutCohort({})).toBe(undefined);
     });
   });
 });

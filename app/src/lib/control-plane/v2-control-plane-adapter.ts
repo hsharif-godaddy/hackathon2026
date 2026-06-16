@@ -1,4 +1,4 @@
-import { isBudgetServiceExperimentTreatment } from '@/lib/budget-service-experiment';
+import { isGrantsHoldoutParticipant, logBmsLaunchAATriggered, logGrantsHoldoutTriggered } from '@/lib/budget-service-experiment';
 import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, AiroMgmtClient, extractKatanaVersion, getOwnerProductFromProductId } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
@@ -206,7 +206,14 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         }
       }
 
-      const bmsActive = isBudgetServiceExperimentTreatment(isBmsEnabled, params.budgetServiceCohort);
+      const inHoldout = isGrantsHoldoutParticipant(params.grantsHoldoutCohort);
+      if (inHoldout) {
+        logGrantsHoldoutTriggered(params.grantsHoldoutCohort, { customerId: params.accountId });
+      }
+      if (isBmsEnabled && params.bmsLaunchAACohort) {
+        logBmsLaunchAATriggered(params.bmsLaunchAACohort, { customerId: params.accountId });
+      }
+      const bmsActive = isBmsEnabled && !inHoldout;
       const response = await client.signup({
         datacenter: resolvedDatacenter,
         isTrial: true,

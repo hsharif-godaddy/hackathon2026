@@ -35,6 +35,10 @@ vi.mock('@/hooks/useSsoSignIn', () => ({
   useSsoSignIn: () => ({ signIn: mockSignIn }),
 }))
 
+vi.mock('@/hooks/useSubscription', () => ({
+  useSubscription: vi.fn(() => ({ subscriptions: [], isLoading: false, isError: false })),
+}))
+
 vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }))
@@ -44,6 +48,11 @@ vi.mock('@/lib/request-context', () => ({
     info: vi.fn(),
     error: vi.fn(),
   },
+}))
+
+vi.mock('@/utils/instrumentation', () => ({
+  logImpressionEvent: vi.fn(() => vi.fn()),
+  logAiroHQEvent: vi.fn(() => vi.fn()),
 }))
 
 describe('CreatePage', () => {

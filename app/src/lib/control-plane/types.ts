@@ -206,8 +206,10 @@ export interface CreateSiteParams {
   itc?: string;
   /** Optional FQDN to attach in parallel with app creation. */
   fqdn?: string;
-  /** Hivemind cohort for the budget-service experiment, already normalized by getBudgetServiceCohort. */
-  budgetServiceCohort?: string;
+  /** Hivemind cohort for the grants-holdout experiment, already normalized by getGrantsHoldoutCohort. When 'holdout', forces bmsActive: false at signup. */
+  grantsHoldoutCohort?: string;
+  /** Hivemind cohort for the BMS A/A experiment (homepage users only). Logged as exposure after the BMS flag check in the adapter. */
+  bmsLaunchAACohort?: string;
 }
 
 /**

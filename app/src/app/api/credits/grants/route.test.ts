@@ -334,7 +334,7 @@ describe('GET /api/credits/grants', () => {
       expect(mockClient.getCreditGrants).not.toHaveBeenCalled();
     });
 
-    it('should fall back to grants for NEW user when cohort is off', async () => {
+    it('should use BMS for NEW user even when cohort is off (cohort does not gate BMS)', async () => {
       const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
       const authContext = createAuthContext('jwt-token');
 
@@ -344,16 +344,26 @@ describe('GET /api/credits/grants', () => {
         bmsBudgetId: 'budget-uuid-123',
         attributes: [],
       });
-      mockClient.getCreditGrants.mockResolvedValue(MOCK_GRANTS);
+
+      const mockBudget = {
+        budgetId: 'budget-uuid-123',
+        items: [{ budgetItemId: 'item-1', creditsTotal: '1000', creditsUsed: '500' }],
+      };
+      const mockAdaptedGrants = [
+        { id: 'grant-1', type: 'plan_monthly', creditsMax: 1000, creditsSpent: 500 },
+      ];
+
+      mockBudgetClient.getBudget.mockResolvedValue(mockBudget);
+      mockAdaptBudgetToGrants.mockReturnValue(mockAdaptedGrants);
 
       const response = await GET(request, authContext);
       const data = await response.json();
 
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
-      expect(data.source).toBe(CreditsSource.Grants);
-      expect(mockBudgetClient.getBudget).not.toHaveBeenCalled();
-      expect(mockClient.getCreditGrants).toHaveBeenCalled();
+      expect(data.source).toBe(CreditsSource.Bms);
+      expect(mockBudgetClient.getBudget).toHaveBeenCalledWith('budget-uuid-123');
+      expect(mockClient.getCreditGrants).not.toHaveBeenCalled();
     });
 
     it('should use BMS for EXISTING migrated user even when experiment cohort is off', async () => {
@@ -398,7 +408,7 @@ describe('GET /api/credits/grants', () => {
       expect(mockClient.getCreditGrants).not.toHaveBeenCalled();
     });
 
-    it('should fall back to grants for NEW user when cohort is ineligible', async () => {
+    it('should use BMS for NEW user even when cohort is ineligible (cohort does not gate BMS)', async () => {
       const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
       const authContext = createAuthContext('jwt-token');
 
@@ -408,16 +418,26 @@ describe('GET /api/credits/grants', () => {
         bmsBudgetId: 'budget-uuid-123',
         attributes: [],
       });
-      mockClient.getCreditGrants.mockResolvedValue(MOCK_GRANTS);
+
+      const mockBudget = {
+        budgetId: 'budget-uuid-123',
+        items: [{ budgetItemId: 'item-1', creditsTotal: '1000', creditsUsed: '500' }],
+      };
+      const mockAdaptedGrants = [
+        { id: 'grant-1', type: 'plan_monthly', creditsMax: 1000, creditsSpent: 500 },
+      ];
+
+      mockBudgetClient.getBudget.mockResolvedValue(mockBudget);
+      mockAdaptBudgetToGrants.mockReturnValue(mockAdaptedGrants);
 
       const response = await GET(request, authContext);
       const data = await response.json();
 
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
-      expect(data.source).toBe(CreditsSource.Grants);
-      expect(mockBudgetClient.getBudget).not.toHaveBeenCalled();
-      expect(mockClient.getCreditGrants).toHaveBeenCalled();
+      expect(data.source).toBe(CreditsSource.Bms);
+      expect(mockBudgetClient.getBudget).toHaveBeenCalledWith('budget-uuid-123');
+      expect(mockClient.getCreditGrants).not.toHaveBeenCalled();
     });
 
     it('should fall back to grants for NEW user when budgetServiceEnabled is false', async () => {

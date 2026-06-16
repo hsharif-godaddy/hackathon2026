@@ -629,7 +629,7 @@ describe('V2ControlPlaneAdapter', () => {
         delete process.env.ALWAYS_NEW_SUBSCRIPTION;
       });
 
-      it('should pass bmsActive: true when headers provided, flag enabled, and cohort is on', async () => {
+      it('should pass bmsActive: true when flag enabled and user is not in grants holdout', async () => {
         mockCheckSwitchboardFlag.mockResolvedValue(true);
 
         mockFetch.mockResolvedValueOnce({
@@ -646,7 +646,6 @@ describe('V2ControlPlaneAdapter', () => {
           prompt: MOCK_PROMPT,
           jwt: MOCK_JWT,
           headers: mockHeaders,
-          budgetServiceCohort: 'on',
         });
 
         // Verify checkSwitchboardFlag was called with correct flag name
@@ -661,7 +660,7 @@ describe('V2ControlPlaneAdapter', () => {
         expect(requestBody.bmsActive).toBe(true);
       });
 
-      it('should pass bmsActive: false when flag enabled but cohort is not treatment', async () => {
+      it('should pass bmsActive: false when flag enabled but user is in grants holdout', async () => {
         mockCheckSwitchboardFlag.mockResolvedValue(true);
 
         mockFetch.mockResolvedValueOnce({
@@ -678,7 +677,7 @@ describe('V2ControlPlaneAdapter', () => {
           prompt: MOCK_PROMPT,
           jwt: MOCK_JWT,
           headers: mockHeaders,
-          budgetServiceCohort: 'off',
+          grantsHoldoutCohort: 'on',
         });
 
         const signupCall = mockFetch.mock.calls[0];

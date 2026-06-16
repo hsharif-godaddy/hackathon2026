@@ -8,8 +8,10 @@ export const EXPERIMENT_IDS = {
   ventureHomeLogo: 'vh_dashboard_logo_to_airo_builder_redirect',
   /** Initial agent selection: maps cohort → agent profile. Only one agent-config experiment should run at a time. */
   initialAgent: 'airo-build-initial-agent',
-  /** Budget service: allocates new users to BMS (treatment) or grants (control). Default is grants. */
-  budgetService: 'airo-app-builder-budget-service-launch',
+  /** Grants A/A: both cohorts (on/off) use legacy grants for baseline measurement. */
+  grantsHoldout: 'airo-app-builder-grants-holdout',
+  /** BMS A/A: assigns homepage new users to BMS for baseline measurement. Both cohorts receive BMS — A/A only. */
+  bmsLaunchAA: 'airo-app-builder-bms-launch-aa',
   /** Building tips variant: tests the initial build loading screen (H1 headline + tip cards) as a single packaged experience. */
   buildingTipsVariant: 'endgame_first_build_action_h1_update',
 } as const
@@ -30,12 +32,6 @@ export const INITIAL_AGENT_COHORT_TO_PROFILE: Readonly<Record<string, string>> =
   initial_agent_design_system: 'initial-agent-design-system',
   initial_agent_design_system_homepage_build: 'initial-agent-design-system-homepage-build',
 }
-
-/** Hivemind treatment cohort — BMS for new users (budgetService experiment). */
-export const BUDGET_SERVICE_BMS_COHORT = 'on' as const
-
-/** Hivemind control cohort — legacy grants for new users (budgetService experiment). */
-export const BUDGET_SERVICE_GRANTS_COHORT = 'off' as const
 
 export const INELIGIBLE_COHORT = 'ineligible' as const
 

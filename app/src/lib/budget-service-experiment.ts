@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 
-import { BUDGET_SERVICE_BMS_COHORT, EXPERIMENT_IDS, INELIGIBLE_COHORT } from '@/config/experiments';
+import { COHORT_OFF, COHORT_ON, EXPERIMENT_IDS, INELIGIBLE_COHORT } from '@/config/experiments';
 import { logger } from '@/lib/request-context';
 import gasket from '../../gasket';
 
@@ -50,57 +50,54 @@ export async function fetchHivemindCohorts(
   }
 }
 
-export function getBudgetServiceCohort(
+/**
+ * Extract the BMS A/A experiment cohort from a Hivemind cohort map (homepage users only).
+ */
+export function getBmsLaunchAACohort(
   hivemindCohorts: Record<string, unknown> | undefined,
 ): string | undefined {
-  return normalizeHivemindCohort(hivemindCohorts?.[EXPERIMENT_IDS.budgetService]);
+  return normalizeHivemindCohort(hivemindCohorts?.[EXPERIMENT_IDS.bmsLaunchAA]);
 }
 
-/**
- * Whether the budget-service experiment allows BMS for this request.
- *
- * Precedence:
- *   1. Switchboard `app-builder-budget-service` OFF → false (grants)
- *   2. Switchboard ON + cohort `bms` → true (treatment)
- *   3. Switchboard ON + cohort `off` or any other value → false (grants)
- */
-export function isBudgetServiceExperimentTreatment(
-  budgetServiceSwitchboardEnabled: boolean,
+export function logBmsLaunchAATriggered(
   cohort: string | undefined,
-): boolean {
-  if (!budgetServiceSwitchboardEnabled) {
-    return false;
-  }
-  return cohort === BUDGET_SERVICE_BMS_COHORT;
-}
-
-export function logBudgetServiceExperimentTriggered(
-  cohort: string | undefined,
-  context: { siteId?: string; customerId?: string; subscriptionId?: string },
+  context: { customerId?: string },
 ): void {
-  if (!cohort || EXCLUDED_COHORTS.has(cohort)) {
-    return;
-  }
+  if (!cohort || EXCLUDED_COHORTS.has(cohort)) return;
   logger.info('hivemind.experiment.triggered', {
-    experimentId: EXPERIMENT_IDS.budgetService,
+    experimentId: EXPERIMENT_IDS.bmsLaunchAA,
     cohortId: cohort,
-    siteId: context.siteId,
     customerId: context.customerId,
-    subscriptionId: context.subscriptionId,
   });
 }
 
-// Intentionally does not filter EXCLUDED_COHORTS — grants-default is logged for all cohorts
-// (including ineligible/unassigned) so the denominator captures every non-treatment assignment.
-export function logBudgetServiceGrantsDefault(
+/**
+ * Extract the grants-holdout experiment cohort from a Hivemind cohort map.
+ */
+export function getGrantsHoldoutCohort(
+  hivemindCohorts: Record<string, unknown> | undefined,
+): string | undefined {
+  return normalizeHivemindCohort(hivemindCohorts?.[EXPERIMENT_IDS.grantsHoldout]);
+}
+
+/**
+ * Whether this user is bucketed in the grants A/A experiment.
+ * Both cohorts (on/off) use legacy grants for baseline measurement.
+ */
+export function isGrantsHoldoutParticipant(cohort: string | undefined): boolean {
+  if (!cohort) return false;
+  return cohort === COHORT_ON || cohort === COHORT_OFF;
+}
+
+export function logGrantsHoldoutTriggered(
   cohort: string | undefined,
-  context: { siteId?: string; customerId?: string; subscriptionId?: string; reason?: string },
+  context: { customerId?: string; siteId?: string },
 ): void {
-  logger.info('agent-token.bms-experiment-grants-default', {
-    siteId: context.siteId,
+  if (!cohort || EXCLUDED_COHORTS.has(cohort)) return;
+  logger.info('hivemind.experiment.triggered', {
+    experimentId: EXPERIMENT_IDS.grantsHoldout,
+    cohortId: cohort,
     customerId: context.customerId,
-    subscriptionId: context.subscriptionId,
-    cohortId: cohort ?? 'none',
-    reason: context.reason,
+    siteId: context.siteId,
   });
 }

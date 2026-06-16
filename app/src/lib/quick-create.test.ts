@@ -106,6 +106,24 @@ describe('fetchQuickCreate', () => {
     const body = JSON.parse(mockAppFetch.mock.calls[0][1].body)
     expect(body).not.toHaveProperty('fqdn')
   })
+
+  it('includes source when provided', async () => {
+    mockGetItcOverride.mockReturnValue(null)
+
+    await fetchQuickCreate('test', undefined, { source: 'homepage' })
+
+    const body = JSON.parse(mockAppFetch.mock.calls[0][1].body)
+    expect(body.source).toBe('homepage')
+  })
+
+  it('omits source when not provided', async () => {
+    mockGetItcOverride.mockReturnValue(null)
+
+    await fetchQuickCreate('test')
+
+    const body = JSON.parse(mockAppFetch.mock.calls[0][1].body)
+    expect(body).not.toHaveProperty('source')
+  })
 })
 
 describe('extractApiError', () => {
