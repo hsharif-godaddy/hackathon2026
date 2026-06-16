@@ -1248,7 +1248,6 @@ export async function fetchRawPageViews(url: string, dateFilter: DateFilter, app
     .map((r) => ({
       date: r.event_date || '',
       pagePath: r.page_path || '/',
-      pageName: '',
       device: r.device_type || '',
       referrer: r.referrer || r.source || '',
       views: r.views ?? r.page_views ?? 0,

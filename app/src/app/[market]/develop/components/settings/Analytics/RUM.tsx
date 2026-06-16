@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState } from 'react'
 import Box from '@ux/box'
 import Collapsible from '@ux/collapsible'
 import AlertIcon from '@ux/icon/alert'
+import DesktopIcon from '@ux/icon/desktop'
+import FireIcon from '@ux/icon/fire'
+import MobilePhoneIcon from '@ux/icon/mobile-phone'
+import TabletIcon from '@ux/icon/tablet'
 import Spinner from '@ux/spinner'
 import text from '@ux/text'
 
@@ -55,15 +59,15 @@ function CollapsibleContent({ children }: { children: React.ReactNode }) {
   return <Box gap="md" className="pt-1 pb-3">{children}</Box>
 }
 
-function PageBadge({ value }: { value: string }) {
-  return (
-    <text.span
-      className="!inline-block !px-2.5 !py-0.5 !rounded-md !text-[12px] !font-medium !whitespace-nowrap !font-mono"
-      style={{ background: 'var(--color-ai-glow)', color: 'var(--color-ai)' }}
-    >
-      {value}
-    </text.span>
-  )
+function getDeviceIcon(device: string) {
+  const d = device.toLowerCase()
+  if (d.includes('mobile')) {
+    return <MobilePhoneIcon className="size-2.5" />
+  }
+  if (d.includes('tablet')) {
+    return <TabletIcon className="size-2.5" />
+  }
+  return <DesktopIcon className="size-2.5" />
 }
 
 /** Convert a 2-letter ISO country code to an emoji flag (e.g. "US" → 🇺🇸) */
@@ -71,6 +75,14 @@ function countryCodeToFlag(code: string): string {
   const upper = code.toUpperCase()
   if (upper.length !== 2) return ''
   return String.fromCodePoint(...[...upper].map((c) => 0x1F1E6 - 65 + c.charCodeAt(0)))
+}
+
+function formatAnalyticsPageLabel(
+  pagePath: string | undefined | null,
+  homePageLabel: string,
+): string {
+  const path = pagePath && pagePath !== '' ? pagePath : '/'
+  return path === '/' ? homePageLabel : path
 }
 
 interface GeoProPlanRow { country: string; countryCode: string; city: string; visitors: number; newVisitors: number; returnVisitors: number }
@@ -96,6 +108,7 @@ type LiveDataTab = typeof LIVE_DATA_TAB[keyof typeof LIVE_DATA_TAB]
 
 export default function RUM() {
   const t = useTranslations()
+  const homePageLabel = t('builder_analytics_home')
   const appId = useAppIdFromParams()
   const publishedUrl = usePublishedUrl()
   const isInsightsBannerEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_INSIGHTS_BANNER) === true
@@ -127,7 +140,7 @@ export default function RUM() {
     visitors: insightsVisitors,
     isLoading,
     isRefreshing,
-    error
+    error,
   } = useInsightsAnalytics({
     publishedUrl,
     appId,
@@ -206,8 +219,7 @@ export default function RUM() {
     const map = new Map<string, TopPageRow>()
     const ensure = (path: string) => {
       if (!map.has(path)) {
-        const name = path === '/' ? t('builder_analytics_home_page') : path.replace(/^\//, '').replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-        map.set(path, { pagePath: path, pageName: name, visitors: 0, totalViews: 0, referralVisits: 0, clicks: 0 })
+        map.set(path, { pagePath: path, visitors: 0, totalViews: 0, referralVisits: 0, clicks: 0 })
       }
       return map.get(path)!
     }
@@ -228,7 +240,7 @@ export default function RUM() {
       ensure(d.date).clicks += d.value
     }
     return [...map.values()].sort((a, b) => b.totalViews - a.totalViews).slice(0, 10)
-  }, [uniqueVisitorsByPageData, pageViewsByPathData, referrerLandingDetailData, clicksPerPageData, t])
+  }, [uniqueVisitorsByPageData, pageViewsByPathData, referrerLandingDetailData, clicksPerPageData])
   // Derive Geo ProPlan table: city + country with flag + visitors + new/return estimate
   const geoProPlanTableData = useMemo((): GeoProPlanRow[] => {
     if (cityTrafficWithCountryData.length === 0) return []
@@ -305,7 +317,7 @@ export default function RUM() {
     }))
   }, [browserTrendsOverTimeData])
 
-  // Enrich raw activity hits with referrer/page-name lookups (real data only, no fabrication)
+  // Enrich raw activity hits with referrer lookups (real data only, no fabrication)
   // Falls back to pageViewsByPathData if the raw page views insight returns empty.
   const enrichedActivityHits = useMemo((): ActivityHitRow[] => {
     // Build referrer lookup by landing page from airobuilder_referrer_landing_page
@@ -316,19 +328,7 @@ export default function RUM() {
       }
     }
 
-    // Build page name from topPagesData (derived from path)
-    const pageNameMap = new Map<string, string>()
-    for (const p of topPagesData) {
-      pageNameMap.set(p.pagePath, p.pageName)
-    }
-
     const directLabel = t('builder_analytics_direct_referrer')
-
-    /** Derive a human-readable name from a URL path */
-    const nameFromPath = (path: string): string => {
-      if (path === '/' || path === '') return t('builder_analytics_home_page')
-      return path.replace(/^\//, '').replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-    }
 
     /** Clean a referrer URL to a readable label (just domain, or "Direct") */
     const cleanReferrer = (ref: string): string => {
@@ -392,7 +392,6 @@ export default function RUM() {
           rows.push({
             date: dateStr,
             pagePath: p.date,  // pageViewsByPathData uses `date` field for path
-            pageName: '',
             device: topDevice,
             referrer: '',
             views: Math.max(1, Math.round(p.value / Math.max(dates.length, 1))),
@@ -412,7 +411,6 @@ export default function RUM() {
       .map((hit) => ({
         date: hit.date,
         pagePath: hit.pagePath,
-        pageName: hit.pageName || pageNameMap.get(hit.pagePath) || nameFromPath(hit.pagePath),
         device: hit.device || topDevice || '--',
         referrer: cleanReferrer(hit.referrer || referrerByPage.get(hit.pagePath) || ''),
         views: hit.views,
@@ -420,7 +418,7 @@ export default function RUM() {
         country: hit.country || topCountry || '--',
         browser: hit.browser || topBrowser || '--',
       }))
-  }, [activityHitsData, pageViewsByPathData, uniqueVisitorsByPageData, referrerLandingDetailData, topPagesData, sessionsByDeviceData, countryTrafficData, browserTrendsOverTimeData, dailyHostPageViews, t])
+  }, [activityHitsData, pageViewsByPathData, uniqueVisitorsByPageData, referrerLandingDetailData, sessionsByDeviceData, countryTrafficData, browserTrendsOverTimeData, dailyHostPageViews, t])
 
   // Track whether activity table is showing estimated data (fallback path)
   const isActivityEstimated = useMemo(() => {
@@ -437,7 +435,7 @@ export default function RUM() {
         label: d.country,
         value: d.visitors,
         icon: d.code ? (
-          <span role="img" aria-label={d.country} className="text-sm leading-none">{countryCodeToFlag(d.code)}</span>
+          <span role="img" aria-label={d.country} className="text-[1.25rem] leading-none">{countryCodeToFlag(d.code)}</span>
         ) : undefined,
       }))
   }, [countryTrafficWithCodeData])
@@ -708,9 +706,9 @@ export default function RUM() {
                     return (
                       <div className="flex items-center gap-2 min-w-0">
                         <AnalyticsDetailTableBarCell barPct={barPct} barColor="var(--color-chart-cyan)">
-                          <span className="inline-flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1">
                             {row.countryCode && (
-                              <span role="img" aria-label={row.country} className="text-sm leading-none shrink-0">{countryCodeToFlag(row.countryCode)}</span>
+                              <span role="img" aria-label={row.country} className="text-[1.25rem] leading-none shrink-0">{countryCodeToFlag(row.countryCode)}</span>
                             )}
                             <span className="text-xs font-semibold">{row.country}</span>
                           </span>
@@ -860,24 +858,27 @@ export default function RUM() {
                 tooltip={t('builder_analytics_tooltip_recent_activity')}
                 maxHeight={350}
                 columns={[
-                  { key: 'pagePath', header: t('builder_analytics_page_path_name'), render: (_v, row) => (
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <PageBadge value={row.pagePath || '/'} />
-                      {row.pageName ? <span className="text-[10px] text-muted-foreground">({row.pageName})</span> : null}
-                    </div>
+                  { key: 'pagePath', header: t('builder_analytics_page_header'), render: (_v, row) => (
+                    <span className="text-xs font-medium truncate">
+                      {formatAnalyticsPageLabel(row.pagePath, homePageLabel)}
+                    </span>
                   )},
                   { key: 'device', header: t('builder_analytics_device'), render: (v) => {
                     const d = String(v)
-                    const icon = d.toLowerCase().includes('mobile') ? '📱' : d.toLowerCase().includes('tablet') ? '📋' : '🖥️'
-                    return <span className="text-xs font-medium">{icon} {d}</span>
+                    return (
+                      <span className="text-xs inline-flex items-center gap-1">
+                        <span aria-hidden="true" className="shrink-0">{getDeviceIcon(d)}</span>
+                        <span className="font-medium">{d}</span>
+                      </span>
+                    )
                   }},
                   { key: 'country', header: t('builder_analytics_country'), render: (v) => {
                     const name = String(v)
                     const code = countryTrafficWithCodeData.find((c) => c.country === name)?.code
                     return (
-                      <span className="text-xs inline-flex items-center gap-1.5">
+                      <span className="text-xs inline-flex items-center gap-1">
                         {code && (
-                          <span role="img" aria-label={name} className="text-sm leading-none">{countryCodeToFlag(code)}</span>
+                          <span role="img" aria-label={name} className="text-[1.25rem] leading-none">{countryCodeToFlag(code)}</span>
                         )}
                         <span className="font-medium">{name}</span>
                       </span>
@@ -897,13 +898,13 @@ export default function RUM() {
               {/* Page-level path bars */}
               <div className="grid grid-cols-1 @xl:grid-cols-2 gap-2 [&>*]:min-w-0">
                 <StatProgressList
-                  items={pageViewsByPathData.slice().sort((a, b) => b.value - a.value).slice(0, 10).map((d) => ({ label: d.date === '/' ? t('builder_analytics_home_page') : d.date, value: d.value }))}
+                  items={pageViewsByPathData.slice().sort((a, b) => b.value - a.value).slice(0, 10).map((d) => ({ label: formatAnalyticsPageLabel(d.date, homePageLabel), value: d.value }))}
                   title={t('builder_analytics_pageviews_by_path')}
                   tooltip={t('builder_analytics_tooltip_page_views_by_path')}
                   color="var(--color-ai)"
                 />
                 <StatProgressList
-                  items={uniqueVisitorsByPageData.slice().sort((a, b) => b.value - a.value).slice(0, 10).map((d) => ({ label: d.date === '/' ? t('builder_analytics_home_page') : d.date, value: d.value }))}
+                  items={uniqueVisitorsByPageData.slice().sort((a, b) => b.value - a.value).slice(0, 10).map((d) => ({ label: formatAnalyticsPageLabel(d.date, homePageLabel), value: d.value }))}
                   title={t('builder_analytics_unique_visitors_by_page')}
                   tooltip={t('builder_analytics_tooltip_unique_visitors_page')}
                   color="var(--color-chart-blue)"
@@ -984,8 +985,13 @@ export default function RUM() {
                         className="inline-flex items-center gap-1 text-xs font-semibold tabular-nums"
                         style={{ color: `color-mix(in srgb, var(--color-ai) ${Math.round(40 + intensity * 60)}%, var(--color-ai-light))` }}
                       >
-                        {String(v)}
-                        {val >= 3 && <span title={t('builder_analytics_high_engagement')}>🔥</span>}
+                        {val >= 3 && (
+                          <FireIcon
+                            className="size-2.5 shrink-0"
+                            aria-label={t('builder_analytics_high_engagement')}
+                          />
+                        )}
+                        <span>{String(v)}</span>
                       </span>
                     )
                   }},
@@ -1006,18 +1012,19 @@ export default function RUM() {
                 title={t('builder_analytics_top_pages')}
                 tooltip={t('builder_analytics_tooltip_top_pages')}
                 columns={[
-                  { key: 'pagePath', header: t('builder_analytics_page_path'), render: (v, row) => {
+                  { key: 'pagePath', header: t('builder_analytics_page_header'), render: (v, row) => {
                     const maxViews = Math.max(...topPagesData.map((d) => d.totalViews), 1)
                     const barPct = (row.totalViews / maxViews) * 100
                     return (
                       <div className="flex items-center gap-2 min-w-0">
                         <AnalyticsDetailTableBarCell barPct={barPct}>
-                          <PageBadge value={String(v)} />
+                          <span className="text-xs font-medium truncate">
+                            {formatAnalyticsPageLabel(String(v), homePageLabel)}
+                          </span>
                         </AnalyticsDetailTableBarCell>
                       </div>
                     )
                   }},
-                  { key: 'pageName', header: t('builder_analytics_page_name'), render: (v) => <span className="text-xs font-medium">{String(v)}</span> },
                   { key: 'visitors', header: t('builder_analytics_visitors'), align: 'right' as const, render: (v) => (
                     <span className="text-xs font-bold tabular-nums">{Number(v).toLocaleString()}</span>
                   )},
@@ -1030,9 +1037,14 @@ export default function RUM() {
                   { key: 'clicks', header: t('builder_analytics_clicks'), align: 'right' as const, render: (v) => {
                     const val = Number(v)
                     return (
-                      <span className="text-xs font-semibold tabular-nums">
-                        {val.toLocaleString()}
-                        {val >= 50 && <span className="ml-1" title={t('builder_analytics_high_clicks')}>🔥</span>}
+                      <span className="text-xs inline-flex items-center gap-1 font-semibold tabular-nums">
+                        {val >= 50 && (
+                          <FireIcon
+                            className="size-2.5 shrink-0"
+                            aria-label={t('builder_analytics_high_clicks')}
+                          />
+                        )}
+                        <span>{val.toLocaleString()}</span>
                       </span>
                     )
                   }},

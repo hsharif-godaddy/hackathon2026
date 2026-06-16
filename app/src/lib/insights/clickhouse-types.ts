@@ -95,7 +95,6 @@ export interface CountryVisitorRow {
 export interface ActivityHitRow {
   date: string
   pagePath: string
-  pageName: string
   device: string
   referrer: string
   views: number
@@ -106,7 +105,6 @@ export interface ActivityHitRow {
 
 export interface TopPageRow {
   pagePath: string
-  pageName: string
   visitors: number
   totalViews: number
   referralVisits: number
