@@ -63,13 +63,36 @@ type State struct {
 	ApprovedBy      string
 	ReleaseNotes    []pipeline.ReleaseNote
 	ReleaseNotesURL string
-	Stages          []*pipeline.StageRun
-	EnvOrder        []string
-	Snapshot        pipeline.RollbackSnapshot
-	StatusMessage   string
-	ReleaseTag      string
-	ReleaseURL      string
-	Elapsed         time.Duration
+	// AuthorMentions maps a Slack handle (e.g. "hdewan") to its resolved
+	// mention token (e.g. "<@U123>"). Populated by the caller via
+	// slack.ResolveMentions; nil/empty when Slack is disabled or resolution
+	// failed — the renderer gracefully falls back to plain text.
+	AuthorMentions map[string]string
+	Stages         []*pipeline.StageRun
+	EnvOrder       []string
+	Snapshot       pipeline.RollbackSnapshot
+	StatusMessage  string
+	ReleaseTag     string
+	ReleaseURL     string
+	Elapsed        time.Duration
+}
+
+// AuthorHandles extracts unique Slack handles from -godaddy release note
+// authors (e.g. "hdewan-godaddy" → "hdewan"). The returned slice is suitable
+// for passing to slack.ResolveMentions.
+func AuthorHandles(notes []pipeline.ReleaseNote) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, n := range notes {
+		if handle, ok := strings.CutSuffix(n.Author, "-godaddy"); ok {
+			key := strings.ToLower(handle)
+			if _, dup := seen[key]; !dup {
+				seen[key] = struct{}{}
+				out = append(out, key)
+			}
+		}
+	}
+	return out
 }
 
 // Message builds the Slack status message in standard markdown (for the
@@ -100,8 +123,12 @@ func Message(s State) string {
 			for _, n := range s.ReleaseNotes {
 				line := fmt.Sprintf("• #%d %s", n.Number, n.Title)
 				if n.Author != "" {
-					if strings.HasSuffix(n.Author, "-godaddy") {
-						line += fmt.Sprintf(" - `%s` (@%s)", n.Author, strings.TrimSuffix(n.Author, "-godaddy"))
+					if handle, ok := strings.CutSuffix(n.Author, "-godaddy"); ok {
+						if mention, resolved := s.AuthorMentions[strings.ToLower(handle)]; resolved {
+							line += fmt.Sprintf(" - `%s` (%s)", n.Author, mention)
+						} else {
+							line += fmt.Sprintf(" - `%s` (@%s)", n.Author, handle)
+						}
 					} else {
 						line += fmt.Sprintf(" - `%s`", n.Author)
 					}

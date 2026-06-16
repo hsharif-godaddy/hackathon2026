@@ -404,6 +404,7 @@ func (m Model) slackMessage(finished bool) string {
 		Aborted:         m.phase == phaseAborted,
 		ReleaseNotes:    m.releaseNotes,
 		ReleaseNotesURL: m.releaseNotesURL,
+		AuthorMentions:  m.authorMentions,
 		Stages:          m.pipeline.Stages(),
 		EnvOrder:        m.envOrder,
 		Snapshot:        m.pipeline.Snapshot,

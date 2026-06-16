@@ -72,3 +72,35 @@ func TestResolveMentionsMissingScope(t *testing.T) {
 		t.Errorf("ResolveMentions = %v, want [<!subteam^S_SRE>]", got)
 	}
 }
+
+func TestResolveMentionMap(t *testing.T) {
+	users := `{"ok":true,"members":[
+		{"id":"U_JE","name":"jeichorn"},
+		{"id":"U_HD","name":"hdewan","profile":{"display_name":"Harsh D"}}
+	],"response_metadata":{"next_cursor":""}}`
+	groups := `{"ok":true,"usergroups":[]}`
+	srv := resolveServer(t, users, groups)
+	defer srv.Close()
+
+	n := New("xoxb-test", "C1")
+	n.baseURL = srv.URL
+
+	got := n.ResolveMentionMap(context.Background(), []string{"hdewan", "jeichorn", "nobody"})
+	if got["hdewan"] != "<@U_HD>" {
+		t.Errorf("hdewan = %q, want <@U_HD>", got["hdewan"])
+	}
+	if got["jeichorn"] != "<@U_JE>" {
+		t.Errorf("jeichorn = %q, want <@U_JE>", got["jeichorn"])
+	}
+	if _, exists := got["nobody"]; exists {
+		t.Errorf("nobody should not be in map, got %q", got["nobody"])
+	}
+}
+
+func TestResolveMentionMapNil(t *testing.T) {
+	var n *Notifier
+	got := n.ResolveMentionMap(context.Background(), []string{"hdewan"})
+	if got != nil {
+		t.Errorf("nil notifier should return nil, got %v", got)
+	}
+}

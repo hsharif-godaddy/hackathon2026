@@ -71,6 +71,7 @@ type phaseState struct {
 	Pipeline        json.RawMessage        `json:"pipeline"` // pipeline.ExportState bytes
 	ReleaseNotes    []pipeline.ReleaseNote `json:"release_notes"`
 	ReleaseNotesURL string                 `json:"release_notes_url"`
+	AuthorMentions  map[string]string      `json:"author_mentions,omitempty"`
 	SlackTS         string                 `json:"slack_ts"`
 	Operator        string                 `json:"operator"`
 	Branch          string                 `json:"branch"`
@@ -93,8 +94,9 @@ type run struct {
 	start            time.Time
 	releaseTag       string
 	releaseURL       string
-	approvedBy       string   // reviewer login who approved the prod gate ("" if unknown)
-	approvalMentions []string // approver handles from config; resolved to Slack mention tokens before the gate ping
+	approvedBy       string            // reviewer login who approved the prod gate ("" if unknown)
+	approvalMentions []string          // approver handles from config; resolved to Slack mention tokens before the gate ping
+	authorMentions   map[string]string // resolved Slack mention tokens for release-note authors (handle → "<@U...>")
 }
 
 // githubRunURL builds the current GHA run's URL from the standard runner env
@@ -177,6 +179,7 @@ func (r *run) runTest(ctx context.Context, opts Options) error {
 		return fmt.Errorf("fetching release notes: %w", err)
 	}
 	r.releaseNotes, r.releaseNotesURL = notes, notesURL
+	r.resolveAuthorMentions(ctx)
 
 	if err := r.p.BuildStages("test"); err != nil {
 		return err
@@ -237,6 +240,7 @@ func (r *run) runProd(ctx context.Context, opts Options) error {
 		return fmt.Errorf("importing pipeline state: %w", err)
 	}
 	r.releaseNotes, r.releaseNotesURL = st.ReleaseNotes, st.ReleaseNotesURL
+	r.authorMentions = st.AuthorMentions
 	r.operator, r.branch = st.Operator, st.Branch
 	if st.StartUnix > 0 {
 		r.start = time.Unix(st.StartUnix, 0) // total elapsed across both phases
@@ -287,6 +291,7 @@ func (r *run) runAbort(ctx context.Context, opts Options) error {
 		return fmt.Errorf("importing pipeline state: %w", err)
 	}
 	r.releaseNotes, r.releaseNotesURL = st.ReleaseNotes, st.ReleaseNotesURL
+	r.authorMentions = st.AuthorMentions
 	r.operator, r.branch = st.Operator, st.Branch
 	if st.StartUnix > 0 {
 		r.start = time.Unix(st.StartUnix, 0)
@@ -495,6 +500,7 @@ func (r *run) state(finished, aborted bool) render.State {
 		Aborted:         aborted,
 		ReleaseNotes:    r.releaseNotes,
 		ReleaseNotesURL: r.releaseNotesURL,
+		AuthorMentions:  r.authorMentions,
 		Stages:          r.p.Stages(),
 		EnvOrder:        r.envOrder(),
 		Snapshot:        r.p.Snapshot,
@@ -503,6 +509,13 @@ func (r *run) state(finished, aborted bool) render.State {
 		ApprovedBy:      r.approvedBy,
 		Elapsed:         time.Since(r.start),
 	}
+}
+
+// resolveAuthorMentions maps -godaddy release-note authors to Slack mention
+// tokens so the initial post pings contributors. Best-effort: unresolvable
+// handles fall back to plain "@handle" text in the rendered message.
+func (r *run) resolveAuthorMentions(ctx context.Context) {
+	r.authorMentions = r.notifier.ResolveMentionMap(ctx, render.AuthorHandles(r.releaseNotes))
 }
 
 // envOrder returns the environment names in config order, so the renderer's
@@ -593,6 +606,7 @@ func (r *run) writeState(path string) error {
 		Pipeline:        pipeBytes,
 		ReleaseNotes:    r.releaseNotes,
 		ReleaseNotesURL: r.releaseNotesURL,
+		AuthorMentions:  r.authorMentions,
 		SlackTS:         r.ts(),
 		Operator:        r.operator,
 		Branch:          r.branch,

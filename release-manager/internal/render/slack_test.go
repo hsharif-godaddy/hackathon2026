@@ -320,12 +320,32 @@ func TestReleaseNoteAuthorFormat(t *testing.T) {
 		Stages:   []*pipeline.StageRun{stage("test", "Deploy", pipeline.StateSuccess, 0, "")},
 	}
 
-	t.Run("godaddy suffix links to GitHub user", func(t *testing.T) {
+	t.Run("godaddy author with resolved mention", func(t *testing.T) {
+		s := base
+		s.ReleaseNotes = []pipeline.ReleaseNote{{Number: 10, Title: "Fix bug", Author: "jdoe-godaddy"}}
+		s.AuthorMentions = map[string]string{"jdoe": "<@U_JDOE>"}
+		out := Message(s)
+		if !strings.Contains(out, "• #10 Fix bug - `jdoe-godaddy` (<@U_JDOE>)") {
+			t.Errorf("resolved mention not rendered:\n%s", out)
+		}
+	})
+
+	t.Run("mixed-case godaddy author matches lowercased map key", func(t *testing.T) {
+		s := base
+		s.ReleaseNotes = []pipeline.ReleaseNote{{Number: 10, Title: "Fix bug", Author: "HDewan-godaddy"}}
+		s.AuthorMentions = map[string]string{"hdewan": "<@U_HD>"}
+		out := Message(s)
+		if !strings.Contains(out, "• #10 Fix bug - `HDewan-godaddy` (<@U_HD>)") {
+			t.Errorf("mixed-case author did not match lowercased map key:\n%s", out)
+		}
+	})
+
+	t.Run("godaddy author without resolved mention falls back", func(t *testing.T) {
 		s := base
 		s.ReleaseNotes = []pipeline.ReleaseNote{{Number: 10, Title: "Fix bug", Author: "jdoe-godaddy"}}
 		out := Message(s)
 		if !strings.Contains(out, "• #10 Fix bug - `jdoe-godaddy` (@jdoe)") {
-			t.Errorf("godaddy author not formatted correctly:\n%s", out)
+			t.Errorf("fallback @handle not rendered:\n%s", out)
 		}
 	})
 
@@ -337,7 +357,7 @@ func TestReleaseNoteAuthorFormat(t *testing.T) {
 			t.Errorf("non-godaddy author not formatted correctly:\n%s", out)
 		}
 		if strings.Contains(out, "(@") {
-			t.Errorf("non-godaddy author should not have a GitHub mention:\n%s", out)
+			t.Errorf("non-godaddy author should not have a Slack mention:\n%s", out)
 		}
 	})
 
@@ -352,4 +372,18 @@ func TestReleaseNoteAuthorFormat(t *testing.T) {
 			t.Errorf("empty author line missing or malformed:\n%s", out)
 		}
 	})
+}
+
+func TestAuthorHandles(t *testing.T) {
+	notes := []pipeline.ReleaseNote{
+		{Number: 1, Author: "Alice-godaddy"},
+		{Number: 2, Author: "bob"},
+		{Number: 3, Author: "alice-godaddy"},
+		{Number: 4, Author: "Carol-godaddy"},
+		{Number: 5},
+	}
+	got := AuthorHandles(notes)
+	if len(got) != 2 || got[0] != "alice" || got[1] != "carol" {
+		t.Errorf("AuthorHandles = %v, want [alice carol] (lowercased, deduped)", got)
+	}
 }

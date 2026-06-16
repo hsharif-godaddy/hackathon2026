@@ -339,7 +339,7 @@ func (m Model) handleFormDone() (tea.Model, tea.Cmd) {
 		m.form = nil
 		logger.Log("snapshot: user confirmed rollback values")
 		m.phase = phaseReleaseNotes
-		return m, tea.Batch(printAbove(m.snapshotString()), fetchReleaseNotes(m.pipeline, m.ctx))
+		return m, tea.Batch(printAbove(m.snapshotString()), m.fetchReleaseNotes(m.ctx))
 
 	case phaseReleaseNotes:
 		if !m.fv.confirm {
@@ -615,7 +615,7 @@ func (m Model) handleSnapshotResult(msg snapshotResultMsg) (tea.Model, tea.Cmd) 
 	if m.autoApprove {
 		logger.Log("snapshot: auto-approved")
 		m.phase = phaseReleaseNotes
-		return m, tea.Batch(printAbove(m.snapshotString()), fetchReleaseNotes(m.pipeline, m.ctx))
+		return m, tea.Batch(printAbove(m.snapshotString()), m.fetchReleaseNotes(m.ctx))
 	}
 
 	m.phase = phaseSnapshotConfirm
@@ -982,6 +982,7 @@ func (m Model) handleReleaseNotes(msg releaseNotesMsg) (tea.Model, tea.Cmd) {
 	} else {
 		m.releaseNotes = msg.notes
 		m.releaseNotesURL = msg.htmlURL
+		m.authorMentions = msg.authorMentions
 		logger.Log("release-notes: found %d PRs", len(msg.notes))
 		for _, n := range msg.notes {
 			logger.Log("release-notes: #%d %s (@%s)", n.Number, n.Title, n.Author)
@@ -993,8 +994,7 @@ func (m Model) handleReleaseNotes(msg releaseNotesMsg) (tea.Model, tea.Cmd) {
 		m.phase = phaseRunning
 		m.currentEnvIdx = 0
 		m.startTime = time.Now()
-		cmd := m.setupEnvironment()
-		return m, tea.Batch(printAbove(m.releaseNotesString()), cmd)
+		return m, tea.Batch(printAbove(m.releaseNotesString()), m.setupEnvironment())
 	}
 
 	m.fv.confirm = true
@@ -1010,10 +1010,16 @@ func (m Model) handleReleaseNotes(msg releaseNotesMsg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(printAbove(m.releaseNotesString()), m.form.Init())
 }
 
-func fetchReleaseNotes(p *pipeline.Pipeline, ctx context.Context) tea.Cmd {
+func (m Model) fetchReleaseNotes(ctx context.Context) tea.Cmd {
+	p := m.pipeline
+	notifier := m.slack
 	return func() tea.Msg {
 		notes, htmlURL, err := p.FetchReleaseNotes(ctx)
-		return releaseNotesMsg{notes: notes, htmlURL: htmlURL, err: err}
+		var mentions map[string]string
+		if err == nil && notifier != nil {
+			mentions = notifier.ResolveMentionMap(ctx, render.AuthorHandles(notes))
+		}
+		return releaseNotesMsg{notes: notes, htmlURL: htmlURL, authorMentions: mentions, err: err}
 	}
 }
 

@@ -94,6 +94,7 @@ type Model struct {
 	releaseNotes    []pipeline.ReleaseNote
 	releaseNotesURL string
 	releaseNotesErr string
+	authorMentions  map[string]string
 
 	// Populated when the GitHub release is cut at the "Complete" moment.
 	// Cleared when the operator confirms rollback so subsequent Slack updates
@@ -239,9 +240,10 @@ type snapshotResultMsg struct {
 }
 
 type releaseNotesMsg struct {
-	notes   []pipeline.ReleaseNote
-	htmlURL string
-	err     error
+	notes          []pipeline.ReleaseNote
+	htmlURL        string
+	authorMentions map[string]string
+	err            error
 }
 
 type stageCompleteMsg struct {

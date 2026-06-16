@@ -30,32 +30,63 @@ func (n *Notifier) ResolveMentions(ctx context.Context, handles []string) []stri
 		return nil
 	}
 
-	users, err := n.listUsers(ctx)
-	if err != nil {
-		logger.Log("slack.warn: users.list failed (%v); approver mentions skipped — add the users:read scope to the bot", err)
-	}
-	groups, err := n.listUserGroups(ctx)
-	if err != nil {
-		logger.Log("slack.warn: usergroups.list failed (%v); group mentions skipped — add the usergroups:read scope to the bot", err)
-	}
+	users, groups := n.fetchLookups(ctx)
 
 	out := make([]string, 0, len(handles))
 	for _, h := range handles {
-		key := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(h), "@"))
-		if key == "" {
-			continue
+		if token := matchHandle(h, users, groups); token != "" {
+			out = append(out, token)
+		} else {
+			logger.Log("slack.warn: approver handle %q matched no Slack user or group; skipping", h)
 		}
-		if id, ok := users[key]; ok {
-			out = append(out, "<@"+id+">")
-			continue
-		}
-		if id, ok := groups[key]; ok {
-			out = append(out, "<!subteam^"+id+">")
-			continue
-		}
-		logger.Log("slack.warn: approver handle %q matched no Slack user or group; skipping", h)
 	}
 	return out
+}
+
+// ResolveMentionMap is like ResolveMentions but returns a map from the
+// normalized handle to its mention token, making it easy to look up a
+// specific author. Unresolved handles are omitted from the map.
+func (n *Notifier) ResolveMentionMap(ctx context.Context, handles []string) map[string]string {
+	if n == nil || len(handles) == 0 {
+		return nil
+	}
+
+	users, groups := n.fetchLookups(ctx)
+
+	out := make(map[string]string, len(handles))
+	for _, h := range handles {
+		key := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(h), "@"))
+		if token := matchHandle(h, users, groups); token != "" {
+			out[key] = token
+		}
+	}
+	return out
+}
+
+func (n *Notifier) fetchLookups(ctx context.Context) (users, groups map[string]string) {
+	users, err := n.listUsers(ctx)
+	if err != nil {
+		logger.Log("slack.warn: users.list failed (%v); mentions skipped — add the users:read scope to the bot", err)
+	}
+	groups, err = n.listUserGroups(ctx)
+	if err != nil {
+		logger.Log("slack.warn: usergroups.list failed (%v); group mentions skipped — add the usergroups:read scope to the bot", err)
+	}
+	return users, groups
+}
+
+func matchHandle(h string, users, groups map[string]string) string {
+	key := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(h), "@"))
+	if key == "" {
+		return ""
+	}
+	if id, ok := users[key]; ok {
+		return "<@" + id + ">"
+	}
+	if id, ok := groups[key]; ok {
+		return "<!subteam^" + id + ">"
+	}
+	return ""
 }
 
 // listUsers builds a case-insensitive {username|display_name → user ID} map from
