@@ -84,6 +84,24 @@ func (c *AWSSSOCheck) Run(ctx context.Context, projectRoot string) preflight.Che
 	profiles := c.resolveProfiles(projectRoot)
 
 	for _, profile := range profiles {
+		// The Go SDK's SSO token provider refreshes an expired access token
+		// using the cached refresh token, so the STS call below can still
+		// succeed. The app's JS SDK does not refresh and fails the moment the
+		// token's expiresAt passes ("Token is expired"). Check the SSO token's
+		// expiresAt directly first to predict that failure and avoid a green
+		// preflight followed by a token-expired crash inside the running app.
+		// NOTE: coupled to the JS SDK not auto-refreshing — if it is upgraded
+		// to a version that does, this check will over-trigger; revisit it.
+		if ok, msg := checkSSOToken(profile); !ok {
+			return preflight.CheckResult{
+				Status:       preflight.StatusFail,
+				Name:         c.Name(),
+				Category:     c.Category(),
+				Message:      msg,
+				FixAvailable: true,
+			}
+		}
+
 		cfg, err := awsconfig.LoadDefaultConfig(ctx,
 			awsconfig.WithRegion("us-west-2"),
 			awsconfig.WithSharedConfigProfile(profile),
