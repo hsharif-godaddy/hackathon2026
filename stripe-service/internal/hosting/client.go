@@ -267,6 +267,70 @@ func (c *Client) UpdateSecrets(ctx context.Context, appID string, ops []SecretOp
 	return nil
 }
 
+// GetCustomerEmail fetches the authenticated customer's email from the PIE
+// proxy endpoint hosted on the same mgmt-airo host as the secrets API. The
+// call uses the same AuthProvider (cert-SSO or awsiam) already configured on
+// the client. Returns ("", nil) for an empty customerId as a no-op guard (the
+// primary caller — postSandboxes — pre-checks and returns 400 before reaching
+// here, so this path is exercised only in tests that invoke the method directly).
+//
+// The PIE response shape is:
+//
+//	{ "customerId": "...", "shopperId": "...", "email": "...", ... }
+//
+// or wrapped under a "data" key — we handle both.
+func (c *Client) GetCustomerEmail(ctx context.Context, customerID string) (string, error) {
+	if strings.TrimSpace(customerID) == "" {
+		return "", nil
+	}
+
+	pieURL := fmt.Sprintf("%s/api/pie/v1/proxy/customers/%s",
+		c.baseURL, url.PathEscape(customerID))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pieURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("hosting.GetCustomerEmail: build request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	if err := c.auth.ApplyAuth(ctx, req); err != nil {
+		return "", fmt.Errorf("hosting.GetCustomerEmail: apply auth: %w", err)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("hosting.GetCustomerEmail: request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// Only error bodies get the 512-byte cap.
+		rb, _ := io.ReadAll(io.LimitReader(resp.Body, errorBodyLimit+1))
+		preview := strings.TrimSpace(string(rb))
+		if len(preview) > errorBodyLimit {
+			preview = preview[:errorBodyLimit] + "…"
+		}
+		return "", fmt.Errorf("hosting.GetCustomerEmail: HTTP %d: %s", resp.StatusCode, preview)
+	}
+
+	// Success: stream the JSON directly — never cap the success body, since a
+	// real PIE customer record with address/phone/name fields exceeds 512 bytes.
+	// Response may be the customer object directly or wrapped under "data".
+	var raw map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return "", fmt.Errorf("hosting.GetCustomerEmail: parse response: %w", err)
+	}
+	// Try unwrapped first, then wrapped under "data".
+	if email, ok := raw["email"].(string); ok && email != "" {
+		return email, nil
+	}
+	if data, ok := raw["data"].(map[string]interface{}); ok {
+		if email, ok := data["email"].(string); ok {
+			return email, nil
+		}
+	}
+	return "", fmt.Errorf("hosting.GetCustomerEmail: email field absent or empty in response")
+}
+
 // secretsURL builds the POST /hosting/v1/apps/:appId/secrets URL.
 func (c *Client) secretsURL(appID string) string {
 	return fmt.Sprintf("%s/hosting/v1/apps/%s/secrets",

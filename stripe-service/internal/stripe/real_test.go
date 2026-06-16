@@ -91,9 +91,9 @@ func TestRealClient_CreateClaimableSandbox_TranslatesInput(t *testing.T) {
 	}
 
 	_, err = rc.CreateClaimableSandbox(context.Background(), CreateSandboxInput{
-		AppID:   "app-1",
-		Email:   "founder@example.com",
-		Country: "US",
+		AppID:          "app-1",
+		PrefillEmail:   "airo@godaddy.com",
+		PrefillCountry: "us",
 	})
 	if err != nil {
 		t.Fatalf("CreateClaimableSandbox: %v", err)
@@ -102,17 +102,19 @@ func TestRealClient_CreateClaimableSandbox_TranslatesInput(t *testing.T) {
 	if fc.callCount != 1 {
 		t.Errorf("call count: want 1, got %d", fc.callCount)
 	}
-	if fc.lastIdemKey != "sandbox-app-1-founder@example.com" {
-		t.Errorf("idempotency key: want sandbox-app-1-founder@example.com, got %q", fc.lastIdemKey)
+	if fc.lastIdemKey != "sandbox-app-1" {
+		t.Errorf("idempotency key: want sandbox-app-1, got %q", fc.lastIdemKey)
 	}
 	if fc.lastReq.Prefill == nil {
 		t.Fatalf("Prefill: want non-nil")
 	}
-	if fc.lastReq.Prefill.Email != "founder@example.com" {
-		t.Errorf("Prefill.Email: want founder@example.com, got %q", fc.lastReq.Prefill.Email)
+	// Email and Country come from the operator-configured PrefillEmail/PrefillCountry
+	// fields, NOT from the caller. The values here match what was passed in.
+	if fc.lastReq.Prefill.Email != "airo@godaddy.com" {
+		t.Errorf("Prefill.Email: want operator-configured value, got %q", fc.lastReq.Prefill.Email)
 	}
 	if fc.lastReq.Prefill.Country != "us" {
-		t.Errorf("Prefill.Country: want us (lowercased), got %q", fc.lastReq.Prefill.Country)
+		t.Errorf("Prefill.Country: want operator-configured value, got %q", fc.lastReq.Prefill.Country)
 	}
 	if fc.lastReq.Prefill.Name != "GoDaddy Airo App: app-1" {
 		t.Errorf("Prefill.Name: want %q, got %q", "GoDaddy Airo App: app-1", fc.lastReq.Prefill.Name)
@@ -136,41 +138,31 @@ func TestRealClient_CreateClaimableSandbox_TranslatesInput(t *testing.T) {
 	}
 }
 
-// Pin: incidental case/whitespace differences in the email don't fragment
-// the dedupe window. Two requests for the same app+email-modulo-normalization
-// must produce the same idempotency key so Stripe replays the cached
-// response on retry instead of minting a second sandbox.
-func TestRealClient_CreateClaimableSandbox_NormalizesEmailInIdempotencyKey(t *testing.T) {
-	cases := []struct {
-		name, email string
-	}{
-		{"lowercase canonical", "founder@example.com"},
-		{"mixed case", "Founder@Example.COM"},
-		{"surrounding whitespace", "  founder@example.com  "},
-		{"both", "  Founder@Example.COM  "},
+// Pin: the idempotency key is stable and app-scoped. Two retries for the same
+// app must produce the same key so Stripe replays the cached response instead
+// of minting a second sandbox. Email is intentionally absent from the key —
+// it was removed because accepting a caller-supplied email enabled phishing
+// on the Stripe claim flow (see CreateSandboxInput).
+func TestRealClient_CreateClaimableSandbox_IdempotencyKeyIsAppScoped(t *testing.T) {
+	fc := &fakeCreator{
+		out: &stripeapi.CreateClaimableSandboxResponse{ID: "clmsbx_X"},
 	}
-	const wantKey = "sandbox-app-1-founder@example.com"
-
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			fc := &fakeCreator{
-				out: &stripeapi.CreateClaimableSandboxResponse{ID: "clmsbx_X"},
-			}
-			rc, err := NewRealClient(fc, nil, nil, nil)
-			if err != nil {
-				t.Fatalf("NewRealClient: %v", err)
-			}
-			if _, err := rc.CreateClaimableSandbox(context.Background(), CreateSandboxInput{
-				AppID:   "app-1",
-				Email:   c.email,
-				Country: "US",
-			}); err != nil {
-				t.Fatalf("CreateClaimableSandbox: %v", err)
-			}
-			if fc.lastIdemKey != wantKey {
-				t.Errorf("idempotency key: want %q, got %q", wantKey, fc.lastIdemKey)
-			}
-		})
+	rc, err := NewRealClient(fc, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("NewRealClient: %v", err)
+	}
+	const wantKey = "sandbox-app-1"
+	for i := 0; i < 2; i++ {
+		if _, err := rc.CreateClaimableSandbox(context.Background(), CreateSandboxInput{
+			AppID:          "app-1",
+			PrefillEmail:   "airo@godaddy.com",
+			PrefillCountry: "us",
+		}); err != nil {
+			t.Fatalf("call %d: CreateClaimableSandbox: %v", i, err)
+		}
+		if fc.lastIdemKey != wantKey {
+			t.Errorf("call %d: idempotency key: want %q, got %q", i, wantKey, fc.lastIdemKey)
+		}
 	}
 }
 
@@ -189,7 +181,7 @@ func TestRealClient_CreateClaimableSandbox_TranslatesOutput(t *testing.T) {
 	}
 	rc, _ := NewRealClient(fc, nil, nil, nil)
 
-	sb, err := rc.CreateClaimableSandbox(context.Background(), CreateSandboxInput{AppID: "app-1"})
+	sb, err := rc.CreateClaimableSandbox(context.Background(), CreateSandboxInput{AppID: "app-1", PrefillEmail: "airo@godaddy.com", PrefillCountry: "us"})
 	if err != nil {
 		t.Fatalf("CreateClaimableSandbox: %v", err)
 	}
@@ -225,7 +217,7 @@ func TestRealClient_CreateClaimableSandbox_PropagatesStripeError(t *testing.T) {
 	fc := &fakeCreator{err: stripeErr}
 	rc, _ := NewRealClient(fc, nil, nil, nil)
 
-	_, err := rc.CreateClaimableSandbox(context.Background(), CreateSandboxInput{AppID: "app-1"})
+	_, err := rc.CreateClaimableSandbox(context.Background(), CreateSandboxInput{AppID: "app-1", PrefillEmail: "airo@godaddy.com", PrefillCountry: "us"})
 	if err == nil {
 		t.Fatalf("want error from Stripe rejection, got nil")
 	}
@@ -244,7 +236,7 @@ func TestRealClient_CreateClaimableSandbox_PropagatesGenericError(t *testing.T) 
 	fc := &fakeCreator{err: transportErr}
 	rc, _ := NewRealClient(fc, nil, nil, nil)
 
-	_, err := rc.CreateClaimableSandbox(context.Background(), CreateSandboxInput{AppID: "app-1"})
+	_, err := rc.CreateClaimableSandbox(context.Background(), CreateSandboxInput{AppID: "app-1", PrefillEmail: "airo@godaddy.com", PrefillCountry: "us"})
 	if !errors.Is(err, transportErr) {
 		t.Errorf("want errors.Is(transportErr), got %v", err)
 	}
@@ -462,7 +454,7 @@ func TestRealClient_CreateClaimableSandbox_RoutesToInnerTest(t *testing.T) {
 	}
 
 	if _, err := rc.CreateClaimableSandbox(context.Background(), CreateSandboxInput{
-		AppID: "app-1", Email: "founder@example.com", Country: "US",
+		AppID: "app-1",
 	}); err != nil {
 		t.Fatalf("CreateClaimableSandbox: %v", err)
 	}

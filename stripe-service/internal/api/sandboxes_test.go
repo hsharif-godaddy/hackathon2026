@@ -27,12 +27,13 @@ import (
 // records calls or returns an error.
 func newTestRouterServer(env, version, authType string) *Server {
 	return &Server{
-		Environment: env,
-		Version:     version,
-		Auth:        goauth.NewMiddleware(authType, "sso.dev-godaddy.com"),
-		Stripe:      &fakeStripe{},
-		Sandboxes:   newFakeStore(),
-		Secrets:     &fakeSecretsPusher{},
+		Environment:         env,
+		Version:             version,
+		Auth:                goauth.NewMiddleware(authType, "sso.dev-godaddy.com"),
+		Stripe:              &fakeStripe{},
+		Sandboxes:           newFakeStore(),
+		CustomerEmailLookup: &fakeEmailLookup{},
+		Secrets:             &fakeSecretsPusher{},
 	}
 }
 
@@ -131,6 +132,23 @@ func (f *fakeStore) GetBySandboxID(_ context.Context, sandboxID string) (store.S
 	return sb, nil
 }
 
+// fakeEmailLookup is a test double for customerEmailLookup. Returns a
+// fixed email by default; returns emailErr when set.
+type fakeEmailLookup struct {
+	email    string
+	emailErr error
+}
+
+func (f *fakeEmailLookup) GetCustomerEmail(_ context.Context, _ string) (string, error) {
+	if f.emailErr != nil {
+		return "", f.emailErr
+	}
+	if f.email == "" {
+		return "test@example.com", nil
+	}
+	return f.email, nil
+}
+
 // fakeSecretsPusher is an api-package test double for the secretsPusher
 // interface (subset of hosting.Client). Records call args so tests can
 // assert the exact bulk-operations payload, and surfaces an error when
@@ -192,7 +210,7 @@ func TestPostSandboxes_Creates_WhenNoExistingSandbox(t *testing.T) {
 	st := srv.Sandboxes.(*fakeStore)
 	h := NewRouter(srv)
 
-	body := `{"appId":"app-1","email":"a@b.c","country":"US"}`
+	body := `{"appId":"app-1","customerId":"cust-1","country":"US"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -210,8 +228,19 @@ func TestPostSandboxes_Creates_WhenNoExistingSandbox(t *testing.T) {
 	if stripe.callCount != 1 {
 		t.Errorf("stripe.callCount: want 1, got %d", stripe.callCount)
 	}
-	if stripe.lastInput.AppID != "app-1" || stripe.lastInput.Email != "a@b.c" || stripe.lastInput.Country != "US" {
-		t.Errorf("stripe input forwarded wrong: %+v", stripe.lastInput)
+	if stripe.lastInput.AppID != "app-1" {
+		t.Errorf("stripe input AppID: want app-1, got %q", stripe.lastInput.AppID)
+	}
+	// Pin the security-critical injection: PrefillEmail must come from the
+	// operator-configured fakeEmailLookup (test@example.com), NOT from any
+	// caller-supplied value. PrefillCountry must come from the request body
+	// (lowercased). If someone re-wires the handler to accept caller email, this fails.
+	if stripe.lastInput.PrefillEmail != "test@example.com" {
+		t.Errorf("stripe input PrefillEmail: want operator value from PIE (test@example.com), got %q — email must not come from the caller",
+			stripe.lastInput.PrefillEmail)
+	}
+	if stripe.lastInput.PrefillCountry != "us" {
+		t.Errorf("stripe input PrefillCountry: want lowercased caller country (us), got %q", stripe.lastInput.PrefillCountry)
 	}
 	if len(st.puts) != 1 {
 		t.Fatalf("store.puts: want 1, got %d", len(st.puts))
@@ -244,7 +273,7 @@ func TestPostSandboxes_ReturnsExisting_WhenSandboxExistsForApp(t *testing.T) {
 	st.byApp["app-1"] = []store.Sandbox{existing}
 	h := NewRouter(srv)
 
-	body := `{"appId":"app-1","email":"a@b.c","country":"US"}`
+	body := `{"appId":"app-1","customerId":"cust-1","country":"US"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -267,11 +296,62 @@ func TestPostSandboxes_ReturnsExisting_WhenSandboxExistsForApp(t *testing.T) {
 	}
 }
 
+// TestPostSandboxes_FailsClosedWhenCustomerIDMissing pins the security-critical
+// fail-closed behavior: a request without customerId must return 400
+// MISSING_CUSTOMER_EMAIL and must NOT call Stripe. This is the exact path that
+// the temporary tempFallbackCustomerID commit broke (Iteration 8 [Critical]) —
+// keeping it pinned ensures it can't regress silently.
+func TestPostSandboxes_FailsClosedWhenCustomerIDMissing(t *testing.T) {
+	srv := newTestRouterServer("dev", "0.0.0", "none")
+	stripe := srv.Stripe.(*fakeStripe)
+	h := NewRouter(srv)
+
+	body := `{"appId":"app-1","country":"US"}` // no customerId
+	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: want 400 (no customerId), got %d (body=%q)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "MISSING_CUSTOMER_EMAIL") {
+		t.Errorf("body should mention MISSING_CUSTOMER_EMAIL; got %q", rec.Body.String())
+	}
+	if stripe.callCount != 0 {
+		t.Errorf("Stripe must not be called when customerId is missing; callCount=%d", stripe.callCount)
+	}
+}
+
+// TestPostSandboxes_FailsClosedWhenEmailLookupErrors: PIE upstream failure
+// returns 502 CUSTOMER_EMAIL_LOOKUP_FAILED (not 400 — the client sent valid
+// input; the upstream dependency failed) and Stripe must not be called.
+func TestPostSandboxes_FailsClosedWhenEmailLookupErrors(t *testing.T) {
+	srv := newTestRouterServer("dev", "0.0.0", "none")
+	srv.CustomerEmailLookup = &fakeEmailLookup{emailErr: errors.New("PIE unavailable")}
+	stripe := srv.Stripe.(*fakeStripe)
+	h := NewRouter(srv)
+
+	body := `{"appId":"app-1","customerId":"cust-1","country":"US"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status: want 502 (upstream PIE error), got %d (body=%q)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "CUSTOMER_EMAIL_LOOKUP_FAILED") {
+		t.Errorf("body should mention CUSTOMER_EMAIL_LOOKUP_FAILED; got %q", rec.Body.String())
+	}
+	if stripe.callCount != 0 {
+		t.Errorf("Stripe must not be called when PIE lookup fails; callCount=%d", stripe.callCount)
+	}
+}
+
 func TestPostSandboxes_RejectsMissingAppID(t *testing.T) {
 	srv := newTestRouterServer("dev", "0.0.0", "none")
 	h := NewRouter(srv)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(`{"email":"a@b.c"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(`{}`))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -280,6 +360,27 @@ func TestPostSandboxes_RejectsMissingAppID(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "MISSING_APP_ID") {
 		t.Errorf("body should mention MISSING_APP_ID; got %q", rec.Body.String())
+	}
+}
+
+// TestPostSandboxes_RejectsEmailField: email is not a valid request field.
+// DisallowUnknownFields returns 400 INVALID_JSON for any caller still sending
+// it, including old agents on main (those callers must be updated before this
+// build is deployed to shared environments).
+func TestPostSandboxes_RejectsEmailField(t *testing.T) {
+	srv := newTestRouterServer("dev", "0.0.0", "none")
+	h := NewRouter(srv)
+
+	body := `{"appId":"app-1","customerId":"cust-1","country":"US","email":"victim@example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: want 400 (email is unknown field), got %d (body=%q)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "INVALID_JSON") {
+		t.Errorf("body should mention INVALID_JSON; got %q", rec.Body.String())
 	}
 }
 
@@ -304,7 +405,7 @@ func TestPostSandboxes_PropagatesStripeError(t *testing.T) {
 	srv.Stripe.(*fakeStripe).err = errors.New("stripe boom")
 	h := NewRouter(srv)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(`{"appId":"app-1"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(`{"appId":"app-1","customerId":"cust-1","country":"US"}`))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -318,7 +419,7 @@ func TestPostSandboxes_PropagatesStoreQueryError(t *testing.T) {
 	srv.Sandboxes.(*fakeStore).queryErr = errors.New("ddb query boom")
 	h := NewRouter(srv)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(`{"appId":"app-1"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(`{"appId":"app-1","customerId":"cust-1","country":"US"}`))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -344,7 +445,7 @@ func TestPostSandboxes_PropagatesStorePutError(t *testing.T) {
 	srv.Sandboxes.(*fakeStore).putErr = errors.New("ddb put boom")
 	h := NewRouter(srv)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(`{"appId":"app-1"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(`{"appId":"app-1","customerId":"cust-1","country":"US"}`))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -369,7 +470,7 @@ func TestPostSandboxes_RejectsOversizedBody(t *testing.T) {
 	// long ignored field. http.MaxBytesReader fails the decode with
 	// *http.MaxBytesError before the handler ever sees the payload.
 	pad := strings.Repeat("a", (1<<20)+1)
-	body := `{"appId":"app-1","email":"a@b.c","_pad":"` + pad + `"}`
+	body := `{"appId":"app-1","_pad":"` + pad + `"}`
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
@@ -391,10 +492,6 @@ func TestPostSandboxes_RejectsUnknownFields(t *testing.T) {
 	srv := newTestRouterServer("dev", "0.0.0", "none")
 	h := NewRouter(srv)
 
-	// An unrecognized field should be rejected by DisallowUnknownFields.
-	// Note: Go's JSON decoder does case-insensitive struct-field matching
-	// by default, so e.g. "appID" would quietly alias to AppID — the guard
-	// only catches fields that don't match any case-insensitive variant.
 	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(`{"appId":"app-1","typoed_field":"x"}`))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -537,7 +634,7 @@ func TestPostSandboxes_PushesAllFiveOps_OnFreshCreate(t *testing.T) {
 	srv.Secrets = pusher
 	h := NewRouter(srv)
 
-	body := `{"appId":"app-1","email":"a@b.c","country":"US"}`
+	body := `{"appId":"app-1","customerId":"cust-1","country":"US"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -629,7 +726,7 @@ func TestPostSandboxes_502OnSecretsPushFailure(t *testing.T) {
 	srv.Secrets = pusher
 	h := NewRouter(srv)
 
-	body := `{"appId":"app-1"}`
+	body := `{"appId":"app-1","customerId":"cust-1","country":"US"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -42,6 +43,64 @@ type secretsPusher interface {
 	UpdateSecrets(ctx context.Context, appID string, ops []hosting.SecretOp) error
 }
 
+// customerEmailLookup resolves a GoDaddy customerId to the account email via
+// the PIE proxy endpoint. Implemented by *hosting.Client; tests can provide a
+// fake. A nil receiver or an error result causes postSandboxes to return 400
+// MISSING_CUSTOMER_EMAIL — there is no fallback address.
+type customerEmailLookup interface {
+	GetCustomerEmail(ctx context.Context, customerID string) (string, error)
+}
+
+// prefillEmailFromPIE resolves the Stripe SandboxPrefill email for a given
+// customerId by calling the GoDaddy PIE customer proxy on the mgmt-airo host.
+// Returns an error (no fallback) if:
+//   - customerId is empty — the caller must supply it; failing loud here
+//     prevents a silent wrong-email rather than clobbering a real address.
+//   - CustomerEmailLookup is nil — service misconfiguration.
+//   - PIE returns a non-200, a network error, or an empty email field.
+//
+// The resolved email is intentionally NOT logged at INFO to avoid persisting
+// PII in structured logs. Outcome and error context are logged without the
+// email value itself.
+func (s *Server) prefillEmailFromPIE(ctx context.Context, customerID string) (string, error) {
+	customerID = strings.TrimSpace(customerID)
+
+	slog.Info("stripe_service.sandboxes.prefill_email.start",
+		"hasCustomerId", customerID != "",
+		"hasLookupClient", s.CustomerEmailLookup != nil,
+	)
+
+	if customerID == "" {
+		slog.Error("stripe_service.sandboxes.prefill_email.missing_customer_id")
+		return "", fmt.Errorf("customerId is required to look up prefill email")
+	}
+	if s.CustomerEmailLookup == nil {
+		slog.Error("stripe_service.sandboxes.prefill_email.lookup_not_configured",
+			"customerId", customerID)
+		return "", fmt.Errorf("customer email lookup is not configured (CustomerEmailLookup is nil)")
+	}
+
+	slog.Info("stripe_service.sandboxes.prefill_email.pie_lookup_start", "customerId", customerID)
+	email, err := s.CustomerEmailLookup.GetCustomerEmail(ctx, customerID)
+	if err != nil {
+		slog.Error("stripe_service.sandboxes.prefill_email.pie_lookup_failed",
+			"customerId", customerID, "error", err)
+		return "", fmt.Errorf("PIE lookup failed for customer %s: %w", customerID, err)
+	}
+
+	email = strings.TrimSpace(email)
+	if email == "" {
+		slog.Error("stripe_service.sandboxes.prefill_email.pie_returned_empty",
+			"customerId", customerID)
+		return "", fmt.Errorf("PIE returned empty email for customer %s", customerID)
+	}
+
+	// Log success without the email value — email is PII.
+	slog.Info("stripe_service.sandboxes.prefill_email.pie_lookup_success",
+		"customerId", customerID, "hasEmail", true)
+	return email, nil
+}
+
 // hostingProber is the subset of hosting.Client used by /v1/_probe. Kept
 // separate from secretsPusher so the existing fakeSecretsPusher in
 // sandboxes_test.go doesn't need to grow probe stubs.
@@ -55,6 +114,15 @@ type hostingProber interface {
 // "omitted" (the hosting schema treats omitted as false; we want explicit
 // for the MCP-key op so the wire body is unambiguous).
 func boolPtr(b bool) *bool { return &b }
+
+// isValidCountryCode returns true for lowercase ISO-3166-1 alpha-2 codes
+// (exactly 2 ASCII lowercase letters). Stripe requires lowercase alpha-2.
+func isValidCountryCode(s string) bool {
+	if len(s) != 2 {
+		return false
+	}
+	return s[0] >= 'a' && s[0] <= 'z' && s[1] >= 'a' && s[1] <= 'z'
+}
 
 // buildSecretsOps constructs the bulk-secrets payload that hosting expects.
 // Five ops:
@@ -157,9 +225,16 @@ func buildLiveSecretsOps(liveSecretKey, livePublishableKey string) []hosting.Sec
 }
 
 type createSandboxRequest struct {
-	AppID   string `json:"appId"`
-	Email   string `json:"email"`
-	Country string `json:"country"`
+	AppID string `json:"appId"`
+	// CustomerID is the GoDaddy customer ID of the authenticated caller,
+	// forwarded from the agent's context.metadata.customerId. Used server-side
+	// to look up the user's email from the GoDaddy PIE API for Stripe's
+	// SandboxPrefill — never echoed to the caller or persisted.
+	CustomerID string `json:"customerId,omitempty"`
+	// Country is the ISO-3166-1 alpha-2 country code collected from the user
+	// in chat (e.g. "US"). Safe to accept from the caller: it's harmless form
+	// prefill for the Stripe-hosted claim flow with no notification vector.
+	Country string `json:"country,omitempty"`
 }
 
 type sandboxResponse struct {
@@ -209,6 +284,15 @@ func (s *Server) postSandboxes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate country format server-side (the agent schema checks this but a
+	// direct API caller bypasses it). Stripe requires lowercase ISO-3166-1 alpha-2.
+	country := strings.ToLower(strings.TrimSpace(req.Country))
+	if req.Country != "" && !isValidCountryCode(country) {
+		writeError(w, http.StatusBadRequest, "INVALID_COUNTRY",
+			"country must be an ISO-3166-1 alpha-2 code (e.g. 'US')")
+		return
+	}
+
 	existing, err := s.Sandboxes.QueryByAppID(ctx, appID)
 	if err != nil {
 		slog.Error("stripe_service.sandboxes.query_failed", "appId", appID, "error", err)
@@ -216,11 +300,10 @@ func (s *Server) postSandboxes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(existing) > 0 {
-		// Idempotent: app already has a sandbox, return it. Note: the new
-		// request's email / country are intentionally ignored here — the
-		// existing sandbox's prefill is the source of truth, and updating
-		// it mid-flight would require a Stripe API we don't have yet.
-		// Once live, a deliberate "re-provision" flow can land as a PATCH.
+		// Idempotent: app already has a sandbox, return it. The incoming
+		// customerId / country are not used to update the existing sandbox's
+		// prefill — that would require a Stripe API we don't have yet.
+		// A deliberate re-provision flow can land as a PATCH later.
 		writeJSON(w, http.StatusOK, sandboxResponse{
 			SandboxID: existing[0].SandboxID,
 			AccountID: existing[0].AccountID,
@@ -240,10 +323,39 @@ func (s *Server) postSandboxes(w http.ResponseWriter, r *http.Request) {
 	// or (c) use a TransactWriteItems that claims an app lock. Same code
 	// path as the secrets push below.
 
+	// Resolve the user's email from the PIE customer API using their customerId.
+	// This is always server-side (never caller-supplied) — see prefillEmailFromPIE.
+	slog.Info("stripe_service.sandboxes.resolving_prefill",
+		"appId", appID,
+		"hasCustomerId", strings.TrimSpace(req.CustomerID) != "",
+		"hasCountry", strings.TrimSpace(req.Country) != "",
+	)
+	prefillEmail, prefillErr := s.prefillEmailFromPIE(ctx, req.CustomerID)
+	if prefillErr != nil {
+		if strings.TrimSpace(req.CustomerID) == "" {
+			// Missing customerId is a caller error → 400.
+			slog.Error("stripe_service.sandboxes.prefill_email_missing_customer_id",
+				"appId", appID, "error", prefillErr)
+			writeError(w, http.StatusBadRequest, "MISSING_CUSTOMER_EMAIL",
+				"customerId is required")
+		} else {
+			// PIE unavailable / returned error → 502 (upstream dependency, not caller fault).
+			slog.Error("stripe_service.sandboxes.prefill_email_lookup_failed",
+				"appId", appID, "customerId", req.CustomerID, "error", prefillErr)
+			writeError(w, http.StatusBadGateway, "CUSTOMER_EMAIL_LOOKUP_FAILED",
+				"could not resolve customer email from identity service")
+		}
+		return
+	}
+
+	slog.Info("stripe_service.sandboxes.creating_stripe_sandbox",
+		"appId", appID,
+		"country", country,
+	)
 	sb, err := s.Stripe.CreateClaimableSandbox(ctx, stripeclient.CreateSandboxInput{
-		AppID:   appID,
-		Email:   req.Email,
-		Country: req.Country,
+		AppID:          appID,
+		PrefillEmail:   prefillEmail,
+		PrefillCountry: country,
 	})
 	if err != nil {
 		slog.Error("stripe_service.sandboxes.stripe_create_failed", "appId", appID, "error", err)

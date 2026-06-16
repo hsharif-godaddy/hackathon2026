@@ -508,6 +508,9 @@ func TestLoadStripeClientDefaultsToFake(t *testing.T) {
 	}
 }
 
+// TestLoadStripeClientAcceptsReal: STRIPE_CLIENT=real no longer requires any
+// prefill env vars — email is resolved at request time from the PIE API using
+// the caller's customerId, and country comes from the request body.
 func TestLoadStripeClientAcceptsReal(t *testing.T) {
 	clearEnv(t)
 	setDeployedEnv(t, "dev")
@@ -536,6 +539,7 @@ func TestLoadStripeClientNormalizesCaseAndWhitespace(t *testing.T) {
 			clearEnv(t)
 			setDeployedEnv(t, "dev")
 			t.Setenv("STRIPE_CLIENT", c.raw)
+			// real client no longer requires prefill env vars
 			cfg, err := Load()
 			if err != nil {
 				t.Fatalf("Load(%q): %v", c.raw, err)

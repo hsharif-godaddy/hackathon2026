@@ -39,6 +39,12 @@ type Server struct {
 	// /v2/core/events/{id}. Nil when STRIPE_CLIENT=fake — dispatch handlers
 	// log a warning and return early when it is nil.
 	EventFetcher eventFetcher
+	// CustomerEmailLookup resolves a GoDaddy customerId to the account email
+	// via the PIE proxy endpoint on the mgmt-airo host. Used by postSandboxes
+	// to populate Stripe's SandboxPrefill.Email server-side so no caller can
+	// supply an arbitrary address. If nil or the lookup fails, postSandboxes
+	// returns 400 MISSING_CUSTOMER_EMAIL — there is no fallback address.
+	CustomerEmailLookup customerEmailLookup
 	// LiveKeysInFlight tracks goroutines launched to mint+push live keys after
 	// the webhook handler ACKs Stripe. Tests Wait() on it to deterministically
 	// observe the side effects without racing; production can Wait() during

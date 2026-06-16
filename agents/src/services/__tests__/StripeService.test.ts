@@ -59,7 +59,6 @@ describe('StripeService', () => {
 
       const result = await stripeService.createSandbox({
         appId: 'app-1',
-        email: 'a@b.c',
         country: 'US',
       });
 
@@ -77,7 +76,7 @@ describe('StripeService', () => {
       );
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body).toEqual({ appId: 'app-1', email: 'a@b.c', country: 'US' });
+      expect(body).toEqual({ appId: 'app-1', country: 'US' });
 
       expect(result).toEqual({
         sandboxId: 'cbsbx_fake_X',
@@ -102,7 +101,6 @@ describe('StripeService', () => {
 
       const result = await stripeService.createSandbox({
         appId: 'app-1',
-        email: 'a@b.c',
         country: 'US',
       });
 
@@ -118,7 +116,7 @@ describe('StripeService', () => {
         text: () => Promise.resolve(JSON.stringify({ code: 'INVALID_JSON', error: 'request body is not valid JSON' })),
       });
 
-      const promise = stripeService.createSandbox({ appId: 'app-1', email: 'a@b.c', country: 'US' });
+      const promise = stripeService.createSandbox({ appId: 'app-1', country: 'US' });
       await expect(promise).rejects.toBeInstanceOf(StripeServiceError);
       await expect(promise).rejects.toMatchObject({
         status: 400,
@@ -138,7 +136,7 @@ describe('StripeService', () => {
           ),
       });
 
-      const promise = stripeService.createSandbox({ appId: 'app-1', email: 'a@b.c', country: 'US' });
+      const promise = stripeService.createSandbox({ appId: 'app-1', country: 'US' });
       await expect(promise).rejects.toBeInstanceOf(StripeServiceError);
       await expect(promise).rejects.toMatchObject({
         status: 500,
@@ -155,7 +153,7 @@ describe('StripeService', () => {
         text: () => Promise.resolve('<html>Bad Gateway</html>'),
       });
 
-      const promise = stripeService.createSandbox({ appId: 'app-1', email: 'a@b.c', country: 'US' });
+      const promise = stripeService.createSandbox({ appId: 'app-1', country: 'US' });
       await expect(promise).rejects.toBeInstanceOf(StripeServiceError);
       await expect(promise).rejects.toMatchObject({
         status: 502,
@@ -293,7 +291,7 @@ describe('StripeService', () => {
       mockFetch.mockRejectedValueOnce(timeout);
 
       await expect(
-        stripeService.createSandbox({ appId: 'app-1', email: 'a@b.c', country: 'US' }),
+        stripeService.createSandbox({ appId: 'app-1', country: 'US' }),
       ).rejects.toBe(timeout);
     });
 
@@ -315,7 +313,7 @@ describe('StripeService', () => {
       mockFetch.mockRejectedValueOnce('plain string failure');
 
       await expect(
-        stripeService.createSandbox({ appId: 'app-1', email: 'a@b.c', country: 'US' }),
+        stripeService.createSandbox({ appId: 'app-1', country: 'US' }),
       ).rejects.toThrow('plain string failure');
     });
   });
@@ -332,7 +330,7 @@ describe('StripeService', () => {
       });
 
       try {
-        await stripeService.createSandbox({ appId: 'app-1', email: 'a@b.c', country: 'US' });
+        await stripeService.createSandbox({ appId: 'app-1', country: 'US' });
         expect.fail('expected createSandbox to throw');
       } catch (err) {
         expect(err).toBeInstanceOf(StripeServiceError);
@@ -355,7 +353,7 @@ describe('StripeService', () => {
       });
 
       try {
-        await stripeService.createSandbox({ appId: 'app-1', email: 'a@b.c', country: 'US' });
+        await stripeService.createSandbox({ appId: 'app-1', country: 'US' });
         expect.fail('expected createSandbox to throw');
       } catch (err) {
         const sse = err as InstanceType<typeof StripeServiceError>;

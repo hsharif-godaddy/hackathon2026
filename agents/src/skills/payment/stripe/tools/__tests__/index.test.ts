@@ -60,7 +60,7 @@ vi.mock('../../../../../logging/index.js', () => ({
 const { setupTool, statusTool } = await import('../provisioning-tools.js');
 const { hooks } = await import('../index.js');
 
-const APP = { metadata: { appId: 'app-1' } };
+const APP = { metadata: { appId: 'app-1', customerId: 'cust-1' } };
 
 describe('stripe skill tools', () => {
   beforeEach(() => {
@@ -86,9 +86,9 @@ describe('stripe skill tools', () => {
         products_create: { description: 'create a product', execute: vi.fn() },
       });
 
-      const result = await setupTool.execute({ email: 'a@b.c', country: 'US' }, APP);
+      const result = await setupTool.execute({ country: 'US' }, APP);
 
-      expect(mockCreateSandbox).toHaveBeenCalledWith({ appId: 'app-1', email: 'a@b.c', country: 'US' });
+      expect(mockCreateSandbox).toHaveBeenCalledWith({ appId: 'app-1', customerId: 'cust-1', country: 'US' });
       expect(result).toEqual({
         success: true,
         sandboxId: 'cbsbx_fake_X',
@@ -106,7 +106,7 @@ describe('stripe skill tools', () => {
         new MockStripeServiceError(502, 'STRIPE_CREATE_FAILED', 'preview not enabled'),
       );
 
-      const result = await setupTool.execute({ email: 'a@b.c', country: 'US' }, APP);
+      const result = await setupTool.execute({ country: 'US' }, APP);
 
       expect(result).toMatchObject({
         stripeProvisioningUnavailable: true,
@@ -130,7 +130,7 @@ describe('stripe skill tools', () => {
         new MockStripeServiceError(400, 'INVALID_JSON', 'request body is not valid JSON'),
       );
 
-      await expect(setupTool.execute({ email: 'a@b.c', country: 'US' }, APP)).rejects.toBeInstanceOf(
+      await expect(setupTool.execute({ country: 'US' }, APP)).rejects.toBeInstanceOf(
         MockStripeServiceError,
       );
       expect(mockLoggerError).toHaveBeenCalledWith(
@@ -142,11 +142,11 @@ describe('stripe skill tools', () => {
     it('propagates generic errors so the agent loop sees them', async () => {
       const boom = new Error('boom');
       mockCreateSandbox.mockRejectedValueOnce(boom);
-      await expect(setupTool.execute({ email: 'a@b.c', country: 'US' }, APP)).rejects.toBe(boom);
+      await expect(setupTool.execute({ country: 'US' }, APP)).rejects.toBe(boom);
     });
 
     it('returns a missing-appId error without calling stripeService', async () => {
-      const result = await setupTool.execute({ email: 'a@b.c', country: 'US' }, undefined);
+      const result = await setupTool.execute({}, undefined);
       expect(result).toEqual({ error: 'App ID is required. Pass context.metadata.appId.' });
       expect(mockCreateSandbox).not.toHaveBeenCalled();
     });
@@ -159,7 +159,7 @@ describe('stripe skill tools', () => {
         mockLoadStripeMcpTools.mockResolvedValueOnce({}); // attempt 0: not propagated
         mockLoadStripeMcpTools.mockResolvedValueOnce({ products_create: fakeTool }); // attempt 1
 
-        const pending = setupTool.execute({ email: 'a@b.c', country: 'US' }, APP);
+        const pending = setupTool.execute({ country: 'US' }, APP);
         await vi.advanceTimersByTimeAsync(0);
         expect(mockLoadStripeMcpTools).toHaveBeenCalledTimes(1);
         await vi.advanceTimersByTimeAsync(1999);
@@ -185,7 +185,7 @@ describe('stripe skill tools', () => {
         mockCreateSandbox.mockResolvedValueOnce({ sandboxId: 's', accountId: 'a', claimUrl: 'u' });
         mockLoadStripeMcpTools.mockResolvedValue({});
 
-        const pending = setupTool.execute({ email: 'a@b.c', country: 'US' }, APP);
+        const pending = setupTool.execute({ country: 'US' }, APP);
         await vi.runAllTimersAsync();
         const result = await pending;
 
@@ -210,7 +210,7 @@ describe('stripe skill tools', () => {
         // setupStart records Date.now() at the beginning of execute. Advance the
         // clock by 29s first so the deadline (start + 30000 - 2000 = start + 28000)
         // is already past when reloadMcpToolsAfterSetup runs.
-        const pending = setupTool.execute({ email: 'a@b.c', country: 'US' }, APP);
+        const pending = setupTool.execute({ country: 'US' }, APP);
         vi.advanceTimersByTime(29000);
         await vi.runAllTimersAsync();
         const result = await pending;
@@ -287,14 +287,14 @@ describe('stripe skill tools', () => {
     it('returns autoProvisioningUnavailable (no inputs needed) when the flag is OFF', async () => {
       mockProfileFlag.mockReturnValue(false);
 
-      const result = await setupTool.execute({ email: 'a@b.c', country: 'US' }, APP);
+      const result = await setupTool.execute({ country: 'US' }, APP);
 
       expect(result).toMatchObject({ autoProvisioningUnavailable: true });
       expect((result as { message: string }).message).toContain('Manual key flow');
       expect(mockCreateSandbox).not.toHaveBeenCalled();
     });
 
-    it('returns autoProvisionedFlow + needsInputs when flag is ON but email/country omitted', async () => {
+    it('returns needsInputs when flag is ON but country omitted', async () => {
       mockProfileFlag.mockReturnValue(true);
 
       const result = await setupTool.execute({}, APP);
@@ -303,14 +303,14 @@ describe('stripe skill tools', () => {
       expect(mockCreateSandbox).not.toHaveBeenCalled();
     });
 
-    it('provisions when the flag is ON and inputs are provided', async () => {
+    it('provisions when flag is ON and country is provided', async () => {
       vi.useFakeTimers();
       try {
         mockProfileFlag.mockReturnValue(true);
         mockCreateSandbox.mockResolvedValueOnce({ sandboxId: 's', accountId: 'a', claimUrl: 'u' });
         mockLoadStripeMcpTools.mockResolvedValue({});
 
-        const pending = setupTool.execute({ email: 'a@b.c', country: 'US' }, APP);
+        const pending = setupTool.execute({ country: 'US' }, APP);
         await vi.runAllTimersAsync();
         const result = await pending;
 
@@ -328,22 +328,22 @@ describe('stripe skill tools', () => {
     });
 
     it('returns { provisioned: true } on a successful output', function successState() {
-      const state = setupTool.computeState!({ email: 'a@b.c', country: 'US' }, { success: true, sandboxId: 's' });
+      const state = setupTool.computeState!({}, { success: true, sandboxId: 's' });
       expect(state).toEqual({ provisioned: true });
     });
 
     it('returns null when output.success is false', function failState() {
-      const state = setupTool.computeState!({ email: 'a@b.c', country: 'US' }, { success: false });
+      const state = setupTool.computeState!({}, { success: false });
       expect(state).toBeNull();
     });
 
     it('returns null when output is a degrade shape (no success field)', function degradeState() {
-      const state = setupTool.computeState!({ email: 'a@b.c', country: 'US' }, { stripeProvisioningUnavailable: true });
+      const state = setupTool.computeState!({}, { stripeProvisioningUnavailable: true });
       expect(state).toBeNull();
     });
 
     it('returns null when output is undefined', function undefinedState() {
-      const state = setupTool.computeState!({ email: 'a@b.c', country: 'US' }, undefined);
+      const state = setupTool.computeState!({}, undefined);
       expect(state).toBeNull();
     });
   });

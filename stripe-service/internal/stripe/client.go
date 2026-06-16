@@ -4,12 +4,24 @@ package stripe
 
 import "context"
 
-// CreateSandboxInput is what the agent-facing POST /v1/sandboxes handler
-// forwards to the Stripe client.
+// CreateSandboxInput is what the api handler forwards to the Stripe client.
+//
+// PrefillEmail is resolved server-side from the GoDaddy PIE customer API using
+// the CustomerId claim — never accepted from the caller directly, to prevent a
+// malicious user from specifying a victim's address and triggering Stripe's
+// pre-expiry reminder to that address (see postSandboxes). A failed PIE lookup
+// is fatal: postSandboxes returns 400 MISSING_CUSTOMER_EMAIL and Stripe is
+// never called. There is no platform-address fallback.
+//
+// PrefillCountry comes from the caller (the agent asks the user for their
+// country) — it's harmless form prefill with no notification vector.
+//
+// Stripe's preview API requires both despite the docs listing them as optional
+// (returns 400 invalid_fields if either is absent).
 type CreateSandboxInput struct {
-	AppID   string
-	Email   string
-	Country string
+	AppID          string
+	PrefillEmail   string // resolved server-side via PIE; see postSandboxes
+	PrefillCountry string // user-provided via agent
 }
 
 // Sandbox is what Stripe's v2.core.claimableSandboxes.create returns, reduced

@@ -630,3 +630,125 @@ func TestProbeReach_TruncatesLongBody(t *testing.T) {
 		t.Errorf("long body should be truncated with ellipsis; got len=%d", len(body))
 	}
 }
+
+// --- GetCustomerEmail ---
+
+func TestGetCustomerEmail_ReturnsEmailFromFlatResponse(t *testing.T) {
+	var got recordedRequest
+	resp, _ := json.Marshal(map[string]string{
+		"customerId": "cust-1", "shopperId": "shop-1", "email": "user@example.com",
+	})
+	c, _, auth := newFakeServer(t, &got, http.StatusOK, string(resp))
+
+	email, err := c.GetCustomerEmail(context.Background(), "cust-1")
+	if err != nil {
+		t.Fatalf("GetCustomerEmail: %v", err)
+	}
+	if email != "user@example.com" {
+		t.Errorf("email: want user@example.com, got %q", email)
+	}
+	if !strings.Contains(got.Path, "cust-1") {
+		t.Errorf("URL should contain customerId; got %q", got.Path)
+	}
+	if got.Method != http.MethodGet {
+		t.Errorf("method: want GET, got %q", got.Method)
+	}
+	if auth.calls.Load() != 1 {
+		t.Errorf("auth.calls: want 1, got %d", auth.calls.Load())
+	}
+}
+
+func TestGetCustomerEmail_ReturnsEmailFromWrappedDataResponse(t *testing.T) {
+	var got recordedRequest
+	resp, _ := json.Marshal(map[string]interface{}{
+		"data": map[string]string{"email": "wrapped@example.com", "customerId": "cust-2"},
+	})
+	c, _, _ := newFakeServer(t, &got, http.StatusOK, string(resp))
+
+	email, err := c.GetCustomerEmail(context.Background(), "cust-2")
+	if err != nil {
+		t.Fatalf("GetCustomerEmail: %v", err)
+	}
+	if email != "wrapped@example.com" {
+		t.Errorf("email: want wrapped@example.com, got %q", email)
+	}
+}
+
+func TestGetCustomerEmail_ErrorsOnNon200(t *testing.T) {
+	var got recordedRequest
+	c, _, _ := newFakeServer(t, &got, http.StatusNotFound, `{"error":"not found"}`)
+
+	_, err := c.GetCustomerEmail(context.Background(), "cust-missing")
+	if err == nil {
+		t.Fatal("want error on 404, got nil")
+	}
+	if !strings.Contains(err.Error(), "404") {
+		t.Errorf("error should mention status; got %q", err)
+	}
+}
+
+func TestGetCustomerEmail_ErrorsOnEmptyEmail(t *testing.T) {
+	var got recordedRequest
+	resp, _ := json.Marshal(map[string]string{"customerId": "cust-3", "email": ""})
+	c, _, _ := newFakeServer(t, &got, http.StatusOK, string(resp))
+
+	_, err := c.GetCustomerEmail(context.Background(), "cust-3")
+	if err == nil {
+		t.Fatal("want error on empty email, got nil")
+	}
+}
+
+func TestGetCustomerEmail_ReturnsEmptyOnEmptyCustomerID(t *testing.T) {
+	// Empty customerId is a no-op — returns ("", nil) without a network call.
+	requestReceived := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requestReceived = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	c, err := New(Config{BaseURL: srv.URL, Auth: &mockAuth{token: "t"}, Timeout: time.Second})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	email, err := c.GetCustomerEmail(context.Background(), "")
+	if err != nil {
+		t.Fatalf("GetCustomerEmail(\"\") should return nil error, got %v", err)
+	}
+	if email != "" {
+		t.Errorf("email: want empty, got %q", email)
+	}
+	if requestReceived {
+		t.Error("no HTTP request should be made for empty customerId")
+	}
+}
+
+func TestGetCustomerEmail_ParsesLargePayload(t *testing.T) {
+	// Regression test for the 512-byte truncation bug: a real PIE customer
+	// record includes address, name, phone etc. that pushes the response well
+	// past errorBodyLimit (512). The email field must still be parsed correctly
+	// even when the JSON body exceeds the error-cap.
+	longAddr := strings.Repeat("a", 600) // push past 512 bytes
+	resp, _ := json.Marshal(map[string]interface{}{
+		"customerId":   "cust-large",
+		"shopperId":    "shop-large",
+		"email":        "real@example.com",
+		"firstName":    "Anthony",
+		"lastName":     "Fowler",
+		"address":      longAddr, // guarantees body > 512 bytes
+		"phoneNumbers": []map[string]string{{"code": "1", "number": "5555555555"}},
+	})
+	if len(resp) <= errorBodyLimit {
+		t.Skipf("payload too small (%d bytes) — adjust longAddr to exceed %d", len(resp), errorBodyLimit)
+	}
+
+	var got recordedRequest
+	c, _, _ := newFakeServer(t, &got, http.StatusOK, string(resp))
+
+	email, err := c.GetCustomerEmail(context.Background(), "cust-large")
+	if err != nil {
+		t.Fatalf("GetCustomerEmail with large payload: %v", err)
+	}
+	if email != "real@example.com" {
+		t.Errorf("email: want real@example.com, got %q (body was %d bytes)", email, len(resp))
+	}
+}

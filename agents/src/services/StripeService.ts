@@ -27,7 +27,12 @@ import { resolveEnv } from '../utils/gd-env.js';
 
 export interface CreateSandboxInput {
   appId: string;
-  email: string;
+  /** GoDaddy customer ID forwarded from the agent session context. stripe-service
+   *  uses this to look up the user's email from the GoDaddy PIE API for
+   *  Stripe's SandboxPrefill — never echoed back or persisted. */
+  customerId?: string;
+  /** ISO-3166-1 alpha-2 country code collected from the user in chat.
+   *  Safe caller-supplied prefill: no notification vector. */
   country: string;
 }
 
@@ -181,7 +186,7 @@ class StripeService {
         headers,
         body: JSON.stringify({
           appId: input.appId,
-          email: input.email,
+          ...(input.customerId && { customerId: input.customerId }),
           country: input.country,
         }),
         signal: AbortSignal.timeout(30_000),

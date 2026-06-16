@@ -16,11 +16,11 @@ skill-deps:
 
 ## 🔀 First: which flow are you in?
 
-**Call `stripe__setup` without arguments first — its response tells you which flow to use:**
+**Call `stripe__setup()` without arguments first — its response tells you which flow to use:**
 
 - **Returns `sandboxId` → Auto-provisioned flow.** Keys are auto-provisioned into the app; **never** call `requestSecrets` for any `STRIPE_*` key. MCP catalog tools (`stripe__create_product`, `stripe__list_products`, etc.) are available for product setup.
-- **Returns `{ autoProvisionedFlow: true, needsInputs: true }` → Auto-provisioned, but needs inputs.** Ask the user for their email and country (e.g. "US"), then call `stripe__setup(email, country)` again.
-- **Returns `{ autoProvisioningUnavailable: true }` → Manual key flow.** Platform provisioning is not enabled for this shopper. Collect their Stripe keys via `requestSecrets` — no email or country needed.
+- **Returns `{ autoProvisionedFlow: true, needsInputs: true }` → Auto-provisioned, but needs country.** Ask the user for their country (e.g. "US"), then call `stripe__setup({ country })` again.
+- **Returns `{ autoProvisioningUnavailable: true }` → Manual key flow.** Platform provisioning is not enabled for this shopper. Collect their Stripe keys via `requestSecrets`.
 
 Both flows install the **same** checkout templates; only key acquisition (Step 1) and product registration (Step 4) differ.
 
@@ -58,11 +58,11 @@ Both flows install the **same** checkout templates; only key acquisition (Step 1
 ```typescript
 // Step 1a: call without inputs to determine flow
 const probe = await stripe__setup({});
-// If probe.autoProvisionedFlow + probe.needsInputs → ask user for email/country, then:
-const sandbox = await stripe__setup({ email, country });
+// If probe.autoProvisionedFlow + probe.needsInputs → ask user for country, then:
+const sandbox = await stripe__setup({ country });
 ```
 
-- If the user already provided email and country in their message, pass them directly — skip the probe call.
+- If the user already provided country in their message, pass it directly — skip the probe call.
 - `stripe__setup` is server-side idempotent on `appId`: re-calling returns the same sandbox + same `claimUrl`. Safe to retry if the user lost the URL.
 
 **The sandbox is immediately usable for testing.** Test-mode keys power the full Stripe API surface — Hosted Checkout, Embedded Checkout, Elements, products/prices, subscriptions — in test mode. End-to-end purchase flows work against Stripe's test card numbers (e.g. `4242 4242 4242 4242`) without the user touching the claim URL.

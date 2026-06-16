@@ -103,18 +103,19 @@ func main() {
 	}
 
 	srv := &api.Server{
-		Environment:     string(cfg.Environment),
-		Version:         version,
-		Prober:          clients,
-		ResourceNames:   resources,
-		Auth:            authMW,
-		Stripe:          stripeClient,
-		Sandboxes:       sandboxes,
-		Secrets:         secretsClient,
-		HostingProber:   secretsClient,
-		Events:          events,
-		WebhookVerifier: verifier,
-		EventFetcher:    stripeAPIClient, // nil when STRIPE_CLIENT=fake
+		Environment:         string(cfg.Environment),
+		Version:             version,
+		Prober:              clients,
+		ResourceNames:       resources,
+		Auth:                authMW,
+		Stripe:              stripeClient,
+		Sandboxes:           sandboxes,
+		Secrets:             secretsClient,
+		HostingProber:       secretsClient,
+		Events:              events,
+		WebhookVerifier:     verifier,
+		EventFetcher:        stripeAPIClient, // nil when STRIPE_CLIENT=fake
+		CustomerEmailLookup: secretsClient,   // *hosting.Client; nil when secretsClient is nil
 	}
 	handler := api.NewRouter(srv)
 

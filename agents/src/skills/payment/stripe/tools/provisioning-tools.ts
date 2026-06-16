@@ -57,6 +57,7 @@ const MCP_RELOAD_DELAYS_MS = [0, 2000, 3000];
 type ToolContext = {
   metadata?: {
     appId?: string;
+    customerId?: string;
   };
 };
 
@@ -194,7 +195,6 @@ export async function reloadMcpToolsAfterSetup(appId: string, deadlineMs: number
 }
 
 interface SetupInput {
-  email?: string;
   country?: string;
 }
 
@@ -202,26 +202,22 @@ export const setupTool: SkillToolDefinition = {
   name: 'setup',
   description:
     'Provision (or fetch the existing) Stripe sandbox for this app. ' +
-    'ALWAYS call this first to determine which key flow to use. email and country are optional: ' +
-    'call without them to check flow availability, then provide them if the auto-provisioned flow is active. ' +
+    'country is optional — call without it first to check flow availability, then provide it when the auto-provisioned flow is active. ' +
     '(1) Returns { sandboxId, accountId, claimUrl } → auto-provisioned flow: keys are in the env, never call requestSecrets. ' +
-    '(2) Returns { autoProvisionedFlow: true, needsInputs: true } → auto-provisioned flow confirmed but email/country required to proceed — ask the user and call again. ' +
-    '(3) Returns { autoProvisioningUnavailable: true } → manual key flow: collect keys via requestSecrets, no email/country needed. ' +
+    '(2) Returns { autoProvisionedFlow: true, needsInputs: true } → auto-provisioned flow confirmed but country required — ask the user and call again. ' +
+    '(3) Returns { autoProvisioningUnavailable: true } → manual key flow: collect keys via requestSecrets. ' +
     '(4) Returns { stripeProvisioningUnavailable: true, message } → Stripe API unavailable: surface the message verbatim, do not retry this conversation. ' +
     'Idempotent: repeated calls for the same app return the same sandbox.',
   parameters: z.object({
-    email: z
-      .string()
-      .trim()
-      .email()
-      .optional()
-      .describe('Owner email. Required for the auto-provisioned flow; omit when calling without inputs to check flow availability.'),
     country: z
       .string()
       .trim()
       .regex(/^[A-Z]{2}$/, 'must be uppercase ISO-3166-1 alpha-2 (e.g. "US", "GB")')
       .optional()
-      .describe('Owner country, uppercase ISO-3166-1 alpha-2 (e.g. "US", "GB"). Required for auto-provisioned flow; omit when checking availability first.'),
+      .describe(
+        'Owner country, uppercase ISO-3166-1 alpha-2 (e.g. "US", "GB"). ' +
+          'Required for auto-provisioned flow; omit on the first call to check flow availability.',
+      ),
   }),
   config: {
     requiresApp: true,
@@ -241,8 +237,9 @@ export const setupTool: SkillToolDefinition = {
     }
 
     // Gate: check the per-shopper flag at call time (request-scoped, profile
-    // readable). email/country are optional so the agent can call without them
-    // to determine which flow applies — no upfront questions for manual-key users.
+    // readable). country is optional so the agent can call without it to
+    // determine which flow applies first — no upfront questions for manual-key
+    // users.
     if (!profileFlag(PLATFORM_MANAGED_FLAG, false)) {
       logger.info('skill.stripe.setup.platform_managed_unavailable', { appId });
       return {
@@ -254,18 +251,16 @@ export const setupTool: SkillToolDefinition = {
       };
     }
 
-    // Auto-provisioned flow confirmed — now require email and country.
-    // If the agent called without them (to check flow first), signal that they
-    // are needed so it can ask the user and call again.
-    if (!input.email || !input.country) {
+    // Country is required for Stripe's SandboxPrefill — ask the user if not provided.
+    if (!input.country) {
       logger.info('skill.stripe.setup.inputs_needed', { appId });
       return {
         autoProvisionedFlow: true,
         needsInputs: true,
         message:
           'Auto-provisioned Stripe is available for this account. ' +
-          'Ask the user for their email address and country (ISO-3166-1 alpha-2, e.g. "US"), ' +
-          'then call stripe__setup again with those values.',
+          'Ask the user for their country (uppercase ISO-3166-1 alpha-2, e.g. "US"), ' +
+          'then call stripe__setup again with that value.',
       };
     }
 
@@ -274,7 +269,7 @@ export const setupTool: SkillToolDefinition = {
     try {
       const sandbox = await stripeService.createSandbox({
         appId,
-        email: input.email,
+        customerId: context?.metadata?.customerId,
         country: input.country,
       });
       logger.info('skill.stripe.setup.success', { appId, sandboxId: sandbox.sandboxId });
