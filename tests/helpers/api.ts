@@ -264,6 +264,17 @@ const JOB_RESOLUTION_POLL_INTERVAL_MS = 5000;
 /** Default timeout for `waitForJobResolution`. Typical job→app transition is <30s; 2 min gives generous headroom for slow dev/test env. */
 const JOB_RESOLUTION_TIMEOUT_MS = 120_000;
 
+/**
+ * Eviction grace window. The app-limit guard never evicts an app created within
+ * this many ms — it may be an in-flight app a sibling shard (or this run) just
+ * created and is mid-test on. The guard runs across all 10 parallel regression
+ * shards against ONE shared account, so without this an eviction near the cap
+ * could delete another shard's working app. Comfortably longer than the longest
+ * single test so an in-flight app is always protected; old orphans (the real
+ * eviction target) are well outside it.
+ */
+const RECENT_APP_GRACE_MS = 20 * 60 * 1000;
+
 interface DeploymentPollResult {
   success: boolean;
   deploymentId: string;
@@ -581,7 +592,7 @@ export async function evictOldestE2eAppsToFitLimit(
     return 0;
   }
 
-  const result = await page.evaluate(async ({ thresholdValue, marker }) => {
+  const result = await page.evaluate(async ({ thresholdValue, marker, graceMs }) => {
     try {
       const response = await fetch('/api/sites');
       if (!response.ok) {
@@ -602,24 +613,28 @@ export async function evictOldestE2eAppsToFitLimit(
         return haystack.includes(marker);
       });
 
-      // Oldest first. Sites without `created_at` (or with malformed timestamps
-      // that Date.parse returns NaN for) sort to the end as "newest unknown",
-      // so we don't accidentally evict apps with broken timestamps before
-      // known-old ones. Without the NaN guard the comparator returns NaN
-      // and Array.sort treats it as 0 — broken-timestamp apps end up in
-      // random positions instead of at the end.
-      e2eApps.sort((a, b) => {
-        const parseOrInf = (s: string | undefined): number => {
-          if (!s) return Number.POSITIVE_INFINITY;
-          const t = Date.parse(s);
-          return isNaN(t) ? Number.POSITIVE_INFINITY : t;
-        };
-        return parseOrInf(a.created_at) - parseOrInf(b.created_at);
-      });
+      // Parse `created_at` to epoch ms. Missing or malformed timestamps
+      // (Date.parse → NaN) become +Infinity so they sort to the end as
+      // "newest unknown" and fall outside the eviction cutoff below — we never
+      // evict an app whose age we cannot establish.
+      const parseOrInf = (s: string | undefined): number => {
+        if (!s) return Number.POSITIVE_INFINITY;
+        const t = Date.parse(s);
+        return isNaN(t) ? Number.POSITIVE_INFINITY : t;
+      };
+
+      // Recency guard: only genuinely old apps are eviction-eligible. An app
+      // created within the grace window may be in-flight in a sibling shard (or
+      // this run) — deleting it would break a running test. Sort the eligible
+      // set oldest-first so we reclaim the stalest orphans first.
+      const cutoff = Date.now() - graceMs;
+      const evictable = e2eApps
+        .filter((site) => parseOrInf(site.created_at) < cutoff)
+        .sort((a, b) => parseOrInf(a.created_at) - parseOrInf(b.created_at));
 
       // Land at `threshold - 1` so the create call after this guard has room.
       const evictTarget = total - thresholdValue + 1;
-      const toEvict = e2eApps.slice(0, evictTarget);
+      const toEvict = evictable.slice(0, evictTarget);
 
       let evicted = 0;
       const errors: string[] = [];
@@ -642,7 +657,7 @@ export async function evictOldestE2eAppsToFitLimit(
     } catch (err) {
       return { evicted: 0, fetchError: String(err) };
     }
-  }, { thresholdValue: threshold, marker: E2E_PREFIX_MARKER });
+  }, { thresholdValue: threshold, marker: E2E_PREFIX_MARKER, graceMs: RECENT_APP_GRACE_MS });
 
   if ('fetchError' in result && result.fetchError) {
     console.log(`⚠️ App-limit guard skipped: ${result.fetchError}`);
@@ -656,7 +671,8 @@ export async function evictOldestE2eAppsToFitLimit(
     console.log(
       `⚠️ App-limit guard: evicted ${evicted}/${wanted} oldest e2e apps ` +
       `(total=${total}, e2eCount=${e2eCount}, threshold=${threshold}). ` +
-      `Test may still hit APP_LIMIT_EXCEEDED.` +
+      `Recently-created apps are protected from eviction, so a shortfall here ` +
+      `means too few old orphans to reclaim. Test may still hit APP_LIMIT_EXCEEDED.` +
       (errors.length > 0 ? ` Delete errors: ${errors.join('; ')}` : ''),
     );
   } else {

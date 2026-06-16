@@ -143,13 +143,22 @@ export function getCredentials(): { username: string; password: string } {
   return { username, password };
 }
 
-const SALT_LENGTH = 4;
+const SALT_LENGTH = 6;
+
+/**
+ * The GitHub Actions run id (stable for the whole workflow run, including
+ * across Playwright retries) and shard index. Used to seed a deterministic
+ * per-spec salt in CI — see {@link getSpecPrefix}. Both are `undefined` locally.
+ */
+const CI_RUN_SEED = process.env.GITHUB_RUN_ID;
+const SHARD_ID = process.env.SHARD ?? '1';
 
 /**
  * Generate a random alphanumeric salt.
- * Prevents prompt collisions across retries and parallel runs.
+ * Prevents prompt collisions across parallel runs when no stable CI seed is
+ * available (local dev, where retries are disabled anyway).
  */
-function salt(): string {
+function randomSalt(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   let result = '';
   for (let i = 0; i < SALT_LENGTH; i++) {
@@ -158,18 +167,46 @@ function salt(): string {
   return result;
 }
 
-// Memoize salt per spec name so repeated calls within the same process
-// return a stable prefix (important for cleanup/grouping). Retries run
-// in a new worker process, so they naturally get a fresh salt.
+/**
+ * Deterministic alphanumeric salt derived from a seed string (djb2 → base36).
+ * Same seed always yields the same salt, so a Playwright retry (which runs in a
+ * fresh worker process) computes the SAME app prefix as the first attempt and
+ * its `afterEach` can delete the first attempt's orphaned app. The old
+ * `Math.random` salt regenerated per process, so retried tests leaked apps
+ * toward the `MAX_TEST_APPS` cap.
+ */
+function deterministicSalt(seed: string): string {
+  let hash = 5381;
+  for (let i = 0; i < seed.length; i++) {
+    // hash * 33 + charCode, kept in unsigned 32-bit range.
+    hash = ((hash << 5) + hash + seed.charCodeAt(i)) >>> 0;
+  }
+  return hash.toString(36).padStart(SALT_LENGTH, '0').slice(-SALT_LENGTH);
+}
+
+// Memoize salt per spec name so repeated calls within the same process return a
+// stable prefix (important for cleanup/grouping). In CI the value is derived
+// deterministically, so it is also stable ACROSS processes (i.e. across retries
+// and across shards), which is what makes retry cleanup work.
 const saltCache = new Map<string, string>();
 
 /**
- * Get spec prefix for app naming (for parallel-safe execution)
+ * Get spec prefix for app naming (for parallel-safe execution).
+ *
+ * In CI the salt is seeded from `${spec}:${shard}:${GITHUB_RUN_ID}` so it is:
+ * - stable across retries of the same spec (retry cleanup can reclaim orphans),
+ * - unique per shard (a shard never matches a sibling shard's apps), and
+ * - unique per workflow run (overlapping runs never delete each other's
+ *   in-flight apps via prefix cleanup).
+ * Locally (no `GITHUB_RUN_ID`, retries disabled) it falls back to a random salt.
  */
 export function getSpecPrefix(specName: string): string {
   const name = specName.replace('.spec.ts', '').replace('.spec.js', '');
   if (!saltCache.has(name)) {
-    saltCache.set(name, salt());
+    const value = CI_RUN_SEED
+      ? deterministicSalt(`${name}:${SHARD_ID}:${CI_RUN_SEED}`)
+      : randomSalt();
+    saltCache.set(name, value);
   }
   return `[e2e:${name}:${saltCache.get(name)}]`;
 }

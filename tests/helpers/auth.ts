@@ -135,6 +135,14 @@ const SSO_IFRAME_SELECTOR =
   'iframe[title="Container for sign in"], [role="dialog"] iframe, .sso-login-modal iframe';
 
 /**
+ * URL of the full-page SSO login redirect across envs (sso.godaddy.com,
+ * sso.test-godaddy.com, sso.dev-godaddy.com). Single source of truth so the
+ * synchronous URL checks and the redirect racer in `handleReauthIfPresent`
+ * cannot drift.
+ */
+const SSO_REDIRECT_LOGIN_URL = /sso\.(test-|dev-)?godaddy\.com\/login/i;
+
+/**
  * Locator for the direct-DOM sign-in modal that GoDaddy's redesigned
  * universal sign-in dialog uses when the form is rendered inline in the
  * parent page (no cross-origin iframe) inside the `.sso-login-modal`
@@ -521,7 +529,7 @@ export async function handleReauthIfPresent(page: Page): Promise<boolean> {
   // dev/test/prod each have their own SSO host: sso.dev-godaddy.com, sso.test-godaddy.com,
   // sso.godaddy.com. Missing any of these causes the SSO-iframe/modal Promise.race below
   // to never resolve and the test silently continues against the SSO page.
-  if (/sso\.(test-|dev-)?godaddy\.com\/login/i.test(page.url())) {
+  if (SSO_REDIRECT_LOGIN_URL.test(page.url())) {
     console.log('  Full-page SSO redirect detected, re-authenticating...');
     await handleSsoLogin(page);
     console.log('  Re-authenticated from SSO redirect');
@@ -530,7 +538,6 @@ export async function handleReauthIfPresent(page: Page): Promise<boolean> {
 
   const ssoIframe = page.locator(SSO_IFRAME_SELECTOR).first();
   const ssoModal = signInModalLocator(page);
-  const ssoRedirectUrl = /sso\.(test-|dev-)?godaddy\.com\/login/i;
 
   // Check for SSO iframe, the post-29-Apr-2026 in-page modal, or a
   // full-page SSO redirect that is still in flight at the time we were
@@ -546,10 +553,25 @@ export async function handleReauthIfPresent(page: Page): Promise<boolean> {
   const detected = await Promise.race([
     ssoIframe.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT }).then(() => 'sso-iframe' as const).catch(() => null),
     ssoModal.waitFor({ state: 'visible', timeout: SHORT_TIMEOUT }).then(() => 'sso-modal' as const).catch(() => null),
-    page.waitForURL(ssoRedirectUrl, { timeout: SHORT_TIMEOUT }).then(() => 'sso-redirect' as const).catch(() => null),
+    page.waitForURL(SSO_REDIRECT_LOGIN_URL, { timeout: SHORT_TIMEOUT }).then(() => 'sso-redirect' as const).catch(() => null),
   ]);
 
-  if (!detected) return false;
+  // Promise.race settles as soon as ANY branch resolves — including a racer's
+  // SHORT_TIMEOUT resolving to null. A gasket-auth top-window bounce that lands
+  // mid-window is therefore missed (the race already returned null). Re-check
+  // the URL synchronously after the race so a redirect that arrived during the
+  // detection window is still caught, instead of returning false and letting
+  // the caller run against the SSO page (the chat-input fill then times out at
+  // 30s — the symptom seen on long prod regression tests).
+  if (!detected) {
+    if (SSO_REDIRECT_LOGIN_URL.test(page.url())) {
+      console.log('  Full-page SSO redirect detected after detection window, re-authenticating...');
+      await handleSsoLogin(page);
+      console.log('  Re-authenticated from SSO redirect');
+      return true;
+    }
+    return false;
+  }
 
   if (detected === 'sso-iframe') {
     console.log('  SSO iframe detected (auto-opened on invalid auth), completing login...');
