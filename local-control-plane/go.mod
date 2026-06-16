@@ -7,7 +7,7 @@ toolchain go1.25.7
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.14
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.5
-	github.com/gdcorp-golang/auth v1.13.1
+	github.com/gdcorp-golang/auth v1.13.3
 	github.com/gorilla/mux v1.8.1
 	github.com/rs/cors v1.11.1
 	modernc.org/sqlite v1.48.2
