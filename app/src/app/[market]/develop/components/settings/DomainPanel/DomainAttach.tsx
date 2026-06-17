@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FormattedMessage } from 'react-intl';
 import Box from "@ux/box";
 import Button from "@ux/button";
@@ -75,13 +75,10 @@ function getDomainAttachTabPanelClass(isActive: boolean, extraClass?: string) {
   return cn(
     DOMAIN_ATTACH_TAB_PANEL_CELL_CLASS,
     DOMAIN_ATTACH_TAB_PANEL_CLASS,
+    'transition-opacity duration-200 ease-in-out',
     extraClass,
-    !isActive && 'pointer-events-none',
+    isActive ? 'opacity-100' : 'opacity-0',
   );
-}
-
-function getDomainAttachTabPanelStyle(isActive: boolean): CSSProperties | undefined {
-  return isActive ? undefined : { visibility: 'hidden' };
 }
 
 const DOMAIN_ATTACH_EXTERNAL_TRANSFER_URL = 'https://www.godaddy.com/domains/domain-transfer';
@@ -854,10 +851,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
       return;
     }
     logClickEvent('settings.domains.connect_confirm')();
-    const success = await handleConnectDomain(selectedDomain);
-    if (success) {
-      setShowConnectSelectedConfirmation(false);
-    }
+    await handleConnectDomain(selectedDomain);
+    setShowConnectSelectedConfirmation(false);
   }
 
   const customDomainSectionStatus = useMemo(() => {
@@ -1093,8 +1088,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
               <Box
                 gap="sm"
                 className={getDomainAttachTabPanelClass(effectiveActiveTab === DOMAIN_ATTACH_TAB.CONNECT)}
-                style={getDomainAttachTabPanelStyle(effectiveActiveTab === DOMAIN_ATTACH_TAB.CONNECT)}
-                aria-hidden={effectiveActiveTab !== DOMAIN_ATTACH_TAB.CONNECT}
+                inert={effectiveActiveTab !== DOMAIN_ATTACH_TAB.CONNECT || undefined}
               >
                 {showConnectionTimingInfo && (
                   <text.p className="text-sm italic text-intents-ux-text-secondaryColor">
@@ -1184,8 +1178,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                 gap="sm"
                 inlineAlignChildren="start"
                 className={getDomainAttachTabPanelClass(effectiveActiveTab === DOMAIN_ATTACH_TAB.BUY)}
-                style={getDomainAttachTabPanelStyle(effectiveActiveTab === DOMAIN_ATTACH_TAB.BUY)}
-                aria-hidden={effectiveActiveTab !== DOMAIN_ATTACH_TAB.BUY}
+                inert={effectiveActiveTab !== DOMAIN_ATTACH_TAB.BUY || undefined}
               >
                 <text.p className="text-intents-ux-text-secondaryColor">
                   {t('builder_domain_attach_buy_description')}
@@ -1210,8 +1203,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                   effectiveActiveTab === DOMAIN_ATTACH_TAB.EXTERNAL,
                   'w-full',
                 )}
-                style={getDomainAttachTabPanelStyle(effectiveActiveTab === DOMAIN_ATTACH_TAB.EXTERNAL)}
-                aria-hidden={effectiveActiveTab !== DOMAIN_ATTACH_TAB.EXTERNAL}
+                inert={effectiveActiveTab !== DOMAIN_ATTACH_TAB.EXTERNAL || undefined}
               >
                 {!isDomainDataReady ? (
                   <>

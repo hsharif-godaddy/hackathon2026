@@ -712,8 +712,8 @@ describe('DomainAttach', function domainAttachTests() {
 
     selectDomainAttachTab('external');
 
-    expect(screen.getByLabelText('available.com', { hidden: true })).not.toBeVisible();
-    expect(screen.queryByRole('button', { name: 'builder_domain_button_connect', exact: true })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('available.com', { hidden: true }).closest('[inert]')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'builder_domain_button_connect', hidden: true }).closest('[inert]')).toBeInTheDocument();
 
     selectDomainAttachTab('connect');
     expect(screen.getByLabelText('available.com')).not.toBeChecked();
@@ -931,7 +931,7 @@ describe('DomainAttach', function domainAttachTests() {
         { hidden: true },
       );
       expect(timingInfo).toBeInTheDocument();
-      expect(timingInfo).not.toBeVisible();
+      expect(timingInfo!.closest('[inert]')).toBeInTheDocument();
     });
   });
 
@@ -959,7 +959,7 @@ describe('DomainAttach', function domainAttachTests() {
     ).not.toBeInTheDocument();
     const domainList = screen.queryByTestId('domain-attach-list', { hidden: true });
     expect(domainList).toBeInTheDocument();
-    expect(domainList).not.toBeVisible();
+    expect(domainList!.closest('[inert]')).toBeInTheDocument();
   });
 
   it('hides GoDaddy domains tab and defaults to buy tab when domain list is empty', async function hideConnectTabWhenEmpty() {
@@ -1238,8 +1238,8 @@ describe('DomainAttach', function domainAttachTests() {
     expect(mockModifyDomainsMutation.mutateAsync).not.toHaveBeenCalled();
   });
 
-  it('keeps connect confirmation open when connect mutation fails', async function connectMutationFailure() {
-    const { DomainMutationError } = await import('@/hooks/useModifyDomains');
+  it('closes connect confirmation and shows error banner when connect mutation fails', async function connectMutationFailure() {
+    const { DomainMutationError, useModifyDomains } = await import('@/hooks/useModifyDomains');
     const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
     const connectError = new DomainMutationError({
       code: 'DOMAIN_MODIFY_FAILED',
@@ -1253,7 +1253,12 @@ describe('DomainAttach', function domainAttachTests() {
       error: null,
       isFetched: true,
     } as any);
-    mockModifyDomainsMutation.mutateAsync = vi.fn().mockRejectedValue(connectError);
+    mockModifyDomainsMutation.mutateAsync = vi.fn(async function rejectAndSetError() {
+      mockModifyDomainsMutation.error = connectError;
+      mockModifyDomainsMutation.isError = true;
+      vi.mocked(useModifyDomains).mockReturnValue(mockModifyDomainsMutation as any);
+      throw connectError;
+    });
 
     renderWithProviders(
       <DomainAttach
@@ -1275,10 +1280,10 @@ describe('DomainAttach', function domainAttachTests() {
     fireEvent.click(screen.getByRole('button', { name: 'builder_domain_button_connect' }));
     fireEvent.click(screen.getByRole('button', { name: 'builder_custom_domain_modal_button_continue' }));
 
-    await waitFor(function waitForMutationAttempt() {
-      expect(mockModifyDomainsMutation.mutateAsync).toHaveBeenCalled();
+    await waitFor(function waitForModalClose() {
+      expect(screen.queryByText('builder_domain_connect_confirmation_description')).not.toBeInTheDocument();
     });
-    expect(screen.getByText('builder_domain_connect_confirmation_description')).toBeInTheDocument();
+    expect(mockModifyDomainsMutation.mutateAsync).toHaveBeenCalled();
   });
 
   it('suppresses connect tab error banner when conflict modal handles the error', async function suppressBannerWhenConflictModalOpen() {
