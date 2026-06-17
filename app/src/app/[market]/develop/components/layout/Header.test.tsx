@@ -6,7 +6,6 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
-import { useSupportChat } from '@/hooks/useSupportChat';
 import { mockInstrumentation } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import { logClickEvent } from '@/utils/instrumentation';
@@ -114,13 +113,6 @@ vi.mock('@/hooks/useChatTabs', () => ({
     activeChatTab: 'chat',
     setActiveChatTab: vi.fn(),
   }),
-}));
-
-vi.mock('@/hooks/useSupportChat', () => ({
-  useSupportChat: vi.fn(function () { return {
-    launchSupportChat: vi.fn(),
-    isLoading: false,
-  }; }),
 }));
 
 const mockCheckAndShowPaywall = vi.fn(async (action: () => Promise<void>) => {
@@ -293,45 +285,6 @@ describe('DevelopHeader', () => {
     await user.click(screen.getByLabelText('builder_preview_button_edit'));
 
     expect(vi.mocked(logClickEvent)).toHaveBeenCalledWith('develop.header.edit_mode', { appId: 'app-123' });
-  });
-
-  it('should not render help button when switchboard flag is off', () => {
-    renderWithProviders(<DevelopHeader />);
-
-    expect(screen.queryByTestId('header-help-button')).not.toBeInTheDocument();
-  });
-
-  it('should render help button when switchboard flag is on', () => {
-    mockSwitchboardResults['appbuilder-help-button'] = true;
-
-    renderWithProviders(<DevelopHeader />);
-
-    expect(screen.getByRole('button', { name: 'builder_preview_button_help' })).toBeInTheDocument();
-  });
-
-  it('should call launchSupportChat when help button is clicked', async () => {
-    mockSwitchboardResults['appbuilder-help-button'] = true;
-    const mockLaunchSupportChat = vi.fn();
-    vi.mocked(useSupportChat).mockReturnValue({
-      launchSupportChat: mockLaunchSupportChat,
-      isLoading: false,
-    });
-
-    const { user } = renderWithProviders(<DevelopHeader />);
-
-    await user.click(screen.getByRole('button', { name: 'builder_preview_button_help' }));
-
-    expect(mockLaunchSupportChat).toHaveBeenCalledOnce();
-  });
-
-  it('should log click event when help button is clicked', async () => {
-    mockSwitchboardResults['appbuilder-help-button'] = true;
-
-    const { user } = renderWithProviders(<DevelopHeader />);
-
-    await user.click(screen.getByRole('button', { name: 'builder_preview_button_help' }));
-
-    expect(vi.mocked(logClickEvent)).toHaveBeenCalledWith('develop.header.help', { appId: 'app-123' });
   });
 
   describe('Code button paywall', () => {

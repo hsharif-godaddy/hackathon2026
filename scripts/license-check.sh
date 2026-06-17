@@ -39,7 +39,7 @@ ALLOWED_LICENSES=(
 )
 
 # Internal package prefixes - these use private/custom licenses and are trusted.
-INTERNAL_PREFIX_REGEX='^(@airo-care/|@airo/|@airo-ux/|@exp/|@gd-|@gdcorp-digitalcare/|@godaddy/|@px/|@signals/|@site/|@social/|@sso/|@switchboard/|@ux/|@venture/|@wsb/|gd-auth)'
+INTERNAL_PREFIX_REGEX='^(@airo/|@airo-ux/|@exp/|@gd-|@godaddy/|@px/|@signals/|@site/|@social/|@sso/|@switchboard/|@ux/|@venture/|@wsb/|gd-auth)'
 
 # Packages with missing/incorrect license metadata in package.json.
 # Actual licenses verified manually from LICENSE files in each package.

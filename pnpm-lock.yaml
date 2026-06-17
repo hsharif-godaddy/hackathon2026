@@ -197,7 +197,6 @@ catalogs:
       version: 4.4.3
 
 overrides:
-  axios: ^1.16.0
   chai: 5.3.1
   caniuse-lite: 1.0.30001736
   devalue: '>=5.8.1'
@@ -622,9 +621,6 @@ importers:
       '@gasket/react-intl':
         specifier: ^7.7.2
         version: 7.7.2(@gasket/plugin-intl@7.6.5)
-      '@gdcorp-digitalcare/ux':
-        specifier: ^3.0.5
-        version: 3.0.5
       '@godaddy/browserslist-config':
         specifier: ^3.1.0
         version: 3.1.0
@@ -1953,9 +1949,6 @@ packages:
   '@ai-sdk/provider@3.0.10':
     resolution: {integrity: sha512-Q3BZ27qfpYqnCYGvE3vt+Qi6LGOF9R5Nmzn+9JoM1lCRsD9mYaIhfJLkSunN48nfGXJ6n+XNV0J/XVpqGQl7Dw==}
     engines: {node: '>=18'}
-
-  '@airo-care/logging-client@1.0.0':
-    resolution: {integrity: sha512-VZS9IiQZD5LrataCbePmM/XUEHMezYhd/5jvp3+Bv6EwQ+r7UukDHd/En4VHnvIqqFgnWVHrmic/13n/PEaBqg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@airo-care/logging-client/-/@airo-care/logging-client-1.0.0.tgz}
 
   '@airo-ux/loader@2.1.1':
     resolution: {integrity: sha512-cfeWd9ifTUYOkta9l+Lfccumc8sE0PBmX36uaw/qaQoAlDFqmAlQHBOzzU3eWOb1nfVKncx3GdKhO/ERH+gDOg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@airo-ux/loader/-/@airo-ux/loader-2.1.1.tgz}
@@ -3320,18 +3313,6 @@ packages:
       - commander
       - winston
 
-  '@gdcorp-digitalcare/common-api@0.3.2':
-    resolution: {integrity: sha512-PJUmxA7/AXbPZF3MomUxL9SS2qy5kpFcW55eJGEiWppw/AnH4LAo8EL3Uguu9en5vA0/7hlq0X8DpgMBE82PfA==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@gdcorp-digitalcare/common-api/-/@gdcorp-digitalcare/common-api-0.3.2.tgz}
-
-  '@gdcorp-digitalcare/customer-engagement-api@0.4.0-alpha6':
-    resolution: {integrity: sha512-+CWm+eHVDdr7dt/SgIvB35lq/+Mg2v3EoLkF/lIJ5DgFI2gvMrEBQ3hjr6N9z+/9cUHrOJfvlQgixHQ173BJjQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@gdcorp-digitalcare/customer-engagement-api/-/@gdcorp-digitalcare/customer-engagement-api-0.4.0-alpha6.tgz}
-
-  '@gdcorp-digitalcare/ux-common@3.0.4':
-    resolution: {integrity: sha512-6MTowIfg4cvZOHwtgNHL5r3Y6euI/RLOzHMy0UA0X9JFw90fDZst3UukugySTj8krys0oItyZ1JrfL+B/9eH+w==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@gdcorp-digitalcare/ux-common/-/@gdcorp-digitalcare/ux-common-3.0.4.tgz}
-
-  '@gdcorp-digitalcare/ux@3.0.5':
-    resolution: {integrity: sha512-k268lJL1dDgY/MNac9hoiW/3pu28iLVxZGDBn8kp609wRlJB61N5Wu3MTaZ+ZxBPJRkekrQvMFLbFvtEqTEmSw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@gdcorp-digitalcare/ux/-/@gdcorp-digitalcare/ux-3.0.5.tgz}
-
   '@godaddy/agent-observability-events@2.5.0':
     resolution: {integrity: sha512-Y/3oKMgrAvaI5L1WFfjo6c31dHun19MIBjGVzc0SWSEnObb5IVnwMTSOx0k3iL+18ytvQ8hROwl7wUzln04xoQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@godaddy/agent-observability-events/-/@godaddy/agent-observability-events-2.5.0.tgz}
 
@@ -3468,26 +3449,6 @@ packages:
     resolution: {integrity: sha512-wtF6h+DY6M3YaDBPAmvuuA6jV8Sif9MjtOI5euKFWRgCDl5PeDpPsHR9u2l6St5ceY8AZgoNDww5+HvEsXFsGg==}
     engines: {node: '>=6'}
     hasBin: true
-
-  '@hapi/address@5.1.1':
-    resolution: {integrity: sha512-A+po2d/dVoY7cYajycYI43ZbYMXukuopIsqCjh5QzsBCipDtdofHntljDlpccMjIfTy6UOkg+5KPriwYch2bXA==}
-    engines: {node: '>=14.0.0'}
-
-  '@hapi/formula@3.0.2':
-    resolution: {integrity: sha512-hY5YPNXzw1He7s0iqkRQi+uMGh383CGdyyIGYtB+W5N3KHPXoqychklvHhKCC9M3Xtv0OCs/IHw+r4dcHtBYWw==}
-
-  '@hapi/hoek@11.0.7':
-    resolution: {integrity: sha512-HV5undWkKzcB4RZUusqOpcgxOaq6VOAH7zhhIr2g3G8NF/MlFO75SjOr2NfuSx0Mh40+1FqCkagKLJRykUWoFQ==}
-
-  '@hapi/pinpoint@2.0.1':
-    resolution: {integrity: sha512-EKQmr16tM8s16vTT3cA5L0kZZcTMU5DUOZTuvpnY738m+jyP3JIUj+Mm1xc1rsLkGBQ/gVnfKYPwOmPg1tUR4Q==}
-
-  '@hapi/tlds@1.1.7':
-    resolution: {integrity: sha512-MgNjRwy9Ti92yVAixLmDc8dd1bJIKwO9qlWCfFQRwRmUEDPQHYn4G6hwPFvFGUTzAa0FsS+inMjLin7GnyBRhA==}
-    engines: {node: '>=14.0.0'}
-
-  '@hapi/topo@6.0.2':
-    resolution: {integrity: sha512-KR3rD5inZbGMrHmgPxsJ9dbi6zEK+C3ZwUwTa+eMwWLz7oijWUTWD2pMSNNYJAU6Qq+65NkxXjqHr/7LM2Xkqg==}
 
   '@heroicons/react@2.2.0':
     resolution: {integrity: sha512-LMcepvRaS9LYHJGsF0zzmgKCUim/X3N/DQKc4jepAXJ7l8QxJ1PmxJzqplF2Z3FE4PqBAIGyJAQ/w4B5dsqbtQ==}
@@ -10258,10 +10219,6 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
-  joi@18.2.1:
-    resolution: {integrity: sha512-2/OKlogiESf2Nh3TFCrRjrr9z1DRHeW0I+KReF67+4J0Ns+8hBtHRmoWAZ2OFU6I5+TWLEe6sVlSdXPjHm5UbQ==}
-    engines: {node: '>= 20'}
-
   jose@6.2.3:
     resolution: {integrity: sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw==}
 
@@ -14019,8 +13976,6 @@ snapshots:
     dependencies:
       json-schema: 0.4.0
 
-  '@airo-care/logging-client@1.0.0': {}
-
   '@airo-ux/loader@2.1.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.3)':
     dependencies:
       '@ux/box': 2500.9.0(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -15954,35 +15909,6 @@ snapshots:
       aws-cdk-lib: 2.253.1(constructs@10.6.0)
       constructs: 10.6.0
 
-  '@gdcorp-digitalcare/common-api@0.3.2':
-    dependencies:
-      axios: 1.16.0
-      joi: 18.2.1
-      lodash: 4.18.1
-    transitivePeerDependencies:
-      - debug
-
-  '@gdcorp-digitalcare/customer-engagement-api@0.4.0-alpha6':
-    dependencies:
-      '@gdcorp-digitalcare/common-api': 0.3.2
-      lodash: 4.18.1
-    transitivePeerDependencies:
-      - debug
-
-  '@gdcorp-digitalcare/ux-common@3.0.4':
-    dependencies:
-      '@airo-care/logging-client': 1.0.0
-      '@gdcorp-digitalcare/customer-engagement-api': 0.4.0-alpha6
-      uuid: 11.1.1
-    transitivePeerDependencies:
-      - debug
-
-  '@gdcorp-digitalcare/ux@3.0.5':
-    dependencies:
-      '@gdcorp-digitalcare/ux-common': 3.0.4
-    transitivePeerDependencies:
-      - debug
-
   '@godaddy/agent-observability-events@2.5.0':
     dependencies:
       '@signals/event-bus-client': 2.0.0
@@ -16274,22 +16200,6 @@ snapshots:
       long: 5.3.2
       protobufjs: 8.6.3
       yargs: 17.7.2
-
-  '@hapi/address@5.1.1':
-    dependencies:
-      '@hapi/hoek': 11.0.7
-
-  '@hapi/formula@3.0.2': {}
-
-  '@hapi/hoek@11.0.7': {}
-
-  '@hapi/pinpoint@2.0.1': {}
-
-  '@hapi/tlds@1.1.7': {}
-
-  '@hapi/topo@6.0.2':
-    dependencies:
-      '@hapi/hoek': 11.0.7
 
   '@heroicons/react@2.2.0(react@19.1.0)':
     dependencies:
@@ -24248,16 +24158,6 @@ snapshots:
   jiti@1.21.7: {}
 
   jiti@2.7.0: {}
-
-  joi@18.2.1:
-    dependencies:
-      '@hapi/address': 5.1.1
-      '@hapi/formula': 3.0.2
-      '@hapi/hoek': 11.0.7
-      '@hapi/pinpoint': 2.0.1
-      '@hapi/tlds': 1.1.7
-      '@hapi/topo': 6.0.2
-      '@standard-schema/spec': 1.1.0
 
   jose@6.2.3: {}
 

@@ -7,7 +7,6 @@ import Apps2Icon from '@ux/icon/apps2'
 import CodeIcon from '@ux/icon/code'
 import ColorPaletteIcon from '@ux/icon/color-palette'
 import ConversationsIcon from '@ux/icon/conversations'
-import HelpIcon from '@ux/icon/help'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
 import WebsiteFilledIcon from '@ux/icon/website-filled'
 import WorldIcon from '@ux/icon/world'
@@ -23,7 +22,6 @@ import AppPublish from '@/components/layout/AppPublish';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import IframeCloseButton from '@/components/layout/IframeCloseButton';
 import UserMenu from '@/components/layout/UserMenu';
-import { useSupportChat } from '@/hooks/useSupportChat';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import {
@@ -50,7 +48,6 @@ export default function CommanderHeader({ desktopLogo, mobileLogo }: CommanderHe
   const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook');
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
-  const isHelpButtonEnabled = useSwitchboard('appbuilder-help-button');
   const isCanvasEnabled = useCommanderCanvasEnabled();
   const isCanvasTabsEnabled = useCommanderCanvasTabsEnabled();
   const isCanvasSettingsOpen = useCommanderStore((state) => state.isCanvasSettingsOpen);
@@ -58,7 +55,6 @@ export default function CommanderHeader({ desktopLogo, mobileLogo }: CommanderHe
   const isLeftDock = useEffectiveCommanderPosition() === CommanderPosition.LeftDock
   const appId = useAppIdFromParams();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
-  const { launchSupportChat } = useSupportChat();
 
   const inboxBrandId = useDevelopPageStore((state) => state.inboxBrandId)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
@@ -185,19 +181,6 @@ export default function CommanderHeader({ desktopLogo, mobileLogo }: CommanderHe
                 </span>
               )}
               <ShareLink />
-
-              {isHelpButtonEnabled && (
-                <IconButton
-                  data-testid="header-help-button"
-                  icon={<HelpIcon className="size-2.5" />}
-                  onClick={() => {
-                    logClickEvent('develop.header.help', clickContext)();
-                    launchSupportChat();
-                  }}
-                  label={t('builder_preview_button_help')}
-                  showLabelWhenActive={false}
-                />
-              )}
 
               <ButtonGroup>
                 <HeaderUpgradeButton location={LOCATION} />

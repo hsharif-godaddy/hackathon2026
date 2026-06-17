@@ -8,7 +8,6 @@ import Apps2Icon from '@ux/icon/apps2'
 import CodeIcon from '@ux/icon/code'
 import ColorPaletteIcon from '@ux/icon/color-palette'
 import ConversationsIcon from '@ux/icon/conversations'
-import HelpIcon from '@ux/icon/help'
 import InlineEditIcon from '@ux/icon/inline-edit'
 import MobilePhoneIcon from '@ux/icon/mobile-phone'
 import RefreshIcon from '@ux/icon/refresh'
@@ -35,7 +34,6 @@ import IframeCloseButton from '@/components/layout/IframeCloseButton';
 import UserMenu from '@/components/layout/UserMenu';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { usePublishUpsellEligibility } from '@/hooks/usePublishUpsellEligibility';
-import { useSupportChat } from '@/hooks/useSupportChat';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
@@ -59,11 +57,9 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const showDesignKitWizard = useIsDesignKitWizardProfile();
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
-  const isHelpButtonEnabled = useSwitchboard('appbuilder-help-button');
   const location = 'develop';
   const appId = useAppIdFromParams();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
-  const { launchSupportChat } = useSupportChat();
   const { isTreatment } = usePublishUpsellEligibility();
 
   const { checkAndShowPaywall, paywallModal, isPaywallLoading } = usePaywallModal({
@@ -236,19 +232,6 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                 </>
               )}
               <ShareLink />
-
-              {isHelpButtonEnabled && (
-                <IconButton
-                  data-testid="header-help-button"
-                  icon={<HelpIcon className="size-2.5" />}
-                  onClick={() => {
-                    logClickEvent('develop.header.help', clickContext)();
-                    launchSupportChat();
-                  }}
-                  label={t('builder_preview_button_help')}
-                  showLabelWhenActive={false}
-                />
-              )}
 
               {/* Always show Upgrade/Publish/UserMenu */}
               <ButtonGroup>

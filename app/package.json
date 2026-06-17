@@ -58,7 +58,6 @@
     "@gasket/plugin-webpack": "^7.4.0",
     "@gasket/plugin-winston": "^7.4.0",
     "@gasket/react-intl": "^7.7.2",
-    "@gdcorp-digitalcare/ux": "^3.0.5",
     "@godaddy/browserslist-config": "^3.1.0",
     "@godaddy/gasket-auth": "^3.5.1",
     "@godaddy/gasket-next": "^3.7.5",
