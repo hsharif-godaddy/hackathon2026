@@ -215,7 +215,7 @@ describe('createPostStreamValidator', () => {
     expect(mocks.pollRuntimeErrors).toHaveBeenCalledTimes(1);
   });
 
-  it('skips validation for the initial agent before checking git state', async () => {
+  it.each(['initial', 'initial-logo-designer'])('skips validation for %s agent before checking git state', async (agent) => {
     const { deps, mocks } = makeDeps({
       hasUncommittedChanges: async () => {
         throw new Error('git status should not run');
@@ -224,7 +224,7 @@ describe('createPostStreamValidator', () => {
     const validator = createPostStreamValidator(deps);
     const emitValidationStart = vi.fn(async function () {});
     const result = await validator(makeArgs({
-      agentName: 'initial',
+      agentName: agent,
       emitValidationStart
     }));
     expect(result).toEqual({ skipped: true, reason: 'initial_agent' });
