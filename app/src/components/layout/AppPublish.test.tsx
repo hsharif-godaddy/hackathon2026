@@ -267,6 +267,10 @@ vi.mock('@ux/growl', () => ({
   },
 }));
 
+vi.mock('@/hooks/usePublishUpsellEligibility', () => ({
+  usePublishUpsellEligibility: vi.fn(() => ({ isExperimentEligible: false, isTreatment: false, isLoading: false })),
+}));
+
 describe('AppPublish', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1778,5 +1782,22 @@ describe('AppPublish', () => {
         affectedPages: 1,
       });
     });
+  });
+});
+
+describe('AppPublish — combine-publish treatment', () => {
+  beforeEach(async () => {
+    mockPathname = '/develop/app-123';
+    const { usePublishUpsellEligibility } = await import('@/hooks/usePublishUpsellEligibility');
+    vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: true, isTreatment: true, isLoading: false });
+  });
+
+  it('renders the upsell popover and not the normal publish flow when isTreatment', async () => {
+    const { user } = renderWithProviders(<AppPublish location="develop" />);
+    const trigger = await screen.findByTestId('publish-upsell-trigger');
+    await user.click(trigger);
+    expect(await screen.findByTestId('publish-upsell-see-plans')).toBeInTheDocument();
+    // Negative check: the normal publish popover (title key) is never rendered in treatment.
+    expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
   });
 });

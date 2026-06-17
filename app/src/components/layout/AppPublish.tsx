@@ -25,6 +25,7 @@ import TextLockup from '@ux/text-lockup';
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
+import PublishUpsellPopover from '@/components/layout/PublishUpsellPopover';
 import SeoQualityRegressionAlert from '@/components/layout/SeoQualityRegressionAlert';
 import { SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE } from '@/config/switchboard-flags';
 import { useChatTabs } from '@/hooks/useChatTabs';
@@ -35,6 +36,7 @@ import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { usePublishApp } from '@/hooks/usePublishApp';
 import { usePublishComplianceGate } from '@/hooks/usePublishComplianceGate';
+import { usePublishUpsellEligibility } from '@/hooks/usePublishUpsellEligibility';
 import { useSecretsDiff } from '@/hooks/useSecretsDiff';
 import { useSeoQualityCheck } from '@/hooks/useSeoQualityCheck';
 import { useSubscription } from '@/hooks/useSubscription';
@@ -133,6 +135,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     () => (currentAppId ? { appId: currentAppId } : undefined),
     [currentAppId],
   );
+  const { isTreatment } = usePublishUpsellEligibility();
   const { isDisabled: isHistoryDisabled } = useIsHistoryDisabled(currentAppId || '');
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
@@ -788,6 +791,26 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     return null;
   }
 
+  // aab_combine_upgrade_with_publish treatment: replace the normal publish popover with the
+  // educational upsell. Safe as an early return — for a free treatment user the security/SEO/build
+  // alerts and growls are inactive and paywallModal/dnsConflictModal are null; "See Plans" opens the
+  // globally-mounted <UpgradeModal>, not this component's local modal. Chat-toolbar keeps today's
+  // behavior (icon-only button has no room for the labeled upsell trigger). A free treatment user is
+  // never mid-publish, so the label is the static "Publish" string.
+  if (isTreatment && !isChatToolbar) {
+    return (
+      <>
+        {paywallModal}
+        {dnsConflictModal}
+        <PublishUpsellPopover
+          appId={currentAppId ?? undefined}
+          triggerLabel={t('builder_publish_button')}
+          triggerClassName="!rounded-xmd !pl-1.5 !pr-1.5 sm:!p-1 !border-none md:!border-solid"
+        />
+      </>
+    );
+  }
+
   // Button is disabled when:
   // - Initial loading (deployments or git history)
   // - Paywall eligibility is being checked
@@ -826,7 +849,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     return null;
   };
 
-  // Determine button text: "Publish" when there are code or secret changes to publish; "Republish" only when neither.
+  // Publish button label: "Publishing…" while a publish/deploy is in flight, otherwise "Publish".
   const getPublishButtonText = () => {
     if (isPublishingOrDeploying) {
       return t('builder_publish_button_publishing');

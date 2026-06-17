@@ -34,6 +34,7 @@ import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import IframeCloseButton from '@/components/layout/IframeCloseButton';
 import UserMenu from '@/components/layout/UserMenu';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
+import { usePublishUpsellEligibility } from '@/hooks/usePublishUpsellEligibility';
 import { useSupportChat } from '@/hooks/useSupportChat';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
@@ -63,6 +64,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
   const appId = useAppIdFromParams();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
   const { launchSupportChat } = useSupportChat();
+  const { isTreatment } = usePublishUpsellEligibility();
 
   const { checkAndShowPaywall, paywallModal, isPaywallLoading } = usePaywallModal({
     appId,
@@ -282,6 +284,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
               label={t('builder_preview_button_preview')}
             />
           </ButtonGroup>
+          {isTreatment && <AppPublish location="develop" />}
           <UserMenu location="develop" />
           <IframeCloseButton location="develop" />
         </div>

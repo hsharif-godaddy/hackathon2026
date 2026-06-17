@@ -54,6 +54,7 @@ import { useAppDetails } from '@/hooks/useAppDetails'
 import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useChatTransport } from '@/hooks/useChatTransport'
+import { useCombinePublishTrigger } from '@/hooks/useCombinePublishTrigger'
 import { useCreditsDeeplinkWithStore } from '@/hooks/useCreditsDeeplinkWithStore'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useHivemind } from '@/hooks/useHivemind'
@@ -150,6 +151,8 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
   const isJobId = searchParams.get('type') === 'job'
   const { data: subscription } = useSubscription()
   const planType = getEffectivePlan(subscription?.plan, subscription?.hadAiroPlus) ?? null
+
+  useCombinePublishTrigger(appId);
 
   useInstrumentationPrimer({ appId, isJobId, planType, searchParams });
 

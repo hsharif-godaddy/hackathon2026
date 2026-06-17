@@ -14,6 +14,8 @@ export const EXPERIMENT_IDS = {
   bmsLaunchAA: 'airo-app-builder-bms-launch-aa',
   /** Building tips variant: tests the initial build loading screen (H1 headline + tip cards) as a single packaged experience. */
   buildingTipsVariant: 'endgame_first_build_action_h1_update',
+  /** Combine Upgrade + Publish into a single Publish button with an educational upsell popup. */
+  combineUpgradeWithPublish: 'aab_combine_upgrade_with_publish',
 } as const
 
 /**

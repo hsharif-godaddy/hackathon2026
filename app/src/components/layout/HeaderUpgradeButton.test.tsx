@@ -35,6 +35,10 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   }),
 }));
 
+vi.mock('@/hooks/usePublishUpsellEligibility', () => ({
+  usePublishUpsellEligibility: vi.fn(function () { return { isExperimentEligible: false, isTreatment: false, isLoading: false }; }),
+}));
+
 vi.mock('@/hooks/useBreakpoints', () => ({
   useBreakpoints: vi.fn(function () { return { isBelowSmBreakpoint: false, isSmBreakpoint: false, isMdBreakpoint: false, isLgBreakpoint: false }; }),
 }));
@@ -69,6 +73,9 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
     // Reset pathname mock to develop page for each test
     const nextNavigation = await import('next/navigation');
     vi.mocked(nextNavigation).usePathname.mockReturnValue('/develop/test-app');
+    // Restore default non-treatment eligibility (clearAllMocks wipes the mock implementation)
+    const { usePublishUpsellEligibility } = await import('@/hooks/usePublishUpsellEligibility');
+    vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: false, isTreatment: false, isLoading: false });
   });
 
   describe('rendering conditions', function renderingTests() {
@@ -161,6 +168,23 @@ describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
       const { container } = renderWithProviders(<HeaderUpgradeButton location="test" />);
 
       expect(container.firstChild).toBeNull();
+    });
+
+    it('does not render when in the combine-publish treatment', async function noRenderInTreatment() {
+      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      const { usePublishUpsellEligibility } = await import('@/hooks/usePublishUpsellEligibility');
+
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
+      vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
+        if (flag === 'appbuilder-airoplus-upgrade-button') return true;
+        return false;
+      });
+      vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: true, isTreatment: true, isLoading: false });
+
+      const { container } = renderWithProviders(<HeaderUpgradeButton location="test" />);
+
+      expect(container).toBeEmptyDOMElement();
     });
 
     it('should not render when not on develop page', async function noRenderOutsideDevelop() {
