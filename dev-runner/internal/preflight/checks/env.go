@@ -157,7 +157,10 @@ type localEnvExpectation struct {
 var (
 	appLocalEnvExpectations = []localEnvExpectation{
 		{"app/.env.local.dev", map[string]string{"SSO_HOST": "sso.dev-godaddy.com"}},
-		{"app/.env.local.test", map[string]string{"SSO_HOST": "sso.test-godaddy.com"}},
+		{"app/.env.local.test", map[string]string{
+			"SSO_HOST":             "sso.test-godaddy.com",
+			"MGMT_AIRO_DATACENTER": "sxb1",
+		}},
 		{"app/.env.local.prod", map[string]string{"SSO_HOST": "sso.godaddy.com"}},
 	}
 	agentsLocalEnvExpectations = []localEnvExpectation{

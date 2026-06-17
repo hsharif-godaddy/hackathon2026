@@ -360,7 +360,7 @@ BUDGET_SERVICE_URL=https://budget-service.api.int.dev-godaddy.com
 
 func generateAppEnvSpecific(projectRoot string) error {
 	envs := []struct {
-		relPath, appURL, ssoHost, mgmtURL string
+		relPath, appURL, ssoHost, mgmtURL, datacenter string
 	}{
 		{
 			relPath: "app/.env.local.dev",
@@ -373,6 +373,10 @@ func generateAppEnvSpecific(projectRoot string) error {
 			appURL:  "https://airo-builder.test-godaddy.com",
 			ssoHost: "sso.test-godaddy.com",
 			mgmtURL: "https://mgmt.nstk.net",
+			// test only has the sxb1 datacenter; without this, en-US/default
+			// markets resolve to p3 via getDatacenterFromMarketId and app
+			// creation fails.
+			datacenter: "sxb1",
 		},
 		{
 			relPath: "app/.env.local.prod",
@@ -391,6 +395,9 @@ func generateAppEnvSpecific(projectRoot string) error {
 			{"SSO_HOST", cfg.ssoHost},
 			{"LOGIN_REDIRECT_URL", cfg.appURL + "/"},
 			{"MGMT_AIRO_BASE_URL", cfg.mgmtURL},
+		}
+		if cfg.datacenter != "" {
+			managed = append(managed, struct{ key, value string }{"MGMT_AIRO_DATACENTER", cfg.datacenter})
 		}
 
 		if err := writeOrUpsertManagedEnv(fullPath, cfg.relPath, managed); err != nil {

@@ -199,6 +199,16 @@ func TestAppLocalEnvFixer_FirstTimeCreate(t *testing.T) {
 		env := readEnvMap(t, filepath.Join(root, tc.relPath))
 		assertEq(t, env, "SSO_HOST", tc.want)
 	}
+
+	// test only has the sxb1 datacenter; dev/prod resolve via marketId.
+	testEnv := readEnvMap(t, filepath.Join(root, "app/.env.local.test"))
+	assertEq(t, testEnv, "MGMT_AIRO_DATACENTER", "sxb1")
+	for _, relPath := range []string{"app/.env.local.dev", "app/.env.local.prod"} {
+		env := readEnvMap(t, filepath.Join(root, relPath))
+		if dc, ok := env["MGMT_AIRO_DATACENTER"]; ok {
+			t.Errorf("%s should not set MGMT_AIRO_DATACENTER, got %q", relPath, dc)
+		}
+	}
 }
 
 // Regression test: if a user hand-edits SSO_HOST in .env.local.dev to the

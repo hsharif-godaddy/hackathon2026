@@ -65,6 +65,9 @@ func writeLocalEnvFiles(t *testing.T, projectRoot, service string) {
 		if service == "agents" {
 			content += "ASM_BASE_URL=" + cfg.asmBaseURL + "\n"
 		}
+		if service == "app" && envName == "test" {
+			content += "MGMT_AIRO_DATACENTER=sxb1\n"
+		}
 		writeLocalEnvFile(t, projectRoot, service, envName, content)
 	}
 }
