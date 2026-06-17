@@ -2,6 +2,7 @@ import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useRef } from 'react'
 
 import { ViewMode } from '@/app/[market]/develop/components/types'
+import { CONVERSATION_ID_PARAM } from '@/hooks/useConversationId'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 
 /** Per-mode availability supplied by the caller. */
@@ -64,8 +65,6 @@ export function useView({ getViewAvailability, resolveInitialViewMode }: UseView
   const setViewMode = useDevelopPageStore((state) => state.setViewMode)
   const markViewInitialized = useDevelopPageStore((state) => state.markViewInitialized)
 
-  const firstSyncRef = useRef(true)
-
   // Keep the latest availability fn for the stable popstate handler without
   // re-registering the listener whenever availability changes.
   const getAvailabilityRef = useRef(getViewAvailability)
@@ -76,12 +75,6 @@ export function useView({ getViewAvailability, resolveInitialViewMode }: UseView
   useEffect(() => {
     if (typeof window === 'undefined') return
     if (viewInitializedForPathname === pathname) return
-
-    // Re-init for a new pathname (App Router reuses this component instance on
-    // in-app navigation, so refs persist): treat the next store -> URL sync as
-    // a first sync (replaceState/normalize, no history entry). Mirrors
-    // useChatTabs resetting firstSyncRef on re-init.
-    firstSyncRef.current = true
 
     // Land on the caller's preferred initial mode when no valid deep link
     // governs the view. A valid `?view=` deep link always wins over this.
@@ -127,6 +120,8 @@ export function useView({ getViewAvailability, resolveInitialViewMode }: UseView
   }, [pathname, viewInitializedForPathname, viewMode, getViewAvailability, resolveInitialViewMode, setViewMode, markViewInitialized])
 
   // store -> URL. Invariant: ?view=<mode> present iff viewMode is URL-synced.
+  // Always replaceState: the URL reflects the current view without adding
+  // history entries (Back/Forward is not used to move between views).
   useEffect(() => {
     if (typeof window === 'undefined' || viewInitializedForPathname !== pathname) {
       return
@@ -139,20 +134,18 @@ export function useView({ getViewAvailability, resolveInitialViewMode }: UseView
       params.delete(VIEW_PARAM)
     }
 
-    const newUrl = buildUrl(pathname, params)
-    const currentUrl = window.location.pathname + window.location.search
-    const urlChanged = newUrl !== currentUrl
-
-    if (firstSyncRef.current) {
-      firstSyncRef.current = false
-      if (urlChanged) {
-        window.history.replaceState(null, '', newUrl)
-      }
-      return
+    // The inbox conversation deep-link param belongs only to the INBOX view.
+    // Inbox (which owns setting it) can unmount on a view change, so it cannot
+    // reliably strip its own param; useView is always mounted, making it the
+    // reliable place to enforce "conversationId present => view is INBOX".
+    if (viewMode !== ViewMode.INBOX) {
+      params.delete(CONVERSATION_ID_PARAM)
     }
 
-    if (urlChanged) {
-      window.history.pushState(null, '', newUrl)
+    const newUrl = buildUrl(pathname, params)
+    const currentUrl = window.location.pathname + window.location.search
+    if (newUrl !== currentUrl) {
+      window.history.replaceState(null, '', newUrl)
     }
   }, [viewMode, pathname, viewInitializedForPathname])
 

@@ -94,7 +94,7 @@ describe('useView', () => {
     expect(replaceStateSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('writes ?view=inbox on enter (pushState) and strips it on leave', async () => {
+  it('writes ?view=inbox on enter and strips it on leave (replaceState, no history entries)', async () => {
     renderHook(() => useView({ getViewAvailability: allAvailable }));
 
     act(() => {
@@ -103,7 +103,7 @@ describe('useView', () => {
     await waitFor(() => {
       expect(new URLSearchParams(window.location.search).get('view')).toBe('inbox');
     });
-    expect(pushStateSpy).toHaveBeenCalledTimes(1);
+    expect(replaceStateSpy).toHaveBeenCalledTimes(1);
 
     act(() => {
       useDevelopPageStore.getState().setViewMode(ViewMode.EDIT);
@@ -111,7 +111,29 @@ describe('useView', () => {
     await waitFor(() => {
       expect(new URLSearchParams(window.location.search).has('view')).toBe(false);
     });
-    expect(pushStateSpy).toHaveBeenCalledTimes(2);
+    expect(replaceStateSpy).toHaveBeenCalledTimes(2);
+    expect(pushStateSpy).not.toHaveBeenCalled();
+  });
+
+  it('leaves ?conversationId= intact while in INBOX but strips it on leave', async () => {
+    window.history.replaceState(null, '', '/develop/app-123?view=inbox&conversationId=conv-abc');
+
+    renderHook(() => useView({ getViewAvailability: allAvailable }));
+
+    await waitFor(() => {
+      expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.INBOX);
+    });
+    // Inbox owns the param while its view is active.
+    expect(new URLSearchParams(window.location.search).get('conversationId')).toBe('conv-abc');
+
+    act(() => {
+      useDevelopPageStore.getState().setViewMode(ViewMode.EDIT);
+    });
+
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).has('conversationId')).toBe(false);
+    });
+    expect(new URLSearchParams(window.location.search).has('view')).toBe(false);
   });
 
   it('ignores an invalid ?view value', async () => {

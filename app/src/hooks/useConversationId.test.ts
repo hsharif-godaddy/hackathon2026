@@ -2,76 +2,142 @@
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
+import { ViewMode } from '@/app/[market]/develop/components/types';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { IntString } from '@/types/inbox/local/core';
 import { useConversationId } from './useConversationId';
 
 describe('useConversationId', () => {
   const replaceStateSpy = vi.spyOn(window.history, 'replaceState');
+  const pushStateSpy = vi.spyOn(window.history, 'pushState');
 
   beforeEach(() => {
     window.history.replaceState(null, '', '/develop/app-123');
+    useDevelopPageStore.setState({ viewMode: ViewMode.INBOX });
     vi.clearAllMocks();
   });
 
-  it('returns the value when present and strips it, preserving other params', async () => {
+  it('seeds the active conversation from ?conversationId= on mount without touching the URL', () => {
     window.history.replaceState(null, '', '/develop/app-123?view=inbox&conversationId=conv-abc');
     replaceStateSpy.mockClear();
 
     const { result } = renderHook(() => useConversationId());
 
-    expect(result.current).toBe('conv-abc');
-
-    await waitFor(() => {
-      expect(new URLSearchParams(window.location.search).has('conversationId')).toBe(false);
-    });
-    // Other params preserved; value stays stable after the strip.
-    expect(new URLSearchParams(window.location.search).get('view')).toBe('inbox');
-    expect(result.current).toBe('conv-abc');
-    expect(replaceStateSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.activeConversationId).toBe('conv-abc');
+    // Param already present and consistent with state: no rewrite.
+    expect(replaceStateSpy).not.toHaveBeenCalled();
+    expect(window.location.search).toBe('?view=inbox&conversationId=conv-abc');
   });
 
-  it('strips a sole conversationId down to a bare pathname', async () => {
-    window.history.replaceState(null, '', '/develop/app-123?conversationId=conv-abc');
-    replaceStateSpy.mockClear();
+  it('treats an empty conversationId as no active conversation', () => {
+    window.history.replaceState(null, '', '/develop/app-123?conversationId=');
 
     const { result } = renderHook(() => useConversationId());
 
-    expect(result.current).toBe('conv-abc');
-    await waitFor(() => {
-      expect(window.location.search).toBe('');
-    });
+    expect(result.current.activeConversationId).toBeNull();
   });
 
-  it('returns null and does not touch the URL when the param is absent', () => {
+  it('writes ?conversationId= (replaceState) when a conversation becomes active, preserving other params', async () => {
     window.history.replaceState(null, '', '/develop/app-123?view=inbox');
     replaceStateSpy.mockClear();
 
     const { result } = renderHook(() => useConversationId());
 
-    expect(result.current).toBeNull();
-    expect(replaceStateSpy).not.toHaveBeenCalled();
-    expect(window.location.search).toBe('?view=inbox');
+    act(() => {
+      result.current.setActiveConversationId('conv-xyz' as IntString);
+    });
+
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get('conversationId')).toBe('conv-xyz');
+    });
+    expect(new URLSearchParams(window.location.search).get('view')).toBe('inbox');
+    expect(pushStateSpy).not.toHaveBeenCalled();
+    expect(replaceStateSpy).toHaveBeenCalled();
   });
 
-  it('treats an empty conversationId as absent (null, no strip)', () => {
-    window.history.replaceState(null, '', '/develop/app-123?conversationId=');
-    replaceStateSpy.mockClear();
+  it('removes ?conversationId= when the active conversation is cleared', async () => {
+    window.history.replaceState(null, '', '/develop/app-123?view=inbox&conversationId=conv-abc');
 
     const { result } = renderHook(() => useConversationId());
 
-    expect(result.current).toBeNull();
-    expect(replaceStateSpy).not.toHaveBeenCalled();
-  });
-
-  it('preserves the hash when stripping the param', async () => {
-    window.history.replaceState(null, '', '/develop/app-123?conversationId=conv-abc#section');
-    replaceStateSpy.mockClear();
-
-    renderHook(() => useConversationId());
+    act(() => {
+      result.current.setActiveConversationId(null);
+    });
 
     await waitFor(() => {
-      expect(window.location.search).toBe('');
+      expect(new URLSearchParams(window.location.search).has('conversationId')).toBe(false);
+    });
+    expect(new URLSearchParams(window.location.search).get('view')).toBe('inbox');
+  });
+
+  it('clears the active conversation and strips the param when the view leaves INBOX', async () => {
+    window.history.replaceState(null, '', '/develop/app-123?view=inbox&conversationId=conv-abc');
+
+    const { result } = renderHook(() => useConversationId());
+    expect(result.current.activeConversationId).toBe('conv-abc');
+
+    act(() => {
+      useDevelopPageStore.setState({ viewMode: ViewMode.EDIT });
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeConversationId).toBeNull();
+    });
+    expect(new URLSearchParams(window.location.search).has('conversationId')).toBe(false);
+  });
+
+  it('lands on the list (no active conversation) when returning to INBOX', async () => {
+    window.history.replaceState(null, '', '/develop/app-123?view=inbox&conversationId=conv-abc');
+
+    const { result } = renderHook(() => useConversationId());
+
+    act(() => {
+      useDevelopPageStore.setState({ viewMode: ViewMode.EDIT });
+    });
+    await waitFor(() => {
+      expect(result.current.activeConversationId).toBeNull();
+    });
+
+    act(() => {
+      useDevelopPageStore.setState({ viewMode: ViewMode.INBOX });
+    });
+
+    // Returning does not reopen the previously active conversation.
+    await waitFor(() => {
+      expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.INBOX);
+    });
+    expect(result.current.activeConversationId).toBeNull();
+    expect(new URLSearchParams(window.location.search).has('conversationId')).toBe(false);
+  });
+
+  it('re-syncs the active conversation from the URL on popstate', async () => {
+    const { result } = renderHook(() => useConversationId());
+
+    expect(result.current.activeConversationId).toBeNull();
+
+    window.history.replaceState(null, '', '/develop/app-123?view=inbox&conversationId=conv-back');
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    await waitFor(() => {
+      expect(result.current.activeConversationId).toBe('conv-back');
+    });
+  });
+
+  it('preserves the hash when writing the param', async () => {
+    window.history.replaceState(null, '', '/develop/app-123?view=inbox#section');
+
+    const { result } = renderHook(() => useConversationId());
+
+    act(() => {
+      result.current.setActiveConversationId('conv-hash' as IntString);
+    });
+
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get('conversationId')).toBe('conv-hash');
     });
     expect(window.location.hash).toBe('#section');
   });

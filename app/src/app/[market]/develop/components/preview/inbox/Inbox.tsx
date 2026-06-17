@@ -16,12 +16,9 @@ interface InboxProps {
 export default function Inbox({ brandId }: InboxProps) {
   const [direction, setDirection] = useState(1);
 
-  // Read the deep-link conversation id once and strip it from the URL, seeding
-  // the initial active conversation. Render-stable, so reading it as the state
-  // initializer is safe (it never changes after mount).
-  const conversationId = useConversationId();
-
-  const [activeConversationId, setActiveConversationId] = useState<IntString | null>(conversationId);
+  // The active conversation is synced to the `?conversationId=` URL param, so
+  // selecting/closing a conversation, reloading, and Back/Forward stay in sync.
+  const { activeConversationId, setActiveConversationId } = useConversationId();
 
   function handleConversationClick(conversationId: IntString) {
     setDirection(1);

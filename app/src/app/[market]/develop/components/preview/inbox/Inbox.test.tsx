@@ -22,10 +22,23 @@ vi.mock('framer-motion', () => ({
   },
 }));
 
-const mockUseConversationId = vi.fn();
-vi.mock('@/hooks/useConversationId', () => ({
-  useConversationId: () => mockUseConversationId(),
-}));
+// Mirror the real hook's state ownership: a stateful stub seeded from a
+// per-test initial value, so list<->detail transitions exercise Inbox's
+// routing without coupling to the URL-sync internals (covered in the hook's
+// own test).
+const hoisted = vi.hoisted(() => ({ initialConversationId: null as string | null }));
+
+vi.mock('@/hooks/useConversationId', async () => {
+  const react = await vi.importActual<typeof import('react')>('react');
+  return {
+    useConversationId: () => {
+      const [activeConversationId, setActiveConversationId] = react.useState<string | null>(
+        hoisted.initialConversationId,
+      );
+      return { activeConversationId, setActiveConversationId };
+    },
+  };
+});
 
 // Stub the list/detail children so this suite exercises Inbox's routing and
 // state transitions in isolation, without pulling in react-query/fetch.
@@ -70,11 +83,12 @@ vi.mock('./InboxConversationDetail', () => ({
 
 describe('Inbox', () => {
   beforeEach(() => {
+    hoisted.initialConversationId = null;
     vi.clearAllMocks();
   });
 
   it('renders the conversation list when there is no deep-linked conversation', () => {
-    mockUseConversationId.mockReturnValue(null);
+    hoisted.initialConversationId = null;
 
     render(<Inbox brandId='brand-1' />);
 
@@ -85,7 +99,7 @@ describe('Inbox', () => {
   });
 
   it('renders the conversation detail seeded from the deep-linked conversation id', () => {
-    mockUseConversationId.mockReturnValue('conv-abc');
+    hoisted.initialConversationId = 'conv-abc';
 
     render(<Inbox brandId='brand-1' />);
 
@@ -97,7 +111,7 @@ describe('Inbox', () => {
   });
 
   it('switches from list to detail when a conversation is clicked', () => {
-    mockUseConversationId.mockReturnValue(null);
+    hoisted.initialConversationId = null;
 
     render(<Inbox brandId='brand-1' />);
 
@@ -109,7 +123,7 @@ describe('Inbox', () => {
   });
 
   it('returns to the list when the detail view requests going back', () => {
-    mockUseConversationId.mockReturnValue('conv-abc');
+    hoisted.initialConversationId = 'conv-abc';
 
     render(<Inbox brandId='brand-1' />);
 
