@@ -72,7 +72,7 @@ export interface SiteContactInfo {
   emails?: { address: string; type?: string }[];
   addresses?: { formatted: string; street?: string; city?: string; state?: string; zip?: string; country?: string }[];
   hours?: { day: string; open: string; close: string }[];
-  social?: { platform: string; url: string }[];
+  social?: { platform: string; url: string; phone?: string; text?: string }[];
 }
 
 /**

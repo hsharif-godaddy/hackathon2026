@@ -298,7 +298,13 @@ export function buildContactBlock(contact: SiteContactInfo): string {
   if (contact.social?.length) {
     lines.push('- Social:');
     for (const s of contact.social) {
-      lines.push(`    ${s.platform}: ${s.url}`);
+      if (s.platform?.toLowerCase() === 'whatsapp' && s.phone) {
+        const href = `https://wa.me/${s.phone}${s.text ? `?text=${encodeURIComponent(s.text)}` : ''}`;
+        const msg = s.text ? ` (prefilled message: "${s.text}")` : '';
+        lines.push(`    WhatsApp click-to-chat: ${href}${msg}`);
+      } else {
+        lines.push(`    ${s.platform}: ${s.url}`);
+      }
     }
   }
 

@@ -1264,6 +1264,65 @@ describe('AtlasCrawlerAdapter', () => {
       });
       expect(adapter.mapContact(result)?.social).toHaveLength(1);
     });
+
+    it('carries WhatsApp phone and text through to social', () => {
+      const result = createMockCrawlResult({
+        contact: {
+          social: [
+            { platform: 'whatsapp', url: 'https://wa.me/15551234567?text=Hi', phone: '15551234567', text: 'Hi' },
+          ],
+        },
+      });
+      expect(adapter.mapContact(result)?.social?.[0]).toEqual({
+        platform: 'whatsapp',
+        url: 'https://wa.me/15551234567?text=Hi',
+        phone: '15551234567',
+        text: 'Hi',
+      });
+    });
+
+    it('dedupes WhatsApp by phone across different URL forms, keeping phone/text', () => {
+      const result = createMockCrawlResult({
+        contact: {
+          social: [
+            { platform: 'whatsapp', url: 'https://wa.me/15551234567', phone: '15551234567', text: 'Hi there' },
+            { platform: 'whatsapp', url: 'whatsapp://send?phone=15551234567', phone: '15551234567' },
+          ],
+        },
+      });
+      const social = adapter.mapContact(result)?.social;
+      expect(social).toHaveLength(1);
+      expect(social?.[0]).toEqual({
+        platform: 'whatsapp',
+        url: 'https://wa.me/15551234567',
+        phone: '15551234567',
+        text: 'Hi there',
+      });
+    });
+
+    it('dedupes WhatsApp by phone case-insensitively across platform casing', () => {
+      const result = createMockCrawlResult({
+        contact: {
+          social: [
+            { platform: 'WhatsApp', url: 'https://wa.me/15551234567', phone: '15551234567' },
+            { platform: 'whatsapp', url: 'whatsapp://send?phone=15551234567', phone: '15551234567' },
+          ],
+        },
+      });
+      expect(adapter.mapContact(result)?.social).toHaveLength(1);
+    });
+
+    it('omits phone/text for non-WhatsApp social without those fields', () => {
+      const result = createMockCrawlResult({
+        contact: {
+          social: [{ platform: 'instagram', url: 'https://www.instagram.com/example' }],
+        },
+      });
+      expect(adapter.mapContact(result)?.social?.[0]).toEqual({
+        platform: 'instagram',
+        url: 'https://www.instagram.com/example',
+      });
+    });
   });
 
   describe('mapFavicon', () => {

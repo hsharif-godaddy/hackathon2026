@@ -215,7 +215,7 @@ export interface AtlasCrawlResult {
       country?: string;
     }[];
     hours?: { day: string; open: string; close: string }[];
-    social?: { platform: string; url: string }[];
+    social?: { platform: string; url: string; phone?: string; text?: string }[];
   };
   images?: AtlasImage[];
   visual?: {

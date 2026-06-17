@@ -777,12 +777,26 @@ export class AtlasCrawlerAdapter {
     if (c.hours?.length) out.hours = c.hours.map(h => ({ day: h.day, open: h.open, close: h.close }));
     if (c.social?.length) {
       // Dedupe by URL; keep the first {platform} we see for a given URL.
-      const seen = new Set<string>();
-      const filtered: { platform: string; url: string }[] = [];
+      // WhatsApp dedupes by phone instead: the same number can appear under
+      // multiple URL forms (wa.me anchor + whatsapp:// button), which would
+      // otherwise each render a separate click-to-chat CTA in the prompt.
+      const seenUrls = new Set<string>();
+      const seenWhatsAppPhones = new Set<string>();
+      const filtered: { platform: string; url: string; phone?: string; text?: string }[] = [];
       for (const s of c.social) {
-        if (seen.has(s.url)) continue;
-        seen.add(s.url);
-        filtered.push({ platform: s.platform, url: s.url });
+        if (s.platform?.toLowerCase() === 'whatsapp' && s.phone) {
+          if (seenWhatsAppPhones.has(s.phone)) continue;
+          seenWhatsAppPhones.add(s.phone);
+        } else {
+          if (seenUrls.has(s.url)) continue;
+          seenUrls.add(s.url);
+        }
+        filtered.push({
+          platform: s.platform,
+          url: s.url,
+          ...(s.phone ? { phone: s.phone } : {}),
+          ...(s.text ? { text: s.text } : {}),
+        });
       }
       if (filtered.length > 0) out.social = filtered;
     }
