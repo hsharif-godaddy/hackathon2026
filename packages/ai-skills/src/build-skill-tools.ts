@@ -174,15 +174,7 @@ async function loadSkillToolDefinitions(
     // Dynamic import of the tools module
     const toolsModule = await import(toolsIndexPath)
 
-    const tools: SkillToolDefinition[] = []
-    for (const [key, value] of Object.entries(toolsModule)) {
-      if (key === 'default') continue
-      if (key === 'hooks') continue
-      if (isValidToolDefinition(value)) {
-        tools.push(value as SkillToolDefinition)
-      }
-    }
-
+    const tools = collectToolDefinitionsFromModule(toolsModule)
     const hooks = isValidHooks(toolsModule.hooks) ? toolsModule.hooks : undefined
 
     return { tools, hooks }
@@ -190,6 +182,37 @@ async function loadSkillToolDefinitions(
     // Skill has no tools directory - this is normal for instruction-only skills
     return { tools: [] }
   }
+}
+
+/**
+ * Collect tool definitions exported by a skill's `tools/index.ts` module.
+ *
+ * Accepts either individual named exports of `SkillToolDefinition`, or named
+ * exports whose value is an *array* of `SkillToolDefinition` (used by skills
+ * that generate their tool list dynamically at module load — e.g. one tool
+ * per data file). The `default` and `hooks` keys are always skipped, and
+ * invalid items inside arrays are dropped silently.
+ *
+ * Exported for unit-testing the collection logic without filesystem fixtures.
+ */
+export function collectToolDefinitionsFromModule(
+  toolsModule: Record<string, unknown>
+): SkillToolDefinition[] {
+  const tools: SkillToolDefinition[] = []
+  for (const [key, value] of Object.entries(toolsModule)) {
+    if (key === 'default') continue
+    if (key === 'hooks') continue
+    if (isValidToolDefinition(value)) {
+      tools.push(value)
+    } else if (Array.isArray(value)) {
+      for (const item of value) {
+        if (isValidToolDefinition(item)) {
+          tools.push(item)
+        }
+      }
+    }
+  }
+  return tools
 }
 
 function isValidToolDefinition(def: unknown): def is SkillToolDefinition {

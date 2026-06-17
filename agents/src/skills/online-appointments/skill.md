@@ -74,6 +74,13 @@ Read agents/src/skills/online-appointments/templates/sections/08-payment-integra
 When this skill.md says **"→ Read `templates/sections/NN-name.md`"**, read that file directly.
 `templates/IMPLEMENTATION.md` is now a thin index pointing to each section file.
 
+**Section tracking (REQUIRED):** Immediately before reading a section file, call the
+matching section tool so the invocation is recorded in Langfuse. The tools are named
+`online-appointments__section-<NN>-<slug>` (one per file in `templates/sections/`),
+take no arguments, and exist purely for tracing. Example: after reading
+`templates/sections/08-payment-integration.md`, call
+`online-appointments__section-08-payment-integration`.
+
 ---
 
 ## Implementation Flow

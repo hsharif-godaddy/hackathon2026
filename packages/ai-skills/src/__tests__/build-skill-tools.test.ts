@@ -3,7 +3,7 @@ import { mkdir, writeFile, rm } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { z } from 'zod'
-import { buildAllSkillTools, registerSkillTools, type SkillToolDefinition } from '../build-skill-tools.js'
+import { buildAllSkillTools, registerSkillTools, collectToolDefinitionsFromModule, type SkillToolDefinition } from '../build-skill-tools.js'
 
 describe('buildAllSkillTools', () => {
   let testSkillsDir: string
@@ -610,6 +610,65 @@ describe('registerSkillTools', () => {
 
       expect(Object.keys(registry.tools)).toHaveLength(0)
       expect(registry.skillToTools.size).toBe(0)
+    })
+
+    it('should register every valid SkillToolDefinition from an exported array and skip invalid items', () => {
+      // Simulates a skill whose tools/index.ts builds its tool list at module
+      // load (e.g. one per .md file) and exports it as an array.
+      const validA: SkillToolDefinition = {
+        name: 'sectionA',
+        description: 'Track section A',
+        parameters: z.object({}),
+        execute: vi.fn(),
+      }
+      const validB: SkillToolDefinition = {
+        name: 'sectionB',
+        description: 'Track section B',
+        parameters: z.object({}),
+        execute: vi.fn(),
+      }
+
+      const fakeModule: Record<string, unknown> = {
+        // valid array — both items should register
+        sectionTools: [validA, validB],
+        // mixed array — only the valid item should register
+        mixedTools: [
+          { name: 'noExecute', description: 'missing execute', parameters: z.object({}) },
+          {
+            name: 'sectionC',
+            description: 'Track section C',
+            parameters: z.object({}),
+            execute: vi.fn(),
+          } satisfies SkillToolDefinition,
+          null,
+          'not a tool',
+        ],
+        // empty array — must not throw, contributes nothing
+        emptyTools: [],
+        // non-tool array — must be skipped silently
+        slugs: ['01-foo', '02-bar'],
+        // default and hooks must be ignored even if they look array-ish
+        default: [validA],
+        hooks: { onLoad: vi.fn() },
+      }
+
+      const collected = collectToolDefinitionsFromModule(fakeModule)
+      const names = collected.map(t => t.name).sort()
+
+      expect(names).toEqual(['sectionA', 'sectionB', 'sectionC'])
+
+      // End-to-end: feed the collected list through registerSkillTools the
+      // same way loadSkillToolDefinitions does, and confirm prefixed names
+      // land in the registry.
+      const registry = registerSkillTools('appointments', collected)
+      expect(registry.tools).toHaveProperty('appointments__sectionA')
+      expect(registry.tools).toHaveProperty('appointments__sectionB')
+      expect(registry.tools).toHaveProperty('appointments__sectionC')
+      expect(registry.skillToTools.get('appointments')).toEqual([
+        'sectionA',
+        'sectionB',
+        'sectionC',
+      ])
     })
 
     it('should handle tools with complex schemas', () => {
