@@ -53,6 +53,14 @@ export interface GenerateLogoInput {
   appId: string
   customerId: string
   budgetUserId: string
+  /**
+   * W3C traceparent (`00-<traceId>-<spanId>-01`) for the originating agent turn.
+   * Forwarded to the logo API so it can nest its LLM/image observations under
+   * the caller's Langfuse trace (the `media-logo__generate_logo` tool span).
+   */
+  traceparent?: string
+  /** Conversation id of the originating turn, forwarded for Langfuse correlation. */
+  conversationId?: string
   /** Optional external cancellation signal (combined with the request timeout). */
   signal?: AbortSignal
 }
@@ -204,6 +212,11 @@ class LogoService {
           'x-app-builder-app-id': input.appId,
           'x-customer-id': input.customerId,
           'x-budget-user-id': input.budgetUserId,
+          // Trace context for cross-service Langfuse nesting. The logo API reads
+          // these to emit its model calls as children of this turn's trace; it
+          // ignores them when absent, so this is backward-compatible.
+          ...(input.traceparent && { traceparent: input.traceparent }),
+          ...(input.conversationId && { 'x-conversation-id': input.conversationId }),
         },
         body: JSON.stringify(body),
         signal,

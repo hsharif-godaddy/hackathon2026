@@ -24,6 +24,13 @@ export interface StartLogoParams {
   /** When true, suppress client-visible Growl notifications (the agent presents
    *  the result inline, so a toast would be redundant). */
   suppressGrowl?: boolean
+  /** W3C traceparent captured in the media-logo tool's execute() (BEFORE the
+   *  setImmediate detach below loses the ambient OTel context). Threaded through
+   *  RunContext into logoService.generate() so the logo API anchors its Langfuse
+   *  observations under the originating `media-logo__generate_logo` tool span. */
+  traceparent?: string
+  /** Conversation id of the originating turn, forwarded for Langfuse correlation. */
+  conversationId?: string
 }
 
 /** Terminal outcome of a background run, resolved through `StartLogoResult.done`
@@ -265,6 +272,8 @@ class LogoGenerationService {
           appId,
           customerId: ctx.customerId,
           budgetUserId: ctx.budgetUserId,
+          ...(ctx.traceparent ? { traceparent: ctx.traceparent } : {}),
+          ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
           signal: controller.signal,
         })
         break

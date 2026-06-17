@@ -16,6 +16,7 @@ import { z } from 'zod';
 import type { SkillToolDefinition } from '@airo/ai-skills';
 import { grantSessionManager } from '@airo/ai-grants';
 import { BudgetExceededError } from '@airo/ai-common';
+import { getCurrentTraceIds } from '@airo/ai-transport';
 
 import { logger } from '../../../logging/index.js';
 import { appRepository } from '../../../database/repositories/index.js';
@@ -280,6 +281,14 @@ export const generateLogoTool: SkillToolDefinition = {
   async execute(input: GenerateLogoInput, context?: unknown) {
     const appId = (context as { metadata?: { appId?: string } })?.metadata?.appId;
     const socketId = (context as { socketId?: string })?.socketId;
+    const conversationId = (context as { metadata?: { conversationId?: string } })?.metadata?.conversationId;
+
+    // Capture the active OTel span (the `media-logo__generate_logo` tool span)
+    // synchronously here — logoGenerationService.start() detaches the real work
+    // onto setImmediate, after which the ambient OTel context is gone. The logo
+    // API uses these to nest its LLM/image observations under this tool span.
+    const traceIds = getCurrentTraceIds();
+    const traceparent = traceIds ? `00-${traceIds.traceId}-${traceIds.observationId}-01` : undefined;
 
     logger.info('skill.media-logo.generate_logo.start', {
       appId,
@@ -362,6 +371,8 @@ export const generateLogoTool: SkillToolDefinition = {
       budgetUserId,
       searchQuery: input.prompt.slice(0, 80),
       ...(input.background === false ? { suppressGrowl: true } : {}),
+      ...(traceparent !== undefined ? { traceparent } : {}),
+      ...(conversationId !== undefined ? { conversationId } : {}),
     });
 
     if (result.status === 'error') {
