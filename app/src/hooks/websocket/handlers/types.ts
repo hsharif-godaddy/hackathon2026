@@ -75,6 +75,7 @@ export interface FinalizeStreamData {
   finishReason?: string
   usedFreeGrants?: boolean
   commitHash?: string
+  messageId?: string
 }
 
 /**

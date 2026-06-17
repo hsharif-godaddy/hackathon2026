@@ -745,9 +745,13 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       usedFreeGrants,
     })
 
+    const persistedMessageId = typeof metadata?.messageId === 'string' && metadata.messageId.length > 0
+      ? metadata.messageId
+      : activeStream.id
+
     // Convert streaming message to completed message
     const completedMessage: ChatMessage = {
-      id: activeStream.id,
+      id: persistedMessageId,
       role: activeStream.role,
       content: activeStream.content,
       segments: finalizedSegments,

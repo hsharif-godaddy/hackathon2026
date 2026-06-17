@@ -22,6 +22,11 @@ function commitHashFromComplete(data: WebSocketMessage): string | undefined {
   return typeof raw === 'string' && raw.length > 0 ? raw : undefined
 }
 
+function messageIdFromComplete(data: WebSocketMessage): string | undefined {
+  const raw = data.data?.messageId
+  return typeof raw === 'string' && raw.length > 0 ? raw : undefined
+}
+
 function traceIdsFromComplete(
   data: WebSocketMessage,
 ): { traceId: string; observationId: string; agentName?: string } | null {
@@ -67,6 +72,7 @@ export class CompleteHandler implements MessageHandler {
       finishReason: data.data?.finishReason as string | undefined,
       usedFreeGrants: data.data?.usedFreeGrants as boolean | undefined,
       commitHash: commitHashFromComplete(data),
+      messageId: messageIdFromComplete(data),
     })
 
     trackCompletion(!!data.data?.usage)
