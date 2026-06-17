@@ -42,7 +42,6 @@ vi.mock('@/utils/instrumentation', () => ({
 }));
 vi.mock('@/components/layout/AppItem', () => ({
   default: ({ site }: any) => <div data-testid="app-item">{site.name}</div>,
-  AppItemNew: () => <div data-testid="app-item-new">Create new</div>,
   AppItemSeeAll: () => <div data-testid="app-item-see-all">See all</div>,
 }));
 
@@ -183,27 +182,7 @@ describe('AppSelector', () => {
     expect(screen.queryByText('App 5')).not.toBeInTheDocument();
   });
 
-  it('should render AppItemNew when not on homepage', async () => {
-    mockSites.sites = [
-      {
-        id: 'site-1',
-        name: 'Test App',
-        status: 'running',
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
-      },
-    ];
-
-    const { user } = renderWithProviders(<AppSelector location="develop" />);
-
-    const trigger = screen.getByText('builder_common_projects');
-    await user.click(trigger);
-
-    const newItem = await screen.findByTestId('app-item-new');
-    expect(newItem).toBeInTheDocument();
-  });
-
-  it('should not render AppItemNew when on homepage', async () => {
+  it('should render AppItemSeeAll on non-sites pages', async () => {
     mockSites.sites = [
       {
         id: 'site-1',
@@ -216,14 +195,12 @@ describe('AppSelector', () => {
 
     renderWithProviders(<AppSelector location="homepage" />);
 
-    // On homepage, popover auto-expands via useEffect
-    // The AppItemNew should not be included in the content
     await screen.findByText('Test App');
 
-    expect(screen.queryByTestId('app-item-new')).not.toBeInTheDocument();
+    expect(screen.getByTestId('app-item-see-all')).toBeInTheDocument();
   });
 
-  it('should always render AppItemSeeAll', async () => {
+  it('should not render AppItemSeeAll on sites page', async () => {
     mockSites.sites = [
       {
         id: 'site-1',
@@ -234,13 +211,14 @@ describe('AppSelector', () => {
       },
     ];
 
-    const { user } = renderWithProviders(<AppSelector />);
+    const { user } = renderWithProviders(<AppSelector location="sites" />);
 
     const trigger = screen.getByText('builder_common_projects');
     await user.click(trigger);
 
-    const seeAll = await screen.findByTestId('app-item-see-all');
-    expect(seeAll).toBeInTheDocument();
+    await screen.findByText('Test App');
+
+    expect(screen.queryByTestId('app-item-see-all')).not.toBeInTheDocument();
   });
 
   it('should render mobile icon when isMobile is true', () => {

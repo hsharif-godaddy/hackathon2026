@@ -8,7 +8,7 @@ import AppsIcon from '@ux/icon/apps';
 import ChevronDownIcon from '@ux/icon/chevron-down';
 import text from '@ux/text';
 
-import AppItem, { AppItemNew, AppItemSeeAll } from '@/components/layout/AppItem';
+import AppItem, { AppItemSeeAll } from '@/components/layout/AppItem';
 import { useAuthContext } from '@/components/providers/AuthProvider';
 import { useTranslations } from '@/hooks/useTranslations';
 import { SiteStatus } from '@/lib/control-plane/types';
@@ -131,7 +131,6 @@ export default function AppSelector({ location }: { location?: string }) {
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
           <div className="flex flex-col gap-1">
-            {location !== 'homepage' && <AppItemNew location={location} />}
             {displayedSites.map((site) => (
               <AppItem
                 key={site.id}
@@ -139,7 +138,7 @@ export default function AppSelector({ location }: { location?: string }) {
                 dataEid={generateClickEID(`${location}.apps_menu.app`)}
               />
             ))}
-            <AppItemSeeAll location={location} />
+            {location !== 'sites' && <AppItemSeeAll location={location} />}
           </div>
         </PopoverContent>
       )}

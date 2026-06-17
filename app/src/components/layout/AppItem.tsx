@@ -4,7 +4,6 @@ import clsx from 'clsx';
 import { useParams, useRouter } from 'next/navigation';
 import Box from '@ux/box';
 import AppsIcon from '@ux/icon/apps';
-import PlusIcon from '@ux/icon/plus';
 import text from '@ux/text';
 
 import AppThumbnail from '@/app/[market]/apps/AppThumbnail';
@@ -67,32 +66,6 @@ export function AppItemSkeleton() {
       <div className="size-6 shrink-0 rounded-md bg-intents-ux-boxLowContrast-borderColor" />
       <div className="w-12 h-2 bg-intents-ux-boxLowContrast-borderColor animate-pulse" />
     </Box>
-  )
-}
-
-export function AppItemNew({ location }: { location?: string }) {
-  const t = useTranslations();
-  const router = useRouter();
-  return (
-    <button
-      onClick={() => router.push(`/`)}
-      className="hover:cursor-pointer group text-left leading-tight"
-      data-eid={generateClickEID(`${location}.apps_menu.new`)}
-    >
-      <Box
-        orientation="horizontal"
-        gap="md"
-        inlineAlignChildren="center"
-        className="p-1 rounded-md group-hover:bg-intents-ux-boxLowContrast-backgroundColor transition-all duration-300"
-      >
-        <div className="size-6 shrink-0 flex items-center justify-center border border-dashed border-primary rounded-md">
-          <PlusIcon className="size-3.5 text-ai transition-all" />
-        </div>
-        <div>
-          <text.span as="label">{t('builder_apps_empty_create')}</text.span>
-        </div>
-      </Box>
-    </button>
   )
 }
 

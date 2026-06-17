@@ -9,7 +9,7 @@ import { screen, waitFor } from '@testing-library/react';
 import { SiteStatus } from '@/lib/control-plane/types';
 import { Site } from '@/stores/useSitesStore';
 import { renderWithProviders } from '@/tests/test-utils';
-import AppItem, { AppItemNew, AppItemSeeAll, AppItemSkeleton } from './AppItem';
+import AppItem, { AppItemSeeAll, AppItemSkeleton } from './AppItem';
 
 const mockPush = vi.fn();
 const mockUseRouter = vi.fn(function () { return { push: mockPush }; });
@@ -147,41 +147,6 @@ describe('AppItemSkeleton', () => {
 
     expect(iconPlaceholder).toBeInTheDocument();
     expect(textPlaceholder).toBeInTheDocument();
-  });
-});
-
-describe('AppItemNew', () => {
-  it('should render without crashing', () => {
-    renderWithProviders(<AppItemNew />);
-
-    expect(screen.getByText('builder_apps_empty_create')).toBeInTheDocument();
-  });
-
-  it('should navigate to homepage when clicked', async () => {
-    mockPush.mockClear();
-
-    const { user } = renderWithProviders(<AppItemNew />);
-
-    const button = screen.getByRole('button');
-    await user.click(button);
-
-    await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith('/');
-    });
-  });
-
-  it('should render plus icon', () => {
-    const { container } = renderWithProviders(<AppItemNew />);
-
-    const icon = container.querySelector('.border-dashed');
-    expect(icon).toBeInTheDocument();
-  });
-
-  it('should generate correct data-eid with location', () => {
-    renderWithProviders(<AppItemNew location="develop" />);
-
-    const button = screen.getByRole('button');
-    expect(button).toHaveAttribute('data-eid', 'develop.apps_menu.new');
   });
 });
 
