@@ -673,6 +673,7 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onSubscr
     const [restarting, setRestarting] = useState<RestartableComponent | null>(null);
     const [restartNote, setRestartNote] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
     const [previewShareToken, setPreviewShareToken] = useState<string | null>(null);
+    const [appMetadata, setAppMetadata] = useState<Record<string, unknown> | null>(null);
     const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     // Aborts an in-flight restart when the user navigates to another app, so
     // a late response can't stamp a success/error note onto the wrong app.
@@ -773,6 +774,18 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onSubscr
             .catch(err => { if (err.name !== 'AbortError') console.warn('[AppDetailsPanel] share token fetch failed', err); });
         return () => controller.abort();
     }, [app, appId]);
+
+    // App-level metadata (e.g. which design kit the app was built with)
+    useEffect(() => {
+        if (!appId) return;
+        const controller = new AbortController();
+        setAppMetadata(null);
+        fetch(`/api/agent/metadata/${encodeURIComponent(appId)}`, { signal: controller.signal })
+            .then(res => (res.ok ? res.json() : null))
+            .then((data: { metadata?: Record<string, unknown> } | null) => setAppMetadata(data?.metadata ?? null))
+            .catch(err => { if (err.name !== 'AbortError') console.warn('[AppDetailsPanel] metadata fetch failed', err); });
+        return () => controller.abort();
+    }, [appId, refreshKey]);
 
     const fetchDomainError = useCallback(async function fetchDomainError(fqdn: string) {
         if (!app?.subscriptionId || !app?.systemId) return;
@@ -1313,6 +1326,35 @@ export default function AppDetailsPanel({ appId, refreshKey, onRefresh, onSubscr
                     llmSpendLoading={llmSpendLoading}
                     llmSpendError={llmSpendError}
                 />
+            )}
+
+            {/* App Metadata — design kit and other app-level build signals */}
+            {appMetadata && Object.keys(appMetadata).length > 0 && (
+                <div style={{ padding: '1rem', backgroundColor: '#f9fafb', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+                    <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>App Metadata</h4>
+                    {appMetadata.designKit != null && (
+                        <div style={{ fontSize: '0.8rem', color: '#111827', marginBottom: '0.75rem' }}>
+                            <span style={{ fontWeight: 600 }}>Design Kit:</span>{' '}
+                            <span style={{ fontFamily: 'monospace' }}>
+                                {(appMetadata.designKit as { id?: string }).id ?? 'unknown'}
+                                {' '}({(appMetadata.designKit as { source?: string }).source ?? 'unknown'})
+                            </span>
+                        </div>
+                    )}
+                    <pre style={{
+                        margin: 0,
+                        fontSize: '0.75rem',
+                        fontFamily: 'monospace',
+                        color: '#374151',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '6px',
+                        padding: '0.75rem',
+                        overflowX: 'auto',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word'
+                    }}>{JSON.stringify(appMetadata, null, 2)}</pre>
+                </div>
             )}
 
         </div>
