@@ -23,6 +23,11 @@ confidence scores. Report at every severity level.
 - Logging format violations: must be `logger.info/warn/error("domain.operation.lifecycle", { data })`
 - Import boundaries: shared packages should not import from services
 
+### Localization
+- Sentences assembled from separately-translated fragments via concatenation, interleaved variables, or per-part styling (fragments can't agree on gender/number or reorder across locales)
+- Plurals built by concatenation or `count + " items"` instead of an ICU `plural` message
+- Hardcoded user-facing strings that bypass the i18n layer
+
 ### Error Handling
 - Catch blocks that lose error context (catching and rethrowing without cause)
 - Missing error handling at async boundaries (unhandled promise rejections)
