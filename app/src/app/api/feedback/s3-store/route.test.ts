@@ -7,7 +7,6 @@ import { join } from 'node:path';
 
 import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { S3Client } from '@aws-sdk/client-s3';
 
 const require = createRequire(import.meta.url);
 
@@ -136,6 +135,8 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
   afterEach(function cleanup() {
     delete process.env.FEEDBACK_BUCKET;
     delete process.env.AWS_REGION;
+    // Clean up any vi.doMock registrations added within individual tests.
+    vi.doUnmock('@/lib/s3-parquet');
   });
 
   describe('POST - S3 not configured', function notConfiguredTests() {
@@ -158,7 +159,14 @@ describe('/api/feedback/s3-store', function s3StoreTests() {
     });
 
     it('should return 500 with distinct error when S3Client init failed', async function clientInitFailed() {
-      vi.mocked(S3Client).mockImplementationOnce(function () { throw new Error('Invalid region'); });
+      // s3-parquet.ts initializes S3Client at module load time. beforeEach already
+      // loaded it (via vi.importActual chain), so mocking the S3Client constructor
+      // here is too late. Instead, use vi.doMock to inject s3Client=null directly.
+      vi.doMock('@/lib/s3-parquet', async (importOriginal) => {
+        const mod = await importOriginal<typeof import('@/lib/s3-parquet')>();
+        return { ...mod, s3Client: null, s3ClientInitError: 'Invalid region' };
+      });
+      vi.resetModules();
       const { POST } = await import('./route');
 
       const response = await POST(createRequest({ app_id: 'app-123', feedback_text: 'hello', consent_flag: true, rating: 7 }));

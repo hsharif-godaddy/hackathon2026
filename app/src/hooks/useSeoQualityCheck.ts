@@ -6,6 +6,7 @@ import { dynamicApiConfigService } from '@/config/dynamic-api';
 import { agentFetch } from '@/lib/agent-fetch';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { logImpressionEvent } from '@/utils/instrumentation';
 
 interface SeoQualityLatestResponse {
   regression: {
@@ -14,19 +15,50 @@ interface SeoQualityLatestResponse {
     regressions: Array<{ path: string; newIssues: string[] }>;
   } | null;
   latest: {
+    id: string;
     score: number;
+    pageScores: Record<string, number>;
+    missingElements: Record<string, string[]>;
     isBaseline: boolean;
     triggeredBy: string;
+    createdAt: string;
   } | null;
-  baseline: {
+  previous: {
     id: string;
     score: number;
   } | null;
 }
 
-// Delay after publish before fetching — conservative buffer for the server-side fire-and-forget
-// audit to finish writing its snapshot. Not empirically measured; adjust if audits prove slower.
+// Delay after publish before fetching — gives the server-side fire-and-forget audit time to finish.
 const FETCH_DELAY_MS = 6000;
+
+function storeSnapshotToS3(appId: string, data: SeoQualityLatestResponse): void {
+  if (!data.latest) return;
+
+  void fetch('/api/seo-quality/s3-store', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      app_id: appId,
+      snapshot_id: data.latest.id,
+      score: data.latest.score,
+      page_scores: JSON.stringify(data.latest.pageScores),
+      missing_elements: JSON.stringify(data.latest.missingElements),
+      triggered_by: data.latest.triggeredBy,
+      is_baseline: data.latest.isBaseline,
+      captured_utc_ts: data.latest.createdAt,
+      score_delta: data.regression?.scoreDelta ?? null,
+      affected_pages: data.regression?.regressions?.length ?? null,
+      is_regression: data.regression?.isRegression ?? null,
+    }),
+    keepalive: true,
+  }).catch((err: unknown) => {
+    logger.warn('seo-quality-check.s3-store-failed', {
+      appId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+}
 
 export function useSeoQualityCheck(appId: string | null): void {
   const setSeoRegressionAlert = useDevelopPageStore((state) => state.setSeoRegressionAlert);
@@ -79,7 +111,7 @@ export function useSeoQualityCheck(appId: string | null): void {
             appId,
             latestScore: data.latest?.score ?? null,
             latestIsBaseline: data.latest?.isBaseline ?? null,
-            baselineScore: data.baseline?.score ?? null,
+            previousScore: data.previous?.score ?? null,
             isRegression: data.regression?.isRegression ?? null,
             scoreDelta: data.regression?.scoreDelta ?? null,
             affectedPages: data.regression?.regressions?.length ?? 0,
@@ -90,14 +122,37 @@ export function useSeoQualityCheck(appId: string | null): void {
             return;
           }
 
+          // Write to S3 data lake regardless of baseline/regression status
+          storeSnapshotToS3(appId, data);
+
           if (data.latest.isBaseline) {
             logger.info('seo-quality-check.baseline-created', {
               appId,
               score: data.latest.score,
               message: 'first publish — baseline created, no regression check',
             });
+            logImpressionEvent('seo.quality.baseline', {
+              id: data.latest.id,
+              score: data.latest.score,
+              pageScores: JSON.stringify(data.latest.pageScores),
+              missingElements: JSON.stringify(data.latest.missingElements),
+              triggeredBy: data.latest.triggeredBy,
+              createdAt: data.latest.createdAt,
+            })();
             return;
           }
+
+          logImpressionEvent('seo.quality.snapshot', {
+            id: data.latest.id,
+            score: data.latest.score,
+            pageScores: JSON.stringify(data.latest.pageScores),
+            missingElements: JSON.stringify(data.latest.missingElements),
+            triggeredBy: data.latest.triggeredBy,
+            createdAt: data.latest.createdAt,
+            scoreDelta: data.regression?.scoreDelta ?? 0,
+            affectedPages: data.regression?.regressions?.length ?? 0,
+            isRegression: data.regression?.isRegression ?? false,
+          })();
 
           if (!data.regression?.isRegression) {
             logger.info('seo-quality-check.no-regression', {
@@ -112,11 +167,22 @@ export function useSeoQualityCheck(appId: string | null): void {
             appId,
             scoreDelta: data.regression.scoreDelta,
             currentScore: data.latest.score,
-            baselineScore: data.baseline?.score ?? null,
+            previousScore: data.previous?.score ?? null,
             affectedPages: data.regression.regressions.length,
             regressions: data.regression.regressions,
             message: 'regression detected — showing SEO quality alert',
           });
+
+          logImpressionEvent('seo.quality.regression', {
+            id: data.latest.id,
+            score: data.latest.score,
+            pageScores: JSON.stringify(data.latest.pageScores),
+            missingElements: JSON.stringify(data.latest.missingElements),
+            triggeredBy: data.latest.triggeredBy,
+            createdAt: data.latest.createdAt,
+            scoreDelta: data.regression.scoreDelta,
+            affectedPages: data.regression.regressions.length,
+          })();
 
           setSeoRegressionAlert(appId, {
             scoreDelta: data.regression.scoreDelta,

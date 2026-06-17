@@ -1,30 +1,11 @@
-import { createRequire } from 'node:module';
-
+import { encodeParquet, ParquetSchema, ParquetSchemaInstance } from '@/lib/s3-parquet';
 import { parseFeedbackUtcStringToDate } from './feedback-timestamp';
 import type { FeedbackS3Record } from './types';
 
 const INT32_MIN = -2_147_483_648;
 const INT32_MAX = 2_147_483_647;
 
-const require = createRequire(import.meta.url);
-const { ParquetSchema, ParquetWriter } = require('parquetjs') as {
-  ParquetSchema: new (schema: Record<string, unknown>) => {
-    fields: unknown;
-    fieldList: unknown[];
-  };
-  ParquetWriter: {
-    openStream(
-      schema: InstanceType<typeof ParquetSchema>,
-      outputStream: { write: (buf: Buffer, cb: (err?: Error | null) => void) => void; close: (cb?: (err?: Error | null) => void) => void },
-      opts: { useDataPageV2?: boolean },
-    ): Promise<{
-      appendRow: (row: Record<string, unknown>) => Promise<void>;
-      close: () => Promise<void>;
-    }>;
-  };
-};
-
-let PARQUET_SCHEMA: InstanceType<typeof ParquetSchema> | null = null;
+let PARQUET_SCHEMA: ParquetSchemaInstance | null = null;
 let parquetSchemaInitError: string | null = null;
 try {
   PARQUET_SCHEMA = new ParquetSchema({
@@ -140,29 +121,7 @@ export async function encodeFeedbackParquet(record: FeedbackS3Record): Promise<B
   if (parquetSchemaInitError != null || PARQUET_SCHEMA == null) {
     throw new Error(`Parquet schema unavailable: ${parquetSchemaInitError ?? 'unknown'}`);
   }
-
-  const chunks: Buffer[] = [];
-  const outputStream = {
-    write(buf: Buffer, cb: (err?: Error | null) => void) {
-      try {
-        chunks.push(Buffer.isBuffer(buf) ? buf : Buffer.from(buf as Parameters<typeof Buffer.from>[0]));
-        cb();
-      } catch (err) {
-        cb(err instanceof Error ? err : new Error(String(err)));
-      }
-    },
-    close(cb?: (err?: Error | null) => void) {
-      cb?.();
-    },
-  };
-
-  const writer = await ParquetWriter.openStream(PARQUET_SCHEMA, outputStream, { useDataPageV2: false });
-  try {
-    await writer.appendRow(rowForParquet(record));
-  } finally {
-    await writer.close();
-  }
-  return Buffer.concat(chunks);
+  return encodeParquet(PARQUET_SCHEMA, rowForParquet(record));
 }
 
 export { parseFeedbackUtcStringToDate };

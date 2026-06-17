@@ -714,6 +714,11 @@ export default function AppPublish({ location = 'develop' }: { location?: string
       currentScore: seoRegressionAlert.currentScore,
       affectedPages: seoRegressionAlert.regressions.length,
     });
+    logClickEvent('seo.alert.fix', {
+      scoreDelta: seoRegressionAlert.scoreDelta,
+      currentScore: seoRegressionAlert.currentScore,
+      affectedPages: seoRegressionAlert.regressions.length,
+    })();
     dismissSeoRegressionAlert(currentAppId);
     window.postMessage(
       { type: 'seo-quality-fix-request', appId: currentAppId, regression: seoRegressionAlert },

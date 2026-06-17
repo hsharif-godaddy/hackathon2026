@@ -20,12 +20,13 @@ import { randomUUID } from 'node:crypto';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 
 import type { FeedbackStorePayload } from '@/components/feedback/types';
 import { airoCertTokenService, fetchCustomerProfile } from '@/lib/crm';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
+import { APP_ID_PATTERN, buildS3Key, formatUtcTs, s3Client, s3ClientInitError } from '@/lib/s3-parquet';
 import { checkSwitchboardFlag, checkSwitchboardObject } from '@/lib/switchboard/server';
 import { encodeFeedbackParquet } from './feedback-to-parquet';
 import type { FeedbackS3Record } from './types';
@@ -52,15 +53,6 @@ const JIRA_ELIGIBILITY_FLAG = 'appbuilder-fanout-jira-eligibility';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-let s3Client: S3Client | null = null;
-let s3ClientInitError: string | null = null;
-try {
-  s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-west-2' });
-} catch (err) {
-  s3ClientInitError = err instanceof Error ? err.message : String(err);
-  logger.error('feedback.store.s3.client_init_failed', { error: s3ClientInitError });
-}
 
 // Lambda client used to fan out parquet writes to airo-fanout-<env>.
 // We invoke the Lambda directly (InvocationType=Event) instead of using
@@ -105,21 +97,6 @@ if (!FEEDBACK_BUCKET) {
     bucket: FEEDBACK_BUCKET,
     message: 'Unrecognised bucket name — falling back to laketest prefix; verify FEEDBACK_BUCKET',
   });
-}
-
-// Only alphanumeric, hyphen, underscore — prevents path traversal via app_id containing /
-const APP_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-
-function buildS3Key(appId: string | null, now: Date): string {
-  const year = now.getUTCFullYear();
-  const month = String(now.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(now.getUTCDate()).padStart(2, '0');
-  const hour = String(now.getUTCHours()).padStart(2, '0');
-  return `${FEEDBACK_TABLE_PREFIX}/year=${year}/month=${month}/day=${day}/hour=${hour}/appId=${appId || 'unknown'}/${now.getTime()}.parquet`;
-}
-
-function formatUtcTs(date: Date): string {
-  return date.toISOString().replace('T', ' ').replace('Z', '');
 }
 
 function previewForInvalidTopicList(raw: unknown): string {
@@ -367,7 +344,7 @@ export const POST = withCustomerAuth(async (
   }
 
   const now = new Date();
-  const s3Key = buildS3Key(appId, now);
+  const s3Key = buildS3Key(FEEDBACK_TABLE_PREFIX, appId, now);
   const tsStr = formatUtcTs(now);
 
   const record: FeedbackS3Record = {

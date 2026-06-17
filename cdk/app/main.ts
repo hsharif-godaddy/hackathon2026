@@ -17,6 +17,7 @@ import { LakeFormationAdminsStack } from "../lib/lake-formation-admins-stack";
 import { LambdaBaseEcrStack } from "../lib/lambda-base-ecr-stack";
 import { FeedbackAutomationStack } from "../lib/feedback-automation-stack";
 import { FeedbackFanoutStack } from "../lib/feedback-fanout-stack";
+import { SeoQualityS3Stack } from "../lib/seo-quality-s3-stack";
 import { AiroInvestigatorStack } from "../lib/investigator-stack";
 import { S2sIamJwtStack } from "../lib/s2s-iam-jwt-stack";
 import { TransactionalEventsKinesisStack } from "../lib/transactional-events-kinesis-stack";
@@ -92,6 +93,12 @@ async function main() {
   let feedbackS3Stack: FeedbackS3Stack | undefined;
   if (config.envName === 'dev' || config.envName === 'prod') {
     feedbackS3Stack = new FeedbackS3Stack(app, 'FeedbackS3Stack', { env });
+  }
+
+  // S3 bucket for marketing data lake — SEO quality snapshots written after every publish.
+  // Dev + prod only (same gate as FeedbackS3Stack — test excluded intentionally).
+  if (config.envName === 'dev' || config.envName === 'prod') {
+    new SeoQualityS3Stack(app, 'SeoQualityS3Stack', { env });
   }
 
   // Dedicated S3 bucket for product-analytics events (dev-private, test, prod).

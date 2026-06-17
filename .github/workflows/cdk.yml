@@ -36,6 +36,7 @@ on:
           - 'LakeFormationAdminsStack'
           - 'LambdaBaseEcrStack'
           - 'AiroInvestigatorStack'
+          - 'SeoQualityS3Stack'
           - 'S2sIamJwtStack'
           - 'TransactionalEventsKinesisStack'
           - 'TransactionalEventsKMSStack'
@@ -165,6 +166,38 @@ jobs:
           npx tsx lambda/build.ts --all
           # Verify they can be loaded
           npx tsx lambda/verify.ts
+
+      - name: Delete orphaned marketing S3 bucket before deploy
+        if: env.DEFAULT_ACTION == 'deploy' && (env.STACK_NAME == 'SeoQualityS3Stack' || env.STACK_NAME == '--all')
+        run: |
+          set -o pipefail
+          export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
+          $(aws sts assume-role \
+            --role-arn arn:aws:iam::${CDK_AWS_ACCOUNT_ID}:role/GD-AWS-SSG-Deploy-Role \
+            --role-session-name CLISession \
+            --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]" \
+            --output text))
+
+          BUCKET="airo-builder-marketing-${ENV_NAME}"
+
+          if ! aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+            echo "Bucket $BUCKET does not exist — nothing to do"
+            exit 0
+          fi
+
+          BUCKET_STACK=$(aws cloudformation describe-stack-resources \
+            --physical-resource-id "$BUCKET" \
+            --query 'StackResources[0].StackName' \
+            --output text 2>/dev/null || echo "NONE")
+          if [ "$BUCKET_STACK" != "NONE" ] && [ "$BUCKET_STACK" != "None" ] && [ -n "$BUCKET_STACK" ]; then
+            echo "Bucket $BUCKET is already managed by $BUCKET_STACK — skipping"
+            exit 0
+          fi
+
+          echo "Deleting orphaned empty bucket: $BUCKET"
+          aws cloudcontrol delete-resource \
+            --type-name "AWS::S3::Bucket" \
+            --identifier "$BUCKET"
 
       - name: Run CDK
         working-directory: ./cdk
