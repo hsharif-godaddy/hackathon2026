@@ -3,6 +3,28 @@ import { getS2SToken, refreshS2SToken } from '@airo/ai-lib';
 
 import type { Config } from '../../config/environments/types.js';
 import { stripUnsafeUnicode } from '../util/sanitize.js';
+import { retryTransient } from '../util/retry-transient.js';
+import { warnLine } from '../util/warn-line.js';
+
+/**
+ * Default 429 retry budget for every LLM call routed through
+ * `GocodeClient.complete()`. Matches the values previously hard-coded in
+ * `LLMJsonEvaluator` so behavior for the judge calls is unchanged; the win is
+ * that the synthetic-user conversation loop and all other evaluators now share
+ * the same `Retry-After`-honoring retry instead of falling through with only
+ * the OpenAI SDK's default attempts.
+ */
+export const DEFAULT_RATE_LIMIT_MAX_RETRIES = 5;
+export const DEFAULT_RATE_LIMIT_WAIT_MS = 30_000;
+
+/**
+ * Backoff between retries for transient connection/5xx errors. Kept short
+ * (unlike the 30s rate-limit fallback) because a transient blip clears fast —
+ * this approximates the sub-second backoff the OpenAI SDK applied before
+ * `maxRetries: 0` disabled its retry layer, rather than making a brief network
+ * hiccup cost the full rate-limit wait.
+ */
+export const DEFAULT_TRANSIENT_WAIT_MS = 1_000;
 
 type Content = string | OpenAI.ChatCompletionContentPart[];
 
@@ -72,19 +94,30 @@ export class GocodeClient implements IGocodeClient {
   private readonly client: OpenAI;
   private readonly model: string;
   private readonly config: Config['gocode'];
+  private readonly maxRetries: number;
+  private readonly defaultWaitMs: number;
   private accumulated: ProbeUsage = { ...ZERO_USAGE };
 
   constructor(config: Config['gocode']) {
     this.config = config;
+    this.maxRetries = config.rateLimitRetry?.maxRetries ?? DEFAULT_RATE_LIMIT_MAX_RETRIES;
+    this.defaultWaitMs = config.rateLimitRetry?.waitMs ?? DEFAULT_RATE_LIMIT_WAIT_MS;
+    // `maxRetries: 0` disables the OpenAI SDK's own retry layer (default 2, which
+    // also honors Retry-After) so `retryTransient` is the single source of truth
+    // for both the 429 and the transient-error budgets. Without this the SDK's
+    // hidden attempts compound beneath our wrap, making the effective attempt
+    // count and total wait larger than the configured budgets.
     this.client = config.useS2S
       ? new OpenAI({
           baseURL: config.baseUrl,
           apiKey: 'gocode-s2s-placeholder',
           fetch: buildS2SFetch(),
+          maxRetries: 0,
         })
       : new OpenAI({
           baseURL: config.baseUrl,
           apiKey: config.apiKey,
+          maxRetries: 0,
         });
     this.model = config.model;
   }
@@ -118,9 +151,42 @@ export class GocodeClient implements IGocodeClient {
         },
       },
     } as unknown as OpenAI.ChatCompletionCreateParamsNonStreaming;
-    const response = options?.signal
-      ? await this.client.chat.completions.create(body, { signal: options.signal })
-      : await this.client.chat.completions.create(body);
+    const response = await retryTransient(
+      () =>
+        options?.signal
+          ? this.client.chat.completions.create(body, { signal: options.signal })
+          : this.client.chat.completions.create(body),
+      {
+        maxRetries: this.maxRetries,
+        defaultWaitMs: this.defaultWaitMs,
+        transientWaitMs: DEFAULT_TRANSIENT_WAIT_MS,
+        signal: options?.signal,
+        onRetry: ({ attempt, maxRetries, waitMs, kind }) => {
+          warnLine(
+            kind === 'rate-limit'
+              ? 'GoCode rate-limited; retrying.'
+              : 'GoCode transient error; retrying.',
+            {
+              model: this.model,
+              attempt,
+              maxAttempts: maxRetries,
+              waitSeconds: waitMs / 1000,
+            },
+          );
+        },
+        onExhausted: ({ totalAttempts, kind }) => {
+          warnLine(
+            kind === 'rate-limit'
+              ? 'GoCode rate-limit retry budget exhausted.'
+              : 'GoCode transient-error retry budget exhausted.',
+            {
+              model: this.model,
+              totalAttempts,
+            },
+          );
+        },
+      },
+    );
     this.accumulated.calls += 1;
     if (response.usage) {
       this.accumulated.promptTokens += response.usage.prompt_tokens;

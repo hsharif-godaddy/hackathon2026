@@ -6,11 +6,7 @@ import type { IGocodeClient } from '../clients/gocode-client.js';
 import type { DOMSnapshot, Transcript } from '../runner/transcript.js';
 import type { Scenario } from '../scenarios/types.js';
 import { clamp01 } from './shared.js';
-import { retryOn429 } from '../util/retry-on-429.js';
 import { warnLine } from '../util/warn-line.js';
-
-const EVALUATOR_RATE_LIMIT_MAX_RETRIES = 5;
-const EVALUATOR_RATE_LIMIT_WAIT_MS = 30_000;
 
 function extractJsonObject(text: string): string | null {
   const start = text.indexOf('{');
@@ -96,27 +92,11 @@ export class LLMJsonEvaluator<T> implements Evaluator {
     const prompt = await this.config.prompt(transcript, scenario, snapshot);
     let response: string;
     try {
-      response = await retryOn429(
-        () => this.gocode.complete([{ role: 'user', content: prompt }]),
-        {
-          maxRetries: EVALUATOR_RATE_LIMIT_MAX_RETRIES,
-          defaultWaitMs: EVALUATOR_RATE_LIMIT_WAIT_MS,
-          onRetry: ({ attempt, maxRetries, waitMs }) => {
-            warnLine('LLM judge rate-limited; retrying.', {
-              evaluator: this.name,
-              attempt,
-              maxAttempts: maxRetries,
-              waitSeconds: waitMs / 1000,
-            });
-          },
-          onExhausted: (totalAttempts) => {
-            warnLine('LLM judge rate-limit retry budget exhausted.', {
-              evaluator: this.name,
-              totalAttempts,
-            });
-          },
-        },
-      );
+      // 429 retry (with Retry-After handling) is centralized in
+      // GocodeClient.complete(), so the synthetic-user loop and every evaluator
+      // share one retry budget. A RateLimitError reaching here means that
+      // budget was already exhausted; map it to an `unknown` verdict below.
+      response = await this.gocode.complete([{ role: 'user', content: prompt }]);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       warnLine('LLM judge request failed.', {

@@ -6,20 +6,30 @@ const { mockCreate, mockGetS2SToken, mockRefreshS2SToken } = vi.hoisted(() => ({
   mockRefreshS2SToken: vi.fn(),
 }));
 
-vi.mock('openai', () => ({
-  default: vi.fn().mockImplementation(function () { return {
-    chat: { completions: { create: mockCreate } },
-  }; }),
-}));
+// Preserve the real RateLimitError so `err instanceof RateLimitError` checks in
+// retryOn429 work, while stubbing the OpenAI client constructor.
+vi.mock('openai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('openai')>();
+  return {
+    ...actual,
+    default: vi.fn().mockImplementation(function () { return {
+      chat: { completions: { create: mockCreate } },
+    }; }),
+  };
+});
 
 vi.mock('@airo/ai-lib', () => ({
   getS2SToken: mockGetS2SToken,
   refreshS2SToken: mockRefreshS2SToken,
 }));
 
-import OpenAI from 'openai';
+// sleep is mocked so retry backoffs resolve instantly.
+vi.mock('../../util/sleep.js', () => ({ sleep: vi.fn().mockResolvedValue(undefined) }));
+
+import OpenAI, { InternalServerError, RateLimitError } from 'openai';
 import { GocodeClient } from '../gocode-client.js';
 import type { Message } from '../gocode-client.js';
+import { sleep } from '../../util/sleep.js';
 
 const TEST_CONFIG = {
   baseUrl: 'https://gocode.example.com/v1',
@@ -37,10 +47,11 @@ describe('GocodeClient', () => {
   });
 
   describe('constructor', () => {
-    it('instantiates OpenAI with baseURL and apiKey', () => {
+    it('instantiates OpenAI with baseURL, apiKey, and SDK retries disabled', () => {
       expect(OpenAI).toHaveBeenCalledWith({
         baseURL: TEST_CONFIG.baseUrl,
         apiKey: TEST_CONFIG.apiKey,
+        maxRetries: 0,
       });
     });
   });
@@ -335,6 +346,7 @@ describe('GocodeClient', () => {
       expect(OpenAI).toHaveBeenLastCalledWith({
         baseURL: TEST_CONFIG.baseUrl,
         apiKey: TEST_CONFIG.apiKey,
+        maxRetries: 0,
       });
     });
 
@@ -349,6 +361,139 @@ describe('GocodeClient', () => {
 
       expect(derived.getAccumulatedUsage().calls).toBe(1);
       expect(client.getAccumulatedUsage().calls).toBe(0);
+    });
+  });
+
+  describe('429 rate-limit retry', () => {
+    const messages: Message[] = [{ role: 'user', content: 'hello' }];
+
+    function makeRateLimitError(retryAfterSeconds?: number): RateLimitError {
+      const headers = new Headers();
+      if (retryAfterSeconds !== undefined) {
+        headers.set('retry-after', String(retryAfterSeconds));
+      }
+      return new RateLimitError(429, undefined, 'rate limited', headers);
+    }
+
+    const ok = { choices: [{ message: { content: 'ok' } }] };
+
+    beforeEach(() => {
+      vi.mocked(sleep).mockClear();
+    });
+
+    it('retries on a 429 and returns content on eventual success', async () => {
+      mockCreate
+        .mockRejectedValueOnce(makeRateLimitError())
+        .mockResolvedValueOnce(ok);
+      const result = await client.complete(messages);
+      expect(result).toBe('ok');
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(sleep)).toHaveBeenCalledTimes(1);
+    });
+
+    it('honors the Retry-After header for the backoff duration', async () => {
+      mockCreate
+        .mockRejectedValueOnce(makeRateLimitError(45))
+        .mockResolvedValueOnce(ok);
+      await client.complete(messages);
+      expect(vi.mocked(sleep)).toHaveBeenCalledWith(45_000, undefined);
+    });
+
+    it('falls back to the default 30s wait when Retry-After is absent', async () => {
+      mockCreate
+        .mockRejectedValueOnce(makeRateLimitError())
+        .mockResolvedValueOnce(ok);
+      await client.complete(messages);
+      expect(vi.mocked(sleep)).toHaveBeenCalledWith(30_000, undefined);
+    });
+
+    it('throws after exhausting the default 5 retries (6 attempts)', async () => {
+      mockCreate.mockRejectedValue(makeRateLimitError());
+      await expect(client.complete(messages)).rejects.toThrow(RateLimitError);
+      expect(mockCreate).toHaveBeenCalledTimes(6); // 1 initial + 5 retries
+    });
+
+    it('does not retry non-429 errors', async () => {
+      mockCreate.mockRejectedValue(new Error('network failure'));
+      await expect(client.complete(messages)).rejects.toThrow('network failure');
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(sleep)).not.toHaveBeenCalled();
+    });
+
+    it('respects a configured maxRetries override', async () => {
+      const tuned = new GocodeClient({ ...TEST_CONFIG, rateLimitRetry: { maxRetries: 2 } });
+      mockCreate.mockRejectedValue(makeRateLimitError());
+      await expect(tuned.complete(messages)).rejects.toThrow(RateLimitError);
+      expect(mockCreate).toHaveBeenCalledTimes(3); // 1 initial + 2 retries
+    });
+
+    it('respects a configured waitMs override when Retry-After is absent', async () => {
+      const tuned = new GocodeClient({ ...TEST_CONFIG, rateLimitRetry: { waitMs: 5_000 } });
+      mockCreate
+        .mockRejectedValueOnce(makeRateLimitError())
+        .mockResolvedValueOnce(ok);
+      await tuned.complete(messages);
+      expect(vi.mocked(sleep)).toHaveBeenCalledWith(5_000, undefined);
+    });
+
+    it('threads the abort signal into the backoff sleep', async () => {
+      const controller = new AbortController();
+      mockCreate
+        .mockRejectedValueOnce(makeRateLimitError())
+        .mockResolvedValueOnce(ok);
+      await client.complete(messages, { signal: controller.signal });
+      expect(vi.mocked(sleep)).toHaveBeenCalledWith(30_000, controller.signal);
+    });
+
+    it('aborts promptly when the signal fires during a backoff sleep', async () => {
+      const controller = new AbortController();
+      const abortError = new Error('aborted');
+      controller.abort(abortError);
+      // Simulate the real abort-aware sleep: reject with the signal reason
+      // instead of resolving when the signal is already aborted.
+      vi.mocked(sleep).mockImplementationOnce((_ms, signal) =>
+        signal?.aborted ? Promise.reject(signal.reason) : Promise.resolve(),
+      );
+      mockCreate.mockRejectedValueOnce(makeRateLimitError());
+
+      await expect(
+        client.complete(messages, { signal: controller.signal }),
+      ).rejects.toBe(abortError);
+      expect(mockCreate).toHaveBeenCalledTimes(1); // no second attempt after abort
+    });
+
+    it('retries a transient 5xx error and returns content on recovery', async () => {
+      mockCreate
+        .mockRejectedValueOnce(new InternalServerError(503, undefined, 'unavailable', new Headers()))
+        .mockResolvedValueOnce(ok);
+      const result = await client.complete(messages);
+      expect(result).toBe('ok');
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(sleep)).toHaveBeenCalledTimes(1);
+    });
+
+    it('uses the short transient backoff (not the 30s rate-limit wait) for a 5xx', async () => {
+      mockCreate
+        .mockRejectedValueOnce(new InternalServerError(500, undefined, 'boom', new Headers()))
+        .mockResolvedValueOnce(ok);
+      await client.complete(messages);
+      expect(vi.mocked(sleep)).toHaveBeenCalledWith(1_000, undefined);
+    });
+
+    it('does not double-count usage across retries', async () => {
+      mockCreate
+        .mockRejectedValueOnce(makeRateLimitError())
+        .mockResolvedValueOnce({
+          choices: [{ message: { content: 'ok' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+        });
+      await client.complete(messages);
+      expect(client.getAccumulatedUsage()).toEqual({
+        promptTokens: 10,
+        completionTokens: 5,
+        totalTokens: 15,
+        calls: 1,
+      });
     });
   });
 
@@ -376,6 +521,7 @@ describe('GocodeClient', () => {
           baseURL: S2S_CONFIG.baseUrl,
           apiKey: 'gocode-s2s-placeholder',
           fetch: expect.any(Function),
+          maxRetries: 0,
         });
       });
 
@@ -384,6 +530,7 @@ describe('GocodeClient', () => {
         expect(OpenAI).toHaveBeenLastCalledWith({
           baseURL: S2S_CONFIG.baseUrl,
           apiKey: 'sk-test',
+          maxRetries: 0,
         });
       });
     });
@@ -475,6 +622,7 @@ describe('GocodeClient', () => {
           baseURL: S2S_CONFIG.baseUrl,
           apiKey: 'gocode-s2s-placeholder',
           fetch: expect.any(Function),
+          maxRetries: 0,
         });
       });
     });

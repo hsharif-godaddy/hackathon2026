@@ -4,11 +4,17 @@ const { mockCreate } = vi.hoisted(() => ({
   mockCreate: vi.fn(),
 }));
 
-vi.mock('openai', () => ({
-  default: vi.fn().mockImplementation(function () { return {
-    chat: { completions: { create: mockCreate } },
-  }; }),
-}));
+// Preserve the real RateLimitError (used by GocodeClient's retryOn429) while
+// stubbing the OpenAI client constructor.
+vi.mock('openai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('openai')>();
+  return {
+    ...actual,
+    default: vi.fn().mockImplementation(function () { return {
+      chat: { completions: { create: mockCreate } },
+    }; }),
+  };
+});
 
 vi.mock('@airo/ai-lib', () => ({
   getS2SToken: vi.fn(),

@@ -36,6 +36,18 @@ export interface Config {
     visionModel?: string;
     unicodeSecurityMode?: string;
     piiDetection?: boolean;
+    /**
+     * 429 rate-limit retry tuning for every LLM call made through
+     * `GocodeClient.complete()` (synthetic user + all LLM evaluators).
+     * Optional; `GocodeClient` falls back to built-in defaults
+     * (`DEFAULT_RATE_LIMIT_MAX_RETRIES` / `DEFAULT_RATE_LIMIT_WAIT_MS`) when
+     * unset. A 429 with a `Retry-After` header always waits the header value
+     * (capped in `parseRetryAfterMs`); `waitMs` is the fallback when absent.
+     */
+    rateLimitRetry?: {
+      maxRetries?: number;
+      waitMs?: number;
+    };
   };
   eval: {
     defaultTrials: number;

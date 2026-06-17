@@ -318,7 +318,14 @@ describe('LLMJsonEvaluator — class properties', () => {
 
 });
 
-// ── Rate-limit retry tests ────────────────────────────────────────────────────
+// ── Rate-limit handling ───────────────────────────────────────────────────────
+//
+// 429 retry (with Retry-After) is centralized in GocodeClient.complete() so the
+// synthetic-user loop and every evaluator share one retry budget — see
+// clients/__tests__/gocode-client.test.ts for the retry behavior itself. Here
+// `gocode.complete` is mocked, so the evaluator never retries on its own: a
+// RateLimitError that reaches it means the client's budget was already
+// exhausted, and the evaluator maps it to an `unknown` verdict.
 
 function makeRateLimitError(retryAfterSeconds?: number): RateLimitError {
   const headers = new Headers();
@@ -328,7 +335,7 @@ function makeRateLimitError(retryAfterSeconds?: number): RateLimitError {
   return new RateLimitError(429, undefined, 'rate limited', headers);
 }
 
-describe('LLMJsonEvaluator — rate-limit retry', () => {
+describe('LLMJsonEvaluator — request failure handling', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -340,50 +347,36 @@ describe('LLMJsonEvaluator — rate-limit retry', () => {
     warnSpy.mockRestore();
   });
 
-  it('succeeds after a single 429 retry', async () => {
-    let calls = 0;
-    const { evaluator, gocode } = makeEvaluator(() => {
-      calls++;
-      if (calls === 1) throw makeRateLimitError();
-      return Promise.resolve(validResponse());
-    });
-    const result = await evaluator.evaluate(makeTranscript(), testScenario);
-    expect(result.verdict).toBe('pass');
-    expect(gocode.complete).toHaveBeenCalledTimes(2);
-  });
-
-  it('returns unknown after exhausting all retries (6 total calls)', async () => {
+  it('does not retry on its own — calls complete() exactly once', async () => {
     const { evaluator, gocode } = makeEvaluator(() => {
       throw makeRateLimitError();
     });
     const result = await evaluator.evaluate(makeTranscript(), testScenario);
     expect(result.verdict).toBe('unknown');
-    expect(gocode.complete).toHaveBeenCalledTimes(6); // 1 initial + 5 retries
+    expect(gocode.complete).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(sleep)).not.toHaveBeenCalled();
   });
 
-  it('sleeps for the Retry-After duration when header is present', async () => {
-    let calls = 0;
+  it('maps an exhausted RateLimitError to an unknown verdict', async () => {
     const { evaluator } = makeEvaluator(() => {
-      calls++;
-      if (calls === 1) throw makeRateLimitError(60);
-      return Promise.resolve(validResponse());
+      throw makeRateLimitError(60);
+    });
+    const result = await evaluator.evaluate(makeTranscript(), testScenario);
+    expect(result.verdict).toBe('unknown');
+  });
+
+  it('flags a RateLimitError as a rate limit in the warning', async () => {
+    const { evaluator } = makeEvaluator(() => {
+      throw makeRateLimitError();
     });
     await evaluator.evaluate(makeTranscript(), testScenario);
-    expect(vi.mocked(sleep)).toHaveBeenCalledWith(60_000);
+    expect(warnSpy).toHaveBeenCalledWith(
+      'LLM judge request failed.',
+      expect.objectContaining({ isRateLimit: true }),
+    );
   });
 
-  it('sleeps for default 30s when Retry-After header is absent', async () => {
-    let calls = 0;
-    const { evaluator } = makeEvaluator(() => {
-      calls++;
-      if (calls === 1) throw makeRateLimitError();
-      return Promise.resolve(validResponse());
-    });
-    await evaluator.evaluate(makeTranscript(), testScenario);
-    expect(vi.mocked(sleep)).toHaveBeenCalledWith(30_000);
-  });
-
-  it('does not retry non-429 errors', async () => {
+  it('returns unknown for non-429 errors', async () => {
     const { evaluator, gocode } = makeEvaluator(() => {
       throw new Error('network timeout');
     });
@@ -404,7 +397,7 @@ describe('LLMJsonEvaluator — rate-limit retry', () => {
     );
   });
 
-  it('preserves evalVersion on retry exhaustion', async () => {
+  it('preserves evalVersion when the request fails', async () => {
     const { evaluator } = makeEvaluator(
       () => { throw makeRateLimitError(); },
       { evalVersion: 'v2' },
@@ -412,28 +405,5 @@ describe('LLMJsonEvaluator — rate-limit retry', () => {
     const result = await evaluator.evaluate(makeTranscript(), testScenario);
     expect(result.verdict).toBe('unknown');
     expect(result.evalVersion).toBe('v2');
-  });
-
-  it('logs a warning for each retry attempt', async () => {
-    let calls = 0;
-    const { evaluator } = makeEvaluator(() => {
-      calls++;
-      if (calls <= 2) throw makeRateLimitError();
-      return Promise.resolve(validResponse());
-    });
-    await evaluator.evaluate(makeTranscript(), testScenario);
-    // 2 onRetry warnings (no exhaustion or failure warning on success)
-    expect(warnSpy).toHaveBeenCalledTimes(2);
-  });
-
-  it('logs exhaustion warning when retry budget is depleted', async () => {
-    const { evaluator } = makeEvaluator(() => {
-      throw makeRateLimitError();
-    });
-    await evaluator.evaluate(makeTranscript(), testScenario);
-    expect(warnSpy).toHaveBeenCalledWith(
-      'LLM judge rate-limit retry budget exhausted.',
-      expect.objectContaining({ evaluator: 'test-evaluator', totalAttempts: 6 }),
-    );
   });
 });
