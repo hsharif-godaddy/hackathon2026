@@ -32,7 +32,7 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
   const isAppHydrated = useDevelopPageStore(
     (state) => state.currentAppId === appId && state.loadingPhase === 'ready',
   );
-  const { data } = useBrandData(appId, { enabled: isAppHydrated });
+  const { data, isLoading: isBrandDataLoading } = useBrandData(appId, { enabled: isAppHydrated });
   const logoViewFiredRef = useRef(false);
   const bookViewFiredRef = useRef(false);
 
@@ -231,15 +231,18 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
     })();
   }, [data, primaryLogoUrl, reversedLogoUrl, appId]);
 
-  // Loading, or no data yet (agent hasn't written brand data during initial creation).
-  // API failures fall through to the same loading state — defaults render once data arrives.
   if (!data) {
+    const showLoadingMessage = isGenerating || isBrandDataLoading || !isAppHydrated;
     return (
       <div
         className="h-full flex items-center justify-center bg-intents-ux-boxLowContrast-backgroundColor"
-        data-testid="brand-book-loading"
+        data-testid={showLoadingMessage ? 'brand-book-loading' : 'brand-book-empty'}
       >
-        <text.span as="paragraph">Creating your logo &amp; brand...</text.span>
+        <text.span as="paragraph">
+          {showLoadingMessage
+            ? 'Creating your logo & brand...'
+            : 'To get started, ask to create a logo in chat.'}
+        </text.span>
       </div>
     );
   }

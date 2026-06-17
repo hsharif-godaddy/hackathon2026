@@ -3,10 +3,13 @@
  */
 import '@testing-library/jest-dom';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, screen } from '@testing-library/react';
 
+import { useBrandData } from '@/hooks/useBrandData';
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { renderWithProviders } from '@/tests/test-utils';
+import { useIsBrandGenerating } from './hooks';
 import BrandBookView from './index';
 
 const mockBrandData = {
@@ -32,8 +35,13 @@ const { mockManifest, mockIsManifestLoading } = vi.hoisted(() => ({
   mockIsManifestLoading: { value: false },
 }));
 
+vi.mock('@/stores/useDevelopPageStore', () => ({
+  useDevelopPageStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({ currentAppId: 'app-123', loadingPhase: 'ready' }),
+}));
+
 vi.mock('@/hooks/useBrandData', () => ({
-  useBrandData: vi.fn(function () { return { data: mockBrandData, isLoading: false, error: null }; }),
+  useBrandData: vi.fn(function () { return { data: mockBrandData, isLoading: false, error: null, refetch: vi.fn() }; }),
 }));
 
 vi.mock('@/hooks/useAppName', () => ({
@@ -353,6 +361,35 @@ describe('BrandBookView', function brandBookTests() {
       });
 
       expect(screen.queryByTestId('logo-img-Logo on light background')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('empty state (no brand data)', () => {
+    afterEach(() => {
+      vi.mocked(useBrandData).mockReturnValue({ data: mockBrandData, isLoading: false, error: null, refetch: vi.fn() });
+      vi.mocked(useIsBrandGenerating).mockReturnValue(false);
+    });
+
+    it('shows empty state when no brand data and not generating', function emptyState() {
+      vi.mocked(useBrandData).mockReturnValue({ data: null, isLoading: false, error: null, refetch: vi.fn() });
+      renderWithProviders(<BrandBookView appId="app-123" />);
+      expect(screen.getByTestId('brand-book-empty')).toBeInTheDocument();
+      expect(screen.getByText('To get started, ask to create a logo in chat.')).toBeInTheDocument();
+    });
+
+    it('shows loading message when brand data is still fetching', function loadingWhileFetching() {
+      vi.mocked(useBrandData).mockReturnValue({ data: null, isLoading: true, error: null, refetch: vi.fn() });
+      renderWithProviders(<BrandBookView appId="app-123" />);
+      expect(screen.getByTestId('brand-book-loading')).toBeInTheDocument();
+      expect(screen.getByText('Creating your logo & brand...')).toBeInTheDocument();
+    });
+
+    it('shows loading message when brand is actively generating', function loadingWhileGenerating() {
+      vi.mocked(useBrandData).mockReturnValue({ data: null, isLoading: false, error: null, refetch: vi.fn() });
+      vi.mocked(useIsBrandGenerating).mockReturnValue(true);
+      renderWithProviders(<BrandBookView appId="app-123" />);
+      expect(screen.getByTestId('brand-book-loading')).toBeInTheDocument();
+      expect(screen.getByText('Creating your logo & brand...')).toBeInTheDocument();
     });
   });
 });
