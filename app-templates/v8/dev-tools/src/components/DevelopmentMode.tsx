@@ -252,6 +252,11 @@ export default function DevelopmentMode() {
     // Track slots recently updated by RELOAD_MEDIA_SLOT to prevent HMR-driven patchAllImages
     // from reverting them with stale manifest data (race between postMessage and file-watcher)
     const recentSlotOverrides: Record<string, number> = {}
+    // Slots explicitly swapped this session (via RELOAD_MEDIA_SLOT). Persisted for the
+    // page's lifetime so images rendered LATER — e.g. when the user navigates to another
+    // page that shares the same slot — drop the stale ?src= baked into the source and pick
+    // up the manifest's updated currentUrl, instead of showing the old image until refresh.
+    const swappedSlots = new Set<string>()
     let mediaVersionsCleanup: (() => void) | null = null
     let mediaObserver: MutationObserver | null = null
 
@@ -275,13 +280,23 @@ export default function DevelopmentMode() {
       if (!extracted) return null
 
       const version = mediaState.versions[extracted.slotPath]
-      if (!version) return null
+      // For explicitly swapped slots, also strip a stale ?src= so the proxy resolves the
+      // manifest's updated currentUrl rather than the URL baked into the DOM by React.
+      const stripSrc = swappedSlots.has(extracted.slotPath)
+      if (!version && !stripSrc) return null
 
       try {
         const parsed = new URL(url, window.location.origin)
-        if (parsed.searchParams.get('_v') === version) return null // already correct
-        parsed.searchParams.set('_v', version)
-        return parsed.toString()
+        let changed = false
+        if (stripSrc && parsed.searchParams.has('src')) {
+          parsed.searchParams.delete('src')
+          changed = true
+        }
+        if (version && parsed.searchParams.get('_v') !== version) {
+          parsed.searchParams.set('_v', version)
+          changed = true
+        }
+        return changed ? parsed.toString() : null
       } catch {
         return null
       }
@@ -498,8 +513,15 @@ export default function DevelopmentMode() {
         mediaState.captions = getCaptions?.() || {}
         patchAllImages()
         mediaVersionsCleanup = onVersionsUpdate((newVersions: Record<string, string>, newMediaTypes: Record<string, string>, newCaptions?: Record<string, string>) => {
+          // Mark version-changed slots as swapped so later patches strip stale ?src= and use manifest currentUrl.
+          const prevVersions = mediaState.versions
+          for (const [slot, version] of Object.entries(newVersions)) {
+            if (prevVersions[slot] !== undefined && prevVersions[slot] !== version) {
+              swappedSlots.add(slot)
+            }
+          }
           mediaState.versions = newVersions
-          // Apply new captions but preserve recent RELOAD_MEDIA_SLOT overrides
+          // Apply new captions but preserve recent RELOAD_MEDIA_SLOT overrides.
           if (newCaptions) {
             const now = Date.now()
             for (const [slot, cap] of Object.entries(newCaptions)) {
@@ -513,9 +535,14 @@ export default function DevelopmentMode() {
               }
             }
           }
-          // Apply new mediaTypes but preserve recent RELOAD_MEDIA_SLOT overrides
-          // (prevents stale file-watcher data from reverting explicit swaps)
+          // Apply mediaType updates but keep recent explicit reload overrides.
           const now = Date.now()
+          // Keep recent version overrides to avoid brief reverts from stale watcher snapshots.
+          for (const [slot, time] of Object.entries(recentSlotOverrides)) {
+            if (now - time < 5000) {
+              mediaState.versions[slot] = String(time)
+            }
+          }
           for (const [slot, type] of Object.entries(newMediaTypes)) {
             const overrideTime = recentSlotOverrides[slot]
             if (overrideTime && now - overrideTime < 5000) {
@@ -568,6 +595,12 @@ export default function DevelopmentMode() {
 
       // Mark this slot as explicitly updated to prevent HMR file-watcher from reverting it
       recentSlotOverrides[slotPath] = timestamp
+
+      // Remember this slot was swapped so images rendered later on OTHER pages that share it
+      // (e.g. after the user navigates there) drop the stale ?src= and bust their cache via
+      // the version map, instead of showing the old image until a full refresh.
+      swappedSlots.add(slotPath)
+      mediaState.versions[slotPath] = String(timestamp)
 
       // Update mediaTypes immediately so future MutationObserver patches use the right type.
       // This is critical for carousel slides that aren't in the DOM yet — when the user
@@ -1435,6 +1468,18 @@ export default function DevelopmentMode() {
           }
         } else if (event.data?.type === 'SCROLL_TO_MEDIA_SLOT' && event.data.slotPath) {
           scrollToMediaSlot(event.data.slotPath, event.data.index ?? 0)
+        } else if (event.data?.type === 'QUERY_RENDERED_LOGO_SLOTS') {
+          // Scan the page for <img> elements rendering logo media slots
+          const imgs = document.querySelectorAll('img[src*="/airo-assets/images/logo/"], img[src*="/airo-assets/images/logo-"]')
+          const rendered: string[] = []
+          imgs.forEach((img) => {
+            const src = img.getAttribute('src') || ''
+            const match = src.match(/\/airo-assets\/images\/(logo[^?]*)/)
+            if (match) rendered.push(match[1])
+          })
+          if (window.parent !== window) {
+            safePostMessage(window.parent, { type: 'RENDERED_LOGO_SLOTS_RESPONSE', slots: rendered })
+          }
         }
       } catch (error) {
         console.error('[DevTools] Message handler error:', error, 'Message type:', event.data?.type)

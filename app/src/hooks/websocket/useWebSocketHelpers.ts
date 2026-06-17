@@ -12,6 +12,7 @@ import { useCallback } from 'react'
 import { validate as validateUUID } from 'uuid'
 import { useQueryClient } from '@tanstack/react-query'
 
+import { refreshMediaSurfaces } from '@/hooks/shared/mediaSurfaceRefresh'
 import { logger } from '@/lib/request-context'
 import { useGitStore } from '@/stores/useGitStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
@@ -154,6 +155,9 @@ export function useWebSocketHelpers(currentAppId: string | null): UseWebSocketHe
           queryKey: ['secretsDiff', currentAppId],
           refetchType: 'active',
         })
+
+        // Commit means source changed — refresh the media grid so a newly built page and its images appear.
+        refreshMediaSurfaces(currentAppId)
 
         // Update UI state to reflect the new commit (no API call needed - backend is already there)
         useGitStore.getState().setSelectedCommitHash(currentAppId, commitHash)

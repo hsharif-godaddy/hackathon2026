@@ -90,7 +90,7 @@ export class CompleteHandler implements MessageHandler {
         await context.helpers.handleCommitComplete(commitHash)
         postInitialBuildEvent(appId)
       } else {
-        await checkNewPageCreation()
+        await checkNewPageCreation(appId)
       }
 
       updateSiteTimestamp(appId)

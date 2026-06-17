@@ -8,11 +8,18 @@ import { MediaSlotDetail } from '@/app/[market]/develop/components/media/MediaSl
 import { MediaSlotsGrid } from '@/app/[market]/develop/components/media/MediaSlotsGrid'
 import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
+import { SWITCHBOARD_APPBUILDER_MEDIA_GRID_SLOT_ORGANIZATION } from '@/config/switchboard-flags'
+import { refreshMediaSurfaces } from '@/hooks/shared/mediaSurfaceRefresh'
+import { useAppDetails } from '@/hooks/useAppDetails'
+import { useAppPages } from '@/hooks/useAppPages'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useMediaManifest } from '@/hooks/useMediaManifest'
+import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { useCodeSyncStore } from '@/stores/useCodeSyncStore'
 import { DEFAULT_CHAT_PANE_WIDTH, useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
+import { useSetInputValue } from '@/stores/useStreamingConversationStore.selectors'
 import type { BusMediaSlotForkContext } from '@/utils/eventBus'
 import {
   clearMediaSlotForkContext,
@@ -57,9 +64,55 @@ export default function MediaPanel() {
 
   const { setActiveChatTab } = useChatTabs()
 
+  const isSectionOrganizationEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_MEDIA_GRID_SLOT_ORGANIZATION) === true
+
   const { manifest, slotNames, isLoading, error, refetch } = useMediaManifest({
     appId: appId || null
   })
+
+  // Page fetch only powers the sectioned layout. Gate it behind the same flag so the legacy
+  // flat grid never depends on /pages, and never fold its loading/error into the grid's
+  // primary state — a slow or failing page lookup must not block or break media rendering.
+  const { pages, isLoading: pagesLoading, refetch: refetchPages } = useAppPages({
+    appId: appId || null,
+    enabled: isSectionOrganizationEnabled,
+  })
+  const appDetails = useAppDetails(appId || '')
+
+  const setInputValue = useSetInputValue()
+
+  const handleAddMedia = useCallback((pageTitle: string) => {
+    const siteName = appDetails.data?.name
+    const siteRef = siteName ? `${siteName}` : 'my brand'
+    setInputValue(`I want to improve the look of my ${pageTitle} page. Enhance this page's visual appeal by adding and updating the media to better reflect the intended look and feel of ${siteRef}.`)
+    setActiveChatTab(ChatTab.CHAT)
+  }, [setInputValue, setActiveChatTab, appDetails.data?.name])
+
+  const handleDesignLogo = useCallback(() => {
+    setInputValue('Design a logo for my site')
+    setActiveChatTab(ChatTab.CHAT)
+  }, [setInputValue, setActiveChatTab])
+
+  // Auto-refresh the media surfaces when a file in src/pages/ is created/modified
+  const changeVersion = useCodeSyncStore((state) => state.changeVersion)
+  const fileChanges = useCodeSyncStore((state) => state.fileChanges)
+  const prevChangeVersionRef = useRef(changeVersion)
+
+  useEffect(() => {
+    if (changeVersion === prevChangeVersionRef.current) return
+    prevChangeVersionRef.current = changeVersion
+
+    // Check if any changed file is in src/pages/
+    const hasPageChange = Array.from(fileChanges.values()).some(
+      (fc) => fc.path.includes('src/pages/') && !fc.streaming
+    )
+    if (hasPageChange && appId) {
+      // Keep section/images/usage in sync when pages change.
+      void refetchPages()
+      void refetch()
+      refreshMediaSurfaces(appId)
+    }
+  }, [changeVersion, fileChanges, appId, refetchPages, refetch])
 
   // Respond to external navigation requests (e.g., from preview "Swap Image" or "Modify").
   // Also atomically handles editor auto-open: if openEditorForSlot matches the incoming
@@ -253,10 +306,13 @@ export default function MediaPanel() {
           manifest={manifest}
           slotNames={slotNames}
           appId={appId}
-          isLoading={isLoading}
+          isLoading={isLoading || (isSectionOrganizationEnabled && pagesLoading)}
           error={error}
           onSelectSlot={handleSelectSlot}
           thumbnailBustKey={thumbnailBustKey}
+          pages={pages}
+          onAddMedia={handleAddMedia}
+          onDesignLogo={handleDesignLogo}
         />
       </div>
     </div>

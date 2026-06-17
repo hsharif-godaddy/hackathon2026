@@ -580,7 +580,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                     })
                     postInitialBuildEvent(activeAppId)
                   } else {
-                    checkNewPageCreation().catch(err => {
+                    checkNewPageCreation(activeAppId).catch(err => {
                       logger.warn('sse.complete.check_new_page_failed', {
                         appId: activeAppId,
                         error: err instanceof Error ? err.message : String(err),

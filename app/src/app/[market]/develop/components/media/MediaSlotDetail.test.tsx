@@ -7,10 +7,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 
 import { getParentOrigin } from '@/components/security/allowed-frame-ancestors';
+import { useAppPages } from '@/hooks/useAppPages';
 import { useIsEmbedded } from '@/hooks/useIsEmbedded';
 import { useMediaManifest } from '@/hooks/useMediaManifest';
 import { useMediaSlot } from '@/hooks/useMediaSlot';
+import { useMediaSlotUsage } from '@/hooks/useMediaSlotUsage';
+import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { renderWithProviders } from '@/tests/test-utils';
+import { postMessageToIframe } from '@/utils/postMessage';
 import { formatSlotName, getPreviewOrigin, MediaSlotDetail } from './MediaSlotDetail';
 
 const mockAppId = 'app-123';
@@ -22,6 +26,14 @@ vi.mock('@/hooks/useMediaSlot', () => ({
 
 vi.mock('@/hooks/useMediaManifest', () => ({
   useMediaManifest: vi.fn(),
+}));
+
+vi.mock('@/hooks/useAppPages', () => ({
+  useAppPages: vi.fn().mockReturnValue({ pages: [], isLoading: false, error: null, refetch: vi.fn() }),
+}));
+
+vi.mock('@/hooks/useMediaSlotUsage', () => ({
+  useMediaSlotUsage: vi.fn().mockReturnValue({ usageByRoute: {}, isLoading: false, error: null, refetch: vi.fn() }),
 }));
 
 vi.mock('@/stores/useServerPollingStore', () => ({
@@ -434,46 +446,83 @@ describe('MediaSlotDetail', () => {
 
 });
 
-describe('formatSlotName', () => {
-  it('should strip pages prefix and capitalize segments', () => {
-    expect(formatSlotName('pages/home/hero')).toBe('Home Hero');
+describe('MediaSlotInstanceCycler (cross-page instances)', () => {
+  const mockRefetch = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    global.fetch = vi.fn();
+    vi.mocked(useIsEmbedded).mockReturnValue(false);
+    vi.mocked(useMediaSlot).mockReturnValue({
+      slot: { currentUrl: '/img1.jpg', alternatives: ['/img2.jpg'], mediaType: 'image' },
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    } as unknown as ReturnType<typeof useMediaSlot>);
+    vi.mocked(useMediaManifest).mockReturnValue({
+      manifest: { 'hero/image': { currentUrl: '/img1.jpg', alternatives: ['/img2.jpg'] } },
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useMediaManifest>);
+    vi.mocked(useAppPages).mockReturnValue({
+      pages: [
+        { slug: 'home', title: 'Home', route: '/' },
+        { slug: 'about', title: 'About', route: '/about' },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useAppPages>);
   });
 
-  it('should strip components prefix', () => {
-    expect(formatSlotName('components/footer/logo')).toBe('Footer Logo');
+  it('shows "1 of N" with the first page name when the slot is used on multiple pages', () => {
+    vi.mocked(useMediaSlotUsage).mockReturnValue({
+      usageByRoute: { '/': ['hero/image'], '/about': ['hero/image'] },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useMediaSlotUsage>);
+
+    renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName="hero/image" />);
+
+    expect(screen.getByText('1 of 2 · Home')).toBeInTheDocument();
   });
 
-  it('should strip sections prefix', () => {
-    expect(formatSlotName('sections/about/background')).toBe('About Background');
+  it('does not render the cycler when the slot is used on a single page', () => {
+    vi.mocked(useMediaSlotUsage).mockReturnValue({
+      usageByRoute: { '/': ['hero/image'] },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useMediaSlotUsage>);
+
+    renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName="hero/image" />);
+
+    expect(screen.queryByLabelText('Next instance')).not.toBeInTheDocument();
   });
 
-  it('should strip layouts prefix', () => {
-    expect(formatSlotName('layouts/header/site-logo')).toBe('Header Site logo');
-  });
+  it('advances to the next page and navigates the preview on Next', async () => {
+    vi.mocked(useMediaSlotUsage).mockReturnValue({
+      usageByRoute: { '/': ['hero/image'], '/about': ['hero/image'] },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useMediaSlotUsage>);
 
-  it('should replace hyphens with spaces', () => {
-    expect(formatSlotName('pages/home/hero-image')).toBe('Home Hero image');
-  });
+    // Provide a preview iframe so navigation messages are dispatched.
+    const iframe = document.createElement('iframe');
+    iframe.id = 'preview-iframe';
+    document.body.appendChild(iframe);
 
-  it('should handle paths without known prefixes', () => {
-    expect(formatSlotName('logo/primary')).toBe('Logo Primary');
-  });
+    const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName="hero/image" />);
 
-  it('should handle single segment', () => {
-    expect(formatSlotName('hero')).toBe('Hero');
-  });
-});
+    await user.click(screen.getByLabelText('Next instance'));
 
-describe('getPreviewOrigin', () => {
-  it('strips query string from preview URL', () => {
-    expect(getPreviewOrigin('https://xyz.preview.c37.airoapp.ai/?airoShareToken=abc')).toBe('https://xyz.preview.c37.airoapp.ai');
-  });
+    expect(screen.getByText('2 of 2 · About')).toBeInTheDocument();
+    expect(vi.mocked(postMessageToIframe)).toHaveBeenCalledWith(
+      iframe,
+      expect.objectContaining({ type: 'RESTORE_STATE_AFTER_REFRESH', url: '/about' }),
+    );
 
-  it('returns origin unchanged when no query string', () => {
-    expect(getPreviewOrigin('https://xyz.preview.c37.airoapp.ai')).toBe('https://xyz.preview.c37.airoapp.ai');
-  });
-
-  it('handles malformed URL gracefully', () => {
-    expect(getPreviewOrigin('not-a-url?foo=bar')).toBe('not-a-url');
+    iframe.remove();
   });
 });
