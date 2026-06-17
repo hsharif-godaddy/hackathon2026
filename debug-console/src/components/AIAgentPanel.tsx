@@ -870,6 +870,7 @@ function ConversationDetail({ summary, detail, error, loading, onRender, onLoadO
         : (typeof summary?.messageCount === 'number' ? `${summary.messageCount}` : null);
     const userCount = messages?.filter((m) => m.sender === 'user').length ?? null;
     const agentCount = messages !== null && userCount !== null ? messages.length - userCount : null;
+    const freeCount = messages?.filter((m) => m.sender === 'agent' && m.metadata?.usedFreeGrants === true).length ?? null;
 
     return (
         <div>
@@ -910,6 +911,13 @@ function ConversationDetail({ summary, detail, error, loading, onRender, onLoadO
                                         ? `${displayCount} (${userCount} user, ${agentCount} agent)`
                                         : displayCount}
                             </span>
+                            {freeCount !== null && freeCount > 0 && (
+                                <>
+                                    <span style={metadataSeparatorStyle}>·</span>
+                                    <span style={metadataKeyStyle}>Free turns:</span>
+                                    <span style={{ color: '#92400e', fontWeight: 600 }}>{freeCount}</span>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -985,6 +993,11 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
                     {!isUser && steps.length === 0 && toolCalls.length > 0 && (
                         <span style={stepsBadgeStyle}>
                             {toolCalls.length} tool call{toolCalls.length === 1 ? '' : 's'}
+                        </span>
+                    )}
+                    {!isUser && message.metadata?.usedFreeGrants === true && (
+                        <span style={freeGrantsBadgeStyle} title="This turn was free (GoDaddy paid via grants/override)">
+                            🆓 Free
                         </span>
                     )}
                 </div>
@@ -1334,6 +1347,15 @@ const stepsBadgeStyle: React.CSSProperties = {
     fontWeight: 600,
     color: '#047857',
     backgroundColor: '#d1fae5',
+    padding: '0.1rem 0.35rem',
+    borderRadius: '4px',
+};
+
+const freeGrantsBadgeStyle: React.CSSProperties = {
+    fontSize: '0.6rem',
+    fontWeight: 600,
+    color: '#92400e',
+    backgroundColor: '#fef3c7',
     padding: '0.1rem 0.35rem',
     borderRadius: '4px',
 };
