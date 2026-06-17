@@ -38,7 +38,7 @@ export { SUPPORTED_AUTH_TYPES, isEmployeeAuthType } from './auth/index.js';
 export type { SupportedAuthType, AuthType } from './auth/index.js';
 
 // Domain (attach / site sync)
-export { fqdnIsConnectedOrProvisioningOnSite } from './domain/index.js';
+export { fqdnIsConnectedOrProvisioningOnSite, getConnectedOrProvisioningDomain } from './domain/index.js';
 export type { SiteDomainForAttachCheck } from './domain/index.js';
 
 // Site publish gating (shared by app UI and agents SEO audit)

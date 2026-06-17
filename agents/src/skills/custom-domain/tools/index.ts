@@ -1,4 +1,4 @@
-import { fqdnIsConnectedOrProvisioningOnSite, type SiteDomainForAttachCheck } from '@airo/shared'
+import { fqdnIsConnectedOrProvisioningOnSite, getConnectedOrProvisioningDomain, type SiteDomainForAttachCheck } from '@airo/shared'
 import { z } from 'zod'
 
 import type { SkillToolDefinition } from '@airo/ai-skills'
@@ -173,12 +173,27 @@ async function attach(
         return autoAttach(clientActionService, appId, domain)
     }
 
+    const primaryEntry = getConnectedOrProvisioningDomain(siteDomains)
+
+    if (primaryEntry) {
+        const primaryFqdn = primaryEntry.fqdn
+        const isProvisioning = (primaryEntry.status ?? '').toLowerCase() !== 'active'
+        logger.info('domain.attach.already-connected', { appId, primaryFqdn, isProvisioning })
+        const statusNote = isProvisioning
+            ? `${primaryFqdn} is being set up for this app (DNS is still propagating).`
+            : `${primaryFqdn} is already connected to this app.`
+        return {
+            success: true,
+            alreadyConnected: true,
+            primaryDomain: primaryFqdn,
+            message: `${statusNote} Tell the user the current status. Offer to forward additional domains to ${primaryFqdn} if they have other domains to point here.`,
+        }
+    }
+
     logger.info('domain.attach.render', {
         domain: 'not-provided',
         appId,
     })
-
-    const attachedSummary = formatSiteCustomDomainsSummary(siteDomains)
 
     return {
         success: true,
@@ -188,11 +203,7 @@ async function attach(
             brandName: domain || input.brandName,
             appId
         },
-        message: messageForAttachWidget(
-            attachedSummary
-                ? `Attach widget shown. Domains on app: ${attachedSummary}.`
-                : 'Attach widget shown'
-        )
+        message: messageForAttachWidget('Attach widget shown')
     }
 }
 
@@ -371,13 +382,6 @@ function buildForwardingMessage(
         return `To forward ${sourceDomain} to ${primaryDomain}: if ${sourceDomain} is a GoDaddy domain, set up forwarding at ${dccLink} using a 301 (Permanent) redirect. If it's registered elsewhere, set up a URL redirect/forward to ${primaryDomain} at that registrar. Full instructions: ${DOMAIN_FORWARDING_HELP_ARTICLE}`
     }
     return `Your app is live at ${primaryDomain}. To point additional domains here, set up domain forwarding — GoDaddy domains via DCC, external domains via the registrar's redirect settings. Instructions: ${DOMAIN_FORWARDING_HELP_ARTICLE}`
-}
-
-function formatSiteCustomDomainsSummary(domains: SiteDomainForAttachCheck[] | undefined): string {
-    if (!domains?.length) return ''
-    const rows = domains.filter((d) => d.domainType !== 'prefix')
-    if (!rows.length) return ''
-    return rows.map((d) => `${d.fqdn} (${d.status ?? 'unknown'})`).join('; ')
 }
 
 /**

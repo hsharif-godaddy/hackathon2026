@@ -419,7 +419,7 @@ describe('custom-domain', function packageTests() {
                 })
             } as any)
 
-            await execute(
+            const result = await execute(
                 { action: 'attach' },
                 {
                     metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
@@ -427,10 +427,34 @@ describe('custom-domain', function packageTests() {
                 }
             )
 
+            expect(result.widgetType).toBe('domain-attach')
             expect(mockSetMemory).not.toHaveBeenCalled()
         })
 
-        it('should pass brandName to widget but not store it as a domain in memory', async function brandNameNotStored() {
+        it('should show attach widget when only prefix domains are present', async function prefixOnlyShowsWidget() {
+            mockGetClientActionService.mockReturnValue({
+                executeAction: vi.fn().mockResolvedValue({
+                    success: true,
+                    result: {
+                        variants: ['publish'],
+                        domains: [{ fqdn: 'abc123.preview.example.com', domainType: 'prefix', status: 'active' }],
+                    },
+                })
+            } as any)
+
+            const result = await execute(
+                { action: 'attach' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
+                    socketId: 'socket-123'
+                }
+            )
+
+            expect(result.widgetType).toBe('domain-attach')
+            expect(result.alreadyConnected).toBeUndefined()
+        })
+
+        it('should confirm already-connected domain instead of showing widget', async function brandNameNotStored() {
             mockGetClientActionService.mockReturnValue({
                 executeAction: vi.fn().mockResolvedValue({
                     success: true,
@@ -450,9 +474,38 @@ describe('custom-domain', function packageTests() {
             )
 
             expect(result.success).toBe(true)
-            expect(result.widgetData.brandName).toBe('My Project')
+            expect(result.alreadyConnected).toBe(true)
+            expect(result.primaryDomain).toBe('existing.com')
+            expect(result.widgetData).toBeUndefined()
             expect(result.message).toContain('existing.com')
             expect(mockSetMemory).not.toHaveBeenCalled()
+        })
+
+        it('should confirm provisioning domain without claiming it is fully connected', async function pendingDomainConfirm() {
+            mockGetClientActionService.mockReturnValue({
+                executeAction: vi.fn().mockResolvedValue({
+                    success: true,
+                    result: {
+                        variants: ['publish'],
+                        domains: [{ fqdn: 'provisioning.com', domainType: 'custom', status: 'pending' }],
+                    },
+                })
+            } as any)
+
+            const result = await execute(
+                { action: 'attach' },
+                {
+                    metadata: { appId: 'app-123', permissions: { canPurchaseDomain: true } },
+                    socketId: 'socket-123'
+                }
+            )
+
+            expect(result.success).toBe(true)
+            expect(result.alreadyConnected).toBe(true)
+            expect(result.primaryDomain).toBe('provisioning.com')
+            expect(result.widgetData).toBeUndefined()
+            expect(result.message).toContain('provisioning.com')
+            expect(result.message).not.toContain('already connected')
         })
 
         it('should allow to proceed when publish status cannot be determined', async function failOpen() {

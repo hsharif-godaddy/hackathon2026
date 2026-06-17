@@ -8,6 +8,11 @@ export interface SiteDomainForAttachCheck {
   status?: string | null
 }
 
+function isConnectedOrProvisioningStatus(status: string | null | undefined): boolean {
+  const s = (status ?? '').toLowerCase()
+  return !s || s === 'active' || s === 'pending'
+}
+
 /**
  * True when a non-prefix FQDN on the app is already connected or in a
  * transitional attach state (empty status, active, pending).
@@ -23,9 +28,21 @@ export function fqdnIsConnectedOrProvisioningOnSite(
   return domains.some((d) => {
     if (d.domainType === 'prefix') return false
     if (d.fqdn.trim().toLowerCase() !== target) return false
-    const s = (d.status ?? '').toLowerCase()
-    if (!s) return true
-    if (s === 'active' || s === 'pending') return true
-    return false
+    return isConnectedOrProvisioningStatus(d.status)
   })
+}
+
+/**
+ * Returns the first non-prefix custom domain that is connected or provisioning,
+ * preferring an active entry over a pending/transitional one.
+ * Returns undefined when no such domain exists.
+ */
+export function getConnectedOrProvisioningDomain(
+  domains: SiteDomainForAttachCheck[] | undefined
+): SiteDomainForAttachCheck | undefined {
+  if (!domains?.length) return undefined
+  const candidates = domains.filter(
+    (d) => d.domainType !== 'prefix' && !!d.fqdn && isConnectedOrProvisioningStatus(d.status)
+  )
+  return candidates.find((d) => (d.status ?? '').toLowerCase() === 'active') ?? candidates[0]
 }
