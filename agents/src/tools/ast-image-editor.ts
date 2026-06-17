@@ -1,6 +1,10 @@
+import { readdir, readFile } from 'node:fs/promises';
+import path from 'node:path';
+
 import * as t from '@babel/types';
 
 import { logger } from '../logging/index.js';
+import { imageSlotUrl } from '../utils/slot-reference-utils.js';
 
 import { ASTEditorBase, BaseEditResult } from './ast-editor-base.js';
 
@@ -19,6 +23,8 @@ export interface ImageElementInfo {
 export interface ImageInfo {
   type: 'img' | 'background' | 'contains-img' | 'sibling-img';
   currentUrl: string | null;
+  /** img alt text — used to locate the matching record in data collections */
+  alt?: string | null;
 }
 
 export interface ImageReplaceRequest {
@@ -628,6 +634,291 @@ export class ASTImageEditor extends ASTEditorBase {
     });
 
     return { success: true, changes };
+  }
+
+  /**
+   * Replace a shared slot URL with a forked slot URL for one collection item.
+   * Tries JSX targeting first, then falls back to the Nth string literal match in src/.
+   */
+  async replaceSharedSlotReference(
+    appPath: string,
+    request: ImageReplaceRequest & {
+      oldSlotPath: string;
+      newSlotPath: string;
+      occurrenceIndex?: number | null;
+    },
+    appId: string
+  ): Promise<ImageReplaceResult> {
+    const oldUrl = imageSlotUrl(request.oldSlotPath);
+    const newUrl = imageSlotUrl(request.newSlotPath);
+    const collectionItemLabel = request.imageInfo.alt?.trim() || null;
+
+    if (collectionItemLabel) {
+      const labeledResult = await this.replaceSlotUrlInLabeledRecord(appPath, {
+        label: collectionItemLabel,
+        oldUrl,
+        newUrl,
+        scopeFile: request.elementInfo.devContext?.fileName,
+      }, appId);
+      if (labeledResult.success) {
+        return labeledResult;
+      }
+    }
+
+    if (request.occurrenceIndex != null && request.occurrenceIndex >= 0) {
+      const occurrenceResult = await this.replaceSlotUrlOccurrenceInSource(appPath, {
+        oldUrl,
+        newUrl,
+        occurrenceIndex: request.occurrenceIndex,
+        scopeFile: request.elementInfo.devContext?.fileName,
+      }, appId);
+      if (occurrenceResult.success) {
+        return occurrenceResult;
+      }
+    }
+
+    const hasValidDevContext = Boolean(
+      request.elementInfo.devContext?.fileName?.startsWith('src/')
+      || request.elementInfo.devContext?.fileName?.startsWith('app/')
+    );
+
+    if (hasValidDevContext) {
+      const jsxResult = await this.replaceImage(
+        appPath,
+        {
+          elementInfo: request.elementInfo,
+          imageInfo: { ...request.imageInfo, currentUrl: oldUrl },
+          newImageUrl: newUrl,
+        },
+        appId
+      );
+
+      if (jsxResult.success) {
+        return jsxResult;
+      }
+    }
+
+    if (request.occurrenceIndex == null || request.occurrenceIndex < 0) {
+      return {
+        success: false,
+        filePath: '',
+        error: collectionItemLabel
+          ? `Could not find data record for "${collectionItemLabel}" with shared slot URL`
+          : 'Missing occurrence index for shared slot fork',
+      };
+    }
+
+    return {
+      success: false,
+      filePath: '',
+      error: hasValidDevContext
+        ? 'Could not repoint shared slot reference'
+        : 'Missing occurrence index for shared slot fork',
+    };
+  }
+
+  private static readonly LABEL_PROPERTY_KEYS = new Set(['name', 'label', 'title']);
+  private static readonly IMAGE_PROPERTY_KEYS = new Set(['image', 'photo', 'src', 'url', 'thumbnail']);
+
+  private async collectSourceFilePaths(appPath: string): Promise<string[]> {
+    const srcDir = path.join(appPath, 'src');
+    const files: string[] = [];
+
+    const walk = async (dir: string): Promise<void> => {
+      let entries;
+      try {
+        entries = (await readdir(dir, { withFileTypes: true }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+      } catch {
+        return;
+      }
+
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(fullPath);
+          continue;
+        }
+        if (!entry.isFile() || !/\.(tsx?|jsx?)$/.test(entry.name)) {
+          continue;
+        }
+        files.push(path.relative(appPath, fullPath).replace(/\\/g, '/'));
+      }
+    };
+
+    await walk(srcDir);
+    return files;
+  }
+
+  /** Data files first, then clicked element file, then remaining src files. */
+  private orderSourceFilesForFork(files: string[], scopeFile?: string | null): string[] {
+    const dataFiles = files.filter((filePath) => filePath.startsWith('src/data/')).sort();
+    const scope = scopeFile && files.includes(scopeFile) ? scopeFile : null;
+    const rest = files
+      .filter((filePath) => !filePath.startsWith('src/data/') && filePath !== scope)
+      .sort();
+    const ordered = [...dataFiles];
+    if (scope && !scope.startsWith('src/data/')) {
+      ordered.push(scope);
+    }
+    ordered.push(...rest);
+    return [...new Set(ordered)];
+  }
+
+  private replaceSlotUrlInLabeledRecord(
+    appPath: string,
+    options: {
+      label: string;
+      oldUrl: string;
+      newUrl: string;
+      scopeFile?: string | null;
+    },
+    appId: string
+  ): Promise<ImageReplaceResult> {
+    return this.collectSourceFilePaths(appPath).then(async (files) => {
+      for (const relativePath of this.orderSourceFilesForFork(files, options.scopeFile)) {
+        const fullPath = path.join(appPath, relativePath);
+        const sourceCode = await readFile(fullPath, 'utf-8');
+        const ast = this.parseAST(sourceCode);
+        let replaced = false;
+
+        this.traverse(ast, {
+          ObjectExpression: (nodePath: { node: t.ObjectExpression }) => {
+            if (replaced) {
+              return;
+            }
+
+            let hasLabel = false;
+            let imageProperty: t.ObjectProperty | null = null;
+
+            for (const property of nodePath.node.properties) {
+              if (this.t.isSpreadElement(property)) {
+                continue;
+              }
+              if (!this.t.isObjectProperty(property)) {
+                continue;
+              }
+              const keyName = this.getObjectPropertyKeyName(property.key);
+              if (!keyName) {
+                continue;
+              }
+              if (
+                ASTImageEditor.LABEL_PROPERTY_KEYS.has(keyName)
+                && this.t.isStringLiteral(property.value)
+                && property.value.value === options.label
+              ) {
+                hasLabel = true;
+              }
+              if (
+                ASTImageEditor.IMAGE_PROPERTY_KEYS.has(keyName)
+                && this.t.isStringLiteral(property.value)
+                && property.value.value === options.oldUrl
+              ) {
+                imageProperty = property;
+              }
+            }
+
+            if (hasLabel && imageProperty && this.t.isStringLiteral(imageProperty.value)) {
+              imageProperty.value.value = options.newUrl;
+              replaced = true;
+            }
+          },
+        });
+
+        if (!replaced) {
+          continue;
+        }
+
+        const { files: workspaceFiles } = this.getWorkspace(appId);
+        const { code: newContent } = this.generateCode(ast);
+        await this.writeSourceFile(workspaceFiles, relativePath, newContent);
+
+        return {
+          success: true,
+          filePath: relativePath,
+          changes: {
+            oldUrl: options.oldUrl,
+            newUrl: options.newUrl,
+            imageType: 'img',
+          },
+        };
+      }
+
+      return {
+        success: false,
+        filePath: '',
+        error: `Could not find data record for "${options.label}" with shared slot URL`,
+      };
+    });
+  }
+
+  private getObjectPropertyKeyName(key: t.ObjectProperty['key']): string | null {
+    if (this.t.isIdentifier(key)) {
+      return key.name;
+    }
+    if (this.t.isStringLiteral(key)) {
+      return key.value;
+    }
+    return null;
+  }
+
+  private async replaceSlotUrlOccurrenceInSource(
+    appPath: string,
+    options: {
+      oldUrl: string;
+      newUrl: string;
+      occurrenceIndex: number;
+      scopeFile?: string | null;
+    },
+    appId: string
+  ): Promise<ImageReplaceResult> {
+    const files = await this.collectSourceFilePaths(appPath);
+    let globalMatchIndex = 0;
+
+    for (const relativePath of this.orderSourceFilesForFork(files, options.scopeFile)) {
+      const fullPath = path.join(appPath, relativePath);
+      const sourceCode = await readFile(fullPath, 'utf-8');
+      const ast = this.parseAST(sourceCode);
+      let replaced = false;
+
+      this.traverse(ast, {
+        StringLiteral: (nodePath: { node: t.StringLiteral }) => {
+          if (replaced || nodePath.node.value !== options.oldUrl) {
+            return;
+          }
+          if (globalMatchIndex !== options.occurrenceIndex) {
+            globalMatchIndex += 1;
+            return;
+          }
+          nodePath.node.value = options.newUrl;
+          replaced = true;
+        },
+      });
+
+      if (!replaced) {
+        continue;
+      }
+
+      const { files: workspaceFiles } = this.getWorkspace(appId);
+      const { code: newContent } = this.generateCode(ast);
+      await this.writeSourceFile(workspaceFiles, relativePath, newContent);
+
+      return {
+        success: true,
+        filePath: relativePath,
+        changes: {
+          oldUrl: options.oldUrl,
+          newUrl: options.newUrl,
+          imageType: 'img',
+        },
+      };
+    }
+
+    return {
+      success: false,
+      filePath: '',
+      error: `Could not find shared slot URL occurrence ${options.occurrenceIndex + 1}`,
+    };
   }
 
   /**

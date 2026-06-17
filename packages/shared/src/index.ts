@@ -63,6 +63,8 @@ export {
   AIRO_ASSET_UPLOADS_URL_PREFIX,
   getFilenameFromUploadUrl,
   isSafeUploadFilename,
+  isSharedSlotReference,
+  parseCollectionOccurrenceIndex,
 } from './media/index.js';
 
 // Share URL (base64url codec for /share/{encoded} BFF redirect)

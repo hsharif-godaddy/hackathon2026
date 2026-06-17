@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import { ChatTab, MobileMode } from '@/app/[market]/develop/components/types';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import type { BusMediaSlotForkContext } from '@/utils/eventBus';
 
 interface MediaSlotDialogState {
   /**
@@ -10,6 +11,17 @@ interface MediaSlotDialogState {
    * Consumed and cleared by MediaPanel.
    */
   panelSlotName: string | null;
+
+  /**
+   * 0-based DOM instance index when opening from preview Replace.
+   */
+  panelSlotOccurrenceIndex: number | null;
+
+  /**
+   * Element context captured when opening a slot from preview Replace.
+   * Used to fork shared slots so only the clicked item updates.
+   */
+  panelSlotForkContext: BusMediaSlotForkContext | null;
 
   /**
    * Tab active when navigateToSlot was called; used by MediaPanel back to
@@ -50,9 +62,18 @@ interface MediaSlotDialogState {
    * — call BEFORE `setActiveChatTab(MEDIAS)` so the source tab is
    * captured, not the destination.
    */
-  navigateToSlot: (slotName: string, options?: { openEditor?: boolean }) => void;
+  navigateToSlot: (
+    slotName: string,
+    options?: {
+      openEditor?: boolean;
+      forkContext?: BusMediaSlotForkContext | null;
+      occurrenceIndex?: number | null;
+    },
+  ) => void;
   /** Clear the panel navigation slot (consumed by MediaPanel) */
   clearPanelSlot: () => void;
+  /** Clear preview element context after a fork swap or leaving external detail */
+  clearPanelSlotForkContext: () => void;
   clearMediaReturnState: () => void;
   /** Clear the editor slot (consumed by MediaPanel) */
   clearEditorSlot: () => void;
@@ -62,6 +83,8 @@ interface MediaSlotDialogState {
 
 export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
   panelSlotName: null,
+  panelSlotOccurrenceIndex: null,
+  panelSlotForkContext: null,
   mediaReturnTab: null,
   mediaReturnMobileMode: null,
   openEditorForSlot: null,
@@ -73,11 +96,20 @@ export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
     set({ currentSlotName: slotName });
   },
 
-  navigateToSlot: (slotName: string, options?: { openEditor?: boolean }) => {
+  navigateToSlot: (
+    slotName: string,
+    options?: {
+      openEditor?: boolean;
+      forkContext?: BusMediaSlotForkContext | null;
+      occurrenceIndex?: number | null;
+    },
+  ) => {
     // Snapshot source tab for back-breadcrumb. `openEditor` is real-slot only.
     const develop = useDevelopPageStore.getState();
     set({
       panelSlotName: slotName,
+      panelSlotOccurrenceIndex: options?.occurrenceIndex ?? null,
+      panelSlotForkContext: options?.forkContext ?? null,
       mediaReturnTab: develop.activeChatTab,
       mediaReturnMobileMode: develop.mobileMode,
       openEditorForSlot:
@@ -88,7 +120,15 @@ export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
   },
 
   clearPanelSlot: () => {
-    set({ panelSlotName: null, mediaScrollTotalMatches: 0, mediaScrollCurrentIndex: 0 });
+    set({
+      panelSlotName: null,
+      mediaScrollTotalMatches: 0,
+      mediaScrollCurrentIndex: 0,
+    });
+  },
+
+  clearPanelSlotForkContext: () => {
+    set({ panelSlotForkContext: null, panelSlotOccurrenceIndex: null });
   },
 
   clearMediaReturnState: () => {

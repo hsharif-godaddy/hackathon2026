@@ -13,6 +13,13 @@ import { useMediaManifest } from '@/hooks/useMediaManifest'
 import { useTranslations } from '@/hooks/useTranslations'
 import { DEFAULT_CHAT_PANE_WIDTH, useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
+import type { BusMediaSlotForkContext } from '@/utils/eventBus'
+import {
+  clearMediaSlotForkContext,
+  loadMediaSlotForkContext,
+  loadMediaSlotOccurrenceIndex,
+  parseCollectionOccurrenceIndex,
+} from '@/utils/media-slot-fork'
 
 // Wide enough to comfortably show the image editor canvas + toolbars
 const EDITOR_CHAT_PANE_WIDTH = 616
@@ -27,10 +34,13 @@ export default function MediaPanel() {
   const [isEditorOpen, setIsEditorOpen] = useState(false)
   const [editorImageUrl, setEditorImageUrl] = useState<string | null>(null)
   const [thumbnailBustKey, setThumbnailBustKey] = useState(0)
+  const [activeForkContext, setActiveForkContext] = useState<BusMediaSlotForkContext | null>(null)
+  const [activeOccurrenceIndex, setActiveOccurrenceIndex] = useState<number | null>(null)
   const priorPaneWidthRef = useRef<number>(DEFAULT_CHAT_PANE_WIDTH)
 
   const panelSlotName = useMediaSlotDialogStore((state) => state.panelSlotName)
   const clearPanelSlot = useMediaSlotDialogStore((state) => state.clearPanelSlot)
+  const clearPanelSlotForkContext = useMediaSlotDialogStore((state) => state.clearPanelSlotForkContext)
   const mediaReturnTab = useMediaSlotDialogStore((state) => state.mediaReturnTab)
   const mediaReturnMobileMode = useMediaSlotDialogStore((state) => state.mediaReturnMobileMode)
   const clearMediaReturnState = useMediaSlotDialogStore((state) => state.clearMediaReturnState)
@@ -60,8 +70,15 @@ export default function MediaPanel() {
       setActiveSlotName(null)
       setSlotDetailEntry(null)
     } else {
+      const store = useMediaSlotDialogStore.getState()
+      const forkContext = store.panelSlotForkContext ?? loadMediaSlotForkContext(panelSlotName)
+      const occurrenceIndex = store.panelSlotOccurrenceIndex
+        ?? loadMediaSlotOccurrenceIndex(panelSlotName)
+        ?? (forkContext?.selector ? parseCollectionOccurrenceIndex(forkContext.selector) : null)
       setActiveSlotName(panelSlotName)
       setSlotDetailEntry('external')
+      setActiveForkContext(forkContext)
+      setActiveOccurrenceIndex(occurrenceIndex)
       if (openEditorForSlot === panelSlotName) {
         if (!isEditorOpen) {
           priorPaneWidthRef.current = useDevelopPageStore.getState().chatPaneWidth
@@ -72,7 +89,8 @@ export default function MediaPanel() {
       }
     }
     clearPanelSlot()
-  }, [panelSlotName, openEditorForSlot, isEditorOpen, clearPanelSlot, clearEditorSlot])
+    clearPanelSlotForkContext()
+  }, [panelSlotName, openEditorForSlot, isEditorOpen, clearPanelSlot, clearEditorSlot, clearPanelSlotForkContext])
 
   // Restore pane width when user navigates away from the Media tab while editor is open
   useEffect(function restorePaneWidthOnTabChange() {
@@ -94,6 +112,8 @@ export default function MediaPanel() {
 
   const handleSelectSlot = useCallback((slotName: string) => {
     clearMediaReturnState()
+    setActiveForkContext(null)
+    setActiveOccurrenceIndex(null)
     setActiveSlotName(slotName)
     setSlotDetailEntry('grid')
   }, [clearMediaReturnState])
@@ -107,13 +127,19 @@ export default function MediaPanel() {
     }
     if (slotDetailEntry === 'external') {
       clearMediaReturnState()
+      if (activeSlotName) {
+        clearMediaSlotForkContext(activeSlotName)
+      }
     }
+    setActiveForkContext(null)
+    setActiveOccurrenceIndex(null)
     setActiveSlotName(null)
     setSlotDetailEntry(null)
     setThumbnailBustKey((k) => k + 1)
     void refetch()
   }, [
     slotDetailEntry,
+    activeSlotName,
     mediaReturnTab,
     mediaReturnMobileMode,
     setActiveChatTab,
@@ -198,6 +224,8 @@ export default function MediaPanel() {
           <MediaSlotDetail
             appId={appId}
             slotName={activeSlotName}
+            forkContext={slotDetailEntry === 'external' ? activeForkContext : null}
+            occurrenceIndex={slotDetailEntry === 'external' ? activeOccurrenceIndex : null}
             onDone={handleBack}
             onEdit={handleOpenEditor}
           />

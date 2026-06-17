@@ -27,6 +27,9 @@ import { ASTTextEditor } from '../../tools/ast-text-editor.js';
 import { TextFixAgent } from '../../agents/text-fix-agent.js';
 import { astImageEditor } from '../../tools/ast-image-editor.js';
 import { mediaManifestService } from '../../services/MediaManifestService.js';
+import {
+  parseImageSlotPath,
+} from '../../utils/slot-reference-utils.js';
 
 import { ServerManagementTool } from '../../tools/server-management-tool.js';
 import { getNameSuggestionService } from '../../services/name-suggestion.js';
@@ -1114,26 +1117,48 @@ router.post('/:id/images/replace', async (req: Request, res: Response) => {
     });
 
     // If the current image uses a slot URL, update the manifest instead of
-    // rewriting the source code. This preserves the slot indirection layer
-    // so subsequent replacements continue to work through the manifest.
-    const SLOT_URL_PREFIX = '/airo-assets/images/';
-    if (imageInfo.currentUrl?.startsWith(SLOT_URL_PREFIX)) {
-      const slotName = imageInfo.currentUrl.slice(SLOT_URL_PREFIX.length);
-
+    // rewriting the source code. When the slot path is shared across multiple
+    // records (e.g. data collections), fork a new manifest entry for this element.
+    const slotName = parseImageSlotPath(imageInfo.currentUrl);
+    if (slotName) {
       contextLogger.info('route.apps.image-replace.slot-detected', {
         slotName,
         newImageUrl,
       });
 
-      const updateResult = await mediaManifestService.updateSlot(id, slotName, {
+      const replaceResult = await mediaManifestService.updateSlotOrFork(id, slotName, {
         newUrl: newImageUrl,
-        markUserModified: true,
+        updateOptions: { markUserModified: true },
+        forkContext: {
+          devContext: elementInfo.devContext,
+          elementInfo,
+          imageInfo,
+          selector: elementInfo.selector,
+        },
       });
 
-      if (updateResult.success) {
+      if (replaceResult.success) {
+        if (replaceResult.forked) {
+          contextLogger.info('route.apps.image-replace.slot-forked', {
+            originalSlotPath: replaceResult.originalSlotPath,
+            slotPath: replaceResult.slotPath,
+            commitHash: replaceResult.commitHash,
+          });
+
+          return res.json({
+            success: true,
+            message: 'Shared slot forked and image updated via manifest',
+            data: {
+              slotPath: replaceResult.slotPath,
+              originalSlotPath: replaceResult.originalSlotPath,
+              commitHash: replaceResult.commitHash,
+            },
+          });
+        }
+
         contextLogger.info('route.apps.image-replace.slot-updated', {
           slotName,
-          commitHash: updateResult.commitHash,
+          commitHash: replaceResult.commitHash,
         });
 
         return res.json({
@@ -1141,15 +1166,15 @@ router.post('/:id/images/replace', async (req: Request, res: Response) => {
           message: 'Slot image updated via manifest',
           data: {
             slotPath: slotName,
-            commitHash: updateResult.commitHash,
-          }
+            commitHash: replaceResult.commitHash,
+          },
         });
       }
 
-      // Manifest update failed — fall through to AST replacement as fallback
       contextLogger.warn('route.apps.image-replace.slot-update-failed', {
         slotName,
-        error: updateResult.error,
+        attemptedFork: replaceResult.attemptedFork,
+        error: replaceResult.error,
       });
     }
 

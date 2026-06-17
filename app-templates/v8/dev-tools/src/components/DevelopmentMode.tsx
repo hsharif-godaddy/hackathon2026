@@ -8,6 +8,7 @@ import { useComplianceFieldEditor } from "../hooks/useComplianceFieldEditor";
 import ElementHoverBar from "./ElementHoverBar";
 import { setTranslations } from "../utils/translations";
 import { resolveRouteForModule } from "../route-discovery";
+import { collectMediaSlotDomMatches } from "../utils/media-slot-dom";
 
 export default function DevelopmentMode() {
   const [isEditModeActive, setIsEditModeActive] = useState(false); // off by default, parent enables via EDIT_MODE_ENABLED message
@@ -886,50 +887,7 @@ export default function DevelopmentMode() {
       const imagePattern = `/airo-assets/images/${slotPath}`
       const videoPattern = `/airo-assets/videos/${slotPath}`
 
-      // Collect all DOM elements that display this media slot
-      const matches: HTMLElement[] = []
-
-      // 1. <img> elements matching the slot URL pattern
-      document.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
-        const src = img.src || img.getAttribute('src') || ''
-        if (src.includes(imagePattern) || src.includes(videoPattern)) {
-          // Skip hidden images that have been replaced by video siblings
-          if (!img.getAttribute('data-airo-video-patched')) {
-            matches.push(img)
-          }
-        }
-      })
-
-      // 2. <video> elements (both direct and data-slot siblings, and bg-videos)
-      document.querySelectorAll<HTMLVideoElement>('video').forEach((video) => {
-        const src = video.src || video.getAttribute('src') || ''
-        const dataSlot = video.getAttribute('data-slot')
-        if (src.includes(imagePattern) || src.includes(videoPattern) || dataSlot === slotPath) {
-          matches.push(video)
-        }
-      })
-
-      // 3. Elements with background-image matching the slot
-      document.querySelectorAll<HTMLElement>('[style*="background"], [data-airo-video-bg-patched]').forEach((el) => {
-        const bgPatched = el.getAttribute('data-airo-video-bg-patched')
-        if (bgPatched === slotPath) {
-          matches.push(el)
-          return
-        }
-        const bgImage = window.getComputedStyle(el).backgroundImage
-        if (bgImage && (bgImage.includes(imagePattern) || bgImage.includes(videoPattern))) {
-          matches.push(el)
-        }
-      })
-
-      // Also scan common structural elements for CSS-class-based backgrounds
-      document.querySelectorAll<HTMLElement>('section, div, header, main').forEach((el) => {
-        if (matches.includes(el)) return
-        const bgImage = window.getComputedStyle(el).backgroundImage
-        if (bgImage && bgImage !== 'none' && (bgImage.includes(imagePattern) || bgImage.includes(videoPattern))) {
-          matches.push(el)
-        }
-      })
+      const matches = collectMediaSlotDomMatches(slotPath)
 
       if (matches.length === 0) {
         // The element isn't in the DOM. Two possible reasons:

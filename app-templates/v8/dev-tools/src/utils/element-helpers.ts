@@ -67,3 +67,5 @@ export function extractDevContext(element: HTMLElement): DevContext | undefined 
   }
   return undefined;
 }
+
+export { parseCollectionOccurrenceIndex } from './slot-fork.js';

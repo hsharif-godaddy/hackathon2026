@@ -22,8 +22,12 @@ vi.mock('../../../tools/ast-image-editor.js', () => ({
 
 vi.mock('../../../services/MediaManifestService.js', () => ({
   mediaManifestService: {
-    updateSlot: vi.fn(),
+    updateSlotOrFork: vi.fn(),
   },
+}));
+
+vi.mock('../../../utils/slot-reference-utils.js', () => ({
+  parseImageSlotPath: vi.fn(),
 }));
 
 vi.mock('../../../logging/index.js', () => {
@@ -61,6 +65,7 @@ vi.mock('../../../services/ImageProcessingService.js', () => ({
 
 import { astImageEditor } from '../../../tools/ast-image-editor.js';
 import { mediaManifestService } from '../../../services/MediaManifestService.js';
+import { parseImageSlotPath } from '../../../utils/slot-reference-utils.js';
 
 const { appsRouter } = await import('../apps.js');
 
@@ -81,6 +86,7 @@ describe('POST /apps/:id/images/replace — slot URL detection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     app = createApp();
+    vi.mocked(parseImageSlotPath).mockReturnValue('pages/home/hero');
   });
 
   const basePayload = {
@@ -103,8 +109,9 @@ describe('POST /apps/:id/images/replace — slot URL detection', () => {
   };
 
   it('updates manifest instead of AST when currentUrl is a slot URL', async () => {
-    vi.mocked(mediaManifestService.updateSlot).mockResolvedValue({
+    vi.mocked(mediaManifestService.updateSlotOrFork).mockResolvedValue({
       success: true,
+      forked: false,
       slot: { currentUrl: '/airo-assets/uploads/hero-abc12345.jpg' } as any,
       commitHash: 'abc1234',
     });
@@ -118,17 +125,73 @@ describe('POST /apps/:id/images/replace — slot URL detection', () => {
     expect(res.body.data.slotPath).toBe('pages/home/hero');
     expect(res.body.data.commitHash).toBe('abc1234');
 
-    // Should have called manifest update, NOT AST editor
-    expect(mediaManifestService.updateSlot).toHaveBeenCalledWith(
+    expect(mediaManifestService.updateSlotOrFork).toHaveBeenCalledWith(
       'test-app',
       'pages/home/hero',
-      { newUrl: '/airo-assets/uploads/hero-abc12345.jpg', markUserModified: true },
+      expect.objectContaining({
+        newUrl: '/airo-assets/uploads/hero-abc12345.jpg',
+        updateOptions: { markUserModified: true },
+        forkContext: expect.objectContaining({
+          selector: 'img.hero-image',
+        }),
+      }),
     );
     expect(astImageEditor.replaceImage).not.toHaveBeenCalled();
   });
 
+  it('forks manifest when slot URL is referenced from multiple source records', async () => {
+    vi.mocked(mediaManifestService.updateSlotOrFork).mockResolvedValue({
+      success: true,
+      forked: true,
+      slotPath: 'pages/home/hero-2',
+      originalSlotPath: 'pages/home/hero',
+      commitHash: 'fork1234',
+    });
+
+    const res = await request(app)
+      .post('/apps/test-app/images/replace')
+      .send({
+        ...basePayload,
+        elementInfo: {
+          ...basePayload.elementInfo,
+          selector: 'html:nth-child(1) > body:nth-child(1) > div:nth-child(1) > ul:nth-child(1) > li:nth-child(3) > img:nth-child(1)',
+        },
+      })
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.slotPath).toBe('pages/home/hero-2');
+    expect(res.body.data.originalSlotPath).toBe('pages/home/hero');
+    expect(astImageEditor.replaceImage).not.toHaveBeenCalled();
+  });
+
+  it('parses absolute slot URLs from browser img.src', async () => {
+    vi.mocked(parseImageSlotPath).mockReturnValue('pages/home/hero');
+    vi.mocked(mediaManifestService.updateSlotOrFork).mockResolvedValue({
+      success: true,
+      forked: false,
+      commitHash: 'abc1234',
+    });
+
+    await request(app)
+      .post('/apps/test-app/images/replace')
+      .send({
+        ...basePayload,
+        imageInfo: {
+          type: 'img',
+          currentUrl: 'https://preview.example.com/airo-assets/images/pages/home/hero?v=1',
+        },
+      })
+      .expect(200);
+
+    expect(parseImageSlotPath).toHaveBeenCalledWith(
+      'https://preview.example.com/airo-assets/images/pages/home/hero?v=1',
+    );
+    expect(mediaManifestService.updateSlotOrFork).toHaveBeenCalled();
+  });
+
   it('falls back to AST when manifest update fails for slot URL', async () => {
-    vi.mocked(mediaManifestService.updateSlot).mockResolvedValue({
+    vi.mocked(mediaManifestService.updateSlotOrFork).mockResolvedValue({
       success: false,
       error: 'Slot not found',
     });
@@ -148,12 +211,12 @@ describe('POST /apps/:id/images/replace — slot URL detection', () => {
       .expect(200);
 
     expect(res.body.success).toBe(true);
-    // Both should have been called — manifest first, then AST fallback
-    expect(mediaManifestService.updateSlot).toHaveBeenCalled();
+    expect(mediaManifestService.updateSlotOrFork).toHaveBeenCalled();
     expect(astImageEditor.replaceImage).toHaveBeenCalled();
   });
 
   it('uses AST directly when currentUrl is not a slot URL', async () => {
+    vi.mocked(parseImageSlotPath).mockReturnValue(null);
     vi.mocked(astImageEditor.replaceImage).mockResolvedValue({
       success: true,
       filePath: 'src/pages/index.tsx',
@@ -179,12 +242,12 @@ describe('POST /apps/:id/images/replace — slot URL detection', () => {
       .expect(200);
 
     expect(res.body.success).toBe(true);
-    // Should go straight to AST, skip manifest
-    expect(mediaManifestService.updateSlot).not.toHaveBeenCalled();
+    expect(mediaManifestService.updateSlotOrFork).not.toHaveBeenCalled();
     expect(astImageEditor.replaceImage).toHaveBeenCalled();
   });
 
   it('uses AST directly when currentUrl is null', async () => {
+    vi.mocked(parseImageSlotPath).mockReturnValue(null);
     vi.mocked(astImageEditor.replaceImage).mockResolvedValue({
       success: true,
       filePath: 'src/pages/index.tsx',
@@ -200,12 +263,12 @@ describe('POST /apps/:id/images/replace — slot URL detection', () => {
       imageInfo: { type: 'img', currentUrl: null },
     };
 
-    const res = await request(app)
+    await request(app)
       .post('/apps/test-app/images/replace')
       .send(nullUrlPayload)
       .expect(200);
 
-    expect(mediaManifestService.updateSlot).not.toHaveBeenCalled();
+    expect(mediaManifestService.updateSlotOrFork).not.toHaveBeenCalled();
     expect(astImageEditor.replaceImage).toHaveBeenCalled();
   });
 });

@@ -4,3 +4,8 @@ export {
   getFilenameFromUploadUrl,
   isSafeUploadFilename,
 } from './utils.js';
+
+export {
+  isSharedSlotReference,
+  parseCollectionOccurrenceIndex,
+} from './slot-fork.js';

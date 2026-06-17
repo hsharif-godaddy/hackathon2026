@@ -22,6 +22,13 @@ import { useStreamingConversationStore } from '@/stores/useStreamingConversation
 import type { RuntimeErrorData } from '@/types/runtime-error'
 import type { BusEventType, BusFormatOverrideUpdatePayload } from '@/utils/eventBus'
 import { dispatch as dispatchBusEvent, off, on } from '@/utils/eventBus'
+import {
+  loadMediaSlotForkContext,
+  loadMediaSlotOccurrenceIndex,
+  parseCollectionOccurrenceIndex,
+  saveMediaSlotForkContext,
+  saveMediaSlotOccurrenceIndex,
+} from '@/utils/media-slot-fork'
 import { postMessageToIframe } from '@/utils/postMessage'
 
 interface SpeechBridge {
@@ -544,7 +551,34 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
     on('OPEN_MEDIA_SLOT_DIALOG', (m) => {
       const cur = d()
       if (!cur.appId) return
-      useMediaSlotDialogStore.getState().navigateToSlot(m.slotName)
+
+      const occurrenceIndex = typeof m.occurrenceIndex === 'number'
+        ? m.occurrenceIndex
+        : (m.forkContext?.selector
+          ? parseCollectionOccurrenceIndex(m.forkContext.selector)
+          : null)
+
+      if (m.forkContext) {
+        saveMediaSlotForkContext(m.slotName, m.forkContext)
+      }
+      if (occurrenceIndex != null && occurrenceIndex >= 0) {
+        saveMediaSlotOccurrenceIndex(m.slotName, occurrenceIndex)
+      }
+
+      useMediaSlotDialogStore.getState().navigateToSlot(m.slotName, {
+        forkContext: m.forkContext,
+        occurrenceIndex,
+      })
+
+      const iframe = getPreviewIframe()
+      if (iframe && occurrenceIndex != null && occurrenceIndex >= 0) {
+        postMessageToIframe(iframe, {
+          type: 'SCROLL_TO_MEDIA_SLOT',
+          slotPath: m.slotName,
+          index: occurrenceIndex,
+        })
+      }
+
       const develop = useDevelopPageStore.getState()
       develop.setActiveChatTab(ChatTab.MEDIAS)
       if (develop.isMobile) {

@@ -54,6 +54,24 @@ export interface BusAiEditContextPayload {
   selectionNumber?: number | null;
 }
 
+export interface BusMediaSlotForkContext {
+  selector: string;
+  devContext: BusDevContext;
+  elementInfo: {
+    tagName: string;
+    className: string;
+    id?: string;
+    selector: string;
+    devContext: BusDevContext;
+  };
+  imageInfo: {
+    type: "img" | "background" | "contains-img" | "sibling-img";
+    currentUrl: string | null;
+    /** img alt — matches name/label/title in data collections for per-item forks */
+    alt?: string | null;
+  };
+}
+
 export interface BusRuntimeErrorPayload {
   message: string;
   name: string;
@@ -162,7 +180,7 @@ export interface BusEventMap {
   MESSAGE_COMPLETE: { source?: "agent" | "websocket" };
   SCREENSHOT_RESPONSE: { screenshot: string };
   VIEWPORT_SCREENSHOT_RESPONSE: { screenshot: string };
-  OPEN_MEDIA_SLOT_DIALOG: { slotName: string };
+  OPEN_MEDIA_SLOT_DIALOG: { slotName: string; forkContext?: BusMediaSlotForkContext; occurrenceIndex?: number | null };
   OPEN_IMAGE_EDITOR: { slotName: string };
   MEDIA_SLOT_SCROLL_RESULT: { slotPath: string; totalMatches: number; currentIndex: number };
   AUTO_IMPORT_MEDIA_SLOT: {

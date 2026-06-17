@@ -66,6 +66,32 @@ export interface ReloadMediaSlotMessage {
 export interface OpenMediaSlotDialogMessage {
   type: 'OPEN_MEDIA_SLOT_DIALOG'
   slotName: string // e.g., "pages/home/hero"
+  forkContext?: {
+    selector: string
+    devContext: {
+      fileName: string
+      componentName: string
+      lineNumber: number
+    }
+    elementInfo: {
+      tagName: string
+      className: string
+      id?: string
+      selector: string
+      devContext: {
+        fileName: string
+        componentName: string
+        lineNumber: number
+      }
+    }
+    imageInfo: {
+      type: 'img' | 'background' | 'contains-img' | 'sibling-img'
+      currentUrl: string | null
+      /** img alt — matches name/label/title in data collections for per-item forks */
+      alt?: string | null
+    }
+  }
+  occurrenceIndex?: number | null
 }
 
 /**

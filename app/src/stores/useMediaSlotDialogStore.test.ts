@@ -77,9 +77,22 @@ describe('useMediaSlotDialogStore', () => {
   })
 
   describe('clearPanelSlot', () => {
-    it('resets scroll state when clearing panel', () => {
+    it('clears panel slot name but preserves fork context until explicitly cleared', () => {
+      const forkContext = {
+        selector: 'img',
+        devContext: { fileName: 'src/pages/home.tsx', componentName: 'Home', lineNumber: 1 },
+        elementInfo: {
+          tagName: 'img',
+          className: '',
+          selector: 'img',
+          devContext: { fileName: 'src/pages/home.tsx', componentName: 'Home', lineNumber: 1 },
+        },
+        imageInfo: { type: 'img' as const, currentUrl: '/airo-assets/images/pages/home/hero' },
+      }
+
       useMediaSlotDialogStore.setState({
         panelSlotName: 'some-slot',
+        panelSlotForkContext: forkContext,
         mediaScrollTotalMatches: 3,
         mediaScrollCurrentIndex: 1,
       })
@@ -88,8 +101,31 @@ describe('useMediaSlotDialogStore', () => {
 
       const state = useMediaSlotDialogStore.getState()
       expect(state.panelSlotName).toBeNull()
+      expect(state.panelSlotForkContext).toEqual(forkContext)
       expect(state.mediaScrollTotalMatches).toBe(0)
       expect(state.mediaScrollCurrentIndex).toBe(0)
+    })
+  })
+
+  describe('clearPanelSlotForkContext', () => {
+    it('clears preview fork context', () => {
+      useMediaSlotDialogStore.setState({
+        panelSlotForkContext: {
+          selector: 'img',
+          devContext: { fileName: 'src/pages/home.tsx', componentName: 'Home', lineNumber: 1 },
+          elementInfo: {
+            tagName: 'img',
+            className: '',
+            selector: 'img',
+            devContext: { fileName: 'src/pages/home.tsx', componentName: 'Home', lineNumber: 1 },
+          },
+          imageInfo: { type: 'img', currentUrl: null },
+        },
+      })
+
+      useMediaSlotDialogStore.getState().clearPanelSlotForkContext()
+
+      expect(useMediaSlotDialogStore.getState().panelSlotForkContext).toBeNull()
     })
   })
 })

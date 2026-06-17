@@ -31,8 +31,15 @@ import { regenerateToken } from '@/lib/jwt-regeneration'
 import { logger } from '@/lib/request-context'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
+import type { BusMediaSlotForkContext } from '@/utils/eventBus'
 import { fetchAsDataUrl } from '@/utils/image'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
+import {
+  clearMediaSlotForkContext,
+  loadMediaSlotForkContext,
+  loadMediaSlotOccurrenceIndex,
+  parseCollectionOccurrenceIndex,
+} from '@/utils/media-slot-fork'
 import { isOriginAllowed, postMessageToIframe } from '@/utils/postMessage'
 import { GettyImagesLogo } from './icons/GettyImagesLogo'
 
@@ -77,6 +84,10 @@ interface MediaSlotDetailProps {
   appId: string
   slotName: string
   enabled?: boolean
+  /** Set when opened from preview Replace — enables per-item fork for shared slots */
+  forkContext?: BusMediaSlotForkContext | null
+  /** 0-based DOM instance when opened from preview Replace */
+  occurrenceIndex?: number | null
   onDone?: () => void
   onEdit?: (effectiveUrl: string) => void
 }
@@ -130,6 +141,8 @@ export function MediaSlotDetail({
   appId,
   slotName,
   enabled = true,
+  forkContext = null,
+  occurrenceIndex = null,
   onDone,
   onEdit,
 }: MediaSlotDetailProps) {
@@ -149,6 +162,72 @@ export function MediaSlotDetail({
   })
 
   const { manifest, refetch: refetchManifest } = useMediaManifest({ appId, enabled })
+
+  const mediaScrollTotalMatches = useMediaSlotDialogStore((s) => s.mediaScrollTotalMatches)
+  const mediaScrollCurrentIndex = useMediaSlotDialogStore((s) => s.mediaScrollCurrentIndex)
+
+  const buildSlotUpdateBody = useCallback((payload: Record<string, unknown>) => {
+    const resolvedForkContext = forkContext ?? loadMediaSlotForkContext(slotName)
+    const resolvedOccurrenceIndex = occurrenceIndex != null
+      ? occurrenceIndex
+      : loadMediaSlotOccurrenceIndex(slotName)
+        ?? (mediaScrollTotalMatches > 1 ? mediaScrollCurrentIndex : null)
+        ?? (resolvedForkContext?.selector
+          ? parseCollectionOccurrenceIndex(resolvedForkContext.selector)
+          : null)
+
+    const body: Record<string, unknown> = { ...payload }
+
+    if (typeof resolvedOccurrenceIndex === 'number' && resolvedOccurrenceIndex >= 0) {
+      body.occurrenceIndex = resolvedOccurrenceIndex
+    } else if (resolvedForkContext) {
+      logger.warn('media_slot_detail.missing_occurrence_index', {
+        appId,
+        slotName,
+        hasForkContext: true,
+      })
+    }
+
+    if (!resolvedForkContext) {
+      return body
+    }
+
+    return {
+      ...body,
+      forkContext: {
+        selector: resolvedForkContext.selector,
+        devContext: resolvedForkContext.devContext,
+        elementInfo: {
+          tagName: resolvedForkContext.elementInfo.tagName,
+          className: resolvedForkContext.elementInfo.className,
+          id: resolvedForkContext.elementInfo.id ?? '',
+          selector: resolvedForkContext.selector,
+          devContext: resolvedForkContext.devContext,
+        },
+        imageInfo: resolvedForkContext.imageInfo,
+      },
+    }
+  }, [
+    forkContext,
+    occurrenceIndex,
+    slotName,
+    mediaScrollTotalMatches,
+    mediaScrollCurrentIndex,
+  ])
+
+  useEffect(function scrollToTargetInstance() {
+    if (occurrenceIndex == null || occurrenceIndex < 0) {
+      return
+    }
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement | null
+    if (iframe) {
+      postMessageToIframe(iframe, {
+        type: 'SCROLL_TO_MEDIA_SLOT',
+        slotPath: slotName,
+        index: occurrenceIndex,
+      })
+    }
+  }, [slotName, occurrenceIndex])
 
   // Memoize the set of all AI-generated URLs across all manifest slots to avoid O(slots) scans per render
   const allAiGeneratedUrls = useMemo(() => {
@@ -492,7 +571,7 @@ export function MediaSlotDetail({
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${tokenResult.token}`,
           },
-          body: JSON.stringify({
+          body: JSON.stringify(buildSlotUpdateBody({
             newUrl: swapUrl,
             ...((isExternal || isAiVideo) && {
               allowExternalUrl: true,
@@ -502,7 +581,7 @@ export function MediaSlotDetail({
             searchQuery: committedQuery || '',
             // Signal video/image to the backend so mediaType can transition correctly
             isVideo: !!(isVideo || isAiVideo),
-          }),
+          })),
         }
       )
 
@@ -511,14 +590,39 @@ export function MediaSlotDetail({
         throw new Error(errorData.error || `Failed to swap image: ${response.status}`)
       }
 
-      const responseData = await response.json()
-      logger.info('media_slot_detail.swap_success', { appId, slotName, newUrl: swapUrl })
+      const responseData = await response.json() as {
+        forked?: boolean
+        slotPath?: string
+        originalSlotPath?: string
+        slot?: typeof slot
+      }
+
+      logger.info('media_slot_detail.swap_success', {
+        appId,
+        slotName,
+        newUrl: swapUrl,
+        forked: responseData.forked === true,
+        slotPath: responseData.slotPath,
+      })
 
       // Use RELOAD_MEDIA_SLOT with the correct isVideo flag.
       // Only treat as video if the selected media IS actually a video (Getty video or AI-generated).
       // Don't use slot.mediaType as fallback — user may be replacing a video with an image.
       const swapIsVideo = isVideo || isAiVideo
-      reloadPreviewSlot(slotName, { isVideo: swapIsVideo })
+      const reloadedSlot = responseData.slotPath ?? slotName
+      if (responseData.forked) {
+        if (responseData.originalSlotPath) {
+          reloadPreviewSlot(responseData.originalSlotPath, { isVideo: swapIsVideo })
+        }
+        // Fork updates src/data/*.ts via HMR; the new slot URL may not appear in
+        // the DOM until React re-renders. Delay cache-bust until the binding propagates.
+        window.setTimeout(() => {
+          reloadPreviewSlot(reloadedSlot, { isVideo: swapIsVideo })
+        }, 500)
+        clearMediaSlotForkContext(slotName)
+      } else {
+        reloadPreviewSlot(reloadedSlot, { isVideo: swapIsVideo })
+      }
 
       // Use response slot data directly (caption arrives async via WS or delayed refetch)
       if (responseData.slot) {
@@ -544,7 +648,7 @@ export function MediaSlotDetail({
     } finally {
       setIsSwapping(false)
     }
-  }, [appId, slotName, slot, selectedUrl, selectedSearchGettyId, committedQuery, searchVideoUrls, manifest, reloadPreviewSlot, refetch, refetchManifest, setSlotData, t])
+  }, [appId, slotName, slot, selectedUrl, selectedSearchGettyId, committedQuery, searchVideoUrls, allAiGeneratedUrls, reloadPreviewSlot, refetch, refetchManifest, buildSlotUpdateBody, setSlotData, t])
 
   const handleUploadSuccess = useCallback((opts?: { isVideo?: boolean }) => {
     reloadPreviewSlot(slotName, opts?.isVideo ? { isVideo: true } : undefined)

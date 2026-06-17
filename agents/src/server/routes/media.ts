@@ -905,7 +905,7 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
       });
     }
 
-    const { newUrl, alternativeIndex, allowExternalUrl, gettyId, searchQuery, isVideo } = req.body;
+    const { newUrl, alternativeIndex, allowExternalUrl, gettyId, searchQuery, isVideo, forkContext, occurrenceIndex } = req.body;
 
     if (!newUrl && alternativeIndex === undefined) {
       return res.status(400).json({
@@ -914,10 +914,18 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
       });
     }
 
+    const parsedOccurrenceIndex = typeof occurrenceIndex === 'number'
+      ? occurrenceIndex
+      : typeof occurrenceIndex === 'string' && occurrenceIndex.trim() !== ''
+        ? Number.parseInt(occurrenceIndex, 10)
+        : null;
+
     logger.info('route.media.update_slot', {
       appId,
       slotName,
       alternativeIndex,
+      hasForkContext: forkContext != null,
+      occurrenceIndex: Number.isFinite(parsedOccurrenceIndex) ? parsedOccurrenceIndex : null,
     });
 
     // A user-driven slot override supersedes any in-flight logo job populating
@@ -929,18 +937,22 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
       await cancelPendingLogoJob(appId, slotName, pendingJobId);
     }
 
-    const result = await mediaManifestService.updateSlot(appId, slotName, {
+    const result = await mediaManifestService.updateSlotOrFork(appId, slotName, {
       newUrl: newUrl || '',
-      alternativeIndex,
-      markUserModified: true,
-      allowExternalUrl: allowExternalUrl === true,
-      gettyAsset: typeof gettyId === 'string'
-        ? { id: gettyId, mediaType: isVideo === true ? 'video' : 'image' }
-        : undefined,
-      mediaTypeHint: typeof gettyId !== 'string' && typeof isVideo === 'boolean'
-        ? (isVideo ? 'video' : 'image')
-        : undefined,
-      searchQuery: typeof searchQuery === 'string' && searchQuery.trim() ? searchQuery.trim() : undefined,
+      updateOptions: {
+        alternativeIndex,
+        markUserModified: true,
+        allowExternalUrl: allowExternalUrl === true,
+        gettyAsset: typeof gettyId === 'string'
+          ? { id: gettyId, mediaType: isVideo === true ? 'video' : 'image' }
+          : undefined,
+        mediaTypeHint: typeof gettyId !== 'string' && typeof isVideo === 'boolean'
+          ? (isVideo ? 'video' : 'image')
+          : undefined,
+        searchQuery: typeof searchQuery === 'string' && searchQuery.trim() ? searchQuery.trim() : undefined,
+      },
+      forkContext: forkContext ?? null,
+      occurrenceIndex: Number.isFinite(parsedOccurrenceIndex) ? parsedOccurrenceIndex : null,
     });
 
     if (!result.success) {
@@ -978,6 +990,9 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
       success: true,
       slot: result.slot,
       commitHash: result.commitHash,
+      forked: result.forked === true,
+      slotPath: result.forked ? result.slotPath : slotName,
+      originalSlotPath: result.originalSlotPath,
     });
   } catch (error) {
     logger.error('route.media.update_slot.error', {

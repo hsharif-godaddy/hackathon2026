@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { type BusAiEditContextPayload, send } from "../utils/eventBus";
-import { generatePreciseSelector, extractDevContext, getElementClassName } from "../utils/element-helpers";
+import { generatePreciseSelector, extractDevContext, getElementClassName, parseCollectionOccurrenceIndex } from "../utils/element-helpers";
+import { findMediaSlotDomIndex } from "../utils/media-slot-dom";
 import {
   showSelectionOverlay,
   clearSelectionOverlay,
@@ -355,7 +356,41 @@ export default function ElementHoverBar({
     trackEventBus.click("devtools.toolbar.replace_image");
     const { imageUrl, isMediaSlot, slotPath } = hovered;
     if (isMediaSlot && slotPath) {
-      send({ type: "OPEN_MEDIA_SLOT_DIALOG", slotName: slotPath });
+      const targetEl = hovered.element;
+      const devContext = extractDevContext(targetEl);
+      const preciseSelector = generatePreciseSelector(targetEl);
+      const imgEl = targetEl.tagName.toLowerCase() === "img" ? (targetEl as HTMLImageElement) : null;
+      const occurrenceIndex = findMediaSlotDomIndex(targetEl, slotPath)
+        ?? parseCollectionOccurrenceIndex(preciseSelector);
+      send({
+        type: "OPEN_MEDIA_SLOT_DIALOG",
+        slotName: slotPath,
+        occurrenceIndex,
+        forkContext: {
+          selector: preciseSelector,
+          devContext: devContext ?? {
+            fileName: "unknown",
+            componentName: "unknown",
+            lineNumber: 0,
+          },
+          elementInfo: {
+            tagName: targetEl.tagName.toLowerCase(),
+            className: getElementClassName(targetEl),
+            id: targetEl.id,
+            selector: preciseSelector,
+            devContext: devContext ?? {
+              fileName: "unknown",
+              componentName: "unknown",
+              lineNumber: 0,
+            },
+          },
+          imageInfo: {
+            type: imgEl ? "img" : "background",
+            currentUrl: imageUrl,
+            alt: imgEl?.alt || undefined,
+          },
+        },
+      });
     } else {
       const devContext = extractDevContext(el);
       const imgEl = el.tagName.toLowerCase() === "img" ? (el as HTMLImageElement) : null;

@@ -62,7 +62,10 @@ vi.mock('@/stores/useDevelopPageStore', () => {
 
 const mockMediaSlotDialogStore = {
   panelSlotName: null as string | null,
+  panelSlotOccurrenceIndex: null as number | null,
+  panelSlotForkContext: null,
   clearPanelSlot: vi.fn(),
+  clearPanelSlotForkContext: vi.fn(),
   mediaReturnTab: null as ChatTab | null,
   mediaReturnMobileMode: null as MobileMode | null,
   clearMediaReturnState: vi.fn(),
@@ -72,8 +75,10 @@ const mockMediaSlotDialogStore = {
 };
 
 vi.mock('@/stores/useMediaSlotDialogStore', () => ({
-  useMediaSlotDialogStore: (selector: unknown) =>
-    (selector as (state: unknown) => unknown)(mockMediaSlotDialogStore),
+  useMediaSlotDialogStore: Object.assign(
+    (selector: unknown) => (selector as (state: unknown) => unknown)(mockMediaSlotDialogStore),
+    { getState: () => mockMediaSlotDialogStore },
+  ),
 }));
 
 vi.mock('@/app/[market]/develop/components/media/MediaSlotDetail', () => ({

@@ -18,7 +18,15 @@ import { GitUtils } from '../utils/git.js';
 import { logger } from '../logging/index.js';
 import { gettyUploadService } from './GettyUploadService.js';
 import { astImageEditor } from '../tools/ast-image-editor.js';
+import type { ImageElementInfo, ImageInfo } from '../tools/ast-image-editor.js';
 import { getPersistentPublicDir } from '../utils/persistent-assets.js';
+import {
+  buildForkedSlotPath,
+  countSlotUrlReferences,
+  imageSlotUrl,
+  isSharedSlotReference,
+  parseCollectionOccurrenceIndex,
+} from '../utils/slot-reference-utils.js';
 
 export const MANIFEST_FILENAME = 'airo-media.json';
 
@@ -204,6 +212,14 @@ export interface UpdateSlotOptions {
   searchQuery?: string;
 }
 
+/** Element context for forking a shared slot to one DOM instance. */
+export interface SlotForkContext {
+  devContext: { fileName: string; componentName: string; lineNumber: number };
+  elementInfo: ImageElementInfo;
+  imageInfo: ImageInfo;
+  selector?: string;
+}
+
 /**
  * Result of a manifest operation
  */
@@ -215,7 +231,16 @@ export interface ManifestOperationResult {
   /** Pre-CDN-rewrite snapshot of the chosen slot. */
   builtSlot?: MediaSlot;
   commitHash?: string;
+  /** Set when manifest/source writes succeeded but git commit failed */
+  commitFailed?: boolean;
+  slotPath?: string;
 }
+
+export type UpdateSlotOrForkResult = ManifestOperationResult & {
+  forked?: boolean;
+  originalSlotPath?: string;
+  attemptedFork?: boolean;
+};
 
 export interface RemoveUploadedUrlsResult extends ManifestOperationResult {
   affectedSlots?: string[];
@@ -818,6 +843,356 @@ export class MediaManifestService {
     } finally {
       release();
     }
+  }
+
+  /**
+   * License a Getty asset and resolve the CDN URL for a slot swap.
+   */
+  private async resolveLicensedUrl(
+    newUrl: string,
+    updateOptions: Omit<UpdateSlotOptions, 'newUrl'> | undefined,
+    existingSlot: MediaSlot,
+    logContext: Record<string, string>,
+  ): Promise<
+    | { success: true; url: string; gettyId?: string }
+    | { success: false; error: string }
+  > {
+    let newCurrentUrl = newUrl;
+    const newCurrentGettyId = updateOptions?.gettyAsset?.id;
+    const effectiveMediaType = updateOptions?.gettyAsset?.mediaType || updateOptions?.mediaTypeHint;
+    const isVideo = effectiveMediaType === 'video';
+    const isImage = effectiveMediaType === 'image';
+
+    if (newCurrentGettyId) {
+      if (isVideo) {
+        const videoUrl = await gettyUploadService.uploadVideo(newCurrentGettyId);
+        if (videoUrl) {
+          newCurrentUrl = videoUrl;
+          logger.info('media_manifest.fork_slot.getty_video_upload_complete', {
+            ...logContext,
+            gettyId: newCurrentGettyId,
+            cdnUrl: newCurrentUrl,
+          });
+        } else {
+          logger.error('media_manifest.fork_slot.getty_video_upload_failed', {
+            ...logContext,
+            gettyId: newCurrentGettyId,
+          });
+          return { success: false, error: 'Failed to license Getty video. Please try again.' };
+        }
+      } else {
+        const uploadResults = await gettyUploadService.uploadAndReport([newCurrentGettyId]);
+        if (uploadResults.length > 0 && uploadResults[0]?.url) {
+          newCurrentUrl = uploadResults[0].url;
+          logger.info('media_manifest.fork_slot.getty_upload_complete', {
+            ...logContext,
+            gettyId: newCurrentGettyId,
+            cdnUrl: newCurrentUrl,
+          });
+        } else if (updateOptions?.allowExternalUrl) {
+          logger.warn('media_manifest.fork_slot.getty_cdn_upload_failed', {
+            ...logContext,
+            gettyId: newCurrentGettyId,
+          });
+          return { success: false, error: 'Failed to license Getty image. Please try again.' };
+        }
+      }
+    }
+
+    const resolved = resolveTransparentLogoUrl(existingSlot, newCurrentUrl);
+    if (resolved.rewritten) {
+      logger.warn('media_manifest.fork_slot.logo.non_transparent_rewritten', {
+        ...logContext,
+        originalUrl: newCurrentUrl,
+        transparentUrl: resolved.url,
+      });
+      newCurrentUrl = resolved.url;
+    }
+
+    return {
+      success: true,
+      url: newCurrentUrl,
+      gettyId: newCurrentGettyId,
+    };
+  }
+
+  /**
+   * Fork a shared slot into a new manifest entry and repoint one source reference.
+   * Used when multiple DOM instances share the same slot path (e.g. data collections).
+   */
+  async forkSlotForElement(
+    appId: string,
+    options: {
+      slotName: string;
+      newUrl: string;
+      devContext: { fileName: string; componentName: string; lineNumber: number };
+      elementInfo: ImageElementInfo;
+      imageInfo: ImageInfo;
+      occurrenceIndex?: number | null;
+      updateOptions?: Omit<UpdateSlotOptions, 'newUrl'>;
+    }
+  ): Promise<ManifestOperationResult & { slotPath?: string }> {
+    const release = await acquireLock(appId);
+
+    try {
+      const hasValidDevContext = Boolean(
+        options.devContext.fileName.startsWith('src/')
+        || options.devContext.fileName.startsWith('app/')
+      );
+      const canRepointByIndex = options.occurrenceIndex != null && options.occurrenceIndex >= 0;
+      const canRepointByLabel = Boolean(options.imageInfo.alt?.trim());
+      if (!hasValidDevContext && !canRepointByIndex && !canRepointByLabel) {
+        return {
+          success: false,
+          error: 'Could not identify which item to update. Click Replace on the specific image in Edit mode, then swap again.',
+        };
+      }
+
+      const app = this.appRepository.findById(appId);
+      if (!app?.path) {
+        return { success: false, error: 'App not found' };
+      }
+
+      const manifestResult = await this.getManifest(appId);
+      if (!manifestResult.success || !manifestResult.manifest) {
+        return {
+          success: false,
+          error: manifestResult.error || 'Failed to read manifest',
+        };
+      }
+
+      const manifest = manifestResult.manifest;
+      const existingSlot = manifest[options.slotName];
+      if (!existingSlot) {
+        return { success: false, error: `Slot not found: ${options.slotName}` };
+      }
+
+      const sourceRef = `${options.devContext.fileName}:${options.devContext.lineNumber}`;
+      const newSlotPath = buildForkedSlotPath(options.slotName, manifest);
+      const now = new Date().toISOString();
+      const logContext = { appId, slotName: options.slotName, newSlotPath };
+
+      const licensed = await this.resolveLicensedUrl(
+        options.newUrl,
+        options.updateOptions,
+        existingSlot,
+        logContext,
+      );
+      if (!licensed.success) {
+        return { success: false, error: licensed.error };
+      }
+
+      const effectiveMediaType = options.updateOptions?.gettyAsset?.mediaType
+        || options.updateOptions?.mediaTypeHint;
+      const isVideo = effectiveMediaType === 'video';
+      const isImage = effectiveMediaType === 'image';
+
+      manifest[newSlotPath] = {
+        mediaType: existingSlot.mediaType === 'video' ? 'video' : 'image',
+        ...resolveMediaTypeUpdate(existingSlot.mediaType, isVideo, isImage),
+        currentUrl: licensed.url,
+        searchQuery: options.updateOptions?.searchQuery?.trim()
+          || existingSlot.searchQuery
+          || '',
+        alternatives: [licensed.url],
+        userModified: true,
+        sourceRef,
+        gettyId: licensed.gettyId,
+        createdAt: now,
+        lastUpdated: now,
+      };
+
+      const manifestPath = this.getManifestPath(app.path);
+      await this.writeManifest(manifestPath, manifest);
+
+      const replaceResult = await astImageEditor.replaceSharedSlotReference(
+        app.path,
+        {
+          elementInfo: options.elementInfo,
+          imageInfo: options.imageInfo,
+          newImageUrl: imageSlotUrl(newSlotPath),
+          oldSlotPath: options.slotName,
+          newSlotPath,
+          occurrenceIndex: options.occurrenceIndex,
+        },
+        appId
+      );
+
+      if (!replaceResult.success) {
+        delete manifest[newSlotPath];
+        await this.writeManifest(manifestPath, manifest);
+        return {
+          success: false,
+          error: replaceResult.error || 'Failed to repoint shared slot reference',
+        };
+      }
+
+      const additionalFiles = [
+        options.devContext.fileName,
+        ...(replaceResult.filePath && replaceResult.filePath !== options.devContext.fileName
+          ? [replaceResult.filePath]
+          : []),
+      ].filter((filePath): filePath is string => (
+        Boolean(filePath)
+        && filePath !== 'unknown'
+        && (filePath.startsWith('src/') || filePath.startsWith('app/'))
+      ));
+
+      let commitHash: string | undefined;
+      let commitFailed = false;
+      try {
+        commitHash = await this.commitManifestChange(appId, newSlotPath, 'create', additionalFiles);
+      } catch (gitError) {
+        commitFailed = true;
+        logger.warn('media_manifest.fork_slot.git_commit_failed', {
+          appId,
+          slotPath: newSlotPath,
+          error: gitError instanceof Error ? gitError.message : String(gitError),
+        });
+      }
+
+      logger.info('media_manifest.fork_slot.success', {
+        appId,
+        originalSlotPath: options.slotName,
+        slotPath: newSlotPath,
+        sourceRef,
+        commitFailed,
+      });
+
+      return {
+        success: true,
+        slotPath: newSlotPath,
+        slot: manifest[newSlotPath],
+        commitHash,
+        commitFailed,
+      };
+    } catch (error) {
+      logger.error('media_manifest.fork_slot.error', {
+        appId,
+        slotName: options.slotName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { success: false, error: 'Failed to fork slot' };
+    } finally {
+      release();
+    }
+  }
+
+  /**
+   * Update a slot in-place, or fork it first when the path is shared across
+   * multiple source records and element context is provided.
+   */
+  async updateSlotOrFork(
+    appId: string,
+    slotName: string,
+    options: {
+      newUrl: string;
+      updateOptions?: Omit<UpdateSlotOptions, 'newUrl'>;
+      forkContext?: SlotForkContext | null;
+      occurrenceIndex?: number | null;
+    }
+  ): Promise<UpdateSlotOrForkResult> {
+    const app = this.appRepository.findById(appId);
+    const refCount = app?.path ? await countSlotUrlReferences(app.path, slotName) : 0;
+
+    const manifestResult = await this.getManifest(appId);
+    const slotSourceRef = manifestResult.manifest?.[slotName]?.sourceRef;
+
+    const selectorOccurrenceIndex = options.forkContext
+      ? parseCollectionOccurrenceIndex(
+        options.forkContext.selector || options.forkContext.elementInfo.selector || ''
+      )
+      : null;
+    const occurrenceIndex = options.occurrenceIndex ?? selectorOccurrenceIndex;
+    const hasValidForkContext = Boolean(
+      options.forkContext?.devContext?.fileName?.startsWith('src/')
+      || options.forkContext?.devContext?.fileName?.startsWith('app/')
+    );
+    const canRepointByIndex = occurrenceIndex != null && occurrenceIndex >= 0;
+    const canRepointByLabel = Boolean(options.forkContext?.imageInfo?.alt?.trim());
+    const clickSourceRef = options.forkContext?.devContext
+      ? `${options.forkContext.devContext.fileName}:${options.forkContext.devContext.lineNumber}`
+      : null;
+    const isShared = isSharedSlotReference(refCount, clickSourceRef, slotSourceRef);
+    const canRepoint = canRepointByIndex
+      || canRepointByLabel
+      || (hasValidForkContext && options.forkContext != null);
+    const shouldFork = isShared && canRepoint;
+
+    if (isShared && !shouldFork) {
+      logger.warn('media_manifest.update_slot_or_fork.missing_index', {
+        appId,
+        slotName,
+        refCount,
+        hasForkContext: options.forkContext != null,
+      });
+      return {
+        success: false,
+        error: 'Could not identify which item to update. Click Replace on the specific image in Edit mode, then swap again.',
+      };
+    }
+
+    if (shouldFork) {
+      const devContext = options.forkContext?.devContext ?? {
+        fileName: 'unknown',
+        componentName: 'unknown',
+        lineNumber: 0,
+      };
+      const elementInfo = options.forkContext?.elementInfo ?? {
+        tagName: 'img',
+        className: '',
+        id: '',
+        selector: '',
+        devContext,
+      };
+      const imageInfo = options.forkContext?.imageInfo ?? {
+        type: 'img' as const,
+        currentUrl: imageSlotUrl(slotName),
+      };
+
+      logger.info('media_manifest.update_slot_or_fork.fork', {
+        appId,
+        slotName,
+        refCount,
+        occurrenceIndex,
+        hasForkContext: options.forkContext != null,
+        clickSourceRef: `${devContext.fileName}:${devContext.lineNumber}`,
+      });
+
+      const forkResult = await this.forkSlotForElement(appId, {
+        slotName,
+        newUrl: options.newUrl,
+        devContext,
+        elementInfo,
+        imageInfo,
+        occurrenceIndex,
+        updateOptions: options.updateOptions,
+      });
+
+      if (forkResult.success) {
+        return {
+          ...forkResult,
+          forked: true,
+          originalSlotPath: slotName,
+          attemptedFork: true,
+        };
+      }
+
+      return {
+        ...forkResult,
+        attemptedFork: true,
+      };
+    }
+
+    const updateResult = await this.updateSlot(appId, slotName, {
+      newUrl: options.newUrl,
+      ...options.updateOptions,
+    });
+
+    return {
+      ...updateResult,
+      forked: false,
+    };
   }
 
   /**
