@@ -17,6 +17,7 @@ describe('usePaywallStore', function usePaywallStoreTests() {
         upgradeModalSource: null,
         upgradeModalItc: null,
         paywallLoading: false,
+        publishOpenAfterUpgradeAppId: null,
       });
     });
   });
@@ -284,6 +285,46 @@ describe('usePaywallStore', function usePaywallStoreTests() {
       const state = usePaywallStore.getState();
       expect(state.upgradeModalSource).toBe('original-source');
       expect(state.upgradeModalItc).toBe('original-itc');
+    });
+  });
+
+  describe('publishOpenAfterUpgrade arm', function publishOpenAfterUpgradeTests() {
+    it('should initialize with no armed app', function initialState() {
+      expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe(null);
+    });
+
+    it('armPublishOpenAfterUpgrade sets the armed app id', function arm() {
+      act(function armApp() {
+        usePaywallStore.getState().armPublishOpenAfterUpgrade('app-123');
+      });
+
+      expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe('app-123');
+    });
+
+    it('clearPublishOpenAfterUpgrade resets the armed app', function clear() {
+      act(function armApp() {
+        usePaywallStore.getState().armPublishOpenAfterUpgrade('app-123');
+      });
+      act(function clearApp() {
+        usePaywallStore.getState().clearPublishOpenAfterUpgrade();
+      });
+
+      expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe(null);
+    });
+
+    it('closeUpgradeModal does NOT clear the arm', function closeKeepsArm() {
+      act(function armAndOpen() {
+        usePaywallStore.getState().armPublishOpenAfterUpgrade('app-123');
+        usePaywallStore.getState().openUpgradeModal('publish_upsell.see_plans');
+      });
+
+      act(function close() {
+        usePaywallStore.getState().closeUpgradeModal();
+      });
+
+      const state = usePaywallStore.getState();
+      expect(state.showUpgradeModal).toBe(false);
+      expect(state.publishOpenAfterUpgradeAppId).toBe('app-123');
     });
   });
 });

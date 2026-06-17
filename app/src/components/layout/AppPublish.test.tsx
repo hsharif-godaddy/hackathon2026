@@ -25,6 +25,7 @@ import { shipAnalyticsLog } from '@/lib/logging';
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
 import { openPostPublishFeatureSelectionInChat } from '@/lib/post-publish-feature-selection';
 import { logger } from '@/lib/request-context';
+import { usePaywallStore } from '@/stores/usePaywallStore';
 import { createMockSite, mockRouter } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 
@@ -161,6 +162,16 @@ vi.mock('@/hooks/useUpgradePurchase', () => ({
   useIsUpgradePolling: () => mockIsUpgradePolling.value,
 }));
 
+const mockShowPaywall = vi.hoisted(() => ({ value: true }));
+vi.mock('@/hooks/usePaywallEligibility', () => ({
+  usePaywallEligibility: () => ({
+    showPaywall: mockShowPaywall.value,
+    isLoading: false,
+    isError: false,
+    error: null,
+  }),
+}));
+
 vi.mock('@/hooks/useDnsConflictGate', () => ({
   useDnsConflictGate: () => ({
     modal: mockDnsConflictModal,
@@ -290,6 +301,8 @@ describe('AppPublish', () => {
     mockMutateAsync.mockResolvedValue(undefined);
     mockDnsConflictModal = null;
     mockIsUpgradePolling.value = false;
+    mockShowPaywall.value = true;
+    usePaywallStore.setState({ publishOpenAfterUpgradeAppId: null });
     mockSiteStore.getSite.mockReturnValue(
       createMockSite({
         id: 'app-123',
@@ -1645,6 +1658,125 @@ describe('AppPublish', () => {
     });
   });
 
+  describe('combine-publish auto-open after upgrade', () => {
+    it('opens the publish popover once the armed app flips to paid', async function opensWhenPaid() {
+      usePaywallStore.setState({ publishOpenAfterUpgradeAppId: 'app-123' });
+      mockShowPaywall.value = true;
+
+      const { rerender } = renderWithProviders(<AppPublish />);
+
+      // Still free → popover stays closed
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+
+      // Account becomes paid → auto-open
+      mockShowPaywall.value = false;
+      rerender(<AppPublish />);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+      });
+      expect(mockSiteStore.fetchSite).toHaveBeenCalledWith('app-123', true, true);
+      // Arm is consumed exactly once
+      expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe(null);
+    });
+
+    it('does not open while the account is still free', async function staysClosedWhenFree() {
+      usePaywallStore.setState({ publishOpenAfterUpgradeAppId: 'app-123' });
+      mockShowPaywall.value = true;
+
+      renderWithProviders(<AppPublish />);
+
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+      expect(mockSiteStore.fetchSite).not.toHaveBeenCalled();
+      expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe('app-123');
+    });
+
+    it('does not open when the armed app is a different app', async function ignoresOtherApp() {
+      usePaywallStore.setState({ publishOpenAfterUpgradeAppId: 'other-app' });
+      mockShowPaywall.value = false;
+
+      renderWithProviders(<AppPublish />);
+
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+      expect(mockSiteStore.fetchSite).not.toHaveBeenCalled();
+    });
+
+    it('waits for upgrade polling to settle and keeps the arm until it actually opens', async function waitsForPolling() {
+      usePaywallStore.setState({ publishOpenAfterUpgradeAppId: 'app-123' });
+      mockShowPaywall.value = false; // paid
+      mockIsUpgradePolling.value = true; // ...but grant-polling still running
+
+      const { rerender } = renderWithProviders(<AppPublish />);
+
+      // Must NOT open yet, and the arm must survive (so a remount during polling can still open)
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+      expect(mockSiteStore.fetchSite).not.toHaveBeenCalled();
+      expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe('app-123');
+
+      // Polling settles → open now, arm consumed
+      mockIsUpgradePolling.value = false;
+      rerender(<AppPublish />);
+
+      await waitFor(() => {
+        expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+      });
+      expect(mockSiteStore.fetchSite).toHaveBeenCalledWith('app-123', true, true);
+      expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe(null);
+    });
+
+    it('does not consume the arm off the develop page', async function ignoresOffDevelop() {
+      mockPathname = '/apps';
+      usePaywallStore.setState({ publishOpenAfterUpgradeAppId: 'app-123' });
+      mockShowPaywall.value = false;
+
+      renderWithProviders(<AppPublish />);
+
+      expect(mockSiteStore.fetchSite).not.toHaveBeenCalled();
+      // Arm preserved so it can still fire when the user returns to the develop page
+      expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe('app-123');
+    });
+
+    it('does not consume on the non-matching viewport instance (mobile header)', async function viewportDedupSkips() {
+      mockDevelopStore.isMobile = true;
+      usePaywallStore.setState({ publishOpenAfterUpgradeAppId: 'app-123' });
+      mockShowPaywall.value = false;
+
+      // location 'develop' (isChatToolbar=false) on mobile → guarded out
+      renderWithProviders(<AppPublish location="develop" />);
+
+      expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+      expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe('app-123');
+    });
+
+    it('consumes on the matching viewport instance (mobile chat toolbar)', async function viewportDedupActs() {
+      mockDevelopStore.isMobile = true;
+      usePaywallStore.setState({ publishOpenAfterUpgradeAppId: 'app-123' });
+      mockShowPaywall.value = false;
+
+      renderWithProviders(<AppPublish location="develop.chat_toolbar" />);
+
+      await waitFor(() => {
+        expect(mockSiteStore.fetchSite).toHaveBeenCalledWith('app-123', true, true);
+      });
+      expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe(null);
+    });
+
+    it('clears a stale arm when navigating to a different app', async function safeguardClearsOnAppChange() {
+      usePaywallStore.setState({ publishOpenAfterUpgradeAppId: 'app-123' });
+      mockShowPaywall.value = true; // still free → arm not consumed
+
+      const { rerender } = renderWithProviders(<AppPublish />);
+      expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe('app-123');
+
+      mockDevelopStore.currentAppId = 'app-456';
+      rerender(<AppPublish />);
+
+      await waitFor(() => {
+        expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe(null);
+      });
+    });
+  });
+
   describe('publish.attempted analytics', () => {
     async function openPopoverAndClickPublish(user: ReturnType<typeof renderWithProviders>['user']) {
       const trigger = await screen.findByRole('button', { name: 'builder_publish_button' });
@@ -1799,5 +1931,29 @@ describe('AppPublish — combine-publish treatment', () => {
     expect(await screen.findByTestId('publish-upsell-see-plans')).toBeInTheDocument();
     // Negative check: the normal publish popover (title key) is never rendered in treatment.
     expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+  });
+
+  // End-to-end through the REAL upsell component + REAL paywall store: the only thing a real
+  // purchase does to the client is flip the account to paid, so we drive everything else for real.
+  it('arms via a real See Plans click and auto-opens the popover once the account flips to paid', async () => {
+    const { usePublishUpsellEligibility } = await import('@/hooks/usePublishUpsellEligibility');
+    const { user, rerender } = renderWithProviders(<AppPublish location="develop" />);
+
+    // Free treatment user: open the upsell and click "See Plans" (arms the real store via the real component)
+    await user.click(await screen.findByTestId('publish-upsell-trigger'));
+    await user.click(await screen.findByTestId('publish-upsell-see-plans'));
+    expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe('app-123');
+    expect(screen.queryByText('builder_publish_popover_title')).not.toBeInTheDocument();
+
+    // Simulate the purchase landing: account becomes paid → treatment turns off.
+    mockShowPaywall.value = false;
+    vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: false, isTreatment: false, isLoading: false });
+    rerender(<AppPublish location="develop" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
+    });
+    expect(mockSiteStore.fetchSite).toHaveBeenCalledWith('app-123', true, true);
+    expect(usePaywallStore.getState().publishOpenAfterUpgradeAppId).toBe(null);
   });
 });

@@ -9,6 +9,9 @@ interface PaywallState {
   creditsModalSource: string | null
   creditsModalItc: string | null
   paywallLoading: boolean
+  // App id armed by the combine-upgrade-with-publish upsell. When the armed app becomes paid,
+  // AppPublish auto-opens its publish popover (see usePublishUpsellEligibility / AppPublish).
+  publishOpenAfterUpgradeAppId: string | null
 }
 
 interface PaywallActions {
@@ -17,6 +20,8 @@ interface PaywallActions {
   openCreditsModal: (source: string, itc?: string) => void
   closeCreditsModal: () => void
   setPaywallLoading: (loading: boolean) => void
+  armPublishOpenAfterUpgrade: (appId: string) => void
+  clearPublishOpenAfterUpgrade: () => void
 }
 
 type PaywallStore = PaywallState & PaywallActions
@@ -30,6 +35,7 @@ export const usePaywallStore = create<PaywallStore>()(
     creditsModalSource: null,
     creditsModalItc: null,
     paywallLoading: false,
+    publishOpenAfterUpgradeAppId: null,
 
     openUpgradeModal: (source: string, itc?: string) => {
       if (get().paywallLoading) return
@@ -63,6 +69,15 @@ export const usePaywallStore = create<PaywallStore>()(
     }),
     setPaywallLoading: (loading: boolean) => set((state) => {
       state.paywallLoading = loading
+    }),
+    // Note: closeUpgradeModal intentionally does NOT clear the arm — DirectToPaidContainer fires
+    // its onClose on a successful purchase too, so clearing on close would drop the intent before
+    // the paid-state flip. The arm is cleared on consume (AppPublish) and on app-id change.
+    armPublishOpenAfterUpgrade: (appId: string) => set((state) => {
+      state.publishOpenAfterUpgradeAppId = appId
+    }),
+    clearPublishOpenAfterUpgrade: () => set((state) => {
+      state.publishOpenAfterUpgradeAppId = null
     }),
   }))
 )

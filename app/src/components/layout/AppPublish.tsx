@@ -33,6 +33,7 @@ import { useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useDnsConflictGate } from '@/hooks/useDnsConflictGate';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
 import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled';
+import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { usePublishApp } from '@/hooks/usePublishApp';
 import { usePublishComplianceGate } from '@/hooks/usePublishComplianceGate';
@@ -57,6 +58,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { Separator } from '@/lib/shadcn/separator';
 import { PublishComplianceBlockReason } from '@/lib/subscription';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
+import { usePaywallStore } from '@/stores/usePaywallStore';
 import { useSiteStore } from '@/stores/useSiteStore';
 import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversationStore';
 import { getPlanDisplayLabelKey } from '@/utils/credits';
@@ -162,9 +164,16 @@ export default function AppPublish({ location = 'develop' }: { location?: string
   const isSecurityScanUiEnabled = useSwitchboard('appbuilder-security-scan-ui') === true;
 
   const isChatToolbar = location === 'develop.chat_toolbar';
+  // Exactly one mounted AppPublish drives the publish popover per viewport: desktop -> header,
+  // mobile -> chat toolbar. (Negation of the old skip guard this replaced:
+  // `(isMobile && !isChatToolbar) || (!isMobile && isChatToolbar)`.)
+  const isActivePublishInstance = isMobile === isChatToolbar;
 
   const isUpgradePolling = useIsUpgradePolling();
   const fetchSite = useSiteStore((state) => state.fetchSite);
+  const { showPaywall } = usePaywallEligibility();
+  const publishOpenAfterUpgradeAppId = usePaywallStore((state) => state.publishOpenAfterUpgradeAppId);
+  const clearPublishOpenAfterUpgrade = usePaywallStore((state) => state.clearPublishOpenAfterUpgrade);
   const [pendingOpenAfterUpgrade, setPendingOpenAfterUpgrade] = useState(false);
   const [isAgentInitiatedPublish, setIsAgentInitiatedPublish] = useState(false);
   const { triggerAnalysis } = useTriggerSecurityAnalysis();
@@ -227,22 +236,50 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     setPendingOpenAfterUpgrade(true);
   }, []);
 
-  // Open popover after upgrade polling completes, refreshing site data first so domain is current
+  // Refresh site data (so the domain is current) then open the publish popover. Shared by the
+  // post-purchase open paths below.
+  const openPopoverWithFreshSite = useCallback(async () => {
+    if (currentAppId) {
+      try {
+        await fetchSite(currentAppId, true, true);
+      } catch {
+        // Proceed to open even if the refresh fails
+      }
+    }
+    setOpen(true);
+  }, [currentAppId, fetchSite]);
+
+  // Open popover after upgrade polling completes (control paywall path via handlePaywallPurchaseSuccess).
   useEffect(() => {
     if (!pendingOpenAfterUpgrade || isUpgradePolling) return;
     setPendingOpenAfterUpgrade(false);
-    const openWithFreshSite = async () => {
-      if (currentAppId) {
-        try {
-          await fetchSite(currentAppId, true, true);
-        } catch {
-          // Proceed to open even if the refresh fails
-        }
-      }
-      setOpen(true);
-    };
-    void openWithFreshSite();
-  }, [pendingOpenAfterUpgrade, isUpgradePolling, currentAppId, fetchSite]);
+    void openPopoverWithFreshSite();
+  }, [pendingOpenAfterUpgrade, isUpgradePolling, openPopoverWithFreshSite]);
+
+  // Combine-upgrade-with-publish treatment: auto-open the publish popover after the upsell upgrade.
+  // PublishUpsellPopover arms `publishOpenAfterUpgradeAppId` on "See Plans"; once that app is paid
+  // (showPaywall false) and post-purchase polling has settled (!isUpgradePolling), open the popover.
+  // The arm is cleared HERE — at the actual open — not when showPaywall flips, so the intent survives
+  // a remount during the polling window (e.g. mobile TOOLS<->PREVIEW toggle remounts the chat-toolbar
+  // instance). The active-instance guard ensures exactly one instance acts (desktop -> header,
+  // mobile -> chat toolbar); the arm lives in the store so the surviving instance picks it up.
+  useEffect(() => {
+    if (!isActivePublishInstance || !isDevelopPage) return;
+    if (!currentAppId || publishOpenAfterUpgradeAppId !== currentAppId) return;
+    if (showPaywall || isUpgradePolling) return;
+    clearPublishOpenAfterUpgrade();
+    void openPopoverWithFreshSite();
+  }, [isActivePublishInstance, isDevelopPage, currentAppId, publishOpenAfterUpgradeAppId, showPaywall, isUpgradePolling, clearPublishOpenAfterUpgrade, openPopoverWithFreshSite]);
+
+  // Safeguard: scope the arm to the current app. If the user moves to a different app without
+  // completing the upgrade, drop the stale intent so it can't auto-open later on an unrelated
+  // paid-state read. Keyed on app identity (not unmount), so mobile mode toggles that remount this
+  // component for the same app do not clear a legitimately-armed intent.
+  useEffect(() => {
+    if (publishOpenAfterUpgradeAppId && publishOpenAfterUpgradeAppId !== currentAppId) {
+      clearPublishOpenAfterUpgrade();
+    }
+  }, [currentAppId, publishOpenAfterUpgradeAppId, clearPublishOpenAfterUpgrade]);
 
   // Use shared paywall modal hook (includes publish limit check)
   const { checkAndShowPaywall, paywallModal, isPaywallLoading, isPublishLimitLoading } = usePaywallModal({
@@ -396,7 +433,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     // The app-switch effect above must run first (same-commit effect order) to
     // seed `lastHandledPublishPopoverRequestRef` before this effect evaluates.
     if (!currentAppId || publishPopoverRequestNonce <= 0) return;
-    if ((isMobile && !isChatToolbar) || (!isMobile && isChatToolbar)) return;
+    if (!isActivePublishInstance) return;
     const lastHandled = lastHandledPublishPopoverRequestRef.current;
     if (lastHandled.appId !== currentAppId) {
       logger.info('app-publish.popover.nonce-skipped.app-mismatch', {
@@ -412,7 +449,7 @@ export default function AppPublish({ location = 'develop' }: { location?: string
     lastHandledPublishPopoverRequestRef.current = { appId: currentAppId, nonce: publishPopoverRequestNonce };
     setIsAgentInitiatedPublish(true);
     openPopover();
-  }, [currentAppId, isChatToolbar, isMobile, openPopover, publishPopoverRequestNonce]);
+  }, [currentAppId, isActivePublishInstance, openPopover, publishPopoverRequestNonce]);
 
   useEffect(() => {
     if (!isConversationInProgress) {

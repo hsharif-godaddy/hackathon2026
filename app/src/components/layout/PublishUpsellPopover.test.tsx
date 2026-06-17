@@ -11,6 +11,7 @@ import { renderWithProviders } from '@/tests/test-utils';
 import PublishUpsellPopover from './PublishUpsellPopover';
 
 const mockOpenUpgradeModal = vi.fn();
+const mockArmPublishOpenAfterUpgrade = vi.fn();
 const mockLogClickEvent = vi.fn(() => vi.fn());
 const mockLogImpressionEvent = vi.fn(() => vi.fn());
 
@@ -21,7 +22,10 @@ vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: (...args: unknown[]) => { mockLogImpressionEvent(...args); return vi.fn(); },
 }));
 vi.mock('@/stores/usePaywallStore', () => ({
-  usePaywallStore: (selector: any) => selector({ openUpgradeModal: mockOpenUpgradeModal }),
+  usePaywallStore: (selector: any) => selector({
+    openUpgradeModal: mockOpenUpgradeModal,
+    armPublishOpenAfterUpgrade: mockArmPublishOpenAfterUpgrade,
+  }),
 }));
 vi.mock('@/hooks/useBreakpoints', () => ({
   useBreakpoints: () => ({ isBelowSmBreakpoint: mockIsBelowSmBreakpoint }),
@@ -55,6 +59,7 @@ describe('PublishUpsellPopover', () => {
     expect(mockLogClickEvent).toHaveBeenCalledWith('develop.publish_upsell.see_plans', { appId: 'app-1' });
     expect(mockLogClickEvent).not.toHaveBeenCalledWith('develop.publish_upsell.dismiss_outside', { appId: 'app-1' });
     expect(mockOpenUpgradeModal).toHaveBeenCalledWith('publish_upsell.see_plans', PAYWALL_ITC.PUBLISH);
+    expect(mockArmPublishOpenAfterUpgrade).toHaveBeenCalledWith('app-1');
     await waitFor(() => {
       expect(screen.queryByText('builder_publish_upsell_title')).not.toBeInTheDocument();
     });
@@ -97,5 +102,6 @@ describe('PublishUpsellPopover', () => {
     expect(mockLogClickEvent).toHaveBeenCalledWith('develop.publish_upsell.publish_click', undefined);
     expect(mockLogImpressionEvent).toHaveBeenCalledWith('develop.publish_upsell.view', undefined);
     expect(mockLogClickEvent).toHaveBeenCalledWith('develop.publish_upsell.see_plans', undefined);
+    expect(mockArmPublishOpenAfterUpgrade).not.toHaveBeenCalled();
   });
 });
