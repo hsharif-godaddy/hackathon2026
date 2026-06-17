@@ -12,6 +12,7 @@ import {
   WEBSITE_REBUILD_IMPORT_FAILED_USER_MESSAGE,
   createRebuildError,
 } from '../types/rebuild.js';
+import { isAtlasJobCorpusForce, resolveCorpusEntry } from './atlas-job-corpus.js';
 import { mapAtlasDocumentLinks } from './rebuild/document-links.js';
 import type {
   FormHint,
@@ -174,12 +175,42 @@ export class AtlasCrawlerAdapter {
     const maxPages = options.maxPages ?? MAX_PAGES_DEFAULT;
     const startTime = Date.now();
 
+    const rootPath = options.rootPath ?? '/';
+
     logger.info('atlas-crawler-adapter.crawl-start', {
       sourceUrl,
       maxPages,
-      rootPath: options.rootPath,
+      rootPath,
       baseUrl: this.baseUrl,
+      corpusForce: isAtlasJobCorpusForce(),
     });
+
+    const corpusHit = await resolveCorpusEntry(sourceUrl, { rootPath, maxPages });
+    if (corpusHit) {
+      logger.info('atlas-crawler-adapter.corpus-hit', {
+        sourceUrl,
+        corpusKey: corpusHit.key,
+        jobId: corpusHit.entry.jobId,
+      });
+      try {
+        return await this.completeCrawlFromJobId({
+          sourceUrl,
+          jobId: corpusHit.entry.jobId,
+          rootPath,
+          startTime,
+          callbacks,
+          corpusKey: corpusHit.key,
+        });
+      } catch (error) {
+        logger.warn('atlas-crawler-adapter.corpus-fetch-failed', {
+          sourceUrl,
+          jobId: corpusHit.entry.jobId,
+          corpusKey: corpusHit.key,
+          error: error instanceof Error ? error.message : String(error),
+          message: 'Falling back to live Atlas crawl',
+        });
+      }
+    }
 
     const jobId = await this.submitCrawlJob(sourceUrl, {
       maxPages,
@@ -188,7 +219,7 @@ export class AtlasCrawlerAdapter {
       timeout: options.timeout ?? 30000,
       useSitemap: true,
       headless: true,
-      seedPaths: [options.rootPath ?? '/'],
+      seedPaths: [rootPath],
       output: 'full',
       include: {
         html: true,
@@ -207,23 +238,68 @@ export class AtlasCrawlerAdapter {
       respectRobotsTxt: true,
     });
 
-    const homepageCallbackFired = await this.pollUntilComplete(jobId, options.rootPath ?? '/', callbacks);
-
-    const result = await this.fetchResults(jobId);
-
-    logger.info('atlas-crawler-adapter.crawl-complete', {
+    return this.completeCrawlFromJobId({
       sourceUrl,
       jobId,
+      rootPath,
+      startTime,
+      callbacks,
+      pollUntilComplete: true,
+    });
+  }
+
+  private async completeCrawlFromJobId(params: {
+    sourceUrl: string;
+    jobId: string;
+    rootPath: string;
+    startTime: number;
+    callbacks?: CrawlCallbacks;
+    pollUntilComplete?: boolean;
+    corpusKey?: string;
+  }): Promise<AtlasCrawlOutput> {
+    const homepageCallbackFired = params.pollUntilComplete
+      ? await this.pollUntilComplete(params.jobId, params.rootPath, params.callbacks)
+      : await this.fireCorpusHomepageCallback(params.jobId, params.rootPath, params.callbacks);
+
+    const result = await this.fetchResults(params.jobId);
+
+    logger.info('atlas-crawler-adapter.crawl-complete', {
+      sourceUrl: params.sourceUrl,
+      jobId: params.jobId,
+      corpusKey: params.corpusKey,
+      reusedCorpus: !!params.corpusKey,
       pagesFound: result.pages.length,
       assetsFound: result.assets.length,
-      durationMs: Date.now() - startTime,
+      durationMs: Date.now() - params.startTime,
       hasSitemap: !!result.structure.sitemap,
       hasVisual: !!result.visual,
     });
 
-    const rootPath = options.rootPath ?? '/';
-    const skipScreenshot = homepageCallbackFired;
-    return this.mapCrawlResult(result, rootPath, skipScreenshot);
+    return this.mapCrawlResult(result, params.rootPath, homepageCallbackFired);
+  }
+
+  private async fireCorpusHomepageCallback(
+    jobId: string,
+    rootPath: string,
+    callbacks?: CrawlCallbacks,
+  ): Promise<boolean> {
+    if (!callbacks?.onHomepageReady) {
+      return false;
+    }
+    let homeOutput: AtlasCrawlOutput;
+    try {
+      homeOutput = await this.mapCrawlResult(await this.fetchHomeResults(jobId), rootPath);
+    } catch (error) {
+      logger.warn('atlas-crawler-adapter.corpus-homepage-fetch-failed', {
+        jobId,
+        error: error instanceof Error ? error.message : String(error),
+        message: 'onHomepageReady skipped — /home unavailable (job may be expired)',
+      });
+      return false;
+    }
+    await callbacks.onHomepageReady(homeOutput);
+    logger.info('atlas-crawler-adapter.corpus-homepage-callback-complete', { jobId });
+    return true;
   }
 
   private async mapCrawlResult(result: AtlasCrawlResult, rootPath: string, skipScreenshot = false): Promise<AtlasCrawlOutput> {

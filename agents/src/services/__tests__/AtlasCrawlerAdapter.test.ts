@@ -1,4 +1,8 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AtlasCrawlResult } from '../../types/atlas-api.js';
 import { AtlasCrawlerAdapter } from '../AtlasCrawlerAdapter.js';
@@ -61,9 +65,43 @@ describe('AtlasCrawlerAdapter', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     delete process.env.ATLAS_API_BASE_URL;
+    delete process.env.ATLAS_JOB_CORPUS;
+    delete process.env.ATLAS_JOB_CORPUS_FORCE;
+    delete process.env.GASKET_ENV;
+    delete process.env.ATLAS_JOB_CORPUS_PATH;
   });
 
   describe('crawlSite', () => {
+    it('reuses corpus jobId without submitting a new crawl when enabled', async function corpusReuse() {
+      const tempDir = await mkdtemp(path.join(os.tmpdir(), 'atlas-corpus-adapter-'));
+      process.env.ATLAS_JOB_CORPUS = 'true';
+      process.env.GASKET_ENV = 'local.dev';
+      process.env.ATLAS_JOB_CORPUS_PATH = path.join(tempDir, 'corpus.json');
+      await writeFile(
+        process.env.ATLAS_JOB_CORPUS_PATH,
+        JSON.stringify({
+          'https://example.com/': {
+            jobId: 'corpus-job-123',
+            maxPages: 20,
+          },
+        }),
+      );
+
+      const mockResult = createMockCrawlResult();
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResult,
+      });
+
+      const output = await adapter.crawlSite('https://example.com');
+
+      expect(output.pages.length).toBeGreaterThan(0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+        'https://atlas.test.example.com/jobs/corpus-job-123/results',
+      );
+    });
+
     it('submits job, polls, fetches results, and fetches screenshot', async () => {
       const mockResult = createMockCrawlResult({
         screenshots: [{ path: 'screenshots/job-123/homepage.png', url: 'https://s3.example.com/screenshot.png', format: 'png', size: 1000, viewport: { width: 1440, height: 900 } }],

@@ -73,7 +73,8 @@
     "eval:fetch:websites": "tsx scripts/image-analysis-eval/fetch-test-images.ts -- --input=test-images-websites.json --output=fetched-images-websites.json",
     "eval:analyze:websites": "tsx scripts/image-analysis-eval/run-analysis.ts -- --input=fetched-images-websites.json --output=analysis-results-websites.json",
     "benchmark:memory": "tsx src/services/summarization/__benchmarks__/memory-benchmark.ts",
-    "benchmark:memory:gc": "NODE_OPTIONS='--expose-gc' tsx src/services/summarization/__benchmarks__/memory-benchmark.ts"
+    "benchmark:memory:gc": "NODE_OPTIONS='--expose-gc' tsx src/services/summarization/__benchmarks__/memory-benchmark.ts",
+    "atlas-corpus": "tsx --env-file=.env scripts/atlas-corpus.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.77",
