@@ -171,6 +171,7 @@ interface LifecycleContext {
     debugStatsEnabled?: boolean
     market?: string
     marketingCampaignsEnabled?: boolean
+    skillSuggestionsEnabled?: boolean
   }
   isInitialPrompt?: boolean
 }
@@ -1697,6 +1698,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         ...(agentCtx?.useTestBudget !== undefined && { useTestBudget: agentCtx.useTestBudget }),
         ...(agentCtx?.useAtlasCrawler && { useAtlasCrawler: true }),
         ...(agentCtx?.rebuildIntakeFormEnabled && { rebuildIntakeFormEnabled: true }),
+        ...(agentCtx?.skillSuggestionsEnabled && { skillSuggestionsEnabled: true }),
         ...(rebuildDesignDirection && { rebuildDesignDirection }),
         ...(rebuildBuildPageSlug && { rebuildBuildPageSlug, isRebuildFlow: true }),
         ...(content && { _userMessage: content }),

@@ -109,10 +109,41 @@ export interface SkillHookContext {
   appId?: string
 }
 
+/** A single capability a skill wants to advertise to a returning customer. */
+export interface SkillAnnouncement {
+  /** Stable id of the capability. */
+  id: string
+  /** Plain-English suggestion label suitable for a clickable button. */
+  label: string
+  /** One-line description of the capability. */
+  summary: string
+  /** Catalog version in which this capability shipped. */
+  version: number
+}
+
+/** What a skill reports at session start (see `onSessionStart`). */
+export interface SkillSessionAnnouncements {
+  /** The skill's current catalog version; used to advance the customer's last-seen marker. */
+  currentVersion: number
+  /** Capabilities that are relevant to this app and not yet adopted. */
+  announcements: SkillAnnouncement[]
+}
+
 export interface SkillHooks {
   onLoad?: (context: SkillHookContext) => Promise<void> | void
   onInstall?: (context: SkillHookContext) => Promise<void> | void
   onUnload?: (context: SkillHookContext) => Promise<void> | void
+  /**
+   * Fired during app-scoped context bootstrapping to let a skill self-detect its
+   * footprint in the app and report capabilities the customer hasn't adopted yet.
+   * Consumers (e.g. session-start announcements, "Continue building") version-gate
+   * these by per-skill state, so a skill should return the full relevant pending set
+   * and let the caller decide what is "new". Return `null` when the skill has no
+   * footprint in this app — the common case for most skills.
+   */
+  onSessionStart?: (
+    context: SkillHookContext
+  ) => Promise<SkillSessionAnnouncements | null> | SkillSessionAnnouncements | null
 }
 
 export interface SkillToolRegistry {
@@ -229,7 +260,12 @@ function isValidToolDefinition(def: unknown): def is SkillToolDefinition {
 function isValidHooks(hooks: unknown): hooks is SkillHooks {
   if (typeof hooks !== 'object' || hooks === null) return false
   const h = hooks as Record<string, unknown>
-  const validKeys = ['onLoad', 'onInstall', 'onUnload']
+  // Keep in sync with the SkillHooks interface. onSessionStart MUST be here:
+  // an "announce-only" skill (the one-line, no-core-edits extension this system
+  // advertises) that exports ONLY onSessionStart would otherwise fail this gate,
+  // have its entire hooks object dropped at registration, and never surface via
+  // listSkillsWithSessionStart().
+  const validKeys = ['onLoad', 'onInstall', 'onUnload', 'onSessionStart']
   return Object.keys(h).some(
     key => validKeys.includes(key) && typeof h[key] === 'function'
   )

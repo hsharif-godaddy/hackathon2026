@@ -72,6 +72,41 @@ describe('buildAllSkillTools', () => {
     expect(registry.skillToTools.size).toBe(0)
   })
 
+   it('captures an onSessionStart hook from a skill tools module', async () => {
+    await mkdir(join(testSkillsDir, 'announce', 'tools'), { recursive: true })
+    await writeFile(
+      join(testSkillsDir, 'announce', 'tools', 'index.ts'),
+      `export const hooks = {\n` +
+        `  onSessionStart: async () => ({ currentVersion: 1, announcements: [] }),\n` +
+        `};\n`
+    )
+
+    const registry = await buildAllSkillTools(testSkillsDir)
+
+    const hooks = registry.skillHooks.get('announce')
+    expect(typeof hooks?.onSessionStart).toBe('function')
+  })
+
+  it('captures an onSessionStart hook even when it is the ONLY hook exported', async () => {
+    // Regression guard for the isValidHooks gate: an "announce-only" skill that
+    // exports onSessionStart and nothing else must still be registered, or it can
+    // never surface via listSkillsWithSessionStart(). The fixture above also exports
+    // no other hooks, but this test makes the "only onSessionStart" contract explicit.
+    await mkdir(join(testSkillsDir, 'announce-only', 'tools'), { recursive: true })
+    await writeFile(
+      join(testSkillsDir, 'announce-only', 'tools', 'index.ts'),
+      `export const hooks = {\n` +
+        `  onSessionStart: async () => ({ currentVersion: 2, announcements: [] }),\n` +
+        `};\n`
+    )
+
+    const registry = await buildAllSkillTools(testSkillsDir)
+
+    expect(registry.skillHooks.has('announce-only')).toBe(true)
+    expect(typeof registry.skillHooks.get('announce-only')?.onSessionStart).toBe('function')
+  })
+
+
   describe('path traversal protection', () => {
     it('should reject skill names with path traversal sequences', async () => {
       // Create a directory that could be exploited

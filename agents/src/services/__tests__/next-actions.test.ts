@@ -8,6 +8,7 @@ const {
   mockGetRecentMessagesForApp,
   mockGetAllLists,
   mockGenerateText,
+  mockGetActiveAgentContext,
   mockMemoryGet,
 } = vi.hoisted(() => ({
   mockFindById: vi.fn(),
@@ -16,6 +17,7 @@ const {
   mockGetRecentMessagesForApp: vi.fn(),
   mockGetAllLists: vi.fn(),
   mockGenerateText: vi.fn(),
+  mockGetActiveAgentContext: vi.fn(),
   mockMemoryGet: vi.fn(),
 }))
 
@@ -69,7 +71,26 @@ vi.mock('../../logging/index.js', () => ({
   },
 }))
 
+// The default skill-announcements collector fans out to this singleton. Stub it so
+// the existing tests see "no skills" (collector returns []) and stay unchanged.
+vi.mock('../../tools/skill-tool-manager.js', () => ({
+  skillToolManager: {
+    collectAppAnnouncements: vi.fn().mockResolvedValue([]),
+  },
+}))
+
+// The skill-suggestion merge is gated by the `appbuilder-skill-suggestions` flag,
+// read from the active agent context (AsyncLocalStorage). Default the mock to ON so
+// the merge tests below exercise the merge; the gating tests override it.
+vi.mock('../../lib/agent-context-storage.js', () => ({
+  getActiveAgentContext: mockGetActiveAgentContext,
+}))
+
 import { NextActionsService } from '../next-actions.js'
+
+function feature(id: string, label: string, version = 1) {
+  return { id, label, summary: `do ${label}`, version }
+}
 
 describe('NextActionsService', () => {
   let service: NextActionsService
@@ -89,6 +110,8 @@ describe('NextActionsService', () => {
       text: '[{"text": "Add a contact page"}]',
       usage: { totalTokens: 100 },
     })
+    // Default: skill-suggestions flag ON, so the merge runs.
+    mockGetActiveAgentContext.mockReturnValue({ skillSuggestionsEnabled: true })
   })
 
   describe('generateNextActions', () => {
@@ -302,6 +325,126 @@ describe('NextActionsService', () => {
           experimental_telemetry: { isEnabled: true, functionId: 'next-actions' },
         }),
       )
+    })
+  })
+
+  describe('skill suggestion merge', () => {
+    it('prepends skill pending capabilities (max 2) and caps the combined list at 4', async () => {
+      mockGenerateText.mockResolvedValue({
+        text: '[{"text":"Publish your site"},{"text":"Connect a custom domain"}]',
+        usage: { totalTokens: 100 },
+      })
+      const collector = vi.fn().mockResolvedValue([
+        feature('paid-booking', 'Charge customers when they book'),
+        feature('admin-dashboard', 'Add an owner dashboard'),
+        feature('customer-portal', 'Add a customer portal'),
+      ])
+      const svc = new NextActionsService(undefined, undefined, undefined, collector)
+
+      const result = await svc.generateNextActions(appId)
+
+      expect(result.suggestions).toEqual([
+        { text: 'Charge customers when they book' },
+        { text: 'Add an owner dashboard' },
+        { text: 'Publish your site' },
+        { text: 'Connect a custom domain' },
+      ])
+    })
+
+    it('skips skill items already on the plan/todo list', async () => {
+      mockGenerateText.mockResolvedValue({ text: '[{"text":"Publish your site"}]', usage: {} })
+      mockGetAllLists.mockReturnValue([
+        { name: 'Plan', items: [{ title: 'Charge customers when they book', completed: false }] },
+      ])
+      const collector = vi.fn().mockResolvedValue([
+        feature('paid-booking', 'Charge customers when they book'),
+        feature('admin-dashboard', 'Add an owner dashboard'),
+      ])
+      const svc = new NextActionsService(undefined, undefined, undefined, collector)
+
+      const result = await svc.generateNextActions(appId)
+
+      expect(result.suggestions).toEqual([
+        { text: 'Add an owner dashboard' },
+        { text: 'Publish your site' },
+      ])
+    })
+
+    it('drops an LLM suggestion that duplicates a prepended skill item', async () => {
+      mockGenerateText.mockResolvedValue({
+        text: '[{"text":"Add an owner dashboard"},{"text":"Publish your site"}]',
+        usage: {},
+      })
+      const collector = vi.fn().mockResolvedValue([feature('admin-dashboard', 'Add an owner dashboard')])
+      const svc = new NextActionsService(undefined, undefined, undefined, collector)
+
+      const result = await svc.generateNextActions(appId)
+
+      expect(result.suggestions).toEqual([
+        { text: 'Add an owner dashboard' },
+        { text: 'Publish your site' },
+      ])
+    })
+
+    it('leaves LLM suggestions unchanged when no skill reports capabilities', async () => {
+      mockGenerateText.mockResolvedValue({ text: '[{"text":"Publish your site"}]', usage: {} })
+      const collector = vi.fn().mockResolvedValue([])
+      const svc = new NextActionsService(undefined, undefined, undefined, collector)
+
+      const result = await svc.generateNextActions(appId)
+
+      expect(result.suggestions).toEqual([{ text: 'Publish your site' }])
+    })
+
+    it('falls back to LLM suggestions when the collector throws', async () => {
+      mockGenerateText.mockResolvedValue({ text: '[{"text":"Publish your site"}]', usage: {} })
+      const collector = vi.fn().mockRejectedValue(new Error('boom'))
+      const svc = new NextActionsService(undefined, undefined, undefined, collector)
+
+      const result = await svc.generateNextActions(appId)
+
+      expect(result.suggestions).toEqual([{ text: 'Publish your site' }])
+    })
+  })
+
+  describe('appbuilder-skill-suggestions flag gating', () => {
+    it('returns LLM suggestions only and never consults the collector when the flag is off', async () => {
+      mockGetActiveAgentContext.mockReturnValue({ skillSuggestionsEnabled: false })
+      mockGenerateText.mockResolvedValue({ text: '[{"text":"Publish your site"}]', usage: {} })
+      const collector = vi.fn().mockResolvedValue([feature('paid-booking', 'Charge customers when they book')])
+      const svc = new NextActionsService(undefined, undefined, undefined, collector)
+
+      const result = await svc.generateNextActions(appId)
+
+      expect(result.suggestions).toEqual([{ text: 'Publish your site' }])
+      expect(collector).not.toHaveBeenCalled()
+    })
+
+    it('treats a missing agent context as flag off (LLM suggestions only)', async () => {
+      mockGetActiveAgentContext.mockReturnValue(null)
+      mockGenerateText.mockResolvedValue({ text: '[{"text":"Publish your site"}]', usage: {} })
+      const collector = vi.fn().mockResolvedValue([feature('paid-booking', 'Charge customers when they book')])
+      const svc = new NextActionsService(undefined, undefined, undefined, collector)
+
+      const result = await svc.generateNextActions(appId)
+
+      expect(result.suggestions).toEqual([{ text: 'Publish your site' }])
+      expect(collector).not.toHaveBeenCalled()
+    })
+
+    it('merges skill capabilities when the flag is on', async () => {
+      mockGetActiveAgentContext.mockReturnValue({ skillSuggestionsEnabled: true })
+      mockGenerateText.mockResolvedValue({ text: '[{"text":"Publish your site"}]', usage: {} })
+      const collector = vi.fn().mockResolvedValue([feature('paid-booking', 'Charge customers when they book')])
+      const svc = new NextActionsService(undefined, undefined, undefined, collector)
+
+      const result = await svc.generateNextActions(appId)
+
+      expect(collector).toHaveBeenCalledOnce()
+      expect(result.suggestions).toEqual([
+        { text: 'Charge customers when they book' },
+        { text: 'Publish your site' },
+      ])
     })
   })
 

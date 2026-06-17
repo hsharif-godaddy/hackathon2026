@@ -248,13 +248,14 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let asmDualWriteEnabled = false;
     let logoBrandColorsEnabled = false;
     let purchaseIntentClassifierEnabled = false;
+    let skillSuggestionsEnabled = false;
 
     const { visitorMarket: market } = await resolveMarketId(request);
 
     if (siteValidationCacheHit) {
       // Cache hit: skip site validation, run paywall + switchboard + subscription lookup in parallel
       const parallelStart = Date.now();
-      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult] = await Promise.allSettled([
+      const [paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult] = await Promise.allSettled([
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
           body.siteId,
@@ -280,6 +281,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-asm-dual-write', request),
         checkSwitchboardFlag('appbuilder-logo-brand-colors', request),
         checkSwitchboardFlag('appbuilder-purchase-intent-classifier', request),
+        checkSwitchboardFlag('appbuilder-skill-suggestions', request),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -311,10 +313,11 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       asmDualWriteEnabled = resolveBooleanFlag(asmDualWriteResult, 'agent-token.asm-dual-write-flag-check-failed', body.siteId, user.customerId);
       logoBrandColorsEnabled = resolveBooleanFlag(logoBrandColorsResult, 'agent-token.logo-brand-colors-flag-check-failed', body.siteId, user.customerId);
       purchaseIntentClassifierEnabled = resolveBooleanFlag(purchaseIntentClassifierResult, 'agent-token.purchase-intent-classifier-flag-check-failed', body.siteId, user.customerId);
+      skillSuggestionsEnabled = resolveBooleanFlag(skillSuggestionsResult, 'agent-token.skill-suggestions-flag-check-failed', body.siteId, user.customerId);
     } else {
       // Cache miss: run site validation, paywall, switchboard, and subscription lookup all in parallel
       const parallelStart = Date.now();
-      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult] = await Promise.allSettled([
+      const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult] = await Promise.allSettled([
         validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct),
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
@@ -341,6 +344,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-asm-dual-write', request),
         checkSwitchboardFlag('appbuilder-logo-brand-colors', request),
         checkSwitchboardFlag('appbuilder-purchase-intent-classifier', request),
+        checkSwitchboardFlag('appbuilder-skill-suggestions', request),
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
@@ -381,6 +385,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       asmDualWriteEnabled = resolveBooleanFlag(asmDualWriteResult, 'agent-token.asm-dual-write-flag-check-failed', body.siteId, user.customerId);
       logoBrandColorsEnabled = resolveBooleanFlag(logoBrandColorsResult, 'agent-token.logo-brand-colors-flag-check-failed', body.siteId, user.customerId);
       purchaseIntentClassifierEnabled = resolveBooleanFlag(purchaseIntentClassifierResult, 'agent-token.purchase-intent-classifier-flag-check-failed', body.siteId, user.customerId);
+      skillSuggestionsEnabled = resolveBooleanFlag(skillSuggestionsResult, 'agent-token.skill-suggestions-flag-check-failed', body.siteId, user.customerId);
     }
 
     const hivemindCohorts = await fetchHivemindCohorts(request);
@@ -578,6 +583,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       asmDualWriteEnabled,
       logoBrandColorsEnabled,
       purchaseIntentClassifierEnabled,
+      skillSuggestionsEnabled,
     };
 
     const result = body.expiresInSeconds

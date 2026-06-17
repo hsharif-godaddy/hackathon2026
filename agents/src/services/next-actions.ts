@@ -1,6 +1,7 @@
 import { isSecretsComposerSuccessUserContent } from '@airo/shared'
 import { getModel } from '@airo/ai-lib'
 import { generateText } from 'ai'
+import type { SkillAnnouncement } from '@airo/ai-skills'
 
 import { AppRepository } from '../database/repositories/AppRepository.js'
 import { MemoryRepository } from '../database/repositories/MemoryRepository.js'
@@ -9,9 +10,31 @@ import type { ConversationTokenStore, SummaryStore } from '../memory/interfaces/
 import { workspaceScopeFromAppId } from '../memory/interfaces/scope.js'
 import { getTodoListStore } from '../planning/adapters/index.js'
 import type { TodoListStore } from '../planning/interfaces/index.js'
+import { skillToolManager } from '../tools/skill-tool-manager.js'
+import { getActiveAgentContext } from '../lib/agent-context-storage.js'
 import { Logger } from '../logging/index.js'
 
 const logger = Logger.create({ component: 'next-actions' })
+/** How many skill-provided "pending capability" items to prepend, at most. */
+const MAX_SKILL_SUGGESTIONS = 2
+/** Hard cap on the combined suggestion list returned to the client. */
+const MAX_TOTAL_SUGGESTIONS = 4
+
+/**
+ * Reports the not-yet-built capabilities installed skills want to suggest for an
+ * app. Injected so it can be stubbed in tests; the default fans out to every skill
+ * that exposes the generic announcement hook, without naming any skill.
+ */
+export type SkillAnnouncementsCollector = (
+  appId: string,
+  appPath: string,
+) => Promise<SkillAnnouncement[]>
+
+const defaultSkillAnnouncementsCollector: SkillAnnouncementsCollector = async (appId, appPath) => {
+  const reports = await skillToolManager.collectAppAnnouncements({ appId, appPath })
+  return reports.flatMap(report => report.report.announcements)
+}
+
 
 interface NextActionSuggestion {
   text: string
@@ -57,6 +80,7 @@ export class NextActionsService {
     private summaryStore: SummaryStore = getSummaryStore(),
     private conversationTokenStore: ConversationTokenStore = getConversationTokenStore(),
     private todoListStore: TodoListStore = getTodoListStore(),
+    private skillAnnouncementsCollector: SkillAnnouncementsCollector = defaultSkillAnnouncementsCollector,
   ) {}
 
   async generateNextActions(appId: string, customerId?: string): Promise<NextActionsResult> {
@@ -172,16 +196,111 @@ export class NextActionsService {
       maxOutputTokens: 500,
       experimental_telemetry: { isEnabled: true, functionId: 'next-actions' },
     })
+    const llmSuggestions = this.parseResponse(result.text)
 
-    const suggestions = this.parseResponse(result.text)
+    // Deterministically surface any skill-reported pending capabilities (e.g. the
+    // online-appointments "next steps") in the same "Continue building" panel,
+    // rather than relying on the agent to volunteer them mid-turn. Gated by the
+    // `appbuilder-skill-suggestions` Switchboard flag (delivered on the agent JWT as
+    // `skillSuggestionsEnabled`); when off, "Continue building" shows LLM suggestions
+    // only and the skill announcement collector is never consulted.
+    const skillSuggestionsEnabled = getActiveAgentContext()?.skillSuggestionsEnabled ?? false
+    const pendingTodoTitles = todoLists.flatMap(list =>
+      (list.items ?? []).filter(i => !i.completed).map(i => i.title),
+    )
+    const suggestions = skillSuggestionsEnabled
+      ? await this.mergeSkillSuggestions(app.id, app.path, llmSuggestions, pendingTodoTitles)
+      : llmSuggestions
 
     logger.info('next-actions.generated', {
       appId,
+      llmSuggestionCount: llmSuggestions.length,
       suggestionCount: suggestions.length,
       totalTokens: result.usage?.totalTokens,
     })
+    // Suggestion copy is customer-facing; keep it at debug so it stays out of
+    // prod logs at LOG_LEVEL=info.
+    logger.debug('next-actions.generated.detail', {
+      appId,
+      suggestions: suggestions.map(s => s.text).join(' | '),
+    })
 
     return { suggestions }
+  }
+
+  /**
+   * Prepend skill-reported pending capabilities to the LLM suggestions, deduped and
+   * capped. Skill items take priority (up to MAX_SKILL_SUGGESTIONS) because they are
+   * concrete, build-ready next steps; the LLM's broader suggestions fill the rest.
+   * Never throws — a failing collector just yields the LLM suggestions unchanged.
+   */
+  private async mergeSkillSuggestions(
+    appId: string,
+    appPath: string,
+    llmSuggestions: NextActionSuggestion[],
+    pendingTodoTitles: string[],
+  ): Promise<NextActionSuggestion[]> {
+    let pending: SkillAnnouncement[]
+    try {
+      pending = await this.skillAnnouncementsCollector(appId, appPath)
+    } catch (error) {
+      logger.warn('next-actions.skill-suggestions-failed', {
+        appId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return llmSuggestions
+    }
+    if (pending.length === 0) return llmSuggestions
+
+    const skillSuggestions: NextActionSuggestion[] = []
+    const seen = new Set<string>()
+    for (const feature of pending) {
+      if (skillSuggestions.length >= MAX_SKILL_SUGGESTIONS) break
+      const key = feature.label.trim().toLowerCase()
+      // Skip anything already on the plan, or a duplicate skill label.
+      if (!key || seen.has(key)) continue
+      if (pendingTodoTitles.some(title => this.overlaps(feature.label, title))) continue
+      seen.add(key)
+      skillSuggestions.push({ text: feature.label })
+    }
+    if (skillSuggestions.length === 0) return llmSuggestions
+
+    // Drop LLM suggestions that restate a skill item we are prepending.
+    const skillTexts = skillSuggestions.map(s => s.text)
+    const filteredLlm = llmSuggestions.filter(s => !skillTexts.some(text => this.overlaps(s.text, text)))
+
+    const merged = [...skillSuggestions, ...filteredLlm].slice(0, MAX_TOTAL_SUGGESTIONS)
+
+    // Behaviour 1 surfacing outcome: how many skill-reported pending capabilities were
+    // prepended to "Continue building", and how many LLM suggestions were dropped as
+    // restatements of them. `skillPendingCount` is the pre-dedup candidate pool.
+    logger.info('next-actions.skill-suggestions-merged', {
+      appId,
+      skillPendingCount: pending.length,
+      skillSuggestionCount: skillSuggestions.length,
+      llmSuggestionCount: llmSuggestions.length,
+      droppedLlmCount: llmSuggestions.length - filteredLlm.length,
+      mergedCount: merged.length,
+    })
+
+    logger.debug('next-actions.skill-suggestions-merged.detail', {
+      appId,
+      skillSuggestions: skillSuggestions.map(s => s.text).join(' | '),
+    })
+
+    return merged
+  }
+
+  /**
+   * Loose duplicate check (case-insensitive, bidirectional substring) matching the
+   * client-side NBA/plan dedup in InputActionsPanel, so "Charge customers" ≈
+   * "Charge customers when they book".
+   */
+  private overlaps(a: string, b: string): boolean {
+    const x = a.trim().toLowerCase()
+    const y = b.trim().toLowerCase()
+    if (!x || !y) return false
+    return x.includes(y) || y.includes(x)
   }
 
   private parseResponse(text: string): NextActionSuggestion[] {

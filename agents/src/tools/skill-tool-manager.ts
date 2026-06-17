@@ -13,7 +13,7 @@
 import type { Tool } from 'ai';
 import type { ResolveToolMetadata } from '@airo/ai-transport';
 import { logger } from '../logging/index.js';
-import { ConversationSkillState, buildAllSkillTools, buildSkillToolName, type SkillToolRegistry, type SkillHooks, type SkillHookContext } from '@airo/ai-skills';
+import { ConversationSkillState, buildAllSkillTools, buildSkillToolName, type SkillToolRegistry, type SkillHooks, type SkillHookContext, type SkillSessionAnnouncements } from '@airo/ai-skills';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -753,6 +753,81 @@ export class SkillToolManager {
   private validateSkillName(skillName: string): boolean {
     const validPattern = /^[a-zA-Z0-9_-]+(\/[a-zA-Z0-9_-]+)?$/;
     return validPattern.test(skillName);
+  }
+    /**
+   * Names of registered skills that expose an `onSessionStart` hook. Used by the
+   * generic session-start bootstrap to discover announcement providers without
+   * hard-coding any skill name (see Self-Containment Rule in skills/README.md).
+   */
+  listSkillsWithSessionStart(): string[] {
+    if (!this.toolRegistry) return [];
+    const names: string[] = [];
+    for (const [skillName, hooks] of this.toolRegistry.skillHooks) {
+      if (typeof hooks.onSessionStart === 'function') {
+        names.push(skillName);
+      }
+    }
+    return names;
+  }
+
+  
+
+
+  /**
+   * Run a skill's `onSessionStart` hook. Non-fatal: returns null when the skill
+   * has no such hook or the hook throws, so a broken skill never blocks context
+   * assembly.
+   */
+  async runSessionStartHook(
+    skillName: string,
+    context: SkillHookContext
+  ): Promise<SkillSessionAnnouncements | null> {
+    const hooks = this.toolRegistry?.skillHooks.get(skillName);
+    if (!hooks?.onSessionStart) return null;
+
+    try {
+      const result = await hooks.onSessionStart(context);
+      return result ?? null;
+    } catch (error) {
+      logger.warn('skill.hook.failed', {
+        skillName,
+        event: 'onSessionStart',
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    }
+  }
+    /**
+   * Collect the not-yet-adopted capabilities every footprint-bearing skill reports
+   * for this app. A behaviour-neutral wrapper over `onSessionStart` so consumers
+   * other than the session-start bootstrap (e.g. the "Continue building"
+   * next-actions service) can ask the generic question "anything to announce for
+   * this app?" without naming any skill (see Self-Containment Rule). Each hook runs
+   * defensively; skills with no footprint return null and are dropped.
+   */
+  async collectAppAnnouncements(
+    context: Omit<SkillHookContext, 'skillName'>
+  ): Promise<Array<{ skillName: string; report: SkillSessionAnnouncements }>> {
+    const results: Array<{ skillName: string; report: SkillSessionAnnouncements }> = [];
+    const skillNames = this.listSkillsWithSessionStart();
+    for (const skillName of skillNames) {
+      const report = await this.runSessionStartHook(skillName, { ...context, skillName });
+      if (report) {
+        results.push({ skillName, report });
+      }
+    }
+
+    // Behaviour 1 fan-out summary: how many announcing skills were polled, how many
+    // had a footprint in this app, and the total pending capabilities reported back
+    // (the candidates the next-actions service will merge into "Continue building").
+    logger.info('skill.announcements.collected', {
+      appId: context.appId,
+      skillsChecked: skillNames.length,
+      skillsReporting: results.length,
+      totalAnnouncements: results.reduce((sum, r) => sum + r.report.announcements.length, 0),
+    });
+
+    return results;
   }
 }
 

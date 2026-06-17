@@ -57,6 +57,7 @@ describe('buildAgentContext', function suite() {
       asmDualWriteEnabled: false,
       logoBrandColorsEnabled: false,
       purchaseIntentClassifierEnabled: false,
+      skillSuggestionsEnabled: false,
       exp: 1700000000,
       iat: 1699999000,
     });
@@ -178,6 +179,7 @@ describe('buildAgentContext', function suite() {
       'rebuildIntakeFormEnabled',
       'asmDualWriteEnabled',
       'purchaseIntentClassifierEnabled',
+      'skillSuggestionsEnabled',
     ] as const;
 
     const ctx = buildAgentContext({});

@@ -45,6 +45,7 @@ import { getTemplateIds } from '../agents/template-registry.js'
 import { isEmployeeAuthType, type ProductType } from '@airo/shared/auth'
 import apm from 'elastic-apm-node'
 import type { Socket, Server as SocketIOServer } from 'socket.io'
+import { buildSkillAnnouncementContextMessages } from './skill-announcements-context.js'
 
 
 // Define ContextMessage interface locally (extends ConversationMessage with required insertionOrder)
@@ -662,6 +663,10 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
                 agentsAppContext.metadata.purchaseIntentClassifierEnabled = true
               }
 
+              if (agentContext?.skillSuggestionsEnabled) {
+                agentsAppContext.metadata.skillSuggestionsEnabled = true
+              }
+
               // Resolve app base URL once for tools like httpCheck.
               // Appends the active share token so the dev-supervisor proxy
               // allows requests without requiring a browser cookie.
@@ -879,6 +884,14 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
             logger.warn('skill.pinned.context.no_conversation_id', {
               metadataKeys: Object.keys(agentsAppContext.metadata ?? {})
             });
+          }
+          const announceAppId = agentsAppContext.metadata?.appId as string | undefined;
+          const announcementMessages = await buildSkillAnnouncementContextMessages(
+            announceAppId,
+            agentsAppContext.metadata?.skillSuggestionsEnabled === true,
+          );
+          for (const msg of announcementMessages) {
+            allMessages.push(msg);
           }
 
           return allMessages

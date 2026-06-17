@@ -755,6 +755,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           debugStatsEnabled: agentContext?.debugStatsEnabled,
           market: agentContext?.market,
           marketingCampaignsEnabled: agentContext?.marketingCampaignsEnabled,
+          skillSuggestionsEnabled: agentContext?.skillSuggestionsEnabled,
         },
         isInitialPrompt,
       },

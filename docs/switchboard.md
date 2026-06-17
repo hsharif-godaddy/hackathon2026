@@ -80,6 +80,7 @@ Some flags are evaluated in `app/src/app/api/auth/agent-token/route.ts` and pass
 | ---- | --------- | ----- |
 | `appbuilder-atlas-crawler` | `useAtlasCrawler` | Atlas vs external scrape backend |
 | `appbuilder-rebuild-intake-form` | `rebuildIntakeFormEnabled` | Intake UI before first rebuild scrape only (`!initialBuildComplete` on agents) |
+| `appbuilder-skill-suggestions` | `skillSuggestionsEnabled` | Master switch for the pending-skills feature. Gates (a) merging skill-reported pending capabilities into "Continue building" next-actions (read via `getActiveAgentContext()` in `NextActionsService`) and (b) proactive session-start "what's new" announcements in `skill-announcements-context.ts` (threaded via `context.metadata` on WS + SSE). Off → next-actions shows LLM suggestions only and no announcements are injected |
 
 ## Switchboard admin and new flags
 

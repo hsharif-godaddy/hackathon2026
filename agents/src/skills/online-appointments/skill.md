@@ -33,6 +33,46 @@ Full appointment booking system with payment integration, email confirmations, a
 
 ---
 
+## Proactive suggestions (server-driven)
+
+You do **not** generate, rank, version, or track booking next-steps yourself — the
+platform does it automatically from this skill's feature catalog, in two places:
+
+- **Pending capabilities** the customer hasn't built yet appear in the "Continue
+  building" panel after a build. Nothing for you to do.
+- **"What's new" for a returning customer:** when they reopen a site that already has a
+  booking system, the platform injects a short "What's new for this site" note listing
+  capabilities that are new, or that they started toward but never finished.
+
+When a "What's new for this site" note is present, follow it: if it fits the
+conversation, mention the items in plain English and offer them as clickable next-step
+buttons — `askQuestion` with `type: 'chips_single'` and `allowOther: true` (or
+`suggestedResponse` if your agent lacks `askQuestion`). If it doesn't fit, stay silent
+and handle the customer's actual request. **Never** read or write a version/last-seen
+memory marker — that bookmark is owned by the server. Per the confidentiality rule,
+describe each capability in plain English; never mention tool names, skill names, or
+`§` section numbers to the customer.
+
+### How a built capability leaves the suggestions
+
+What stays *pending* (and what counts as *new*) is decided server-side by detecting each
+optional capability's canonical artifacts on disk against the skill's feature catalog.
+**Build every capability at the path its section documents** — saving it elsewhere means
+the customer keeps being offered a feature they already have:
+
+| Capability | Recognised as built when the app has |
+| --- | --- |
+| Charge at booking (§8) | `pricingTiers` in `src/lib/appointments.config.ts` |
+| Email confirmations (§9) | `src/server/utils/appointment-email.ts` or `src/lib/calendar-invite.ts` |
+| Owner dashboard (§10) | `src/pages/AdminDashboard.tsx` (or the admin `…/[id]/PATCH.ts` route) |
+| Customer portal (§11) | `src/pages/Account.tsx` or `src/server/api/account/credits/GET.ts` |
+| Class packs & credits (§12) | `classPackages` in `src/lib/appointments.config.ts` |
+
+Adding a *future* capability is therefore a data-only change to the skill (its section
+plus one catalog entry in `tools/feature-catalog.ts`); the agent core never changes.
+
+---
+
 ## 🚨 CRITICAL: Implementation Style
 
 **Discovery → Confirm → Implement.** Do Step 1 (Discovery), then Step 2 (Review &

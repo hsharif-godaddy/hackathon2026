@@ -64,6 +64,7 @@ export interface AgentContext {
   market?: string; // BCP-47 market/locale from token mint (BFF-resolved from URL)
   asmDualWriteEnabled?: boolean; // Mirror SQLite writes to ASM (switchboard: appbuilder-asm-dual-write)
   purchaseIntentClassifierEnabled?: boolean; // Enable LLM purchase-intent classifier on credit=0 402 path (switchboard: appbuilder-purchase-intent-classifier)
+  skillSuggestionsEnabled?: boolean; // Merge skill-reported pending capabilities into "Continue building" next-actions (switchboard: appbuilder-skill-suggestions)
   exp: number;
   iat: number;
 }
@@ -110,6 +111,7 @@ export function buildAgentContext(raw: Record<string, unknown>): AgentContext {
     market: typeof raw.market === 'string' && raw.market.length > 0 ? raw.market : undefined,
     asmDualWriteEnabled: (raw.asmDualWriteEnabled as boolean) ?? false,
     purchaseIntentClassifierEnabled: (raw.purchaseIntentClassifierEnabled as boolean) ?? false,
+    skillSuggestionsEnabled: (raw.skillSuggestionsEnabled as boolean) ?? false,
     exp: (raw.exp as number) || 0,
     iat: (raw.iat as number) || 0,
   };
@@ -201,6 +203,7 @@ export class JWTAuthMiddleware {
           product: 'AiroAppBuilder',
           modelSelectorEnabled: true,
           agentProfileSelectorEnabled: true,
+          skillSuggestionsEnabled: true,
           agentProfile: tokenClaims.agentProfile as string | undefined,
           asmDualWriteEnabled: (tokenClaims.asmDualWriteEnabled as boolean) ?? false,
           exp: now + 3600,

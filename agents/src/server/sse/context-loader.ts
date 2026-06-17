@@ -18,6 +18,7 @@ import { logger } from '../../logging/index.js'
 import type { AgentsAppContext } from '../../types/websocket-context.js'
 import { resolveBmsSubscriptionId } from '@airo/ai-grants'
 import { isEmployeeAuthType } from '@airo/shared/auth'
+import { buildSkillAnnouncementContextMessages } from '../skill-announcements-context.js'
 
 export interface SSEContextLoaderDeps {
   agentFactory: {
@@ -160,6 +161,16 @@ export function createSSEContextLoader(
         metadataKeys: Object.keys(metadata),
         transport: 'sse',
       })
+    }
+    // Mirror the WS transport: surface proactive "what's new" announcements from
+    // installed skills (generic session-start bootstrap). App-scoped; defensive.
+    // Gated by the `appbuilder-skill-suggestions` flag carried on metadata.
+    const announcementMessages = await buildSkillAnnouncementContextMessages(
+      appId,
+      metadata.skillSuggestionsEnabled === true,
+    )
+    for (const msg of announcementMessages) {
+      contextMessages.push(msg)
     }
     return { contextMessages, formattedContexts: result.formattedContexts }
   }
