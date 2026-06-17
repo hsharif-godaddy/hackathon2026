@@ -1,4 +1,4 @@
-export type TransportState = 'disconnected' | 'connected' | 'streaming' | 'error'
+export type TransportState = 'disconnected' | 'connected' | 'streaming' | 'error' | 'dormant'
 
 export interface TransportEvent {
   type: string

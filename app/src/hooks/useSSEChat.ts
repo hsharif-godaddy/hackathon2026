@@ -41,6 +41,7 @@ import { readIntentCategoryFromSession } from '@/utils/traffic-signals'
 import { ensureFreshToken } from './github/useGitHubTokenHealth'
 import { resolveMessageDefaults } from './resolveMessageDefaults'
 import { handleBuildPhaseNotification } from './shared/buildPhaseNotification'
+import { classifyConnectError } from './shared/classifyConnectError'
 import {
   checkNewPageCreation,
   handleCommitComplete,
@@ -143,6 +144,9 @@ function deriveConnectionState(transportState: TransportState): { connected: boo
       case 'connected': return 'idle'
       case 'streaming': return 'streaming'
       case 'error': return 'error'
+      // Idle give-up: a torn-down stream re-armed only by the next send.
+      // Surface as a benign idle connection, not an error (AIROBUILD-2628).
+      case 'dormant': return 'idle'
       default: return 'connecting'
     }
   })()
@@ -222,6 +226,10 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
   const appNotFoundRetryRef = useRef<{ startTime: number; count: number; timer: ReturnType<typeof setTimeout> | null }>({
     startTime: 0, count: 0, timer: null,
   })
+  // Gates sendMessage after a deterministic connect failure (set together with
+  // setTransportState('error')); cleared on each fresh connect and on 'connected'.
+  const connectUnavailableRef = useRef(false)
+  const provisioningRetryRef = useRef<{ count: number; timer: ReturnType<typeof setTimeout> | null }>({ count: 0, timer: null })
   const clearAppNotFoundRetry = useCallback(() => {
     if (appNotFoundRetryRef.current.timer) {
       clearTimeout(appNotFoundRetryRef.current.timer)
@@ -355,6 +363,9 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
       const monitor = monitorRef.current
       monitor?.markConnectStart(currentAppId!)
       try {
+        // Optimistically clear the app-unavailable gate for each fresh connect
+        // attempt; a repeat deterministic failure re-sets it in the catch.
+        connectUnavailableRef.current = false
         const [configResult, tokenResult] = await Promise.all([
           timeFetch(dynamicApiConfigService.getConfigForSite(currentAppId!)),
           timeFetch(getAgentToken(currentAppId!)),
@@ -377,6 +388,8 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
           recoveryHandshakePendingRef.current = false
           recoveryReplayActiveRef.current = false
           deferredInitialHistoryConversationIdRef.current = null
+          if (provisioningRetryRef.current.timer) clearTimeout(provisioningRetryRef.current.timer)
+          provisioningRetryRef.current = { count: 0, timer: null }
 
           transportRef.current.destroy()
           transportRef.current = null
@@ -926,6 +939,9 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 setConnectionError(undefined)
 
                 if (state === 'connected' && currentAppId) {
+                  connectUnavailableRef.current = false
+                  if (provisioningRetryRef.current.timer) clearTimeout(provisioningRetryRef.current.timer)
+                  provisioningRetryRef.current = { count: 0, timer: null }
                   // Fallback for reconnects or future paths that did not
                   // trigger the HTTP history load immediately after connect().
                   // The store guards below dedupe against the eager load.
@@ -1037,11 +1053,36 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         // remains authoritative for the in-progress turn, matching WS ordering.
         void requestInitialHistoryLoad(conversationId)
       } catch (err) {
-        if (!cancelled) {
-          logger.error('sse.connect.failed', {
-            appId: currentAppId,
-            error: err instanceof Error ? err.message : String(err),
-          })
+        if (cancelled) return
+        const classification = classifyConnectError(err)
+        logger.error('sse.connect.failed', {
+          appId: currentAppId,
+          classification,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        if (classification === 'deterministic') {
+          // App/agent is gone — retrying cannot succeed. Surface a terminal
+          // state and gate sends so the composer does not post into a dead
+          // stream. The app-unavailable screen is owned by
+          // useInitialization. (AIROBUILD-2628)
+          connectUnavailableRef.current = true
+          setConnectionError(err)
+          setTransportState('error')
+        } else if (classification === 'provisioning') {
+          // Newly created app whose agent isn't up yet — bounded retry-until-ready.
+          const retry = provisioningRetryRef.current
+          if (retry.count < 3) {
+            retry.count += 1
+            const delay = 2000 * 2 ** (retry.count - 1)
+            if (retry.timer) clearTimeout(retry.timer)
+            retry.timer = setTimeout(() => {
+              retry.timer = null
+              setReconnectNonce((n) => n + 1)
+            }, delay)
+          } else {
+            setConnectionError(err)
+          }
+        } else {
           setConnectionError(err)
         }
       }
@@ -1052,6 +1093,10 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     return () => {
       cancelled = true
       transportRef.current?.disconnect()
+      if (provisioningRetryRef.current.timer) {
+        clearTimeout(provisioningRetryRef.current.timer)
+        provisioningRetryRef.current.timer = null
+      }
     }
   }, [enabled, currentAppId, flushHistoryBatch, releaseDeferredInitialHistoryLoad, requestInitialHistoryLoad, startInitialHistoryLoad, reconnectNonce])
 
@@ -1068,31 +1113,47 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
       }
       historyBatchRef.current = null
       clearAppNotFoundRetry()
+      if (provisioningRetryRef.current.timer) {
+        clearTimeout(provisioningRetryRef.current.timer)
+        provisioningRetryRef.current.timer = null
+      }
     }
   }, [clearAppNotFoundRetry])
 
   const sendMessage = useCallback(async (options: SendMessageOptions) => {
     const t = transportRef.current
-    const activeAppId = useStreamingConversationStore.getState().currentAppId
-
-    if (!t) {
-      logger.error('sse.send_message.no_transport', { appId: activeAppId })
-      return
-    }
+    const store = useStreamingConversationStore.getState()
+    const activeAppId = store.currentAppId
 
     if (!hasComposerSendPayload(options.content, {
       selectedAssets: options.selectedAssets,
       referencedFiles: options.customContext?.referencedFiles,
     })) return
 
-    const hasText = Boolean(options.content?.trim())
-
     if (!activeAppId) {
       logger.error('sse.send_message.no_app_id', {})
       return
     }
 
-    const store = useStreamingConversationStore.getState()
+    if (connectUnavailableRef.current) {
+      logger.warn('sse.send_message.app_unavailable', { appId: activeAppId })
+      store.startNewStream(options.content, options.selectedAssets, options.customContext?.referencedFiles as Array<{ path: string; content: string }> | undefined)
+      store.markUpstreamError({
+        message: tRef.current('builder_sse_app_unavailable', undefined, 'This app is currently unavailable. Please reload the page.'),
+        type: 'APP_NOT_FOUND',
+      })
+      store.finalizeStream()
+      store.setIsLoading(false) // clear any stale loading left by a prior in-flight send
+      return
+    }
+
+    if (!t) {
+      logger.error('sse.send_message.no_transport', { appId: activeAppId })
+      return
+    }
+
+    const hasText = Boolean(options.content?.trim())
+
     store.setIsLoading(true)
     const referencedFiles = options.customContext?.referencedFiles as Array<{ path: string; content: string }> | undefined
     const origin = getMessageOriginForAuthType(tokenAuthTypeRef.current)
@@ -1221,6 +1282,8 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         transportRef.current = null
         setTransport(null)
       }
+      if (provisioningRetryRef.current.timer) clearTimeout(provisioningRetryRef.current.timer)
+      provisioningRetryRef.current = { count: 0, timer: null }
     } catch (err) {
       logger.error('sse.reconnect.failed', { appId, error: err instanceof Error ? err.message : String(err) })
     } finally {

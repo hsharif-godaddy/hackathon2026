@@ -3,6 +3,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { logger } from '@/lib/request-context'
 import { SSETransport } from '../SSETransport'
 import type { ChatTransportCallbacks } from '../types'
 
@@ -20,6 +21,10 @@ vi.mock('@/lib/agent-fetch', () => ({
   }),
   getAgentToken: vi.fn().mockResolvedValue('token_123'),
   clearAgentTokenCache: vi.fn(),
+}))
+
+vi.mock('@/lib/request-context', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
 let eventListeners: Record<string, Array<(e: MessageEvent) => void>> = {}
@@ -315,8 +320,7 @@ describe('SSETransport', () => {
       lastEventSourceInstance?.onerror?.(err)
     }
 
-    it('enters cooldown after maxConsecutiveErrors and closes the EventSource', () => {
-      autoFireInitialize = false
+    it('idle stream that exhausts retries goes dormant — no error, no reopen', async () => {
       const t = new SSETransport({
         baseUrl: 'http://localhost:4000',
         maxConsecutiveErrors: 3,
@@ -324,20 +328,113 @@ describe('SSETransport', () => {
       })
       t.on(callbacks)
       t.connect('app_1', 'token_123', 'conv_1')
+      await vi.waitFor(() => expect(callbacks.onStateChange).toHaveBeenCalledWith('connected'))
 
       const es = lastEventSourceInstance
+      const countBefore = eventSourceInstances.length
 
       fireError()
       fireError()
-      expect(es.close).not.toHaveBeenCalled()
+      fireError() // threshold trip while idle
 
-      fireError() // threshold trip
       expect(es.close).toHaveBeenCalled()
-      expect(callbacks.onStateChange).toHaveBeenCalledWith('error')
-      expect(callbacks.onError).toHaveBeenCalledWith(expect.objectContaining({
-        message: 'sse_transport_cooldown',
-      }))
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('dormant')
+      expect(callbacks.onError).not.toHaveBeenCalled()
+      expect(eventSourceInstances.length).toBe(countBefore) // no reopen
+      t.destroy()
+    })
 
+    it('reconnectIfNeeded does NOT revive a dormant (idle) transport', async () => {
+      const t = new SSETransport({
+        baseUrl: 'http://localhost:4000',
+        maxConsecutiveErrors: 1,
+        cooldownMs: 1000,
+      })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+      await vi.waitFor(() => expect(callbacks.onStateChange).toHaveBeenCalledWith('connected'))
+
+      fireError() // idle → dormant
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('dormant')
+
+      const count = eventSourceInstances.length
+      t.reconnectIfNeeded()
+      expect(eventSourceInstances.length).toBe(count) // focus/visibility cannot revive
+      t.destroy()
+    })
+
+    it('active-turn outage retries bounded cooldowns then gives up (unreachable)', async () => {
+      autoFireInitialize = false // reopens never "succeed", so the budget accumulates
+      const t = new SSETransport({
+        baseUrl: 'http://localhost:4000',
+        maxConsecutiveErrors: 1,
+        cooldownMs: 10,
+        maxActiveCooldowns: 2,
+      })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+      await Promise.resolve()
+
+      // Force an active turn: sendMessage sets state 'streaming' on the 202 POST.
+      await t.sendMessage({ content: 'go', sessionId: 's' })
+      expect(t.state).toBe('streaming')
+
+      fireError() // cooldown 1 (quiet — no onError)
+      expect(callbacks.onError).not.toHaveBeenCalled()
+      await new Promise((r) => setTimeout(r, 20)) // timer reopens
+      fireError() // cooldown 2
+      await new Promise((r) => setTimeout(r, 20)) // timer reopens
+      fireError() // budget exhausted → terminal
+
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('error')
+      expect(callbacks.onError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'sse_transport_unreachable' }),
+      )
+      t.destroy()
+    })
+
+    it('reconnectIfNeeded short-circuits an active cooldown and reopens immediately', async () => {
+      autoFireInitialize = false
+      const t = new SSETransport({
+        baseUrl: 'http://localhost:4000',
+        maxConsecutiveErrors: 1,
+        cooldownMs: 60_000,
+        maxActiveCooldowns: 3,
+      })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+      await Promise.resolve()
+
+      await t.sendMessage({ content: 'go', sessionId: 's' }) // state → streaming
+      const before = eventSourceInstances.length
+
+      fireError() // active cooldown (long timer; will not fire during the test)
+      expect(eventSourceInstances.length).toBe(before) // closed, not yet reopened
+
+      t.reconnectIfNeeded() // user signal short-circuits the cooldown
+      expect(eventSourceInstances.length).toBe(before + 1)
+      t.destroy()
+    })
+
+    it('logs eventsource.error once per streak, not per attempt (AC3)', async () => {
+      const warnSpy = logger.warn as ReturnType<typeof vi.fn>
+      const t = new SSETransport({
+        baseUrl: 'http://localhost:4000',
+        maxConsecutiveErrors: 5,
+        cooldownMs: 1000,
+      })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+      await vi.waitFor(() => expect(callbacks.onStateChange).toHaveBeenCalledWith('connected'))
+      warnSpy.mockClear()
+
+      fireError()
+      fireError()
+      fireError()
+      fireError() // 4 errors, below threshold (5)
+
+      const errorLogs = warnSpy.mock.calls.filter((c) => c[0] === 'sse.transport.eventsource.error')
+      expect(errorLogs).toHaveLength(1) // first-of-streak only
       t.destroy()
     })
 
@@ -364,50 +461,6 @@ describe('SSETransport', () => {
       latestInstance?.onerror?.({ message: 'transport_failure' })
 
       expect(callbacks.onStateChange).not.toHaveBeenCalledWith('error')
-      t.destroy()
-    })
-
-    it('reconnectIfNeeded short-circuits cooldown and reopens immediately', async () => {
-      autoFireInitialize = false
-      const t = new SSETransport({
-        baseUrl: 'http://localhost:4000',
-        maxConsecutiveErrors: 2,
-        cooldownMs: 60_000,
-      })
-      t.on(callbacks)
-      t.connect('app_1', 'token_123', 'conv_1')
-      // Flush the queueMicrotask in openEventSource so `reconnecting` clears.
-      await Promise.resolve()
-      const initialCount = eventSourceInstances.length
-
-      fireError()
-      fireError() // trips cooldown
-
-      const afterTripCount = eventSourceInstances.length
-      expect(afterTripCount).toBe(initialCount) // no reopen during cooldown
-
-      t.reconnectIfNeeded()
-
-      expect(eventSourceInstances.length).toBe(afterTripCount + 1)
-      t.destroy()
-    })
-
-    it('cooldown timer auto-reopens when it fires', async () => {
-      autoFireInitialize = false
-      const t = new SSETransport({
-        baseUrl: 'http://localhost:4000',
-        maxConsecutiveErrors: 1,
-        cooldownMs: 30,
-      })
-      t.on(callbacks)
-      t.connect('app_1', 'token_123', 'conv_1')
-      const initialCount = eventSourceInstances.length
-
-      fireError() // trips cooldown immediately
-
-      await new Promise((r) => setTimeout(r, 60))
-
-      expect(eventSourceInstances.length).toBeGreaterThan(initialCount)
       t.destroy()
     })
 
@@ -537,6 +590,31 @@ describe('SSETransport', () => {
       // New EventSource constructed and not closed by an old cooldown timer.
       expect(eventSourceInstances.length).toBeGreaterThan(0)
       expect(lastEventSourceInstance.close.mock.calls.length).toBeLessThanOrEqual(closedFirst)
+      t.destroy()
+    })
+
+    it('sendMessage re-arms the stream when dormant', async () => {
+      const t = new SSETransport({
+        baseUrl: 'http://localhost:4000',
+        maxConsecutiveErrors: 2,
+        cooldownMs: 1000,
+      })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+      await vi.waitFor(() => expect(callbacks.onStateChange).toHaveBeenCalledWith('connected'))
+
+      fireError()
+      fireError() // idle → dormant
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('dormant')
+
+      const countBefore = eventSourceInstances.length
+      await t.sendMessage({ content: 'Hi', sessionId: 's' })
+
+      expect(eventSourceInstances.length).toBe(countBefore + 1) // stream re-armed
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:4000/api/conversations/app_1/conv_1/messages',
+        expect.objectContaining({ method: 'POST' }),
+      )
       t.destroy()
     })
   })

@@ -57,6 +57,12 @@ interface SSETransportConfig {
    * connect-phase and send/first-response timings. Absent in PaaS/headless use.
    */
   qualityMonitor?: SSEQualityMonitor
+  /**
+   * Number of quiet cooldown cycles allowed during an ACTIVE turn before the
+   * transport gives up and surfaces a terminal error. Idle outages never use
+   * this — they go dormant after the first streak. (AIROBUILD-2628)
+   */
+  maxActiveCooldowns?: number
 }
 
 export class SSETransport implements ChatTransport {
@@ -85,11 +91,20 @@ export class SSETransport implements ChatTransport {
   private cooldownUntil = 0
   private cooldownTimer: ReturnType<typeof setTimeout> | null = null
   private visibilityListener: (() => void) | null = null
+  // Active-turn cooldown budget + the latched active/idle decision for the
+  // current outage. activeCooldowns persists across cooldown-timer reopens
+  // (so the ~5-min budget keeps counting) and is reset only by recovery
+  // (initialize) or explicit intent. outageActive is latched on the first
+  // error of a streak — see onerror.
+  private readonly maxActiveCooldowns: number
+  private activeCooldowns = 0
+  private outageActive = false
 
   constructor(config: SSETransportConfig) {
     this.config = config
     this.maxConsecutiveErrors = config.maxConsecutiveErrors ?? 10
     this.cooldownMs = config.cooldownMs ?? 60_000
+    this.maxActiveCooldowns = config.maxActiveCooldowns ?? 3
   }
 
   get state(): TransportState {
@@ -107,6 +122,7 @@ export class SSETransport implements ChatTransport {
     // Fresh session resets any prior cooldown — a connect() call is an
     // explicit user/app intent that should not be gated by stale failures.
     this.resetCooldown()
+    this.resetReconnectState()
     this.attachVisibilityListener()
     this.openEventSource()
   }
@@ -138,6 +154,7 @@ export class SSETransport implements ChatTransport {
   disconnect(): void {
     this.reconnecting = false
     this.resetCooldown()
+    this.resetReconnectState()
     this.closeEventSource()
     // Detach the listener here so a focus / visibilitychange event after an
     // explicit disconnect cannot revive the connection via reconnectIfNeeded().
@@ -173,8 +190,12 @@ export class SSETransport implements ChatTransport {
     // caller could invoke reconnectIfNeeded() directly while we're in the
     // disconnected state. Honour the explicit disconnect rather than reviving.
     if (this._state === 'disconnected') return
+    // Dormant is a deliberate idle give-up (AIROBUILD-2628): only an explicit
+    // sendMessage() re-arms it. Tab focus / visibility must NOT revive it.
+    if (this._state === 'dormant') return
     if (this.cooldownUntil > 0 && Date.now() < this.cooldownUntil) {
       this.resetCooldown('manual')
+      this.resetReconnectState() // user signal grants a fresh active budget
       this.openEventSource()
       return
     }
@@ -183,25 +204,68 @@ export class SSETransport implements ChatTransport {
     }
   }
 
-  private enterCooldown(): void {
+  // Active-turn outage: a turn was streaming when the connection dropped, so
+  // keep trying (quietly) to avoid dropping completion events — recovery-replay
+  // resumes the turn when the stream returns. Bounded to maxActiveCooldowns
+  // cycles (~5 min at the defaults) before giving up.
+  private enterActiveCooldown(): void {
+    if (this.activeCooldowns >= this.maxActiveCooldowns) {
+      this.enterUnreachable()
+      return
+    }
+    this.activeCooldowns++
     this.cooldownUntil = Date.now() + this.cooldownMs
-    // Stop the polyfill from continuing to hammer while we wait. It will be
-    // reopened either by the cooldown timer or by reconnectIfNeeded().
+    // Quiet: do NOT fire onError and do NOT change _state — the turn is still
+    // running server-side and its UI must stay intact across the wait.
     this.closeEventSource()
-    this.setState('error')
-    this.callbacks?.onError(new Error('sse_transport_cooldown'))
     logger.warn('sse.transport.cooldown.entered', {
       appId: this.appId, conversationId: this.conversationId,
       cooldownMs: this.cooldownMs, errors: this.consecutiveErrors,
+      activeCooldowns: this.activeCooldowns,
     })
     this.cooldownTimer = setTimeout(() => {
       this.cooldownTimer = null
-      // Auto-reopen if credentials still live; the user did not have to
-      // touch the tab for the freeze to end.
       const hadCredentials = !!(this.appId && this.token && this.conversationId)
-      this.resetCooldown('timer')
+      this.resetCooldown('timer') // resets consecutiveErrors; KEEPS activeCooldowns
       if (hadCredentials) this.openEventSource()
     }, this.cooldownMs)
+  }
+
+  // Idle outage: no turn was active, so a live stream is only a convenience.
+  // Stop retrying entirely and go dormant — re-armed only by the next
+  // sendMessage(). This silences orphaned/idle tabs (AIROBUILD-2628).
+  private enterDormant(): void {
+    this.closeEventSource()
+    this.resetReconnectState()
+    this.setState('dormant')
+    logger.warn('sse.transport.dormant', {
+      appId: this.appId, conversationId: this.conversationId,
+      errors: this.consecutiveErrors,
+    })
+  }
+
+  // Active-turn give-up after the cooldown budget is exhausted. Surface a
+  // terminal transport error so useSSEChat finalizes the stream and unsticks
+  // the input; a subsequent send re-arms the stream.
+  private enterUnreachable(): void {
+    this.closeEventSource()
+    this.resetReconnectState()
+    this.setState('error')
+    this.callbacks?.onError(new Error('sse_transport_unreachable'))
+    logger.warn('sse.transport.unreachable', {
+      appId: this.appId, conversationId: this.conversationId,
+      activeCooldowns: this.activeCooldowns,
+    })
+  }
+
+  // Full reset of the active/idle outage tracking. Distinct from
+  // resetCooldown(): the active-cooldown timer must PRESERVE activeCooldowns so
+  // the ~5-minute budget keeps counting across reopen cycles, whereas explicit
+  // intent (connect / manual reconnect / disconnect) and a successful
+  // initialize forget the outage entirely.
+  private resetReconnectState(): void {
+    this.activeCooldowns = 0
+    this.outageActive = false
   }
 
   private resetCooldown(reason?: 'timer' | 'manual'): void {
@@ -257,6 +321,17 @@ export class SSETransport implements ChatTransport {
 
   async sendMessage(params: SendMessageParams): Promise<void> {
     if (!this.appId || !this.conversationId) throw new Error('Not connected')
+
+    // Re-arm a torn-down stream on user send. Any non-disconnected state with
+    // no live EventSource lands here — idle dormancy, the active give-up, and a
+    // failed auth refresh — because the POST's response events need a live
+    // stream (recovery-replay handles ordering). An explicit disconnect()
+    // (state 'disconnected') is honoured — not revived. (AIROBUILD-2628)
+    if (!this.eventSource && this._state !== 'disconnected') {
+      this.resetCooldown()
+      this.resetReconnectState()
+      this.openEventSource()
+    }
 
     const response = await this.authedFetch(`${this.convPath}/messages`, {
       method: 'POST',
@@ -492,27 +567,36 @@ export class SSETransport implements ChatTransport {
 
     this.eventSource.onerror = (err: any) => {
       if (err?.code === 401 || err?.status === 401) {
-        // Close before refresh so the polyfill does not auto-reconnect with
-        // the stale token (producing a retry storm) while we wait for the
-        // cache to clear and a fresh token to be issued.
-        // 401 is an auth event, not a transport fault — don't bump the
-        // circuit-breaker counter or it would trip on a single token rotation.
+        // 401 is an auth event, not a transport fault — refresh the token and
+        // reopen without bumping the circuit-breaker counter.
         this.closeEventSource()
         void this.refreshTokenAndReopen()
         return
       }
       this.consecutiveErrors++
+      // Feed the quality monitor every error (in-memory metric, not a log line,
+      // so it does not flood ESSP).
       this.config.qualityMonitor?.recordEventSourceError(this.consecutiveErrors)
-      // Non-401 errors: let the polyfill reconnect on its own until the
-      // threshold trips. After that we close it and freeze for cooldownMs.
-      logger.warn('sse.transport.eventsource.error', {
-        appId: this.appId, conversationId: this.conversationId,
-        status: err?.status, code: err?.code,
-        message: err?.message ?? errMessage(err),
-        consecutiveErrors: this.consecutiveErrors,
-      })
+      // Latch active-vs-idle at the START of a failure streak. _state changes
+      // across cooldown cycles, so reading it at the threshold is unsafe; the
+      // latch protects the turn that was live when the drop began. Log only the
+      // first error of a streak — attempts 2..N are suppressed so an orphaned
+      // tab does not flood ESSP (AIROBUILD-2628, AC3).
+      if (this.consecutiveErrors === 1) {
+        this.outageActive = this._state === 'streaming'
+        logger.warn('sse.transport.eventsource.error', {
+          appId: this.appId, conversationId: this.conversationId,
+          status: err?.status, code: err?.code,
+          message: err?.message ?? errMessage(err),
+          outageActive: this.outageActive,
+        })
+      }
       if (this.consecutiveErrors >= this.maxConsecutiveErrors && this.cooldownUntil === 0) {
-        this.enterCooldown()
+        if (this.outageActive) {
+          this.enterActiveCooldown()
+        } else {
+          this.enterDormant()
+        }
       }
     }
 
@@ -534,6 +618,7 @@ export class SSETransport implements ChatTransport {
       // before we'd cool down again.
       this.consecutiveErrors = 0
       this.config.qualityMonitor?.resetErrorBuckets()
+      this.resetReconnectState()
       this.setState('connected')
 
       if (data.serverConfig) {

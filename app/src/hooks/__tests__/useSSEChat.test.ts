@@ -767,7 +767,7 @@ describe('useSSEChat', () => {
           conversationId: 'conv-created-123',
         },
       })
-      lastTransport.callbacks?.onError(new Error('sse_transport_cooldown'))
+      lastTransport.callbacks?.onError(new Error('sse_transport_unreachable'))
     })
 
     mockSetHistoryLoadingComplete.mockClear()
@@ -1539,6 +1539,17 @@ describe('useSSEChat', () => {
     expect(hook.result.current.connection.status).toBe('error')
   })
 
+  it('connection.status is idle (not error) when state is dormant', async () => {
+    const hook = await setupHook()
+
+    act(() => {
+      lastTransport.callbacks?.onStateChange('dormant')
+    })
+
+    expect(hook.result.current.connection.status).toBe('idle')
+    expect(hook.result.current.connection.isConnected).toBe(false)
+  })
+
   it('syncs transport state to streaming conversation store', async () => {
     mockSetWebSocketState.mockClear()
     await setupHook()
@@ -2215,7 +2226,7 @@ describe('useSSEChat', () => {
       }
 
       act(() => {
-        lastTransport.callbacks?.onError(new Error('sse_transport_cooldown'))
+        lastTransport.callbacks?.onError(new Error('sse_transport_unreachable'))
       })
 
       expect(mockClearActiveStream).toHaveBeenCalled()
@@ -2345,7 +2356,7 @@ describe('useSSEChat', () => {
         })
       })
       act(() => {
-        lastTransport.callbacks?.onError(new Error('sse_transport_cooldown'))
+        lastTransport.callbacks?.onError(new Error('sse_transport_unreachable'))
       })
       act(() => {
         lastTransport.callbacks?.onEvent({
@@ -2718,6 +2729,103 @@ describe('useSSEChat', () => {
       hook.unmount()
 
       expect(mockMonitorDestroy).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Connect failure classification (AIROBUILD-2628)
+  // ---------------------------------------------------------------------------
+
+  describe('connect failure classification', () => {
+    it('deterministic: gates sendMessage and marks terminal error after 404 token failure', async () => {
+      const { getAgentToken } = await import('@/lib/agent-fetch')
+      vi.mocked(getAgentToken).mockRejectedValueOnce(new Error('Failed to get agent token: 404'))
+
+      const { useSSEChat } = await import('@/hooks/useSSEChat')
+      const hook = renderHook(() => useSSEChat())
+
+      await act(async () => {
+        await flushPromises()
+      })
+
+      expect(hook.result.current.connection.status).toBe('error')
+
+      // Attempt a send — should NOT reach transport.sendMessage
+      await act(async () => {
+        await hook.result.current.actions.send({ content: 'hi' })
+      })
+
+      expect(lastTransport.sendMessage).not.toHaveBeenCalled()
+      expect(mockMarkUpstreamError).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'APP_NOT_FOUND' })
+      )
+
+      hook.unmount()
+    })
+
+    it('provisioning: schedules retry on "agent is not ready yet" without surfacing error', async () => {
+      vi.useFakeTimers()
+      const { getAgentToken } = await import('@/lib/agent-fetch')
+      // Fail twice with provisioning error, then succeed
+      vi.mocked(getAgentToken)
+        .mockRejectedValueOnce(new Error('agent is not ready yet'))
+        .mockRejectedValueOnce(new Error('agent is not ready yet'))
+        .mockResolvedValue('test-token')
+
+      const { dynamicApiConfigService } = await import('@/config/dynamic-api')
+      vi.mocked(dynamicApiConfigService.getConfigForSite)
+        .mockResolvedValue({ baseUrl: 'https://agent.example.com' })
+
+      const { useSSEChat } = await import('@/hooks/useSSEChat')
+      const hook = renderHook(() => useSSEChat())
+
+      await act(async () => {
+        await Promise.resolve()
+      })
+
+      // Status should NOT be error — provisioning retry keeps it connecting
+      expect(hook.result.current.connection.status).not.toBe('error')
+
+      // Advance past the first retry delay (2s)
+      await act(async () => {
+        vi.advanceTimersByTime(2100)
+        await Promise.resolve()
+      })
+
+      // getAgentToken should have been called again (retry fired)
+      expect(vi.mocked(getAgentToken).mock.calls.length).toBeGreaterThanOrEqual(2)
+
+      hook.unmount()
+      vi.useRealTimers()
+    })
+
+    it('network: sets connection error and send is NOT gated', async () => {
+      const { getAgentToken } = await import('@/lib/agent-fetch')
+      vi.mocked(getAgentToken).mockRejectedValueOnce(new Error('Failed to fetch'))
+
+      const { useSSEChat } = await import('@/hooks/useSSEChat')
+      const hook = renderHook(() => useSSEChat())
+
+      await act(async () => {
+        await flushPromises()
+      })
+
+      expect(hook.result.current.connection.error).toBeTruthy()
+      // Network branch sets connectionError but NOT the terminal 'error' state
+      // (that is the deterministic branch) — so the send gate stays disarmed.
+      expect(hook.result.current.connection.status).not.toBe('error')
+
+      await act(async () => {
+        await hook.result.current.actions.send({ content: 'hello network' })
+      })
+
+      // The deterministic gate did NOT engage for a network failure.
+      const appNotFoundCalls = mockMarkUpstreamError.mock.calls.filter(
+        (c: unknown[]) => (c[0] as Record<string, unknown>)?.type === 'APP_NOT_FOUND'
+      )
+      expect(appNotFoundCalls).toHaveLength(0)
+
+      hook.unmount()
     })
   })
 })
