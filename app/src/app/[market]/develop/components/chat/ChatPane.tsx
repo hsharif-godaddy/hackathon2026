@@ -1121,6 +1121,7 @@ function ChatPaneInner({
   useUpfrontRebuildBuildQueue(appId, isStreaming || isLoading, handleSendMessage);
 
   const commanderLayout = useCommanderLayout();
+  const chatPaneRootRef = useRef<HTMLDivElement | null>(null);
   const planTrackerWrapperRef = useRef<HTMLDivElement | null>(null);
   const belowMessagesWrapperRef = useRef<HTMLDivElement | null>(null);
   const commanderChatRowWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -1136,9 +1137,25 @@ function ChatPaneInner({
     ].filter((el): el is HTMLDivElement => el !== null);
     if (targets.length === 0) return;
 
+    // Padding/gap/visible-child-count are constant for a given config and only
+    // change when this effect re-attaches (className flip via deps).
+    const root = chatPaneRootRef.current;
+    let extras = 0;
+    if (root) {
+      const computed = window.getComputedStyle(root);
+      const paddingTop = parseFloat(computed.paddingTop) || 0;
+      const paddingBottom = parseFloat(computed.paddingBottom) || 0;
+      const rowGap = parseFloat(computed.rowGap) || 0;
+      const visibleChildCount = Array.from(root.children).filter(
+        (c): c is HTMLElement =>
+          c instanceof HTMLElement && window.getComputedStyle(c).display !== 'none'
+      ).length;
+      extras = paddingTop + paddingBottom + rowGap * Math.max(0, visibleChildCount - 1);
+    }
+
     const report = () => {
       const sum = targets.reduce((acc, el) => acc + el.offsetHeight, 0);
-      commanderLayout.reportNonMessagesHeight(sum);
+      commanderLayout.reportNonMessagesHeight(sum + extras);
     };
 
     const observer = new ResizeObserver(report);
@@ -1603,6 +1620,7 @@ function ChatPaneInner({
   return (
     <ChatContext.Provider value={chatContextValue}>
       <div
+        ref={chatPaneRootRef}
         data-media-delete-overlay-boundary
         className={clsx("flex-1 flex flex-col h-full p-0 md:ps-2", {
           'gap-1 md:pb-2': !isCommanderChatEnabled,
@@ -1622,15 +1640,17 @@ function ChatPaneInner({
           className="flex flex-col flex-1 min-h-0 relative"
           style={{ display: activeChatTab === ChatTab.CHAT ? 'flex' : 'none' }}
         >
-          {!areChatPlansEnabled && <PersistentTodoList />}
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            {!areChatPlansEnabled && <PersistentTodoList />}
 
-          <StreamingMessageList
-            allMessages={visibleMessages}
-            isCreateFlowSession={isCreateFlowSession}
-            hasInitialPrompt={hasInitialPrompt}
-            initialPromptText={initialPromptText}
-            transcriptContainerVisible={activeChatTab === ChatTab.CHAT}
-          />
+            <StreamingMessageList
+              allMessages={visibleMessages}
+              isCreateFlowSession={isCreateFlowSession}
+              hasInitialPrompt={hasInitialPrompt}
+              initialPromptText={initialPromptText}
+              transcriptContainerVisible={activeChatTab === ChatTab.CHAT}
+            />
+          </div>
 
           <div ref={belowMessagesWrapperRef} className="flex flex-col shrink-0">
           {safeBuildErrorContext && (

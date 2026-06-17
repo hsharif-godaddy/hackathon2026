@@ -48,12 +48,14 @@ export function useEffectiveCommanderPosition(): CommanderPosition {
 interface CommanderStore {
   position: CommanderPosition
   pillHeight: number
+  isCollapsed: boolean
   isCanvasSettingsOpen: boolean
   openCanvasIds: CanvasId[]
   activeCanvasId: CanvasId
   setPosition: (position: CommanderPosition) => void
   cyclePosition: () => void
   setPillHeight: (height: number) => void
+  setIsCollapsed: (value: boolean) => void
   openCanvasSettings: () => void
   closeCanvasSettings: () => void
   openCanvas: (canvasId: CanvasId) => void
@@ -90,6 +92,7 @@ export const useCommanderStore = create<CommanderStore>()(
     (set, get) => ({
       position: CommanderPosition.LeftDock,
       pillHeight: PILL_DEFAULT_HEIGHT,
+      isCollapsed: false,
       isCanvasSettingsOpen: false,
       openCanvasIds: [...DEFAULT_OPEN_CANVAS_IDS],
       activeCanvasId: PINNED_CANVAS_ID,
@@ -100,6 +103,7 @@ export const useCommanderStore = create<CommanderStore>()(
         set({ position: POSITION_ORDER[(idx + 1) % POSITION_ORDER.length] })
       },
       setPillHeight: (height) => set({ pillHeight: clampPillHeight(height) }),
+      setIsCollapsed: (value) => set({ isCollapsed: value }),
       openCanvasSettings: () => set({ isCanvasSettingsOpen: true }),
       closeCanvasSettings: () => set({ isCanvasSettingsOpen: false }),
       openCanvas: (canvasId) => set((state) => {
@@ -131,6 +135,7 @@ export const useCommanderStore = create<CommanderStore>()(
       partialize: (state) => ({
         position: state.position,
         pillHeight: state.pillHeight,
+        isCollapsed: state.isCollapsed,
         openCanvasIds: state.openCanvasIds,
         activeCanvasId: state.activeCanvasId,
       }),
@@ -146,6 +151,7 @@ export const useCommanderStore = create<CommanderStore>()(
           ...current,
           position: sanitizePosition(persistedShape.position),
           pillHeight: sanitizePillHeight(persistedShape.pillHeight),
+          isCollapsed: persistedShape.isCollapsed === true,
           openCanvasIds: sanitizedOpen,
           activeCanvasId,
         } as CommanderStore

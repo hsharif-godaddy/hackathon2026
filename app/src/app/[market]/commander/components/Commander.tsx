@@ -4,7 +4,7 @@ import { animate, AnimatePresence, motion, type Transition, useMotionValue } fro
 import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { CommanderPosition } from '@/app/[market]/commander/types'
-import { clampPillHeight, useCommanderStore, useEffectiveCommanderPosition } from '@/stores/useCommanderStore'
+import { PILL_MAX_HEIGHT, useCommanderStore, useEffectiveCommanderPosition } from '@/stores/useCommanderStore'
 import { CommanderLayoutContext, type CommanderLayoutContextValue } from './CommanderLayoutContext'
 import { CommanderLogo } from './CommanderLogo'
 
@@ -23,8 +23,8 @@ export const COMMANDER_LAYOUT_METRICS = {
 }
 
 const VERTICAL_INSET = 8
-const PILL_TOP_PADDING = 10
-const MIN_MESSAGES_AREA = 80
+const PILL_TOP_PADDING = 24
+const PILL_BORDER_HEIGHT = 2
 
 interface CommanderProps {
   appId: string | null
@@ -35,6 +35,8 @@ export function Commander({ appId, chatPane }: CommanderProps) {
   const position = useEffectiveCommanderPosition()
   const pillHeight = useCommanderStore((state) => state.pillHeight)
   const setPillHeight = useCommanderStore((state) => state.setPillHeight)
+  const isCollapsed = useCommanderStore((state) => state.isCollapsed)
+  const setIsCollapsed = useCommanderStore((state) => state.setIsCollapsed)
 
   const isLeftDock = position === CommanderPosition.LeftDock
   const isFloating = position === CommanderPosition.Floating
@@ -52,18 +54,24 @@ export function Commander({ appId, chatPane }: CommanderProps) {
   const dockHeight = viewport.height - VERTICAL_INSET * 2
 
   const [nonMessagesHeight, setNonMessagesHeight] = useState(0)
+  const [isResizing, setIsResizing] = useState(false)
+  const collapsedTarget = Math.min(
+    nonMessagesHeight + PILL_TOP_PADDING + PILL_BORDER_HEIGHT - 1, // otherwise we see a tiny bit of content overlap
+    dockHeight,
+  )
+  const expandedTarget = Math.min(Math.max(pillHeight, collapsedTarget), dockHeight)
+  // setNonMessagesHeight is stable (useState setter), so the context value's identity
+  // never changes — ChatPane's ResizeObserver effect won't re-attach on every render.
   const layoutContext = useMemo<CommanderLayoutContextValue>(
     () => ({ reportNonMessagesHeight: setNonMessagesHeight }),
     [],
   )
 
-  const effectiveMinPillHeight = Math.min(
-    nonMessagesHeight + MIN_MESSAGES_AREA + PILL_TOP_PADDING,
-    dockHeight,
-  )
   const targetHeight = isLeftDock
     ? dockHeight
-    : Math.max(pillHeight, effectiveMinPillHeight)
+    : isCollapsed && nonMessagesHeight > 0
+      ? collapsedTarget
+      : expandedTarget
 
   const floatingWidth = Math.min(
     COMMANDER_LAYOUT_METRICS.FLOATING_WIDTH_LARGE,
@@ -71,29 +79,38 @@ export function Commander({ appId, chatPane }: CommanderProps) {
   )
 
   const heightMv = useMotionValue(targetHeight)
+  const animationRef = useRef<ReturnType<typeof animate> | null>(null)
 
   useEffect(() => {
-    const controls = animate(heightMv, targetHeight, POSITION_TRANSITION)
-    return () => controls.stop()
-  }, [targetHeight, heightMv])
+    if (isResizing) return
+    animationRef.current = animate(heightMv, targetHeight, POSITION_TRANSITION)
+    return () => animationRef.current?.stop()
+  }, [targetHeight, heightMv, isResizing])
 
   const dragStartYRef = useRef(0)
   const dragStartHeightRef = useRef(0)
+  const dragStartedCollapsedRef = useRef(false)
   const isDraggingRef = useRef(false)
 
   const handleResizePointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     e.preventDefault()
+    animationRef.current?.stop()
     isDraggingRef.current = true
     dragStartYRef.current = e.clientY
     dragStartHeightRef.current = heightMv.get()
+    dragStartedCollapsedRef.current = isCollapsed
     e.currentTarget.setPointerCapture(e.pointerId)
-  }, [heightMv])
+  }, [heightMv, isCollapsed])
 
   const handleResizePointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     if (!isDraggingRef.current) return
     const deltaY = dragStartYRef.current - e.clientY
-    heightMv.set(clampPillHeight(dragStartHeightRef.current + deltaY))
-  }, [heightMv])
+    if (deltaY !== 0) setIsResizing(true)
+    const next = dragStartHeightRef.current + deltaY
+    const minHeight = collapsedTarget
+    const maxHeight = Math.min(PILL_MAX_HEIGHT, dockHeight)
+    heightMv.set(Math.max(minHeight, Math.min(maxHeight, next)))
+  }, [heightMv, collapsedTarget, dockHeight])
 
   const handleResizePointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     if (!isDraggingRef.current) return
@@ -101,10 +118,30 @@ export function Commander({ appId, chatPane }: CommanderProps) {
     try {
       e.currentTarget.releasePointerCapture(e.pointerId)
     } catch {
-      // Pointer may already be released (NotFoundError); commit the height anyway.
+      // Pointer may already be released (NotFoundError); commit the snap anyway.
     }
-    setPillHeight(heightMv.get())
-  }, [heightMv, setPillHeight])
+    const currentHeight = heightMv.get()
+    const startedCollapsed = dragStartedCollapsedRef.current
+    if (startedCollapsed) {
+      // From collapsed: any upward movement = intent to expand. Tap with no movement = stay collapsed.
+      // Don't overwrite pillHeight — animate back to the user's saved expanded preference.
+      if (currentHeight > collapsedTarget) {
+        setIsCollapsed(false)
+      } else {
+        setIsCollapsed(true)
+      }
+    } else {
+      const expandedAnchor = Math.max(expandedTarget, collapsedTarget)
+      const midpoint = (collapsedTarget + expandedAnchor) / 2
+      if (currentHeight < midpoint) {
+        setIsCollapsed(true)
+      } else {
+        setIsCollapsed(false)
+        setPillHeight(currentHeight)
+      }
+    }
+    setIsResizing(false)
+  }, [heightMv, collapsedTarget, expandedTarget, setIsCollapsed, setPillHeight])
 
   const animateProps = isLeftDock
     ? {
@@ -175,7 +212,12 @@ export function Commander({ appId, chatPane }: CommanderProps) {
             </motion.div>
           )}
         </AnimatePresence>
-        <div className={`flex-1 min-h-0 flex flex-col pe-2 ${isPill ? 'pt-2.5' : ''}`}>{chatPane}</div>
+        <div
+          className="flex-1 min-h-0 flex flex-col pe-2"
+          style={isPill ? { paddingTop: PILL_TOP_PADDING } : undefined}
+        >
+          {chatPane}
+        </div>
       </motion.aside>
     </CommanderLayoutContext.Provider>
   )

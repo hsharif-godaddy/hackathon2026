@@ -266,4 +266,22 @@ describe('useCommanderStore persist rehydration', () => {
     await useCommanderStore.persist.rehydrate()
     expect(useCommanderStore.getState().position).toBe(CommanderPosition.Floating)
   })
+
+  it('rehydrates isCollapsed=true when persisted as true', async () => {
+    seedStorage({ isCollapsed: true, activeCanvasId: PINNED_CANVAS_ID })
+    await useCommanderStore.persist.rehydrate()
+    expect(useCommanderStore.getState().isCollapsed).toBe(true)
+  })
+
+  it('coerces non-boolean isCollapsed to false', async () => {
+    seedStorage({ isCollapsed: 'yes', activeCanvasId: PINNED_CANVAS_ID })
+    await useCommanderStore.persist.rehydrate()
+    expect(useCommanderStore.getState().isCollapsed).toBe(false)
+  })
+
+  it('defaults isCollapsed to false when missing from persisted state', async () => {
+    seedStorage({ activeCanvasId: PINNED_CANVAS_ID })
+    await useCommanderStore.persist.rehydrate()
+    expect(useCommanderStore.getState().isCollapsed).toBe(false)
+  })
 })
