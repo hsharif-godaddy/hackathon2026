@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   FONT_THEMES,
+  clampWeightsToAvailable,
   loadGoogleFontsCatalog,
   TAG_EXAMPLE_FONTS,
   TAG_EXAMPLE_FONT_FAMILIES,
@@ -110,5 +111,28 @@ describe('TAG_EXAMPLE_FONTS', () => {
     for (const family of TAG_EXAMPLE_FONT_FAMILIES) {
       expect(family).not.toMatch(/google sans|product sans|material (symbols|icons)/i);
     }
+  });
+});
+
+describe('@airo/shared/fonts clampWeightsToAvailable', () => {
+  it('drops a weight a 400-only family does not ship (Bebas Neue)', async () => {
+    expect(await clampWeightsToAvailable('Bebas Neue', ['400', '700'])).toEqual(['400']);
+  });
+
+  it('keeps weights a multi-weight family does ship (Oswald)', async () => {
+    expect(await clampWeightsToAvailable('Oswald', ['400', '700'])).toEqual(['400', '700']);
+  });
+
+  it('is case-insensitive on the family name', async () => {
+    expect(await clampWeightsToAvailable('bebas neue', ['700'])).toEqual(['400']);
+  });
+
+  it('returns requested weights unchanged for an uncatalogued family', async () => {
+    expect(await clampWeightsToAvailable('Totally Made Up Font', ['400', '700'])).toEqual(['400', '700']);
+  });
+
+  it('falls back to 400 when none of the requested weights exist', async () => {
+    // Bebas Neue ships only 400; requesting only 900 yields 400 rather than nothing.
+    expect(await clampWeightsToAvailable('Bebas Neue', ['900'])).toEqual(['400']);
   });
 });

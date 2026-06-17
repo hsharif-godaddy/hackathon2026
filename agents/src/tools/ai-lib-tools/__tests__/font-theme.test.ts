@@ -901,6 +901,32 @@ describe('font-theme', function packageTests() {
       expect(result[0]!.name).toBe('Valid Font')
     })
 
+    it('accepts a single-weight font by clamping the requested weight (AIROBUILD-2481)', async function singleWeightAccepted() {
+      // Bebas Neue ships only 400; an over-broad ['400','700'] request would 400
+      // the whole stylesheet and get the font rejected. The clamp drops the 700
+      // before validation so the (valid) font is accepted.
+      const fonts = [
+        {
+          id: 'bebas',
+          name: 'Bebas + Inter',
+          description: 'Single-weight display heading',
+          headerFont: { name: 'Bebas Neue', weights: ['400', '700'], category: 'sans-serif' as const },
+          bodyFont: { name: 'Inter', weights: ['400'], category: 'sans-serif' as const }
+        }
+      ]
+
+      // Simulate Google Fonts: requesting Bebas Neue at 700 (a weight it lacks) 400s.
+      global.fetch = vi.fn(function (url: string | URL) {
+        const bebasAt700 = /Bebas\+Neue:wght@[^&]*700/.test(url.toString())
+        return Promise.resolve({ ok: !bebasAt700, status: bebasAt700 ? 400 : 200 } as Response)
+      }) as any
+
+      const result = await validateAndFilterFonts(fonts)
+
+      expect(result).toHaveLength(1)
+      expect(result[0]!.headerFont.name).toBe('Bebas Neue')
+    })
+
     it('should distinguish network errors (5xx) from invalid fonts (400)', async function networkVsValidation() {
       const fonts = [
         {

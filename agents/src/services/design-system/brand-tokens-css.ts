@@ -2,6 +2,7 @@ import type { WorkspaceFiles } from '../../workspace/files.js'
 import { getKvMemoryStore } from '../../memory/adapters/index.js'
 import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
 import { buildGoogleFontsUrl } from '../../tools/ai-lib-tools/font-theme.js'
+import { clampWeightsToAvailable } from '@airo/shared/fonts'
 import { Logger } from '../../logging/index.js'
 
 const logger = Logger.create({ component: 'brand-tokens-css' })
@@ -101,7 +102,19 @@ export async function syncBrandTokensCss(
     memory.get(scope, 'brand.typography'),
   ])
   const palette = paletteRes.exists ? (paletteRes.value as PaletteLike) : undefined
-  const typography = typoRes.exists ? (typoRes.value as TypographyLike) : undefined
+  let typography = typoRes.exists ? (typoRes.value as TypographyLike) : undefined
+  // Drop weights the family doesn't ship before they reach the css2 @import:
+  // an unavailable weight (e.g. wght@700 on the 400-only Bebas Neue) 400s the
+  // whole stylesheet so the font never loads (AIROBUILD-2481). buildBrandTokensCss
+  // stays sync; resolve the catalog (async) here, where defaults are also applied.
+  if (typography) {
+    const { heading, body } = typography
+    typography = {
+      ...typography,
+      ...(heading?.family && { heading: { ...heading, weights: await clampWeightsToAvailable(heading.family, heading.weights ?? ['400', '700']) } }),
+      ...(body?.family && { body: { ...body, weights: await clampWeightsToAvailable(body.family, body.weights ?? ['400']) } }),
+    }
+  }
   const css = buildBrandTokensCss(palette, typography)
   try {
     await files.write({ path: 'public/brand-tokens.css', content: css })

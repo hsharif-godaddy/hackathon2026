@@ -6,7 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 
-import { FONT_THEMES, type FontCategory, type FontInfo } from '@airo/shared/fonts'
+import { FONT_THEMES, clampWeightsToAvailable, type FontCategory, type FontInfo } from '@airo/shared/fonts'
 // Re-export to preserve this module's public API: callers (and tests) historically
 // imported FONT_THEMES from font-theme.ts before it moved to @airo/shared/fonts.
 export { FONT_THEMES }
@@ -25,7 +25,13 @@ const appRepo = new AppRepository()
 const memoryStore = getKvMemoryStore()
 
 /**
- * Get CSS fallback fonts for a given category
+ * Get CSS fallback fonts for a given category.
+ *
+ * Never returns the `cursive` or `fantasy` CSS generics: browsers render their
+ * default faces (Snell Roundhand / Comic Sans / Papyrus, etc.) as ugly,
+ * platform-inconsistent text whenever the webfont fails to load. Calligraphic
+ * faces degrade most gracefully to `serif`; decorative display faces to
+ * `sans-serif` (AIROBUILD-2481).
  */
 function getFallback(category: FontCategory): string {
   switch (category) {
@@ -36,9 +42,9 @@ function getFallback(category: FontCategory): string {
     case 'monospace':
       return 'ui-monospace, "Courier New", monospace'
     case 'cursive':
-      return 'cursive'
+      return 'Georgia, serif'
     case 'fantasy':
-      return 'fantasy'
+      return '-apple-system, BlinkMacSystemFont, sans-serif'
     default:
       return '-apple-system, BlinkMacSystemFont, sans-serif'
   }
@@ -69,6 +75,23 @@ export function buildGoogleFontsUrl(fonts: Array<{ name: string; weights: string
   })
 
   return `https://fonts.googleapis.com/css2?family=${familyParams.join('&family=')}&display=swap`
+}
+
+/**
+ * Like {@link buildGoogleFontsUrl}, but first drops any requested weight the
+ * family does not actually ship (per the bundled catalog). Requesting an
+ * unavailable weight — e.g. `wght@700` for the 400-only Bebas Neue — makes the
+ * css2 stylesheet 400, so the font never loads (AIROBUILD-2481). Use this for
+ * every real request/validation; weights a family genuinely has are preserved,
+ * so true bold is never downgraded to faux-bold.
+ */
+export async function buildClampedGoogleFontsUrl(
+  fonts: Array<{ name: string; weights: string[] }>
+): Promise<string> {
+  const clamped = await Promise.all(
+    fonts.map(async (f) => ({ name: f.name, weights: await clampWeightsToAvailable(f.name, f.weights) }))
+  )
+  return buildGoogleFontsUrl(clamped)
 }
 
 /**
@@ -191,8 +214,10 @@ export async function validateAndFilterFonts(
   let networkErrorCount = 0
 
   for (const font of fonts) {
-    // Build the actual Google Fonts URL we'll use (validates exact import)
-    const googleFontsUrl = buildGoogleFontsUrl([
+    // Build the actual Google Fonts URL we'll use (validates exact import).
+    // Clamp to shipped weights so a single-weight font isn't wrongly rejected
+    // for an over-broad requested weight (AIROBUILD-2481).
+    const googleFontsUrl = await buildClampedGoogleFontsUrl([
       { name: font.headerFont.name, weights: font.headerFont.weights },
       { name: font.bodyFont.name, weights: font.bodyFont.weights }
     ])
@@ -279,7 +304,7 @@ export async function validateFontPairing(
   headerFont: { name: string; weights?: string[] },
   bodyFont: { name: string; weights?: string[] }
 ): Promise<{ valid: boolean; networkError: boolean }> {
-  const url = buildGoogleFontsUrl([
+  const url = await buildClampedGoogleFontsUrl([
     { name: headerFont.name, weights: headerFont.weights ?? ['400', '700'] },
     { name: bodyFont.name, weights: bodyFont.weights ?? ['400'] }
   ])
@@ -612,8 +637,10 @@ export async function updateCssFontVariables(
     // Remove ALL existing Google Fonts imports to avoid stacking
     cssContent = cssContent.replace(/@import url\('https:\/\/fonts\.googleapis\.com\/css2\?[^']+'\);\s*/g, '')
 
-    // Build Google Fonts URL for both fonts (deduplicates if same)
-    const googleFontsUrl = buildGoogleFontsUrl([
+    // Build Google Fonts URL for both fonts (deduplicates if same). Clamp to
+    // weights each family ships so an unavailable weight can't 400 the stylesheet
+    // and break loading (AIROBUILD-2481).
+    const googleFontsUrl = await buildClampedGoogleFontsUrl([
       { name: headerFont.name, weights: headerFont.weights },
       { name: bodyFont.name, weights: bodyFont.weights }
     ])
@@ -1165,7 +1192,7 @@ MODE SELECTION GUIDE:
 
       // Validate fonts before applying them (skip for curated themes)
       if (!skipValidation) {
-        const googleFontsUrl = buildGoogleFontsUrl([
+        const googleFontsUrl = await buildClampedGoogleFontsUrl([
           { name: headerFont.name, weights: headerFont.weights },
           { name: bodyFont.name, weights: bodyFont.weights }
         ])
