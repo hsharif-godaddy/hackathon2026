@@ -71,7 +71,7 @@ export function InboxReplyComposer({
             onChange={(event) => onChange(event.target.value)}
             onKeyDown={handleKeyDown}
             disabled={disabled}
-            placeholder={t('builder_inbox_reply_placeholder')}
+            placeholder={disabled ? t('builder_inbox_reply_disabled') : t('builder_inbox_reply_placeholder')}
             rows={1}
             data-testid="inbox-reply-input"
             className="max-h-40 min-h-[1lh] w-full resize-none overflow-y-auto border-0 bg-transparent px-2 py-1.5 text-sm leading-relaxed text-ux-text-primary outline-none placeholder:text-ux-text-tertiary disabled:cursor-not-allowed"

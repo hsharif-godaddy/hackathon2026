@@ -144,7 +144,7 @@ describe('InboxConversationDetail', () => {
     expect(input).toHaveValue('');
   });
 
-  it('hides reply composer for Guide Bot conversations', () => {
+  it('disables reply composer for Guide Bot conversations', () => {
     vi.mocked(isGuideBotConversation).mockReturnValue(true);
 
     renderWithProviders(
@@ -155,6 +155,6 @@ describe('InboxConversationDetail', () => {
       />,
     );
 
-    expect(screen.queryByTestId('inbox-reply-composer')).not.toBeInTheDocument();
+    expect(screen.getByTestId('inbox-reply-input')).toBeDisabled();
   });
 });

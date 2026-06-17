@@ -97,15 +97,13 @@ export function InboxConversationDetail({
         conversation={conversation}
       />
 
-      {!isGuideBotConversation(conversation) && (
-        <InboxReplyComposer
-          value={body}
-          onChange={(value: string) => { setSendError(false); setBody(value); }}
-          onSend={handleSend}
-          disabled={sendReply.isPending}
-          error={sendError}
-        />
-      )}
+      <InboxReplyComposer
+        value={body}
+        onChange={(value: string) => { setSendError(false); setBody(value); }}
+        onSend={handleSend}
+        disabled={sendReply.isPending || isGuideBotConversation(conversation)}
+        error={sendError}
+      />
     </div>
   );
 }
