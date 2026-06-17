@@ -4,6 +4,7 @@ import { send } from '../utils/eventBus'
 import { captureAndResizeScreenshot, captureViewportScreenshot } from '../utils/screenshot'
 import { showSelectionOverlay } from '../utils/selection-overlay'
 import { useEditMode } from "../hooks/useEditMode";
+import { useComplianceFieldEditor } from "../hooks/useComplianceFieldEditor";
 import ElementHoverBar from "./ElementHoverBar";
 import { setTranslations } from "../utils/translations";
 import { resolveRouteForModule } from "../route-discovery";
@@ -14,6 +15,11 @@ export default function DevelopmentMode() {
   const [, setTranslationsLoaded] = useState(0); // counter that always changes to force re-render
 
   const { hoveredElement, toolbarMode, setToolbarMode, handleBarMouseEnter, handleBarMouseLeave } = useEditMode(isEditModeActive, isMultiSelectActive)
+
+  // Compliance docs: highlight + inline-edit field values and toggle boolean
+  // sections directly in the preview. Self-managing; only acts on /privacy and
+  // /terms pages that contain the annotated markup.
+  useComplianceFieldEditor(true)
   const [quickEditActive, setQuickEditActive] = useState(false)
   const frozenElementRef = useRef(hoveredElement)
 

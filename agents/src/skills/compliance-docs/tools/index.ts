@@ -75,6 +75,7 @@ function buildPageComponent(markdown: string, title: string): string {
   const escaped = markdown.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
   return `import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 
 const markdown = \`${escaped}\`;
 
@@ -86,13 +87,17 @@ const components = {
   ul: (props: React.HTMLAttributes<HTMLUListElement>) => <ul className="my-4 ml-6 list-disc" {...props} />,
   ol: (props: React.HTMLAttributes<HTMLOListElement>) => <ol className="my-4 ml-6 list-decimal" {...props} />,
   li: (props: React.HTMLAttributes<HTMLLIElement>) => <li className="my-1" {...props} />,
+  // Pass inline HTML spans through verbatim so the editable-field and section
+  // markup (data-field / data-section / data-hidden / style) survives into the
+  // DOM. Inert in the published build; the preview dev-tools decorate them.
+  span: (props: React.HTMLAttributes<HTMLSpanElement>) => <span {...props} />,
 };
 
 export default function ${title}Page() {
   return (
     <div className="container mx-auto px-4 py-12 max-w-4xl">
       <article className="max-w-none">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>{markdown}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={components}>{markdown}</ReactMarkdown>
       </article>
     </div>
   );

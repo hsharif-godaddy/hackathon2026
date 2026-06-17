@@ -120,6 +120,20 @@ export interface BusVisualContextPayload {
   error?: string;
 }
 
+export type ComplianceDocumentType = 'privacy-policy' | 'terms-of-use';
+
+export interface BusComplianceFieldUpdatePayload {
+  documentType: ComplianceDocumentType;
+  fieldKey: string;
+  newValue: string;
+}
+
+export interface BusComplianceSectionTogglePayload {
+  documentType: ComplianceDocumentType;
+  sectionKey: string;
+  value: boolean;
+}
+
 // ── Event map ─────────────────────────────────────────────────────────────
 
 export interface BusEventMap {
@@ -129,6 +143,8 @@ export interface BusEventMap {
     properties?: Record<string, string | number | boolean>;
   };
   TEXT_UPDATED: { data: BusTextUpdatePayload };
+  COMPLIANCE_FIELD_UPDATED: { data: BusComplianceFieldUpdatePayload };
+  COMPLIANCE_SECTION_TOGGLED: { data: BusComplianceSectionTogglePayload };
   TEXT_FIX_REQUESTED: { data: { requestId: string; oldText: string } };
   TEXT_FIX_ACCEPTED: { data: { oldLength: number; newLength: number } };
   TEXT_FIX_REJECTED: { data: { oldLength: number; newLength: number } };

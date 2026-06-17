@@ -18,6 +18,7 @@ export { default as securityReportRouter } from './security-report.js';
 export { default as secretsScanRouter } from './secrets-scan.js';
 export { default as videoRouter } from './video.js';
 export { default as goLiveRouter } from './go-live.js';
+export { default as complianceRouter } from './compliance.js';
 export { conversationsRouter } from './conversations.js';
 export { default as gitRemoteRouter } from './git-remote.js';
 export { default as dkimRouter } from './dkim.js';

@@ -73,6 +73,8 @@ const REGISTERED_TYPES: readonly BusEventType[] = [
   'TEXT_FIX_REJECTED',
   'STYLE_UPDATED',
   'FORMAT_OVERRIDE_UPDATED',
+  'COMPLIANCE_FIELD_UPDATED',
+  'COMPLIANCE_SECTION_TOGGLED',
   'EDIT_WITH_AI',
   'REMOVE_SELECTION_FROM_PREVIEW',
   'CLEAR_AI_EDIT_CONTEXT',
@@ -161,6 +163,63 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
       const cur = d()
       logger.info('develop-page.format-override-from-iframe', { appId: cur.appId })
       cur.sendFormatOverrideUpdate(m.data)
+    })
+
+    on('COMPLIANCE_FIELD_UPDATED', (m) => {
+      const cur = d()
+      const { documentType, fieldKey, newValue } = m.data
+      logger.info('develop-page.compliance-field-updated', { appId: cur.appId, documentType, fieldKey })
+      void (async () => {
+        try {
+          const url = await buildDynamicApiUrl('compliance/field', cur.appId)
+          const res = await agentFetch(url, {
+            method: 'POST',
+            siteId: cur.appId,
+            body: JSON.stringify({ documentType, fieldKey, newValue }),
+          })
+          if (!res.ok) {
+            logger.error('develop-page.compliance-field-updated.failed', { appId: cur.appId, fieldKey, status: res.status })
+            // The preview mutated the value optimistically, but the on-disk file
+            // was NOT changed on failure. Reload the preview so it reflects the
+            // persisted (unchanged) state instead of silently diverging.
+            handlePreviewRefresh({ lastIframeState: cur.lastIframeState })
+          }
+        } catch (err) {
+          logger.error('develop-page.compliance-field-updated.error', {
+            appId: cur.appId,
+            fieldKey,
+            error: err instanceof Error ? err.message : String(err),
+          })
+          handlePreviewRefresh({ lastIframeState: cur.lastIframeState })
+        }
+      })()
+    })
+
+    on('COMPLIANCE_SECTION_TOGGLED', (m) => {
+      const cur = d()
+      const { documentType, sectionKey, value } = m.data
+      logger.info('develop-page.compliance-section-toggled', { appId: cur.appId, documentType, sectionKey, value })
+      void (async () => {
+        try {
+          const url = await buildDynamicApiUrl('compliance/section', cur.appId)
+          const res = await agentFetch(url, {
+            method: 'POST',
+            siteId: cur.appId,
+            body: JSON.stringify({ documentType, sectionKey, value }),
+          })
+          if (!res.ok) {
+            logger.error('develop-page.compliance-section-toggled.failed', { appId: cur.appId, sectionKey, status: res.status })
+            handlePreviewRefresh({ lastIframeState: cur.lastIframeState })
+          }
+        } catch (err) {
+          logger.error('develop-page.compliance-section-toggled.error', {
+            appId: cur.appId,
+            sectionKey,
+            error: err instanceof Error ? err.message : String(err),
+          })
+          handlePreviewRefresh({ lastIframeState: cur.lastIframeState })
+        }
+      })()
     })
 
     on('EDIT_WITH_AI', (m) => {
