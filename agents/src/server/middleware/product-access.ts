@@ -47,6 +47,9 @@ const PAAS_ALLOWED_ROUTES: RoutePattern[] = [
   // Diagnose
   { method: 'POST', path: '/apps/:id/diagnose' },
 
+  // Auto-fix
+  { method: 'POST', path: '/apps/:id/auto-fix' },
+
   // Share links (validate is public; allowlisted for PaaS parity with the share surface)
   { method: 'POST', path: '/apps/:id/share' },
   { method: 'GET', path: '/apps/:id/share' },

@@ -78,6 +78,14 @@ export interface DiagnoseRequest {
   target: DiagnoseTarget;
   /** Analysis tier. Only 'llm' is supported; 'pattern' is legacy. 'embedding' is reserved. */
   tier?: DiagnoseTier;
+  /**
+   * Optional ISO 8601 lower bound for the log-fetch window. When set, it
+   * overrides the default 3-hour lookback. Auto-fix uses this to scope the
+   * post-restart verify to logs emitted *after* the restart began, so the
+   * pre-fix errors that triggered the fix can't be re-counted as a fresh
+   * failure. Omit for normal diagnose (full 3-hour window).
+   */
+  since?: string;
 }
 
 export type DiagnoseResponse =

@@ -527,6 +527,21 @@ const llm = new FakeClassifier('llm', async () => ({ handled: true, issues: [] }
       const expectedMs = 1010 - 3 * 60 * 60 * 1000;
       expect(call.since).toBe(new Date(expectedMs).toISOString());
     });
+
+    it('uses request.since verbatim, overriding the default 3-hour window', async () => {
+      const logs = makeLogsService({ success: true, logs: makeLogs(), total: 1 });
+      const llm = new FakeClassifier('llm', async () => ({ handled: true, issues: [] }));
+
+      const svc = new PaaSDiagnoseService({ customerLogsService: logs as never, llmClassifier: llm, clock });
+      const since = '2026-06-05T13:49:20.000Z';
+      await svc.diagnose(makeRequest({ since }));
+
+      const call = logs.getLogs.mock.calls[0]![0];
+      // Auto-fix verify passes a narrow post-restart `since`; it must reach the
+      // log fetch unchanged rather than being widened back to the 3-hour default.
+      expect(call.since).toBe(since);
+      expect(call.lines).toBe(500);
+    });
   });
 
   describe('context propagation', () => {

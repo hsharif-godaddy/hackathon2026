@@ -126,6 +126,9 @@ export class PaaSDiagnoseService implements DiagnoseService {
       appId: request.appId,
       target: request.target,
       tier: requestedTier,
+      // Present only for verify runs (auto-fix); aids debugging false "still
+      // failing" verdicts that come from an over-wide log window.
+      boundedSince: request.since,
     });
 
     // Reject embedding tier early — it's declared but not yet implemented.
@@ -142,8 +145,12 @@ export class PaaSDiagnoseService implements DiagnoseService {
       };
     }
 
-    // Internal log-fetch window: last 3 hours, up to 500 lines.
-    const sinceIso = toIsoDateString(startedAt, DEFAULT_SINCE_HOURS * 60);
+    // Internal log-fetch window: default to the last 3 hours, up to 500 lines.
+    // A caller-supplied `request.since` narrows the window — auto-fix passes the
+    // restart timestamp so the post-restart verify only sees logs newer than the
+    // restart, and the stale pre-fix errors that are still inside the 3-hour
+    // window can't be re-classified as a fresh failure.
+    const sinceIso = request.since ?? toIsoDateString(startedAt, DEFAULT_SINCE_HOURS * 60);
     // Include Source="exec" only when diagnosing the preview container —
     // that's where /exec commands (install/build during zip-upload etc.)
     // actually run. The publish container executes `$pm start` and never
