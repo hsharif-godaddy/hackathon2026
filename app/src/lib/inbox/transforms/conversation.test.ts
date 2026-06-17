@@ -89,23 +89,26 @@ describe('convertConversation status mapping', () => {
   })
 
   it.each<[RemoteConversationStatus, string]>([
-    [2, 'resolved'],
-    [1, 'resolved'],
     [0, 'unresolved'],
-    [5, 'onHold'],
-    [4, 'archived'],
+    [1, 'pending'],
+    [2, 'resolved'],
     [3, 'spam'],
+    [4, 'archived'],
+    [5, 'onHold'],
+    [6, 'resolved'],
+    [7, 'unresolved'],
+    [8, 'resolved'],
     [9, 'spam'],
   ])('status %i maps to ConversationStatus %s', (remoteStatus, expectedStatus) => {
     const result = convertConversation(makeRemoteConversation({ status: remoteStatus }))
     expect(result.status).toBe(expectedStatus)
   })
 
-  it('defaults to unresolved for a non-mapped status (botAssigned = 7)', () => {
-    const result = convertConversation(makeRemoteConversation({ status: 7 }))
+  it('defaults to resolved for an unmapped numeric status', () => {
+    const result = convertConversation(makeRemoteConversation({ status: 99 as RemoteConversationStatus }))
     expect(result.isArchived).toBe(false)
     expect(result.isSpam).toBe(false)
-    expect(result.status).toBe('unresolved')
+    expect(result.status).toBe('resolved')
   })
 })
 

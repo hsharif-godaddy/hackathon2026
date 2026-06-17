@@ -2,6 +2,7 @@ import { enumOrDefault,isAnyOf } from '@/lib/inbox/domain/validation/core'
 import { makeChannelType } from '@/lib/inbox/transforms/category'
 import { convertMessage } from '@/lib/inbox/transforms/message'
 import { selectC2 } from '@/lib/inbox/transforms/user'
+import { logger } from '@/lib/request-context'
 import { ChannelType, ConversationCategory, emailProviders } from '@/types/inbox/local/category'
 import { Conversation, ConversationStatus, Form, MessageType } from '@/types/inbox/local/conversation'
 import { Optional } from '@/types/inbox/local/core'
@@ -150,12 +151,13 @@ const getOriginalChannel = (
 const deriveConversationStatus = (numericStatus: number, conversationId: number): ConversationStatus => {
   switch (numericStatus) {
     case 0: case 7: return 'unresolved'
+    case 1: return 'pending'
     case 3: case 9: return 'spam'
     case 4: return 'archived'
     case 5: return 'onHold'
-    case 1: case 2: case 6: case 8: return 'resolved'
+    case 2: case 6: case 8: return 'resolved'
     default:
-      console.warn('inbox.conversation.unknownStatus', { conversationId, status: numericStatus })
+      logger.warn('inbox.conversation.unknownStatus', { conversationId, status: numericStatus })
       return 'resolved'
   }
 }

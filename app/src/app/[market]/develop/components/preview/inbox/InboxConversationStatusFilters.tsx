@@ -8,6 +8,7 @@ import { InboxConversationStatusFilter } from '@/types/inbox/local/inboxConversa
 const FILTERS: { id: InboxConversationStatusFilter; labelKey: string }[] = [
   { id: 'all', labelKey: 'builder_inbox_filter_all' },
   { id: 'unresolved', labelKey: 'builder_inbox_unresolved' },
+  { id: 'pending', labelKey: 'builder_inbox_pending' },
   { id: 'resolved', labelKey: 'builder_inbox_resolved' },
 ];
 

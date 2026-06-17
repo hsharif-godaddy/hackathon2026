@@ -19,6 +19,7 @@ type FilterableStatus = Exclude<InboxConversationStatusFilter, 'all'>;
 const POSITIVE_INT_RE = /^[1-9]\d*$/;
 const FILTER_TO_REAMAZE: Record<FilterableStatus, string> = {
   unresolved: 'open',
+  pending: 'pending',
   resolved: 'resolved',
 };
 const ALLOWED_FILTERS: readonly string[] = Object.keys(FILTER_TO_REAMAZE);

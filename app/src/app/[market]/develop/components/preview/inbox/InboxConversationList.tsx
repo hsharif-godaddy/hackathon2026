@@ -17,6 +17,7 @@ import { useInboxConversations } from '../../../hooks/useInbox';
 const EMPTY_STATE_KEYS: Record<InboxConversationStatusFilter, string> = {
   all: 'builder_inbox_empty_all',
   unresolved: 'builder_inbox_empty_unresolved',
+  pending: 'builder_inbox_empty_pending',
   resolved: 'builder_inbox_empty_resolved',
 };
 

@@ -16,7 +16,7 @@ export interface Form {
   }>
 }
 
-export type ConversationStatus = 'resolved' | 'unresolved' | 'onHold' | 'archived' | 'spam'
+export type ConversationStatus = 'resolved' | 'unresolved' | 'pending' | 'onHold' | 'archived' | 'spam'
 
 export type MessageType =
   | 'adComments'

@@ -1,5 +1,6 @@
 'use client';
 
+import ReplyIcon from '@ux/icon/reply';
 import Tag from '@ux/tag';
 
 import { useTranslations } from '@/hooks/useTranslations';
@@ -70,7 +71,14 @@ export function InboxConversationRow({
             </span>
           </div>
         </div>
-        <p className='truncate text-xs leading-snug text-ux-text-secondary'>{preview}</p>
+        <div className='flex items-center gap-0.5'>
+          {conversation.status === 'pending' && (
+            <ReplyIcon width={14} height={14} aria-hidden />
+          )}
+          <p className='truncate text-xs leading-snug text-ux-text-secondary'>
+            {preview}
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -155,6 +155,17 @@ describe('GET /api/inbox/conversations', () => {
       expect(url).toContain('filter=open');
     });
 
+    it('maps filter=pending to Reamaze filter=pending', async () => {
+      mockFetch.mockResolvedValue(new Response(JSON.stringify({ conversations: [] }), { status: 200 }));
+      const request = makeRequest({
+        brandId: '550e8400-e29b-41d4-a716-446655440000',
+        filter: 'pending',
+      });
+      await GET(request, createAuthContext('jwt-token'));
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toContain('filter=pending');
+    });
+
     it('maps filter=resolved to Reamaze filter=resolved', async () => {
       mockFetch.mockResolvedValue(new Response(JSON.stringify({ conversations: [] }), { status: 200 }));
       const request = makeRequest({
