@@ -32,7 +32,7 @@ vi.mock('../../../database/repositories/AppRepository.js', () => ({
 const mockGenerateTextWithTracking = vi.fn()
 
 // Mock model-selection to avoid needing API credentials
-vi.mock('../../utils/model-selection.js', () => ({
+vi.mock('../../../utils/model-selection.js', () => ({
   getAgentModelWithName: vi.fn().mockResolvedValue({
     model: { name: 'mock-model' },
     modelName: 'mock-model'

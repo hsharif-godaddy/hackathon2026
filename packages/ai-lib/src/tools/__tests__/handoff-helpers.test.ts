@@ -2,8 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Tool } from 'ai'
 import { createHandoffTool, type HandoffStateManager } from '../handoff-helpers.js'
 
-// Mock the logger
-vi.mock('../../utils/logger.js', () => ({
+vi.mock('@airo/ai-common', () => ({
   createLogger: () => ({
     debug: vi.fn(),
     info: vi.fn(),

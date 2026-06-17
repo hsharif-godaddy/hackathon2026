@@ -18,14 +18,6 @@ import type { CreateAppRequest } from '../../schema.js';
 // Mock database connection first
 vi.mock('../../connection.js');
 
-// Mock external dependencies that we can't/shouldn't test in integration tests
-vi.mock('../../../adapters/index.js', () => ({
-  getAppAdapter: vi.fn().mockResolvedValue({
-    getCapabilities: () => [],
-  }),
-  isDockerMode: vi.fn().mockReturnValue(false)
-}));
-
 vi.mock('../../../services/name-suggestion.js', () => ({
   getNameSuggestionService: vi.fn().mockReturnValue({
     suggestName: vi.fn().mockResolvedValue('AI Suggested App Name')

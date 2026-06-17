@@ -9,10 +9,6 @@ This directory contains organized examples demonstrating the capabilities of the
 - **`basic-openai.ts`** - Simple OpenAI usage with multiple agent types (general, creative, technical)
 - **`claude-proxy-demo.ts`** - Demonstrates automatic Claude proxy routing through OpenAI when AWS credentials are not available
 
-### Agentic Examples (Advanced AI Reasoning)
-
-- **`experimental-websocket-demo.ts`** - WebSocket server examples for real-time AI agent interactions
-
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -27,10 +23,6 @@ This directory contains organized examples demonstrating the capabilities of the
 ```bash
 # Basic examples
 npx tsx examples/basic-openai.ts
-
-# WebSocket server examples
-npm run example:websocket-single
-npm run example:websocket-multi
 ```
 
 ## 🧠 What is Agentic AI?
@@ -113,8 +105,6 @@ const myTool = createTool(
 | Example            | Complexity | Features                                       | Best For                    |
 | ------------------ | ---------- | ---------------------------------------------- | --------------------------- |
 | `basic-openai`     | Simple     | Multiple models, streaming, proxy support      | Getting started with OpenAI |
-| `websocket-single` | Medium     | Real-time WebSocket server, single agent       | Chat applications           |
-| `websocket-multi`  | Advanced   | Multi-agent WebSocket server, context handling | Complex chat systems        |
 
 ## 🔄 Claude Proxy Routing
 

@@ -586,26 +586,6 @@ const subscriber = new APMSubscriber(apmAgent, socketId, getActiveTransaction);
 channel.subscribe(conversationId, subscriber);
 ```
 
-## 🎮 Examples
-
-Run the WebSocket examples:
-
-```bash
-# Single agent example
-npm run example:websocket-single
-
-# Multi-agent example
-npm run example:websocket-multi
-```
-
-These examples demonstrate:
-
-- Single vs multi-agent setups
-- Tool usage with agents
-- Conversation history
-- Custom context handling
-- Error handling and event logging
-
 ## 🔧 Development
 
 The WebSocket servers use Socket.IO for WebSocket communication and integrate seamlessly with the AgentFactory for agent management.

@@ -38,8 +38,6 @@
     "format": "prettier --write src",
     "format:check": "prettier --check src",
     "example:basic-openai": "npx tsx examples/basic-openai.ts",
-    "example:websocket-single": "npx tsx examples/experimental-websocket-demo.ts single",
-    "example:websocket-multi": "npx tsx examples/experimental-websocket-demo.ts multi",
     "example:prompt-builder": "npx tsx examples/prompt-builder-demo.ts",
     "example:claude-proxy": "npx tsx examples/claude-proxy-demo.ts",
     "example:tool-hooks": "npx tsx examples/tool-execution-hooks-demo.ts",

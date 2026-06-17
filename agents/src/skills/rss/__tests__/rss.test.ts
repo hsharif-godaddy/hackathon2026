@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { Request, Response } from "express";
 
+// rss template shares blog's frontmatter lib at runtime but skills are separate in source
 vi.mock("../lib/frontmatter", async () => {
   return await vi.importActual("../../blog/templates/lib/frontmatter");
 });

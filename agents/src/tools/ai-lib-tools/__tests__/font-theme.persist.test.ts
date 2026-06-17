@@ -37,7 +37,7 @@ vi.mock('../../app-plan-tool.js', () => ({
   }
 }))
 
-vi.mock('../../utils/model-selection.js', () => ({
+vi.mock('../../../utils/model-selection.js', () => ({
   getAgentModelWithName: vi.fn().mockResolvedValue({
     model: { name: 'mock-model' },
     modelName: 'mock-model'
