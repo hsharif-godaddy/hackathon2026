@@ -94,11 +94,6 @@ import { buildAppliedSkillsContextMessage } from '../applied-skills-context.js'
  *  usedFreeGrants defaults to false when the outcome is unavailable. */
 const ERRORED_TURN_ASSESSMENT_TIMEOUT_MS = 500
 
-const NO_SUBSCRIBER_ABORT_TIMEOUT_MS = (() => {
-  const parsed = parseInt(process.env.SSE_NO_SUBSCRIBER_ABORT_TIMEOUT_MS || '120000', 10)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 120_000
-})()
-
 interface ExecutionDeps {
   getAgent: (agentId?: string) => any
   contextManager: { loadContextMessages: (context: Record<string, unknown>) => Promise<{ contextMessages: any[]; formattedContexts?: any[] }> }
@@ -238,7 +233,6 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
   private readonly chunkTimeoutMs = parseChunkTimeoutMs()
   private abortControllers = new Map<string, AbortController>()
   private activeStreams = new Map<string, ActiveStream>()
-  private noSubscriberTimers = new Map<string, NodeJS.Timeout>()
   private endedApmTransactions = new WeakSet<NonNullable<ActiveStream['apmTransaction']>>()
 
   constructor(deps: ExecutionDeps) {
@@ -251,54 +245,17 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
 
   onLastSubscriberLeft(conversationId: string): void {
     if (!this.activeStreams.has(conversationId)) return
-
-    // Idempotent: clear any existing timer before starting a new one
-    const existing = this.noSubscriberTimers.get(conversationId)
-    if (existing) {
-      clearTimeout(existing)
-      this.noSubscriberTimers.delete(conversationId)
-    }
-
-    const armedStream = this.activeStreams.get(conversationId)
-    const timer = setTimeout(() => {
-      this.noSubscriberTimers.delete(conversationId)
-      // Identity check: if a newer execute() replaced the stream slot, this
-      // timer belongs to the old turn and must not abort the new one.
-      if (this.activeStreams.get(conversationId) !== armedStream) return
-      const controller = this.abortControllers.get(conversationId)
-      if (controller && armedStream) {
-        const appId = armedStream.appId
-        logger.info('sse.execution.no_subscriber_abort', { conversationId, appId, timeoutMs: NO_SUBSCRIBER_ABORT_TIMEOUT_MS })
-
-        // Clear the activeStreams slot BEFORE aborting/publishing — mirrors
-        // stop()'s pattern. This causes execute()'s superseded check to fail,
-        // preventing it from publishing a duplicate terminal event.
-        this.activeStreams.delete(conversationId)
-        controller.abort('no_subscriber_timeout')
-        // tear down detached sub-agent jobs for this conversation
-        subAgentJobRegistry.abort(conversationId)
-
-        void this.publishTerminal(appId, conversationId, {
-          conversationId,
-          type: 'complete',
-          content: '',
-          data: { finishReason: 'no_subscriber_timeout', timestamp: new Date().toISOString() },
-          agentName: 'system',
-        })
-      }
-    }, NO_SUBSCRIBER_ABORT_TIMEOUT_MS)
-
-    this.noSubscriberTimers.set(conversationId, timer)
-    logger.info('sse.execution.no_subscriber_timer_started', { conversationId })
+    // A disconnected client no longer aborts an in-flight build (AIROBUILD-2623):
+    // the stream runs to completion and commits/persists regardless of audience,
+    // so a user who closes their tab mid-build returns to a finished site. Reconnect
+    // and replay still work; there is simply no deadline. Bounds remain via
+    // MAX_HANDOFFS, the chunk-timeout guard, and the AI SDK step cap.
+    logger.info('sse.execution.subscribers_left_stream_continues', { conversationId })
   }
 
-  onSubscriberAdded(conversationId: string): void {
-    const timer = this.noSubscriberTimers.get(conversationId)
-    if (timer) {
-      clearTimeout(timer)
-      this.noSubscriberTimers.delete(conversationId)
-      logger.info('sse.execution.no_subscriber_timer_cancelled', { conversationId })
-    }
+  onSubscriberAdded(_conversationId: string): void {
+    // No-op since AIROBUILD-2623 removed the no-subscriber abort timer; kept to
+    // satisfy the SubscriberLifecycleListener contract called by EventStreamRegistry.
   }
 
   /**
@@ -404,13 +361,6 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     const active = this.activeStreams.get(conversationId)
     logger.info('sse.execution.stopped', { conversationId, ...(active?.requestId && { requestId: active.requestId }) })
 
-    // Cancel any pending no-subscriber timer — stop() supersedes it.
-    const pendingTimer = this.noSubscriberTimers.get(conversationId)
-    if (pendingTimer) {
-      clearTimeout(pendingTimer)
-      this.noSubscriberTimers.delete(conversationId)
-    }
-
     // The execute() loop observes the abort and publishes its own terminal
     // `complete` when it returns — but that can take seconds (mid-chunk
     // reader.read(), a getFinalResult() await, a provider that doesn't
@@ -464,11 +414,6 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
 
   async shutdown(): Promise<void> {
     logger.info('sse.execution.shutdown.begin', { activeStreamCount: this.activeStreams.size })
-
-    for (const timer of this.noSubscriberTimers.values()) {
-      clearTimeout(timer)
-    }
-    this.noSubscriberTimers.clear()
 
     const activeEntries = [...this.activeStreams.entries()]
 
@@ -2474,14 +2419,6 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           this.deps.eventChannel.unsubscribe(conversationId, subId)
         }
         this.activeStreams.delete(conversationId)
-
-        // Only clear the no-subscriber timer if we still own the stream slot.
-        // A superseded execute() must not cancel a timer belonging to the new owner.
-        const pendingTimer = this.noSubscriberTimers.get(conversationId)
-        if (pendingTimer) {
-          clearTimeout(pendingTimer)
-          this.noSubscriberTimers.delete(conversationId)
-        }
       } else if (apmTransaction && !this.isApmTransactionEnded(apmTransaction)) {
         // Superseded by a newer execute() — the success/error paths skipped
         // ending the transaction (guarded by !superseded*), so end it here.

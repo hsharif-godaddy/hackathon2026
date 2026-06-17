@@ -3139,6 +3139,74 @@ describe('MessageExecutionService', () => {
         })
       )
     })
+
+    it("completes with reason: 'complete' (not aborted) when the last subscriber leaves mid-stream (AIROBUILD-2623)", async () => {
+      mockRunMessageEndHooks.mockClear()
+      let resolveStream: (v: any) => void
+      const streamGate = new Promise<void>(r => { resolveStream = () => r() })
+
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockImplementation(async function (_content: string, opts: any) { return {
+          textStream: (async function* () {})(),
+          baseStream: new ReadableStream({
+            async pull(controller) {
+              await streamGate
+              // Mirrors the disconnection test: if a disconnect had aborted the
+              // stream this would error. AIROBUILD-2623 removes that abort, so the
+              // signal stays clear and the stream closes normally.
+              if (opts?.abortSignal?.aborted) {
+                controller.error(new Error('AbortError'))
+              } else {
+                controller.close()
+              }
+            }
+          }),
+        }; }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+
+      const lifecycle = {
+        gitHookService: {} as any,
+        getAssessmentAgent: () => ({}) as any,
+        sessionStore: {
+          getLastUserMessage: vi.fn(),
+          setLastUserMessage: vi.fn(),
+          getLastAssessmentTaskType: vi.fn(),
+          setLastAssessmentTaskType: vi.fn(),
+          clearSession: vi.fn(),
+        },
+        logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
+      }
+      service = new MessageExecutionService({ ...deps, lifecycle } as any)
+
+      const execPromise = service.execute(DEFAULT_PARAMS)
+      const streamGenerate = deps.getAgent().streamGenerate as any
+      for (let i = 0; i < 100; i++) {
+        if (streamGenerate.mock.calls.length > 0) break
+        await new Promise(r => setTimeout(r, 5))
+      }
+      expect(streamGenerate.mock.calls.length).toBeGreaterThan(0)
+
+      // Client closes its tab mid-build: the last subscriber leaves. This must NOT
+      // abort the stream — the build runs to completion.
+      service.onLastSubscriberLeft('conv_1')
+      const abortController = (service as any).abortControllers.get('conv_1') as AbortController
+      resolveStream!(undefined)
+      await execPromise
+
+      expect(abortController?.signal.aborted).toBe(false)
+      // End hook runs as a normal completion, not a disconnection/abort — this is
+      // what drives wasUserAborted=false / normal per-call attribution.
+      const completeCall = mockRunMessageEndHooks.mock.calls.find(c => c[1]?.reason === 'complete')
+      expect(completeCall).toBeDefined()
+      const disconnectCall = mockRunMessageEndHooks.mock.calls.find(c => c[1]?.reason === 'disconnection')
+      expect(disconnectCall).toBeUndefined()
+      // No no_subscriber_timeout terminal event is published.
+      const noSubscriberPublish = deps.eventChannel.publish.mock.calls.find(
+        ([, ev]: [unknown, any]) => ev?.data?.finishReason === 'no_subscriber_timeout'
+      )
+      expect(noSubscriberPublish).toBeUndefined()
+    })
   })
 
   describe('stop', () => {

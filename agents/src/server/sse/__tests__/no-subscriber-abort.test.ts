@@ -44,8 +44,13 @@ vi.mock('../../context-builders.js', () => ({
   dataUrlsToProcessedFiles: vi.fn().mockReturnValue([]),
 }))
 
+vi.mock('../../../agents/sub-agent-job-registry.js', () => ({
+  subAgentJobRegistry: { abort: vi.fn(), register: vi.fn(), unregister: vi.fn() },
+}))
+
 import { MessageExecutionService } from '../MessageExecutionService.js'
 import { logger } from '../../../logging/index.js'
+import { subAgentJobRegistry } from '../../../agents/sub-agent-job-registry.js'
 
 function createMinimalDeps(overrides: Record<string, unknown> = {}) {
   return {
@@ -93,7 +98,22 @@ function createMinimalDeps(overrides: Record<string, unknown> = {}) {
 
 const CONV_ID = 'conv_test_1'
 
-describe('MessageExecutionService — no-subscriber abort timer', () => {
+function seedActiveStream(service: MessageExecutionService, conversationId: string): AbortController {
+  const ac = new AbortController()
+  const internals = service as any
+  internals.activeStreams.set(conversationId, {
+    appId: 'app_1',
+    convId: conversationId,
+    subscriberIds: new Set(['sub-1']),
+  })
+  internals.abortControllers.set(conversationId, ac)
+  return ac
+}
+
+// AIROBUILD-2623: a disconnected client must NOT abort an in-flight build. Closing
+// the tab leaves the stream running to completion; reconnect/replay still work, but
+// there is no longer a grace-then-abort deadline. These tests pin that contract.
+describe('MessageExecutionService — disconnect does not abort active stream', () => {
   let service: MessageExecutionService
 
   beforeEach(() => {
@@ -106,113 +126,26 @@ describe('MessageExecutionService — no-subscriber abort timer', () => {
     vi.clearAllMocks()
   })
 
-  function seedActiveStream(conversationId: string): AbortController {
-    const ac = new AbortController()
-    const internals = service as any
-    internals.activeStreams.set(conversationId, {
-      appId: 'app_1',
-      convId: conversationId,
-      subscriberIds: new Set(['sub-1']),
-    })
-    internals.abortControllers.set(conversationId, ac)
-    return ac
-  }
-
-  it('starts timer on last subscriber leave during active stream', () => {
-    seedActiveStream(CONV_ID)
+  it('logs that the stream continues when the last subscriber leaves', () => {
+    seedActiveStream(service, CONV_ID)
     service.onLastSubscriberLeft(CONV_ID)
-    expect((service as any).noSubscriberTimers.has(CONV_ID)).toBe(true)
+    expect(vi.mocked(logger.info)).toHaveBeenCalledWith(
+      'sse.execution.subscribers_left_stream_continues',
+      { conversationId: CONV_ID }
+    )
   })
 
-  it('does not start timer when no active stream exists', () => {
-    service.onLastSubscriberLeft(CONV_ID)
-    expect((service as any).noSubscriberTimers.has(CONV_ID)).toBe(false)
-  })
-
-  it('cancels timer on subscriber added', () => {
-    seedActiveStream(CONV_ID)
-    service.onLastSubscriberLeft(CONV_ID)
-    expect((service as any).noSubscriberTimers.has(CONV_ID)).toBe(true)
-
-    service.onSubscriberAdded(CONV_ID)
-    expect((service as any).noSubscriberTimers.has(CONV_ID)).toBe(false)
-  })
-
-  it('fires and aborts with no_subscriber_timeout', () => {
-    const ac = seedActiveStream(CONV_ID)
+  it('does not abort the stream after the former no-subscriber window elapses', () => {
+    const ac = seedActiveStream(service, CONV_ID)
     service.onLastSubscriberLeft(CONV_ID)
 
-    vi.advanceTimersByTime(120000)
-
-    expect(ac.signal.aborted).toBe(true)
-    expect(ac.signal.reason).toBe('no_subscriber_timeout')
-  })
-
-  it('does not abort if timer was cancelled by reconnect', () => {
-    const ac = seedActiveStream(CONV_ID)
-    service.onLastSubscriberLeft(CONV_ID)
-    service.onSubscriberAdded(CONV_ID)
-
-    vi.advanceTimersByTime(120000)
+    // Well past the old 120s grace window.
+    vi.advanceTimersByTime(600_000)
 
     expect(ac.signal.aborted).toBe(false)
   })
 
-  it('cleans up timer map entry after timer fires', () => {
-    seedActiveStream(CONV_ID)
-    service.onLastSubscriberLeft(CONV_ID)
-
-    vi.advanceTimersByTime(120000)
-
-    expect((service as any).noSubscriberTimers.has(CONV_ID)).toBe(false)
-  })
-
-  it('replaces existing timer if onLastSubscriberLeft called twice (resets window)', () => {
-    const ac = seedActiveStream(CONV_ID)
-    service.onLastSubscriberLeft(CONV_ID)
-
-    // Advance partway through first timer
-    vi.advanceTimersByTime(60000)
-    expect(ac.signal.aborted).toBe(false)
-
-    // Second call resets the 120s window
-    service.onLastSubscriberLeft(CONV_ID)
-
-    // Advance another 60s — first timer would have fired but second is still running
-    vi.advanceTimersByTime(60000)
-    expect(ac.signal.aborted).toBe(false)
-
-    // Advance the remaining 60s for the second timer to fire
-    vi.advanceTimersByTime(60000)
-    expect(ac.signal.aborted).toBe(true)
-    expect(ac.signal.reason).toBe('no_subscriber_timeout')
-  })
-
-  it('logs sse.execution.no_subscriber_timer_started when timer starts', () => {
-    seedActiveStream(CONV_ID)
-    service.onLastSubscriberLeft(CONV_ID)
-    expect(vi.mocked(logger.info)).toHaveBeenCalledWith('sse.execution.no_subscriber_timer_started', { conversationId: CONV_ID })
-  })
-
-  it('logs sse.execution.no_subscriber_abort when timer fires', () => {
-    seedActiveStream(CONV_ID)
-    service.onLastSubscriberLeft(CONV_ID)
-    vi.advanceTimersByTime(120000)
-    expect(vi.mocked(logger.info)).toHaveBeenCalledWith('sse.execution.no_subscriber_abort', {
-      conversationId: CONV_ID,
-      appId: 'app_1',
-      timeoutMs: 120000,
-    })
-  })
-
-  it('logs sse.execution.no_subscriber_timer_cancelled when subscriber reconnects', () => {
-    seedActiveStream(CONV_ID)
-    service.onLastSubscriberLeft(CONV_ID)
-    service.onSubscriberAdded(CONV_ID)
-    expect(vi.mocked(logger.info)).toHaveBeenCalledWith('sse.execution.no_subscriber_timer_cancelled', { conversationId: CONV_ID })
-  })
-
-  it('publishes complete event with no_subscriber_timeout finishReason when timer fires', async () => {
+  it('does not publish a no_subscriber_timeout terminal event', async () => {
     const publishMock = vi.fn().mockResolvedValue(undefined)
     const deps = createMinimalDeps({
       eventChannel: {
@@ -222,59 +155,66 @@ describe('MessageExecutionService — no-subscriber abort timer', () => {
         markMessageEventsPersisted: vi.fn().mockReturnValue(1),
       },
     })
-    const service = new MessageExecutionService(deps as any)
+    const svc = new MessageExecutionService(deps as any)
+    const internals = svc as any
+    internals.activeStreams.set(CONV_ID, { appId: 'app_1', convId: CONV_ID, subscriberIds: new Set() })
+    internals.abortControllers.set(CONV_ID, new AbortController())
 
-    const activeStreams = (service as any).activeStreams as Map<string, unknown>
-    const abortControllers = (service as any).abortControllers as Map<string, AbortController>
-    const controller = new AbortController()
-    activeStreams.set('conv_1', { appId: 'app_1', convId: 'conv_1', subscriberIds: new Set() })
-    abortControllers.set('conv_1', controller)
+    svc.onLastSubscriberLeft(CONV_ID)
+    await vi.advanceTimersByTimeAsync(600_000)
 
-    service.onLastSubscriberLeft('conv_1')
-    await vi.advanceTimersByTimeAsync(120_000)
-
-    const completeCalls = publishMock.mock.calls.filter(
-      ([, ev]) => (ev as { type: string }).type === 'complete'
-    )
-    expect(completeCalls).toHaveLength(1)
-    expect(completeCalls[0]![1]).toMatchObject({
-      type: 'complete',
-      conversationId: 'conv_1',
-      data: expect.objectContaining({ finishReason: 'no_subscriber_timeout' }),
-    })
+    expect(publishMock).not.toHaveBeenCalled()
   })
 
-  it('stop() cancels a pending no-subscriber timer', () => {
-    const ac = seedActiveStream(CONV_ID)
+  it('does not tear down sub-agent jobs on disconnect', () => {
+    seedActiveStream(service, CONV_ID)
     service.onLastSubscriberLeft(CONV_ID)
+    vi.advanceTimersByTime(600_000)
+    expect(vi.mocked(subAgentJobRegistry.abort)).not.toHaveBeenCalled()
+  })
 
-    const timers = (service as any).noSubscriberTimers as Map<string, NodeJS.Timeout>
-    expect(timers.has(CONV_ID)).toBe(true)
+  it('onLastSubscriberLeft is a no-op when no active stream exists', () => {
+    expect(() => service.onLastSubscriberLeft(CONV_ID)).not.toThrow()
+    expect(vi.mocked(logger.info)).not.toHaveBeenCalledWith(
+      'sse.execution.subscribers_left_stream_continues',
+      { conversationId: CONV_ID }
+    )
+  })
+
+  it('onSubscriberAdded is a harmless no-op', () => {
+    seedActiveStream(service, CONV_ID)
+    expect(() => service.onSubscriberAdded(CONV_ID)).not.toThrow()
+  })
+})
+
+describe('MessageExecutionService — stop() still aborts explicitly', () => {
+  let service: MessageExecutionService
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    service = new MessageExecutionService(createMinimalDeps() as any)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.clearAllMocks()
+  })
+
+  it('aborts with user_stopped and tears down sub-agent jobs', () => {
+    const ac = seedActiveStream(service, CONV_ID)
+    service.stop(CONV_ID)
+    expect(ac.signal.aborted).toBe(true)
+    expect(ac.signal.reason).toBe('user_stopped')
+    expect(vi.mocked(subAgentJobRegistry.abort)).toHaveBeenCalledWith(CONV_ID)
+  })
+
+  it('a disconnect that preceded stop() does not change the user_stopped reason', () => {
+    const ac = seedActiveStream(service, CONV_ID)
+    service.onLastSubscriberLeft(CONV_ID)
+    vi.advanceTimersByTime(60_000)
+    expect(ac.signal.aborted).toBe(false)
 
     service.stop(CONV_ID)
-
-    expect(timers.has(CONV_ID)).toBe(false)
-
-    // Timer should not fire after stop
-    vi.advanceTimersByTime(120_000)
     expect(ac.signal.reason).toBe('user_stopped')
-  })
-
-  it('does not abort a newer turn when execute() supersedes the armed stream', () => {
-    // Arm timer for Turn A
-    seedActiveStream(CONV_ID)
-    service.onLastSubscriberLeft(CONV_ID)
-
-    // Simulate Turn B superseding Turn A (new execute() replaces the slot)
-    const controllerB = new AbortController()
-    const streamStateB = { appId: 'app_1', convId: CONV_ID, subscriberIds: new Set(['sub-2']) }
-    const internals = service as any
-    internals.activeStreams.set(CONV_ID, streamStateB)
-    internals.abortControllers.set(CONV_ID, controllerB)
-
-    // Timer fires — should detect identity mismatch and bail
-    vi.advanceTimersByTime(120_000)
-
-    expect(controllerB.signal.aborted).toBe(false)
   })
 })
