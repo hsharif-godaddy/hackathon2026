@@ -339,7 +339,7 @@ export const publishTool: SkillToolDefinition = {
   },
 
   config: {
-    timeout: 150000,
+    timeout: 420000,
     requiresApp: true,
   },
 };
