@@ -1,8 +1,10 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as lambdaDestinations from 'aws-cdk-lib/aws-lambda-destinations';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecrAssets from 'aws-cdk-lib/aws-ecr-assets';
@@ -46,10 +48,21 @@ export class AiroInvestigatorStack extends GDStack {
     // the browser so the report can stream regardless of size. Without CORS
     // the browser blocks the cross-origin request even though the signature
     // is valid.
+    // M1: scope to the airo-builder subdomain family ONLY — reports carry
+    // customer code, raw logs (possible PII/tokens), and transcripts, so a
+    // wildcard over the whole corporate domain (*.godaddy.com) would let an XSS
+    // on ANY unrelated subdomain exfiltrate them via the presigned URL. The
+    // debug console lives at console.airo-builder.<apex>, so *.airo-builder.<apex>
+    // covers every real origin without opening the whole domain.
+    // S3 allows one wildcard (*) per AllowedOrigin entry.
     const corsAllowedOrigins: string[] = config.envName === 'prod'
-      ? ['https://console.airo-builder.godaddy.com']
+      ? [
+        'https://*.airo-builder.godaddy.com',
+        'https://*.airo-builder.int.gdcorp.tools',
+      ]
       : [
-        'https://console.airo-builder.int.test-gdcorp.tools',
+        'https://*.airo-builder.test-godaddy.com',
+        'https://*.airo-builder.int.test-gdcorp.tools',
         'http://localhost:3000',
         'http://localhost:8080',
       ];
@@ -250,6 +263,11 @@ export class AiroInvestigatorStack extends GDStack {
         // ${env}-airo-investigator-role registrations (dev-p → GoCode
         // test, prod → GoCode prod).
         GOCODE_USE_S2S_AUTH: 'true',
+        // In-process agentic pipeline (agent-loop + verdict + async verifier Lambda).
+        // This is intentionally live in BOTH dev and prod — the pipeline replaces
+        // the old claude-CLI subprocess. Rollback lever: set to 'cli' here and
+        // redeploy CDK to revert to the original subprocess path with no code change.
+        INVESTIGATOR_HARNESS: 'core',
         // GoCode S2S endpoint (Anthropic + OpenAI compatible, Bearer JWT).
         // Must match the GoCode env the role was registered with.
         ANTHROPIC_BASE_URL: config.envName === 'prod'
@@ -300,6 +318,68 @@ export class AiroInvestigatorStack extends GDStack {
       },
       logGroup,
     });
+
+    // ---- Verifier Lambda — async LLM-as-judge that runs after the main investigation ----
+    // Same image as the investigator, different CMD (verifier-handler.handler),
+    // smaller memory, same VPC/security group/role (re-uses the same IAM permissions).
+    const verifierDlq = new sqs.Queue(this, 'VerifierDlq', {
+      queueName: `airo-investigator-verifier-dlq-${config.envName}`,
+      retentionPeriod: cdk.Duration.days(14),
+    });
+
+    const verifierFn = new lambda.DockerImageFunction(this, 'VerifierFn', {
+      functionName: `airo-investigator-verifier-${config.envName}`,
+      description: 'Async LLM-as-judge verifier for airo investigations',
+      code: lambda.DockerImageCode.fromImageAsset(path.join(__dirname, '..', '..', 'investigator'), {
+        assetName: 'airo-investigator-verifier',
+        buildArgs: {
+          LAMBDA_BASE_REPO: `${config.account}.dkr.ecr.${config.region}.amazonaws.com/lambda-nodejs`,
+          LAMBDA_BASE_TAG: '22',
+        },
+        platform: ecrAssets.Platform.LINUX_AMD64,
+        cmd: ['verifier-handler.handler'],
+      }),
+      role: lambdaRole,
+      memorySize: 2048,
+      timeout: cdk.Duration.minutes(15),
+      ephemeralStorageSize: cdk.Size.gibibytes(1),
+      architecture: lambda.Architecture.X86_64,
+      vpc,
+      vpcSubnets: { subnets: privateSubnets },
+      securityGroups: [lambdaSecurityGroup],
+      environment: {
+        STATE_BUCKET: this.stateBucket.bucketName,
+        GOCODE_USE_S2S_AUTH: 'true',
+        ANTHROPIC_BASE_URL: config.envName === 'prod'
+          ? 'https://api.gocode.caas.gdcorp.tools'
+          : 'https://api.gocode.caas.test-gdcorp.tools',
+        SSO_HOST: ssoHostForEnv(config.envName),
+        // m1: no CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS here — the verifier runs
+        // in-process (AI SDK), not the claude CLI, so that var is a no-op.
+        NODE_OPTIONS: '--enable-source-maps',
+      },
+    });
+
+    // Prevent double-judging: 0 retries on async invoke failure.
+    new lambda.EventInvokeConfig(this, 'VerifierEventInvokeConfig', {
+      function: verifierFn,
+      maxEventAge: cdk.Duration.hours(1),
+      retryAttempts: 0,
+      onFailure: new lambdaDestinations.SqsDestination(verifierDlq),
+    });
+
+    // Allow the main investigator Lambda to invoke the verifier asynchronously.
+    // Use addPermission (resource-based policy on the verifier Lambda) instead of
+    // grantInvoke(lambdaRole) — grantInvoke mutates the shared lambdaRole's inline
+    // policy, creating a CDK circular dependency: verifierFn → role policy →
+    // investigatorFn → verifierFn. A resource-based permission breaks the cycle.
+    verifierFn.addPermission('InvokeFromInvestigator', {
+      principal: new iam.ArnPrincipal(lambdaRole.roleArn),
+      action: 'lambda:InvokeFunction',
+    });
+
+    // Expose the verifier function name as an env var on the main Lambda.
+    this.investigatorFn.addEnvironment('VERIFIER_FUNCTION_NAME', verifierFn.functionName);
 
     // ---- Secrets Manager read for CRM mTLS cert + key (Katana-managed secrets) ----
     // Reads existing Katana ASM secrets directly — no new secrets needed.

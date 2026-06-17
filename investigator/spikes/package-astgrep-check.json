@@ -1,0 +1,8 @@
+{
+  "name": "astgrep-check",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@ast-grep/napi": "0.43.0"
+  }
+}

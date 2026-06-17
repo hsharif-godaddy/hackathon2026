@@ -5,15 +5,16 @@ import { S3Client, GetObjectCommand, PutObjectCommand, CopyObjectCommand } from 
 import gdAuth from 'gd-auth-client';
 
 import { buildPrompt } from './prompt.mjs';
+import { createInvestigatorModels } from './provider.mjs';
+import { runCore } from './core-run.mjs';
 import { createEventEmitter } from './events.mjs';
 import { decodeJwtExpMs, buildChildEnv } from './auth.mjs';
 import { addCrmCaseNote } from './crm-casenote.mjs';
 import { loadEvidenceCredentials } from './evidence-loader.mjs';
 import { mintAgentToken } from './agent-jwt.mjs';
 import { fetchAppZip, fetchConversations } from './agent-fetch.mjs';
-import { writeMcpConfig, buildCustomerGraph, isGraphAvailable } from './graph-setup.mjs';
+import { writeMcpConfig, buildCustomerGraph, isGraphAvailable, createCrgMcpClient } from './graph-setup.mjs';
 import { ensurePlatformGraph } from './platform-graph.mjs';
-import { runVerifier } from './verifier.mjs';
 import { extractToolActivities } from './activity.mjs';
 import { buildLessonRecord, lessonKey } from './lessons.mjs';
 // Re-export pure helpers so existing import paths in tests keep working.
@@ -103,13 +104,6 @@ const SKILL_LINK_DIR = `${CLAUDE_HOME}/skills/${SKILL_NAME}`;
 // both sides together if this ever changes.
 const MAX_RUN_MS = 14 * 60_000;
 const HEARTBEAT_MS = 10_000;
-// Headroom reserved INSIDE MAX_RUN_MS for the fresh-context verifier
-// (LLM-as-judge) spawn that runs after the main agent exits. The main
-// agent's kill timer is shortened by this much so the judge fits within
-// the 15-minute Lambda cap. The verifier is a strict soft-fail (see
-// verifier.mjs): if it can't finish in this window it returns
-// { ran: false } and the analysis ships unchanged.
-const VERIFIER_BUDGET_MS = 3 * 60_000;
 
 const s3 = new S3Client({ region: REGION });
 
@@ -456,6 +450,11 @@ async function tryReleaseLockAsFailed(stateKey, patch) {
 
 export async function handler(event) {
   const started = Date.now();
+  // Mo2: function-scoped so the outer finally can always clear it. A throw
+  // between setInterval and the terminal clearInterval would otherwise leak the
+  // interval into the warm Lambda container (it would keep writing to a dead key).
+  let heartbeat = null;
+  const INVESTIGATOR_HARNESS = process.env.INVESTIGATOR_HARNESS || 'cli';
   // Lambda reuses warm containers, so any module-scope state from a
   // previous invocation must be cleared before the first read of this
   // run's state.json — otherwise we'd merge into the previous (customer,
@@ -931,6 +930,215 @@ export async function handler(event) {
       console.log('[investigator] mcp.config.skipped — CRG tooling not present in image', { investigationId });
     }
 
+    // ── Harness selection ─────────────────────────────────────────────────────
+    // INVESTIGATOR_HARNESS=core → in-process pipeline (core-run.mjs, fully
+    // injectable, no Claude CLI subprocess). Set INVESTIGATOR_HARNESS=cli (or
+    // leave unset) to keep the original CLI path unchanged.
+    //
+    // The `core` branch populates the same downstream variables (reportMd,
+    // reportName, analysisSidecar, status) that the upload/CRM/state sections
+    // below consume, so those sections are shared across both harnesses.
+    let reportMd = '';
+    let reportName = `${appId}.md`;
+    let analysisSidecar = null;
+    let status = 'failed';
+    let cost = null;
+
+    // B1: hoist terminal-section variables to shared scope so both harnesses
+    // can read them after the if/else. The cli block overwrites these with real
+    // values; the core block sets synthetic equivalents.
+    let latestPhase = 'claude-analysis';
+    let latestEvent = 'starting';
+    let wasKilled = false;
+    let exitInfo = { code: 0, signal: null };
+    // Why a core run ended without full coverage: 'deadline' (real time cap),
+    // 'turn-cap' (hit step limit), or 'error' (a model call threw mid-run). Drives
+    // honest terminal labeling so a 20s transient error isn't reported as a 15-min timeout.
+    let partialReason = null;
+    let analysisDegraded = false;
+    let coreResultErrorHint = null;
+
+    // H1: shared heartbeat + finalized guard — both harnesses need these.
+    // Declared here so the terminal section's mergeState can read heartbeatFailures.
+    let finalized = false;
+    let heartbeatFailures = 0;
+    const HEARTBEAT_RELOG_EVERY = 10;
+    heartbeat = setInterval(() => {
+      if (finalized) return;
+      emitEvent('heartbeat', { phase: latestPhase, lastEvent: latestEvent }).catch((err) => logEmitFailure('heartbeat', err));
+      mergeState(stateKey, {
+        heartbeatAt: new Date().toISOString(),
+        phase: latestPhase,
+        lastEvent: latestEvent,
+      }).catch((err) => {
+        heartbeatFailures += 1;
+        if (heartbeatFailures === 1 || heartbeatFailures % HEARTBEAT_RELOG_EVERY === 0) {
+          console.error('[investigator] heartbeat write failed', { stateKey, occurrence: heartbeatFailures, err });
+        }
+      });
+    }, HEARTBEAT_MS);
+
+    if (INVESTIGATOR_HARNESS === 'core') {
+      // ── New in-process pipeline ─────────────────────────────────────────
+      const coreModels = createInvestigatorModels({
+        useS2S: s2sEnabled,
+        authToken: gocodeAuthToken,
+        apiKey: process.env.ANTHROPIC_API_KEY,
+        baseURL: process.env.ANTHROPIC_BASE_URL,
+      });
+      const crgClient = await createCrgMcpClient();
+      latestPhase = 'phase-1-analyze';
+      latestEvent = 'core pipeline starting';
+      const MAX_ACTIVITY_EVENTS = 200;
+      let activityCount = 0;
+      // H1: wall-clock deadline so the loop yields a partial verdict before
+      // the Lambda is hard-killed. Reserve 90s for synthesis + upload + terminal write.
+      // Floor at now+60s so a slow cold-start + log-gather can't hand the loop a
+      // near-past deadline (which would yield zero turns / an empty report).
+      const coreDeadline = Math.max(Date.now() + 60_000, started + MAX_RUN_MS - 90_000);
+
+      // Phase-0 log gather: run the Python search script to populate the log
+      // index at /tmp/airo-log-investigate/{appId}/ before the core loop reads it.
+      // Soft-fail — missing logs still produce a useful (lower-confidence) verdict.
+      let rawLogLines = [];
+      try {
+        const logIndexDir = `/tmp/airo-log-investigate/${appId}`;
+        // Run the search script (reuses the same credentials the CLI skill uses)
+        const searchScript = path.join(SKILL_SRC_DIR, 'run_search_frontend_logs.sh');
+        await new Promise((resolve) => {
+          const child = spawn('bash', [searchScript, '--appId', appId, '--window', timeWindow || '24h'], {
+            env: {
+              PATH: process.env.PATH,
+              HOME: '/tmp',
+              LOKI_ENDPOINT: process.env.LOKI_ENDPOINT || '',
+              LOKI_API_KEY: process.env.LOKI_API_KEY || '',
+              LOKI_CLUSTER: process.env.LOKI_CLUSTER || '',
+              AIRO_BUILDER_ES_ENDPOINT: process.env.AIRO_BUILDER_ES_ENDPOINT || '',
+              AIRO_BUILDER_ES_API_KEY: process.env.AIRO_BUILDER_ES_API_KEY || '',
+              CONSOLE_BASE: process.env.CONSOLE_BASE || '',
+              INVESTIGATION_DIRECT_MODE: process.env.INVESTIGATION_DIRECT_MODE || '',
+              ENVIRONMENT_NAME: process.env.ENVIRONMENT_NAME || '',
+            },
+            stdio: 'ignore',
+            // detached so the timeout can kill the whole process GROUP (bash +
+            // its python child), not just bash — otherwise an orphaned python
+            // searcher can linger in the warm container.
+            detached: true,
+          });
+          const timeoutHandle = setTimeout(() => {
+            try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
+            resolve();
+          }, 120_000);
+          child.on('exit', () => { clearTimeout(timeoutHandle); resolve(); });
+          child.on('error', () => { clearTimeout(timeoutHandle); resolve(); });
+        });
+        // Read all raw log lines from the index files
+        try {
+          const indexEntries = await fs.readdir(logIndexDir).catch(() => []);
+          for (const entry of indexEntries) {
+            if (!entry.endsWith('.json') || entry === 'evidence.json') continue;
+            try {
+              const raw = await fs.readFile(path.join(logIndexDir, entry), 'utf-8');
+              const parsed = JSON.parse(raw);
+              const logs = parsed.logs || parsed.lines || [];
+              for (const log of logs) {
+                const text = typeof log === 'string' ? log : (log.message || log.msg || log.log || JSON.stringify(log));
+                if (text) rawLogLines.push(text);
+              }
+            } catch { /* skip malformed file */ }
+          }
+        } catch { /* skip if dir unavailable */ }
+        console.log('[investigator] core.log.gather', { investigationId, lineCount: rawLogLines.length });
+      } catch (err) {
+        console.error('[investigator] core.log.gather.failed', { investigationId, error: err?.message });
+      }
+
+      try {
+        const coreResult = await runCore({
+          appId,
+          feedback,
+          timeWindow,
+          workDir,
+          rawLogLines,
+          skillDir: SKILL_SRC_DIR,
+          appCodeDir: process.env.APP_CODE_DIR || workDir,
+          conversationsPath: process.env.CONVERSATIONS_PATH || '',
+          hasAppCode: appCodeAvailable,
+          hasConversations: conversationsAvailable,
+          models: coreModels,
+          crgClient,
+          onActivity: (a) => {
+            if (activityCount < MAX_ACTIVITY_EVENTS) {
+              activityCount++;
+              emitEvent('activity', a).catch((err) => logEmitFailure('activity', err));
+            }
+          },
+          onPhase: (phase) => {
+            if (phase !== latestPhase) {
+              latestPhase = phase;
+              latestEvent = `phase: ${phase}`;
+              emitEvent('phase.started', { phase }).catch((err) => logEmitFailure('phase.started', err));
+            }
+          },
+          budget: { maxTurns: 100, deadline: coreDeadline },
+        });
+        // Read the files core-run wrote to workDir
+        try {
+          reportMd = await fs.readFile(coreResult.reportPath, 'utf-8');
+          reportName = path.basename(coreResult.reportPath);
+        } catch (err) {
+          console.error('[investigator] core.report.read.failed', err);
+        }
+        try {
+          const raw = await fs.readFile(coreResult.analysisPath, 'utf-8');
+          analysisSidecar = JSON.parse(raw);
+        } catch (err) {
+          console.error('[investigator] core.analysis.read.failed', err);
+        }
+        // L8: plumb loop usage into cost so core runs don't record cost:null
+        if (coreResult.usage) {
+          cost = {
+            inputTokens: coreResult.usage.inputTokens || 0,
+            outputTokens: coreResult.usage.outputTokens || 0,
+            totalUsd: null, // GoCode proxy doesn't expose $ cost directly
+          };
+        }
+        if (coreResult.coverage?.partial) {
+          partialReason = coreResult.coverage.partialReason || 'partial';
+          if (partialReason === 'error') {
+            // A model call threw mid-run (not a timeout). A partial verdict was
+            // salvaged, but flag it as degraded — NOT killed-by-timeout.
+            status = 'completed';
+            analysisDegraded = true;
+            coreResultErrorHint = (coreResult.coverage.errorMessage || '').slice(0, 160) || null;
+          } else {
+            // 'deadline' or 'turn-cap' — genuinely ran out of budget.
+            status = 'killed';
+            wasKilled = true;
+          }
+        } else {
+          status = 'completed';
+        }
+      } catch (err) {
+        console.error('[investigator] core.pipeline.failed', {
+          investigationId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        status = 'failed';
+      } finally {
+        // H3: close the CRG MCP stdio child so the spawned python server is not
+        // left running across the Lambda freeze (it would accumulate one extra
+        // python process + FDs per warm invocation → eventual OOM).
+        if (crgClient && typeof crgClient.close === 'function') {
+          try { await crgClient.close(); } catch (e) {
+            console.error('[investigator] crg.close.failed', { investigationId, error: e?.message });
+          }
+        }
+      }
+      // Flush logStream (unused by core path but opened above; close it cleanly)
+      await new Promise((resolve) => { logStream.once('finish', resolve); logStream.end(); });
+    } else {
+      // ── Original CLI path (unchanged) ────────────────────────────────────
     const prompt = buildPrompt({
       appId,
       feedback,
@@ -940,8 +1148,8 @@ export async function handler(event) {
     });
     const child = spawnClaude(prompt, logStream, mcpConfigPath);
 
-    let latestPhase = 'claude-analysis';
-    let latestEvent = 'claude searching telemetry';
+    latestPhase = 'claude-analysis';
+    latestEvent = 'claude searching telemetry';
 
     // (logEmitFailure + emitEventFailures are hoisted above the try
     // block so the evidence-credentials degradation emit can share the
@@ -992,47 +1200,9 @@ export async function handler(event) {
       }
     });
 
-    // `finalized` guards the heartbeat against clobbering the terminal write.
-    // `clearInterval` stops scheduling new ticks but an in-flight S3 PUT from
-    // a tick that already fired can still land AFTER the final mergeState
-    // below — mergeState is read-modify-write, so a late tick that read the
-    // pre-terminal state would write `status: running` over `status: completed`
-    // and the UI would poll forever until it marked the heartbeat stale. The
-    // guard lets us reject late writes instead of merging them.
-    let finalized = false;
-    let heartbeatFailures = 0;
-    // Re-log every Nth failure (not just the first) so a persistent S3
-    // outage shows up in CloudWatch as a recurring signature instead of
-    // a single line buried 14 minutes ago. We carry the running count
-    // through to the final state document below so a stranded
-    // investigation surfaces "heartbeat wrote N/M times" without
-    // requiring CloudWatch correlation.
-    const HEARTBEAT_RELOG_EVERY = 10;
-    const heartbeat = setInterval(() => {
-      if (finalized) return;
-      emitEvent('heartbeat', { phase: latestPhase, lastEvent: latestEvent }).catch((err) => logEmitFailure('heartbeat', err));
-      mergeState(stateKey, {
-        heartbeatAt: new Date().toISOString(),
-        phase: latestPhase,
-        lastEvent: latestEvent,
-      }).catch((err) => {
-        heartbeatFailures += 1;
-        if (
-          heartbeatFailures === 1 ||
-          heartbeatFailures % HEARTBEAT_RELOG_EVERY === 0
-        ) {
-          console.error('[investigator] heartbeat write failed', {
-            stateKey,
-            occurrence: heartbeatFailures,
-            err,
-          });
-        }
-      });
-    }, HEARTBEAT_MS);
-
-    // Reserve VERIFIER_BUDGET_MS inside MAX_RUN_MS so the fresh-context
-    // judge spawn (below) has headroom before the 15-minute Lambda cap.
-    const childRunMs = Math.max(60_000, MAX_RUN_MS - VERIFIER_BUDGET_MS - (Date.now() - started));
+    // Main agent now gets the full budget — the verifier runs as a separate
+    // async Lambda after the terminal write (verifier-handler.mjs).
+    const childRunMs = Math.max(60_000, MAX_RUN_MS - (Date.now() - started));
     const killTimer = setTimeout(() => {
     try { process.kill(-child.pid, 'SIGTERM'); } catch {}
     setTimeout(() => {
@@ -1040,7 +1210,7 @@ export async function handler(event) {
     }, 5_000).unref();
     }, childRunMs);
 
-    const exitInfo = await new Promise((resolve) => {
+    exitInfo = await new Promise((resolve) => {
     child.on('exit', (code, signal) => resolve({ code, signal }));
     });
 
@@ -1062,8 +1232,8 @@ export async function handler(event) {
     // Locate report markdown (skill writes under REPORT_DIR on laptop runs;
     // in Lambda the skill ends by asking the user whether to save, and nobody
     // answers, so the file is typically absent).
-    let reportMd = '';
-    let reportName = `${appId}.md`;
+    reportMd = '';
+    reportName = `${appId}.md`;
     let entries = [];
     try {
     entries = await fs.readdir(workDir);
@@ -1089,7 +1259,7 @@ export async function handler(event) {
 
     // Read analysis sidecar written by the synthesis phase. Best-effort —
     // missing file is normal for failed/killed runs or pre-feature invocations.
-    let analysisSidecar = null;
+    analysisSidecar = null;
     const analysisFile = entries.find((f) => f.endsWith('.analysis.json'));
     if (analysisFile) {
       try {
@@ -1198,10 +1368,10 @@ export async function handler(event) {
     // caught the signal and exited with a numeric code instead of dying via the
     // signal directly. Node's child_process reports signal=null + code=143 in
     // that case, so we check both paths.
-    const wasKilled =
+    wasKilled =
     exitInfo.signal === 'SIGTERM' || exitInfo.signal === 'SIGKILL' ||
     exitInfo.code === 143 || exitInfo.code === 137;
-    const status = wasKilled
+    status = wasKilled
     ? 'killed'
     : exitInfo.code === 0
       ? 'completed'
@@ -1217,12 +1387,6 @@ export async function handler(event) {
     } catch (err) {
     console.error('[investigator] trace upload failed', { traceKey, err });
     }
-
-    // Extract cost/usage from the final stream-json `result` event so the
-    // console UI can render a cost block beneath the report. Walk lines
-    // from the end — the result event is the last non-blank line on a
-    // clean exit. Best-effort; missing cost is non-fatal.
-    let cost = null;
     try {
       const traceRaw = await fs.readFile(traceLocalPath, 'utf-8');
       const lines = traceRaw.split('\n');
@@ -1268,6 +1432,12 @@ export async function handler(event) {
         console.error('[investigator] cost extraction failed', err);
       }
     }
+    } // end else (INVESTIGATOR_HARNESS === 'cli')
+
+    // Stop heartbeat — finalized prevents any in-flight tick from clobbering
+    // the terminal write below.
+    finalized = true;
+    clearInterval(heartbeat);
 
     // Upload report. If this fails, still write a terminal state so the UI does
     // not sit in running/stale with a report that only existed in Lambda memory.
@@ -1305,98 +1475,14 @@ export async function handler(event) {
       }
     }
 
-    // Fresh-context verifier (LLM-as-judge). After a clean completion with
-    // both a report and an analysis sidecar, run a SEPARATE single-shot
-    // `claude -p` judge that scores the report+verdict+fix against a rubric
-    // (see verifier.mjs). On a judge FAILURE we downgrade the analysis
-    // verdictConfidence to 'low' and attach a verifierNote — fail-closed —
-    // BEFORE the analysis upload below so the downgraded copy is what
-    // debug-console reads. The judge is a strict soft-fail: any error
-    // (spawn/timeout/invalid JSON) returns { ran: false } and the analysis
-    // ships unchanged. The whole block is wrapped so it can NEVER block or
-    // fail the finalize path.
-    if (analysisSidecar && status === 'completed' && reportMd) {
-      try {
-        // Cap the judge's budget to what's left of the reserved window so it
-        // can't push the invocation past the Lambda cap.
-        const remainingMs = MAX_RUN_MS - (Date.now() - started);
-        const verifierTimeoutMs = Math.max(30_000, Math.min(VERIFIER_BUDGET_MS, remainingMs));
-        const v = await runVerifier({
-          reportMd,
-          analysis: analysisSidecar,
-          complaint: feedback,
-          timeWindow,
-          workDir,
-          appId,
-          timeoutMs: verifierTimeoutMs,
-        });
-        if (v.ran && v.pass === false) {
-          // Fail-closed: an unsupported / overconfident verdict gets pinned
-          // to low confidence so downstream consumers don't trust it.
-          analysisSidecar.verdictConfidence = 'low';
-          if (v.note) analysisSidecar.verifierNote = v.note;
-          console.log('[investigator] verifier.failed', {
-            investigationId,
-            score: v.score ?? null,
-            note: v.note ?? null,
-          });
-          emitEvent('investigation.warning', {
-            source: 'verifier',
-            message: 'Verifier downgraded verdict confidence: report/verdict not supported by cited evidence',
-            note: v.note ?? null,
-            score: v.score ?? null,
-          }).catch((emitErr) => logEmitFailure('investigation.warning', emitErr));
-
-          // Feedback loop: an over-claim is a candidate lesson for the
-          // knowledge base. Persist it to the lessons inbox for human
-          // curation (scripts/investigate-distill-lessons.mjs → PR into
-          // references/aab-behaviors.md). Best-effort — never blocks finalize.
-          try {
-            const lesson = buildLessonRecord({
-              investigationId,
-              appId,
-              customerId,
-              ts: new Date().toISOString(),
-              source: 'verifier',
-              analysis: analysisSidecar,
-              verifierNote: v.note ?? null,
-              score: v.score ?? null,
-              feedback,
-              timeWindow,
-            });
-            await putJson(lessonKey(lesson), lesson);
-          } catch (lessonErr) {
-            console.error('[investigator] lesson.capture.failed', {
-              investigationId,
-              error: lessonErr && lessonErr.message ? lessonErr.message : String(lessonErr),
-            });
-          }
-        } else if (v.ran && v.pass === true) {
-          console.log('[investigator] verifier.passed', {
-            investigationId,
-            score: v.score ?? null,
-          });
-        }
-        // v.ran === false → soft-fail: leave the analysis unchanged.
-        // Machine-readable marker so consumers can distinguish a VERIFIED
-        // verdict from one shipped unverified (judge timeout / spawn-fail /
-        // invalid JSON). true only when the judge actually ran.
-        analysisSidecar.verified = v.ran === true;
-      } catch (err) {
-        // The verifier must NEVER block finalize. runVerifier already
-        // soft-fails internally; this is belt-and-suspenders.
-        console.error('[investigator] verifier.block.error', {
-          investigationId,
-          error: err && err.message ? err.message : String(err),
-        });
-      }
-    }
-
-    // Upload analysis sidecar so debug-console can populate sentiment/rootCause
-    // fields in the investigation summary listing. Best-effort — failure here
-    // does NOT affect the investigation result.
-    if (analysisSidecar && status === 'completed') {
-      const analysisKey = `analysis/${encodeURIComponent(customerId)}/${encodeURIComponent(appId)}/${investigationId}.json`;
+    // H4: Upload analysis sidecar BEFORE dispatching the verifier — the verifier
+    // Lambda reads this file from S3 immediately on async invoke.
+    const analysisKey = `analysis/${encodeURIComponent(customerId)}/${encodeURIComponent(appId)}/${investigationId}.json`;
+    // Upload the sidecar for completed AND killed/partial runs. A partial verdict
+    // is the LEAST trustworthy, so persisting + verifying it (below) is the
+    // fail-closed behavior, not the exception.
+    const hasAnalysisToShip = analysisSidecar && (status === 'completed' || status === 'killed');
+    if (hasAnalysisToShip) {
       try {
         await putJson(analysisKey, analysisSidecar);
       } catch (err) {
@@ -1404,28 +1490,43 @@ export async function handler(event) {
       }
     }
 
+    // Terminal event — emit BEFORE verifier dispatch so nextSeq is settled.
     const terminalType =
       status === 'completed'
         ? 'investigation.completed'
         : status === 'killed'
           ? 'investigation.killed'
           : 'investigation.failed';
+    // Honest terminal reason: only a real deadline is a 'timeout'; a turn-cap is
+    // 'turn-limit'; a mid-run model error is 'error' (NOT a 15-min timeout).
+    const terminalReason = partialReason === 'turn-cap'
+      ? 'turn-limit'
+      : partialReason === 'error'
+        ? 'error'
+        : (wasKilled || partialReason === 'deadline') ? 'timeout' : undefined;
     await emitEvent(terminalType, {
       status,
       phase: latestPhase,
       durationMs: Date.now() - started,
-      reason: wasKilled ? 'timeout' : undefined,
+      reason: terminalReason,
+      degraded: analysisDegraded || undefined,
       error: status === 'failed' ? `claude exit code ${exitInfo.code}` : undefined,
     });
 
     const finalState = await mergeState(stateKey, {
       status,
       phase: latestPhase,
-      lastEvent: wasKilled
+      lastEvent: terminalReason === 'timeout'
         ? 'investigation exceeded time limit'
-        : status === 'completed'
-          ? 'report written'
-          : `claude exited with code ${exitInfo.code}`,
+        : terminalReason === 'turn-limit'
+          ? 'investigation reached the step limit'
+          : terminalReason === 'error'
+            ? `investigation hit an error mid-run; partial verdict salvaged${partialReason === 'error' && coreResultErrorHint ? `: ${coreResultErrorHint}` : ''}`
+            : status === 'completed'
+              ? 'report written'
+              : `claude exited with code ${exitInfo.code}`,
+      reason: terminalReason,
+      degraded: analysisDegraded || undefined,
       heartbeatAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
       durationMs: Date.now() - started,
@@ -1440,6 +1541,46 @@ export async function handler(event) {
     });
     // Terminal state is now persisted — the catch must not overwrite it.
     terminalRecorded = true;
+
+    // Async verifier dispatch — AFTER terminal write so:
+    //   H3: nextSeq is the slot AFTER the terminal event (contiguous stream)
+    //   H4: analysis sidecar is already uploaded (verifier can S3 GetObject it immediately)
+    // EventInvokeConfig maximumRetryAttempts=0 prevents double-judging.
+    if (hasAnalysisToShip && reportMd) {
+      const VERIFIER_FN = process.env.VERIFIER_FUNCTION_NAME;
+      if (VERIFIER_FN) {
+        // H3: nextSeq = last committed seq + 1 = first free slot after terminal
+        const nextSeq = emitEvent.getSeq() + 1;
+        const verifierPayload = {
+          resultKey,
+          analysisKey,
+          appId,
+          complaint: feedback,
+          timeWindow: timeWindow || null,
+          startSeq: nextSeq,
+          eventsPrefix,
+          investigationId,
+        };
+        try {
+          const { LambdaClient, InvokeCommand } = await import('@aws-sdk/client-lambda');
+          const lambdaClient = new LambdaClient({});
+          await lambdaClient.send(new InvokeCommand({
+            FunctionName: VERIFIER_FN,
+            InvocationType: 'Event',
+            Payload: Buffer.from(JSON.stringify(verifierPayload)),
+          }));
+          console.log('[investigator] verifier.dispatched', { investigationId, verifierFn: VERIFIER_FN, startSeq: nextSeq });
+        } catch (err) {
+          // Soft-fail: the main investigation is already finalized.
+          console.error('[investigator] verifier.dispatch.failed', {
+            investigationId,
+            error: err?.message,
+          });
+        }
+      } else {
+        console.log('[investigator] verifier.skipped — VERIFIER_FUNCTION_NAME not set');
+      }
+    }
 
     // Freeze into history — `active/` is overwritten on the next run for the
     // same (customer, app), so if these copies silently fail the completed
@@ -1534,6 +1675,9 @@ export async function handler(event) {
       body: JSON.stringify({ investigationId, status: 'failed', error: errorMessage.slice(0, 240) }),
     };
   } finally {
+    // Mo2: clear the heartbeat on every exit path (incl. an early throw before
+    // the terminal clearInterval) so it can't leak into the warm container.
+    if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
     // Drop the per-invocation creds regardless of exit path so they don't
     // linger into the next warm-container invocation. `delete` rather
     // than assigning '' so any downstream code that reads them gets an

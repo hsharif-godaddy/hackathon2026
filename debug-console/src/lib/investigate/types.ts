@@ -21,6 +21,9 @@ export interface InvestigationState {
   heartbeatAt: string;
   phase: string | null;
   lastEvent: string | null;
+  // Why a run ended: 'timeout' (real Lambda/budget cap), 'turn-limit' (hit step
+  // cap), 'error' (a model call threw mid-run). Absent on clean completions.
+  reason?: 'timeout' | 'turn-limit' | 'error' | null;
   input: InvestigationInput;
   resultKey: string | null;
   reportFilename: string | null;
@@ -47,7 +50,7 @@ export interface InvestigationState {
     error?: string;
   };
   cost?: {
-    totalUsd: number;
+    totalUsd: number | null;
     inputTokens: number;
     outputTokens: number;
   } | null;
@@ -218,7 +221,7 @@ export interface InvestigationSummary {
     uploadedCount: number | null;
     failedCount: number | null;
   } | null;
-  cost: { totalUsd: number; inputTokens: number; outputTokens: number } | null;
+  cost: { totalUsd: number | null; inputTokens: number; outputTokens: number } | null;
   sentiment: 'positive' | 'neutral' | 'negative' | null;
   confidence: number | null;
   rootCause: string | null;

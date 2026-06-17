@@ -39,8 +39,31 @@ RUN dnf install -y python3.11 python3.11-pip gcc gcc-c++ make git \
   && dnf clean all \
   && rm -rf /var/cache/dnf
 
-# Resolve the CRG + drain3 deps into a relocatable target dir (spike 0.1).
-RUN python3.11 -m pip install --target /opt/py-packages code-review-graph drain3
+# Install the CRG + drain3 deps into a relocatable target dir, with uv.
+#
+# Top-level packages are version-pinned; uv resolves the transitive tree at
+# build time (fast — seconds, not pip's infinite backtrack).
+#
+# The --override is the actual fix for the resolver hang: drain3 0.9.11's wheel
+# metadata pins cachetools==4.2.1, while code-review-graph 2.3.6 → fastmcp →
+# py-key-value-aio needs cachetools>=5.0.0. That conflict is UNSATISFIABLE, so
+# pip's resolver backtracked forever (the 30+ min "taking longer than usual"
+# crawls) searching an empty solution space. drain3 only uses
+# cachetools.LRUCache (stable API across v4-v7), so we override its pin to
+# cachetools>=5; both packages then coexist and drain3 runs fine.
+#
+# uv (not pip): its resolver reports conflicts instead of backtracking blindly,
+# and installs ~10-100x faster. Installed from the same PyPI the deps use, so
+# no external-registry egress dependency.
+RUN python3.11 -m pip install --no-cache-dir uv==0.11.5 \
+  && echo 'cachetools>=5.0.0' > /tmp/pip-overrides.txt \
+  && python3.11 -m uv pip install \
+      --python python3.11 \
+      --target /opt/py-packages \
+      --no-cache \
+      --override /tmp/pip-overrides.txt \
+      "code-review-graph==2.3.6" \
+      "drain3==0.9.11"
 
 # NOTE: the platform code-review-graph is NO LONGER baked into the image
 # (Task 3.3). It is rebuilt twice a day by .github/workflows/refresh-platform-
@@ -84,14 +107,6 @@ RUN dnf install -y \
   && dnf clean all \
   && rm -rf /var/cache/dnf
 
-# CRG python deps from the build stage. The platform graph is fetched from S3
-# at runtime (platform-graph.mjs), so nothing graph-related is copied here.
-COPY --from=pybuild /opt/py-packages /opt/py-packages
-
-# Make the CRG deps importable by python3.11 (MCP server + customer build) and
-# by the skill wrappers (drain3 / urllib3 fallbacks are import-guarded).
-ENV PYTHONPATH=/opt/py-packages
-
 # Claude Code CLI — pin to a concrete version so two rebuilds of the same
 # commit produce identical runtime behavior. `@latest` previously drifted
 # between builds; that's how CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS had
@@ -128,7 +143,25 @@ RUN --mount=type=bind,source=.npmrc,target=/root/.npmrc \
 COPY handler.mjs auth.mjs prompt.mjs events.mjs \
      cert-loader.mjs crm-token.mjs crm-casenote.mjs \
      evidence-loader.mjs agent-jwt.mjs agent-fetch.mjs graph-setup.mjs \
-     platform-graph.mjs verifier.mjs activity.mjs lessons.mjs ./
+     platform-graph.mjs verifier.mjs verifier-handler.mjs activity.mjs lessons.mjs \
+     provider.mjs agent-loop.mjs verdict.mjs json-extract.mjs core-run.mjs logmine.mjs ./
+COPY tools/ tools/
+
+# CRG python deps from the build stage. The platform graph is fetched from S3
+# at runtime (platform-graph.mjs), so nothing graph-related is copied here.
+#
+# IMPORTANT: this COPY is intentionally placed AFTER the `npm install` above.
+# `COPY --from=pybuild` blocks stage-1 until the pybuild stage finishes its
+# cold dnf + pip install (~10-12 min). The npm install bind-mounts a
+# short-lived JFrog OIDC token (.npmrc); if this COPY ran before it, the token
+# would expire during the pybuild wait → E401. Keeping the pybuild COPY last
+# lets the token-sensitive npm install run concurrently with pybuild, well
+# within the token TTL.
+COPY --from=pybuild /opt/py-packages /opt/py-packages
+
+# Make the CRG deps importable by python3.11 (MCP server + customer build) and
+# by the skill wrappers (drain3 / urllib3 fallbacks are import-guarded).
+ENV PYTHONPATH=/opt/py-packages
 
 # Lambda invokes the image as its own least-privileged runtime user, not
 # necessarily the user Docker used during local tests. Make startup/runtime

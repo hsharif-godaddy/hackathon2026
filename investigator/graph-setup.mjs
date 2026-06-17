@@ -180,6 +180,45 @@ function buildFailureDetail(err) {
 }
 
 /**
+ * Create an @ai-sdk/mcp stdio client wired to the CRG server.
+ * Reuses the existing CRG_MCP_COMMAND / CRG_MCP_ARGS / crgEnv() constants.
+ * Soft-degrades: returns null when the graph package is not installed.
+ *
+ * @param {{ createMCPClientImpl?: Function, TransportImpl?: any }} [opts]
+ * @returns {Promise<any|null>}
+ */
+export async function createCrgMcpClient({ createMCPClientImpl, TransportImpl } = {}) {
+  const available = await isGraphAvailable();
+  if (!available) return null;
+
+  try {
+    let createMCPClient = createMCPClientImpl;
+    let StdioTransport = TransportImpl;
+
+    if (!createMCPClient) {
+      const m = await import('@ai-sdk/mcp');
+      createMCPClient = m.createMCPClient;
+    }
+    if (!StdioTransport) {
+      const m = await import('@ai-sdk/mcp/mcp-stdio');
+      StdioTransport = m.Experimental_StdioMCPTransport;
+    }
+
+    const client = await createMCPClient({
+      transport: new StdioTransport({
+        command: CRG_MCP_COMMAND,
+        args: CRG_MCP_ARGS,
+        env: { ...process.env, ...crgEnv() },
+      }),
+    });
+    return client;
+  } catch (err) {
+    console.error('[investigator] createCrgMcpClient.error', { error: err?.message });
+    return null;
+  }
+}
+
+/**
  * Build the customer's code graph from the unzipped app source.
  *
  * SOFT-DEGRADE: returns { ok: true } on a clean build, { ok: false, detail }

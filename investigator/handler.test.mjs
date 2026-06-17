@@ -147,6 +147,7 @@ mock.module('./graph-setup.mjs', {
     buildCustomerGraph: async (dir) => { buildCustomerGraphCalls.push(dir); return buildCustomerGraphResult; },
     writeMcpConfig: async (outPath) => { writeMcpConfigCalls.push(outPath); return outPath; },
     isGraphAvailable: async () => { isGraphAvailableCalls.push(true); return graphAvailable; },
+    createCrgMcpClient: async () => null,
   },
 });
 
@@ -217,6 +218,10 @@ mock.module('node:fs', {
 // without launching a real process.
 mock.module('node:child_process', {
   namedExports: {
+    execFile: (cmd, args, opts, cb) => {
+      if (typeof opts === 'function') { cb = opts; opts = {}; }
+      if (cb) cb(null, '', '');
+    },
     spawn: (...args) => {
       spawnCalls.push(args);
       directModeAtSpawn = process.env.INVESTIGATION_DIRECT_MODE;
@@ -629,22 +634,26 @@ describe('handler', function handlerTests() {
       return JSON.parse(entry[1]);
     }
 
-    it('runs the verifier with the report + complaint + analysis and uploads it', async function runsVerifier() {
+    it('uploads the analysis sidecar and returns 200 (verifier now runs async via Lambda)', async function runsVerifier() {
+      // Verifier is now dispatched async via Lambda (verifier-handler.mjs), not
+      // called synchronously. Without VERIFIER_FUNCTION_NAME set in tests, the
+      // dispatch is skipped — but the analysis IS uploaded before the terminal write.
       primeReportAndAnalysis();
-      runVerifierResult = { ran: true, pass: true, score: 0.9 };
 
       const result = await handler({ ...BASE_EVENT, agentUrl: 'https://app-1.agent.c4.test-airoapp.ai' });
 
       assert.equal(result.statusCode, 200);
-      assert.equal(runVerifierCalls.length, 1);
-      assert.equal(runVerifierCalls[0].complaint, BASE_EVENT.feedback);
-      assert.equal(runVerifierCalls[0].appId, 'app-1');
-      assert.equal(runVerifierCalls[0].analysis.verdict, 'app-bug');
-      // timeoutMs is capped to the reserved verifier budget (<= 3 min).
-      assert.ok(runVerifierCalls[0].timeoutMs <= 3 * 60_000);
+      // Synchronous runVerifier no longer called — verifier runs in its own Lambda
+      assert.equal(runVerifierCalls.length, 0);
+      // Analysis sidecar IS uploaded to S3 (H4 fix: upload before terminal write)
+      const uploaded = uploadedAnalysis();
+      assert.equal(uploaded.verdict, 'app-bug');
     });
 
-    it('pass:false downgrades verdictConfidence to low + attaches verifierNote BEFORE upload', async function downgrade() {
+    it('analysis is uploaded with original confidence (async Lambda judge handles downgrade)', async function downgrade() {
+      // In the new design, verdictConfidence downgrade on pass:false happens inside
+      // the verifier Lambda (verifier-handler.mjs runVerifierHandler), not in the
+      // main handler. Without VERIFIER_FUNCTION_NAME, no patching happens here.
       primeReportAndAnalysis();
       runVerifierResult = { ran: true, pass: false, score: 0.2, note: 'root cause not supported; fix generic' };
 
@@ -652,14 +661,8 @@ describe('handler', function handlerTests() {
 
       assert.equal(result.statusCode, 200);
       const uploaded = uploadedAnalysis();
-      assert.equal(uploaded.verdictConfidence, 'low');
-      assert.equal(uploaded.verifierNote, 'root cause not supported; fix generic');
-
-      // A verifier warning event was emitted.
-      const warning = emittedEvents.find(
-        (e) => e.type === 'investigation.warning' && e.data && e.data.source === 'verifier',
-      );
-      assert.ok(warning, 'expected an investigation.warning with source verifier');
+      // Original confidence from the sidecar (downgrade happens in verifier Lambda, not here)
+      assert.equal(uploaded.verdictConfidence, 'high');
     });
 
     it('pass:true leaves the analysis unchanged', async function passUnchanged() {

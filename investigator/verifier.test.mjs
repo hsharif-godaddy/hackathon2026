@@ -1,10 +1,10 @@
-import { describe, it } from 'node:test';
+import { describe, it, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { buildVerifierPrompt, runVerifier, VERIFIER_MODEL } from './verifier.mjs';
+import { buildVerifierPrompt, runVerifier, VERIFIER_MODEL, judge } from './verifier.mjs';
 
 const SAMPLE_ANALYSIS = {
   v: 1,
@@ -247,4 +247,32 @@ describe('verifier', function verifierTests() {
       await fs.rm(workDir, { recursive: true, force: true });
     });
   });
+});
+
+test('judge returns ran:true pass:true when generateTextImpl returns valid JSON', async () => {
+  const fakeImpl = async () => ({
+    text: JSON.stringify({ pass: true, score: 0.9, criteria: { rootCauseSupported: true, citationsResolve: true, fixGrounded: true, verdictCalibrated: true }, gaps: [] }),
+  });
+  const r = await judge({
+    reportMd: 'The agent omitted a route.',
+    analysis: { appId: 'app1', verdict: 'agent-bug' },
+    complaint: 'x',
+    workDir: '/tmp',
+    model: {},
+    generateTextImpl: fakeImpl,
+  });
+  assert.equal(r.ran, true);
+  assert.equal(r.pass, true);
+});
+
+test('judge returns ran:false when generateTextImpl throws', async () => {
+  const fakeImpl = async () => { throw new Error('model error'); };
+  const r = await judge({ reportMd: 'r', analysis: { appId: 'a' }, complaint: 'x', workDir: '/tmp', model: {}, generateTextImpl: fakeImpl });
+  assert.equal(r.ran, false);
+  assert.equal(r.pass, null);
+});
+
+test('judge returns ran:false when no model provided', async () => {
+  const r = await judge({ reportMd: 'r', analysis: { appId: 'a' }, complaint: 'x', workDir: '/tmp' });
+  assert.equal(r.ran, false);
 });

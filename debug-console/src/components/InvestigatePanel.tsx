@@ -35,6 +35,9 @@ type StatusResponse = {
   status: 'pending' | 'running' | 'completed' | 'failed' | 'killed';
   phase: string | null;
   lastEvent: string | null;
+  // Why a run ended early: 'timeout' (real budget cap), 'turn-limit' (step cap),
+  // 'error' (a model call threw mid-run). Absent on clean completions.
+  reason?: 'timeout' | 'turn-limit' | 'error' | null;
   startedAt: string;
   heartbeatAt: string;
   completedAt: string | null;
@@ -46,7 +49,9 @@ type StatusResponse = {
   reportSize: number | null;
   reportEtag: string | null;
   cost: {
-    totalUsd: number;
+    // null for the in-process core path — the GoCode proxy doesn't expose a $
+    // figure, only token counts. The UI renders tokens and omits the USD line.
+    totalUsd: number | null;
     inputTokens: number;
     outputTokens: number;
   } | null;
@@ -121,7 +126,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   'investigation.warning': '⚠ Warning',
   'investigation.completed': '✓ Completed',
   'investigation.failed': '✗ Failed',
-  'investigation.killed': '⚠ Timed out',
+  'investigation.killed': '⚠ Ended early',
 };
 
 function friendlyPhase(phase: string | null): string {
@@ -894,7 +899,11 @@ export default function InvestigatePanel(props: Props = {}) {
 
           {status.status === 'killed' && (
             <div style={{ marginTop: 12, color: '#b45309', fontSize: 13 }}>
-              Investigation hit the 15-minute Lambda cap and was killed.
+              {status.reason === 'turn-limit'
+                ? 'Investigation reached the step limit before finishing; a partial verdict was produced.'
+                : status.lastEvent
+                  ? `Investigation ended early: ${status.lastEvent}.`
+                  : 'Investigation ran out of its time budget before finishing; a partial verdict was produced.'}
             </div>
           )}
 
@@ -1244,7 +1253,9 @@ export default function InvestigatePanel(props: Props = {}) {
                   gap: 24,
                   flexWrap: 'wrap',
                 }}>
-                  <div><strong>Total cost:</strong> ${status.cost.totalUsd.toFixed(4)}</div>
+                  {typeof status.cost.totalUsd === 'number' && (
+                    <div><strong>Total cost:</strong> ${status.cost.totalUsd.toFixed(4)}</div>
+                  )}
                   <div><strong>Input tokens:</strong> {status.cost.inputTokens.toLocaleString()}</div>
                   <div><strong>Output tokens:</strong> {status.cost.outputTokens.toLocaleString()}</div>
                 </div>

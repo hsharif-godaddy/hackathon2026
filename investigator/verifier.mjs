@@ -21,10 +21,28 @@
 // missing/invalid JSON) must NEVER throw and NEVER block the investigation.
 
 import { spawn } from 'node:child_process';
+import { generateText } from 'ai';
+import { z } from 'zod';
 import { promises as fs, createWriteStream } from 'node:fs';
 import path from 'node:path';
 
 import { buildChildEnv } from './auth.mjs';
+import { extractJson } from './json-extract.mjs';
+
+// Schema for the judge's structured output (mirrors the rubric JSON shape)
+const JUDGE_SCHEMA = z.object({
+  pass: z.boolean(),
+  score: z.number().min(0).max(1),
+  criteria: z.object({
+    rootCauseSupported: z.boolean(),
+    citationsResolve: z.boolean(),
+    fixGrounded: z.boolean(),
+    verdictCalibrated: z.boolean(),
+  }),
+  gaps: z.array(z.string()),
+});
+
+const JUDGE_JSON_SHAPE = `{"pass":true|false,"score":0.0-1.0,"criteria":{"rootCauseSupported":true|false,"citationsResolve":true|false,"fixGrounded":true|false,"verdictCalibrated":true|false},"gaps":["..."]}`;
 
 const CLAUDE_BIN = 'claude';
 
@@ -94,10 +112,11 @@ export function buildVerifierPrompt({ reportMd, analysis, complaint, timeWindow,
   // pretty-print it verbatim. The complaint is user-supplied and is the one
   // value that must be XML-wrapped + escaped.
   const analysisJson = JSON.stringify(analysis ?? {}, null, 2);
-  // The report markdown can itself embed untrusted log/customer content, so
-  // wrap it in its own data tag and instruct the judge to treat its contents
-  // as evidence-to-score, not as instructions.
-  const safeReport = clampControlChars(reportMd, 60_000);
+  // The report markdown can embed untrusted log/customer content.
+  // Escape `</` so embedded closing tags can't break out of the report_markdown
+  // pseudo-element and be interpreted as judge instructions (prompt injection).
+  const safeReport = clampControlChars(reportMd, 60_000).replace(/<\//g, '<\\/');
+
   const safeComplaint = escapeXmlData(complaint, 4_000);
 
   return [
@@ -337,6 +356,73 @@ export async function runVerifier(opts) {
     console.error('[investigator] verifier.error', {
       error: err && err.message ? err.message : String(err),
     });
+    return { ran: false, pass: null };
+  }
+}
+
+/**
+ * Run the judge rubric via an injected model (in-process, no CLI).
+ * Uses generateText + explicit JSON prompt + Zod parse (no generateObject —
+ * GoCode proxy triggers AI SDK spec-version compat mode which breaks extraction).
+ * Same soft-fail contract as runVerifier.
+ *
+ * @param {{
+ *   reportMd: string,
+ *   analysis: object,
+ *   complaint: string,
+ *   timeWindow?: string|null,
+ *   workDir: string,
+ *   appId?: string,
+ *   model?: any,
+ *   generateTextImpl?: Function,
+ * }} opts
+ * @returns {Promise<{ ran: boolean, pass: boolean|null, score?: number|null, criteria?: object, gaps?: string[], note?: string }>}
+ */
+export async function judge(opts) {
+  const {
+    reportMd,
+    analysis,
+    complaint,
+    timeWindow = null,
+    workDir,
+    appId,
+    model,
+    generateTextImpl = generateText,
+  } = opts || {};
+
+  try {
+    if (!reportMd || !analysis || !workDir) {
+      return { ran: false, pass: null };
+    }
+    if (!model) {
+      return { ran: false, pass: null };
+    }
+
+    const resolvedAppId = resolveAppId({ appId, analysis });
+    const basePrompt = buildVerifierPrompt({ reportMd, analysis, complaint, timeWindow, appId: resolvedAppId });
+    const prompt = `${basePrompt}\n\nOutput ONLY valid JSON matching this exact shape (no prose, no markdown fences):\n${JUDGE_JSON_SHAPE}`;
+
+    let parsed;
+    try {
+      const result = await generateTextImpl({ model, prompt });
+      const raw = extractJson(result.text || '');
+      parsed = JUDGE_SCHEMA.parse(raw);
+    } catch (err) {
+      console.error('[investigator] judge.parse.error', { error: err?.message });
+      return { ran: false, pass: null };
+    }
+
+    const note = buildNote(parsed.gaps);
+    return {
+      ran: true,
+      pass: parsed.pass,
+      score: parsed.score,
+      criteria: parsed.criteria,
+      gaps: parsed.gaps,
+      ...(note ? { note } : {}),
+    };
+  } catch (err) {
+    console.error('[investigator] judge.error', { error: err?.message });
     return { ran: false, pass: null };
   }
 }

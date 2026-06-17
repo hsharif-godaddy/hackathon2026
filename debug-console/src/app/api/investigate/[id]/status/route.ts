@@ -87,6 +87,7 @@ export const GET = withAuth<{ id: string }>(async (request, _auth, context) => {
     status: state.status,
     phase: state.phase,
     lastEvent: state.lastEvent,
+    reason: state.reason ?? null,
     startedAt: state.startedAt,
     heartbeatAt: state.heartbeatAt,
     completedAt: state.completedAt,

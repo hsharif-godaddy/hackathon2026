@@ -1,0 +1,13 @@
+# Minimal spike image: validate @ast-grep/napi linux-x64-gnu loads on the
+# same AL2023 base the production Lambda image uses. NO gd-auth-client needed.
+ARG LAMBDA_BASE_REPO=public.ecr.aws/lambda/nodejs
+ARG LAMBDA_BASE_TAG=22
+FROM ${LAMBDA_BASE_REPO}:${LAMBDA_BASE_TAG}
+
+WORKDIR /check
+# Only the packages needed to test the native binding
+COPY spikes/package-astgrep-check.json ./package.json
+RUN npm ci --no-audit --no-fund --ignore-scripts
+
+COPY spikes/astgrep.spike.mjs ./
+ENTRYPOINT ["node", "astgrep.spike.mjs"]
