@@ -1,4 +1,5 @@
 import { createTool, type Tool, type AgentContext } from '@airo/ai-lib';
+import { addSkillNameToSpan } from '@airo/ai-transport';
 import { z } from 'zod';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { appliedSkillsRegistry } from '../applied-skills-registry.js';
@@ -78,6 +79,13 @@ export const skillAITool: Tool = createTool(
         appPath: app?.path,
         appId
       });
+
+      if (conversationId) {
+        const stamped = addSkillNameToSpan(conversationId, input.skill);
+        if (!stamped) {
+          logger.warn('skill.load.agent_span.not_found', { skillName: input.skill, conversationId });
+        }
+      }
 
       if (conversationId) {
         const toolResult = skillToolManager.registerSkill(input.skill, conversationId);
@@ -207,6 +215,7 @@ export const skillAITool: Tool = createTool(
 
     // Install action - directly copy template files to app
     if (input.action === 'install') {
+      const conversationId = context?.metadata?.conversationId as string | undefined;
       // Get appId from context
       const appId = context?.metadata?.appId as string | undefined;
 
@@ -248,6 +257,13 @@ export const skillAITool: Tool = createTool(
         appPath: app.path,
         appId
       });
+
+      if (conversationId) {
+        const stamped = addSkillNameToSpan(conversationId, input.skill);
+        if (!stamped) {
+          logger.warn('skill.install.agent_span.not_found', { skillName: input.skill, conversationId });
+        }
+      }
 
       // Auto-restart dev server if npm dependencies were installed.
       // Vite needs a restart to resolve newly installed packages —

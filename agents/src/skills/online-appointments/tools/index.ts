@@ -3,7 +3,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import type { SkillToolDefinition, SkillHooks } from '@airo/ai-skills';
-import { trace } from '@opentelemetry/api';
 import { Logger } from '../../../logging/index.js';
 import { ensureViteResolveDedupe } from '../../../services/vite-dedupe.js';
 
@@ -15,16 +14,6 @@ type ToolContext = { metadata?: { appId?: string } };
 
 function getAppId(ctx?: ToolContext): string | undefined {
   return ctx?.metadata?.appId;
-}
-
-//stamps skill.name on the active OTel span so every Langfuse trace where OLA
-// was active becomes filterable by metadata.skill.name = "online-appointments".
-// Called from onLoad (fires every session)
-function stampSkillOnTrace(): void {
-  const span = trace.getActiveSpan();
-  if (!span) return;
-  span.setAttribute('skill.name', 'online-appointments');
-  span.setAttribute('skill.use_case', 'appointment_booking');
 }
 
 export const getBookingConfigTool: SkillToolDefinition = {
@@ -134,12 +123,6 @@ export const sectionTools: SkillToolDefinition[] =
 // Skills that install npm packages may pull in transitive deps that bundle
 // their own React copy, causing dual-instance crashes. Dedupe proactively.
 export const hooks: SkillHooks = {
-  // onLoad fires on every conversation where OLA is active (installed or not),
-  // stamping skill.name on the trace.
-  onLoad: async () => {
-    stampSkillOnTrace();
-  },
-
   // structured timing logs so install lifecycle is visible in Loki.
   // ensureViteResolveDedupe still runs and errors still propagate.
   onInstall: async ({ appPath }) => {

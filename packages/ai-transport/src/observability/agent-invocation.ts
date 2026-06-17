@@ -1,4 +1,4 @@
-import { context as otelContext, type Context } from '@opentelemetry/api'
+import { context as otelContext, trace, type Context } from '@opentelemetry/api'
 import {
   createAgentContext,
   createAgentInvocationSpan,
@@ -6,6 +6,7 @@ import {
 } from '@godaddy/agent-otel-sdk'
 import { createError, type ErrorPhase } from '@godaddy/agent-observability-events'
 import { inferProviderFromModelName } from './infer-llm-provider.js'
+import { registerInvocationSpan, unregisterInvocationSpan } from './agent-invocation-context.js'
 import {
   captureResponseMetadata,
   awaitResponseMetadata,
@@ -182,16 +183,22 @@ export function createAgentInvocation(opts: AgentInvocationOptions): AgentInvoca
     }),
   )
 
+  // Register the AGENT span in the Map so skill-loader can retrieve it by conversationId.
+  const agentSpan = trace.getSpan(invocation.context)
+  if (agentSpan && conversationId) {
+    registerInvocationSpan(conversationId, agentSpan)
+  }
+
   const metadata: ResponseMetadata = {}
   let ended = false
 
   /** Guarded span.end. Both transports call the end* methods from outer
    * catch blocks; a throw from the OTEL SDK there would replace the
-   * original error (or silently turn a happy path into a 500). Mirrors the
-   * same defensive pattern as emitTurnError: try the end, fall back to a
-   * structured warn, then console.error, with a final catch so the
-   * method itself never throws. */
+   * original error (or silently turn a happy path into a 500). */
   const safeEnd = (endArgs: Parameters<typeof invocation.end>[0]): void => {
+    if (conversationId && agentSpan) {
+      unregisterInvocationSpan(conversationId, agentSpan)
+    }
     try {
       invocation.end(endArgs)
     } catch (err) {

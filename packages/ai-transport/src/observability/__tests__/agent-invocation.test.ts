@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { context as otelContext } from '@opentelemetry/api'
+import { context as otelContext, trace, type Span } from '@opentelemetry/api'
+import { getInvocationSpanByConversation, registerInvocationSpan, unregisterInvocationSpan } from '../agent-invocation-context.js'
 
 const spanEndCalls: unknown[] = []
 
@@ -333,5 +334,124 @@ describe('createAgentInvocation', () => {
       expect(payload).not.toHaveProperty('conversationId')
       expect(payload).toMatchObject({ specialistKey: 'develop' })
     })
+  })
+})
+
+describe('createAgentInvocation — AGENT span registered in Map by conversationId', () => {
+  const logger = { warn: vi.fn() }
+  const TEST_CONV_ID = 'test-conv-span-registry'
+
+  beforeEach(() => {
+    const sentinel = { setAttribute: vi.fn() } as unknown as Span
+    registerInvocationSpan(TEST_CONV_ID, sentinel)
+    unregisterInvocationSpan(TEST_CONV_ID, sentinel)
+  })
+
+  it('registers the AGENT span so getInvocationSpanByConversation returns it', () => {
+    const mockSpan = { setAttribute: vi.fn(), spanContext: () => ({}) }
+    const contextWithSpan = trace.setSpan(otelContext.active(), mockSpan as any)
+
+    vi.mocked(createAgentInvocationSpan).mockImplementationOnce(function () {
+      return { context: contextWithSpan, end: vi.fn() } as any
+    })
+
+    createAgentInvocation({
+      agent: {},
+      agentName: 'develop',
+      prompt: 'test',
+      conversationId: TEST_CONV_ID,
+      logger,
+    })
+
+    expect(getInvocationSpanByConversation(TEST_CONV_ID)).toBe(mockSpan)
+  })
+
+  it('unregisters the span after endSuccess so the Map does not leak', () => {
+    const mockSpan = { setAttribute: vi.fn(), spanContext: () => ({}) }
+    const contextWithSpan = trace.setSpan(otelContext.active(), mockSpan as any)
+
+    vi.mocked(createAgentInvocationSpan).mockImplementationOnce(function () {
+      return { context: contextWithSpan, end: vi.fn() } as any
+    })
+
+    const inv = createAgentInvocation({
+      agent: {},
+      agentName: 'develop',
+      prompt: 'test',
+      conversationId: TEST_CONV_ID,
+      logger,
+    })
+
+    expect(getInvocationSpanByConversation(TEST_CONV_ID)).toBe(mockSpan)
+
+    inv.endSuccess({ outputText: 'ok', responseType: 'llm_reply' })
+
+    expect(getInvocationSpanByConversation(TEST_CONV_ID)).toBeUndefined()
+  })
+
+  it('unregisters the span after endAborted so the Map does not leak', () => {
+    const mockSpan = { setAttribute: vi.fn(), spanContext: () => ({}) }
+    const contextWithSpan = trace.setSpan(otelContext.active(), mockSpan as any)
+
+    vi.mocked(createAgentInvocationSpan).mockImplementationOnce(function () {
+      return { context: contextWithSpan, end: vi.fn() } as any
+    })
+
+    const inv = createAgentInvocation({
+      agent: {},
+      agentName: 'develop',
+      prompt: 'test',
+      conversationId: TEST_CONV_ID,
+      logger,
+    })
+
+    expect(getInvocationSpanByConversation(TEST_CONV_ID)).toBe(mockSpan)
+
+    inv.endAborted({ outputText: '', responseType: 'llm_reply' })
+
+    expect(getInvocationSpanByConversation(TEST_CONV_ID)).toBeUndefined()
+  })
+
+  it('unregisters the span after endError so the Map does not leak', () => {
+    const mockSpan = { setAttribute: vi.fn(), spanContext: () => ({}) }
+    const contextWithSpan = trace.setSpan(otelContext.active(), mockSpan as any)
+
+    vi.mocked(createAgentInvocationSpan).mockImplementationOnce(function () {
+      return { context: contextWithSpan, end: vi.fn() } as any
+    })
+
+    const inv = createAgentInvocation({
+      agent: {},
+      agentName: 'develop',
+      prompt: 'test',
+      conversationId: TEST_CONV_ID,
+      logger,
+    })
+
+    expect(getInvocationSpanByConversation(TEST_CONV_ID)).toBe(mockSpan)
+
+    inv.endError(new Error('something went wrong'))
+
+    expect(getInvocationSpanByConversation(TEST_CONV_ID)).toBeUndefined()
+  })
+
+  it('does not register when conversationId is absent', () => {
+    const mockSpan = { setAttribute: vi.fn(), spanContext: () => ({}) }
+    const contextWithSpan = trace.setSpan(otelContext.active(), mockSpan as any)
+
+    vi.mocked(createAgentInvocationSpan).mockImplementationOnce(function () {
+      return { context: contextWithSpan, end: vi.fn() } as any
+    })
+
+    createAgentInvocation({
+      agent: {},
+      agentName: 'develop',
+      prompt: 'test',
+      // no conversationId
+      logger,
+    })
+
+    // Without a conversationId there is no key to register under
+    expect(getInvocationSpanByConversation(TEST_CONV_ID)).toBeUndefined()
   })
 })

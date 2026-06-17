@@ -198,6 +198,7 @@ export type {
   TokenUsageApmTracker,
 } from './token-usage-observability.js'
 export { emitTurnError, createAgentInvocation } from './observability/agent-invocation.js'
+export { addSkillNameToSpan } from './observability/agent-invocation-context.js'
 export type {
   EmitTurnErrorOptions,
   TurnErrorLogger,
