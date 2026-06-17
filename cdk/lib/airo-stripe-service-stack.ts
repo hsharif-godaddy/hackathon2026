@@ -4,6 +4,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import { GDStack, GDStackProps } from '@gd-safeguard/godaddy-constructs';
 import config from './config';
 
@@ -34,6 +35,7 @@ export class AiroStripeServiceStack extends GDStack {
   public readonly platformKeyTestSecret: secretsmanager.Secret;
   public readonly platformKeyLiveSecret: secretsmanager.Secret;
   public readonly webhookSigningSecret: secretsmanager.Secret;
+  public readonly gatewayWebAcl: wafv2.CfnWebACL;
 
   constructor(scope: Construct, id: string, props: GDStackProps) {
     super(scope, id, props);
@@ -217,6 +219,45 @@ export class AiroStripeServiceStack extends GDStack {
       }
     }
 
+    // WAFv2 WebACL restricting ALB ingress to the Edge Gateway egress IPs.
+    // Default action is Block — only requests from the named CIDRs are allowed
+    // through. Katana's WAF ARN field references this WebACL so the ALB rejects
+    // anything that bypasses the frontdoor gateway directly.
+    // CIDRs: env-specific NAT IPs (PCP 6702, us-west-2) + TGW ranges required
+    // for services with public origins (see config.stripeGatewayEgressCidrs).
+    const gatewayIpSet = new wafv2.CfnIPSet(this, 'StripeGatewayEgressIpSet', {
+      name: `${config.envName}-airo-stripe-gateway-egress`,
+      scope: 'REGIONAL',
+      ipAddressVersion: 'IPV4',
+      addresses: config.stripeGatewayEgressCidrs,
+    });
+
+    this.gatewayWebAcl = new wafv2.CfnWebACL(this, 'StripeGatewayWebAcl', {
+      name: `${config.envName}-airo-stripe-gateway-allowlist`,
+      scope: 'REGIONAL',
+      defaultAction: { block: {} },
+      rules: [
+        {
+          name: 'AllowGatewayEgressIPs',
+          priority: 0,
+          action: { allow: {} },
+          statement: {
+            ipSetReferenceStatement: { arn: gatewayIpSet.attrArn },
+          },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: `${config.envName}-airo-stripe-allow-gateway`,
+          },
+        },
+      ],
+      visibilityConfig: {
+        sampledRequestsEnabled: true,
+        cloudWatchMetricsEnabled: true,
+        metricName: `${config.envName}-airo-stripe-gateway-allowlist`,
+      },
+    });
+
     new cdk.CfnOutput(this, 'SandboxesTableArn', {
       value: this.sandboxesTable.tableArn,
       exportName: `${config.envName}-airo-stripe-sandboxes-table-arn`,
@@ -252,6 +293,11 @@ export class AiroStripeServiceStack extends GDStack {
     new cdk.CfnOutput(this, 'WebhookSigningSecretArn', {
       value: this.webhookSigningSecret.secretArn,
       exportName: `${config.envName}-airo-stripe-webhook-signing-secret-arn`,
+    });
+
+    new cdk.CfnOutput(this, 'GatewayWebAclArn', {
+      value: this.gatewayWebAcl.attrArn,
+      exportName: `${config.envName}-airo-stripe-gateway-webacl-arn`,
     });
 
     cdk.Tags.of(this).add('Service', 'airo-app-builder');

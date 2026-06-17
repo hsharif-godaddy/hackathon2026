@@ -85,9 +85,9 @@ export class StripeServiceError extends Error {
 // ============================================================================
 
 const stripeServiceUrls = {
-  dev: 'https://stripe.airo-builder.dev-godaddy.com',
-  test: 'https://stripe.airo-builder.test-godaddy.com',
-  prod: 'https://stripe.airo-builder.godaddy.com',
+  dev: 'https://airo-builder-stripe.frontdoor.dev-godaddy.com',
+  test: 'https://airo-builder-stripe.frontdoor.test-godaddy.com',
+  prod: 'https://airo-builder-stripe.frontdoor.godaddy.com',
 } as const;
 
 function getStripeServiceBaseUrl(): string {

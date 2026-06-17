@@ -59,6 +59,14 @@ interface Config {
    */
   stripeServiceTaskRoleArns: string[];
   /**
+   * Gateway egress CIDRs that the stripe-service WAFv2 WebACL allows. All
+   * other ingress is blocked at the ALB level. Sourced from the Gateway IPs
+   * Confluence page (PCP 6702, us-west-2 NAT IPs for this env) plus the
+   * shared TGW CIDR ranges required for services with public origins.
+   * https://godaddy-corp.atlassian.net/wiki/spaces/EDGE/pages/3682328004
+   */
+  stripeGatewayEgressCidrs: string[];
+  /**
    * ARNs of the debug-console Katana ECS task role(s) allowed to invoke the
    * investigator Lambda and read/write the investigations state bucket.
    * Scoped narrowly (only the console role) — the broader
@@ -229,6 +237,13 @@ const devConfig: Config = {
   stripeServiceTaskRoleArns: [
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment1017GlobalEcsTaskRole6285482A', // stripe-service dev-private
   ],
+  // dev-private NAT (PCP 6702, us-west-2) + TGW ranges (required for public-origin services)
+  stripeGatewayEgressCidrs: [
+    '54.68.138.152/32', // dev-private NAT us-west-2
+    '160.153.192.0/20', // TGW ARIN
+    '118.139.184.0/22', // TGW APNIC
+    '146.255.32.0/22',  // TGW RIPE
+  ],
   investigatorInvokerRoleArns: [
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment7794GlobalEcsTaskRole03DD121F', // console-service dev-private
   ],
@@ -336,6 +351,13 @@ const testConfig: Config = {
   stripeServiceTaskRoleArns: [
     'arn:aws:iam::269423819739:role/airobuilde-custom-KatanaEnvironment1080GlobalEcsTaskRole41B00ECB', // stripe-service test
   ],
+  // test NAT (PCP 6702, us-west-2) + TGW ranges (required for public-origin services)
+  stripeGatewayEgressCidrs: [
+    '54.189.94.106/32', // test NAT us-west-2
+    '160.153.192.0/20', // TGW ARIN
+    '118.139.184.0/22', // TGW APNIC
+    '146.255.32.0/22',  // TGW RIPE
+  ],
   // AiroInvestigatorStack isn't deployed in test (see main.ts), so these are
   // safe empty lists; kept here to satisfy the type contract.
   investigatorInvokerRoleArns: [],
@@ -432,6 +454,15 @@ const prodConfig: Config = {
   ],
   stripeServiceTaskRoleArns: [
     'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment1081GlobalEcsTaskRole31913DA4', // stripe-service prod
+  ],
+  // prod NAT (PCP 6702, us-west-2) + TGW ranges (required for public-origin services)
+  stripeGatewayEgressCidrs: [
+    '52.10.30.90/32',   // prod NAT us-west-2
+    '44.239.96.28/32',  // prod NAT us-west-2
+    '35.85.83.18/32',   // prod NAT us-west-2
+    '160.153.192.0/20', // TGW ARIN
+    '118.139.184.0/22', // TGW APNIC
+    '146.255.32.0/22',  // TGW RIPE
   ],
   investigatorInvokerRoleArns: [
     'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment7797GlobalEcsTaskRole2CAC93CD', // console-service prod
