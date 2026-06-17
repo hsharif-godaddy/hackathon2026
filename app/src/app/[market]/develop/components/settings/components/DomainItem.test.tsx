@@ -15,6 +15,7 @@ import { CdnStatus } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { renderWithProviders } from '@/tests/test-utils';
+import { logImpressionEvent } from '@/utils/instrumentation';
 
 const SUPPORT_URL = 'https://support.test/contact';
 const { mockUseDomainJobPolling } = vi.hoisted(() => ({
@@ -41,6 +42,8 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id: string) => `${id}.click`),
+  logClickEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(() => vi.fn()),
 }));
 
 vi.mock('@/lib/request-context', () => ({
@@ -212,6 +215,106 @@ describe('DomainItem', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/builder_domain_error_please_retry/)).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('CSP instrumentation', () => {
+    const failedAppDomain: AppDomain = {
+      fqdn: 'example.com',
+      isPrimary: true,
+      status: DomainStatus.FAILED,
+    };
+
+    it('fires item_error_shown with errorCode + action and item_status_failed for a FAILED domain', async () => {
+      mockFetchDomainError(buildErrorResponse('CONTACT_SUPPORT'));
+
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={failedAppDomain} />
+      );
+
+      await waitFor(() => {
+        expect(logImpressionEvent).toHaveBeenCalledWith('settings.domains.item_error_shown', {
+          errorCode: 'SOME_ERROR',
+          action: 'CONTACT_SUPPORT',
+        });
+      });
+      expect(logImpressionEvent).toHaveBeenCalledWith('settings.domains.item_status_failed');
+    });
+
+    it('fires item_status_active for an ACTIVE domain', async () => {
+      const activeAppDomain: AppDomain = {
+        fqdn: 'example.com',
+        isPrimary: true,
+        status: DomainStatus.ACTIVE,
+      };
+
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={activeAppDomain} />
+      );
+
+      await waitFor(() => {
+        expect(logImpressionEvent).toHaveBeenCalledWith('settings.domains.item_status_active');
+      });
+    });
+
+    it('fires item_status_active exactly once across re-renders with unchanged status', async () => {
+      const activeAppDomain: AppDomain = {
+        fqdn: 'example.com',
+        isPrimary: true,
+        status: DomainStatus.ACTIVE,
+      };
+
+      const { rerender } = renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={activeAppDomain} />
+      );
+
+      await waitFor(() => {
+        expect(logImpressionEvent).toHaveBeenCalledWith('settings.domains.item_status_active');
+      });
+
+      // Re-render with identical inputs — the ref guard must prevent a duplicate fire
+      rerender(<DomainItem {...defaultProps} appDomain={activeAppDomain} />);
+
+      await waitFor(() => {
+        const statusCalls = vi.mocked(logImpressionEvent).mock.calls.filter(
+          ([eid]) => eid === 'settings.domains.item_status_active',
+        );
+        expect(statusCalls).toHaveLength(1);
+      });
+    });
+
+    it('re-fires item_status when the domain key changes', async () => {
+      const { rerender } = renderWithProviders(
+        <DomainItem
+          domain={{ domain: 'first.com' }}
+          siteId="site-123"
+          onConnect={vi.fn()}
+          onDisconnect={vi.fn()}
+          appDomain={{ fqdn: 'first.com', isPrimary: true, status: DomainStatus.ACTIVE }}
+        />
+      );
+
+      await waitFor(() => {
+        expect(logImpressionEvent).toHaveBeenCalledWith('settings.domains.item_status_active');
+      });
+
+      // Switch to a different domain — new key re-arms the guard and fires again
+      rerender(
+        <DomainItem
+          domain={{ domain: 'second.com' }}
+          siteId="site-123"
+          onConnect={vi.fn()}
+          onDisconnect={vi.fn()}
+          appDomain={{ fqdn: 'second.com', isPrimary: true, status: DomainStatus.ACTIVE }}
+        />
+      );
+
+      await waitFor(() => {
+        const statusCalls = vi.mocked(logImpressionEvent).mock.calls.filter(
+          ([eid]) => eid === 'settings.domains.item_status_active',
+        );
+        expect(statusCalls).toHaveLength(2);
       });
     });
   });

@@ -50,6 +50,7 @@ import {
   validateDomain,
 } from '@/utils/domain';
 import { getDomainErrorMessage, translateDomainApiError } from '@/utils/domain-validation';
+import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
 
 const DOMAINS_PER_PAGE = 5;
@@ -99,6 +100,8 @@ export default function DomainAttachWidget({
   const [debouncedDomain, setDebouncedDomain] = useState('');
   const [showCustomDomainConfirmation, setShowCustomDomainConfirmation] = useState(false);
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const widgetViewedAppIdRef = useRef<string | null>(null);
+  const dnsShownDomainRef = useRef<string | null>(null);
 
   // Domain purchase widget state
   const [showPurchaseWidget, setShowPurchaseWidget] = useState(false);
@@ -243,6 +246,23 @@ export default function DomainAttachWidget({
       }
     };
   }, []);
+
+  // CSP impression: widget rendered (after the feature-flag gate passes).
+  // Fires once per appId.
+  useEffect(() => {
+    if (!isDomainAttachEnabled || !appId) return;
+    if (widgetViewedAppIdRef.current === appId) return;
+    widgetViewedAppIdRef.current = appId;
+    logImpressionEvent('develop.domains.widget_viewed')();
+  }, [isDomainAttachEnabled, appId]);
+
+  // CSP impression: DNS-instructions panel shown for a pending external domain.
+  useEffect(() => {
+    if (!showDomainDNS || !pendingDomain) return;
+    if (dnsShownDomainRef.current === pendingDomain) return;
+    dnsShownDomainRef.current = pendingDomain;
+    logImpressionEvent('develop.domains.widget_dns_instructions')();
+  }, [showDomainDNS, pendingDomain]);
 
   /**
    * Check if brandName is a domain format (contains TLD)
@@ -401,6 +421,7 @@ export default function DomainAttachWidget({
         domainName,
         isGoDaddyDomain
       });
+      logImpressionEvent('develop.domains.widget_connect_success', { isGoDaddyDomain })();
 
       if (sendUserMessage) {
         if (isGoDaddyDomain) {
@@ -437,6 +458,7 @@ export default function DomainAttachWidget({
         isGoDaddyDomain,
         error: error instanceof Error ? error.message : String(error)
       });
+      logImpressionEvent('develop.domains.widget_connect_failed', { isGoDaddyDomain })();
 
       if (sendUserMessage) {
         sendUserMessage(`Failed to connect ${domainName}. Please try again.`, { isActionRequest: true });
@@ -560,6 +582,7 @@ export default function DomainAttachWidget({
       domain: sanitizeDomainInput(customDomain),
       brandName,
     });
+    logClickEvent('develop.domains.widget_custom_submitted')();
 
     await handleConnectDomain(sanitizeDomainInput(customDomain));
     setCustomDomain(null);
@@ -589,6 +612,7 @@ export default function DomainAttachWidget({
       brandName,
       domain,
     });
+    logImpressionEvent('develop.domains.widget_purchase_completed')();
   }
 
   function handleOpenPurchase() {
@@ -598,6 +622,7 @@ export default function DomainAttachWidget({
       appId,
       brandName,
     });
+    logClickEvent('develop.domains.widget_purchase_opened')();
   }
 
   async function handleConfirmOwnedDomainAttach() {
@@ -610,6 +635,7 @@ export default function DomainAttachWidget({
       domain: matchedOwnedDomain,
       brandName,
     });
+    logClickEvent('develop.domains.widget_owned_confirm')();
 
     await handleConnectDomain(matchedOwnedDomain);
   }

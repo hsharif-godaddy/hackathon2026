@@ -10,6 +10,7 @@ import type { AppDomain } from '@/hooks/useAppDetails';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DomainStatus } from '@/lib/mgmt-airo/types';
 import { renderWithProviders } from '@/tests/test-utils';
+import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import DomainAttach from './DomainAttach';
 
 vi.mock('@ux/modal', () => ({
@@ -193,6 +194,8 @@ vi.mock('@/utils/domain-validation', () => ({
 
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn((id: string) => `${id}.click`),
+  logClickEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(() => vi.fn()),
 }));
 
 // DomainItem child dependency
@@ -1389,6 +1392,101 @@ describe('DomainAttach', function domainAttachTests() {
 
     await waitFor(function waitForBanner() {
       expect(document.body.textContent).toContain('Connect failed');
+    });
+  });
+
+  describe('CSP instrumentation', function cspInstrumentationTests() {
+    it('fires panel_viewed once on mount', async function panelViewedOnMount() {
+      renderWithProviders(
+        <DomainAttach
+          appDetails={{
+            id: 'test-app-123',
+            name: 'Test App',
+            status: 'running',
+            domains: [],
+          } as any}
+          isAppDetailsFetched={true}
+        />
+      );
+
+      await waitFor(function waitForDomainList() {
+        expect(screen.getByTestId('domain-attach-list')).toBeInTheDocument();
+      });
+
+      const panelCalls = vi.mocked(logImpressionEvent).mock.calls.filter(
+        ([eid]) => eid === 'settings.domains.panel_viewed',
+      );
+      expect(panelCalls).toHaveLength(1);
+    });
+
+    it('fires tab click event with tab and prevTab when tab changes', async function tabClickPayload() {
+      const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+      vi.mocked(useDomainsQuery).mockReturnValue({
+        data: [{ domain: 'available.com', name: 'available.com' }],
+        isLoading: false,
+        error: null,
+        isFetched: true,
+      } as any);
+
+      renderWithProviders(
+        <DomainAttach
+          appDetails={{
+            id: 'test-app-123',
+            name: 'Test App',
+            status: 'running',
+            domains: [],
+          } as any}
+          isAppDetailsFetched={true}
+        />
+      );
+
+      await waitFor(function waitForDomainList() {
+        expect(screen.getByTestId('domain-attach-list')).toBeInTheDocument();
+      });
+
+      selectDomainAttachTab('external');
+
+      expect(logClickEvent).toHaveBeenCalledWith('settings.domains.tab', {
+        tab: 'external',
+        prevTab: expect.any(String),
+      });
+    });
+
+    it('fires external_connect_button click event when connect button is clicked', async function externalConnectButtonFires() {
+      const { useDomainValidationQuery } = await import('@/hooks/useDomainValidationQuery');
+      vi.mocked(useDomainValidationQuery).mockReturnValue({
+        data: { available: true, errors: [] },
+        isLoading: false,
+        isError: false,
+      } as any);
+
+      renderWithProviders(
+        <DomainAttach
+          appDetails={{
+            id: 'test-app-123',
+            name: 'Test App',
+            status: 'running',
+            domains: [],
+          } as any}
+          isAppDetailsFetched={true}
+        />
+      );
+
+      selectDomainAttachTab('external');
+
+      const input = document.getElementById('custom-domain-slug');
+      expect(input).toBeTruthy();
+      fireEvent.change(input!, { target: { value: 'mybusiness.com' } });
+
+      await waitFor(function waitForConnectButton() {
+        expect(
+          screen.getByRole('button', { name: 'builder_domain_attach_external_button' })
+        ).not.toBeDisabled();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'builder_domain_attach_external_button' }));
+
+      expect(logClickEvent).toHaveBeenCalledWith('settings.domains.external_connect_button');
     });
   });
 });

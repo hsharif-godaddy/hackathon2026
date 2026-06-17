@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from '@tanstack/react-query';
 import Box from "@ux/box";
 import Button from "@ux/button";
@@ -26,7 +26,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/lib/shadcn/popover"
 import { defaultMessageForDomainJobLabelKey } from '@/lib/translations/domain-job-label-defaults';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { translateDomainApiError } from '@/utils/domain-validation';
-import { generateClickEID } from '@/utils/instrumentation';
+import { generateClickEID, logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import { DkimStatusBadge } from './DkimStatusBadge';
 import DomainConnectConfirmation from './DomainConnectConfirmation';
 
@@ -108,6 +108,9 @@ export default function DomainItem({
   const [open, setOpen] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [domainError, setDomainError] = useState<AiroDomainErrorResponse | null>(null);
+  const errorShownRef = useRef<string | null>(null); // keyed on domainName + errorCode
+  const mutationErrorShownRef = useRef<string | null>(null); // keyed on domainName
+  const statusShownRef = useRef<string | null>(null); // keyed on domainName + status
   const domainName = domain.domain || domain.name || '';
   /** True when app details include this domain (any status: PENDING, ACTIVE, …). Not the same as “ACTIVE only”. */
   const isConnected = !!appDomain;
@@ -250,10 +253,12 @@ export default function DomainItem({
   }, [appDomain?.status, appDomain?.cdnStatus, siteId, domainName]);
 
   const handleConnectClick = () => {
+    logClickEvent('settings.domains.item_connect_click')();
     setShowConfirmation(true);
   };
 
   const handleConfirmConnect = () => {
+    logClickEvent('settings.domains.item_connect_confirm')();
     setOpen(false);
     setShowConfirmation(false);
     onConnect(domainName);
@@ -279,6 +284,45 @@ export default function DomainItem({
   const domainErrorMessage = domainError?.error?.code
     ? translateDomainApiError(domainError.error.code, t, domainError.error.message)
     : domainError?.error?.message;
+
+  // CSP impression: domain-error panel shown (FAILED/ERROR/CDN error → /domain-errors).
+  // Keyed per domain + error code so a re-render with the same error doesn't re-fire.
+  useEffect(() => {
+    if (!domainErrorMessage) return;
+    const errorCode = domainError?.error?.code ?? 'unknown';
+    const key = `${domainName}:${errorCode}`;
+    if (errorShownRef.current === key) return;
+    errorShownRef.current = key;
+    logImpressionEvent('settings.domains.item_error_shown', {
+      errorCode,
+      action: domainError?.error?.action ?? '',
+    })();
+  }, [domainErrorMessage, domainName, domainError?.error?.code, domainError?.error?.action]);
+
+  // CSP impression: per-domain mutation error shown inline after a failed connect.
+  useEffect(() => {
+    if (!domainSpecificErrorMsg) return;
+    if (mutationErrorShownRef.current === domainName) return;
+    mutationErrorShownRef.current = domainName;
+    logImpressionEvent('settings.domains.item_mutation_error')();
+  }, [domainSpecificErrorMsg, domainName]);
+
+  // CSP impression: status tag reaches Active or Failed/Error. Keyed per
+  // domain + status so each transition fires once.
+  useEffect(() => {
+    const status = appDomain?.status;
+    if (status !== DomainStatus.ACTIVE && status !== DomainStatus.FAILED && status !== DomainStatus.ERROR) {
+      return;
+    }
+    const key = `${domainName}:${status}`;
+    if (statusShownRef.current === key) return;
+    statusShownRef.current = key;
+    if (status === DomainStatus.ACTIVE) {
+      logImpressionEvent('settings.domains.item_status_active')();
+    } else {
+      logImpressionEvent('settings.domains.item_status_failed')();
+    }
+  }, [appDomain?.status, domainName]);
 
   return (
     <Card space={{ inline: 'md', block: 'md' }}>

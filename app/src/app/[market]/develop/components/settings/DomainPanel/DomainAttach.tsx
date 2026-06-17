@@ -59,7 +59,7 @@ import { getDomainErrorMessage, translateDomainApiError } from '@/utils/domain-v
 import { domainsToDeleteForSwitch as buildDomainsToDeleteForSwitch } from '@/utils/domainAttachSwitch';
 import { countDomainListRows, isDomainJobStillInProgress } from '@/utils/domainAttachUi';
 import { getRootDomain } from '@/utils/getRootDomain';
-import { generateClickEID } from '@/utils/instrumentation';
+import { generateClickEID, logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
 
 // The domain list is a compact fixed-height scroll area (~5-6 rows visible);
@@ -156,6 +156,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const domainStatusRef = useRef<Map<string, string>>(new Map());
   const trackedAppIdRef = useRef<string | null>(null);
+  const panelViewedAppIdRef = useRef<string | null>(null);
+  const dnsShownDomainRef = useRef<string | null>(null);
 
   const site = useSiteStore((state) => {
     if (!currentAppId) return null;
@@ -304,6 +306,23 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     !!pendingDomainDetails &&
     !hideDomainDnsUntilOwnershipResolved &&
     treatAsExternal;
+
+  // CSP impression: settings domain panel viewed. Fires once per appId when the
+  // panel mounts or the user switches app.
+  useEffect(() => {
+    if (!currentAppId || panelViewedAppIdRef.current === currentAppId) return;
+    panelViewedAppIdRef.current = currentAppId;
+    logImpressionEvent('settings.domains.panel_viewed')();
+  }, [currentAppId]);
+
+  // CSP impression: DNS-instructions panel shown for a pending external domain.
+  // Keyed per pending domain so it fires once per domain.
+  useEffect(() => {
+    if (!showDomainDNS || !pendingDomain) return;
+    if (dnsShownDomainRef.current === pendingDomain) return;
+    dnsShownDomainRef.current = pendingDomain;
+    logImpressionEvent('settings.domains.dns_instructions')();
+  }, [showDomainDNS, pendingDomain]);
 
   const domainJobInProgress = useDevelopPageStore(
     (s) => (currentAppId ? s.domainJobsInProgress?.[currentAppId] : undefined),
@@ -535,6 +554,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         appId: currentAppId,
         domainName
       });
+      logImpressionEvent('settings.domains.connect_success')();
       return true;
     } catch (error) {
       if (
@@ -565,6 +585,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         domainName,
         error: error instanceof Error ? error.message : String(error)
       });
+      logImpressionEvent('settings.domains.connect_failed')();
       setConflictData(null);
       return false;
     }
@@ -695,6 +716,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   }
 
   async function handleConfirmAdd() {
+    logClickEvent('settings.domains.external_confirm')();
     setShowAddConfirmation(false);
     await handleAddCustomDomain();
   }
@@ -812,6 +834,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   );
 
   function handleTabChange(tabId: string) {
+    logClickEvent('settings.domains.tab', { tab: tabId, prevTab: activeTab })();
     if (tabId === DOMAIN_ATTACH_TAB.EXTERNAL && selectedDomain) {
       setSelectedDomain(null);
     }
@@ -822,6 +845,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     if (!selectedDomain || isConnectSelectedDisabled) {
       return;
     }
+    logClickEvent('settings.domains.connect_button')();
     setShowConnectSelectedConfirmation(true);
   }
 
@@ -829,6 +853,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     if (!selectedDomain) {
       return;
     }
+    logClickEvent('settings.domains.connect_confirm')();
     const success = await handleConnectDomain(selectedDomain);
     if (success) {
       setShowConnectSelectedConfirmation(false);
@@ -1234,7 +1259,10 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                     <Button
                       text={externalDomainButtonText}
                       design="primary"
-                      onClick={() => setShowAddConfirmation(true)}
+                      onClick={() => {
+                        logClickEvent('settings.domains.external_connect_button')();
+                        setShowAddConfirmation(true);
+                      }}
                       disabled={isExternalDomainButtonDisabled}
                       data-eid={generateClickEID(`settings.domains.add_domain`)}
                       className="!hover:bg-transparent"
@@ -1429,7 +1457,10 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                         : t('builder_custom_domain_button_add')
                       }
                       design="primary"
-                      onClick={() => setShowAddConfirmation(true)}
+                      onClick={() => {
+                        logClickEvent('settings.domains.external_connect_button')();
+                        setShowAddConfirmation(true);
+                      }}
                       disabled={isExternalDomainButtonDisabled}
                       data-eid={generateClickEID(`settings.domains.add_domain`)}
                       className="!hover:bg-transparent"

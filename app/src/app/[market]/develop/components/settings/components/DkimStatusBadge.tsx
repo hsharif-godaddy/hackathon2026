@@ -1,10 +1,12 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import Tag from '@ux/tag';
 
 import { useDkimStatusQuery } from '@/hooks/useDkimStatusQuery';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
+import { logImpressionEvent } from '@/utils/instrumentation';
 
 interface DkimStatusBadgeProps {
   appId: string;
@@ -37,6 +39,21 @@ export function DkimStatusBadge({ appId, domain }: DkimStatusBadgeProps) {
     dkimUiEnabled ? appId : null,
     dkimUiEnabled ? domain : null,
   );
+
+  // Fire a CSP impression once per (domain, dkim-state) so FullStory/Signals
+  // sees the badge state. Placed before the early returns to satisfy the
+  // rules-of-hooks; guarded internally on flag + loading.
+  const trackedStateRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!dkimUiEnabled || isLoading) return;
+    const state = (isError || !data) ? 'unavailable' : data.dkimValid ? 'active' : 'pending';
+    const key = `${domain}:${state}`;
+    if (trackedStateRef.current === key) return;
+    trackedStateRef.current = key;
+    if (state === 'active') logImpressionEvent('settings.domains.dkim_active')();
+    else if (state === 'pending') logImpressionEvent('settings.domains.dkim_pending')();
+    else logImpressionEvent('settings.domains.dkim_unavailable')();
+  }, [dkimUiEnabled, isLoading, isError, data, domain]);
 
   if (!dkimUiEnabled) {
     return null;

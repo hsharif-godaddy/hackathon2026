@@ -9,6 +9,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import type { AppDomain } from '@/hooks/useAppDetails';
 import { DomainStatus } from '@/lib/mgmt-airo/types';
 import { renderWithProviders } from '@/tests/test-utils';
+import { logImpressionEvent } from '@/utils/instrumentation';
 import DomainAttachWidget from './DomainAttachWidget';
 
 vi.mock('@ux/modal', () => ({
@@ -134,6 +135,8 @@ vi.mock('@/utils/domain-validation', () => ({
 
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn(function (id: string) { return `${id}.click`; }),
+  logClickEvent: vi.fn(function () { return vi.fn(); }),
+  logImpressionEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
 // DomainItem child dependency
@@ -667,5 +670,57 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
       );
     });
     expect(screen.queryByText('Move Domain')).not.toBeInTheDocument();
+  });
+
+  describe('CSP instrumentation', function cspInstrumentationTests() {
+    it('fires widget_viewed once on mount when domain attach is enabled', async function widgetViewedOnMount() {
+      const { useAppDetails } = await import('@/hooks/useAppDetails');
+      vi.mocked(useAppDetails).mockReturnValue({
+        data: {
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [],
+        },
+        isFetched: true,
+      } as any);
+
+      renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+      await waitFor(function waitForWidgetViewed() {
+        const widgetCalls = vi.mocked(logImpressionEvent).mock.calls.filter(
+          ([eid]) => eid === 'develop.domains.widget_viewed',
+        );
+        expect(widgetCalls).toHaveLength(1);
+      });
+    });
+
+    it('fires widget_dns_instructions when the DNS instructions panel appears', async function widgetDnsInstructions() {
+      const { useCustomerDomainAttach } = await import('@/hooks/useCustomerDomainAttach');
+      const { useAppDetails } = await import('@/hooks/useAppDetails');
+
+      vi.mocked(useCustomerDomainAttach).mockReturnValue({
+        pendingCustomerDomain,
+        isPolling: true,
+        hasExternalNameservers: true,
+        requiresManualDnsSetup: true,
+      });
+
+      vi.mocked(useAppDetails).mockReturnValue({
+        data: {
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [pendingCustomerDomain],
+        },
+        isFetched: true,
+      } as any);
+
+      renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+      await waitFor(function waitForDnsImpression() {
+        expect(logImpressionEvent).toHaveBeenCalledWith('develop.domains.widget_dns_instructions');
+      });
+    });
   });
 });
