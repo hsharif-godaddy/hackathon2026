@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { getTodoListStore } from '../../planning/adapters/index.js'
 import { Logger } from '../../logging/index.js'
+import { getPageSeoGaps } from '../../services/SeoPageRegistry.js'
 
 const logger = Logger.create({ component: 'suggested-response-tool' })
 
@@ -95,10 +96,25 @@ Example use cases:
       }
     }
 
+    let seoMessage = ''
+    if (appId) {
+      const seoGaps = getPageSeoGaps(appId)
+      if (seoGaps.length > 0) {
+        const summary = seoGaps
+          .map(({ filePath, missing }) => `${filePath}: missing ${missing.join(', ')}`)
+          .join('; ')
+        seoMessage = `\n\nWarning: SEO incomplete on ${seoGaps.length} page(s) — fix before responding: ${summary}`
+        logger.warn('seo.suggested-response.blocked', { appId, gapCount: seoGaps.length, summary })
+      }
+    }
+
     // Build message in one place
     let message = `Suggested response rendered with ${suggestions.length} option${suggestions.length === 1 ? '' : 's'}`
     if (completionMessage) {
       message += completionMessage
+    }
+    if (seoMessage) {
+      message += seoMessage
     }
 
     return {

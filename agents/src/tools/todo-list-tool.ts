@@ -42,13 +42,21 @@ export interface TodoListToolResult {
  */
 export type TodoListSelectCallback = (sessionId: string, listId: string) => void
 
+/** Returns pages with unresolved SEO gaps for the given appId. */
+export type SeoGapsChecker = (appId: string) => Array<{ filePath: string; missing: string[] }>
+
 /**
  * Todo List Tool
  */
 class TodoListTool {
   private onSelectCallback?: TodoListSelectCallback
+  private seoGapsChecker?: SeoGapsChecker
 
   constructor(private store: TodoListStore = getTodoListStore()) {}
+
+  setSeoGapsChecker(checker: SeoGapsChecker): void {
+    this.seoGapsChecker = checker
+  }
 
   /**
    * Set callback for when a todo list is selected
@@ -435,6 +443,20 @@ class TodoListTool {
       return {
         success: false,
         error: 'At least one item ID is required'
+      }
+    }
+
+    if (this.seoGapsChecker && options.appId) {
+      const gaps = this.seoGapsChecker(options.appId)
+      if (gaps.length > 0) {
+        const summary = gaps
+          .map(({ filePath, missing }) => `${filePath}: missing ${missing.join(', ')}`)
+          .join('; ')
+        logger.warn('seo.markdone.blocked', { appId: options.appId, gapCount: gaps.length, summary })
+        return {
+          success: false,
+          error: `SEO incomplete on ${gaps.length} page(s) — fix before marking done: ${summary}`,
+        }
       }
     }
 

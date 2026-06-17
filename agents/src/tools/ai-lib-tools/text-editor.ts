@@ -175,7 +175,7 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
         throw new Error('str_replace requires old_str and new_str');
       }
       return await runPostEditHandlers(
-        { fullPath, filePath: path, appPath: app.path, command },
+        { fullPath, filePath: path, appPath: app.path, appId, command },
         await handleStrReplace(files, path, old_str, new_str),
       );
 
@@ -187,7 +187,7 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
         throw new Error('create requires file_text');
       }
       return await runPostEditHandlers(
-        { fullPath, filePath: path, appPath: app.path, command },
+        { fullPath, filePath: path, appPath: app.path, appId, command },
         await handleCreate(files, path, resolvedFileText),
       );
 
@@ -196,7 +196,7 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
         throw new Error('insert requires insert_line and insert_text');
       }
       return await runPostEditHandlers(
-        { fullPath, filePath: path, appPath: app.path, command },
+        { fullPath, filePath: path, appPath: app.path, appId, command },
         await handleInsert(files, path, insert_line, insert_text),
       );
 

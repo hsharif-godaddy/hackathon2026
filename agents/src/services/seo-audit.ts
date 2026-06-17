@@ -4,6 +4,7 @@ import { join, relative } from 'node:path';
 import type { ExecutionContext, ExecutionContextMetadata } from '@airo/ai-grants';
 
 import { labelForSeoCheck } from './seo-audit-labels.js';
+import { SEO_SOURCE_CHECKS } from './SeoPageInjector.js';
 import {
   extractRoutePageSignals,
   recommendAeoSchemaTypes,
@@ -417,6 +418,13 @@ function auditSourceFile(filePath: string, appPath: string, registeredRoutes: Se
 
   if (!hasHelmet) {
     codes.push('missing-helmet');
+  }
+
+  // Use shared source checks so source-scan and edit-time gate stay in sync.
+  for (const check of SEO_SOURCE_CHECKS) {
+    if (check.blocking && !check.test(content)) {
+      codes.push(`missing-${check.name}`);
+    }
   }
 
   if (registeredRoutes.size > 0 && !registeredRoutes.has(routePath)) {

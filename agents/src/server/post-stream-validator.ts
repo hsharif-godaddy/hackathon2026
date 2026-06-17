@@ -28,6 +28,8 @@
 
 import type { ILogger } from '../logging/types.js';
 import type { RestartResult } from '../services/DevSupervisorClient.js';
+import { getPageSeoGaps } from '../services/SeoPageRegistry.js';
+import { isPageFile } from '../services/SeoPageInjector.js';
 import {
   TypecheckService,
   type TypecheckResult
@@ -856,9 +858,31 @@ export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps
       runRuntimeErrorPhase(args, runtimeErrors, { appId, conversationId })
     ]);
 
+    // SEO check: if this turn wrote any page files and gaps remain, force a continuation.
+    let seoOutcome: PhaseOutcome = { kind: 'clean' };
+    const wrotePageFile = args.toolCalls.some(
+      (tc) => tc.toolName === 'str_replace_based_edit_tool' &&
+        typeof (tc.args as Record<string, unknown>)?.path === 'string' &&
+        isPageFile((tc.args as Record<string, unknown>).path as string)
+    );
+    if (wrotePageFile) {
+      const gaps = getPageSeoGaps(appId);
+      if (gaps.length > 0) {
+        const summary = gaps
+          .map(({ filePath, missing }) => `${filePath}: missing ${missing.join(', ')}`)
+          .join('; ');
+        logger.warn('seo.post-stream.blocked', { appId, gapCount: gaps.length, summary });
+        seoOutcome = {
+          kind: 'continue',
+          message: `SEO incomplete on ${gaps.length} page(s) — add the missing elements before finishing: ${summary}`,
+        };
+      }
+    }
+
     const continuationMessages: string[] = [];
     if (tscOutcome.kind === 'continue') continuationMessages.push(tscOutcome.message);
     if (rtOutcome.kind === 'continue') continuationMessages.push(rtOutcome.message);
+    if (seoOutcome.kind === 'continue') continuationMessages.push(seoOutcome.message);
 
     if (continuationMessages.length > 0) {
       const message = continuationMessages.join('\n\n---\n\n');

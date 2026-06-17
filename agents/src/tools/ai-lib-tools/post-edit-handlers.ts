@@ -33,6 +33,8 @@ export interface PostEditContext {
   filePath: string;
   /** The app root the edit happened in. */
   appPath: string;
+  /** The site/app ID owning this workspace. */
+  appId: string;
   /** Which mutating command produced this edit. */
   command: PostEditCommand;
 }

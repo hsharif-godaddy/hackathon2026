@@ -113,11 +113,18 @@ import { screenshotAITool } from './screenshot.js';
 import { crawlPagesAITool } from './crawl-pages.js';
 import { registerPostEditHandler } from './post-edit-handlers.js';
 import { seoRoutesPostEditHandler } from '../../services/seo-routes-post-edit-handler.js';
+import { seoPagePostEditHandler } from '../../services/seo-page-post-edit-handler.js';
+import { getPageSeoGaps } from '../../services/SeoPageRegistry.js';
+import { todoListTool } from '../todo-list-tool.js';
 
 // Wire template-/feature-specific post-edit side effects into the generic text
 // editor here, at the tool composition root — the editor itself stays
 // template-agnostic. Registration is idempotent by handler name.
 registerPostEditHandler(seoRoutesPostEditHandler);
+registerPostEditHandler(seoPagePostEditHandler);
+
+// AC3: gate mark_done on SEO completeness for any page files edited this session.
+todoListTool.setSeoGapsChecker(getPageSeoGaps);
 
 /**
  * Complete registry of all AI-Lib converted tools
