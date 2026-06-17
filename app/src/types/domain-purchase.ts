@@ -100,11 +100,27 @@ export interface CartResult {
 }
 
 /**
+ * Search pipeline metadata returned by /api/domains/search for spins quality analysis.
+ */
+export interface DomainSearchMeta {
+  /** Whether LLM seeds or the fallback buildSpinsQuery path drove findSpins */
+  seedsUsed: 'llm' | 'fallback';
+  seedsCount: number;
+  spinsFulfilled: number;
+  spinsRejected: number;
+  /** Domains in the capped response where isExactMatch is false */
+  spinsResultCount: number;
+  exactMatchCount: number;
+  totalBeforeCap: number;
+}
+
+/**
  * Domain search result from API (products as array to avoid Map churn)
  */
 export interface DomainSearchResult {
   domains: Domain[];
   products: Product[];
+  meta?: DomainSearchMeta;
 }
 
 /**

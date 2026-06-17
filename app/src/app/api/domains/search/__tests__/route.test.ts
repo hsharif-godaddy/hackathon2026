@@ -209,6 +209,15 @@ describe('POST /api/domains/search', () => {
       expect(data.domains[0].isExactMatch).toBe(true);
       expect(data.products).toHaveLength(1);
       expect(data.products[0].priceInfo.currentPrice).toBe(9.99);
+      expect(data.meta).toEqual({
+        seedsUsed: 'fallback',
+        seedsCount: 0,
+        spinsFulfilled: 1,
+        spinsRejected: 0,
+        spinsResultCount: 0,
+        exactMatchCount: 1,
+        totalBeforeCap: 1,
+      });
     });
 
     it('should return spins domains', async () => {
@@ -228,6 +237,9 @@ describe('POST /api/domains/search', () => {
       expect(data.domains).toHaveLength(2);
       expect(data.domains[0].fqdn).toBe('mybrand.net');
       expect(data.domains[1].fqdn).toBe('mybrand.org');
+      expect(data.meta.spinsResultCount).toBe(2);
+      expect(data.meta.exactMatchCount).toBe(0);
+      expect(data.meta.seedsUsed).toBe('fallback');
     });
 
     it('should forward priceDisplay from exact match domain', async () => {
@@ -914,6 +926,10 @@ describe('POST /api/domains/search', () => {
       const data = await response.json();
 
       expect(data.domains.map((d: any) => d.fqdn).sort()).toEqual(['bar.com', 'baz.com', 'foo.com']);
+      expect(data.meta.seedsUsed).toBe('llm');
+      expect(data.meta.seedsCount).toBe(3);
+      expect(data.meta.spinsFulfilled).toBe(3);
+      expect(data.meta.spinsResultCount).toBe(3);
     });
 
     it('interleaves seed results so a tight maxResults cap includes domains from every seed', async () => {

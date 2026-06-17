@@ -84,6 +84,18 @@ const ENTOURAGE_FORWARD_COOKIES_SET = new Set<string>(ENTOURAGE_FORWARD_COOKIES)
 // Spins are surfaced first so brandable alternatives appear before the ungainly exact match.
 const LONG_QUERY_THRESHOLD = 20;
 
+interface FormattedSearchDomain {
+  fqdn: string;
+  sld: string;
+  tld: string;
+  availabilityCode: number;
+  productId: number;
+  isPremium: boolean;
+  isExactMatch: boolean;
+  priceDisplay?: string;
+  _raw: unknown;
+}
+
 /**
  * Round-robin interleave N arrays so that each source gets equal representation
  * before the downstream maxResults cap is applied. Without this, a flat concat
@@ -367,7 +379,7 @@ export const POST = withCustomerAuth(async (
     });
 
     // Format results
-    const domains: any[] = [];
+    const domains: FormattedSearchDomain[] = [];
     const products = new Map<number, any>();
 
     // For long queries the sanitized string is an unwieldy concatenation (e.g.
@@ -470,7 +482,7 @@ export const POST = withCustomerAuth(async (
     const exactDroppedByLongQueryCap =
       isLongQuery &&
       exactDomain !== null &&
-      !domains.slice(0, maxResults).some((d: any) => d.fqdn === exactDomain.fqdn);
+      !domains.slice(0, maxResults).some(d => d.fqdn === exactDomain.fqdn);
     const cappedDomains = exactDroppedByLongQueryCap
       ? [...domains.slice(0, maxResults - 1), exactDomain]
       : domains.slice(0, maxResults);
@@ -479,16 +491,34 @@ export const POST = withCustomerAuth(async (
     const referencedProductIds = new Set(cappedDomains.map(d => d.productId).filter(Boolean));
     const productsArray = Array.from(products.values()).filter(p => referencedProductIds.has(p.productId));
 
+    const spinsResultCount = cappedDomains.filter(d => !d.isExactMatch).length;
+    const exactMatchCount = cappedDomains.filter(d => d.isExactMatch).length;
+
     logger.info('domains.search.success', {
       query: sanitizedQuery,
       domainsFound: cappedDomains.length,
       totalBeforeCap: domains.length,
       productsFound: productsArray.length,
+      seedsUsed: useFanout ? 'llm' : 'fallback',
+      seedsCount: validSeeds.length,
+      spinsFulfilled: fulfilledSpins.length,
+      spinsRejected: rejectedSpins.length,
+      spinsResultCount,
+      exactMatchCount,
     });
 
     return NextResponse.json({
       domains: cappedDomains,
       products: productsArray,
+      meta: {
+        seedsUsed: useFanout ? 'llm' : 'fallback',
+        seedsCount: validSeeds.length,
+        spinsFulfilled: fulfilledSpins.length,
+        spinsRejected: rejectedSpins.length,
+        spinsResultCount,
+        exactMatchCount,
+        totalBeforeCap: domains.length,
+      },
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

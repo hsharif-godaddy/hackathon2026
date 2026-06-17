@@ -1,17 +1,12 @@
 import { useRef } from 'react';
 import { useIntl } from 'react-intl';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 
 import { buildDynamicAgentUrl } from '@/config/dynamic-api';
 import { agentFetch } from '@/lib/agent-fetch';
 import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
-import type { Product } from '@/types/domain-purchase';
-
-interface DomainSearchRawResult {
-  domains: any[];
-  products: Product[];
-}
+import type { DomainSearchResult, Product } from '@/types/domain-purchase';
 
 export interface UseDomainSearchOptions {
   /** Brand name / search query */
@@ -111,13 +106,13 @@ export function useDomainSearch({
   maxResults = 10,
   enabled = true,
   isc,
-}: UseDomainSearchOptions) {
+}: UseDomainSearchOptions): UseQueryResult<DomainSearchResult, Error> {
   const { locale } = useIntl();
   const seedCacheRef = useRef<{ key: string; seeds: string[] | null; at: number } | null>(null);
 
-  return useQuery({
+  return useQuery<DomainSearchResult, Error>({
     queryKey: ['domainSearch', query, maxResults, locale, isc, siteId, seedPrompt],
-    queryFn: async (): Promise<DomainSearchRawResult> => {
+    queryFn: async (): Promise<DomainSearchResult> => {
       if (!query?.trim()) {
         return { domains: [], products: [] };
       }
@@ -168,10 +163,16 @@ export function useDomainSearch({
       logger.info('domain-search.fetch.success', {
         query,
         domainsFound: data.domains?.length || 0,
-        seedsUsed: !!(seeds && seeds.length > 0),
+        seedsUsed: data.meta?.seedsUsed ?? (seeds && seeds.length > 0 ? 'llm' : 'fallback'),
+        spinsResultCount: data.meta?.spinsResultCount,
+        exactMatchCount: data.meta?.exactMatchCount,
       });
 
-      return { domains: data.domains || [], products: data.products || [] };
+      return {
+        domains: data.domains || [],
+        products: data.products || [],
+        meta: data.meta,
+      };
     },
     enabled: enabled && !!query?.trim(),
     staleTime: 30 * 1000,

@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import type { ComponentType } from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import AddToCartButton from '@site/buttons/lib/AddToCartButton';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import Alert from '@ux/alert';
@@ -30,6 +30,11 @@ import { useSiteStore } from '@/stores/useSiteStore';
 import type { Domain, DomainPurchaseWidgetProps, Product } from '@/types/domain-purchase';
 import { getRootDomain } from '@/utils/getRootDomain';
 import { shimReactInternals } from '@/utils/reactCompat';
+import {
+  buildSearchResultsLogKey,
+  domainSelectionContext,
+  selectedDomainSelectionContext,
+} from './domain-search-analytics';
 
 const DynamicCheckout: ComponentType<any> = dynamic(
   async () => {
@@ -180,6 +185,43 @@ export default function DomainPurchaseWidget({
     ...(activeIsc ? { isc: activeIsc } : {}),
   });
 
+  const lastResultsLoggedRef = useRef<string | null>(null);
+  const searchMeta = searchResult?.meta;
+  const resultDomains = searchResult?.domains ?? [];
+  const domainsFound = resultDomains.length;
+  const resultSetKey = domainsFound > 0 && searchQuery
+    ? buildSearchResultsLogKey(searchQuery, resultDomains, searchMeta)
+    : null;
+
+  useEffect(() => {
+    if (!resultSetKey || !searchMeta) return;
+    if (lastResultsLoggedRef.current === resultSetKey) return;
+    lastResultsLoggedRef.current = resultSetKey;
+
+    shipAnalyticsLog('domain.search.results', {
+      appId,
+      query: searchQuery,
+      domainsFound,
+      spinsResultCount: searchMeta.spinsResultCount,
+      exactMatchCount: searchMeta.exactMatchCount,
+      seedsUsed: searchMeta.seedsUsed,
+      seedsCount: searchMeta.seedsCount,
+      spinsFulfilled: searchMeta.spinsFulfilled,
+      spinsRejected: searchMeta.spinsRejected,
+    });
+  }, [
+    appId,
+    searchQuery,
+    resultSetKey,
+    domainsFound,
+    searchMeta?.seedsUsed,
+    searchMeta?.seedsCount,
+    searchMeta?.spinsResultCount,
+    searchMeta?.exactMatchCount,
+    searchMeta?.spinsFulfilled,
+    searchMeta?.spinsRejected,
+  ]);
+
   function runSearch() {
     const q = searchInput.trim();
     if (q.length < 2) return;
@@ -197,10 +239,11 @@ export default function DomainPurchaseWidget({
    * Handle add to cart success from @site/buttons AddToCartButton
    * Extracts basketId from SAPI response and shows Express Checkout
    */
-  function handleAddToCartSuccess(domain: Domain) {
+  function handleAddToCartSuccess(domain: Domain, resultIndex: number) {
     return (response: any) => {
       // Extract basketId from SAPI response - check multiple possible locations
       const newBasketId = response?.basketId || response?.data?.basketId || response?.basket?.id;
+      const spinContext = domainSelectionContext(searchResult?.meta, domain, resultIndex);
 
       logger.info('domain-purchase.add-to-cart-success', {
         appId,
@@ -208,12 +251,14 @@ export default function DomainPurchaseWidget({
         basketId: newBasketId,
         cartCount: response?.cartCount,
         responseKeys: Object.keys(response || {}),
+        ...spinContext,
       });
 
       shipAnalyticsLog('domain.purchase.widget.add-to-cart', {
         appId,
         domain: domain.fqdn,
         basketId: newBasketId,
+        ...spinContext,
       });
 
       if (newBasketId) {
@@ -252,17 +297,24 @@ export default function DomainPurchaseWidget({
     }
 
     const purchasedDomain = selectedDomain?.fqdn;
+    const spinContext = selectedDomainSelectionContext(
+      searchResult?.meta,
+      searchResult?.domains,
+      selectedDomain,
+    );
 
     logger.info('domain-purchase.checkout-success', {
       appId,
       domain: purchasedDomain,
       orderId: order?.orderId,
+      ...spinContext,
     });
 
     shipAnalyticsLog('domain.purchase.widget.success', {
       appId,
       domain: purchasedDomain,
       orderId: order?.orderId,
+      ...spinContext,
     });
 
     // Notify parent component (e.g., DomainAttachWidget which will handle connection)
@@ -281,12 +333,21 @@ export default function DomainPurchaseWidget({
    * Handle checkout errors - show alert in modal
    */
   function handleCheckoutError(error: { name: string; message?: string; reasonCode?: string }) {
+    const purchasedDomain = selectedDomain?.fqdn;
+
+    const spinContext = selectedDomainSelectionContext(
+      searchResult?.meta,
+      searchResult?.domains,
+      selectedDomain,
+    );
+
     logger.error('domain-purchase.checkout-error', {
       appId,
       domain: selectedDomain?.fqdn,
       errorName: error.name,
       reasonCode: error.reasonCode,
       basketId,
+      ...spinContext,
     });
 
     shipAnalyticsLog('domain.purchase.widget.checkout-error', {
@@ -294,6 +355,7 @@ export default function DomainPurchaseWidget({
       domain: selectedDomain?.fqdn,
       errorName: error.name,
       reasonCode: error.reasonCode,
+      ...spinContext,
     });
 
     // Restore search input defensively — the checkout component may unmount
@@ -307,20 +369,23 @@ export default function DomainPurchaseWidget({
   /**
    * Handle add to cart error
    */
-  function handleAddToCartError(domain: Domain) {
+  function handleAddToCartError(domain: Domain, resultIndex: number) {
     return (error: any) => {
       setPurchaseStatus('error');
+      const spinContext = domainSelectionContext(searchResult?.meta, domain, resultIndex);
 
       logger.error('domain-purchase.add-to-cart-error', {
         appId,
         domain: domain.fqdn,
         error: error?.message || String(error),
+        ...spinContext,
       });
 
       shipAnalyticsLog('domain.purchase.widget.add-to-cart-error', {
         appId,
         domain: domain.fqdn,
         error: error?.message || String(error),
+        ...spinContext,
       });
 
       // Error is shown in the widget UI - no need to send chat message
@@ -330,16 +395,20 @@ export default function DomainPurchaseWidget({
   /**
    * Handle domain unavailable callback
    */
-  function handleDomainUnavailable(domain: Domain) {
+  function handleDomainUnavailable(domain: Domain, resultIndex: number) {
     return () => {
+      const spinContext = domainSelectionContext(searchResult?.meta, domain, resultIndex);
+
       logger.info('domain-purchase.domain-unavailable', {
         appId,
         domain: domain.fqdn,
+        ...spinContext,
       });
 
       shipAnalyticsLog('domain.purchase.widget.unavailable', {
         appId,
         domain: domain.fqdn,
+        ...spinContext,
       });
     };
   }
@@ -395,7 +464,7 @@ export default function DomainPurchaseWidget({
     return null;
   }
 
-  const domains = searchResult?.domains || [];
+  const domains = resultDomains;
   const hasResults = domains.length > 0;
   const isEmpty = !isSearching && searchQuery.length >= 2 && !hasResults;
   const needsBrandName = !searchQuery || searchQuery.length < 2;
@@ -552,9 +621,9 @@ export default function DomainPurchaseWidget({
                   product={product}
                   isExactMatch={domain.isExactMatch ?? false}
                   apiKeyName={domainConfig?.apiKeyName}
-                  onAddToCartSuccess={handleAddToCartSuccess(domain)}
-                  onAddToCartError={handleAddToCartError(domain)}
-                  onUnavailable={handleDomainUnavailable(domain)}
+                  onAddToCartSuccess={handleAddToCartSuccess(domain, index)}
+                  onAddToCartError={handleAddToCartError(domain, index)}
+                  onUnavailable={handleDomainUnavailable(domain, index)}
                 />
               );
             })}

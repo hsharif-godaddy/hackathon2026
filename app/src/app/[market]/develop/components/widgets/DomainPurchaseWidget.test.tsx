@@ -73,6 +73,9 @@ vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: vi.fn(),
 }));
 
+const { shipAnalyticsLog } = await import('@/lib/logging');
+const mockShipAnalyticsLog = vi.mocked(shipAnalyticsLog);
+
 vi.mock('@/lib/request-context', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -158,9 +161,19 @@ const mockProduct = {
   },
 };
 
-function mockSearchResults() {
+const mockSearchMeta = {
+  seedsUsed: 'fallback' as const,
+  seedsCount: 0,
+  spinsFulfilled: 1,
+  spinsRejected: 0,
+  spinsResultCount: 0,
+  exactMatchCount: 1,
+  totalBeforeCap: 1,
+};
+
+function mockSearchResults(meta = mockSearchMeta) {
   mockUseDomainSearch.mockReturnValue({
-    data: { domains: [mockDomain], products: [mockProduct] },
+    data: { domains: [mockDomain], products: [mockProduct], meta },
     isLoading: false,
     error: null,
   });
@@ -266,6 +279,68 @@ describe('DomainPurchaseWidget', function () {
     expect(
       screen.getByText('builder_domain_purchase_search_button')
     ).toBeInTheDocument();
+  });
+});
+
+describe('DomainPurchaseWidget — search results analytics', function () {
+  beforeEach(function () {
+    vi.clearAllMocks();
+    mockUseSwitchboard.mockReturnValue(true);
+    mockUseDomainSearch.mockReturnValue({ data: null, isLoading: false, error: null });
+  });
+
+  it('emits domain.search.results once when results with meta render', async function emitOnce() {
+    mockSearchResults();
+
+    const { rerender } = renderWithProviders(
+      <DomainPurchaseWidget brandName="testapp" />
+    );
+
+    await screen.findByTestId('add-to-cart-testapp.com');
+
+    expect(mockShipAnalyticsLog).toHaveBeenCalledWith('domain.search.results', {
+      appId: 'test-app-123',
+      query: 'testapp',
+      domainsFound: 1,
+      spinsResultCount: 0,
+      exactMatchCount: 1,
+      seedsUsed: 'fallback',
+      seedsCount: 0,
+      spinsFulfilled: 1,
+      spinsRejected: 0,
+    });
+
+    rerender(<DomainPurchaseWidget brandName="testapp" />);
+    await act(async () => { await Promise.resolve(); });
+
+    expect(mockShipAnalyticsLog.mock.calls.filter(
+      ([event]) => event === 'domain.search.results'
+    )).toHaveLength(1);
+  });
+
+  it('does not emit domain.search.results when meta is absent', async function noMeta() {
+    mockUseDomainSearch.mockReturnValue({
+      data: { domains: [mockDomain], products: [mockProduct] },
+      isLoading: false,
+      error: null,
+    });
+
+    renderWithProviders(<DomainPurchaseWidget brandName="testapp" />);
+    await screen.findByTestId('add-to-cart-testapp.com');
+
+    expect(mockShipAnalyticsLog).not.toHaveBeenCalledWith(
+      'domain.search.results',
+      expect.anything(),
+    );
+  });
+
+  it('does not emit domain.search.results when search has no results', function noResults() {
+    renderWithProviders(<DomainPurchaseWidget brandName="testapp" />);
+
+    expect(mockShipAnalyticsLog).not.toHaveBeenCalledWith(
+      'domain.search.results',
+      expect.anything(),
+    );
   });
 });
 
