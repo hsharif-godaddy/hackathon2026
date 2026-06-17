@@ -1,7 +1,8 @@
 /**
  * Tests for /api/sites/[id] GET — focused on the airoShareToken injection
- * into `preview_url` that mitigates third-party-cookie blocking when owners
- * click "Visit Preview" from Safari, Firefox, or any browser's private mode.
+ * into `preview_url`. The `preview_auth` cookie is partitioned (CHIPS) and
+ * never carries to a top-level visit, so the token is the only auth handoff
+ * when owners click "Visit Preview"; injection is unconditional.
  *
  * The injection lives at the BFF layer (this route) so no UI code is
  * affected — every existing consumer of `site.preview_url` automatically
@@ -13,12 +14,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   mockGetSite,
   mockAgentFetch,
-  mockCheckSwitchboardFlag,
   mockLogger,
 } = vi.hoisted(() => ({
   mockGetSite: vi.fn(),
   mockAgentFetch: vi.fn(),
-  mockCheckSwitchboardFlag: vi.fn(),
   mockLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
@@ -26,9 +25,6 @@ vi.mock('@/lib/control-plane', () => ({
   getControlPlaneAdapter: vi.fn(function () { return { getSite: mockGetSite }; }),
 }));
 vi.mock('@/lib/agent-fetch', () => ({ agentFetch: mockAgentFetch }));
-vi.mock('@/lib/switchboard/server', () => ({
-  checkSwitchboardFlag: mockCheckSwitchboardFlag,
-}));
 vi.mock('@/lib/request-context', () => ({ logger: mockLogger }));
 
 vi.mock('@/lib/customer-auth', () => ({
@@ -66,7 +62,6 @@ describe('GET /api/sites/[id] — preview_url airoShareToken injection', () => {
       published_url: PUBLISHED_URL,
       agent_url: AGENT_URL,
     });
-    mockCheckSwitchboardFlag.mockResolvedValue(true);
   });
 
   it('appends the token from an existing active share token', async () => {
@@ -268,18 +263,6 @@ describe('GET /api/sites/[id] — preview_url airoShareToken injection', () => {
     expect(mockAgentFetch).toHaveBeenCalledTimes(2);
   });
 
-  it('does not modify preview_url when the appbuilder-share-links flag is off', async () => {
-    mockCheckSwitchboardFlag.mockResolvedValue(false);
-
-    const res = await GET(makeRequest(), { params });
-    const body = await res.json();
-
-    // Bare URL — no query param appended.
-    expect(body.preview_url).toBe(PREVIEW_URL);
-    // No agents calls when the flag is off.
-    expect(mockAgentFetch).not.toHaveBeenCalled();
-  });
-
   it('falls back to bare preview_url when agents list fails (and logs)', async () => {
     mockAgentFetch.mockResolvedValueOnce({
       ok: false,
@@ -400,23 +383,6 @@ describe('GET /api/sites/[id] — preview_url airoShareToken injection', () => {
     const res = await GET(makeRequest(), { params });
     expect(res.status).toBe(404);
     expect(mockAgentFetch).not.toHaveBeenCalled();
-  });
-
-  it('falls back to bare URL + logs when Switchboard lookup throws (does not 500)', async () => {
-    // Switchboard outage must not take down /api/sites/[id]. The injection
-    // is a best-effort enhancement — fail open to bare URL, log, return 200.
-    mockCheckSwitchboardFlag.mockRejectedValue(new Error('Atlas fetch failed'));
-
-    const res = await GET(makeRequest(), { params });
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body.preview_url).toBe(PREVIEW_URL);
-    expect(mockAgentFetch).not.toHaveBeenCalled();
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      'share.previewUrl.flag.lookupError',
-      expect.objectContaining({ siteId: APP_ID, error: 'Atlas fetch failed' }),
-    );
   });
 
   it('handles list response without a tokens key (treats as empty list)', async () => {
