@@ -1,6 +1,6 @@
 'use client'
 
-import { animate, AnimatePresence, motion, type Transition, useMotionValue } from 'framer-motion'
+import { animate, AnimatePresence, motion, type Transition, useMotionValue, useTransform } from 'framer-motion'
 import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { CommanderPosition } from '@/app/[market]/commander/types'
@@ -25,6 +25,9 @@ export const COMMANDER_LAYOUT_METRICS = {
 const VERTICAL_INSET = 8
 const PILL_TOP_PADDING = 24
 const PILL_BORDER_HEIGHT = 2
+const PILL_HALO_INSET = 8
+const PILL_INNER_BORDER_RADIUS = 16
+const PILL_OUTER_BORDER_RADIUS = PILL_INNER_BORDER_RADIUS + PILL_HALO_INSET
 
 interface CommanderProps {
   appId: string | null
@@ -75,10 +78,13 @@ export function Commander({ appId, chatPane }: CommanderProps) {
 
   const floatingWidth = Math.min(
     COMMANDER_LAYOUT_METRICS.FLOATING_WIDTH_LARGE,
-    viewport.width - 2 * COMMANDER_LAYOUT_METRICS.FLOATING_INSET,
+    viewport.width - 2 * COMMANDER_LAYOUT_METRICS.FLOATING_INSET - 2 * PILL_HALO_INSET,
   )
 
   const heightMv = useMotionValue(targetHeight)
+  const outerHeightMv = useTransform(heightMv, (height) =>
+    isPill ? height + PILL_HALO_INSET * 2 : height,
+  )
   const animationRef = useRef<ReturnType<typeof animate> | null>(null)
 
   useEffect(() => {
@@ -159,8 +165,8 @@ export function Commander({ appId, chatPane }: CommanderProps) {
           left: '50%',
           right: 'auto',
           x: '-50%',
-          width: floatingWidth,
-          borderRadius: 16,
+          width: floatingWidth + PILL_HALO_INSET * 2,
+          borderRadius: PILL_OUTER_BORDER_RADIUS,
           boxShadow: '0 12px 40px -8px rgba(15, 23, 42, 0.35)',
         }
       : {
@@ -168,10 +174,18 @@ export function Commander({ appId, chatPane }: CommanderProps) {
           left: COMMANDER_LAYOUT_METRICS.FLOATING_INSET,
           right: 'auto',
           x: 0,
-          width: COMMANDER_LAYOUT_METRICS.FLOATING_WIDTH,
-          borderRadius: 16,
+          width: COMMANDER_LAYOUT_METRICS.FLOATING_WIDTH + PILL_HALO_INSET * 2,
+          borderRadius: PILL_OUTER_BORDER_RADIUS,
           boxShadow: '0 12px 40px -8px rgba(15, 23, 42, 0.35)',
         }
+
+  const asideSurfaceClass = isPill
+    ? 'pointer-events-none overflow-hidden bg-intents-ux-boxLowContrastOverlay-backgroundColor/60 backdrop-blur-[12px] p-2'
+    : 'bg-intents-ux-boxLowContrast-backgroundColor border border-intents-ux-boxLowContrast-borderColor'
+
+  const innerSurfaceClass = isPill
+    ? 'pointer-events-auto bg-intents-ux-boxLowContrast-backgroundColor border border-intents-ux-boxLowContrast-borderColor'
+    : ''
 
   return (
     <CommanderLayoutContext.Provider value={layoutContext}>
@@ -179,44 +193,49 @@ export function Commander({ appId, chatPane }: CommanderProps) {
         data-testid="commander-panel"
         data-position={position}
         aria-label="Commander"
-        className="absolute z-1 bg-intents-ux-boxLowContrast-backgroundColor overflow-hidden flex flex-col border border-intents-ux-boxLowContrast-borderColor"
+        className={`absolute z-1 flex flex-col ${asideSurfaceClass}`}
         initial={false}
         animate={animateProps}
         transition={POSITION_TRANSITION}
-        style={{ top: 'auto', height: heightMv }}
+        style={{ top: 'auto', height: isPill ? outerHeightMv : heightMv }}
       >
-        {isPill && (
-          <div
-            data-testid="commander-resize-handle"
-            aria-label="Resize Commander"
-            className="absolute top-0 left-0 right-0 h-2.5 z-10 cursor-ns-resize touch-none select-none flex items-start justify-center"
-            onPointerDown={handleResizePointerDown}
-            onPointerMove={handleResizePointerMove}
-            onPointerUp={handleResizePointerUp}
-            onPointerCancel={handleResizePointerUp}
-          >
-            <div className="mt-1.5 w-4 h-1 rounded-full bg-intents-ux-boxLowContrast-borderColor" />
-          </div>
-        )}
-        <AnimatePresence initial={false}>
-          {isLeftDock && (
-            <motion.div
-              key="commander-internal-logo"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="p-2 shrink-0 flex items-center gap-1.5"
-            >
-              <CommanderLogo appId={appId} source="commander-panel" />
-            </motion.div>
-          )}
-        </AnimatePresence>
         <div
-          className="flex-1 min-h-0 flex flex-col pe-2"
-          style={isPill ? { paddingTop: PILL_TOP_PADDING } : undefined}
+          className={`relative flex flex-col min-h-0 overflow-hidden h-full w-full ${innerSurfaceClass}`}
+          style={isPill ? { borderRadius: PILL_INNER_BORDER_RADIUS } : undefined}
         >
-          {chatPane}
+          {isPill && (
+            <div
+              data-testid="commander-resize-handle"
+              aria-label="Resize Commander"
+              className="absolute top-0 left-0 right-0 h-2.5 z-10 cursor-ns-resize touch-none select-none flex items-start justify-center"
+              onPointerDown={handleResizePointerDown}
+              onPointerMove={handleResizePointerMove}
+              onPointerUp={handleResizePointerUp}
+              onPointerCancel={handleResizePointerUp}
+            >
+              <div className="mt-1.5 w-4 h-1 rounded-full bg-intents-ux-boxLowContrast-borderColor" />
+            </div>
+          )}
+          <AnimatePresence initial={false}>
+            {isLeftDock && (
+              <motion.div
+                key="commander-internal-logo"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="p-2 shrink-0 flex items-center gap-1.5"
+              >
+                <CommanderLogo appId={appId} source="commander-panel" />
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <div
+            className="flex-1 min-h-0 flex flex-col pe-2"
+            style={isPill ? { paddingTop: PILL_TOP_PADDING } : undefined}
+          >
+            {chatPane}
+          </div>
         </div>
       </motion.aside>
     </CommanderLayoutContext.Provider>
