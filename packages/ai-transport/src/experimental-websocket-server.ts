@@ -2078,8 +2078,11 @@ export class WebSocketServer {
     let budgetSessionWasFree = false
 
     try {
-      // Validate message
-      if (!data.message || typeof data.message !== 'string') {
+      // Validate message. An empty string is valid: attachment-only sends
+      // (AIROBUILD-2119) carry the prompt entirely in context attachments, and
+      // the SSE route (agents/src/server/sse/routes.ts) accepts empty content
+      // for the same reason. The client refuses truly-empty submissions.
+      if (typeof data.message !== 'string') {
         throw new Error('Invalid message: message field is required and must be a string')
       }
 

@@ -5049,3 +5049,61 @@ describe('WebSocketServer - load_history streamCompleted handling', () => {
     expect(emits[0].metadata?.inProgress).toBe(true)
   })
 })
+
+describe('WebSocketServer - attachment-only sends', () => {
+  function okStream() {
+    return {
+      baseStream: null,
+      textStream: (async function* () { yield 'ok' })(),
+      getFinalResult: vi.fn().mockResolvedValue({ usage: { inputTokens: 1, outputTokens: 1 }, toolCalls: [] }),
+    }
+  }
+
+  // AIROBUILD-2119 enabled attachment-only sends client-side and SSE accepts an
+  // empty content string (routes.ts), but the WS guard rejected empty messages.
+  // The prompt is carried entirely by context attachments; the turn must still run.
+  it('accepts an empty message when context attachments carry the prompt (WS/SSE parity)', async () => {
+    const httpServer = new HTTPServer()
+    let agentInvoked = false
+    mockAgent.streamGenerate = vi.fn().mockImplementation(() => {
+      agentInvoked = true
+      return Promise.resolve(okStream())
+    })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+    })
+
+    await messageHandler({
+      message: '',
+      agentId: 'test-agent',
+      context: { selectedAssets: [{ fileName: 'e2e-drop.png', url: 'https://example/e2e-drop.png' }], metadata: { appId: 'a1' } },
+    })
+
+    // The guard runs at the top of the handler before the agent is reached,
+    // so reaching streamGenerate proves the empty message passed validation.
+    expect(agentInvoked).toBe(true)
+    server.close()
+  })
+
+  it('still rejects a non-string message field', async () => {
+    const httpServer = new HTTPServer()
+    let agentInvoked = false
+    mockAgent.streamGenerate = vi.fn().mockImplementation(() => {
+      agentInvoked = true
+      return Promise.resolve(okStream())
+    })
+
+    const { server, messageHandler } = await setupServerWithConnection(httpServer, {
+      agents: mockAgents,
+      defaultAgent: 'test-agent',
+    })
+
+    await messageHandler({ message: undefined, agentId: 'test-agent' } as any)
+
+    // Validation throws before the turn starts, so the agent is never invoked.
+    expect(agentInvoked).toBe(false)
+    server.close()
+  })
+})
