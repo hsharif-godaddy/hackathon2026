@@ -22,7 +22,11 @@ interface Props {
   appId: string
 }
 
-const CLOSE_OPTIONS = ['Change the color scheme', 'Change the fonts', 'Change the tone']
+const CLOSE_OPTIONS = [
+  'Show me 2-3 color scheme options to choose from.',
+  'Show me 2-3 font options to choose from.',
+  'Show me 2-3 tone options to choose from.',
+]
 
 const PROMPT_QUESTION: AskQuestionChoiceQuestion = {
   question: 'Is this what you imagined?',

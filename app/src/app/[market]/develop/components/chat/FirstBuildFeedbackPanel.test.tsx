@@ -234,7 +234,7 @@ describe('FirstBuildFeedbackPanel — close_followup step', () => {
       />
     )
     fireEvent.click(screen.getByTestId('choice-item-0'))
-    expect(mockSendUserMessage).toHaveBeenCalledWith('Change the color scheme', { isActionRequest: true })
+    expect(mockSendUserMessage).toHaveBeenCalledWith('Show me 2-3 color scheme options to choose from.', { isActionRequest: true })
     expect(dismiss).toHaveBeenCalledWith('close')
   })
 
@@ -254,9 +254,9 @@ describe('FirstBuildFeedbackPanel — close_followup step', () => {
   })
 
   it('free-text starting with a digit is sent verbatim, not replaced with chip label', () => {
-    // Covers the numeric-leading collision: "2 column layout" must not become "Change the fonts"
+    // Covers the numeric-leading collision: "2 column layout" must not become "Show me 2-3 font options to choose from."
     // parseInt('2 column layout', 10) === 2, so without the /^\d+$/ guard it would resolve
-    // to chipIndex 1 and send CLOSE_OPTIONS[1] = 'Change the fonts' instead.
+    // to chipIndex 1 and send CLOSE_OPTIONS[1] instead.
     const dismiss = vi.fn()
     render(
       <FirstBuildFeedbackPanel
@@ -308,7 +308,7 @@ describe('FirstBuildFeedbackPanel — close_followup step', () => {
     )
     fireEvent.click(screen.getByTestId('choice-item-0'))
     expect(mockTrackCloseSelection).toHaveBeenCalledWith('color_scheme', 'app1')
-    expect(mockSendUserMessage).toHaveBeenCalledWith('Change the color scheme', { isActionRequest: true })
+    expect(mockSendUserMessage).toHaveBeenCalledWith('Show me 2-3 color scheme options to choose from.', { isActionRequest: true })
     expect(dismiss).toHaveBeenCalledWith('close')
   })
 })
