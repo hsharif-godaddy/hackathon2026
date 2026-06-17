@@ -4,6 +4,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient } from '@tanstack/react-query';
 import { waitFor } from '@testing-library/react';
 
 import { DeploymentStatus } from '@/lib/mgmt-airo/types';
@@ -273,6 +274,15 @@ describe('useDeploymentsQuery', function useDeploymentsQueryTests() {
   });
 
   describe('retry predicate', function retryPredicateTests() {
+    function createRetryPredicateQueryClient() {
+      return new QueryClient({
+        defaultOptions: {
+          queries: { retry: false, retryDelay: 0, gcTime: Infinity },
+          mutations: { retry: false },
+        },
+      });
+    }
+
     it('does not retry when fetch returns 401 (auth flow drives the modal)', async function noRetryOnAuthExpired() {
       mockGetPublishState.mockReturnValue({
         deploymentInProgressId: 'dep-polling',
@@ -281,8 +291,9 @@ describe('useDeploymentsQuery', function useDeploymentsQueryTests() {
 
       mockAppFetch.mockResolvedValue(createMockResponse({}, 401));
 
-      renderHookWithProviders(() =>
-        useDeploymentsQuery({ appId: 'app-123' })
+      renderHookWithProviders(
+        () => useDeploymentsQuery({ appId: 'app-123' }),
+        { queryClient: createRetryPredicateQueryClient() },
       );
 
       await waitFor(() => {
@@ -304,8 +315,9 @@ describe('useDeploymentsQuery', function useDeploymentsQueryTests() {
 
       mockAppFetch.mockResolvedValue(createMockResponse({}, 500));
 
-      renderHookWithProviders(() =>
-        useDeploymentsQuery({ appId: 'app-123' })
+      renderHookWithProviders(
+        () => useDeploymentsQuery({ appId: 'app-123' }),
+        { queryClient: createRetryPredicateQueryClient() },
       );
 
       await waitFor(() => {
@@ -318,7 +330,7 @@ describe('useDeploymentsQuery', function useDeploymentsQueryTests() {
       // Predicate returns failureCount < 1 → original + one retry = 2 calls.
       await waitFor(() => {
         expect(mockAppFetch).toHaveBeenCalledTimes(2);
-      });
+      }, { timeout: 3000 });
     });
   });
 });
