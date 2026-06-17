@@ -71,9 +71,14 @@ function baseState(overrides: Partial<RebuildWorkflowState> = {}): RebuildWorkfl
   };
 }
 
-function run(metadata: Record<string, unknown>) {
+function run(
+  metadata: Record<string, unknown>,
+  input: { url: string; designDirection?: 'keep-similar' | 'modernize' | 'simplify' | 'bold' } = {
+    url: 'https://example.com',
+  },
+) {
   return (websiteRebuildAITool as { execute: (input: { url: string }, ctx: unknown) => Promise<unknown> }).execute(
-    { url: 'https://example.com' },
+    input,
     { metadata: { appId: 'app1', ...metadata } },
   );
 }
@@ -141,7 +146,7 @@ describe('websiteRebuild orchestration', function websiteRebuildOrchestration() 
     }));
   });
 
-  it('infers modernize from user message when no client direction', async function messageModernize() {
+  it('defaults to modernize when only user message is present without tool arg', async function messageDefaultModernize() {
     mockWaitForScrapeCompletion.mockResolvedValue(baseState({ stylePreferences: undefined }));
 
     await run({
@@ -154,7 +159,7 @@ describe('websiteRebuild orchestration', function websiteRebuildOrchestration() 
     }));
   });
 
-  it('infers keep-similar from user message when no client direction', async function messageClone() {
+  it('defaults to modernize when user message implies clone but tool arg is omitted', async function messageCloneDefaultsModernize() {
     mockWaitForScrapeCompletion.mockResolvedValue(baseState({ stylePreferences: undefined }));
 
     await run({
@@ -163,7 +168,7 @@ describe('websiteRebuild orchestration', function websiteRebuildOrchestration() 
     });
 
     expect(mockSubmitStylePreferences).toHaveBeenCalledWith('app1', expect.objectContaining({
-      designDirection: 'keep-similar',
+      designDirection: 'modernize',
     }));
   });
 
@@ -193,12 +198,50 @@ describe('websiteRebuild orchestration', function websiteRebuildOrchestration() 
     expect(mockWaitForIntake).toHaveBeenCalledWith(expect.anything(), 'app1', { designDirection: 'modernize' });
   });
 
-  it('passes inferred modernize direction to intake when message contains modernize', async function timeoutInferred() {
+  it('defaults intake direction to modernize when no modal or tool arg', async function timeoutDefault() {
     await run({
       rebuildIntakeFormEnabled: true,
       _userMessage: 'rebuild and modernize my site',
     });
 
     expect(mockWaitForIntake).toHaveBeenCalledWith(expect.anything(), 'app1', { designDirection: 'modernize' });
+  });
+
+  it('applies agent tool designDirection', async function toolDirection() {
+    mockWaitForScrapeCompletion.mockResolvedValue(baseState({ stylePreferences: undefined }));
+
+    await run(
+      { rebuildIntakeFormEnabled: false },
+      {
+        url: 'https://example.com',
+        designDirection: 'modernize',
+      },
+    );
+
+    expect(mockSubmitStylePreferences).toHaveBeenCalledWith('app1', expect.objectContaining({
+      designDirection: 'modernize',
+    }));
+  });
+
+  it('prefers modal direction over agent tool designDirection', async function modalOverridesTool() {
+    mockWaitForScrapeCompletion.mockResolvedValue(baseState({ stylePreferences: undefined }));
+
+    await run(
+      { rebuildIntakeFormEnabled: false, rebuildDesignDirection: 'keep-similar' },
+      { url: 'https://example.com', designDirection: 'modernize' },
+    );
+
+    expect(mockSubmitStylePreferences).toHaveBeenCalledWith('app1', expect.objectContaining({
+      designDirection: 'keep-similar',
+    }));
+  });
+
+  it('passes tool designDirection to intake timeout fallback', async function timeoutToolDirection() {
+    await run(
+      { rebuildIntakeFormEnabled: true },
+      { url: 'https://example.com', designDirection: 'simplify' },
+    );
+
+    expect(mockWaitForIntake).toHaveBeenCalledWith(expect.anything(), 'app1', { designDirection: 'simplify' });
   });
 });

@@ -16,7 +16,8 @@
 
 1. **If URL is provided** (e.g., "Rebuild my site example.com"):
 
-   - Call `websiteRebuild({ url: "https://example.com" })`
+   - Infer `designDirection` from the user's intent (see **Design direction** below).
+   - Call `websiteRebuild({ url: "https://example.com", designDirection: "<inferred>" })` when intent is clear; omit `designDirection` when the user gives no design signal.
    - STOP - the tool will handle everything including handoff
    - Do NOT create todo lists or design direction for rebuild requests
 
@@ -39,6 +40,17 @@ These are not optional patterns — they are the required behavior. Match the us
 - User: `rebuild my site example.com`
 - Correct: call `websiteRebuild({ url: "https://example.com" })` immediately. **Do NOT** call `askQuestion`. The URL is present in the message — `example.com` has a dot, so it is a complete URL after normalization.
 - Wrong: calling `askQuestion` to ask for the URL again.
+
+**Example 1b — semantic modernize intent (no keyword "modernize"):**
+
+- User: `Recreate my site at example.com — make it look less dated, like newer sites in 2026`
+- Correct: call `websiteRebuild({ url: "https://example.com", designDirection: "modernize" })`.
+- Wrong: omitting `designDirection` when the user clearly wants an updated look.
+
+**Example 1c — faithful clone intent:**
+
+- User: `Rebuild example.com but keep the same look`
+- Correct: call `websiteRebuild({ url: "https://example.com", designDirection: "keep-similar" })`.
 
 **Example 2 — bare domain with extra words:**
 
@@ -65,6 +77,23 @@ These are not optional patterns — they are the required behavior. Match the us
 
 - (Previous turn called `askQuestion` for the URL.) User answers: `example.com`
 - Correct: call `websiteRebuild({ url: "https://example.com" })`. The answer has a dot — it is a valid URL after normalization. Do NOT trigger the retry path.
+
+### Design direction
+
+Pass `designDirection` on every `websiteRebuild` call when the user's intent is clear. Valid values:
+
+| Value | When to use |
+|-------|-------------|
+| `keep-similar` | Faithful clone — same look, keep as-is, copy layout, mirror existing site |
+| `modernize` | Updated look — less dated, current/fresh, 2026-style, reimagine, redesign |
+| `simplify` | Cleaner, simpler, less cluttered |
+| `bold` | Striking, bold, dramatic visual style |
+
+**Rules:**
+
+- Infer from meaning, not just English keywords — paraphrases and non-English prompts count.
+- Omit `designDirection` only when the user gives **no** design signal (bare "rebuild my site: URL" defaults to modernize inside the tool).
+- If the customer already chose via the homepage modal or intake form, that choice wins — still call `websiteRebuild` with the URL; do not override their pick with a conflicting `designDirection`.
 
 **CRITICAL:** For rebuild requests, ONLY use the `websiteRebuild` tool. Do NOT:
 

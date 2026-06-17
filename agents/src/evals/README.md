@@ -14,6 +14,10 @@ output. Evals run alongside normal unit tests so regressions are caught in CI.
   registration). If a future prompt edit strips any of these, this test
   fails before the change lands.
 
+- `rebuild-design-direction.spec.ts` - static prompt/tool contract in CI; live
+  Initial Agent inference over `rebuild-design-direction-matrix.ts` when
+  `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is set.
+
 ## Planned
 
 A full LLM-driven eval is planned: bootstrap a real DevelopAgent, have it

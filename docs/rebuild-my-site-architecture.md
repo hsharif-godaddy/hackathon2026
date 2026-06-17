@@ -431,7 +431,11 @@ The `websiteRebuild` tool polls for background scrape completion:
 
 ## Key Design Decisions
 
-1. **Default style preferences** — `designDirection` resolves in order: (1) valid client choice (`rebuildDesignDirection` from the homepage modal or intake submit), (2) prompt keyword inference (`modernize` / `reimagine` / scoped `refresh the design` vs clone / negated-modernize / `as-is` phrases), (3) default `modernize`. Applied on intake timeout, intake-form-off, and when scrape completes without stored preferences. Other defaults: `keep-original` colors/typography, `responsive` layout. The `style_questions` state exists but is skipped.
+1. **Default style preferences** — `designDirection` resolves in order: (1) valid client choice (`rebuildDesignDirection` from the homepage modal or intake submit), (2) agent tool arg (`websiteRebuild({ designDirection })` from Initial Agent intent inference on the **first** full-site rebuild prompt), (3) default `modernize`. Applied on intake timeout, intake-form-off, and when scrape completes without stored preferences. Other defaults: `keep-original` colors/typography, `responsive` layout. The `style_questions` state exists but is skipped.
+
+   **First-touch only:** Semantic direction inference runs when **Initial Agent** calls `websiteRebuild` at app creation (or any turn still routed to Initial). `websiteRebuild` is registered on Initial Agent only (`agents/src/agents/initial-agent.ts`). After handoff, the persisted agent is `develop`, which rebuilds inner pages via `rebuildPageSelector` using style preferences already stored from the initial crawl. Mid-conversation *new* full-site rebuilds from develop chat are not covered here — adding `websiteRebuild` to develop is insufficient because the tool ends with `switchAgent(socketId, 'develop', homepagePrompt)` and a same-agent `develop`→`develop` switch is a no-op, so the homepage prompt never reaches develop through the normal channel. That path needs an explicit routing design.
+
+   **Eval coverage:** `agents/src/evals/rebuild-design-direction.spec.ts` pins the prompt/tool contract in CI and, when provider API keys are present, drives Initial Agent over the phrase matrix in `rebuild-design-direction-matrix.ts` (semantic paraphrases, negation, ES/FR, bare rebuild). Precedence (modal → tool arg → default) is unit-tested in `intake-defaults` and `website-rebuild` tests.
 
 2. **Homepage-first strategy** — Homepage gets full setup (colors, fonts, nav, footer). Inner pages only generate content-area prompts.
 

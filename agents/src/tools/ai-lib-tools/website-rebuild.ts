@@ -35,7 +35,7 @@ async function ensureStylePreferencesReady(
   appId: string,
   completedState: RebuildWorkflowState,
   designDirection?: unknown,
-  userMessage?: unknown,
+  toolDirection?: unknown,
 ): Promise<void> {
   if (completedState.stylePreferences) {
     if (completedState.status === 'style_questions') {
@@ -43,8 +43,10 @@ async function ensureStylePreferencesReady(
     }
     return
   }
-  // No intake (flag off) — seed defaults from modal choice, prompt keywords, or modernize default.
-  await service.submitStylePreferences(appId, stylePreferencesForDirection(designDirection, userMessage))
+  await service.submitStylePreferences(
+    appId,
+    stylePreferencesForDirection(designDirection, toolDirection),
+  )
 }
 
 export const websiteRebuildAITool: Tool = createTool(
@@ -61,14 +63,29 @@ This tool starts the website rebuild process:
 - User wants to recreate their existing website
 - User provides a URL and mentions rebuilding, recreating, or redesigning
 
+**DESIGN DIRECTION (pass designDirection when user intent is clear):**
+- keep-similar — faithful clone; same look, copy layout, keep as-is, mirror existing site
+- modernize — updated look; less dated, current/fresh design, 2026-style, reimagine, redesign
+- simplify — cleaner, simpler, less cluttered layout
+- bold — striking, bold, dramatic visual style
+- Omit designDirection only when the user gives no design signal (defaults to modernize).
+- Homepage modal / intake form choices override designDirection when the customer already picked one.
+
 **WORKFLOW:**
-1. Detect "rebuild" intent with URL in user message
-2. Call this tool with the URL
-3. Tool shows progress widget while scraping
-4. Tool automatically generates homepage build prompt and pases it to the develop agent
+1. Detect rebuild intent with URL in user message
+2. Infer designDirection from user intent (including paraphrases and non-English phrasing)
+3. Call this tool with url and designDirection when applicable
+4. Tool shows progress widget while scraping
+5. Tool automatically generates homepage build prompt and passes it to the develop agent
 `,
   z.object({
-    url: z.url().describe('The URL of the website to rebuild')
+    url: z.url().describe('The URL of the website to rebuild'),
+    designDirection: z
+      .enum(['keep-similar', 'modernize', 'simplify', 'bold'])
+      .optional()
+      .describe(
+        'Design direction inferred from user intent. keep-similar = faithful clone; modernize = updated look; simplify = cleaner; bold = striking. Omit when user gives no design signal.',
+      ),
   }),
   async (input, context) => {
     const appId = context?.metadata?.appId as string
@@ -91,11 +108,13 @@ This tool starts the website rebuild process:
     const rebuildIntakeFormEnabled =
       context?.metadata?.rebuildIntakeFormEnabled === true && !app.initialBuildComplete
 
-    // Homepage modal choice, threaded from the client message context. Prompt keywords
-    // fill the gap when users type free-text (e.g. "rebuild and modernize") without the modal.
+    // Homepage modal choice, threaded from the client message context. Agent tool arg
+    // supplies design direction when users type free-text without the modal.
     const rebuildDesignDirection = context?.metadata?.rebuildDesignDirection
-    const userMessage = context?.metadata?._userMessage
-    const resolvedDesignDirection = resolveDesignDirection(rebuildDesignDirection, userMessage)
+    const resolvedDesignDirection = resolveDesignDirection(
+      rebuildDesignDirection,
+      input.designDirection,
+    )
 
     logger.info('websiteRebuild.start', {
       appId,
@@ -104,6 +123,7 @@ This tool starts the website rebuild process:
       hasSocketId: !!socketId,
       rebuildIntakeFormEnabled,
       rebuildDesignDirection: rebuildDesignDirection ?? null,
+      toolDesignDirection: input.designDirection ?? null,
       resolvedDesignDirection,
       initialBuildComplete: !!app.initialBuildComplete,
     })
@@ -131,7 +151,13 @@ This tool starts the website rebuild process:
         rebuildScope: completedState.rebuildScope,
       })
 
-      await ensureStylePreferencesReady(service, appId, completedState, rebuildDesignDirection, userMessage)
+      await ensureStylePreferencesReady(
+        service,
+        appId,
+        completedState,
+        rebuildDesignDirection,
+        input.designDirection,
+      )
 
       const { slugs, homepagePrompt } = await service.buildUpfrontPagePrompts(appId)
       const upfrontBuildSlugs = slugs.slice(1)
