@@ -13,6 +13,7 @@ import {
 import { agentFetch, getAgentToken } from '@/lib/agent-fetch'
 import { readDesignChoiceForCurrentApp } from '@/lib/rebuild-design-choice'
 import { logger } from '@/lib/request-context'
+import { SSEQualityMonitor } from '@/services/transport/SSEQualityMonitor'
 import { SSETransport } from '@/services/transport/SSETransport'
 import type { SendMessageParams, TransportState } from '@/services/transport/types'
 import { hasComposerSendPayload } from '@/services/websocket/composerAttachments'
@@ -78,6 +79,12 @@ const STREAM_UPDATE_EVENTS = new Set([
   'tool_input_delta',
   'tool_call',
 ])
+
+async function timeFetch<T>(promise: Promise<T>): Promise<{ value: T; ms: number }> {
+  const start = Date.now()
+  const value = await promise
+  return { value, ms: Date.now() - start }
+}
 
 export function lastAssistantMessageIsComplete(messages: readonly { role: string; isComplete?: boolean }[]): boolean {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -149,6 +156,10 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
   const [transport, setTransport] = useState<SSETransport | null>(null)
   const transportRef = useRef<SSETransport | null>(null)
   transportRef.current = transport
+  const monitorRef = useRef<SSEQualityMonitor | null>(null)
+  if (!monitorRef.current) {
+    monitorRef.current = new SSEQualityMonitor()
+  }
   const appIdRef = useRef<string | null>(null)
   const historyBatchRef = useRef<{ messages: unknown[]; isPagination: boolean } | null>(null)
   const historyBatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -341,11 +352,15 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     let cancelled = false
 
     async function connect() {
+      const monitor = monitorRef.current
+      monitor?.markConnectStart(currentAppId!)
       try {
-        const [config, token] = await Promise.all([
-          dynamicApiConfigService.getConfigForSite(currentAppId!),
-          getAgentToken(currentAppId!),
+        const [configResult, tokenResult] = await Promise.all([
+          timeFetch(dynamicApiConfigService.getConfigForSite(currentAppId!)),
+          timeFetch(getAgentToken(currentAppId!)),
         ])
+        const config = configResult.value
+        const token = tokenResult.value
 
         if (cancelled) return
 
@@ -369,7 +384,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         }
 
         if (!transportRef.current) {
-          const newTransport = new SSETransport({ baseUrl: config.baseUrl })
+          const newTransport = new SSETransport({ baseUrl: config.baseUrl, qualityMonitor: monitorRef.current ?? undefined })
           transportRef.current = newTransport
           setTransport(newTransport)
 
@@ -395,6 +410,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 replayDedupRef.current.seen.add(event.sequence)
               }
               if (STREAM_UPDATE_EVENTS.has(type)) {
+                monitorRef.current?.markFirstResponse()
                 if (eventRequestId) currentStreamRequestIdRef.current = eventRequestId
                 ensureSSEActiveStream(type, event.conversationId)
               }
@@ -501,6 +517,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   if (store.currentAppId) ensureFreshToken(store.currentAppId, 'commit');
                 }
               } else if (type === 'complete') {
+                monitorRef.current?.clearSend()
                 flushStoreUpdateBufferImmediate()
                 store.finalizeStream(event.data)
 
@@ -571,6 +588,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 if (errorType === 'TOOL_VALIDATION_ERROR') return
 
                 if (errorType === 'BUDGET_EXCEEDED') {
+                  monitorRef.current?.clearSend()
                   logImpressionEvent('credits.budget.exceeded')()
                   store.markBudgetExceeded()
                   store.finalizeStream()
@@ -628,6 +646,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   retryAttempts: errData?.retryAttempts,
                   retryReason: errData?.retryReason,
                 }
+                monitorRef.current?.clearSend()
                 store.markUpstreamError(structuredError)
                 store.finalizeStream()
                 trackError(errorType)
@@ -922,6 +941,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
               // transport error for the caller to display.
               logger.warn('sse.transport.error', { appId: currentAppId, message: error.message })
               setConnectionError(error)
+              monitorRef.current?.clearSend()
               // Release the UI: a terminal transport error means no `complete`
               // or `error` event will arrive to finalize the stream, so the
               // input stays disabled forever otherwise.
@@ -951,8 +971,11 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         // handles Bearer injection + cache-bust retry on 401, so we don't
         // re-roll that logic for this POST. Retry with backoff for transient
         // failures (e.g. container still starting after health check passed).
-        let conversationId = getConversationIdFromCookie(currentAppId!)
+        const conversationFromCookie = getConversationIdFromCookie(currentAppId!)
+        let conversationCreateMs: number | undefined
+        let conversationId = conversationFromCookie
         if (!conversationId) {
+          const createStart = Date.now()
           const maxRetries = 3
           let lastError: Error | null = null
           for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -995,12 +1018,19 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
             })
             throw lastError
           }
+          conversationCreateMs = Date.now() - createStart
         }
         if (cancelled) return
 
         recoveryHandshakePendingRef.current = true
         recoveryReplayActiveRef.current = false
         deferredInitialHistoryConversationIdRef.current = null
+        monitor?.recordConnectPhases({
+          configFetchMs: configResult.ms,
+          tokenFetchMs: tokenResult.ms,
+          ...(conversationCreateMs !== undefined && { conversationCreateMs }),
+          conversationSource: conversationFromCookie ? 'cookie' : 'created',
+        })
         transportRef.current.connect(currentAppId!, token, conversationId)
         // SSE history is fetched over HTTP, not through /stream. Gate the
         // initial load behind the stream recovery handshake so buffered replay
@@ -1030,6 +1060,8 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     return () => {
       transportRef.current?.destroy()
       transportRef.current = null
+      monitorRef.current?.destroy()
+      monitorRef.current = null
       if (historyBatchTimerRef.current) {
         clearTimeout(historyBatchTimerRef.current)
         historyBatchTimerRef.current = null
@@ -1127,8 +1159,10 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
         ...(fullStorySessionId && { fullStorySessionId }),
       }
       lastResolvedSendParamsRef.current = resolvedSendParams
+      monitorRef.current?.markSend()
       await t.sendMessage(resolvedSendParams)
     } catch (err) {
+      monitorRef.current?.clearSend()
       const s = useStreamingConversationStore.getState()
 
       // Detect budget exceeded (402) from SSETransport. Mirror the analytics
@@ -1152,6 +1186,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
   }, [])
 
   const stop = useCallback(async (): Promise<void> => {
+    monitorRef.current?.clearSend()
     const ack = transportRef.current?.stopGeneration().catch(err => {
       const appId = useStreamingConversationStore.getState().currentAppId
       logger.warn('sse.stop.failed', {

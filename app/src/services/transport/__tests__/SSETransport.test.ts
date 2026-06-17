@@ -622,6 +622,101 @@ describe('SSETransport', () => {
     }))
   })
 
+  describe('SSEQualityMonitor wiring', () => {
+    function makeMonitor() {
+      return {
+        markConnectStart: vi.fn(),
+        recordConnectPhases: vi.fn(),
+        markStreamOpenStart: vi.fn(),
+        markFirstStreamEvent: vi.fn(),
+        markSend: vi.fn(),
+        markFirstResponse: vi.fn(),
+        clearSend: vi.fn(),
+        recordEventSourceError: vi.fn(),
+        resetErrorBuckets: vi.fn(),
+        destroy: vi.fn(),
+      }
+    }
+
+    it('calls markStreamOpenStart on connect with the stream URL', () => {
+      const monitor = makeMonitor()
+      const transport = new SSETransport({ baseUrl: 'https://agent.example', qualityMonitor: monitor as any })
+      transport.on({ onEvent: vi.fn(), onStateChange: vi.fn(), onError: vi.fn() })
+      transport.connect('app123456', 'token_123', 'conv1')
+
+      expect(monitor.markStreamOpenStart).toHaveBeenCalledTimes(1)
+      expect(monitor.markStreamOpenStart.mock.calls[0][0]).toContain('/stream')
+    })
+
+    it('fires markFirstStreamEvent exactly once for the first dispatched event', () => {
+      autoFireInitialize = false
+      const monitor = makeMonitor()
+      const transport = new SSETransport({ baseUrl: 'https://agent.example', qualityMonitor: monitor as any })
+      transport.on({ onEvent: vi.fn(), onStateChange: vi.fn(), onError: vi.fn() })
+      transport.connect('app123456', 'token_123', 'conv1')
+
+      const fire = (type: string, data: unknown) => {
+        for (const h of eventListeners[type] ?? []) h({ data: JSON.stringify(data), lastEventId: '1' } as MessageEvent)
+      }
+      fire('recovery_status', { hasBufferedEvents: false })
+      fire('chunk', { content: 'hi' })
+
+      expect(monitor.markFirstStreamEvent).toHaveBeenCalledTimes(1)
+
+      autoFireInitialize = true
+      transport.destroy()
+    })
+
+    it('fires markFirstStreamEvent once when initialize arrives before typed events', () => {
+      autoFireInitialize = false
+      const monitor = makeMonitor()
+      const transport = new SSETransport({ baseUrl: 'https://agent.example', qualityMonitor: monitor as any })
+      transport.on({ onEvent: vi.fn(), onStateChange: vi.fn(), onError: vi.fn() })
+      transport.connect('app123456', 'token_123', 'conv1')
+
+      for (const h of eventListeners['initialize'] ?? []) {
+        h({ data: JSON.stringify({ serverConfig: { serverVersion: '2.0' }, agents: [] }) } as MessageEvent)
+      }
+      for (const h of eventListeners['chunk'] ?? []) h({ data: JSON.stringify({ content: 'hi' }), lastEventId: '1' } as MessageEvent)
+
+      expect(monitor.markFirstStreamEvent).toHaveBeenCalledTimes(1)
+      autoFireInitialize = true
+    })
+
+    it('reports consecutive errors and resets buckets on initialize', () => {
+      autoFireInitialize = false
+      const monitor = makeMonitor()
+      const transport = new SSETransport({ baseUrl: 'https://agent.example', qualityMonitor: monitor as any })
+      transport.on({ onEvent: vi.fn(), onStateChange: vi.fn(), onError: vi.fn() })
+      transport.connect('app123456', 'token_123', 'conv1')
+
+      lastEventSourceInstance.onerror({ status: 500 })
+      lastEventSourceInstance.onerror({ status: 500 })
+      expect(monitor.recordEventSourceError).toHaveBeenCalledTimes(2)
+      expect(monitor.recordEventSourceError).toHaveBeenLastCalledWith(2)
+
+      for (const h of eventListeners['initialize'] ?? []) {
+        h({ data: JSON.stringify({ serverConfig: { serverVersion: '2.0' }, agents: [] }) } as MessageEvent)
+      }
+      expect(monitor.resetErrorBuckets).toHaveBeenCalledTimes(1)
+
+      autoFireInitialize = true
+      transport.destroy()
+    })
+
+    it('does not fire markFirstStreamEvent for native (non-string) error events', () => {
+      const monitor = makeMonitor()
+      const transport = new SSETransport({ baseUrl: 'https://agent.example', qualityMonitor: monitor as any })
+      transport.on({ onEvent: vi.fn(), onStateChange: vi.fn(), onError: vi.fn() })
+      transport.connect('app123456', 'token_123', 'conv1')
+
+      for (const h of eventListeners['chunk'] ?? []) h({ data: undefined } as unknown as MessageEvent)
+      expect(monitor.markFirstStreamEvent).not.toHaveBeenCalled()
+
+      transport.destroy()
+    })
+  })
+
   describe('loadHistory', () => {
     it('emits history_complete with preserved cursor on pagination failure', async () => {
       transport.connect('app_1', 'token_123', 'conv_1')

@@ -3,6 +3,7 @@ import { STREAMING_EVENT_TYPES, type StreamingEventType } from '@airo/ai-transpo
 
 import { agentFetch, clearAgentTokenCache, getAgentToken } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
+import type { SSEQualityMonitor } from './SSEQualityMonitor'
 import type { ChatTransport, ChatTransportCallbacks, SendMessageParams, TransportEvent, TransportState } from './types'
 
 export const SSE_INTENTIONALLY_IGNORED: ReadonlySet<StreamingEventType> = new Set([
@@ -50,6 +51,12 @@ interface SSETransportConfig {
    * cooldown.
    */
   cooldownMs?: number
+  /**
+   * Optional client-quality monitor, created and owned by useSSEChat. The
+   * transport feeds it stream-open and error-count timings; the hook feeds it
+   * connect-phase and send/first-response timings. Absent in PaaS/headless use.
+   */
+  qualityMonitor?: SSEQualityMonitor
 }
 
 export class SSETransport implements ChatTransport {
@@ -74,6 +81,7 @@ export class SSETransport implements ChatTransport {
   private readonly maxConsecutiveErrors: number
   private readonly cooldownMs: number
   private consecutiveErrors = 0
+  private firstStreamEventSeen = false
   private cooldownUntil = 0
   private cooldownTimer: ReturnType<typeof setTimeout> | null = null
   private visibilityListener: (() => void) | null = null
@@ -458,6 +466,8 @@ export class SSETransport implements ChatTransport {
     }
 
     const url = `${this.convPath}/stream`
+    this.firstStreamEventSeen = false
+    this.config.qualityMonitor?.markStreamOpenStart(url)
     const token = this.token
     let firstFetch = true
     this.eventSource = new EventSource(url, {
@@ -492,6 +502,7 @@ export class SSETransport implements ChatTransport {
         return
       }
       this.consecutiveErrors++
+      this.config.qualityMonitor?.recordEventSourceError(this.consecutiveErrors)
       // Non-401 errors: let the polyfill reconnect on its own until the
       // threshold trips. After that we close it and freeze for cooldownMs.
       logger.warn('sse.transport.eventsource.error', {
@@ -506,6 +517,7 @@ export class SSETransport implements ChatTransport {
     }
 
     this.eventSource.addEventListener('initialize', (e: MessageEvent) => {
+      this.noteFirstStreamEvent()
       let data: any
       try {
         data = JSON.parse(e.data)
@@ -521,6 +533,7 @@ export class SSETransport implements ChatTransport {
       // circuit-breaker counter so a fresh streak of failures has to occur
       // before we'd cool down again.
       this.consecutiveErrors = 0
+      this.config.qualityMonitor?.resetErrorBuckets()
       this.setState('connected')
 
       if (data.serverConfig) {
@@ -552,6 +565,10 @@ export class SSETransport implements ChatTransport {
     if (typeof event.data !== 'string') {
       return
     }
+
+    // First SSE event of any type = stream is alive. Placed after the
+    // non-string guard so native EventSource error events do not count.
+    this.noteFirstStreamEvent()
 
     let data: Record<string, unknown>
     try {
@@ -607,6 +624,12 @@ export class SSETransport implements ChatTransport {
     this.callbacks?.onEvent(transportEvent)
   }
 
+
+  private noteFirstStreamEvent(): void {
+    if (this.firstStreamEventSeen) return
+    this.firstStreamEventSeen = true
+    this.config.qualityMonitor?.markFirstStreamEvent()
+  }
 
   private setState(state: TransportState): void {
     if (this._state !== state) {

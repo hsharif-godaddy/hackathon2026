@@ -228,6 +228,38 @@ vi.mock('@/config/dynamic-api', () => ({
   },
 }))
 
+// ---------------------------------------------------------------------------
+// SSEQualityMonitor mock
+// ---------------------------------------------------------------------------
+
+const mockMarkConnectStart = vi.fn()
+const mockRecordConnectPhases = vi.fn()
+const mockMarkStreamOpenStart = vi.fn()
+const mockMarkFirstStreamEvent = vi.fn()
+const mockMarkSend = vi.fn()
+const mockMarkFirstResponse = vi.fn()
+const mockClearSend = vi.fn()
+const mockRecordEventSourceError = vi.fn()
+const mockResetErrorBuckets = vi.fn()
+const mockMonitorDestroy = vi.fn()
+
+vi.mock('@/services/transport/SSEQualityMonitor', () => ({
+  SSEQualityMonitor: vi.fn().mockImplementation(function () {
+    return {
+      markConnectStart: mockMarkConnectStart,
+      recordConnectPhases: mockRecordConnectPhases,
+      markStreamOpenStart: mockMarkStreamOpenStart,
+      markFirstStreamEvent: mockMarkFirstStreamEvent,
+      markSend: mockMarkSend,
+      markFirstResponse: mockMarkFirstResponse,
+      clearSend: mockClearSend,
+      recordEventSourceError: mockRecordEventSourceError,
+      resetErrorBuckets: mockResetErrorBuckets,
+      destroy: mockMonitorDestroy,
+    }
+  }),
+}))
+
 vi.mock('@/lib/agent-fetch', () => ({
   getAgentToken: vi.fn().mockResolvedValue('test-token'),
   clearAgentTokenCache: vi.fn(),
@@ -399,6 +431,16 @@ describe('useSSEChat', () => {
     vi.mocked(logger.warn).mockClear()
     vi.mocked(logger.error).mockClear()
     mockPostInitialBuildEvent.mockClear()
+    mockMarkConnectStart.mockClear()
+    mockRecordConnectPhases.mockClear()
+    mockMarkStreamOpenStart.mockClear()
+    mockMarkFirstStreamEvent.mockClear()
+    mockMarkSend.mockClear()
+    mockMarkFirstResponse.mockClear()
+    mockClearSend.mockClear()
+    mockRecordEventSourceError.mockClear()
+    mockResetErrorBuckets.mockClear()
+    mockMonitorDestroy.mockClear()
   })
 
   afterEach(() => {
@@ -2475,7 +2517,9 @@ describe('useSSEChat', () => {
 
       // New transport created with fresh URL
       const { SSETransport } = await import('@/services/transport/SSETransport')
-      expect(SSETransport).toHaveBeenLastCalledWith({ baseUrl: 'https://new-agent.example.com' })
+      expect(SSETransport).toHaveBeenLastCalledWith(
+        expect.objectContaining({ baseUrl: 'https://new-agent.example.com' })
+      )
 
       hook.unmount()
     })
@@ -2548,6 +2592,132 @@ describe('useSSEChat', () => {
       expect(global.fetch).not.toHaveBeenCalled()
 
       hook.unmount()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // SSEQualityMonitor instrumentation
+  // ---------------------------------------------------------------------------
+
+  describe('quality monitor instrumentation', () => {
+    it('marks connect start and records created-conversation phases when no cookie', async () => {
+      mockConversationIdFromCookie = null
+      await setupHook('app-monitor-created')
+
+      expect(mockMarkConnectStart).toHaveBeenCalledWith('app-monitor-created')
+      expect(mockRecordConnectPhases).toHaveBeenCalledTimes(1)
+      const phases = mockRecordConnectPhases.mock.calls[0][0]
+      expect(phases).toEqual(expect.objectContaining({
+        configFetchMs: expect.any(Number),
+        tokenFetchMs: expect.any(Number),
+        conversationCreateMs: expect.any(Number),
+        conversationSource: 'created',
+      }))
+    })
+
+    it('records cookie-conversation phases with no conversationCreateMs when a cookie exists', async () => {
+      mockConversationIdFromCookie = 'conv-from-cookie'
+      await setupHook('app-monitor-cookie')
+
+      expect(mockRecordConnectPhases).toHaveBeenCalledTimes(1)
+      const phases = mockRecordConnectPhases.mock.calls[0][0]
+      expect(phases).toEqual(expect.objectContaining({
+        configFetchMs: expect.any(Number),
+        tokenFetchMs: expect.any(Number),
+        conversationSource: 'cookie',
+      }))
+      expect(phases).not.toHaveProperty('conversationCreateMs')
+    })
+
+    it('marks send then first response when a chunk follows a sendMessage', async () => {
+      const hook = await setupHook()
+
+      await act(async () => {
+        await hook.result.current.actions.send({ content: 'hello' })
+      })
+
+      expect(mockMarkSend).toHaveBeenCalledTimes(1)
+      expect(mockMarkFirstResponse).not.toHaveBeenCalled()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({ type: 'chunk', content: 'hi', data: {} })
+      })
+
+      expect(mockMarkFirstResponse).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not mark first response for a deduped replay event', async () => {
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({
+          type: 'recovery_status',
+          data: { hasBufferedEvents: true, bufferedCount: 2, streamCompleted: false },
+        })
+      })
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({ type: 'chunk', content: 'first', data: {}, sequence: 99 })
+      })
+
+      expect(mockMarkFirstResponse).toHaveBeenCalledTimes(1)
+      mockMarkFirstResponse.mockClear()
+
+      // Duplicate sequence is dropped before the STREAM_UPDATE_EVENTS block, so
+      // markFirstResponse must not fire again for it.
+      act(() => {
+        lastTransport.callbacks?.onEvent({ type: 'chunk', content: 'first', data: {}, sequence: 99 })
+      })
+
+      expect(mockMarkFirstResponse).not.toHaveBeenCalled()
+    })
+
+    it('clears the pending send on a complete event', async () => {
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({ type: 'complete', data: {} })
+      })
+
+      expect(mockClearSend).toHaveBeenCalled()
+    })
+
+    it('clears the pending send on a terminal error event', async () => {
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onEvent({ type: 'error', content: 'boom', data: {} })
+      })
+
+      expect(mockClearSend).toHaveBeenCalled()
+    })
+
+    it('clears the pending send when stop is called', async () => {
+      const hook = await setupHook()
+
+      act(() => {
+        hook.result.current.actions.stop()
+      })
+
+      expect(mockClearSend).toHaveBeenCalled()
+    })
+
+    it('clears the pending send on a terminal transport error', async () => {
+      await setupHook()
+
+      act(() => {
+        lastTransport.callbacks?.onError(new Error('sse_transport_cooldown'))
+      })
+
+      expect(mockClearSend).toHaveBeenCalled()
+    })
+
+    it('destroys the monitor on unmount', async () => {
+      const hook = await setupHook()
+
+      hook.unmount()
+
+      expect(mockMonitorDestroy).toHaveBeenCalledTimes(1)
     })
   })
 })
