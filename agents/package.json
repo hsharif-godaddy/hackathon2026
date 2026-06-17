@@ -77,7 +77,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.77",
-    "@ai-sdk/devtools": "^0.0.18",
+    "@ai-sdk/devtools": "^0.0.20",
     "@ai-sdk/mcp": "^1.0.42",
     "@airo/ai-common": "workspace:*",
     "@airo/ai-grants": "workspace:*",

@@ -122,17 +122,18 @@ catalog:
 # Audit suppressions — advisories that can't be resolved via overrides.
 # - GHSA-gxw8-54vm-j6h5, GHSA-mr89-h5vv-pr3v: false-positive malware flags on internal @gdcorp-digitalcare/* packages
 # - GHSA-r7x9-8ph7-w8cg, GHSA-cvhv-6xm6-c3v4, GHSA-w5cr-2qhr-jqc5: workspace name "agents" collides with Cloudflare's npm "agents" package
-# - GHSA-j687-52p2-xcff, GHSA-xr5h-phrj-8vxv: astro <6.x in blog/ (major version, separate upgrade)
+# - GHSA-8hv8-536x-4wqp, GHSA-2pvr-wf23-7pc7: astro <6.x in blog/ (major version, separate upgrade tracked in #5032)
+# - GHSA-88fw-hqm2-52qc: hono <4.12.25 via @ai-sdk/devtools in agents/ (bumped to ^0.0.20 which requires hono ^4.12.25)
 # - GHSA-w5hq-g745-h8pq: uuid <11.1.1 in GoDaddy internal packages (major version, can't override)
 # - GHSA-pxg6-pf52-xh8x: cookie <0.7.0 in @social/social-flows (breaking semver, owned by another team)
 auditConfig:
   ignoreGhsas:
+    - GHSA-2pvr-wf23-7pc7
+    - GHSA-8hv8-536x-4wqp
     - GHSA-cvhv-6xm6-c3v4
     - GHSA-gxw8-54vm-j6h5
-    - GHSA-j687-52p2-xcff
     - GHSA-mr89-h5vv-pr3v
     - GHSA-pxg6-pf52-xh8x
     - GHSA-r7x9-8ph7-w8cg
     - GHSA-w5cr-2qhr-jqc5
     - GHSA-w5hq-g745-h8pq
-    - GHSA-xr5h-phrj-8vxv
