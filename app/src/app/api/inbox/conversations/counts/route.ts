@@ -1,8 +1,8 @@
 /**
  * GET /api/inbox/conversations/counts?brandId={uuid}
  *
- * Fetch the unread-conversation count for a given brand from Reamaze
- * (counts_only=true&filter=unread). Returns { total_count } verbatim.
+ * Fetch the unresolved-conversation count for a given brand from Reamaze
+ * (counts_only=true&filter=unresolved). Returns { total_count } verbatim.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -38,9 +38,9 @@ export const GET = withCustomerAuth(async (
   const REAMAZE_HOST = getReamazeHost();
   const url = new URL(`https://${brandId}.${REAMAZE_HOST}/api/v2/conversations`);
   url.searchParams.set('counts_only', 'true');
-  url.searchParams.set('filter', 'unread');
+  url.searchParams.set('filter', 'unresolved');
 
-  logger.info('inbox.unread_count.fetch.start', { brandId });
+  logger.info('inbox.unresolved_count.fetch.start', { brandId });
 
   const upstream = await fetch(url.toString(), {
     headers: {
@@ -49,20 +49,20 @@ export const GET = withCustomerAuth(async (
     },
   }).catch((err: unknown) => {
     const e = err instanceof Error ? err : new Error(String(err));
-    logger.error('inbox.unread_count.fetch.exception', { brandId, error: e.message });
+    logger.error('inbox.unresolved_count.fetch.exception', { brandId, error: e.message });
     return null;
   });
 
   if (!upstream) {
     return NextResponse.json(
-      { error: 'Failed to fetch unread count from Reamaze' },
+      { error: 'Failed to fetch unresolved count from Reamaze' },
       { status: 502 },
     );
   }
 
   if (!upstream.ok) {
     const errorData = await upstream.json().catch(() => ({}));
-    logger.warn('inbox.unread_count.fetch.error', {
+    logger.warn('inbox.unresolved_count.fetch.error', {
       brandId,
       status: upstream.status,
       error: errorData,
@@ -75,7 +75,7 @@ export const GET = withCustomerAuth(async (
 
   const data = await upstream.json().catch((err: unknown) => {
     const e = err instanceof Error ? err : new Error(String(err));
-    logger.error('inbox.unread_count.parse.exception', { brandId, error: e.message });
+    logger.error('inbox.unresolved_count.parse.exception', { brandId, error: e.message });
     return null;
   });
 
@@ -86,7 +86,7 @@ export const GET = withCustomerAuth(async (
     );
   }
 
-  logger.info('inbox.unread_count.fetch.success', {
+  logger.info('inbox.unresolved_count.fetch.success', {
     brandId,
     totalCount: data.total_count ?? 0,
   });

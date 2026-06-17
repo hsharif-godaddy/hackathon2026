@@ -53,14 +53,14 @@ describe('GET /api/inbox/conversations/counts', () => {
     expect(data.error).toContain('UUID');
   });
 
-  it('builds the Reamaze counts URL with counts_only and filter=unread', async () => {
+  it('builds the Reamaze counts URL with counts_only and filter=unresolved', async () => {
     mockFetch.mockResolvedValue(new Response(JSON.stringify({ total_count: 0 }), { status: 200 }));
     await GET(makeRequest({ brandId: VALID_BRAND }), createAuthContext('jwt-token'));
     const url = mockFetch.mock.calls[0][0] as string;
     expect(url).toContain(`${VALID_BRAND}.reamaze.dev-godaddy.com`);
     expect(url).toContain('/api/v2/conversations');
     expect(url).toContain('counts_only=true');
-    expect(url).toContain('filter=unread');
+    expect(url).toContain('filter=unresolved');
   });
 
   it('forwards JWT as sso-jwt Authorization header', async () => {
@@ -92,7 +92,7 @@ describe('GET /api/inbox/conversations/counts', () => {
     const response = await GET(makeRequest({ brandId: VALID_BRAND }), createAuthContext('jwt'));
     const data = await response.json();
     expect(response.status).toBe(502);
-    expect(data.error).toContain('Failed to fetch unread count');
+    expect(data.error).toContain('Failed to fetch unresolved count');
   });
 
   it('returns 502 when upstream payload is not an object', async () => {

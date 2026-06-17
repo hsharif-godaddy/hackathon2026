@@ -66,10 +66,10 @@ export const queryKeys = {
       'inboxEmailNotifications',
       brandId,
     ] as const,
-  inboxUnreadCount: (brandId: UuidString) =>
+  inboxUnresolvedCount: (brandId: UuidString) =>
     [
       ...queryKeys.all,
-      'inboxUnreadCount',
+      'inboxUnresolvedCount',
       brandId,
     ] as const,
 }

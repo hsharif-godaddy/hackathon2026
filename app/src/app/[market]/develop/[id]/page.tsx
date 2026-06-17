@@ -280,7 +280,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
   }, [brandId, setInboxBrandId])
 
   // Single Pusher subscription for the whole builder session, so the inbox
-  // unread badge stays fresh even when the inbox view is closed. Gated on the
+  // unresolved badge stays fresh even when the inbox view is closed. Gated on the
   // feature flag so non-inbox users open no connection.
   //
   // Realtime requires accountId (the channel is presence-admin-account-${id}),

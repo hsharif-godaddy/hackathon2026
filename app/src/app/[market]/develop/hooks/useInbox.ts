@@ -276,7 +276,7 @@ export async function getInboxConversationMessages(params: ConversationMessagesR
   }
 }
 
-export async function getInboxUnreadCount(brandId: UuidString): Promise<number> {
+export async function getInboxUnresolvedCount(brandId: UuidString): Promise<number> {
   if (!brandId) {
     throw new Error('Brand ID is required')
   }
@@ -289,7 +289,7 @@ export async function getInboxUnreadCount(brandId: UuidString): Promise<number> 
     const data = await response.json().catch(() => ({}))
     // Carry the upstream status so the query's retry policy can skip 4xx.
     const error = new Error(
-      data.error || `Failed to get unread count: ${response.status}`,
+      data.error || `Failed to get unresolved count: ${response.status}`,
     ) as Error & { status?: number }
     error.status = response.status
     throw error
@@ -299,12 +299,12 @@ export async function getInboxUnreadCount(brandId: UuidString): Promise<number> 
   return Number.isFinite(data?.total_count) ? data.total_count : 0
 }
 
-export function useInboxUnreadCount(
+export function useInboxUnresolvedCount(
   brandId: UuidString | undefined,
 ): UseQueryResult<number, Error> {
   return useQuery({
-    queryKey: queryKeys.inboxUnreadCount(brandId as UuidString),
-    queryFn: () => getInboxUnreadCount(brandId as UuidString),
+    queryKey: queryKeys.inboxUnresolvedCount(brandId as UuidString),
+    queryFn: () => getInboxUnresolvedCount(brandId as UuidString),
     staleTime: 60_000,
     refetchOnWindowFocus: true,
     retry: (failureCount, error) => {
@@ -315,7 +315,7 @@ export function useInboxUnreadCount(
       const isClientError = status !== undefined && status >= 400 && status < 500
       const willRetry = !isClientError && failureCount < 3
       if (!willRetry) {
-        console.error('Error fetching unread count:', error)
+        console.error('Error fetching unresolved count:', error)
       }
       return willRetry
     },

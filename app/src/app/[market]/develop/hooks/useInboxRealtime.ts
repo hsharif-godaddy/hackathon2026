@@ -17,7 +17,7 @@ interface UseInboxRealtimeOptions {
  * Owns the single Pusher subscription for the builder session. On
  * autoupdate_version events it debounces, then invalidates the root ['reamaze']
  * query key — refetching every mounted inbox query (conversation list, active
- * conversation, messages) and the unread-count badge. Call once at the page level.
+ * conversation, messages) and the unresolved-count badge. Call once at the page level.
  *
  * Gated by accountId: pass `undefined` (e.g. when the inbox feature is disabled)
  * and usePusher opens no connection.
