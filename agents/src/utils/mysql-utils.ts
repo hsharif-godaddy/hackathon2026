@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { Readable } from 'stream';
 import { logger } from '../logging/index.js';
-import mysql, { type ResultSetHeader } from 'mysql2/promise';
+import mysql, { type ResultSetHeader, type RowDataPacket } from 'mysql2/promise';
 import { join } from 'path';
 import { getNomadAllocConfig } from './nomad-config.js';
 
@@ -601,6 +601,33 @@ export class MySQLUtils {
    */
   escapeIdentifier(identifier: string): string {
     return `\`${identifier.replace(/`/g, '``')}\``;
+  }
+
+  /**
+   * Get the CREATE TABLE DDL statement for a table using MySQL's native SHOW CREATE TABLE.
+   * Returns the exact DDL MySQL uses internally (preserves indexes, foreign keys, charset, etc.)
+   *
+   * @param credentials - Database credentials
+   * @param tableName - Name of the table
+   * @returns CREATE TABLE DDL string
+   */
+  async getCreateTableDDL(credentials: DatabaseCredentials, tableName: string): Promise<string> {
+    return this.withConnection(credentials, async (connection) => {
+      const escapedTableName = this.escapeIdentifier(tableName);
+      // nosemgrep: node-mysql-sqli — table name is an identifier escaped via escapeIdentifier() (backtick-wrapping), not user input in a parameter position
+      const [rows] = await connection.execute(`SHOW CREATE TABLE ${escapedTableName}`);
+
+      if (!Array.isArray(rows) || rows.length === 0) {
+        throw new Error(`Table '${tableName}' not found`);
+      }
+
+      const ddl = (rows[0] as RowDataPacket & { 'Create Table': string })['Create Table'];
+      if (!ddl) {
+        throw new Error(`Could not retrieve DDL for table '${tableName}'`);
+      }
+
+      return ddl;
+    }, 'get CREATE TABLE DDL');
   }
 
   /**

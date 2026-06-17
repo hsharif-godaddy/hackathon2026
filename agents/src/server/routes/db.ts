@@ -3,7 +3,7 @@ import { Transform } from 'stream';
 import { pipeline } from 'stream/promises';
 import { AppRepository } from '../../database/index.js';
 import { formatCSVHeader, formatCSVRow } from '../../utils/csv-utils.js';
-import { MySQLUtils, isSystemTable } from '../../utils/mysql-utils.js';
+import { MySQLUtils, isSystemTable, type DatabaseCredentials } from '../../utils/mysql-utils.js';
 import { Logger, log } from '../../logging/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 
@@ -433,6 +433,236 @@ router.delete('/apps/:id/database/tables/:tableName/rows', async (req: Request, 
       error: 'Failed to delete row',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
+  }
+});
+
+/**
+ * Number of rows per INSERT statement in SQL export.
+ * Balances file size vs execution performance on reimport.
+ */
+const SQL_EXPORT_INSERT_BATCH_SIZE = 500;
+
+/**
+ * Escape a value for use in a SQL INSERT statement.
+ * Handles strings, numbers, BigInt, null, booleans, Dates, and Buffers.
+ */
+function escapeSqlValue(value: unknown): string {
+  if (value === null || value === undefined) return 'NULL';
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'bigint') return String(value);
+  if (typeof value === 'boolean') return value ? '1' : '0';
+  if (value instanceof Date) return `'${value.toISOString().slice(0, 19).replace('T', ' ')}'`;
+  if (Buffer.isBuffer(value)) return `X'${value.toString('hex')}'`;
+  const str = String(value);
+  // Escape backslash, single quote, newline, carriage return, null byte, and Ctrl-Z (0x1A).
+  // Ctrl-Z is interpreted as EOF by mysql CLI on Windows — escaping prevents silent truncation.
+  // eslint-disable-next-line no-control-regex
+  return `'${str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t').replace(/\0/g, '\\0').replace(/\u001a/g, '\\Z')}'`;
+}
+
+/**
+ * Stream SQL export for a single table (DDL + optional INSERT data).
+ * Writes directly to the response stream.
+ */
+async function streamTableSqlExport(
+  res: Response,
+  credentials: DatabaseCredentials,
+  tableName: string,
+  schemaOnly: boolean
+): Promise<void> {
+  const escapedTableName = mysqlUtils.escapeIdentifier(tableName);
+
+  // Write DROP TABLE + CREATE TABLE
+  const ddl = await mysqlUtils.getCreateTableDDL(credentials, tableName);
+  res.write(`DROP TABLE IF EXISTS ${escapedTableName};\n`);
+  res.write(`${ddl};\n\n`);
+
+  if (schemaOnly) return;
+
+  // Fetch schema before allocating a streaming connection to avoid
+  // leaking the pool connection if getTableSchema rejects.
+  const schema = await mysqlUtils.getTableSchema(credentials, tableName);
+  const columnNames = schema.map(col => mysqlUtils.escapeIdentifier(col.name));
+  const columnsClause = columnNames.join(', ');
+
+  const { stream, connection } = await mysqlUtils.streamTableData(credentials, tableName);
+
+  const batch: string[] = [];
+
+  const formatter = new Transform({
+    objectMode: true,
+    transform(row: Record<string, unknown>, _encoding, callback) {
+      const values = schema.map(col => escapeSqlValue(row[col.name]));
+      batch.push(`(${values.join(', ')})`);
+
+      if (batch.length >= SQL_EXPORT_INSERT_BATCH_SIZE) {
+        const chunk = `INSERT INTO ${escapedTableName} (${columnsClause}) VALUES\n${batch.join(',\n')};\n\n`;
+        batch.length = 0;
+        callback(null, chunk);
+      } else {
+        callback();
+      }
+    },
+    flush(callback) {
+      if (batch.length > 0) {
+        const chunk = `INSERT INTO ${escapedTableName} (${columnsClause}) VALUES\n${batch.join(',\n')};\n\n`;
+        batch.length = 0;
+        callback(null, chunk);
+      } else {
+        callback();
+      }
+    },
+  });
+
+  // pipeline() includes res so client disconnect destroys upstream streams,
+  // preventing wasted DB reads on a dead connection.
+  try {
+    await pipeline(stream, formatter, res, { end: false });
+  } finally {
+    try {
+      connection.release();
+    } catch (releaseError) {
+      logger.warn('route.db.sql_export.release_failed', {
+        error: releaseError instanceof Error ? releaseError.message : String(releaseError),
+      });
+    }
+  }
+}
+
+/**
+ * GET /apps/:id/database/export - Export multiple tables as a single SQL file
+ *
+ * Query params:
+ *   - schemaOnly: "true" | "false" (default: "false") — export all tables as structure only
+ *   - schemaOnlyTables: comma-separated table names — export only these tables as structure only
+ *   - tables: comma-separated table names (default: all tables)
+ *
+ * When both schemaOnly and schemaOnlyTables are provided, schemaOnly wins (all tables are schema-only).
+ */
+router.get('/apps/:id/database/export', async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params;
+  const allSchemaOnly = req.query.schemaOnly === 'true';
+  const tablesParam = req.query.tables as string | undefined;
+  const schemaOnlyTablesParam = req.query.schemaOnlyTables as string | undefined;
+
+  if (!id) {
+    res.status(400).json({ error: 'App ID is required' });
+    return;
+  }
+
+  const app = appRepo.findById(id);
+  if (!app) {
+    logger.warn('route.db.sql_export.not_found', { appId: id });
+    res.status(404).json({ error: 'App not found' });
+    return;
+  }
+
+  try {
+    const credentials = await mysqlUtils.loadCredentialsFromApp(app);
+
+    // Determine which tables to export
+    const allTables = await mysqlUtils.listTables(credentials);
+    let tablesToExport: string[];
+
+    if (tablesParam) {
+      const requested = [...new Set(tablesParam.split(',').map(t => t.trim()).filter(Boolean))];
+      // Validate all requested tables exist and are not system tables
+      for (const t of requested) {
+        if (isSystemTable(t)) {
+          res.status(403).json({ error: `Access to system table '${t}' is not allowed` });
+          return;
+        }
+        if (!allTables.includes(t)) {
+          res.status(400).json({ error: `Table '${t}' does not exist` });
+          return;
+        }
+      }
+      tablesToExport = requested;
+    } else {
+      tablesToExport = allTables;
+    }
+
+    if (tablesToExport.length === 0) {
+      res.status(400).json({ error: 'No tables to export' });
+      return;
+    }
+
+    // Parse and validate schemaOnlyTables — only allow tables that are in the export set
+    const perTableSchemaOnly = new Set<string>();
+    if (schemaOnlyTablesParam) {
+      const requested = [...new Set(schemaOnlyTablesParam.split(',').map(t => t.trim()).filter(Boolean))];
+      const exportSet = new Set(tablesToExport);
+      for (const t of requested) {
+        if (exportSet.has(t)) {
+          perTableSchemaOnly.add(t);
+        }
+      }
+    }
+
+    logger.info('route.db.sql_export.begin', {
+      appId: id,
+      allSchemaOnly,
+      schemaOnlyTables: schemaOnlyTablesParam ?? null,
+      tableCount: tablesToExport.length,
+      tables: tablesToExport.slice(0, 10),
+    });
+
+    // Set response headers — after this point, no JSON error responses
+    const filename = sanitizeFilename(`${credentials.database}-export.sql`);
+    res.setHeader('Content-Type', 'application/sql; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    // Write SQL header
+    res.write('-- Database export\n');
+    res.write(`-- Generated: ${new Date().toISOString()}\n`);
+    res.write(`-- Tables: ${tablesToExport.length}\n\n`);
+    res.write('SET FOREIGN_KEY_CHECKS = 0;\n\n');
+
+    // Export each table sequentially
+    for (const tableName of tablesToExport) {
+      const skipData = allSchemaOnly || perTableSchemaOnly.has(tableName);
+      res.write(`-- Table: ${tableName}${skipData ? ' (structure only)' : ''}\n`);
+      await streamTableSqlExport(res, credentials, tableName, skipData);
+    }
+
+    res.write('SET FOREIGN_KEY_CHECKS = 1;\n');
+    res.write('-- EXPORT COMPLETE\n');
+
+    logger.info('route.db.sql_export.success', {
+      appId: id,
+      allSchemaOnly,
+      tableCount: tablesToExport.length,
+    });
+
+    res.end();
+  } catch (error) {
+    const contextLogger = id ? log.forApp(id) : logger;
+
+    // Client disconnected — no point logging as an error
+    if (req.destroyed) {
+      logger.info('route.db.sql_export.client_disconnected', { appId: id });
+      return;
+    }
+
+    log.error(contextLogger, 'route.db.sql_export.error', error as Error, {
+      appId: id,
+      allSchemaOnly,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Failed to export database',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+      return;
+    }
+    if (!res.writableEnded) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      res.write(`\n-- ERROR: export aborted: ${msg}\n`);
+      res.write('-- DO NOT IMPORT THIS FILE\n');
+      res.end();
+    }
   }
 });
 
