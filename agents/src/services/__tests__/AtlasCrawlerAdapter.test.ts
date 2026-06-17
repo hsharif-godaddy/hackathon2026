@@ -1266,4 +1266,37 @@ describe('AtlasCrawlerAdapter', () => {
     });
   });
 
+  describe('mapFavicon', () => {
+    it('maps primary favicon, carrying rel/sizes/mimeType and dropping implicit', () => {
+      const result = createMockCrawlResult({
+        favicon: {
+          primary: { url: 'https://example.com/icon.png', rel: 'apple-touch-icon', sizes: '180x180', mimeType: 'image/png', implicit: false },
+          candidates: [],
+        },
+      });
+      expect(adapter.mapFavicon(result)).toEqual({
+        url: 'https://example.com/icon.png',
+        rel: 'apple-touch-icon',
+        sizes: '180x180',
+        mimeType: 'image/png',
+      });
+    });
+
+    it('returns undefined when favicon is absent', () => {
+      expect(adapter.mapFavicon(createMockCrawlResult({ favicon: undefined }))).toBeUndefined();
+    });
+
+    it('returns undefined when primary is null', () => {
+      const result = createMockCrawlResult({ favicon: { primary: null, candidates: [] } });
+      expect(adapter.mapFavicon(result)).toBeUndefined();
+    });
+
+    it('maps an implicit /favicon.ico to url only', () => {
+      const result = createMockCrawlResult({
+        favicon: { primary: { url: 'https://example.com/favicon.ico', implicit: true }, candidates: [] },
+      });
+      expect(adapter.mapFavicon(result)).toEqual({ url: 'https://example.com/favicon.ico' });
+    });
+  });
+
 });

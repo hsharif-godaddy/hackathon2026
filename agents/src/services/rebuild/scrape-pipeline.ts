@@ -657,6 +657,7 @@ export class ScrapePipeline {
       typography: output.designTokenMetadata.typography || aiMetadata.typography,
       ...(output.contact ? { contact: output.contact } : {}),
       ...(output.footerNavigation.length > 0 ? { footerNavigation: output.footerNavigation } : {}),
+      ...(output.favicon ? { favicon: output.favicon } : {}),
     };
   }
 

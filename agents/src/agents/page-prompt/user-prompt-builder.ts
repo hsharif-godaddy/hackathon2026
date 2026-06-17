@@ -23,11 +23,12 @@ import type {
   ImagePlacement,
   NavigationItem,
   PageContent,
+  ResolvedFavicon,
   SiteContactInfo,
   SiteMetadata,
   StylePreferences,
 } from '../../types/rebuild.js';
-import { normalizeAssetPath } from '../../utils/asset-paths.js';
+import { normalizeAssetPath, resolveFavicon } from '../../utils/asset-paths.js';
 import { sanitizeEmbeddedText } from './embedded-text-constraint.js';
 import { buildSiteTypeRules } from '../site-type-helpers.js';
 import { extractKeyContent } from './extract-key-content.js';
@@ -92,6 +93,9 @@ export function buildUserPrompt(args: BuildUserPromptArgs): string {
   const contactBlock = isFirstPage && siteMetadata.contact
     ? `\n=== CONTACT INFORMATION (from source site — use ONLY what's listed) ===\n${buildContactBlock(siteMetadata.contact)}\n`
     : '';
+  const faviconBlock = isFirstPage && siteMetadata.favicon
+    ? buildFaviconBlock(resolveFavicon(siteMetadata.favicon, assetManifest.assets))
+    : '';
 
   return `Generate a detailed prompt for building this ${isFirstPage ? 'homepage' : 'page'}. Your job is to OPTIMIZE the existing content, not create new content.
 
@@ -121,7 +125,7 @@ ${typographyInstructions}
 PAGE CONTENT TO REBUILD:
 - Title: ${pageContent.title}
 - URL: ${pageContent.url}
-${patternsBlock}${formsBlock}${contentLinksBlock}${navigationBlock}${footerNavBlock}${contactBlock}
+${patternsBlock}${formsBlock}${contentLinksBlock}${navigationBlock}${footerNavBlock}${contactBlock}${faviconBlock}
 === EXTRACTED KEY CONTENT (use this for the rebuild) ===
 ${extractedContent}
 
@@ -238,6 +242,29 @@ export function buildFooterNavBlock(footerNav: NavigationItem[] | undefined): st
     n => `- "${n.label}" → ${n.url}${n.isExternal ? ' (external)' : ''}`
   );
   return `\n=== FOOTER NAVIGATION (separate set of links for the site footer) ===\n${lines.join('\n')}\n`;
+}
+
+/**
+ * Strip characters that can't legitimately appear in a favicon `<link>`
+ * attribute (URL, rel, sizes, mimeType) but, if a hostile source site supplied
+ * them, could break out of the tag or inject a fake prompt section: double
+ * quotes, angle brackets, and newlines. These values are Atlas's extraction of
+ * an arbitrary third-party site, so treat them as untrusted — same rationale as
+ * `sanitizeEmbeddedText` for vision transcriptions.
+ */
+function sanitizeFaviconAttr(value: string): string {
+  return value.replace(/["<>\r\n]+/g, '').trim();
+}
+
+/**
+ * Render the chosen site favicon as a `<head>` directive. First-page only —
+ * the favicon lives in the document head, set once for the whole site.
+ */
+export function buildFaviconBlock(favicon: ResolvedFavicon): string {
+  const attrs = [`rel="${sanitizeFaviconAttr(favicon.rel ?? 'icon')}"`, `href="${sanitizeFaviconAttr(favicon.href)}"`];
+  if (favicon.mimeType) attrs.push(`type="${sanitizeFaviconAttr(favicon.mimeType)}"`);
+  if (favicon.sizes) attrs.push(`sizes="${sanitizeFaviconAttr(favicon.sizes)}"`);
+  return `\n=== SITE FAVICON (from source site — add to the document <head>) ===\n<link ${attrs.join(' ')}>\nUse this exact favicon; do not substitute a generated or placeholder icon.\n`;
 }
 
 /**

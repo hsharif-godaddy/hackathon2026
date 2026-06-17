@@ -93,6 +93,8 @@ export interface AtlasCrawlOutput {
   footerNavigation: NavigationItem[];
   /** Aggregated contact info (phones, emails, addresses, hours, social). */
   contact?: SiteContactInfo;
+  /** Primary site favicon chosen by Atlas (rel/sizes/mimeType when known). */
+  favicon?: SiteMetadata['favicon'];
   homepageScreenshotBase64?: string;
   /** True when Atlas advertised a screenshot URL, regardless of fetch success. Lets the orchestrator log fetch-failure as a regression. */
   atlasReportedScreenshot: boolean;
@@ -232,6 +234,7 @@ export class AtlasCrawlerAdapter {
     const navigation = this.mapNavigation(result, rootPath);
     const footerNavigation = this.mapFooterNavigation(result);
     const contact = this.mapContact(result);
+    const favicon = this.mapFavicon(result);
     const atlasReportedScreenshot = !!result.screenshots?.[0]?.url;
 
     let homepageScreenshotBase64: string | undefined;
@@ -257,6 +260,7 @@ export class AtlasCrawlerAdapter {
       navigation,
       footerNavigation,
       contact,
+      ...(favicon ? { favicon } : {}),
       homepageScreenshotBase64,
       atlasReportedScreenshot,
       ...(homepageScreenshotFailureReason ? { homepageScreenshotFailureReason } : {}),
@@ -784,6 +788,19 @@ export class AtlasCrawlerAdapter {
     }
 
     return Object.keys(out).length > 0 ? out : undefined;
+  }
+
+  mapFavicon(result: AtlasCrawlResult): SiteMetadata['favicon'] | undefined {
+    const primary = result.favicon?.primary;
+    if (!primary?.url) return undefined;
+    // Drop `implicit` — the rebuilt <head> doesn't need to distinguish a
+    // synthesized /favicon.ico from a DOM <link>.
+    return {
+      url: primary.url,
+      ...(primary.rel ? { rel: primary.rel } : {}),
+      ...(primary.sizes ? { sizes: primary.sizes } : {}),
+      ...(primary.mimeType ? { mimeType: primary.mimeType } : {}),
+    };
   }
 
   private tryParseOrigin(baseUrl: string): string | null {

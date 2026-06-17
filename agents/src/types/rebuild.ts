@@ -76,6 +76,30 @@ export interface SiteContactInfo {
 }
 
 /**
+ * The site's primary favicon as Atlas extracted it. `url` is the source-site
+ * URL — resolve it through `resolveFaviconHref` before emitting so it points at
+ * the locally-downloaded asset where one exists. See {@link ResolvedFavicon}.
+ */
+export interface SiteFavicon {
+  url: string;
+  rel?: string;
+  sizes?: string;
+  mimeType?: string;
+}
+
+/**
+ * A favicon whose `href` has already been resolved to an emittable path — a
+ * public `/assets/…` path when the asset was downloaded, or the source URL as a
+ * hotlink fallback. Distinct from {@link SiteFavicon} only in `url` → `href`.
+ */
+export interface ResolvedFavicon {
+  href: string;
+  rel?: string;
+  sizes?: string;
+  mimeType?: string;
+}
+
+/**
  * Overall site metadata
  */
 export interface SiteMetadata {
@@ -103,6 +127,8 @@ export interface SiteMetadata {
   };
   /** Site-level contact info (phones, emails, addresses, hours, social). Atlas-only. */
   contact?: SiteContactInfo;
+  /** Primary site favicon chosen by Atlas. Atlas-only; absent on AI-fallback manifests. */
+  favicon?: SiteFavicon;
   /** Footer nav. Site-wide; populated from Atlas navigation.footer when present. */
   footerNavigation?: NavigationItem[];
   scrapedAt: string;
@@ -196,6 +222,7 @@ export interface PageBuildSpec {
     colorPalette: SiteMetadata['colorPalette'];
     typography: SiteMetadata['typography'];
     contact?: SiteContactInfo;
+    favicon?: ResolvedFavicon;
   };
   navigation: {
     primary: NavigationItem[];

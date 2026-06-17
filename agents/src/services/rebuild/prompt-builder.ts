@@ -25,7 +25,7 @@ import {
   type SpecAssetManifest,
   type StylePreferences,
 } from '../../types/rebuild.js';
-import { normalizeAssetPath } from '../../utils/asset-paths.js';
+import { normalizeAssetPath, resolveFavicon } from '../../utils/asset-paths.js';
 import { resolvePageTitle } from '../../utils/rebuild-utils.js';
 import { resizeForVision } from '../../utils/image-resize.js';
 import { AssetProcessingService } from '../AssetProcessingService.js';
@@ -298,6 +298,7 @@ export function buildPageSpec(
       colorPalette: siteMetadata.colorPalette,
       typography: siteMetadata.typography,
       ...(siteMetadata.contact ? { contact: siteMetadata.contact } : {}),
+      ...(siteMetadata.favicon ? { favicon: resolveFavicon(siteMetadata.favicon, pageAssetManifest.assets) } : {}),
     },
     navigation: {
       primary: pageContent.structure.navigation,

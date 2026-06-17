@@ -325,6 +325,7 @@ describe('RebuildOrchestrationService', () => {
       const atlasTypography = { headingFonts: ['Inter'], bodyFonts: ['Open Sans'] };
       const atlasContact = { phones: [{ number: '8005551234' }] };
       const atlasFooter = [{ label: 'Privacy', url: '/privacy', isExternal: false }];
+      const atlasFavicon = { url: 'https://example.com/icon.png', rel: 'icon', sizes: '32x32', mimeType: 'image/png' };
 
       vi.spyOn(AtlasCrawlerAdapter.prototype, 'crawlSite').mockResolvedValue(
         buildCrawlOutput({
@@ -339,6 +340,7 @@ describe('RebuildOrchestrationService', () => {
           designTokenMetadata: { colorPalette: atlasPalette, typography: atlasTypography },
           contact: atlasContact,
           footerNavigation: atlasFooter,
+          favicon: atlasFavicon,
         }) as never
       );
 
@@ -386,6 +388,7 @@ describe('RebuildOrchestrationService', () => {
           typography: atlasTypography,
           contact: atlasContact,
           footerNavigation: atlasFooter,
+          favicon: atlasFavicon,
           sourceUrl: 'https://example.com',
         }),
       );

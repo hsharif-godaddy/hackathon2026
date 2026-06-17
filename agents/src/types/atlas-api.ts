@@ -118,6 +118,24 @@ export interface AtlasManifestAsset {
   url: string;
   type: string;
   referencedBy: string[];
+  /** Favicon-only metadata — populated by Atlas only when type === 'favicon'. */
+  rel?: string;
+  sizes?: string;
+  mimeType?: string;
+}
+
+/**
+ * Atlas's chosen primary favicon plus all favicon-typed candidates.
+ * Mirrors the producer's `FaviconPick` (atlas PR #46). Selection is done
+ * Atlas-side; the consumer only reads `primary`.
+ */
+export interface AtlasFaviconPick {
+  url: string;
+  rel?: string;
+  sizes?: string;
+  mimeType?: string;
+  /** true => synthesized /favicon.ico (no <link> in DOM, unverified). */
+  implicit?: boolean;
 }
 
 export interface AtlasImage {
@@ -168,6 +186,11 @@ export interface AtlasCrawlResult {
   duration: number;
   pages: AtlasPage[];
   assets: AtlasManifestAsset[];
+  /** Favicon metadata + chosen primary. Atlas-only; absent on pre-deploy/cached payloads. */
+  favicon?: {
+    primary: AtlasFaviconPick | null;
+    candidates: AtlasManifestAsset[];
+  };
   state: {
     visited: string[];
     failed: { url: string; error: string; attempts: number }[];

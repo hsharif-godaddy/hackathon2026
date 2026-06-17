@@ -182,6 +182,62 @@ describe('buildPageSpec', () => {
       },
     ]);
   });
+
+  describe('favicon wiring', () => {
+    const pageContent: PageContent = {
+      url: 'https://example.com/',
+      slug: 'homepage',
+      title: 'Home',
+      content: '<h1>Home</h1>',
+      sanitizedContent: '<h1>Home</h1>',
+      structure: { hasHeader: true, hasFooter: true, hasSidebar: false, sections: [], navigation: [] },
+      metadata: { title: 'Home' },
+      scrapedAt: '2024-01-01T00:00:00Z',
+    };
+
+    it('omits site.favicon when the source metadata has none', () => {
+      const spec = buildPageSpec('homepage', pageContent, baseSiteMetadata, baseStylePreferences, emptyAssetManifest, true);
+      expect(spec.site.favicon).toBeUndefined();
+    });
+
+    it('emits a favicon whose href resolves to the downloaded asset public path', () => {
+      const siteMetadata: SiteMetadata = {
+        ...baseSiteMetadata,
+        favicon: { url: 'https://example.com/favicon.png', rel: 'icon', sizes: '32x32', mimeType: 'image/png' },
+      };
+      const manifest: AssetManifest = {
+        ...emptyAssetManifest,
+        assets: [{
+          url: 'https://example.com/favicon.png',
+          localPath: '.source-site/assets/icons/favicon.png',
+          type: 'icon',
+          sourcePages: ['https://example.com/'],
+        }],
+        totalAssets: 1,
+        byType: { image: 0, font: 0, icon: 1, other: 0 },
+      };
+
+      const spec = buildPageSpec('homepage', pageContent, siteMetadata, baseStylePreferences, manifest, true);
+
+      expect(spec.site.favicon).toEqual({
+        href: '/assets/icons/favicon.png',
+        rel: 'icon',
+        sizes: '32x32',
+        mimeType: 'image/png',
+      });
+    });
+
+    it('falls back to the source URL when no downloaded asset matches the favicon', () => {
+      const siteMetadata: SiteMetadata = {
+        ...baseSiteMetadata,
+        favicon: { url: 'https://example.com/favicon.ico' },
+      };
+
+      const spec = buildPageSpec('homepage', pageContent, siteMetadata, baseStylePreferences, emptyAssetManifest, true);
+
+      expect(spec.site.favicon).toEqual({ href: 'https://example.com/favicon.ico' });
+    });
+  });
 });
 
 describe('RebuildPromptBuilder.buildPage — BuildPageResult fields', () => {
