@@ -84,3 +84,15 @@ test('crgQuery proxies to the fake client and returns its result', async () => {
   assert.equal(r.ok, true);
   assert.deepEqual(r.result.callers, ['myFn_caller']);
 });
+
+test('crgQuery semantic_search passes target as { query }, not { target } (regression)', async () => {
+  let receivedParams = null;
+  const fakeTool = { execute: async (params) => { receivedParams = params; return { nodes: [] }; } };
+  const fakeClient = { tools: async () => ({ 'semantic_search_nodes': fakeTool }) };
+  const tools = createRetrievalTools({ appCodeDir: '/tmp', crgClient: fakeClient });
+  const r = await tools.crgQuery.execute({ op: 'semantic_search', target: 'cart checkout routes' });
+  assert.equal(r.ok, true);
+  // Must pass query (not target) — the MCP tool requires { query } and rejects { target }
+  assert.equal(receivedParams.query, 'cart checkout routes');
+  assert.equal(receivedParams.target, undefined);
+});

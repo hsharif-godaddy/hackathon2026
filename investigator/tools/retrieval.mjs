@@ -256,8 +256,16 @@ export function createRetrievalTools({ appCodeDir = '/tmp', crgClient = null, ex
         if (!toolName) toolName = `mcp__crg__${op}`;
         const crgTool = availableTools[toolName];
         if (!crgTool) return { ok: false, error: `CRG tool for op '${op}' not found (available: ${availableNames.join(', ')})` };
-        // For query_graph-style tools, pass op as pattern so the server knows what to query
-        const params = { target, repo_root: repoRoot };
+        // Build params for the resolved tool.
+        // semantic_search_nodes_tool expects { query } not { target }.
+        // query_graph-style tools need a pattern to know which relationship to query.
+        const params = {};
+        if (op === 'semantic_search') {
+          params.query = target;
+        } else {
+          params.target = target;
+        }
+        if (repoRoot) params.repo_root = repoRoot;
         if (toolName === 'query_graph' || toolName.includes('query_graph')) params.pattern = op;
         const result = await crgTool.execute(params);
         return { ok: true, op, target, result };

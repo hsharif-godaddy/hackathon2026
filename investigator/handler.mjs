@@ -1032,23 +1032,34 @@ export async function handler(event) {
           child.on('exit', () => { clearTimeout(timeoutHandle); resolve(); });
           child.on('error', () => { clearTimeout(timeoutHandle); resolve(); });
         });
-        // Read all raw log lines from the index files
-        try {
-          const indexEntries = await fs.readdir(logIndexDir).catch(() => []);
-          for (const entry of indexEntries) {
-            if (!entry.endsWith('.json') || entry === 'evidence.json') continue;
+        // Read all raw log lines from page files written by write_batched_evidence.
+        // The script writes one subdir per source (safe_name-transformed sourceId),
+        // each containing bucket page files named {bucket}-p{NNNN}.json → { "logs": [...] }.
+        // Top level holds only evidence.json (full bundle) + these subdirs.
+        // Only read page files (name contains "-p") — excludes each source's index.json.
+        let skippedPages = 0;
+        const sourceDirs = (await fs.readdir(logIndexDir, { withFileTypes: true }).catch(() => []))
+          .filter((e) => e.isDirectory())
+          .map((e) => path.join(logIndexDir, e.name));
+        for (const sourceDir of sourceDirs) {
+          const pageFiles = (await fs.readdir(sourceDir).catch(() => []))
+            .filter((f) => f.includes('-p') && f.endsWith('.json'));
+          for (const pageFile of pageFiles) {
             try {
-              const raw = await fs.readFile(path.join(logIndexDir, entry), 'utf-8');
+              const raw = await fs.readFile(path.join(sourceDir, pageFile), 'utf-8');
               const parsed = JSON.parse(raw);
               const logs = parsed.logs || parsed.lines || [];
               for (const log of logs) {
                 const text = typeof log === 'string' ? log : (log.message || log.msg || log.log || JSON.stringify(log));
                 if (text) rawLogLines.push(text);
               }
-            } catch { /* skip malformed file */ }
+            } catch (e) {
+              skippedPages++;
+              console.warn('[investigator] core.log.gather.page.skip', { sourceDir, pageFile, error: e?.message });
+            }
           }
-        } catch { /* skip if dir unavailable */ }
-        console.log('[investigator] core.log.gather', { investigationId, lineCount: rawLogLines.length });
+        }
+        console.log('[investigator] core.log.gather', { investigationId, lineCount: rawLogLines.length, ...(skippedPages > 0 ? { skippedPages } : {}) });
       } catch (err) {
         console.error('[investigator] core.log.gather.failed', { investigationId, error: err?.message });
       }

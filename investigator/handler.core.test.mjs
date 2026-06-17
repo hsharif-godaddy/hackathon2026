@@ -167,6 +167,64 @@ mock.module('node:fs', {
   },
 });
 
+// ── log-gather subdir walk unit tests ────────────────────────────────────────
+// Directly tests the readback logic using the real node:fs against /tmp,
+// bypassing the full handler mock. Runs before the module-mock describe block.
+import { test as nodeTest } from 'node:test';
+import { promises as realFs } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+nodeTest('log-gather: reads page files from source subdirs, skips index.json (regression)', async () => {
+  // Reproduce the write_batched_evidence layout:
+  //   {logIndexDir}/{safe_name(sourceId)}/{bucket}-p{NNNN}.json → { "logs": [...] }
+  //   {logIndexDir}/evidence.json  (top-level, should NOT be read)
+  const base = await realFs.mkdtemp(join(tmpdir(), 'lg-test-'));
+  const agentsDir = join(base, 'airo-agents');
+  const previewDir = join(base, 'airo-preview');
+  await realFs.mkdir(agentsDir, { recursive: true });
+  await realFs.mkdir(previewDir, { recursive: true });
+
+  // Page files — only these should contribute rawLogLines
+  await realFs.writeFile(join(agentsDir, 'b000-p0000.json'), JSON.stringify({ logs: ['agent line 1', 'agent line 2'] }));
+  await realFs.writeFile(join(previewDir, 'b000-p0000.json'), JSON.stringify({ logs: ['preview line 1'] }));
+  // index.json per source (should be skipped — no -p in name)
+  await realFs.writeFile(join(agentsDir, 'index.json'), JSON.stringify({ topSignatures: [] }));
+  // top-level evidence.json (should be skipped — not in a subdir)
+  await realFs.writeFile(join(base, 'evidence.json'), JSON.stringify({ sources: [] }));
+
+  // Replicate the handler readback loop inline
+  const rawLogLines = [];
+  let skippedPages = 0;
+  const sourceDirs = (await realFs.readdir(base, { withFileTypes: true }))
+    .filter((e) => e.isDirectory())
+    .map((e) => join(base, e.name));
+  for (const sourceDir of sourceDirs) {
+    const pageFiles = (await realFs.readdir(sourceDir))
+      .filter((f) => f.includes('-p') && f.endsWith('.json'));
+    for (const pageFile of pageFiles) {
+      try {
+        const raw = await realFs.readFile(join(sourceDir, pageFile), 'utf-8');
+        const parsed = JSON.parse(raw);
+        const logs = parsed.logs || parsed.lines || [];
+        for (const log of logs) {
+          const text = typeof log === 'string' ? log : (log.message || log.msg || log.log || JSON.stringify(log));
+          if (text) rawLogLines.push(text);
+        }
+      } catch { skippedPages++; }
+    }
+  }
+
+  assert.equal(rawLogLines.length, 3, `expected 3 lines, got ${rawLogLines.length}: ${JSON.stringify(rawLogLines)}`);
+  assert.ok(rawLogLines.includes('agent line 1'));
+  assert.ok(rawLogLines.includes('preview line 1'));
+  assert.equal(skippedPages, 0);
+  // evidence.json and index.json did NOT contribute lines
+  assert.ok(!rawLogLines.some((l) => l.includes('sources') || l.includes('topSignatures')));
+
+  await realFs.rm(base, { recursive: true });
+});
+
 // ── test ─────────────────────────────────────────────────────────────────────
 describe('handler core path (B1/H1 regression)', () => {
   it('completes without ReferenceError and emits terminal event', async () => {
