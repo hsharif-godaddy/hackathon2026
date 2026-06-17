@@ -764,7 +764,11 @@ export default function StreamingMessageList({
           <StreamingMessage
             message={{ id: 'initial-prompt', role: 'user', content: initialPromptText, timestamp: new Date() } satisfies ChatMessage}
           />
-          <Thinker label={thinkerLabel} indicator={thinkerIndicator} />
+          <Thinker
+            label={thinkerLabel}
+            indicator={thinkerIndicator}
+            className="airo-chat-thinker--initial-inset"
+          />
         </div>
       )
     }

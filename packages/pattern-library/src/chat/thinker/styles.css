@@ -18,6 +18,8 @@
   --airo-chat-thinker-density: intent('ux.box.density');
   --airo-chat-thinker-gap-sm: var(--airo-chat-thinker-density);
   --airo-chat-thinker-gap-md: calc(var(--airo-chat-thinker-density) * 2);
+  /* 3 × dot ≈ 22px stage — matches thinking-daddy footprint. */
+  --airo-chat-thinker-godaddy-stage-dot: 7.34px;
   display: inline-flex;
   align-items: center;
   max-width: 100%;
@@ -58,7 +60,11 @@
    godaddy pulse ring scales past the stage, and thinking-daddy head tilt
    rotates past the inline start. Chat columns often clip transform overflow
    (overflow-x:hidden on the transcript); stack the ring above the logo and
-   use a contained pulse keyframe inside Thinker. */
+   use a contained pulse keyframe inside Thinker.
+   Wrapper min-height/padding reference --airo-primitives-thinking-indicator-dot-size,
+   which is only set on the godaddy descendant — custom properties inherit
+   downward, so these calcs are inert (no min-height/padding) unless an
+   ancestor defines the var (initial-inset does so via its own override). */
 .airo-chat-thinker__indicator:has(.airo-primitives-thinking-indicator--godaddy) {
   overflow: visible;
   flex-shrink: 0;
@@ -72,8 +78,7 @@
 }
 
 .airo-chat-thinker__indicator .airo-primitives-thinking-indicator--godaddy {
-  /* 3 × 7.34px ≈ 22px stage — matches thinking-daddy footprint. */
-  --airo-primitives-thinking-indicator-dot-size: 7.34px;
+  --airo-primitives-thinking-indicator-dot-size: var(--airo-chat-thinker-godaddy-stage-dot);
   overflow: visible;
 }
 
@@ -97,6 +102,16 @@
     transform: scale(1.5);
     opacity: 0;
   }
+}
+
+/* Create-flow initial row only (empty transcript, md:px-0 + overflow-x:hidden).
+   Extra inline-start padding clears scale(1.5) pulse overflow. Drop inline-end
+   padding so status column-gap is measured from the icon stage's trailing edge,
+   not after an extra padding cushion (other Thinker rows keep global padding). */
+.airo-chat-thinker--initial-inset
+  .airo-chat-thinker__indicator:has(.airo-primitives-thinking-indicator--godaddy) {
+  padding-inline-start: calc(var(--airo-chat-thinker-godaddy-stage-dot) * 1.5);
+  padding-inline-end: 0;
 }
 
 .airo-chat-thinker__status:has(.airo-primitives-thinking-indicator--thinking-daddy) {

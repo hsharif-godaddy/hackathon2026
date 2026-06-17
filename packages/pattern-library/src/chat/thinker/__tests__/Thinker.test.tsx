@@ -219,12 +219,44 @@ describe('Thinker', () => {
       expect(getComputedStyle(indicatorSlot!).paddingInlineStart).toBe(
         'calc(var(--airo-primitives-thinking-indicator-dot-size) * 0.75)',
       );
+      expect(getComputedStyle(indicatorSlot!).paddingInlineStart).not.toBe(
+        'calc(var(--airo-chat-thinker-godaddy-stage-dot) * 0.75)',
+      );
       expect(getComputedStyle(logoStage!).margin).toBe('0px');
       expect(
         getComputedStyle(godaddyRoot!).getPropertyValue(
           '--airo-primitives-thinking-indicator-dot-size',
         ),
+      ).toBe('var(--airo-chat-thinker-godaddy-stage-dot)');
+      expect(
+        getComputedStyle(container.querySelector('.airo-chat-thinker')!).getPropertyValue(
+          '--airo-chat-thinker-godaddy-stage-dot',
+        ),
       ).toBe('7.34px');
+    });
+
+    it('adds extra inline-start room for godaddy pulse on initial create-flow rows', () => {
+      const { container } = render(
+        <Thinker
+          className="airo-chat-thinker--initial-inset"
+          indicator={<ThinkingIndicator variant="godaddy" />}
+        />,
+      );
+      const indicatorSlot = container.querySelector(
+        '.airo-chat-thinker--initial-inset .airo-chat-thinker__indicator:has(.airo-primitives-thinking-indicator--godaddy)',
+      );
+      expect(indicatorSlot).toBeTruthy();
+      expect(getComputedStyle(indicatorSlot!).paddingInlineStart).toBe(
+        'calc(var(--airo-chat-thinker-godaddy-stage-dot) * 1.5)',
+      );
+      expect(['0px', '0', ''].includes(getComputedStyle(indicatorSlot!).paddingInlineEnd)).toBe(
+        true,
+      );
+      const logoStage = container.querySelector(
+        '.airo-chat-thinker--initial-inset .airo-primitives-thinking-indicator__logo-stage',
+      );
+      expect(logoStage).toBeTruthy();
+      expect(['0px', '0'].includes(getComputedStyle(logoStage!).margin)).toBe(true);
     });
   });
 
