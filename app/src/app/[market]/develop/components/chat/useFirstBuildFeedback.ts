@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { SWITCHBOARD_APPBUILDER_FIRST_BUILD_FEEDBACK } from '@/config/switchboard-flags'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
+import { isLogoDesignerApp } from '@/lib/logo-designer-preview-switch-storage'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { safeGetItem, safeSetItem } from '@/utils/localStorage'
 
@@ -51,7 +52,7 @@ export function useFirstBuildFeedback(appId: string): UseFirstBuildFeedbackResul
     [appId],
   )
 
-  if (!flagEnabled || !initialBuildComplete || alreadyResolved || step === 'done') {
+  if (!flagEnabled || !initialBuildComplete || alreadyResolved || step === 'done' || isLogoDesignerApp(appId)) {
     return null
   }
 
