@@ -88,7 +88,7 @@ catalog:
   jwt-decode: ^4.0.0
   knip: ^6.16.1
   magic-string: 0.30.17
-  multer: ^2.1.1
+  multer: ^2.2.0
   next: ^16.2.6
   openai: ^6.37.0
   parquetjs: ^0.11.2
