@@ -226,10 +226,11 @@ export class DefaultPublishStrategy implements PublishStrategy {
       commitHash: commitHash.substring(0, 7),
     });
 
+    const buildTimeoutSeconds = 300;
     const buildResult = await tasks.runCommandSync({
       command: 'NODE_ENV=production npm run build',
       workingDir: '/app',
-      timeoutSeconds: 120,
+      timeoutSeconds: buildTimeoutSeconds,
     });
 
     if (buildResult.exitCode !== 0) {
@@ -237,6 +238,9 @@ export class DefaultPublishStrategy implements PublishStrategy {
         commitHash: commitHash.substring(0, 7),
         exitCode: buildResult.exitCode,
         stderr: buildResult.stderr,
+        executionTime: buildResult.executionTimeMs,
+        buildTimedOut: buildResult.timedOut,
+        buildTimeoutSeconds,
       });
       throw new BuildError(
         'Build failed',
@@ -266,16 +270,32 @@ export class DefaultPublishStrategy implements PublishStrategy {
       deploymentStrategy: this.key,
     });
 
-    // No options passed - let createArchive auto-detect based on server.bundle.cjs presence
-    const archiveResult = await gitUtils.createArchive(
-      appPath,
-      commitHash,
-      targetDir
-    );
+    const archiveTimeoutMs = 120_000;
+    const archiveStart = Date.now();
+    let archiveResult: { path: string; commitHash: string };
+    try {
+      archiveResult = await gitUtils.createArchive(
+        appPath,
+        commitHash,
+        targetDir,
+        { timeout: archiveTimeoutMs }
+      );
+    } catch (error) {
+      const archiveExecutionTime = Date.now() - archiveStart;
+      logger.error(`route.publish.${this.key}.archive.failed`, {
+        commitHash: commitHash.substring(0, 7),
+        executionTime: archiveExecutionTime,
+        archiveTimedOut: archiveExecutionTime >= archiveTimeoutMs,
+        archiveTimeoutMs,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
     logger.info(`route.publish.${this.key}.archive.success`, {
       commitHash: commitHash.substring(0, 7),
       archivePath: archiveResult.path,
+      executionTime: Date.now() - archiveStart,
     });
 
     return archiveResult.path;

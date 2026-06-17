@@ -112,8 +112,14 @@ describe('DefaultPublishStrategy', () => {
       expect(mockTasks.runCommandSync).toHaveBeenCalledWith(expect.objectContaining({
         command: 'NODE_ENV=production npm run build',
         workingDir: '/app',
-        timeoutSeconds: 120,
+        timeoutSeconds: 300,
       }));
+      expect(mockGitUtils.createArchive).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.any(String),
+        { timeout: 120_000 }
+      );
       expect(result.commitHash).toBe('abc1234567890');
     });
 
