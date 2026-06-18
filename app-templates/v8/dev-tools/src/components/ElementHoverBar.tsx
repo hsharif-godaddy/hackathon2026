@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { type BusAiEditContextPayload, send } from "../utils/eventBus";
+import { type BusAiEditContextPayload, type BusElementInfo, send } from "../utils/eventBus";
 import { generatePreciseSelector, extractDevContext, getElementClassName, parseCollectionOccurrenceIndex } from "../utils/element-helpers";
 import { findMediaSlotDomIndex } from "../utils/media-slot-dom";
 import {
@@ -10,7 +10,7 @@ import {
   getNextSelectionNumber,
 } from "../utils/selection-overlay";
 import type { HoveredElement } from "../hooks/useImageHoverDetection";
-import { Bookmark, Image, MousePointerClick, Pencil, Sparkles } from "lucide-react";
+import { Bookmark, Image, MousePointerClick, Pencil, Sparkles, Trash2 } from "lucide-react";
 import { isClickable, isTextElement, isTextBlockElement, isListElement } from "../utils/element-detection";
 import { followClickableElement, resolveFollowTarget } from "../utils/link-follow";
 import {
@@ -428,6 +428,48 @@ export default function ElementHoverBar({
     setToolbarMode(false);
   }, []);
 
+  // Delete media: mirror handleReplace's capture pattern, then post
+  // DELETE_MEDIA_ELEMENT. The builder opens a confirmation modal; the actual
+  // AST removal happens there.
+  const handleDelete = useCallback(() => {
+    const el = toolbarElementRef.current;
+    const hovered = toolbarHoveredElementRef.current;
+    if (!el || !hovered || hovered.type !== "image") return;
+    trackEventBus.click("devtools.toolbar.delete_media");
+    // Read isVideo off the captured element, not the live `isVideo` closure —
+    // hover may have moved since the toolbar opened (same discipline as handleReplace).
+    const capturedIsVideo = !!hovered.isVideo;
+    const elRect = el.getBoundingClientRect();
+    const devContext = extractDevContext(el);
+    const preciseSelector = generatePreciseSelector(el);
+    const imgEl = el.tagName.toLowerCase() === "img" ? (el as HTMLImageElement) : null;
+    const elementInfo: BusElementInfo = {
+      tagName: el.tagName.toLowerCase(),
+      className: getElementClassName(el),
+      id: el.id,
+      dataId: devContext?.devId || "",
+      textContent: "",
+      computedStyles: {},
+      rect: { top: elRect.top, left: elRect.left, width: elRect.width, height: elRect.height },
+      selector: preciseSelector,
+      preciseSelector,
+      devContext,
+    };
+    send({
+      type: "DELETE_MEDIA_ELEMENT",
+      data: {
+        selector: preciseSelector,
+        preciseSelector,
+        devContext,
+        elementInfo,
+        isVideo: capturedIsVideo,
+        imageUrl: hovered.imageUrl ?? null,
+        alt: imgEl?.alt || undefined,
+      },
+    });
+    setToolbarMode(false);
+  }, []);
+
   // Build the EDIT_WITH_AI payload for the toolbar's captured element
   const buildContextData = useCallback((selectionNumber?: number): BusAiEditContextPayload | null => {
     const el = toolbarElementRef.current;
@@ -675,6 +717,11 @@ export default function ElementHoverBar({
                 label={t("devtools_image_click_action", "On click")}
               />
             )}
+            <HoverBarButton
+              onClick={handleDelete}
+              title={t("devtools_delete_media_title", "Delete")}
+              icon={<Trash2 width={15} height={15} />}
+            />
           </>
         )}
         {isBoundTextFormatEligible && (

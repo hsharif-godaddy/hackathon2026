@@ -185,6 +185,37 @@ function parseFormatOverrideUpdateResult(value: unknown): FormatOverrideUpdateRe
   }
 }
 
+export interface ElementDeleteResult {
+  success: boolean
+  message?: string
+  data?: {
+    filePath?: string
+    changes?: { tagName?: string; componentName?: string }
+    commitHash?: string
+  }
+  error?: string
+  details?: string
+}
+
+export interface ElementDeletePayload {
+  selector: string
+  preciseSelector?: string
+  isVideo: boolean
+  elementInfo: {
+    tagName: string
+    className?: string
+    id?: string
+    dataId?: string
+    selector: string
+    devContext: {
+      fileName: string
+      componentName: string
+      lineNumber: number
+      devId?: string
+    }
+  }
+}
+
 export interface ImageReplaceData {
   elementInfo: {
     tagName: string
@@ -673,6 +704,32 @@ export class AppService {
 
     if (!response.ok) {
       throw new Error(`Failed to send style update to API: ${response.status}`)
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Remove an image/video element from the page source via AST.
+   */
+  async deleteElement(appId: string, payload: ElementDeletePayload): Promise<ElementDeleteResult> {
+    const requestBody = {
+      selector: payload.selector,
+      preciseSelector: payload.preciseSelector,
+      isVideo: payload.isVideo,
+      elementInfo: payload.elementInfo,
+    }
+
+    const apiUrl = await buildDynamicApiUrl(`elements/remove`, appId)
+    const response = await agentFetch(apiUrl, {
+      siteId: appId,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to remove element via API: ${response.status}`)
     }
 
     return response.json()

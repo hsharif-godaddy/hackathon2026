@@ -129,6 +129,18 @@ export interface BusFormatOverrideUpdatePayload {
   marks: BusFormatOverrideMarks;
 }
 
+export interface BusMediaDeletePayload {
+  selector: string;
+  preciseSelector: string;
+  devContext?: BusDevContext;
+  elementInfo: BusElementInfo;
+  /** true when the deleted media is a <video>; drives the modal copy. */
+  isVideo: boolean;
+  /** Current src — shown as a thumbnail in the confirmation modal. */
+  imageUrl: string | null;
+  alt?: string;
+}
+
 export interface BusVisualContextPayload {
   page?: string;
   scroll_position?: { x: number; y: number };
@@ -174,6 +186,7 @@ export interface BusEventMap {
   SELECTIONS_CLEARED_BY_NAVIGATION: object;
   QUICK_EDIT_SEND: { data: { prompt: string; selectionNumber?: number | null } };
   REPLACE_IMAGE: { data?: BusAiEditContextPayload };
+  DELETE_MEDIA_ELEMENT: { data: BusMediaDeletePayload };
   SCROLL_POSITION_UPDATE: { scrollX?: number; scrollY?: number };
   VISUAL_CONTEXT_RESPONSE: { context: BusVisualContextPayload };
   URL_CHANGE: { url: string };

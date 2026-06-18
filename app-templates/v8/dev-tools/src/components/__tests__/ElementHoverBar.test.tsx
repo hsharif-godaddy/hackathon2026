@@ -393,6 +393,78 @@ describe('ElementHoverBar - tracking', () => {
   });
 });
 
+const findDeleteMediaCall = () =>
+  vi.mocked(safePostMessage).mock.calls.find(
+    ([, msg]) => (msg as { type?: string })?.type === 'DELETE_MEDIA_ELEMENT',
+  );
+
+describe('ElementHoverBar - delete media button', () => {
+  it('renders Delete for an image', () => {
+    vi.stubEnv('VITE_GODADDY_STORE_ID', '');
+    const img = makeImageElement();
+    renderHoverBar(makeImageHover(img));
+    openToolbar(img);
+    expect(screen.getByRole('button', { name: 'Delete' })).not.toBeNull();
+  });
+
+  it('does not render Delete for a non-image element', () => {
+    renderHoverBar(makeTextHover());
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
+
+  it('sends DELETE_MEDIA_ELEMENT with elementInfo/devContext when Delete is clicked', () => {
+    vi.stubEnv('VITE_GODADDY_STORE_ID', '');
+    const img = makeImageElement({ alt: 'A product photo' });
+    renderHoverBar(makeImageHover(img, { imageUrl: 'https://x/y.jpg' }));
+    openToolbar(img);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    const call = findDeleteMediaCall();
+    expect(call).toBeTruthy();
+    const msg = call![1] as {
+      type: string;
+      data: {
+        selector: string;
+        preciseSelector: string;
+        devContext?: unknown;
+        elementInfo?: { tagName?: string; devContext?: unknown };
+        isVideo: boolean;
+        imageUrl: string | null;
+        alt?: string;
+      };
+    };
+    expect(msg.type).toBe('DELETE_MEDIA_ELEMENT');
+    expect(msg.data.preciseSelector).toBe('div > img');
+    expect(msg.data.selector).toBe('div > img');
+    expect(msg.data.isVideo).toBe(false);
+    expect(msg.data.imageUrl).toBe('https://x/y.jpg');
+    expect(msg.data.alt).toBe('A product photo');
+    expect(msg.data.devContext).toMatchObject({ devId: 'test-id' });
+    expect(msg.data.elementInfo).toMatchObject({ tagName: 'img', devContext: { devId: 'test-id' } });
+  });
+
+  it('reports isVideo from the captured hovered element', () => {
+    vi.stubEnv('VITE_GODADDY_STORE_ID', '');
+    const img = makeImageElement();
+    renderHoverBar(makeImageHover(img, { isVideo: true }));
+    openToolbar(img);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    const call = findDeleteMediaCall();
+    expect(call).toBeTruthy();
+    expect((call![1] as { data: { isVideo: boolean } }).data.isVideo).toBe(true);
+  });
+
+  it('fires delete_media click tracking when Delete is clicked', () => {
+    vi.stubEnv('VITE_GODADDY_STORE_ID', '');
+    const img = makeImageElement();
+    renderHoverBar(makeImageHover(img, { imageUrl: 'https://x/y.jpg' }));
+    openToolbar(img);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(findTrackCall('devtools.toolbar.delete_media')).toBeTruthy();
+  });
+});
+
 describe('computePopoverPlacement', () => {
   it('returns "below" when there is enough space below', () => {
     expect(computePopoverPlacement(400, 500, 360)).toBe('below');

@@ -88,6 +88,7 @@ const REGISTERED_TYPES: readonly BusEventType[] = [
   'SELECTIONS_CLEARED_BY_NAVIGATION',
   'QUICK_EDIT_SEND',
   'REPLACE_IMAGE',
+  'DELETE_MEDIA_ELEMENT',
   'SCROLL_POSITION_UPDATE',
   'VISUAL_CONTEXT_RESPONSE',
   'URL_CHANGE',
@@ -296,6 +297,15 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
       })
       cur.setAiEditContext(replaceImageContext)
       cur.setIsAssetManagerOpen(true)
+    })
+
+    on('DELETE_MEDIA_ELEMENT', (m) => {
+      const cur = d()
+      logger.info('develop-page.media-delete-requested', {
+        appId: cur.appId,
+        isVideo: m.data.isVideo,
+      })
+      useDevelopPageStore.getState().setPendingMediaDelete(m.data)
     })
 
     on('SCROLL_POSITION_UPDATE', (m) => {

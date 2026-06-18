@@ -85,7 +85,7 @@ import { logger } from '@/lib/request-context'
 import { clearSettingsNotification } from '@/lib/settings-notifications-storage'
 import { claimTodoListHandoff, releaseTodoListHandoff } from '@/lib/todo-list-handoff-dedupe'
 import { cn } from '@/lib/utils'
-import { appService, type FormatOverrideUpdateData, gitHistoryFailureHttpStatus } from '@/services/AppService'
+import { appService, type ElementDeletePayload, type FormatOverrideUpdateData, gitHistoryFailureHttpStatus } from '@/services/AppService'
 import { todoListService } from '@/services/TodoListService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
@@ -107,7 +107,7 @@ import {
 } from '@/stores/useStreamingConversationStore'
 import { useTodoListStore } from '@/stores/useTodoListStore'
 import type { RuntimeErrorData } from '@/types/runtime-error'
-import { type BusFormatOverrideUpdatePayload, registerTrackEventBus } from '@/utils/eventBus'
+import { type BusFormatOverrideUpdatePayload, type BusMediaDeletePayload, registerTrackEventBus } from '@/utils/eventBus'
 import { logAiroHQEvent, logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 import {
@@ -126,6 +126,7 @@ const AppNotFound = dynamic(() => import('@/app/[market]/develop/components/AppN
 const MediaPanel = dynamic(() => import('@/app/[market]/develop/components/media/MediaPanel'), { loading: () => <PanelSkeleton panelType={ChatTab.MEDIAS} /> })
 const PostPublishGoLiveModal = dynamic(() => import('@/components/layout/PostPublishGoLiveModal'))
 const AgentPublishConfirmationModal = dynamic(() => import('@/components/layout/AgentPublishConfirmationModal'))
+const MediaDeleteConfirmationModal = dynamic(() => import('@/app/[market]/develop/components/media/MediaDeleteConfirmationModal').then(m => ({ default: m.MediaDeleteConfirmationModal })))
 const VersionHistory = dynamic(() => import('@/app/[market]/develop/components/VersionHistory'), { loading: () => <PanelSkeleton panelType={ChatTab.HISTORY} className="p-2 sm:p-0" /> })
 
 // Lazy-loaded but preloaded on idle after mount
@@ -433,6 +434,8 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
   const site = useDevelopPageStore((state) => state.site);
   const isAssetManagerOpen = useDevelopPageStore((state) => state.isAssetManagerOpen);
   const setIsAssetManagerOpen = useDevelopPageStore((state) => state.setIsAssetManagerOpen);
+  const pendingMediaDelete = useDevelopPageStore((state) => state.pendingMediaDelete);
+  const setPendingMediaDelete = useDevelopPageStore((state) => state.setPendingMediaDelete);
   const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal);
   const upgradeModalSource = usePaywallStore((state) => state.upgradeModalSource);
   const closeUpgradeModal = usePaywallStore((state) => state.closeUpgradeModal);
@@ -600,6 +603,8 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
   const pendingAutoSendRef = useRef<string | null>(null)
   const autoSendInFlightRef = useRef(false)
   const [isCreateFlowSession, setIsCreateFlowSession] = useState(false)
+  const [isDeletingMedia, setIsDeletingMedia] = useState(false)
+  const [mediaDeleteError, setMediaDeleteError] = useState<string | null>(null)
   const prevShowChatLoaderRef = useRef(init.ui.showChatLoader)
   const previewInitializedRef = useRef(false)
   const firstEditTrackedRef = useRef(false)
@@ -1128,6 +1133,45 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
           error: errorMessage,
         }))
       }
+    }
+  }, [appId])
+
+  const sendElementDelete = useCallback(async (payload: BusMediaDeletePayload) => {
+    if (!appId) {
+      logger.warn('develop-page.media-delete.skipped-no-app')
+      throw new Error('Cannot delete element: no appId')
+    }
+
+    logger.info('develop-page.media-delete.begin', { appId, isVideo: payload.isVideo })
+
+    const devContext = payload.elementInfo.devContext ?? payload.devContext
+    const elementDeletePayload: ElementDeletePayload = {
+      selector: payload.selector,
+      preciseSelector: payload.preciseSelector,
+      isVideo: payload.isVideo,
+      elementInfo: {
+        tagName: payload.elementInfo.tagName,
+        className: payload.elementInfo.className,
+        id: payload.elementInfo.id,
+        dataId: payload.elementInfo.dataId,
+        selector: payload.elementInfo.selector,
+        devContext: {
+          fileName: devContext?.fileName ?? '',
+          componentName: devContext?.componentName ?? '',
+          lineNumber: devContext?.lineNumber ?? 0,
+          devId: devContext?.devId,
+        },
+      },
+    }
+
+    const result = await appService.deleteElement(appId, elementDeletePayload)
+    if (result?.success) {
+      logger.info('develop-page.media-delete.success', { appId })
+      // Reload the preview so the removed element disappears.
+      handlePreviewRefresh({ lastIframeState })
+    } else {
+      logger.error('develop-page.media-delete.failed', { appId })
+      throw new Error('Element delete did not succeed')
     }
   }, [appId])
 
@@ -1714,6 +1758,36 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
           show={showIntroTour}
           onClose={() => setShowIntroTour(false)}
         />
+
+        {pendingMediaDelete && (
+          <MediaDeleteConfirmationModal
+            isVideo={pendingMediaDelete.isVideo}
+            imageUrl={pendingMediaDelete.imageUrl}
+            alt={pendingMediaDelete.alt}
+            isDeleting={isDeletingMedia}
+            error={mediaDeleteError}
+            onCancel={() => {
+              setPendingMediaDelete(null)
+              setMediaDeleteError(null)
+            }}
+            onConfirm={async () => {
+              setIsDeletingMedia(true)
+              setMediaDeleteError(null)
+              try {
+                await sendElementDelete(pendingMediaDelete)
+                setPendingMediaDelete(null)
+              } catch (error) {
+                logger.error('develop-page.media-delete.error', {
+                  appId,
+                  error: error instanceof Error ? error.message : String(error),
+                })
+                setMediaDeleteError(t('builder_media_delete_error', undefined, 'Failed to delete. Please try again.'))
+              } finally {
+                setIsDeletingMedia(false)
+              }
+            }}
+          />
+        )}
 
         <Growl />
 

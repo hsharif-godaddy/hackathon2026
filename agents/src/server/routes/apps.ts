@@ -26,6 +26,7 @@ import { ASTStyleEditor } from '../../tools/ast-style-editor.js';
 import { ASTTextEditor } from '../../tools/ast-text-editor.js';
 import { TextFixAgent } from '../../agents/text-fix-agent.js';
 import { astImageEditor } from '../../tools/ast-image-editor.js';
+import { astElementRemover } from '../../tools/ast-element-remover.js';
 import { mediaManifestService } from '../../services/MediaManifestService.js';
 import {
   parseImageSlotPath,
@@ -1228,6 +1229,83 @@ router.post('/:id/images/replace', async (req: Request, res: Response) => {
   }
 });
 
+
+/**
+ * POST /apps/:id/elements/remove - Remove a single image/video element from app files using AST
+ */
+router.post('/:id/elements/remove', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { selector, preciseSelector, isVideo, elementInfo } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ error: 'App ID is required' });
+    }
+
+    const contextLogger = log.forApp(id);
+
+    if (!elementInfo || !elementInfo.devContext) {
+      contextLogger.warn('route.apps.element-remove.validation.failed', {
+        hasElementInfo: !!elementInfo,
+        hasDevContext: !!(elementInfo && elementInfo.devContext),
+      });
+      return res.status(400).json({ error: 'Element info with dev context is required' });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      return res.status(404).json({ error: 'App not found' });
+    }
+
+    contextLogger.info('route.apps.element-remove.begin', {
+      fileName: elementInfo.devContext.fileName,
+      lineNumber: elementInfo.devContext.lineNumber,
+      tagName: elementInfo.tagName,
+      isVideo: !!isVideo,
+    });
+
+    const editResult = await astElementRemover.removeElement(app.path, {
+      selector,
+      preciseSelector,
+      isVideo,
+      elementInfo,
+    }, app.id);
+
+    if (!editResult.success) {
+      contextLogger.warn('route.apps.element-remove.failed', {
+        error: editResult.error,
+        fileName: elementInfo.devContext.fileName,
+        lineNumber: elementInfo.devContext.lineNumber,
+        componentName: elementInfo.devContext.componentName,
+        tagName: elementInfo.tagName,
+      });
+      return res.status(400).json({
+        error: 'Failed to remove element',
+        details: editResult.error,
+      });
+    }
+
+    contextLogger.info('route.apps.element-remove.success', {
+      filePath: editResult.filePath,
+      tagName: editResult.changes?.tagName,
+      commitHash: editResult.commitHash,
+    });
+
+    return res.json({
+      success: true,
+      message: 'Element removed successfully',
+      data: {
+        filePath: editResult.filePath,
+        changes: editResult.changes,
+        commitHash: editResult.commitHash,
+      },
+    });
+  } catch (error) {
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.element-remove.error', error as Error, {});
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 /**
  * POST /apps/suggest-name - Generate a suggested name for a project based on prompt

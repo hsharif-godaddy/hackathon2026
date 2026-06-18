@@ -13,6 +13,7 @@ import { logger } from '@/lib/request-context'
 import { type App, appService } from '@/services/AppService'
 import { type Site, useSitesStore } from '@/stores/useSitesStore'
 import { SubscriptionPlan } from '@/types/credits'
+import type { BusMediaDeletePayload } from '@/utils/eventBus'
 import { logImpressionEvent } from '@/utils/instrumentation'
 import { postMessageToIframe } from '@/utils/postMessage'
 
@@ -282,6 +283,10 @@ interface DevelopPageStore {
   // Asset Manager UI
   isAssetManagerOpen: boolean
 
+  // Pending media-element delete (hover-bar delete → confirmation modal).
+  // Set by the DELETE_MEDIA_ELEMENT bus handler; cleared on cancel/confirm.
+  pendingMediaDelete: BusMediaDeletePayload | null
+
 
   // Publish status UI (per-app state keyed by appId)
   publishStates: Record<string, {
@@ -397,6 +402,9 @@ interface DevelopPageStore {
 
   // Asset Manager actions
   setIsAssetManagerOpen: (open: boolean) => void
+
+  // Pending media-element delete action
+  setPendingMediaDelete: (payload: BusMediaDeletePayload | null) => void
 
 
   // Publish status actions (per-app)
@@ -549,6 +557,9 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
     // Asset Manager state
     isAssetManagerOpen: false,
+
+    // Pending media-element delete state
+    pendingMediaDelete: null,
 
 
     // Publish status state (per-app, keyed by appId)
@@ -887,6 +898,10 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     // Asset Manager actions
     setIsAssetManagerOpen: (open: boolean) => set((state) => {
       state.isAssetManagerOpen = open
+    }),
+
+    setPendingMediaDelete: (payload: BusMediaDeletePayload | null) => set((state) => {
+      state.pendingMediaDelete = payload
     }),
 
 
