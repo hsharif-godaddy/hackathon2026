@@ -16,6 +16,7 @@ import { QueryClientProvider } from "@/components/providers/QueryClientProvider"
 import SubscriptionCacheProvider from "@/components/providers/SubscriptionCacheProvider";
 import { TranslationsProvider } from "@/components/providers/TranslationProvider";
 import ConversationIdCookie from "@/components/security/ConversationIdCookie";
+import { DelegationBanner } from "@/components/security/DelegationBanner";
 import FrameBuster from "@/components/security/FrameBuster";
 import ItcInitializer from "@/components/tracking/ItcInitializer";
 import JourneyTrackerInit, { JourneyTrackerAuth } from "@/components/tracking/JourneyTrackerInit";
@@ -180,6 +181,7 @@ async function MarketLayout({
 
   return (
     <PresentationLayout params={params}>
+      <DelegationBanner key="market-delegation-banner" />
       <FrameBuster key="market-frame-buster" />
       <JourneyTrackerInit key="market-journey-tracker-init" />
       <Suspense fallback={null}>
