@@ -3,6 +3,14 @@ import { z } from 'zod';
 // Mirror of DkimOnboardingStatus in agents DkimOnboardingRepository — keep in sync (separate services, no shared type pkg).
 export type DkimOnboardingStatus = 'pending' | 'active' | 'failed';
 
+/** DKIM-specific error codes returned by onboard/offboard BFF routes. */
+export const DkimErrorCode = {
+  ONBOARD_FAILED: 'DKIM_ONBOARD_FAILED',
+  OFFBOARD_FAILED: 'DKIM_OFFBOARD_FAILED',
+  /** Upstream mgmt-hosting returned 404/409 — domain propagation lag, retryable. */
+  DOMAIN_NOT_READY: 'DKIM_DOMAIN_NOT_READY',
+} as const;
+
 export const DkimApiActivateResponseSchema = z.object({
   executionArn: z.string(),
 });

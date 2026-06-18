@@ -1,7 +1,10 @@
 import { useEffect } from 'react';
 
+import { DkimErrorCode } from '@/lib/dkim/types';
 import { appFetch } from '@/lib/gasket-config';
 import { shipAnalyticsLog } from '@/lib/logging';
+
+const RETRY_DELAY_MS = 3 * 60 * 1000;
 
 export interface UseDkimAutoOnboardInput {
   appId: string | null | undefined;
@@ -24,28 +27,51 @@ export function useDkimAutoOnboard({ appId, domain, enabled }: UseDkimAutoOnboar
   useEffect(() => {
     if (!enabled || !appId || !domain) return;
 
-    void appFetch(`/api/apps/${appId}/dkim/onboard`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domain }),
-    })
-      .then((res) => {
-        if (!res.ok) {
-          console.warn('dkim.auto-onboard.failed', { appId, domain, status: res.status });
-          shipAnalyticsLog('dkim.auto-onboard.failed', { appId, domain, status: res.status });
-        }
-      })
-      .catch((err: unknown) => {
-        console.warn('dkim.auto-onboard.failed', {
-          appId,
-          domain,
-          error: err instanceof Error ? err.message : String(err),
+    const onboard = async (): Promise<{ ok: boolean; retryable: boolean }> => {
+      try {
+        const res = await appFetch(`/api/apps/${appId}/dkim/onboard`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain }),
         });
+        if (!res.ok) {
+          // 5xx and 429 are always transient. 404/409 with DOMAIN_NOT_READY means
+          // mgmt-hosting hasn't propagated the freshly-attached domain yet — also
+          // transient and explicitly marked retryable by the server. All other 4xx
+          // (403 domain-not-attached, 400 bad-request) are permanent.
+          const body = await res.json().catch(() => null) as { code?: string } | null;
+          const retryable =
+            res.status >= 500 ||
+            res.status === 429 ||
+            body?.code === DkimErrorCode.DOMAIN_NOT_READY;
+          shipAnalyticsLog('dkim.auto-onboard.failed', { appId, domain, status: res.status, code: body?.code, retryable });
+          return { ok: false, retryable };
+        }
+        return { ok: true, retryable: false };
+      } catch (err: unknown) {
         shipAnalyticsLog('dkim.auto-onboard.failed', {
           appId,
           domain,
           error: err instanceof Error ? err.message : String(err),
+          retryable: true,
         });
-      });
+        return { ok: false, retryable: true };
+      }
+    };
+
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    void onboard().then(({ ok, retryable }) => {
+      if (ok || !retryable || cancelled) return;
+      retryTimer = setTimeout(() => {
+        if (!cancelled) void onboard();
+      }, RETRY_DELAY_MS);
+    });
+
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [enabled, appId, domain]);
 }

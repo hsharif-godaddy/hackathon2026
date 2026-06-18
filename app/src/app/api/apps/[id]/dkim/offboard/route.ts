@@ -4,6 +4,7 @@ import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { DkimAgentClient } from '@/lib/dkim/dkim-agent-client';
 import { DkimService } from '@/lib/dkim/dkim-service';
+import { DkimErrorCode } from '@/lib/dkim/types';
 import { AiroHttpError } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
@@ -53,30 +54,40 @@ export const POST = withCustomerAuth(async (
     if (durableEnabled) {
       // Tear down the durable onboarding row so a future re-attach can re-onboard.
       // Best-effort: never fail the offboard response on a teardown error.
-      try {
-        if (site.agent_url) {
-          await new DkimAgentClient(site.agent_url, appId).deleteRow(domain);
+      if (site.agent_url) {
+        const dkimAgent = new DkimAgentClient(site.agent_url, appId);
+        try {
+          await dkimAgent.deleteRow(domain);
+        } catch (e) {
+          logger.error('dkim.offboard.deleteRow.failed', { appId, domain, error: e instanceof Error ? e.message : String(e) });
+          // Retry with a conditional delete targeting only the active row.
+          // setFailed is not used here because the repository enforces
+          // status != 'active' on that update, making it a silent no-op for
+          // the exact case we need to recover from.
+          await dkimAgent.deleteRow(domain, { ifStatus: 'active' }).catch((e2: unknown) => {
+            logger.error('dkim.offboard.deleteRow.fallback-failed', { appId, domain, error: e2 instanceof Error ? e2.message : String(e2) });
+          });
         }
-      } catch (e) {
-        logger.error('dkim.offboard.deleteRow.failed', { appId, domain, error: e instanceof Error ? e.message : String(e) });
       }
     }
 
     return NextResponse.json(outcome);
   } catch (err) {
+    const isAiro = err instanceof AiroHttpError;
+    const status = isAiro ? err.status : 500;
     logger.error('dkim.offboard.error', {
       appId,
       domain,
       error: err instanceof Error ? err.message : String(err),
-      errorBody: err instanceof AiroHttpError ? JSON.stringify(err) : undefined,
+      errorBody: isAiro ? JSON.stringify(err) : undefined,
     });
     return NextResponse.json(
       {
-        code: ApiErrorCode.SITE_NOT_FOUND,
+        code: DkimErrorCode.OFFBOARD_FAILED,
         error: 'DKIM offboarding failed',
         details: err instanceof Error ? err.message : 'Unknown error',
       },
-      { status: err instanceof AiroHttpError ? err.status : 500 },
+      { status },
     );
   }
 }, { level: 3 });

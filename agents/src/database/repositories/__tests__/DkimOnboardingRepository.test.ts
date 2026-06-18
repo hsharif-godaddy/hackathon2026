@@ -172,7 +172,17 @@ describe('deleteByAppDomain', () => {
 describe('external DKIM polling schedule', () => {
   const now = new Date('2026-06-17T10:00:00.000Z');
 
-  it('claims the first poll and stores durable timing without poll attempts', () => {
+  it('returns not-due when no onboarding row exists (onboard has not run yet)', () => {
+    const result = repo.claimDuePoll(APP, DOMAIN, now);
+
+    expect(result.shouldPoll).toBe(false);
+    expect(result.expired).toBe(false);
+    expect(result.pollStartedAt).toBeNull();
+    expect(repo.findByAppDomain(APP, DOMAIN)).toBeNull();
+  });
+
+  it('claims the first poll on an onboarded row and stores durable timing without poll attempts', () => {
+    repo.claim(APP, DOMAIN);
     const result = repo.claimDuePoll(APP, DOMAIN, now);
 
     expect(result.shouldPoll).toBe(true);
@@ -191,6 +201,7 @@ describe('external DKIM polling schedule', () => {
   });
 
   it('allows only one device to claim a due poll window', () => {
+    repo.claim(APP, DOMAIN);
     const firstDevice = repo.claimDuePoll(APP, DOMAIN, now);
     const secondDevice = repo.claimDuePoll(APP, DOMAIN, new Date('2026-06-17T10:00:05.000Z'));
 
@@ -200,6 +211,7 @@ describe('external DKIM polling schedule', () => {
   });
 
   it('schedules fast polling while elapsed time is under 40 minutes', () => {
+    repo.claim(APP, DOMAIN);
     repo.claimDuePoll(APP, DOMAIN, now);
     repo.completeDuePoll(APP, DOMAIN, now);
 
@@ -207,6 +219,7 @@ describe('external DKIM polling schedule', () => {
   });
 
   it('schedules exponential polling from elapsed wall-clock time after 40 minutes', () => {
+    repo.claim(APP, DOMAIN);
     repo.claimDuePoll(APP, DOMAIN, now);
     const afterFortySevenMinutes = new Date('2026-06-17T10:47:00.000Z');
 
@@ -216,6 +229,7 @@ describe('external DKIM polling schedule', () => {
   });
 
   it('caps polling at one day after the exponential phase reaches 24 hours', () => {
+    repo.claim(APP, DOMAIN);
     repo.claimDuePoll(APP, DOMAIN, now);
     const afterTwoDays = new Date('2026-06-19T10:00:00.000Z');
 
@@ -225,6 +239,7 @@ describe('external DKIM polling schedule', () => {
   });
 
   it('stops polling after 30 days from poll start', () => {
+    repo.claim(APP, DOMAIN);
     repo.claimDuePoll(APP, DOMAIN, now);
 
     const result = repo.claimDuePoll(APP, DOMAIN, new Date('2026-07-18T10:00:00.000Z'));

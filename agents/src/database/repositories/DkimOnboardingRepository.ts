@@ -64,6 +64,11 @@ export class DkimOnboardingRepository {
    * claimed=false (idempotency). A `failed` or stale `pending` row is reset to
    * `pending` and claimed. Runs in a transaction so concurrent callers against
    * the single per-app agent are serialized.
+   *
+   * Note: claimDuePoll() never creates rows — only this method does. That
+   * invariant guarantees that any fresh `pending` row was created by onboard
+   * and should be protected without needing to inspect execution_arn or
+   * poll_started_at.
    */
   claim(appId: string, domain: string): ClaimResult {
     const txn = this.db.transaction((): ClaimResult => {
@@ -140,6 +145,11 @@ export class DkimOnboardingRepository {
   /**
    * Atomically claims a due external-DKIM poll window. `next_poll_at` doubles as
    * a short in-flight lease so multiple devices/tabs cannot all call MailFlow.
+   *
+   * This method never creates rows — only claim() (the onboard path) does.
+   * If no row exists the domain hasn't been onboarded yet; return not-due so
+   * the BFF skips the DNS check this cycle without creating a dummy pending row
+   * that would block subsequent onboard calls.
    */
   claimDuePoll(appId: string, domain: string, now = new Date()): DuePollDecision {
     const txn = this.db.transaction((): DuePollDecision => {
@@ -148,22 +158,13 @@ export class DkimOnboardingRepository {
         .get(appId, domain) as Record<string, unknown> | undefined;
 
       if (!row) {
-        const id = `dkim-${nanoid()}`;
-        const nowSql = toSqlDate(now);
-        this.db
-          .prepare(
-            `INSERT INTO dkim_onboarding
-             (id, app_id, domain, status, poll_started_at, next_poll_at, last_polled_at)
-             VALUES (?, ?, ?, 'pending', ?, ?, ?)`,
-          )
-          .run(id, appId, domain, nowSql, toSqlDate(addMs(now, POLL_LEASE_MS)), nowSql);
         return {
-          shouldPoll: true,
+          shouldPoll: false,
           expired: false,
-          status: 'pending',
-          pollStartedAt: now,
-          nextPollAt: addMs(now, POLL_LEASE_MS),
-          lastPolledAt: now,
+          status: null,
+          pollStartedAt: null,
+          nextPollAt: null,
+          lastPolledAt: null,
         };
       }
 

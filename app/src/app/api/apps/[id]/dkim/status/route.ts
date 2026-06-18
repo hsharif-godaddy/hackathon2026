@@ -101,7 +101,10 @@ export const GET = withCustomerAuth(async (
       return null;
     });
 
-    if (pollingState && !pollingState.shouldPoll && pollingState.status !== 'active') {
+    // status === null means no row exists (onboard hasn't run yet for this domain).
+    // Don't short-circuit in that case — still call getDkimStatusCached so the
+    // UI gets actual DNS state while waiting for onboard to create the row.
+    if (pollingState && !pollingState.shouldPoll && pollingState.status !== null && pollingState.status !== 'active') {
       return NextResponse.json(withPollingState({
         dkimValid: false,
         dkimResult: pollingState.expired ? 'DKIM_POLLING_EXPIRED' : 'DKIM_POLL_NOT_DUE',

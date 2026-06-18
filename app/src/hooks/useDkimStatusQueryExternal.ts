@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import type { DkimStatusResponse } from '@/lib/dkim/types';
 import { appFetch } from '@/lib/gasket-config';
 
-const PHASE1_INTERVAL_MS = 30_000;            // 30 s
+const PHASE1_INTERVAL_MS = 30_000;             // 30 s
+const NO_ROW_INTERVAL_MS = 60_000;             // 60 s — no onboarding row yet, poll slower
 const MAX_TOTAL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 interface UseDkimStatusQueryExternalOptions {
@@ -60,6 +61,10 @@ export function useDkimStatusQueryExternal(
       const pollStartedAtStr = query.state.data?.pollStartedAt;
       const startedAt = pollStartedAtStr ? new Date(pollStartedAtStr).getTime() : 0;
       if (startedAt > 0 && Date.now() - startedAt >= MAX_TOTAL_MS) return false;
+
+      // No onboarding row yet (onboard hasn't run or is in-flight) — poll at a
+      // slower rate until the row is created and nextPollAt takes over.
+      if (!pollStartedAtStr && !nextPollAtStr) return NO_ROW_INTERVAL_MS;
 
       return PHASE1_INTERVAL_MS;
     },

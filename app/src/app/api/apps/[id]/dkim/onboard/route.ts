@@ -5,7 +5,7 @@ import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth'
 import { DkimAgentClient } from '@/lib/dkim/dkim-agent-client';
 import { getDkimStatusCached } from '@/lib/dkim/dkim-cache';
 import { DkimService } from '@/lib/dkim/dkim-service';
-import { type DkimOnboardOutcome } from '@/lib/dkim/types';
+import { DkimErrorCode, type DkimOnboardOutcome } from '@/lib/dkim/types';
 import { deriveDomainOrigin } from '@/lib/dkim/utils';
 import { AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
@@ -174,19 +174,22 @@ export const POST = withCustomerAuth(async (
 
     return NextResponse.json(outcome);
   } catch (err) {
+    const isAiro = err instanceof AiroHttpError;
+    const status = isAiro ? err.status : 500;
+    // mgmt-hosting hasn't propagated a freshly (re)attached domain yet → transient, retryable.
+    const code = isAiro && (status === 404 || status === 409)
+      ? DkimErrorCode.DOMAIN_NOT_READY
+      : DkimErrorCode.ONBOARD_FAILED;
     logger.error('dkim.onboard.error', {
       appId,
       domain,
+      code,
       error: err instanceof Error ? err.message : String(err),
-      errorBody: err instanceof AiroHttpError ? JSON.stringify(err) : undefined,
+      errorBody: isAiro ? JSON.stringify(err) : undefined,
     });
     return NextResponse.json(
-      {
-        code: ApiErrorCode.SITE_NOT_FOUND, // closest existing code; refine if a DKIM-specific code is added
-        error: 'DKIM onboarding failed',
-        details: err instanceof Error ? err.message : 'Unknown error',
-      },
-      { status: err instanceof AiroHttpError ? err.status : 500 },
+      { code, error: 'DKIM onboarding failed', details: err instanceof Error ? err.message : 'Unknown error' },
+      { status },
     );
   }
 }, { level: 3 });
