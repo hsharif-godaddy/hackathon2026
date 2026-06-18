@@ -7,7 +7,7 @@ import { queuedMessageToSendOptions } from '@/lib/messageQueue'
 import { logger } from '@/lib/request-context'
 import type { ChatMessage, QueuedMessage } from '@/stores/useStreamingConversationStore'
 import {
-  useIsQueuePaused,
+  useIsQueueStoppedOnError,
   useQueuedMessages,
   useStreamingConversationStore,
   useStreamingState,
@@ -23,7 +23,7 @@ export function useQueueProcessor(params: {
   const { enabled, sendMessage, isAwaitingStream } = params
   const streamingState = useStreamingState()
   const queuedMessages = useQueuedMessages()
-  const queuePaused = useIsQueuePaused()
+  const queueStoppedOnError = useIsQueueStoppedOnError()
   const sendRef = useRef(sendMessage)
   sendRef.current = sendMessage
 
@@ -53,11 +53,17 @@ export function useQueueProcessor(params: {
         ),
       )
     if (failed) {
-      logger.info('queue.paused', {
+      logger.info('queue.stoppedOnError', {
         reason: streamingState === 'error' ? 'streaming-error' : 'message-failure',
         queueLength: queuedMessages.length,
       })
-      useStreamingConversationStore.getState().setQueuePaused(true)
+      useStreamingConversationStore.getState().setQueueStoppedOnError(true)
+    } else if (useStreamingConversationStore.getState().queueStoppedOnError) {
+      logger.info('queue.stoppedOnError.cleared', {
+        reason: 'successful-stream-completion',
+        queueLength: queuedMessages.length,
+      })
+      useStreamingConversationStore.getState().setQueueStoppedOnError(false)
     }
   }, [enabled, streamingState, queuedMessages.length])
 
@@ -67,7 +73,7 @@ export function useQueueProcessor(params: {
     if (!enabled) return
     if (streamingState !== 'idle' && streamingState !== 'error') return
     if (isAwaitingStream) return
-    if (queuePaused) return
+    if (queueStoppedOnError) return
     if (queuedMessages.length === 0) return
     if (inFlightRef.current) return
 
@@ -93,7 +99,7 @@ export function useQueueProcessor(params: {
         if (postState === 'idle' || postState === 'error') {
           logger.warn('queue.dequeue.silent-failure', { id: next.id, postState })
           useStreamingConversationStore.getState().requeueMessage(next)
-          useStreamingConversationStore.getState().setQueuePaused(true)
+          useStreamingConversationStore.getState().setQueueStoppedOnError(true)
         }
       } catch (err: unknown) {
         logger.error('queue.dequeue.send-failed', {
@@ -101,10 +107,10 @@ export function useQueueProcessor(params: {
           message: err instanceof Error ? err.message : String(err),
         })
         useStreamingConversationStore.getState().requeueMessage(next)
-        useStreamingConversationStore.getState().setQueuePaused(true)
+        useStreamingConversationStore.getState().setQueueStoppedOnError(true)
       } finally {
         inFlightRef.current = false
       }
     })()
-  }, [enabled, streamingState, queuePaused, queuedMessages, isAwaitingStream])
+  }, [enabled, streamingState, queueStoppedOnError, queuedMessages, isAwaitingStream])
 }

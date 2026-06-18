@@ -106,7 +106,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   resolvedSecretsComposerToolCallIds: {},
   subagentEvents: {},
   queuedMessages: [],
-  queuePaused: false,
+  queueStoppedOnError: false,
 
   // === MESSAGE QUEUE ACTIONS ===
 
@@ -152,8 +152,8 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   },
 
   takeNextQueuedMessage: () => {
-    const { queuedMessages, queuePaused } = get()
-    if (queuePaused || queuedMessages.length === 0) return null
+    const { queuedMessages, queueStoppedOnError } = get()
+    if (queueStoppedOnError || queuedMessages.length === 0) return null
     const head = queuedMessages[0]!
     set({ queuedMessages: queuedMessages.slice(1) })
     return head
@@ -163,14 +163,14 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     set({ queuedMessages: [message, ...get().queuedMessages] })
   },
 
-  setQueuePaused: (paused) => {
-    if (get().queuePaused === paused) return
-    set({ queuePaused: paused })
+  setQueueStoppedOnError: (stopped) => {
+    if (get().queueStoppedOnError === stopped) return
+    set({ queueStoppedOnError: stopped })
   },
 
   clearQueue: () => {
-    if (get().queuedMessages.length === 0 && !get().queuePaused) return
-    set({ queuedMessages: [], queuePaused: false })
+    if (get().queuedMessages.length === 0 && !get().queueStoppedOnError) return
+    set({ queuedMessages: [], queueStoppedOnError: false })
   },
 
   // === CORE STREAMING ACTIONS ===
@@ -867,7 +867,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         historyLoadingMore: false,
         serverCapabilities: null, // Reset capabilities when switching apps
         queuedMessages: [],
-        queuePaused: false,
+        queueStoppedOnError: false,
         resolvedSecretsComposerToolCallIds,
       };
     });
@@ -1090,7 +1090,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       historyLoadRequested: false,
       historyLoadingComplete: false,
       queuedMessages: [],
-      queuePaused: false,
+      queueStoppedOnError: false,
       resolvedSecretsComposerToolCallIds: {},
     });
   },

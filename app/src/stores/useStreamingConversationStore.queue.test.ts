@@ -165,10 +165,10 @@ describe('useStreamingConversationStore queue', () => {
       expect(getState().queuedMessages.map((q) => q.content)).toEqual(['second'])
     })
 
-    it('returns null when paused', () => {
+    it('returns null when stopped on error', () => {
       act(() => {
         getState().enqueueMessage({ content: 'first' })
-        getState().setQueuePaused(true)
+        getState().setQueueStoppedOnError(true)
       })
       let popped: ReturnType<ReturnType<typeof getState>['takeNextQueuedMessage']>
       act(() => {
@@ -187,30 +187,30 @@ describe('useStreamingConversationStore queue', () => {
     })
   })
 
-  describe('setQueuePaused / clearQueue', () => {
-    it('toggles paused', () => {
-      expect(getState().queuePaused).toBe(false)
+  describe('setQueueStoppedOnError / clearQueue', () => {
+    it('toggles stoppedOnError', () => {
+      expect(getState().queueStoppedOnError).toBe(false)
       act(() => {
-        getState().setQueuePaused(true)
+        getState().setQueueStoppedOnError(true)
       })
-      expect(getState().queuePaused).toBe(true)
+      expect(getState().queueStoppedOnError).toBe(true)
       act(() => {
-        getState().setQueuePaused(false)
+        getState().setQueueStoppedOnError(false)
       })
-      expect(getState().queuePaused).toBe(false)
+      expect(getState().queueStoppedOnError).toBe(false)
     })
 
-    it('clearQueue empties items and clears paused flag', () => {
+    it('clearQueue empties items and clears stoppedOnError flag', () => {
       act(() => {
         getState().enqueueMessage({ content: 'a' })
         getState().enqueueMessage({ content: 'b' })
-        getState().setQueuePaused(true)
+        getState().setQueueStoppedOnError(true)
       })
       act(() => {
         getState().clearQueue()
       })
       expect(getState().queuedMessages).toHaveLength(0)
-      expect(getState().queuePaused).toBe(false)
+      expect(getState().queueStoppedOnError).toBe(false)
     })
   })
 
@@ -220,13 +220,13 @@ describe('useStreamingConversationStore queue', () => {
         getState().setCurrentAppId('app-1')
         getState().enqueueMessage({ content: 'a' })
         getState().enqueueMessage({ content: 'b' })
-        getState().setQueuePaused(true)
+        getState().setQueueStoppedOnError(true)
       })
       act(() => {
         getState().setCurrentAppId('app-2')
       })
       expect(getState().queuedMessages).toHaveLength(0)
-      expect(getState().queuePaused).toBe(false)
+      expect(getState().queueStoppedOnError).toBe(false)
     })
   })
 })

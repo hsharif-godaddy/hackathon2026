@@ -6,8 +6,6 @@ import Button from '@ux/button'
 import GrabVertIcon from '@ux/icon/grab-vert'
 import InlineEditIcon from '@ux/icon/inline-edit'
 import LinkArrowIcon from '@ux/icon/link-arrow'
-import PauseIcon from '@ux/icon/pause'
-import PlayIcon from '@ux/icon/play'
 import TrashIcon from '@ux/icon/trash'
 import Tag from '@ux/tag'
 
@@ -17,7 +15,6 @@ import { logger } from '@/lib/request-context'
 import {
   QUEUE_MAX,
   type QueuedMessage,
-  useIsQueuePaused,
   useQueuedMessages,
   useStreamingConversationStore,
 } from '@/stores/useStreamingConversationStore'
@@ -167,11 +164,9 @@ function QueuedMessageRow({
 export default function QueuedMessagesStrip() {
   const t = useTranslations()
   const queuedMessages = useQueuedMessages()
-  const queuePaused = useIsQueuePaused()
   const removeQueuedMessage = useStreamingConversationStore((s) => s.removeQueuedMessage)
   const updateQueuedMessage = useStreamingConversationStore((s) => s.updateQueuedMessage)
   const moveQueuedMessage = useStreamingConversationStore((s) => s.moveQueuedMessage)
-  const setQueuePaused = useStreamingConversationStore((s) => s.setQueuePaused)
 
   const [isExpanded, setIsExpanded] = useState(true)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
@@ -192,12 +187,6 @@ export default function QueuedMessagesStrip() {
     },
     [removeQueuedMessage],
   )
-
-  const handleTogglePaused = useCallback(() => {
-    const next = !queuePaused
-    logger.info('queue.toggle-paused', { paused: next, queueLength: queuedMessages.length })
-    setQueuePaused(next)
-  }, [queuePaused, setQueuePaused, queuedMessages.length])
 
   const handleDragStart = useCallback((index: number) => {
     setDraggedIndex(index)
@@ -228,7 +217,6 @@ export default function QueuedMessagesStrip() {
   if (queuedMessages.length === 0) return null
 
   const atCap = queuedMessages.length >= QUEUE_MAX
-  const PauseToggleIcon = queuePaused ? PlayIcon : PauseIcon
 
   const headerTitle = (
     <span className="flex items-center gap-1">
@@ -239,28 +227,11 @@ export default function QueuedMessagesStrip() {
     </span>
   )
 
-  const headerRight = (
-    <Button
-      size="sm"
-      design="tertiary"
-      icon={<PauseToggleIcon />}
-      onClick={handleTogglePaused}
-      aria-label={
-        queuePaused
-          ? t('builder_chatinput_queue_resume')
-          : t('builder_chatinput_queue_pause')
-      }
-      aria-pressed={queuePaused}
-      data-testid="queue-pause-toggle"
-    />
-  )
-
   return (
     <div className="px-2 sm:px-3 md:px-0 mb-1" data-testid="queued-messages-strip">
       <div className="rounded-xl shadow-sm bg-intents-ux-box-backgroundColor border border-intents-ux-box-borderColor px-1 pt-0.5 pb-0">
         <CollapsibleChatInputSection
           title={headerTitle}
-          headerRight={headerRight}
           expanded={isExpanded}
           onExpandedChange={setIsExpanded}
         >
@@ -282,15 +253,6 @@ export default function QueuedMessagesStrip() {
                 onDrop={handleDrop}
               />
             ))}
-            {queuePaused && (
-              <div
-                className="text-xs text-intents-ux-textCritical-foregroundColor p-1"
-                data-testid="queue-paused-notice"
-                role="status"
-              >
-                {t('builder_chatinput_queue_paused')}
-              </div>
-            )}
             {atCap && (
               <div
                 className="text-xs text-intents-ux-textWarning-foregroundColor px-1"

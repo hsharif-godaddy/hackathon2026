@@ -217,7 +217,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => {
   const mockResolvedSecretsComposerToolCallIds: Record<string, true> = {}
   const queueState = {
     enqueueMessage: vi.fn(() => true),
-    setQueuePaused: vi.fn(),
+    setQueueStoppedOnError: vi.fn(),
     takeNextQueuedMessage: vi.fn(() => null),
     retryState: { isRetrying: false, retryCount: 0 },
     queuedMessages: [] as unknown[],
@@ -255,7 +255,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => {
     useSetInputValue: () => mockStreamingStore.setInputValue,
     useSetAiEditContext: () => mockStreamingStore.setAiEditContext,
     useQueuedMessages: () => [],
-    useIsQueuePaused: () => false,
+    useIsQueueStoppedOnError: () => false,
     useQueueLength: () => 0,
     useStreamingConversationStore,
     useRemoveAiEditContext: () => mockStreamingStore.removeAiEditContext,

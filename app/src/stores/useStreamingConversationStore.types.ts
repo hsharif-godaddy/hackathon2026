@@ -262,7 +262,7 @@ export interface StreamingConversationState {
   subagentEvents: Record<string, Array<{ event: string; agent: string; detail: string }>>
 
   queuedMessages: QueuedMessage[]
-  queuePaused: boolean
+  queueStoppedOnError: boolean
 
   // === CORE STREAMING ACTIONS ===
 
@@ -276,11 +276,11 @@ export interface StreamingConversationState {
   removeQueuedMessage: (id: string) => void
   updateQueuedMessage: (id: string, content: string) => void
   moveQueuedMessage: (fromIndex: number, toIndex: number) => void
-  /** Removes and returns the head; null if empty or paused. */
+  /** Removes and returns the head; null if empty or stopped due to a prior error. */
   takeNextQueuedMessage: () => QueuedMessage | null
   /** Re-prepends a previously-dequeued message after a send failure. */
   requeueMessage: (message: QueuedMessage) => void
-  setQueuePaused: (paused: boolean) => void
+  setQueueStoppedOnError: (stopped: boolean) => void
   clearQueue: () => void
 
   // Stream lifecycle

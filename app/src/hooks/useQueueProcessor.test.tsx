@@ -102,7 +102,7 @@ describe('useQueueProcessor', () => {
     expect(getState().queuedMessages).toHaveLength(1)
   })
 
-  it('pauses the queue when the stream completes with an error', async () => {
+  it('stops the queue when the stream completes with an error', async () => {
     const sendMessage = vi.fn(async () => {})
     render(<Harness enabled sendMessage={sendMessage} />)
     setStreamingState('streaming')
@@ -115,13 +115,13 @@ describe('useQueueProcessor', () => {
     setStreamingState('idle')
 
     await vi.waitFor(() => {
-      expect(getState().queuePaused).toBe(true)
+      expect(getState().queueStoppedOnError).toBe(true)
     })
     expect(sendMessage).not.toHaveBeenCalled()
     expect(getState().queuedMessages).toHaveLength(1)
   })
 
-  it('does not pause on a clean completion', async () => {
+  it('does not stop on a clean completion', async () => {
     const sendMessage = vi.fn(async () => {
       act(() => {
         getState().setStreamingState('streaming')
@@ -140,15 +140,41 @@ describe('useQueueProcessor', () => {
     await vi.waitFor(() => {
       expect(sendMessage).toHaveBeenCalled()
     })
-    expect(getState().queuePaused).toBe(false)
+    expect(getState().queueStoppedOnError).toBe(false)
   })
 
-  it('does not dequeue while paused', async () => {
+  it('clears the stop flag when a later stream completes cleanly', async () => {
+    const sendMessage = vi.fn(async () => {
+      act(() => {
+        getState().setStreamingState('streaming')
+      })
+    })
+    render(<Harness enabled sendMessage={sendMessage} />)
+    setStreamingState('streaming')
+
+    act(() => {
+      getState().enqueueMessage({ content: 'queued' })
+      getState().setQueueStoppedOnError(true)
+    })
+
+    addCompletedMessage({ content: 'ok' })
+    setStreamingState('idle')
+
+    await vi.waitFor(() => {
+      expect(getState().queueStoppedOnError).toBe(false)
+    })
+    await vi.waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledTimes(1)
+    })
+    expect(sendMessage.mock.calls[0]![0]).toMatchObject({ content: 'queued' })
+  })
+
+  it('does not dequeue while stopped on error', async () => {
     const sendMessage = vi.fn(async () => {})
     render(<Harness enabled sendMessage={sendMessage} />)
     act(() => {
       getState().enqueueMessage({ content: 'a' })
-      getState().setQueuePaused(true)
+      getState().setQueueStoppedOnError(true)
     })
     setStreamingState('idle')
     // Give effects a chance to run.
@@ -191,7 +217,7 @@ describe('useQueueProcessor', () => {
     })
   })
 
-  it('requeues at the head and pauses when sendMessage returns silently without starting a stream', async () => {
+  it('requeues at the head and stops when sendMessage returns silently without starting a stream', async () => {
     const sendMessage = vi.fn(async () => {})
     render(<Harness enabled sendMessage={sendMessage} />)
     setStreamingState('streaming')
@@ -204,13 +230,13 @@ describe('useQueueProcessor', () => {
     setStreamingState('idle')
 
     await vi.waitFor(() => {
-      expect(getState().queuePaused).toBe(true)
+      expect(getState().queueStoppedOnError).toBe(true)
     })
     expect(sendMessage).toHaveBeenCalledTimes(1)
     expect(getState().queuedMessages.map((q) => q.content)).toEqual(['first', 'second'])
   })
 
-  it('requeues at the head and pauses when sendMessage rejects', async () => {
+  it('requeues at the head and stops when sendMessage rejects', async () => {
     const sendMessage = vi.fn(async () => {
       throw new Error('boom')
     })
@@ -224,12 +250,12 @@ describe('useQueueProcessor', () => {
     setStreamingState('idle')
 
     await vi.waitFor(() => {
-      expect(getState().queuePaused).toBe(true)
+      expect(getState().queueStoppedOnError).toBe(true)
     })
     expect(getState().queuedMessages.map((q) => q.content)).toEqual(['first'])
   })
 
-  it('requeues at the head and re-pauses when sendMessage no-ops from error state', async () => {
+  it('requeues at the head and re-stops when sendMessage no-ops from error state', async () => {
     const sendMessage = vi.fn(async () => {})
     render(<Harness enabled sendMessage={sendMessage} />)
     setStreamingState('streaming')
@@ -241,24 +267,24 @@ describe('useQueueProcessor', () => {
 
     setStreamingState('error')
     await vi.waitFor(() => {
-      expect(getState().queuePaused).toBe(true)
+      expect(getState().queueStoppedOnError).toBe(true)
     })
 
     act(() => {
-      getState().setQueuePaused(false)
+      getState().setQueueStoppedOnError(false)
     })
 
     await vi.waitFor(() => {
       expect(sendMessage).toHaveBeenCalledTimes(1)
     })
     await vi.waitFor(() => {
-      expect(getState().queuePaused).toBe(true)
+      expect(getState().queueStoppedOnError).toBe(true)
     })
     expect(getState().queuedMessages.map((q) => q.content)).toEqual(['first', 'second'])
     expect(sendMessage).toHaveBeenCalledTimes(1)
   })
 
-  it('resumes from error state once queuePaused is cleared', async () => {
+  it('resumes from error state once the stop flag is cleared', async () => {
     const sendMessage = vi.fn(async () => {
       act(() => {
         getState().setStreamingState('streaming')
@@ -273,12 +299,12 @@ describe('useQueueProcessor', () => {
 
     setStreamingState('error')
     await vi.waitFor(() => {
-      expect(getState().queuePaused).toBe(true)
+      expect(getState().queueStoppedOnError).toBe(true)
     })
     expect(sendMessage).not.toHaveBeenCalled()
 
     act(() => {
-      getState().setQueuePaused(false)
+      getState().setQueueStoppedOnError(false)
     })
 
     await vi.waitFor(() => {

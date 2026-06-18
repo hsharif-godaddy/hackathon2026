@@ -155,7 +155,7 @@ export const useSetHistoryLoadingComplete = () => useStreamingConversationStore(
 
 // Queue selectors
 export const useQueuedMessages = () => useStreamingConversationStore(state => state.queuedMessages)
-export const useIsQueuePaused = () => useStreamingConversationStore(state => state.queuePaused)
+export const useIsQueueStoppedOnError = () => useStreamingConversationStore(state => state.queueStoppedOnError)
 export const useQueueLength = () => useStreamingConversationStore(state => state.queuedMessages.length)
 
 // Connection retry selectors
