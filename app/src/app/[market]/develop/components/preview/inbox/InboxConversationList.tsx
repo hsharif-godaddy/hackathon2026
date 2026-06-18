@@ -7,6 +7,7 @@ import Growl from '@ux/growl';
 import { useTranslations } from '@/hooks/useTranslations';
 import { IntString, UuidString } from '@/types/inbox/local/core';
 import { type InboxConversationStatusFilter } from '@/types/inbox/local/inboxConversationStatusFilter';
+import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import { InboxConversationListPagination } from './InboxConversationListPagination';
 import { InboxConversationRow } from './InboxConversationRow';
 import { InboxConversationStatusFilters } from './InboxConversationStatusFilters';
@@ -37,6 +38,7 @@ export function InboxConversationList({
   const listScrollRef = useRef<HTMLDivElement>(null);
 
   const handleFilterChange = (value: InboxConversationStatusFilter): void => {
+    logClickEvent('inbox.filter.status', { filter: value })();
     setStatusFilter(value);
     setCurrentPage(1);
   };
@@ -61,6 +63,13 @@ export function InboxConversationList({
       lifetime: 5000,
     });
   }, [droppedCount, t]);
+
+  const listViewedRef = useRef(false);
+  useEffect(() => {
+    if (isLoading || error || listViewedRef.current) return;
+    listViewedRef.current = true;
+    logImpressionEvent('inbox.list.viewed', { conversationCount: conversations.length, statusFilter })();
+  }, [isLoading, error, conversations.length, statusFilter]);
 
   if (isLoading) {
     return (

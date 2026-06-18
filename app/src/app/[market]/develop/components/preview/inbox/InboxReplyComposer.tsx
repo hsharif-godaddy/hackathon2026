@@ -7,6 +7,7 @@ import AsyncIcon from '@ux/icon/async-icon.js';
 
 import { useTranslations } from '@/hooks/useTranslations';
 import { cn } from '@/lib/utils';
+import { logActionEvent } from '@/utils/instrumentation';
 
 interface InboxReplyComposerProps {
   value: string;
@@ -69,6 +70,7 @@ export function InboxReplyComposer({
             ref={textareaRef}
             value={value}
             onChange={(event) => onChange(event.target.value)}
+            onFocus={logActionEvent({ eid: 'inbox.detail.reply_composer', action: 'focus' })}
             onKeyDown={handleKeyDown}
             disabled={disabled}
             placeholder={disabled ? t('builder_inbox_reply_disabled') : t('builder_inbox_reply_placeholder')}

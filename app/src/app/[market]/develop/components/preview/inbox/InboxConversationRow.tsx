@@ -8,6 +8,7 @@ import { primaryParticipantName } from '@/lib/inbox/conversationParticipant';
 import { conversationTypeLabel } from '@/lib/inbox/conversationTypeLabel';
 import { Conversation } from '@/types/inbox/local/conversation';
 import { IntString } from '@/types/inbox/local/core';
+import { logClickEvent } from '@/utils/instrumentation';
 import { timeAgo } from '@/utils/time';
 import { InboxChannelIcon } from './InboxChannelIcon';
 
@@ -28,18 +29,25 @@ export function InboxConversationRow({
   const preview = lastMessage.body?.substring(0, 100) || t('builder_inbox_no_preview');
   const relativeTime = timeAgo(lastMessage.createdAt);
 
+  function handleClick(): void {
+    logClickEvent('inbox.list.conversation_click')();
+    onClick(conversation.id);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent): void {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleClick();
+    }
+  }
+
   return (
     <div
       role='button'
       tabIndex={0}
       className='flex cursor-pointer items-center gap-2 border-b border-ux-border-subtle px-3 py-1.5 transition-colors hover:bg-ux-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-ux-border-focus'
-      onClick={() => onClick(conversation.id)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onClick(conversation.id);
-        }
-      }}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
     >
       <div
         role='img'

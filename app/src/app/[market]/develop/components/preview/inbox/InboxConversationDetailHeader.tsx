@@ -8,6 +8,7 @@ import { useTranslations } from '@/hooks/useTranslations';
 import { primaryParticipantName } from '@/lib/inbox/conversationParticipant';
 import { Conversation } from '@/types/inbox/local/conversation';
 import { UuidString } from '@/types/inbox/local/core';
+import { logClickEvent } from '@/utils/instrumentation';
 import { ConversationOriginLine } from './InboxConversationOriginLine';
 
 interface InboxConversationDetailHeaderProps {
@@ -30,8 +31,10 @@ export function InboxConversationDetailHeader({
 
   const handleAction = (): void => {
     if (canUnresolve) {
+      logClickEvent('inbox.detail.unresolve')();
       unresolve.execute([conversation.id]);
     } else if (canResolve) {
+      logClickEvent('inbox.detail.resolve')();
       resolve.execute([conversation.id]);
     }
   };

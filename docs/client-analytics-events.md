@@ -232,6 +232,24 @@ develop.initialBuild.start        ← create flow begins
 | `develop.tool.error` | impression | Stream ends with an error |
 | `develop.tool.{toolName}` | impression | A specific tool result arrives (one per tool in the turn) |
 
+### Inbox
+
+Query all inbox events: `eid LIKE 'appbuilder.inbox.%'`
+
+| EID | Type | Fires when | Custom Properties |
+|---|---|---|---|
+| `inbox.list.viewed` | impression | Conversation list data loads successfully | `conversationCount`, `statusFilter` |
+| `inbox.detail.viewed` | impression | Conversation detail data loads | `channel` |
+| `inbox.detail.reply_send` | click | Reply sent successfully | — |
+| `inbox.detail.reply_failed` | impression | Reply fails to send | — |
+| `inbox.detail.resolve` | click | User clicks Resolve button | — |
+| `inbox.detail.unresolve` | click | User clicks Unresolve button | — |
+| `inbox.filter.status` | click | User changes the status filter | `filter` |
+| `inbox.list.conversation_click` | click | User clicks a conversation row | — |
+| `inbox.detail.reply_composer` | action (focus) | Reply textarea receives focus | — |
+| `inbox.list.previous_page` | click | User clicks the previous page button | — |
+| `inbox.list.next_page` | click | User clicks the next page button | — |
+
 ---
 
 ## AiroHQ Events (`logAiroHQEvent`)

@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useInboxConversation, useSendInboxReply } from '@/app/[market]/develop/hooks/useInbox';
 import { useTranslations } from '@/hooks/useTranslations';
 import { isGuideBotConversation } from '@/lib/inbox/isGuideBotConversation';
 import { IntString, UuidString } from '@/types/inbox/local/core';
+import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import { InboxConversationDetailHeader } from './InboxConversationDetailHeader';
 import { InboxConversationMessageThread } from './InboxConversationMessageThread';
 import { InboxReplyComposer } from './InboxReplyComposer';
@@ -37,6 +38,13 @@ export function InboxConversationDetail({
 
   const sendReply = useSendInboxReply(brandId, conversationId);
 
+  const detailViewedRef = useRef<IntString | null>(null);
+  useEffect(() => {
+    if (!conversation || detailViewedRef.current === conversationId) return;
+    detailViewedRef.current = conversationId;
+    logImpressionEvent('inbox.detail.viewed', { channel: conversation.category.type })();
+  }, [conversation, conversationId]);
+
   useEffect(
     function resetBodyOnConversationChange() {
       setBody('');
@@ -48,8 +56,14 @@ export function InboxConversationDetail({
     function send(replyBody: string) {
       setSendError(false);
       sendReply.mutate({ body: replyBody }, {
-        onSuccess: () => setBody(''),
-        onError: () => setSendError(true),
+        onSuccess: () => {
+          logClickEvent('inbox.detail.reply_send')();
+          setBody('');
+        },
+        onError: () => {
+          logImpressionEvent('inbox.detail.reply_failed')();
+          setSendError(true);
+        },
       });
     },
     [sendReply.mutate],
