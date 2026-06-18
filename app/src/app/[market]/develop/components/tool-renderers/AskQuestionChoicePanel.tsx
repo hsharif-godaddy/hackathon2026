@@ -361,6 +361,7 @@ export default function AskQuestionChoicePanel({
         </div>
       ) : isMulti ? (
         <ChoiceList
+          key={`multi-${activeStepIndex}`}
           ariaLabel={activeQuestion?.question ?? ariaLabel}
           selectionMode="multiple"
           allowOther={allowOtherForStep}
@@ -382,6 +383,7 @@ export default function AskQuestionChoicePanel({
         </ChoiceList>
       ) : (
         <ChoiceList
+          key={`single-${activeStepIndex}`}
           ariaLabel={activeQuestion?.question ?? ariaLabel}
           allowOther={effectiveAllowOther}
           disabled={disabled}
