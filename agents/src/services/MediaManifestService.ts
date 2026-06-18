@@ -20,6 +20,10 @@ import { gettyUploadService } from './GettyUploadService.js';
 import { astImageEditor } from '../tools/ast-image-editor.js';
 import type { ImageElementInfo, ImageInfo } from '../tools/ast-image-editor.js';
 import { getPersistentPublicDir } from '../utils/persistent-assets.js';
+import { fileUploadService } from './FileUploadService.js';
+import { imageProcessingService } from './ImageProcessingService.js';
+import { ALLOWED_VIDEO_TYPES, validateVideoMagicBytes } from './media-upload-video.js';
+import type { SlotEligibleAssetRole } from './upload-handling-guidance.js';
 import {
   buildForkedSlotPath,
   countSlotUrlReferences,
@@ -29,6 +33,126 @@ import {
 } from '../utils/slot-reference-utils.js';
 
 export const MANIFEST_FILENAME = 'airo-media.json';
+
+export type ImportChatUploadResult =
+  | {
+      success: true;
+      slotPath: string;
+      slotUrl: string;
+      uploadedUrl: string;
+      slot: MediaSlot;
+      commitHash?: string;
+    }
+  | { success: false; error: string; httpStatus?: number };
+
+function slugFromChatUploadFilename(filename: string): string {
+  const ext = path.extname(filename);
+  const base = path.basename(filename, ext);
+  const slug = base
+    .replace(/[^a-zA-Z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase()
+    .substring(0, 40);
+  return slug || 'image';
+}
+
+export function deriveChatUploadSlotPath(
+  manifest: MediaManifest,
+  options: {
+    filename: string;
+    slotName?: string;
+    assetRole?: SlotEligibleAssetRole | null;
+  }
+): string {
+  if (options.slotName) {
+    return options.slotName.trim().replace(/^\/+|\/+$/g, '');
+  }
+
+  const slug = slugFromChatUploadFilename(options.filename);
+  const prefix = options.assetRole === 'background' ? 'uploads/background' : 'uploads/hero';
+  const slotPath = `${prefix}-${slug}`;
+  if (!manifest[slotPath]) {
+    return slotPath;
+  }
+
+  let counter = 2;
+  while (manifest[`${slotPath}-${counter}`]) {
+    counter++;
+  }
+  return `${slotPath}-${counter}`;
+}
+
+const ASSET_ROLE_SUFFIXES: Record<string, string[]> = {
+  hero_image: ['hero'],
+  background: ['background', 'bg'],
+}
+
+/**
+ * Find the established slot that serves the given asset role, identified by the
+ * slot path's last segment matching a known role suffix (e.g. "hero_image"
+ * matches paths whose last segment is "hero"). Used so auto-register updates the
+ * canonical hero/background slot rather than creating a parallel
+ * "uploads/hero-..." slot alongside it.
+ *
+ * Disambiguation when more than one slot matches (e.g. pages/home/hero AND
+ * pages/about/hero): a single match is returned directly; with multiple
+ * matches we prefer a "home" slot (the primary hero), and only if exactly one
+ * home slot matches do we return it. Otherwise we return undefined so the
+ * caller derives a fresh slot rather than silently overwriting the wrong one
+ * (the wrong-slot failure mode behind AIROBUILD-2364).
+ */
+function findSlotByAssetRole(
+  manifest: MediaManifest,
+  assetRole: string,
+): string | undefined {
+  const suffixes = ASSET_ROLE_SUFFIXES[assetRole]
+  if (!suffixes) return undefined
+  const matches = Object.keys(manifest).filter((slotPath) => {
+    const segment = slotPath.split('/').pop() ?? slotPath
+    return suffixes.includes(segment)
+  })
+  if (matches.length === 0) return undefined
+  if (matches.length === 1) return matches[0]
+  // Ambiguous — use the "home" slot only if exactly one matches, else don't guess.
+  const homeMatches = matches.filter((slotPath) =>
+    slotPath.split('/').includes('home')
+  )
+  return homeMatches.length === 1 ? homeMatches[0] : undefined
+}
+
+function findSlotByChatUploadFilename(
+  manifest: MediaManifest,
+  filename: string
+): string | undefined {
+  for (const [slotPath, slot] of Object.entries(manifest)) {
+    if (!slot.uploadSources) continue;
+    if (Object.values(slot.uploadSources).includes(filename)) {
+      return slotPath;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Find a slot already backed by an upload with the given content hash.
+ * Content hash (sha256 of the raw upload bytes) is the only stable identity
+ * for "the same image": the stored filename embeds Date.now()+fileId, so a
+ * re-upload of identical bytes gets a fresh filename and would otherwise be
+ * treated as a new image — creating a duplicate slot (AIROBUILD-2364).
+ */
+function findSlotByUploadContentHash(
+  manifest: MediaManifest,
+  contentHash: string
+): string | undefined {
+  for (const [slotPath, slot] of Object.entries(manifest)) {
+    if (slot.uploadContentHash && slot.uploadContentHash === contentHash) {
+      return slotPath;
+    }
+  }
+  return undefined;
+}
+
 
 /** Result of POST /media/:appId/slots/import (importSlot). Failures include HTTP status for the route. */
 export type ImportSlotResult =
@@ -83,6 +207,10 @@ export interface MediaSlot {
   /** Maps upload URLs to original chat upload filenames for dedup display.
    *  Key: persistent upload URL (/airo-assets/uploads/...), Value: original chat filename */
   uploadSources?: Record<string, string>;
+  /** sha256 of the raw bytes of the chat upload backing this slot. Stable
+   *  identity for "same image" dedup across re-uploads (the stored filename is
+   *  not, since it embeds a timestamp). Set only for chat-upload-backed slots. */
+  uploadContentHash?: string;
   /** Maps transparent URL → solid-background URL for logo variants.
    *  Only populated when mediaType === 'logo'. */
   solidUrlMap?: Record<string, string>;
@@ -1614,6 +1742,260 @@ export class MediaManifestService {
   }
 
   /**
+   * Copy a chat-uploaded file into persistent media storage and register it in a manifest slot.
+   * Creates the slot when missing unless createIfMissing is false (apply-upload flow).
+   */
+  async importChatUploadToSlot(
+    appId: string,
+    options: {
+      filename: string;
+      slotName?: string;
+      assetRole?: SlotEligibleAssetRole | null;
+      createIfMissing?: boolean;
+    }
+  ): Promise<ImportChatUploadResult> {
+    const { filename, assetRole, createIfMissing = true } = options;
+
+    if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\0')) {
+      return { success: false, error: 'Invalid filename', httpStatus: 400 };
+    }
+
+    const app = this.appRepository.findById(appId);
+    if (!app?.path) {
+      return { success: false, error: `App not found: ${appId}`, httpStatus: 404 };
+    }
+
+    const uploadedFiles = await fileUploadService.listUploadedFiles(appId);
+    // Match by stored filename first, then by original display name — agents
+    // sometimes pass the display name rather than the internal stored filename.
+    const matchingFile = uploadedFiles.find(
+      (f) => f.filename === filename || f.originalName === filename
+    );
+    if (!matchingFile) {
+      return { success: false, error: 'Upload file not found', httpStatus: 404 };
+    }
+
+    // Always use the internal stored filename for disk lookup, even if the
+    // caller passed the original display name.
+    const storedFilename = matchingFile.filename;
+    const sourceFilePath = await fileUploadService.findUploadedFilePath(appId, storedFilename);
+    if (!sourceFilePath) {
+      return { success: false, error: 'Upload file not found on disk', httpStatus: 404 };
+    }
+
+    const releaseLock = await acquireLock(appId);
+
+    try {
+      const manifestPath = this.getManifestPath(app.path);
+      let manifest: MediaManifest = {};
+      try {
+        const content = await fs.readFile(manifestPath, 'utf-8');
+        manifest = JSON.parse(content);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          logger.warn('media_manifest.import_chat_upload.read_error', {
+            appId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        manifest = {};
+      }
+
+      const fileBuffer = await fs.readFile(sourceFilePath);
+      const isVideo = matchingFile.mimeType?.startsWith('video/') ?? false;
+      // Stable identity for "same image" — survives re-uploads (which get a
+      // fresh stored filename). Computed before dedup so a re-uploaded
+      // duplicate can be matched to its existing slot. NOTE: this hashes the
+      // RAW source upload bytes, NOT the processed/resized file written to
+      // /media/ below — re-hashing the stored media file would produce a
+      // different value and must not be treated as equivalent.
+      const contentHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+
+      // Auto-register dedup: only when NO explicit slot was requested (renderer
+      // auto-register path). The agent's import_upload tool and the UI routes
+      // always pass an explicit slotName — those callers are NOT short-circuited
+      // here because the upload guidance already tells the agent about any
+      // existing slot (via existingSlotUrl from classifyAndGuideChatUploadImage),
+      // so intentional multi-slot placement remains possible. The apply-upload
+      // "use this image" flow passes createIfMissing:false and is also exempt.
+      if (!options.slotName) {
+        const byContentHash = findSlotByUploadContentHash(manifest, contentHash);
+        const existingByUpload = byContentHash ?? findSlotByChatUploadFilename(manifest, storedFilename);
+        if (existingByUpload) {
+          const existingSlot = manifest[existingByUpload]!;
+          const slotUrl =
+            existingSlot.mediaType === 'video'
+              ? `/airo-assets/videos/${existingByUpload}`
+              : `/airo-assets/images/${existingByUpload}`;
+          logger.info('media_manifest.import_chat_upload.deduped', {
+            appId,
+            slotPath: existingByUpload,
+            requestedSlot: options.slotName ?? null,
+            matchedBy: byContentHash ? 'contentHash' : 'filename',
+          });
+          return {
+            success: true,
+            slotPath: existingByUpload,
+            slotUrl,
+            uploadedUrl: existingSlot.currentUrl,
+            slot: existingSlot,
+          };
+        }
+      }
+
+      // When auto-registering a hero or background upload, prefer the
+      // established slot (e.g. pages/home/hero) over a freshly derived
+      // uploads/hero-... name. This keeps the agent's existing src references
+      // valid — no code change needed — and avoids orphaning the canonical slot.
+      const slotName =
+        options.slotName?.trim().replace(/^\/+|\/+$/g, '') ||
+        (assetRole ? findSlotByAssetRole(manifest, assetRole) : undefined) ||
+        deriveChatUploadSlotPath(manifest, { filename, assetRole });
+
+      if (slotName.includes('..') || slotName.startsWith('/') || slotName.includes('\0')) {
+        return { success: false, error: 'Invalid slot name', httpStatus: 400 };
+      }
+
+      const existingSlot = manifest[slotName];
+      if (!existingSlot && !createIfMissing) {
+        return { success: false, error: `Slot not found: ${slotName}`, httpStatus: 404 };
+      }
+
+      if (isVideo) {
+        if (!matchingFile.mimeType || !ALLOWED_VIDEO_TYPES[matchingFile.mimeType]) {
+          return { success: false, error: 'Unsupported video type', httpStatus: 400 };
+        }
+        if (!validateVideoMagicBytes(fileBuffer, matchingFile.mimeType)) {
+          return {
+            success: false,
+            error: 'File content does not match declared video type',
+            httpStatus: 400,
+          };
+        }
+      }
+
+      let outputBuffer: Buffer;
+      let ext: string;
+      let dimensions: { width: number; height: number } | undefined;
+
+      if (isVideo) {
+        outputBuffer = fileBuffer;
+        ext = ALLOWED_VIDEO_TYPES[matchingFile.mimeType ?? ''] || 'mp4';
+      } else {
+        const processed = await imageProcessingService.processImage(fileBuffer, {
+          maxWidth: 3840,
+          maxHeight: 3840,
+          quality: 90,
+        });
+        outputBuffer = processed.buffer;
+        ext = processed.format === 'jpeg' ? 'jpg' : processed.format;
+        if (processed.originalWidth && processed.originalHeight) {
+          dimensions = { width: processed.originalWidth, height: processed.originalHeight };
+        }
+      }
+
+      const sanitizedSlot = slotName.replace(/\//g, '-').replace(/[^a-zA-Z0-9-]/g, '');
+      const hash = crypto.createHash('sha256').update(outputBuffer).digest('hex').slice(0, 8);
+      const mediaFilename = `${sanitizedSlot}-${hash}.${ext}`;
+
+      const mediaDir = path.join(getPersistentPublicDir(app.path), 'media');
+      await fs.mkdir(mediaDir, { recursive: true });
+
+      const filePath = path.join(mediaDir, mediaFilename);
+      const resolvedMediaDir = path.resolve(mediaDir);
+      const resolvedFilePath = path.resolve(filePath);
+      if (!resolvedFilePath.startsWith(resolvedMediaDir + path.sep)) {
+        return { success: false, error: 'Invalid file path', httpStatus: 400 };
+      }
+
+      const tempPath = `${filePath}.tmp.${Date.now()}`;
+      await fs.writeFile(tempPath, outputBuffer);
+      try {
+        await fs.rename(tempPath, filePath);
+      } catch (renameError) {
+        // rename failed — the temp file would otherwise leak. Best-effort clean.
+        await fs.unlink(tempPath).catch(() => {});
+        throw renameError;
+      }
+
+      const uploadedUrl = `${AIRO_ASSET_UPLOADS_URL_PREFIX}${mediaFilename}`;
+      const nowIso = new Date().toISOString();
+      const naturalOrientation = dimensions ? classifyOrientation(dimensions) : undefined;
+      const isLogoSlot = existingSlot?.mediaType === 'logo' || slotName.startsWith('logo/');
+
+      const updatedSlot = this.buildImportedSlot({
+        existingSlot,
+        uploadedUrl,
+        filename: storedFilename,
+        isVideo,
+        nowIso,
+        naturalOrientation,
+        isLogoSlot,
+        contentHash,
+      });
+
+      manifest[slotName] = updatedSlot;
+      try {
+        await this.writeManifest(manifestPath, manifest);
+      } catch (writeError) {
+        // The media file is already on disk but the manifest never recorded it.
+        // Remove the orphan so failed imports don't leak files into storage.
+        await fs.unlink(filePath).catch(() => {});
+        throw writeError;
+      }
+
+      let commitHash: string | undefined;
+      try {
+        commitHash = await this.commitManifestChange(
+          appId,
+          slotName,
+          existingSlot ? 'update' : 'create'
+        );
+      } catch (gitError) {
+        logger.warn('media_manifest.import_chat_upload.git_commit_failed', {
+          appId,
+          slotName,
+          error: gitError instanceof Error ? gitError.message : String(gitError),
+        });
+      }
+
+      const slotUrl = isVideo
+        ? `/airo-assets/videos/${slotName}`
+        : `/airo-assets/images/${slotName}`;
+
+      logger.info('media_manifest.import_chat_upload.success', {
+        appId,
+        slotName,
+        uploadedUrl,
+        sourceFilename: storedFilename,
+        created: !existingSlot,
+      });
+
+      return {
+        success: true,
+        slotPath: slotName,
+        slotUrl,
+        uploadedUrl,
+        slot: updatedSlot,
+        commitHash,
+      };
+    } catch (error) {
+      logger.error('media_manifest.import_chat_upload.error', {
+        appId,
+        filename: storedFilename ?? filename,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to import chat upload',
+        httpStatus: 500,
+      };
+    } finally {
+      releaseLock();
+    }
+  }
+
+  /**
    * Update only the caption field of a slot (used by fire-and-forget captioning after upload/generation).
    * @param forUrl If provided, only applies caption if the slot's currentUrl still matches (guards against TOCTOU).
    */
@@ -1663,6 +2045,84 @@ export class MediaManifestService {
       releaseLock();
     }
   }
+
+  /**
+   * Build the MediaSlot for a chat-upload import. Pure transformation of the
+   * existing slot (if any) plus the freshly stored upload — no I/O. New slots
+   * are created `userModified`; existing slots keep their identity while the
+   * prior current URL is preserved as an alternative and Getty metadata is
+   * remapped/cleared (an uploaded file has no Getty id).
+   */
+  private buildImportedSlot(params: {
+    existingSlot: MediaSlot | undefined;
+    uploadedUrl: string;
+    filename: string;
+    isVideo: boolean;
+    nowIso: string;
+    naturalOrientation: MediaSlot['naturalOrientation'];
+    isLogoSlot: boolean;
+    contentHash: string;
+  }): MediaSlot {
+    const { existingSlot, uploadedUrl, filename, isVideo, nowIso, naturalOrientation, isLogoSlot, contentHash } = params;
+
+    if (!existingSlot) {
+      return {
+        mediaType: isVideo ? 'video' : 'image',
+        currentUrl: uploadedUrl,
+        searchQuery: '',
+        alternatives: [],
+        userModified: true,
+        createdAt: nowIso,
+        lastUpdated: nowIso,
+        uploadSources: { [uploadedUrl]: filename },
+        uploadContentHash: contentHash,
+        ...(isLogoSlot && naturalOrientation ? { naturalOrientation } : {}),
+      };
+    }
+
+    const altGettyIds = existingSlot.alternativeGettyIds || [];
+    const urlToGettyId = new Map<string, string>();
+    urlToGettyId.set(existingSlot.currentUrl, existingSlot.gettyId || '');
+    existingSlot.alternatives.forEach((url, i) => {
+      if (!urlToGettyId.has(url)) {
+        urlToGettyId.set(url, altGettyIds[i] || '');
+      }
+    });
+
+    const newAlternatives = existingSlot.currentUrl !== uploadedUrl
+      ? [existingSlot.currentUrl, ...existingSlot.alternatives]
+      : existingSlot.alternatives;
+
+    const deduplicatedAlternatives = [...new Set(newAlternatives)].filter(
+      (url) => url !== uploadedUrl
+    );
+    const newAlternativeGettyIds = deduplicatedAlternatives.map(
+      (url) => urlToGettyId.get(url) || ''
+    );
+
+    const updatedUploadSources = { ...(existingSlot.uploadSources || {}) };
+    updatedUploadSources[uploadedUrl] = filename;
+
+    return {
+      ...existingSlot,
+      currentUrl: uploadedUrl,
+      alternatives: deduplicatedAlternatives,
+      userModified: true,
+      lastUpdated: nowIso,
+      searchQuery: '',
+      gettyId: undefined,
+      alternativeGettyIds: newAlternativeGettyIds.some((id) => id)
+        ? newAlternativeGettyIds
+        : undefined,
+      uploadSources: updatedUploadSources,
+      uploadContentHash: contentHash,
+      ...resolveMediaTypeUpdate(existingSlot.mediaType, isVideo, !isVideo),
+      ...(uploadedUrl !== existingSlot.currentUrl ? { naturalOrientation: undefined } : {}),
+      ...(isLogoSlot ? clearLogoVariantMaps() : {}),
+      ...(isLogoSlot && naturalOrientation ? { naturalOrientation } : {}),
+    };
+  }
+
 
   private buildSlotAfterUploadUrlRemoval(
     existingSlot: MediaSlot,

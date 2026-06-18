@@ -916,9 +916,9 @@ intents:
 
       // Visual/asset skills are the explicit exceptions to the "no skills"
       // rule. This assertion anchors the permissive clause and verifies
-      // those three skills are in the allow-list, not the exclusion list.
+      // those skills are in the allow-list, not the exclusion list.
       expect(coreMd).toContain(
-        'Visual/asset skills (media-logo, media-image, media-video) remain usable'
+        'Visual/asset skills (media-logo, media-image, media-video, media-upload) remain usable'
       );
 
       // Cross-reference paragraph at the "Initial Build from Handoff"

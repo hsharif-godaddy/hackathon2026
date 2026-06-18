@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { DevSupervisorError } from '../../../services/DevSupervisorClient.js'
-import { FileUploadContextRenderer } from '../FileUploadContextRenderer.js'
+import { FileUploadContextRenderer, classifyUploadImage } from '../FileUploadContextRenderer.js'
 
 vi.mock('../../../workspace/index.js', () => ({
   createForWorkspace: vi.fn(),
@@ -32,7 +32,22 @@ vi.mock('../../../logging/index.js', () => ({
   Logger: { create: vi.fn().mockReturnValue({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }))
 
+vi.mock('../../../services/MediaManifestService.js', () => ({
+  mediaManifestService: {
+    importChatUploadToSlot: vi.fn(),
+  },
+}))
+
+vi.mock('../../../services/FileUploadService.js', () => ({
+  fileUploadService: {
+    findMatchingUpload: vi.fn(),
+  },
+}))
+
 import { createForWorkspace } from '../../../workspace/index.js'
+import { generateText } from 'ai'
+import { fileUploadService } from '../../../services/FileUploadService.js'
+import { mediaManifestService } from '../../../services/MediaManifestService.js'
 
 describe('FileUploadContextRenderer', () => {
   let renderer: FileUploadContextRenderer
@@ -91,6 +106,128 @@ describe('FileUploadContextRenderer', () => {
     expect(result).not.toBeNull()
   })
 
+  it('auto-registers hero_image uploads into a media slot', async () => {
+    const pngData = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+    mockDownload.mockResolvedValue({
+      data: pngData,
+      contentType: 'image/png',
+    })
+    vi.mocked(generateText).mockResolvedValue({
+      text: JSON.stringify({
+        variant: 'adaptive',
+        classification: 'photo',
+        designDirection: 'partial',
+        contentStructure: 'none',
+        assetRole: 'hero_image',
+        placementIntent: 'display_on_site',
+        extractedColors: null,
+        extractedPages: null,
+        summary: 'Hero photo for homepage',
+      }),
+    } as never)
+    vi.mocked(fileUploadService.findMatchingUpload).mockResolvedValue({
+      file: {
+        filename: 'stored-hero.jpg',
+        originalName: 'hero.jpg',
+        mimeType: 'image/jpeg',
+        size: 100,
+        uploadedAt: '2026-01-01T00:00:00.000Z',
+        uploadId: 'upload-1',
+      },
+      sourcePath: '/tmp/stored-hero.jpg',
+    })
+    vi.mocked(mediaManifestService.importChatUploadToSlot).mockResolvedValue({
+      success: true,
+      slotPath: 'uploads/hero-hero',
+      slotUrl: '/airo-assets/images/uploads/hero-hero',
+      uploadedUrl: '/airo-assets/uploads/uploads-hero-hero-abcd1234.jpg',
+      slot: {
+        mediaType: 'image',
+        currentUrl: '/airo-assets/uploads/uploads-hero-hero-abcd1234.jpg',
+        searchQuery: '',
+        alternatives: [],
+        userModified: true,
+      },
+    })
+
+    const result = await renderer.render(
+      { type: 'file_upload', data: { name: 'hero.jpg', isImage: true } },
+      'use this as the hero',
+      { appId: 'abc123', appPath: '/app' },
+    )
+
+    expect(mediaManifestService.importChatUploadToSlot).toHaveBeenCalledWith('abc123', {
+      filename: 'stored-hero.jpg',
+      assetRole: 'hero_image',
+      createIfMissing: true,
+    })
+    expect(result?.content).toContain('display on site')
+    expect(result?.content).toContain('/airo-assets/images/uploads/hero-hero')
+    expect(result?.content).toContain('Do NOT copy to public/assets')
+  })
+
+  it('does not auto-register hero images shared as reference only', async () => {
+    const pngData = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+    mockDownload.mockResolvedValue({
+      data: pngData,
+      contentType: 'image/png',
+    })
+    vi.mocked(generateText).mockResolvedValue({
+      text: JSON.stringify({
+        variant: 'adaptive',
+        classification: 'reference_design',
+        designDirection: 'partial',
+        contentStructure: 'none',
+        assetRole: null,
+        placementIntent: 'reference_only',
+        extractedColors: null,
+        extractedPages: null,
+        summary: 'Mood board reference',
+      }),
+    } as never)
+
+    const result = await renderer.render(
+      { type: 'file_upload', data: { name: 'mood.jpg', isImage: true } },
+      'make the hero feel like this image',
+      { appId: 'abc123', appPath: '/app' },
+    )
+
+    expect(mediaManifestService.importChatUploadToSlot).not.toHaveBeenCalled()
+    expect(result?.content).toContain('reference/inspiration only')
+    expect(result?.content).not.toContain('Media slot registered')
+  })
+
+  it('does not auto-register logo uploads', async () => {
+    const pngData = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+    mockDownload.mockResolvedValue({
+      data: pngData,
+      contentType: 'image/png',
+    })
+    vi.mocked(generateText).mockResolvedValue({
+      text: JSON.stringify({
+        variant: 'adaptive',
+        classification: 'logo',
+        designDirection: 'full',
+        contentStructure: 'none',
+        assetRole: 'logo',
+        placementIntent: 'display_on_site',
+        extractedColors: ['#000000'],
+        extractedPages: null,
+        summary: 'Company logo',
+      }),
+    } as never)
+
+    const result = await renderer.render(
+      { type: 'file_upload', data: { name: 'logo.png', isImage: true } },
+      'use this logo',
+      { appId: 'abc123', appPath: '/app' },
+    )
+
+    expect(mediaManifestService.importChatUploadToSlot).not.toHaveBeenCalled()
+    expect(result?.content).toContain('logo on the site')
+    expect(result?.content).not.toContain('Media slot registered')
+  })
+
   it('returns not-found message when workspace download throws for image', async () => {
     mockDownload.mockRejectedValue(new DevSupervisorError('not_found', 404, 'src/assets/missing.png'))
 
@@ -142,6 +279,9 @@ describe('FileUploadContextRenderer', () => {
   describe('multi-file format', () => {
     it('handles data.files array with multiple text files', async () => {
       mockView
+        // First view is the persisted-classifications read (skip-known gate);
+        // return empty so both files are treated as fresh.
+        .mockResolvedValueOnce({ content: '{"files":[]}', lines: 1, size: 12, truncated: false })
         .mockResolvedValueOnce({ content: '# Brief\nPortfolio site.', lines: 2, size: 25, truncated: false })
         .mockResolvedValueOnce({ content: 'Brand colors: blue, green.', lines: 1, size: 26, truncated: false })
 
@@ -159,10 +299,56 @@ describe('FileUploadContextRenderer', () => {
         { appId: 'abc123', appPath: '/app' },
       )
 
-      expect(mockView).toHaveBeenCalledTimes(2)
+      // 1 persisted-classifications read + 2 file reads
+      expect(mockView).toHaveBeenCalledTimes(3)
       expect(result).not.toBeNull()
       expect(result?.content).toContain('brief.md')
       expect(result?.content).toContain('brand.txt')
+    })
+
+    it('skips re-classifying a persisted file on a continuation/handoff turn', async () => {
+      // isContinuation=true (handoff/auto-continue): the same attachment is
+      // re-fed with a non-user prompt. The persisted entry is reused (context
+      // manager re-injects it) — no classifier call, no per-file read.
+      mockView.mockResolvedValueOnce({
+        content: JSON.stringify({ files: [{ fileName: 'brief.md', placementIntent: 'unclear' }] }),
+        lines: 1, size: 50, truncated: false,
+      })
+
+      const result = await renderer.render(
+        { type: 'file_upload', data: { files: [{ name: 'brief.md', isImage: false }] } },
+        'a later handoff prompt',
+        { appId: 'abc123', appPath: '/app', isContinuation: true },
+      )
+
+      // Only the persisted-classifications read happened — no per-file view.
+      expect(mockView).toHaveBeenCalledTimes(1)
+      expect(generateText).not.toHaveBeenCalled()
+      expect(result).toBeNull()
+    })
+
+    it('re-classifies a persisted file on a fresh user turn (not a continuation)', async () => {
+      // Same file classified before, but this is a fresh user message
+      // (isContinuation falsy) — the user is acting on the upload again, so it
+      // must be classified against the current message regardless of the prior
+      // persisted result.
+      mockView
+        .mockResolvedValueOnce({
+          content: JSON.stringify({ files: [{ fileName: 'mood.jpg', placementIntent: 'reference_only' }] }),
+          lines: 1, size: 60, truncated: false,
+        })
+      // Image download fails → short-circuits to the not-found fallback, which
+      // still proves the file was NOT skipped (a skipped file returns null).
+      mockDownload.mockRejectedValueOnce(Object.assign(new Error('not found'), { code: 'ENOENT' }))
+
+      const result = await renderer.render(
+        { type: 'file_upload', data: { files: [{ name: 'mood.jpg', isImage: true }] } },
+        'put this here',
+        { appId: 'abc123', appPath: '/app' },
+      )
+
+      expect(mockDownload).toHaveBeenCalledTimes(1)
+      expect(result).not.toBeNull()
     })
 
     it('handles data.files array with mixed image and text', async () => {
@@ -235,6 +421,40 @@ describe('FileUploadContextRenderer', () => {
 
       expect(result).not.toBeNull()
       expect(result?.content).toContain('good.md')
+    })
+  })
+
+  describe('classifyUploadImage — LLM output degradation', () => {
+    const buf = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+
+    it('returns null when the model returns non-JSON prose', async () => {
+      vi.mocked(generateText).mockResolvedValueOnce({ text: 'Sure! This looks like a hero image.' } as never)
+      const result = await classifyUploadImage(buf, 'photo.jpg', 'use as hero')
+      expect(result).toBeNull()
+    })
+
+    it('degrades an off-enum placementIntent to "unclear" (never auto-place)', async () => {
+      vi.mocked(generateText).mockResolvedValueOnce({
+        text: JSON.stringify({ placementIntent: 'definitely-put-it-everywhere', assetRole: 'hero_image' }),
+      } as never)
+      const result = await classifyUploadImage(buf, 'photo.jpg', 'use as hero')
+      expect(result).not.toBeNull()
+      expect(result?.placementIntent).toBe('unclear')
+    })
+
+    it('degrades an unknown assetRole to null (not slot-eligible)', async () => {
+      vi.mocked(generateText).mockResolvedValueOnce({
+        text: JSON.stringify({ placementIntent: 'display_on_site', assetRole: 'mascot' }),
+      } as never)
+      const result = await classifyUploadImage(buf, 'photo.jpg', 'use this')
+      expect(result).not.toBeNull()
+      expect(result?.assetRole).toBeNull()
+    })
+
+    it('returns null when the model call throws', async () => {
+      vi.mocked(generateText).mockRejectedValueOnce(Object.assign(new Error('gocode 400'), { statusCode: 400 }))
+      const result = await classifyUploadImage(buf, 'photo.jpg', 'use as hero')
+      expect(result).toBeNull()
     })
   })
 })

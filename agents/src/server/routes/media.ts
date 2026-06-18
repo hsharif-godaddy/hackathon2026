@@ -32,6 +32,7 @@ import { AppRepository } from '../../database/repositories/AppRepository.js';
 
 import { logger } from '../../logging/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
+import { validateVideoMagicBytes, VIDEO_MIME_TYPE } from '../../services/media-upload-video.js';
 import { getPersistentPublicDir } from '../../utils/persistent-assets.js';
 import { discoverPageRoutes } from '../../services/seo-audit.js';
 import { computeSlotUsageByRoute } from '../../services/media-slot-usage.js';
@@ -106,6 +107,8 @@ function captionAsync(opts: {
 
 const router: IRouter = Router();
 
+export { VIDEO_MIME_TYPE } from '../../services/media-upload-video.js';
+
 /**
  * Cancel an in-flight logo generation job that currently owns a slot, before a
  * manual override (slot swap / upload) writes a new value. Best-effort.
@@ -134,13 +137,6 @@ async function cancelPendingLogoJob(
     });
   }
 }
-
-// Canonical MIME type constants for video formats
-export const VIDEO_MIME_TYPE = {
-  MP4: 'video/mp4',
-  WEBM: 'video/webm',
-  QUICKTIME: 'video/quicktime',
-} as const;
 
 // Canonical MIME type constants for image formats
 export const IMAGE_MIME_TYPE = {
@@ -184,6 +180,7 @@ const ALLOWED_VIDEO_TYPES: Record<string, string> = {
   [VIDEO_MIME_TYPE.QUICKTIME]: 'mov',
 };
 
+
 // All allowed media MIME types (images + videos)
 const ALLOWED_MEDIA_TYPES: Record<string, string> = {
   ...ALLOWED_IMAGE_TYPES,
@@ -213,22 +210,6 @@ function validateImageMagicBytes(buffer: Buffer, mimeType: string): boolean {
   }
 
   return true;
-}
-
-/** Validate video magic bytes: MP4/MOV check for 'ftyp' box, WebM checks EBML header. */
-function validateVideoMagicBytes(buffer: Buffer, mimeType: string): boolean {
-  if (buffer.length < 12) return false;
-
-  if (mimeType === VIDEO_MIME_TYPE.WEBM) {
-    return buffer[0] === 0x1A && buffer[1] === 0x45 && buffer[2] === 0xDF && buffer[3] === 0xA3;
-  }
-
-  if (mimeType === VIDEO_MIME_TYPE.MP4 || mimeType === VIDEO_MIME_TYPE.QUICKTIME) {
-    // ISO base media file format: bytes 4-7 should be 'ftyp'
-    return buffer.toString('ascii', 4, 8) === 'ftyp';
-  }
-
-  return false;
 }
 
 // Configure multer for memory storage with 50MB limit (videos can be larger than images)
@@ -1318,6 +1299,75 @@ router.post(
     }
   }
 );
+
+/**
+ * POST /media/:appId/slots/import-upload
+ * Register a chat-uploaded file as a new or existing media slot
+ */
+router.post('/:appId/slots/import-upload', uploadRateLimiter, async (req: Request, res: Response) => {
+  try {
+    const appId = req.params.appId;
+    const { filename, slotName, assetRole } = req.body;
+
+    if (!appId || !filename) {
+      return res.status(400).json({
+        success: false,
+        error: 'App ID and filename are required',
+      });
+    }
+
+    if (slotName && (slotName.includes('..') || slotName.startsWith('/') || slotName.includes('\0'))) {
+      return res.status(400).json({ success: false, error: 'Invalid slot name' });
+    }
+
+    // assetRole is optional; reject unknown values at the boundary rather than
+    // silently passing them through (they would just no-op downstream).
+    if (assetRole !== undefined && assetRole !== null &&
+        assetRole !== 'hero_image' && assetRole !== 'background') {
+      return res.status(400).json({ success: false, error: 'Invalid assetRole' });
+    }
+
+    const result = await mediaManifestService.importChatUploadToSlot(appId, {
+      filename,
+      slotName,
+      assetRole,
+      createIfMissing: true,
+    });
+
+    if (!result.success) {
+      return res.status(result.httpStatus ?? 500).json({
+        success: false,
+        error: result.error,
+      });
+    }
+
+    logger.info('route.media.import_upload.success', {
+      appId,
+      slotPath: result.slotPath,
+      uploadedUrl: result.uploadedUrl,
+      sourceFilename: filename,
+    });
+
+    return res.json({
+      success: true,
+      slotPath: result.slotPath,
+      slotUrl: result.slotUrl,
+      uploadedUrl: result.uploadedUrl,
+      slot: result.slot,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error('route.media.import_upload.error', {
+      appId: req.params.appId,
+      error: errorMessage,
+    });
+
+    return res.status(500).json({
+      success: false,
+      error: `Failed to import upload: ${errorMessage}`,
+    });
+  }
+});
 
 /**
  * POST /media/:appId/slots/:slotName/upload

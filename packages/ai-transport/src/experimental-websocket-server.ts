@@ -2303,6 +2303,12 @@ export class WebSocketServer {
             await this.loadConversationHistory(socketId, data, processedContext)
           }
 
+          // Mark handoff/auto-continue turns so upload renderers skip
+          // re-classifying the same attachment against a non-user prompt.
+          // iteration 0 is the user's own message → classify fresh.
+          const procMeta = (processedContext as { metadata?: Record<string, unknown> }).metadata
+          if (procMeta) procMeta.__isContinuationTurn = iteration > 0
+
           const iterationData: ChatMessage = { ...data, message }
           const streamResult = await this.streamAgentResponse(socket, agent, iterationData, processedContext, name, startTime, false)
 

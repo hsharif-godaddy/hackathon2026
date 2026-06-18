@@ -51,6 +51,23 @@ export interface MediaSlotOptions {
   customerId?: string;
 }
 
+export interface MediaSlotImportUploadOptions {
+  slot: string;
+  filename: string;
+  appId: string;
+}
+
+export interface MediaSlotImportUploadResult {
+  success: boolean;
+  slot: string;
+  slotUrl: string;
+  mediaType: 'image' | 'video';
+  uploadedUrl?: string;
+  error?: string;
+  /** Agent-facing hint appended for video slots (use <video>, not <img>). */
+  note?: string;
+}
+
 /**
  * Result from selecting media into a slot
  */
@@ -66,6 +83,8 @@ export interface MediaSlotResult {
   alternatives?: string[];
   alternativeCount?: number;
   error?: string;
+  /** Agent-facing hint appended for video slots (use <video>, not <img>). */
+  note?: string;
 }
 
 /**
@@ -78,6 +97,61 @@ export class MediaSlotTool {
   constructor() {
     this.mediaSearchTool = new MediaSearchTool();
     this.appRepository = new AppRepository();
+  }
+
+  /**
+   * Register a chat-uploaded file in a named media slot.
+   */
+  async importUpload(options: MediaSlotImportUploadOptions): Promise<MediaSlotImportUploadResult> {
+    const normalizedSlot = options.slot.trim().replace(/^\/+|\/+$/g, '');
+    const logContext = { appId: options.appId, slot: normalizedSlot, filename: options.filename };
+
+    if (!normalizedSlot) {
+      return {
+        success: false,
+        slot: '',
+        slotUrl: '',
+        mediaType: 'image',
+        error: 'Slot path is required',
+      };
+    }
+
+    logger.info('media_slot.import_upload.begin', logContext);
+
+    const result = await mediaManifestService.importChatUploadToSlot(options.appId, {
+      filename: options.filename,
+      slotName: normalizedSlot,
+      createIfMissing: true,
+    });
+
+    if (!result.success) {
+      logger.warn('media_slot.import_upload.failed', {
+        ...logContext,
+        error: result.error,
+      });
+      return {
+        success: false,
+        slot: normalizedSlot,
+        slotUrl: '',
+        mediaType: 'image',
+        error: result.error,
+      };
+    }
+
+    const mediaType = result.slot.mediaType === 'video' ? 'video' : 'image';
+
+    logger.info('media_slot.import_upload.success', {
+      ...logContext,
+      slotUrl: result.slotUrl,
+    });
+
+    return {
+      success: true,
+      slot: result.slotPath,
+      slotUrl: result.slotUrl,
+      mediaType,
+      uploadedUrl: result.uploadedUrl,
+    };
   }
 
   /**

@@ -1,0 +1,112 @@
+metadata:
+  name: Skill Loader - Media Upload
+  version: 1.0.0
+
+cases:
+  # --- Positive: media-upload skill should load ---
+
+  - id: use-this-photo
+    prompt: "Use this photo on the homepage"
+    expectedSkill: media-upload
+    tags: [positive]
+    rationale: Placing an uploaded photo on the site — core media-upload trigger
+
+  - id: add-image-to-menu
+    prompt: "Add my uploaded image to the menu page"
+    expectedSkill: media-upload
+    tags: [positive]
+    rationale: The phrase 'add my image to the menu' is a whenToUse trigger
+
+  - id: put-on-homepage
+    prompt: "Put the photo I uploaded on the homepage as the hero"
+    expectedSkill: media-upload
+    tags: [positive]
+    rationale: Placing an uploaded file as the hero — media-upload, not AI generation
+
+  - id: use-uploaded-file
+    prompt: "Use the file I uploaded for the about section"
+    expectedSkill: media-upload
+    tags: [positive]
+    rationale: The phrase 'use the file I uploaded' is a whenToUse trigger
+
+  - id: product-photo-on-page
+    prompt: "I uploaded a product photo — show it on the products page"
+    expectedSkill: media-upload
+    tags: [positive]
+    rationale: Placing an uploaded product photo into a slot via import_upload
+
+  - id: background-from-upload
+    prompt: "Make the picture I sent the background of the landing section"
+    expectedSkill: media-upload
+    tags: [positive]
+    rationale: Uploaded image used as a background — media-upload placement
+
+  # --- Positive: harder cases ---
+
+  - id: asset-manager-selection
+    prompt: "Use the image I selected in the Asset Manager on the gallery"
+    expectedSkill: media-upload
+    tags: [positive, hard]
+    rationale: Asset Manager files are placed through media-upload, same as chat uploads
+
+  - id: team-headshots
+    prompt: "I attached our team headshots — add each to the team section"
+    expectedSkill: media-upload
+    tags: [positive, hard]
+    rationale: Placing several uploaded photos into named slots — media-upload
+
+  - id: my-picture-here
+    prompt: "Drop the picture I just shared into the top of the page"
+    expectedSkill: media-upload
+    tags: [positive, hard]
+    rationale: Picture-I-just-shared plus placement signals media-upload without the word upload
+
+  # --- Negative: should NOT load media-upload ---
+
+  - id: reference-only-vibe
+    prompt: "Make the hero feel like this image"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Reference/inspiration only — the upload is not placed, so no skill loads
+
+  - id: competitor-reference
+    prompt: "Here's a competitor's site, give me a similar vibe"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Design direction reference, not a request to place the uploaded file
+
+  - id: generate-image-not-upload
+    prompt: "Generate an image of a sunset for the hero section"
+    expectedSkill: media-image
+    tags: [negative]
+    rationale: AI image generation is media-image, not placing an upload
+
+  - id: make-logo-not-upload
+    prompt: "Make a logo for my bakery"
+    expectedSkill: media-logo
+    tags: [negative]
+    rationale: AI logo generation is media-logo, not an uploaded file
+
+  - id: stock-photo-not-upload
+    prompt: "Find me a stock photo for the about page"
+    expectedSkill: null
+    tags: [negative]
+    rationale: Stock photo search uses the media tool directly, not media-upload
+
+  - id: generate-video-not-upload
+    prompt: "Make a short intro video for the site"
+    expectedSkill: media-video
+    tags: [negative]
+    rationale: AI video generation is media-video, not an uploaded file
+
+  - id: edit-existing-image
+    prompt: "Edit the current hero image to be brighter"
+    expectedSkill: media-image
+    tags: [negative, hard]
+    rationale: Editing an existing in-slot image is media-image, not importing an upload
+
+  - id: reposition-not-upload
+    prompt: "Move the photo on the homepage to the right"
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Repositioning an already-placed image is a CSS task, not media-upload

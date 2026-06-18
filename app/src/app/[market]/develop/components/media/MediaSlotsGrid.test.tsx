@@ -99,10 +99,14 @@ describe('MediaSlotsGrid', () => {
     expect(img.src).toContain('https://preview.example.com/airo-assets/images/slot-1?src=%2Fimg1.jpg');
   });
 
-  it('constructs correct direct URLs for uploaded images', () => {
+  it('routes uploaded images through the slot resolver (dev-supervisor does not serve the raw uploads path)', () => {
     const { container } = renderWithProviders(<MediaSlotsGrid {...defaultProps} />);
     const img = container.querySelector('img[alt="Slot 2"]') as HTMLImageElement;
-    expect(img.src).toContain('https://preview.example.com/airo-assets/uploads/img2.jpg');
+    // Upload URLs must go through /airo-assets/images/{slot}?src=... so the
+    // dev-supervisor image handler resolves them via serveLocalUpload.
+    expect(img.src).toContain(
+      'https://preview.example.com/airo-assets/images/slot-2?src=%2Fairo-assets%2Fuploads%2Fimg2.jpg'
+    );
   });
 });
 

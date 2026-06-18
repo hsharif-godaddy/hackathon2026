@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 
-import { MediaGridSection, type MediaSection,SlotThumbnail } from '@/app/[market]/develop/components/media/MediaGridSection'
+import { MediaGridSection, type MediaSection, SlotThumbnail } from '@/app/[market]/develop/components/media/MediaGridSection'
 import { getRouteForSlot } from '@/app/[market]/develop/components/media/slot-routing'
 import type { MediaSlot } from '@/app/[market]/develop/components/media/types'
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'

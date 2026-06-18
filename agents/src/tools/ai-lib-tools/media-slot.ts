@@ -1,9 +1,10 @@
 import { createTool, type Tool } from '@airo/ai-lib';
 import { z } from 'zod';
-import { MediaSlotTool, type MediaSlotResult } from '../media-slot-tool.js';
+import { MediaSlotTool, type MediaSlotImportUploadResult, type MediaSlotResult } from '../media-slot-tool.js';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
 import { logger } from '../../logging/index.js';
 import { fillSlotFromRebuildSource } from '../rebuild-source-media.js';
+import { recordUploadSlotUrl } from '../../services/upload-classification-store.js';
 
 /**
  * Media Slot Tool for AI-Lib
@@ -18,8 +19,14 @@ import { fillSlotFromRebuildSource } from '../rebuild-source-media.js';
  * - Original search context is preserved for re-searching
  */
 export const mediaSlotAITool: Tool = createTool(
-  'Select an image or video for a specific location in the app. Returns a slot URL that you should use in the code. For images the URL is like "/airo-assets/images/pages/home/hero" — use in <img src="...">. For videos the URL is like "/airo-assets/videos/pages/home/hero" — you MUST use <video src="..."> (NOT <img>). The actual media is resolved at runtime, allowing users to easily swap without code changes.',
+  'Select an image or video for a specific location in the app, or import a chat-uploaded file into a slot. Returns a slot URL that you should use in the code. For images the URL is like "/airo-assets/images/pages/home/hero" — use in <img src="...">. For videos the URL is like "/airo-assets/videos/pages/home/hero" — you MUST use <video src="..."> (NOT <img>). The actual media is resolved at runtime, allowing users to easily swap without code changes.',
   z.object({
+    action: z.enum(['search', 'import_upload']).default('search').describe(
+      'Use "search" (default) for stock Getty media. Use "import_upload" to register a chat-uploaded file in a slot before placing it in code.'
+    ),
+    filename: z.string().optional().describe(
+      'Required when action is "import_upload": the stored chat upload filename from upload context (not the original display name).'
+    ),
     slot: z.string().describe(
       `Semantic path identifying this media's PURPOSE and CONTENT. Format: "{location}/{descriptive-name}"
 
@@ -39,8 +46,8 @@ EXAMPLES:
 - Hero images: "pages/home/hero", "pages/about/hero"
 - Generic galleries: "pages/home/gallery-1" (ok - interchangeable)`
     ),
-    query: z.string().describe(
-      'Search terms describing the desired media. Be specific about subject, style, mood. Examples: "modern office team collaboration", "sunset beach vacation", "professional headshot business woman"'
+    query: z.string().optional().describe(
+      'Search terms describing the desired media. Required when action is "search". Be specific about subject, style, mood. Examples: "modern office team collaboration", "sunset beach vacation", "professional headshot business woman"'
     ),
     mediaType: z.enum(['image', 'video']).default('image').describe(
       'Type of media to search for. Default is "image". Use "video" only when motion content is explicitly needed.'
@@ -122,8 +129,10 @@ EXAMPLES:
   }),
   async (input, context) => {
     const {
+      action = 'search',
       slot,
       query,
+      filename,
       mediaType = 'image',
       size,
       orientations,
@@ -161,16 +170,59 @@ EXAMPLES:
     // with the customer's matching scraped photo instead of Getty stock. Returns
     // null (→ Getty below) for non-rebuild apps, post-build editing, or when no
     // source image fits.
-    const sourceFill = await fillSlotFromRebuildSource({ appId, slot, query, mediaType });
+    const sourceFill = await fillSlotFromRebuildSource({ appId, slot, query: query ?? '', mediaType: (mediaType ?? 'image') as 'image' | 'video' });
     if (sourceFill) {
       return JSON.stringify(sourceFill, null, 2);
     }
 
     const mediaSlotTool = new MediaSlotTool();
 
+    if (action === 'import_upload') {
+      if (!filename?.trim()) {
+        throw new Error('filename is required when action is "import_upload"');
+      }
+
+      const result = await mediaSlotTool.importUpload({
+        slot,
+        filename: filename.trim(),
+        appId,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to import chat upload into slot');
+      }
+
+      // Record the resolved slot URL back into the persisted upload
+      // classification so follow-up turns reuse it instead of re-instructing
+      // import_upload for an already-placed file. Best-effort, non-fatal.
+      await recordUploadSlotUrl({
+        appId,
+        storedFilename: filename.trim(),
+        slotUrl: result.slotUrl,
+      });
+
+      const response: MediaSlotImportUploadResult = {
+        success: true,
+        slot: result.slot,
+        slotUrl: result.slotUrl,
+        mediaType: result.mediaType,
+        ...(result.uploadedUrl && { uploadedUrl: result.uploadedUrl }),
+      };
+
+      if (result.mediaType === 'video') {
+        response.note = `IMPORTANT: Use <video src="${result.slotUrl}" autoPlay muted loop playsInline /> in the code. Do NOT use <img> for video slots.`;
+      }
+
+      return JSON.stringify(response, null, 2);
+    }
+
+    if (!query?.trim()) {
+      throw new Error('query is required when action is "search"');
+    }
+
     const result = await mediaSlotTool.selectMedia({
       slot,
-      query,
+      query: query.trim(),
       mediaType,
       size,
       orientations,
@@ -205,7 +257,7 @@ EXAMPLES:
 
     // Add explicit element guidance for videos so agent doesn't use <img>
     if (result.mediaType === 'video') {
-      (response as unknown as Record<string, unknown>).note = `IMPORTANT: Use <video src="${result.slotUrl}" autoPlay muted loop playsInline /> in the code. Do NOT use <img> for video slots. If replacing an existing <img>, change the element to <video>.`;
+      response.note = `IMPORTANT: Use <video src="${result.slotUrl}" autoPlay muted loop playsInline /> in the code. Do NOT use <img> for video slots. If replacing an existing <img>, change the element to <video>.`;
     }
 
     return JSON.stringify(response, null, 2);

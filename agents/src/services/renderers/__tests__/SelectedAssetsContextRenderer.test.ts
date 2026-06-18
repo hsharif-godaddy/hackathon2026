@@ -11,21 +11,42 @@ vi.mock('../../../utils/image-resize.js', () => ({
   resizeForVision: vi.fn()
 }))
 
-vi.mock('../../../logging/index.js', () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn()
-  }
+vi.mock('../../../logging/index.js', () => {
+  const stub = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+  return { logger: stub, Logger: { create: vi.fn(() => stub) } }
+})
+
+// Mock the classification helper so this test does not pull in the real
+// classify chain (model calls, MediaManifestService, etc.). Default = no
+// guidance (classification unavailable) → falls back to generic guidance.
+vi.mock('../../chat-upload-classification.js', () => ({
+  classifyAndGuideChatUploadImage: vi.fn().mockResolvedValue({
+    classification: null,
+    guidance: null,
+    slotUrl: null,
+    storedUploadFilename: null,
+  }),
+}))
+
+// Avoid the real workspace + persistence chain. createForWorkspace → null so
+// readPersistedClassifications is skipped (empty map) and nothing is persisted.
+vi.mock('../../../workspace/index.js', () => ({
+  createForWorkspace: vi.fn(() => null),
+}))
+vi.mock('../upload-classification-persistence.js', () => ({
+  readPersistedClassifications: vi.fn().mockResolvedValue(new Map()),
+  persistClassifications: vi.fn().mockResolvedValue(undefined),
 }))
 
 import { readUploadedFileContent } from '../../helpers/ContextFormatter.js'
 import { readAgentUploadAsBase64 } from '../../helpers/ContextFormatter.js'
 import { resizeForVision } from '../../../utils/image-resize.js'
+import { classifyAndGuideChatUploadImage } from '../../chat-upload-classification.js'
 
 const mockedReadUploadedFileContent = vi.mocked(readUploadedFileContent)
 const mockedReadAgentUploadAsBase64 = vi.mocked(readAgentUploadAsBase64)
 const mockedResizeForVision = vi.mocked(resizeForVision)
+const mockedClassifyAndGuide = vi.mocked(classifyAndGuideChatUploadImage)
 
 describe('SelectedAssetsContextRenderer', () => {
   let renderer: SelectedAssetsContextRenderer
@@ -549,6 +570,90 @@ describe('SelectedAssetsContextRenderer', () => {
         expect(result).not.toBeNull()
         expect(result!.assetImages).toHaveLength(2)
       })
+    })
+  })
+
+  describe('intent classification for uploaded images', () => {
+    const uploadedImageAttachment = (filename: string): ContextAttachment<any[]> => ({
+      type: 'selected_assets',
+      data: [{
+        mediaType: 'IMAGE',
+        sourceType: 'upload',
+        imageUrl: 'http://localhost:4000/files/uploads/app123/x.jpg',
+        filename,
+        contentType: 'image/jpeg',
+        size: 1024,
+      }],
+    })
+
+    beforeEach(() => {
+      mockedReadAgentUploadAsBase64.mockResolvedValue('data:image/jpeg;base64,QQ==')
+    })
+
+    it('classifies each uploaded image with the user prompt + appId', async () => {
+      mockedClassifyAndGuide.mockResolvedValue({
+        classification: { placementIntent: 'display_on_site' } as never,
+        guidance: '## Upload handling\n- display on site',
+        slotUrl: '/airo-assets/images/uploads/hero-x',
+        storedUploadFilename: 'stored.jpg',
+      })
+
+      await renderer.render(uploadedImageAttachment('hero.jpg'), 'use this as the hero', { appId: 'app123' })
+
+      expect(mockedClassifyAndGuide).toHaveBeenCalledWith(
+        expect.objectContaining({ appId: 'app123', fileName: 'hero.jpg', userPrompt: 'use this as the hero' }),
+      )
+    })
+
+    it('injects display-intent guidance and drops the blanket public/assets steering', async () => {
+      mockedClassifyAndGuide.mockResolvedValue({
+        classification: { placementIntent: 'display_on_site' } as never,
+        guidance: '## Upload handling\n- User intent: **display on site** — use slot URL `/airo-assets/images/uploads/hero-x`',
+        slotUrl: '/airo-assets/images/uploads/hero-x',
+        storedUploadFilename: 'stored.jpg',
+      })
+
+      const result = await renderer.render(uploadedImageAttachment('hero.jpg'), 'use this as the hero', { appId: 'app123' })
+
+      expect(result!.content).toContain('## Upload handling')
+      expect(result!.content).toContain('/airo-assets/images/uploads/hero-x')
+      expect(result!.content).not.toContain('UPLOADED FILE - To use in project')
+    })
+
+    it('reference_only guidance prevents embedding (no copy-to-project steering)', async () => {
+      mockedClassifyAndGuide.mockResolvedValue({
+        classification: { placementIntent: 'reference_only' } as never,
+        guidance: '## Upload handling\n- User intent: **reference/inspiration only** — do NOT place in site code or register a media slot',
+        slotUrl: null,
+        storedUploadFilename: 'stored.jpg',
+      })
+
+      const result = await renderer.render(uploadedImageAttachment('mood.jpg'), 'the design should look like this', { appId: 'app123' })
+
+      expect(result!.content).toContain('reference/inspiration only')
+      expect(result!.content).not.toContain('UPLOADED FILE - To use in project')
+      expect(result!.content).not.toContain('public/assets/mood.jpg')
+    })
+
+    it('falls back to generic copy-to-project guidance when classification is unavailable', async () => {
+      mockedClassifyAndGuide.mockResolvedValue({
+        classification: null,
+        guidance: null,
+        slotUrl: null,
+        storedUploadFilename: null,
+      })
+
+      const result = await renderer.render(uploadedImageAttachment('photo.jpg'), 'do something', { appId: 'app123' })
+
+      expect(result!.content).toContain('UPLOADED FILE - To use in project')
+    })
+
+    it('does not classify when no appId is provided (context absent)', async () => {
+      const result = await renderer.render(uploadedImageAttachment('photo.jpg'), 'do something')
+
+      expect(mockedClassifyAndGuide).not.toHaveBeenCalled()
+      // Falls back to generic guidance.
+      expect(result!.content).toContain('UPLOADED FILE - To use in project')
     })
   })
 

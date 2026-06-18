@@ -1,0 +1,113 @@
+metadata:
+  name: Classifier - Upload Placement Intent
+  version: 1.0.0
+
+# Verifies the chat-upload classifier reads the user's prompt and assigns the
+# correct placementIntent. Image content is a neutral placeholder on purpose —
+# these cases isolate the prompt-driven intent decision (the part most likely
+# to regress, and the one that was previously fed an empty prompt in prod).
+
+cases:
+  # --- display_on_site: user wants the file shown on the site ---
+
+  - id: use-as-hero
+    prompt: 'Use this as the hero image on my homepage'
+    expectedPlacementIntent: display_on_site
+    tags: [display]
+    rationale: Explicit request to place the upload as the hero
+
+  - id: put-on-menu
+    prompt: 'Put this photo on the menu page'
+    expectedPlacementIntent: display_on_site
+    tags: [display]
+    rationale: Explicit placement request for a specific page
+
+  - id: add-to-site
+    prompt: 'Add this image to the about section'
+    expectedPlacementIntent: display_on_site
+    tags: [display]
+    rationale: An explicit add-this-image-to request is a direct display intent
+
+  - id: logo-for-header
+    prompt: 'Here is our company logo for the header'
+    expectedPlacementIntent: display_on_site
+    expectedAssetRole: logo
+    tags: [display, logo]
+    rationale: Logo to be shown on the site — display intent, logo role
+
+  - id: use-as-background
+    prompt: 'Make this the background of the landing section'
+    expectedPlacementIntent: display_on_site
+    expectedAssetRole: background
+    tags: [display, background]
+    rationale: Background placement request
+
+  - id: add-to-front-page
+    prompt: 'add this to front page'
+    expectedPlacementIntent: display_on_site
+    tags: [display]
+    rationale: Action verb plus page target is a direct placement request even without a named slot (was mis-classified as unclear in AIROBUILD-2364)
+
+  - id: add-to-homepage
+    prompt: 'add this to the homepage'
+    expectedPlacementIntent: display_on_site
+    tags: [display]
+    rationale: Action verb plus page target is display_on_site regardless of slot naming
+
+  - id: put-this-here
+    prompt: 'put this on the site'
+    expectedPlacementIntent: display_on_site
+    tags: [display]
+    rationale: Explicit put-on-site directive
+
+  - id: include-this-image
+    prompt: 'include this image on the landing page'
+    expectedPlacementIntent: display_on_site
+    tags: [display]
+    rationale: Include on the page is a placement directive
+
+  # --- reference_only: shared for inspiration, not to be embedded ---
+
+  - id: make-it-look-like
+    prompt: 'Make the hero feel like this image'
+    expectedPlacementIntent: reference_only
+    tags: [reference]
+    rationale: Style inspiration, not a request to embed the file
+
+  - id: similar-vibe
+    prompt: 'I want a similar vibe to this'
+    expectedPlacementIntent: reference_only
+    tags: [reference]
+    rationale: Vibe/mood reference
+
+  - id: competitor-inspiration
+    prompt: "Here's a competitor's site for inspiration"
+    expectedPlacementIntent: reference_only
+    tags: [reference]
+    rationale: Competitor reference for direction, not placement
+
+  - id: color-scheme-feel
+    prompt: 'Use this color scheme feel for the design'
+    expectedPlacementIntent: reference_only
+    tags: [reference]
+    rationale: Color/style cue, not an image to place
+
+  # --- unclear: prompt does not say whether to display or reference ---
+
+  - id: bare-build
+    prompt: 'Build my site'
+    expectedPlacementIntent: unclear
+    tags: [unclear]
+    rationale: No statement about whether the attached file should be displayed
+
+  - id: heres-a-file
+    prompt: "Here's a file"
+    expectedPlacementIntent: unclear
+    tags: [unclear]
+    rationale: Bare attachment with no placement or reference signal
+
+  - id: empty-prompt
+    prompt: ''
+    expectedPlacementIntent: unclear
+    tags: [unclear]
+    rationale: No prompt at all — must default to unclear, never auto-place

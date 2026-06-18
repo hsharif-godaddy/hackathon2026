@@ -8,7 +8,7 @@ import ImageIcon from '@ux/icon/image'
 import PlusIcon from '@ux/icon/plus'
 import SparklesIcon from '@ux/icon/sparkles'
 
-import { formatSlotName, getPreviewOrigin } from '@/app/[market]/develop/components/media/MediaSlotDetail'
+import { formatSlotName, getSlotThumbnailUrl } from '@/app/[market]/develop/components/media/MediaSlotDetail'
 import type { MediaSlot } from '@/app/[market]/develop/components/media/types'
 import { LogoShimmer, logoShimmerOrientation, LogoShimmerOverlay } from '@/app/[market]/develop/components/preview/brand-book/LogoShimmer'
 import { useTranslations } from '@/hooks/useTranslations'
@@ -210,14 +210,9 @@ export function SlotThumbnail({
 
   const isVideo = slot.mediaType === 'video'
   const displayUrl = isVideo ? slot.currentUrl : (slot.thumbnailUrl || slot.currentUrl)
-  const assetPrefix = isVideo ? '/airo-assets/videos/' : '/airo-assets/images/'
-  const proxiedUrl = previewBaseUrl && displayUrl
-    ? displayUrl.startsWith('http://') || displayUrl.startsWith('https://')
-      ? displayUrl
-      : displayUrl.startsWith('/airo-assets/uploads/')
-        ? `${getPreviewOrigin(previewBaseUrl)}${displayUrl}${thumbnailBustKey ? `?_t=${thumbnailBustKey}` : ''}`
-        : `${getPreviewOrigin(previewBaseUrl)}${assetPrefix}${name}?src=${encodeURIComponent(displayUrl)}`
-    : displayUrl
+  // Thumbnails always route through the slot resolver so the share-token query
+  // on previewBaseUrl is preserved and cache-busting works.
+  const proxiedUrl = getSlotThumbnailUrl(name, displayUrl, previewBaseUrl ?? null, slot.mediaType, thumbnailBustKey)
   const posterUrl = isVideo && slot.thumbnailUrl ? slot.thumbnailUrl : undefined
 
   return (

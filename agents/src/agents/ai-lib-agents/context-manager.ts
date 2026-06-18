@@ -25,6 +25,12 @@ import { contextAttachmentRegistry } from '../../services/ContextAttachmentRegis
 import type { ContextAttachment } from '@airo/shared/context-attachment'
 import { createForWorkspace } from '../../workspace/index.js'
 import { isDevSupervisorNotFound } from '../../services/DevSupervisorClient.js'
+import {
+  buildUploadHandlingGuidance,
+  sanitizeUploadFileNameForDisplay,
+  type ChatUploadAssetRole,
+  type UploadPlacementIntent,
+} from '../../services/upload-handling-guidance.js'
 import type { ViewResult } from '../../workspace/files.js'
 
 const swallowNotFound = <T>(fallback: T) => (err: unknown): T => {
@@ -213,10 +219,34 @@ export class AILibContextManager {
         for (const entry of classificationEntries) {
             const fileName = (entry.fileName as string) || 'unknown'
             const isImage = /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(fileName)
-            const filePath = isImage ? `src/assets/${fileName}` : `docs/${fileName}`
+            const slotUrl = (entry.slotUrl as string | undefined) ?? null
+            const handling = buildUploadHandlingGuidance({
+                fileName,
+                assetRole: (entry.assetRole as ChatUploadAssetRole | null) ?? null,
+                placementIntent: (entry.placementIntent as UploadPlacementIntent) ?? 'unclear',
+                slotUrl,
+                storedUploadFilename: (entry.storedUploadFilename as string | undefined) ?? null,
+                isImage,
+            })
+            // When an image is already registered to a media slot, point the
+            // agent at the slot URL — not `src/assets/…`, which would contradict
+            // the Upload handling block and risk a non-publish-safe path in code.
+            // Sanitize the filename before interpolating into agent-facing
+            // markdown (a backtick/newline could break the code span or inject a
+            // line into the instructions).
+            const displayName = sanitizeUploadFileNameForDisplay(fileName)
+            const locationLine = isImage && slotUrl
+                ? `Registered media slot — use \`${slotUrl}\` in code (do NOT reference \`src/assets/${displayName}\`).`
+                : `File location: \`${isImage ? `src/assets/${displayName}` : `docs/${displayName}`}\``
             conversationContextMessages.push({
                 role: 'user',
-                content: `## Upload Classification\n\n\`\`\`json\n${JSON.stringify(entry, null, 2)}\n\`\`\`\n\nFile location: \`${filePath}\``,
+                content: [
+                    `## Upload Classification\n\n\`\`\`json\n${JSON.stringify(entry, null, 2)}\n\`\`\``,
+                    '',
+                    locationLine,
+                    '',
+                    handling,
+                ].join('\n'),
                 insertionOrder: 'after_history'
             })
         }
@@ -256,9 +286,15 @@ export class AILibContextManager {
         // Process generic context attachments using the registry
         if (context.contextAttachments && Array.isArray(context.contextAttachments) && context.contextAttachments.length > 0) {
             try {
+                // The current user message drives upload classification
+                // (e.g. "use this as the hero" vs "make it look like this").
+                // It is populated on context.metadata._userMessage by the shared
+                // transport layer before contextProvider runs; without it the
+                // FileUploadContextRenderer classifier sees no intent signal.
+                const userPrompt = (context.metadata?._userMessage as string | undefined) ?? ''
                 const attachmentMessages = await this.processContextAttachments(
                     context.contextAttachments,
-                    '', // User prompt not available at this stage
+                    userPrompt,
                     context
                 )
                 conversationContextMessages.push(...attachmentMessages)
@@ -435,11 +471,14 @@ export class AILibContextManager {
 
         for (const attachment of attachments) {
             try {
-                const renderContext: { appId?: string; appPath?: string; conversationId?: string } = {}
-                
+                const renderContext: { appId?: string; appPath?: string; conversationId?: string; isContinuation?: boolean } = {}
+
                 if (context.metadata?.appId) renderContext.appId = context.metadata.appId as string
                 if (context.metadata?.appPath) renderContext.appPath = context.metadata.appPath as string
                 if (context.conversation?.conversationId) renderContext.conversationId = context.conversation.conversationId
+                // Handoff/auto-continue turns re-feed the same attachment with a
+                // non-user prompt — let the upload renderers skip re-classifying.
+                if (context.metadata?.__isContinuationTurn) renderContext.isContinuation = true
                 
                 const rendered = await contextAttachmentRegistry.render(
                     attachment,

@@ -83,7 +83,8 @@ const SYNC_MANIFEST = [
       'f0d49c600a0fc04550f9afe25f5f2f67', // before sanitized API error responses
       '2791732d0b10bf8716d0cc70f3734497', // before AdSense runtime routes/head injection and per-host SEO gate
       '5487ff6fad6ab48607c498daa80cbc01', // before merging AdSense runtime injection with per-host SEO gate
-      '12a5f4baadf6ce4963913fe37384e51e'  // SEO: add must-revalidate to cache directives
+      '12a5f4baadf6ce4963913fe37384e51e', // SEO: add must-revalidate to cache directives
+      '678c3a987122a8266df30b6c970f862b', // merged from main
     ],
     force: false,
   },

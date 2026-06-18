@@ -182,6 +182,59 @@ describe('AILibContextManager', () => {
       expect(imageContexts[0]!.assetImages).toContain(fakeBase64)
     })
 
+    it('threads the current user message (metadata._userMessage) into the attachment renderer', async () => {
+      const manager = new AILibContextManager()
+      mockedRegistryRender.mockResolvedValue({
+        role: 'user' as const,
+        content: 'rendered',
+        insertionOrder: 'after_history' as const,
+      })
+
+      const context = {
+        metadata: { appId: 'test-app', _userMessage: 'use this as the hero' },
+        contextAttachments: [{
+          type: 'file_upload',
+          data: { name: 'hero.jpg', isImage: true },
+          persistence: 'save' as const,
+        }],
+      }
+
+      await manager.buildContextMessages('', context as any)
+
+      // The classifier's intent decision depends on this prompt — assert it is passed through.
+      expect(mockedRegistryRender).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'file_upload' }),
+        'use this as the hero',
+        expect.anything(),
+      )
+    })
+
+    it('falls back to an empty prompt when _userMessage is absent', async () => {
+      const manager = new AILibContextManager()
+      mockedRegistryRender.mockResolvedValue({
+        role: 'user' as const,
+        content: 'rendered',
+        insertionOrder: 'after_history' as const,
+      })
+
+      const context = {
+        metadata: { appId: 'test-app' },
+        contextAttachments: [{
+          type: 'file_upload',
+          data: { name: 'hero.jpg', isImage: true },
+          persistence: 'save' as const,
+        }],
+      }
+
+      await manager.buildContextMessages('', context as any)
+
+      expect(mockedRegistryRender).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'file_upload' }),
+        '',
+        expect.anything(),
+      )
+    })
+
     it('does not add to formattedContexts when no assetImages in rendered attachment', async () => {
       const manager = new AILibContextManager()
 
@@ -342,7 +395,37 @@ describe('AILibContextManager', () => {
       expect(classification).toBeDefined()
       expect(classification?.content).toContain('logo.png')
       expect(classification?.content).toContain('src/assets/logo.png')
+      expect(classification?.content).toContain('## Upload handling')
       expect(workspaceFilesMock.view).toHaveBeenCalledWith({ path: 'docs/.upload-classification.json', limit: 65536 })
+    })
+
+    it('points at the slot URL (not src/assets) when a persisted image is registered to a slot', async () => {
+      viewByPath({
+        'docs/.upload-classifications.json': JSON.stringify({
+          files: [
+            {
+              fileName: 'hero.jpg',
+              assetRole: 'hero_image',
+              placementIntent: 'display_on_site',
+              slotUrl: '/airo-assets/images/uploads/hero-hero',
+            },
+          ],
+        }),
+      })
+
+      const cm = new AILibContextManager()
+      const result = await cm.buildContextMessages(
+        '',
+        { metadata: { appId: 'app-123' } },
+        { includeTemplateDescription: false, includeAppContext: false }
+      )
+
+      const classification = result.contextMessages.find((m) => m.content.includes('Upload Classification'))
+      expect(classification).toBeDefined()
+      // Location line points at the slot URL and explicitly steers away from src/assets.
+      expect(classification?.content).toContain('Registered media slot')
+      expect(classification?.content).toContain('/airo-assets/images/uploads/hero-hero')
+      expect(classification?.content).not.toContain('File location: `src/assets/hero.jpg`')
     })
 
     it('propagates non-not-found errors from workspace.files.view (no silent fallback)', async () => {

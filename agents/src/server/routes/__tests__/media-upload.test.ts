@@ -29,6 +29,7 @@ vi.mock('../../../services/MediaManifestService.js', () => ({
   mediaManifestService: {
     getSlot: vi.fn(),
     updateSlotWithUpload: vi.fn(),
+    importChatUploadToSlot: vi.fn(),
     updateSlotCaption: vi.fn().mockResolvedValue({ success: true }),
     getManifest: vi.fn(),
     updateSlot: vi.fn(),
@@ -1028,5 +1029,89 @@ describe('DELETE /media/:appId/slots/:slotName/uploads/:filename', () => {
     );
     expect(mediaManifestService.removeUploadedUrls).not.toHaveBeenCalled();
     expect(fileUploadService.deleteUploadedFile).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /media/:appId/slots/import-upload', () => {
+  let app: express.Application;
+
+  beforeAll(async () => {
+    const { default: mediaRouter } = await import('../media.js');
+    app = express();
+    app.use(express.json());
+    app.use('/media', mediaRouter);
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('registers a chat upload as a slot and returns slot details', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js');
+    vi.mocked(mediaManifestService.importChatUploadToSlot).mockResolvedValue({
+      success: true,
+      slotPath: 'uploads/hero-photo',
+      slotUrl: '/airo-assets/images/uploads/hero-photo',
+      uploadedUrl: '/airo-assets/uploads/uploads-hero-photo-abcd1234.jpg',
+      slot: {
+        mediaType: 'image',
+        currentUrl: '/airo-assets/uploads/uploads-hero-photo-abcd1234.jpg',
+        searchQuery: '',
+        alternatives: [],
+        userModified: true,
+      },
+    });
+
+    const response = await request(app)
+      .post('/media/test-app/slots/import-upload')
+      .send({ filename: 'stored-hero.jpg', slotName: 'uploads/hero-photo', assetRole: 'hero_image' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      slotPath: 'uploads/hero-photo',
+      slotUrl: '/airo-assets/images/uploads/hero-photo',
+      uploadedUrl: '/airo-assets/uploads/uploads-hero-photo-abcd1234.jpg',
+    });
+    expect(mediaManifestService.importChatUploadToSlot).toHaveBeenCalledWith('test-app', {
+      filename: 'stored-hero.jpg',
+      slotName: 'uploads/hero-photo',
+      assetRole: 'hero_image',
+      createIfMissing: true,
+    });
+  });
+
+  it('returns 400 when filename is missing', async () => {
+    const response = await request(app)
+      .post('/media/test-app/slots/import-upload')
+      .send({ slotName: 'uploads/hero' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.success).toBe(false);
+  });
+
+  it('returns 400 for a path-traversal slot name', async () => {
+    const response = await request(app)
+      .post('/media/test-app/slots/import-upload')
+      .send({ filename: 'x.jpg', slotName: '../escape' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.success).toBe(false);
+  });
+
+  it('propagates the service httpStatus on failure', async () => {
+    const { mediaManifestService } = await import('../../../services/MediaManifestService.js');
+    vi.mocked(mediaManifestService.importChatUploadToSlot).mockResolvedValue({
+      success: false,
+      error: 'Upload file not found',
+      httpStatus: 404,
+    });
+
+    const response = await request(app)
+      .post('/media/test-app/slots/import-upload')
+      .send({ filename: 'missing.jpg' });
+
+    expect(response.status).toBe(404);
+    expect(response.body).toMatchObject({ success: false, error: 'Upload file not found' });
   });
 });

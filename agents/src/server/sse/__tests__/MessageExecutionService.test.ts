@@ -3280,6 +3280,11 @@ describe('MessageExecutionService', () => {
       // reworded — keep it keyed to MOCK_TRACE_ID.
       const streamCall = (deps.getAgent().streamGenerate as any).mock.calls[0]
       expect(streamCall[1].executionContext.metadata.traceId).toBe(MOCK_TRACE_ID)
+      // Pin the _userMessage wiring (mirrors the WS transport): the context
+      // provider + upload classifiers read the current user message off
+      // metadata._userMessage to decide placement intent. Without this, SSE
+      // uploads classify against an empty prompt → always "unclear".
+      expect(streamCall[1].executionContext.metadata._userMessage).toBe('Hello')
     })
 
     it('sets the FullStory session id as a langfuse.trace.metadata span attribute when provided', async () => {

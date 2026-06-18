@@ -17,7 +17,7 @@ import Skeleton from '@ux/skeleton'
 import Tag from '@ux/tag'
 
 import { getRouteForSlot } from '@/app/[market]/develop/components/media/slot-routing'
-import { getPreviewOrigin, getSlotImageUrl } from '@/app/[market]/develop/components/media/slotImageUrl'
+import { getPreviewOrigin, getSlotImageUrl, getSlotThumbnailUrl } from '@/app/[market]/develop/components/media/slotImageUrl'
 import type { DeleteUploadResult, SlotUploadItem } from '@/app/[market]/develop/components/media/UploadedMediaSection'
 import { UploadedMediaSection } from '@/app/[market]/develop/components/media/UploadedMediaSection'
 import { LogoShimmer, logoShimmerOrientation, LogoShimmerOverlay } from '@/app/[market]/develop/components/preview/brand-book/LogoShimmer'
@@ -60,7 +60,7 @@ export function formatSlotName(slot: string): string {
 }
 
 // Re-exported for back-compat — canonical definitions live in ./slotImageUrl
-export { getPreviewOrigin, getSlotImageUrl }
+export { getPreviewOrigin, getSlotImageUrl, getSlotThumbnailUrl }
 
 interface MediaSlotDetailProps {
   appId: string

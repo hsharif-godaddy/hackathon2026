@@ -283,3 +283,48 @@ describe('FileUploadService - Delete Uploaded File', () => {
     expect(remainingFiles[0].filename).toBe(result.files[0].filename);
   });
 });
+
+describe('FileUploadService - Content Dedup', () => {
+  const dedupTestDir = '/tmp/test-uploads-dedup';
+
+  afterEach(async () => {
+    if (existsSync(dedupTestDir)) {
+      await rm(dedupTestDir, { recursive: true, force: true });
+    }
+  });
+
+  const sameBytes = () => ({
+    originalname: 'a.jpg',
+    mimetype: 'image/jpeg',
+    size: 9,
+    buffer: Buffer.from('identical'),
+  }) as Express.Multer.File;
+
+  it('dedups two identical files in the SAME batch to one stored file', async () => {
+    const service = new FileUploadService(dedupTestDir);
+    const result = await service.processUpload('app-dedup', [
+      { ...sameBytes(), originalname: 'first.jpg' } as Express.Multer.File,
+      { ...sameBytes(), originalname: 'second.jpg' } as Express.Multer.File,
+    ]);
+
+    // Both records returned, but they share one stored filename (one file).
+    expect(result.files).toHaveLength(2);
+    expect(result.files[0].filename).toBe(result.files[1].filename);
+    expect(result.files[0].contentHash).toBe(result.files[1].contentHash);
+  });
+
+  it('dedups identical bytes across SEPARATE uploads to the same stored file', async () => {
+    const service = new FileUploadService(dedupTestDir);
+    const r1 = await service.processUpload('app-dedup2', [sameBytes()]);
+    const r2 = await service.processUpload('app-dedup2', [
+      { ...sameBytes(), originalname: 'again.jpg' } as Express.Multer.File,
+    ]);
+
+    expect(r2.files[0].filename).toBe(r1.files[0].filename);
+    expect(r2.files[0].originalName).toBe('again.jpg');
+
+    // The re-upload must NOT create a second listing entry for the same file.
+    const listed = await service.listUploadedFiles('app-dedup2');
+    expect(listed).toHaveLength(1);
+  });
+});

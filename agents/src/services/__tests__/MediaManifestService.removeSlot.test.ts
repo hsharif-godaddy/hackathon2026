@@ -26,9 +26,10 @@ vi.mock('../../utils/git.js', () => ({
   GitUtils: vi.fn(),
 }))
 
-vi.mock('../../logging/index.js', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}))
+vi.mock('../../logging/index.js', () => {
+  const stub = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+  return { logger: stub, Logger: { create: vi.fn(() => stub) } }
+})
 
 vi.mock('../../workspace/index.js', () => ({
   createForWorkspace: () => ({ tasks: {} }),

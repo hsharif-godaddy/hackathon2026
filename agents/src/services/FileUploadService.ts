@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync, readdirSync } from 'fs'
 import { mkdir, writeFile, readFile, readdir, unlink, rm } from 'fs/promises'
 import { extname } from 'path'
@@ -19,6 +20,10 @@ export interface UploadedFile {
   size: number
   mimeType: string | null
   uploadedAt: string
+  /** sha256 of the raw file bytes. Set on new uploads; absent on records written
+   *  before this field was added. Used for content-identity dedup so re-uploading
+   *  the same image returns the original stored file. */
+  contentHash?: string
 }
 
 export interface FailedFile {
@@ -81,7 +86,8 @@ const UploadedFileSchema = z.object({
   filename: z.string(),
   size: z.number().int().nonnegative(),
   mimeType: z.string().nullable(),
-  uploadedAt: z.string()
+  uploadedAt: z.string(),
+  contentHash: z.string().optional(),
 })
 
 const MetadataSchema = z.object({
@@ -121,6 +127,24 @@ function hasPrototypePollution(obj: unknown): boolean {
   }
 
   return false
+}
+
+// Per-app upload mutex. processUpload does a read-modify-write (list existing
+// hashes → dedup → write file → write metadata); without serialization two
+// concurrent uploads of identical bytes could both miss the dedup and each
+// write a file. Simple promise-chain mutex, same pattern as MediaManifestService.
+const uploadLocks = new Map<string, Promise<void>>()
+
+async function acquireUploadLock(appId: string): Promise<() => void> {
+  while (uploadLocks.has(appId)) {
+    await uploadLocks.get(appId)
+  }
+  let release!: () => void
+  uploadLocks.set(appId, new Promise<void>((resolve) => { release = resolve }))
+  return () => {
+    uploadLocks.delete(appId)
+    release()
+  }
 }
 
 export class FileUploadService {
@@ -278,21 +302,43 @@ export class FileUploadService {
 
     this.validateUpload(files)
 
+    // Serialize per-app so the dedup read-modify-write below is race-free.
+    const releaseLock = await acquireUploadLock(appId)
+    try {
+      return await this.processUploadLocked(appId, files)
+    } finally {
+      releaseLock()
+    }
+  }
+
+  private async processUploadLocked(appId: string, files: Express.Multer.File[]): Promise<UploadResult> {
     const uploadId = `upload_${nanoid(12)}`
-    const uploadDir = await this.ensureUploadDirectory(appId, uploadId)
+    // Dir creation is deferred until the first real write (below) so a batch
+    // where every file deduped to an existing upload leaves no empty upload_<id>/
+    // directory for listUploadedFiles to scan on every later call.
+    let uploadDirEnsured = false
+    // Returned to the caller (includes dedup reuses so the client gets the
+    // filename mapping). `newlyStored` is the subset physically written this
+    // call — only those are recorded in metadata, so a deduped re-upload does
+    // NOT create a second listing entry for the same file.
     const uploadedFiles: UploadedFile[] = []
+    const newlyStored: UploadedFile[] = []
     const uploadedAt = new Date().toISOString()
 
     const failedFiles: Array<{ originalName: string; error: string }> = []
     let hasServerError = false
 
+    // Read existing content hashes once (not per-file). Track hashes written in
+    // THIS batch too — metadata.json isn't persisted until after the loop, so
+    // two identical files in one batch would otherwise both be written.
+    const existingFiles = await this.listUploadedFiles(appId)
+    const hashToRecord = new Map<string, UploadedFile>()
+    for (const f of existingFiles) {
+      if (f.contentHash && !hashToRecord.has(f.contentHash)) hashToRecord.set(f.contentHash, f)
+    }
+
     for (const file of files) {
       try {
-        const fileId = `file_${nanoid(10)}`
-        const ext = extname(file.originalname) || '.bin'
-        const filename = `${appId}_${Date.now()}_${fileId}${ext}`
-        const filepath = this.pathBuilder.join(appId, uploadId, filename)
-
         let fileBuffer = file.buffer
         let actualSize = file.size
 
@@ -302,16 +348,48 @@ export class FileUploadService {
           actualSize = sanitized.size
         }
 
+        // Content-identity dedup: if this app already has a stored file with
+        // the same bytes (from a prior upload OR earlier in this batch), reuse
+        // that record without writing a duplicate. The stored filename embeds
+        // timestamp+nanoId, so dedup is purely at the file-storage layer.
+        const contentHash = createHash('sha256').update(fileBuffer).digest('hex')
+        const existingRecord = hashToRecord.get(contentHash)
+        if (existingRecord) {
+          logger.info('file-upload.content-dedup', {
+            appId,
+            originalName: file.originalname,
+            existingFilename: existingRecord.filename,
+          })
+          uploadedFiles.push({
+            ...existingRecord,
+            originalName: file.originalname,
+          })
+          continue
+        }
+
+        const fileId = `file_${nanoid(10)}`
+        const ext = extname(file.originalname) || '.bin'
+        const filename = `${appId}_${Date.now()}_${fileId}${ext}`
+        const filepath = this.pathBuilder.join(appId, uploadId, filename)
+
+        if (!uploadDirEnsured) {
+          await this.ensureUploadDirectory(appId, uploadId)
+          uploadDirEnsured = true
+        }
         await writeFile(filepath, fileBuffer)
 
-        uploadedFiles.push({
+        const record: UploadedFile = {
           id: fileId,
           originalName: file.originalname,
           filename,
           size: actualSize,
           mimeType: file.mimetype,
-          uploadedAt
-        })
+          uploadedAt,
+          contentHash,
+        }
+        uploadedFiles.push(record)
+        newlyStored.push(record)
+        hashToRecord.set(contentHash, record)
 
         fileUploadEvents.fileSaved(logger, {
           appId,
@@ -347,18 +425,23 @@ export class FileUploadService {
       )
     }
 
-    const metadata = {
-      uploadId,
-      appId,
-      uploadedAt,
-      fileCount: uploadedFiles.length,
-      files: uploadedFiles
-    }
+    // Record only the files physically written this call. When every file was
+    // deduped to an existing upload, there's nothing new to record — skip the
+    // metadata write so listUploadedFiles doesn't surface a duplicate entry.
+    if (newlyStored.length > 0) {
+      const metadata = {
+        uploadId,
+        appId,
+        uploadedAt,
+        fileCount: newlyStored.length,
+        files: newlyStored
+      }
 
-    await writeFile(
-      this.pathBuilder.join(appId, uploadId, 'metadata.json'),
-      JSON.stringify(metadata, null, 2)
-    )
+      await writeFile(
+        this.pathBuilder.join(appId, uploadId, 'metadata.json'),
+        JSON.stringify(metadata, null, 2)
+      )
+    }
 
     if (failedFiles.length > 0) {
       logger.warn('file-upload.partial-failure', {
@@ -559,7 +642,18 @@ export class FileUploadService {
         }
       }
 
-      return allFiles
+      // Collapse duplicate listings of the same physical file (same stored
+      // filename) — these arise from content-dedup re-uploads recorded under
+      // more than one uploadId by older code. Keep the first occurrence so the
+      // UI and lookups see each upload once.
+      const seen = new Set<string>()
+      const deduped: UploadedFile[] = []
+      for (const f of allFiles) {
+        if (seen.has(f.filename)) continue
+        seen.add(f.filename)
+        deduped.push(f)
+      }
+      return deduped
     } catch (error) {
       fileUploadEvents.retrieveFailure(
         logger,

@@ -787,6 +787,15 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     const { conversationId, appId, siteId, sseSocketId, abortController, streamingEvents, executionContext, persistenceContext, streamState, agentMessageId, fullStorySessionId } = opts
     const abortSignal = abortController.signal
 
+    // Inject the user's current message text into metadata BEFORE loadContextMessages
+    // runs so context-manager.processContextAttachments can read it for upload
+    // classification (placementIntent). Mirrors the WS transport which sets
+    // metadata._userMessage = data.message in processContext(). Without this,
+    // SSE-initiated uploads classify against an empty prompt → always "unclear".
+    const execMeta = (executionContext.metadata ?? {}) as Record<string, unknown>
+    if (message) execMeta._userMessage = message
+    executionContext.metadata = execMeta
+
     const pendingPublishes: Promise<unknown>[] = []
     const pendingIncrementalUpdates: Promise<unknown>[] = []
     // Guard each publish with .catch so a blocking-subscriber rejection
@@ -1870,6 +1879,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           currentIteration = iteration
           const meta = executionContext.metadata as Record<string, unknown>
           meta.agentId = agentName
+          // Mark handoff/auto-continue turns so the upload renderers skip
+          // re-classifying the same attachment against a non-user prompt.
+          // iteration 0 is the user's own message → classify fresh.
+          meta.__isContinuationTurn = iteration > 0
           if (iteration > 0) {
             persistenceContext.agentName = agentName
             try {
