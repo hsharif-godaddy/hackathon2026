@@ -1,10 +1,16 @@
 import React, { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+
+import Button from './components/Button';
+import MessageOverlay from './components/MessageOverlay';
+import {
+  PAGE_NOT_FOUND_TITLE,
+  formatPageNameFromPathname,
+  getPageNotFoundMessage,
+} from './page-not-found-copy';
+import { send } from './utils/eventBus';
 import { injectDevToolsStyles } from './utils/injectDevToolsStyles';
 import { isOriginAllowed } from './utils/postMessage';
-import { send } from './utils/eventBus';
-import MessageOverlay from './components/MessageOverlay';
-import Button from './components/Button';
 
 function builderEntryUrl(
   parentOrigin: string | undefined,
@@ -80,8 +86,8 @@ export default function PageNotFound() {
 
   const hasAppDeepLink = Boolean(import.meta.env.SITE_ID?.trim());
 
-  const lastSegment = location.pathname.split('/').filter(Boolean).pop() ?? location.pathname;
-  const capitalizedPath = lastSegment.charAt(0).toUpperCase() + lastSegment.slice(1);
+  const pageName = formatPageNameFromPathname(location.pathname);
+  const isBusy = isBuilding || isAgentProcessing;
 
   const goBackOrHome = function goBackOrHome() {
     if (typeof window !== 'undefined' && window.history.length > 1) {
@@ -93,8 +99,8 @@ export default function PageNotFound() {
 
   return (
     <MessageOverlay
-      title="This page hasn't been built yet."
-      message={`The ${capitalizedPath} page is planned but not generated yet — keeping your app lightweight until you need it. Ready to build it now?`}
+      title={PAGE_NOT_FOUND_TITLE}
+      message={getPageNotFoundMessage(pageName, isEmbeddedInBuilder && isBusy)}
       button={ isEmbeddedInBuilder ? (
         <>
           <Button
@@ -103,9 +109,9 @@ export default function PageNotFound() {
             variant="secondary"
           />
           <Button
-            text={(isBuilding || isAgentProcessing) ? "Processing..." : "Build this page"}
+            text={isBusy ? 'Processing...' : 'Build this page'}
             onClick={handleBuildPage}
-            loading={isBuilding || isAgentProcessing}
+            loading={isBusy}
           />
         </>
       ) : (
