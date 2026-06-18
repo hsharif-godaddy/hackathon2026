@@ -1,6 +1,8 @@
 'use client';
+import { ReactElement } from 'react';
 
 import { useTranslations } from '@/hooks/useTranslations';
+import { formatMessageText } from '@/lib/inbox/format/message';
 import { Conversation } from '@/types/inbox/local/conversation';
 import { Message } from '@/types/inbox/local/message';
 import { timeAgo } from '@/utils/time';
@@ -42,12 +44,12 @@ function MessageBubbleBody({
   body,
   className,
 }: {
-  body: string;
+  body: string | (string | ReactElement)[];
   className: string;
 }) {
   return (
     <div className={className} data-testid='message-content'>
-      <p className={MESSAGE_BODY_CLASS}>{body}</p>
+      <span className={MESSAGE_BODY_CLASS}>{body}</span>
     </div>
   );
 }
@@ -61,7 +63,7 @@ export function InboxMessageBubble({
   const t = useTranslations();
   const relativeTime = timeAgo(createdAt);
   const timestamp = t(relativeTime.key, relativeTime.values);
-  const displayBody = body || t('builder_inbox_message_no_content');
+  const displayBody = body ? formatMessageText(body) : t('builder_inbox_message_no_content');
   const singleParticipant = conversation.c2.length === 1;
 
   const isContactFormFirstMessage =
