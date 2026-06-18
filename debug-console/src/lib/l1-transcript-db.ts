@@ -4,7 +4,7 @@
  * Phase 1: Core database infrastructure
  */
 
-import { spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -37,50 +37,34 @@ export function getL1TranscriptsDb(): Database.Database {
     fs.mkdirSync(dbDir, { recursive: true });
   }
 
-  // Sync from S3 before opening (uses AWS SDK via subprocess for synchronous blocking)
+  // Sync from S3 before opening (uses AWS SDK via helper script for synchronous blocking)
   if (!_syncPromise) {
-    const isProduction = process.env.NODE_ENV === 'production';
+    logger.info('db.restore.checking_s3', { dbName: 'l1_transcripts.db' });
 
-    logger.info('l1_transcript_db.restore.start', {});
-
-    // Run restore in a separate Node process so we can block synchronously
-    const result = spawnSync(
-      process.execPath,
-      [
-        '-e',
-        `
-        const { downloadDbFromS3 } = require('${__dirname}/db-backup');
-        downloadDbFromS3({
-          dbPath: '${DB_PATH}',
-          dbName: 'l1_transcripts.db',
-          forceDownload: ${isProduction}
-        })
-          .then((downloaded) => {
-            if (downloaded) {
-              process.stdout.write('[l1-transcript-db] Downloaded latest backup from S3\n');
-            } else {
-              process.stdout.write('[l1-transcript-db] Using existing local DB\n');
-            }
-            process.exit(0);
-          })
-          .catch((err) => {
-            logger.error('l1_transcript_db.restore.s3_sync_failed', { error: err.message });
-            process.stdout.write('[l1-transcript-db] Continuing with empty/existing local DB\n');
-            process.exit(1);
-          });
-        `,
-      ],
-      {
+    try {
+      // Run restore script synchronously - blocks until S3 download completes
+      // Always force download to ensure latest data from S3
+      const scriptPath = path.join(process.cwd(), 'src', 'lib', 'restore-db-sync.ts');
+      // Use npx tsx to avoid require.resolve at build time
+      execFileSync('npx', ['tsx', scriptPath, DB_PATH, 'l1_transcripts.db', 'true'], {
         stdio: 'inherit',
-        timeout: 180000, // 3 minute timeout for download
+        timeout: 180000, // 3 minute timeout
         encoding: 'utf8',
+        shell: true,
+      });
+    } catch (err) {
+      if (err && typeof err === 'object' && 'code' in err && err.code === 'ETIMEDOUT') {
+        logger.error('db.restore.timeout', {
+          dbName: 'l1_transcripts.db',
+          timeout: 180000,
+        });
+      } else {
+        logger.error('db.restore.subprocess_failed', {
+          dbName: 'l1_transcripts.db',
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
-    );
-
-    if (result.error) {
-      logger.error('l1_transcript_db.restore.failed', { error: result.error.message });
-    } else if (result.status !== 0) {
-      logger.warn('l1_transcript_db.restore.exited_with_status', { status: result.status });
+      logger.info('db.restore.continuing_local', { dbName: 'l1_transcripts.db' });
     }
 
     _syncPromise = Promise.resolve();
@@ -287,7 +271,7 @@ function initializeSchema(db: Database.Database): void {
     "UPDATE l1_transcript_uploads SET tagging_status = 'failed' WHERE status = 'processing' AND tagging_status = 'pending'"
   );
 
-  logger.info('l1_transcript_db.schema.initialized', {});
+  logger.info('db.schema.initialized', { dbName: 'l1_transcripts.db' });
 }
 
 /**
