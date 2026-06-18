@@ -542,32 +542,58 @@ export class GitOpsService {
           );
           return;
         }
-      }
 
-      const result = await gitTool.executeGitOperation(appPath, {
-        operation: 'pull',
-        appId,
-        remoteName: options.remoteName,
-        branch: options.branch,
-        token: options.token,
-        repoUrl: options.repoUrl,
-        allowUnrelatedHistories: true,
-        noRebase: true,
-      });
-
-      if (!result.success) {
-        logger.error('git-ops.pull.error', {
+        // Use fetch + reset instead of pull to avoid merge conflicts with
+        // the initial local commit. This replaces the local branch entirely
+        // with the remote state — no merge, no conflict possible.
+        const result = await gitTool.fetchAndResetToRemote(appPath, {
           appId,
-          jobId,
-          error: result.error,
+          remoteName: options.remoteName,
+          branch: options.branch || 'main',
+          token: options.token,
+          repoUrl: options.repoUrl!,
         });
 
-        await this.importJobRepo.markFailed(
-          jobId,
-          result.error || 'Git pull failed',
-          'pulling'
-        );
-        return;
+        if (!result.success) {
+          logger.error('git-ops.pull.fetch-reset.error', {
+            appId,
+            jobId,
+            error: result.error,
+          });
+
+          await this.importJobRepo.markFailed(
+            jobId,
+            result.error || 'Git fetch and reset failed',
+            'pulling'
+          );
+          return;
+        }
+      } else {
+        const result = await gitTool.executeGitOperation(appPath, {
+          operation: 'pull',
+          appId,
+          remoteName: options.remoteName,
+          branch: options.branch,
+          token: options.token,
+          repoUrl: options.repoUrl,
+          allowUnrelatedHistories: true,
+          noRebase: true,
+        });
+
+        if (!result.success) {
+          logger.error('git-ops.pull.error', {
+            appId,
+            jobId,
+            error: result.error,
+          });
+
+          await this.importJobRepo.markFailed(
+            jobId,
+            result.error || 'Git pull failed',
+            'pulling'
+          );
+          return;
+        }
       }
 
       // Validate pulled code uses a supported build tool and detect which one.

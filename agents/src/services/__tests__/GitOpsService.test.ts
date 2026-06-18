@@ -127,6 +127,7 @@ describe('GitOpsService', () => {
   };
   let mockGitTool: {
     executeGitOperation: Mock;
+    fetchAndResetToRemote: Mock;
   };
   let mockGitRemoteConfigRepo: {
     findByAppId: Mock;
@@ -157,6 +158,7 @@ describe('GitOpsService', () => {
 
     mockGitTool = {
       executeGitOperation: vi.fn(),
+      fetchAndResetToRemote: vi.fn(),
     };
 
     mockGitRemoteConfigRepo = {
@@ -678,6 +680,7 @@ describe('GitOpsService', () => {
       vi.mocked(createForWorkspace).mockReturnValue({ tasks: { runCommandSync: mockRunCommandSync } } as any);
 
       mockGitTool.executeGitOperation.mockResolvedValue({ success: true, output: 'Pull successful' });
+      mockGitTool.fetchAndResetToRemote.mockResolvedValue({ success: true, output: 'Fetched and reset' });
       vi.mocked(appRestartService.performFullRestartCycle).mockResolvedValue({
         success: true,
         phases: { install: true, build: true, restart: true },
@@ -703,8 +706,16 @@ describe('GitOpsService', () => {
       expect(wipeCall[0].command).toContain('! -name ".is_ready"');
       expect(wipeCall[0].command).toContain('! -name "public"');
 
+      expect(mockGitTool.fetchAndResetToRemote).toHaveBeenCalledWith(
+        testAppPath,
+        expect.objectContaining({
+          appId: testAppId,
+          remoteName: 'origin',
+          repoUrl: 'https://github.com/user/repo.git',
+        })
+      );
       const pullCall = mockGitTool.executeGitOperation.mock.calls.find((call) => call[1].operation === 'pull');
-      expect(pullCall).toBeDefined();
+      expect(pullCall).toBeUndefined();
     });
 
     it('does not run the wipe when clearWorkingTree=false', async () => {

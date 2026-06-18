@@ -1009,6 +1009,87 @@ export class GitTool {
   }
 
   /**
+   * Fetch the latest remote branch and hard-reset the local branch to match it.
+   *
+   * Used instead of `git pull` when the intent is to fully replace the local
+   * state with the remote (e.g. first git connect with clearWorkingTree).
+   * This avoids merge conflicts entirely — no merge occurs, the local branch
+   * pointer simply moves to the fetched remote HEAD.
+   */
+  async fetchAndResetToRemote(appPath: string, options: {
+    appId: string;
+    remoteName: string;
+    branch: string;
+    token?: string;
+    repoUrl: string;
+  }): Promise<GitToolResult> {
+    return this.queueGitOperation(appPath, async () => {
+      const { appId, remoteName, branch, token, repoUrl } = options;
+
+      this.logger.info('git-tool.fetch-reset.begin', {
+        appId,
+        appPath,
+        remoteName,
+        branch,
+      });
+
+      if (!this.gitRemoteTokenManager) {
+        return {
+          success: false,
+          operation: 'fetch-reset',
+          error: 'Git remote token manager not available. Dev-supervisor is required.',
+        };
+      }
+
+      try {
+        await this.ensureRemoteConfigured(appPath, remoteName, repoUrl);
+        await this.gitRemoteTokenManager.configureGitCredentials(appId, repoUrl, token);
+
+        const fetchResult = await this.gitUtils.fetch(appPath, remoteName);
+        if (!fetchResult.success) {
+          const stderr = (fetchResult.stderr || '').toLowerCase();
+          if (stderr.includes('authentication failed') || stderr.includes('403') || stderr.includes('401') || stderr.includes('invalid credentials')) {
+            return {
+              success: false,
+              operation: 'fetch-reset',
+              error: 'GitHub authentication failed. Token may be expired or invalid. Please reconfigure the GitHub token.',
+              errorCode: 'AUTH_FAILED',
+            };
+          }
+          return {
+            success: false,
+            operation: 'fetch-reset',
+            error: `Fetch failed: ${fetchResult.stderr}`,
+          };
+        }
+
+        const resetResult = await this.gitUtils.reset(appPath, {
+          mode: 'hard',
+          target: `${remoteName}/${branch}`,
+        });
+
+        if (!resetResult.success) {
+          return {
+            success: false,
+            operation: 'fetch-reset',
+            error: `Reset failed: ${resetResult.stderr}`,
+          };
+        }
+
+        this.logger.info('git-tool.fetch-reset.success', { appId, remoteName, branch });
+
+        return {
+          success: true,
+          operation: 'fetch-reset',
+          output: `Successfully fetched and reset to ${remoteName}/${branch}`,
+        };
+      } finally {
+        await this.gitRemoteTokenManager.cleanupGitCredentials(appId);
+      }
+    });
+  }
+
+  /**
    * Handle push to remote repository
    *
    * Always uses filtered push with allowlist approach - only user-facing files
