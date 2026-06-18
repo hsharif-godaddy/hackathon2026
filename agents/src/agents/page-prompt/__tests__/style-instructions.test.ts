@@ -90,6 +90,19 @@ describe('buildTypographyInstructions', () => {
     expect(result).not.toContain('Body font');
     expect(result).not.toContain('not detected');
   });
+
+  it('tells PagePromptAgent not to instruct fontTheme on keep-original rebuilds', function preAppliedGuidance() {
+    const result = buildTypographyInstructions(keepOriginalPrefs, baseMetadata);
+    expect(result).toContain('already applied to globals.css');
+    expect(result).toContain('do NOT call fontTheme');
+    expect(result).not.toMatch(/import them/i);
+  });
+
+  it('uses pre-applied CSS var guidance for all keep-original pages', function allPagesPreApplied() {
+    const result = buildTypographyInstructions(keepOriginalPrefs, baseMetadata);
+    expect(result).toContain('var(--font-heading)');
+    expect(result).not.toMatch(/If Google Fonts provides them/i);
+  });
 });
 
 describe('shouldPreserveDesign', () => {

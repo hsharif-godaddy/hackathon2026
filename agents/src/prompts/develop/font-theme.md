@@ -4,7 +4,8 @@ ALWAYS use `fontTheme` for font/typography requests. NEVER respond with plain te
 
 ## Mode Selection
 
-**Automated/rebuild flows** → `set` mode (pick and apply directly)  
+**Website rebuild flow** → fonts are pre-applied in `globals.css` — do **not** call `fontTheme` in any mode (`set`, `suggest`, or `apply`); use `var(--font-heading)` / `var(--font-sans)` only  
+**Other automated flows** → `set` mode (pick and apply directly)  
 **User chat message asking for options** → `suggest` mode  
 **User clicks "Apply" button** → `apply` mode
 
@@ -12,7 +13,7 @@ ALWAYS use `fontTheme` for font/typography requests. NEVER respond with plain te
 
 | Mode | When | Call |
 | --- | --- | --- |
-| `set` | Automated and rebuild flows | `fontTheme({ mode: 'set', description: 'elegant serif for luxury brand' })` |
+| `set` | Automated flows (not rebuild) | `fontTheme({ mode: 'set', description: 'elegant serif for luxury brand' })` |
 | `suggest` | User asks for options | `fontTheme({ mode: 'suggest', description: 'elegant serif for luxury brand', count: 4 })` |
 | `apply` | User clicks Apply button | `fontTheme({ mode: 'apply', themeName: 'Professional Geometric' })` |
 

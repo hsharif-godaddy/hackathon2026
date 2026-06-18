@@ -1068,6 +1068,46 @@ describe('font-theme', function packageTests() {
       expect(global.fetch).toHaveBeenCalledTimes(2)
     })
   })
+
+  describe('rebuild flow gating', function rebuildGating() {
+    it('rejects set mode when isRebuildFlow is true', async function blockSet() {
+      const { fontThemeAITool } = await import('../font-theme.js');
+
+      await expect(
+        (fontThemeAITool as any).execute(
+          { mode: 'set', description: 'elegant serif for editorial site' },
+          { metadata: { appId: 'app1234567', isRebuildFlow: true } },
+        ),
+      ).rejects.toThrow(/cannot change fonts during a website rebuild/i);
+    });
+
+    it('skips apply mode during rebuild with a user-facing message', async function skipApply() {
+      const { fontThemeAITool } = await import('../font-theme.js');
+
+      const result = await (fontThemeAITool as any).execute(
+        { mode: 'apply', themeName: 'Modern Professional' },
+        { metadata: { appId: 'app1234567', isRebuildFlow: true, sessionId: 's1', stateManager: {} } },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.skipped).toBe(true);
+      expect(result.message).toMatch(/already set from your site rebuild/i);
+    });
+
+    it('skips suggest mode during rebuild', async function skipSuggest() {
+      const { fontThemeAITool } = await import('../font-theme.js');
+
+      const result = await (fontThemeAITool as any).execute(
+        { mode: 'suggest', count: 4 },
+        { metadata: { appId: 'app1234567', isRebuildFlow: true } },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.skipped).toBe(true);
+      expect(result.message).toMatch(/already set from your site rebuild/i);
+      expect(result.widget).toBeUndefined();
+    });
+  });
 })
 
 

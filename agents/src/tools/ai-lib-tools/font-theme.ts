@@ -1,6 +1,6 @@
 import { createTool, generateTextWithTracking, type Tool, createPromptBuilder, type AgentContext } from '@airo/ai-lib'
 import { llmMetadataContext, type LitellmMetadata } from '@airo/ai-common'
-import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext } from '@airo/ai-grants'
+import { buildLitellmMetadataFromContext, LlmCallSource, type ExecutionContext, type ExecutionContextMetadata } from '@airo/ai-grants'
 import { extractBudgetContext, withBudgetFields, type ToolBudgetContext } from './tool-budget-context.js'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -797,6 +797,9 @@ export async function updateCssFontVariables(
   }
 }
 
+const REBUILD_FONTS_LOCKED_MESSAGE =
+  'Fonts are already set from your site rebuild (--font-heading and --font-sans in globals.css). Font changes are not available until the rebuild finishes.';
+
 export const fontThemeAITool: Tool = createTool(
   `Manage font themes for professional websites.
 
@@ -807,7 +810,7 @@ This tool has three modes:
 - Use when you want to make a decision and apply it directly
 - Provide a description of desired font style (e.g., "modern sans-serif for tech startup")
 - The LLM will generate ONE appropriate font and apply it automatically
-- Perfect for rebuild flows where you want to pick fonts programmatically
+- NOT for website rebuild flows — rebuild typography is pre-applied in globals.css
 
 **SUGGEST MODE** - Show font theme options (for interactive flows):
 - With description: Generates custom LLM-powered font recommendations (2-6 options)
@@ -891,6 +894,26 @@ MODE SELECTION GUIDE:
       const subscriptionId = context?.metadata?.subscriptionId as string | undefined
       const customerId = context?.metadata?.customerId as string | undefined
       const budgetContext = extractBudgetContext(context as AgentContext | undefined)
+
+      // isRebuildFlow is SSE-only today: set when rebuildBuildPageSlug is present on the
+      // appbuilder-sse-transport develop leg. WS processContext re-spreads the original client
+      // payload on handoff iterations and would drop this flag if rebuild ever moved to WS.
+      if ((context?.metadata as ExecutionContextMetadata | undefined)?.isRebuildFlow === true) {
+        if (input.mode === 'set') {
+          logger.warn('fontTheme.rebuild.blocked', { appId, mode: input.mode });
+          throw new Error(
+            'fontTheme cannot change fonts during a website rebuild — source typography is pre-applied in globals.css. Use var(--font-heading) and var(--font-sans); do not hardcode fontFamily.',
+          );
+        }
+        if (input.mode === 'apply' || input.mode === 'suggest') {
+          logger.warn('fontTheme.rebuild.blocked', { appId, mode: input.mode });
+          return {
+            success: true,
+            skipped: true,
+            message: REBUILD_FONTS_LOCKED_MESSAGE,
+          };
+        }
+      }
 
       if (input.mode === 'set') {
         if (!appId) {

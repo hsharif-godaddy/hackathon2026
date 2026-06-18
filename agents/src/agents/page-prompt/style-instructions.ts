@@ -129,7 +129,10 @@ Create a striking, attention-grabbing design.
   return '';
 }
 
-export function buildTypographyInstructions(prefs: StylePreferences, metadata: SiteMetadata): string {
+export function buildTypographyInstructions(
+  prefs: StylePreferences,
+  metadata: SiteMetadata,
+): string {
   const { headingFonts, bodyFonts, scale } = metadata.typography;
 
   if (headingFonts.length === 0 && bodyFonts.length === 0) return '';
@@ -145,11 +148,11 @@ export function buildTypographyInstructions(prefs: StylePreferences, metadata: S
       : '';
 
     return `TYPOGRAPHY DIRECTION (Preserve Source Fonts):
-The source site uses these typefaces. Preserve them:
+The source site uses these typefaces:
 ${fontBullets.join('\n')}
 ${scaleBlock}
-Use these exact fonts in the rebuild. Do NOT substitute with different fonts.
-If Google Fonts provides them, import them. If not, use the closest available match and note the substitution.`;
+Fonts are already applied to globals.css as --font-heading and --font-sans (set on the homepage rebuild).
+Instruct the develop agent to use var(--font-heading) / var(--font-sans) only — do NOT call fontTheme, import Google Fonts, or hardcode fontFamily.`;
   }
 
   const headingList = headingFonts.join(', ') || 'not detected';

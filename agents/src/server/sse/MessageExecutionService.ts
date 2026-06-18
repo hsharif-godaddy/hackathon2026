@@ -1947,6 +1947,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         ...(agentCtx?.rebuildIntakeFormEnabled && { rebuildIntakeFormEnabled: true }),
         ...(agentCtx?.skillSuggestionsEnabled && { skillSuggestionsEnabled: true }),
         ...(rebuildDesignDirection && { rebuildDesignDirection }),
+        // isRebuildFlow is SSE-only — WS handoff re-spreads client metadata and would drop it.
         ...(rebuildBuildPageSlug && { rebuildBuildPageSlug, isRebuildFlow: true }),
         ...(content && { _userMessage: content }),
         ...(agentCtx?.marketingCampaignsEnabled && { marketingCampaignsEnabled: true }),

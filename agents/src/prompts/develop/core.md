@@ -386,7 +386,8 @@ The rebuild workflow creates a `.source-site/` directory containing:
 1. **Follow the provided prompt** - The rebuild prompt contains specific instructions for layout, content, and design
 2. **Use source assets** - Images from the original site are available at `/assets/images/[filename]` or `/assets/other/[filename]`
 3. **Maintain design consistency** - Follow the analyzed color scheme and typography from site-metadata
-4. **Build one page at a time** - Focus on the current page, don't try to build multiple pages at once
+4. **Typography is pre-applied** - Source fonts are already in `globals.css` as `--font-heading` / `--font-sans`. Use those CSS variables (or Tailwind utilities that reference them). Do **not** call `fontTheme` during rebuild and do **not** hardcode `fontFamily` on components.
+5. **Build one page at a time** - Focus on the current page, don't try to build multiple pages at once
 
 ### After Building a Page
 
