@@ -165,9 +165,7 @@ export class SelectedAssetsContextRenderer implements ContextAttachmentRenderer<
 
       const content = `### Selected Assets from Asset Manager
 
-${formattedAssets}
-
-The user's message refers to using or integrating the above selected asset(s).`
+${formattedAssets}`
 
       return {
         role: 'user',

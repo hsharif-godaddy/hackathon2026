@@ -256,7 +256,7 @@ media({
 });
 ```
 
-For uploaded files: if the slot exists, acknowledge success (UI updates it automatically); if not, create the slot first with `media`.
+For uploaded files: if the slot exists, acknowledge success; if not, create the slot first with `media`.
 
 **Decision guide:**
 
@@ -270,7 +270,7 @@ For uploaded files: if the slot exists, acknowledge success (UI updates it autom
 | AI-generated image    | Load `media-image` skill                  |
 | Edit existing image   | Load `media-image` skill                  |
 | Video generation      | Load `media-video` skill                  |
-| User uploaded file    | The UI handles slot updates automatically |
+| User uploaded file    | Only use if user explicitly asks to use it in the app. |
 
 **Filters**: `orientations` (horizontal/vertical/square), `compositions` (close_up/wide_shot/portrait)
 
