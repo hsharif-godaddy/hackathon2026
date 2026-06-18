@@ -168,7 +168,10 @@
       "shell-quote": ">=1.8.4 <2",
       "ws": ">=8.21.0 <9",
       "@grpc/grpc-js": ">=1.14.4 <2",
-      "joi": ">=18.2.1 <19"
+      "joi": ">=18.2.1 <19",
+      "gosym-probe>undici": ">=8.5.0 <9",
+      "dompurify": ">=3.4.11 <4",
+      "@babel/core": ">=7.29.6 <8"
     },
     "onlyBuiltDependencies": [
       "better-sqlite3"
