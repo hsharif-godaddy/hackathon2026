@@ -4,6 +4,7 @@
 import '@testing-library/jest-dom';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useMutation } from '@tanstack/react-query';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { mockInstrumentation } from '@/tests/mocks';
@@ -822,6 +823,48 @@ describe('ShareLink', () => {
           expect.objectContaining({ message: 'Network error', appId: 'app-123' })
         );
       });
+    });
+
+    it('does not loop the create POST on a persistent 401 (real useMutation)', async () => {
+      // Genuine regression guard for the share-token request loop. The OTHER
+      // tests here mock useCreateShareToken with a STATIC `isPending: false`, so
+      // they cannot reproduce the production loop — which was driven by
+      // `createToken.isPending` toggling false→true→false in the effect's
+      // dependency array (re-running the effect mid-request, firing the cleanup's
+      // `cancelled = true` before the rejection was caught, swallowing the error).
+      //
+      // This test instead drives a REAL @tanstack/react-query useMutation (the
+      // provider tree from renderWithProviders supplies the QueryClient), so
+      // `isPending` genuinely toggles. Against the pre-fix effect this loops
+      // unbounded (the create POST re-fires on every 401 round-trip); against the
+      // fix (mountedRef latch + isPending out of deps + MAX_AUTO_CREATE_ATTEMPTS
+      // cap) the create is bounded and the error surfaces. So this DOES
+      // distinguish fixed from broken, unlike a static-isPending mock.
+      const { ShareTokenError } = await import('@/hooks/useShareTokens');
+      let createCalls = 0;
+      mockUseCreateShareToken.mockImplementation(() =>
+        useMutation({
+          mutationFn: async () => {
+            createCalls += 1;
+            throw new ShareTokenError('Unauthorized', 401);
+          },
+        })
+      );
+
+      renderWithProviders(<ShareLink />);
+      await openPopover();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('share-link-error-state')).toBeInTheDocument();
+      });
+
+      // Let any (buggy) re-fires flush — the pre-fix loop would keep climbing here.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      // Bounded by MAX_AUTO_CREATE_ATTEMPTS; the pre-fix effect reaches 20+ here.
+      expect(createCalls).toBeLessThanOrEqual(2);
+      // The original bug left this spinner up forever; it must be gone now.
+      expect(screen.queryByTestId('share-link-preview-loading')).not.toBeInTheDocument();
     });
   });
 

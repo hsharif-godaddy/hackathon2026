@@ -25,12 +25,18 @@ const mockLogger = vi.hoisted(() => ({
 
 vi.mock('@/lib/gasket-config', () => ({
   appFetch: (...args: unknown[]) => mockAppFetch(...args),
+  AuthSessionExpiredError: class AuthSessionExpiredError extends Error {
+    constructor() {
+      super('Authentication session expired');
+      this.name = 'AuthSessionExpiredError';
+    }
+  },
 }));
 vi.mock('@/lib/request-context', () => ({
   logger: mockLogger,
 }));
 
-import { useShareTokens } from './useShareTokens';
+import { useCreateShareToken, useShareTokens } from './useShareTokens';
 
 const APP_ID = 'app-123';
 
@@ -157,6 +163,33 @@ describe('useShareTokens', () => {
     );
     expect(result.current.error?.message).toBe(
       'Failed to fetch share tokens: 502',
+    );
+  });
+
+  it('create: routes a 401 through handle401 {level:3} and surfaces AuthSessionExpiredError', async () => {
+    // The create route is level-3 (HBI). A session past the 12h window 401s;
+    // the create must opt into appFetch's handle401 (which opens the SSO/HBI
+    // re-auth modal and retries once on success) and, if re-auth still fails,
+    // surface a typed AuthSessionExpiredError rather than a bare 401 the caller
+    // would loop on. Regression for the dead-end-401 that fed the ShareLink loop.
+    mockAppFetch.mockResolvedValue(
+      mockResponse({ error: 'Unauthorized' }, { status: 401 }),
+    );
+
+    const { result } = renderHookWithProviders(() => useCreateShareToken());
+
+    await expect(
+      result.current.mutateAsync({ appId: APP_ID }),
+    ).rejects.toMatchObject({ name: 'AuthSessionExpiredError' });
+
+    expect(mockAppFetch).toHaveBeenCalledWith(
+      `/api/apps/${APP_ID}/share`,
+      expect.objectContaining({ method: 'POST' }),
+      { handle401: { level: 3 } },
+    );
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      'share-tokens.create.authExpired',
+      expect.objectContaining({ appId: APP_ID }),
     );
   });
 });

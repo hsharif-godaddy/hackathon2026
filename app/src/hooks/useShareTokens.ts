@@ -1,7 +1,7 @@
 import { tokenSuffix } from '@airo/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { appFetch } from '@/lib/gasket-config';
+import { appFetch, AuthSessionExpiredError } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 
 /**
@@ -197,15 +197,34 @@ export function useCreateShareToken() {
 
       logger.info('share-tokens.create.start', { appId, expiresInDays });
 
-      const response = await appFetch(`/api/apps/${appId}/share`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      // handle401: { level: 3 } funnels a 401 through resolveAuth's single-flight
+      // mutex — opening the SSO/HBI re-auth modal and retrying the create once on
+      // success — instead of surfacing a bare 401. The create route is level-3
+      // (HBI, 12h), so a session past that window 401s here. Without this the 401
+      // was a dead end (no modal, no re-auth), which is what let ShareLink's
+      // auto-create effect re-fire it indefinitely. `{ level: 3 }` routes HBI
+      // failures to the step-up page instead of masking them with a level-2 probe.
+      const response = await appFetch(
+        `/api/apps/${appId}/share`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ expiresInDays }),
         },
-        body: JSON.stringify({ expiresInDays }),
-      });
+        { handle401: { level: 3 } }
+      );
 
       if (!response.ok) {
+        if (response.status === 401) {
+          // appFetch already drove the SSO modal via handle401 and the request
+          // still returned 401 (re-auth declined/failed). Surface a typed error so
+          // callers and React Query retry predicates can distinguish it from a
+          // server error and NOT reopen the modal in a loop.
+          logger.warn('share-tokens.create.authExpired', { appId });
+          throw new AuthSessionExpiredError();
+        }
         // Same error-body-might-not-be-JSON guard as the fetch path.
         let errorMessage = `Failed to create share token: ${response.status}`;
         try {

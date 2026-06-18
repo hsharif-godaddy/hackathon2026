@@ -43,6 +43,12 @@ type SegmentId = 'published' | 'preview';
 
 const PUBLIC_LINK_DAYS = 7;
 
+// Upper bound on auto-create POSTs per popover-open (reset on reopen and on
+// explicit user retry). Backstop guaranteeing the auto-create effect can never
+// hammer POST /api/apps/{id}/share — e.g. an HBI-expired session that 401s the
+// level-3 create route would otherwise retry on every network round-trip.
+const MAX_AUTO_CREATE_ATTEMPTS = 2;
+
 type TranslateFn = (key: string, values?: Record<string, unknown>) => string;
 
 /**
@@ -352,9 +358,20 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
   const [createError, setCreateError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Auto-create bookkeeping. Refs (not state) on purpose: they must NOT feed the
+  // create effect's dependency array. createToken.isPending used to be a
+  // dependency, so calling mutateAsync re-ran the effect mid-request — that
+  // re-run is what made the old `cancelled` flag swallow create errors and
+  // looped POST /api/apps/{id}/share. isCreatingRef replaces the isPending
+  // guard; mountedRef replaces `cancelled` for setState-after-unmount safety.
+  const isCreatingRef = useRef(false);
+  const createAttemptsRef = useRef(0);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (copiedTimeoutRef.current) {
         clearTimeout(copiedTimeoutRef.current);
       }
@@ -387,6 +404,8 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
       setRetryCount(0);
       setTokenExpired(false);
       setSegment(isPublished ? 'published' : 'preview');
+      createAttemptsRef.current = 0;
+      isCreatingRef.current = false;
     }
     prevOpenRef.current = open;
   }, [open, isPublished]);
@@ -437,16 +456,36 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
   useEffect(() => {
     if (!open || !isShareLinksEnabled || !appId || isPublishedSection) return;
     if (isTokensError || createError) return;
-    if (activeToken || isTokensLoading || createToken.isPending) return;
+    if (activeToken || isTokensLoading || isCreatingRef.current) return;
 
-    let cancelled = false;
+    // Backstop: never auto-create more than MAX_AUTO_CREATE_ATTEMPTS times per
+    // popover-open / retry. The guards above are the normal stop conditions
+    // (token minted, error latched, request in flight); this guarantees
+    // termination even if a dependency starts churning unexpectedly.
+    if (createAttemptsRef.current >= MAX_AUTO_CREATE_ATTEMPTS) {
+      setCreateError(true);
+      return;
+    }
+
+    // In-flight guard via a ref so createToken.isPending stays OUT of the
+    // dependency array — that was the root of the loop: when isPending was a
+    // dep, mutateAsync flipping it false->true re-ran this effect mid-request,
+    // running the cleanup and setting the old `cancelled` flag true BEFORE the
+    // rejection was caught, so a failed create (e.g. a level-3 401) was
+    // swallowed, createError never latched, and the isPending->false settle
+    // re-fired the create on every network round-trip.
+    isCreatingRef.current = true;
+    createAttemptsRef.current += 1;
 
     async function createLink() {
-      setCreateError(false);
       try {
         await createToken.mutateAsync({ appId, expiresInDays: PUBLIC_LINK_DAYS });
+        // Success: useCreateShareToken's onSuccess invalidates the list; the
+        // refetch makes activeToken truthy and the guards above bail.
       } catch (err) {
-        if (cancelled) return;
+        // Gated only on still being mounted (mountedRef), never on a per-run
+        // flag — latching createError is what stops the auto-create re-firing.
+        if (!mountedRef.current) return;
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         const httpStatus = err instanceof ShareTokenError ? err.status : undefined;
         logger.warn('share-link.publicPreview.createError', {
@@ -456,27 +495,33 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
         });
 
         if (httpStatus === 409) {
+          // Another caller already minted an active token — converge by
+          // refetching instead of surfacing an error.
           try {
             const { data } = await refetchTokens();
-            if (!cancelled && !data?.some((tk) => tk.expiresAt > Date.now())) {
+            if (mountedRef.current && !data?.some((tk) => tk.expiresAt > Date.now())) {
               setCreateError(true);
             }
           } catch {
-            if (!cancelled) setCreateError(true);
+            if (mountedRef.current) setCreateError(true);
           }
         } else {
+          // 401 (HBI-expired session on the level-3 create route), 5xx, network:
+          // terminal for auto-create. Latch the error so the popover shows the
+          // retry affordance instead of an endless spinner.
           setCreateError(true);
         }
+      } finally {
+        isCreatingRef.current = false;
       }
     }
 
     createLink();
-
-    return () => { cancelled = true; };
-  }, [open, isShareLinksEnabled, appId, isPublishedSection, activeToken, isTokensLoading, createToken.isPending, createToken.mutateAsync, refetchTokens, retryCount]);
+  }, [open, isShareLinksEnabled, appId, isPublishedSection, activeToken, isTokensLoading, createToken.mutateAsync, refetchTokens, retryCount]);
 
   const handleRetry = () => {
     setCreateError(false);
+    createAttemptsRef.current = 0;
     logEvent(`${location}.share_link.retry`);
     if (isTokensError) {
       refetchTokens();
