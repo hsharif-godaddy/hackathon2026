@@ -39,6 +39,11 @@ vi.mock('@/utils/instrumentation', () => ({
   logClickEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
+const mockLogLogoDesignerEntry = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/logo-designer-entry', () => ({
+  logLogoDesignerEntry: mockLogLogoDesignerEntry,
+}));
+
 const mockTrackDeeplinkShown = vi.hoisted(() => vi.fn());
 vi.mock('@/app/[market]/develop/components/rebuild/rebuildIntakeInstrumentation', () => ({
   trackRebuildDeeplinkShown: mockTrackDeeplinkShown,
@@ -226,6 +231,7 @@ describe('HeroExamples', () => {
       'homepage.template.click',
       { templateSlug: LOGO_DESIGNER_TEMPLATE },
     );
+    expect(mockLogLogoDesignerEntry).toHaveBeenCalledWith('suggestion');
   });
 
   it('does not throw when logo button is clicked without onTemplateChange', async () => {

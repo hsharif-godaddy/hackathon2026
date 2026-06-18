@@ -4,8 +4,10 @@ import Chip from '@ux/chip'
 import text from '@ux/text'
 
 import { useTranslations } from '@/hooks/useTranslations'
+import { logLogoDesignerEntry } from '@/lib/logo-designer-entry'
 import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
 import DeepBuildIntroModal from './DeepBuildIntroModal'
+import { LOGO_DESIGNER_TEMPLATE } from './types'
 
 interface TemplateSelectorProps {
   selectedTemplate: string
@@ -21,6 +23,9 @@ export default function TemplateSelector({ selectedTemplate, onTemplateChange }:
     if (templateId === 'deep-build') {
       setShowDeepBuildModal(true)
       return
+    }
+    if (templateId === LOGO_DESIGNER_TEMPLATE && selectedTemplate !== LOGO_DESIGNER_TEMPLATE) {
+      logLogoDesignerEntry('chip')
     }
     onTemplateChange(templateId)
     logClickEvent(`homepage.template_selector.${templateId}`)()

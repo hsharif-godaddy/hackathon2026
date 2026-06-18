@@ -13,6 +13,7 @@ import { useRebuildDeeplink } from '@/hooks/useRebuildDeeplink'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { JourneyTracker } from '@/lib/journeyTracker'
+import { logLogoDesignerEntry } from '@/lib/logo-designer-entry'
 import { persistPendingDesignChoice, type RebuildModalDirection } from '@/lib/rebuild-design-choice'
 import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
 
@@ -251,6 +252,7 @@ export default function HeroExamples({ className, theme = 'dark', onExampleClick
               onExampleClick(t('builder_homepage_examples_logo_prompt', undefined, 'Make me a logo for: '));
               onTemplateChange?.(LOGO_DESIGNER_TEMPLATE);
               logAnalytics('homepage.template.click', { templateSlug: LOGO_DESIGNER_TEMPLATE })
+              logLogoDesignerEntry('suggestion')
               logClickEvent('homepage.examples.example')();
               logClickEvent('homepage.examples.example_make_logo')();
               JourneyTracker.current()?.trackMilestone('homepage_example_selected', { slug: 'make_logo' })

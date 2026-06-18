@@ -9,6 +9,7 @@ import { useAnalytics } from '@/hooks/useAnalytics'
 import { useAuthGateTracking } from '@/hooks/useAuthGateTracking'
 import { useDeeplinkPromptPrefill } from '@/hooks/useDeeplinkPromptPrefill'
 import { useHomepageBounceTracking } from '@/hooks/useHomepageBounceTracking'
+import { useLogoDesignerEntryTracking } from '@/hooks/useLogoDesignerEntryTracking'
 import { useSafariClass } from '@/hooks/useSafariClass'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { useSubscription } from '@/hooks/useSubscription'
@@ -119,6 +120,7 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
   )
 
   useSafariClass()
+  useLogoDesignerEntryTracking({ enabled: isHomepage })
   useAuthGateTracking(logAnalytics, { authGateShownAtRef, promptTextRef })
   const { markEngaged: markHomepageEngaged } = useHomepageBounceTracking(logAnalytics)
 

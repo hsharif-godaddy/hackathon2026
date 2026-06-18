@@ -7,6 +7,7 @@ import Spinner from '@ux/spinner'
 
 import { validateTemplate } from '@/app/[market]/components/types'
 import { useAuthContext } from '@/components/providers/AuthProvider'
+import { useLogoDesignerEntryTracking } from '@/hooks/useLogoDesignerEntryTracking'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { useSubscription } from '@/hooks/useSubscription'
 import { ITC_QUERY_PARAM } from '@/lib/itc'
@@ -34,6 +35,8 @@ function CreatePageContent() {
   const { subscriptions, isLoading: subscriptionsLoading, isError: subscriptionsError } = useSubscription({ enabled: isAuthenticated })
   const isNewUser = isAuthenticated && !subscriptionsLoading && !subscriptionsError && subscriptions.length === 0
   const hasLoggedNewUserRef = useRef(false)
+
+  useLogoDesignerEntryTracking()
 
   useEffect(() => {
     logImpressionEvent('create.page.view')();
