@@ -1,4 +1,4 @@
-import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
+import type { SendMessageOptions } from '@/services/transport/messageTypes'
 import type { QueuedMessage, QueuedSendPayload } from '@/stores/useStreamingConversationStore'
 
 export function cloneQueueablePayload(opts: SendMessageOptions): QueuedSendPayload {

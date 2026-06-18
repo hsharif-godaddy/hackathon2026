@@ -7,8 +7,8 @@
  */
 
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
+import { sendToolImpressionEvent } from '@/hooks/chat/useChatHelpers'
 import { trackBuildComplete } from '@/hooks/shared/initialBuildFunnel'
-import { sendToolImpressionEvent } from '@/hooks/websocket/useWebSocketHelpers'
 import { appFetch } from '@/lib/gasket-config'
 import { JourneyTracker } from '@/lib/journeyTracker'
 import { logger } from '@/lib/request-context'

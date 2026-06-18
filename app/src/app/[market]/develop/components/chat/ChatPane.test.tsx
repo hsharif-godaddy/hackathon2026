@@ -160,7 +160,7 @@ const mockStreamingStore = {
   isLoading: false,
   currentAppId: 'test-app-123',
   isActivelyStreaming: false,
-  streamingState: 'idle' as 'idle' | 'streaming' | 'completing' | 'retrying' | 'error',
+  streamingState: 'idle' as 'idle' | 'streaming' | 'completing' | 'error',
   messages: [] as any[],
   activeStream: null as any,
   developmentPlan: null,
@@ -220,7 +220,6 @@ vi.mock('@/stores/useStreamingConversationStore', () => {
     enqueueMessage: vi.fn(() => true),
     setQueueStoppedOnError: vi.fn(),
     takeNextQueuedMessage: vi.fn(() => null),
-    retryState: { isRetrying: false, retryCount: 0 },
     queuedMessages: [] as unknown[],
   }
 
@@ -264,7 +263,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => {
     useSetBuildErrorContext: () => mockStreamingStore.setBuildErrorContext,
     useSetCurrentAppId: () => mockStreamingStore.setCurrentAppId,
     useHistoryLoadingComplete: () => mockStreamingStore.historyLoadingComplete,
-    useWebSocketState: () => ({ connected: true, status: 'idle' }),
+    useConnectionState: () => ({ connected: true, status: 'idle' }),
   }
 });
 

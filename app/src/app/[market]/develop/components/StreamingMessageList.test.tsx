@@ -187,7 +187,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => {
     useHistoryLoadingComplete: () => mockStreamingStore.historyLoadingComplete,
     useIsLoading: () => mockStreamingStore.isLoading,
     useLoadMoreConversations: () => mockStreamingStore.loadMoreConversations,
-    useWebSocketState: () => ({ connected: mockWebSocketConnected, status: mockWebSocketConnected ? 'connected' : 'disconnected' }),
+    useConnectionState: () => ({ connected: mockWebSocketConnected, status: mockWebSocketConnected ? 'connected' : 'disconnected' }),
   };
 });
 

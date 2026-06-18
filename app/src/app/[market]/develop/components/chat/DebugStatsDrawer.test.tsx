@@ -38,17 +38,12 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(),
 }))
 
-const mockUseWebSocketState = vi.fn(function () { return { connected: true, status: 'idle' }; })
+const mockUseConnectionState = vi.fn(function () { return { connected: true, status: 'idle' }; })
 const mockUseStreamingState = vi.fn(function () { return 'idle'; })
-const mockUseStreamingConversationStore = vi.fn(function (selector: (s: Record<string, unknown>) => unknown) { return selector({
-    retryState: { isRetrying: false, retryCount: 0 },
-  }); }
-)
 
 vi.mock('@/stores/useStreamingConversationStore', () => ({
-  useWebSocketState: () => mockUseWebSocketState(),
+  useConnectionState: () => mockUseConnectionState(),
   useStreamingState: () => mockUseStreamingState(),
-  useStreamingConversationStore: (selector: (s: Record<string, unknown>) => unknown) => mockUseStreamingConversationStore(selector),
 }))
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 
@@ -140,7 +135,7 @@ describe('DebugStats UI', () => {
 
   it('shows connected status badge', () => {
     vi.mocked(useSwitchboard).mockReturnValue(true)
-    mockUseWebSocketState.mockReturnValue({ connected: true, status: 'idle' })
+    mockUseConnectionState.mockReturnValue({ connected: true, status: 'idle' })
     render(<Mount />)
     fireEvent.click(screen.getByTestId('debug-stats-toggle'))
     expect(screen.getByText('connected')).toBeInTheDocument()
@@ -148,7 +143,7 @@ describe('DebugStats UI', () => {
 
   it('shows connection status when disconnected', () => {
     vi.mocked(useSwitchboard).mockReturnValue(true)
-    mockUseWebSocketState.mockReturnValue({ connected: false, status: 'connecting' })
+    mockUseConnectionState.mockReturnValue({ connected: false, status: 'connecting' })
     render(<Mount />)
     fireEvent.click(screen.getByTestId('debug-stats-toggle'))
     expect(screen.getByText('connecting')).toBeInTheDocument()
@@ -162,11 +157,4 @@ describe('DebugStats UI', () => {
     expect(screen.getByText('streaming')).toBeInTheDocument()
   })
 
-  it('shows retry badge with count', () => {
-    vi.mocked(useSwitchboard).mockReturnValue(true)
-    mockUseStreamingConversationStore.mockImplementation(function (selector: (s: Record<string, unknown>) => unknown) { return selector({ retryState: { isRetrying: true, retryCount: 3 } }); })
-    render(<Mount />)
-    fireEvent.click(screen.getByTestId('debug-stats-toggle'))
-    expect(screen.getByText('retry #3')).toBeInTheDocument()
-  })
 })

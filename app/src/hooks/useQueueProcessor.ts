@@ -2,9 +2,9 @@
 
 import { useEffect, useRef } from 'react'
 
-import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
 import { queuedMessageToSendOptions } from '@/lib/messageQueue'
 import { logger } from '@/lib/request-context'
+import type { SendMessageOptions } from '@/services/transport/messageTypes'
 import type { ChatMessage, QueuedMessage } from '@/stores/useStreamingConversationStore'
 import {
   useIsQueueStoppedOnError,

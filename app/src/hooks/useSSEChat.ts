@@ -5,28 +5,29 @@ import { getMessageOriginForAuthType } from '@airo/shared/auth'
 import { getFullStorySessionId } from '@/components/feedback/utils'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
-import type { DataHandlerContext } from '@/hooks/websocket/handlers/types'
+import type { ClientActionContext } from '@/hooks/chat/actions/types'
 import {
   getConversationIdFromCookie,
   setConversationIdCookie,
-} from '@/hooks/websocket/useWebSocketHelpers'
+} from '@/hooks/chat/useChatHelpers'
 import { agentFetch, getAgentToken } from '@/lib/agent-fetch'
 import { readDesignChoiceForCurrentApp } from '@/lib/rebuild-design-choice'
 import { logger } from '@/lib/request-context'
-import { SSEQualityMonitor } from '@/services/transport/SSEQualityMonitor'
-import { SSETransport } from '@/services/transport/SSETransport'
-import type { SendMessageParams, TransportState } from '@/services/transport/types'
-import { hasComposerSendPayload } from '@/services/websocket/composerAttachments'
 import {
   bufferStoreUpdate,
   bufferTextChunk,
   clearStoreUpdateBuffer,
   flushStoreUpdateBufferImmediate,
-} from '@/services/websocket/storeUpdateBuffer'
+} from '@/services/transport/buffering/storeUpdateBuffer'
 import {
   clearToolDeltaBuffer,
   scheduleToolDeltaFlush,
-} from '@/services/websocket/toolDeltaBuffer'
+} from '@/services/transport/buffering/toolDeltaBuffer'
+import { hasComposerSendPayload } from '@/services/transport/composerAttachments'
+import type { SendMessageOptions } from '@/services/transport/messageTypes'
+import { SSEQualityMonitor } from '@/services/transport/SSEQualityMonitor'
+import { SSETransport } from '@/services/transport/SSETransport'
+import type { SendMessageParams, TransportState } from '@/services/transport/types'
 import { useResolvedBillingMode } from '@/stores/useBillingModeStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useSitesStore } from '@/stores/useSitesStore'
@@ -67,7 +68,6 @@ import { buildValidationToolCallFromEvent } from './shared/validationToolCallBui
 import { handleVideoNotification } from './shared/videoNotification'
 import { useBudgetUpdate } from './useBudgetUpdate'
 import { useGrantContext } from './useGrantContext'
-import type { SendMessageOptions } from './useStreamingWebSocket'
 import { useTranslations } from './useTranslations'
 
 const BROWSER_TIMEZONE: string = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -258,9 +258,9 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
   useEffect(() => {
     const store = useStreamingConversationStore.getState()
     const { connected, status } = deriveConnectionState(transportState)
-    const current = store.websocket
+    const current = store.connection
     if (current?.connected !== connected || current?.status !== status) {
-      store.setWebSocketState({ connected, status })
+      store.setConnectionState({ connected, status })
     }
   }, [transportState])
 
@@ -454,7 +454,6 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 if (eventRequestId) currentStreamRequestIdRef.current = eventRequestId
                 const agentNameRaw = (event.data as any)?.agentName
                 if (agentNameRaw) store.setCurrentAgentName(String(agentNameRaw))
-                if (store.connectionRetry.isRetrying) store.clearConnectionRetry()
                 clearAppNotFoundRetry()
                 trackStepStart()
               } else if (type === 'step_complete') {
@@ -724,7 +723,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   })
                 }
 
-                import('@/hooks/websocket/actions').then(async ({ clientActionExecutors }) => {
+                import('@/hooks/chat/actions').then(async ({ clientActionExecutors }) => {
                   const executor = clientActionExecutors[action]
                   if (!executor) {
                     postActionResult({
@@ -741,7 +740,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   // compile time. The remaining MessageContext members (socket,
                   // machine, actions, ...) don't exist over SSE; the widening to the
                   // full executor context is the one deliberate, localized cast.
-                  const minimalContext: Pick<DataHandlerContext, 'currentAppId' | 'resetActionTimeout'> = {
+                  const minimalContext: ClientActionContext = {
                     currentAppId,
                     resetActionTimeout: (rid: string) => {
                       transportRef.current?.requestClientActionTimeoutReset({ requestId: rid }).catch(err => {
@@ -753,7 +752,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                     },
                   }
                   try {
-                    const result = await executor(params ?? {}, minimalContext as DataHandlerContext, requestId)
+                    const result = await executor(params ?? {}, minimalContext, requestId)
                     postActionResult({ requestId, success: true, result })
                   } catch (err) {
                     const anyErr = err as { errorDetails?: string; logs?: Array<{ message: string; source?: string; timestamp?: string }>; exitCode?: number }
@@ -817,9 +816,6 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   if (store.activeStream) {
                     store.clearActiveStream()
                   }
-                  if (store.connectionRetry.isRetrying) {
-                    store.clearConnectionRetry()
-                  }
                   // Force history reload to pick up the completed turn.
                   if (transportRef.current) {
                     const historyConversationId = typeof payload?.conversationId === 'string'
@@ -838,7 +834,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   ensureSSEActiveStream('recovery_status', payload?.conversationId)
                   replayCompletesStreamRef.current = payload?.streamCompleted === true
                   // Route through the transport state pipe (setTransportState
-                  // → deriveConnectionState → useEffect → setWebSocketState)
+                  // → deriveConnectionState → useEffect → setConnectionState)
                   // rather than mutating the store directly from the event
                   // handler, per app/CLAUDE.md lifecycle rules.
                   setTransportState('streaming')
@@ -1323,9 +1319,8 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
     actions: {
       send: sendMessage,
       stop,
-      // SSE transport (headless/PaaS) has no socket-backed background logo job to
-      // cancel; async logo generation is AAB/WebSocket-only. No-op keeps the
-      // useChatTransport() union shape consistent with useStreamingWebSocket.
+      // No-op: there is no socket-backed background logo job to cancel on the
+      // SSE transport. Kept on the useChatTransport() return shape for consumers.
       cancelLogo: async (_jobId?: string): Promise<void> => {},
       loadHistory: loadMore,
       reconnect,

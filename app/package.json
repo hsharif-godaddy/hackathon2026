@@ -166,7 +166,6 @@
     "remark-gfm": "^4.0.1",
     "sass": "^1.99.0",
     "server-only": "^0.0.1",
-    "socket.io-client": "catalog:",
     "tailwind-merge": "^3.6.0",
     "uuid": "catalog:",
     "xstate": "^5.31.1",

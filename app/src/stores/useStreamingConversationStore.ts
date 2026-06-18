@@ -23,6 +23,7 @@ import type { StructuredError } from '@/types/errors'
 import { generateId, mergeToolCallData, normalizeConversationMessages } from './conversation-normalization'
 import type {
   ChatMessage,
+  ConnectionState,
   QueuedMessage,
   StreamingConversationState,
   StreamingMessage,
@@ -36,20 +37,17 @@ export type {
   AgentSummary,
   AppChatHistoryEntry,
   ChatMessage,
-  ConnectionRetryState,
+  ConnectionState,
   Conversation,
   PlanItem,
   QueuedMessage,
   QueuedSendPayload,
-  RecoveryState,
-  RetryState,
   ServerCapabilities,
   StreamingConversationState,
   StreamingMessage,
   StreamSegment,
   ToolCall,
   ToolStatus,
-  WebSocketState,
 } from './useStreamingConversationStore.types'
 export { QUEUE_MAX } from './useStreamingConversationStore.types'
 
@@ -76,25 +74,9 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   currentAgentName: null,
   developmentPlan: [],
   appChatHistory: {},
-  websocket: {
+  connection: {
     connected: false,
     status: 'idle'
-  },
-  connectionRetry: {
-    isRetrying: false,
-    retryStartedAt: null,
-    wasStreamingOnDisconnect: false,
-    disconnectSocketId: null,
-    escalationTimeoutId: null
-  },
-  recoveryState: {
-    isRecovering: false,
-    expectedEvents: 0,
-    receivedEvents: 0
-  },
-  retryState: {
-    isRetrying: false,
-    retryCount: 0
   },
   lastError: null,
   historyLoadRequested: false,
@@ -632,7 +614,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
     const { activeStream } = get()
     if (!activeStream) {
       // Late server `complete` after a local finalize on Stop click.
-      // useStreamingWebSocket.stopGeneration() finalizes immediately so the
+      // The transport's stop (useSSEChat) finalizes immediately so the
       // Stop button always feels responsive, but the server still runs the
       // end-of-turn squash and publishes `complete` with a real commitHash
       // moments later. Without this branch the late commitHash is dropped,
@@ -822,11 +804,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         };
       }
 
-      // Clear escalation timeout when switching apps
-      if (state.connectionRetry.escalationTimeoutId) {
-        clearTimeout(state.connectionRetry.escalationTimeoutId);
-      }
-
       // Get saved state for the new app (or defaults)
       const savedState = appId ? newAppChatHistory[appId] : null;
       const resolvedSecretsComposerToolCallIds = appId
@@ -851,14 +828,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         defaultAgentId: null,
         currentAgentName: null, // Reset agent name when switching apps
         appChatHistory: newAppChatHistory,
-        websocket: { connected: false, status: 'idle' as const },
-        connectionRetry: {
-          isRetrying: false,
-          retryStartedAt: null,
-          wasStreamingOnDisconnect: false,
-          disconnectSocketId: null,
-          escalationTimeoutId: null
-        },
+        connection: { connected: false, status: 'idle' as const },
         historyLoadRequested: false,
         historyLoadingComplete: false,
         // Reset pagination when switching apps
@@ -893,20 +863,15 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   setCurrentAgentName: (agentName) => set({ currentAgentName: agentName }),
   setDevelopmentPlan: (plan) => set({ developmentPlan: plan }),
 
-  // === WEBSOCKET ACTIONS ===
+  // === CONNECTION ACTIONS ===
 
-  setWebSocketState: (state) => {
+  setConnectionState: (state) => {
     set((prevState) => ({
-      websocket: { ...prevState.websocket, ...state }
+      connection: { ...prevState.connection, ...state }
     }))
   },
 
   setStreamingState: (state) => set({ streamingState: state }),
-
-  // State machine lifecycle actions (called by StoreSyncAdapter)
-  setRecoveryState: (state) => set({ recoveryState: state }),
-
-  setRetryState: (state) => set({ retryState: state }),
 
   setError: (error) => set({ lastError: error }),
 
@@ -942,75 +907,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       historyNextCursor: null,
       historyLoadingMore: false
     })
-  },
-
-  // === CONNECTION RETRY ACTIONS ===
-
-  startConnectionRetry: (socketId: string) => {
-    logger.info('streaming-store.connection-retry.start', { socketId })
-    set({
-      connectionRetry: {
-        isRetrying: true,
-        retryStartedAt: Date.now(),
-        wasStreamingOnDisconnect: true,
-        disconnectSocketId: socketId,
-        escalationTimeoutId: null
-      },
-      streamingState: 'retrying'
-    })
-  },
-
-  setEscalationTimeout: (timeoutId: ReturnType<typeof setTimeout>) => {
-    set((state) => ({
-      connectionRetry: {
-        ...state.connectionRetry,
-        escalationTimeoutId: timeoutId
-      }
-    }))
-  },
-
-  clearConnectionRetry: () => {
-    const currentState = get();
-
-    // Clear escalation timeout if active
-    if (currentState.connectionRetry.escalationTimeoutId) {
-      clearTimeout(currentState.connectionRetry.escalationTimeoutId);
-    }
-
-    logger.info('streaming-store.connection-retry.clear', {
-      wasRetrying: currentState.connectionRetry.isRetrying,
-      elapsedMs: currentState.connectionRetry.retryStartedAt
-        ? Date.now() - currentState.connectionRetry.retryStartedAt
-        : null
-    });
-
-    set((state) => ({
-      connectionRetry: {
-        isRetrying: false,
-        retryStartedAt: null,
-        wasStreamingOnDisconnect: false,
-        disconnectSocketId: null,
-        escalationTimeoutId: null
-      },
-      streamingState: state.activeStream ? 'streaming' : 'idle'
-    }));
-  },
-
-  checkStaleRetry: () => {
-    const { connectionRetry } = get()
-    if (!connectionRetry.isRetrying || !connectionRetry.retryStartedAt) {
-      return false
-    }
-    const elapsedMs = Date.now() - connectionRetry.retryStartedAt
-    const CONNECTION_RETRY_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
-    const isStale = elapsedMs > CONNECTION_RETRY_TIMEOUT_MS
-    if (isStale) {
-      logger.warn('streaming-store.connection-retry.stale-detected', {
-        elapsedMs,
-        retryStartedAt: connectionRetry.retryStartedAt
-      })
-    }
-    return isStale
   },
 
   // === UTILITY ACTIONS ===
@@ -1059,13 +955,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   },
 
   cleanup: () => {
-    const currentState = get()
-
-    // Clear escalation timeout before resetting state
-    if (currentState.connectionRetry.escalationTimeoutId) {
-      clearTimeout(currentState.connectionRetry.escalationTimeoutId)
-    }
-
     set({
       messages: [],
       activeStream: null,
@@ -1078,14 +967,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       aiEditContext: null,
       aiEditContexts: [],
       appChatHistory: {},
-      websocket: { connected: false, status: 'idle' },
-      connectionRetry: {
-        isRetrying: false,
-        retryStartedAt: null,
-        wasStreamingOnDisconnect: false,
-        disconnectSocketId: null,
-        escalationTimeoutId: null
-      },
+      connection: { connected: false, status: 'idle' },
       serverCapabilities: null,
       historyLoadRequested: false,
       historyLoadingComplete: false,

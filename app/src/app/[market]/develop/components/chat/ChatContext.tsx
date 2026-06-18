@@ -2,7 +2,7 @@
 
 import { createContext, useContext } from 'react'
 
-import type { CustomContext } from '@/services/websocket/ChatMessageBuilder'
+import type { CustomContext } from '@/services/transport/messageTypes'
 
 interface SendMessageOptions {
   /**

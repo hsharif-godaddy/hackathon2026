@@ -74,7 +74,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsLoading: () => false,
 }));
 
-vi.mock('@/hooks/websocket/useWebSocketHelpers', () => ({
+vi.mock('@/hooks/chat/useChatHelpers', () => ({
   getConversationIdFromCookie: () => 'conv-1',
 }));
 

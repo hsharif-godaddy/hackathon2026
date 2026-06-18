@@ -14,12 +14,8 @@
 
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
-import { CONNECT_DURATION_WARN_MS } from '@/services/websocket/NetworkQualityMonitor'
 
-// Connect threshold is imported from the WS path so the two stay in lockstep
-// (WS parity is the goal; a redeclared copy could silently drift). The
-// first-response and error-bucket thresholds are SSE-specific.
-export { CONNECT_DURATION_WARN_MS }
+export const CONNECT_DURATION_WARN_MS = 10_000
 export const FIRST_RESPONSE_WARN_MS = 5_000
 export const ERROR_BUCKET_WARN_THRESHOLD = 3
 

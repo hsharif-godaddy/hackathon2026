@@ -26,7 +26,7 @@ vi.mock('@/hooks/useSwitchboard', () => ({
   getSwitchboardFlag: vi.fn(function () { return false; }),
 }));
 
-vi.mock('@/hooks/websocket/useWebSocketHelpers', () => ({
+vi.mock('@/hooks/chat/useChatHelpers', () => ({
   getConversationIdFromCookie: () => 'conv-1',
 }));
 

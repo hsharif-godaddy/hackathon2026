@@ -111,7 +111,7 @@ Use `pnpm run dev` — preflight checks generate `.env` files automatically. Don
 ## Additional Documentation
 
 - Architecture (archived): `ARCHITECTURE_DOCUMENTATION.md`
-- WebSocket: `docs/client-websocket-architecture.md`
+- Chat transport (SSE): `app/CLAUDE.md` → "Chat Transport (SSE)" (the legacy client WebSocket transport was removed in AIROBUILD-2629)
 - OAuth: `docs/oauth-architecture.md`
 - Testing: `app/TESTING.md`
 - Logging: `LOGGING-GUIDE.md`

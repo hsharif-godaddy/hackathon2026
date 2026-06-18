@@ -51,7 +51,7 @@ vi.mock("@/utils/instrumentation", () => ({
   logImpressionEvent: mockLogImpressionEvent,
 }));
 
-vi.mock("@/hooks/websocket/useWebSocketHelpers", () => ({
+vi.mock("@/hooks/chat/useChatHelpers", () => ({
   sendToolImpressionEvent: mockSendToolImpressionEvent,
 }));
 

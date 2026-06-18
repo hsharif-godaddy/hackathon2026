@@ -39,7 +39,7 @@ function setStateFor({
   appId,
   lastCompleteTraceIds,
 }: {
-  streamingState?: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error'
+  streamingState?: 'idle' | 'streaming' | 'completing' | 'error'
   appId?: string | null
   lastCompleteTraceIds?: typeof TRACE_IDS | null
 }) {

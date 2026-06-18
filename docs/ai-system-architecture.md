@@ -98,7 +98,7 @@ stateDiagram-v2
 - `StoreSyncAdapter.ts` - Translates machine snapshots to Zustand store actions
 - `handlers/*` - Tier 2 message processors that mutate transcript/tool state directly
 
-See [client-websocket-architecture.md](client-websocket-architecture.md) for full detail.
+> **Note (AIROBUILD-2629):** The client WebSocket transport described above was removed — the client now uses the SSE transport (`app/src/hooks/useSSEChat.ts`; see `app/CLAUDE.md` → "Chat Transport (SSE)"). The component list/diagram above describes the retired stack and is pending a broader docs refresh under AIROBUILD-2633.
 
 ### Request-Response Flow
 
@@ -639,6 +639,5 @@ Budget-exceeded errors emit a `budget_exceeded` event to the client with remaini
 - [ai-operational-metrics.md](ai-operational-metrics.md) - Production metrics, pain points, and open questions for advisors
 - [prompt-caching-architecture.md](prompt-caching-architecture.md) - Detailed cache breakpoint mechanics, block counting, summary pinning edge cases
 - [model-override.md](model-override.md) - Ops runbook for emergency model switching via Switchboard
-- [client-websocket-architecture.md](client-websocket-architecture.md) - Full XState machine spec, handler registry, recovery flows
 - [stop-and-queue-architecture.md](stop-and-queue-architecture.md) - User-controlled agent stream stopping
 - [agent-tool-inventory.md](agent-tool-inventory.md) - Complete tool and service inventory

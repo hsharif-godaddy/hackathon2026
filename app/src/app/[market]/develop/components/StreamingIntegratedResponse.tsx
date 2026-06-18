@@ -23,7 +23,7 @@ interface StreamingIntegratedResponseProps {
   isActiveStream?: boolean
   isLastAssistantMessage?: boolean
   startTime?: Date
-  streamingState?: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error'
+  streamingState?: 'idle' | 'streaming' | 'completing' | 'error'
   showThinking?: boolean
   /** When provided, the response footer renders an undo button next to copy. */
   onUndo?: () => void
@@ -330,15 +330,6 @@ export default function StreamingIntegratedResponse({
             />
           )}
         </>
-      )}
-
-      {/* Connection retrying notification (yellow warning) */}
-      {!message.upstreamError && !message.budgetExceeded && streamingState === 'retrying' && isActiveStream && !isComplete && (
-        <StreamingAlertMessage
-          type="Warning"
-          title="Connection Lost"
-          message="Retrying connection... Your request will resume automatically when reconnected."
-        />
       )}
 
       {/* Connection error notification (red critical - after 5 minutes or reconnect failed) */}

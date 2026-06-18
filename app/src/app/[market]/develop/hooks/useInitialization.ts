@@ -724,9 +724,9 @@ export function useInitialization({ appId, isJobId }: UseInitializationParams): 
   const site = useDevelopPageStore((state) => state.site)
   const initializePage = useDevelopPageStore((state) => state.initializePage)
 
-  // Streaming/WebSocket
-  const isWebSocketConnected = useStreamingConversationStore((state) => state.websocket.connected)
-  const webSocketError = useStreamingConversationStore((state) => state.websocket.error)
+  // Streaming/Connection
+  const isWebSocketConnected = useStreamingConversationStore((state) => state.connection.connected)
+  const webSocketError = useStreamingConversationStore((state) => state.connection.error)
   const isStreamingMessage = useStreamingConversationStore((state) => state.isLoading)
   const messages = useStreamingConversationStore((state) => state.messages)
   const activeStream = useStreamingConversationStore((state) => state.activeStream)

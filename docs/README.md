@@ -6,7 +6,6 @@
 
 - [ai-system-architecture.md](ai-system-architecture.md) — AI/LLM interaction pipeline: agents, providers, caching, summarization
 - [unified-nomad-job-architecture.md](unified-nomad-job-architecture.md) — Single Nomad job consolidation for preview and publish
-- [client-websocket-architecture.md](client-websocket-architecture.md) — WebSocket state machine and client-server coordination
 - [persistent-storage-architecture.md](persistent-storage-architecture.md) — Ceph filesystem architecture for app persistence
 - [git-operations-architecture.md](git-operations-architecture.md) — Git workflow isolation and LLM interaction tracking
 - [stop-and-queue-architecture.md](stop-and-queue-architecture.md) — User-controlled agent stream stopping and message queuing

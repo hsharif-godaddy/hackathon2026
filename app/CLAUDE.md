@@ -119,28 +119,27 @@ To find your shopper ID: check the GoDaddy CRM or look for `shopperId` in your S
 
 Translations use react-intl via Gasket's `pluginIntl` — strings managed externally at [i18n.int.gdcorp.tools](https://i18n.int.gdcorp.tools/org/airo-app-builder/app/aab), no locale JSON in the repo. Use `useTranslations()` from `@/hooks/useTranslations` for `t(key, values)`, or `<FormattedMessage id="key" values={...} />` in JSX. Key convention: `builder_{feature}_{element}`. Missing keys block pre-commit. Full guide: `src/lib/translations/README.md`.
 
-## WebSocket Architecture
+## Chat Transport (SSE)
 
-Socket.IO + XState v5 state machine for agent communication lifecycle.
+Chat streaming uses Server-Sent Events as the **only** transport. (The legacy Socket.IO + XState WebSocket transport was removed in AIROBUILD-2629; `xstate` itself stays — it still drives archive/restore and develop-init.)
 
-**Two-tier pattern:**
+**Entry point:** `src/hooks/useChatTransport.ts` is a thin wrapper that returns `useSSEChat` — call sites depend on the transport-neutral name. There is no transport selection.
 
-- **Tier 1 (Lifecycle):** Machine → StoreSyncAdapter → Store (connection/streaming states)
-- **Tier 2 (Data):** Handlers → Store directly (transcript, tool calls)
+**Key files:**
 
-**Transport state flow:** `disconnected → connecting → authenticating → connected`. Connect-then-auth protocol: client connects without token, authenticates via `authenticate` event. Handshake-auth fallback for old servers.
+- `src/hooks/useSSEChat.ts` — the chat hook: opens the SSE stream, dispatches events into the store, drives sends/stop/history.
+- `src/services/transport/SSETransport.ts` — EventSource/`fetch` stream lifecycle; `SSEQualityMonitor.ts` — connect/latency telemetry.
+- `src/services/transport/buffering/` — `storeUpdateBuffer`, `toolDeltaBuffer`, `rafScheduler` (RAF-coalesced store writes; transport-neutral).
+- `src/services/transport/messageTypes.ts` — chat-message contract types (`SendMessageOptions`, `AIEditContext`, `CustomContext`, …).
+- `src/services/transport/composerAttachments.ts` — composer payload helpers.
+- `src/hooks/chat/useChatHelpers.ts` — cookie/metadata/completion helpers; `src/hooks/chat/actions/` — client-action executors (`clientActionExecutors`, typed by the minimal `ClientActionContext`).
+- `src/hooks/shared/` — `completionSideEffects.ts`, `toolMappers.ts`, `toolSideEffects.ts`: side-effect logic shared across the chat path.
 
-**Critical rules:**
+**Connection state:** lives on the store `connection` field (`useConnectionState` selector, `setConnectionState` setter) — written by `useSSEChat` for the debug drawer. SSE reconnect is stateless per request (`Last-Event-ID`); there is no connection state machine, recovery handshake, or ACK protocol.
 
-- Handlers NEVER call lifecycle methods (`setWebSocketState`, `setStreamingState`, `setIsLoading`)
-- Lifecycle flows through Machine → Adapter → Store only
-- Machine is REQUIRED in handler context (not optional)
-- Always call `controller.destroy()` in cleanup
-- Never store tokens in `socket.auth` after auth success (prevents reconnect data leak)
+**Out-of-band server pushes** (`build_phase`, `logo`, `video`, `media_caption`, `oauth_result`) arrive over the same SSE event stream via the agents `EventStreamRegistry`.
 
-Key files: `src/services/websocket/webSocketMachine.ts`, `StoreSyncAdapter.ts`, `StreamingWebSocketController.ts`, `ConnectionManager.ts`. Handlers: `src/hooks/websocket/handlers/`.
-
-Full docs: `docs/client-websocket-architecture.md`, `docs/ui-agents-authentication-architecture.md`. Tests: 390+ tests across 25 websocket test files.
+Auth docs: `docs/ui-agents-authentication-architecture.md`.
 
 ## Shared Types (`@airo/shared`)
 

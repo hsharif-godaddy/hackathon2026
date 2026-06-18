@@ -22,7 +22,7 @@ vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: (...args: unknown[]) => mockShipAnalyticsLog(...args),
 }))
 
-vi.mock('@/hooks/websocket/useWebSocketHelpers', () => ({
+vi.mock('@/hooks/chat/useChatHelpers', () => ({
   getConversationIdFromCookie: () => 'conv-1',
 }))
 

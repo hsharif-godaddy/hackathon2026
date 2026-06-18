@@ -2,7 +2,7 @@
 
 import { createContext, useContext } from 'react'
 
-import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
+import type { SendMessageOptions } from '@/services/transport/messageTypes'
 
 /**
  * WebSocket Context

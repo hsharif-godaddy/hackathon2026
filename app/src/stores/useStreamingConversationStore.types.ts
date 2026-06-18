@@ -7,7 +7,7 @@
 import type { MessageOrigin } from '@airo/shared/auth'
 
 import type { AiEditContext } from '@/app/[market]/develop/components/types'
-import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
+import type { SendMessageOptions } from '@/services/transport/messageTypes'
 import type { ValidationStatus } from '@/stores/validationToolCall'
 import type { StructuredError } from '@/types/errors'
 
@@ -173,35 +173,11 @@ export interface QueuedMessage extends QueuedSendPayload {
   enqueuedAt: number
 }
 
-// WebSocket connection state
-export interface WebSocketState {
+// Connection state (written by SSE hook, read by debug drawer)
+export interface ConnectionState {
   connected: boolean
   status: 'idle' | 'connecting' | 'authenticating' | 'streaming' | 'completing' | 'error'
   error?: StructuredError
-}
-
-// Connection retry state - survives component remounts
-export interface ConnectionRetryState {
-  isRetrying: boolean
-  retryStartedAt: number | null
-  wasStreamingOnDisconnect: boolean
-  disconnectSocketId: string | null
-  escalationTimeoutId: ReturnType<typeof setTimeout> | null
-}
-
-// Recovery state (for state machine adapter)
-export interface RecoveryState {
-  isRecovering: boolean
-  expectedEvents: number
-  receivedEvents: number
-}
-
-// Retry state (for state machine adapter)
-export interface RetryState {
-  isRetrying: boolean
-  retryCount: number
-  nextRetryMs?: number
-  exhausted?: boolean
 }
 
 // Main store state
@@ -211,7 +187,7 @@ export interface StreamingConversationState {
   activeStream: StreamingMessage | null     // Current streaming message
 
   // Stream state
-  streamingState: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error'
+  streamingState: 'idle' | 'streaming' | 'completing' | 'error'
   currentStep: number
 
   // App context
@@ -232,15 +208,9 @@ export interface StreamingConversationState {
   // Per-app chat cache: messages, active streams, and resolved secrets composer tool calls
   appChatHistory: Record<string, AppChatHistoryEntry>
 
-  // WebSocket state
-  websocket: WebSocketState
+  // Connection state (written by SSE hook, read by debug drawer)
+  connection: ConnectionState
 
-  // Connection retry state - survives component remounts
-  connectionRetry: ConnectionRetryState
-
-  // State machine lifecycle state (synced by StoreSyncAdapter)
-  recoveryState: RecoveryState
-  retryState: RetryState
   lastError: Error | null
 
   // History loading state (for WebSocket history streaming)
@@ -325,14 +295,10 @@ export interface StreamingConversationState {
   setCurrentAgentName: (agentName: string | null) => void
   setDevelopmentPlan: (plan: PlanItem[]) => void
 
-  // === WEBSOCKET ACTIONS ===
+  // === CONNECTION ACTIONS ===
 
-  setWebSocketState: (state: Partial<WebSocketState>) => void
-  setStreamingState: (state: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error') => void
-
-  // State machine lifecycle actions (called by StoreSyncAdapter)
-  setRecoveryState: (state: RecoveryState) => void
-  setRetryState: (state: RetryState) => void
+  setConnectionState: (state: Partial<ConnectionState>) => void
+  setStreamingState: (state: 'idle' | 'streaming' | 'completing' | 'error') => void
   setError: (error: Error) => void
   startStream: (conversationId: string, messageId: string) => void
 
@@ -344,13 +310,6 @@ export interface StreamingConversationState {
   setHistoryPagination: (pagination: { hasMore: boolean; nextCursor: string | null }) => void
   setHistoryLoadingMore: (loading: boolean) => void
   resetHistoryPagination: () => void
-
-  // === CONNECTION RETRY ACTIONS ===
-
-  startConnectionRetry: (socketId: string) => void
-  setEscalationTimeout: (timeoutId: ReturnType<typeof setTimeout>) => void
-  clearConnectionRetry: () => void
-  checkStaleRetry: () => boolean
 
   // === UTILITY ACTIONS ===
 

@@ -4,7 +4,7 @@
  */
 
 import { buildDynamicAgentUrl } from '@/config/dynamic-api';
-import { getConversationIdFromCookie } from '@/hooks/websocket/useWebSocketHelpers';
+import { getConversationIdFromCookie } from '@/hooks/chat/useChatHelpers';
 import { agentFetch } from '@/lib/agent-fetch';
 import type { FeedbackValue } from '@/lib/feedback-client';
 

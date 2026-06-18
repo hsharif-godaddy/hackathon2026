@@ -33,7 +33,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { cn } from '@/lib/utils'
-import { hasComposerAttachments, hasComposerSendPayload } from '@/services/websocket/composerAttachments'
+import { hasComposerAttachments, hasComposerSendPayload } from '@/services/transport/composerAttachments'
 import { logActionEvent, logClickEvent } from '@/utils/instrumentation'
 
 const PROMPT_BOX_EDITOR_SELECTOR = '.airo-input-prompt-box__entry'

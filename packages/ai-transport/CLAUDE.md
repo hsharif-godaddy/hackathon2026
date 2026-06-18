@@ -40,9 +40,9 @@ Transport-agnostic infrastructure shared by the WebSocket and SSE servers. The t
 - New hook added without a JSDoc error-contract note.
 - Shared-behavior change landing without a test in `__tests__/`.
 
-## The client has the same split
+## The client side-effect home
 
-On the client, `app/src/hooks/shared/` (`completionSideEffects.ts`, `toolMappers.ts`, `toolSideEffects.ts`) plays the same role for the WS and SSE handlers. The same rule applies there: behavior common to both transports goes in `hooks/shared/`, not duplicated into each handler.
+On the client, `app/src/hooks/shared/` (`completionSideEffects.ts`, `toolMappers.ts`, `toolSideEffects.ts`) holds the side-effect logic for the SSE chat hook (`app/src/hooks/useSSEChat.ts`). The client WebSocket transport was removed in AIROBUILD-2629, so there is a single chat path; keep cross-cutting chat behavior in `hooks/shared/` rather than inlining it into the hook.
 
 ## Commands
 

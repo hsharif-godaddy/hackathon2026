@@ -251,7 +251,7 @@ interface RenderMessageContentOptions {
   isActiveStream?: boolean
   isLastAssistantMessage?: boolean
   startTime?: Date
-  streamingState?: 'idle' | 'streaming' | 'completing' | 'retrying' | 'error'
+  streamingState?: 'idle' | 'streaming' | 'completing' | 'error'
   showThinking?: boolean
   onUndo?: () => void
   onRestore?: () => void

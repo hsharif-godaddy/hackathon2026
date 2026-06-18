@@ -7,8 +7,8 @@ import {
   sendPendingAutoSendMessage,
   type SendPendingAutoSendMessageOptions,
 } from '@/app/[market]/develop/hooks/sendPendingAutoSendMessage'
-import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
 import { logger } from '@/lib/request-context'
+import type { SendMessageOptions } from '@/services/transport/messageTypes'
 
 vi.mock('@/lib/request-context', () => ({
   logger: {

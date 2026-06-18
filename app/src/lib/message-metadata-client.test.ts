@@ -8,7 +8,7 @@ vi.mock('@/config/dynamic-api', () => ({
   buildDynamicAgentUrl: (...args: unknown[]) => mockBuildDynamicAgentUrl(...args),
 }));
 
-vi.mock('@/hooks/websocket/useWebSocketHelpers', () => ({
+vi.mock('@/hooks/chat/useChatHelpers', () => ({
   getConversationIdFromCookie: (...args: unknown[]) => mockGetConversationIdFromCookie(...args),
 }));
 

@@ -30,10 +30,9 @@ const mockSetIsLoading = vi.fn()
 const mockStartNewStream = vi.fn()
 const mockSetConversationId = vi.fn()
 const mockUpdateToolDelta = vi.fn()
-const mockSetWebSocketState = vi.fn()
+const mockSetConnectionState = vi.fn()
 const mockLoadAndPersistHistory = vi.fn()
 const mockClearActiveStream = vi.fn()
-const mockClearConnectionRetry = vi.fn()
 const mockClearStreamForRetry = vi.fn()
 const mockSetHistoryLoadRequested = vi.fn()
 const mockSetHistoryLoadingComplete = vi.fn()
@@ -49,7 +48,6 @@ function getStoreState() {
     currentAppId,
     messages: [],
     activeStream: null,
-    connectionRetry: { isRetrying: false },
     historyLoadingComplete: false,
     historyLoadRequested: false,
     historyNextCursor: null as string | null,
@@ -63,10 +61,9 @@ function getStoreState() {
     startNewStream: mockStartNewStream,
     setConversationId: mockSetConversationId,
     updateToolDelta: mockUpdateToolDelta,
-    setWebSocketState: mockSetWebSocketState,
+    setConnectionState: mockSetConnectionState,
     loadAndPersistHistory: mockLoadAndPersistHistory,
     clearActiveStream: mockClearActiveStream,
-    clearConnectionRetry: mockClearConnectionRetry,
     clearStreamForRetry: mockClearStreamForRetry,
     setHistoryLoadRequested: mockSetHistoryLoadRequested,
     setHistoryLoadingComplete: mockSetHistoryLoadingComplete,
@@ -97,7 +94,7 @@ vi.mock('@/stores/useStreamingConversationStore', () => ({
 
 let mockConversationIdFromCookie: string | null = null
 
-vi.mock('@/hooks/websocket/useWebSocketHelpers', () => ({
+vi.mock('@/hooks/chat/useChatHelpers', () => ({
   getConversationIdFromCookie: () => mockConversationIdFromCookie,
   setConversationIdCookie: vi.fn(),
   sendToolImpressionEvent: vi.fn(),
@@ -297,7 +294,7 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 const mockPublishAction = vi.fn().mockResolvedValue({ success: true })
 const mockGetSiteDataAction = vi.fn().mockResolvedValue({ html: '<div/>' })
 
-vi.mock('@/hooks/websocket/actions', () => ({
+vi.mock('@/hooks/chat/actions', () => ({
   clientActionExecutors: {
     publishAction: (...args: unknown[]) => mockPublishAction(...args),
     getSiteDataAction: (...args: unknown[]) => mockGetSiteDataAction(...args),
@@ -317,7 +314,7 @@ const mockBufferTextChunk = vi.fn()
 const mockBufferStoreUpdate = vi.fn()
 const mockFlushStoreUpdateBufferImmediate = vi.fn()
 
-vi.mock('@/services/websocket/storeUpdateBuffer', () => ({
+vi.mock('@/services/transport/buffering/storeUpdateBuffer', () => ({
   bufferTextChunk: (...args: unknown[]) => mockBufferTextChunk(...args),
   bufferStoreUpdate: vi.fn(function (fn: () => void) {
     mockBufferStoreUpdate(fn)
@@ -328,7 +325,7 @@ vi.mock('@/services/websocket/storeUpdateBuffer', () => ({
 
 const mockScheduleToolDeltaFlush = vi.fn()
 
-vi.mock('@/services/websocket/toolDeltaBuffer', () => ({
+vi.mock('@/services/transport/buffering/toolDeltaBuffer', () => ({
   scheduleToolDeltaFlush: (...args: unknown[]) => mockScheduleToolDeltaFlush(...args),
 }))
 
@@ -406,7 +403,6 @@ describe('useSSEChat', () => {
     mockClearActiveStream.mockClear().mockImplementation(function () {
       storeState.activeStream = null
     })
-    mockClearConnectionRetry.mockClear()
     mockClearStreamForRetry.mockClear()
     mockSetHistoryLoadRequested.mockClear().mockImplementation(function (requested: boolean) {
       storeState.historyLoadRequested = requested
@@ -420,7 +416,7 @@ describe('useSSEChat', () => {
     })
     mockSetHistoryLoadingMore.mockClear()
     mockClearMessages.mockClear()
-    mockSetWebSocketState.mockClear()
+    mockSetConnectionState.mockClear()
     mockSetConversationId.mockClear()
     mockSetLaunchVideoResult.mockClear()
     mockSetLastCompleteTraceIds.mockClear()
@@ -1551,22 +1547,22 @@ describe('useSSEChat', () => {
   })
 
   it('syncs transport state to streaming conversation store', async () => {
-    mockSetWebSocketState.mockClear()
+    mockSetConnectionState.mockClear()
     await setupHook()
 
     act(() => {
       lastTransport.callbacks?.onStateChange('connected')
     })
 
-    expect(mockSetWebSocketState).toHaveBeenCalledWith({ connected: true, status: 'idle' })
+    expect(mockSetConnectionState).toHaveBeenCalledWith({ connected: true, status: 'idle' })
 
-    mockSetWebSocketState.mockClear()
+    mockSetConnectionState.mockClear()
 
     act(() => {
       lastTransport.callbacks?.onStateChange('streaming')
     })
 
-    expect(mockSetWebSocketState).toHaveBeenCalledWith({ connected: true, status: 'streaming' })
+    expect(mockSetConnectionState).toHaveBeenCalledWith({ connected: true, status: 'streaming' })
   })
 
   // ---------------------------------------------------------------------------
@@ -2118,7 +2114,7 @@ describe('useSSEChat', () => {
         })
       })
 
-      expect(mockSetWebSocketState).toHaveBeenCalledWith({ connected: true, status: 'streaming' })
+      expect(mockSetConnectionState).toHaveBeenCalledWith({ connected: true, status: 'streaming' })
     })
 
     it('replay_complete finalizes when buffered recovery completed the stream', async () => {
@@ -2145,7 +2141,7 @@ describe('useSSEChat', () => {
 
       expect(mockFlushStoreUpdateBufferImmediate).toHaveBeenCalled()
       expect(mockFinalizeStream).toHaveBeenCalled()
-      expect(mockSetWebSocketState).toHaveBeenCalledWith({ connected: true, status: 'idle' })
+      expect(mockSetConnectionState).toHaveBeenCalledWith({ connected: true, status: 'idle' })
     })
 
     it('lossDetected recovery flushes inline history on replay_complete', async () => {
@@ -2197,7 +2193,6 @@ describe('useSSEChat', () => {
         timestamp: new Date(),
         isComplete: false,
       }
-      storeState.connectionRetry = { isRetrying: true }
       lastTransport.loadHistory.mockClear()
 
       act(() => {
@@ -2208,7 +2203,6 @@ describe('useSSEChat', () => {
       })
 
       expect(mockClearActiveStream).toHaveBeenCalled()
-      expect(mockClearConnectionRetry).toHaveBeenCalled()
       expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(false)
       expect(lastTransport.loadHistory).toHaveBeenCalled()
     })
@@ -2266,7 +2260,7 @@ describe('useSSEChat', () => {
     })
 
     it('recovery_status without buffered events does not set streaming', async () => {
-      mockSetWebSocketState.mockClear()
+      mockSetConnectionState.mockClear()
       await setupHook()
 
       act(() => {
@@ -2277,7 +2271,7 @@ describe('useSSEChat', () => {
       })
 
       // Should NOT have been called with streaming status from the recovery event
-      const streamingCalls = mockSetWebSocketState.mock.calls.filter(
+      const streamingCalls = mockSetConnectionState.mock.calls.filter(
         (c: unknown[]) => (c[0] as Record<string, unknown>)?.status === 'streaming'
       )
       expect(streamingCalls).toHaveLength(0)

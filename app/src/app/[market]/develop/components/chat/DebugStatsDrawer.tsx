@@ -7,7 +7,7 @@ import Tag from '@ux/tag'
 
 import { SWITCHBOARD_APPBUILDER_DEBUG_DRAWER } from '@/config/switchboard-flags'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
-import { useStreamingConversationStore, useStreamingState, useWebSocketState } from '@/stores/useStreamingConversationStore'
+import { useConnectionState, useStreamingState } from '@/stores/useStreamingConversationStore'
 import { type LLMCallRecord, useDebugStats } from './DebugStatsContext'
 
 function FlaskIcon(): ReactElement {
@@ -76,8 +76,7 @@ export function DebugStatsToggleButton(): ReactElement | null {
 export function DebugStatsPanel(): ReactElement | null {
   const enabled = useSwitchboard(SWITCHBOARD_APPBUILDER_DEBUG_DRAWER)
   const { state, dispatch, open, setOpen } = useDebugStats()
-  const wsState = useWebSocketState()
-  const retryState = useStreamingConversationStore((s) => s.retryState)
+  const connectionState = useConnectionState()
   const streamingState = useStreamingState()
 
   if (!enabled) return null
@@ -107,17 +106,12 @@ export function DebugStatsPanel(): ReactElement | null {
     >
       <div className="text-[10px] font-mono">
         <section className="mb-2 flex flex-wrap items-center gap-1" data-testid="debug-stats-connection-info">
-          <Tag size="sm" emphasis={wsState.connected ? 'success' : 'critical'}>
-            {wsState.connected ? 'connected' : wsState.status}
+          <Tag size="sm" emphasis={connectionState.connected ? 'success' : 'critical'}>
+            {connectionState.connected ? 'connected' : connectionState.status}
           </Tag>
           {streamingState !== 'idle' && (
             <Tag size="sm" emphasis="warning">
               {streamingState}
-            </Tag>
-          )}
-          {retryState.isRetrying && (
-            <Tag size="sm" emphasis="critical">
-              {`retry #${retryState.retryCount}`}
             </Tag>
           )}
         </section>

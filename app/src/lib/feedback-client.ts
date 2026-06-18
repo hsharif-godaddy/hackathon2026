@@ -10,7 +10,7 @@
  */
 
 import { dynamicApiConfigService } from '@/config/dynamic-api'
-import { getConversationIdFromCookie } from '@/hooks/websocket/useWebSocketHelpers'
+import { getConversationIdFromCookie } from '@/hooks/chat/useChatHelpers'
 import { agentFetch } from '@/lib/agent-fetch'
 
 /** Scope of what's being rated. Matches the events-team schema enum. */

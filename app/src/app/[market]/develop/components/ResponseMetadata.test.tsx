@@ -27,7 +27,7 @@ vi.mock('@/utils/instrumentation', () => ({
   logClickEvent: vi.fn(function () { return vi.fn(); }),
 }));
 
-vi.mock('@/hooks/websocket/useWebSocketHelpers', () => ({
+vi.mock('@/hooks/chat/useChatHelpers', () => ({
   getConversationIdFromCookie: () => 'conv-test-1',
 }));
 

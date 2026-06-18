@@ -1,6 +1,6 @@
 'use client'
 
-import { getConversationIdFromCookie } from '@/hooks/websocket/useWebSocketHelpers'
+import { getConversationIdFromCookie } from '@/hooks/chat/useChatHelpers'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import { getToolRenderer } from './tool-renderers'

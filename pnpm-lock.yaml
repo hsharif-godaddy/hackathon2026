@@ -966,9 +966,6 @@ importers:
       server-only:
         specifier: ^0.0.1
         version: 0.0.1
-      socket.io-client:
-        specifier: 'catalog:'
-        version: 4.8.3(bufferutil@4.1.0)
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0

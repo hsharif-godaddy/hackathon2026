@@ -1,6 +1,6 @@
-import type { SendMessageOptions } from '@/hooks/useStreamingWebSocket'
 import { retrieveAndUploadFiles, type StoredFileEntry } from '@/lib/quick-create'
 import { logger } from '@/lib/request-context'
+import type { SendMessageOptions } from '@/services/transport/messageTypes'
 
 export interface SendPendingAutoSendMessageOptions {
   messageToSend: string

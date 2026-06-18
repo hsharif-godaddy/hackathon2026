@@ -27,12 +27,12 @@ import { useGitStore } from '@/stores/useGitStore'
 import {
   type ChatMessage,
   type StreamingMessage as StreamingMessageType,
+  useConnectionState,
   useCurrentAppId,
   useHistoryLoadingComplete,
   useIsActivelyStreaming,
   useIsLoading,
   useStreamingConversationStore,
-  useWebSocketState,
 } from '@/stores/useStreamingConversationStore'
 import { logClickEvent } from '@/utils/instrumentation'
 import StreamingMessage from './StreamingMessage'
@@ -113,7 +113,7 @@ export default function StreamingMessageList({
   const setHistoryLoadingMore = useStreamingConversationStore((s) => s.setHistoryLoadingMore)
 
   const { loadHistory } = useWebSocketContext()
-  const isConnected = useWebSocketState().connected
+  const isConnected = useConnectionState().connected
 
   // Keep refs in sync so handleScroll reads latest values without dependency churn
   userHasScrolledUpRef.current = userHasScrolledUp

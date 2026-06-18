@@ -115,7 +115,7 @@ export const useAwaitedJobResult = (jobId: string | undefined) =>
 export const useInputValue = () => useStreamingConversationStore(state => state.inputValue)
 export const useIsLoading = () => useStreamingConversationStore(state => state.isLoading)
 export const useCurrentAppId = () => useStreamingConversationStore(state => state.currentAppId)
-export const useWebSocketState = () => useStreamingConversationStore(state => state.websocket)
+export const useConnectionState = () => useStreamingConversationStore(state => state.connection)
 
 // Individual action selectors to prevent infinite loops
 export const useStartNewStream = () => useStreamingConversationStore(state => state.startNewStream)
@@ -146,7 +146,6 @@ export const useSetBuildErrorContext = () => useStreamingConversationStore(state
 export const useSetAgentCatalog = () => useStreamingConversationStore(state => state.setAgentCatalog)
 export const useSetDevelopmentPlan = () => useStreamingConversationStore(state => state.setDevelopmentPlan)
 
-export const useSetWebSocketState = () => useStreamingConversationStore(state => state.setWebSocketState)
 export const useSetStreamingState = () => useStreamingConversationStore(state => state.setStreamingState)
 
 // History loading selectors
@@ -157,13 +156,6 @@ export const useSetHistoryLoadingComplete = () => useStreamingConversationStore(
 export const useQueuedMessages = () => useStreamingConversationStore(state => state.queuedMessages)
 export const useIsQueueStoppedOnError = () => useStreamingConversationStore(state => state.queueStoppedOnError)
 export const useQueueLength = () => useStreamingConversationStore(state => state.queuedMessages.length)
-
-// Connection retry selectors
-export const useConnectionRetry = () => useStreamingConversationStore(state => state.connectionRetry)
-export const useStartConnectionRetry = () => useStreamingConversationStore(state => state.startConnectionRetry)
-export const useSetEscalationTimeout = () => useStreamingConversationStore(state => state.setEscalationTimeout)
-export const useClearConnectionRetry = () => useStreamingConversationStore(state => state.clearConnectionRetry)
-export const useCheckStaleRetry = () => useStreamingConversationStore(state => state.checkStaleRetry)
 
 export const useDevelopmentPlan = () => useStreamingConversationStore(state => state.developmentPlan)
 export const useAiEditContext = () => useStreamingConversationStore(state => state.aiEditContext)

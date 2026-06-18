@@ -17,7 +17,7 @@ vi.mock('@/config/dynamic-api', () => ({
 }))
 
 const mockGetConversationIdFromCookie = vi.fn()
-vi.mock('@/hooks/websocket/useWebSocketHelpers', () => ({
+vi.mock('@/hooks/chat/useChatHelpers', () => ({
   getConversationIdFromCookie: (appId: string | null) => mockGetConversationIdFromCookie(appId),
 }))
 

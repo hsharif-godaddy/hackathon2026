@@ -7,8 +7,8 @@ import { useDebugStats } from './DebugStatsContext'
 
 /**
  * Subscribes to the airo:debug-turn-stats window CustomEvent (dispatched by
- * TransportSupervisor on debug_turn_stats Socket.IO events) and forwards each
- * event into the DebugStatsContext reducer. Caller must be inside DebugStatsProvider.
+ * SSETransport when a debug_turn_stats event arrives on the SSE stream) and forwards
+ * each event into the DebugStatsContext reducer. Caller must be inside DebugStatsProvider.
  */
 export function useDebugStatsBridge(): void {
   const { dispatch } = useDebugStats()
