@@ -4,12 +4,14 @@
  * Phase 1: Core database infrastructure
  */
 
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import Database from 'better-sqlite3';
 
-import { syncDb, scheduleUpload } from './db-backup';
+import { scheduleUpload } from './db-backup';
+import { logger } from './logger';
 
 const DB_PATH =
   process.env.L1_TRANSCRIPTS_DB_PATH || path.join(process.cwd(), 'data', 'l1_transcripts.db');
@@ -35,29 +37,53 @@ export function getL1TranscriptsDb(): Database.Database {
     fs.mkdirSync(dbDir, { recursive: true });
   }
 
-  // Sync from S3 before opening (uses AWS SDK instead of AWS CLI for ECS compatibility)
+  // Sync from S3 before opening (uses AWS SDK via subprocess for synchronous blocking)
   if (!_syncPromise) {
-    _syncPromise = syncDb(DB_PATH, 'l1_transcripts.db').catch(function handleSyncError(err) {
-      console.error('[l1-transcript-db] S3 sync failed:', err instanceof Error ? err.message : String(err));
-      console.log('[l1-transcript-db] Continuing with empty/existing local DB');
-    });
-  }
+    const isProduction = process.env.NODE_ENV === 'production';
 
-  // Block until sync completes (sync or fail fast)
-  // This is a top-level await workaround - the promise resolves before DB opens
-  let syncComplete = false;
-  _syncPromise.then(function markComplete() {
-    syncComplete = true;
-  });
+    logger.info('l1_transcript_db.restore.start', {});
 
-  // Busy-wait for sync (not ideal, but maintains synchronous API contract)
-  const startTime = Date.now();
-  while (!syncComplete && Date.now() - startTime < 10000) {
-    // Spin for max 10 seconds
-  }
+    // Run restore in a separate Node process so we can block synchronously
+    const result = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        `
+        const { downloadDbFromS3 } = require('${__dirname}/db-backup');
+        downloadDbFromS3({
+          dbPath: '${DB_PATH}',
+          dbName: 'l1_transcripts.db',
+          forceDownload: ${isProduction}
+        })
+          .then((downloaded) => {
+            if (downloaded) {
+              process.stdout.write('[l1-transcript-db] Downloaded latest backup from S3\n');
+            } else {
+              process.stdout.write('[l1-transcript-db] Using existing local DB\n');
+            }
+            process.exit(0);
+          })
+          .catch((err) => {
+            logger.error('l1_transcript_db.restore.s3_sync_failed', { error: err.message });
+            process.stdout.write('[l1-transcript-db] Continuing with empty/existing local DB\n');
+            process.exit(1);
+          });
+        `,
+      ],
+      {
+        stdio: 'inherit',
+        timeout: 180000, // 3 minute timeout for download
+        encoding: 'utf8',
+      }
+    );
 
-  if (!syncComplete) {
-    console.warn('[l1-transcript-db] S3 sync timed out, proceeding with local DB');
+    if (result.error) {
+      logger.error('l1_transcript_db.restore.failed', { error: result.error.message });
+    } else if (result.status !== 0) {
+      logger.warn('l1_transcript_db.restore.exited_with_status', { status: result.status });
+    }
+
+    _syncPromise = Promise.resolve();
   }
 
   // Create database connection
@@ -261,7 +287,7 @@ function initializeSchema(db: Database.Database): void {
     "UPDATE l1_transcript_uploads SET tagging_status = 'failed' WHERE status = 'processing' AND tagging_status = 'pending'"
   );
 
-  console.log('[l1-transcript-db] Schema initialized');
+  logger.info('l1_transcript_db.schema.initialized', {});
 }
 
 /**
