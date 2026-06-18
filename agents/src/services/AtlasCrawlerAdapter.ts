@@ -236,6 +236,12 @@ export class AtlasCrawlerAdapter {
       downloadAssets: true,
       ssrfProtection: 'strict',
       respectRobotsTxt: true,
+      // Import sites whose TLS cert fails validation (expired/self-signed/CN-SAN mismatch) — e.g.
+      // vanity domains on white-label platforms (Broadridge advisor sites) serving a platform cert.
+      // Without this Atlas aborts the crawl (net::ERR_CERT_*) and the rebuild gets an empty import.
+      // Atlas already defaults this on; set it explicitly to pin intent at the call site. Cert
+      // validation is disabled for the whole crawl; SSRF protection (above) stays strict.
+      acceptInsecureCerts: true,
     });
 
     return this.completeCrawlFromJobId({
