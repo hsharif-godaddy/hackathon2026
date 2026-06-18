@@ -153,13 +153,24 @@ func (m *JWTMiddleware) Wrap(next http.Handler) http.Handler {
 		// which shares the .dev-godaddy.com domain in local dev
 		if tokenFromHeader != "" {
 			// Only set cookie if token came from Authorization header (not from cookie itself to avoid loops)
-			// SameSite=None is required for cross-origin cookie access.
-			// Partitioned (CHIPS): keyed to the embedding top-level site, so it works in the
-			// builder iframe even when third-party cookies are blocked (e.g. incognito).
-			// NOTE: it does NOT carry over to a top-level visit of the preview URL (different
-			// partition key) — that path must authenticate via query-param token instead.
+			// SameSite=None is required for cross-origin cookie access: both variants set it.
+			// Unpartitioned: for top-level navigation (user opens preview URL directly).
+			// Partitioned (CHIPS): for iframe embedding (builder on .dev-godaddy.com embeds preview on localhost).
 			maxAge := CookieMaxAgeFromClaims(result.Claims)
 
+			// Unpartitioned cookie for top-level navigation (PaaS: user opens preview URL directly).
+			http.SetCookie(w, &http.Cookie{
+				Name:     "preview_auth",
+				Value:    token,
+				Path:     "/",
+				HttpOnly: true,
+				Secure:   true,
+				SameSite: http.SameSiteNoneMode,
+				MaxAge:   maxAge,
+			})
+
+			// Partitioned (CHIPS) cookie for iframe embedding (AAB: builder embeds preview).
+			// Works even when third-party cookies are blocked (e.g. incognito).
 			http.SetCookie(w, &http.Cookie{
 				Name:        "preview_auth",
 				Value:       token,
@@ -204,8 +215,6 @@ func (m *JWTMiddleware) tryShareTokenAuth(
 }
 
 func clearShareTokenCookies(w http.ResponseWriter) {
-	// The unpartitioned variant is no longer set, but browsers may still hold one
-	// from older deployments (or pre-CHIPS storage) — clear it too.
 	http.SetCookie(w, &http.Cookie{
 		Name:     "airo_share_token",
 		Value:    "",
@@ -285,9 +294,18 @@ func (m *JWTMiddleware) handleShareToken(
 	if source == "query_param" {
 		expiresAt := m.config.ShareValidator.GetTokenExpiration(shareToken)
 
-		// Partitioned (CHIPS) cookie. Partition key is the top-level site at set time:
-		// the preview origin itself on a top-level share-link visit, the builder origin
-		// when embedded in the iframe. Works even when third-party cookies are blocked.
+		// Unpartitioned cookie for top-level navigation (PaaS flow).
+		http.SetCookie(w, &http.Cookie{
+			Name:     "airo_share_token",
+			Value:    shareToken,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteNoneMode,
+			Expires:  expiresAt,
+		})
+
+		// Partitioned (CHIPS) cookie for iframe embedding (AAB flow).
 		http.SetCookie(w, &http.Cookie{
 			Name:        "airo_share_token",
 			Value:       shareToken,

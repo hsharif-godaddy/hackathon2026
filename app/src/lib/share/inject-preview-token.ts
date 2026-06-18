@@ -344,16 +344,13 @@ function appendTokenToUrl(previewUrl: string, token: string): string {
 }
 
 /**
- * Append `?airoShareToken=<token>` to the preview URL so "Visit Preview"
- * can authenticate the top-level visit. The `preview_auth` cookie set
- * during the iframe bootstrap is partitioned (CHIPS) and keyed to the
- * builder origin, so it is never sent on a top-level navigation to the
- * preview — this query-param token is the only handoff path, in every
- * browser.
+ * Append `?airoShareToken=<token>` to the preview URL so cross-browser
+ * "Visit Preview" works even when third-party-cookie blocking refuses to
+ * store the unpartitioned `preview_auth` cookie set during the iframe
+ * bootstrap (Safari ITP, Firefox TCP, Chrome 3PCD opt-in, all incognito).
  *
- * The share-token query-param flow sets a partitioned cookie keyed to the
- * preview origin itself during top-level navigation, which every browser
- * accepts.
+ * The share-token query-param flow sets a first-party cookie on the preview
+ * origin during top-level navigation, which every browser accepts.
  *
  * Token resolution order (against `/apps/<id>/share`):
  *   0. Process-local cache — short-circuits the agents call entirely when
@@ -369,16 +366,14 @@ function appendTokenToUrl(previewUrl: string, token: string): string {
  *      mint path). 409 falls through to re-GET to converge with a
  *      concurrent first-mint.
  *
- * The caller is responsible for checking `agentUrl`/`previewUrl` presence
- * before calling this. Injection is NOT gated by the
- * `appbuilder-share-links` Switchboard flag — the token is the only auth
- * handoff for top-level preview visits, so callers inject unconditionally
- * (the flag still gates the share-links UI and BFF share CRUD routes).
+ * The caller is responsible for checking the `appbuilder-share-links`
+ * Switchboard flag and `agentUrl`/`previewUrl` presence before calling
+ * this — keeping the helper pure (no Request / flag dependency) lets
+ * list-style callers hoist the flag check above the per-site loop.
  *
- * Fails open: any error returns the bare URL. Without the token the
- * top-level visit has no carried-over cookie (preview_auth is partitioned
- * to the builder origin), so the user lands on the dev-supervisor login
- * page instead of the preview.
+ * Fails open: any error returns the bare URL. Visit Preview falls back to
+ * today's preview_auth-cookie behavior, which works in Chrome (default 3PC)
+ * and breaks elsewhere — same as before this fix.
  */
 export async function injectShareTokenIntoPreviewUrl(
   appId: string,

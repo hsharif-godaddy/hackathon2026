@@ -8,6 +8,7 @@ import {
 import { AiroHttpError } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 import { injectShareTokenIntoPreviewUrl } from '@/lib/share/inject-preview-token';
+import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 
 // Force dynamic rendering to prevent database calls during build
 export const dynamic = 'force-dynamic'
@@ -42,17 +43,29 @@ export const GET = withCustomerAuth(async (request: NextRequest, authContext: Cu
 
       // Inject airoShareToken into the preview URL the iframe loads from, so
       // the embedded preview authenticates via a query param instead of the
-      // cross-site `preview_auth` cookie. That cookie is partitioned (CHIPS)
-      // and never carries to a top-level visit, so the token is the only auth
-      // handoff for opening the preview outside the iframe — the injection is
-      // unconditional, not feature-gated. Mirrors the injection in
-      // /api/sites/[id]. Only when both preview_url and agent_url exist
+      // cross-site `preview_auth` cookie. Safari ITP / third-party-cookie
+      // blocking drops that cookie (307'ing the iframe), and whether it's
+      // stored varies per device — a query-param token is delivered
+      // deterministically regardless of cookie policy. Mirrors the injection
+      // in /api/sites/[id]. Only when both preview_url and agent_url exist
       // (agent_url is required to mint the token); agent-only URLs are left
-      // untouched. The helper fails open to the bare URL on error, and its
-      // 5-min process-local cache bounds the per-poll cost.
+      // untouched. The flag lookup can throw on a Switchboard outage — treat
+      // that as "off" and fall back to the bare URL (the helper also fails
+      // open). The helper's 5-min process-local cache bounds the per-poll cost.
       let serverUrl = containerUrl
       if (site.preview_url && site.agent_url) {
-        serverUrl = await injectShareTokenIntoPreviewUrl(serverId, site.agent_url, site.preview_url)
+        let shareLinksEnabled = false
+        try {
+          shareLinksEnabled = await checkSwitchboardFlag('appbuilder-share-links', request)
+        } catch (err) {
+          logger.warn('share.previewUrl.flag.lookupError', {
+            siteId: serverId,
+            error: err instanceof Error ? err.message : 'Unknown switchboard error',
+          })
+        }
+        if (shareLinksEnabled) {
+          serverUrl = await injectShareTokenIntoPreviewUrl(serverId, site.agent_url, site.preview_url)
+        }
       }
 
       const server = {
