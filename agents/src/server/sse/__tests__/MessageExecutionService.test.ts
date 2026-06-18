@@ -4477,4 +4477,194 @@ describe('MessageExecutionService', () => {
       expect(streamGenerate).toHaveBeenCalledWith('Hello', expect.anything())
     })
   })
+
+  describe('graceful shutdown finalization (AIROBUILD-2654)', () => {
+    // A stream whose read unblocks only when the turn's AbortSignal fires, then
+    // closes cleanly — models a provider that honors abort on SIGTERM, letting
+    // execute() reach finalization (persistence + budget report).
+    function abortAwareAgent(getFinalResult?: ReturnType<typeof vi.fn>) {
+      return {
+        streamGenerate: vi.fn().mockImplementation(async function (_content: string, opts: any) {
+          return {
+            textStream: (async function* () {})(),
+            baseStream: new ReadableStream({
+              async pull(controller) {
+                await new Promise<void>((resolve) => {
+                  if (opts?.abortSignal?.aborted) return resolve()
+                  opts?.abortSignal?.addEventListener('abort', () => resolve(), { once: true })
+                })
+                controller.close()
+              },
+            }),
+            ...(getFinalResult && { getFinalResult }),
+          }
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      }
+    }
+
+    async function waitForStreamGenerate() {
+      const streamGenerate = deps.getAgent().streamGenerate as ReturnType<typeof vi.fn>
+      for (let i = 0; i < 100; i++) {
+        if (streamGenerate.mock.calls.length > 0) break
+        await new Promise((r) => setTimeout(r, 5))
+      }
+      expect(streamGenerate.mock.calls.length).toBeGreaterThan(0)
+    }
+
+    it('awaits an in-flight turn so its output persists (and bills) before shutdown resolves', async () => {
+      const budgetClient = createBudgetClient()
+      mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+      deps = createMockDeps()
+      deps.getAgent.mockReturnValue(
+        abortAwareAgent(vi.fn().mockResolvedValue({
+          finishReason: 'complete',
+          steps: [{ stepNumber: 1, content: [], response: { headers: { 'x-correlation-id': 'corr-1' } } }],
+        })),
+      )
+      service = new MessageExecutionService(deps as any)
+
+      const execPromise = service.execute({
+        ...DEFAULT_PARAMS,
+        bmsBudgetId: 'budget-abc',
+        budgetSessionId: 'session-xyz',
+      })
+      await waitForStreamGenerate()
+      // Nothing has finalized yet: the read is parked on the AbortSignal.
+      expect(deps.conversationPersistence.completeConversation).not.toHaveBeenCalled()
+
+      await service.shutdown()
+
+      // shutdown() must not resolve until the aborted turn finalized. Persistence
+      // is the proxy for "before closeDatabase()"; billing is filed because the
+      // turn persisted.
+      expect(deps.conversationPersistence.completeConversation).toHaveBeenCalled()
+      expect(budgetClient.createReport).toHaveBeenCalled()
+
+      await execPromise
+    })
+
+    it('logs finalize_timeout and still resolves when an in-flight turn ignores its abort', async () => {
+      vi.useFakeTimers()
+      const loggerMod = await import('../../../logging/index.js')
+      const errorSpy = vi.spyOn(loggerMod.logger, 'error')
+      try {
+        const neverSettles = new Promise<void>(() => {})
+        deps = createMockDeps()
+        deps.getAgent.mockReturnValue({
+          streamGenerate: vi.fn().mockResolvedValue({
+            textStream: (async function* () {})(),
+            // Read never resolves and ignores abort → the turn never finalizes.
+            baseStream: new ReadableStream({ pull() { return neverSettles } }),
+          }),
+          getName: vi.fn().mockReturnValue('AI Developer'),
+        })
+        service = new MessageExecutionService(deps as any)
+
+        // inFlightTurns is populated synchronously by execute(); let the turn
+        // progress to the parked read before shutting down.
+        void service.execute(DEFAULT_PARAMS)
+        await vi.advanceTimersByTimeAsync(20)
+
+        const shutdownPromise = service.shutdown()
+        // Drive past the finalize bound (SSE_SHUTDOWN_FINALIZE_TIMEOUT_MS = 5s).
+        await vi.advanceTimersByTimeAsync(5_000)
+        await shutdownPromise
+
+        expect(errorSpy).toHaveBeenCalledWith(
+          'sse.execution.shutdown.finalize_timeout',
+          expect.objectContaining({ unfinishedConversationIds: ['conv_1'] }),
+        )
+      } finally {
+        errorSpy.mockRestore()
+        vi.useRealTimers()
+      }
+    })
+
+    it('persists output before abandoning a budget report dropped by the finalize timeout', async () => {
+      vi.useFakeTimers()
+      const loggerMod = await import('../../../logging/index.js')
+      const errorSpy = vi.spyOn(loggerMod.logger, 'error')
+      try {
+        // Report filing hangs forever (getSession never resolves) → the turn
+        // stays in-flight past the finalize bound. Persistence runs first, so
+        // the only work the timeout abandons is the idempotent report.
+        const budgetClient = createBudgetClient({ getSession: vi.fn().mockReturnValue(new Promise(() => {})) })
+        mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+        deps = createMockDeps([{ type: 'text-delta', text: 'done' }])
+        deps.getAgent.mockReturnValue({
+          streamGenerate: vi.fn().mockResolvedValue({
+            textStream: (async function* () {})(),
+            baseStream: makeReadableStream([{ type: 'text-delta', text: 'done' }]),
+            getFinalResult: vi.fn().mockResolvedValue({
+              finishReason: 'complete',
+              steps: [{ stepNumber: 1, content: [], response: { headers: { 'x-correlation-id': 'corr-1' } } }],
+            }),
+          }),
+          getName: vi.fn().mockReturnValue('AI Developer'),
+        })
+        service = new MessageExecutionService(deps as any)
+
+        void service.execute({
+          ...DEFAULT_PARAMS,
+          bmsBudgetId: 'budget-abc',
+          budgetSessionId: 'session-xyz',
+        })
+        // Let the turn stream, persist, and reach the hanging budget report.
+        await vi.advanceTimersByTimeAsync(20)
+        expect(deps.conversationPersistence.completeConversation).toHaveBeenCalled()
+
+        const shutdownPromise = service.shutdown()
+        await vi.advanceTimersByTimeAsync(5_000)
+        await shutdownPromise
+
+        // Output saved; the report was reached but abandoned (never filed).
+        const events = errorSpy.mock.calls.map((c) => c[0] as string)
+        expect(events).toContain('sse.execution.shutdown.finalize_timeout')
+        expect(budgetClient.createReport).not.toHaveBeenCalled()
+      } finally {
+        errorSpy.mockRestore()
+        vi.useRealTimers()
+      }
+    })
+
+    it('does not bill a turn whose output failed to persist', async () => {
+      const budgetClient = createBudgetClient()
+      mockGetBudgetServiceClient.mockReturnValue(budgetClient as any)
+      deps = createMockDeps([{ type: 'text-delta', text: 'done' }])
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([{ type: 'text-delta', text: 'done' }]),
+          getFinalResult: vi.fn().mockResolvedValue({
+            finishReason: 'complete',
+            steps: [{ stepNumber: 1, content: [], response: { headers: { 'x-correlation-id': 'corr-1' } } }],
+          }),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      deps.conversationPersistence.completeConversation.mockRejectedValue(new Error('DB down'))
+      service = new MessageExecutionService(deps as any)
+
+      const loggerMod = await import('../../../logging/index.js')
+      const errorSpy = vi.spyOn(loggerMod.logger, 'error')
+      let errorEvents: string[] = []
+      try {
+        await service.execute({
+          ...DEFAULT_PARAMS,
+          bmsBudgetId: 'budget-abc',
+          budgetSessionId: 'session-xyz',
+        })
+      } finally {
+        // Capture before mockRestore() — restoring clears mock.calls.
+        errorEvents = errorSpy.mock.calls.map((c) => c[0] as string)
+        errorSpy.mockRestore()
+      }
+
+      // Persistence failed → the report must not be filed on any path (success,
+      // error, or the finally fallback), and the skip is observable.
+      expect(budgetClient.createReport).not.toHaveBeenCalled()
+      expect(errorEvents).toContain('sse.execution.budget_skipped_persistence_failed')
+    })
+  })
 })

@@ -84,6 +84,7 @@ import {
   checkAndTriggerSummarization,
 } from '../context-builders.js'
 import { computeDebugTurnStats } from '../../utils/debug-turn-stats.js'
+import { withTimeout } from '../../utils/promise-utils.js'
 import { interactiveSubAgentManager } from '../../agents/interactive-sub-agent-manager.js'
 import { subAgentJobRegistry } from '../../agents/sub-agent-job-registry.js'
 import { AppRepository } from '../../database/repositories/index.js'
@@ -229,12 +230,27 @@ interface ActiveStream {
   lastResponseMetadata?: ResponseMetadata
 }
 
+// On graceful shutdown, abort unblocks each in-flight turn's stream read; the
+// turn then runs finalization (persistence + budget report). shutdown() awaits
+// those turns so app.ts does not closeDatabase() underneath an in-progress
+// write. Bounded so a provider that ignores its AbortSignal cannot hang the
+// process past the Nomad kill grace window (prod 120s; the agents process also
+// self-imposes a 20s server-close window). Persistence is the local SQLite
+// write at the head of finalization and completes well within this bound; the
+// remote budget report follows it, so if the bound ever elapses the dropped
+// work is the (idempotent, GoDaddy-absorbs-the-cost) report, not the turn output.
+const SSE_SHUTDOWN_FINALIZE_TIMEOUT_MS = 5_000
+
 export class MessageExecutionService implements SubscriberLifecycleListener {
   private deps: ExecutionDeps
   private readonly chunkTimeoutMs = parseChunkTimeoutMs()
   private abortControllers = new Map<string, AbortController>()
   private activeStreams = new Map<string, ActiveStream>()
   private endedApmTransactions = new WeakSet<NonNullable<ActiveStream['apmTransaction']>>()
+  // Tracks in-flight execute() turns (promise → conversationId) so shutdown()
+  // can await their finalization before the DB closes. Entries self-remove when
+  // the turn settles. Mirrors git-hook-service's trackOperation/waitForInFlightOps.
+  private inFlightTurns = new Map<Promise<void>, string>()
 
   constructor(deps: ExecutionDeps) {
     this.deps = deps
@@ -311,7 +327,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     persistenceContext: SSEPersistenceContext
     agentMessageIds: Iterable<string>
     failureLogEvent: 'sse.execution.persistence_failed' | 'sse.execution.error_persistence_failed'
-  }): Promise<void> {
+  }): Promise<boolean> {
     const {
       appId,
       conversationId,
@@ -327,8 +343,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         conversationId, streamingEvents, result, persistenceContext
       )
     } catch (err) {
+      // Surface the failure to the caller (returns false). Billing is gated on
+      // this so a turn whose output did not persist is never charged.
       logger.error(failureLogEvent, { appId, conversationId, ...errorFields(err) })
-      return
+      return false
     }
 
     // SSE-only: WS uses PersistenceSubscriber to flag events as persisted during
@@ -347,6 +365,8 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         })
       }
     }
+
+    return true
   }
 
   stop(conversationId: string): void {
@@ -462,7 +482,41 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       }
     }
 
+    // The aborts above unblock each in-flight turn's stream read; the turn then
+    // finalizes (persists accumulated output, files the budget report). Await
+    // those turns so app.ts's closeDatabase() does not race an in-progress
+    // SQLite write. Bounded — see SSE_SHUTDOWN_FINALIZE_TIMEOUT_MS.
+    await this.awaitInFlightTurns()
+
     logger.info('sse.execution.shutdown.complete', { abortedStreamCount: activeEntries.length })
+  }
+
+  /**
+   * Wait for in-flight execute() turns to finalize, bounded by
+   * SSE_SHUTDOWN_FINALIZE_TIMEOUT_MS. A turn that does not settle within the
+   * bound is abandoned (logged with its conversationId) rather than hanging
+   * shutdown past the kill grace window.
+   */
+  private async awaitInFlightTurns(): Promise<void> {
+    if (this.inFlightTurns.size === 0) return
+
+    await withTimeout(
+      Promise.allSettled([...this.inFlightTurns.keys()]),
+      SSE_SHUTDOWN_FINALIZE_TIMEOUT_MS,
+      () => {
+        // Reading inFlightTurns live here is intentional. Settled turns
+        // self-remove via the .finally in execute(); at a 5s bound that delete
+        // microtask has long since run, so what remains is exactly the
+        // genuinely-stuck turns whose finalization we are abandoning.
+        logger.error('sse.execution.shutdown.finalize_timeout', {
+          timeoutMs: SSE_SHUTDOWN_FINALIZE_TIMEOUT_MS,
+          unfinishedCount: this.inFlightTurns.size,
+          unfinishedConversationIds: [...this.inFlightTurns.values()],
+        })
+      },
+      // allSettled never rejects, so a late rejection is unreachable here.
+      () => {},
+    )
   }
 
   private async getBudgetSessionWithRetry(
@@ -1457,6 +1511,18 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
   }
 
   async execute(params: ExecuteParams): Promise<void> {
+    const turn = this.runTurn(params)
+    // Register the turn so shutdown() awaits its finalization (persistence +
+    // budget report) before the process closes the DB. The .catch keeps the
+    // tracking-chain rejection from surfacing as an unhandled rejection; the
+    // returned `turn` is still the un-caught promise, so the route's own .catch
+    // (and awaiting callers/tests) observe failures unchanged.
+    this.inFlightTurns.set(turn, params.conversationId)
+    void turn.catch(() => {}).finally(() => this.inFlightTurns.delete(turn))
+    return turn
+  }
+
+  private async runTurn(params: ExecuteParams): Promise<void> {
     // Build the Signals/OTEL trace context from HTTP headers + JWT early, so
     // every span emitted during this turn (AI SDK LLM spans, tool spans, the
     // agent-invocation span below) inherits the same traceparent. Without
@@ -1767,6 +1833,11 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
 
     const allExecutionSteps: ExecutionStep[] = []
     let budgetReportFiled = false
+    // Whether this turn's output was durably persisted. The budget report is
+    // gated on it (success, error, and the finally fallback) so a turn is never
+    // billed without its saved output — most relevant on shutdown, where the
+    // persistence write and the report otherwise race process exit independently.
+    let turnPersisted = false
 
     try {
       let lastTurnResult: Awaited<ReturnType<typeof this.streamAgentTurn>> | undefined
@@ -2108,7 +2179,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         persistenceContext.usedFreeGrants = endResult.usedFreeGrants
       }
 
-      await this.completeConversationAndMarkPersisted({
+      turnPersisted = await this.completeConversationAndMarkPersisted({
         appId,
         conversationId,
         streamingEvents,
@@ -2122,7 +2193,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       const commitHash: string | null = persistenceContext.commitHash ?? null
       let usedFreeGrants: boolean = persistenceContext.usedFreeGrants ?? false
 
-      if (bmsBudgetId && budgetSessionId) {
+      if (bmsBudgetId && budgetSessionId && turnPersisted) {
         const budgetReport = await this.reconcileBudgetReport({
           appId,
           conversationId,
@@ -2141,6 +2212,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         if (budgetReport.sessionWasFree !== undefined) {
           usedFreeGrants = budgetReport.sessionWasFree
         }
+      } else if (bmsBudgetId && budgetSessionId) {
+        logger.error('sse.execution.budget_skipped_persistence_failed', {
+          appId, conversationId, phase: 'success',
+        })
       }
 
       // If a later execute() has already replaced our slot (user stopped
@@ -2232,7 +2307,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         }
       }
 
-      await this.completeConversationAndMarkPersisted({
+      turnPersisted = await this.completeConversationAndMarkPersisted({
         appId,
         conversationId,
         streamingEvents,
@@ -2242,7 +2317,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         failureLogEvent: 'sse.execution.error_persistence_failed',
       })
 
-      if (bmsBudgetId && budgetSessionId) {
+      if (bmsBudgetId && budgetSessionId && turnPersisted) {
         const errorBudgetReport = await this.reconcileBudgetReport({
           appId,
           conversationId,
@@ -2255,6 +2330,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           subscriptionId,
         })
         budgetReportFiled = errorBudgetReport.filed
+      } else if (bmsBudgetId && budgetSessionId) {
+        logger.error('sse.execution.budget_skipped_persistence_failed', {
+          appId, conversationId, phase: 'error',
+        })
       }
 
       // Same superseded-slot guard as the success path: our terminal
@@ -2356,8 +2435,9 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     } finally {
       // Budget report fallback: if neither the success nor error path filed
       // the report, retry once before tearing down the stream slot (which
-      // publishBudgetEvent guards on).
-      if (bmsBudgetId && budgetSessionId && !budgetReportFiled) {
+      // publishBudgetEvent guards on). Still gated on persistence — never bill
+      // a turn whose output was not saved.
+      if (bmsBudgetId && budgetSessionId && !budgetReportFiled && turnPersisted) {
         try {
           const fallbackResult = await this.reconcileBudgetReport({
             appId,
