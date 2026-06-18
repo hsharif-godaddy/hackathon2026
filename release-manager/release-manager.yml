@@ -241,6 +241,23 @@ pipeline:
             environment: prod
             test_filter: regression
 
+        # Shadow run of the split + parallel-safe e2e-v2 suite alongside the
+        # canonical e2e/regression stages above. Advisory while we build a
+        # green track record on prod (see tests/e2e/REFACTOR_PLAN.md); once
+        # stable, the canonical stage flips to e2e-v2 and this is removed.
+        # No test_summary: playwright-e2e-v2.yml does not emit the e2e-summary
+        # artifact that flag renders (preview workflow reads the run directly).
+        - id: e2e-v2-prod
+          name: E2E v2 Tests (Prod)
+          group: validate-prod
+          advisory: true # shadow run; never gates the release (prod already live)
+          repo: gdcorp-partners/airo-app-builder
+          workflow: playwright-e2e-v2.yml
+          active_run_check: false
+          ref: '{{branch}}'
+          inputs:
+            environment: prod
+
         - id: health-check-prod
           name: Health Check (Prod)
           group: validate-prod

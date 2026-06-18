@@ -5,7 +5,9 @@ name: E2E v2 Tests (preview)
 # new shape under realistic CI timing without touching the existing signal.
 #
 # Differences vs. playwright-e2e.yml (intentional, while in preview):
-#   - workflow_dispatch only (no schedule) — manual smoke until we trust it
+#   - workflow_dispatch (manual smoke) + a 6-hourly prod schedule (shadow
+#     track record) — also invoked as an advisory stage by the
+#     release-manager prod pipeline (validate-prod group)
 #   - test + prod envs — each uses its own dedicated v2 shopper secret
 #     (`/<env>/airo-app-builder-user-v2`), keeping the legacy CI shopper
 #     free for the existing nightly cron's load
@@ -18,7 +20,7 @@ name: E2E v2 Tests (preview)
 # `--project=e2e` flips to `--project=e2e-v2` (Phase 2 of the refactor in
 # `tests/e2e/REFACTOR_PLAN.md`) and this preview workflow is removed.
 
-run-name: "E2E v2 Tests - ${{ inputs.environment || 'test' }} (by ${{ github.actor }})"
+run-name: "E2E v2 Tests - ${{ inputs.environment || (github.event_name == 'schedule' && 'prod') || 'test' }} (by ${{ github.actor }})"
 
 on:
   workflow_dispatch:
@@ -31,13 +33,20 @@ on:
         options:
           - test
           - prod
+  # Shadow schedule: every 6h against prod, to build the green track record
+  # that gates the e2e -> e2e-v2 cutover. Scheduled runs have no inputs,
+  # so the env resolver below treats `github.event_name == 'schedule'` as prod
+  # (manual dispatch keeps its `test` default). Off the :00 mark to avoid the
+  # cron stampede on the shared self-hosted runners.
+  schedule:
+    - cron: '17 */6 * * *'
 
 # Serialize per-env so two manual dispatches against the same env don't
 # race over the same shopper account's app quota. `cancel-in-progress: false`
 # queues instead of cancelling — interrupting a running suite mid-publish
 # leaves orphan deployments.
 concurrency:
-  group: e2e-v2-${{ inputs.environment || 'test' }}
+  group: e2e-v2-${{ inputs.environment || (github.event_name == 'schedule' && 'prod') || 'test' }}
   cancel-in-progress: false
 
 permissions:
@@ -55,7 +64,7 @@ jobs:
       - name: Determine test environment and URL
         id: env-config
         env:
-          INPUT_ENVIRONMENT: ${{ inputs.environment || 'test' }}
+          INPUT_ENVIRONMENT: ${{ inputs.environment || (github.event_name == 'schedule' && 'prod') || 'test' }}
         run: |
           ENV="$INPUT_ENVIRONMENT"
           echo "environment=$ENV" >> $GITHUB_OUTPUT
