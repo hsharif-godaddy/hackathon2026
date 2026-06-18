@@ -5,12 +5,14 @@ import ChevronRightIcon from '@ux/icon/chevron-right'
 import ImageIcon from '@ux/icon/image'
 import PlusIcon from '@ux/icon/plus'
 
+import { getSlotImageUrl } from '@/app/[market]/develop/components/media/slotImageUrl'
 import ToolHeader from '@/app/[market]/develop/components/tool-renderers/ToolHeader'
 import { ChatTab } from '@/app/[market]/develop/components/types'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
 import { useMediaSlotDialogStore } from '@/stores/useMediaSlotDialogStore'
+import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import type { ToolCall } from '@/stores/useStreamingConversationStore'
 import { generateClickEID } from '@/utils/instrumentation'
 
@@ -68,6 +70,7 @@ export default function MediaGroupRenderer({
   const params = useParams()
   const appId = params?.id as string | undefined
   const navigateToSlot = useMediaSlotDialogStore((state) => state.navigateToSlot)
+  const previewBaseUrl = useServerPollingStore((state) => state.getServerState(appId ?? '')?.url ?? null)
   const { setActiveChatTab } = useChatTabs()
 
   // Parse all tool calls
@@ -107,22 +110,6 @@ export default function MediaGroupRenderer({
   const failedSlots = parsedSlots.filter(
     (slot) => slot.toolCall.status === 'completed' && (!slot.result?.success || slot.result?.error)
   )
-
-  // Helper to ensure URLs have proper protocol
-  // Handles http/https URLs, protocol-relative URLs, and other URI schemes
-  const ensureHttps = (url: string): string => {
-    if (!url) return url
-    // Already has a URI scheme (http:, https:, data:, blob:, etc.)
-    if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(url)) {
-      return url
-    }
-    // Protocol-relative URL (//example.com)
-    if (url.startsWith('//')) {
-      return `https:${url}`
-    }
-    // No scheme - add https://
-    return `https://${url}`
-  }
 
   const handleThumbnailClick = (slotName: string) => {
     if (appId && slotName) {
@@ -195,7 +182,7 @@ export default function MediaGroupRenderer({
               <div className="w-12 h-12 rounded-md overflow-hidden relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={ensureHttps(previewUrl || '')}
+                  src={getSlotImageUrl(slot.result!.slot, previewUrl || '', previewBaseUrl, slot.result!.mediaType)}
                   alt={slot.result!.searchQuery}
                   className="w-full h-full object-cover rounded-md transition-transform"
                 />

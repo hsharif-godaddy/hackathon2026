@@ -4,12 +4,14 @@ import { Image, Play } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { getSlotImageUrl } from "@/app/[market]/develop/components/media/slotImageUrl";
 import type { DefaultToolRendererProps } from "@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer";
 import ToolHeader from "@/app/[market]/develop/components/tool-renderers/ToolHeader";
 import { ChatTab } from '@/app/[market]/develop/components/types';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { logger } from "@/lib/request-context";
 import { useMediaSlotDialogStore } from "@/stores/useMediaSlotDialogStore";
+import { useServerPollingStore } from "@/stores/useServerPollingStore";
 import { postMessageToIframe } from "@/utils/postMessage";
 
 interface MediaSlotResultData {
@@ -39,6 +41,7 @@ export default function MediaSlotToolRenderer({
 	const params = useParams();
 	const appId = params?.id as string | undefined;
 	const navigateToSlot = useMediaSlotDialogStore((state) => state.navigateToSlot);
+	const previewBaseUrl = useServerPollingStore((state) => state.getServerState(appId ?? '')?.url ?? null);
 	const { setActiveChatTab } = useChatTabs();
 
 	// Parse result
@@ -90,15 +93,6 @@ export default function MediaSlotToolRenderer({
 
 	const [videoReady, setVideoReady] = useState(false);
 	const handleVideoReady = useCallback(() => setVideoReady(true), []);
-
-	// Helper to ensure URLs have proper protocol
-	const ensureHttps = (url: string): string => {
-		if (!url) return url;
-		if (url.startsWith("http://") || url.startsWith("https://")) {
-			return url;
-		}
-		return `https://${url}`;
-	};
 
 	// Format slot name for display (e.g., "pages/home/hero" -> "Home Hero")
 	const formatSlotName = (slot: string): string => {
@@ -158,8 +152,8 @@ export default function MediaSlotToolRenderer({
 								<div className="absolute inset-0 bg-intents-ux-bgSubtle-bgColor animate-pulse rounded-md" />
 							)}
 							<video
-								src={ensureHttps(parsedResult.resolvedUrl || "")}
-								poster={parsedResult.thumbnailUrl ? ensureHttps(parsedResult.thumbnailUrl) : undefined}
+								src={getSlotImageUrl(parsedResult.slot, parsedResult.resolvedUrl || "", previewBaseUrl, parsedResult.mediaType)}
+								poster={parsedResult.thumbnailUrl ? getSlotImageUrl(parsedResult.slot, parsedResult.thumbnailUrl, previewBaseUrl) : undefined}
 								autoPlay
 								muted
 								loop
@@ -178,7 +172,7 @@ export default function MediaSlotToolRenderer({
 					) : (
 						// eslint-disable-next-line @next/next/no-img-element
 						<img
-							src={ensureHttps(previewUrl || "")}
+							src={getSlotImageUrl(parsedResult.slot, previewUrl || "", previewBaseUrl, parsedResult.mediaType)}
 							alt={parsedResult.searchQuery}
 							className="w-full h-full object-cover group-hover:scale-105 transition-transform"
 						/>

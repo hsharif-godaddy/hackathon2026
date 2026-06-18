@@ -37,6 +37,12 @@ vi.mock('@/hooks/useChatTabs', () => ({
   }),
 }))
 
+vi.mock('@/stores/useServerPollingStore', () => ({
+  useServerPollingStore: (selector: unknown) => (selector as (state: unknown) => unknown)({
+    getServerState: () => ({ url: 'https://preview.example' }),
+  }),
+}))
+
 const successResult = JSON.stringify({
   success: true,
   slot: 'pages/home/hero',
@@ -147,6 +153,45 @@ describe('MediaSlotToolRenderer', () => {
     )
 
     expect(mockPostMessageToIframe).toHaveBeenCalledTimes(1)
+  })
+
+  it('proxies a relative /airo-assets/* resolvedUrl through the preview origin', async () => {
+    const relativeResult = JSON.stringify({
+      success: true,
+      slot: 'pages/home/hero',
+      slotUrl: '/airo-assets/images/pages/home/hero',
+      mediaType: 'image',
+      searchQuery: 'modern office',
+      resolvedUrl: '/airo-assets/uploads/b50498b248e9f8e51a2120b37122cea9.jpg',
+    })
+
+    renderWithProviders(
+      <MediaSlotToolRenderer
+        toolName="media"
+        toolStatus="completed"
+        result={relativeResult}
+      />
+    )
+
+    expect(await screen.findByAltText('modern office')).toHaveAttribute(
+      'src',
+      'https://preview.example/airo-assets/uploads/b50498b248e9f8e51a2120b37122cea9.jpg'
+    )
+  })
+
+  it('renders an absolute resolvedUrl unchanged', async () => {
+    renderWithProviders(
+      <MediaSlotToolRenderer
+        toolName="media"
+        toolStatus="completed"
+        result={successResult}
+      />
+    )
+
+    expect(await screen.findByAltText('modern office')).toHaveAttribute(
+      'src',
+      'https://media.gettyimages.com/test.jpg'
+    )
   })
 
   it('navigates to media tab and slot when clicked', async () => {

@@ -31,6 +31,12 @@ vi.mock('@/hooks/useChatTabs', () => ({
   }),
 }))
 
+vi.mock('@/stores/useServerPollingStore', () => ({
+  useServerPollingStore: (selector: unknown) => (selector as (state: unknown) => unknown)({
+    getServerState: () => ({ url: 'https://preview.example' }),
+  }),
+}))
+
 function makeToolCall(overrides: Partial<ToolCall> & { result?: unknown }): ToolCall {
   return {
     id: 'tc-1',
@@ -130,6 +136,52 @@ describe('MediaGroupRenderer', () => {
 
     expect(screen.queryByText('0')).not.toBeInTheDocument()
     expect(screen.queryByText('builder_common_options_count')).not.toBeInTheDocument()
+  })
+
+  it('proxies a relative /airo-assets/* resolvedUrl through the preview origin', () => {
+    const toolCalls = [makeToolCall({
+      id: 'tc-1',
+      result: JSON.stringify({
+        success: true,
+        slot: 'pages/home/hero',
+        slotUrl: '/airo-assets/images/pages/home/hero',
+        mediaType: 'image',
+        searchQuery: 'dog grooming',
+        resolvedUrl: '/airo-assets/uploads/b50498b248e9f8e51a2120b37122cea9.jpg',
+      }),
+    })]
+
+    renderWithProviders(
+      <MediaGroupRenderer toolCalls={toolCalls} />
+    )
+
+    expect(screen.getByAltText('dog grooming')).toHaveAttribute(
+      'src',
+      'https://preview.example/airo-assets/uploads/b50498b248e9f8e51a2120b37122cea9.jpg'
+    )
+  })
+
+  it('renders an absolute resolvedUrl unchanged', () => {
+    const toolCalls = [makeToolCall({
+      id: 'tc-1',
+      result: JSON.stringify({
+        success: true,
+        slot: 'pages/home/hero',
+        slotUrl: '/airo-assets/images/pages/home/hero',
+        mediaType: 'image',
+        searchQuery: 'dog grooming',
+        resolvedUrl: 'https://media.gettyimages.com/test.jpg',
+      }),
+    })]
+
+    renderWithProviders(
+      <MediaGroupRenderer toolCalls={toolCalls} />
+    )
+
+    expect(screen.getByAltText('dog grooming')).toHaveAttribute(
+      'src',
+      'https://media.gettyimages.com/test.jpg'
+    )
   })
 
   it('uses alternatives.length as count when alternativeCount is absent', () => {
