@@ -202,7 +202,7 @@ const ButtonGroupItem = forwardRef<HTMLButtonElement, ButtonGroupItemProps>(func
   return (
     <span className="relative inline-flex shrink-0">
       {button}
-      <span className="pointer-events-none absolute -right-px -top-px z-10 flex items-center">
+      <span className="pointer-events-none absolute -right-px -top-px z-9 flex items-center">
         {cornerBadge}
       </span>
     </span>
