@@ -56,8 +56,11 @@ sudo security add-trusted-cert -d -r trustRoot \
 ### 3. Install + run
 
 ```bash
-# probably has to be run from the top-level repo since pnpm workspaces don't always filter env vars correctly when run from a package
+# Install dependencies (from repo root)
 pnpm install && pnpm build
+
+# Configure AWS credentials (required for SQLite database S3 sync)
+aws configure  # or use IAM role / AWS_PROFILE
 
 # `pnpm dev` defaults to PORT=3443 (non-privileged) so no sudo is needed.
 pnpm dev
@@ -80,6 +83,92 @@ AWS_PROFILE=airobuild-dev-private-sso BUDGET_SERVICE_URL=https://budget-service.
 ```
 
 ## Configuration
+
+### SQLite Database Backups
+
+The debug console uses SQLite databases that **sync with S3** — databases are never committed to git. On startup, the app downloads the latest backup from S3 if available. After any write operation, changes are uploaded back to S3 (debounced 30 seconds).
+
+**Databases:**
+- `data/support.db` — Jira AABSP/CIEC tickets
+- `data/l1_transcripts.db` — Care team transcripts + AI tags
+- `data/feedback_analytics.db` — Customer feedback aggregations
+
+**Required environment variables:**
+
+```bash
+# S3 bucket for database backups (uses existing L1 transcripts bucket)
+L1_TRANSCRIPTS_S3_BUCKET=airo-builder-l1-transcripts-dev
+
+# AWS credentials (from IAM role or env vars)
+AWS_REGION=us-west-2
+L1_TRANSCRIPTS_S3_REGION=us-west-2
+AWS_ACCESS_KEY_ID=...     # Only needed locally if not using IAM
+AWS_SECRET_ACCESS_KEY=... # Only needed locally if not using IAM
+```
+
+**S3 structure:**
+```
+s3://airo-builder-l1-transcripts-dev/
+  backups/
+    └── support-plane/              # All support-plane databases
+        ├── l1_transcripts/
+        │   ├── 2026-06-17T04-33-25-764Z.db  # Timestamped backups
+        │   ├── 2026-06-17T05-10-30-123Z.db
+        │   └── 2026-06-17T06-45-15-456Z.db  # Latest used on restore
+        ├── support/
+        │   ├── 2026-06-17T04-33-25-764Z.db
+        │   └── 2026-06-17T05-10-30-123Z.db
+        └── feedback_analytics/
+            ├── 2026-06-17T04-33-25-764Z.db
+            └── 2026-06-17T05-10-30-123Z.db
+```
+
+**Backup behavior:**
+- Every write → 30s debounce → new timestamped backup created
+- Restore always downloads the **latest timestamped backup** for each database
+- Version history preserved (cleanup can be automated with S3 lifecycle rules)
+
+**Local development flow:**
+1. Start app → `syncDb()` checks S3 for latest backup
+2. Downloads if S3 is newer or local is missing
+3. Opens SQLite connection with downloaded/existing database
+4. Any write operation → schedules S3 upload (debounced 30s)
+
+**Production deployment flow:**
+1. New pod starts with empty `data/` directory
+2. App initialization downloads latest backup from S3
+3. Pod serves traffic with restored database
+4. Write operations sync back to S3
+
+**IAM permissions needed (production):**
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "s3:GetObject",
+    "s3:PutObject",
+    "s3:HeadObject"
+  ],
+  "Resource": "arn:aws:s3:::airo-builder-l1-transcripts-dev/backups/*"
+}
+```
+
+**Testing the sync locally:**
+
+```bash
+# 1. Ensure AWS credentials configured
+aws configure  # or use IAM role
+
+# 2. Start debug console
+pnpm --filter debug-console dev
+
+# 3. Check logs for sync events
+# Look for: db.backup.download.*, db.backup.upload.*
+
+# 4. Verify S3 after making writes (wait 30s for debounce)
+aws s3 ls s3://airo-builder-l1-transcripts-dev/backups/
+```
 
 ### Log Backends
 

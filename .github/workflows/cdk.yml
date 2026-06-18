@@ -32,6 +32,7 @@ on:
           - 'EventsS3Stack'
           - 'FeedbackAutomationStack'
           - 'FeedbackFanoutStack'
+          - 'FeedbackL1TranscriptStack'
           - 'FeedbackS3Stack'
           - 'LakeFormationAdminsStack'
           - 'LambdaBaseEcrStack'

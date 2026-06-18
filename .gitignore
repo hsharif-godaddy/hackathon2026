@@ -123,3 +123,6 @@ investigator/node_modules/
 # Cursor extension data
 .cursorindexingignore
 .temporary/
+
+#cert folder
+certs/

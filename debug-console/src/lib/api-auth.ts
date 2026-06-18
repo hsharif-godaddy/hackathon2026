@@ -9,6 +9,11 @@ import { getRootDomainFromHeaders } from './getRootDomain';
 
 const AD_MEMBERSHIP_PATH = '/v1/api/jomax/my/ad_membership';
 
+// Local dev bypass: mirrors the same env var used by /api/auth/validate.
+// When set, withAuth skips real JWT + AD-group checks entirely.
+const DEV_BYPASS_EMAIL =
+    process.env.NODE_ENV === 'development' ? (process.env.DEV_AUTH_BYPASS ?? '') : '';
+
 // AD-group membership cache: SSO returns the same set for the duration of a
 // JWT, so re-fetching on every API call is pure overhead — a single Dashboard
 // load was firing ~20 redundant calls. Cache by SHA-256(token) so we never
@@ -93,6 +98,10 @@ type WithAuthOptions =
  * Returns authenticated: true if valid, or an error response if not
  */
 export async function validateApiAuth(request: NextRequest, options?: WithAuthOptions): Promise<AuthResult> {
+    if (DEV_BYPASS_EMAIL) {
+        return { authenticated: true, user: { email: DEV_BYPASS_EMAIL, shopperId: 'dev', cid: 'dev' } };
+    }
+
     const token = gdAuthService.extractTokenFromRequest(request);
 
     if (!token) {

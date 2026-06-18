@@ -18,3 +18,8 @@ next-env.d.ts
 # script I/O: PDNA input snapshot + generated artifacts (keep the dir, ignore contents)
 scripts/output/*
 !scripts/output/.gitkeep
+
+# SQLite databases (local dev data, synced via S3)
+data/*.db
+data/*.db-shm
+data/*.db-wal

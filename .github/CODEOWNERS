@@ -2,7 +2,7 @@
 # Generated from git log as of 2026-05-12.
 
 # Root files
-#/* @deverton-godaddy @jeichorn-godaddy @hdewan-godaddy @mlefebvre1-godaddy @ugupta-godaddy @arai1-godaddy @matkinson-godaddy @jundai-godaddy @kra-godaddy
+#/* @deverton-godaddy @jeichorn-godaddy @hdewan-godaddy @mlefebvre1-godaddy @ugupta-godaddy @arai1-godaddy @matkinson-godaddy @jundai-godaddy @kra-godaddy @sgupta10-godaddy
 
 # Config dirs
 /.claude/ @deverton-godaddy @jlemay-godaddy @dmiller1-godaddy
@@ -29,11 +29,11 @@
 /app-templates/ @gdcorp-partners/dev-airo-ai-core-agent-squad
 /blog/ @jwatson2-godaddy @nsharkawy-godaddy @dradojkovic-godaddy
 /budget-service/ @mmason2-godaddy @agerard-godaddy @deverton-godaddy
-/cdk/ @ugupta-godaddy @jeichorn-godaddy @deverton-godaddy
+/cdk/ @ugupta-godaddy @jeichorn-godaddy @deverton-godaddy @sgupta10-godaddy
 /cli-agent-client/ @gdcorp-partners/dev-airo-ai-core-agent-squad
 /container-scripts/ @deverton-godaddy @matkinson-godaddy @hmaheshwari-godaddy
 /evals/corpus-eval/ @rjha3-godaddy @deverton-godaddy @mlefebvre1-godaddy
-/debug-console/ @ugupta-godaddy @deverton-godaddy @hgupta2-godaddy
+/debug-console/ @ugupta-godaddy @deverton-godaddy @hgupta2-godaddy @sgupta10-godaddy
 /design-data/ @gdcorp-partners/dev-airo-ai-core-agent-squad
 /design-rag/ @gdcorp-partners/dev-airo-ai-core-agent-squad
 /dev-runner/ @deverton-godaddy @jundai-godaddy @matkinson-godaddy
