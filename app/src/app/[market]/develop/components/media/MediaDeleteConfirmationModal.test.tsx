@@ -4,12 +4,27 @@ import '@testing-library/jest-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 
-import { MediaDeleteConfirmationModal } from './MediaDeleteConfirmationModal';
-
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string, _values?: unknown, fallback?: string) =>
     fallback ? `translated:${key}` : `translated:${key}`,
 }));
+
+// Mock @ux/modal to avoid Disrupt rendering issues in jsdom (matches DeleteRowModal.test).
+// The close button surfaces onClose so we can exercise the mid-delete guard.
+vi.mock('@ux/modal', () => ({
+  default: ({ title, children, actions, onClose, ariaLabels }: any) => (
+    <div role="dialog" aria-label={typeof title === 'string' ? title : undefined}>
+      <h2>{title}</h2>
+      <button onClick={onClose} aria-label={ariaLabels?.close ?? 'Close'}>
+        Close
+      </button>
+      <div>{children}</div>
+      <div>{actions}</div>
+    </div>
+  ),
+}));
+
+import { MediaDeleteConfirmationModal } from './MediaDeleteConfirmationModal';
 
 describe('MediaDeleteConfirmationModal', () => {
   it('renders image-variant copy and a thumbnail when given an imageUrl', () => {
@@ -87,7 +102,7 @@ describe('MediaDeleteConfirmationModal', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
-  it('fires onCancel when Escape is pressed', () => {
+  it('fires onCancel when the modal close button is used', () => {
     const onCancel = vi.fn();
     render(
       <MediaDeleteConfirmationModal
@@ -99,8 +114,24 @@ describe('MediaDeleteConfirmationModal', () => {
       />
     );
 
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: 'translated:builder_common_close' }));
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores the modal close button while deleting', () => {
+    const onCancel = vi.fn();
+    render(
+      <MediaDeleteConfirmationModal
+        isVideo={false}
+        imageUrl={null}
+        isDeleting={true}
+        onCancel={onCancel}
+        onConfirm={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'translated:builder_common_close' }));
+    expect(onCancel).not.toHaveBeenCalled();
   });
 
   it('disables both buttons while deleting and shows the deleting label', () => {
