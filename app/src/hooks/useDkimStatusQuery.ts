@@ -8,14 +8,12 @@ import { appFetch } from '@/lib/gasket-config';
  *
  * 80 attempts × 30s interval = 40 minutes of polling. Beyond that we stop
  * regardless of dkimValid state, on the assumption that something is wrong
- * (DNS propagation stuck, EXTERNAL domain that was never onboarded, mail-flow
- * outage, etc.) and the user needs to take action manually rather than
- * stare at a "DKIM pending" badge forever.
+ * (DNS propagation stuck, mail-flow outage, Vox provisioning stalled, etc.)
+ * and the user needs to take action manually rather than stare at a
+ * "DKIM pending" badge forever.
  *
- * Without this cap, EXTERNAL-origin domains (which are intentionally not
- * onboarded — see DkimService.activate's `unsupported_origin` skip) would
- * poll every 30s for the lifetime of the page, since dkimValid never
- * transitions to true for them.
+ * This cap is a generic stuck-state guard — it fires for any domain whose
+ * dkimValid never transitions to true within the window, regardless of origin.
  */
 const MAX_POLL_ATTEMPTS = 80;
 
@@ -35,18 +33,11 @@ async function fetchDkimStatus(appId: string, domain: string): Promise<DkimStatu
  *
  * Polls the DKIM status endpoint every 30s and stops on the FIRST of:
  *   - dkimValid === true (DNS propagated, all good)
- *   - dataUpdateCount >= MAX_POLL_ATTEMPTS (40 minutes elapsed)
+ *   - dataUpdateCount >= MAX_POLL_ATTEMPTS (40 minutes elapsed, stuck-state cap)
  *
- * The terminal-cap guard is what stops polling for EXTERNAL-origin domains
- * (where DKIM was deliberately skipped at onboard time and never becomes
- * valid) and for any other case where the verifier is stuck. Without it,
- * a misconfigured page session could poll forever.
- *
- * The badge component (DkimStatusBadge) renders "DKIM pending" until the
- * poll either succeeds OR exceeds the cap; after the cap, the last result
- * (still pending) sticks visually but the network traffic stops. UI
- * consumers that want to distinguish "just hasn't propagated yet" from
- * "we gave up" can read `query.state.dataUpdateCount` themselves.
+ * After the cap the last result sticks visually but network traffic stops.
+ * Consumers that want to distinguish "still loading" from "gave up" can read
+ * `query.state.dataUpdateCount` or inspect `isError` / `isPending`.
  */
 export function useDkimStatusQuery(
   appId: string | null,

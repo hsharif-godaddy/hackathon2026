@@ -23,6 +23,8 @@ import {
 import DomainPurchaseWidget from '@/app/[market]/develop/components/widgets/DomainPurchaseWidget';
 import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
+import { useDkimAutoOnboard } from '@/hooks/useDkimAutoOnboard';
+import { useDkimStatusQueryExternal } from '@/hooks/useDkimStatusQueryExternal';
 import { useDomainDnsOwnership } from '@/hooks/useDomainDnsOwnership';
 import { useDomainPolling } from '@/hooks/useDomainPolling';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
@@ -93,6 +95,7 @@ export default function DomainAttachWidget({
   const isDomainPurchaseEnabled = useSwitchboard('appbuilder-domain-purchase');
   const isDomainTransferEnabled = useSwitchboard('appbuilder-domain-transfer');
   const dkimUiEnabled = useSwitchboard('appbuilder-dkim-onboarding') === true;
+  const externalDkimEnabled = useSwitchboard('aab-external-dkim') === true;
 
   // Custom domain input state
   const [customDomain, setCustomDomain] = useState<string | null>(null);
@@ -237,6 +240,44 @@ export default function DomainAttachWidget({
     !!pendingDomainDetails &&
     !hideDomainDnsUntilOwnershipResolved &&
     treatAsExternal;
+
+  const activeExternalDomainDetails = useMemo(() => {
+    return siteDomains.find((d) => {
+      if (d.domainType === 'prefix') return false;
+      if (isCustomerDomain(d.fqdn, domains)) return false;
+      return d.status === DomainStatus.ACTIVE;
+    }) ?? null;
+  }, [siteDomains, domains]);
+  const activeExternalDomainForDkim = activeExternalDomainDetails?.fqdn ?? null;
+
+  // Pending external domains are already attached, so onboard can provision
+  // email records before DCV completes. Durable polling still waits for ACTIVE.
+  useDkimAutoOnboard({
+    appId,
+    domain: pendingDomain,
+    enabled: dkimUiEnabled && externalDkimEnabled && !!pendingDomain && treatAsExternal,
+  });
+
+  const { data: pendingDomainDkimStatus } = useDkimStatusQueryExternal(
+    dkimUiEnabled && externalDkimEnabled && !!pendingDomain && treatAsExternal ? appId : null,
+    pendingDomain,
+    { durablePolling: false },
+  );
+
+  // External DKIM starts only after DCV completes and the attached domain is active.
+  useDkimAutoOnboard({
+    appId,
+    domain: activeExternalDomainForDkim,
+    enabled: dkimUiEnabled && externalDkimEnabled && !!activeExternalDomainForDkim,
+  });
+
+  // Fetch DKIM status for the active external domain using the external polling strategy
+  // (fast → exponential backoff → 24 h/poll, 30-day limit).
+  // Only runs when the external DKIM feature flag is on.
+  const { data: activeExternalDomainDkimStatus } = useDkimStatusQueryExternal(
+    dkimUiEnabled && externalDkimEnabled && !!activeExternalDomainForDkim ? appId : null,
+    activeExternalDomainForDkim,
+  );
 
   // Cleanup validation timeout on unmount
   useEffect(() => {
@@ -982,9 +1023,26 @@ export default function DomainAttachWidget({
           <text.strong size={-1}>
             {t('builder_domain_attach_dns_title')}
           </text.strong>
-          <DomainDNS domainDetails={pendingDomainDetails} />
+          <DomainDNS
+            domainDetails={pendingDomainDetails}
+            dkimCnames={pendingDomainDkimStatus?.dkimRecordExpected?.cnames}
+            dmarcExpected={pendingDomainDkimStatus?.dmarcRecordExpected}
+          />
         </Box>
       )}
+
+      {activeExternalDomainDetails && activeExternalDomainDkimStatus?.dkimRecordExpected?.cnames?.length ? (
+        <Box gap="sm">
+          <text.strong size={-1}>
+            {t('builder_domain_attach_dns_title')}
+          </text.strong>
+          <DomainDNS
+            domainDetails={activeExternalDomainDetails}
+            dkimCnames={activeExternalDomainDkimStatus.dkimRecordExpected.cnames}
+            dmarcExpected={activeExternalDomainDkimStatus.dmarcRecordExpected}
+          />
+        </Box>
+      ) : null}
 
       {/* Purchase option - only shown when user HAS domains (otherwise shown in empty state) */}
       {isDomainPurchaseEnabled && hasGoDaddyDomains && (

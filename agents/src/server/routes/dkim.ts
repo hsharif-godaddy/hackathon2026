@@ -8,6 +8,10 @@ const router: Router = Router();
 const repo = new DkimOnboardingRepository();
 const logger = Logger.create({ component: 'dkim-routes' });
 
+function toIso(value: Date | null | undefined): string | null {
+  return value ? value.toISOString() : null;
+}
+
 function requireDomain(req: Request, res: Response): string | null {
   const { domain } = (req.body ?? {}) as { domain?: unknown };
   if (!domain || typeof domain !== 'string') {
@@ -37,6 +41,33 @@ router.post('/apps/:id/dkim/active', validateAppOwnership, (req: Request, res: R
   res.json({ ok: true });
 });
 
+router.post('/apps/:id/dkim/poll/claim', validateAppOwnership, (req: Request, res: Response) => {
+  const appId = req.params.id;
+  if (!appId) { res.status(400).json({ error: 'App ID is required' }); return; }
+  const domain = requireDomain(req, res);
+  if (!domain) return;
+  const result = repo.claimDuePoll(appId, domain);
+  logger.info('dkim.route.poll.claim', { appId, domain, shouldPoll: result.shouldPoll, expired: result.expired });
+  res.json({
+    shouldPoll: result.shouldPoll,
+    expired: result.expired,
+    status: result.status,
+    pollStartedAt: toIso(result.pollStartedAt),
+    nextPollAt: toIso(result.nextPollAt),
+    lastPolledAt: toIso(result.lastPolledAt),
+  });
+});
+
+router.post('/apps/:id/dkim/poll/complete', validateAppOwnership, (req: Request, res: Response) => {
+  const appId = req.params.id;
+  if (!appId) { res.status(400).json({ error: 'App ID is required' }); return; }
+  const domain = requireDomain(req, res);
+  if (!domain) return;
+  repo.completeDuePoll(appId, domain);
+  logger.info('dkim.route.poll.complete', { appId, domain });
+  res.json({ ok: true });
+});
+
 router.post('/apps/:id/dkim/accepted', validateAppOwnership, (req: Request, res: Response) => {
   const appId = req.params.id;
   if (!appId) { res.status(400).json({ error: 'App ID is required' }); return; }
@@ -61,6 +92,25 @@ router.post('/apps/:id/dkim/failed', validateAppOwnership, (req: Request, res: R
   repo.setFailed(appId, domain, typeof error === 'string' ? error : 'unknown');
   logger.info('dkim.route.failed', { appId, domain });
   res.json({ ok: true });
+});
+
+router.get('/apps/:id/dkim', validateAppOwnership, (req: Request, res: Response) => {
+  const appId = req.params.id;
+  if (!appId) { res.status(400).json({ error: 'App ID is required' }); return; }
+  const rawDomain = req.query.domain;
+  if (!rawDomain || typeof rawDomain !== 'string') {
+    res.status(400).json({ error: 'domain query param is required' });
+    return;
+  }
+  const domain = rawDomain.toLowerCase();
+  const row = repo.findByAppDomain(appId, domain);
+  logger.info('dkim.route.get', { appId, domain, found: !!row });
+  res.json({
+    createdAt: toIso(row?.createdAt),
+    pollStartedAt: toIso(row?.pollStartedAt),
+    nextPollAt: toIso(row?.nextPollAt),
+    lastPolledAt: toIso(row?.lastPolledAt),
+  });
 });
 
 router.delete('/apps/:id/dkim', validateAppOwnership, (req: Request, res: Response) => {

@@ -10,7 +10,7 @@ import text from "@ux/text";
 import type { AppDomain } from '@/hooks/useAppDetails';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
-import { getDnsRecords } from '@/utils/domain';
+import { getDnsRecords, parseDomain } from '@/utils/domain';
 
 export function CopyableValue({ value }: { value: string }) {
   const t = useTranslations();
@@ -106,14 +106,64 @@ function DnsRecordCard({
 }
 
 /**
+ * Parse DKIM CNAME records into displayable DNS record cards.
+ *
+ * The mail-flow service returns CNAME target values in the form
+ * `s{N}.dkim.{domain_underscored}.{hash}.onsecureserver.net.`
+ * The DNS record HOST names the user must create follow GoDaddy's selector
+ * convention: `secureserver{N}._domainkey` (1-based index matching the
+ * order returned by the mail-flow API).
+ * e.g. first target → `secureserver1._domainkey`, second → `secureserver2._domainkey`
+ */
+function buildDkimCnameCards(
+  dkimCnames: string[],
+  apexDomain: string,
+): Array<{ type: 'CNAME'; name: string; value: string; ttl: number }> {
+  return dkimCnames.flatMap((cnameTarget, index) => {
+    if (!cnameTarget.includes('.')) return [];
+    return [{
+      type: 'CNAME' as const,
+      name: `secureserver${index + 1}._domainkey`,
+      value: cnameTarget,
+      ttl: 3600,
+    }];
+  });
+}
+
+const SPF_RECORD = {
+  type: 'TXT' as const,
+  name: '@',
+  value: 'v=spf1 include:secureserver.net -all',
+  ttl: 3600,
+};
+
+const SPF_WARNING_DEFAULT =
+  'Required: Please make sure your domain only has one SPF record. If multiple SPF records are found on your domain or if the SPF record is not added correctly, your email might not be delivered.';
+
+/**
  * DNS Configuration Instructions Component
  *
- * Displays DNS records that need to be configured for a pending domain.
- * Shows A record with anycast IP and CNAME record for www subdomain.
+ * Displays DNS records that need to be configured for a pending domain:
+ * - A record (anycast IP)
+ * - CNAME for www (root domains only)
+ * - DCV CNAME for ACME challenge (once provisioned)
+ * - SPF TXT record (once DCV is ready)
+ * - DKIM CNAME records (once provisioned AND DCV CNAME is available)
+ * - DMARC TXT record (once provisioned AND DCV CNAME is available)
  *
  * @param domainDetails - Pending domain details with anycast IP
+ * @param dkimCnames - CNAME targets from dkimRecordExpected; shown only after DCV is ready
+ * @param dmarcExpected - Expected DMARC record value from mail-flow status response
  */
-export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain }) {
+export default function DomainDNS({
+  domainDetails,
+  dkimCnames,
+  dmarcExpected,
+}: {
+  domainDetails: AppDomain;
+  dkimCnames?: string[];
+  dmarcExpected?: string;
+}) {
   const t = useTranslations();
   const { fqdn, anycastIp, certificateValidationCname } = domainDetails;
   const isDCVEnabled = useSwitchboard('appbuilder-domain-dcv');
@@ -137,8 +187,22 @@ export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain 
     );
   }
 
-  // Get DNS records based on domain type (root domain vs subdomain)
   const dnsRecords = getDnsRecords(fqdn, anycastIp, certificateValidationCname);
+
+  // Email records (SPF, DKIM, DMARC) are shown once the DCV CNAME is provisioned
+  // AND dkimCnames are available (indicating the aab-external-dkim flag is on and
+  // Vox has provisioned the selectors). Tying all three to dkimCnames means the
+  // entire email block is suppressed automatically when the flag is off.
+  const emailRecordsReady = isDCVEnabled && !!certificateValidationCname && !!dkimCnames?.length;
+  const apexDomain = parseDomain(fqdn)?.rootDomain ?? fqdn;
+  const dkimRecordCards = emailRecordsReady
+    ? buildDkimCnameCards(dkimCnames!, apexDomain)
+    : [];
+
+  const dmarcRecord =
+    emailRecordsReady && dmarcExpected
+      ? { type: 'TXT' as const, name: '_dmarc', value: dmarcExpected, ttl: 3600 }
+      : null;
 
   return (
     <Box
@@ -150,11 +214,26 @@ export default function DomainDNS({ domainDetails }: { domainDetails: AppDomain 
         {t('builder_domain_dns_instructions')}
       </text.p>
 
-      {/* DNS Records Cards */}
+      {emailRecordsReady && (
+        <Box
+          className="rounded-md border border-intents-ux-feedback-warning-borderColor bg-intents-ux-feedback-warning-backgroundColor p-3"
+          orientation="vertical"
+        >
+          <text.p className="text-sm">
+            {SPF_WARNING_DEFAULT}
+          </text.p>
+        </Box>
+      )}
+
       <Box orientation="vertical" gap="sm">
         <DnsRecordCard {...dnsRecords.aRecord} />
         {dnsRecords.cnameRecord && <DnsRecordCard {...dnsRecords.cnameRecord} />}
         {dnsRecords.dcvRecord && <DnsRecordCard {...dnsRecords.dcvRecord} />}
+        {emailRecordsReady && <DnsRecordCard {...SPF_RECORD} />}
+        {dkimRecordCards.map((record) => (
+          <DnsRecordCard key={record.name} {...record} />
+        ))}
+        {dmarcRecord && <DnsRecordCard {...dmarcRecord} />}
       </Box>
     </Box>
   );

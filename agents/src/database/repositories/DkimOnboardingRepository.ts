@@ -11,6 +11,12 @@ const logger = Logger.create({ component: 'dkim-onboarding-repo' });
 // Vox execution + DNS propagation, so a healthy pending always reaches
 // `active` before the window elapses.
 const PENDING_COOLDOWN = '-2 hours';
+const POLL_LEASE_MS = 2 * 60 * 1000;
+const FAST_POLL_WINDOW_MS = 40 * 60 * 1000;
+const FAST_POLL_INTERVAL_MS = 30 * 1000;
+const EXPONENTIAL_BASE_MS = 60 * 1000;
+const DAILY_POLL_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const MAX_POLL_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type DkimOnboardingStatus = 'pending' | 'active' | 'failed';
 
@@ -21,6 +27,9 @@ export interface DkimOnboardingRow {
   status: DkimOnboardingStatus;
   executionArn: string | null;
   lastError: string | null;
+  pollStartedAt: Date | null;
+  nextPollAt: Date | null;
+  lastPolledAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,6 +37,15 @@ export interface DkimOnboardingRow {
 export interface ClaimResult {
   claimed: boolean;
   status: DkimOnboardingStatus;
+}
+
+export interface DuePollDecision {
+  shouldPoll: boolean;
+  expired: boolean;
+  status: DkimOnboardingStatus | null;
+  pollStartedAt: Date | null;
+  nextPollAt: Date | null;
+  lastPolledAt: Date | null;
 }
 
 export class DkimOnboardingRepository {
@@ -119,6 +137,133 @@ export class DkimOnboardingRepository {
     }
   }
 
+  /**
+   * Atomically claims a due external-DKIM poll window. `next_poll_at` doubles as
+   * a short in-flight lease so multiple devices/tabs cannot all call MailFlow.
+   */
+  claimDuePoll(appId: string, domain: string, now = new Date()): DuePollDecision {
+    const txn = this.db.transaction((): DuePollDecision => {
+      let row = this.db
+        .prepare(`SELECT * FROM dkim_onboarding WHERE app_id = ? AND domain = ?`)
+        .get(appId, domain) as Record<string, unknown> | undefined;
+
+      if (!row) {
+        const id = `dkim-${nanoid()}`;
+        const nowSql = toSqlDate(now);
+        this.db
+          .prepare(
+            `INSERT INTO dkim_onboarding
+             (id, app_id, domain, status, poll_started_at, next_poll_at, last_polled_at)
+             VALUES (?, ?, ?, 'pending', ?, ?, ?)`,
+          )
+          .run(id, appId, domain, nowSql, toSqlDate(addMs(now, POLL_LEASE_MS)), nowSql);
+        return {
+          shouldPoll: true,
+          expired: false,
+          status: 'pending',
+          pollStartedAt: now,
+          nextPollAt: addMs(now, POLL_LEASE_MS),
+          lastPolledAt: now,
+        };
+      }
+
+      if (row.status === 'active') {
+        return this.decisionFromRow(row, false, false);
+      }
+
+      if (!row.poll_started_at) {
+        const nowSql = toSqlDate(now);
+        this.db
+          .prepare(
+            `UPDATE dkim_onboarding
+             SET poll_started_at = ?, next_poll_at = ?, last_polled_at = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE app_id = ? AND domain = ?`,
+          )
+          .run(nowSql, toSqlDate(addMs(now, POLL_LEASE_MS)), nowSql, appId, domain);
+        return {
+          shouldPoll: true,
+          expired: false,
+          status: row.status as DkimOnboardingStatus,
+          pollStartedAt: now,
+          nextPollAt: addMs(now, POLL_LEASE_MS),
+          lastPolledAt: now,
+        };
+      }
+
+      const pollStartedAt = parseDbDate(row.poll_started_at);
+      if (pollStartedAt && now.getTime() - pollStartedAt.getTime() >= MAX_POLL_WINDOW_MS) {
+        this.db
+          .prepare(
+            `UPDATE dkim_onboarding
+             SET next_poll_at = NULL, updated_at = CURRENT_TIMESTAMP
+             WHERE app_id = ? AND domain = ?`,
+          )
+          .run(appId, domain);
+        return {
+          shouldPoll: false,
+          expired: true,
+          status: row.status as DkimOnboardingStatus,
+          pollStartedAt,
+          nextPollAt: null,
+          lastPolledAt: parseDbDate(row.last_polled_at),
+        };
+      }
+
+      const nextPollAt = parseDbDate(row.next_poll_at);
+      if (nextPollAt && nextPollAt.getTime() > now.getTime()) {
+        return this.decisionFromRow(row, false, false);
+      }
+
+      const nowSql = toSqlDate(now);
+      this.db
+        .prepare(
+          `UPDATE dkim_onboarding
+           SET next_poll_at = ?, last_polled_at = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE app_id = ? AND domain = ?`,
+        )
+        .run(toSqlDate(addMs(now, POLL_LEASE_MS)), nowSql, appId, domain);
+
+      row = {
+        ...row,
+        next_poll_at: toSqlDate(addMs(now, POLL_LEASE_MS)),
+        last_polled_at: nowSql,
+      };
+      return this.decisionFromRow(row, true, false);
+    });
+
+    const decision = txn();
+    logger.info('dkim.repo.poll.claim', {
+      appId,
+      domain,
+      shouldPoll: decision.shouldPoll,
+      expired: decision.expired,
+    });
+    return decision;
+  }
+
+  completeDuePoll(appId: string, domain: string, now = new Date()): void {
+    const row = this.db
+      .prepare(`SELECT poll_started_at FROM dkim_onboarding WHERE app_id = ? AND domain = ?`)
+      .get(appId, domain) as { poll_started_at: string | null } | undefined;
+
+    const pollStartedAt = parseDbDate(row?.poll_started_at);
+    if (!pollStartedAt) {
+      logger.warn('dkim.repo.poll.complete.no-start', { appId, domain });
+      return;
+    }
+
+    const nextPollAt = addMs(now, getNextPollIntervalMs(pollStartedAt, now));
+    this.db
+      .prepare(
+        `UPDATE dkim_onboarding
+         SET next_poll_at = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE app_id = ? AND domain = ? AND status != 'active'`,
+      )
+      .run(toSqlDate(nextPollAt), appId, domain);
+
+    logger.info('dkim.repo.poll.complete', { appId, domain, nextPollAt: nextPollAt.toISOString() });
+  }
+
   /** Upsert to `active`; never downgrades. Insert-if-missing adopts
    * backfilled / externally-onboarded domains from observed DNS truth. */
   markActive(appId: string, domain: string): void {
@@ -139,7 +284,7 @@ export class DkimOnboardingRepository {
         this.db
           .prepare(
             `UPDATE dkim_onboarding
-             SET status = 'active', last_error = NULL, updated_at = CURRENT_TIMESTAMP
+             SET status = 'active', last_error = NULL, next_poll_at = NULL, updated_at = CURRENT_TIMESTAMP
              WHERE id = ?`,
           )
           .run(existing.id);
@@ -165,8 +310,49 @@ export class DkimOnboardingRepository {
       status: row.status as DkimOnboardingStatus,
       executionArn: (row.execution_arn as string | null) ?? null,
       lastError: (row.last_error as string | null) ?? null,
+      pollStartedAt: parseDbDate(row.poll_started_at),
+      nextPollAt: parseDbDate(row.next_poll_at),
+      lastPolledAt: parseDbDate(row.last_polled_at),
       createdAt: new Date(row.created_at as string),
       updatedAt: new Date(row.updated_at as string),
     };
   }
+
+  private decisionFromRow(row: Record<string, unknown>, shouldPoll: boolean, expired: boolean): DuePollDecision {
+    return {
+      shouldPoll,
+      expired,
+      status: (row.status as DkimOnboardingStatus | null) ?? null,
+      pollStartedAt: parseDbDate(row.poll_started_at),
+      nextPollAt: parseDbDate(row.next_poll_at),
+      lastPolledAt: parseDbDate(row.last_polled_at),
+    };
+  }
+}
+
+function addMs(date: Date, ms: number): Date {
+  return new Date(date.getTime() + ms);
+}
+
+function toSqlDate(date: Date): string {
+  return date.toISOString().slice(0, 19).replace('T', ' ');
+}
+
+function parseDbDate(value: unknown): Date | null {
+  if (!value || typeof value !== 'string') return null;
+  return new Date(value.includes('T') ? value : `${value.replace(' ', 'T')}Z`);
+}
+
+function getNextPollIntervalMs(pollStartedAt: Date, now: Date): number {
+  const elapsed = now.getTime() - pollStartedAt.getTime();
+  if (elapsed < FAST_POLL_WINDOW_MS) return FAST_POLL_INTERVAL_MS;
+
+  let remaining = elapsed - FAST_POLL_WINDOW_MS;
+  let interval = EXPONENTIAL_BASE_MS;
+  while (remaining >= interval && interval < DAILY_POLL_INTERVAL_MS) {
+    remaining -= interval;
+    interval = Math.min(interval * 2, DAILY_POLL_INTERVAL_MS);
+  }
+
+  return interval;
 }

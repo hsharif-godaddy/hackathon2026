@@ -381,7 +381,11 @@ export function hasExternalNameservers(
  * @param certificateValidationCname - The certificate validation CNAME value to use for the CNAME record
  * @returns DNS record recommendations
  */
-export function getDnsRecords(domain: string, anycastIp: string, certificateValidationCname?: string): {
+export function getDnsRecords(
+  domain: string,
+  anycastIp: string,
+  certificateValidationCname?: string,
+): {
   aRecord: { type: 'A'; name: string; value: string; ttl: number };
   cnameRecord: { type: 'CNAME'; name: string; value: string; ttl: number } | null;
   dcvRecord: { type: 'CNAME'; name: string; value: string; ttl: number } | null;

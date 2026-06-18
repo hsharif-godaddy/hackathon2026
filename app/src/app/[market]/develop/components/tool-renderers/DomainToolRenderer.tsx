@@ -12,7 +12,6 @@ import DomainAttachWidget from '@/app/[market]/develop/components/widgets/Domain
 import DomainPurchaseWidget from '@/app/[market]/develop/components/widgets/DomainPurchaseWidget'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { useDkimAutoOnboard } from '@/hooks/useDkimAutoOnboard'
-import { useDomainDnsOwnership } from '@/hooks/useDomainDnsOwnership'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 
@@ -62,15 +61,9 @@ export default function DomainToolRenderer({
   // is the runtime gate.
   const dkimUiEnabled = useSwitchboard('appbuilder-dkim-onboarding') === true
   const dkimEnabled = dkimUiEnabled && isLastAssistantMessage && isAttach && isSuccess && !!appId && !!domain
-  const { data: ownershipData } = useDomainDnsOwnership({
-    siteId: appId,
-    fqdns: domain ?? '',
-    enabled: dkimEnabled,
-  })
   useDkimAutoOnboard({
     appId,
     domain,
-    ownership: ownershipData ?? null,
     enabled: dkimEnabled,
   })
 

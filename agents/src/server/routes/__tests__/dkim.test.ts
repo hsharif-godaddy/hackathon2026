@@ -8,6 +8,9 @@ const mockRepo = vi.hoisted(() => ({
   setFailed: vi.fn(),
   markActive: vi.fn(),
   deleteByAppDomain: vi.fn(),
+  findByAppDomain: vi.fn(),
+  claimDuePoll: vi.fn(),
+  completeDuePoll: vi.fn(),
 }));
 
 vi.mock('../../../database/repositories/DkimOnboardingRepository.js', () => ({
@@ -36,6 +39,55 @@ const createTestApp = (siteId: string) => {
 describe('dkim routes', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('GET returns createdAt when row exists', async () => {
+    const createdAt = new Date('2026-01-01T00:00:00.000Z');
+    mockRepo.findByAppDomain.mockReturnValue({
+      id: 'dkim-abc', appId: VALID, domain: 'acme.com',
+      status: 'active', executionArn: null, lastError: null,
+      pollStartedAt: createdAt,
+      nextPollAt: new Date('2026-01-01T00:00:30.000Z'),
+      lastPolledAt: null,
+      createdAt, updatedAt: createdAt,
+    });
+    const res = await request(createTestApp(VALID))
+      .get(`/apps/${VALID}/dkim?domain=acme.com`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      createdAt: '2026-01-01T00:00:00.000Z',
+      pollStartedAt: '2026-01-01T00:00:00.000Z',
+      nextPollAt: '2026-01-01T00:00:30.000Z',
+      lastPolledAt: null,
+    });
+    expect(mockRepo.findByAppDomain).toHaveBeenCalledWith(VALID, 'acme.com');
+  });
+
+  it('GET returns createdAt null when no row exists', async () => {
+    mockRepo.findByAppDomain.mockReturnValue(null);
+    const res = await request(createTestApp(VALID))
+      .get(`/apps/${VALID}/dkim?domain=acme.com`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      createdAt: null,
+      pollStartedAt: null,
+      nextPollAt: null,
+      lastPolledAt: null,
+    });
+  });
+
+  it('GET 400s without a domain query param', async () => {
+    const res = await request(createTestApp(VALID))
+      .get(`/apps/${VALID}/dkim`);
+    expect(res.status).toBe(400);
+    expect(mockRepo.findByAppDomain).not.toHaveBeenCalled();
+  });
+
+  it('GET blocks cross-tenant access with 403', async () => {
+    const res = await request(createTestApp(OTHER))
+      .get(`/apps/${VALID}/dkim?domain=acme.com`);
+    expect(res.status).toBe(403);
+    expect(mockRepo.findByAppDomain).not.toHaveBeenCalled();
+  });
+
   it('POST claim returns the repository result', async () => {
     mockRepo.claim.mockReturnValue({ claimed: true, status: 'pending' });
     const res = await request(createTestApp(VALID))
@@ -58,6 +110,42 @@ describe('dkim routes', () => {
       .send({ domain: 'acme.com' });
     expect(res.status).toBe(200);
     expect(mockRepo.markActive).toHaveBeenCalledWith(VALID, 'acme.com');
+  });
+
+  it('POST poll/claim returns durable due-poll decision', async () => {
+    mockRepo.claimDuePoll.mockReturnValue({
+      shouldPoll: true,
+      expired: false,
+      status: 'pending',
+      pollStartedAt: new Date('2026-06-17T10:00:00.000Z'),
+      nextPollAt: new Date('2026-06-17T10:02:00.000Z'),
+      lastPolledAt: new Date('2026-06-17T10:00:00.000Z'),
+    });
+
+    const res = await request(createTestApp(VALID))
+      .post(`/apps/${VALID}/dkim/poll/claim`)
+      .send({ domain: 'acme.com' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      shouldPoll: true,
+      expired: false,
+      status: 'pending',
+      pollStartedAt: '2026-06-17T10:00:00.000Z',
+      nextPollAt: '2026-06-17T10:02:00.000Z',
+      lastPolledAt: '2026-06-17T10:00:00.000Z',
+    });
+    expect(mockRepo.claimDuePoll).toHaveBeenCalledWith(VALID, 'acme.com');
+  });
+
+  it('POST poll/complete records the next scheduled poll after a successful check', async () => {
+    const res = await request(createTestApp(VALID))
+      .post(`/apps/${VALID}/dkim/poll/complete`)
+      .send({ domain: 'acme.com' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+    expect(mockRepo.completeDuePoll).toHaveBeenCalledWith(VALID, 'acme.com');
   });
 
   it('POST accepted records the arn', async () => {

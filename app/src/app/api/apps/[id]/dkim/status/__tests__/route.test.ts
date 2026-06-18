@@ -7,12 +7,23 @@ const {
   mockGetSite,
   mockLogger,
   mockMarkActive,
+  mockGetRow,
+  mockClaimDuePoll,
+  mockCompleteDuePoll,
   mockCheckSwitchboardFlag,
 } = vi.hoisted(() => ({
   mockGetDkimStatusCached: vi.fn(),
   mockGetSite: vi.fn(),
   mockLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   mockMarkActive: vi.fn().mockResolvedValue(undefined),
+  mockGetRow: vi.fn().mockResolvedValue({
+    createdAt: null,
+    pollStartedAt: '2026-06-17T10:00:00.000Z',
+    nextPollAt: '2026-06-17T10:00:30.000Z',
+    lastPolledAt: '2026-06-17T10:00:00.000Z',
+  }),
+  mockClaimDuePoll: vi.fn(),
+  mockCompleteDuePoll: vi.fn().mockResolvedValue(undefined),
   mockCheckSwitchboardFlag: vi.fn(),
 }));
 
@@ -58,8 +69,11 @@ const SITE = {
 };
 const validStatus = { dkimValid: true, dkimResult: 'DKIM_VALID' };
 
-function makeRequest(domain?: string): NextRequest {
-  const url = `https://airo.test/api/apps/${APP_ID}/dkim/status${domain ? `?domain=${domain}` : ''}`;
+function makeRequest(domain?: string, externalPolling = false): NextRequest {
+  const qs = domain
+    ? `?domain=${domain}${externalPolling ? '&polling=external' : ''}`
+    : '';
+  const url = `https://airo.test/api/apps/${APP_ID}/dkim/status${qs}`;
   return new NextRequest(url, { method: 'GET' });
 }
 
@@ -71,13 +85,35 @@ describe('GET /api/apps/[id]/dkim/status', () => {
     mockGetDkimStatusCached.mockReset();
     mockMarkActive.mockReset();
     mockMarkActive.mockResolvedValue(undefined);
+    mockGetRow.mockReset();
+    mockGetRow.mockResolvedValue({
+      createdAt: null,
+      pollStartedAt: '2026-06-17T10:00:00.000Z',
+      nextPollAt: '2026-06-17T10:00:30.000Z',
+      lastPolledAt: '2026-06-17T10:00:00.000Z',
+    });
+    mockClaimDuePoll.mockReset();
+    mockClaimDuePoll.mockResolvedValue({
+      shouldPoll: true,
+      expired: false,
+      pollStartedAt: '2026-06-17T10:00:00.000Z',
+      nextPollAt: '2026-06-17T10:02:00.000Z',
+      lastPolledAt: '2026-06-17T10:00:00.000Z',
+    });
+    mockCompleteDuePoll.mockReset();
+    mockCompleteDuePoll.mockResolvedValue(undefined);
     mockCheckSwitchboardFlag.mockReset();
     // Default durable flag to ON so existing reconcile tests pass unchanged.
     mockCheckSwitchboardFlag.mockResolvedValue(true);
     (DkimAgentClient as unknown as MockInstance).mockReset();
     // Must use a regular function (not an arrow) so Vitest can call `new impl()`.
     (DkimAgentClient as unknown as MockInstance).mockImplementation(function () {
-      return { markActive: mockMarkActive };
+      return {
+        markActive: mockMarkActive,
+        getRow: mockGetRow,
+        claimDuePoll: mockClaimDuePoll,
+        completeDuePoll: mockCompleteDuePoll,
+      };
     });
   });
 
@@ -188,7 +224,7 @@ describe('GET /api/apps/[id]/dkim/status', () => {
       await new Promise((r) => setImmediate(r));
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body).toEqual({ dkimValid: true, dkimResult: 'valid' });
+      expect(body).toEqual({ dkimValid: true, dkimResult: 'valid', pollStartedAt: null });
     });
 
     it('does NOT reconcile when durable flag is off', async () => {
@@ -199,7 +235,8 @@ describe('GET /api/apps/[id]/dkim/status', () => {
       const res = await GET(makeRequest('example.com'), { params });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body).toEqual({ dkimValid: true, dkimResult: 'valid' });
+      // reconcileEnabled is false so no agent call, pollStartedAt stays null
+      expect(body).toEqual({ dkimValid: true, dkimResult: 'valid', pollStartedAt: null });
       // markActive must not have been called — durable layer is disabled.
       expect(mockMarkActive).not.toHaveBeenCalled();
     });
@@ -212,7 +249,7 @@ describe('GET /api/apps/[id]/dkim/status', () => {
       const res = await GET(makeRequest('example.com'), { params });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body).toEqual({ dkimValid: true, dkimResult: 'DKIM_VALID' });
+      expect(body).toEqual({ dkimValid: true, dkimResult: 'DKIM_VALID', pollStartedAt: null });
       // Flag lookup failed — reconcile must be skipped (not attempted).
       expect(mockMarkActive).not.toHaveBeenCalled();
     });
@@ -224,9 +261,102 @@ describe('GET /api/apps/[id]/dkim/status', () => {
       );
       mockGetSite.mockResolvedValue(SITE);
       mockGetDkimStatusCached.mockResolvedValue({ dkimValid: true, dkimResult: 'valid' });
-      const res = await GET(makeRequest('example.com'), { params });
+      const res = await GET(makeRequest('example.com', true), { params });
       expect(res.status).toBe(200);
       expect(mockMarkActive).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('external durable polling gate', () => {
+    it('does not call MailFlow when another device has already claimed the current poll window', async () => {
+      mockGetSite.mockResolvedValue(SITE);
+      mockClaimDuePoll.mockResolvedValue({
+        shouldPoll: false,
+        expired: false,
+        pollStartedAt: '2026-06-17T10:00:00.000Z',
+        nextPollAt: '2026-06-17T10:00:30.000Z',
+        lastPolledAt: '2026-06-17T10:00:00.000Z',
+      });
+
+      const res = await GET(makeRequest('example.com', true), { params });
+
+      expect(res.status).toBe(200);
+      expect(mockGetDkimStatusCached).not.toHaveBeenCalled();
+      expect(mockCompleteDuePoll).not.toHaveBeenCalled();
+      expect(await res.json()).toEqual({
+        dkimValid: false,
+        dkimResult: 'DKIM_POLL_NOT_DUE',
+        pollStartedAt: '2026-06-17T10:00:00.000Z',
+        nextPollAt: '2026-06-17T10:00:30.000Z',
+        lastPolledAt: '2026-06-17T10:00:00.000Z',
+        pollingExpired: false,
+      });
+    });
+
+    it('completes the durable poll window after a due MailFlow check', async () => {
+      mockGetSite.mockResolvedValue(SITE);
+      mockGetDkimStatusCached.mockResolvedValue({ dkimValid: false, dkimResult: 'pending' });
+
+      const res = await GET(makeRequest('example.com', true), { params });
+
+      expect(res.status).toBe(200);
+      expect(mockGetDkimStatusCached).toHaveBeenCalledWith('example.com');
+      expect(mockCompleteDuePoll).toHaveBeenCalledWith('example.com');
+      expect(await res.json()).toMatchObject({
+        dkimValid: false,
+        dkimResult: 'pending',
+        pollStartedAt: '2026-06-17T10:00:00.000Z',
+        nextPollAt: '2026-06-17T10:00:30.000Z',
+        pollingExpired: false,
+      });
+    });
+
+    it('stops polling when the agents schedule is expired', async () => {
+      mockGetSite.mockResolvedValue(SITE);
+      mockClaimDuePoll.mockResolvedValue({
+        shouldPoll: false,
+        expired: true,
+        pollStartedAt: '2026-05-17T10:00:00.000Z',
+        nextPollAt: null,
+        lastPolledAt: '2026-06-16T10:00:00.000Z',
+      });
+
+      const res = await GET(makeRequest('example.com', true), { params });
+
+      expect(res.status).toBe(200);
+      expect(mockGetDkimStatusCached).not.toHaveBeenCalled();
+      expect(await res.json()).toMatchObject({
+        dkimValid: false,
+        dkimResult: 'DKIM_POLLING_EXPIRED',
+        pollingExpired: true,
+        nextPollAt: null,
+      });
+    });
+
+    it('returns the real DKIM status when the durable row is already active', async () => {
+      mockGetSite.mockResolvedValue(SITE);
+      mockClaimDuePoll.mockResolvedValue({
+        shouldPoll: false,
+        expired: false,
+        status: 'active',
+        pollStartedAt: '2026-06-17T10:00:00.000Z',
+        nextPollAt: null,
+        lastPolledAt: '2026-06-17T10:10:00.000Z',
+      });
+      mockGetDkimStatusCached.mockResolvedValue({ dkimValid: true, dkimResult: 'DKIM_VALID' });
+
+      const res = await GET(makeRequest('example.com', true), { params });
+
+      expect(res.status).toBe(200);
+      expect(mockGetDkimStatusCached).toHaveBeenCalledWith('example.com');
+      expect(mockCompleteDuePoll).not.toHaveBeenCalled();
+      expect(await res.json()).toMatchObject({
+        dkimValid: true,
+        dkimResult: 'DKIM_VALID',
+        pollStartedAt: '2026-06-17T10:00:00.000Z',
+        nextPollAt: null,
+        pollingExpired: false,
+      });
     });
   });
 });

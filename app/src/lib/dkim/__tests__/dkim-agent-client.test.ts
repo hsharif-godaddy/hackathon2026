@@ -60,6 +60,74 @@ describe('DkimAgentClient', () => {
     );
   });
 
+  it('getRow GETs and returns createdAt from the agents row', async () => {
+    mockAgentFetch.mockResolvedValue(okJson({
+      createdAt: '2026-01-01T00:00:00.000Z',
+      pollStartedAt: '2026-01-01T00:00:00.000Z',
+      nextPollAt: '2026-01-01T00:00:30.000Z',
+      lastPolledAt: null,
+    }));
+    const result = await new DkimAgentClient(AGENT_URL, APP).getRow('acme.com');
+    expect(result).toEqual({
+      createdAt: '2026-01-01T00:00:00.000Z',
+      pollStartedAt: '2026-01-01T00:00:00.000Z',
+      nextPollAt: '2026-01-01T00:00:30.000Z',
+      lastPolledAt: null,
+    });
+    expect(mockAgentFetch).toHaveBeenCalledWith(
+      `${AGENT_URL}/apps/${APP}/dkim?domain=acme.com`,
+      { siteId: APP, method: 'GET' },
+    );
+  });
+
+  it('getRow returns { createdAt: null } when no row exists', async () => {
+    mockAgentFetch.mockResolvedValue(okJson({ createdAt: null }));
+    const result = await new DkimAgentClient(AGENT_URL, APP).getRow('acme.com');
+    expect(result).toEqual({ createdAt: null });
+  });
+
+  it('getRow throws on a non-ok response', async () => {
+    mockAgentFetch.mockResolvedValue({ ok: false, status: 503, text: async () => 'down' } as unknown as Response);
+    await expect(new DkimAgentClient(AGENT_URL, APP).getRow('acme.com')).rejects.toThrow('DkimAgentClient.getRow failed');
+  });
+
+  it('claimDuePoll posts to the poll claim endpoint', async () => {
+    mockAgentFetch.mockResolvedValue(okJson({
+      shouldPoll: false,
+      expired: false,
+      status: 'pending',
+      pollStartedAt: '2026-06-17T10:00:00.000Z',
+      nextPollAt: '2026-06-17T10:00:30.000Z',
+      lastPolledAt: '2026-06-17T10:00:00.000Z',
+    }));
+
+    const result = await new DkimAgentClient(AGENT_URL, APP).claimDuePoll('acme.com');
+
+    expect(result).toEqual({
+      shouldPoll: false,
+      expired: false,
+      status: 'pending',
+      pollStartedAt: '2026-06-17T10:00:00.000Z',
+      nextPollAt: '2026-06-17T10:00:30.000Z',
+      lastPolledAt: '2026-06-17T10:00:00.000Z',
+    });
+    expect(mockAgentFetch).toHaveBeenCalledWith(
+      `${AGENT_URL}/apps/${APP}/dkim/poll/claim`,
+      { siteId: APP, method: 'POST', body: JSON.stringify({ domain: 'acme.com' }) },
+    );
+  });
+
+  it('completeDuePoll posts to the poll complete endpoint', async () => {
+    mockAgentFetch.mockResolvedValue(okJson({ ok: true }));
+
+    await new DkimAgentClient(AGENT_URL, APP).completeDuePoll('acme.com');
+
+    expect(mockAgentFetch).toHaveBeenCalledWith(
+      `${AGENT_URL}/apps/${APP}/dkim/poll/complete`,
+      { siteId: APP, method: 'POST', body: JSON.stringify({ domain: 'acme.com' }) },
+    );
+  });
+
   it('deleteRow DELETEs with the domain query param', async () => {
     mockAgentFetch.mockResolvedValue(okJson({ ok: true }));
     await new DkimAgentClient(AGENT_URL, APP).deleteRow('acme.com');

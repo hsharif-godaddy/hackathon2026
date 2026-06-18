@@ -18,6 +18,21 @@ describe('dkim_onboarding schema', () => {
     expect(row).toBeTruthy();
   });
 
+  it('creates durable polling columns without attempt counters', () => {
+    db = new Database(':memory:');
+    initializeTestDatabase(db);
+
+    const columns = db
+      .prepare(`PRAGMA table_info(dkim_onboarding)`)
+      .all() as Array<{ name: string }>;
+    const columnNames = columns.map((column) => column.name);
+
+    expect(columnNames).toContain('poll_started_at');
+    expect(columnNames).toContain('next_poll_at');
+    expect(columnNames).toContain('last_polled_at');
+    expect(columnNames).not.toContain('poll_attempts');
+  });
+
   it('enforces UNIQUE(app_id, domain) constraint', () => {
     db = new Database(':memory:');
     initializeTestDatabase(db);

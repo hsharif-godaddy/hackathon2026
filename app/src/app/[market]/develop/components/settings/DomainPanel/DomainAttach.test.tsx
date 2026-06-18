@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import type { AppDomain } from '@/hooks/useAppDetails';
+import { appFetch } from '@/lib/gasket-config';
 import { shipAnalyticsLog } from '@/lib/logging';
 import { DomainStatus } from '@/lib/mgmt-airo/types';
 import { renderWithProviders } from '@/tests/test-utils';
@@ -172,7 +173,7 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 // -- Utility / logging mocks --
 
 vi.mock('@/lib/gasket-config', () => ({
-  appFetch: vi.fn(),
+  appFetch: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
 vi.mock('@/lib/logging', () => ({
@@ -335,6 +336,137 @@ describe('DomainAttach', function domainAttachTests() {
 
     await waitFor(function waitForNoDnsInstructions() {
       expect(screen.queryByText('builder_domain_dns_instructions')).not.toBeInTheDocument();
+    });
+  });
+
+  it('onboards and shows email records for pending external domains without durable polling', async function pendingExternalRecordsWithoutPolling() {
+    const { useCustomerDomainAttach } = await import('@/hooks/useCustomerDomainAttach');
+    const { useDomainDnsOwnership } = await import('@/hooks/useDomainDnsOwnership');
+    vi.mocked(useCustomerDomainAttach).mockReturnValue({
+      pendingCustomerDomain: null,
+      isPolling: false,
+      hasExternalNameservers: false,
+      requiresManualDnsSetup: false,
+    });
+    vi.mocked(useDomainDnsOwnership).mockReturnValue({
+      data: { isGdDomain: false },
+      isPending: false,
+      isLoading: false,
+      isError: false,
+    } as any);
+    vi.mocked(appFetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        dkimValid: false,
+        dkimRecordExpected: {
+          cnames: ['s1.dkim.pending-external_com.f86.onsecureserver.net.'],
+        },
+        dmarcRecordExpected: 'v=DMARC1; p=reject; rua=mailto:dmarc_rua@onsecureserver.net;',
+      }),
+    } as Response);
+
+    const pendingExternalDomain: AppDomain = {
+      fqdn: 'pending-external.com',
+      isPrimary: false,
+      status: DomainStatus.PENDING,
+      domainType: 'custom',
+      anycastIp: '1.2.3.4',
+      certificateValidationCname: 'abc123.validation.secureserver.net',
+    };
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          ...appDetails,
+          domains: [pendingExternalDomain],
+        }}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForPendingDomainRow() {
+      expect(screen.getAllByText('pending-external.com').length).toBeGreaterThan(0);
+    });
+
+    await waitFor(function waitForPendingEmailRecords() {
+      expect(appFetch).toHaveBeenCalledWith(
+        '/api/apps/test-app-123/dkim/onboard',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ domain: 'pending-external.com' }),
+        }),
+      );
+      expect(appFetch).toHaveBeenCalledWith(
+        '/api/apps/test-app-123/dkim/status?domain=pending-external.com',
+        expect.objectContaining({ cache: 'no-store' }),
+      );
+      expect(screen.getByText('v=spf1 include:secureserver.net -all')).toBeInTheDocument();
+      expect(screen.getByText('secureserver1._domainkey')).toBeInTheDocument();
+      expect(screen.getByText('v=DMARC1; p=reject; rua=mailto:dmarc_rua@onsecureserver.net;')).toBeInTheDocument();
+    });
+
+    expect(vi.mocked(appFetch).mock.calls).not.toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining([
+          expect.stringContaining('polling=external'),
+        ]),
+      ]),
+    );
+  });
+
+  it('onboards and polls DKIM status after an external domain becomes active', async function dkimAfterExternalActive() {
+    const { useCustomerDomainAttach } = await import('@/hooks/useCustomerDomainAttach');
+    vi.mocked(useCustomerDomainAttach).mockReturnValue({
+      pendingCustomerDomain: null,
+      isPolling: false,
+      hasExternalNameservers: false,
+      requiresManualDnsSetup: false,
+    });
+    vi.mocked(appFetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        dkimValid: false,
+        dkimRecordExpected: {
+          cnames: ['s1.dkim.active-external_com.f86.onsecureserver.net.'],
+        },
+        dmarcRecordExpected: 'v=DMARC1; p=reject; rua=mailto:dmarc_rua@onsecureserver.net;',
+      }),
+    } as Response);
+
+    const activeExternalDomain: AppDomain = {
+      fqdn: 'active-external.com',
+      isPrimary: false,
+      status: DomainStatus.ACTIVE,
+      domainType: 'custom',
+      anycastIp: '1.2.3.4',
+      certificateValidationCname: 'abc123.validation.secureserver.net',
+    };
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          ...appDetails,
+          domains: [activeExternalDomain],
+        }}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForDkimOnboardAndStatus() {
+      expect(appFetch).toHaveBeenCalledWith(
+        '/api/apps/test-app-123/dkim/onboard',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ domain: 'active-external.com' }),
+        }),
+      );
+      expect(appFetch).toHaveBeenCalledWith(
+        '/api/apps/test-app-123/dkim/status?domain=active-external.com&polling=external',
+        expect.objectContaining({ cache: 'no-store' }),
+      );
+      expect(screen.getByText('v=spf1 include:secureserver.net -all')).toBeInTheDocument();
+      expect(screen.getByText('secureserver1._domainkey')).toBeInTheDocument();
+      expect(screen.getByText('v=DMARC1; p=reject; rua=mailto:dmarc_rua@onsecureserver.net;')).toBeInTheDocument();
     });
   });
 

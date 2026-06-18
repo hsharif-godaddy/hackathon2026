@@ -6,7 +6,7 @@ import { DkimAgentClient } from '@/lib/dkim/dkim-agent-client';
 import { getDkimStatusCached } from '@/lib/dkim/dkim-cache';
 import { DkimService } from '@/lib/dkim/dkim-service';
 import { type DkimOnboardOutcome } from '@/lib/dkim/types';
-import { deriveDomainOrigin, DomainOrigin } from '@/lib/dkim/utils';
+import { deriveDomainOrigin } from '@/lib/dkim/utils';
 import { AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
@@ -57,6 +57,16 @@ export const POST = withCustomerAuth(async (
       return NextResponse.json({ code: ApiErrorCode.SITE_CONFIG_INCOMPLETE, error: 'Site config incomplete' }, { status: 400 });
     }
 
+    // Verify the domain is actually attached to this app before doing any
+    // privileged provisioning. Mirrors the same check in dkim/status/route.ts.
+    // Without this, an authenticated attacker could pass arbitrary domains and
+    // trigger Vox provisioning + global durable claims for domains they don't own.
+    const attachedFqdns = (site.domains ?? []).map((d: { fqdn: string }) => d.fqdn.toLowerCase());
+    if (!attachedFqdns.includes(domain)) {
+      logger.warn('dkim.onboard.domain.not-attached', { appId, domain });
+      return NextResponse.json({ error: 'domain is not attached to this app' }, { status: 403 });
+    }
+
     const mgmtClient = new AiroMgmtClient({
       baseUrl: process.env.MGMT_AIRO_BASE_URL ?? 'https://mgmt.nstk.net',
       jwt: authContext.jwt!,
@@ -69,11 +79,6 @@ export const POST = withCustomerAuth(async (
     );
 
     const origin = deriveDomainOrigin(ownership);
-    if (origin !== DomainOrigin.INTERNAL) {
-      logger.info('dkim.auto-onboard.trigger.skipped', { appId, domain, isGoDaddyDns: ownership.isGoDaddyDns });
-      const outcome: DkimOnboardOutcome = { result: 'skipped', reason: 'not_internal' };
-      return NextResponse.json(outcome);
-    }
 
     const durableEnabled = await checkSwitchboardFlag('appbuilder-dkim-durable-state', request);
     if (!durableEnabled) {

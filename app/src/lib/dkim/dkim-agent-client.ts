@@ -6,6 +6,19 @@ export interface DkimClaimResult {
   status: DkimOnboardingStatus;
 }
 
+export interface DkimPollingState {
+  createdAt?: string | null;
+  pollStartedAt?: string | null;
+  nextPollAt?: string | null;
+  lastPolledAt?: string | null;
+}
+
+export interface DkimDuePollDecision extends DkimPollingState {
+  shouldPoll: boolean;
+  expired: boolean;
+  status?: DkimOnboardingStatus | null;
+}
+
 /**
  * Server-to-server client for the agents DKIM endpoints. Constructed with the
  * site's agent_url (from the control-plane adapter) and the appId. agentFetch
@@ -20,6 +33,23 @@ export class DkimAgentClient {
 
   private endpoint(path: string): string {
     return `${this.agentUrl}/apps/${this.appId}/dkim${path}`;
+  }
+
+  /**
+   * Fetches the dkim_onboarding row for the given domain.
+   * Polling timestamps are app+domain scoped in agents SQLite so browser
+   * sessions and devices share one external-DKIM cadence.
+   */
+  async getRow(domain: string): Promise<DkimPollingState> {
+    const res = await agentFetch(
+      this.endpoint(`?domain=${encodeURIComponent(domain)}`),
+      { siteId: this.appId, method: 'GET' },
+    );
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`DkimAgentClient.getRow failed: ${res.status} ${body}`.trim());
+    }
+    return (await res.json()) as DkimPollingState;
   }
 
   async claim(domain: string): Promise<DkimClaimResult> {
@@ -68,6 +98,31 @@ export class DkimAgentClient {
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       throw new Error(`DkimAgentClient.markActive failed: ${res.status} ${body}`.trim());
+    }
+  }
+
+  async claimDuePoll(domain: string): Promise<DkimDuePollDecision> {
+    const res = await agentFetch(this.endpoint('/poll/claim'), {
+      siteId: this.appId,
+      method: 'POST',
+      body: JSON.stringify({ domain }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`DkimAgentClient.claimDuePoll failed: ${res.status} ${body}`.trim());
+    }
+    return (await res.json()) as DkimDuePollDecision;
+  }
+
+  async completeDuePoll(domain: string): Promise<void> {
+    const res = await agentFetch(this.endpoint('/poll/complete'), {
+      siteId: this.appId,
+      method: 'POST',
+      body: JSON.stringify({ domain }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`DkimAgentClient.completeDuePoll failed: ${res.status} ${body}`.trim());
     }
   }
 

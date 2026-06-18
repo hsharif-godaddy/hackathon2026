@@ -174,4 +174,114 @@ describe('DomainDNS', () => {
     expect(screen.getByText('_acme-challenge.api.staging')).toBeInTheDocument();
     expect(screen.getByText('def456.validation.secureserver.net')).toBeInTheDocument();
   });
+
+  describe('DKIM CNAME cards', () => {
+    const dkimCnameValue = 's1.dkim.example_com.f86.onsecureserver.net.';
+    const domainWithDcv: AppDomain = {
+      ...baseDomain,
+      certificateValidationCname: 'abc123.validation.secureserver.net',
+    };
+
+    it('renders DKIM CNAME cards and SPF when dkimCnames is provided and DCV is ready', async () => {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+
+      renderWithProviders(
+        <DomainDNS domainDetails={domainWithDcv} dkimCnames={[dkimCnameValue]} />,
+      );
+
+      // A + CNAME (www) + DCV CNAME + SPF + DKIM CNAME = 5 Type labels
+      expect(screen.getAllByText('Type:')).toHaveLength(5);
+      expect(screen.getByText('secureserver1._domainkey')).toBeInTheDocument();
+      expect(screen.getByText(dkimCnameValue)).toBeInTheDocument();
+      // SPF always shown when DCV is ready
+      expect(screen.getByText('v=spf1 include:secureserver.net -all')).toBeInTheDocument();
+    });
+
+    it('does not render email records when dkimCnames is absent (flag off)', async () => {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+
+      renderWithProviders(
+        <DomainDNS domainDetails={domainWithDcv} />,
+      );
+
+      // A + CNAME (www) + DCV CNAME only = 3 Type labels; no email records without dkimCnames
+      expect(screen.getAllByText('Type:')).toHaveLength(3);
+      expect(screen.queryByText('v=spf1 include:secureserver.net -all')).not.toBeInTheDocument();
+      expect(screen.queryByText('secureserver1._domainkey')).not.toBeInTheDocument();
+    });
+
+    it('shows the SPF warning note only with email DNS records', async () => {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+      const spfWarning =
+        'Required: Please make sure your domain only has one SPF record. If multiple SPF records are found on your domain or if the SPF record is not added correctly, your email might not be delivered.';
+
+      const { rerender } = renderWithProviders(
+        <DomainDNS domainDetails={domainWithDcv} />,
+      );
+
+      expect(screen.queryByText(spfWarning)).not.toBeInTheDocument();
+
+      rerender(
+        <DomainDNS domainDetails={domainWithDcv} dkimCnames={[dkimCnameValue]} />,
+      );
+
+      expect(screen.getByText(spfWarning)).toBeInTheDocument();
+    });
+
+    it('renders DMARC record when dmarcExpected and DCV are present', async () => {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+      const dmarcValue = 'v=DMARC1; p=reject; rua=mailto:dmarc_rua@onsecureserver.net;';
+
+      renderWithProviders(
+        <DomainDNS
+          domainDetails={domainWithDcv}
+          dkimCnames={[dkimCnameValue]}
+          dmarcExpected={dmarcValue}
+        />,
+      );
+
+      // A + CNAME (www) + DCV CNAME + SPF + DKIM CNAME + DMARC = 6 Type labels
+      expect(screen.getAllByText('Type:')).toHaveLength(6);
+      expect(screen.getByText('_dmarc')).toBeInTheDocument();
+      expect(screen.getByText(dmarcValue)).toBeInTheDocument();
+    });
+
+    it('does not render email records when certificateValidationCname is missing (DCV not ready)', async () => {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+
+      renderWithProviders(
+        <DomainDNS domainDetails={baseDomain} dkimCnames={[dkimCnameValue]} />,
+      );
+
+      // DCV not ready → provisioning spinner, no DNS cards rendered
+      expect(screen.getByText('builder_domain_dns_provisioning')).toBeInTheDocument();
+      expect(screen.queryByText('secureserver1._domainkey')).not.toBeInTheDocument();
+      expect(screen.queryByText('v=spf1 include:secureserver.net -all')).not.toBeInTheDocument();
+    });
+
+    it('uses position-based secureserver{N} naming for DKIM record names', async () => {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+      const cname1 = 's1.dkim.example_com.ab12.onsecureserver.net.';
+      const cname2 = 's2.dkim.example_com.ab12.onsecureserver.net.';
+
+      renderWithProviders(
+        <DomainDNS
+          domainDetails={domainWithDcv}
+          dkimCnames={[cname1, cname2]}
+        />,
+      );
+
+      // Index 0 → secureserver1, index 1 → secureserver2
+      expect(screen.getByText('secureserver1._domainkey')).toBeInTheDocument();
+      expect(screen.getByText('secureserver2._domainkey')).toBeInTheDocument();
+      expect(screen.getByText(cname1)).toBeInTheDocument();
+      expect(screen.getByText(cname2)).toBeInTheDocument();
+    });
+  });
 });

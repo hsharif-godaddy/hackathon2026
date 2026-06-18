@@ -168,3 +168,69 @@ describe('deleteByAppDomain', () => {
     expect(repo.findByAppDomain(APP, DOMAIN)).not.toBeNull();
   });
 });
+
+describe('external DKIM polling schedule', () => {
+  const now = new Date('2026-06-17T10:00:00.000Z');
+
+  it('claims the first poll and stores durable timing without poll attempts', () => {
+    const result = repo.claimDuePoll(APP, DOMAIN, now);
+
+    expect(result.shouldPoll).toBe(true);
+    expect(result.expired).toBe(false);
+    expect(result.pollStartedAt?.toISOString()).toBe(now.toISOString());
+    expect(result.lastPolledAt?.toISOString()).toBe(now.toISOString());
+    expect(result.nextPollAt?.toISOString()).toBe('2026-06-17T10:02:00.000Z');
+
+    const columns = testDb
+      .prepare(`PRAGMA table_info(dkim_onboarding)`)
+      .all() as Array<{ name: string }>;
+    expect(columns.map((column) => column.name)).toContain('poll_started_at');
+    expect(columns.map((column) => column.name)).toContain('next_poll_at');
+    expect(columns.map((column) => column.name)).toContain('last_polled_at');
+    expect(columns.map((column) => column.name)).not.toContain('poll_attempts');
+  });
+
+  it('allows only one device to claim a due poll window', () => {
+    const firstDevice = repo.claimDuePoll(APP, DOMAIN, now);
+    const secondDevice = repo.claimDuePoll(APP, DOMAIN, new Date('2026-06-17T10:00:05.000Z'));
+
+    expect(firstDevice.shouldPoll).toBe(true);
+    expect(secondDevice.shouldPoll).toBe(false);
+    expect(secondDevice.nextPollAt?.toISOString()).toBe('2026-06-17T10:02:00.000Z');
+  });
+
+  it('schedules fast polling while elapsed time is under 40 minutes', () => {
+    repo.claimDuePoll(APP, DOMAIN, now);
+    repo.completeDuePoll(APP, DOMAIN, now);
+
+    expect(repo.findByAppDomain(APP, DOMAIN)?.nextPollAt?.toISOString()).toBe('2026-06-17T10:00:30.000Z');
+  });
+
+  it('schedules exponential polling from elapsed wall-clock time after 40 minutes', () => {
+    repo.claimDuePoll(APP, DOMAIN, now);
+    const afterFortySevenMinutes = new Date('2026-06-17T10:47:00.000Z');
+
+    repo.completeDuePoll(APP, DOMAIN, afterFortySevenMinutes);
+
+    expect(repo.findByAppDomain(APP, DOMAIN)?.nextPollAt?.toISOString()).toBe('2026-06-17T10:55:00.000Z');
+  });
+
+  it('caps polling at one day after the exponential phase reaches 24 hours', () => {
+    repo.claimDuePoll(APP, DOMAIN, now);
+    const afterTwoDays = new Date('2026-06-19T10:00:00.000Z');
+
+    repo.completeDuePoll(APP, DOMAIN, afterTwoDays);
+
+    expect(repo.findByAppDomain(APP, DOMAIN)?.nextPollAt?.toISOString()).toBe('2026-06-20T10:00:00.000Z');
+  });
+
+  it('stops polling after 30 days from poll start', () => {
+    repo.claimDuePoll(APP, DOMAIN, now);
+
+    const result = repo.claimDuePoll(APP, DOMAIN, new Date('2026-07-18T10:00:00.000Z'));
+
+    expect(result.shouldPoll).toBe(false);
+    expect(result.expired).toBe(true);
+    expect(result.nextPollAt).toBeNull();
+  });
+});

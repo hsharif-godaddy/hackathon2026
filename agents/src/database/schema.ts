@@ -1019,6 +1019,9 @@ function createDkimOnboardingTable(db: Database): void {
       status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'active', 'failed')),
       execution_arn TEXT,
       last_error TEXT,
+      poll_started_at DATETIME,
+      next_poll_at DATETIME,
+      last_polled_at DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       -- UNIQUE(app_id, domain) also serves as the app_id-prefix index (no separate index needed).
@@ -2013,6 +2016,20 @@ function applyMigrations(db: Database): void {
   ];
 
   for (const columnSql of fileContextColumns) {
+    try {
+      db.exec(columnSql);
+    } catch (err) {
+      // Column might already exist, that's fine
+    }
+  }
+
+  const dkimOnboardingColumns = [
+    'ALTER TABLE dkim_onboarding ADD COLUMN poll_started_at DATETIME',
+    'ALTER TABLE dkim_onboarding ADD COLUMN next_poll_at DATETIME',
+    'ALTER TABLE dkim_onboarding ADD COLUMN last_polled_at DATETIME',
+  ];
+
+  for (const columnSql of dkimOnboardingColumns) {
     try {
       db.exec(columnSql);
     } catch (err) {

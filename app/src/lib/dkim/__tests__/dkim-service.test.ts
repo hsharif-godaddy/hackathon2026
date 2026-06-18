@@ -75,17 +75,20 @@ describe('DkimService', () => {
       expect(mockCheckSwitchboardFlag).toHaveBeenCalledWith('appbuilder-dkim-onboarding', fakeRequest);
     });
 
-    it('returns skipped with unsupported_origin for EXTERNAL', async () => {
+    it('calls activateDkim for EXTERNAL domains (unsupported_origin skip removed)', async () => {
       mockCheckSwitchboardFlag.mockResolvedValue(true);
+      mockActivateDkim.mockResolvedValue({ executionArn: 'arn:external:123' });
       const service = new DkimService();
       const result = await service.activate({ ...baseInput, origin: DomainOrigin.EXTERNAL }, fakeRequest);
-      expect(result).toEqual({ result: 'skipped', reason: 'unsupported_origin' });
-      expect(mockActivateDkim).not.toHaveBeenCalled();
-      // EXTERNAL skip ships an analytics outcome — verify the payload reaches
-      // the billing/funnel pipeline (not just that it was called).
+      expect(result).toEqual({ result: 'accepted', executionArn: 'arn:external:123' });
+      expect(mockActivateDkim).toHaveBeenCalledWith(
+        'example.com',
+        DomainOrigin.EXTERNAL,
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+      );
       expect(mockShipAnalyticsLog).toHaveBeenCalledWith(
         'dkim.onboard.outcome',
-        { result: 'skipped', origin: DomainOrigin.EXTERNAL },
+        { result: 'accepted', origin: DomainOrigin.EXTERNAL },
       );
     });
 

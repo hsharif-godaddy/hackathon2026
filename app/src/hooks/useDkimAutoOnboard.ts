@@ -2,28 +2,27 @@ import { useEffect } from 'react';
 
 import { appFetch } from '@/lib/gasket-config';
 import { shipAnalyticsLog } from '@/lib/logging';
-import type { AiroDomainDnsOwnershipResponse } from '@/lib/mgmt-airo/types';
 
 export interface UseDkimAutoOnboardInput {
   appId: string | null | undefined;
   domain: string | null | undefined;
-  ownership: AiroDomainDnsOwnershipResponse | null | undefined;
   enabled: boolean;
 }
 
 /**
- * Auto-trigger DKIM onboarding when a domain is verified-attached and
- * GoDaddy-DNS-hosted (INTERNAL).
+ * Auto-trigger DKIM onboarding for a domain.
  *
  * The server is the single source of truth: the onboard endpoint claims the
  * domain in the agents DB (compare-and-set) and dedupes, so firing this POST on
  * every mount is safe — a duplicate is a cheap no-op. No client-side state.
+ *
+ * The origin check (GoDaddy vs external) is enforced server-side; this hook
+ * fires for any domain when enabled so that external domains also get DKIM
+ * records provisioned once they are attached.
  */
-export function useDkimAutoOnboard({ appId, domain, ownership, enabled }: UseDkimAutoOnboardInput): void {
-  const isGoDaddyDns = ownership?.isGoDaddyDns ?? false;
-
+export function useDkimAutoOnboard({ appId, domain, enabled }: UseDkimAutoOnboardInput): void {
   useEffect(() => {
-    if (!enabled || !appId || !domain || !isGoDaddyDns) return;
+    if (!enabled || !appId || !domain) return;
 
     void appFetch(`/api/apps/${appId}/dkim/onboard`, {
       method: 'POST',
@@ -48,5 +47,5 @@ export function useDkimAutoOnboard({ appId, domain, ownership, enabled }: UseDki
           error: err instanceof Error ? err.message : String(err),
         });
       });
-  }, [enabled, appId, domain, isGoDaddyDns]);
+  }, [enabled, appId, domain]);
 }

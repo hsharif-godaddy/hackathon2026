@@ -26,6 +26,7 @@ import type { AppDetailsResponse, AppDomain } from '@/hooks/useAppDetails';
 import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
 import { useDkimAutoOnboard } from '@/hooks/useDkimAutoOnboard';
+import { useDkimStatusQueryExternal } from '@/hooks/useDkimStatusQueryExternal';
 import { useDomainDnsOwnership } from '@/hooks/useDomainDnsOwnership';
 import { type Domain, useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainTransfer } from '@/hooks/useDomainTransfer';
@@ -256,34 +257,17 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     enabled: domainDnsOwnershipEnabled,
   });
 
-  // Strict gate on the appbuilder-dkim-onboarding switchboard flag for
-  // the NEW DKIM-related code paths added in this PR. The pre-existing
-  // `useDomainDnsOwnership({ fqdns: pendingDomain })` above stays
-  // ungated because it drives manual-DNS-instruction UI for external
-  // domains — that's pre-existing DCC functionality, independent of
-  // DKIM, and must keep working for every domain-attach regardless
-  // of feature-flag state.
-  //
-  // What IS gated below:
-  //   1. Second DCC ownership query keyed on customer-domain-for-DKIM
-  //      (added in round 3 to fix the auto-onboard wiring bug)
-  //   2. useDkimAutoOnboard — fires the /dkim/onboard POST
-  //
-  // When the flag is off, neither hook does work: the second query is
-  // disabled (no DCC poll for the customer domain) and useDkimAutoOnboard
-  // skips its effect.
+  // Gate all DKIM-related side-effects on the feature flag.
   const dkimUiEnabled = useSwitchboard('appbuilder-dkim-onboarding') === true;
-  const customerDomainForDkim = pendingCustomerDomainForAttach?.fqdn ?? null;
-  const { data: customerDomainOwnership } = useDomainDnsOwnership({
-    siteId: currentAppId,
-    fqdns: customerDomainForDkim ?? '',
-    enabled: dkimUiEnabled && !!currentAppId && !!customerDomainForDkim,
-  });
+  // Gate external-domain DKIM provisioning + DNS record display behind its own flag.
+  const externalDkimEnabled = useSwitchboard('aab-external-dkim') === true;
 
+  // GoDaddy customer domains: trigger DKIM onboarding even when auto-attached
+  // (i.e. requiresManualDnsSetup=false) because the domain is valid immediately.
+  const customerDomainForDkim = pendingCustomerDomainForAttach?.fqdn ?? null;
   useDkimAutoOnboard({
     appId: currentAppId,
     domain: customerDomainForDkim,
-    ownership: customerDomainOwnership ?? null,
     enabled: dkimUiEnabled && !!customerDomainForDkim,
   });
 
@@ -298,6 +282,44 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   const treatAsExternal = !domainDnsOwnershipData
     ? isDomainDnsOwnershipError
     : domainDnsOwnershipData.isGdDomain !== true;
+
+  const activeExternalDomainDetails = useMemo(() => {
+    return siteDomains.find((d) => {
+      if (d.domainType === 'prefix') return false;
+      if (isCustomerDomain(d.fqdn, domains)) return false;
+      return d.status === DomainStatus.ACTIVE;
+    }) ?? null;
+  }, [siteDomains, domains]);
+  const activeExternalDomainForDkim = activeExternalDomainDetails?.fqdn ?? null;
+
+  // Pending external domains are already attached, so onboard can provision
+  // email records before DCV completes. Durable polling still waits for ACTIVE.
+  useDkimAutoOnboard({
+    appId: currentAppId,
+    domain: pendingDomain,
+    enabled: dkimUiEnabled && externalDkimEnabled && !!pendingDomain && treatAsExternal,
+  });
+
+  const { data: pendingDomainDkimStatus } = useDkimStatusQueryExternal(
+    dkimUiEnabled && externalDkimEnabled && !!pendingDomain && treatAsExternal ? currentAppId : null,
+    pendingDomain,
+    { durablePolling: false },
+  );
+
+  // External DKIM starts only after DCV completes and the attached domain is active.
+  useDkimAutoOnboard({
+    appId: currentAppId,
+    domain: activeExternalDomainForDkim,
+    enabled: dkimUiEnabled && externalDkimEnabled && !!activeExternalDomainForDkim,
+  });
+
+  // Fetch DKIM status for the active external domain using the external polling strategy
+  // (fast → exponential backoff → 24 h/poll, 30-day limit).
+  // Only runs when the external DKIM feature flag is on.
+  const { data: activeExternalDomainDkimStatus } = useDkimStatusQueryExternal(
+    dkimUiEnabled && externalDkimEnabled && !!activeExternalDomainForDkim ? currentAppId : null,
+    activeExternalDomainForDkim,
+  );
 
   const showDomainDNS =
     !!pendingDomainDetails &&
@@ -1268,8 +1290,17 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
             {showDomainDNS && (
               <DomainDNS
                 domainDetails={pendingDomainDetails}
+                dkimCnames={pendingDomainDkimStatus?.dkimRecordExpected?.cnames}
+                dmarcExpected={pendingDomainDkimStatus?.dmarcRecordExpected}
               />
             )}
+            {activeExternalDomainDetails && activeExternalDomainDkimStatus?.dkimRecordExpected?.cnames?.length ? (
+              <DomainDNS
+                domainDetails={activeExternalDomainDetails}
+                dkimCnames={activeExternalDomainDkimStatus.dkimRecordExpected.cnames}
+                dmarcExpected={activeExternalDomainDkimStatus.dmarcRecordExpected}
+              />
+            ) : null}
           </>
         ) : (
           <>
@@ -1465,8 +1496,17 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
             {showDomainDNS && (
               <DomainDNS
                 domainDetails={pendingDomainDetails}
+                dkimCnames={pendingDomainDkimStatus?.dkimRecordExpected?.cnames}
+                dmarcExpected={pendingDomainDkimStatus?.dmarcRecordExpected}
               />
             )}
+            {activeExternalDomainDetails && activeExternalDomainDkimStatus?.dkimRecordExpected?.cnames?.length ? (
+              <DomainDNS
+                domainDetails={activeExternalDomainDetails}
+                dkimCnames={activeExternalDomainDkimStatus.dkimRecordExpected.cnames}
+                dmarcExpected={activeExternalDomainDkimStatus.dmarcRecordExpected}
+              />
+            ) : null}
           </>
         )}
       </Box>

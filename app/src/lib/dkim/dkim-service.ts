@@ -37,12 +37,6 @@ export class DkimService {
       return { result: 'skipped', reason: 'feature_flag_off' };
     }
 
-    if (origin !== DomainOrigin.INTERNAL) {
-      logger.info('dkim.activate.skipped', { appId, domain, reason: 'external_not_supported_v1' });
-      shipAnalyticsLog('dkim.onboard.outcome', { result: 'skipped', origin });
-      return { result: 'skipped', reason: 'unsupported_origin' };
-    }
-
     const nextRotation = getNextRotationDate();
     logger.info('dkim.activate.start', { appId, domain, origin, nextRotation });
 

@@ -65,7 +65,18 @@ vi.mock('@/lib/customer-auth', async () => {
 import { POST } from '../route';
 
 const APP_ID = 'app1234567';
-const SITE = { subscription_id: 'sub-1', system_id: 'sys-1', agent_url: 'http://agent' };
+const SITE = {
+  subscription_id: 'sub-1',
+  system_id: 'sys-1',
+  agent_url: 'http://agent',
+  // domains must include every domain used in tests; the IDOR check
+  // (added to the route) rejects domains not attached to the app.
+  domains: [
+    { fqdn: 'internal.com' },
+    { fqdn: 'external.com' },
+    { fqdn: 'acme.com' },
+  ],
+};
 const INTERNAL_OWNERSHIP = {
   isGdDomain: true, isGDDomainOwner: true, isGoDaddyDns: true,
   pendingNsPropagation: false, domainCreatedAt: null, zoneMatchedAt: null,
@@ -143,8 +154,16 @@ describe('POST /api/apps/[id]/dkim/onboard', () => {
     expect(res.status).toBe(404);
   });
 
+  it('returns 403 when domain is not attached to the app', async () => {
+    mockGetSite.mockResolvedValue({ ...SITE, domains: [{ fqdn: 'other.com' }] });
+    const res = await POST(makeRequest({ domain: 'internal.com' }), { params });
+    expect(res.status).toBe(403);
+    expect(mockGetDomainDnsOwnership).not.toHaveBeenCalled();
+    expect(mockActivate).not.toHaveBeenCalled();
+  });
+
   it('returns 200 skipped no_agent_url when site.agent_url is missing', async () => {
-    mockGetSite.mockResolvedValue({ subscription_id: 'sub-1', system_id: 'sys-1' });
+    mockGetSite.mockResolvedValue({ subscription_id: 'sub-1', system_id: 'sys-1', domains: [{ fqdn: 'internal.com' }] });
     mockGetDomainDnsOwnership.mockResolvedValue(INTERNAL_OWNERSHIP);
     const res = await POST(makeRequest({ domain: 'internal.com' }), { params });
     expect(res.status).toBe(200);
@@ -152,14 +171,15 @@ describe('POST /api/apps/[id]/dkim/onboard', () => {
     expect(body).toEqual({ result: 'skipped', reason: 'no_agent_url' });
   });
 
-  it('returns 200 skipped when isGoDaddyDns is false', async () => {
+  it('proceeds to onboard external (non-GoDaddy) domains — not_internal skip removed', async () => {
     mockGetSite.mockResolvedValue(SITE);
     mockGetDomainDnsOwnership.mockResolvedValue({ ...INTERNAL_OWNERSHIP, isGoDaddyDns: false });
+    mockActivate.mockResolvedValue({ result: 'accepted', executionArn: 'arn:test:external' });
     const res = await POST(makeRequest({ domain: 'external.com' }), { params });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.result).toBe('skipped');
-    expect(mockActivate).not.toHaveBeenCalled();
+    expect(body.result).toBe('accepted');
+    expect(mockActivate).toHaveBeenCalled();
   });
 
   it('skips Vox and marks active when DKIM is already valid (backfilled domain)', async () => {
