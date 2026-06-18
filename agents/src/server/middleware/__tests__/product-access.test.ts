@@ -142,6 +142,8 @@ describe('product-access middleware', () => {
       { method: 'GET', path: '/apps/abc123/social/meta' },
       { method: 'GET', path: '/debug/memory' },
       { method: 'GET', path: '/apps/abc123/download' },
+      { method: 'GET', path: '/apps/abc123/adsense' },
+      { method: 'PUT', path: '/apps/abc123/adsense' },
       { method: 'GET', path: '/agent/conversations' },
       { method: 'POST', path: '/agent/develop/chat' },
       { method: 'POST', path: '/media/upload' },
@@ -303,6 +305,8 @@ describe('isRouteAllowedForPaaS', () => {
   it('should deny non-allowlisted routes', () => {
     expect(isRouteAllowedForPaaS('GET', '/agents')).toBe(false);
     expect(isRouteAllowedForPaaS('GET', '/debug/memory')).toBe(false);
+    expect(isRouteAllowedForPaaS('GET', '/apps/test-app/adsense')).toBe(false);
+    expect(isRouteAllowedForPaaS('PUT', '/apps/test-app/adsense')).toBe(false);
     expect(isRouteAllowedForPaaS('POST', '/agent/develop/chat')).toBe(false);
     expect(isRouteAllowedForPaaS('POST', '/apps/test-app/files/edit')).toBe(false);
     expect(isRouteAllowedForPaaS('POST', '/apps/test-app/files/search')).toBe(false);

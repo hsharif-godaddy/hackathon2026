@@ -15,6 +15,7 @@ import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { getPublishStrategy, BuildError, PreviewNotRunningError, MissingStartCommandError } from './publish/strategies/index.js';
 import type { PublishContext } from './publish/strategies/index.js';
 import { getGitHookService } from '../agent-runtime.js';
+import { AdSensePublishManifestService } from '../../services/AdSensePublishManifestService.js';
 import { logSeoAuditReport, runSeoAudit } from '../../services/seo-audit.js';
 import type { SeoAuditReport } from '../../services/seo-audit.js';
 import { reportPublishedComplianceStatus } from '../../services/compliance-publish-report.js';
@@ -230,6 +231,15 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
       gitUtils,
       logger: contextLogger,
       runtime: workspace.runtime,
+      ...(strategy.key === 'default'
+        ? {
+            runtimeArtifactHooks: [
+              async () => {
+                await new AdSensePublishManifestService().writeForPublish(id, workspace);
+              },
+            ],
+          }
+        : {}),
     };
 
     // Execute strategy - Phase 1: Prepare build artifact

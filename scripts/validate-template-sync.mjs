@@ -534,6 +534,10 @@ export const SSR_SKILL_TEMPLATE_PAIRS = [
     v8Path: 'app-templates/v8/src/server/entry.ts',
   },
   {
+    skillPath: 'agents/src/skills/ssr-migration/templates/server/adsense-manifest.ts',
+    v8Path: 'app-templates/v8/src/server/adsense-manifest.ts',
+  },
+  {
     skillPath: 'agents/src/skills/ssr-migration/templates/entry-server.tsx',
     v8Path: 'app-templates/v8/src/entry-server.tsx',
   },

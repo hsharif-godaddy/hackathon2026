@@ -520,10 +520,13 @@ describe('GitUtils', () => {
       // Verify 4 calls: dist check, manifest check, mkdir, tar
       expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(4);
 
-      // Verify tar archives dist/
+      // Verify tar archives the entire dist/ directory. Runtime artifacts that
+      // already exist under dist, including dist/airo-adsense.json, are included
+      // without an artifact-specific copy path.
       const tarCallArgs = mockTasks.runCommandSync.mock.calls[3][0];
       expect(tarCallArgs.command).toContain('tar');
-      expect(tarCallArgs.command).toContain('dist');
+      expect(tarCallArgs.command).toContain("'-C' '/app' 'dist'");
+      expect(tarCallArgs.command).not.toContain('airo-adsense');
     });
 
     it('should copy airo-media.json into dist/ when it exists', async () => {

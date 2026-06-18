@@ -45,4 +45,5 @@ export const APP_CONFIG_FILES = [
   '.npmrc',
   'README.md',
   'airo-media.json',
+  '.airo/adsense.json',
 ] as const

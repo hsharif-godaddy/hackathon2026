@@ -33,6 +33,29 @@ export type { AgentsAppContext, AgentsAppChatMessage } from './websocket/index.j
 export { CONNECT_REQUEST_FROM_PUBLISH } from './social/index.js';
 export type { ValidationDetails, PostImageData } from './social/index.js';
 
+// AdSense
+export type {
+  AdSenseFieldName,
+  AdSenseNormalizeResult,
+  AdSenseParseResult,
+  AdSensePublishManifest,
+  AdSenseSettings,
+  AdSenseSettingsInput,
+  AdSenseSettingsWrite,
+  AdSenseTextFileSettings,
+  AdSenseValidationErrors,
+} from './adsense/index.js';
+export {
+  ADSENSE_AUTHORING_CONFIG_PATH,
+  ADSENSE_MANIFEST_FILENAME,
+  ADSENSE_PUBLISHER_ID_PATTERN,
+  ADSENSE_RUNTIME_MANIFEST_PATH,
+  ADSENSE_TEXT_MAX_BYTES,
+  buildCanonicalAdSenseScript,
+  normalizeAdSenseSettingsInput,
+  parseAdSensePublisherIdFromSnippet,
+} from './adsense/index.js';
+
 // Auth
 export { SUPPORTED_AUTH_TYPES, isEmployeeAuthType } from './auth/index.js';
 export type { SupportedAuthType, AuthType } from './auth/index.js';

@@ -120,6 +120,7 @@ export enum SettingsSection {
   VISUAL_SCAN = 'visualScan',
   ANALYTICS = 'analytics',
   MARKETING = 'marketing',
+  DISPLAY_ADS = 'displayAds',
   CAMPAIGNS = 'campaigns',
   LOGS = 'logs',
   INBOX = 'inbox',

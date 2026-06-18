@@ -81,9 +81,36 @@ const SYNC_MANIFEST = [
       '102ddeac9f0c0017adf7405e1dbf3c92', // before non-redirect loader Response (error-response branch)
       '3d66a88d88b8ec09bf5098b474c7a56c', // before empty status-200 Response fallback handling
       'f0d49c600a0fc04550f9afe25f5f2f67', // before sanitized API error responses
-      '2791732d0b10bf8716d0cc70f3734497', // before per-host SEO gate (RUBICON-373)
+      '2791732d0b10bf8716d0cc70f3734497', // before AdSense runtime routes/head injection and per-host SEO gate
+      '5487ff6fad6ab48607c498daa80cbc01', // before merging AdSense runtime injection with per-host SEO gate
       '12a5f4baadf6ce4963913fe37384e51e'  // SEO: add must-revalidate to cache directives
     ],
+    force: false,
+  },
+  {
+    file: 'src/server/adsense-manifest.ts',
+    description: 'Published runtime helper for AdSense manifest loading, head injection, and ads.txt responses',
+    known_hashes: [
+      'd7223cb2d3049d061b5a9419a9cba142', // before global AdSense enable flag
+      '6298f7b890950d4e4faf0af605346b40', // before requiring explicit AdSense enable flag
+      'fd4b7758bb07eb45fa8536b321bc772e', // before runtime manifest path hardening
+    ],
+    force: false,
+  },
+  {
+    file: 'src/server/adsense-manifest.test.ts',
+    description: 'Tests for AdSense runtime manifest loading and validation',
+    known_hashes: [
+      'fe7d0d324542bb092365499624cf0580', // before global AdSense enable flag
+      'ee2ceb09388fb9c33c700553de77099c', // before requiring explicit AdSense enable flag
+      '0b4a9145309c838b16018ec55a02ec84', // before runtime manifest path hardening
+    ],
+    force: false,
+  },
+  {
+    file: 'src/server/entry.test.ts',
+    description: 'Tests for server entry AdSense text routes and SSR head injection',
+    known_hashes: [],
     force: false,
   },
   {

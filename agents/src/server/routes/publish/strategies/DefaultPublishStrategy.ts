@@ -27,7 +27,10 @@ export class DefaultPublishStrategy implements PublishStrategy {
     // 3. Build
     await this.build(context, commitHash);
 
-    // 4. Create archive (auto-detect based on server.bundle.cjs)
+    // 4. Generate runtime artifacts
+    await this.runRuntimeArtifactHooks(context, commitHash);
+
+    // 5. Create archive (auto-detect based on server.bundle.cjs)
     const archivePath = await this.createArchive(context, commitHash);
 
     // Lazy import avoids pulling the full GitOpsService dependency tree
@@ -255,6 +258,38 @@ export class DefaultPublishStrategy implements PublishStrategy {
     });
   }
 
+  private async runRuntimeArtifactHooks(context: PublishContext, commitHash: string): Promise<void> {
+    const { logger, runtimeArtifactHooks } = context;
+
+    if (!runtimeArtifactHooks?.length) {
+      return;
+    }
+
+    logger.info(`route.publish.${this.key}.runtime-artifacts.begin`, {
+      commitHash: commitHash.substring(0, 7),
+      hookCount: runtimeArtifactHooks.length,
+    });
+
+    try {
+      for (const hook of runtimeArtifactHooks) {
+        await hook(context);
+      }
+    } catch (error) {
+      const diagnostics = getErrorDiagnostics(error);
+      const details = formatErrorDetails(diagnostics);
+      logger.error(`route.publish.${this.key}.runtime-artifacts.failed`, {
+        commitHash: commitHash.substring(0, 7),
+        ...diagnostics,
+      });
+      throw new BuildError('Publish runtime manifest generation failed', details);
+    }
+
+    logger.info(`route.publish.${this.key}.runtime-artifacts.success`, {
+      commitHash: commitHash.substring(0, 7),
+      hookCount: runtimeArtifactHooks.length,
+    });
+  }
+
   /**
    * Create production archive
    * Archive auto-detects: dist-only if server.bundle.cjs exists, otherwise full source
@@ -312,4 +347,69 @@ export class DefaultPublishStrategy implements PublishStrategy {
   ): Promise<PublishResponse> {
     return publishSupervisor.publish(request);
   }
+}
+
+interface ErrorDiagnostics {
+  error: string;
+  code?: string | number;
+  statusCode?: number;
+  cause?: ErrorDiagnostics;
+}
+
+function getErrorDiagnostics(error: unknown): ErrorDiagnostics {
+  const diagnostic: ErrorDiagnostics = {
+    error: getErrorMessage(error),
+  };
+
+  if (!isRecord(error)) {
+    return diagnostic;
+  }
+
+  const code = error.code;
+  if (typeof code === 'string' || typeof code === 'number') {
+    diagnostic.code = code;
+  }
+
+  if (typeof error.statusCode === 'number') {
+    diagnostic.statusCode = error.statusCode;
+  }
+
+  if ('cause' in error && error.cause !== undefined) {
+    diagnostic.cause = getErrorDiagnostics(error.cause);
+  }
+
+  return diagnostic;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (isRecord(error) && typeof error.message === 'string') {
+    return error.message;
+  }
+
+  if (isRecord(error)) {
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  }
+
+  return String(error);
+}
+
+function formatErrorDetails(diagnostics: ErrorDiagnostics): string {
+  const hasStructuredDetails =
+    diagnostics.code !== undefined ||
+    diagnostics.statusCode !== undefined ||
+    diagnostics.cause !== undefined;
+
+  return hasStructuredDetails ? JSON.stringify(diagnostics) : diagnostics.error;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

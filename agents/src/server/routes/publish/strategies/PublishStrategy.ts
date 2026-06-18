@@ -13,8 +13,11 @@ export interface PublishContext {
   tasks: WorkspaceTasks;
   gitUtils: GitUtils;
   logger: ILogger;
+  runtimeArtifactHooks?: PublishRuntimeArtifactHook[];
   runtime?: WorkspaceRuntime;
 }
+
+export type PublishRuntimeArtifactHook = (context: PublishContext) => Promise<void>;
 
 export interface BuildResult {
   commitHash: string;

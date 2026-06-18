@@ -16,8 +16,14 @@ vi.mock('@airo/shared/publish', () => ({
 
 // Mock dependencies BEFORE imports
 const mockFindById = vi.fn();
-
 const mockUpdatePublishedUrl = vi.fn();
+const mockAdSenseWriteForPublish = vi.fn();
+const mockAdSensePublishManifestService = vi.fn(function () {
+  return {
+    writeForPublish: mockAdSenseWriteForPublish,
+  };
+});
+
 vi.mock('../../database/repositories/AppRepository.js', () => ({
   AppRepository: vi.fn().mockImplementation(function () { return {
     findById: mockFindById,
@@ -52,6 +58,10 @@ vi.mock('../../utils/dev-supervisor-client-factory.js', () => ({
   DevSupervisorClientFactory: {
     createForSocketPath: vi.fn().mockReturnValue(null),
   }
+}));
+
+vi.mock('../../services/AdSensePublishManifestService.js', () => ({
+  AdSensePublishManifestService: mockAdSensePublishManifestService,
 }));
 
 // Mock app-ownership middleware to pass through (tests set up their own auth context)
@@ -102,7 +112,8 @@ vi.mock('../../logging/index.js', () => ({
 
 // Import after mocks
 const publishRouter = await import('./publish.js').then(m => m.default);
-import { getPublishStrategy, MissingStartCommandError } from './publish/strategies/index.js';
+import { DevSupervisorClientFactory } from '../../utils/dev-supervisor-client-factory.js';
+import { getPublishStrategy, BuildError, MissingStartCommandError } from './publish/strategies/index.js';
 import { getGitHookService } from '../agent-runtime.js';
 
 describe('Publish Route Authorization', () => {
@@ -441,6 +452,139 @@ describe('Publish Route Authorization', () => {
     });
   });
 
+  describe('AdSense runtime artifact hook wiring', () => {
+    function createPublishApp() {
+      const publishApp = express();
+      publishApp.use(express.json());
+      publishApp.use((req, res, next) => {
+        (req as AuthenticatedRequest).agentContext = {
+          siteId: 'test-site',
+          canDownload: false,
+          canPublish: true,
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000)
+        };
+        next();
+      });
+      publishApp.use('/', publishRouter);
+      return publishApp;
+    }
+
+    beforeEach(() => {
+      process.env.NOMAD_ALLOC_DIR = '/fake-alloc';
+      mockFindById.mockReturnValue({ id: 'test-app-id', path: '/tmp/test-app' });
+      mockCreateForWorkspace.mockReturnValue({
+        tasks: { runCommandSync: vi.fn() },
+        files: { write: vi.fn() },
+      });
+      mockAdSenseWriteForPublish.mockResolvedValue(undefined);
+    });
+
+    afterEach(() => {
+      delete process.env.NOMAD_ALLOC_DIR;
+    });
+
+    it('passes an AdSense runtime artifact hook to the default strategy', async () => {
+      let capturedContext: any;
+      vi.mocked(getPublishStrategy).mockReturnValue({
+        key: 'default',
+        prepareBuild: vi.fn(async (context) => {
+          capturedContext = context;
+          return {
+            commitHash: 'abc1234567890',
+            archivePath: '/dist/abc1234567890.tar.gz',
+          };
+        }),
+        deploy: vi.fn(),
+      } as any);
+
+      await request(createPublishApp())
+        .post('/apps/test-app-id/publish')
+        .send({})
+        .expect(200);
+
+      expect(capturedContext.runtimeArtifactHooks).toHaveLength(1);
+
+      await capturedContext.runtimeArtifactHooks[0](capturedContext);
+
+      expect(mockAdSensePublishManifestService).toHaveBeenCalledTimes(1);
+      expect(mockAdSenseWriteForPublish).toHaveBeenCalledWith(
+        'test-app-id',
+        mockCreateForWorkspace.mock.results[0]?.value,
+      );
+    });
+
+    it('does not pass or run an AdSense runtime artifact hook for the PaaS strategy', async () => {
+      let capturedContext: any;
+      vi.mocked(getPublishStrategy).mockReturnValue({
+        key: 'paas',
+        prepareBuild: vi.fn(async (context) => {
+          capturedContext = context;
+          if (context.runtimeArtifactHooks) {
+            for (const hook of context.runtimeArtifactHooks) {
+              await hook(context);
+            }
+          }
+          return {
+            commitHash: '019cab3def12',
+            archivePath: '/dist/019cab3def12.tar.gz',
+          };
+        }),
+        deploy: vi.fn(),
+      } as any);
+
+      await request(createPublishApp())
+        .post('/apps/test-app-id/publish')
+        .send({ deploymentStrategy: 'paas' })
+        .expect(200);
+
+      expect(capturedContext.runtimeArtifactHooks).toBeUndefined();
+      expect(mockAdSensePublishManifestService).not.toHaveBeenCalled();
+      expect(mockAdSenseWriteForPublish).not.toHaveBeenCalled();
+    });
+
+    it('returns before calling the publish supervisor when the AdSense hook fails', async () => {
+      delete process.env.NOMAD_ALLOC_DIR;
+      mockFindById.mockReturnValue({
+        id: 'test-app-id',
+        path: '/tmp/test-app',
+        publishSupervisorPath: '/tmp/publish.sock',
+      });
+      mockAdSenseWriteForPublish.mockRejectedValue(new Error('manifest write failed'));
+      vi.mocked(getPublishStrategy).mockReturnValue({
+        key: 'default',
+        prepareBuild: vi.fn(async (context) => {
+          try {
+            for (const hook of context.runtimeArtifactHooks ?? []) {
+              await hook(context);
+            }
+          } catch (error) {
+            throw new BuildError(
+              'Publish runtime manifest generation failed',
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+          return {
+            commitHash: 'abc1234567890',
+            archivePath: '/dist/abc1234567890.tar.gz',
+          };
+        }),
+        deploy: vi.fn(),
+      } as any);
+
+      const response = await request(createPublishApp())
+        .post('/apps/test-app-id/publish')
+        .send({})
+        .expect(400);
+
+      expect(response.body).toEqual({
+        error: 'Publish runtime manifest generation failed',
+        details: 'manifest write failed',
+      });
+      expect(DevSupervisorClientFactory.createForSocketPath).not.toHaveBeenCalled();
+    });
+  });
+
   describe('Token Freshness (iat recency check)', () => {
     it('should reject publish with stale token (iat > 30s old)', async () => {
       app = express();
@@ -451,7 +595,7 @@ describe('Publish Route Authorization', () => {
           canDownload: false,
           canPublish: true,
           exp: Math.floor(Date.now() / 1000) + 3600,
-          iat: Math.floor(Date.now() / 1000) - 60, // 60 seconds old
+          iat: Math.floor(Date.now() / 1000) - 60,
         };
         next();
       });
@@ -475,7 +619,7 @@ describe('Publish Route Authorization', () => {
           canDownload: false,
           canPublish: true,
           exp: Math.floor(Date.now() / 1000) + 3600,
-          iat: Math.floor(Date.now() / 1000) - 5, // 5 seconds old
+          iat: Math.floor(Date.now() / 1000) - 5,
         };
         next();
       });
@@ -486,7 +630,7 @@ describe('Publish Route Authorization', () => {
       const response = await request(app)
         .post('/apps/test-app-id/publish')
         .send({})
-        .expect(404); // Past token check, hits app-not-found
+        .expect(404);
 
       expect(response.body.error).toBe('App not found');
     });
@@ -500,7 +644,6 @@ describe('Publish Route Authorization', () => {
           canDownload: false,
           canPublish: true,
           exp: Math.floor(Date.now() / 1000) + 3600,
-          // iat is intentionally omitted
         } as any;
         next();
       });
@@ -524,7 +667,7 @@ describe('Publish Route Authorization', () => {
           canDownload: false,
           canPublish: true,
           exp: Math.floor(Date.now() / 1000) + 3600,
-          iat: Math.floor(Date.now() / 1000) - 30, // exactly 30 seconds — not > 30
+          iat: Math.floor(Date.now() / 1000) - 30,
         };
         next();
       });
@@ -535,7 +678,7 @@ describe('Publish Route Authorization', () => {
       const response = await request(app)
         .post('/apps/test-app-id/publish')
         .send({})
-        .expect(404); // Past token check, hits app-not-found
+        .expect(404);
 
       expect(response.body.error).toBe('App not found');
     });
@@ -550,7 +693,7 @@ describe('Publish Route Authorization', () => {
           canPublish: true,
           product: 'PaaSNodeJS',
           exp: Math.floor(Date.now() / 1000) + 3600,
-          iat: Math.floor(Date.now() / 1000) - 300, // 5 minutes old — would fail for AAB
+          iat: Math.floor(Date.now() / 1000) - 300,
         };
         next();
       });
@@ -561,7 +704,7 @@ describe('Publish Route Authorization', () => {
       const response = await request(app)
         .post('/apps/test-app-id/publish')
         .send({})
-        .expect(404); // Past token check, hits app-not-found
+        .expect(404);
 
       expect(response.body.error).toBe('App not found');
     });

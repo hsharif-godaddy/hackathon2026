@@ -106,11 +106,11 @@ Halt. Both are v8 scaffold files that have existed since the first template vers
 skill({ action: "install", skill: "ssr-migration" })
 ```
 
-Copies `entry-server.tsx`, `server/entry.ts`, `lib/seo-routes.ts`, `components/CookieBanner.tsx`, `components/CookieBannerErrorBoundary.tsx`, `components/Spinner.tsx` to `src/` — skipping any that already exist.
+Copies `entry-server.tsx`, `server/entry.ts`, `server/adsense-manifest.ts`, `lib/seo-routes.ts`, `components/CookieBanner.tsx`, `components/CookieBannerErrorBoundary.tsx`, `components/Spinner.tsx` to `src/` — skipping any that already exist.
 
 Expected result:
 ```json
-{ "success": true, "filesInstalled": 5, "installedFiles": ["..."] }
+{ "success": true, "filesInstalled": 7, "installedFiles": ["..."] }
 ```
 
 **⚠️ STOP — if `success` is not `true`, do not proceed.**
@@ -124,6 +124,7 @@ Do not generate any of these files from memory. Tell the user: "The skill templa
 - [ ] Step 1 — src/entry-server.tsx
 - [ ] Step 2 — src/lib/seo-routes.ts
 - [ ] Step 3 — src/server/entry.ts (API routes + verify)
+- [ ] Step 3a — src/server/adsense-manifest.ts
 - [ ] Step 4 — src/components/CookieBannerErrorBoundary.tsx
 - [ ] Step 5 — src/components/CookieBanner.tsx
 - [ ] Step 6 — src/main.tsx
@@ -192,6 +193,10 @@ import health_get_0 from "./api/health/GET";
 app.get("/api/health", health_get_0);
 // </api-registrations>
 ```
+
+## Step 3a — src/server/adsense-manifest.ts
+
+Verify the file exists (install seeded it). Do not overwrite it manually — it must stay in sync with the platform runtime helper imported by `src/server/entry.ts`.
 
 ---
 

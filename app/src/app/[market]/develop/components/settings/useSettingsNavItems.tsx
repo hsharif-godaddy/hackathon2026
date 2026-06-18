@@ -56,6 +56,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const secrets = useSwitchboard('appbuilder-settings-secrets');
   const social = useSwitchboard('appbuilder-settings-social');
   const marketing = useSwitchboard('appbuilder-settings-marketing');
+  const displayAds = useSwitchboard('appbuilder-settings-display-ads');
   const githubSync = useSwitchboard('appbuilder-github-sync');
   const campaigns = useSwitchboard('appbuilder-marketing-campaigns');
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
@@ -124,6 +125,12 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       icon: <CalendarIcon />,
       disabled: false,
     }] : []),
+    ...(displayAds ? [{
+      id: SettingsSection.DISPLAY_ADS,
+      label: t('builder_settings_nav_display_ads'),
+      icon: <ContentIcon />,
+      disabled: false,
+    }] : []),
     ...(githubSync ? [{
       id: SettingsSection.GITHUB,
       label: t('builder_settings_nav_github'),
@@ -132,7 +139,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
     }] : []),
     ...(campaigns ? [{
       id: SettingsSection.CAMPAIGNS,
-      label: 'Campaigns',
+      label: t('builder_campaigns_title', undefined, 'Marketing Campaigns'),
       icon: <MegaphoneIcon />,
       disabled: false,
     }] : []),

@@ -466,6 +466,11 @@ describe('isProtectedWorkspacePath', () => {
     expect(isProtectedWorkspacePath('/app/.airo/video.json', '/app')).toBe(true);
   });
 
+  it('detects adsense settings file inside .airo', async () => {
+    const { isProtectedWorkspacePath } = await import('../../file-edit-utils.js');
+    expect(isProtectedWorkspacePath('/app/.airo/adsense.json', '/app')).toBe(true);
+  });
+
   it('detects nested path inside .airo', async () => {
     const { isProtectedWorkspacePath } = await import('../../file-edit-utils.js');
     expect(isProtectedWorkspacePath('/app/.airo/qa-runs/qa-run-1.json', '/app')).toBe(true);
@@ -481,4 +486,3 @@ describe('isProtectedWorkspacePath', () => {
     expect(isProtectedWorkspacePath('/app/src/index.ts', '/app')).toBe(false);
   });
 });
-

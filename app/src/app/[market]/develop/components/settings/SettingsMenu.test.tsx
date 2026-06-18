@@ -40,13 +40,14 @@ const mockSwitchboardResults: Record<string, boolean | undefined> = {};
 
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: (feature: string) => {
-    if (mockSwitchboardResults[feature]) return mockSwitchboardResults[feature];
+    if (feature in mockSwitchboardResults) return mockSwitchboardResults[feature];
     if (feature === 'appbuilder-settings-project') return true;
     if (feature === 'appbuilder-settings-domain') return true;
     if (feature === 'appbuilder-settings-backups') return true;
     if (feature === 'appbuilder-settings-security') return true;
     if (feature === 'appbuilder-settings-secrets') return true;
     if (feature === 'appbuilder-settings-visualscan') return false;
+    if (feature === 'appbuilder-settings-display-ads') return false;
     return false;
   },
 }));
@@ -117,6 +118,45 @@ describe('SettingsMenu', () => {
 
     await waitFor(() => {
       expect(screen.getByText('builder_settings_nav_feedback')).toBeInTheDocument();
+    });
+  });
+
+  it('should not display Display Ads when the switchboard flag is explicitly false', async () => {
+    mockSwitchboardResults['appbuilder-settings-display-ads'] = false;
+
+    const { user, container } = renderWithProviders(<SettingsMenu />);
+
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_settings_nav_project')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('builder_settings_nav_display_ads')).not.toBeInTheDocument();
+  });
+
+  it('should navigate and log when Display Ads is clicked', async () => {
+    mockSwitchboardResults['appbuilder-settings-display-ads'] = true;
+    const setActiveSettingsSection = vi.fn();
+    mockChatTabs.setActiveSettingsSection = setActiveSettingsSection;
+
+    const { user, container } = renderWithProviders(<SettingsMenu />);
+
+    const trigger = container.querySelector('[data-testid="chat-toolbar-settings-button"]')!;
+    await user.click(trigger);
+
+    await waitFor(() => {
+      expect(screen.getByText('builder_settings_nav_display_ads')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText('builder_settings_nav_display_ads'));
+
+    await waitFor(() => {
+      expect(setActiveSettingsSection).toHaveBeenCalledWith(SettingsSection.DISPLAY_ADS);
+      expect(vi.mocked(logClickEvent)).toHaveBeenCalledWith(
+        'develop.settings_menu.displayAds',
+        { appId: 'test-app-id' },
+      );
     });
   });
 

@@ -15,6 +15,7 @@ const DatabasePanel = dynamic(() => import('@/app/[market]/develop/components/se
 const DomainPanel = dynamic(() => import('@/app/[market]/develop/components/settings/DomainPanel'), { loading: () => <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.DOMAIN} /> })
 const ProjectPanel = dynamic(() => import('@/app/[market]/develop/components/settings/ProjectPanel'), { loading: () => <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.PROJECT} /> })
 const SecretsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/SecretsPanel').then(m => ({ default: m.SecretsPanel })), { loading: () => <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.SECRETS} /> })
+const DisplayAdsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/DisplayAds/DisplayAdsPanel').then(m => ({ default: m.DisplayAdsPanel })), { loading: () => <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.DISPLAY_ADS} /> })
 
 // Uses SettingsLoadingState as its either RemoteModulePage or is complex to create a skeleton
 const BackupsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/BackupsPanel'), { loading: () => <SettingsLoadingState fullPage /> })
@@ -40,6 +41,7 @@ export default function SettingsView() {
   const isSecretsEnabled = useSwitchboard('appbuilder-settings-secrets');
   const isSocialEnabled = useSwitchboard('appbuilder-settings-social');
   const isMarketingEnabled = useSwitchboard('appbuilder-settings-marketing');
+  const isDisplayAdsEnabled = useSwitchboard('appbuilder-settings-display-ads');
   const isGitHubEnabled = useSwitchboard('appbuilder-github-sync');
   const isCampaignsEnabled = useSwitchboard('appbuilder-marketing-campaigns');
   const isAnalyticsEnabled = useSwitchboard('appbuilder-analytics');
@@ -75,6 +77,9 @@ export default function SettingsView() {
       case SettingsSection.MARKETING:
         if (isMarketingEnabled === undefined) return sectionSkeleton;
         return isMarketingEnabled ? <MarketingPanel /> : null;
+      case SettingsSection.DISPLAY_ADS:
+        if (isDisplayAdsEnabled === undefined) return sectionSkeleton;
+        return isDisplayAdsEnabled ? <DisplayAdsPanel appId={appId} /> : null;
       case SettingsSection.GITHUB:
         if (isGitHubEnabled === undefined) return sectionSkeleton;
         return isGitHubEnabled ? <GitHubPanel /> : null;

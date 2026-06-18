@@ -1,4 +1,4 @@
-import express, { type NextFunction, type Request, type Response } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, extname, join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -7,7 +7,58 @@ import { readFileSync } from "node:fs";
 import healthGet from "./api/health/GET";
 // </api-imports>
 import { seoRoutes } from "../lib/seo-routes";
+import {
+	loadAdSenseRuntimeConfig,
+	resolveAdSenseTextFile,
+	type AdSenseRuntimeConfig,
+} from "./adsense-manifest";
 import { isSystemHost } from "./seo-host";
+
+export interface SsrRenderResult {
+	html: string;
+	head: string;
+	status: number;
+	redirect?: string;
+}
+
+export function registerAdSenseTextRoutes(app: Express, config: AdSenseRuntimeConfig): void {
+	app.get("/ads.txt", (_req, res) => {
+		const content = resolveAdSenseTextFile(config, "adsTxt");
+		if (content === null) {
+			res
+				.status(404)
+				.type("text/plain")
+				.set("Cache-Control", "no-cache")
+				.send("Not found\n");
+			return;
+		}
+		res.type("text/plain").set("Cache-Control", "no-cache").send(content);
+	});
+
+	app.get("/app-ads.txt", (_req, res) => {
+		const content = resolveAdSenseTextFile(config, "appAdsTxt");
+		if (content === null) {
+			res
+				.status(404)
+				.type("text/plain")
+				.set("Cache-Control", "no-cache")
+				.send("Not found\n");
+			return;
+		}
+		res.type("text/plain").set("Cache-Control", "no-cache").send(content);
+	});
+}
+
+export function renderSsrDocument(
+	template: string,
+	result: Pick<SsrRenderResult, "head" | "html">,
+	adSenseConfig: Pick<AdSenseRuntimeConfig, "scriptHtml">,
+): string {
+	const head = [result.head, adSenseConfig.scriptHtml].filter(Boolean).join("\n");
+	return template
+		.replace("<!--app-head-->", () => head)
+		.replace("<!--app-html-->", () => result.html);
+}
 
 function normalizeCommerceApiBaseUrlEnv() {
 	if (process.env.GODADDY_API_BASE_URL) return;
@@ -102,6 +153,9 @@ app.get("/sitemap.xml", (req, res) => {
 if (import.meta.env.PROD) {
 	const __dirname = dirname(fileURLToPath(import.meta.url));
 	const clientDir = join(__dirname, "client");
+	const adSenseRuntimeConfig = loadAdSenseRuntimeConfig(__dirname);
+
+	registerAdSenseTextRoutes(app, adSenseRuntimeConfig);
 
 	app.use(
 		express.static(clientDir, {
@@ -153,13 +207,7 @@ if (import.meta.env.PROD) {
 	// load is unrecoverable at runtime - exiting lets the container
 	// scheduler restart with a clean slate rather than leaving the server
 	// to serve silent 503s indefinitely against a single startup log.
-	type RenderResult = {
-		html: string;
-		head: string;
-		status: number;
-		redirect?: string;
-	};
-	let renderFn: ((url: string) => Promise<RenderResult>) | null = null;
+	let renderFn: ((url: string) => Promise<SsrRenderResult>) | null = null;
 	const SSR_MODULE_LOAD_TIMEOUT_MS = 30_000;
 	const loadTimeout = setTimeout(() => {
 		if (renderFn !== null) return;
@@ -238,9 +286,11 @@ if (import.meta.env.PROD) {
 			// Function replacements disable String.replace's $-special sequences
 			// ($&, $', $`, $$) so user-authored titles / JSON-LD like
 			// "Save $& today" insert literally instead of being interpolated.
-			const out = template
-				.replace("<!--app-head-->", () => seoHead + result.head)
-				.replace("<!--app-html-->", () => result.html);
+			const out = renderSsrDocument(
+				template,
+				{ ...result, head: seoHead + result.head },
+				adSenseRuntimeConfig,
+			);
 			res
 				.status(result.status)
 				.set("Content-Type", "text/html; charset=utf-8")

@@ -27,6 +27,10 @@
       "types": "./dist/social/index.d.ts",
       "import": "./dist/social/index.js"
     },
+    "./adsense": {
+      "types": "./dist/adsense/index.d.ts",
+      "import": "./dist/adsense/index.js"
+    },
     "./auth": {
       "types": "./dist/auth/index.d.ts",
       "import": "./dist/auth/index.js"
@@ -89,6 +93,9 @@
       ],
       "social": [
         "dist/social/index.d.ts"
+      ],
+      "adsense": [
+        "dist/adsense/index.d.ts"
       ],
       "auth": [
         "dist/auth/index.d.ts"

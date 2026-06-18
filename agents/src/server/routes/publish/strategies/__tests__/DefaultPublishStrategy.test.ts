@@ -158,5 +158,133 @@ describe('DefaultPublishStrategy', () => {
       expect((error as BuildError).details).toBe('FATAL: out of memory');
       expect((error as BuildError).exitCode).toBe(2);
     });
+
+    it('runs runtime artifact hooks after a successful build and before archive creation', async () => {
+      const order: string[] = [];
+      const runtimeArtifactHook = vi.fn(async () => {
+        order.push('hook');
+      });
+      mockTasks.runCommandSync.mockImplementation(async () => {
+        order.push('build');
+        return {
+          exitCode: 0,
+          stdout: 'Build complete',
+          stderr: '',
+          timedOut: false,
+          taskId: 'mock',
+          executionTimeMs: 5000,
+        };
+      });
+      mockGitUtils.createArchive.mockImplementation(async () => {
+        order.push('archive');
+        return '/dist/abc1234567890.tar.gz';
+      });
+
+      await strategy.prepareBuild({
+        ...mockContext,
+        runtimeArtifactHooks: [runtimeArtifactHook],
+      });
+
+      expect(runtimeArtifactHook).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appId: 'test-app',
+          appPath: '/tmp/test-app',
+        }),
+      );
+      expect(order).toEqual(['build', 'hook', 'archive']);
+    });
+
+    it('does not run runtime artifact hooks when the build fails', async () => {
+      const runtimeArtifactHook = vi.fn();
+      mockTasks.runCommandSync.mockResolvedValue({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'Error: Cannot find module',
+        timedOut: false,
+        taskId: 'mock',
+        executionTimeMs: 2000,
+      });
+
+      await expect(
+        strategy.prepareBuild({
+          ...mockContext,
+          runtimeArtifactHooks: [runtimeArtifactHook],
+        }),
+      ).rejects.toThrow(BuildError);
+
+      expect(runtimeArtifactHook).not.toHaveBeenCalled();
+      expect(mockGitUtils.createArchive).not.toHaveBeenCalled();
+    });
+
+    it('wraps runtime artifact hook failures and prevents archive creation', async () => {
+      const runtimeArtifactHook = vi.fn().mockRejectedValue(new Error('manifest write failed'));
+      mockTasks.runCommandSync.mockResolvedValue({
+        exitCode: 0,
+        stdout: 'Build complete',
+        stderr: '',
+        timedOut: false,
+        taskId: 'mock',
+        executionTimeMs: 5000,
+      });
+
+      const error = await strategy.prepareBuild({
+        ...mockContext,
+        runtimeArtifactHooks: [runtimeArtifactHook],
+      }).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BuildError);
+      expect((error as BuildError).message).toBe('Publish runtime manifest generation failed');
+      expect((error as BuildError).details).toBe('manifest write failed');
+      expect(mockGitUtils.createArchive).not.toHaveBeenCalled();
+    });
+
+    it('preserves structured runtime artifact hook diagnostics in the BuildError details and logs', async () => {
+      const cause = Object.assign(new Error('workspace write rejected'), {
+        code: 'workspace_write_failed',
+        statusCode: 503,
+      });
+      const hookError = Object.assign(new Error('manifest write failed'), {
+        code: 'dev_supervisor_error',
+        statusCode: 502,
+        cause,
+      });
+      const runtimeArtifactHook = vi.fn().mockRejectedValue(hookError);
+      mockTasks.runCommandSync.mockResolvedValue({
+        exitCode: 0,
+        stdout: 'Build complete',
+        stderr: '',
+        timedOut: false,
+        taskId: 'mock',
+        executionTimeMs: 5000,
+      });
+
+      const error = await strategy.prepareBuild({
+        ...mockContext,
+        runtimeArtifactHooks: [runtimeArtifactHook],
+      }).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BuildError);
+      expect((error as BuildError).message).toBe('Publish runtime manifest generation failed');
+      expect((error as BuildError).details).toContain('manifest write failed');
+      expect((error as BuildError).details).toContain('dev_supervisor_error');
+      expect((error as BuildError).details).toContain('502');
+      expect((error as BuildError).details).toContain('workspace write rejected');
+      expect((error as BuildError).details).toContain('workspace_write_failed');
+      expect((error as BuildError).details).toContain('503');
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'route.publish.default.runtime-artifacts.failed',
+        expect.objectContaining({
+          error: 'manifest write failed',
+          code: 'dev_supervisor_error',
+          statusCode: 502,
+          cause: expect.objectContaining({
+            error: 'workspace write rejected',
+            code: 'workspace_write_failed',
+            statusCode: 503,
+          }),
+        }),
+      );
+      expect(mockGitUtils.createArchive).not.toHaveBeenCalled();
+    });
   });
 });

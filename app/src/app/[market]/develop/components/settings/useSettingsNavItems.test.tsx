@@ -27,6 +27,7 @@ vi.mock('@/hooks/useSwitchboard', () => ({
     if (feature === 'appbuilder-settings-security') return true;
     if (feature === 'appbuilder-settings-secrets') return true;
     if (feature === 'appbuilder-settings-visualscan') return false;
+    if (feature === 'appbuilder-settings-display-ads') return false;
     return false;
   },
 }));
@@ -130,6 +131,30 @@ describe('useSettingsNavItems', () => {
 
     const visualScanItem = result.current.find(item => item.id === SettingsSection.VISUAL_SCAN);
     expect(visualScanItem).toBeUndefined();
+  });
+
+  it('should define the display ads settings section route value', () => {
+    expect(SettingsSection.DISPLAY_ADS).toBe('displayAds');
+  });
+
+  it('should include display ads when the switchboard flag is enabled', () => {
+    mockSwitchboardResults['appbuilder-settings-display-ads'] = true;
+
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+    const displayAdsItem = result.current.find(item => item.id === SettingsSection.DISPLAY_ADS);
+    expect(displayAdsItem).toBeDefined();
+    expect(displayAdsItem?.label).toBe('builder_settings_nav_display_ads');
+    expect(displayAdsItem?.disabled).toBe(false);
+  });
+
+  it('should not include display ads when the switchboard flag is explicitly false', () => {
+    mockSwitchboardResults['appbuilder-settings-display-ads'] = false;
+
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+    const displayAdsItem = result.current.find(item => item.id === SettingsSection.DISPLAY_ADS);
+    expect(displayAdsItem).toBeUndefined();
   });
 
   it('should include feedback item on desktop', () => {
