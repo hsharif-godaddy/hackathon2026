@@ -30,6 +30,7 @@ import type { IClientActionService } from '../../../services/ClientActionService
 import {
   listAccounts,
   activateAccount,
+  updateAccountName,
   listEmbeddables,
   createEmbeddable,
   updateEmbeddable,
@@ -74,6 +75,19 @@ function getClient(ctx?: ToolContext): IClientActionService | null {
   const socketId = ctx?.socketId;
   if (!socketId || typeof socketId !== 'string') return null;
   return getActionService(socketId);
+}
+
+function syncAccountName(client: IClientActionService, appId: string, brandId: string, accountUrl: string, name: string): void {
+  updateAccountName(client, appId, brandId, accountUrl, name)
+    .then((res) => {
+      logger.info('inbox.skill.discover_account.name_sync_result', { appId, accountUrl, success: res.success, ...(!res.success && { error: res.error }) });
+    })
+    .catch((err: unknown) => {
+      logger.warn('inbox.skill.discover_account.name_sync_failed', {
+        appId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
 }
 
 interface InboxContext {
@@ -136,6 +150,13 @@ export const discoverAccountTool: SkillToolDefinition = {
     const existingAccount = await memoryRepo.get(appId, MEM_ACCOUNT_ID);
     const existingBrand = await memoryRepo.get(appId, MEM_BRAND_ID);
     if (existingBrand.exists && existingAccount.exists) {
+      const client = getClient(context);
+      if (client) {
+        const app = await appRepository.findById(appId);
+        if (app?.name) {
+          syncAccountName(client, appId, existingBrand.value as string, existingAccount.value as string, app.name);
+        }
+      }
       return { alreadyConfigured: true, accountId: existingBrand.value as string };
     }
 
@@ -159,6 +180,12 @@ export const discoverAccountTool: SkillToolDefinition = {
       }
       await memoryRepo.set(appId, MEM_ACCOUNT_ID, linkedToThisApp.accountUrl);
       await memoryRepo.set(appId, MEM_BRAND_ID, linkedToThisApp.brandUrl);
+
+      const app = await appRepository.findById(appId);
+      if (app?.name) {
+        syncAccountName(client, appId, linkedToThisApp.brandUrl, linkedToThisApp.accountUrl, app.name);
+      }
+
       logger.info('inbox.skill.discover_account.found_linked', { appId, accountUrl: linkedToThisApp.accountUrl, brandUrl: linkedToThisApp.brandUrl });
       return { alreadyConfigured: true, accountId: linkedToThisApp.brandUrl };
     }

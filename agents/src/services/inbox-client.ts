@@ -57,6 +57,7 @@ export interface ListAccountsResponse {
 type Operation =
   | 'list_accounts'
   | 'activate_account'
+  | 'update_account'
   | 'list_embeddables'
   | 'create_embeddable'
   | 'update_embeddable'
@@ -174,6 +175,21 @@ export async function activateAccount(
       ...(entitlementId && { aabEntitlementId: entitlementId }),
       ...(appName && { aabAppName: appName }),
     },
+  });
+}
+
+export async function updateAccountName(
+  client: IClientActionService,
+  appId: string,
+  brandId: string,
+  accountUrl: string,
+  name: string,
+): Promise<InboxResult<unknown>> {
+  return dispatch<unknown>(client, {
+    operation: 'update_account',
+    appId,
+    brandId,
+    body: { accountUrl, name },
   });
 }
 

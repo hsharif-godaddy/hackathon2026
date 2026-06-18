@@ -275,10 +275,12 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
   // Fetch inbox account data early and sync to store
   const { brandId, accountId, isLoading: isLoadingAccount } = useInboxAccount(isInboxEnabled ? appId : undefined)
   const setInboxBrandId = useDevelopPageStore((state) => state.setInboxBrandId)
+  const setInboxAccountId = useDevelopPageStore((state) => state.setInboxAccountId)
 
   useEffect(() => {
     setInboxBrandId(brandId)
-  }, [brandId, setInboxBrandId])
+    setInboxAccountId(accountId)
+  }, [brandId, accountId, setInboxBrandId, setInboxAccountId])
 
   // Single Pusher subscription for the whole builder session, so the inbox
   // unresolved badge stays fresh even when the inbox view is closed. Gated on the

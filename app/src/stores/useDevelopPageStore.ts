@@ -248,6 +248,7 @@ interface DevelopPageStore {
 
   // Inbox
   inboxBrandId: string | null
+  inboxAccountId: string | null
 
   // Version history UI
   isVersionHistoryOpen: boolean
@@ -363,6 +364,7 @@ interface DevelopPageStore {
   setSelectedModel: (model: string | null) => void
   setConversationsBrandId: (brandId: string | null) => void
   setInboxBrandId: (brandId: string | null) => void
+  setInboxAccountId: (accountId: string | null) => void
   setIsMobile: (isMobile: boolean) => void
   setIsVersionHistoryOpen: (open: boolean) => void
   setIsPreviewVisible: (visible: boolean) => void
@@ -521,6 +523,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     modelByAppId: {},
     conversationsBrandId: null,
     inboxBrandId: null,
+    inboxAccountId: null,
     isVersionHistoryOpen: false,
 
     // Tab state (initialized from URL in useChatTabs)
@@ -622,6 +625,7 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     }),
     setConversationsBrandId: (brandId) => set((state) => { state.conversationsBrandId = brandId }),
     setInboxBrandId: (brandId) => set((state) => { state.inboxBrandId = brandId }),
+    setInboxAccountId: (accountId) => set((state) => { state.inboxAccountId = accountId }),
     setIsMobile: (isMobile) => {
       const { isMobile: wasMobile, viewMode } = get()
 

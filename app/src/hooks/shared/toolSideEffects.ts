@@ -386,6 +386,30 @@ export async function handleToolResultSideEffects(
     }
   }
 
+  // Sync project name to backend inbox account (fire-and-forget, independent of control plane)
+  if (tool.name === 'setProjectName' && !hasError && appId && tool.input?.name) {
+    try {
+      const { appFetch } = await import('@/lib/gasket-config');
+      const { inboxBrandId, inboxAccountId } = useDevelopPageStore.getState();
+      if (inboxBrandId && inboxAccountId) {
+        appFetch('/api/inbox', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            operation: 'update_account',
+            brandId: inboxBrandId,
+            body: { accountUrl: inboxAccountId, name: tool.input.name },
+          }),
+        }).catch((err: unknown) => {
+          logger.warn('toolSideEffects.setProjectName.inboxSyncFailed', {
+            appId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
+    } catch { /* inbox sync is best-effort */ }
+  }
+
   // Brand data refresh (Brand Book UI)
   if (
     !hasError &&

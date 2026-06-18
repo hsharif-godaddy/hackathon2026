@@ -33,6 +33,7 @@ export const dynamic = 'force-dynamic';
 type InboxOperation =
   | 'list_accounts'
   | 'activate_account'
+  | 'update_account'
   | 'list_embeddables'
   | 'create_embeddable'
   | 'update_embeddable'
@@ -59,6 +60,13 @@ function resolveRequest(req: InboxRequest): { method: 'GET' | 'POST' | 'PUT'; pa
       return { method: 'GET', path: '/accounts' };
     case 'activate_account':
       return { method: 'POST', path: '/activateAiroAppBuilderAccount' };
+    case 'update_account': {
+      const accountUrl = (req.body as { accountUrl?: string } | undefined)?.accountUrl;
+      if (!accountUrl || !UUID_RE.test(accountUrl)) {
+        return { error: 'body.accountUrl (UUID) is required for update_account' };
+      }
+      return { method: 'PUT', path: `/accounts/${accountUrl}` };
+    }
     case 'list_embeddables':
       return { method: 'GET', path: '/embeddables' };
     case 'create_embeddable':
@@ -124,7 +132,10 @@ export const POST = withCustomerAuth(async (
   } else {
     url = `https://${body.brandId}.${REAMAZE_HOST}/api/v2/${resolved.path.replace(/^\//, '')}`;
   }
-  const hasBody = resolved.method !== 'GET' && body.body !== undefined;
+  const upstreamBody = (body.operation === 'update_account' && body.body && typeof body.body === 'object')
+    ? (() => { const { accountUrl: _, ...rest } = body.body as Record<string, unknown>; return rest; })()
+    : body.body;
+  const hasBody = resolved.method !== 'GET' && upstreamBody !== undefined;
 
   logger.info('inbox.bff.proxy.start', {
     operation: body.operation,
@@ -140,7 +151,7 @@ export const POST = withCustomerAuth(async (
       Authorization: `sso-jwt ${authContext.jwt}`,
       ...(hasBody && { 'Content-Type': 'application/json' }),
     },
-    ...(hasBody && { body: JSON.stringify(body.body) }),
+    ...(hasBody && { body: JSON.stringify(upstreamBody) }),
   }).catch((err: unknown) => {
     const e = err instanceof Error ? err : new Error(String(err));
     logger.error('inbox.bff.proxy.exception', {

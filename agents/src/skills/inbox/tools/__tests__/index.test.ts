@@ -38,6 +38,7 @@ const mockUpdateStaff = vi.fn();
 vi.mock('../../../../services/inbox-client.js', () => ({
   listAccounts: (...args: unknown[]) => mockListAccounts(...args),
   activateAccount: (...args: unknown[]) => mockActivateAccount(...args),
+  updateAccountName: vi.fn().mockResolvedValue({ success: true }),
   listEmbeddables: (...args: unknown[]) => mockListEmbeddables(...args),
   createEmbeddable: (...args: unknown[]) => mockCreateEmbeddable(...args),
   updateEmbeddable: (...args: unknown[]) => mockUpdateEmbeddable(...args),
