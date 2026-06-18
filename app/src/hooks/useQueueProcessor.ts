@@ -12,6 +12,7 @@ import {
   useStreamingConversationStore,
   useStreamingState,
 } from '@/stores/useStreamingConversationStore'
+import { logImpressionEvent } from '@/utils/instrumentation'
 
 type SendMessageFn = (options: SendMessageOptions) => Promise<void>
 
@@ -28,6 +29,7 @@ export function useQueueProcessor(params: {
   sendRef.current = sendMessage
 
   const prevStreamingStateRef = useRef(streamingState)
+  const pendingQueuedItemRef = useRef<{ id: string; startedAt: number } | null>(null)
 
   useEffect(() => {
     if (!enabled) return
@@ -35,7 +37,6 @@ export function useQueueProcessor(params: {
     prevStreamingStateRef.current = streamingState
     if (streamingState !== 'idle' && streamingState !== 'error') return
     if (prev === 'idle' || prev === 'error') return
-    if (queuedMessages.length === 0) return
 
     const last: ChatMessage | undefined = useStreamingConversationStore
       .getState()
@@ -52,13 +53,25 @@ export function useQueueProcessor(params: {
           last.maxStepsReached
         ),
       )
-    if (failed) {
-      logger.info('queue.stoppedOnError', {
-        reason: streamingState === 'error' ? 'streaming-error' : 'message-failure',
-        queueLength: queuedMessages.length,
-      })
+    const reason = streamingState === 'error' ? 'streaming-error' : 'message-failure'
+
+    const pending = pendingQueuedItemRef.current
+    if (pending) {
+      const durationMs = Date.now() - pending.startedAt
+      if (failed) {
+        logger.info('queue.message.failed', { id: pending.id, durationMs, reason })
+        logImpressionEvent('chat.queue.fail', { durationMs, reason })()
+      } else {
+        logger.info('queue.message.completed', { id: pending.id, durationMs })
+        logImpressionEvent('chat.queue.complete', { durationMs })()
+      }
+      pendingQueuedItemRef.current = null
+    }
+
+    if (failed && queuedMessages.length > 0) {
+      logger.info('queue.stoppedOnError', { reason, queueLength: queuedMessages.length })
       useStreamingConversationStore.getState().setQueueStoppedOnError(true)
-    } else if (useStreamingConversationStore.getState().queueStoppedOnError) {
+    } else if (!failed && useStreamingConversationStore.getState().queueStoppedOnError) {
       logger.info('queue.stoppedOnError.cleared', {
         reason: 'successful-stream-completion',
         queueLength: queuedMessages.length,
@@ -82,11 +95,17 @@ export function useQueueProcessor(params: {
       .takeNextQueuedMessage()
     if (!next) return
 
-    logger.info('queue.dequeue', {
+    const startedAt = Date.now()
+    const ageMs = startedAt - next.enqueuedAt
+    const remaining = queuedMessages.length - 1
+    logger.info('queue.message.started', {
       id: next.id,
-      remaining: queuedMessages.length - 1,
+      remaining,
+      ageMs,
       contentPreview: next.content.slice(0, 60),
     })
+    logImpressionEvent('chat.queue.start', { ageMs, remaining })()
+    pendingQueuedItemRef.current = { id: next.id, startedAt }
 
     const payload = queuedMessageToSendOptions(next)
 
@@ -97,15 +116,20 @@ export function useQueueProcessor(params: {
         await sendRef.current(payload)
         const postState = useStreamingConversationStore.getState().streamingState
         if (postState === 'idle' || postState === 'error') {
-          logger.warn('queue.dequeue.silent-failure', { id: next.id, postState })
+          logger.warn('queue.message.failed', { id: next.id, reason: 'silent-failure', postState })
+          logImpressionEvent('chat.queue.fail', { reason: 'silent-failure' })()
+          pendingQueuedItemRef.current = null
           useStreamingConversationStore.getState().requeueMessage(next)
           useStreamingConversationStore.getState().setQueueStoppedOnError(true)
         }
       } catch (err: unknown) {
-        logger.error('queue.dequeue.send-failed', {
+        logger.error('queue.message.failed', {
           id: next.id,
+          reason: 'send-error',
           message: err instanceof Error ? err.message : String(err),
         })
+        logImpressionEvent('chat.queue.fail', { reason: 'send-error' })()
+        pendingQueuedItemRef.current = null
         useStreamingConversationStore.getState().requeueMessage(next)
         useStreamingConversationStore.getState().setQueueStoppedOnError(true)
       } finally {

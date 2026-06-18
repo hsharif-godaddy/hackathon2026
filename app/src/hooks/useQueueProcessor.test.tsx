@@ -6,11 +6,15 @@ import { act, render } from '@testing-library/react'
 
 import type { ChatMessage } from '@/stores/useStreamingConversationStore'
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
+import { mockInstrumentation } from '@/tests/mocks'
+import { logImpressionEvent } from '@/utils/instrumentation'
 import { useQueueProcessor } from './useQueueProcessor'
 
 vi.mock('@/lib/request-context', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
+
+vi.mock('@/utils/instrumentation', () => mockInstrumentation())
 
 function getState() {
   return useStreamingConversationStore.getState()
@@ -332,5 +336,88 @@ describe('useQueueProcessor', () => {
       expect(sendMessage).toHaveBeenCalledTimes(1)
     })
     expect(sendMessage.mock.calls[0]![0]).toMatchObject({ content: 'queued-during-await' })
+  })
+
+  describe('instrumentation', () => {
+    it('emits chat.queue.start impression on dequeue', async () => {
+      const sendMessage = vi.fn(async () => {
+        act(() => {
+          getState().setStreamingState('streaming')
+        })
+      })
+      render(<Harness enabled sendMessage={sendMessage} />)
+      setStreamingState('streaming')
+
+      act(() => {
+        getState().enqueueMessage({ content: 'a' })
+        getState().enqueueMessage({ content: 'b' })
+      })
+
+      setStreamingState('idle')
+
+      await vi.waitFor(() => {
+        expect(sendMessage).toHaveBeenCalledTimes(1)
+      })
+      expect(logImpressionEvent).toHaveBeenCalledWith(
+        'chat.queue.start',
+        expect.objectContaining({ remaining: 1, ageMs: expect.any(Number) }),
+      )
+    })
+
+    it('emits chat.queue.complete impression after a queued item finishes successfully', async () => {
+      const sendMessage = vi.fn(async () => {
+        act(() => {
+          getState().setStreamingState('streaming')
+        })
+      })
+      render(<Harness enabled sendMessage={sendMessage} />)
+      setStreamingState('streaming')
+
+      act(() => {
+        getState().enqueueMessage({ content: 'a' })
+      })
+      setStreamingState('idle')
+      await vi.waitFor(() => {
+        expect(sendMessage).toHaveBeenCalledTimes(1)
+      })
+
+      addCompletedMessage({ content: 'ok' })
+      setStreamingState('idle')
+
+      await vi.waitFor(() => {
+        expect(logImpressionEvent).toHaveBeenCalledWith(
+          'chat.queue.complete',
+          expect.objectContaining({ durationMs: expect.any(Number) }),
+        )
+      })
+    })
+
+    it('emits chat.queue.fail impression when the queued item stream errors out', async () => {
+      const sendMessage = vi.fn(async () => {
+        act(() => {
+          getState().setStreamingState('streaming')
+        })
+      })
+      render(<Harness enabled sendMessage={sendMessage} />)
+      setStreamingState('streaming')
+
+      act(() => {
+        getState().enqueueMessage({ content: 'a' })
+      })
+      setStreamingState('idle')
+      await vi.waitFor(() => {
+        expect(sendMessage).toHaveBeenCalledTimes(1)
+      })
+
+      addCompletedMessage({ upstreamError: true, content: 'fail' })
+      setStreamingState('idle')
+
+      await vi.waitFor(() => {
+        expect(logImpressionEvent).toHaveBeenCalledWith(
+          'chat.queue.fail',
+          expect.objectContaining({ reason: 'message-failure' }),
+        )
+      })
+    })
   })
 })

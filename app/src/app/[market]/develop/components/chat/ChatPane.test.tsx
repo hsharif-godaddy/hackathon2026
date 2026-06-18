@@ -13,6 +13,7 @@ import { useStreamingConversationStore } from '@/stores/useStreamingConversation
 import { mockInstrumentation } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import { MAX_FILE_SIZE, MAX_TOTAL_ASSETS } from '@/utils/file-upload-validation';
+import { logClickEvent } from '@/utils/instrumentation';
 import ChatPane from './ChatPane';
 
 vi.mock('@/lib/file-agent', () => ({
@@ -1164,6 +1165,23 @@ describe('ChatPane', () => {
 
       expect(enqueueMessage).toHaveBeenCalledTimes(1);
       expect(mockStreamingStore.setInputValue).toHaveBeenCalledWith('');
+    });
+
+    it('emits chat.queue.submit click EID when a message is enqueued', async () => {
+      mockSwitchboardValues['appbuilder-queue'] = true;
+      mockStreamingStore.isActivelyStreaming = true;
+      mockStreamingStore.inputValue = 'hello';
+
+      const { user } = renderWithProviders(
+        <ChatPane sendMessage={mockSendMessage} stopGeneration={mockStopGeneration} />
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Send' }));
+
+      expect(logClickEvent).toHaveBeenCalledWith(
+        'chat.queue.submit',
+        expect.objectContaining({ queueLength: expect.any(Number) }),
+      );
     });
   });
 

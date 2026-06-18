@@ -18,6 +18,7 @@ import {
   useQueuedMessages,
   useStreamingConversationStore,
 } from '@/stores/useStreamingConversationStore'
+import { logClickEvent } from '@/utils/instrumentation'
 
 const PREVIEW_CHARS = 80
 
@@ -182,7 +183,8 @@ export default function QueuedMessagesStrip() {
 
   const handleRemove = useCallback(
     (id: string) => {
-      logger.info('queue.remove', { id })
+      logger.info('queue.message.deleted', { id })
+      logClickEvent('chat.queue.delete', {})()
       removeQueuedMessage(id)
     },
     [removeQueuedMessage],
@@ -207,7 +209,8 @@ export default function QueuedMessagesStrip() {
         handleDragEnd()
         return
       }
-      logger.info('queue.reorder', { from: draggedIndex, to: index })
+      logger.info('queue.message.reordered', { from: draggedIndex, to: index })
+      logClickEvent('chat.queue.reorder', { from: draggedIndex, to: index })()
       moveQueuedMessage(draggedIndex, index)
       handleDragEnd()
     },

@@ -104,7 +104,7 @@ import {
   UPLOAD_TIMEOUT_SECONDS,
   validateForStaging,
 } from '@/utils/file-upload-validation';
-import { getInstrumentationIntentCategory, logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation';
+import { getInstrumentationIntentCategory, logAiroHQEvent, logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import { postMessageToIframe } from '@/utils/postMessage';
 
 // Lazy-load features that are conditionally rendered or behind user interaction
@@ -1034,6 +1034,12 @@ function ChatPaneInner({
             logger.warn('chat-pane.queue.cap-hit', { appId, queueLength });
             return;
           }
+          const newQueueLength = queueLength + 1;
+          logger.info('queue.message.submitted', {
+            queueLength: newQueueLength,
+            contentLength: sendOptions.content.length,
+          });
+          logClickEvent('chat.queue.submit', { queueLength: newQueueLength })();
           setInputValue('');
           if (isMultiElementSelect && safeAiEditContexts.length > 0) {
             handleClearAllAiEditContexts();
