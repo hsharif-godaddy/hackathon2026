@@ -2476,6 +2476,8 @@ describe('WebSocketServer - Accumulated Content Newline Separation', () => {
       conversationId: 'test-conv',
       context: { socketId: 'test-socket', agentName: 'test-agent' },
       streamingEvents: [] as any[],
+      turnTelemetryEvents: [] as any[],
+      turnTelemetryToolCalls: new Map(),
       accumulatedContent: undefined as string | undefined
     }
 
@@ -2493,6 +2495,8 @@ describe('WebSocketServer - Accumulated Content Newline Separation', () => {
       conversationId: 'test-conv',
       context: { socketId: 'test-socket', agentName: 'test-agent' },
       streamingEvents: [] as any[],
+      turnTelemetryEvents: [] as any[],
+      turnTelemetryToolCalls: new Map(),
       accumulatedContent: undefined as string | undefined
     }
 

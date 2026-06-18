@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { trackTurnSnapshotEvent, type TurnSnapshotState } from '../turn-snapshot-tracker.js'
+import {
+  extractTurnOutputFromEvents,
+  trackTurnSnapshotEvent,
+  buildToolResponseData,
+  extractTurnToolResponseDataFromEvents,
+  buildInvocationToolResponseData,
+  type TurnSnapshotState,
+} from '../turn-snapshot-tracker.js'
 
 describe('trackTurnSnapshotEvent', () => {
   it('captures streaming events and does not separate consecutive text chunks', () => {
@@ -102,6 +109,62 @@ describe('trackTurnSnapshotEvent', () => {
         type: 'tool_call',
         toolCall: expect.objectContaining({ id: 'orphan', status: 'completed' }),
       }),
+    ])
+  })
+})
+
+describe('extractTurnOutputFromEvents', () => {
+  it('accumulates chunk text across handoff iterations', () => {
+    const events = [
+      { type: 'chunk', content: 'From develop. ', timestamp: new Date() },
+      { type: 'tool_result', content: '', data: {}, timestamp: new Date() },
+      { type: 'chunk', content: 'From marketing.', timestamp: new Date() },
+    ]
+
+    expect(extractTurnOutputFromEvents(events)).toBe('From develop. \nFrom marketing.')
+  })
+})
+
+describe('buildToolResponseData', () => {
+  it('maps completed tool calls to observability responseData', () => {
+    const data = buildToolResponseData([
+      { id: 't1', name: 'edit_file', input: {}, status: 'completed', startTime: new Date(), result: 'ok' },
+    ])
+    expect(data).toEqual([{ name: 'edit_file', status: 'completed', output: 'ok' }])
+  })
+
+  it('returns undefined when there are no tool calls', () => {
+    expect(buildToolResponseData([])).toBeUndefined()
+  })
+})
+
+describe('extractTurnToolResponseDataFromEvents', () => {
+  it('accumulates tool results across handoff iterations', () => {
+    const events = [
+      { type: 'tool_start', content: '', data: { tool: { id: 'a', name: 'first', input: {} } }, timestamp: new Date() },
+      { type: 'tool_result', content: '', data: { tool: { id: 'a', name: 'first', output: 'one' } }, timestamp: new Date() },
+      { type: 'tool_start', content: '', data: { tool: { id: 'b', name: 'second', input: {} } }, timestamp: new Date() },
+      { type: 'tool_result', content: '', data: { tool: { id: 'b', name: 'second', output: 'two' } }, timestamp: new Date() },
+    ]
+
+    expect(extractTurnToolResponseDataFromEvents(events)).toEqual([
+      { name: 'first', status: 'completed', output: 'one' },
+      { name: 'second', status: 'completed', output: 'two' },
+    ])
+  })
+})
+
+describe('buildInvocationToolResponseData', () => {
+  it('returns only tools added during the current invocation', () => {
+    const snapshot: TurnSnapshotState = { streamingEvents: [] }
+    trackTurnSnapshotEvent(snapshot, 'tool_start', '', { tool: { id: 'old', name: 'oldTool', input: {} } })
+    trackTurnSnapshotEvent(snapshot, 'tool_result', '', { tool: { id: 'old', name: 'oldTool', output: 'prior' } })
+    const before = new Set(snapshot.pendingToolCalls?.keys() ?? [])
+    trackTurnSnapshotEvent(snapshot, 'tool_start', '', { tool: { id: 'new', name: 'newTool', input: {} } })
+    trackTurnSnapshotEvent(snapshot, 'tool_result', '', { tool: { id: 'new', name: 'newTool', output: 'fresh' } })
+
+    expect(buildInvocationToolResponseData(snapshot, before)).toEqual([
+      { name: 'newTool', status: 'completed', output: 'fresh' },
     ])
   })
 })

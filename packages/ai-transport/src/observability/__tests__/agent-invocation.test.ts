@@ -3,6 +3,7 @@ import { context as otelContext, trace, type Span } from '@opentelemetry/api'
 import { getInvocationSpanByConversation, registerInvocationSpan, unregisterInvocationSpan } from '../agent-invocation-context.js'
 
 const spanEndCalls: unknown[] = []
+const turnEndCalls: unknown[] = []
 
 vi.mock('@godaddy/agent-otel-sdk', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@godaddy/agent-otel-sdk')
@@ -16,6 +17,15 @@ vi.mock('@godaddy/agent-otel-sdk', async () => {
         spanEndCalls.push(input)
       }),
     }; }),
+    createAgentTurnSpan: vi.fn(function () { return {
+      context: otelContext.active(),
+      run: vi.fn(async function (cb: () => Promise<unknown>) {
+        return await cb()
+      }),
+      end: vi.fn(function (input: unknown) {
+        turnEndCalls.push(input)
+      }),
+    }; }),
   }
 })
 vi.mock('@godaddy/agent-observability-events', async () => {
@@ -26,14 +36,14 @@ vi.mock('@godaddy/agent-observability-events', async () => {
   }
 })
 
-import { emitError, createAgentContext, createAgentInvocationSpan } from '@godaddy/agent-otel-sdk'
+import { emitError, createAgentContext, createAgentInvocationSpan, createAgentTurnSpan } from '@godaddy/agent-otel-sdk'
 import { createError } from '@godaddy/agent-observability-events'
 import {
   AGENT_SERVICE_ID,
   AGENT_SERVICE_NAME,
   MULTI_AGENT_SYSTEM,
 } from '../agent-identity.js'
-import { emitTurnError, createAgentInvocation } from '../agent-invocation.js'
+import { emitTurnError, createAgentInvocation, createAgentTurn, runAgentTurnSpan } from '../agent-invocation.js'
 
 describe('agent observability identity', () => {
   it('defines the Airo App Builder service identity constants', () => {
@@ -334,6 +344,216 @@ describe('createAgentInvocation', () => {
       expect(payload).not.toHaveProperty('conversationId')
       expect(payload).toMatchObject({ specialistKey: 'develop' })
     })
+  })
+})
+
+describe('createAgentTurn', () => {
+  const logger = { warn: vi.fn() }
+
+  beforeEach(() => {
+    turnEndCalls.length = 0
+    logger.warn.mockReset()
+    vi.mocked(createAgentTurnSpan).mockClear()
+  })
+
+  it('runs work under turn span and ends from a success result', async () => {
+    const turn = createAgentTurn({
+      inputText: 'hello',
+      logger,
+    })
+    const result = await turn.runUnder(async function run() {
+      return 'ok'
+    })
+    turn.endFromResult({
+      success: true,
+      outputText: 'done',
+    })
+
+    expect(result).toBe('ok')
+    expect(vi.mocked(createAgentTurnSpan)).toHaveBeenCalledWith({ inputText: 'hello' })
+    expect(turnEndCalls[0]).toMatchObject({
+      outputText: 'done',
+      success: true,
+    })
+  })
+
+  it('endFromResult stringifies non-Error failure values', () => {
+    const turn = createAgentTurn({
+      inputText: 'hello',
+      logger,
+    })
+    turn.endFromResult({ success: false, error: 'stopped' })
+
+    expect(turnEndCalls[0]).toMatchObject({
+      error: 'stopped',
+      success: false,
+    })
+  })
+
+  it('endFromResult maps success and failure outcomes', () => {
+    const turn = createAgentTurn({ inputText: 'hello', logger })
+    turn.endFromResult({
+      success: true,
+      outputText: 'done',
+    })
+    expect(turnEndCalls[0]).toMatchObject({
+      outputText: 'done',
+      success: true,
+    })
+
+    turnEndCalls.length = 0
+    const failed = createAgentTurn({ inputText: 'hello', logger })
+    failed.endFromResult({
+      success: false,
+      outputText: 'partial',
+      error: new Error('stopped'),
+    })
+    expect(turnEndCalls[0]).toMatchObject({
+      outputText: 'partial',
+      error: expect.any(Error),
+      success: false,
+    })
+  })
+
+  it('endFromResult forwards responseData on success and failure', () => {
+    const turn = createAgentTurn({ inputText: 'hello', logger })
+    turn.endFromResult({
+      success: true,
+      outputText: 'done',
+      responseData: [{ name: 'edit_file', status: 'completed', output: 'ok' }],
+    })
+    expect(turnEndCalls[0]).toMatchObject({
+      outputText: 'done',
+      responseData: [{ name: 'edit_file', status: 'completed', output: 'ok' }],
+      success: true,
+    })
+  })
+})
+
+describe('runAgentTurnSpan', () => {
+  const logger = { warn: vi.fn() }
+
+  beforeEach(() => {
+    turnEndCalls.length = 0
+    logger.warn.mockReset()
+    vi.mocked(createAgentTurnSpan).mockClear()
+    vi.mocked(createAgentContext).mockClear()
+  })
+
+  it('creates agent context with conversationId and specialistKey', async () => {
+    await runAgentTurnSpan(
+      {
+        inputText: 'hello',
+        conversationId: 'conv_1',
+        specialistKey: 'develop',
+        logger,
+        getTurnEndFields: () => ({}),
+      },
+      async () => ({ success: true as const }),
+    )
+    expect(vi.mocked(createAgentContext)).toHaveBeenCalledWith({
+      conversationId: 'conv_1',
+      specialistKey: 'develop',
+    })
+    expect(vi.mocked(createAgentTurnSpan)).toHaveBeenCalledWith({ inputText: 'hello' })
+  })
+
+  it('returns the result of fn on success and ends the span', async () => {
+    const result = await runAgentTurnSpan(
+      {
+        inputText: 'hi',
+        conversationId: 'conv_1',
+        logger,
+        getTurnEndFields: () => ({ outputText: 'done' }),
+      },
+      async () => ({ success: true as const }),
+    )
+    expect(result).toEqual({ success: true })
+    expect(turnEndCalls).toHaveLength(1)
+    expect(turnEndCalls[0]).toMatchObject({ success: true, outputText: 'done' })
+  })
+
+  it('calls getTurnEndFields lazily at span-end time on success', async () => {
+    let snapshot = ''
+    await runAgentTurnSpan(
+      {
+        inputText: 'hi',
+        conversationId: 'conv_1',
+        logger,
+        getTurnEndFields: () => ({ outputText: snapshot }),
+      },
+      async () => {
+        snapshot = 'accumulated during fn'
+        return { success: true as const }
+      },
+    )
+    expect(turnEndCalls[0]).toMatchObject({ outputText: 'accumulated during fn' })
+  })
+
+  it('calls getTurnEndFields lazily at span-end time on thrown error (fixes stale-var bug)', async () => {
+    let snapshot = ''
+    await expect(
+      runAgentTurnSpan(
+        {
+          inputText: 'hi',
+          conversationId: 'conv_1',
+          logger,
+          getTurnEndFields: () => ({ outputText: snapshot }),
+        },
+        async () => {
+          snapshot = 'partial output before throw'
+          throw new Error('stream failed')
+        },
+      ),
+    ).rejects.toThrow('stream failed')
+
+    expect(turnEndCalls).toHaveLength(1)
+    expect(turnEndCalls[0]).toMatchObject({
+      success: false,
+      outputText: 'partial output before throw',
+    })
+  })
+
+  it('always rethrows the original error', async () => {
+    const original = new Error('original')
+    await expect(
+      runAgentTurnSpan(
+        { inputText: 'hi', conversationId: 'conv_1', logger, getTurnEndFields: () => ({}) },
+        async () => { throw original },
+      ),
+    ).rejects.toBe(original)
+  })
+
+  it('merges result success/error with getTurnEndFields output fields', async () => {
+    await runAgentTurnSpan(
+      {
+        inputText: 'hi',
+        conversationId: 'conv_1',
+        logger,
+        getTurnEndFields: () => ({ outputText: 'from snapshot', responseData: [{ name: 'tool', status: 'completed' }] }),
+      },
+      async () => ({ success: true as const }),
+    )
+    expect(turnEndCalls[0]).toMatchObject({
+      success: true,
+      outputText: 'from snapshot',
+      responseData: [{ name: 'tool', status: 'completed' }],
+    })
+  })
+
+  it('ends the span with success:false and error when fn returns a failure result', async () => {
+    const err = new Error('handled error')
+    const result = await runAgentTurnSpan(
+      {
+        inputText: 'hi',
+        conversationId: 'conv_1',
+        logger,
+        getTurnEndFields: () => ({ outputText: 'partial' }),
+      },
+      async () => ({ success: false as const, error: err }),
+    )
+    expect(result).toEqual({ success: false, error: err })
+    expect(turnEndCalls[0]).toMatchObject({ success: false, error: err, outputText: 'partial' })
   })
 })
 

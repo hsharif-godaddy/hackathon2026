@@ -7,14 +7,19 @@ import {
   executeAgentLoop,
   buildChatSignalsTraceContext,
   createAgentInvocation,
+  runAgentTurnSpan,
   getCurrentTraceIds,
   emitTurnError,
+  type TurnExecutionResult,
   classifyTurnError,
   runPostStreamValidation,
   withBudgetRecovery,
   redactSkillOutput,
   toolMetadataFields,
   trackTurnSnapshotEvent,
+  extractTurnOutputFromEvents,
+  extractTurnToolResponseDataFromEvents,
+  buildInvocationToolResponseData,
   runPreflightTools,
   analyzeStreamError,
   isNetworkError,
@@ -836,21 +841,32 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     opts: {
       conversationId: string
       appId: string
-      siteId: string
       sseSocketId: string
       abortController: AbortController
-      streamingEvents: PersistenceStreamingEvent[]
       executionContext: Record<string, unknown>
       persistenceContext: SSEPersistenceContext
       streamState: ActiveStream
       agentMessageId?: string
+      turnSnapshot: TurnSnapshotState
       /** Forced design-kit install messages, computed once before the loop (so the
        *  -attached swap can be gated on install success); prepended on the first turn. */
       forcedKitMessages?: Array<{ role: string; content: unknown }>
       fullStorySessionId?: string
     },
   ): Promise<{ accumulatedContent: string; currentStep: number; finalResult: any; finishReason: string; responseMetadata: ResponseMetadata; steps: ExecutionStep[] }> {
-    const { conversationId, appId, siteId, sseSocketId, abortController, streamingEvents, executionContext, persistenceContext, streamState, agentMessageId, forcedKitMessages, fullStorySessionId } = opts
+    const {
+      conversationId,
+      appId,
+      sseSocketId,
+      abortController,
+      executionContext,
+      persistenceContext,
+      streamState,
+      agentMessageId,
+      turnSnapshot,
+      forcedKitMessages,
+      fullStorySessionId,
+    } = opts
     const abortSignal = abortController.signal
 
     // Inject the user's current message text into metadata BEFORE loadContextMessages
@@ -902,7 +918,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       ...(agentMessageId && { messageId: agentMessageId }),
       ...(streamState.requestId && { requestId: streamState.requestId }),
     }
-    const turnSnapshot: TurnSnapshotState = { streamingEvents }
+    const toolIdsBeforeInvocation = new Set(turnSnapshot.pendingToolCalls?.keys() ?? [])
     const scheduleAgentTurnUpdate = (update: TurnSnapshotUpdate): void => {
       if (!agentMessageId || !this.deps.conversationPersistence.updateAgentTurn) return
       pendingIncrementalUpdates.push(
@@ -1513,13 +1529,18 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
 
       const { accumulatedContent, currentStep } = processor.getState()
       const responseType: 'llm_reply' | 'tool_call' = accumulatedContent ? 'llm_reply' : 'tool_call'
+      const invocationResponseData = buildInvocationToolResponseData(turnSnapshot, toolIdsBeforeInvocation)
 
       if (abortSignal.aborted) {
         // chunk_timeout soft-commit also lands here (the signal is aborted):
         // the Langfuse span is honestly recorded as aborted, while the
         // wire-facing finishReason ('incomplete'/'stop') is carried via the
         // returned value and published as a `complete` event by the outer flow.
-        invocation.endAborted({ outputText: accumulatedContent, responseType })
+        invocation.endAborted({
+          outputText: accumulatedContent,
+          responseType,
+          ...(invocationResponseData !== undefined && { responseData: invocationResponseData }),
+        })
       } else if (finalResultError !== undefined) {
         invocation.endError(finalResultError, { finishReason })
       } else if (prematureCloseError !== undefined) {
@@ -1547,6 +1568,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           ...(usageToTrack && { usage: usageToTrack }),
           finishReason,
           ...(totalCost !== undefined && { totalCost }),
+          ...(invocationResponseData !== undefined && { responseData: invocationResponseData }),
         })
       }
 
@@ -1627,7 +1649,27 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       logFields: { appId: params.appId, conversationId: params.conversationId },
       logger: { warn: (event, fields) => logger.warn(event, fields) },
     })
-    await otelContext.with(traceCtx, () => this.executeUnderTrace(params))
+    const turnSnapshot: TurnSnapshotState = { streamingEvents: [] }
+    const getTurnEndFields = () => {
+      const outputText = extractTurnOutputFromEvents(turnSnapshot.streamingEvents)
+      const responseData = extractTurnToolResponseDataFromEvents(turnSnapshot.streamingEvents)
+      return {
+        ...(outputText !== '' && { outputText }),
+        ...(responseData !== undefined && { responseData }),
+      }
+    }
+    await otelContext.with(traceCtx, async () => {
+      await runAgentTurnSpan(
+        {
+          inputText: params.content,
+          conversationId: params.conversationId,
+          specialistKey: params.agentId,
+          logger: { warn: (event, fields) => logger.warn(event, fields) },
+          getTurnEndFields,
+        },
+        () => this.executeUnderTrace(params, turnSnapshot),
+      )
+    })
   }
 
   /**
@@ -1757,7 +1799,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     return { forcedKitMessages, useAttachedVariant, effectiveAgentId }
   }
 
-  private async executeUnderTrace(params: ExecuteParams): Promise<void> {
+  private async executeUnderTrace(params: ExecuteParams, turnSnapshot: TurnSnapshotState): Promise<TurnExecutionResult> {
     const {
       appId, conversationId, content, siteId, agentId,
       templateId, modelOverride, rebuildBuildPageSlug, rebuildDesignDirection,
@@ -1769,6 +1811,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     } = params
 
     const resolvedAgentId = agentId
+    let turnResult: TurnExecutionResult = { success: false }
     const sseSocketId = sseSessionKey(conversationId)
     const agentCtx = lifecycleContext?.agentContext
     const enableAssessmentAgent = !!agentCtx?.enableAssessmentAgent
@@ -1898,7 +1941,8 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         apmTransaction.end()
         this.markApmTransactionEnded(apmTransaction)
       }
-      return
+      turnResult = { success: false, error: err }
+      return turnResult
     }
 
     const abortController = new AbortController()
@@ -1906,8 +1950,6 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
 
     const clientActionService = new SSEClientActionService(conversationId, appId, this.deps.eventChannel)
     registerActionService(sseSocketId, clientActionService)
-
-    const streamingEvents: PersistenceStreamingEvent[] = []
 
     // Resolve appPath so tools (e.g. runAgent) can access the filesystem path
     const appPath = (() => {
@@ -2020,6 +2062,9 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     // billed without its saved output — most relevant on shutdown, where the
     // persistence write and the report otherwise race process exit independently.
     let turnPersisted = false
+    const turnOutputText = (): string => extractTurnOutputFromEvents(turnSnapshot.streamingEvents)
+    const turnResponseData = (): TurnExecutionResult['responseData'] =>
+      extractTurnToolResponseDataFromEvents(turnSnapshot.streamingEvents)
 
     // Forced design-kit install (gallery selection): run it ONCE here, before the
     // loop, so the `-attached` variant swap can be gated on the install actually
@@ -2085,9 +2130,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           }
 
           const doStream = async (prompt: string) => this.streamAgentTurn(agent, agentName, prompt, {
-            conversationId, appId, siteId, sseSocketId,
+            conversationId, appId, sseSocketId,
             abortController,
-            streamingEvents, executionContext, persistenceContext, streamState, agentMessageId: activeAgentMessageId,
+            executionContext, persistenceContext, streamState, agentMessageId: activeAgentMessageId,
+            turnSnapshot,
             forcedKitMessages,
             ...(params.fullStorySessionId !== undefined && { fullStorySessionId: params.fullStorySessionId }),
           })
@@ -2102,19 +2148,19 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
               },
               getExecutedToolNames: () => {
                 const erroredToolIds = new Set(
-                  streamingEvents
+                  turnSnapshot.streamingEvents
                     .filter((e) => e.type === 'tool_result' && e.data?.tool?.is_error)
                     .map((e) => e.data.tool.id as string),
                 )
-                return streamingEvents
+                return turnSnapshot.streamingEvents
                   .filter((e) => e.type === 'tool_start' && e.data?.tool?.name && !erroredToolIds.has(e.data.tool.id as string))
                   .map((e) => e.data.tool.name as string)
               },
-              getAccumulatedContent: () => streamingEvents
+              getAccumulatedContent: () => turnSnapshot.streamingEvents
                 .filter((e) => e.type === 'chunk')
                 .map((e) => e.content ?? '')
                 .join(''),
-              clearTurnState: () => { streamingEvents.length = 0 },
+              clearTurnState: () => { turnSnapshot.streamingEvents.length = 0 },
               publishStreamRetry: async (name: string) => {
                 if (this.activeStreams.get(conversationId) !== streamState) {
                   logger.info('sse.execution.superseded.skip_stream_retry', {
@@ -2210,7 +2256,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           postStreamValidate: async (agentName) => {
             const meta = (executionContext.metadata as Record<string, unknown> | undefined) ?? {}
             if (meta.__autoContinue === true) return
-            const toolCalls = streamingEvents
+            const toolCalls = turnSnapshot.streamingEvents
               .filter((e: any) => e.type === 'tool_start' && e.data?.tool)
               .map((e: any) => ({ toolName: e.data.tool.name, args: e.data.tool.input }))
 
@@ -2383,7 +2429,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       turnPersisted = await this.completeConversationAndMarkPersisted({
         appId,
         conversationId,
-        streamingEvents,
+        streamingEvents: turnSnapshot.streamingEvents,
         result: { finishReason: lastTurnResult?.finishReason },
         persistenceContext,
         agentMessageIds: openedAgentMessageIds,
@@ -2473,6 +2519,11 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         apmTransaction.end()
         this.markApmTransactionEnded(apmTransaction)
       }
+      turnResult = {
+        success: true,
+        outputText: turnOutputText(),
+        ...(turnResponseData() !== undefined && { responseData: turnResponseData() }),
+      }
     } catch (error) {
       const chunkTimeoutAborted = abortController.signal.aborted
         && abortController.signal.reason === 'chunk_timeout'
@@ -2511,7 +2562,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       turnPersisted = await this.completeConversationAndMarkPersisted({
         appId,
         conversationId,
-        streamingEvents,
+        streamingEvents: turnSnapshot.streamingEvents,
         result: undefined,
         persistenceContext,
         agentMessageIds: openedAgentMessageIds,
@@ -2565,6 +2616,12 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           },
           conversationId, agentName: resolvedAgentId,
         })
+        turnResult = {
+          success: false,
+          outputText: turnOutputText(),
+          error,
+          ...(turnResponseData() !== undefined && { responseData: turnResponseData() }),
+        }
       } else {
         const err = error instanceof Error ? error : new Error(String(error))
         const classified = classifyTurnError(err)
@@ -2632,6 +2689,12 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           isRetryable: classified.isRetryable,
           logger: { warn: (event, fields) => logger.warn(event, fields) },
         })
+        turnResult = {
+          success: false,
+          outputText: turnOutputText(),
+          error: err,
+          ...(turnResponseData() !== undefined && { responseData: turnResponseData() }),
+        }
       }
     } finally {
       // Budget report fallback: if neither the success nor error path filed
@@ -2712,5 +2775,6 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         this.markApmTransactionEnded(apmTransaction)
       }
     }
+    return turnResult
   }
 }

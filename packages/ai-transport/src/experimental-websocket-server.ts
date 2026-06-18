@@ -42,7 +42,7 @@ import { executeAgentLoop, AgentNotFoundError } from './agent-execution-loop.js'
 import { context as otelContext, trace, type Context } from '@opentelemetry/api'
 import { buildChatSignalsTraceContext, type JwtAgentContextSubset } from './observability/signals-trace-context.js'
 import { inferProviderFromModelName, type ChatLlmProvider } from './observability/infer-llm-provider.js'
-import { createAgentInvocation, emitTurnError } from './observability/agent-invocation.js'
+import { createAgentInvocation, emitTurnError, runAgentTurnSpan } from './observability/agent-invocation.js'
 import { analyzeStreamError, isNetworkError, isUpstreamTimeoutError } from './analyze-stream-error.js'
 import { classifyTurnError } from './classify-turn-error.js'
 import { classifyStreamBudgetError, isToolValidationError } from './classify-stream-error.js'
@@ -55,7 +55,7 @@ import { decideChunkTimeoutFinalization } from './chunk-timeout-finalization.js'
 import { runPostStreamValidation, type ValidationMessageEventData } from './post-stream-validation-runner.js'
 import { invokeBudgetRecoveryCallback, buildContinuationPrompt, MAX_BUDGET_RETRIES } from './budget-recovery.js'
 import { parseAgentCommand } from './agent-command-parser.js'
-import { trackTurnSnapshotEvent, type TurnSnapshotState } from './turn-snapshot-tracker.js'
+import { extractTurnOutputFromEvents, extractTurnToolResponseDataFromEvents, trackTurnSnapshotEvent, buildToolResponseData } from './turn-snapshot-tracker.js'
 import { runPreflightTools } from './preflight-tools.js'
 import { assembleMessages as assembleMessagesShared, dropTrailingPrompt } from './assemble-messages.js'
 import { readTextStreamFallback } from './text-stream-fallback.js'
@@ -1392,15 +1392,17 @@ export class WebSocketServer {
    * Note: Database persistence is handled by PersistenceSubscriber
    */
   private async trackEventForConversation(
-    conversation: TurnSnapshotState & {
-      conversationId: string
-      context: ConversationContext
-    },
+    conversation: ConnectionStateData,
     type: string,
     content: string,
     data: Record<string, unknown>
   ): Promise<void> {
     const snapshot = trackTurnSnapshotEvent(conversation, type, content, data)
+
+    if (!conversation.turnTelemetryEvents) {
+      conversation.turnTelemetryEvents = []
+    }
+    conversation.turnTelemetryEvents.push(snapshot.event)
 
     // Handle incremental updates via updateAgentTurn if configured
     const agentMessageId = conversation.context.agentMessageId
@@ -2195,401 +2197,429 @@ export class WebSocketServer {
         })
       }
 
-      // 5. Load conversation history
-      await this.loadConversationHistory(socketId, data, processedContext)
+      const runTurnWithTelemetry = async (): Promise<{ success: true }> => {
+        // 5. Load conversation history
+        await this.loadConversationHistory(socketId, data, processedContext!)
 
-      // 5. Call message start handler (await to ensure invocation tracking is set up before LLM calls)
-      await this.config.onMessageStart?.(socketId, data.message, agentName, processedContext)
+        // 5. Call message start handler (await to ensure invocation tracking is set up before LLM calls)
+        await this.config.onMessageStart?.(socketId, data.message, agentName, processedContext)
 
-      // 5b. Thread budget state to conversation.context (persists across handoffs)
-      // Budget state is set by onMessageStart on metadata when app-builder-budget-service flag is enabled.
-      // processedContext is replaced on each handoff; conversation.context is not
-      const budgetMeta = (processedContext as { metadata?: Record<string, unknown> })?.metadata
-      if (budgetMeta?.bmsBudgetId && budgetMeta?.budgetSessionId) {
-        budgetSessionBudgetId = budgetMeta.bmsBudgetId as string
-        budgetSessionSessionId = budgetMeta.budgetSessionId as string
-        const budgetConversation = this.getConversation(socketId)
-        if (budgetConversation) {
-          budgetConversation.context.bmsBudgetId = budgetSessionBudgetId
-          budgetConversation.context.budgetSessionId = budgetSessionSessionId
+        // 5b. Thread budget state to conversation.context (persists across handoffs)
+        // Budget state is set by onMessageStart on metadata when app-builder-budget-service flag is enabled.
+        // processedContext is replaced on each handoff; conversation.context is not
+        const budgetMeta = (processedContext as { metadata?: Record<string, unknown> })?.metadata
+        if (budgetMeta?.bmsBudgetId && budgetMeta?.budgetSessionId) {
+          budgetSessionBudgetId = budgetMeta.bmsBudgetId as string
+          budgetSessionSessionId = budgetMeta.budgetSessionId as string
+          const budgetConversation = this.getConversation(socketId)
+          if (budgetConversation) {
+            budgetConversation.context.bmsBudgetId = budgetSessionBudgetId
+            budgetConversation.context.budgetSessionId = budgetSessionSessionId
+          }
         }
-      }
 
-      // 6. Create abort controller and register with state manager
-      // Capture signal locally so abort checks remain valid even if
-      // cleanupConversation removes the state manager entry before
-      // the stream's async abort handlers finish executing.
-      const controller = new AbortController()
-      const abortSignal = controller.signal
-      this.stateManager.updateConnection(socketId, { abortController: controller, userStopped: false })
+        // 6. Create abort controller and register with state manager
+        // Capture signal locally so abort checks remain valid even if
+        // cleanupConversation removes the state manager entry before
+        // the stream's async abort handlers finish executing.
+        const controller = new AbortController()
+        const abortSignal = controller.signal
+        this.stateManager.updateConnection(socketId, { abortController: controller, userStopped: false })
 
-      // Clear pending setup if socket disconnected during setup but stream is now starting
-      // This happens when the agent starts streaming after the client disconnected
-      const stateData = this.stateManager.getStateData(socketId)
-      if (stateData?.setupTimeoutId) {
-        clearTimeout(stateData.setupTimeoutId)
-        this.stateManager.updateConnection(socketId, { setupTimeoutId: null })
+        // Clear pending setup if socket disconnected during setup but stream is now starting
+        // This happens when the agent starts streaming after the client disconnected
+        const stateData = this.stateManager.getStateData(socketId)
+        if (stateData?.setupTimeoutId) {
+          clearTimeout(stateData.setupTimeoutId)
+          this.stateManager.updateConnection(socketId, { setupTimeoutId: null })
 
-        // Socket is still disconnected - update state with the real controller
-        if (this.stateManager.isDisconnected(socketId)) {
-          // Replace placeholder controller with the real stream controller
-          // Reset timeout for the full recovery window
-          const newTimeoutId = setTimeout(() => {
-            this.logger.warn('disconnect.recovery_expired_early', { socketId })
-            controller.abort('user_cancel')
-            this.notifyStreamAbort(socketId, 'recovery_timeout')
-            // Don't call cleanupConversation here — same race as the primary timeout.
-            // handleChatMessageInternal cleans up after completeConversation finishes.
-          }, this.STREAM_RECOVERY_WINDOW)
+          // Socket is still disconnected - update state with the real controller
+          if (this.stateManager.isDisconnected(socketId)) {
+            // Replace placeholder controller with the real stream controller
+            // Reset timeout for the full recovery window
+            const newTimeoutId = setTimeout(() => {
+              this.logger.warn('disconnect.recovery_expired_early', { socketId })
+              controller.abort('user_cancel')
+              this.notifyStreamAbort(socketId, 'recovery_timeout')
+              // Don't call cleanupConversation here — same race as the primary timeout.
+              // handleChatMessageInternal cleans up after completeConversation finishes.
+            }, this.STREAM_RECOVERY_WINDOW)
 
-          this.stateManager.updateConnection(socketId, {
-            abortController: controller,
-            recoveryTimeoutId: newTimeoutId
-          })
-
-          this.logger.info('pending_setup.converted_to_disconnected', {
-            socketId,
-            conversationId: stateData.conversationId
-          })
-        } else {
-          this.logger.info('pending_setup.cleared', { socketId })
-        }
-      }
-
-      // Accumulate execution steps across all agent iterations for cost attribution.
-      // Each agent's steps are collected and combined, not overwritten.
-      // Optionally substitute the agent-facing message for this turn. Runs
-      // after setupPersistence (so the persisted/displayed user message stays
-      // the user's original text) and before the loop below (so the agent
-      // receives the substituted text). Non-fatal: a throw falls back to the
-      // original message.
-      if (this.config.getEffectiveAgentMessage) {
-        try {
-          const effectiveMessage = await this.config.getEffectiveAgentMessage(
-            socketId,
-            data.message,
-            data.context as Record<string, unknown> | undefined
-          )
-          if (
-            typeof effectiveMessage === 'string' &&
-            effectiveMessage.length > 0 &&
-            effectiveMessage !== data.message
-          ) {
-            this.logger.info('websocket.effective_message.substituted', {
-              socketId,
-              originalLength: data.message.length,
-              effectiveLength: effectiveMessage.length,
+            this.stateManager.updateConnection(socketId, {
+              abortController: controller,
+              recoveryTimeoutId: newTimeoutId
             })
-            data.message = effectiveMessage
+
+            this.logger.info('pending_setup.converted_to_disconnected', {
+              socketId,
+              conversationId: stateData.conversationId
+            })
+          } else {
+            this.logger.info('pending_setup.cleared', { socketId })
           }
-        } catch (error) {
-          this.logger.warn('websocket.effective_message.error', {
-            socketId,
-            error: error instanceof Error ? error.message : String(error),
-          })
         }
-      }
 
-      const allExecutionSteps: ExecutionStep[] = []
-
-      // 7. Execute agent(s) - loop handles handoffs and auto-continuation
-      // `currentLoopAgentName` tracks the agent actively executing inside the
-      // loop so `getAutoContinuation` can include the active agent name in its
-      // log lines without waiting for the outer `agentName` to be rewritten
-      // after the loop returns. `postStreamValidate`/`onHandoff` get their
-      // agent names directly from callback parameters.
-      let currentLoopAgentName = agentName
-      let currentLoopIteration = 0
-      const loopResult = await executeAgentLoop<AgentWrapper>(agentName, data.message, {
-        getAgent: (name) => this.config.agents.get(name) as AgentWrapper | undefined,
-        streamAgentTurn: async (agent, name, message, iteration) => {
-          currentLoopAgentName = name
-          currentLoopIteration = iteration
-          if (iteration > 0) {
-            processedContext = await this.processContext(data, socketId)
-            const handoffConv = this.getConversation(socketId)
-            restoreBudgetMetadata(handoffConv?.context, processedContext)
-
-            const { conversationHistory: _conversationHistory, ...dataWithoutHistory } = data
-            // Reassign the enclosing `data` so the next iteration's message
-            // payload (fed to other callbacks via closure) reflects history
-            // already having been loaded on the server side.
-            data = { ...dataWithoutHistory, message } as ChatMessage
-            await this.loadConversationHistory(socketId, data, processedContext)
-          }
-
-          // Mark handoff/auto-continue turns so upload renderers skip
-          // re-classifying the same attachment against a non-user prompt.
-          // iteration 0 is the user's own message → classify fresh.
-          const procMeta = (processedContext as { metadata?: Record<string, unknown> }).metadata
-          if (procMeta) procMeta.__isContinuationTurn = iteration > 0
-
-          const iterationData: ChatMessage = { ...data, message }
-          const streamResult = await this.streamAgentResponse(socket, agent, iterationData, processedContext, name, startTime, false)
-
-          if (streamResult.steps.length > 0) {
-            allExecutionSteps.push(...streamResult.steps)
-            // Update Map for finally-block fallback (in case error/abort happens later)
-            this.pendingExecutionSteps.set(socketId, allExecutionSteps)
-          }
-        },
-        postStreamValidate: async (name) => {
-          // A premature-close soft-commit ends the turn: don't validate or
-          // continue it (mirrors how chunk_timeout's abort short-circuits the
-          // loop before this callback). Honours the no-auto-retry decision.
-          if (this.pendingSoftCommitReason.has(socketId)) return
-          // `postStreamConv?.context` can be undefined when the conversation was
-          // cleaned up between stream end and here (disconnect / abort race).
-          // Fall back to processedContext so the validator and the subsequent
-          // auto-continuation check read/write the SAME object.
-          const postStreamConv = this.getConversation(socketId)
-          const continuationContext = (postStreamConv?.context ?? processedContext) as Record<string, unknown>
-          const continuationMetadata = (continuationContext.metadata as Record<string, unknown> | undefined) ?? {}
-          const toolSetAutoContinue = continuationMetadata.__autoContinue === true
-          if (!this.config.postStreamValidator || toolSetAutoContinue) return
-
-          const validatorToolCalls = postStreamConv?.pendingToolCalls
-            ? Array.from(postStreamConv.pendingToolCalls.values()).map((tc: any) => ({
-              toolName: tc.name,
-              ...(tc.input !== undefined && { args: tc.input })
-            }))
-            : []
-
-          // Forward `stopAfterTools` to the validator so it can apply the
-          // combined gate (skip iff stop-after AND clean tree). Skipping
-          // here unconditionally on stop-after lets unvalidated edits ship
-          // when a turn edits files and ends with `askQuestion` — see the
-          // post-stream-validator combined-gate logic for the truth table.
-          const stopAfterTools = this.config.agents.getConfig?.(name)?.stopAfterTools
-          const resolvedAgentName = name || this.config.defaultAgent || 'unknown'
-          const conversation = this.getConversation(socketId)
-
-          const validationResult = await runPostStreamValidation({
-            validator: this.config.postStreamValidator,
-            socketId,
-            agentName: resolvedAgentName,
-            context: continuationContext,
-            toolCalls: validatorToolCalls,
-            abortSignal,
-            iteration: currentLoopIteration,
-            ...(stopAfterTools !== undefined && { stopAfterTools }),
-            emitChunk: async (text: string) => {
-              if (!text) return
-              await this.publishToEventChannel(
+        // Accumulate execution steps across all agent iterations for cost attribution.
+        // Each agent's steps are collected and combined, not overwritten.
+        // Optionally substitute the agent-facing message for this turn. Runs
+        // after setupPersistence (so the persisted/displayed user message stays
+        // the user's original text) and before the loop below (so the agent
+        // receives the substituted text). Non-fatal: a throw falls back to the
+        // original message.
+        if (this.config.getEffectiveAgentMessage) {
+          try {
+            const effectiveMessage = await this.config.getEffectiveAgentMessage(
+              socketId,
+              data.message,
+              data.context as Record<string, unknown> | undefined
+            )
+            if (
+              typeof effectiveMessage === 'string' &&
+              effectiveMessage.length > 0 &&
+              effectiveMessage !== data.message
+            ) {
+              this.logger.info('websocket.effective_message.substituted', {
                 socketId,
-                'chunk',
-                text,
-                { agentId: resolvedAgentName },
-                resolvedAgentName,
-              )
-            },
-            publishValidationMessage: async (content, data: ValidationMessageEventData) => {
-              const sequence = await this.publishToEventChannel(
-                socketId,
-                'validation_message',
-                content,
-                data as unknown as Record<string, unknown>,
-                resolvedAgentName,
-              )
-              return sequence !== undefined
-            },
-            ...(conversation && this.config.messagePersistence.continueConversation && {
-              persistValidationMessage: async (continuationPrompt) => {
-                return await this.config.messagePersistence.continueConversation!(
-                  conversation.conversationId,
-                  continuationPrompt,
-                  {
-                    ...conversation.context,
-                    messageMetadata: {
-                      source: 'post_stream_validator',
-                      displayAs: 'validation',
-                      validationStatus: 'failed',
-                    },
-                  },
+                originalLength: data.message.length,
+                effectiveLength: effectiveMessage.length,
+              })
+              data.message = effectiveMessage
+            }
+          } catch (error) {
+            this.logger.warn('websocket.effective_message.error', {
+              socketId,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
+        }
+
+        const allExecutionSteps: ExecutionStep[] = []
+
+        // 7. Execute agent(s) - loop handles handoffs and auto-continuation
+        // `currentLoopAgentName` tracks the agent actively executing inside the
+        // loop so `getAutoContinuation` can include the active agent name in its
+        // log lines without waiting for the outer `agentName` to be rewritten
+        // after the loop returns. `postStreamValidate`/`onHandoff` get their
+        // agent names directly from callback parameters.
+        let currentLoopAgentName = agentName!
+        let currentLoopIteration = 0
+        const loopResult = await executeAgentLoop<AgentWrapper>(agentName!, data.message, {
+          getAgent: (name) => this.config.agents.get(name) as AgentWrapper | undefined,
+          streamAgentTurn: async (agent, name, message, iteration) => {
+            currentLoopAgentName = name
+            currentLoopIteration = iteration
+            if (iteration > 0) {
+              processedContext = await this.processContext(data, socketId)
+              const handoffConv = this.getConversation(socketId)
+              restoreBudgetMetadata(handoffConv?.context, processedContext)
+
+              const { conversationHistory: _conversationHistory, ...dataWithoutHistory } = data
+              // Reassign the enclosing `data` so the next iteration's message
+              // payload (fed to other callbacks via closure) reflects history
+              // already having been loaded on the server side.
+              data = { ...dataWithoutHistory, message } as ChatMessage
+              await this.loadConversationHistory(socketId, data, processedContext)
+            }
+
+            // Mark handoff/auto-continue turns so upload renderers skip
+            // re-classifying the same attachment against a non-user prompt.
+            // iteration 0 is the user's own message → classify fresh.
+            const procMeta = (processedContext as { metadata?: Record<string, unknown> }).metadata
+            if (procMeta) procMeta.__isContinuationTurn = iteration > 0
+
+            const iterationData: ChatMessage = { ...data, message }
+            const streamResult = await this.streamAgentResponse(socket, agent, iterationData, processedContext, name, startTime, false)
+
+            if (streamResult.steps.length > 0) {
+              allExecutionSteps.push(...streamResult.steps)
+              // Update Map for finally-block fallback (in case error/abort happens later)
+              this.pendingExecutionSteps.set(socketId, allExecutionSteps)
+            }
+          },
+          postStreamValidate: async (name) => {
+            // A premature-close soft-commit ends the turn: don't validate or
+            // continue it (mirrors how chunk_timeout's abort short-circuits the
+            // loop before this callback). Honours the no-auto-retry decision.
+            if (this.pendingSoftCommitReason.has(socketId)) return
+            // `postStreamConv?.context` can be undefined when the conversation was
+            // cleaned up between stream end and here (disconnect / abort race).
+            // Fall back to processedContext so the validator and the subsequent
+            // auto-continuation check read/write the SAME object.
+            const postStreamConv = this.getConversation(socketId)
+            const continuationContext = (postStreamConv?.context ?? processedContext) as Record<string, unknown>
+            const continuationMetadata = (continuationContext.metadata as Record<string, unknown> | undefined) ?? {}
+            const toolSetAutoContinue = continuationMetadata.__autoContinue === true
+            if (!this.config.postStreamValidator || toolSetAutoContinue) return
+
+            const validatorToolCalls = postStreamConv?.pendingToolCalls
+              ? Array.from(postStreamConv.pendingToolCalls.values()).map((tc: any) => ({
+                toolName: tc.name,
+                ...(tc.input !== undefined && { args: tc.input })
+              }))
+              : []
+
+            // Forward `stopAfterTools` to the validator so it can apply the
+            // combined gate (skip iff stop-after AND clean tree). Skipping
+            // here unconditionally on stop-after lets unvalidated edits ship
+            // when a turn edits files and ends with `askQuestion` — see the
+            // post-stream-validator combined-gate logic for the truth table.
+            const stopAfterTools = this.config.agents.getConfig?.(name)?.stopAfterTools
+            const resolvedAgentName = name || this.config.defaultAgent || 'unknown'
+            const conversation = this.getConversation(socketId)
+
+            const validationResult = await runPostStreamValidation({
+              validator: this.config.postStreamValidator,
+              socketId,
+              agentName: resolvedAgentName,
+              context: continuationContext,
+              toolCalls: validatorToolCalls,
+              abortSignal,
+              iteration: currentLoopIteration,
+              ...(stopAfterTools !== undefined && { stopAfterTools }),
+              emitChunk: async (text: string) => {
+                if (!text) return
+                await this.publishToEventChannel(
+                  socketId,
+                  'chunk',
+                  text,
+                  { agentId: resolvedAgentName },
+                  resolvedAgentName,
                 )
               },
-            }),
-            logger: this.logger,
-            ...(conversation && { logContext: { conversationId: conversation.conversationId } }),
-          })
-
-          if (validationResult) {
-            continuationMetadata.__autoContinue = true
-            continuationMetadata.__continuationPrompt = validationResult.continuationPrompt
-            continuationContext.metadata = continuationMetadata
-          }
-        },
-        getAutoContinuation: () => {
-          // Premature-close soft-commit ends the turn — never auto-continue
-          // (even if a tool set __autoContinue before the connection dropped).
-          if (this.pendingSoftCommitReason.has(socketId)) return null
-          const conv = this.getConversation(socketId)
-          const continuationContext = (conv?.context ?? processedContext) as Record<string, unknown> | undefined
-          const meta = continuationContext?.metadata as Record<string, unknown> | undefined
-          if (continuationContext && meta?.__autoContinue === true) {
-            const rawPrompt = meta.__continuationPrompt as string | undefined
-            if (!rawPrompt) {
-              this.logger.warn('auto_continuation.missing_prompt', { socketId, agentName: currentLoopAgentName })
-            }
-            const prompt = rawPrompt || 'Continue processing'
-            delete meta.__autoContinue
-            delete meta.__continuationPrompt
-            // Flag deletion happens BEFORE `attachConversationId` runs. If
-            // `attachConversationId` ever threw, the deletions would have
-            // already taken effect and the continuation prompt would be lost
-            // — but `attachConversationId` only writes to context metadata
-            // (no I/O, no fallible state-manager calls), so this ordering is
-            // deliberate: keep the mutation site together and rely on the
-            // no-throw contract of the helper.
-            processedContext = continuationContext
-            this.attachConversationId(processedContext, socketId)
-            const conversationId = this.getConversation(socketId)?.conversationId
-            this.logger.info('auto_continuation.detected', {
-              socketId,
-              agentName: currentLoopAgentName,
-              conversationId,
-              continuationPromptPreview: prompt.slice(0, 120),
+              publishValidationMessage: async (content, data: ValidationMessageEventData) => {
+                const sequence = await this.publishToEventChannel(
+                  socketId,
+                  'validation_message',
+                  content,
+                  data as unknown as Record<string, unknown>,
+                  resolvedAgentName,
+                )
+                return sequence !== undefined
+              },
+              ...(conversation && this.config.messagePersistence.continueConversation && {
+                persistValidationMessage: async (continuationPrompt) => {
+                  return await this.config.messagePersistence.continueConversation!(
+                    conversation.conversationId,
+                    continuationPrompt,
+                    {
+                      ...conversation.context,
+                      messageMetadata: {
+                        source: 'post_stream_validator',
+                        displayAs: 'validation',
+                        validationStatus: 'failed',
+                      },
+                    },
+                  )
+                },
+              }),
+              logger: this.logger,
+              ...(conversation && { logContext: { conversationId: conversation.conversationId } }),
             })
-            return { prompt }
-          }
-          return null
-        },
-        getHandoffDetails: (currentAgent) => {
-          // Premature-close soft-commit ends the turn — don't follow a handoff
-          // even if one completed just before the connection dropped.
-          if (this.pendingSoftCommitReason.has(socketId)) return null
-          return this.getHandoffDetails(socketId, currentAgent)
-        },
-        onHandoff: async (oldAgent, newAgent) => {
-          this.logger.info('handoff.detect', { socketId, fromAgent: oldAgent, toAgent: newAgent })
-          const currentAppId = extractAppIdFromMessageContext(data.context)
-          if (
-            currentAppId &&
-            this.config.stateManager &&
-            'setSessionMetadata' in this.config.stateManager &&
-            typeof this.config.stateManager.setSessionMetadata === 'function'
-          ) {
-            this.config.stateManager.setSessionMetadata(socketId, { appId: currentAppId })
-          }
 
-          // Handoff emission now happens inside executeAgentLoop via the
-          // LoopObservabilityOptions passed below — both transports share
-          // that code path and get identical handoff telemetry.
-
-          const conversation = this.getConversation(socketId)
-          if (conversation && this.config.onAgentChanged) {
-            // Intentionally NOT wrapped: this hook persists the agent switch
-            // (DB update in the agents service). If this were swallowed by a
-            // try/catch, the next iteration would run under the new agent
-            // without a persisted record — tools attributing to the previous
-            // agent and conversation history in an inconsistent state.
-            // Surfacing the rejection propagates to the outer catch and
-            // aborts the turn so the client retry starts with clean state
-            // instead of a corrupt one. Contrast the loop's emitHandoff
-            // (observability-only, non-fatal).
-            await this.config.onAgentChanged(
-              conversation.conversationId,
-              oldAgent,
-              newAgent,
-              currentAppId
-            )
-          }
-        },
-        isAborted: () => abortSignal.aborted,
-      }, conversationIdForCleanup ? {
-        conversationId: conversationIdForCleanup,
-        onTelemetryError: (event, fields) => this.logger.warn(event, fields),
-      } : undefined)
-      agentName = loopResult.finalAgentName
-      if (loopResult.termination === 'aborted') {
-        this.logger.info('stream.aborted.skip_completion', { socketId, agentName })
-      } else if (loopResult.termination === 'max_handoffs') {
-        this.logger.warn('agent.loop.max_handoffs_reached', {
-          socketId,
-          agentName,
-          iterations: loopResult.iterations,
-        })
-      }
-
-      // 8. Budget reconciliation BEFORE completion so credits are updated
-      // before the client sees the complete event. If reconciliation takes
-      // >10s, emit a progress signal so the client knows we're still working.
-      if (budgetSessionBudgetId && budgetSessionSessionId && !budgetReportFiled) {
-        let progressTimer: ReturnType<typeof setTimeout> | undefined
-        try {
-          progressTimer = setTimeout(() => {
-            const effectiveSid = this.stateManager.getEffectiveSocketId(socketId)
-            const socket = this.io.sockets.sockets.get(effectiveSid)
-            if (socket?.connected) {
-              socket.emit('budget_status', { status: 'reconciling' })
+            if (validationResult) {
+              continuationMetadata.__autoContinue = true
+              continuationMetadata.__continuationPrompt = validationResult.continuationPrompt
+              continuationContext.metadata = continuationMetadata
             }
-          }, 10_000)
-          if (typeof progressTimer === 'object' && 'unref' in progressTimer) progressTimer.unref()
+          },
+          getAutoContinuation: () => {
+            // Premature-close soft-commit ends the turn — never auto-continue
+            // (even if a tool set __autoContinue before the connection dropped).
+            if (this.pendingSoftCommitReason.has(socketId)) return null
+            const conv = this.getConversation(socketId)
+            const continuationContext = (conv?.context ?? processedContext) as Record<string, unknown> | undefined
+            const meta = continuationContext?.metadata as Record<string, unknown> | undefined
+            if (continuationContext && meta?.__autoContinue === true) {
+              const rawPrompt = meta.__continuationPrompt as string | undefined
+              if (!rawPrompt) {
+                this.logger.warn('auto_continuation.missing_prompt', { socketId, agentName: currentLoopAgentName })
+              }
+              const prompt = rawPrompt || 'Continue processing'
+              delete meta.__autoContinue
+              delete meta.__continuationPrompt
+              // Flag deletion happens BEFORE `attachConversationId` runs. If
+              // `attachConversationId` ever threw, the deletions would have
+              // already taken effect and the continuation prompt would be lost
+              // — but `attachConversationId` only writes to context metadata
+              // (no I/O, no fallible state-manager calls), so this ordering is
+              // deliberate: keep the mutation site together and rely on the
+              // no-throw contract of the helper.
+              processedContext = continuationContext
+              this.attachConversationId(processedContext, socketId)
+              const conversationId = this.getConversation(socketId)?.conversationId
+              this.logger.info('auto_continuation.detected', {
+                socketId,
+                agentName: currentLoopAgentName,
+                conversationId,
+                continuationPromptPreview: prompt.slice(0, 120),
+              })
+              return { prompt }
+            }
+            return null
+          },
+          getHandoffDetails: (currentAgent) => {
+            // Premature-close soft-commit ends the turn — don't follow a handoff
+            // even if one completed just before the connection dropped.
+            if (this.pendingSoftCommitReason.has(socketId)) return null
+            return this.getHandoffDetails(socketId, currentAgent)
+          },
+          onHandoff: async (oldAgent, newAgent) => {
+            this.logger.info('handoff.detect', { socketId, fromAgent: oldAgent, toAgent: newAgent })
+            const currentAppId = extractAppIdFromMessageContext(data.context)
+            if (
+              currentAppId &&
+              this.config.stateManager &&
+              'setSessionMetadata' in this.config.stateManager &&
+              typeof this.config.stateManager.setSessionMetadata === 'function'
+            ) {
+              this.config.stateManager.setSessionMetadata(socketId, { appId: currentAppId })
+            }
 
-          // Use accumulated execution steps from the handoff loop (not Map lookup)
-          // Check if user aborted - prevents misattributing user-aborted sessions as GoDaddy cost
-          const preReportStateData = this.stateManager.getStateData(socketId)
-          const wasUserAborted = abortSignal.aborted && preReportStateData?.userStopped
-          const budgetResult = await this.fileBudgetReport(
-            budgetSessionBudgetId, budgetSessionSessionId, socketId, allExecutionSteps, undefined, wasUserAborted,
-          )
-          // Only mark as filed AFTER we confirm the result - if fileBudgetReport throws
-          // before its internal try block, budgetReportFiled stays false and the finally
-          // block fallback can retry
-          if (budgetResult.filed) {
-            budgetReportFiled = true
-            // Clean up steps only after successful budget report
-            this.pendingExecutionSteps.delete(socketId)
-            budgetSessionWasFree = budgetResult.sessionWasFree
-          }
-          // If !budgetResult.filed: budgetReportFiled stays false, steps preserved for
-          // finally-block fallback retry. TODO: When budget flag is on and report filing
-          // fails, the BMS session remains open with unreconciled costs. Need to implement
-          // a reconciliation strategy (e.g., background retry queue, session cleanup job,
-          // or manual intervention).
-        } finally {
-          if (progressTimer !== undefined) clearTimeout(progressTimer)
+            // Handoff emission now happens inside executeAgentLoop via the
+            // LoopObservabilityOptions passed below — both transports share
+            // that code path and get identical handoff telemetry.
+
+            const conversation = this.getConversation(socketId)
+            if (conversation && this.config.onAgentChanged) {
+              // Intentionally NOT wrapped: this hook persists the agent switch
+              // (DB update in the agents service). If this were swallowed by a
+              // try/catch, the next iteration would run under the new agent
+              // without a persisted record — tools attributing to the previous
+              // agent and conversation history in an inconsistent state.
+              // Surfacing the rejection propagates to the outer catch and
+              // aborts the turn so the client retry starts with clean state
+              // instead of a corrupt one. Contrast the loop's emitHandoff
+              // (observability-only, non-fatal).
+              await this.config.onAgentChanged(
+                conversation.conversationId,
+                oldAgent,
+                newAgent,
+                currentAppId
+              )
+            }
+          },
+          isAborted: () => abortSignal.aborted,
+        }, conversationIdForCleanup ? {
+          conversationId: conversationIdForCleanup,
+          onTelemetryError: (event, fields) => this.logger.warn(event, fields),
+        } : undefined)
+        agentName = loopResult.finalAgentName
+        if (loopResult.termination === 'aborted') {
+          this.logger.info('stream.aborted.skip_completion', { socketId, agentName })
+        } else if (loopResult.termination === 'max_handoffs') {
+          this.logger.warn('agent.loop.max_handoffs_reached', {
+            socketId,
+            agentName,
+            iterations: loopResult.iterations,
+          })
         }
+
+        // 8. Budget reconciliation BEFORE completion so credits are updated
+        // before the client sees the complete event. If reconciliation takes
+        // >10s, emit a progress signal so the client knows we're still working.
+        if (budgetSessionBudgetId && budgetSessionSessionId && !budgetReportFiled) {
+          let progressTimer: ReturnType<typeof setTimeout> | undefined
+          try {
+            progressTimer = setTimeout(() => {
+              const effectiveSid = this.stateManager.getEffectiveSocketId(socketId)
+              const socket = this.io.sockets.sockets.get(effectiveSid)
+              if (socket?.connected) {
+                socket.emit('budget_status', { status: 'reconciling' })
+              }
+            }, 10_000)
+            if (typeof progressTimer === 'object' && 'unref' in progressTimer) progressTimer.unref()
+
+            // Use accumulated execution steps from the handoff loop (not Map lookup)
+            // Check if user aborted - prevents misattributing user-aborted sessions as GoDaddy cost
+            const preReportStateData = this.stateManager.getStateData(socketId)
+            const wasUserAborted = abortSignal.aborted && preReportStateData?.userStopped
+            const budgetResult = await this.fileBudgetReport(
+              budgetSessionBudgetId, budgetSessionSessionId, socketId, allExecutionSteps, undefined, wasUserAborted,
+            )
+            // Only mark as filed AFTER we confirm the result - if fileBudgetReport throws
+            // before its internal try block, budgetReportFiled stays false and the finally
+            // block fallback can retry
+            if (budgetResult.filed) {
+              budgetReportFiled = true
+              // Clean up steps only after successful budget report
+              this.pendingExecutionSteps.delete(socketId)
+              budgetSessionWasFree = budgetResult.sessionWasFree
+            }
+            // If !budgetResult.filed: budgetReportFiled stays false, steps preserved for
+            // finally-block fallback retry. TODO: When budget flag is on and report filing
+            // fails, the BMS session remains open with unreconciled costs. Need to implement
+            // a reconciliation strategy (e.g., background retry queue, session cleanup job,
+            // or manual intervention).
+          } finally {
+            if (progressTimer !== undefined) clearTimeout(progressTimer)
+          }
+        }
+
+        // 9. Complete the conversation (after reconciliation)
+        // Always runs — handles both normal and abort paths:
+        //   - Persistence finalization (message saved with inProgress: false)
+        //   - Pre-completion hooks (git commits)
+        //   - Complete event publication (with finishReason if aborted)
+        const completionStateData = this.stateManager.getStateData(socketId)
+        const chunkTimeoutAbort = abortSignal.aborted && abortSignal.reason === 'chunk_timeout'
+        const chunkTimeoutContent = this.getConversation(socketId)?.accumulatedContent ?? ''
+        // isFinished:false — the StreamPartProcessor is scoped inside
+        // streamAgentResponse and not visible here, so WS never emits 'stop';
+        // a terminal-finish-then-stall is reported as 'incomplete' (see
+        // decideChunkTimeoutFinalization JSDoc). Acceptable: the GoCode stall
+        // mode has no terminal finish frame anyway.
+        const chunkTimeoutOutcome = chunkTimeoutAbort
+          ? decideChunkTimeoutFinalization({ isFinished: false, hasContent: chunkTimeoutContent.length > 0 })
+          : undefined
+        const abortFinishReason = completionStateData?.userStopped ? 'user_stopped' : 'aborted'
+        // Premature-close soft-commit (streamAgentResponse set this when the
+        // upstream dropped mid/post-stream with content present). Consume it
+        // here so it can't leak into a later turn on a reused socket.
+        const softCommitReason = this.pendingSoftCommitReason.get(socketId)
+        this.pendingSoftCommitReason.delete(socketId)
+        const finishReason = chunkTimeoutOutcome?.kind === 'finalize'
+          ? chunkTimeoutOutcome.finishReason
+          : softCommitReason
+            ?? (abortSignal.aborted ? abortFinishReason : undefined)
+        const budgetServiceEnabled = (processedContext as { metadata?: { budgetServiceEnabled?: boolean } })?.metadata?.budgetServiceEnabled
+        await this.completeConversation(socketId, agentName, startTime, processedContext!, finishReason, budgetSessionWasFree, budgetServiceEnabled)
+
+        // Clean up state after abort — the disconnect timeout handler defers cleanup
+        // to here so it doesn't race with completeConversation above.
+        if (abortSignal.aborted) {
+          await this.cleanupConversation(socketId).catch((error) => {
+            this.logger.error('abort.cleanup_failure', {
+              socketId,
+              error: error instanceof Error ? error.message : String(error)
+            })
+          })
+        }
+
+        return { success: true }
       }
 
-      // 9. Complete the conversation (after reconciliation)
-      // Always runs — handles both normal and abort paths:
-      //   - Persistence finalization (message saved with inProgress: false)
-      //   - Pre-completion hooks (git commits)
-      //   - Complete event publication (with finishReason if aborted)
-      const completionStateData = this.stateManager.getStateData(socketId)
-      const chunkTimeoutAbort = abortSignal.aborted && abortSignal.reason === 'chunk_timeout'
-      const chunkTimeoutContent = this.getConversation(socketId)?.accumulatedContent ?? ''
-      // isFinished:false — the StreamPartProcessor is scoped inside
-      // streamAgentResponse and not visible here, so WS never emits 'stop';
-      // a terminal-finish-then-stall is reported as 'incomplete' (see
-      // decideChunkTimeoutFinalization JSDoc). Acceptable: the GoCode stall
-      // mode has no terminal finish frame anyway.
-      const chunkTimeoutOutcome = chunkTimeoutAbort
-        ? decideChunkTimeoutFinalization({ isFinished: false, hasContent: chunkTimeoutContent.length > 0 })
-        : undefined
-      const abortFinishReason = completionStateData?.userStopped ? 'user_stopped' : 'aborted'
-      // Premature-close soft-commit (streamAgentResponse set this when the
-      // upstream dropped mid/post-stream with content present). Consume it
-      // here so it can't leak into a later turn on a reused socket.
-      const softCommitReason = this.pendingSoftCommitReason.get(socketId)
-      this.pendingSoftCommitReason.delete(socketId)
-      const finishReason = chunkTimeoutOutcome?.kind === 'finalize'
-        ? chunkTimeoutOutcome.finishReason
-        : softCommitReason
-          ?? (abortSignal.aborted ? abortFinishReason : undefined)
-      const budgetServiceEnabled = (processedContext as { metadata?: { budgetServiceEnabled?: boolean } })?.metadata?.budgetServiceEnabled
-      await this.completeConversation(socketId, agentName, startTime, processedContext, finishReason, budgetSessionWasFree, budgetServiceEnabled)
-
-      // Clean up state after abort — the disconnect timeout handler defers cleanup
-      // to here so it doesn't race with completeConversation above.
-      if (abortSignal.aborted) {
-        await this.cleanupConversation(socketId).catch((error) => {
-          this.logger.error('abort.cleanup_failure', {
-            socketId,
-            error: error instanceof Error ? error.message : String(error)
-          })
-        })
+      if (conversationIdForCleanup) {
+        const getTurnEndFields = () => {
+          const events = this.getConversation(socketId)?.turnTelemetryEvents ?? []
+          const outputText = extractTurnOutputFromEvents(events)
+          const responseData = extractTurnToolResponseDataFromEvents(events)
+          return {
+            ...(outputText !== '' && { outputText }),
+            ...(responseData !== undefined && { responseData }),
+          }
+        }
+        await runAgentTurnSpan(
+          {
+            inputText: data.message,
+            conversationId: conversationIdForCleanup,
+            specialistKey: agentName,
+            logger: { warn: (event, fields) => this.logger.warn(event, fields) },
+            getTurnEndFields,
+          },
+          runTurnWithTelemetry,
+        )
+      } else {
+        await runTurnWithTelemetry()
       }
 
     } catch (error: unknown) {
@@ -2936,7 +2966,8 @@ export class WebSocketServer {
         lastDeliveredSequence: -1,
         pendingSegments: [],
         pendingToolCalls: new Map(),
-        accumulatedContent: ''
+        accumulatedContent: '',
+        turnTelemetryEvents: [],
       })
     } else {
       // Create new conversation
@@ -3737,18 +3768,12 @@ Please try again with corrected formatting.`
         }
 
         const toolResultsForSpan = conversationAfterStream?.pendingToolCalls
-        const hasToolResultsForSpan = toolResultsForSpan && toolResultsForSpan.size > 0
+        const invocationResponseData = buildToolResponseData(toolResultsForSpan?.values() ?? [])
 
         invocation.endAborted({
           outputText: fullContent,
           responseType: fullContent ? 'llm_reply' : 'tool_call',
-          ...(hasToolResultsForSpan && {
-            responseData: Array.from(toolResultsForSpan.values()).map(t => ({
-              name: t.name,
-              status: t.status,
-              output: t.result,
-            }))
-          }),
+          ...(invocationResponseData !== undefined && { responseData: invocationResponseData }),
         })
 
         // Return any steps captured before abort for cost attribution
@@ -4010,18 +4035,12 @@ Please try again with corrected formatting.`
 
       // End the invocation span with the final output and aggregated usage
       const toolResults = conversationAfterStream?.pendingToolCalls
-      const hasToolResults = toolResults && toolResults.size > 0
+      const invocationResponseData = buildToolResponseData(toolResults?.values() ?? [])
 
       invocation.endSuccess({
         outputText: fullContent,
         responseType: fullContent ? 'llm_reply' : 'tool_call',
-        ...(hasToolResults && {
-          responseData: Array.from(toolResults.values()).map(t => ({
-            name: t.name,
-            status: t.status,
-            output: t.result,
-          }))
-        }),
+        ...(invocationResponseData !== undefined && { responseData: invocationResponseData }),
         usage: usageToTrack,
         totalCost: costEstimateTotalCost,
         finishReason: finalResult.finishReason,

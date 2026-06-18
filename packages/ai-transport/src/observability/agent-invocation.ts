@@ -1,10 +1,11 @@
+import { createError, type ErrorPhase } from '@godaddy/agent-observability-events'
 import { context as otelContext, trace, type Context } from '@opentelemetry/api'
 import {
   createAgentContext,
   createAgentInvocationSpan,
+  createAgentTurnSpan,
   emitError,
 } from '@godaddy/agent-otel-sdk'
-import { createError, type ErrorPhase } from '@godaddy/agent-observability-events'
 import { inferProviderFromModelName } from './infer-llm-provider.js'
 import { registerInvocationSpan, unregisterInvocationSpan } from './agent-invocation-context.js'
 import {
@@ -158,6 +159,34 @@ export interface AgentInvocationHandle {
   readonly ended: boolean
 }
 
+export interface AgentTurnOptions {
+  inputText: string
+  conversationId?: string
+  logger: TurnErrorLogger
+}
+
+export interface TurnEndFields {
+  outputText?: string | undefined
+  userIntent?: string | undefined
+  /** Structured user-visible output when the turn is tool-heavy or tool-only. */
+  responseData?: unknown
+}
+
+/** Transport-neutral turn outcome returned from execution and passed to
+ * `endFromResult`. Matches the shape both SSE and WS produce at turn boundary. */
+export type TurnExecutionResult = TurnEndFields & {
+  success: boolean
+  error?: unknown
+}
+
+export interface AgentTurnHandle {
+  readonly context: Context
+  runUnder<T>(fn: () => Promise<T>): Promise<T>
+  /** End the turn span from a transport execution result. Idempotent. */
+  endFromResult(result: TurnExecutionResult): void
+  readonly ended: boolean
+}
+
 function resolveModelName(agent: AgentForInvocation, agentName: string): string {
   try {
     const cfg = agent.getConfig?.()
@@ -277,6 +306,94 @@ export function createAgentInvocation(opts: AgentInvocationOptions): AgentInvoca
         error: error instanceof Error ? error : String(error),
         success: false,
         ...(endOpts?.finishReason !== undefined && { finishReason: endOpts.finishReason }),
+      })
+    },
+  }
+}
+
+export interface AgentTurnSpanOptions {
+  inputText: string
+  conversationId: string
+  specialistKey?: string
+  logger: TurnErrorLogger
+  /**
+   * Called lazily at span-end time in both the success and error paths.
+   * Reading directly from the live snapshot here (rather than from a
+   * pre-captured variable) is what makes error paths report the actual
+   * partial output accumulated so far instead of an empty string.
+   */
+  getTurnEndFields: () => TurnEndFields
+}
+
+/**
+ * Single shared implementation of the turn-span lifecycle used by both
+ * transport adapters.  Creates the agent context + turn span, runs `fn`
+ * under it, and ends the span from the function's result combined with
+ * the lazily-evaluated `getTurnEndFields`.  Always re-throws — callers
+ * that need post-error cleanup should wrap the outer call.
+ */
+export async function runAgentTurnSpan<T extends { success: boolean; error?: unknown }>(
+  opts: AgentTurnSpanOptions,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const { inputText, conversationId, specialistKey, logger, getTurnEndFields } = opts
+  const turn = otelContext.with(
+    createAgentContext({ conversationId, specialistKey }),
+    () => createAgentTurn({ inputText, conversationId, logger }),
+  )
+  try {
+    const result = await turn.runUnder(fn)
+    turn.endFromResult({ success: result.success, error: result.error, ...getTurnEndFields() })
+    return result
+  } catch (err) {
+    turn.endFromResult({ success: false, error: err, ...getTurnEndFields() })
+    throw err
+  }
+}
+
+export function createAgentTurn(opts: AgentTurnOptions): AgentTurnHandle {
+  const { inputText, conversationId, logger } = opts
+  const turn = createAgentTurnSpan({ inputText })
+  let ended = false
+
+  const safeEnd = (endArgs: NonNullable<Parameters<typeof turn.end>[0]>): void => {
+    if (ended) return
+    ended = true
+    try {
+      turn.end(endArgs)
+    } catch (err) {
+      const telemetryError = err instanceof Error ? err.message : String(err)
+      const data = {
+        ...(conversationId !== undefined && { conversationId }),
+        telemetryError,
+      }
+      try {
+        logger.warn('agent.turn.end_failed', data)
+      } catch {
+        try { console.error('agent.turn.end_failed', data) } catch { /* last-resort */ }
+      }
+    }
+  }
+
+  return {
+    get context() {
+      return turn.context
+    },
+    get ended() {
+      return ended
+    },
+    runUnder<T>(fn: () => Promise<T>): Promise<T> {
+      return turn.run(fn)
+    },
+    endFromResult(result) {
+      safeEnd({
+        ...(result.outputText !== undefined && { outputText: result.outputText }),
+        ...(result.userIntent !== undefined && { userIntent: result.userIntent }),
+        ...(result.responseData !== undefined && { responseData: result.responseData as any }),
+        success: result.success,
+        ...(!result.success && result.error !== undefined && {
+          error: result.error instanceof Error ? result.error : String(result.error),
+        }),
       })
     },
   }

@@ -216,3 +216,83 @@ export function trackTurnSnapshotEvent(
     update: buildUpdate(state),
   }
 }
+
+/** Derive user-visible text for an entire turn by replaying streamed events.
+ *  SSE keeps one `streamingEvents` array for the full turn (including handoffs);
+ *  use this at the turn boundary instead of the final iteration's snapshot alone. */
+export function extractTurnOutputFromEvents(events: ReadonlyArray<PersistenceStreamingEvent>): string {
+  let accumulated = ''
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i]
+    if (!event) continue
+    const content = event.content ?? ''
+    if (!isTextEvent(event.type) || !content) continue
+    const previous = i > 0 ? events[i - 1] : undefined
+    if (accumulated && previous && !isTextEvent(previous.type)) {
+      accumulated += '\n'
+    }
+    accumulated += content
+  }
+  return accumulated
+}
+
+/** Structured tool payload shape shared by invocation-end and turn-end events. */
+export interface ToolResponseDataEntry {
+  name: string
+  status: string
+  output?: unknown
+}
+
+/** Map turn snapshot tool calls to observability `responseData`. Returns
+ *  undefined when there are no tool results (callers omit the field). */
+export function buildToolResponseData(
+  toolCalls: Iterable<TurnSnapshotToolCall>,
+): ToolResponseDataEntry[] | undefined {
+  const entries: ToolResponseDataEntry[] = []
+  for (const tool of toolCalls) {
+    entries.push({
+      name: tool.name,
+      status: tool.status,
+      ...(tool.result !== undefined && { output: tool.result }),
+      ...(tool.error !== undefined && tool.result === undefined && { output: tool.error }),
+    })
+  }
+  return entries.length > 0 ? entries : undefined
+}
+
+/** Build responseData from a turn snapshot's pending tool-call map. */
+export function buildToolResponseDataFromSnapshot(
+  state: TurnSnapshotState,
+): ToolResponseDataEntry[] | undefined {
+  if (!state.pendingToolCalls || state.pendingToolCalls.size === 0) return undefined
+  return buildToolResponseData(state.pendingToolCalls.values())
+}
+
+/** Replay tool events from a turn's streaming log and derive responseData.
+ *  SSE keeps one event array for the full turn (including handoffs). */
+export function extractTurnToolResponseDataFromEvents(
+  events: ReadonlyArray<PersistenceStreamingEvent>,
+): ToolResponseDataEntry[] | undefined {
+  const state: TurnSnapshotState = { streamingEvents: [] }
+  for (const event of events) {
+    if (event.type !== 'tool_start' && event.type !== 'tool_result') continue
+    trackTurnSnapshotEvent(
+      state,
+      event.type,
+      event.content ?? '',
+      (event.data ?? {}) as Record<string, unknown>,
+    )
+  }
+  return buildToolResponseDataFromSnapshot(state)
+}
+
+/** Tool calls added to `snapshot` after `toolIdsBefore` (one agent invocation). */
+export function buildInvocationToolResponseData(
+  snapshot: TurnSnapshotState,
+  toolIdsBefore: ReadonlySet<string>,
+): ToolResponseDataEntry[] | undefined {
+  if (!snapshot.pendingToolCalls || snapshot.pendingToolCalls.size === 0) return undefined
+  return buildToolResponseData(
+    Array.from(snapshot.pendingToolCalls.values()).filter((tool) => !toolIdsBefore.has(tool.id)),
+  )
+}

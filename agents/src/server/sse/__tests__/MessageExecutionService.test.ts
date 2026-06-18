@@ -35,6 +35,7 @@ const mockInvocationEnd = vi.fn()
 const mockCreateAgentInvocationSpan = vi.fn(function () { return {
   context: mockInvocationContext,
   end: mockInvocationEnd,
+  run: (fn: () => Promise<unknown>) => fn(),
 }; })
 const mockGetBudgetServiceClient = vi.hoisted(() => vi.fn(function () { return null; }))
 const mockEmitConversationStart = vi.hoisted(() => vi.fn())

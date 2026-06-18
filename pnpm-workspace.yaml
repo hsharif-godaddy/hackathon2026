@@ -35,8 +35,8 @@ catalog:
   '@domains/domain-recommendations': ^1.4.0
   '@elastic/elasticsearch': ^8.19.1
   '@gd-asm/asm-client': ^1.9.0
-  '@godaddy/agent-observability-events': ^2.4.0
-  '@godaddy/agent-otel-sdk': ^2.6.1
+  '@godaddy/agent-observability-events': ^2.5.0
+  '@godaddy/agent-otel-sdk': ^3.0.0
   '@godaddy/goknowb-client': ^1.0.9
   '@godaddy/request': ^4.0.0
 

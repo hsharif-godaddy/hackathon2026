@@ -392,6 +392,7 @@ export class ConnectionRecoveryManager {
       pendingSegments: [],
       pendingToolCalls: new Map(),
       accumulatedContent: '',
+      turnTelemetryEvents: [],
       lastDeliveredSequence,
       abortController,
       recoveryTimeoutId: null,

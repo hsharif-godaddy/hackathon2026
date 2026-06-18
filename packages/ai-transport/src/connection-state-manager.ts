@@ -20,6 +20,8 @@ export interface ConnectionStateData {
   pendingSegments: any[]
   pendingToolCalls: Map<string, any>
   accumulatedContent: string
+  /** Streaming events for the current user turn (survives agent handoffs; used for turn-end telemetry). */
+  turnTelemetryEvents: PersistenceStreamingEvent[]
 
   // Delivery tracking
   lastDeliveredSequence: number
@@ -183,6 +185,7 @@ export class ConnectionStateManager {
       pendingSegments: [],
       pendingToolCalls: new Map(),
       accumulatedContent: '',
+      turnTelemetryEvents: [],
       lastDeliveredSequence: -1,
       abortController: null,
       recoveryTimeoutId: null,
@@ -275,6 +278,7 @@ export class ConnectionStateManager {
   updateConnection(socketId: string, updates: Partial<Pick<ConnectionStateData,
     'abortController' | 'lastDeliveredSequence' | 'recoveryTimeoutId' | 'setupTimeoutId' |
     'streamingEvents' | 'pendingSegments' | 'pendingToolCalls' | 'accumulatedContent' |
+    'turnTelemetryEvents' |
     'agentName' | 'context' | 'userStopped'
   >>): boolean {
     const effectiveId = this.getEffectiveSocketId(socketId)
@@ -292,6 +296,7 @@ export class ConnectionStateManager {
     if (updates.pendingSegments !== undefined) data.pendingSegments = updates.pendingSegments
     if (updates.pendingToolCalls !== undefined) data.pendingToolCalls = updates.pendingToolCalls
     if (updates.accumulatedContent !== undefined) data.accumulatedContent = updates.accumulatedContent
+    if (updates.turnTelemetryEvents !== undefined) data.turnTelemetryEvents = updates.turnTelemetryEvents
     if (updates.agentName !== undefined) data.agentName = updates.agentName
     if (updates.context !== undefined) data.context = updates.context
     if (updates.userStopped !== undefined) data.userStopped = updates.userStopped

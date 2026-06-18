@@ -134,9 +134,17 @@ export type { ResolveToolMetadata, ToolMetadataLogger } from './tool-metadata.js
 export { redactSkillOutput } from './redact-skill-output.js'
 
 // Incremental turn snapshot tracking (shared by WS + SSE persistence/recovery)
-export { trackTurnSnapshotEvent } from './turn-snapshot-tracker.js'
+export {
+  buildInvocationToolResponseData,
+  buildToolResponseData,
+  buildToolResponseDataFromSnapshot,
+  extractTurnOutputFromEvents,
+  extractTurnToolResponseDataFromEvents,
+  trackTurnSnapshotEvent,
+} from './turn-snapshot-tracker.js'
 export type {
   InitializedTurnSnapshotState,
+  ToolResponseDataEntry,
   TurnSnapshotContentSegment,
   TurnSnapshotSegment,
   TurnSnapshotState,
@@ -197,16 +205,21 @@ export type {
   TokenUsageObservabilityLogger,
   TokenUsageApmTracker,
 } from './token-usage-observability.js'
-export { emitTurnError, createAgentInvocation } from './observability/agent-invocation.js'
+export { emitTurnError, createAgentInvocation, createAgentTurn, runAgentTurnSpan } from './observability/agent-invocation.js'
 export { addSkillNameToSpan } from './observability/agent-invocation-context.js'
 export type {
   EmitTurnErrorOptions,
   TurnErrorLogger,
   AgentInvocationHandle,
   AgentInvocationOptions,
+  AgentTurnHandle,
+  AgentTurnOptions,
+  AgentTurnSpanOptions,
   InvocationEndSuccess,
   InvocationUsage,
   AgentForInvocation,
+  TurnEndFields,
+  TurnExecutionResult,
 } from './observability/agent-invocation.js'
 
 // Agent Execution Loop
