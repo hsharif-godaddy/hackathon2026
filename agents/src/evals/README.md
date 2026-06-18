@@ -18,6 +18,19 @@ output. Evals run alongside normal unit tests so regressions are caught in CI.
   Initial Agent inference over `rebuild-design-direction-matrix.ts` when
   `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is set.
 
+- `rebuild-typography.spec.ts` - static eval (AIROBUILD-2651): pins rebuild
+  typography fidelity — orchestrator font resolution (including maxinedubois.com
+  generic Atlas capture → themed Google Font substitution), keep-original page
+  prompt guidance (pre-applied `--font-heading` / `--font-sans`, no `fontTheme`),
+  and develop prompt gates. Exact source font names still depend on Atlas capture
+  (AIROBUILD-2588).
+
+- `rebuild-document-links.spec.ts` - rebuild page prompts preserve in-content
+  document link URLs.
+
+- `rebuild-asset-instruction.spec.ts` - rebuild page prompts require imported
+  source assets on clone rebuilds.
+
 ## Planned
 
 A full LLM-driven eval is planned: bootstrap a real DevelopAgent, have it
