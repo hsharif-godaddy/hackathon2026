@@ -37,4 +37,6 @@ node scripts/validate-template-sync.mjs
 # Validate skill structure (skill.md + frontmatter + tools/index.ts).
 node scripts/validate-skill.mjs
 
+pnpm --filter debug-console typecheck
+
 npx lint-staged

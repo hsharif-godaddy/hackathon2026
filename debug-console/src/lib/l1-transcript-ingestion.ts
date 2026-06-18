@@ -761,13 +761,13 @@ export function mapCsvRowToTranscript(
     source_file_hash: fileHash,
     xlsx_row_index: rowIndex,
     interaction_type: sanitizeText(row.handled_repeat_contact_platform) || undefined,
-    interaction_status: mapResolutionToStatus(row.issue_resolution) || undefined,
+    interaction_status: mapResolutionToStatus(row.issue_resolution ?? null) || undefined,
     resolution_time_seconds: undefined,
     agent_name: sanitizeText(row.agent_skill_raw) || undefined,
     category: sanitizeText(row.agent_department) || undefined,
     subcategory: sanitizeText(row.call_type) || undefined,
-    sentiment_score: mapSentimentToScore(row.customer_sentiment) || undefined,
-    language: mapCountryToLanguage(row.country) || undefined,
+    sentiment_score: mapSentimentToScore(row.customer_sentiment ?? null) || undefined,
+    language: mapCountryToLanguage(row.country ?? null) || undefined,
     raw_data: safeJsonStringify(raw_data),
   };
 
