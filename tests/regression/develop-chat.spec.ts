@@ -8,7 +8,7 @@
  *      completes.
  *   2. The chat input stages dropped / pasted file attachments and enables Send
  *      when attachments are present (prompt text optional).
- *   3. Attachment-only send (upload → transcript) on WebSocket transport.
+ *   3. Attachment-only send (upload → transcript).
  *
  * The previous "Full UI Flow" mega-test also covered component render, preview
  * controls, chat-input states, send-via-click/Enter and page-reload recovery —
@@ -19,11 +19,9 @@
  * check, and the settings-popover toggle mechanics — low-value chrome, not
  * re-homed.)
  *
- * Step 6c exercises attachment-only send on the default WebSocket transport;
- * SSE cohort is forced off via forceWebSocketTransport so a green run is not a
- * false positive from the SSE path. Live-agent upload remains high flake risk —
- * transcript and AI completion waits use AI_RESPONSE_TIMEOUT_MS. Prefer nightly
- * if 6c flakes in CI smoke.
+ * Step 6c exercises attachment-only send (SSE transport). Live-agent upload
+ * remains high flake risk — transcript and AI completion waits use
+ * AI_RESPONSE_TIMEOUT_MS. Prefer nightly if 6c flakes in CI smoke.
  */
 import type { Page } from '@playwright/test';
 
@@ -42,8 +40,6 @@ import {
 import {
   dismissOverlays,
   expectPublishSuccessVisible,
-  expectWebSocketTransport,
-  forceWebSocketTransport,
   logTestResult,
   logTestStart,
   waitForDevelopPage,
@@ -227,7 +223,6 @@ test.describe('Develop Page', () => {
     // congestion. The staging assertions themselves are client-side.
     testInfo.setTimeout(4 * AI_RESPONSE_TIMEOUT_MS + 120_000);
 
-    await forceWebSocketTransport(page);
     await createDevelopApp(page);
 
     await dismissOverlays(page);
@@ -303,11 +298,9 @@ test.describe('Develop Page', () => {
     await expect(page.getByTestId('chat-send-button')).toBeDisabled();
     console.log('  ✓ Cleared staged paste attachment');
 
-    // --- Send staged attachment without prompt text (happy path, WS transport) ---
+    // --- Send staged attachment without prompt text (happy path) ---
     await dismissOverlays(page);
-    console.log('📎 Step 6c: Sending attachment-only message (WebSocket transport)...');
-
-    await expectWebSocketTransport(page);
+    console.log('📎 Step 6c: Sending attachment-only message...');
 
     await chatInput.clear();
     await expect(page.getByTestId('chat-send-button')).toBeDisabled();

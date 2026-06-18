@@ -1,37 +1,11 @@
-import { useRef } from 'react'
-
-import { SWITCHBOARD_APPBUILDER_SSE_TRANSPORT } from '@/config/switchboard-flags'
 import { useSSEChat } from './useSSEChat'
-import { useStreamingWebSocket } from './useStreamingWebSocket'
-import { useSwitchboard } from './useSwitchboard'
-
-type TransportResult = ReturnType<typeof useSSEChat> | ReturnType<typeof useStreamingWebSocket>
 
 /**
- * Selects between WS and SSE transports based on a switchboard flag, locking
- * onto the first resolved value so the transport can't swap mid-session.
- *
- * Both underlying hooks are mounted every render because React forbids
- * conditional hook calls; the unselected hook receives `enabled: false` and
- * short-circuits its effects so it does not allocate transports, controllers,
- * or subscriber registrations.
+ * Chat transport entry point. SSE is the only transport; this indirection is
+ * kept so call sites depend on a transport-neutral name rather than useSSEChat
+ * directly. (Historically selected between WS and SSE behind a Switchboard flag;
+ * the WebSocket transport was removed in AIROBUILD-2629.)
  */
-export function useChatTransport({ enabled = true }: { enabled?: boolean } = {}): TransportResult {
-  const sseEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_SSE_TRANSPORT)
-
-  const resolvedRef = useRef<boolean | null>(null)
-  if (resolvedRef.current === null) {
-    if (sseEnabled !== undefined) {
-      resolvedRef.current = sseEnabled === true
-    } else if (typeof window !== 'undefined') {
-      resolvedRef.current = false
-    }
-  }
-  const resolved = resolvedRef.current !== null
-  const useSSE = resolvedRef.current === true
-
-  const sse = useSSEChat({ enabled: resolved && useSSE && enabled })
-  const ws = useStreamingWebSocket({ enabled: resolved && !useSSE && enabled })
-
-  return useSSE ? sse : ws
+export function useChatTransport({ enabled = true }: { enabled?: boolean } = {}): ReturnType<typeof useSSEChat> {
+  return useSSEChat({ enabled })
 }

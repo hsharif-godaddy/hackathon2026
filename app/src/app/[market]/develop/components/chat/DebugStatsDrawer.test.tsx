@@ -138,13 +138,6 @@ describe('DebugStats UI', () => {
     expect(screen.getByText(/No LLM calls yet/i)).toBeInTheDocument()
   })
 
-  it('shows WS transport badge when SSE flag is off', () => {
-    vi.mocked(useSwitchboard).mockImplementation(function (flag: string) { return flag === 'app-builder-sse-transport' ? false : true; })
-    render(<Mount />)
-    fireEvent.click(screen.getByTestId('debug-stats-toggle'))
-    expect(screen.getByTestId('debug-stats-transport-badge')).toHaveTextContent('WS')
-  })
-
   it('shows connected status badge', () => {
     vi.mocked(useSwitchboard).mockReturnValue(true)
     mockUseWebSocketState.mockReturnValue({ connected: true, status: 'idle' })

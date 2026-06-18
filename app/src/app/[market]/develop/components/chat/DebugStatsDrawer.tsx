@@ -5,7 +5,7 @@ import { FloatingPanel } from '@airo-ux/pattern-library/surfaces/floating-panel'
 import Button from '@ux/button'
 import Tag from '@ux/tag'
 
-import { SWITCHBOARD_APPBUILDER_DEBUG_DRAWER, SWITCHBOARD_APPBUILDER_SSE_TRANSPORT } from '@/config/switchboard-flags'
+import { SWITCHBOARD_APPBUILDER_DEBUG_DRAWER } from '@/config/switchboard-flags'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useStreamingConversationStore, useStreamingState, useWebSocketState } from '@/stores/useStreamingConversationStore'
 import { type LLMCallRecord, useDebugStats } from './DebugStatsContext'
@@ -76,14 +76,12 @@ export function DebugStatsToggleButton(): ReactElement | null {
 export function DebugStatsPanel(): ReactElement | null {
   const enabled = useSwitchboard(SWITCHBOARD_APPBUILDER_DEBUG_DRAWER)
   const { state, dispatch, open, setOpen } = useDebugStats()
-  const sseFlag = useSwitchboard(SWITCHBOARD_APPBUILDER_SSE_TRANSPORT)
   const wsState = useWebSocketState()
   const retryState = useStreamingConversationStore((s) => s.retryState)
   const streamingState = useStreamingState()
 
   if (!enabled) return null
 
-  const transport = sseFlag === true ? 'SSE' : 'WS'
   const totalCost = state.calls.reduce((sum, c) => sum + c.costUsd, 0)
 
   return (
@@ -109,9 +107,6 @@ export function DebugStatsPanel(): ReactElement | null {
     >
       <div className="text-[10px] font-mono">
         <section className="mb-2 flex flex-wrap items-center gap-1" data-testid="debug-stats-connection-info">
-          <Tag size="sm" emphasis={transport === 'SSE' ? 'info' : 'highlight'} data-testid="debug-stats-transport-badge">
-            {transport}
-          </Tag>
           <Tag size="sm" emphasis={wsState.connected ? 'success' : 'critical'}>
             {wsState.connected ? 'connected' : wsState.status}
           </Tag>
