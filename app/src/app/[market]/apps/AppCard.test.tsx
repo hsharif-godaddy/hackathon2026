@@ -7,7 +7,10 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 
-import { SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL } from '@/config/switchboard-flags';
+import {
+  SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL,
+  SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL_BUTTON,
+} from '@/config/switchboard-flags';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { LifecycleState, SiteStatus } from '@/lib/control-plane/types';
 import { appFetch } from '@/lib/gasket-config';
@@ -41,8 +44,19 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('@/utils/instrumentation', () => mockInstrumentation());
 vi.mock('@ux/modal', () => ({
-  default: ({ children, title }: { children: React.ReactNode; title?: string }) => (
-    <div data-testid="mock-modal" aria-label={title}>{children}</div>
+  default: ({
+    actions,
+    children,
+    title,
+  }: {
+    actions?: React.ReactNode;
+    children?: React.ReactNode;
+    title?: string;
+  }) => (
+    <div data-testid="mock-modal" aria-label={title}>
+      {children}
+      {actions}
+    </div>
   ),
 }));
 
@@ -908,7 +922,8 @@ describe('AppCard', () => {
   describe('handles delete confirmation flow', () => {
     beforeEach(() => {
       vi.mocked(useSwitchboard).mockImplementation(function (flag: string) {
-        return flag === SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL;
+        return flag === SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL
+          || flag === SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL_BUTTON;
       });
     });
 
