@@ -7,37 +7,18 @@ import { useFileTreeStore } from '@/stores/useFileTreeStore';
 
 interface RestoreCommitVariables {
   appId: string;
-  /** Target commit. Omit (or pass undefined) to do a stash-only rewind — used
-   *  by the chat undo button mid-stream / on a dirty tree where there is no
-   *  older commit to target. */
+  /** Omit for a stash-only rewind (no rollback target). */
   commitHash?: string;
 }
 
 export interface RestoreCommitResult {
-  /** Whether any uncommitted changes were stashed by this call. */
   hasChanges: boolean;
-  /** Stash commit hash when one was created (i.e., tree had uncommitted work). */
   stashHash: string | null;
-  /** Persisted user-action notice produced by the rewind. Callers mirror
-   *  this row into `useStreamingConversationStore` so the transcript reflects
-   *  the rollback without a re-fetch. Null when persistence was skipped
-   *  (e.g. no active conversation) or failed silently. */
+  /** Persisted user-action notice; callers mirror into the conversation store. */
   notice: RestoreNotice | null;
 }
 
-/**
- * React Query mutation for the unified `/git/restore` endpoint.
- *
- * The endpoint always stashes uncommitted changes first, then optionally
- * rewinds onto a target commit. This single hook backs both the per-prompt
- * Restore button (with `commitHash`) and the chat Undo button (with or
- * without — see `useUndoAction`).
- *
- * Invalidates git-history (a stash and/or restore commit may have landed)
- * user-action notice is returned in `notice` so callers can mirror it into
- * the local transcript store; this hook does not touch the conversation
- * store itself.
- */
+/** React Query mutation for `/git/restore`. Backs per-prompt Restore + chat Undo. */
 export function useRestoreCommitMutation() {
   const queryClient = useQueryClient();
 
@@ -69,21 +50,20 @@ export function useRestoreCommitMutation() {
       };
     },
     onSuccess: async (_, variables) => {
-      // Always invalidate both caches: a stash entry is a commit (history may
-      // have shifted), and the working tree is now clean (status changed).
       await queryClient.invalidateQueries({
         queryKey: ['git-history', variables.appId],
         refetchType: 'active',
       });
 
-      // Working tree was rewritten on disk without going through the agent's
-      // tool-call path, so neither the cached file tree nor any file already
-      // open in the editor reflects what's actually on disk. Force a tree
-      // re-fetch and bump the restore signal — PreviewCode subscribes to it
-      // and routes its open files through the standard conflict-banner path
-      // so the user can choose Reload or Keep my changes per file.
+      // Tree was rewritten outside the tool-call path; refresh + flag so the
+      // editor's conflict-banner path picks up open-file divergence.
       void useFileTreeStore.getState().loadFiles(variables.appId);
       useCodeSyncStore.getState().signalRestore();
+
+      // Force preview reload — Vite HMR alone is racy for back-to-back rewinds.
+      if (typeof window !== 'undefined') {
+        window.postMessage({ type: 'preview-refresh' }, window.location.origin);
+      }
     },
     onError: (error, variables) => {
       logger.error('restore-commit-mutation.error', {

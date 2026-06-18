@@ -12,6 +12,36 @@ import { logClickEvent } from '@/utils/instrumentation';
 import DevelopHeader from './Header';
 import { MobileMode, ViewMode } from '../types';
 
+const { mockUndoAction, mockRedoAction, mockAddGrowlMessage } = vi.hoisted(() => ({
+  mockUndoAction: {
+    isLocked: false,
+    isPending: false,
+    error: null as string | null,
+    triggerUndo: vi.fn(),
+    clearError: vi.fn(),
+  },
+  mockRedoAction: {
+    isLocked: false,
+    isPending: false,
+    error: null as string | null,
+    triggerRedo: vi.fn(),
+    clearError: vi.fn(),
+  },
+  mockAddGrowlMessage: vi.fn(),
+}));
+
+vi.mock('@/hooks/useHeadUndoAction', () => ({
+  useHeadUndoAction: () => mockUndoAction,
+}));
+
+vi.mock('@/hooks/useRedoAction', () => ({
+  useRedoAction: () => mockRedoAction,
+}));
+
+vi.mock('@ux/growl', () => ({
+  default: { addGrowlMessage: mockAddGrowlMessage },
+}));
+
 const mockDevelopStore = {
   chatPaneWidth: 400,
   isMobile: false,
@@ -145,6 +175,17 @@ describe('DevelopHeader', () => {
     mockDevelopStore.isVersionHistoryOpen = false;
     mockAuthContext.isAuthenticated = true;
     mockAuthContext.isLoading = false;
+    mockUndoAction.isLocked = false;
+    mockUndoAction.isPending = false;
+    mockUndoAction.error = null;
+    mockUndoAction.triggerUndo.mockReset();
+    mockUndoAction.clearError.mockReset();
+    mockRedoAction.isLocked = false;
+    mockRedoAction.isPending = false;
+    mockRedoAction.error = null;
+    mockRedoAction.triggerRedo.mockReset();
+    mockRedoAction.clearError.mockReset();
+    mockAddGrowlMessage.mockReset();
   });
 
   it('should render without crashing', () => {
@@ -339,6 +380,119 @@ describe('DevelopHeader', () => {
 
       expect(mockCheckAndShowPaywall).not.toHaveBeenCalled();
       expect(mockDevelopStore.handleViewModeChange).toHaveBeenCalledWith(ViewMode.EDIT, false);
+    });
+  });
+
+  describe('inline-edit Undo / Redo buttons', () => {
+    it('does not render the buttons in PREVIEW mode', () => {
+      mockDevelopStore.viewMode = ViewMode.PREVIEW;
+      renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+
+      expect(screen.queryByTestId('header-undo-button')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('header-redo-button')).not.toBeInTheDocument();
+    });
+
+    it('does not render the buttons in CODE mode', () => {
+      mockDevelopStore.viewMode = ViewMode.CODE;
+      renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+
+      expect(screen.queryByTestId('header-undo-button')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('header-redo-button')).not.toBeInTheDocument();
+    });
+
+    it('renders both buttons in EDIT mode', () => {
+      mockDevelopStore.viewMode = ViewMode.EDIT;
+      renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+
+      expect(screen.getByTestId('header-undo-button')).toBeInTheDocument();
+      expect(screen.getByTestId('header-redo-button')).toBeInTheDocument();
+    });
+
+    it('disables Undo when the hook reports locked', () => {
+      mockDevelopStore.viewMode = ViewMode.EDIT;
+      mockUndoAction.isLocked = true;
+
+      renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+
+      expect(screen.getByTestId('header-undo-button')).toBeDisabled();
+    });
+
+    it('disables Undo while the mutation is pending', () => {
+      mockDevelopStore.viewMode = ViewMode.EDIT;
+      mockUndoAction.isPending = true;
+
+      renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+
+      expect(screen.getByTestId('header-undo-button')).toBeDisabled();
+    });
+
+    it('disables both buttons while version history is open', () => {
+      mockDevelopStore.viewMode = ViewMode.EDIT;
+      mockDevelopStore.isVersionHistoryOpen = true;
+
+      renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+
+      expect(screen.getByTestId('header-undo-button')).toBeDisabled();
+      expect(screen.getByTestId('header-redo-button')).toBeDisabled();
+    });
+
+    it('disables Redo when the redo stack is empty (locked) and enables it when populated', () => {
+      mockDevelopStore.viewMode = ViewMode.EDIT;
+      mockRedoAction.isLocked = true;
+
+      const { rerender } = renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+      expect(screen.getByTestId('header-redo-button')).toBeDisabled();
+
+      mockRedoAction.isLocked = false;
+      rerender(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+      expect(screen.getByTestId('header-redo-button')).not.toBeDisabled();
+    });
+
+    it('triggers Undo when clicked', async () => {
+      mockDevelopStore.viewMode = ViewMode.EDIT;
+
+      const { user } = renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+      await user.click(screen.getByTestId('header-undo-button'));
+
+      expect(mockUndoAction.triggerUndo).toHaveBeenCalledOnce();
+      // The 'develop.header.undo' click EID is fired inside `triggerUndo`
+      // itself (with cursor/target payload). The Header onClick must not
+      // emit it again — see useHeadUndoAction.test.tsx for that assertion.
+      expect(vi.mocked(logClickEvent)).not.toHaveBeenCalledWith('develop.header.undo', expect.anything());
+    });
+
+    it('triggers Redo when clicked', async () => {
+      mockDevelopStore.viewMode = ViewMode.EDIT;
+
+      const { user } = renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+      await user.click(screen.getByTestId('header-redo-button'));
+
+      expect(mockRedoAction.triggerRedo).toHaveBeenCalledOnce();
+      expect(vi.mocked(logClickEvent)).not.toHaveBeenCalledWith('develop.header.redo', expect.anything());
+    });
+
+    it('surfaces Undo errors via Growl and clears the error', () => {
+      mockDevelopStore.viewMode = ViewMode.EDIT;
+      mockUndoAction.error = 'Could not undo. Please try again or send a new message.';
+
+      renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+
+      expect(mockAddGrowlMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'header-undo-failed', emphasis: 'critical' }),
+      );
+      expect(mockUndoAction.clearError).toHaveBeenCalledOnce();
+    });
+
+    it('surfaces Redo errors via Growl and clears the error', () => {
+      mockDevelopStore.viewMode = ViewMode.EDIT;
+      mockRedoAction.error = 'Could not redo. Please try again or send a new message.';
+
+      renderWithProviders(<DevelopHeader onPreviewRefresh={vi.fn()} />);
+
+      expect(mockAddGrowlMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'header-redo-failed', emphasis: 'critical' }),
+      );
+      expect(mockRedoAction.clearError).toHaveBeenCalledOnce();
     });
   });
 });

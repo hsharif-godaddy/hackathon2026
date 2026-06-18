@@ -3,8 +3,9 @@
 import clsx from 'clsx';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import Box from '@ux/box';
+import Growl from '@ux/growl';
 import Apps2Icon from '@ux/icon/apps2'
 import CodeIcon from '@ux/icon/code'
 import ColorPaletteIcon from '@ux/icon/color-palette'
@@ -27,13 +28,16 @@ import DeviceSelector from '@/app/[market]/develop/components/preview/DeviceSele
 import { MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useInboxUnresolvedCount } from '@/app/[market]/develop/hooks/useInbox'
+import { RedoIcon, UndoIcon } from '@/components/icons/UndoRedoIcons';
 import { AiroLogo } from '@/components/layout/AiroLogo';
 import AppPublish from '@/components/layout/AppPublish';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import IframeCloseButton from '@/components/layout/IframeCloseButton';
 import UserMenu from '@/components/layout/UserMenu';
+import { useHeadUndoAction } from '@/hooks/useHeadUndoAction';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { usePublishUpsellEligibility } from '@/hooks/usePublishUpsellEligibility';
+import { useRedoAction } from '@/hooks/useRedoAction';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
 import { PAYWALL_ITC } from '@/lib/paywall/shared';
@@ -100,6 +104,32 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
     handleViewModeChange(value as ViewMode, hasUnsavedChanges)
     if (VIEW_MODE_EID_MAP[value]) logClickEvent(VIEW_MODE_EID_MAP[value], clickContext)()
   }
+
+  const undoAction = useHeadUndoAction()
+  const redoAction = useRedoAction()
+
+  // Header has no transcript feedback for restore failures — surface via growl.
+  useEffect(function showUndoErrorGrowl() {
+    if (!undoAction.error) return
+    Growl.addGrowlMessage({
+      id: 'header-undo-failed',
+      title: t('builder_chat_undo_restore_failed', undefined, 'Could not undo. Please try again or send a new message.'),
+      emphasis: 'critical',
+      lifetime: 3000,
+    })
+    undoAction.clearError()
+  }, [undoAction, t])
+
+  useEffect(function showRedoErrorGrowl() {
+    if (!redoAction.error) return
+    Growl.addGrowlMessage({
+      id: 'header-redo-failed',
+      title: t('builder_chat_redo_restore_failed', undefined, 'Could not redo. Please try again or send a new message.'),
+      emphasis: 'critical',
+      lifetime: 3000,
+    })
+    redoAction.clearError()
+  }, [redoAction, t])
 
   const logoBlock = (
     <div className="flex items-center gap-1" data-partial="componentAiro">
@@ -221,6 +251,26 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
             </Box>
 
             <Box orientation="horizontal" gap="sm" inlineAlignChildren='center'>
+              {viewMode === ViewMode.EDIT && (
+                <>
+                  <IconButton
+                    data-testid="header-undo-button"
+                    icon={<UndoIcon className="size-2.5" />}
+                    disabled={undoAction.isLocked || undoAction.isPending || isVersionHistoryOpen}
+                    onClick={undoAction.triggerUndo}
+                    label={t('builder_header_undo', undefined, 'Undo')}
+                    showLabelWhenActive={false}
+                  />
+                  <IconButton
+                    data-testid="header-redo-button"
+                    icon={<RedoIcon className="size-2.5" />}
+                    disabled={redoAction.isLocked || redoAction.isPending || isVersionHistoryOpen}
+                    onClick={redoAction.triggerRedo}
+                    label={t('builder_header_redo', undefined, 'Redo')}
+                    showLabelWhenActive={false}
+                  />
+                </>
+              )}
               {(viewMode === ViewMode.PREVIEW || viewMode === ViewMode.EDIT) && (
                 <>
                   <IconButton

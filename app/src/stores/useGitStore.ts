@@ -23,12 +23,18 @@ interface GitStore {
    * Stores only the hash, not the full commit object
    */
   selectedCommitHashByApp: Record<string, string | null>
-  
+
+  /** Per-app LIFO of pre-undo cursor SHAs for Redo. In-memory only. */
+  redoStackByApp: Record<string, string[]>
+
+  /** SHA the user views — diverges from HEAD because `/git/restore` writes a forward Restore commit. */
+  undoCursorByApp: Record<string, string>
+
   /**
    * Whether a commit selection/sync operation is in progress
    */
   isSelectingCommit: boolean
-  
+
   /**
    * Error message if commit selection failed
    */
@@ -91,11 +97,14 @@ interface GitStore {
    */
   getSelectedCommitHash: (appId: string) => string | null
 
-  /**
-   * Clear selection state for an app (cleanup)
-   *
-   * @param appId - Application ID
-   */
+  pushRedo: (appId: string, commitHash: string) => void
+  popRedo: (appId: string) => string | null
+  clearRedoStack: (appId: string) => void
+  getRedoStack: (appId: string) => string[]
+  setUndoCursor: (appId: string, commitHash: string) => void
+  getUndoCursor: (appId: string) => string | null
+
+  /** Clear selection state, redo stack, and undo cursor for an app. */
   clearAppState: (appId: string) => void
 
   /**
@@ -112,6 +121,8 @@ export const useGitStore = create<GitStore>()(
   devtools(
     immer((set, get) => ({
       selectedCommitHashByApp: {},
+      redoStackByApp: {},
+      undoCursorByApp: {},
       isSelectingCommit: false,
       commitSelectionError: null,
       
@@ -195,9 +206,48 @@ export const useGitStore = create<GitStore>()(
         return get().selectedCommitHashByApp[appId] ?? null
       },
 
+      pushRedo: (appId, commitHash) => {
+        set((state) => {
+          if (!state.redoStackByApp[appId]) state.redoStackByApp[appId] = []
+          state.redoStackByApp[appId].push(commitHash)
+        })
+      },
+
+      popRedo: (appId) => {
+        const stack = get().redoStackByApp[appId]
+        const popped = stack && stack.length > 0 ? stack[stack.length - 1] : null
+        if (!popped) return null
+        set((state) => {
+          state.redoStackByApp[appId]?.pop()
+        })
+        return popped
+      },
+
+      clearRedoStack: (appId) => {
+        set((state) => {
+          delete state.redoStackByApp[appId]
+        })
+      },
+
+      getRedoStack: (appId) => {
+        return get().redoStackByApp[appId] ?? []
+      },
+
+      setUndoCursor: (appId, commitHash) => {
+        set((state) => {
+          state.undoCursorByApp[appId] = commitHash
+        })
+      },
+
+      getUndoCursor: (appId) => {
+        return get().undoCursorByApp[appId] ?? null
+      },
+
       clearAppState: (appId) => {
         set((state) => {
           delete state.selectedCommitHashByApp[appId]
+          delete state.redoStackByApp[appId]
+          delete state.undoCursorByApp[appId]
         })
       },
 

@@ -43,6 +43,10 @@ export async function handleCommitComplete(commitHash: string, appId: string): P
   refreshMediaSurfaces(appId)
 
   useGitStore.getState().setSelectedCommitHash(appId, commitHash)
+  // A new agent commit invalidates any in-flight redo path and re-anchors
+  // the chat-turn cursor to the just-landed turn.
+  useGitStore.getState().clearRedoStack(appId)
+  useGitStore.getState().setUndoCursor(appId, commitHash)
 
   const { streamingState, activeStream } = useStreamingConversationStore.getState()
   const isAgentRunning = streamingState === 'streaming' && !!activeStream

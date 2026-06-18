@@ -334,6 +334,8 @@ export default function PreviewPane({
   // Iframe state
   const [iframeError, setIframeError] = useState(false)
   const [iframeKey, setIframeKey] = useState(0)
+  // Set true between a refresh trigger and the iframe's load event — drives an opacity fade.
+  const [isReloading, setIsReloading] = useState(false)
   // Bootstrap-race recovery: tracks whether the iframe has signalled
   // IFRAME_READY (which only fires when the preview app's own script
   // loads — NOT when dev-supervisor serves its 401 login page instead of the
@@ -566,6 +568,7 @@ export default function PreviewPane({
   // Handle iframe load and restore scroll position if pending
   const handleIframeLoad = useCallback(() => {
     setIframeError(false)
+    setIsReloading(false)
 
     // Check if screenshot exists and request one if missing
     requestScreenshotIfMissing()
@@ -993,6 +996,7 @@ export default function PreviewPane({
 
         // Debounce refreshes to avoid too many reloads
         refreshTimerRef.current = setTimeout(() => {
+          setIsReloading(true)
           if (isEvidenceRecoveryEnabled) {
             // Single key-tracked remount: one load, one recovery cycle. The
             // remount resets the bootstrap/booting/loaded flags (see reset
@@ -1200,6 +1204,7 @@ export default function PreviewPane({
   const handleIframeError = () => {
     logger.warn('preview-pane.iframe.error', { message: 'Iframe error', appId })
     setIframeError(true)
+    setIsReloading(false)
   }
 
   if (archiveGatePending) {
@@ -1370,7 +1375,9 @@ export default function PreviewPane({
             id="preview-iframe"
             data-testid="preview-iframe"
             src={buildStorageAccessUrl(serverState.url)}
-            className="w-full h-full border rounded-lg md:rounded-b-none"
+            className={`w-full h-full border rounded-lg md:rounded-b-none transition-opacity duration-150 ${
+              isReloading ? 'opacity-70' : 'opacity-100'
+            }`}
             onError={handleIframeError}
             onLoad={handleIframeLoad}
             sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation allow-storage-access-by-user-activation"
@@ -1529,7 +1536,9 @@ export default function PreviewPane({
                         id="preview-iframe"
                         data-testid="preview-iframe"
                         src={iframeSrc}
-                        className="w-full h-full border rounded-lg md:rounded-b-none"
+                        className={`w-full h-full border rounded-lg md:rounded-b-none transition-opacity duration-150 ${
+                          isReloading ? 'opacity-70' : 'opacity-100'
+                        }`}
                         onError={handleIframeError}
                         onLoad={handleIframeLoad}
                         sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation allow-storage-access-by-user-activation"

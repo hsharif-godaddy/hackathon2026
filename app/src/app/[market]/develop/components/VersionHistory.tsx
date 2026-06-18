@@ -518,6 +518,9 @@ export default function VersionHistory() {
             };
             addCompletedMessage(synthetic);
           }
+
+          // Don't write the cursor — commit.hash may not be a chat-turn SHA.
+          useGitStore.getState().clearRedoStack(appId);
         },
         onError: (error) => {
           const errorMessage = error instanceof Error ? error.message : String(error)

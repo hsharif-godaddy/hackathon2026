@@ -6,9 +6,11 @@ import { isRestoreMetadata } from '@airo/shared/websocket'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useWebSocketContext } from '@/contexts/WebSocketContext'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
+import { extractChatTurnCommits } from '@/hooks/useHeadUndoAction'
 import { type RestoreCommitResult,useRestoreCommitMutation } from '@/hooks/useRestoreCommitMutation'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logger } from '@/lib/request-context'
+import { useGitStore } from '@/stores/useGitStore'
 import {
   type ChatMessage,
   useIsActivelyStreaming,
@@ -80,6 +82,9 @@ export function useUndoAction(): UndoAction {
   const restoreMutation = useRestoreCommitMutation()
   const [error, setError] = useState<string | null>(null)
   const clearError = useCallback(() => setError(null), [])
+
+  const pushRedo = useGitStore((s) => s.pushRedo)
+  const setUndoCursor = useGitStore((s) => s.setUndoCursor)
 
   const { data: gitHistoryData } = useGitHistoryQuery({
     appId: appIdFromParams ?? '',
@@ -241,6 +246,18 @@ export function useUndoAction(): UndoAction {
     setError(null)
     const appId = appIdFromParams
 
+    // Prefer git HEAD — on local dev respondingAssistantCommit is a dangling branch SHA.
+    const preUndoHead = gitHistoryData?.currentCommit ?? respondingAssistantCommit
+    // Cursor advances to the previous chat turn — exclude Restore SHAs that the
+    // agents service may have stamped on intermediate text messages.
+    const restoreShas = new Set(
+      (gitHistoryData?.commits ?? [])
+        .filter((c) => typeof c.message === 'string' && c.message.startsWith('Restore:'))
+        .map((c) => c.hash),
+    )
+    const chatTurns = extractChatTurnCommits(messages, restoreShas)
+    const newCursor = chatTurns[1] ?? null
+
     logClickEvent('develop.chat.undo', {
       hadRollbackTarget: rollbackTargetHash !== null,
       wasStreaming: isStreaming,
@@ -250,7 +267,15 @@ export function useUndoAction(): UndoAction {
       restoreMutation.mutate(
         { appId, ...(commitHash ? { commitHash } : {}) },
         {
-          onSuccess: mirrorNotice,
+          onSuccess: (result) => {
+            mirrorNotice(result)
+            // Skip seeding for stash-only undos (no restoredCommitHash).
+            const restoredTo = result.notice?.metadata?.restoredCommitHash
+            if (preUndoHead && restoredTo) {
+              pushRedo(appId, preUndoHead)
+              if (newCursor) setUndoCursor(appId, newCursor)
+            }
+          },
           onError: (mutationError) => setRestoreError(mutationError, appId),
         },
       )
@@ -296,10 +321,13 @@ export function useUndoAction(): UndoAction {
     appIdFromParams,
     isStreaming,
     rollbackTargetHash,
+    respondingAssistantCommit,
     stopGeneration,
     restoreMutation,
     mirrorNotice,
     setRestoreError,
+    pushRedo,
+    setUndoCursor,
   ])
 
   return {

@@ -8,6 +8,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 
 import type { RestoreCommitResult } from '@/hooks/useRestoreCommitMutation';
 import type { RestoreNotice } from '@/services/AppService';
+import { useGitStore } from '@/stores/useGitStore';
 import type { ChatMessage } from '@/stores/useStreamingConversationStore';
 import { useUndoAction } from './useUndoAction';
 
@@ -172,6 +173,7 @@ describe('useUndoAction', () => {
     mockGitCommits.value = [];
     mockRestoreIsPending.value = false;
     mockStopGeneration.mockResolvedValue(undefined);
+    useGitStore.getState().clearAppState('test-app-123');
   });
 
   function makeCommit(hash: string): GitCommitMock {
@@ -752,6 +754,146 @@ describe('useUndoAction', () => {
 
       const { result } = renderHook(() => useUndoAction(), { wrapper: createWrapper() });
       expect(result.current.isLocked).toBe(true);
+    });
+  });
+
+  describe('redo stack seeding', () => {
+    it('pushes the pre-undo HEAD onto the redo stack on success', () => {
+      mockMessages.value = [
+        userPromptMessage('u1'),
+        assistantMessage('a1', 'agent-commit'),
+      ];
+      mockGitCommits.value = [makeCommit('agent-commit'), makeCommit('pre-prompt')];
+
+      const { result } = renderHook(() => useUndoAction(), { wrapper: createWrapper() });
+
+      act(() => {
+        result.current.triggerUndo();
+      });
+
+      const [, options] = mockRestoreMutate.mock.calls[0];
+      const notice = makeNotice({
+        id: 'notice-undo',
+        metadata: { kind: 'restore', commitHash: 'pre-prompt', stashHash: null, restoredCommitHash: 'pre-prompt' },
+      });
+      act(() => {
+        options.onSuccess(makeResult({ notice }));
+      });
+
+      // Redo's forward target is the SHA HEAD pointed at right before the
+      // rewind — `agent-commit`.
+      expect(useGitStore.getState().getRedoStack('test-app-123')).toEqual(['agent-commit']);
+    });
+
+    it('does not push when the rewind was stash-only (no restoredCommitHash)', () => {
+      // Mid-stream undo with a dirty tree but no rollback target — server
+      // stashes but doesn't rewind, so there is no forward path to record.
+      mockMessages.value = [
+        userPromptMessage('u1'),
+        assistantMessage('a1'),
+      ];
+      mockGitCommits.value = [makeCommit('previous-state')];
+
+      const { result } = renderHook(() => useUndoAction(), { wrapper: createWrapper() });
+
+      act(() => {
+        result.current.triggerUndo();
+      });
+
+      const [, options] = mockRestoreMutate.mock.calls[0];
+      const notice = makeNotice({
+        id: 'notice-stash-only',
+        metadata: { kind: 'restore', commitHash: null, stashHash: 'stash-1' },
+      });
+      act(() => {
+        options.onSuccess(makeResult({ hasChanges: true, stashHash: 'stash-1', notice }));
+      });
+
+      expect(useGitStore.getState().getRedoStack('test-app-123')).toEqual([]);
+    });
+
+    it('falls back to git HEAD when respondingAssistantCommit is missing', () => {
+      // No responding assistant turn — but git HEAD is set. We still seed
+      // the redo stack with HEAD so a subsequent Redo can step forward to
+      // a SHA that's actually reachable on main. This avoids the old bug
+      // where the chat-tracked SHA (a dangling session-branch commit on
+      // local dev) would never let Redo find its way back.
+      mockMessages.value = [userPromptMessage('u1')];
+      mockGitCommits.value = [makeCommit('previous-state')];
+
+      const { result } = renderHook(() => useUndoAction(), { wrapper: createWrapper() });
+
+      act(() => {
+        result.current.triggerUndo();
+      });
+
+      const [, options] = mockRestoreMutate.mock.calls[0];
+      const notice = makeNotice({
+        id: 'notice-x',
+        metadata: { kind: 'restore', commitHash: 'somewhere', stashHash: null, restoredCommitHash: 'somewhere' },
+      });
+      act(() => {
+        options.onSuccess(makeResult({ notice }));
+      });
+
+      expect(useGitStore.getState().getRedoStack('test-app-123')).toEqual(['previous-state']);
+    });
+
+    it('sets the cursor to the previous chat-turn SHA, not the raw restoredCommitHash', () => {
+      // Fix for the bug where `restoredCommitHash` (a non-chat-turn SHA on
+      // local dev) was being written as the cursor, causing useHeadUndoAction
+      // to silently re-anchor on the next Header Undo click.
+      mockMessages.value = [
+        userPromptMessage('u-old'),
+        assistantMessage('a-old', 'previous-turn-sha'),
+        userPromptMessage('u-new'),
+        assistantMessage('a-new', 'latest-turn-sha'),
+      ];
+      mockGitCommits.value = [makeCommit('latest-turn-sha'), makeCommit('parent-of-latest')];
+
+      const { result } = renderHook(() => useUndoAction(), { wrapper: createWrapper() });
+
+      act(() => {
+        result.current.triggerUndo();
+      });
+
+      const [, options] = mockRestoreMutate.mock.calls[0];
+      const notice = makeNotice({
+        id: 'notice-undo',
+        metadata: { kind: 'restore', commitHash: 'parent-of-latest', stashHash: null, restoredCommitHash: 'parent-of-latest' },
+      });
+      act(() => {
+        options.onSuccess(makeResult({ notice }));
+      });
+
+      // Cursor must be the chat turn the user is now logically "at" —
+      // i.e. the chat turn before the one we just undid.
+      expect(useGitStore.getState().getUndoCursor('test-app-123')).toBe('previous-turn-sha');
+      expect(useGitStore.getState().getUndoCursor('test-app-123')).not.toBe('parent-of-latest');
+    });
+
+    it('leaves cursor unset when there is no previous chat turn (undoing the first chat turn)', () => {
+      mockMessages.value = [
+        userPromptMessage('u1'),
+        assistantMessage('a1', 'first-and-only-turn'),
+      ];
+      mockGitCommits.value = [makeCommit('first-and-only-turn'), makeCommit('pre-prompt')];
+
+      const { result } = renderHook(() => useUndoAction(), { wrapper: createWrapper() });
+
+      act(() => {
+        result.current.triggerUndo();
+      });
+
+      const [, options] = mockRestoreMutate.mock.calls[0];
+      act(() => {
+        options.onSuccess(makeResult({
+          notice: makeNotice({ id: 'n1', metadata: { kind: 'restore', commitHash: 'pre-prompt', stashHash: null, restoredCommitHash: 'pre-prompt' } }),
+        }));
+      });
+
+      expect(useGitStore.getState().getUndoCursor('test-app-123')).toBeNull();
+      expect(useGitStore.getState().getRedoStack('test-app-123')).toEqual(['first-and-only-turn']);
     });
   });
 });

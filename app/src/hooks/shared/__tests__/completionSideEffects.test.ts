@@ -19,14 +19,21 @@ const { mockLogImpressionEvent, mockSendToolImpressionEvent } = vi.hoisted(() =>
   mockSendToolImpressionEvent: vi.fn(),
 }));
 
-const { mockGetQueryClient, mockInvalidateQueries, mockSetSelectedCommitHash, mockGetStreamingState } = vi.hoisted(
-  () => ({
-    mockGetQueryClient: vi.fn(),
-    mockInvalidateQueries: vi.fn(),
-    mockSetSelectedCommitHash: vi.fn(),
-    mockGetStreamingState: vi.fn(),
-  }),
-);
+const {
+  mockGetQueryClient,
+  mockInvalidateQueries,
+  mockSetSelectedCommitHash,
+  mockClearRedoStack,
+  mockSetUndoCursor,
+  mockGetStreamingState,
+} = vi.hoisted(() => ({
+  mockGetQueryClient: vi.fn(),
+  mockInvalidateQueries: vi.fn(),
+  mockSetSelectedCommitHash: vi.fn(),
+  mockClearRedoStack: vi.fn(),
+  mockSetUndoCursor: vi.fn(),
+  mockGetStreamingState: vi.fn(),
+}));
 
 vi.mock("@/components/providers/QueryClientProvider", () => ({
   getQueryClient: mockGetQueryClient,
@@ -34,7 +41,11 @@ vi.mock("@/components/providers/QueryClientProvider", () => ({
 
 vi.mock("@/stores/useGitStore", () => ({
   useGitStore: {
-    getState: () => ({ setSelectedCommitHash: mockSetSelectedCommitHash }),
+    getState: () => ({
+      setSelectedCommitHash: mockSetSelectedCommitHash,
+      clearRedoStack: mockClearRedoStack,
+      setUndoCursor: mockSetUndoCursor,
+    }),
   },
 }));
 
@@ -358,6 +369,13 @@ describe("completionSideEffects", () => {
       await handleCommitComplete(COMMIT, APP_ID);
 
       expect(mockSetSelectedCommitHash).toHaveBeenCalledWith(APP_ID, COMMIT);
+    });
+
+    it("clears the redo stack and re-anchors the undo cursor on a new agent commit", async () => {
+      await handleCommitComplete(COMMIT, APP_ID);
+
+      expect(mockClearRedoStack).toHaveBeenCalledWith(APP_ID);
+      expect(mockSetUndoCursor).toHaveBeenCalledWith(APP_ID, COMMIT);
     });
   });
 
