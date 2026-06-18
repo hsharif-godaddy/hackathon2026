@@ -94,11 +94,6 @@ export default makeGasket({
           baseUrl: 'https://cds.api.int.dev-godaddy.com',
         }
       },
-      onDemandScanner: {
-        api: {
-          baseUrl: 'https://on-demand-scanner.int.dev-godaddy.com',
-        }
-      }
     },
     'local.test': {
       airoAppDomain: 'test-airoapp.ai',
@@ -149,11 +144,6 @@ export default makeGasket({
           baseUrl: 'https://cds.api.int.test-godaddy.com',
         }
       },
-      onDemandScanner: {
-        api: {
-          baseUrl: 'https://on-demand-scanner.int.test-godaddy.com',
-        }
-      }
     },
     'local.prod': {
       airoAppDomain: 'airoapp.ai',
@@ -204,11 +194,6 @@ export default makeGasket({
           baseUrl: 'https://cds.api.int.godaddy.com',
         }
       },
-      onDemandScanner: {
-        api: {
-          baseUrl: 'https://on-demand-scanner.int.godaddy.com',
-        }
-      }
     },
     // Deployed environments
     'development': {
@@ -222,11 +207,6 @@ export default makeGasket({
           baseUrl: 'https://cds.api.int.dev-godaddy.com',
         }
       },
-      onDemandScanner: {
-        api: {
-          baseUrl: 'https://on-demand-scanner.int.dev-godaddy.com',
-        }
-      }
     },
     'test': {
       airoAppDomain: 'test-airoapp.ai',
@@ -240,11 +220,6 @@ export default makeGasket({
           baseUrl: 'https://cds.api.int.test-godaddy.com',
         }
       },
-      onDemandScanner: {
-        api: {
-          baseUrl: 'https://on-demand-scanner.int.test-godaddy.com',
-        }
-      }
     },
     'production': {
       airoAppDomain: 'airoapp.ai',
@@ -258,11 +233,6 @@ export default makeGasket({
           baseUrl: 'https://cds.api.int.godaddy.com',
         }
       },
-      onDemandScanner: {
-        api: {
-          baseUrl: 'https://on-demand-scanner.int.godaddy.com',
-        }
-      }
     },
   },
   plugins: [

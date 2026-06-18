@@ -9,8 +9,6 @@ import { processDesignFile, processDesignFiles, ProcessFileErrorReason } from '.
 import { FileReadError, FileTooLargeError, MaliciousContentError } from './errors'
 import type { UploadedDesignFile } from '../types'
 
-const mockScanFile = vi.hoisted(() => vi.fn().mockResolvedValue({ pass: true, status: 'okay' }))
-
 // jsdom's File/Blob don't implement arrayBuffer() — polyfill via FileReader for these tests
 beforeAll(() => {
   if (typeof Blob !== 'undefined' && !Blob.prototype.arrayBuffer) {
@@ -28,11 +26,6 @@ beforeAll(() => {
 vi.mock('@/lib/zip-extract', () => ({
   detectUiKit: vi.fn().mockResolvedValue(false),
   detectAppBuilderApp: vi.fn().mockResolvedValue(false),
-}))
-
-vi.mock('@/lib/file/scanner', () => ({
-  ScanResultStatus: { OKAY: 'okay', MALICIOUS: 'malicious', UNAVAILABLE: 'unavailable' },
-  scanFile: mockScanFile,
 }))
 
 vi.mock('@/lib/file/validation', () => ({
@@ -69,11 +62,11 @@ function createOversizedImage(name: string): File {
 
 describe('processDesignFile', () => {
   beforeEach(() => {
-    mockScanFile.mockResolvedValue({ pass: true, status: 'okay' })
+    vi.clearAllMocks()
   })
   it('processes a plain text file', async () => {
     const file = createFile('readme.txt', 'hello world')
-    const result = await processDesignFile(file, true)
+    const result = await processDesignFile(file)
     expect(result.name).toBe('readme.txt')
     expect(result.content).toBe('hello world')
     expect(result.isDesignMd).  toBe(false)
@@ -84,14 +77,14 @@ describe('processDesignFile', () => {
   it('detects design.md frontmatter', async () => {
     const content = '---\ncolors:\n  primary: "#000"\n---\n# My Design'
     const file = createFile('design.md', content)
-    const result = await processDesignFile(file, true)
+    const result = await processDesignFile(file)
     expect(result.isDesignMd).toBe(true)
     expect(result.content).toBe(content)
   })
 
   it('detects image files by extension', async () => {
     const file = createImageFile('photo.png', 1024)
-    const result = await processDesignFile(file, true)
+    const result = await processDesignFile(file)
     expect(result.isImage).toBe(true)
     expect(result.content).toBe('')
     expect(result.zipRaw).toBeDefined()
@@ -100,30 +93,30 @@ describe('processDesignFile', () => {
   it('does not detect design.md when frontmatter has no closing delimiter', async () => {
     const content = '---\ncolors:\n  primary: "#000"\n' // starts with --- but never closes
     const file = createFile('design.md', content)
-    const result = await processDesignFile(file, false)
+    const result = await processDesignFile(file)
     expect(result.isDesignMd).toBe(false)
   })
 
   it('throws FileTooLargeError for oversized text files', async () => {
     const file = createFile('big.txt', 'x', 2 * 1024 * 1024)
-    await expect(processDesignFile(file, true)).rejects.toThrow(FileTooLargeError)
+    await expect(processDesignFile(file)).rejects.toThrow(FileTooLargeError)
   })
 
   it('throws FileTooLargeError for oversized images', async () => {
     const file = createOversizedImage('huge.png')
-    await expect(processDesignFile(file, true)).rejects.toThrow(FileTooLargeError)
+    await expect(processDesignFile(file)).rejects.toThrow(FileTooLargeError)
   })
 
   it('throws MaliciousContentError when hasMaliciousContent detects a threat', async () => {
     vi.mocked(hasMaliciousContent).mockReturnValueOnce(true)
     const file = createFile('evil.svg', '<svg><script>alert(1)</script></svg>')
-    await expect(processDesignFile(file, true)).rejects.toThrow(MaliciousContentError)
+    await expect(processDesignFile(file)).rejects.toThrow(MaliciousContentError)
   })
 
   it('throws FileReadError when arrayBuffer() fails', async () => {
     const file = createFile('broken.txt', 'content')
     vi.spyOn(file, 'arrayBuffer').mockRejectedValueOnce(new Error('disk error'))
-    await expect(processDesignFile(file, true)).rejects.toThrow(FileReadError)
+    await expect(processDesignFile(file)).rejects.toThrow(FileReadError)
   })
 
   it('detects zip files and calls zip-extract utilities', async () => {
@@ -132,7 +125,7 @@ describe('processDesignFile', () => {
     const file = new File([blob], 'project.zip')
     Object.defineProperty(file, 'size', { value: 100 })
 
-    const result = await processDesignFile(file, true)
+    const result = await processDesignFile(file)
     expect(result.isZip).toBe(true)
     expect(result.content).toBe('')
     expect(result.zipRaw).toBeDefined()
@@ -141,14 +134,14 @@ describe('processDesignFile', () => {
   it('throws FileTooLargeError for oversized zip files', async () => {
     const zipFile = new File([new ArrayBuffer(1)], 'huge.zip')
     Object.defineProperty(zipFile, 'size', { value: 11 * 1024 * 1024 })
-    await expect(processDesignFile(zipFile, true)).rejects.toThrow(FileTooLargeError)
+    await expect(processDesignFile(zipFile)).rejects.toThrow(FileTooLargeError)
   })
 
   it('sets isUiKit when detectUiKit returns true', async () => {
     vi.mocked(detectUiKit).mockResolvedValueOnce(true)
     const file = new File([new ArrayBuffer(100)], 'ui-kit.zip')
     Object.defineProperty(file, 'size', { value: 100 })
-    const result = await processDesignFile(file, true)
+    const result = await processDesignFile(file)
     expect(result.isUiKit).toBe(true)
     expect(result.isAppImport).toBe(false)
   })
@@ -157,57 +150,15 @@ describe('processDesignFile', () => {
     vi.mocked(detectAppBuilderApp).mockResolvedValueOnce(true)
     const file = new File([new ArrayBuffer(100)], 'myapp.zip')
     Object.defineProperty(file, 'size', { value: 100 })
-    const result = await processDesignFile(file, true)
+    const result = await processDesignFile(file)
     expect(result.isUiKit).toBe(false)
     expect(result.isAppImport).toBe(true)
-  })
-
-  describe('server scan', () => {
-    it('throws MaliciousContentError when scanner returns MALICIOUS', async () => {
-      mockScanFile.mockResolvedValueOnce({ pass: false, status: 'malicious', viruses: ['Eicar-Test-File'] })
-      const file = createFile('virus.txt', 'content')
-      await expect(processDesignFile(file, true)).rejects.toThrow(MaliciousContentError)
-    })
-
-    it('continues processing when scanner returns UNAVAILABLE (fail-open)', async () => {
-      mockScanFile.mockResolvedValueOnce({ pass: false, status: 'unavailable' })
-      const file = createFile('photo.txt', 'content')
-      const result = await processDesignFile(file, true)
-      expect(result.name).toBe('photo.txt')
-      expect(result.warning).toBe('scanner_unavailable')
-    })
-
-    it('continues processing when scanner returns OKAY', async () => {
-      mockScanFile.mockResolvedValueOnce({ pass: true, status: 'okay' })
-      const file = createFile('clean.txt', 'hello')
-      const result = await processDesignFile(file, true)
-      expect(result.name).toBe('clean.txt')
-      expect(result.content).toBe('hello')
-      expect(result.warning).toBeUndefined()
-    })
-
-    it('sets warning on image when scanner is down', async () => {
-      mockScanFile.mockResolvedValueOnce({ pass: false, status: 'unavailable' })
-      const file = createImageFile('photo.png', 1024)
-      const result = await processDesignFile(file, true)
-      expect(result.isImage).toBe(true)
-      expect(result.warning).toBe('scanner_unavailable')
-    })
-
-    it('sets warning on zip when scanner is down', async () => {
-      mockScanFile.mockResolvedValueOnce({ pass: false, status: 'unavailable' })
-      const file = new File([new ArrayBuffer(100)], 'archive.zip')
-      Object.defineProperty(file, 'size', { value: 100 })
-      const result = await processDesignFile(file, true)
-      expect(result.isZip).toBe(true)
-      expect(result.warning).toBe('scanner_unavailable')
-    })
   })
 })
 
 describe('processDesignFiles', () => {
   beforeEach(() => {
-    mockScanFile.mockResolvedValue({ pass: true, status: 'okay' })
+    vi.clearAllMocks()
   })
 
   it('processes multiple files sequentially', async () => {
@@ -215,7 +166,6 @@ describe('processDesignFiles', () => {
     const result = await processDesignFiles(files, [], { maxFiles: 5, maxTotalBytes: 20 * 1024 * 1024 })
     expect(result.processed).toHaveLength(2)
     expect(result.errors).toHaveLength(0)
-    expect(result.warnings).toHaveLength(0)
   })
 
   it('enforces maxFiles including current files', async () => {
@@ -239,14 +189,6 @@ describe('processDesignFiles', () => {
     const result = await processDesignFiles([largeFile], current, { maxFiles: 5, maxTotalBytes: 20 * 1024 * 1024 })
     expect(result.processed).toHaveLength(0)
     expect(result.errors[0].error).toBe(ProcessFileErrorReason.TotalSize)
-  })
-
-  it('skips server scan when isServerScanEnabled is not provided', async () => {
-    const file = createFile('doc.txt', 'hello')
-    const result = await processDesignFiles([file], [], { maxFiles: 5, maxTotalBytes: 20 * 1024 * 1024 })
-    expect(mockScanFile).not.toHaveBeenCalled()
-    expect(result.processed).toHaveLength(1)
-    expect(result.warnings).toHaveLength(0)
   })
 
   it('formats TotalSize error with KB unit when maxTotalBytes is less than 1 MB', async () => {
@@ -289,10 +231,10 @@ describe('processDesignFiles', () => {
   })
 
   it('maps unknown errors to ProcessFailed and continues', async () => {
-    mockScanFile.mockRejectedValueOnce(new Error('unexpected scanner crash'))
     const bad = createFile('bad.txt', 'content')
     const good = createFile('ok.txt', 'fine')
-    const result = await processDesignFiles([bad, good], [], { maxFiles: 5, maxTotalBytes: 20 * 1024 * 1024, isServerScanEnabled: true })
+    vi.mocked(hasMaliciousContent).mockImplementationOnce(() => { throw new Error('unexpected crash') })
+    const result = await processDesignFiles([bad, good], [], { maxFiles: 5, maxTotalBytes: 20 * 1024 * 1024 })
     expect(result.processed).toHaveLength(1)
     expect(result.errors[0].error).toBe(ProcessFileErrorReason.ProcessFailed)
     expect(result.errors[0].fileName).toBe('bad.txt')
@@ -310,32 +252,14 @@ describe('processDesignFiles', () => {
   })
 
   it('collects MaliciousContentError with structured error and stops that file', async () => {
-    mockScanFile.mockResolvedValueOnce({ pass: false, status: 'malicious', viruses: ['Eicar-Test-File'] })
+    vi.mocked(hasMaliciousContent).mockReturnValueOnce(true)
     const malicious = createFile('virus.txt', 'bad')
     const clean = createFile('ok.txt', 'fine')
-    const result = await processDesignFiles([malicious, clean], [], { maxFiles: 5, maxTotalBytes: 20 * 1024 * 1024, isServerScanEnabled: true })
+    const result = await processDesignFiles([malicious, clean], [], { maxFiles: 5, maxTotalBytes: 20 * 1024 * 1024 })
     expect(result.processed).toHaveLength(1)
     expect(result.processed[0].name).toBe('ok.txt')
     expect(result.errors[0].error).toBe(ProcessFileErrorReason.MaliciousContent)
     expect(result.errors[0].fileName).toBe('virus.txt')
-  })
-
-  it('adds a warning when scanner is unavailable but file passes through', async () => {
-    mockScanFile.mockResolvedValueOnce({ pass: false, status: 'unavailable' })
-    const file = createFile('doc.txt', 'hello')
-    const result = await processDesignFiles([file], [], { maxFiles: 5, maxTotalBytes: 20 * 1024 * 1024, isServerScanEnabled: true })
-    expect(result.processed).toHaveLength(1)
-    expect(result.warnings).toEqual([{ fileName: 'doc.txt', reason: 'scanner_unavailable' }])
-    expect(result.errors).toHaveLength(0)
-  })
-
-  it('accumulates warnings for each file when scanner is down across a batch', async () => {
-    mockScanFile.mockResolvedValue({ pass: false, status: 'unavailable' })
-    const files = [createFile('a.txt', 'a'), createFile('b.txt', 'b')]
-    const result = await processDesignFiles(files, [], { maxFiles: 5, maxTotalBytes: 20 * 1024 * 1024, isServerScanEnabled: true })
-    expect(result.processed).toHaveLength(2)
-    expect(result.warnings).toHaveLength(2)
-    expect(result.warnings.map(w => w.fileName)).toEqual(['a.txt', 'b.txt'])
   })
 
   it('sets malicious_content key when client-side validation blocks a file', async () => {
@@ -354,6 +278,5 @@ describe('processDesignFiles', () => {
     const result = await processDesignFiles([tooBig], [], { maxFiles: 5, maxTotalBytes: 20 * 1024 * 1024 })
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0].error).not.toBe(ProcessFileErrorReason.MaliciousContent)
-    expect(result.warnings).toHaveLength(0)
   })
 })

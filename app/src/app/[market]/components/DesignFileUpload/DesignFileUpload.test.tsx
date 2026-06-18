@@ -14,7 +14,7 @@ import type { UploadedDesignFile } from '../types'
 const { mockProcessDesignFiles, mockLogImpressionEvent, mockImpressionThunk, mockGenerateClickEID } = vi.hoisted(() => {
   const mockImpressionThunk = vi.fn()
   return {
-    mockProcessDesignFiles: vi.fn().mockResolvedValue({ processed: [], errors: [], warnings: [] }),
+    mockProcessDesignFiles: vi.fn().mockResolvedValue({ processed: [], errors: [] }),
     mockImpressionThunk,
     mockLogImpressionEvent: vi.fn(() => mockImpressionThunk),
     mockGenerateClickEID: vi.fn(() => 'appbuilder.homepage.prompt.attach.click'),
@@ -96,23 +96,6 @@ describe('DesignFileUpload (picker path)', () => {
       expect(onError).toHaveBeenCalledWith('File too large')
     })
     expect(mockLogImpressionEvent).not.toHaveBeenCalledWith('homepage.prompt.fileAttached', expect.anything())
-  })
-
-  it('logs scannerUnavailable impression for each warning after processing', async () => {
-    const newFile: UploadedDesignFile = { name: 'doc.txt', content: 'ok', isDesignMd: false }
-    mockProcessDesignFiles.mockResolvedValueOnce({
-      processed: [newFile],
-      errors: [],
-      warnings: [{ fileName: 'doc.txt', reason: 'scanner_unavailable' }],
-    })
-
-    const { input, user } = renderUpload()
-    await user.upload(input, new File(['x'], 'doc.txt'))
-
-    await waitFor(() => {
-      expect(mockLogImpressionEvent).toHaveBeenCalledWith('homepage.prompt.scannerUnavailable', { fileName: 'doc.txt' })
-    })
-    expect(mockImpressionThunk).toHaveBeenCalled()
   })
 
   it('triggers file input click when the attachment button is clicked', async () => {

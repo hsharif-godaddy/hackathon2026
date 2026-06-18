@@ -20,7 +20,6 @@ interface DesignFileUploadProps {
 
 export default function DesignFileUpload({ currentFilesRef, onFilesChange, onError, isProcessing, onProcessingChange, onProcessingFilesChange, disabled }: DesignFileUploadProps) {
   const isEnabled = useSwitchboard('appbuilder-design-upload')
-  const isServerScanEnabled = useSwitchboard('appbuilder-design-upload-scanner')
   const inputRef = useRef<HTMLInputElement>(null)
   const { isBelowSmBreakpoint } = useBreakpoints()
   const t = useTranslations()
@@ -35,10 +34,9 @@ export default function DesignFileUpload({ currentFilesRef, onFilesChange, onErr
     onError?.(null)
     try {
       const { processDesignFiles } = await import('./design-file-processing')
-      const { processed, errors, warnings } = await processDesignFiles(
+      const { processed, errors } = await processDesignFiles(
         Array.from(fileList),
         currentFilesRef.current ?? [],
-        { isServerScanEnabled },
       )
       if (processed.length > 0) {
         onFilesChange([...(currentFilesRef.current ?? []), ...processed])
@@ -51,15 +49,12 @@ export default function DesignFileUpload({ currentFilesRef, onFilesChange, onErr
       for (const error of errors) {
         logImpressionEvent('homepage.prompt.fileRejected', { fileName: error.fileName, reason: error.error })()
       }
-      for (const warning of warnings) {
-        logImpressionEvent('homepage.prompt.scannerUnavailable', { fileName: warning.fileName })()
-      }
     } finally {
       onProcessingChange?.(false)
       onProcessingFilesChange?.([])
     }
     if (inputRef.current) inputRef.current.value = ''
-  }, [currentFilesRef, isProcessing, isServerScanEnabled, onError, onFilesChange, onProcessingChange, onProcessingFilesChange, t])
+  }, [currentFilesRef, isProcessing, onError, onFilesChange, onProcessingChange, onProcessingFilesChange, t])
 
   if (!isEnabled) {
     return null

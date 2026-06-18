@@ -1,4 +1,3 @@
-import { scanFile, ScanResultStatus } from '@/lib/file/scanner'
 import { getExtension, isImageFileName } from '@/lib/file/utils'
 import { hasMaliciousContent } from '@/lib/file/validation'
 import { FileReadError, FileTooLargeError, MaliciousContentError } from './errors'
@@ -47,11 +46,11 @@ function isDesignMdContent(content: string): boolean {
 
 /**
  * Validates and reads a single design file.
- * Runs client-side checks (magic bytes / XSS) first, then a server-side ClamAV scan.
+ * Runs client-side checks (magic bytes / XSS).
  * Throws typed errors ({@link FileTooLargeError}, {@link MaliciousContentError}, {@link FileReadError})
  * so callers can surface the right message without catching a generic Error.
  */
-export async function processDesignFile(file: File, isServerScanEnabled: boolean): Promise<UploadedDesignFile> {
+export async function processDesignFile(file: File): Promise<UploadedDesignFile> {
   const ext = getExtension(file.name)
   const isImage = isImageFileName(file.name)
   const isZipExt = ext === '.zip'
@@ -79,34 +78,24 @@ export async function processDesignFile(file: File, isServerScanEnabled: boolean
     throw new MaliciousContentError(file.name)
   }
 
-  let warning: string | undefined
-  if (isServerScanEnabled) {
-    const serverScan = await scanFile(buffer, file.name)
-    if (serverScan.status === ScanResultStatus.MALICIOUS) {
-      throw new MaliciousContentError(file.name)
-    }
-    warning = serverScan.status === ScanResultStatus.UNAVAILABLE ? 'scanner_unavailable' : undefined
-  }
-
   if (isZipExt) {
     const { detectUiKit, detectAppBuilderApp } = await import('@/lib/zip-extract')
     const isUiKit = await detectUiKit(buffer)
     const isAppImport = !isUiKit && await detectAppBuilderApp(buffer)
-    return { name: file.name, content: '', isDesignMd: false, isZip: true, isUiKit, isAppImport, zipRaw: buffer, warning }
+    return { name: file.name, content: '', isDesignMd: false, isZip: true, isUiKit, isAppImport, zipRaw: buffer }
   }
 
   if (isImage) {
-    return { name: file.name, content: '', isDesignMd: false, isImage: true, zipRaw: buffer, warning }
+    return { name: file.name, content: '', isDesignMd: false, isImage: true, zipRaw: buffer }
   }
 
   const content = new TextDecoder().decode(buffer)
-  return { name: file.name, content, isDesignMd: isDesignMdContent(content), zipRaw: buffer, warning }
+  return { name: file.name, content, isDesignMd: isDesignMdContent(content), zipRaw: buffer }
 }
 
 interface ProcessDesignFilesParams {
   maxFiles?: number;
   maxTotalBytes?: number;
-  isServerScanEnabled?: boolean
 }
 
 /**
@@ -117,11 +106,10 @@ interface ProcessDesignFilesParams {
 export async function processDesignFiles(
   files: File[],
   currentFiles: UploadedDesignFile[],
-  { maxFiles = MAX_FILES, maxTotalBytes = MAX_TOTAL_BYTES, isServerScanEnabled = false }: ProcessDesignFilesParams  = {},
-): Promise<{ processed: UploadedDesignFile[]; errors: ProcessFileError[]; warnings: Array<{ fileName: string; reason: string }> }> {
+  { maxFiles = MAX_FILES, maxTotalBytes = MAX_TOTAL_BYTES }: ProcessDesignFilesParams  = {},
+): Promise<{ processed: UploadedDesignFile[]; errors: ProcessFileError[] }> {
   const processed: UploadedDesignFile[] = []
   const errors: ProcessFileError[] = []
-  const warnings: Array<{ fileName: string; reason: string }> = []
   let currentBytes = currentFiles.reduce((sum, f) => sum + (f.zipRaw?.byteLength ?? 0), 0)
 
   for (const file of files) {
@@ -134,10 +122,7 @@ export async function processDesignFiles(
       continue
     }
     try {
-      const result = await processDesignFile(file, isServerScanEnabled)
-      if (result.warning) {
-        warnings.push({ fileName: file.name, reason: result.warning })
-      }
+      const result = await processDesignFile(file)
       processed.push(result)
       currentBytes += result.zipRaw?.byteLength ?? 0
     } catch (err) {
@@ -152,5 +137,5 @@ export async function processDesignFiles(
       }
     }
   }
-  return { processed, errors, warnings }
+  return { processed, errors }
 }

@@ -36,11 +36,6 @@ vi.mock('@/utils/instrumentation', () => ({
   logImpressionEvent: mockLogImpressionEvent,
 }))
 
-const mockSwitchboard = vi.hoisted(() => vi.fn().mockReturnValue(undefined))
-vi.mock('@/hooks/useSwitchboard', () => ({
-  useSwitchboard: mockSwitchboard,
-}))
-
 function createDragEvent(type: string, hasFiles = true): React.DragEvent<HTMLDivElement> {
   return {
     type,
@@ -131,30 +126,6 @@ describe('useDesignFileDrop', () => {
     expect(result.current.isFileDragOver).toBe(false)
   })
 
-  it('calls processDesignFiles with options object including isServerScanEnabled from switchboard', async () => {
-    mockSwitchboard.mockReturnValue(true)
-    const { result } = renderDrop()
-    await act(async () => { result.current.dragProps.onDrop(createDragEvent('drop')) })
-
-    expect(mockProcessDesignFiles).toHaveBeenCalledWith(
-      expect.any(Array),
-      expect.any(Array),
-      { maxFiles: undefined, maxTotalBytes: undefined, isServerScanEnabled: true },
-    )
-  })
-
-  it('passes isServerScanEnabled: undefined when switchboard flag is not set', async () => {
-    mockSwitchboard.mockReturnValue(undefined)
-    const { result } = renderDrop()
-    await act(async () => { result.current.dragProps.onDrop(createDragEvent('drop')) })
-
-    expect(mockProcessDesignFiles).toHaveBeenCalledWith(
-      expect.any(Array),
-      expect.any(Array),
-      expect.objectContaining({ isServerScanEnabled: undefined }),
-    )
-  })
-
   it('calls onFilesChange with appended files on successful drop', async () => {
     const existingFile: UploadedDesignFile = { name: 'existing.txt', content: 'hi', isDesignMd: false }
     filesRef.current = [existingFile]
@@ -203,22 +174,6 @@ describe('useDesignFileDrop', () => {
     expect(mockLogImpressionEvent).toHaveBeenCalledWith('homepage.prompt.fileRejected', { fileName: 'bad.txt', reason: ProcessFileErrorReason.MaliciousContent })
     expect(mockLogImpressionEvent).toHaveBeenCalledWith('homepage.prompt.fileRejected', { fileName: 'big.txt', reason: ProcessFileErrorReason.TooLarge })
     expect(mockImpressionThunk).toHaveBeenCalledTimes(2)
-  })
-
-  it('logs scannerUnavailable for each warning and still processes the file', async () => {
-    const newFile: UploadedDesignFile = { name: 'doc.txt', content: 'hello', isDesignMd: false }
-    mockProcessDesignFiles.mockResolvedValueOnce({
-      processed: [newFile],
-      errors: [],
-      warnings: [{ fileName: 'doc.txt', reason: 'scanner_unavailable' }],
-    })
-
-    const { result } = renderDrop()
-    await act(async () => { result.current.dragProps.onDrop(createDragEvent('drop')) })
-
-    expect(mockLogImpressionEvent).toHaveBeenCalledWith('homepage.prompt.scannerUnavailable', { fileName: 'doc.txt' })
-    expect(onFilesChange).toHaveBeenCalled()
-    expect(onError).not.toHaveBeenCalledWith(expect.any(String))
   })
 
   it('logs a drag action EID once when a file drag enters', () => {

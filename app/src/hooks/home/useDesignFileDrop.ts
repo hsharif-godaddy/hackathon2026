@@ -2,7 +2,6 @@ import { useCallback, useRef, useState } from 'react'
 
 import { processDesignFiles } from '@/app/[market]/components/DesignFileUpload'
 import type { UploadedDesignFile } from '@/app/[market]/components/types'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logActionEvent, logImpressionEvent } from '@/utils/instrumentation'
 
@@ -42,7 +41,6 @@ export function useDesignFileDrop({
   disabled = false,
 }: UseDesignFileDropOptions): UseDesignFileDropResult {
   const t = useTranslations()
-  const isServerScanEnabled = useSwitchboard('appbuilder-design-upload-scanner')
   const [isFileDragOver, setIsFileDragOver] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const dragCounterRef = useRef(0)
@@ -94,8 +92,8 @@ export function useDesignFileDrop({
     onProcessingFilesChange?.(droppedFiles.map(f => f.name))
     onError(null)
 
-    processDesignFiles(droppedFiles, currentFilesRef.current ?? [], { maxFiles, maxTotalBytes, isServerScanEnabled })
-      .then(({ processed, errors, warnings }) => {
+    processDesignFiles(droppedFiles, currentFilesRef.current ?? [], { maxFiles, maxTotalBytes })
+      .then(({ processed, errors }) => {
         if (processed.length > 0) {
           const updated = [...(currentFilesRef.current ?? []), ...processed]
           onFilesChange(updated)
@@ -108,9 +106,6 @@ export function useDesignFileDrop({
         for (const error of errors) {
           logImpressionEvent('homepage.prompt.fileRejected', { fileName: error.fileName, reason: error.error })()
         }
-        for (const warning of warnings) {
-          logImpressionEvent('homepage.prompt.scannerUnavailable', { fileName: warning.fileName })()
-        }
       })
       .catch(() => {
         onError(t('builder_design_file_upload_error_drop_failed'))
@@ -119,7 +114,7 @@ export function useDesignFileDrop({
         setIsProcessing(false)
         onProcessingFilesChange?.([])
       })
-  }, [currentFilesRef, disabled, isProcessing, isServerScanEnabled, maxFiles, maxTotalBytes, onError, onFilesChange, onProcessingFilesChange, t])
+  }, [currentFilesRef, disabled, isProcessing, maxFiles, maxTotalBytes, onError, onFilesChange, onProcessingFilesChange, t])
 
   return {
     isFileDragOver,
