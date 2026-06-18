@@ -1,32 +1,42 @@
 #!/bin/bash
 # Depends on env vars exported by .envrc (REAL_PNPM, WORKSPACE_ROOT, NON_WORKSPACE_DIRS).
 cmd="$1"
-current_dir="$(pwd)"
-relative_path="${current_dir#$WORKSPACE_ROOT/}"
 
-# Check if we're in a non-workspace directory
-is_non_workspace=false
-for dir in $NON_WORKSPACE_DIRS; do
-  if [[ "$relative_path" == "$dir"* ]]; then
-    is_non_workspace=true
-    break
-  fi
-done
-
-# Handle install/i commands
+# Workspace-root resolution only matters for install/i; keep it out of the hot
+# path so every other pnpm command (build, run, exec, …) skips the git call.
 if [ "$cmd" = "install" ] || [ "$cmd" = "i" ]; then
+  # -P so this matches git's canonicalized toplevel even when the checkout path
+  # contains a symlinked component (logical pwd would mismatch the physical root).
+  current_dir="$(pwd -P)"
+
+  # Resolve the effective workspace root from git so this works in any worktree,
+  # independent of the (possibly stale, inherited) WORKSPACE_ROOT. Fall back to
+  # WORKSPACE_ROOT when not in a repo or the toplevel isn't a pnpm workspace.
+  ws_root="$(git -C "$current_dir" rev-parse --show-toplevel 2>/dev/null || echo "$WORKSPACE_ROOT")"
+  [ -f "$ws_root/pnpm-workspace.yaml" ] || ws_root="$WORKSPACE_ROOT"
+  relative_path="${current_dir#"$ws_root"/}"
+
+  # Check if we're in a non-workspace directory
+  is_non_workspace=false
+  for dir in $NON_WORKSPACE_DIRS; do
+    if [[ "$relative_path" == "$dir"* ]]; then
+      is_non_workspace=true
+      break
+    fi
+  done
+
   if [ "$is_non_workspace" = true ]; then
     # In non-workspace dir: auto-add --ignore-workspace
     echo "Auto-adding --ignore-workspace for $relative_path" >&2
     shift  # Remove 'install' or 'i' from arguments
     exec "$REAL_PNPM" "$cmd" --ignore-workspace "$@"
-  elif [ "$current_dir" != "$WORKSPACE_ROOT" ]; then
+  elif [ "$current_dir" != "$ws_root" ]; then
     # In workspace subdir: block with error
     echo "Error: pnpm install must be run from the workspace root" >&2
     echo "Current directory: $current_dir" >&2
-    echo "Workspace root: $WORKSPACE_ROOT" >&2
+    echo "Workspace root:    $ws_root" >&2
     echo "" >&2
-    echo "Please run: cd $WORKSPACE_ROOT && pnpm install" >&2
+    echo "Please run: cd $ws_root && pnpm install" >&2
     exit 1
   fi
 fi

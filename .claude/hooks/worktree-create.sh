@@ -85,9 +85,9 @@ done
 echo "Installing dependencies..." >&2
 cd "$wt_dir"
 
-# Override WORKSPACE_ROOT so the .envrc pnpm wrapper allows install here.
-# Set REAL_PNPM to override pnpm binary if direnv wrapping causes issues.
-export WORKSPACE_ROOT="$wt_dir"
+# The .envrc pnpm wrapper resolves the workspace root from git, so it allows
+# install in this worktree without overriding WORKSPACE_ROOT. Keep REAL_PNPM as
+# a bypass in case direnv wrapping causes issues.
 PNPM="${REAL_PNPM:-pnpm}"
 
 if command -v corepack &>/dev/null; then
