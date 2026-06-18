@@ -23,6 +23,7 @@ import { ButtonGroup } from '@/app/[market]/develop/components/ButtonGroup';
 import { EditNudgeTooltip } from '@/app/[market]/develop/components/EditNudgeTooltip';
 import { MOBILE_MODE_EID_MAP, VIEW_MODE_EID_MAP } from '@/app/[market]/develop/components/headerEids';
 import IconButton from '@/app/[market]/develop/components/IconButton';
+import { InboxUnresolvedBadge } from '@/app/[market]/develop/components/layout/InboxUnresolvedBadge';
 import ShareLink from '@/app/[market]/develop/components/layout/ShareLink';
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import DeviceSelector from '@/app/[market]/develop/components/preview/DeviceSelector'
@@ -253,7 +254,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                     icon={<ConversationsIcon className="size-2.5" />}
                     label={t('builder_preview_button_inbox')}
                     cornerBadge={
-                      inboxUnresolvedCount > 0 ? <span className="size-1 shrink-0 rounded-full bg-intents-ux-feedbackHighContrastCritical-feedbackColor" /> : undefined
+                      inboxUnresolvedCount > 0 ? <InboxUnresolvedBadge count={inboxUnresolvedCount} /> : undefined
                     }
                   />
                 )}
