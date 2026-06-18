@@ -5,6 +5,13 @@ import path from 'node:path';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
+// Pin the test timezone so date/Intl-formatting tests are deterministic on any
+// developer machine, matching CI (which runs UTC). Set here — before the forks
+// pool spawns workers — so forked processes inherit TZ=UTC at startup and both
+// Date and Intl resolve it (setting it later, e.g. in setupFiles, is too late
+// for Intl's cached default zone). `??=` lets an explicit `TZ=… vitest` win.
+process.env.TZ ??= 'UTC';
+
 /**
  * True when the root `package.json` `pnpm.overrides` points `@airo-ux/pattern-library`
  * (or any related `@airo/*`) at a `link:` path. In that dev setup the

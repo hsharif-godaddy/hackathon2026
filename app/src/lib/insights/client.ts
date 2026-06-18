@@ -5,8 +5,9 @@
  */
 
 import { logger } from '@/lib/request-context'
+import { sleep } from '@/utils/common'
 import { INITIAL_RETRY_DELAY_MS, MAX_RETRIES, MAX_RETRY_DELAY_MS, REQUEST_TIMEOUT_MS } from './constants'
-import { calculateBackoffDelay, classifyError, sleep } from './error-handler'
+import { calculateBackoffDelay, classifyError } from './error-handler'
 
 function graphQLErrorMessages(result: unknown): string[] | null {
   if (result === null || typeof result !== 'object') return null

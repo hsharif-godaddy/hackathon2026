@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { HttpError } from '@/lib/errors';
+import { appFetch } from '@/lib/gasket-config';
 import { logger } from '@/lib/request-context';
 import type { CreditGrant } from '@/types/credits';
 
@@ -49,8 +50,12 @@ export function useCreditGrants({
         syncSpend: syncSpend.toString(),
       });
 
-      const response = await fetch(`/api/credits/grants?${params.toString()}`, {
-        credentials: 'include',
+      // appFetch with handle401 routes a 401 through resolveAuth, which now
+      // bridges a transient stale-vat (authReason 3) via spaced re-probe and
+      // retries the request — so a tab-wake refetch recovers silently instead
+      // of surfacing a 401/login modal (AIROBUILD-2667).
+      const response = await appFetch(`/api/credits/grants?${params.toString()}`, undefined, {
+        handle401: true,
       });
 
       if (!response.ok) {

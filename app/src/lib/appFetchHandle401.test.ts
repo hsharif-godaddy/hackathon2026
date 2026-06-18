@@ -30,6 +30,8 @@ function response200(body: unknown = { ok: true }) {
   });
 }
 
+const VAT_RECOVERY_DELAY_MS = 2_000;
+
 describe('appFetch handle401', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -73,6 +75,32 @@ describe('appFetch handle401', () => {
     const body = await response.json();
     expect(body).toEqual({ data: 'retry-success' });
 
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('recovers a stale-vat 401 via re-probe and retries without opening the modal', async () => {
+    const { appFetch } = await import('@/lib/gasket-config');
+    const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
+
+    // Sequence:
+    //   1. Original request → 401 (vat stale)
+    //   2. resolveAuth probe → 401 (authReason 3)
+    //   3. Spaced re-probe → 200 (browser heartbeat caught up)
+    //   4. Original request retried → 200
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response401({ authReason: 3 }))
+      .mockResolvedValueOnce(response401({ authReason: 3 }))
+      .mockResolvedValueOnce(response200())
+      .mockResolvedValueOnce(response200({ data: 'retry-success' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const promise = appFetch('/api/things', { method: 'GET' }, { handle401: true });
+    await vi.advanceTimersByTimeAsync(VAT_RECOVERY_DELAY_MS);
+
+    const response = await promise;
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ data: 'retry-success' });
+    expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 

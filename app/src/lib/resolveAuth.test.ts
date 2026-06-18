@@ -14,6 +14,8 @@ vi.mock('@/utils/getRootDomain', () => ({
 
 const AUTH_PROBE_TIMEOUT_MS = 5_000;
 const AUTH_PREFLIGHT_TIMEOUT_MS = 5 * 60 * 1000;
+const VAT_RECOVERY_DELAY_MS = 2_000;
+const VAT_RECOVERY_MAX_ATTEMPTS = 3;
 
 function response401(body: unknown = { authReason: 2 }) {
   return new Response(
@@ -82,6 +84,111 @@ describe('resolveAuth', () => {
 
     useAuthUIStore.getState().closeSsoLogin('dismiss');
 
+    await expect(promise).resolves.toEqual({ kind: 'dismissed' });
+  });
+
+  it('recovers a stale-vat 401 via spaced re-probe without opening the modal', async () => {
+    const { resolveAuth } = await import('@/lib/gasket-config');
+    const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
+
+    // Initial probe 401 (vat stale, authReason 3); the browser ui_heartbeat
+    // refreshes the cookie out-of-band, so the next spaced re-probe succeeds.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response401({ authReason: 3 }))
+      .mockResolvedValueOnce(response200());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const promise = resolveAuth({ level: 2 });
+    await vi.advanceTimersByTimeAsync(VAT_RECOVERY_DELAY_MS);
+
+    await expect(promise).resolves.toEqual({ kind: 'valid' });
+    expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens the modal once the stale-vat re-probe budget is exhausted', async () => {
+    const { resolveAuth } = await import('@/lib/gasket-config');
+    const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
+
+    // vat stays stale across the initial probe and every re-probe.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response401({ authReason: 3 })));
+
+    const promise = resolveAuth({ level: 2 });
+    // Drive all spaced re-probes to exhaust the budget.
+    await vi.advanceTimersByTimeAsync(VAT_RECOVERY_DELAY_MS * VAT_RECOVERY_MAX_ATTEMPTS);
+
+    expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(true);
+
+    useAuthUIStore.getState().closeSsoLogin('dismiss');
+    await expect(promise).resolves.toEqual({ kind: 'dismissed' });
+  });
+
+  it('treats a re-probe network error as a failed attempt and keeps retrying', async () => {
+    const { resolveAuth } = await import('@/lib/gasket-config');
+    const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
+
+    // A transient blip (the just-online window this targets) must not abort
+    // recovery / reject resolveAuth — it counts as a failed attempt.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response401({ authReason: 3 }))    // initial probe
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))  // re-probe 1 throws
+      .mockResolvedValueOnce(response200());                    // re-probe 2 ok
+    vi.stubGlobal('fetch', fetchMock);
+
+    const promise = resolveAuth({ level: 2 });
+    await vi.advanceTimersByTimeAsync(VAT_RECOVERY_DELAY_MS * 2);
+
+    await expect(promise).resolves.toEqual({ kind: 'valid' });
+    expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('falls through to the modal when every stale-vat re-probe times out', async () => {
+    const { resolveAuth } = await import('@/lib/gasket-config');
+    const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
+
+    // Guards the `probe !== 'timeout' && probe.ok` predicate: a hung validate
+    // ('timeout') must never count as recovery.
+    let call = 0;
+    const fetchMock = vi.fn().mockImplementation(function (_url: string, init?: RequestInit) {
+      call += 1;
+      if (call === 1) return Promise.resolve(response401({ authReason: 3 }));
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          reject(new DOMException('aborted', 'AbortError'));
+        });
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const promise = resolveAuth({ level: 2 });
+    // Each attempt is a 2s delay + a 5s probe timeout.
+    await vi.advanceTimersByTimeAsync(
+      (VAT_RECOVERY_DELAY_MS + AUTH_PROBE_TIMEOUT_MS) * VAT_RECOVERY_MAX_ATTEMPTS
+    );
+
+    expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(true);
+
+    useAuthUIStore.getState().closeSsoLogin('dismiss');
+    await expect(promise).resolves.toEqual({ kind: 'dismissed' });
+  });
+
+  it('does not re-probe (no delay) for non-vat 401s', async () => {
+    const { resolveAuth } = await import('@/lib/gasket-config');
+    const { useAuthUIStore } = await import('@/stores/useAuthUIStore');
+
+    // authReason 2 (HBI) can't be self-refreshed by the heartbeat — modal
+    // should open immediately, with no spaced re-probe.
+    const fetchMock = vi.fn().mockResolvedValue(response401({ authReason: 2 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const promise = resolveAuth({ level: 3 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(useAuthUIStore.getState().isSsoLoginOpen).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    useAuthUIStore.getState().closeSsoLogin('dismiss');
     await expect(promise).resolves.toEqual({ kind: 'dismissed' });
   });
 

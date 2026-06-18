@@ -1,3 +1,8 @@
+/** Resolve after `ms` milliseconds. Generic delay primitive for retry/backoff spacing. */
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 /** Market locale from `window.gasketData.intl` (same source as Gasket intl); en-US when absent (SSR/tests). */
 export function getAppLocale(): string {
   if (typeof window === 'undefined') {

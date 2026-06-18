@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatDate, formatDuration } from './common';
+import { formatDate, formatDuration, sleep } from './common';
+
+describe('sleep', () => {
+  it('should resolve after specified time', async () => {
+    const start = Date.now();
+    await sleep(50);
+    const elapsed = Date.now() - start;
+    expect(elapsed).toBeGreaterThanOrEqual(40); // Allow small timing variance
+  });
+});
 
 describe('formatDate', () => {
   describe('basic formatting', () => {

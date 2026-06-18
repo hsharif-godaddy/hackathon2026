@@ -25,6 +25,17 @@ vi.mock('@/lib/request-context', () => ({
   },
 }));
 
+// The hook delegates to appFetch (with handle401), which owns the 401 →
+// resolveAuth → recover/retry flow. That flow is integration-tested in
+// appFetchHandle401.test.ts / resolveAuth.test.ts; here we mock appFetch so
+// these stay focused unit tests of the hook's request shape + response
+// handling. A resolved error Response simulates "appFetch exhausted recovery
+// and surfaced the final response."
+const mockAppFetch = vi.fn();
+vi.mock('@/lib/gasket-config', () => ({
+  appFetch: (...args: unknown[]) => mockAppFetch(...args),
+}));
+
 function createTestQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
@@ -53,14 +64,35 @@ describe('useCreditGrants', function useCreditGrantsTests() {
     vi.clearAllMocks();
   });
 
+  it('requests grants through appFetch with handle401 enabled', async function usesAppFetchHandle401() {
+    mockAppFetch.mockResolvedValue(mockGrantsResponse([
+      { id: 'g1', type: GrantType.PlanMonthly, creditsSpent: 0, creditsMax: 100, isAvailable: true },
+    ]));
+
+    const { result } = renderHook(
+      () => useCreditGrants({ subscriptionId: 'sub-1' }),
+      { wrapper: makeWrapper(createTestQueryClient()) }
+    );
+
+    await waitFor(function waitForData() {
+      expect(result.current.data).toHaveLength(1);
+    });
+
+    expect(mockAppFetch).toHaveBeenCalledWith(
+      '/api/credits/grants?subscriptionId=sub-1&syncSpend=true',
+      undefined,
+      { handle401: true },
+    );
+  });
+
   it('logs a warning once per fetch when a grant has null creditsMax', async function warnOnInvalidGrant() {
     // Emitting the warn here (instead of inside getTotalCreditsFromGrants)
     // keeps it to one log per response rather than one per render of each
     // gauge/popover consumer.
-    global.fetch = vi.fn().mockResolvedValue(mockGrantsResponse([
+    mockAppFetch.mockResolvedValue(mockGrantsResponse([
       { id: 'broken-1', type: GrantType.PlanMonthly, creditsSpent: 10, creditsMax: null, isAvailable: true },
       { id: 'good-1', type: GrantType.CreditPack, creditsSpent: 20, creditsMax: 100, isAvailable: true },
-    ])) as unknown as typeof fetch;
+    ]));
 
     const { result } = renderHook(
       () => useCreditGrants({ subscriptionId: 'sub-1' }),
@@ -80,9 +112,9 @@ describe('useCreditGrants', function useCreditGrantsTests() {
   });
 
   it('does not log a warning when all grants have valid creditsMax', async function noWarnWhenValid() {
-    global.fetch = vi.fn().mockResolvedValue(mockGrantsResponse([
+    mockAppFetch.mockResolvedValue(mockGrantsResponse([
       { id: 'g1', type: GrantType.PlanMonthly, creditsSpent: 10, creditsMax: 500, isAvailable: true },
-    ])) as unknown as typeof fetch;
+    ]));
 
     const { result } = renderHook(
       () => useCreditGrants({ subscriptionId: 'sub-1' }),
@@ -100,13 +132,14 @@ describe('useCreditGrants', function useCreditGrantsTests() {
     // Load balancers / auth proxies / CDN error pages return HTML or plain
     // text. response.json() throws SyntaxError on those bodies; the hook must
     // swallow it via .catch() so HttpError still surfaces with the correct
-    // status (otherwise retry policy can't short-circuit on 4xx).
+    // status (otherwise retry policy can't short-circuit on 4xx). A persistent
+    // 401 here means appFetch already exhausted recovery and surfaced it.
     const jsonError = new SyntaxError('Unexpected token < in JSON at position 0');
-    global.fetch = vi.fn().mockResolvedValue({
+    mockAppFetch.mockResolvedValue({
       ok: false,
       status: 401,
       json: vi.fn().mockRejectedValue(jsonError),
-    } as unknown as Response) as unknown as typeof fetch;
+    } as unknown as Response);
 
     const { result } = renderHook(
       () => useCreditGrants({ subscriptionId: 'sub-1' }),
@@ -128,11 +161,11 @@ describe('useCreditGrants', function useCreditGrantsTests() {
   });
 
   it('uses error message from JSON error body when present', async function jsonErrorBody() {
-    global.fetch = vi.fn().mockResolvedValue({
+    mockAppFetch.mockResolvedValue({
       ok: false,
       status: 403,
       json: async () => ({ error: 'Forbidden: missing entitlement' }),
-    } as unknown as Response) as unknown as typeof fetch;
+    } as unknown as Response);
 
     const { result } = renderHook(
       () => useCreditGrants({ subscriptionId: 'sub-1' }),
@@ -152,13 +185,12 @@ describe('useCreditGrants', function useCreditGrantsTests() {
     // The retry policy keys off `error instanceof HttpError && status < 500`.
     // If response.json() throws before HttpError is constructed (the bug this
     // test guards against), the SyntaxError would be retried 3 times. With
-    // the defensive .catch() in place, fetch should be called exactly once.
-    const fetchMock = vi.fn().mockResolvedValue({
+    // the defensive .catch() in place, appFetch should be called exactly once.
+    mockAppFetch.mockResolvedValue({
       ok: false,
       status: 404,
       json: vi.fn().mockRejectedValue(new SyntaxError('Unexpected end of JSON input')),
     } as unknown as Response);
-    global.fetch = fetchMock as unknown as typeof fetch;
 
     // Use the default retry policy (not the test client's retry: false) so
     // we're actually exercising retryOnError.
@@ -178,7 +210,7 @@ describe('useCreditGrants', function useCreditGrantsTests() {
       expect(result.current.isError).toBe(true);
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mockAppFetch).toHaveBeenCalledTimes(1);
     expect((result.current.error as HttpError).status).toBe(404);
   });
 });

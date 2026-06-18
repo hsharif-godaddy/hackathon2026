@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { calculateBackoffDelay, classifyError, sleep } from '../error-handler'
+import { calculateBackoffDelay, classifyError } from '../error-handler'
 
 describe('error-handler', () => {
   describe('classifyError', () => {
@@ -104,15 +104,6 @@ describe('error-handler', () => {
     it('should never return negative', () => {
       const delay = calculateBackoffDelay(1, 0, 0)
       expect(delay).toBeGreaterThanOrEqual(0)
-    })
-  })
-
-  describe('sleep', () => {
-    it('should resolve after specified time', async () => {
-      const start = Date.now()
-      await sleep(50)
-      const elapsed = Date.now() - start
-      expect(elapsed).toBeGreaterThanOrEqual(40) // Allow small timing variance
     })
   })
 })

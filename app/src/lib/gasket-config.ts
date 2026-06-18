@@ -1,6 +1,7 @@
 import { SUPPORTED_AUTH_TYPES } from '@airo/shared/auth';
 
 import { useAuthUIStore } from '@/stores/useAuthUIStore';
+import { sleep } from '@/utils/common';
 import { getRootDomain } from '@/utils/getRootDomain';
 import { SHOPPER_AUTH_FAILURE_MESSAGE } from './customer-auth';
 import { auth } from './features';
@@ -260,6 +261,18 @@ export const SSO_TIMEOUT_OVERRIDE_KEY = '__airo_sso_timeout';
 // the modal-wait below has its own 5-minute timeout.
 export const AUTH_PROBE_TIMEOUT_MS = 5_000;
 
+// authReason returned by gd-auth when the SSO `vat` (validated-at) claim is
+// stale. The browser ui_heartbeat refreshes vat out-of-band after the tab
+// wakes, but it has no wake trigger, so the first validate after wake can 401
+// before the heartbeat lands. These bound a spaced re-probe (3 × 2s = 6s
+// ceiling) that bridges the common fast-recovery window before we show the SSO
+// modal; wakes that refresh slower than the budget still fall through to the
+// modal. Only vat is retried — HBI/login failures can't be self-refreshed by
+// the heartbeat.
+const VAT_AUTH_REASON = 3;
+const VAT_RECOVERY_MAX_ATTEMPTS = 3;
+const VAT_RECOVERY_DELAY_MS = 2_000;
+
 /**
  * Outcome of resolveAuth(). The mutex collapses concurrent 401s into one of
  * these results so every caller sees the same decision.
@@ -324,6 +337,47 @@ async function probeAuthValidate(level: 1 | 2 | 3): Promise<Response | 'timeout'
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Bridge a transient stale-vat (authReason 3) 401. The browser ui_heartbeat
+ * refreshes `vat` out-of-band shortly after the tab wakes, but it has no wake
+ * trigger, so the first validate after wake can 401 before the heartbeat
+ * lands. Re-probe a few times, spaced out, so a stale vat that refreshes
+ * within the budget recovers silently instead of bouncing the user to the SSO
+ * modal. A re-probe that throws (transient network blip — likely in this exact
+ * just-online window) counts as a failed attempt rather than aborting recovery
+ * and rejecting resolveAuth. This is a bounded best-effort bridge, not a
+ * guarantee: wakes that refresh slower than the budget fall through to the
+ * modal. Returns true once a re-probe confirms the token is valid, false when
+ * the budget is exhausted.
+ */
+async function recoverStaleVat(level: 1 | 2 | 3): Promise<boolean> {
+  let lastOutcome = 'unknown';
+  for (let attempt = 1; attempt <= VAT_RECOVERY_MAX_ATTEMPTS; attempt++) {
+    await sleep(VAT_RECOVERY_DELAY_MS);
+    try {
+      const probe = await probeAuthValidate(level);
+      if (probe !== 'timeout' && probe.ok) {
+        logger.info('app-fetch.auth-resolve.vat-recovered', { level, attempts: attempt });
+        return true;
+      }
+      lastOutcome = probe === 'timeout' ? 'timeout' : String(probe.status);
+    } catch (err) {
+      lastOutcome = 'error';
+      logger.warn('app-fetch.auth-resolve.vat-recovery-probe-error', {
+        level,
+        attempt,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  logger.warn('app-fetch.auth-resolve.vat-recovery-exhausted', {
+    level,
+    attempts: VAT_RECOVERY_MAX_ATTEMPTS,
+    lastOutcome,
+  });
+  return false;
 }
 
 export interface ResolveAuthOptions {
@@ -400,6 +454,14 @@ export async function resolveAuth(options: ResolveAuthOptions = {}): Promise<Aut
       });
       const authReason = typeof body?.authReason === 'number' ? body.authReason : null;
       logger.info('app-fetch.auth-resolve.reauth-required', { level, authReason });
+
+      // Stale vat self-heals once the browser ui_heartbeat catches up. Spaced
+      // re-probe to bridge that window before disturbing the user with the
+      // modal. Runs inside pendingResolution, so a burst of 401s shares one
+      // recovery loop. Only vat (3) is recoverable this way.
+      if (authReason === VAT_AUTH_REASON && (await recoverStaleVat(level))) {
+        return { kind: 'valid' };
+      }
 
       return openModalAndVerify(level, authReason, probe);
     } finally {
