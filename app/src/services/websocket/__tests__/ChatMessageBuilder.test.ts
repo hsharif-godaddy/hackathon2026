@@ -134,6 +134,27 @@ describe('ChatMessageBuilder', () => {
 
       expect(result.context?.conversation?.conversationId).toBeUndefined()
     })
+
+    it('includes designKitSlug in metadata when provided', () => {
+      const params: BuildMessageParams = {
+        content: 'Test',
+        appId: 'app-123',
+        sessionId: 'session-456',
+        designKitSlug: 'golden-hour',
+      }
+      const result = builder.build(params)
+      expect(result.context?.metadata).toMatchObject({ designKitSlug: 'golden-hour' })
+    })
+
+    it('omits designKitSlug from metadata when not provided', () => {
+      const params: BuildMessageParams = {
+        content: 'Test',
+        appId: 'app-123',
+        sessionId: 'session-456',
+      }
+      const result = builder.build(params)
+      expect(result.context?.metadata).not.toHaveProperty('designKitSlug')
+    })
   })
 
   describe('asset transformation', () => {

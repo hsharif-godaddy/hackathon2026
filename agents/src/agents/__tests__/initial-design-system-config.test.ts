@@ -30,6 +30,8 @@ vi.mock('fs', async () => {
     existsSync: (path: string) => {
       if (path.includes('initial/design-system/manifest.json')) return true
       if (path.includes('initial/design-system/')) return true
+      if (path.includes('initial/design-system-homepage-build-attached/manifest.json')) return true
+      if (path.includes('initial/design-system-homepage-build-attached/')) return true
       if (path.includes('initial/design-system-homepage-build/manifest.json')) return true
       if (path.includes('initial/design-system-homepage-build/')) return true
       if (path.includes('initial/3.0/')) return true
@@ -46,6 +48,17 @@ vi.mock('fs', async () => {
             { src: 'base', file: 'identity.md' },
             { src: 'variant', file: 'questioning-phase1.md' },
             { src: 'variant', file: 'auto-select.md' },
+          ],
+        })
+      }
+      if (typeof path === 'string' && path.includes('initial/design-system-homepage-build-attached/manifest.json')) {
+        return JSON.stringify({
+          base: '3.0',
+          preflightTools: [],
+          files: [
+            { src: 'base', file: 'identity.md' },
+            { src: 'variant', file: 'questioning-phase1.md' },
+            { src: 'variant', file: 'use-attached-kit.md' },
           ],
         })
       }
@@ -82,6 +95,22 @@ describe('createInitialAgent (design-system variant)', () => {
     expect(cfg.tools).toHaveProperty('installDesignSystem')
     expect(cfg.tools).toHaveProperty('loadUiKit')
     expect((cfg.metadata as any).preflightTools).toContain('listDesignSystems')
+  })
+
+  it('omits select tools for the -attached fork but keeps loadUiKit/colorScheme/fontTheme', async () => {
+    const cfg = await createInitialAgent(undefined, undefined, 'design-system-homepage-build-attached')
+    expect(cfg.id).toBe('initial-design-system-homepage-build-attached')
+    // SELECT tools dropped — the kit is force-installed; the agent must not re-pick.
+    expect(cfg.tools).not.toHaveProperty('listDesignSystems')
+    expect(cfg.tools).not.toHaveProperty('installDesignSystem')
+    // colorScheme/fontTheme stay wired (on every variant) — when a kit is attached
+    // their EXECUTION is locked in the tools, which covers every turn/variant; we
+    // do NOT rely on per-variant tool removal (the build runs base turns too).
+    expect(cfg.tools).toHaveProperty('loadUiKit')
+    expect(cfg.tools).toHaveProperty('colorScheme')
+    expect(cfg.tools).toHaveProperty('fontTheme')
+    // No preflight: the forced-install path runs loadUiKit, so preflight must be empty.
+    expect((cfg.metadata as any).preflightTools).toEqual([])
   })
 
   it('does not wire design-system tools for the default variant', async () => {

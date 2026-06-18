@@ -54,6 +54,8 @@ export function HomePage({ serverFeatures }: HomeContentProps) {
             onExampleClick={hp.handleExampleClick}
             uploadedFiles={hp.uploadedFiles}
             onFilesChange={hp.setUploadedFiles}
+            attachedKit={hp.attachedKit}
+            onAttachedKitChange={hp.setAttachedKit}
             onTemplateChange={hp.setSelectedTemplate}
             {...(hp.isTemplateSelectorEnabled && {
               selectedTemplate: hp.selectedTemplate,

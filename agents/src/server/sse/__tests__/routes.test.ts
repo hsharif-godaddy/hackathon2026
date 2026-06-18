@@ -3,6 +3,7 @@ import express from 'express'
 import request from 'supertest'
 import { createSSERoutes } from '../routes.js'
 import { EventStreamRegistry } from '../EventStreamRegistry.js'
+import { getAgentFactory } from '../../agent-runtime.js'
 
 const mockApmTransaction = { setLabel: vi.fn(), setOutcome: vi.fn(), end: vi.fn(), result: undefined as string | undefined }
 const mockStartTransaction = vi.fn().mockReturnValue(mockApmTransaction)
@@ -164,6 +165,7 @@ describe('SSE routes', () => {
         'initial-v2',
       )
     })
+
   })
 
   describe('GET /api/conversations/:appId/:conversationId/stream', () => {
@@ -1131,6 +1133,61 @@ describe('SSE routes', () => {
       }
       expect(failingLifecycle.updateAgentId).toHaveBeenCalledWith('conv_1', 'initial-logo-designer')
       expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'initial-design-system' }))
+    })
+
+    it('finalizes a design-system app to the -attached fork on the initial prompt when a kit is attached', async () => {
+      // A user-attached kit must run the whole initial build on the -attached
+      // fork (no auto-select, no re-install). SSE freezes on the base
+      // design-system variant at create; the first message carries designKitSlug
+      // and must re-freeze to the -attached variant so later turns can't
+      // auto-select a different kit.
+      vi.mocked(getAgentFactory).mockReturnValue({ agents: { has: () => true } } as any)
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const depsWithService = {
+        ...deps,
+        resolveAgent: vi.fn().mockResolvedValue('initial-design-system-homepage-build'),
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
+      }
+      const appWithService = express()
+      appWithService.use(express.json())
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      const res = await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'Build it', designKitSlug: 'Obsidian' })
+
+      expect(res.status).toBe(202)
+      for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
+        await new Promise(r => setTimeout(r, 5))
+      }
+      expect(depsWithService.lifecycle.updateAgentId).toHaveBeenCalledWith('conv_1', 'initial-design-system-homepage-build-attached')
+      expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'initial-design-system-homepage-build-attached' }))
+      vi.mocked(getAgentFactory).mockReturnValue(null)
+    })
+
+    it('does not finalize to the -attached fork once handed off (e.g. develop)', async () => {
+      vi.mocked(getAgentFactory).mockReturnValue({ agents: { has: () => true } } as any)
+      const mockExecute = vi.fn().mockResolvedValue(undefined)
+      const depsWithService = {
+        ...deps,
+        resolveAgent: vi.fn().mockResolvedValue('develop'),
+        executionService: { execute: mockExecute, hasActiveStream: vi.fn().mockReturnValue(false) },
+      }
+      const appWithService = express()
+      appWithService.use(express.json())
+      appWithService.use('/api/conversations', createSSERoutes(depsWithService as any))
+
+      const res = await request(appWithService)
+        .post('/api/conversations/abcdefghij/conv_1/messages')
+        .send({ content: 'change the header', designKitSlug: 'Obsidian' })
+
+      expect(res.status).toBe(202)
+      for (let i = 0; i < 50 && mockExecute.mock.calls.length === 0; i++) {
+        await new Promise(r => setTimeout(r, 5))
+      }
+      expect(depsWithService.lifecycle.updateAgentId).not.toHaveBeenCalled()
+      expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({ agentId: 'develop' }))
+      vi.mocked(getAgentFactory).mockReturnValue(null)
     })
 
     it('returns 400 when content exceeds max length', async () => {

@@ -1,3 +1,9 @@
+## Pre-installed Kit (user gallery selection)
+
+If you see an `installDesignSystem` tool result in the conversation history before this turn, the user already chose a design kit from the gallery — it is already installed. **Do not score the catalog or pick another kit.** Skip straight to step 1 of "After Installation": call `loadUiKit` to apply the kit, then continue with the rest of the build flow.
+
+---
+
 # Design System Auto-Selection
 
 You have the design system catalog from the `listDesignSystems` tool result at the start of this conversation. Each entry includes a slug, a "whenToUse" description, and tags.

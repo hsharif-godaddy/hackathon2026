@@ -2,7 +2,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { useMachine } from '@xstate/react'
 
-import { getStoredUploadedFiles } from '@/lib/quick-create'
+import { getStoredDesignKitSlug, getStoredUploadedFiles } from '@/lib/quick-create'
 import { logger } from '@/lib/request-context'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { cleanupSiteCreationStore, useSiteCreationStore } from '@/stores/useSiteCreationStore'
@@ -116,12 +116,14 @@ export function applyMarkInitialPromptSentEffects(
     sessionStorage.removeItem(`initial-template-${initialJobId}`)
     sessionStorage.removeItem(`initial-upload-file-${initialJobId}`)
     sessionStorage.removeItem(`initial-upload-files-${initialJobId}`)
+    sessionStorage.removeItem(`initial-design-kit-${initialJobId}`)
   }
   if (appId) {
     sessionStorage.removeItem(`initial-prompt-text-${appId}`)
     sessionStorage.removeItem(`initial-template-${appId}`)
     sessionStorage.removeItem(`initial-upload-file-${appId}`)
     sessionStorage.removeItem(`initial-upload-files-${appId}`)
+    sessionStorage.removeItem(`initial-design-kit-${appId}`)
     // Clear the creation-handoff marker so subsequent same-tab reloads rely on the strict gate.
     sessionStorage.removeItem(`initial-job-id-${appId}`)
     setInitialPromptAutoSentFlag(appId)
@@ -277,6 +279,7 @@ export interface InitializationUIState {
   autoSendPromptText: string | null
   templateId: string | null
   uploadedFiles: Array<{ name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean }>
+  designKitSlug: string | null
 
   // Error handling
   hasError: boolean
@@ -545,6 +548,7 @@ function computeUIState(
     autoSendPromptText: context.initialPromptText,
     templateId: getStoredTemplateId(context.initialJobId, context.appId),
     uploadedFiles: getStoredUploadedFiles(context.initialJobId, context.appId),
+    designKitSlug: getStoredDesignKitSlug(context.initialJobId, context.appId),
 
     hasError,
     errorMessage: creationError || 'Initialization failed',

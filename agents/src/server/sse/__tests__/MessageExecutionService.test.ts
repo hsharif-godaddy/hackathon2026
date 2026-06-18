@@ -48,7 +48,7 @@ vi.mock('@godaddy/agent-otel-sdk', async () => {
   }
 })
 
-import { MessageExecutionService } from '../MessageExecutionService.js'
+import { MessageExecutionService, pickForcedInstallAgent } from '../MessageExecutionService.js'
 import { skillToolManager, resolveSkillToolMetadata } from '../../../tools/skill-tool-manager.js'
 import { BudgetServiceConflictError } from '@airo/ai-lib/budget'
 import { BudgetExceededError } from '@airo/ai-common'
@@ -83,6 +83,14 @@ vi.mock('../../message-lifecycle.js', () => ({
 const mockResolveRebuildBuildPagePrompt = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 vi.mock('../../rebuild-build-page-message.js', () => ({
   resolveRebuildBuildPagePrompt: (...args: any[]) => mockResolveRebuildBuildPagePrompt(...args),
+}))
+
+// Spy the forced design-kit install so the gating decision (run once on the
+// initial kit turn; never on follow-ups or without a slug) is observable without
+// hitting the real catalog/workspace.
+const mockEnrichWithForcedDesignKit = vi.hoisted(() => vi.fn().mockResolvedValue([]))
+vi.mock('../../../services/design-system/forced-install.js', () => ({
+  enrichWithForcedDesignKit: (...args: any[]) => mockEnrichWithForcedDesignKit(...args),
 }))
 vi.mock('../../../services/budget-service-instance.js', () => ({
   getBudgetServiceClient: mockGetBudgetServiceClient,
@@ -161,8 +169,10 @@ function createMockDeps(parts: any[] = []) {
       setSessionMetadata: vi.fn(),
       getSelectedTodoList: vi.fn().mockReturnValue(undefined),
       setSelectedTodoList: vi.fn(),
+      switchAgent: vi.fn().mockResolvedValue(true),
     },
     onAgentChanged: vi.fn().mockResolvedValue(undefined),
+    persistAgentId: vi.fn().mockResolvedValue(undefined),
     // Mirror the production wiring (app.ts): inject the shared resolver so the
     // SSE seam exercises the same skillName-enrichment path as the WS transport.
     resolveToolMetadata: resolveSkillToolMetadata,
@@ -218,6 +228,43 @@ const DEFAULT_PARAMS = {
   agentId: 'develop',
 }
 
+describe('pickForcedInstallAgent', () => {
+  // The real factory's getAgent THROWS "Agent config not found" for unknown ids.
+  const makeGetAgent = (known: Record<string, { id: string }>) => (id: string) => {
+    if (!(id in known)) throw new Error(`Agent config not found for id: ${id}`)
+    return known[id]
+  }
+
+  it('finds the -attached sibling for a base design-system variant', () => {
+    const getAgent = makeGetAgent({
+      'initial-design-system-homepage-build': { id: 'base' },
+      'initial-design-system-homepage-build-attached': { id: 'attached' },
+    })
+    const r = pickForcedInstallAgent({ resolvedAgentId: 'initial-design-system-homepage-build', getAgent })
+    expect(r.agent).toEqual({ id: 'attached' })
+    expect(r.hasAttachedSibling).toBe(true)
+  })
+
+  it('does NOT double-suffix when already resolved to the -attached variant (regression)', () => {
+    // The build is frozen on the -attached variant, so every turn resolves it.
+    // Looking up `<id>-attached-attached` must not happen — that id has no config
+    // and getAgent would throw, which previously killed the forced install.
+    const getAgent = makeGetAgent({
+      'initial-design-system-homepage-build-attached': { id: 'attached' },
+    })
+    const r = pickForcedInstallAgent({ resolvedAgentId: 'initial-design-system-homepage-build-attached', getAgent })
+    expect(r.agent).toEqual({ id: 'attached' })
+    expect(r.hasAttachedSibling).toBe(false)
+  })
+
+  it('falls back to the resolved agent (no throw) when no -attached sibling exists', () => {
+    const getAgent = makeGetAgent({ 'initial-design-system': { id: 'self' } })
+    const r = pickForcedInstallAgent({ resolvedAgentId: 'initial-design-system', getAgent })
+    expect(r.agent).toEqual({ id: 'self' })
+    expect(r.hasAttachedSibling).toBe(false)
+  })
+})
+
 describe('MessageExecutionService', () => {
   let service: MessageExecutionService
   let deps: ReturnType<typeof createMockDeps>
@@ -263,6 +310,183 @@ describe('MessageExecutionService', () => {
       await service.execute(DEFAULT_PARAMS)
 
       expect(mockEmitConversationStart).not.toHaveBeenCalled()
+    })
+  })
+
+  // Charles PR #5167 🟡#5: lock the central gating promise (flag-off / non-kit
+  // turns are a no-op) and the multi-turn lifecycle (no re-install after the
+  // parked interview). The feature is reachable only when a designKitSlug is
+  // present, which only the flag-gated gallery produces.
+  describe('forced design-kit install gating', () => {
+    beforeEach(() => { mockEnrichWithForcedDesignKit.mockClear() })
+
+    it('is a no-op on the initial turn when no designKitSlug is present (flag off / no selection)', async () => {
+      await service.execute({ ...DEFAULT_PARAMS, lifecycleContext: { isInitialPrompt: true } })
+      expect(mockEnrichWithForcedDesignKit).not.toHaveBeenCalled()
+    })
+
+    it('does not re-install on a follow-up turn even with a slug (multi-turn -attached lifecycle)', async () => {
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        agentId: 'initial-design-system-homepage-build-attached',
+        designKitSlug: 'modern-bento',
+        lifecycleContext: { isInitialPrompt: false },
+      })
+      expect(mockEnrichWithForcedDesignKit).not.toHaveBeenCalled()
+    })
+
+    it('runs the forced install exactly once on the initial kit-attach turn', async () => {
+      // The install agent must expose getConfig() for the install to proceed.
+      const agentWithConfig = {
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([]),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+        getConfig: vi.fn().mockReturnValue({
+          id: 'initial-design-system-homepage-build-attached',
+          tools: { loadUiKit: {} },
+          metadata: {},
+        }),
+      }
+      deps.getAgent.mockReturnValue(agentWithConfig)
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        agentId: 'initial-design-system-homepage-build',
+        designKitSlug: 'modern-bento',
+        lifecycleContext: { isInitialPrompt: true },
+      })
+
+      expect(mockEnrichWithForcedDesignKit).toHaveBeenCalledTimes(1)
+      expect(mockEnrichWithForcedDesignKit).toHaveBeenCalledWith(
+        expect.objectContaining({ designKitSlug: 'modern-bento', appId: 'app_1', transport: 'sse' }),
+      )
+    })
+
+    it('recovers to the base variant when frozen to -attached but the install produced nothing', async () => {
+      // The route freezes to -attached before the install runs; if the install yields
+      // no messages (failure), the turn must fall back to the base variant — which has
+      // the select/install tools — instead of building on a missing kit.
+      const agentWithConfig = {
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([]),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+        getConfig: vi.fn().mockReturnValue({ id: 'x', tools: { loadUiKit: {} }, metadata: {} }),
+      }
+      const known: Record<string, unknown> = {
+        'initial-design-system-homepage-build': agentWithConfig,
+        'initial-design-system-homepage-build-attached': agentWithConfig,
+      }
+      deps.getAgent.mockImplementation((id: string) => {
+        if (!(id in known)) throw new Error(`Agent config not found for id: ${id}`)
+        return known[id]
+      })
+      mockEnrichWithForcedDesignKit.mockResolvedValueOnce([]) // install produced nothing
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        agentId: 'initial-design-system-homepage-build-attached',
+        designKitSlug: 'modern-bento',
+        lifecycleContext: { isInitialPrompt: true },
+      })
+
+      // The turn ran the BASE variant (only requested on the recovery path), not the
+      // frozen -attached one.
+      expect(deps.getAgent).toHaveBeenCalledWith('initial-design-system-homepage-build')
+      // And the revert is written to BOTH caches the freeze wrote to, or it's shadowed:
+      // the persisted store AND the warm session cache (which the agent router reads
+      // first). Without the session reset, turn 2+ resurrects the frozen -attached.
+      expect(deps.persistAgentId).toHaveBeenCalledWith('conv_1', 'initial-design-system-homepage-build')
+      expect(deps.stateManager.switchAgent).toHaveBeenCalledWith(expect.any(String), 'initial-design-system-homepage-build')
+    })
+
+    it('does not persist any agent revert on the happy path (install produced messages)', async () => {
+      const agentWithConfig = {
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([]),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+        getConfig: vi.fn().mockReturnValue({ id: 'x', tools: { loadUiKit: {} }, metadata: {} }),
+      }
+      const known: Record<string, unknown> = {
+        'initial-design-system-homepage-build': agentWithConfig,
+        'initial-design-system-homepage-build-attached': agentWithConfig,
+      }
+      deps.getAgent.mockImplementation((id: string) => {
+        if (!(id in known)) throw new Error(`Agent config not found for id: ${id}`)
+        return known[id]
+      })
+      mockEnrichWithForcedDesignKit.mockResolvedValueOnce([{ role: 'user', content: 'installed' }]) // success
+
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        agentId: 'initial-design-system-homepage-build-attached',
+        designKitSlug: 'modern-bento',
+        lifecycleContext: { isInitialPrompt: true },
+      })
+
+      expect(deps.persistAgentId).not.toHaveBeenCalled()
+      expect(deps.stateManager.switchAgent).not.toHaveBeenCalled()
+    })
+
+    it('multi-turn: a failed install on turn 1 does not resurrect the frozen -attached variant on turn 2', async () => {
+      // Models the REAL turn-2 resolution: the agent router (agent-router.ts step 1)
+      // reads the warm SESSION cache BEFORE the persisted store and returns it verbatim.
+      // So turn 2's agent must be resolved from the session cache, not the store map —
+      // otherwise the test can't catch a revert that updates only the store. The route
+      // freeze dual-wrote both caches to -attached at create; recovery must reset both.
+      const BASE = 'initial-design-system-homepage-build'
+      const ATTACHED = 'initial-design-system-homepage-build-attached'
+      const store: Record<string, string> = { conv_1: ATTACHED }
+      let sessionAgent = ATTACHED // warm session cache — what the router consults FIRST
+
+      const agentWithConfig = {
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([]),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+        getConfig: vi.fn().mockReturnValue({ id: 'x', tools: { loadUiKit: {} }, metadata: {} }),
+      }
+      const known: Record<string, unknown> = { [BASE]: agentWithConfig, [ATTACHED]: agentWithConfig }
+      deps.getAgent.mockImplementation((id: string) => {
+        if (!(id in known)) throw new Error(`Agent config not found for id: ${id}`)
+        return known[id]
+      })
+      deps.persistAgentId.mockImplementation(async (convId: string, id: string) => { store[convId] = id })
+      deps.stateManager.switchAgent.mockImplementation(async (_sessionId: string, id: string) => { sessionAgent = id })
+
+      // --- Turn 1: initial build, forced install produces nothing ---
+      mockEnrichWithForcedDesignKit.mockResolvedValueOnce([])
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        agentId: sessionAgent, // router resolved -attached from the warm session cache
+        designKitSlug: 'modern-bento',
+        lifecycleContext: { isInitialPrompt: true },
+      })
+      // Recovery reverted BOTH caches to base — the store AND the session cache.
+      expect(store.conv_1).toBe(BASE)
+      expect(sessionAgent).toBe(BASE)
+
+      // --- Turn 2: user answers the parked interview (follow-up, not initial) ---
+      deps.getAgent.mockClear()
+      mockEnrichWithForcedDesignKit.mockClear()
+      await service.execute({
+        ...DEFAULT_PARAMS,
+        agentId: sessionAgent, // router precedence: resolve from the session cache (now BASE)
+        designKitSlug: 'modern-bento',
+        lifecycleContext: { isInitialPrompt: false },
+      })
+
+      // Turn 2 runs the base variant and never touches the stranded -attached one,
+      // and does not re-attempt the forced install.
+      expect(deps.getAgent).toHaveBeenCalledWith(BASE)
+      expect(deps.getAgent).not.toHaveBeenCalledWith(ATTACHED)
+      expect(mockEnrichWithForcedDesignKit).not.toHaveBeenCalled()
     })
   })
 

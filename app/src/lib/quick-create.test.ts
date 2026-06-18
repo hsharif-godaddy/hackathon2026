@@ -14,7 +14,7 @@ vi.mock('./itc', () => ({
 }))
 
 import { getItcOverride } from './itc'
-import { buildDevelopUrl, extractApiError, fetchQuickCreate, getStoredUploadedFiles, setQuickCreateSessionFlags } from './quick-create'
+import { buildDevelopUrl, extractApiError, fetchQuickCreate, getStoredDesignKitSlug, getStoredUploadedFiles, setQuickCreateSessionFlags } from './quick-create'
 
 const mockAppFetch = appFetch as Mock
 const mockGetItcOverride = getItcOverride as Mock
@@ -269,6 +269,19 @@ describe('getStoredUploadedFiles', () => {
   })
 })
 
+describe('setQuickCreateSessionFlags designKitSlug', () => {
+  beforeEach(() => sessionStorage.clear())
+
+  it('stores the slug when provided', () => {
+    setQuickCreateSessionFlags('site1', 'build me a site', undefined, { designKitSlug: 'golden-hour' })
+    expect(sessionStorage.getItem('initial-design-kit-site1')).toBe('golden-hour')
+  })
+  it('stores nothing when slug omitted', () => {
+    setQuickCreateSessionFlags('site2', 'build me a site')
+    expect(sessionStorage.getItem('initial-design-kit-site2')).toBeNull()
+  })
+})
+
 describe('buildDevelopUrl', () => {
   it('returns job URL for job type', () => {
     expect(buildDevelopUrl('job-1', 'job')).toBe('/develop/job-1?type=job')
@@ -276,5 +289,26 @@ describe('buildDevelopUrl', () => {
 
   it('returns site URL for site type', () => {
     expect(buildDevelopUrl('site-1', 'site')).toBe('/develop/site-1')
+  })
+})
+
+describe('getStoredDesignKitSlug', () => {
+  beforeEach(() => sessionStorage.clear())
+
+  it('returns slug for initialJobId key', () => {
+    sessionStorage.setItem('initial-design-kit-job-1', 'golden-hour')
+    const result = getStoredDesignKitSlug('job-1', 'app-1')
+    expect(result).toBe('golden-hour')
+  })
+
+  it('falls back to appId key when initialJobId has no value', () => {
+    sessionStorage.setItem('initial-design-kit-app-1', 'swiss-noir')
+    const result = getStoredDesignKitSlug('job-x', 'app-1')
+    expect(result).toBe('swiss-noir')
+  })
+
+  it('returns null when absent', () => {
+    const result = getStoredDesignKitSlug('nope', 'nada')
+    expect(result).toBeNull()
   })
 })

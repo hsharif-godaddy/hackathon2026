@@ -1,0 +1,11 @@
+{
+  "base": "3.0",
+  "preflightTools": [],
+  "files": [
+    { "src": "base", "file": "identity.md" },
+    { "src": "base", "file": "project-name.md" },
+    { "src": "variant", "file": "questioning-phase1.md" },
+    { "src": "variant", "file": "use-attached-kit.md" },
+    { "src": "base", "file": "feature-list.md" }
+  ]
+}

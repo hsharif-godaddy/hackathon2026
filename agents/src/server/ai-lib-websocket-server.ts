@@ -141,6 +141,7 @@ import {
   cleanupActionService,
   initAgentRuntime,
 } from './agent-runtime.js'
+import { enrichWithForcedDesignKit } from '../services/design-system/forced-install.js'
 
 /**
  * Shared AppRepository instance to avoid repeated initialization
@@ -1842,6 +1843,30 @@ export async function setupAILibWebSocketServer(httpServer: HTTPServer) {
        * message still finalizes normally and git-squash still runs.
        */
       postStreamValidator: wsPostStreamValidator,
+
+      // Forced design-kit install: when the user pre-selected a kit via the gallery
+      // and this is a design-system variant's first turn, install it server-side
+      // and inject synthesized tool messages so the LLM sees it as already done.
+      //
+      // NOTE: WS uses the directive-only path. SSE additionally substitutes the
+      // `-attached` variant instance (no select tools) for the kit turn — see
+      // resolveTurnAgent in MessageExecutionService. WS can't swap the instance
+      // without persisting the swapped name; the instance swap is a tracked
+      // follow-up (a shared resolveAgentInstance loop callback). Until then WS
+      // relies on the injected directive alone, which is weaker.
+      preflightEnricher: async (
+        _existingMessages: Array<{ role: string; content: unknown }>,
+        context: Record<string, unknown> | undefined,
+        agentConfig: { id?: string; tools: Record<string, unknown>; metadata?: Record<string, unknown> }
+      ): Promise<Array<{ role: string; content: unknown }>> => {
+        const meta = context?.metadata as Record<string, unknown> | undefined
+        const designKitSlug = meta?.designKitSlug
+        const appId = meta?.appId
+        if (typeof designKitSlug !== 'string' || typeof appId !== 'string' || !designKitSlug.trim()) return []
+
+        const customerId = typeof meta?.customerId === 'string' ? meta.customerId : undefined
+        return enrichWithForcedDesignKit({ designKitSlug, appId, agentConfig, transport: 'ws', logger, customerId })
+      },
 
       // Pre-completion callback: runs the shared end-of-message lifecycle
       // (git squash-merge + usedFreeGrants accounting). Shared with SSE.

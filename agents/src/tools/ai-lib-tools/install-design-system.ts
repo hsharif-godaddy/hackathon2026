@@ -1,11 +1,7 @@
 import { createTool, type Tool } from '@airo/ai-lib'
 import { z } from 'zod'
-import { fetchDesignSystemCatalog, resolveDesignSystemBaseUrl } from '../../services/design-system/catalog.js'
-import { installDesignSystem } from '../../services/design-system/install.js'
+import { installDesignKitForApp } from '../../services/design-system/install.js'
 import { logger } from '../../logging/index.js'
-import { createForWorkspace } from '../../workspace/index.js'
-import { AppMetadataRepository } from '../../database/index.js'
-import type { DesignKitRef } from '../../types/design-kit.js'
 
 export const installDesignSystemAITool: Tool = createTool(
   'Download and install a design system from the catalog. Extracts to docs/ui-kit/ in the app workspace. After this returns, call loadUiKit to read the design system content and begin building.',
@@ -17,50 +13,14 @@ export const installDesignSystemAITool: Tool = createTool(
     if (!appId) return 'Error: App ID required'
 
     try {
-      const workspace = createForWorkspace(appId, 'preview')
-      if (!workspace) return `Error: workspace unavailable for app '${appId}'`
+      const result = await installDesignKitForApp(appId, input.slug)
 
-      const catalog = await fetchDesignSystemCatalog()
-      // Resolve against id/slug/displayName, case-insensitively. `slug` is being
-      // deprecated and its casing now tracks `displayName` (e.g. "Terra", not
-      // "terra"), so an exact slug match is brittle — the agent or a manual entry
-      // routinely passes a normalized-case value. `id` is the stable join key.
-      const needle = input.slug.trim().toLowerCase()
-      const entry = catalog.kits.find(
-        k => k.id.toLowerCase() === needle
-          || k.slug.toLowerCase() === needle
-          || k.displayName.toLowerCase() === needle,
-      )
-      if (!entry) return `Error: design system '${input.slug}' not found in catalog.`
-
-      const result = await installDesignSystem({
-        workspace,
-        entry,
-        baseUrl: resolveDesignSystemBaseUrl(),
-      })
-
-      try {
-        // Record the matched catalog entry's stable identity (id + displayName),
-        // plus kitId when the kit has one. This is the single source of truth for
-        // the chosen kit: the brand-data route reads `designKit` to surface the
-        // wizard's "Design kit" row, and it doubles as provenance/instrumentation.
-        const designKit: DesignKitRef = {
-          source: 'catalog',
-          id: entry.id,
-          displayName: entry.displayName,
-          ...(entry.kitId ? { kitId: entry.kitId } : {}),
-        }
-        new AppMetadataRepository().merge(appId, { designKit })
-      } catch (metaErr) {
-        // Metadata is best-effort instrumentation — never fail the install over it.
-        logger.warn('tool.install_design_system.metadata_failed', {
-          appId,
-          slug: result.slug,
-          err: String(metaErr),
-        })
+      if ('error' in result) {
+        if (result.error === 'workspace_unavailable') return `Error: workspace unavailable for app '${appId}'`
+        return `Error: design system '${input.slug}' not found in catalog.`
       }
 
-      return `Installed design system \`${result.slug}\` (${result.written} files extracted to docs/ui-kit/). Call \`loadUiKit\` next to read the design system primitives and components.`
+      return result.message
     } catch (err) {
       const phase = err instanceof Error && err.message.includes('catalog') ? 'catalog_fetch' : 'install'
       logger.warn('tool.install_design_system.failed', { slug: input.slug, phase, err: String(err) })

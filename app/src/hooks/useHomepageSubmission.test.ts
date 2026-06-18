@@ -1,9 +1,11 @@
 /**
  * @vitest-environment jsdom
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, renderHook } from '@testing-library/react'
+import { beforeEach, describe, expect, it, type Mock,vi } from 'vitest'
+import { act, renderHook, waitFor } from '@testing-library/react'
 
+import type { DesignKit } from '@/lib/design-kits'
+import { setQuickCreateSessionFlags } from '@/lib/quick-create'
 import {
   persistPendingDesignChoice,
   readDesignChoiceForId,
@@ -294,6 +296,50 @@ describe('useHomepageSubmission', () => {
       })
 
       expect(logImpressionEvent).not.toHaveBeenCalledWith('budget.newUser.eligible')
+    })
+  })
+
+  // AIROBUILD-2072: a logged-out user who attaches a kit and submits must not lose it
+  // through the sign-in gate. Mirrors the airo-pending-fqdn persist/restore.
+  describe('attached design kit survives the sign-in gate', () => {
+    const KIT: DesignKit = {
+      slug: 'golden-hour', displayName: 'Golden Hour', whenToUse: '', tags: [], thumbnailUrl: '',
+    }
+
+    beforeEach(() => { localStorage.clear() })
+
+    it('persists the attached kit slug when the auth gate is shown (logged out)', async () => {
+      mockAuthContext.mockReturnValue({ isAuthenticated: false, isLoading: false })
+      const { result } = renderHook(() => useHomepageSubmission())
+      act(() => { result.current.setAttachedKit(KIT) })
+
+      await act(async () => { await result.current.handleStartBuilding('build me a site') })
+
+      expect(localStorage.getItem('airo-pending-design-kit')).toBe('golden-hour')
+    })
+
+    it('does not persist a slug when no kit is attached (flag-off / no selection)', async () => {
+      mockAuthContext.mockReturnValue({ isAuthenticated: false, isLoading: false })
+      const { result } = renderHook(() => useHomepageSubmission())
+
+      await act(async () => { await result.current.handleStartBuilding('build me a site') })
+
+      expect(localStorage.getItem('airo-pending-design-kit')).toBeNull()
+    })
+
+    it('restores the saved slug after login and forwards it to quick-create', async () => {
+      // Post-login remount: attachedKit state is null, so the slug must come from storage.
+      localStorage.setItem('airo-pending-prompt', 'build me a site')
+      localStorage.setItem('airo-pending-design-kit', 'golden-hour')
+
+      renderHook(() => useHomepageSubmission())
+
+      const flagsMock = setQuickCreateSessionFlags as unknown as Mock
+      await waitFor(() => { expect(flagsMock).toHaveBeenCalled() })
+      // The options object (4th arg) must carry the restored slug.
+      expect(flagsMock.mock.calls.some(c => c[3]?.designKitSlug === 'golden-hour')).toBe(true)
+      // Consumed, so a later submit can't replay a stale kit.
+      expect(localStorage.getItem('airo-pending-design-kit')).toBeNull()
     })
   })
 

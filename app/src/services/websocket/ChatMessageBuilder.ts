@@ -50,6 +50,7 @@ export interface BuildMessageParams<
   isActionRequest?: boolean
   customContext?: CustomContext
   templateId?: string
+  designKitSlug?: string
   modelOverride?: string
   market?: string
   /** Set by the rebuild page-selector "Build Page" button so the server can
@@ -82,6 +83,7 @@ export class ChatMessageBuilder {
         sessionId: params.sessionId,
         userTimezone: ChatMessageBuilder.cachedTimezone,
         ...(params.templateId && { templateId: params.templateId }),
+        ...(params.designKitSlug && { designKitSlug: params.designKitSlug }),
         ...(params.modelOverride && { modelOverride: params.modelOverride }),
         ...(params.market && { market: params.market }),
         ...(params.rebuildBuildPageSlug && { rebuildBuildPageSlug: params.rebuildBuildPageSlug }),

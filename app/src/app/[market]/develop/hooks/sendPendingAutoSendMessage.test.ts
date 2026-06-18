@@ -36,6 +36,7 @@ interface BuildOptionsOverrides {
   onSettled?: ReturnType<typeof vi.fn>
   onUploadsFailed?: ReturnType<typeof vi.fn>
   templateId?: string | null
+  designKitSlug?: string | null
   uploadedFiles?: Array<{ name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean }> | null
 }
 
@@ -44,6 +45,7 @@ function buildOptions(overrides: BuildOptionsOverrides = {}): SendPendingAutoSen
     messageToSend: MESSAGE,
     appId: APP_ID,
     templateId: 'templateId' in overrides ? overrides.templateId ?? null : TEMPLATE_ID,
+    designKitSlug: overrides.designKitSlug ?? null,
     uploadedFiles: overrides.uploadedFiles ?? null,
     send: overrides.send ?? vi.fn<(options: SendMessageOptions) => Promise<void>>().mockResolvedValue(),
     setInputValue: overrides.setInputValue ?? vi.fn(),
@@ -81,6 +83,16 @@ describe('sendPendingAutoSendMessage', () => {
       aiEditContext: null,
       templateId: undefined,
     })
+  })
+
+  it('forwards designKitSlug to send when a kit is attached', async () => {
+    const send = vi.fn().mockResolvedValue(undefined)
+
+    await sendPendingAutoSendMessage(buildOptions({ send, designKitSlug: 'golden-hour' }))
+
+    expect(send).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ designKitSlug: 'golden-hour' }),
+    )
   })
 
   it('clears the input on the success path so the editor does not wait for the first streaming chunk', async () => {

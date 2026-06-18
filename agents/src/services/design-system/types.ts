@@ -1,5 +1,36 @@
 import { z } from 'zod'
 
+// Structured design tokens the catalog now surfaces at the top level of each kit
+// (https://blobby.wsimg.com/brand-kits/catalog.json). These are the source of
+// truth for deterministically applying a kit's colors/fonts in code — see
+// apply-kit-design.ts — instead of asking the agent to translate the ui-kit
+// markdown (which it ignores in favor of its own domain priors). All fields are
+// optional + passthrough so a kit missing/extending the shape is never dropped.
+export const DesignKitFontSchema = z.object({
+  family: z.string().min(1),
+  weights: z.array(z.string()).optional(),
+}).passthrough()
+
+export const DesignKitPaletteSchema = z.object({
+  background: z.string().optional(),
+  foreground: z.string().optional(),
+  primary: z.string().optional(),
+  secondary: z.string().optional(),
+  accent: z.string().optional(),
+  muted: z.string().optional(),
+  border: z.string().optional(),
+  tokens: z.record(z.string(), z.string()).optional(),
+}).passthrough()
+
+export const DesignKitDesignSchema = z.object({
+  palette: DesignKitPaletteSchema.optional(),
+  typography: z.object({
+    display: DesignKitFontSchema.optional(),
+    body: DesignKitFontSchema.optional(),
+    mono: DesignKitFontSchema.optional(),
+  }).passthrough().optional(),
+}).passthrough()
+
 export const DesignSystemCatalogEntrySchema = z.object({
   // `slug` is deprecated in favor of `id` + `displayName`, but still present on
   // every kit and still the lookup key the install tool resolves against.
@@ -20,6 +51,10 @@ export const DesignSystemCatalogEntrySchema = z.object({
   questions: z.array(z.string()),
   tarball: z.string().min(1),
   tarballHash: z.string().regex(/^sha256-[a-f0-9]{12,64}$/i),
+  // Structured palette + fonts for deterministic apply. Optional: older catalog
+  // entries (and slug-style kits) may not carry it; the install still succeeds,
+  // it just falls back to the markdown-only flow with no deterministic apply.
+  design: DesignKitDesignSchema.optional(),
 })
 
 // Type source only — parsing goes through parseCatalog() (catalog.ts), which
@@ -42,3 +77,6 @@ export const DesignSystemCatalogEnvelopeSchema = z.object({
 
 export type DesignSystemCatalogEntry = z.infer<typeof DesignSystemCatalogEntrySchema>
 export type DesignSystemCatalog = z.infer<typeof DesignSystemCatalogSchema>
+export type DesignKitDesign = z.infer<typeof DesignKitDesignSchema>
+export type DesignKitPalette = z.infer<typeof DesignKitPaletteSchema>
+export type DesignKitFont = z.infer<typeof DesignKitFontSchema>

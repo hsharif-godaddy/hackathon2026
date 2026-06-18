@@ -243,6 +243,21 @@ export interface WebSocketConfig {
     emitChunk: (text: string) => Promise<void>
     emitValidationStart?: () => Promise<void>
   }) => Promise<{ continuationPrompt: string; message?: string } | { skipped: true; reason: string; message?: string } | undefined>
+  /**
+   * Optional hook called after runPreflightTools on the first turn. May return
+   * additional synthesized messages to append to preflightMessages. Must not
+   * throw — errors should be caught internally and logged.
+   *
+   * NOTE: the sole current use (forced design-kit install) is conceptually a
+   * synthetic preflight tool. The cleaner long-term shape is to let runPreflightTools
+   * invoke it directly (triggered by context) so both transports converge on one
+   * path and this bespoke hook goes away. Kept as a hook for now to ship.
+   */
+  preflightEnricher?: (
+    preflightMessages: Array<{ role: string; content: unknown }>,
+    context: Record<string, unknown> | undefined,
+    agentConfig: { tools: Record<string, unknown>; metadata?: Record<string, unknown> }
+  ) => Promise<Array<{ role: string; content: unknown }>>
   onMessageComplete?: (socketId: string, result: {
     agentName: string
     duration: string
@@ -3235,6 +3250,25 @@ export class WebSocketServer {
         }
       } catch (error) {
         this.logger.warn('preflight.skipped', { reason: 'getConfig failed', error })
+      }
+    }
+
+    // Preflight enricher: optional caller hook to inject additional synthesized
+    // messages on the first turn (e.g. forced design-kit install).
+    if (isFirstTurn && this.config.preflightEnricher && agent && typeof agent.getConfig === 'function') {
+      try {
+        const agentConfig = agent.getConfig()
+        const extra = await this.config.preflightEnricher(
+          preflightMessages,
+          context,
+          agentConfig as { tools: Record<string, unknown>; metadata?: Record<string, unknown> }
+        )
+        if (extra.length > 0) {
+          preflightMessages = [...preflightMessages, ...extra]
+          this.logger.info('preflight_enricher.injected', { count: extra.length })
+        }
+      } catch (err) {
+        this.logger.warn('preflight_enricher.failed', { err: String(err) })
       }
     }
 

@@ -15,6 +15,7 @@ import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import type { DesignKit } from '@/lib/design-kits'
 import { validateDomainName } from '@/lib/domain-validation'
 import { getErrorMessage } from '@/lib/errors'
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -56,6 +57,7 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
   }, [pathname, router, searchParams])
   const isTemplateSelectorEnabled = useSwitchboard('appbuilder-template-selector')
   const [uploadedFiles, setUploadedFiles] = useState<UploadedDesignFile[]>([])
+  const [attachedKit, setAttachedKit] = useState<DesignKit | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -235,7 +237,7 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
     return () => setIsRedirecting(false)
   }, [])
 
-  const savePromptForRetry = useCallback((prompt: string, context: 'login' | 'session-refresh', fqdn?: string) => {
+  const savePromptForRetry = useCallback((prompt: string, context: 'login' | 'session-refresh', fqdn?: string, designKitSlug?: string) => {
     if (!isHomepage) return
     try {
       localStorage.setItem('airo-pending-prompt', prompt);
@@ -244,16 +246,29 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
       } else {
         localStorage.removeItem('airo-pending-fqdn');
       }
-      logger.info('homepage.prompt.save', { context, promptLength: prompt.length, hasFqdn: !!fqdn });
+      // Gated by `appbuilder-design-kit-gallery`: attachedKit is only ever set by the
+      // flag-gated gallery, so when the flag is off this slug is always undefined and
+      // nothing is persisted. Mirror the fqdn persist/restore so a logged-out user who
+      // attached a kit doesn't silently lose it through the sign-in gate (the React
+      // attachedKit state is reset on the post-login remount).
+      if (designKitSlug) {
+        localStorage.setItem('airo-pending-design-kit', designKitSlug);
+      } else {
+        localStorage.removeItem('airo-pending-design-kit');
+      }
+      logger.info('homepage.prompt.save', { context, promptLength: prompt.length, hasFqdn: !!fqdn, hasDesignKit: !!designKitSlug });
     } catch (error) {
       logger.warn('homepage.prompt.save.error', { context, error: getErrorMessage(error) });
     }
   }, [isHomepage])
 
-  const handleStartBuilding = useCallback(async (overridePrompt?: string, overrideFqdn?: string) => {
+  const handleStartBuilding = useCallback(async (overridePrompt?: string, overrideFqdn?: string, overrideDesignKitSlug?: string) => {
     let promptToUse = (typeof overridePrompt === 'string' ? overridePrompt : promptTextRef.current).trim()
     promptToUse = promptToUse.replace(/https?:\/\/example\.com\s*/gi, '').trim()
     const fqdnToUse = typeof overrideFqdn === 'string' ? overrideFqdn : fqdnRef.current
+    // Prefer an explicit override (post-login restore) over live state: after the auth
+    // remount attachedKit is null, so on the retry path the slug must come from storage.
+    const designKitSlugToUse = typeof overrideDesignKitSlug === 'string' ? overrideDesignKitSlug : attachedKit?.slug
 
     if (!promptToUse || isRedirecting || isLoading) return
 
@@ -309,7 +324,7 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
     try {
       if (!isAuthenticated) {
         logger.info('page.auth.sso-login', { action: 'showing-sso-login' });
-        savePromptForRetry(promptToUse, 'login', fqdnToUse);
+        savePromptForRetry(promptToUse, 'login', fqdnToUse, designKitSlugToUse);
         logAnalytics('homepage.auth_gate.shown', { submitSource }, { kind: 'action', eid: 'homepage.auth.gate', action: 'load' })
         authGateShownAtRef.current = Date.now()
         signIn({ onShowMockLogin: () => setShowMockLogin(true) });
@@ -331,7 +346,7 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
       if (!createSiteResponse.ok) {
         if (createSiteResponse.status === 401) {
           logger.info('homepage.auth-required', { action: 'triggering-sso-login', phase: 'quick-create' });
-          savePromptForRetry(promptToUse, 'session-refresh', fqdnToUse);
+          savePromptForRetry(promptToUse, 'session-refresh', fqdnToUse, designKitSlugToUse);
           logAnalytics('homepage.auth_gate.shown', { submitSource }, { kind: 'action', eid: 'homepage.auth.gate', action: 'load' })
           authGateShownAtRef.current = Date.now()
           signIn({ onShowMockLogin: () => setShowMockLogin(true) });
@@ -355,6 +370,7 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
         uploadedFiles,
         entryPoint: resolveEntryPoint([locationParam, itcParam, siteLocationParam], isHomepage ? 'aab_homepage' : 'aab_apps'),
         creationSource: resolveCreationSource(primaryUploadedFile, selectedTemplate, submitSourceRef.current),
+        designKitSlug: designKitSlugToUse,
       })
       promotePendingDesignChoice(siteData.id)
 
@@ -422,7 +438,7 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
       setIsLoading(false)
       setIsRedirecting(false)
     }
-  }, [authIsLoading, isAuthenticated, isLoading, isNewUser, isRedirecting, logAnalytics, markHomepageEngaged, router, savePromptForRetry, selectedTemplate, signIn, t, uploadedFiles])
+  }, [attachedKit, authIsLoading, isAuthenticated, isLoading, isNewUser, isRedirecting, logAnalytics, markHomepageEngaged, router, savePromptForRetry, selectedTemplate, signIn, t, uploadedFiles])
 
   useEffect(() => {
     if (!isHomepage || !isAuthenticated || authIsLoading || subscriptionsLoading) return
@@ -448,6 +464,13 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
         }
       }
 
+      // Restore the gallery-attached kit (gated: only ever written when the flag-gated
+      // gallery produced a slug). Validity is enforced downstream by the catalog
+      // allow-list (an unknown slug dead-ends at slug_not_found), so just trim here.
+      const savedDesignKit = localStorage.getItem('airo-pending-design-kit')
+      localStorage.removeItem('airo-pending-design-kit')
+      const restoredDesignKitSlug = savedDesignKit?.trim() || undefined
+
       logAnalytics('homepage.auth_prompt.restored')
 
       if (validated.wasClipped) {
@@ -458,7 +481,7 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
         })
       }
 
-      handleStartBuilding(validated.text, restoredFqdn)
+      handleStartBuilding(validated.text, restoredFqdn, restoredDesignKitSlug)
     }
   }, [authIsLoading, handleStartBuilding, isAuthenticated, isHomepage, logAnalytics, promptText, subscriptionsLoading])
 
@@ -518,6 +541,8 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
     isTemplateSelectorEnabled,
     uploadedFiles,
     setUploadedFiles: handleFilesChange,
+    attachedKit,
+    setAttachedKit,
     isLoading,
     error,
     setHeroError,

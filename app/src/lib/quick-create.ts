@@ -56,6 +56,8 @@ export interface QuickCreateSessionOptions {
   creationSource?: string
   /** Defaults to 'new_build'. Pass a different value for non-standard creation flows (e.g. app import). */
   intentCategory?: string
+  /** Catalog slug of a design kit the user attached on the home page, threaded into the initial build. */
+  designKitSlug?: string
 }
 
 export function setQuickCreateSessionFlags(
@@ -64,7 +66,7 @@ export function setQuickCreateSessionFlags(
   templateId?: string,
   options: QuickCreateSessionOptions = {},
 ) {
-  const { uploadedFiles, entryPoint, creationSource, intentCategory = 'new_build' } = options
+  const { uploadedFiles, entryPoint, creationSource, intentCategory = 'new_build', designKitSlug } = options
   sessionStorage.setItem(`name-registration-pending-${siteId}`, 'true')
   sessionStorage.setItem(`initial-prompt-pending-${siteId}`, 'true')
   sessionStorage.setItem(`in-creation-flow-${siteId}`, 'true')
@@ -75,6 +77,9 @@ export function setQuickCreateSessionFlags(
   if (uploadedFiles && uploadedFiles.length > 0) {
     const serializable = uploadedFiles.map(({ zipRaw: _, ...rest }) => rest)
     sessionStorage.setItem(`initial-upload-files-${siteId}`, JSON.stringify(serializable))
+  }
+  if (designKitSlug) {
+    sessionStorage.setItem(`initial-design-kit-${siteId}`, designKitSlug)
   }
   if (entryPoint) {
     sessionStorage.setItem(`entry-point-${siteId}`, entryPoint)
@@ -101,6 +106,19 @@ export function getStoredUploadedFiles(
     }
   }
   return []
+}
+
+export function getStoredDesignKitSlug(
+  initialJobId: string | null | undefined,
+  appId: string | null | undefined,
+): string | null {
+  if (typeof window === 'undefined') return null
+  const keysToTry = [initialJobId, appId].filter(Boolean) as string[]
+  for (const key of keysToTry) {
+    const val = sessionStorage.getItem('initial-design-kit-' + key)
+    if (val) return val
+  }
+  return null
 }
 
 const UPLOAD_DB_NAME = 'airo-file-uploads'

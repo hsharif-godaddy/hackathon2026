@@ -109,6 +109,9 @@ export interface SendMessageOptions {
   /** Template ID for custom initial agent prompts */
   templateId?: string
 
+  /** Design kit slug for initial build */
+  designKitSlug?: string
+
   /** Per-project model override (from model selector in settings) */
   modelOverride?: string
 
@@ -427,6 +430,7 @@ export function useStreamingWebSocket({ enabled = true }: { enabled?: boolean } 
           rebuildBuildPageSlug: options.rebuildBuildPageSlug,
           ...(rebuildDesignDirection && { rebuildDesignDirection }),
           templateId: options.templateId,
+          designKitSlug: options.designKitSlug,
           modelOverride: defaults.modelOverride,
           uploadedFileName: options.uploadedFileName,
           market: marketRef.current,

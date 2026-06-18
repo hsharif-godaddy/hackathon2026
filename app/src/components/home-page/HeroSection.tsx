@@ -5,6 +5,7 @@ import Box from '@ux/box'
 import { text } from '@ux/text'
 
 import DesignFileUpload, { DesignFileUploadCard, DesignFileUploadSkeleton } from '@/app/[market]/components/DesignFileUpload'
+import DesignKitGallery, { DesignKitChip } from '@/app/[market]/components/DesignKitGallery'
 import TemplateSelector from '@/app/[market]/components/TemplateSelector'
 import type { HeroSectionProps, HeroSectionRef } from '@/app/[market]/components/types'
 import { AnimatedDisclaimer } from '@/components/home/AnimatedDisclaimer'
@@ -37,6 +38,8 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
   subheadingText,
   uploadedFiles,
   onFilesChange,
+  attachedKit,
+  onAttachedKitChange,
 }, ref) => {
   useImpression('homepage.firstprompt.view')
   const t = useTranslations()
@@ -154,8 +157,19 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               />
 
               <Box orientation="horizontal" blockAlignChildren="spaceBetween" inlineAlignChildren="end">
-                <PromptInputErrors bytesRemaining={bytesRemaining} isOverLimit={isOverLimit} fileUploadError={fileUploadError} />
-
+                <div className="flex min-w-0 items-center gap-2">
+                  {onAttachedKitChange && (attachedKit ? (
+                    <DesignKitChip kit={attachedKit} onRemove={() => onAttachedKitChange(null)} disabled={isLoading} />
+                  ) : (
+                    <DesignKitGallery attachedSlug={null} onAttach={onAttachedKitChange} disabled={isLoading} />
+                  ))}
+                  <PromptInputErrors
+                    bytesRemaining={bytesRemaining}
+                    isOverLimit={isOverLimit}
+                    fileUploadError={fileUploadError}
+                  />
+                </div>
+                {/* Action Buttons Container */}
                 <Box orientation="horizontal" gap="sm">
                   {onFilesChange && (
                     <DesignFileUpload

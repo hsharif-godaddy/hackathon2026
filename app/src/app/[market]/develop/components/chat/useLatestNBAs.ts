@@ -150,8 +150,13 @@ export function useLatestNBAs(feedbackActive = false): LatestNBAData | null {
       return null
     }
 
+    // Stop-after tools (askQuestion/suggestedResponse) park the stream as active but
+    // not complete while awaiting the user. A completed NBA tool call in that stream is
+    // the live question — surface it. It can't have been consumed yet, or the stream
+    // would have resumed. extractLatestNBAFromToolCalls returns null for a genuinely
+    // mid-stream stream (no completed NBA tool), preserving suppression there.
     if (activeStream && !activeStream.isComplete) {
-      return null
+      return extractLatestNBAFromToolCalls(activeStream.toolCalls ?? [])
     }
 
     const lastAssistantIndex = findLastAssistantIndex(messages)

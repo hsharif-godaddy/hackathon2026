@@ -8,6 +8,7 @@ export interface SendPendingAutoSendMessageOptions {
   jobId?: string | null
   templateId: string | null
   uploadedFiles?: Array<{ name: string; content: string; isDesignMd: boolean; isZip?: boolean; isUiKit?: boolean; isAppImport?: boolean; isImage?: boolean }> | null
+  designKitSlug?: string | null
   send: (options: SendMessageOptions) => Promise<void>
   setInputValue: (value: string) => void
   markInitialPromptSent: () => void
@@ -50,6 +51,7 @@ export async function sendPendingAutoSendMessage(
     markFirstFileEditSeen,
     onSettled,
     onUploadsFailed,
+    designKitSlug,
   } = opts
 
   let outerError: unknown = null
@@ -91,10 +93,15 @@ export async function sendPendingAutoSendMessage(
     const effectiveTemplateId = computeTemplateId(uploaded, templateId)
     const contextType = computeContextType(uploaded)
 
+    if (designKitSlug) {
+      logger.info('develop-page.auto-send.designKit', { appId, designKitSlug })
+    }
+
     await send({
       content: messageToSend,
       aiEditContext: null,
       templateId: effectiveTemplateId,
+      designKitSlug: designKitSlug ?? undefined,
       ...(uploaded.length > 0 && {
         uploadedFileName: uploaded[0].fileName,
         customContext: {

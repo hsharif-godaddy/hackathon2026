@@ -5,6 +5,198 @@ import { join } from 'path'
 import { createHash } from 'crypto'
 import { create as createTar } from 'tar'
 import type { WorkspaceClient } from '../../../workspace/index.js'
+import { logger } from '../../../logging/index.js'
+
+// --- installDesignKitForApp unit tests ---
+// These mock the catalog + workspace deps at module level so we don't need real network/fs.
+const mockFetchCatalog = vi.hoisted(() => vi.fn())
+const mockCreateForWorkspace = vi.hoisted(() => vi.fn())
+const mockInstallDesignSystem = vi.hoisted(() => vi.fn())
+const mockResolveBaseUrl = vi.hoisted(() => vi.fn(() => 'https://blobby.wsimg.com/brand-kits'))
+const mockMerge = vi.hoisted(() => vi.fn())
+
+vi.mock('../catalog.js', () => ({
+  fetchDesignSystemCatalog: mockFetchCatalog,
+  resolveDesignSystemBaseUrl: mockResolveBaseUrl,
+}))
+vi.mock('../../../workspace/index.js', () => ({
+  createForWorkspace: mockCreateForWorkspace,
+}))
+vi.mock('../../../database/index.js', () => ({
+  AppMetadataRepository: class { merge = mockMerge },
+}))
+
+const ENTRY = {
+  slug: 'modern-bento',
+  id: '3e4848a8-912b-44e9-81ba-1cfaf058d458',
+  displayName: 'Modern Bento',
+  whenToUse: '',
+  tags: [],
+  questions: [],
+  tarball: 'kit.tar.gz',
+  tarballHash: 'sha256-abcdef',
+}
+const mockWorkspaceObj = { workspaceId: 'w', variant: 'preview' as const, files: { upload: vi.fn() } }
+
+describe('installDesignKitForApp', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockFetchCatalog.mockResolvedValue({ version: 1, generatedAt: '', kits: [ENTRY] })
+    mockCreateForWorkspace.mockReturnValue(mockWorkspaceObj)
+    mockInstallDesignSystem.mockResolvedValue({ slug: 'modern-bento', written: 3 })
+  })
+
+  it('returns slug_not_found when slug is absent from catalog', async () => {
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', 'nonexistent')
+    expect(result).toEqual({ error: 'slug_not_found' })
+  })
+
+  it('returns workspace_unavailable when workspace cannot be resolved', async () => {
+    mockCreateForWorkspace.mockReturnValue(null)
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', 'modern-bento')
+    expect(result).toEqual({ error: 'workspace_unavailable' })
+  })
+
+  it('happy path: returns slug, written, and the canonical success message', async () => {
+    await primeRealInstall()
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', 'modern-bento')
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.slug).toBe('modern-bento')
+    expect(result.written).toBe(2)
+    expect(result.message).toContain('modern-bento')
+    expect(result.message).toContain('loadUiKit')
+    expect(result.message).toContain('2 files extracted')
+  })
+
+  // Resolution is case-insensitive across id/slug/displayName — `slug` casing now
+  // tracks `displayName` (e.g. "Terra"), so an exact slug match is brittle.
+  it('resolves the entry case-insensitively (catalog slug "Terra", input "terra")', async () => {
+    await primeRealInstall({ slug: 'Terra', id: 'e3979a61-4a99-4e30-8169-ffe06c73a1bc', displayName: 'Terra' })
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', 'terra')
+    expect('error' in result).toBe(false)
+  })
+
+  it('resolves by id when the input is the catalog id', async () => {
+    await primeRealInstall()
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', ENTRY.id)
+    expect('error' in result).toBe(false)
+  })
+
+  it('resolves by displayName when the input is the human label', async () => {
+    await primeRealInstall()
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', 'modern bento')
+    expect('error' in result).toBe(false)
+  })
+
+  it('stamps the matched entry id + displayName (no kitId when the entry lacks one)', async () => {
+    await primeRealInstall()
+    const { installDesignKitForApp } = await import('../install.js')
+    await installDesignKitForApp('app1', 'modern-bento')
+    expect(mockMerge).toHaveBeenCalledTimes(1)
+    expect(mockMerge).toHaveBeenCalledWith('app1', {
+      designKit: { source: 'catalog', id: '3e4848a8-912b-44e9-81ba-1cfaf058d458', displayName: 'Modern Bento' },
+    })
+  })
+
+  it('stamps kitId too when the matched entry has one', async () => {
+    await primeRealInstall({
+      slug: 'Bordeaux',
+      id: '98f856d5-5851-4d96-ac29-7e4f65273540',
+      displayName: 'Bordeaux',
+      kitId: '1ad2586d-f5bf-4ef5-8ac6-f7e5f5c5c3d9',
+    })
+    const { installDesignKitForApp } = await import('../install.js')
+    await installDesignKitForApp('app1', 'Bordeaux')
+    expect(mockMerge).toHaveBeenCalledWith('app1', {
+      designKit: {
+        source: 'catalog',
+        id: '98f856d5-5851-4d96-ac29-7e4f65273540',
+        displayName: 'Bordeaux',
+        kitId: '1ad2586d-f5bf-4ef5-8ac6-f7e5f5c5c3d9',
+      },
+    })
+  })
+
+  it('never stamps when the install fails (slug not found)', async () => {
+    const { installDesignKitForApp } = await import('../install.js')
+    await installDesignKitForApp('app1', 'nonexistent')
+    expect(mockMerge).not.toHaveBeenCalled()
+  })
+
+  it('still returns success when metadata stamping throws (best-effort)', async () => {
+    mockMerge.mockImplementationOnce(() => { throw new Error('db down') })
+    await primeRealInstall()
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', 'modern-bento')
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.message).toContain('loadUiKit')
+  })
+
+  it('resolves by field precedence (id beats displayName) regardless of catalog order, and warns', async () => {
+    const warnSpy = vi.spyOn(logger, 'warn')
+    // Ambiguous catalog: kit B's displayName collides with kit A's id ("collide").
+    // The id-matching kit (A) must win even though kit B is listed first.
+    const kitA = { id: 'collide', slug: 'kit-a', displayName: 'Kit A' }
+    const kitB = { id: 'kit-b-id', slug: 'kit-b', displayName: 'Collide' }
+    await primeRealInstall(kitA, [kitB])
+
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', 'collide')
+
+    expect('error' in result).toBe(false)
+    // id match (kit A) wins over the displayName match (kit B), not array order.
+    expect(mockMerge).toHaveBeenCalledWith('app1', {
+      designKit: { source: 'catalog', id: 'collide', displayName: 'Kit A' },
+    })
+    expect(warnSpy).toHaveBeenCalledWith(
+      'design_system.install.ambiguous_match',
+      expect.objectContaining({ needle: 'collide', chosenId: 'collide' }),
+    )
+    warnSpy.mockRestore()
+  })
+
+  it('does not warn on a single kit whose slug equals its displayName', async () => {
+    const warnSpy = vi.spyOn(logger, 'warn')
+    await primeRealInstall({ id: 'terra-id', slug: 'Terra', displayName: 'Terra' })
+    const { installDesignKitForApp } = await import('../install.js')
+    await installDesignKitForApp('app1', 'terra')
+    expect(warnSpy).not.toHaveBeenCalledWith('design_system.install.ambiguous_match', expect.anything())
+    warnSpy.mockRestore()
+  })
+})
+
+// Build a real minimal tarball + fetch stub + catalog entry so installDesignSystem
+// can extract it. Returns the catalog entry (with the computed hash) for assertions.
+// `extraKits` are prepended to the catalog (sharing the same tarball/hash) so a test
+// can prove field-precedence wins over catalog array order.
+async function primeRealInstall(
+  entryOverride: Record<string, unknown> = {},
+  extraKits: Array<Record<string, unknown>> = [],
+): Promise<Record<string, unknown>> {
+  const tmpDir = mkdtempSync(join(tmpdir(), 'install-kit-app-'))
+  const tarPath = join(tmpDir, 'kit.tar.gz')
+  const tarBuf = await makeTarball(tarPath, { 'colors.md': '# palette', 'button.md': '# button' })
+  const hash = createHash('sha256').update(tarBuf).digest('hex')
+  rmSync(tmpDir, { recursive: true, force: true })
+
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: true,
+    arrayBuffer: async () => tarBuf.buffer.slice(tarBuf.byteOffset, tarBuf.byteOffset + tarBuf.byteLength),
+  } as unknown as Response))
+
+  const entry = { ...ENTRY, ...entryOverride, tarballHash: `sha256-${hash}` }
+  const extras = extraKits.map(k => ({ ...ENTRY, ...k, tarball: 'kit.tar.gz', tarballHash: `sha256-${hash}` }))
+  mockFetchCatalog.mockResolvedValue({ version: 1, generatedAt: '', kits: [...extras, entry] })
+  return entry
+}
 
 async function makeTarball(targetTar: string, files: Record<string, string>): Promise<Buffer> {
   const stagingDir = mkdtempSync(join(tmpdir(), 'tarball-stage-'))

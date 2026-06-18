@@ -339,8 +339,25 @@ export async function createInitialAgent(
   // Design-system named variant: list/install design systems and load UI kit reference
   // Covers 'design-system' and any future 'design-system-*' variants (e.g. design-system-homepage-build)
   if (isNamedVariant && trimmedPromptVersion.startsWith('design-system')) {
-    tools.listDesignSystems = allAILibTools.listDesignSystems
-    tools.installDesignSystem = allAILibTools.installDesignSystem
+    // The '-attached' fork is entered when the user pre-selected a kit from the
+    // gallery: the kit is force-installed, so the variant must NOT be able to
+    // list or install a different one — those tools are omitted on purpose.
+    // colorScheme/fontTheme stay wired on every variant.
+    // NOTE (AIROBUILD-2665): these tools are NOT actually execution-locked when a
+    // kit is attached. There is no designKit guard in css-color-tool.ts /
+    // font-theme.ts today (the earlier lock was dropped in commit fb43ec1c2), so
+    // the model CAN still override the deterministically-applied kit palette/fonts
+    // on any turn (the interview turn here, or after handoff to develop). The
+    // kit-honoring guarantee currently rests on a prompt directive alone
+    // (use-attached-kit.md), which apply-kit-design.ts explicitly distrusts.
+    // AIROBUILD-2665 will either add the real execution lock (gate on the
+    // designKit app-metadata) or drop the false "locked" claims here and in the
+    // prompt. Removing the tools from one variant wouldn't help — the build runs
+    // base turns too.
+    if (!trimmedPromptVersion.endsWith('-attached')) {
+      tools.listDesignSystems = allAILibTools.listDesignSystems
+      tools.installDesignSystem = allAILibTools.installDesignSystem
+    }
     tools.loadUiKit = allAILibTools.loadUiKit
     tools.colorScheme = allAILibTools.colorScheme
     tools.fontTheme = allAILibTools.fontTheme

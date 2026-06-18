@@ -1,3 +1,5 @@
+import type { DesignKit } from '@/lib/design-kits'
+
 export const LOGO_DESIGNER_TEMPLATE = 'logo-designer'
 export const DEEP_BUILD_TEMPLATE = 'deep-build'
 const VALID_TEMPLATES: string[] = ['default', 'business-plan', LOGO_DESIGNER_TEMPLATE, DEEP_BUILD_TEMPLATE]
@@ -49,6 +51,8 @@ export interface HeroSectionProps {
   subheadingText?: string
   uploadedFiles?: UploadedDesignFile[]
   onFilesChange?: (files: UploadedDesignFile[]) => void
+  attachedKit?: DesignKit | null
+  onAttachedKitChange?: (kit: DesignKit | null) => void
 }
 
 export interface HeroSectionRef {

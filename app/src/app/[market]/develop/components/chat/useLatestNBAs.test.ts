@@ -115,11 +115,64 @@ describe('useLatestNBAs', () => {
       expect(result.current).toBeNull()
     })
 
-    it('returns null for incomplete streams even when tool calls are present', () => {
+    it('surfaces a completed stop-after NBA from a parked (incomplete) stream', () => {
+      // Stop-after tools park the stream as active-but-incomplete awaiting the user.
+      // The completed suggestedResponse in the live stream is the question to show.
       mockActiveStream = makeActiveStream(false, [makeSuggestedResponseToolCall()])
 
       const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current).toEqual({
+        question: 'What would you like to do next?',
+        suggestions: [{ text: 'Option A' }, { text: 'Option B' }],
+        source: 'suggestedResponse',
+      })
+    })
+
+    it('returns null mid-stream when the NBA tool call is not yet completed', () => {
+      mockActiveStream = makeActiveStream(false, [
+        makeSuggestedResponseToolCall({ status: 'running' }),
+      ])
+
+      const { result } = renderHook(() => useLatestNBAs())
       expect(result.current).toBeNull()
+    })
+
+    it('returns null mid-stream when the only completed tool call is not an NBA tool', () => {
+      const otherTool: ToolCall = { id: 'other', name: 'createFile', status: 'completed', input: {} }
+      mockActiveStream = makeActiveStream(false, [otherTool])
+
+      const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current).toBeNull()
+    })
+
+    it('surfaces a completed askQuestion from a parked (incomplete) stream', () => {
+      mockActiveStream = makeActiveStream(false, [
+        {
+          id: 'tc-aq-parked',
+          name: 'askQuestion',
+          status: 'completed',
+          input: {},
+          result: {
+            output: {
+              widgetData: {
+                questions: [{
+                  question: 'What palette fits your brand?',
+                  suggestions: [{ text: 'Warm' }, { text: 'Cool' }],
+                  allowOther: true,
+                }],
+                currentQuestionIndex: 0,
+                answers: [],
+              },
+            },
+          },
+        },
+      ])
+
+      const { result } = renderHook(() => useLatestNBAs())
+      expect(result.current).toMatchObject({
+        question: 'What palette fits your brand?',
+        source: 'askQuestion',
+      })
     })
 
     it('returns null when active stream has a pending requestSecrets tool call', () => {

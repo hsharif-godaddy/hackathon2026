@@ -478,6 +478,7 @@ export class StreamingWebSocketController extends EventEmitter {
     rebuildBuildPageSlug?: string
     rebuildDesignDirection?: string
     templateId?: string
+    designKitSlug?: string
     modelOverride?: string
     uploadedFileName?: string
     market?: string
@@ -574,6 +575,7 @@ export class StreamingWebSocketController extends EventEmitter {
         rebuildBuildPageSlug: params.rebuildBuildPageSlug,
         rebuildDesignDirection: params.rebuildDesignDirection,
         templateId: params.templateId,
+        designKitSlug: params.designKitSlug,
         modelOverride: params.modelOverride,
         market: params.market,
         fullStorySessionId: params.fullStorySessionId,
