@@ -11,12 +11,12 @@ import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import { InboxConversationListPagination } from './InboxConversationListPagination';
 import { InboxConversationRow } from './InboxConversationRow';
 import { InboxConversationStatusFilters } from './InboxConversationStatusFilters';
+import { InboxEmptyIllustration } from './InboxEmptyIllustration';
 import { InboxNotificationSettings } from './InboxNotificationSettings';
 import { slideMotionProps, slideTransition } from './slideView';
 import { useInboxConversations } from '../../../hooks/useInbox';
 
-const EMPTY_STATE_KEYS: Record<InboxConversationStatusFilter, string> = {
-  all: 'builder_inbox_empty_all',
+const EMPTY_STATE_KEYS: Record<Exclude<InboxConversationStatusFilter, 'all'>, string> = {
   unresolved: 'builder_inbox_empty_unresolved',
   pending: 'builder_inbox_empty_pending',
   resolved: 'builder_inbox_empty_resolved',
@@ -97,6 +97,7 @@ export function InboxConversationList({
         <InboxConversationStatusFilters
           value={statusFilter}
           onChange={handleFilterChange}
+          disabled={statusFilter === 'all' && conversations.length === 0}
         />
 
         <InboxNotificationSettings brandId={brandId} />
@@ -107,11 +108,23 @@ export function InboxConversationList({
         className='relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-ux-surface-base'
       >
         {conversations.length === 0 ? (
-          <div className='flex items-center justify-center h-full px-4'>
-            <div className='text-center text-ux-text-secondary'>
-              {t(EMPTY_STATE_KEYS[statusFilter])}
+          statusFilter === 'all' ? (
+            <div className='flex h-full flex-col items-center justify-center gap-3 px-6 text-center'>
+              <InboxEmptyIllustration className='text-ux-text-tertiary' />
+              <div className='text-sm font-medium text-ux-text-primary'>
+                {t('builder_inbox_empty_all_title')}
+              </div>
+              <p className='max-w-[260px] text-xs leading-snug text-ux-text-secondary'>
+                {t('builder_inbox_empty_all_body')}
+              </p>
             </div>
-          </div>
+          ) : (
+            <div className='flex items-center justify-center h-full px-4'>
+              <div className='text-center text-ux-text-secondary'>
+                {t(EMPTY_STATE_KEYS[statusFilter])}
+              </div>
+            </div>
+          )
         ) : (
           <AnimatePresence initial={false} custom={pageDirection}>
             <motion.div
