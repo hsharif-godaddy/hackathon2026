@@ -293,7 +293,7 @@ function reportMissingKeys(missingKeys) {
   console.log("");
   console.log("To add these translation keys:");
   console.log(
-    "1. Visit: https://i18n.int.gdcorp.tools/org/hcx/app/aab",
+    "1. Visit: https://i18n.int.gdcorp.tools/org/airo-app-builder/app/aab",
   );
   console.log(
     "2. Add yourself to the PARTNERSTRANSLATIONS AD group (if needed)",

@@ -909,7 +909,7 @@ No authentication required. Returns JSON object with all available translation k
 ### Creating New Translation Keys
 
 **Use the i18n Management UI:**
-https://i18n.int.gdcorp.tools/org/hcx/app/aab
+https://i18n.int.gdcorp.tools/org/airo-app-builder/app/aab
 
 **Prerequisites:**
 
@@ -954,7 +954,7 @@ git commit --no-verify
 ## External Resources
 
 - [GoDaddy Translation API](https://api.i18n.int.gdcorp.tools/api/v2)
-- [i18n Management UI](https://i18n.int.gdcorp.tools/org/hcx/app/aab)
+- [i18n Management UI](https://i18n.int.gdcorp.tools/org/airo-app-builder/app/aab)
 - [React Intl Documentation](https://formatjs.io/docs/react-intl/)
 - [Next.js Internationalization](https://nextjs.org/docs/app/building-your-application/routing/internationalization)
 - [ICU Message Syntax](https://formatjs.io/docs/core-concepts/icu-syntax/)

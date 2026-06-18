@@ -93,7 +93,7 @@ const VARIANT_A_PACKAGE: TipsVariantPackage = {
  * from the one `suffix`/`message` here — there is no second copy to drift out
  * of sync. The matching `builder_preview_building_app_{suffix}` key must exist
  * in the translation tool before a variant is enabled:
- *   https://i18n.int.gdcorp.tools/org/hcx/app/aab
+ *   https://i18n.int.gdcorp.tools/org/airo-app-builder/app/aab
  */
 function makeTreatmentPackage(suffix: string, message: string): TipsVariantPackage {
   const messageKey = `builder_preview_building_app_${suffix}`

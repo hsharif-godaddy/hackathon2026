@@ -3,7 +3,7 @@
  * Publish matching keys in the @airo-app-builder/aab package (GoDaddy i18n UI); these strings
  * are passed as `defaultMessage` until translations are live.
  *
- * @see https://i18n.int.gdcorp.tools/org/hcx/app/aab
+ * @see https://i18n.int.gdcorp.tools/org/airo-app-builder/app/aab
  */
 export const DOMAIN_JOB_LABEL_DEFAULT_MESSAGES: Record<string, string> = {
   builder_domain_job_starting_connection: 'Starting connection...',

@@ -27,7 +27,7 @@ function readUrls(result: unknown): VentureLogoUrls | undefined {
 // TODO(i18n): swap these inline strings for `t(...)` calls once the keys
 // builder_logo_setting_to_venture, builder_logo_set_to_venture, and
 // builder_logo_set_to_venture_failed are published at
-// https://i18n.int.gdcorp.tools/org/hcx/app/aab.
+// https://i18n.int.gdcorp.tools/org/airo-app-builder/app/aab.
 export default function SetVentureLogoToolRenderer({
   toolStatus,
   result,

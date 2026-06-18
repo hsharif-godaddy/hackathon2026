@@ -14,7 +14,7 @@ interface DkimStatusBadgeProps {
 }
 
 // i18n keys consumed below. These must be registered at
-// https://i18n.int.gdcorp.tools/org/hcx/app/aab (PARTNERSTRANSLATIONS AD
+// https://i18n.int.gdcorp.tools/org/airo-app-builder/app/aab (PARTNERSTRANSLATIONS AD
 // group) BEFORE this component ships to the locale build pipeline. The
 // English text in the registration request:
 //

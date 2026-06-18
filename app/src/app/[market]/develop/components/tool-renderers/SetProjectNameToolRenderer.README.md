@@ -1,7 +1,7 @@
 # SetProjectNameToolRenderer Translation Keys
 
 This tool renderer uses the following translation keys. These should be added to the GoDaddy i18n Management UI at:
-https://i18n.int.gdcorp.tools/org/hcx/app/aab
+https://i18n.int.gdcorp.tools/org/airo-app-builder/app/aab
 
 ## Required Translation Keys
 

@@ -117,7 +117,7 @@ To find your shopper ID: check the GoDaddy CRM or look for `shopperId` in your S
 
 ## Internationalization (i18n)
 
-Translations use react-intl via Gasket's `pluginIntl` — strings managed externally at [i18n.int.gdcorp.tools](https://i18n.int.gdcorp.tools/org/hcx/app/aab), no locale JSON in the repo. Use `useTranslations()` from `@/hooks/useTranslations` for `t(key, values)`, or `<FormattedMessage id="key" values={...} />` in JSX. Key convention: `builder_{feature}_{element}`. Missing keys block pre-commit. Full guide: `src/lib/translations/README.md`.
+Translations use react-intl via Gasket's `pluginIntl` — strings managed externally at [i18n.int.gdcorp.tools](https://i18n.int.gdcorp.tools/org/airo-app-builder/app/aab), no locale JSON in the repo. Use `useTranslations()` from `@/hooks/useTranslations` for `t(key, values)`, or `<FormattedMessage id="key" values={...} />` in JSX. Key convention: `builder_{feature}_{element}`. Missing keys block pre-commit. Full guide: `src/lib/translations/README.md`.
 
 ## WebSocket Architecture
 

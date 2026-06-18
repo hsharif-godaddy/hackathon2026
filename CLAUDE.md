@@ -123,7 +123,7 @@ Use `pnpm run dev` — preflight checks generate `.env` files automatically. Don
 
 ## i18n Validation
 
-Translation keys are validated during pre-commit (blocks on missing keys). Fetch available keys: `GET https://api.i18n.int.gdcorp.tools/api/v2/package/market/en-US/%40airo-app-builder%2Faab`. Create missing keys at https://i18n.int.gdcorp.tools/org/hcx/app/aab (PARTNERSTRANSLATIONS AD group). Details in `app/src/lib/translations/README.md`.
+Translation keys are validated during pre-commit (blocks on missing keys). Fetch available keys: `GET https://api.i18n.int.gdcorp.tools/api/v2/package/market/en-US/%40airo-app-builder%2Faab`. Create missing keys at https://i18n.int.gdcorp.tools/org/airo-app-builder/app/aab (PARTNERSTRANSLATIONS AD group). Details in `app/src/lib/translations/README.md`.
 
 ## E2E Test Maintenance
 
