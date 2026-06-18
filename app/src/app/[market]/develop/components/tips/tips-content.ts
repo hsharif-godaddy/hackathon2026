@@ -12,7 +12,12 @@ export const tips: string[] = [
   'be_specific',
   'iterate_and_refine',
   'start_big_picture',
-  'show_examples'
+  'show_examples',
+  'credits_ai_actions_only',
+  'credits_purchased_twelve_months',
+  'credits_plan_monthly_reset',
+  'credits_varies_by_task',
+  'credits_check_balance',
 ]
 
 /**
