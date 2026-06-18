@@ -8,7 +8,6 @@ import {
   withCustomerAuth} from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
 import { injectShareTokenIntoPreviewUrl } from '@/lib/share/inject-preview-token';
-import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 
 // Force dynamic rendering to prevent database calls during build
 export const dynamic = 'force-dynamic';
@@ -23,33 +22,20 @@ async function handleGetSite(request: NextRequest, siteId: string, authContext: 
     return NextResponse.json({ error: 'Site not found' }, { status: 404 });
   }
 
-  // Inject airoShareToken into preview_url so Visit Preview works in
-  // 3PC-blocking browsers (Safari, Firefox, incognito). Only when both
-  // preview_url and agent_url are present — pending/provisioning apps
-  // skip injection. published_url is intentionally NOT modified.
-  //
-  // checkSwitchboardFlag can throw on Switchboard outages — treat that as
-  // "flag off" so a transient Switchboard failure can't take down the
-  // entire site fetch. The injection is a best-effort enhancement; falling
-  // back to bare preview_url is acceptable.
+  // Inject airoShareToken into preview_url so Visit Preview can authenticate
+  // the top-level visit — the `preview_auth` cookie is partitioned (CHIPS)
+  // and never carries outside the builder iframe, so the token is the only
+  // auth handoff and the injection is unconditional, not feature-gated.
+  // Only when both preview_url and agent_url are present —
+  // pending/provisioning apps skip injection. published_url is intentionally
+  // NOT modified. The helper fails open to the bare preview_url on error.
   let previewUrl = site.preview_url;
   if (site.preview_url && site.agent_url) {
-    let flagEnabled = false;
-    try {
-      flagEnabled = await checkSwitchboardFlag('appbuilder-share-links', request);
-    } catch (err) {
-      logger.warn('share.previewUrl.flag.lookupError', {
-        siteId,
-        error: err instanceof Error ? err.message : 'Unknown switchboard error',
-      });
-    }
-    if (flagEnabled) {
-      previewUrl = await injectShareTokenIntoPreviewUrl(
-        siteId,
-        site.agent_url,
-        site.preview_url,
-      );
-    }
+    previewUrl = await injectShareTokenIntoPreviewUrl(
+      siteId,
+      site.agent_url,
+      site.preview_url,
+    );
   }
 
   // Spread (don't mutate) to match the list-route pattern in
