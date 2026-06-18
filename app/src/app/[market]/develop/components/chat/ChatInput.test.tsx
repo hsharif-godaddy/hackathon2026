@@ -648,6 +648,33 @@ describe('ChatInput', () => {
     });
   });
 
+  it('should log disabled stop action on click while awaiting stream even when isDisabled is true', async () => {
+    const onStopGeneration = vi.fn();
+    const { user } = renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        appId="app-xyz"
+        isDisabled={true}
+        isStreaming={false}
+        isAwaitingStream={true}
+        onStopGeneration={onStopGeneration}
+      />
+    );
+
+    const stopButton = screen.getByTestId('chat-stop-button');
+    expect(stopButton).not.toBeDisabled();
+
+    await user.click(stopButton);
+
+    expect(onStopGeneration).not.toHaveBeenCalled();
+    expect(vi.mocked(logActionEvent)).toHaveBeenCalledWith({
+      eid: 'develop.prompt.stop',
+      action: 'disabled',
+      customProperties: { appId: 'app-xyz' },
+    });
+  });
+
   it('should not log disabled stop action on click when stop is enabled', () => {
     renderWithProviders(
       <ChatInput

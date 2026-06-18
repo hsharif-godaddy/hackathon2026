@@ -393,8 +393,12 @@ export default function ChatInput({
   // render the appropriate read-only state without conflicting with `disabled`.
   // `uploadingStagedFileIds` blocks submit only (not typing); enforced via the
   // action-button DOM toggle in syncActionButtonAttrs.
+  // Keep PromptBox enabled while the stop button is in the awaiting-stream
+  // disabled state so clicks reach handlePromptStop for telemetry; visual
+  // disabled styling is applied in syncActionButtonAttrs via aria-disabled.
+  const isAwaitingStopNotYetStreaming = Boolean(isAwaitingStream && !isStreaming && onStopGeneration)
   const isPromptDisabled =
-    Boolean(isDisabled) && !isStreaming
+    Boolean(isDisabled) && !isStreaming && !isAwaitingStopNotYetStreaming
 
   // While the agent is busy, swap the action button to Send only once the
   // user has typed something — empty input keeps the Stop button accessible.
