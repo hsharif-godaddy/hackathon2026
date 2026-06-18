@@ -14,8 +14,10 @@ ALWAYS use `fontTheme` for font/typography requests. NEVER respond with plain te
 | Mode | When | Call |
 | --- | --- | --- |
 | `set` | Automated flows (not rebuild) | `fontTheme({ mode: 'set', description: 'elegant serif for luxury brand' })` |
+| `set` | Known Google Font names (no LLM) | `fontTheme({ mode: 'set', headerFont: { name: 'Playfair Display', weights: ['700'] }, bodyFont: { name: 'Source Sans 3', weights: ['400', '600'] } })` |
 | `suggest` | User asks for options | `fontTheme({ mode: 'suggest', description: 'elegant serif for luxury brand', count: 4 })` |
 | `apply` | User clicks Apply button | `fontTheme({ mode: 'apply', themeName: 'Professional Geometric' })` |
+| `apply` | Explicit heading/body pairing | `fontTheme({ mode: 'apply', headerFont: { name: '...' }, bodyFont: { name: '...' } })` |
 
 Description for `set` and `suggest`: 5-10 words, style + use case.
 
@@ -38,6 +40,7 @@ From widget (user clicks Apply), use the variant the UI sent:
 - Curated theme: `fontTheme({ mode: 'apply', themeId: '...' })`
 - Named suggestion: `fontTheme({ mode: 'apply', themeName: '...' })`
 - Custom font: `fontTheme({ mode: 'apply', fontName: '...', weights: ['400', '500'] })`
+- Explicit pairing: `fontTheme({ mode: 'apply', headerFont: { name: '...', weights: [...] }, bodyFont: { name: '...', weights: [...] } })`
 
 ## After Applying
 

@@ -1069,6 +1069,178 @@ describe('font-theme', function packageTests() {
     })
   })
 
+  describe('explicit font pairing', function explicitPairing() {
+    const mockCss = `@layer base {
+  :root {
+    --font-sans: -apple-system, sans-serif;
+    --font-heading: -apple-system, sans-serif;
+  }
+  body {
+    font-family: var(--font-sans);
+  }
+}`
+    let originalFetch: typeof global.fetch
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      clearFontValidationCache()
+      mockView.mockResolvedValue({ content: mockCss, encoding: 'utf-8' })
+      mockWrite.mockResolvedValue({ bytesWritten: 100 })
+      originalFetch = global.fetch
+      global.fetch = vi.fn(function () {
+        return Promise.resolve({ ok: true, status: 200 } as Response)
+      }) as any
+    })
+
+    afterEach(() => {
+      global.fetch = originalFetch
+    })
+
+    it('applies set mode with explicit headerFont and bodyFont without LLM', async function setExplicit() {
+      const { fontThemeAITool } = await import('../font-theme.js')
+
+      const result = await (fontThemeAITool as any).execute(
+        {
+          mode: 'set',
+          headerFont: { name: 'Merriweather', weights: ['700'], category: 'serif' },
+          bodyFont: { name: 'Lato', weights: ['400', '500'], category: 'sans-serif' },
+          count: 4,
+        },
+        { metadata: { appId: 'test-app' } },
+      ) as { success: boolean }
+
+      expect(result.success).toBe(true)
+      expect(mockGenerateTextWithTracking).not.toHaveBeenCalled()
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
+      expect(writtenContent).toContain('"Merriweather"')
+      expect(writtenContent).toContain('"Lato"')
+    })
+
+    it('rejects invalid explicit fonts in set mode', async function setInvalid() {
+      global.fetch = vi.fn(function () {
+        return Promise.resolve({ ok: false, status: 404 } as Response)
+      }) as typeof global.fetch
+
+      const { fontThemeAITool } = await import('../font-theme.js')
+
+      await expect(
+        (fontThemeAITool as any).execute(
+          {
+            mode: 'set',
+            headerFont: { name: 'NotARealFontXYZ', weights: ['400'] },
+            bodyFont: { name: 'AlsoFakeFont', weights: ['400'] },
+            count: 4,
+          },
+          { metadata: { appId: 'test-app' } },
+        ),
+      ).rejects.toThrow(/Invalid font selection/i)
+      expect(mockGenerateTextWithTracking).not.toHaveBeenCalled()
+      expect(mockWrite).not.toHaveBeenCalled()
+    })
+
+    it('rejects set mode on validation network error without writing CSS', async function setNetworkError() {
+      global.fetch = vi.fn(function () {
+        return Promise.resolve({ ok: false, status: 503 } as Response)
+      }) as typeof global.fetch
+
+      const { fontThemeAITool } = await import('../font-theme.js')
+
+      await expect(
+        (fontThemeAITool as any).execute(
+          {
+            mode: 'set',
+            headerFont: { name: 'Merriweather', weights: ['700'] },
+            bodyFont: { name: 'Lato', weights: ['400'] },
+            count: 4,
+          },
+          { metadata: { appId: 'test-app' } },
+        ),
+      ).rejects.toThrow(/Could not validate fonts due to network error/i)
+      expect(mockWrite).not.toHaveBeenCalled()
+    })
+
+    it('rejects apply mode on validation network error without writing CSS', async function applyNetworkError() {
+      global.fetch = vi.fn(function () {
+        return Promise.resolve({ ok: false, status: 503 } as Response)
+      }) as typeof global.fetch
+
+      const { fontThemeAITool } = await import('../font-theme.js')
+
+      await expect(
+        (fontThemeAITool as any).execute(
+          {
+            mode: 'apply',
+            headerFont: { name: 'Playfair Display', weights: ['700'] },
+            bodyFont: { name: 'Source Sans 3', weights: ['400'] },
+            count: 4,
+          },
+          { metadata: { appId: 'test-app' } },
+        ),
+      ).rejects.toThrow(/Could not validate fonts due to network error/i)
+      expect(mockWrite).not.toHaveBeenCalled()
+    })
+
+    it('requires both headerFont and bodyFont in set mode', async function setXorGuard() {
+      const { fontThemeAITool } = await import('../font-theme.js')
+
+      await expect(
+        (fontThemeAITool as any).execute(
+          { mode: 'set', headerFont: { name: 'Lora' }, count: 4 },
+          { metadata: { appId: 'test-app' } },
+        ),
+      ).rejects.toThrow(/Both headerFont and bodyFont are required/i)
+    })
+
+    it('requires both headerFont and bodyFont in apply mode', async function applyXorGuard() {
+      const { fontThemeAITool } = await import('../font-theme.js')
+
+      await expect(
+        (fontThemeAITool as any).execute(
+          { mode: 'apply', bodyFont: { name: 'Inter' }, count: 4 },
+          { metadata: { appId: 'test-app' } },
+        ),
+      ).rejects.toThrow(/Both headerFont and bodyFont are required/i)
+    })
+
+    it('applies apply mode with explicit headerFont and bodyFont', async function applyExplicit() {
+      const { fontThemeAITool } = await import('../font-theme.js')
+
+      const result = await (fontThemeAITool as any).execute(
+        {
+          mode: 'apply',
+          headerFont: { name: 'Playfair Display', weights: ['700'], category: 'serif' },
+          bodyFont: { name: 'Source Sans 3', weights: ['400', '600'], category: 'sans-serif' },
+          count: 4,
+        },
+        { metadata: { appId: 'test-app' } },
+      ) as { success: boolean }
+
+      expect(result.success).toBe(true)
+      const writtenContent = mockWrite.mock.calls[0][0].content as string
+      expect(writtenContent).toContain('"Playfair Display"')
+      expect(writtenContent).toContain('"Source Sans 3"')
+    })
+  })
+
+  describe('#resolveFontSpec', function resolveFontSpecTests() {
+    it('uses role-based weight defaults and category detection when omitted', async function roleDefaults() {
+      const sharedFonts = await import('@airo/shared/fonts')
+      const clampSpy = vi.spyOn(sharedFonts, 'clampWeightsToAvailable').mockResolvedValue(['400'])
+
+      const { resolveFontSpec } = await import('../font-theme.js')
+
+      const heading = await resolveFontSpec({ name: 'Merriweather' }, 'heading')
+      expect(clampSpy).toHaveBeenCalledWith('Merriweather', ['400', '600', '700'])
+      expect(heading.category).toBe('serif')
+
+      const body = await resolveFontSpec({ name: 'Lato' }, 'body')
+      expect(clampSpy).toHaveBeenCalledWith('Lato', ['400', '500'])
+      expect(body.category).toBe('sans-serif')
+
+      clampSpy.mockRestore()
+    })
+  })
+
   describe('rebuild flow gating', function rebuildGating() {
     it('rejects set mode when isRebuildFlow is true', async function blockSet() {
       const { fontThemeAITool } = await import('../font-theme.js');

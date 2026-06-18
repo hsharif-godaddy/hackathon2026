@@ -357,6 +357,83 @@ export function detectFontCategory(fontName: string): FontCategory {
   return 'sans-serif'
 }
 
+const fontSpecSchema = z.object({
+  name: z.string(),
+  weights: z.array(z.string()).optional(),
+  category: z.enum(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy']).optional(),
+})
+
+export async function resolveFontSpec(
+  spec: z.infer<typeof fontSpecSchema>,
+  role: 'heading' | 'body',
+): Promise<FontInfo> {
+  const desired = spec.weights ?? (role === 'heading' ? ['400', '600', '700'] : ['400', '500'])
+  return {
+    name: spec.name,
+    weights: await clampWeightsToAvailable(spec.name, desired),
+    category: spec.category ?? detectFontCategory(spec.name),
+  }
+}
+
+async function assertValidFontPairing(
+  headerFont: FontInfo,
+  bodyFont: FontInfo,
+  op: 'set' | 'apply',
+  appId?: string,
+): Promise<void> {
+  const validation = await validateFontPairing(headerFont, bodyFont)
+  if (validation.valid) {
+    return
+  }
+  if (validation.networkError) {
+    logger.warn(`fontTheme.${op}.validation_network_error`, {
+      appId,
+      headerFont: headerFont.name,
+      bodyFont: bodyFont.name,
+    })
+    throw new Error('Could not validate fonts due to network error. Please try again.')
+  }
+  logger.error(`fontTheme.${op}.validation_failed`, {
+    appId,
+    headerFont: headerFont.name,
+    bodyFont: bodyFont.name,
+  })
+  throw new Error(
+    `Invalid font selection: "${headerFont.name}" / "${bodyFont.name}" not found on Google Fonts or uses unsupported weights.`,
+  )
+}
+
+async function applyResolvedFontPairing(
+  appId: string,
+  themeName: string,
+  headerFont: FontInfo,
+  bodyFont: FontInfo,
+  logEventPrefix: string,
+  customerId: string | undefined,
+): Promise<void> {
+  const workspace = createForWorkspace(appId, 'preview')
+  if (!workspace) {
+    throw new Error('Workspace not available for this app')
+  }
+
+  const result = await updateCssFontVariables(workspace.files, headerFont, bodyFont)
+  if (!result.success) {
+    throw new Error(result.message)
+  }
+
+  await persistFontThemeToPlan(
+    appId,
+    { name: themeName, headerFont, bodyFont },
+    logEventPrefix,
+  )
+  await persistBrandTypographyToMemory(
+    appId,
+    customerId,
+    { name: themeName, headerFont, bodyFont },
+    logEventPrefix,
+  )
+}
+
 /**
  * Load font generation prompt from markdown file
  */
@@ -809,7 +886,8 @@ This tool has three modes:
 - Picks and applies a font immediately without showing options
 - Use when you want to make a decision and apply it directly
 - Provide a description of desired font style (e.g., "modern sans-serif for tech startup")
-- The LLM will generate ONE appropriate font and apply it automatically
+- OR provide explicit headerFont + bodyFont objects to apply known Google Font names without LLM
+- The LLM will generate ONE appropriate font and apply it automatically when only description is given
 - NOT for website rebuild flows — rebuild typography is pre-applied in globals.css
 
 **SUGGEST MODE** - Show font theme options (for interactive flows):
@@ -821,6 +899,7 @@ This tool has three modes:
 **APPLY MODE** - Apply a previously suggested font theme:
 - Updates CSS variables with selected fonts
 - Loads Google Fonts automatically
+- Supports explicit headerFont + bodyFont pairing (no session or LLM required)
 - Provides implementation guidance
 
 CURATED THEMES (shown when no description provided in suggest mode):
@@ -878,8 +957,10 @@ MODE SELECTION GUIDE:
 - APPLY mode: User clicks "Apply" button in widget after seeing suggestions`,
   z.object({
     mode: z.enum(['set', 'suggest', 'apply']).describe('set: Pick and apply font directly | suggest: Show font options | apply: Apply a selected theme'),
-    description: z.string().optional().describe('For set/suggest mode: What kind of fonts? (e.g., "elegant serif for luxury brand", "modern tech fonts"). Required for set mode. For suggest mode, if omitted, shows 4 curated professional themes.'),
+    description: z.string().optional().describe('For set/suggest mode: What kind of fonts? (e.g., "elegant serif for luxury brand", "modern tech fonts"). Required for set mode unless headerFont and bodyFont are provided. For suggest mode, if omitted, shows 4 curated professional themes.'),
     count: z.number().min(2).max(6).default(4).describe('For suggest mode with description: Number of font recommendations to generate (2-6, default 4)'),
+    headerFont: fontSpecSchema.optional().describe('For set/apply mode: Explicit heading Google Font (name, optional weights/category). Requires bodyFont.'),
+    bodyFont: fontSpecSchema.optional().describe('For set/apply mode: Explicit body Google Font (name, optional weights/category). Requires headerFont.'),
     themeId: z.string().optional().describe('For apply mode: ID of theme to apply (e.g., "modern-professional") or custom font ID from LLM suggestions'),
     themeName: z.string().optional().describe('For apply mode: EXTRACT theme name from messages like "Apply font theme: Dynamic Edge" → use "Dynamic Edge". This retrieves the font from session state. REQUIRED when message starts with "Apply font theme:"'),
     fontName: z.string().optional().describe('For apply mode with custom fonts: Google Font name (e.g., "Crimson Text")'),
@@ -920,8 +1001,59 @@ MODE SELECTION GUIDE:
           throw new Error('App ID is required for set mode')
         }
 
+        if ((input.headerFont && !input.bodyFont) || (!input.headerFont && input.bodyFont)) {
+          throw new Error('Both headerFont and bodyFont are required for explicit font pairing')
+        }
+
+        if (input.headerFont && input.bodyFont) {
+          const headerFont = await resolveFontSpec(input.headerFont, 'heading')
+          const bodyFont = await resolveFontSpec(input.bodyFont, 'body')
+          await assertValidFontPairing(headerFont, bodyFont, 'set', appId)
+
+          const themeName = headerFont.name === bodyFont.name
+            ? headerFont.name
+            : `${headerFont.name} & ${bodyFont.name}`
+
+          logger.info('fontTheme.set.explicit.begin', {
+            appId,
+            headerFont: headerFont.name,
+            bodyFont: bodyFont.name,
+          })
+
+          await applyResolvedFontPairing(
+            appId,
+            themeName,
+            headerFont,
+            bodyFont,
+            'fontTheme.set',
+            customerIdFromContext(context),
+          )
+
+          const fontDescription = headerFont.name === bodyFont.name
+            ? headerFont.name
+            : `${headerFont.name} (headers) + ${bodyFont.name} (body)`
+
+          logger.info('fontTheme.set.explicit.complete', {
+            appId,
+            headerFont: headerFont.name,
+            bodyFont: bodyFont.name,
+            themeName,
+          })
+
+          return {
+            success: true,
+            message: `Applied font theme: ${themeName}`,
+            appliedFont: {
+              name: themeName,
+              headerFont,
+              bodyFont,
+            },
+            suggestedResponse: `Font theme "${themeName}" (${fontDescription}) has been applied.`,
+          }
+        }
+
         if (!input.description) {
-          throw new Error('Description is required for set mode')
+          throw new Error('Description is required for set mode unless headerFont and bodyFont are provided')
         }
 
         logger.info('fontTheme.set.begin', {
@@ -951,35 +1083,18 @@ MODE SELECTION GUIDE:
 
         const selectedFont = llmFonts[0]!
 
-        const setWorkspace = createForWorkspace(appId, 'preview')
-        if (!setWorkspace) {
-          throw new Error('Workspace not available for this app')
-        }
-
-        // Apply the font pairing
-        const result = await updateCssFontVariables(setWorkspace.files, selectedFont.headerFont, selectedFont.bodyFont)
-
-        if (!result.success) {
-          throw new Error(result.message)
-        }
+        await applyResolvedFontPairing(
+          appId,
+          selectedFont.name,
+          selectedFont.headerFont,
+          selectedFont.bodyFont,
+          'fontTheme.set',
+          customerIdFromContext(context),
+        )
 
         const fontDescription = selectedFont.headerFont.name === selectedFont.bodyFont.name
           ? selectedFont.headerFont.name
           : `${selectedFont.headerFont.name} (headers) + ${selectedFont.bodyFont.name} (body)`
-
-        // Persist font theme to app plan
-        await persistFontThemeToPlan(
-          appId,
-          { name: selectedFont.name, headerFont: selectedFont.headerFont, bodyFont: selectedFont.bodyFont },
-          'fontTheme.set'
-        )
-
-        await persistBrandTypographyToMemory(
-          appId,
-          customerIdFromContext(context),
-          { name: selectedFont.name, headerFont: selectedFont.headerFont, bodyFont: selectedFont.bodyFont },
-          'fontTheme.set',
-        )
 
         logger.info('fontTheme.set.complete', {
           appId,
@@ -1144,7 +1259,27 @@ MODE SELECTION GUIDE:
 
       let skipValidation = false // Curated themes are pre-validated
 
-      if (input.themeId && FONT_THEMES[input.themeId]) {
+      if ((input.headerFont && !input.bodyFont) || (!input.headerFont && input.bodyFont)) {
+        throw new Error('Both headerFont and bodyFont are required for explicit font pairing')
+      }
+
+      if (input.headerFont && input.bodyFont) {
+        headerFont = await resolveFontSpec(input.headerFont, 'heading')
+        bodyFont = await resolveFontSpec(input.bodyFont, 'body')
+        themeName = input.themeName ?? (headerFont.name === bodyFont.name
+          ? headerFont.name
+          : `${headerFont.name} & ${bodyFont.name}`)
+
+        await assertValidFontPairing(headerFont, bodyFont, 'apply', appId)
+        skipValidation = true
+
+        logger.info('fontTheme.apply.explicit_pairing', {
+          appId,
+          headerFont: headerFont.name,
+          bodyFont: bodyFont.name,
+          themeName,
+        })
+      } else if (input.themeId && FONT_THEMES[input.themeId]) {
         const curatedTheme = FONT_THEMES[input.themeId]!
         headerFont = curatedTheme.headerFont
         bodyFont = curatedTheme.bodyFont
@@ -1227,7 +1362,7 @@ MODE SELECTION GUIDE:
           weights: input.weights
         })
       } else {
-        throw new Error(`Either themeId (for curated themes), themeName (from previous suggestion), or fontName + weights are required for apply mode.`)
+        throw new Error(`Either themeId (for curated themes), themeName (from previous suggestion), fontName + weights, or headerFont + bodyFont are required for apply mode.`)
       }
 
       // Validate fonts before applying them (skip for curated themes)
