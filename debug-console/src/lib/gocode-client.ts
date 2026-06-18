@@ -8,8 +8,14 @@
  *   dev  → caas-gocode-dev.caas-dev.prod.onkatana.net
  */
 
+import { getDefaultGoCodeEndpoint, getS2SToken, isS2SAuthEnabled } from '@airo/ai-lib';
+
 function getGoCaasBaseUrl(): string {
   if (process.env.OPENAI_BASE_URL) return process.env.OPENAI_BASE_URL;
+
+  if (isS2SAuthEnabled()) {
+    return getDefaultGoCodeEndpoint();
+  }
 
   const env = (process.env.NODE_ENV ?? 'development').toLowerCase();
   if (env === 'production' || env === 'prod') {
@@ -32,8 +38,14 @@ function getGoCaasModel(): string {
 }
 
 export interface GoCaasMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string | null;
+  tool_call_id?: string;
+  tool_calls?: Array<{
+    id: string;
+    type: 'function';
+    function: { name: string; arguments: string };
+  }>;
 }
 
 export interface GoCaasResponse {
@@ -65,12 +77,25 @@ export interface GoCaasRequestOptions {
  */
 export async function callGoCode(options: GoCaasRequestOptions): Promise<GoCaasResponse> {
   const baseUrl = getGoCaasBaseUrl();
-  const apiKey = getGoCaasApiKey();
   const model = options.model ?? getGoCaasModel();
 
-  if (!apiKey) {
+  let authorizationHeader: string;
+  if (isS2SAuthEnabled()) {
+    const s2sToken = await getS2SToken();
+    authorizationHeader = `sso-jwt ${s2sToken}`;
+  } else {
+    const apiKey = getGoCaasApiKey();
+    if (!apiKey) {
+      throw new Error(
+        'GoCode not configured. Set OPENAI_API_KEY (GoCaaS) or enable GOCODE_USE_S2S_AUTH=true.'
+      );
+    }
+    authorizationHeader = `Bearer ${apiKey}`;
+  }
+
+  if (!authorizationHeader) {
     throw new Error(
-      'GoCode not configured. Set OPENAI_API_KEY (GoCaaS) or ANTHROPIC_AUTH_TOKEN in environment.'
+      'GoCode not configured. Set OPENAI_API_KEY (GoCaaS) or enable GOCODE_USE_S2S_AUTH=true.'
     );
   }
 
@@ -90,7 +115,7 @@ export async function callGoCode(options: GoCaasRequestOptions): Promise<GoCaasR
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
+      'Authorization': authorizationHeader,
     },
     body: JSON.stringify(requestBody),
     signal: options.timeout_ms ? AbortSignal.timeout(options.timeout_ms) : undefined,
@@ -108,5 +133,5 @@ export async function callGoCode(options: GoCaasRequestOptions): Promise<GoCaasR
  * Check if GoCode is configured (has API key)
  */
 export function isGoCodeConfigured(): boolean {
-  return Boolean(getGoCaasApiKey());
+  return isS2SAuthEnabled() || Boolean(getGoCaasApiKey());
 }

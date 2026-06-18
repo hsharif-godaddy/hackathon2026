@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
+import { callGoCode, isGoCodeConfigured } from '@/lib/gocode-client';
 import { logger } from '@/lib/logger';
 import { getL1TranscriptsDb } from '@/lib/l1-transcript-db';
 
@@ -38,25 +39,6 @@ interface OaiResponse {
   }>;
 }
 
-// ── GoCaaS (OpenAI-compatible proxy) ──────────────────────────────────────
-// GoDaddy's internal AI proxy. Env vars match the agents/ pattern.
-// Endpoints: prod  → caas-gocode.caas.prod.onkatana.net
-//            test  → caas-gocode-test.caas-test.prod.onkatana.net
-//            dev   → caas-gocode-dev.caas-dev.prod.onkatana.net
-// Falls back to direct Anthropic if OPENAI_BASE_URL and OPENAI_API_KEY are
-// not set AND ANTHROPIC_AUTH_TOKEN / ANTHROPIC_API_KEY are set.
-
-function getAiBase(): string {
-  if (process.env.OPENAI_BASE_URL) return process.env.OPENAI_BASE_URL;
-  // Derive from NODE_ENV when no explicit override
-  const env = (process.env.NODE_ENV ?? 'development').toLowerCase();
-  if (env === 'production' || env === 'prod') return 'https://caas-gocode.caas.prod.onkatana.net';
-  if (env === 'test') return 'https://caas-gocode-test.caas-test.prod.onkatana.net';
-  return 'https://caas-gocode-dev.caas-dev.prod.onkatana.net';
-}
-
-const AI_BASE = getAiBase();
-const AI_KEY = process.env.OPENAI_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN ?? process.env.ANTHROPIC_API_KEY ?? '';
 // Model name as understood by GoCaaS — mirrors what agents/ uses.
 const MODEL = process.env.GOCAAS_MODEL ?? 'claude-opus-4-6';
 
@@ -666,37 +648,12 @@ async function dispatchTool(name: string, argsJson: string): Promise<string> {
   }
 }
 
-// ── GoCaaS (OpenAI-compatible) call ───────────────────────────────────────
-
-async function callGoCaaS(messages: unknown[]): Promise<OaiResponse> {
-  const res = await fetch(`${AI_BASE}/v1/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${AI_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 2048,
-      tools: TOOLS,
-      messages,
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`GoCaaS ${res.status}: ${text.slice(0, 400)}`);
-  }
-
-  return res.json() as Promise<OaiResponse>;
-}
-
 // ── Route handler ──────────────────────────────────────────────────────────
 
 export const POST = withAuth(async function supportplaneAsk(request: NextRequest) {
-  if (!AI_KEY) {
+  if (!isGoCodeConfigured()) {
     return NextResponse.json(
-      { error: 'AI not configured. Set OPENAI_API_KEY (GoCaaS) or ANTHROPIC_AUTH_TOKEN.' },
+      { error: 'AI not configured. Set OPENAI_API_KEY or enable GOCODE_USE_S2S_AUTH=true.' },
       { status: 503 }
     );
   }
@@ -724,7 +681,13 @@ export const POST = withAuth(async function supportplaneAsk(request: NextRequest
 
       try {
         while (true) {
-          const resp = await callGoCaaS(messages);
+          const resp = await callGoCode({
+            messages: messages as any,
+            model: MODEL,
+            max_tokens: 2048,
+            temperature: 0.7,
+            tools: TOOLS,
+          }) as OaiResponse;
           const choice = resp.choices[0];
           if (!choice) break;
 

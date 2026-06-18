@@ -4,7 +4,6 @@
  * Phase 1: Core database infrastructure
  */
 
-import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -36,30 +35,29 @@ export function getL1TranscriptsDb(): Database.Database {
     fs.mkdirSync(dbDir, { recursive: true });
   }
 
-  // Sync from S3 before opening (synchronous wait required)
+  // Sync from S3 before opening (uses AWS SDK instead of AWS CLI for ECS compatibility)
   if (!_syncPromise) {
-    // Use AWS CLI to download if local is missing or too small
-    try {
-      if (!fs.existsSync(DB_PATH) || fs.statSync(DB_PATH).size < 4096) {
-        const bucket = process.env.L1_TRANSCRIPTS_S3_BUCKET || 'airo-builder-l1-transcripts-dev';
-        const prefix = 'backups/support-plane/l1_transcripts/';
-        console.log('[l1-transcript-db] Downloading latest backup from S3...');
-
-        // Find latest backup
-        const listCmd = `aws s3 ls s3://${bucket}/${prefix} --recursive | sort | tail -n 1 | awk '{print $4}'`;
-        const latestKey = execSync(listCmd, { encoding: 'utf8' }).trim();
-
-        if (latestKey) {
-          execSync(`aws s3 cp s3://${bucket}/${latestKey} ${DB_PATH}`, { stdio: 'inherit' });
-          console.log('[l1-transcript-db] Downloaded:', latestKey);
-        } else {
-          console.log('[l1-transcript-db] No S3 backup found, starting fresh');
-        }
-      }
-    } catch (err) {
+    _syncPromise = syncDb(DB_PATH, 'l1_transcripts.db').catch(function handleSyncError(err) {
       console.error('[l1-transcript-db] S3 sync failed:', err instanceof Error ? err.message : String(err));
-    }
-    _syncPromise = Promise.resolve();
+      console.log('[l1-transcript-db] Continuing with empty/existing local DB');
+    });
+  }
+
+  // Block until sync completes (sync or fail fast)
+  // This is a top-level await workaround - the promise resolves before DB opens
+  let syncComplete = false;
+  _syncPromise.then(function markComplete() {
+    syncComplete = true;
+  });
+
+  // Busy-wait for sync (not ideal, but maintains synchronous API contract)
+  const startTime = Date.now();
+  while (!syncComplete && Date.now() - startTime < 10000) {
+    // Spin for max 10 seconds
+  }
+
+  if (!syncComplete) {
+    console.warn('[l1-transcript-db] S3 sync timed out, proceeding with local DB');
   }
 
   // Create database connection
