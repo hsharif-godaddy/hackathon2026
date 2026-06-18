@@ -13,7 +13,7 @@
 import { test, expect } from '../helpers/test-fixtures';
 
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
-import { ensureAuthenticated, loginIfNeeded } from '../helpers/auth';
+import { ensureAuthenticated, loginViaSsoDirect } from '../helpers/auth';
 import { LONG_TIMEOUT, DEFAULT_TIMEOUT, AI_RESPONSE_TIMEOUT_MS, E2E_NO_DELETE, getSpecPrefix } from '../helpers/constants';
 import { dismissOverlays, logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
 
@@ -23,6 +23,11 @@ const SPEC_PREFIXES = ['color-scheme-selection', 'font-theme-selection'] as cons
 test.describe('Edit Interactions', () => {
   test.beforeEach(async ({ page }, testInfo) => {
     logTestStart(testInfo);
+    // Authenticate once here via the fast standalone-SSO login (e2e-v2 style)
+    // so neither the eviction guard below nor the test body needs the slow
+    // homepage user-menu SSO flow. evictOldestE2eAppsToFitLimit's internal
+    // loginIfNeeded is then a fast no-op (already signed in).
+    await loginViaSsoDirect(page);
     if (!E2E_NO_DELETE) {
       await page.goto('/');
       await evictOldestE2eAppsToFitLimit(page).catch(() => {});
@@ -52,14 +57,10 @@ test.describe('Edit Interactions', () => {
       localStorage.setItem('airo-intro-tour-shown', 'true');
     });
 
+    // Already authenticated in beforeEach (loginViaSsoDirect). Land on the
+    // homepage and clear any overlays before submitting the prompt.
     await page.goto('/');
-    // The "Projects" popover auto-opens on the authenticated homepage and
-    // covers the user menu — dismiss overlays first or loginIfNeeded's
-    // user-menu click can't open its popover (helpers/auth.ts:540).
     await dismissOverlays(page);
-    await loginIfNeeded(page);
-    // Re-navigate fresh after potential SSO redirect.
-    await page.goto('/');
 
     const promptInput = page.getByTestId('homepage-prompt-input');
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
@@ -85,11 +86,15 @@ test.describe('Edit Interactions', () => {
 
     await dismissOverlays(page);
 
-    // Wait for initial generation to complete — the one unavoidable AI wait.
-    // Prod generation can exceed a single 5-min cycle (it timed out the bare
-    // AI_RESPONSE_TIMEOUT_MS here on run 27605024226), so allow two cycles,
-    // matching tests/e2e-v2/develop-ui.spec.ts.
-    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: 2 * AI_RESPONSE_TIMEOUT_MS });
+    // Wait for initial generation to complete via the response's "Completed"
+    // status (data-testid="response-metadata-status"). The chat-send-button is
+    // NOT a usable readiness signal: the post-gen input is collapsed and the
+    // send button only renders once the input has text (a bare wait — and even
+    // clicking to focus — never surfaces it; Step 2's fill activates it). Two AI
+    // cycles of budget — prod generation can exceed one (run 27605024226).
+    await expect(
+      page.getByTestId('response-metadata-status').filter({ hasText: /Completed/i }).first(),
+    ).toBeVisible({ timeout: 2 * AI_RESPONSE_TIMEOUT_MS });
     console.log('  Initial generation completed');
 
     await ensureAuthenticated(page);
@@ -174,14 +179,10 @@ test.describe('Edit Interactions', () => {
       localStorage.setItem('airo-intro-tour-shown', 'true');
     });
 
+    // Already authenticated in beforeEach (loginViaSsoDirect). Land on the
+    // homepage and clear any overlays before submitting the prompt.
     await page.goto('/');
-    // The "Projects" popover auto-opens on the authenticated homepage and
-    // covers the user menu — dismiss overlays first or loginIfNeeded's
-    // user-menu click can't open its popover (helpers/auth.ts:540).
     await dismissOverlays(page);
-    await loginIfNeeded(page);
-    // Re-navigate fresh after potential SSO redirect.
-    await page.goto('/');
 
     const promptInput = page.getByTestId('homepage-prompt-input');
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
@@ -203,9 +204,12 @@ test.describe('Edit Interactions', () => {
 
     await dismissOverlays(page);
 
-    // Wait for initial generation to complete — see the color-scheme test for
-    // why this allows two AI cycles (prod generation can exceed one).
-    await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: 2 * AI_RESPONSE_TIMEOUT_MS });
+    // Wait for initial generation to complete via the response's "Completed"
+    // status — see the color-scheme test for why chat-send-button isn't a
+    // usable readiness signal here (it only renders once the input has text).
+    await expect(
+      page.getByTestId('response-metadata-status').filter({ hasText: /Completed/i }).first(),
+    ).toBeVisible({ timeout: 2 * AI_RESPONSE_TIMEOUT_MS });
     console.log('  Initial generation completed');
 
     await ensureAuthenticated(page);

@@ -14,7 +14,7 @@
 import { test, expect } from '../helpers/test-fixtures';
 
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
-import { handleSsoLogin, ensureAuthenticated, loginIfNeeded } from '../helpers/auth';
+import { detectSsoType, ensureAuthenticated, handleSsoLogin, isSignInUIResult, loginViaSsoDirect } from '../helpers/auth';
 import { LONG_TIMEOUT, CHAT_INPUT_TIMEOUT, DEFAULT_TIMEOUT, PREVIEW_TIMEOUT, APPS_GRID_PAGE_SIZE, E2E_NO_DELETE, getSpecPrefix } from '../helpers/constants';
 import { dismissBanners, dismissOverlays, logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
 
@@ -24,6 +24,12 @@ const SPEC_PREFIXES = ['apps-page'] as const;
 test.describe('Apps Page & Navigation', () => {
   test.beforeEach(async ({ page }, testInfo) => {
     logTestStart(testInfo);
+    // Authenticate once here via the fast standalone-SSO login (e2e-v2 style)
+    // instead of the slower homepage user-menu -> sign-in-iframe flow. Every
+    // test below then starts already signed in, so their body navigations skip
+    // the login round-trip; evictOldestE2eAppsToFitLimit's internal
+    // loginIfNeeded becomes a fast no-op once authenticated.
+    await loginViaSsoDirect(page);
     if (!E2E_NO_DELETE) {
       await page.goto('/');
       await evictOldestE2eAppsToFitLimit(page).catch(() => {});
@@ -43,8 +49,14 @@ test.describe('Apps Page & Navigation', () => {
 
     await page.locator('[data-eid*="homepage.prompt.submit"]').click();
 
-    // Handle SSO login
-    await handleSsoLogin(page);
+    // Already authenticated in beforeEach, so the submit normally redirects
+    // straight to /develop/. Only drive the SSO flow if the session refreshed
+    // mid-test and the sign-in UI actually reappeared.
+    const ssoResult = await detectSsoType(page, true);
+    if (isSignInUIResult(ssoResult)) {
+      console.log('  SSO refresh detected, re-authenticating...');
+      await handleSsoLogin(page);
+    }
 
     // Wait for app creation and redirect to develop
     await page.waitForURL(/\/develop\//, { timeout: LONG_TIMEOUT });
@@ -261,26 +273,24 @@ test.describe('Apps Page & Navigation', () => {
 
   // Re-enabled (VNEXT-80869). The cited UXCore Next/Prev label mismatch no
   // longer applies — @ux/pagination renders the exact 'Go to next page' /
-  // 'Go to previous page' aria-labels this test uses. The real fixes were the
-  // login flow (loginIfNeeded) and dismissing the cookie banner that overlays
-  // the bottom-anchored pagination nav.
+  // 'Go to previous page' aria-labels this test uses. The real fixes were a
+  // robust login flow (now the shared beforeEach standalone-SSO login) and
+  // dismissing the cookie banner that overlays the bottom-anchored pagination
+  // nav.
   test('Apps Page Pagination - Next/Prev navigation with intercepted API', async ({ page }) => {
     const TOTAL_SITES = APPS_GRID_PAGE_SIZE + 2;
 
     // ========================================
-    // STEP 1: Authenticate
+    // STEP 1: Confirm the authenticated homepage is ready
     // ========================================
-    console.log('🔐 Step 1: Authenticating...');
+    // Auth happens once in beforeEach via the fast standalone-SSO login, so
+    // this test starts already signed in — just land on the homepage and gate
+    // on the chrome being ready.
+    console.log('🔐 Step 1: Loading authenticated homepage...');
     await page.goto('/');
     const promptInput = page.getByTestId('homepage-prompt-input');
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
 
-    // Authenticate via the robust helper rather than the manual
-    // openUserMenu + popover sign-in-button click + handleSsoLogin sequence,
-    // which flaked here (the popover sign-in button click timed out at 30s).
-    // loginIfNeeded validates the popover actually opened, handles
-    // already-authed state, and retries.
-    await loginIfNeeded(page);
     // Clear the post-auth "Projects" popover (auto-opens for accounts with
     // existing apps) so it can't overlay later interactions — consistent with
     // the rest of the suite (e.g. develop-publish.spec.ts).
@@ -392,31 +402,28 @@ test.describe('Apps Page & Navigation', () => {
   // Re-enabled (VNEXT-80869). Previously skipped after prod CI run 25675567980
   // hung on the auth-loading shell (`airo-header` never attached) using the
   // manual openUserMenu + handleSsoLogin sequence. Hardened: authenticate via
-  // the robust `loginIfNeeded` helper, then gate on `airo-header` visibility so
-  // a recurrence of the loading-shell stall fails fast/deterministically
-  // instead of hanging on the prompt-input wait.
+  // the shared beforeEach standalone-SSO login, then gate on `airo-header`
+  // visibility so a recurrence of the loading-shell stall fails
+  // fast/deterministically instead of hanging on the prompt-input wait.
   test('Homepage Prompt Input - Validation & Suggestions', async ({ page }) => {
     // ========================================
-    // STEP 1: Navigate and login
+    // STEP 1: Load the authenticated homepage
     // ========================================
-    console.log('🔐 Step 1: Logging in...');
+    // Auth happens once in beforeEach via the fast standalone-SSO login, so
+    // this test starts already signed in.
+    console.log('🔐 Step 1: Loading authenticated homepage...');
     await page.goto('/');
 
     const promptInput = page.getByTestId('homepage-prompt-input');
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
 
-    // Authenticate on the homepage via the robust helper — it validates the
-    // user-menu popover actually opened, detects an already-authed session, and
-    // retries, unlike the manual openUserMenu + sign-in-button + handleSsoLogin
-    // sequence that stalled when the homepage hung on the auth-loading shell.
-    await loginIfNeeded(page);
     // Clear the post-auth "Projects" popover (auto-opens for accounts with
     // existing apps) so it can't overlay the suggestion buttons clicked below.
     await dismissOverlays(page);
 
-    // Fast-fail readiness gate: the reason this test was skipped is that the
+    // Fast-fail readiness gate: this test was originally skipped because the
     // homepage occasionally hangs on the auth-loading shell where `airo-header`
-    // never attaches. Assert it here so that failure is deterministic at
+    // never attaches. Assert it here so failure is deterministic at
     // DEFAULT_TIMEOUT rather than a 60s hang on the prompt-input wait below.
     await expect(page.getByTestId('airo-header')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
