@@ -60,7 +60,8 @@ async function handler(request: NextRequest) {
 
     // Sort by last modified (newest first)
     files.sort(
-      (a, b) => new Date(b.lastModifiedDateTime).getTime() - new Date(a.lastModifiedDateTime).getTime()
+      (a, b) =>
+        new Date(b.lastModifiedDateTime).getTime() - new Date(a.lastModifiedDateTime).getTime()
     );
 
     const db = getL1TranscriptsDb();
@@ -112,7 +113,11 @@ async function handler(request: NextRequest) {
         try {
           rows = await parseXlsxFile(fileBuffer, file.name);
         } catch (parseError) {
-          logger.error('sharepoint.sync.parse_error', { file_name: file.name }, { error: parseError as Error });
+          logger.error(
+            'sharepoint.sync.parse_error',
+            { file_name: file.name },
+            { error: parseError as Error }
+          );
           errors.push({
             file: file.name,
             error: `Failed to parse: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
@@ -130,14 +135,16 @@ async function handler(request: NextRequest) {
         // Get existing interaction_ids to detect new rows
         const existingIds = new Set(
           (
-            db
-              .prepare('SELECT interaction_id FROM l1_transcripts')
-              .all() as Array<{ interaction_id: string }>
-          ).map(r => r.interaction_id)
+            db.prepare('SELECT interaction_id FROM l1_transcripts').all() as Array<{
+              interaction_id: string;
+            }>
+          ).map((r) => r.interaction_id)
         );
 
         // Filter to only new rows
-        const newRows = rows.filter(row => !existingIds.has(row.interaction_id));
+        const newRows = rows.filter(
+          (row) => row.interaction_id && !existingIds.has(row.interaction_id)
+        );
 
         if (newRows.length === 0) {
           logger.info('sharepoint.sync.no_new_rows', {
@@ -230,7 +237,11 @@ async function handler(request: NextRequest) {
         filesProcessed++;
         totalNewRows += result.inserted;
       } catch (error) {
-        logger.error('sharepoint.sync.file_error', { file_name: file.name }, { error: error as Error });
+        logger.error(
+          'sharepoint.sync.file_error',
+          { file_name: file.name },
+          { error: error as Error }
+        );
         errors.push({
           file: file.name,
           error: error instanceof Error ? error.message : String(error),
