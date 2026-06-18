@@ -546,6 +546,93 @@ function shouldOpenCrmCase(row) {
   return cat === 'issue' || cat === 'support';
 }
 
+// Maps each feedback topic (the literal `key` the UI sends, see
+// app/src/components/feedback/utils.ts) to its Salesforce issue type, keyed
+// by category because the bug ("issue") and support flows present DIFFERENT
+// topic vocabularies. Both categories open CRM cases (shouldOpenCrmCase);
+// `feedback` (NPS) does not, so it has no entry. These issue types live under
+// the Websites → Airo AI Builder secondary category and all route to the same
+// Airo L2 queue — `issue` is a reporting/triage label, not a routing key.
+// `AI assistant` has no dedicated SF issue type yet, so it maps to General
+// Support (revisit if SF adds an "AI Assistant" type).
+// Note: app/src/lib/crm/case-client.ts is the legacy BFF path (flag-gated,
+// effectively dead — fanout Lambda owns all CRM case creation). It still
+// hardcodes issue: 'General Support' and will be removed in a follow-up cleanup.
+const TOPIC_TO_ISSUE = {
+  support: {
+    'Domain or DNS': 'Domain Change',
+    'Publishing my site': 'Publishing',
+    'Billing or credits': 'Credits',
+    'Account or login': 'Account Login',
+    'Plan or upgrade': 'Plan Change',
+    'Something else': 'General Support',
+  },
+  issue: {
+    'Editor or canvas': 'Editor',
+    'AI assistant': 'General Support',
+    'Publishing or preview': 'Publishing',
+    'Credits or limits': 'Credits',
+    'Something else': 'General Support',
+  },
+};
+
+// Tie-breaker for multi-select submissions. The form is multi-select but
+// `issue` is single-valued, and we lose the customer's selection order (the
+// payload sorts topics alphabetically). When 2+ specific topics are picked we
+// attribute to the highest-priority one. Publishing is pinned #1 per product
+// priority; the rest roughly follow observed volume. Spans both vocabularies;
+// ties are only ever broken within one category's producible set. General
+// Support has no entry (defaults to 0) so it never beats a real specific.
+// All values are intentionally distinct — reduce tie-breaking is deterministic
+// only when priorities differ; equal values would silently keep the first-seen.
+const ISSUE_PRIORITY = {
+  'Publishing': 70,
+  'Credits': 50,
+  'Domain Change': 40,
+  'Editor': 30,
+  'Account Login': 20,
+  'Plan Change': 10,
+};
+
+/**
+ * Resolve the Salesforce `issue` value from the feedback category + selected
+ * topics. Both `support` and `issue` (bug) carry topics and open cases;
+ * `feedback` (NPS) never opens a case so it falls through to General Support.
+ *
+ * Rules (in order):
+ *   1. No topic map for the category (e.g. feedback) → General Support.
+ *   2. "Something else" anywhere in the selection → General Support (the
+ *      customer signalling "doesn't fit a bucket" → human triage). Note
+ *      `AI assistant` maps to General Support too but does NOT trump — a
+ *      concrete co-selected topic (e.g. Editor) still wins.
+ *   3. Map the remaining topics, dropping any unknown strings.
+ *   4. Nothing mappable left → General Support.
+ *   5. Otherwise pick the highest-priority issue (ISSUE_PRIORITY).
+ *
+ * Full topic list is also preserved in the case note text (`Topics: ...`),
+ * so collapsing to one `issue` loses no information for the agent.
+ */
+function resolveIssueType(category, topics) {
+  const map = TOPIC_TO_ISSUE[category];
+  if (!map) return 'General Support';
+  if (topics.includes('Something else')) return 'General Support';
+  // Guard with typeof === 'string' instead of Boolean to defend against
+  // prototype-chain lookups: map['constructor'] / map['toString'] etc. resolve
+  // to Object.prototype functions (truthy) which would survive filter(Boolean)
+  // and then stringify to undefined in JSON — CMAPI would receive no issue field.
+  const issues = topics.map((t) => map[t]).filter((v) => typeof v === 'string');
+  // Warn when topics were provided but none matched the known vocabulary —
+  // converts future UI topic-key drift into a dashboard signal.
+  const dropped = topics.filter((t) => t !== 'Something else' && !map[t]);
+  if (dropped.length > 0 && issues.length === 0) {
+    log('warn', 'fanout.crm.issue.unknown_topics', { category, droppedTopics: dropped });
+  }
+  if (issues.length === 0) return 'General Support';
+  return issues.reduce((best, cur) =>
+    (ISSUE_PRIORITY[cur] ?? 0) > (ISSUE_PRIORITY[best] ?? 0) ? cur : best,
+  );
+}
+
 /**
  * Build a CMAPI case body that matches the legacy BFF
  * (`app/src/lib/crm/case-client.ts:buildCaseBody`) shape verbatim — same
@@ -578,7 +665,7 @@ function buildCaseBody({ row, customerId, appId, submissionId }) {
     caseOrigin: 'Automation',
     primaryCategory: 'Websites',
     secondaryCategory: 'Airo AI Builder',
-    issue: 'General Support',
+    issue: resolveIssueType(row.feedback_category, parseTopics(row.feedback_topic_list)),
     externalSystemId: buildExternalSystemId(customerId, appId, submissionId),
     caseNotes: [
       {
@@ -615,7 +702,7 @@ function buildEscalationDetails({ row, truncatedDescription }) {
   const cat = row.feedback_category;
   const topics = parseTopics(row.feedback_topic_list);
   const topicsLine = topics.length > 0 ? ` | Topics: ${topics.join(', ')}` : '';
-  if (cat === 'issue') return `[ISSUE] ${truncatedDescription}`;
+  if (cat === 'issue') return `[ISSUE] ${truncatedDescription}${topicsLine}`;
   if (cat === 'support') {
     return `[SUPPORT] ${truncatedDescription}${topicsLine}`;
   }

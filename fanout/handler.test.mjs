@@ -284,6 +284,94 @@ await test('fresh path (issue): opens case, writes state, posts Slack; NO kickof
   assert.equal(calls.getCase[0].caseId, '500U900000TP4kYIAT');
 });
 
+await test('fresh path: maps support/issue topics to the Salesforce issue field', async () => {
+  // Fresh-path readState: null upfront, then a written lock for the etag re-read.
+  const freshReadState = () => {
+    let readCount = 0;
+    return async () => {
+      readCount += 1;
+      if (readCount === 1) return null;
+      return {
+        state: { schemaVersion: 1, submissionId: 'sub-1', crmCaseId: null, startedAt: Date.now(), lastUpdatedAt: Date.now() },
+        etag: '"e-fresh"',
+      };
+    };
+  };
+
+  // [category, topics JSON, expected issue]. Exercises the real path:
+  // parquet row → parseTopics → resolveIssueType → buildCaseBody → postCase.
+  const cases = [
+    ['support', '["Domain or DNS"]', 'Domain Change'],
+    ['support', '["Billing or credits"]', 'Credits'],
+    ['support', '["Publishing my site","Billing or credits"]', 'Publishing'], // Publishing(70) pinned #1
+    ['support', '["Domain or DNS","Billing or credits"]', 'Credits'],        // Credits(50) > Domain(40)
+    ['support', '["Domain or DNS","Something else"]', 'General Support'],     // trump
+    ['support', '["nonsense"]', 'General Support'],                           // unknown → fallback
+    ['support', '["nonsense","Domain or DNS"]', 'Domain Change'],            // unknown + known → known wins
+    ['support', '["constructor"]', 'General Support'],                       // prototype key → never a function
+    ['support', '["toString","Domain or DNS"]', 'Domain Change'],            // prototype key + known → known wins
+    ['support', null, 'General Support'],                                     // no topics
+    ['issue', '["Editor or canvas"]', 'Editor'],
+    ['issue', '["Credits or limits"]', 'Credits'],
+    ['issue', '["Editor or canvas","Publishing or preview"]', 'Publishing'], // Publishing(70) > Editor(30)
+    ['issue', '["Credits or limits","Editor or canvas"]', 'Credits'],        // Credits(50) > Editor(30)
+    ['issue', '["AI assistant"]', 'General Support'],                         // no SF type
+    ['issue', '["AI assistant","Editor or canvas"]', 'Editor'],              // AI doesn't trump
+    ['issue', '["Editor or canvas","Something else"]', 'General Support'],    // trump
+  ];
+
+  for (const [category, topicList, expected] of cases) {
+    for (const k of Object.keys(calls)) calls[k].length = 0;
+    readStateImpl = freshReadState();
+    parseFeedbackParquetImpl = async () => ({ ...FEEDBACK_ROW, feedback_category: category, feedback_topic_list: topicList });
+
+    await handler(S3_EVENT);
+
+    assert.equal(calls.postCase.length, 1, `${category} ${topicList}: one case`);
+    assert.equal(
+      calls.postCase[0].body.issue,
+      expected,
+      `${category} ${topicList} → expected issue "${expected}"`,
+    );
+  }
+});
+
+await test('fresh path (issue): topics appended to [ISSUE] escalationDetails and case note', async () => {
+  // Locks the behavior change: bug-report notes now include "| Topics: ..." just
+  // like support notes — was previously dropped on the issue branch.
+  let readCount = 0;
+  readStateImpl = async () => {
+    readCount += 1;
+    if (readCount === 1) return null;
+    return {
+      state: { schemaVersion: 1, submissionId: 'sub-1', crmCaseId: null, startedAt: Date.now(), lastUpdatedAt: Date.now() },
+      etag: '"e-fresh"',
+    };
+  };
+  parseFeedbackParquetImpl = async () => ({
+    ...FEEDBACK_ROW,
+    feedback_category: 'issue',
+    feedback_topic_list: '["Editor or canvas","Publishing or preview"]',
+  });
+
+  await handler(S3_EVENT);
+
+  const body = calls.postCase[0].body;
+  const expectedTopics = ' | Topics: Editor or canvas, Publishing or preview';
+  assert.ok(
+    body.additionalData.escalationDetails.startsWith('[ISSUE] '),
+    'escalationDetails must be prefixed [ISSUE]',
+  );
+  assert.ok(
+    body.additionalData.escalationDetails.endsWith(expectedTopics),
+    `escalationDetails must end with topics line, got: ${body.additionalData.escalationDetails}`,
+  );
+  assert.ok(
+    body.caseNotes[0].note.includes(expectedTopics),
+    'case note must include topics line',
+  );
+});
+
 await test('fresh path: async-mode postCase → resolver polls and materializes Salesforce caseRecordId + caseNumber', async () => {
   // CMAPI async POST returns only `referenceId` (= our externalSystemId
   // echoed back) — caseId/caseNumber are null until SF Adapter persists
