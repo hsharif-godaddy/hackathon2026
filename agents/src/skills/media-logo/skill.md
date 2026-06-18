@@ -33,7 +33,7 @@ One layout per call (or `all` for the full kit):
 - `vertical` (1024x1536) — sidebar, hero, mobile, signage
 - `all` — generates all three orientations in one call
 
-If the user names a placement ("add it to the header"), generate the matching layout. If they don't, default to `horizontal` and ask later if they need other orientations, or generate `all` proactively when scaffolding a new app.
+If the user names a placement ("add it to the header"), generate the matching layout. If they don't, **always default to `horizontal`**. Never generate `square`, `vertical`, or `all` unless the user explicitly asks for those layouts.
 
 ## Async generation (background by default)
 

@@ -215,6 +215,8 @@ Then gather the details based on their choice. Use their answers to inform the p
 
 **ALWAYS pass `background: false`.** In this flow you ask the user about the logo right after generating it, so you must WAIT for the finished logo — never generate it in the background. Every `generate_logo` call in this template includes `background: false`; do not omit it.
 
+**ALWAYS use `layout: "horizontal"` here.** Do NOT generate `"square"`, `"vertical"`, or `"all"` during this step. A square logo is ONLY generated later when the user selects "Set as my logo" in Step 7 — never before.
+
 ```
 media-logo__generate_logo({
   prompt: "<complete plain-English description — subject, style, mood, composition>",
@@ -237,13 +239,11 @@ Wait for logo generation to complete, then proceed to Step 7.
 ## Step 7: Ask What's Next
 
 <instructions>
-After all brand elements are saved, use the `askQuestion` tool to present the user with options for what to do next. Do NOT hand off automatically.
-
-Use the default option set below unless the user's specific situation makes a different question more appropriate (e.g., they already asked to build a website, or they explicitly said they only want logo work). The defaults cover the four most common next steps: refining the logo, trying a different logo, using the logo on a website, and saving the logo for use elsewhere.
+**CRITICAL:** After all brand elements are saved, use EXACTLY the `askQuestion` call below. Do NOT rephrase the question, do NOT insert a satisfaction/feedback question first (e.g., "Is this what you imagined?", "How does this look?", "Are you happy with this?"). Go directly to actionable next steps — the user can always ask for changes via the options provided. Do NOT hand off automatically.
 
 ```
 askQuestion({
-  question: "Your logo and brand identity are ready! What would you like to do next?",
+  question: "Your logo and brand identity are ready. What would you like to do next?",
   suggestions: [
     "Edit or refine this logo",
     "Try a different logo style",
