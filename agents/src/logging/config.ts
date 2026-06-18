@@ -14,7 +14,7 @@ import { TestHandler } from "./handlers/TestHandler.js";
 const PRODUCT_ID_CACHE_TTL_MS = 5_000;
 let _cachedProductId: string | undefined;
 let _productIdCacheExpiry = 0;
-function getProductIdForConfig(): string {
+export function getProductIdForConfig(): string {
   if (_cachedProductId !== undefined && Date.now() < _productIdCacheExpiry) return _cachedProductId;
   _cachedProductId = undefined;
 
@@ -120,7 +120,6 @@ export function createConfigFromEnvironment(): LoggerConfig {
 			version: process.env.npm_package_version || "1.0.0",
 			environment: process.env.NODE_ENV || "development",
 			appId: process.env.SITE_ID || "",
-			productId: getProductIdForConfig(),
 			// ECS standard fields for container metadata
 			"container.image.tag": process.env.AGENT_IMAGE_TAG || "unknown",
 			"service.version": process.env.AGENT_IMAGE_TAG || "unknown",
@@ -263,7 +262,6 @@ export const LoggingPresets = {
 				component: "airo-agents",
 				version: process.env.npm_package_version || "1.0.0",
 				environment: "production",
-				productId: getProductIdForConfig(),
 			},
 		};
 	},
@@ -286,7 +284,6 @@ export const LoggingPresets = {
 				component: "airo-agents",
 				version: process.env.npm_package_version || "1.0.0",
 				environment: "development",
-				productId: getProductIdForConfig(),
 			},
 		};
 	},
@@ -302,7 +299,6 @@ export const LoggingPresets = {
 				component: "airo-agents",
 				version: process.env.npm_package_version || "1.0.0",
 				environment: "test",
-				productId: getProductIdForConfig(),
 			},
 		};
 	},
@@ -318,7 +314,6 @@ export const LoggingPresets = {
 				component: "airo-agents",
 				version: process.env.npm_package_version || "1.0.0",
 				environment: "silent",
-				productId: getProductIdForConfig(),
 			},
 		};
 	},
@@ -341,7 +336,6 @@ export const LoggingPresets = {
 				component: "airo-agents",
 				version: process.env.npm_package_version || "1.0.0",
 				environment: "debug",
-				productId: getProductIdForConfig(),
 			},
 		};
 	},

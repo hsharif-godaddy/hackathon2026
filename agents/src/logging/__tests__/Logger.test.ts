@@ -1,17 +1,25 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Logger, log } from '../index.js';
 import { TestHandler } from '../handlers/TestHandler.js';
 import { LoggingPresets } from '../config.js';
 
 describe('Logger', () => {
   let testHandler: TestHandler;
-  
+  const originalEnv = { ...process.env };
+
   beforeEach(() => {
     testHandler = new TestHandler();
     Logger.configure({
       ...LoggingPresets.test(),
       handlers: [testHandler]
     });
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
   });
 
   it('should create logger instance', () => {
@@ -150,5 +158,33 @@ describe('Logger', () => {
     expect(eventData?.headers?.['x-api-key']).toBe('[REDACTED]');
     expect(eventData?.body?.password).toBe('[REDACTED]');
     expect(eventData?.body?.email).toBe('user@example.com'); // Email is not sensitive
+  });
+
+  it('should inject productId dynamically on each log', async () => {
+    vi.resetModules();
+    const tempDir = join(tmpdir(), `logger-product-id-${Date.now()}`);
+    mkdirSync(tempDir, { recursive: true });
+    process.env.NOMAD_ALLOC_DIR = tempDir;
+
+    const { Logger: DynamicLogger } = await import('../Logger.js');
+    const { TestHandler: DynamicTestHandler } = await import('../handlers/TestHandler.js');
+    const { LoggingPresets: dynamicPresets } = await import('../config.js');
+
+    const dynamicHandler = new DynamicTestHandler();
+    DynamicLogger.configure({
+      ...dynamicPresets.test(),
+      handlers: [dynamicHandler],
+    });
+
+    const logger = DynamicLogger.create();
+    logger.info('app.started');
+    expect(dynamicHandler.getEvents()[0].productId).toBe('notfound');
+
+    writeFileSync(join(tempDir, 'config.json'), JSON.stringify({
+      PRODUCT_ID: { SYSTEM_MANAGED: true, VALUE: 'paas-nodejs-v1' },
+    }));
+
+    logger.info('app.updated');
+    expect(dynamicHandler.getEvents()[1].productId).toBe('paas-nodejs-v1');
   });
 });

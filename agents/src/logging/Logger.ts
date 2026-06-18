@@ -9,7 +9,7 @@ import type {
   LogHandler 
 } from './types.js';
 import { validateLogEvent, sanitizeLogEvent } from './schemas/index.js';
-import { createConfigFromEnvironment } from './config.js';
+import { createConfigFromEnvironment, getProductIdForConfig } from './config.js';
 
 /**
  * Core Logger implementation
@@ -169,6 +169,7 @@ export class Logger implements ILogger {
       event,
       message: this.formatMessage(event, data),
       ...this.context,
+      productId: getProductIdForConfig(),
     };
 
     if (data !== undefined) {
