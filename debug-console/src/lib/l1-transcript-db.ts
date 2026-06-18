@@ -153,6 +153,98 @@ function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_uploaded_at ON l1_transcript_uploads(uploaded_at);
     CREATE INDEX IF NOT EXISTS idx_file_hash ON l1_transcript_uploads(file_hash);
     CREATE INDEX IF NOT EXISTS idx_status ON l1_transcript_uploads(status);
+
+    -- Derived Insights Tables (Phase 1: Basic Aggregation)
+
+    -- Derived Bugs: Clustered product bugs/errors
+    CREATE TABLE IF NOT EXISTS derived_bugs (
+      bug_id TEXT PRIMARY KEY NOT NULL,
+      bug_title TEXT NOT NULL,
+      bug_description TEXT,
+      product_line TEXT,
+      category TEXT,
+      occurrence_count INTEGER NOT NULL DEFAULT 0,
+      first_seen TIMESTAMP NOT NULL,
+      last_seen TIMESTAMP NOT NULL,
+      resolution_rate REAL, -- % of transcripts where issue was resolved
+      preventable_rate REAL, -- % marked as preventable
+      sample_interaction_ids TEXT, -- JSON array of example interaction_ids
+      cluster_keywords TEXT, -- JSON array of keywords used for clustering
+      recommended_action TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_bugs_product_line ON derived_bugs(product_line);
+    CREATE INDEX IF NOT EXISTS idx_bugs_category ON derived_bugs(category);
+    CREATE INDEX IF NOT EXISTS idx_bugs_last_seen ON derived_bugs(last_seen);
+    CREATE INDEX IF NOT EXISTS idx_bugs_occurrence ON derived_bugs(occurrence_count DESC);
+
+    -- Derived Feature Requests: Clustered missing capabilities
+    CREATE TABLE IF NOT EXISTS derived_feature_requests (
+      feature_id TEXT PRIMARY KEY NOT NULL,
+      feature_title TEXT NOT NULL,
+      feature_description TEXT,
+      product_line TEXT,
+      request_count INTEGER NOT NULL DEFAULT 0,
+      first_requested TIMESTAMP NOT NULL,
+      last_requested TIMESTAMP NOT NULL,
+      conversion_signal_rate REAL, -- % with conversion signals (sales opportunity)
+      sample_interaction_ids TEXT, -- JSON array
+      cluster_keywords TEXT, -- JSON array
+      business_case TEXT, -- Potential business impact summary
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_features_product_line ON derived_feature_requests(product_line);
+    CREATE INDEX IF NOT EXISTS idx_features_last_requested ON derived_feature_requests(last_requested);
+    CREATE INDEX IF NOT EXISTS idx_features_request_count ON derived_feature_requests(request_count DESC);
+
+    -- Derived Friction Patterns: Aggregated pain points
+    CREATE TABLE IF NOT EXISTS derived_friction_patterns (
+      pattern_id TEXT PRIMARY KEY NOT NULL,
+      friction_category TEXT NOT NULL, -- billing, setup, domain, etc.
+      pattern_title TEXT NOT NULL,
+      occurrence_count INTEGER NOT NULL DEFAULT 0,
+      trend_direction TEXT, -- increasing, stable, decreasing
+      avg_resolution_time_seconds REAL,
+      preventable_rate REAL,
+      first_seen TIMESTAMP NOT NULL,
+      last_seen TIMESTAMP NOT NULL,
+      sample_quotes TEXT, -- JSON array of customer quotes
+      recommended_fix TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_friction_category ON derived_friction_patterns(friction_category);
+    CREATE INDEX IF NOT EXISTS idx_friction_last_seen ON derived_friction_patterns(last_seen);
+    CREATE INDEX IF NOT EXISTS idx_friction_occurrence ON derived_friction_patterns(occurrence_count DESC);
+
+    -- Derived Preventability Analysis: Aggregated preventable contact insights
+    CREATE TABLE IF NOT EXISTS derived_preventability_analysis (
+      analysis_id TEXT PRIMARY KEY NOT NULL,
+      time_period_start TIMESTAMP NOT NULL,
+      time_period_end TIMESTAMP NOT NULL,
+      total_contacts INTEGER NOT NULL,
+      preventable_contacts INTEGER NOT NULL,
+      preventable_rate REAL NOT NULL, -- e.g., 0.987
+      est_hours_wasted REAL, -- Estimated support hours on preventable contacts
+      top_preventable_categories TEXT, -- JSON array of {category, count, rate}
+      recommended_actions TEXT, -- JSON array of high-impact fixes
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_preventability_period ON derived_preventability_analysis(time_period_start, time_period_end);
+
+    -- Derived Insights Cache: Track when insights were last generated
+    CREATE TABLE IF NOT EXISTS derived_insights_cache (
+      cache_key TEXT PRIMARY KEY NOT NULL, -- e.g., "bugs_last_30_days"
+      last_generated TIMESTAMP NOT NULL,
+      record_count INTEGER,
+      metadata TEXT -- JSON object with generation stats
+    );
   `);
 
   // Add tagging_status column if not present (migration for existing DBs)
@@ -550,10 +642,10 @@ export function createUploadRecord(record: UploadRecord): void {
   const stmt = db.prepare(`
     INSERT INTO l1_transcript_uploads (
       upload_id, uploaded_by, file_name, file_hash, s3_key,
-      row_count, status, source, pre_backup_s3_key
+      row_count, status, source
     ) VALUES (
       @upload_id, @uploaded_by, @file_name, @file_hash, @s3_key,
-      @row_count, @status, @source, @pre_backup_s3_key
+      @row_count, @status, @source
     )
   `);
 
