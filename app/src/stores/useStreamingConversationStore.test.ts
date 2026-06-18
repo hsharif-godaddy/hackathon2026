@@ -297,6 +297,28 @@ describe('useStreamingConversationStore', function packageTests() {
     });
   });
 
+  describe('#startNewStream', function startNewStreamTests() {
+    it('clears inputValue when the dispatched message matches the typed draft', function clearsOnUserSend() {
+      const store = useStreamingConversationStore.getState();
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.setInputValue('  Build a weather app  ');
+        store.startNewStream('Build a weather app');
+      });
+      expect(useStreamingConversationStore.getState().inputValue).toBe('');
+    });
+
+    it('preserves inputValue when the dispatched message differs from the draft', function preservesOnQueueDispatch() {
+      const store = useStreamingConversationStore.getState();
+      act(() => {
+        store.setCurrentAppId('app-1');
+        store.setInputValue('typed while queue runs');
+        store.startNewStream('queued message dispatched');
+      });
+      expect(useStreamingConversationStore.getState().inputValue).toBe('typed while queue runs');
+    });
+  });
+
   describe('#finalizeStream', function finalizeStreamTests() {
     it('should mark running tools as incomplete on finalization', function markIncomplete() {
       const store = useStreamingConversationStore.getState();

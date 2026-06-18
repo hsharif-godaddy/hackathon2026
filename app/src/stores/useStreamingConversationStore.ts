@@ -220,7 +220,7 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       activeStream: streamingMessage,
       streamingState: 'streaming',
       currentStep: 1,
-      inputValue: '', // Clear input
+      inputValue: state.inputValue.trim() === userMessage ? '' : state.inputValue,
       isLoading: true,
       // NOTE: do NOT clear subagentEvents here. Sub-agent jobs are detached and
       // can outlive the dispatching turn; deep-build also auto-continues into a
