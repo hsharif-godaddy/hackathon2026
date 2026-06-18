@@ -199,5 +199,13 @@ describe('develop-agent', function developAgentTests() {
 
         expect(mockPromptBuilders[0].files.some((path: string) => path.endsWith('kimi-behavior.md'))).toBe(true);
       });
+
+    it('should include consent-requirements shared fragment',
+      async function consentRequirements() {
+        const config = await createDevelopAgent();
+        await fireSystemResolver(config);
+
+        expect(mockPromptBuilders[0].files.some((path: string) => path.endsWith('consent-requirements.md'))).toBe(true);
+      });
   });
 });

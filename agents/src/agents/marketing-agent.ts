@@ -32,6 +32,7 @@ async function buildMarketingSystemPrompt(options?: { market?: string }): Promis
     .file(paths.getAgentFile('marketing', 'core.md'))
     .file(paths.getSharedFile('communication.md'))
     .file(paths.getSharedFile('security.md'))
+    .file(paths.getSharedFile('consent-requirements.md'))
 
   if (skillsSection) {
     promptBuilder.text(`\n${skillsSection}\n`)

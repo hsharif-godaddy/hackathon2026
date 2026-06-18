@@ -22,6 +22,7 @@ import {
   multiTurnPublishFlowScenario,
 } from './prompt-vs-skill/index.js';
 import { buildPortfolioPromptTaxScenarios } from './prompt-tax/index.js';
+import { buildCookieConsentGtmScenario } from './cookie-consent-gtm.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
 import type {
   AABCtrlPlaneClient,
@@ -49,6 +50,7 @@ export function createAllScenarios(
     brandLogoScenario(gocode, ctrlPlane),
     handoffVoiceSeoCheckScenario(gocode, ctrlPlane),
     handoffVoiceHandbackScenario(gocode, ctrlPlane),
+    buildCookieConsentGtmScenario(gocode, ctrlPlane),
     ...buildAiroBaselineScenarios(gocode, ctrlPlane),
     ...buildPortfolioPromptTaxScenarios(gocode, ctrlPlane),
   ];

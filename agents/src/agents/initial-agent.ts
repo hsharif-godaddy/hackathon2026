@@ -164,6 +164,7 @@ async function buildInitialSystemPrompt(
       const preflightTools = loadFromManifest(promptBuilder, paths, manifestPath, templateDir, `template ${templateId}`)
       promptBuilder.file(paths.getSharedFile('communication.md'))
       promptBuilder.file(paths.getSharedFile('security.md'))
+      promptBuilder.file(paths.getSharedFile('consent-requirements.md'))
       return { systemPrompt: await promptBuilder.build(), preflightTools }
     }
 
@@ -179,6 +180,7 @@ async function buildInitialSystemPrompt(
 
     promptBuilder.file(paths.getSharedFile('communication.md'))
     promptBuilder.file(paths.getSharedFile('security.md'))
+    promptBuilder.file(paths.getSharedFile('consent-requirements.md'))
 
     return { systemPrompt: await promptBuilder.build(), preflightTools: [] }
   }
@@ -194,6 +196,7 @@ async function buildInitialSystemPrompt(
     const preflightTools = loadFromManifest(promptBuilder, paths, versionManifestPath, versionDir, `version ${version}`)
     promptBuilder.file(paths.getSharedFile('communication.md'))
     promptBuilder.file(paths.getSharedFile('security.md'))
+    promptBuilder.file(paths.getSharedFile('consent-requirements.md'))
     return { systemPrompt: await promptBuilder.build(), preflightTools }
   }
 
@@ -210,6 +213,7 @@ async function buildInitialSystemPrompt(
     }
     promptBuilder.file(paths.getSharedFile('communication.md'))
     promptBuilder.file(paths.getSharedFile('security.md'))
+    promptBuilder.file(paths.getSharedFile('consent-requirements.md'))
   } else {
     // Legacy order: core → communication → [optional] → security
     promptBuilder.file(paths.getAgentFile(versionDir, 'core.md'))
@@ -221,6 +225,7 @@ async function buildInitialSystemPrompt(
       }
     }
     promptBuilder.file(paths.getSharedFile('security.md'))
+    promptBuilder.file(paths.getSharedFile('consent-requirements.md'))
   }
   return { systemPrompt: await promptBuilder.build(), preflightTools: [] }
 }

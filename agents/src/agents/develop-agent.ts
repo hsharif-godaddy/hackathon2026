@@ -212,6 +212,7 @@ async function buildDevelopSystemPrompt(
     .file(resolveFragment('core.md', paths.getAgentFile('develop', 'core.md')))
     .file(resolveFragment('communication.md', paths.getSharedFile('communication.md')))
     .file(paths.getSharedFile('security.md'))
+    .file(paths.getSharedFile('consent-requirements.md'))
 
   for (const behavior of activeBehaviorPrompts) {
     promptBuilder.file(paths.getAgentFile('develop', behavior.fileName))

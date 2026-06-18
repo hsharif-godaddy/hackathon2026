@@ -421,6 +421,7 @@ describe('initial-agent', function initialAgentTests() {
       }
       expect(fileNames).toContain('communication.md');
       expect(fileNames).toContain('security.md');
+      expect(fileNames).toContain('consent-requirements.md');
       expect(fileNames).not.toContain('core.md');
     });
 
@@ -456,6 +457,7 @@ describe('initial-agent', function initialAgentTests() {
         'examples.md',
         'communication.md',
         'security.md',
+        'consent-requirements.md',
       ]);
     });
 
@@ -478,6 +480,7 @@ describe('initial-agent', function initialAgentTests() {
         'questioning.md',
         'communication.md',
         'security.md',
+        'consent-requirements.md',
       ]);
     });
 
