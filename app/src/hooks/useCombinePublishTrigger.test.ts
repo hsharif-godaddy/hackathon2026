@@ -15,6 +15,9 @@ vi.mock('@/utils/instrumentation', () => ({
 vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: (...args: unknown[]) => mockShipAnalyticsLog(...args),
 }));
+vi.mock('@/hooks/useHivemind', () => ({
+  useHivemind: vi.fn(() => ({ cohort: 'on' })),
+}));
 vi.mock('@/hooks/usePublishUpsellEligibility', () => ({
   usePublishUpsellEligibility: vi.fn(() => ({ isExperimentEligible: true, isTreatment: true, isLoading: false })),
 }));
@@ -24,19 +27,40 @@ async function setEligible(isExperimentEligible: boolean) {
   vi.mocked(mod.usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible, isTreatment: false, isLoading: false });
 }
 
+async function setCohort(cohort: string | undefined) {
+  const mod = await import('@/hooks/useHivemind');
+  vi.mocked(mod.useHivemind).mockReturnValue({ cohort, data: undefined, experiment: undefined });
+}
+
 describe('useCombinePublishTrigger', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it('fires the trigger once when eligible', async () => {
+  it('fires the trigger once when eligible, with cohort attached to both events', async () => {
     await setEligible(true);
+    await setCohort('on');
     renderHook(() => useCombinePublishTrigger('app-1'));
-    expect(mockLogImpressionEvent).toHaveBeenCalledWith('develop.combine_publish.trigger', { appId: 'app-1' });
+    expect(mockLogImpressionEvent).toHaveBeenCalledWith('develop.combine_publish.trigger', { appId: 'app-1', cohort: 'on' });
     expect(mockLogImpressionEvent).toHaveBeenCalledTimes(1);
-    expect(mockShipAnalyticsLog).toHaveBeenCalledWith('develop.combine_publish.trigger', { appId: 'app-1' });
+    expect(mockShipAnalyticsLog).toHaveBeenCalledWith('develop.combine_publish.trigger', { appId: 'app-1', cohort: 'on' });
+  });
+
+  it('attaches the off cohort for the control arm', async () => {
+    await setEligible(true);
+    await setCohort('off');
+    renderHook(() => useCombinePublishTrigger('app-1'));
+    expect(mockLogImpressionEvent).toHaveBeenCalledWith('develop.combine_publish.trigger', { appId: 'app-1', cohort: 'off' });
+  });
+
+  it('falls back to the ineligible cohort sentinel when cohort is missing', async () => {
+    await setEligible(true);
+    await setCohort(undefined);
+    renderHook(() => useCombinePublishTrigger('app-1'));
+    expect(mockLogImpressionEvent).toHaveBeenCalledWith('develop.combine_publish.trigger', { appId: 'app-1', cohort: 'ineligible' });
   });
 
   it('does not re-fire on re-render for the same app', async () => {
     await setEligible(true);
+    await setCohort('on');
     const { rerender } = renderHook(() => useCombinePublishTrigger('app-1'));
     rerender();
     rerender();
@@ -45,10 +69,11 @@ describe('useCombinePublishTrigger', () => {
 
   it('re-fires when appId changes (new develop landing)', async () => {
     await setEligible(true);
+    await setCohort('on');
     const { rerender } = renderHook(({ id }) => useCombinePublishTrigger(id), { initialProps: { id: 'app-1' } });
     rerender({ id: 'app-2' });
     expect(mockLogImpressionEvent).toHaveBeenCalledTimes(2);
-    expect(mockLogImpressionEvent).toHaveBeenLastCalledWith('develop.combine_publish.trigger', { appId: 'app-2' });
+    expect(mockLogImpressionEvent).toHaveBeenLastCalledWith('develop.combine_publish.trigger', { appId: 'app-2', cohort: 'on' });
   });
 
   it('does not fire when not eligible', async () => {
