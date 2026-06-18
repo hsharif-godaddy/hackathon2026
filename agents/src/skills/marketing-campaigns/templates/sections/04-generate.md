@@ -1,12 +1,13 @@
 # GENERATE Phase
 
-**Execute content creation in this order. No deviation.** The first two steps run on the marketing agent (which has the social tool); the build handoff is LAST.
+**Execute content creation in this order. No deviation.** The first two steps run on the marketing agent (which has the social tool); Third step should only be run AFTER 1 and 2, the build handoff is LAST.
 
 1. **Social posts** (`socialPostCreate`) — FIRST.
 2. **Email + ad copy** — inline, in the same response.
-3. **Handoff to DevelopAgent** to build the landing page + blog — LAST. This handoff builds CODE FILES only; social posts, email, and ad copy are the marketing agent's responsibility and MUST already be created (steps 1–2) before you hand off — do not defer any of them past this point. NEVER hand off to build before the social posts exist. After the build completes, continue to SUMMARY to save and show the campaign card.
+3. **Scaffold landing page** (`marketing-campaigns__campaignScaffoldPage`) — writes the landing page template (with countdown timer + date-gating) to the workspace. The landing page MUST exist before the build handoff.
+4. **Handoff to DevelopAgent** to EDIT the landing page + create blog — LAST. This handoff builds CODE FILES only; social posts, email, and ad copy are the marketing agent's responsibility and MUST already be created (steps 1–2) before you hand off — do not defer any of them past this point. NEVER hand off to build before the social posts exist. After the build completes, continue to SUMMARY to save and show the campaign card.
 
-(The landing-page slug is already fixed in the approved plan, so social posts can reference the landing-page URL before the page is built.)
+(The canonical slug was sanitized and frozen in the `campaignPlanPropose` response — use `plan.landingPageSlug` for all references. All CTAs across channels MUST point to `/lp/[canonicalSlug]`, never a bare top-level route. Do NOT invent a different slug — reuse the exact value from the approved plan.)
 
 ---
 
@@ -44,7 +45,7 @@ socialPostCreate({
 
 This renders the social post widget. The user publishes to Facebook/Instagram directly from it.
 
-## Step 2: Write email + ad copy inline (same response as socialPostCreate)
+## Step 2: Write email + ad copy inline
 
 In the SAME message after calling `socialPostCreate`, write email and ad copy as formatted text. These are copy-paste content — AAB cannot send emails or submit ads.
 
@@ -58,7 +59,7 @@ In the SAME message after calling `socialPostCreate`, write email and ad copy as
 >
 > [Body — 3-4 paragraphs: hook, offer, details, CTA]
 >
-> **[CTA Button]** → /[campaign-slug]
+> **[CTA Button]** → /lp/[campaign-slug]
 
 **Ad format:**
 
@@ -66,17 +67,27 @@ In the SAME message after calling `socialPostCreate`, write email and ad copy as
 > **Headline:** [25-40 chars] | **CTA:** [action]
 > **Description:** [90 chars]
 > **Targeting:** [audience, interests]
-> **Destination:** /[campaign-slug]
+> **Destination:** /lp/[campaign-slug]
 
 ---
 
-## Step 3 (DO THIS LAST): Handoff to DevelopAgent — build the landing page + blog
+## Step 3: Scaffold landing page — `campaignScaffoldPage`
 
-**Only do this AFTER steps 1–2 (social posts + email/ad) are done.** Call `handoff({ agent: 'develop' })` with ONE complete brief. Do NOT split into multiple handoffs.
+**Only do this AFTER steps 1–2 (social posts + email/ad) are done.** Call `marketing-campaigns__campaignScaffoldPage` with the campaign name, start date, end date, and landing page path from the approved plan.
+
+This tool writes the landing page at `src/pages/lp/[campaign-slug].tsx` with a countdown timer, coming-soon state, and sale-ended state already built in. The landing page MUST exist before the handoff in Step 4. Do NOT skip this step.
+
+---
+
+## Step 4 (DO THIS LAST): Handoff to DevelopAgent — edit the landing page + create blog
+
+**Only do this AFTER step 3 (campaignScaffoldPage) has completed.** Call `handoff({ agent: 'develop' })` with ONE complete brief. Do NOT split into multiple handoffs.
+
+**IMPORTANT CONTEXT:** The landing page already exists at `src/pages/lp/[campaign-slug].tsx` — it was written by `campaignScaffoldPage` in Step 3. The file has a working countdown timer, a "sale ended" state, and placeholder content for the builder to replace. The builder's job is to EDIT this file — replace the placeholder section with creative campaign content while keeping the countdown timer and ended state intact.
 
 **CRITICAL RULES FOR THE HANDOFF BRIEF:**
 - The brief MUST be a single block of text — not fragmented sections the agent picks from
-- The landing-page brief MUST include the **availability window** — instruct DevelopAgent to define `SALE_START` / `SALE_END` set to the campaign's ACTUAL start and end dates from the approved plan (the SAME dates saved to the campaign card; NEVER leave them as `[start]`/`[end]`, never omit them) and to date-gate the page: show the offer inside the window, and an explicit "campaign has ended" / "coming soon" state outside it. A landing page handed off without this date-gating is an incomplete build — do not drop this line when you compress the brief.
+- The landing page ALREADY EXISTS with a countdown timer — tell the builder to EDIT it (replace placeholder content), NOT create a new file from scratch
 - The blog MUST be discoverable — set up a blog index/listing page + route if one doesn't exist, and link it from the nav. Never leave a post as an orphaned page reachable only by direct URL.
 - NEVER tell DevelopAgent to create a summary/planning markdown file
 - NEVER tell DevelopAgent to put social posts, emails, or ads into a file (those were already created in Step 1–2)
@@ -84,26 +95,32 @@ In the SAME message after calling `socialPostCreate`, write email and ad copy as
 **The complete handoff brief:**
 
 ```
-Build the following for our [campaign type] campaign. Create ALL files in this single pass.
+Build the following for our [campaign type] campaign.
 
-=== SITE ARTIFACT (landing page — always) ===
+=== LANDING PAGE (EDIT — file already exists at src/pages/lp/[campaign-slug].tsx) ===
 
-Route: /[campaign-slug]
-Requirements:
+The landing page already exists with a working countdown timer and "sale ended" state. EDIT this file — replace the placeholder campaign content section (marked with a comment) with a full creative landing page.
+
+DO NOT recreate the file from scratch. DO NOT remove the countdown timer, the useCountdown hook, the SALE_END/SALE_START constants, or any of the three date-gated states (active sale, sale-ended, and coming-soon). Each non-active state contains a placeholder comment — fill in its content, but do not delete the state branches or the countdown logic. Only replace the placeholder content areas.
+
+Creative content to add (replacing the placeholder):
 - Hero with compelling background image (call media() FIRST to get real image URL)
 - Campaign headline + offer details + CTA button
 - Offer details section with terms
 - Social proof / trust signals
-- Campaign end date / urgency element
 - On-brand design matching existing site
-- Availability window (REQUIRED): the page must ALWAYS define two constants, SALE_START and SALE_END, set to the campaign start date ([start]) and end date ([end]) — these MUST be the exact campaign dates (the same ones saved to the campaign card), never the literal placeholders. Both are REQUIRED — never generate the landing page without them. Gate what the page renders on the current date against these constants:
-  - Between SALE_START and SALE_END (inclusive of the full SALE_END day): show the campaign offer normally.
-  - Before SALE_START: render a brief "coming soon" state (campaign name + when it starts) instead of the offer — NOT the live offer.
-  - After SALE_END: render a brief "this sale has ended" state with a link back to the homepage (/) instead of the offer — NOT the live offer.
-  Single source of truth: SALE_START/SALE_END are baked into this page at build time, so if the campaign dates change the page must be regenerated and the site republished — there is no runtime source for these dates.
-  NEVER mention the SALE_START / SALE_END variable names in any user-facing message — they are internal implementation details (see execution contract rule 12). Refer only to the sale's start and end dates in plain language (e.g. "live from June 1 to June 14").
+- You may restyle the countdown timer bar to match your design, but do NOT remove it or change its logic
+
 Images: Use media() tool to search, use returned URLs directly. No placeholders.
-Site discovery: Add an announcement banner / link in the main layout pointing to this page (only shown during the availability window above).
+
+Route registration (REQUIRED — without this the page 404s):
+- Read src/routes.tsx (or the app's route config file)
+- Add a lazy import for the campaign page: `const CampaignPage = lazy(() => import('./pages/lp/[campaign-slug].tsx'))`
+- Add a route entry: `{ path: '/lp/[campaign-slug]', element: <CampaignPage /> }`
+- This app does NOT use filesystem-based routing — an explicit route entry is mandatory
+- The /lp/ prefix is REQUIRED for marketing attribution (UTM tracking, data-lake ingestion)
+
+Site discovery: Add an announcement banner / link in the main layout pointing to /lp/[campaign-slug].
 
 [IF A SALE BANNER WAS ALSO PLANNED, ADD:]
 Also add a site-wide dismissible announcement banner (coupon code + end date) in the main layout. This is IN ADDITION to the landing page, not instead of it.
@@ -140,7 +157,27 @@ Brand voice: [voice]
 - Do NOT create any file in a marketing/ directory
 - Do NOT create summary/planning documents
 - Do NOT put social posts, email copy, or ad copy into any file (already created before this handoff)
-- Files to create: the landing page, the blog index/listing + route (if missing), and the blog post(s)
+- Do NOT recreate src/pages/lp/[campaign-slug].tsx from scratch — EDIT it (replace the placeholder content)
+- Files to EDIT: src/pages/lp/[campaign-slug].tsx
+- Files to CREATE: blog index/listing + route (if missing), and the blog post(s)
 ```
 
-**Wait for the handoff to complete, then proceed to SUMMARY.**
+**Post-build verification:**
+
+After the handoff returns, verify BOTH the countdown AND the route registration:
+
+**Check 1 — Countdown intact:**
+1. Use `grepSearch` or `readFile` on `src/pages/lp/[campaign-slug].tsx` to confirm it contains `useCountdown`.
+2. **If missing** (builder overwrote the file): re-handoff with a SHORT correction brief:
+   "The landing page at src/pages/lp/[campaign-slug].tsx is missing the countdown timer. Edit the file: add `import { useState, useEffect } from 'react';` and the useCountdown hook, define `const SALE_END = '[endDate]T23:59:59Z';`, and add a countdown bar above the main content. When the countdown reaches zero, show 'This Sale Has Ended' instead of the page content."
+
+**Check 2 — Route registered:**
+3. Use `grepSearch` or `readFile` on `src/routes.tsx` to confirm it contains `/lp/[campaign-slug]`.
+4. **If missing** (builder skipped route registration): re-handoff with a SHORT correction brief:
+   "The campaign landing page route is missing. Edit src/routes.tsx: add a lazy import `const CampaignPage = lazy(() => import('./pages/lp/[campaign-slug].tsx'))` and a route entry `{ path: '/lp/[campaign-slug]', element: <CampaignPage /> }`. Without this route the page 404s."
+
+**Retry rules:**
+5. **Maximum 1 retry** (for either or both failures). If the correction also fails, continue to SUMMARY anyway — do not loop.
+6. **If both checks pass:** proceed to SUMMARY.
+
+**Wait for the handoff to complete and verification to pass, then proceed to SUMMARY.**

@@ -1,9 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
-import { tools, campaignPlanPropose, campaignPlanCreate, campaignCreate } from '../tools/index.js'
+vi.mock('../../../workspace/index.js', () => ({ createForWorkspace: vi.fn() }))
+
+import { tools, campaignPlanPropose, campaignPlanCreate, campaignCreate, campaignScaffoldPage, sanitizeSlug, buildLandingPage } from '../tools/index.js'
+import { createForWorkspace } from '../../../workspace/index.js'
 
 const skillRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const readSection = (relativePath: string): string => readFileSync(join(skillRoot, relativePath), 'utf8')
@@ -17,6 +20,7 @@ const samplePlan = {
   startDate: '2026-07-01',
   endDate: '2026-07-07',
   campaignType: 'landing-page' as const,
+  landingPagePath: '/Summer Sale',
   assets: [{ assetType: 'social' as const, title: 'Teaser post' }],
   assumptions: ['Your audience is collectors', 'Your main goal is sales'],
   whyThisMix: 'The landing page gives buyers one place to land and buy.',
@@ -48,6 +52,18 @@ describe('marketing-campaigns orchestrator tools', () => {
       expect(result.widgetData.plan.whyThisMix).toMatch(/one place to land and buy/i)
       expect(result.widgetData.plan.expectation).toMatch(/small first wave/i)
     })
+
+    it('sanitizes the slug at plan time and returns canonical landingPageSlug + route', async () => {
+      const result = await run(campaignPlanPropose, { ...samplePlan, landingPagePath: '/Summer Sale' }, enabledContext)
+      expect(result.widgetData.plan.landingPageSlug).toBe('summer-sale')
+      expect(result.widgetData.plan.landingPageRoute).toBe('/lp/summer-sale')
+    })
+
+    it('sanitizes a digit-leading slug at plan time', async () => {
+      const result = await run(campaignPlanPropose, { ...samplePlan, landingPagePath: '2024-deal' }, enabledContext)
+      expect(result.widgetData.plan.landingPageSlug).toBe('2024-deal')
+      expect(result.widgetData.plan.landingPageRoute).toBe('/lp/2024-deal')
+    })
   })
 
   describe('feature gating', () => {
@@ -62,9 +78,10 @@ describe('marketing-campaigns orchestrator tools', () => {
     })
   })
 
-  it('exports exactly the three orchestrator tools', () => {
+  it('exports exactly the four orchestrator tools', () => {
     expect(tools.map((tool) => tool.name)).toEqual([
       'campaignPlanPropose',
+      'campaignScaffoldPage',
       'campaignPlanCreate',
       'campaignCreate',
     ])
@@ -198,5 +215,98 @@ describe('marketing-campaigns orchestration contract', () => {
     for (const section of ['01-clarify', '02-plan', '03-verify', '04-generate', '05-summary']) {
       expect(() => readSection(`templates/sections/${section}.md`)).not.toThrow()
     }
+  })
+})
+
+describe('sanitizeSlug', () => {
+  it("keeps a clean slug ('summer-sale')", () => {
+    expect(sanitizeSlug('summer-sale')).toBe('summer-sale')
+  })
+
+  it("keeps a digit-leading slug ('2024-deal') — no digit-prefix here", () => {
+    expect(sanitizeSlug('2024-deal')).toBe('2024-deal')
+  })
+
+  it("takes the last path segment ('sale/summer' -> 'summer')", () => {
+    expect(sanitizeSlug('sale/summer')).toBe('summer')
+  })
+
+  it("lowercases and replaces non [a-z0-9-] (\"O'Brien's Sale\" -> 'o-brien-s-sale')", () => {
+    expect(sanitizeSlug("O'Brien's Sale")).toBe('o-brien-s-sale')
+  })
+
+  it("strips a leading slash ('/leading-slash' -> 'leading-slash')", () => {
+    expect(sanitizeSlug('/leading-slash')).toBe('leading-slash')
+  })
+
+  it("falls back to 'campaign' when empty ('!!!' -> 'campaign')", () => {
+    expect(sanitizeSlug('!!!')).toBe('campaign')
+  })
+})
+
+describe('buildLandingPage', () => {
+  it('injects dates via JSON.stringify and derives the component name', async () => {
+    const result = await buildLandingPage('summer-sale', '2026-07-01', '2026-07-07')
+    expect(result).toContain(JSON.stringify('2026-07-01T00:00:00Z'))
+    expect(result).toContain(JSON.stringify('2026-07-07T23:59:59Z'))
+    // Component name is PascalCase from the slug + 'Page'.
+    expect(result).toContain('SummerSalePage')
+  })
+
+  it("digit-prefixes the component name ('2024-deal' -> 'C2024DealPage')", async () => {
+    const result = await buildLandingPage('2024-deal', '2026-07-01', '2026-07-07')
+    expect(result).toContain('C2024DealPage')
+  })
+})
+
+describe('campaignScaffoldPage scaffold behavior', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('returns the disabled error when the feature flag is off', async () => {
+    const result = await run(campaignScaffoldPage, {
+      startDate: '2026-07-01',
+      endDate: '2026-07-07',
+      landingPagePath: '/summer-sale',
+    }, disabledContext)
+    expect(result).toEqual({ success: false, error: 'Marketing campaigns are not available.' })
+  })
+
+  it('returns success:false with no files when the workspace is unavailable', async () => {
+    vi.mocked(createForWorkspace).mockReturnValue(null as any)
+    const result = await run(campaignScaffoldPage, {
+      startDate: '2026-07-01',
+      endDate: '2026-07-07',
+      landingPagePath: '/summer-sale',
+    }, enabledContext)
+    expect(result.success).toBe(false)
+    expect(result.filesWritten).toEqual([])
+  })
+
+  it('returns success:false with no files when the write throws', async () => {
+    vi.mocked(createForWorkspace).mockReturnValue({
+      files: { write: vi.fn().mockRejectedValue(new Error('disk full')) },
+    } as any)
+    const result = await run(campaignScaffoldPage, {
+      startDate: '2026-07-01',
+      endDate: '2026-07-07',
+      landingPagePath: '/summer-sale',
+    }, enabledContext)
+    expect(result.success).toBe(false)
+    expect(result.filesWritten).toEqual([])
+  })
+
+  it('returns success:true and writes the page when the write resolves', async () => {
+    const write = vi.fn().mockResolvedValue(undefined)
+    vi.mocked(createForWorkspace).mockReturnValue({ files: { write } } as any)
+    const result = await run(campaignScaffoldPage, {
+      startDate: '2026-07-01',
+      endDate: '2026-07-07',
+      landingPagePath: '/summer-sale',
+    }, enabledContext)
+    expect(result.success).toBe(true)
+    expect(result.filesWritten).toEqual(['src/pages/lp/summer-sale.tsx'])
+    expect(write).toHaveBeenCalledWith(expect.objectContaining({ path: 'src/pages/lp/summer-sale.tsx' }))
   })
 })

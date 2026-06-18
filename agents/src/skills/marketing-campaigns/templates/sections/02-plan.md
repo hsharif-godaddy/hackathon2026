@@ -66,7 +66,7 @@ marketing-campaigns__campaignPlanPropose({
   startDate: '[YYYY-MM-DD]',
   endDate: '[YYYY-MM-DD]',
   campaignType: 'landing-page', // always 'landing-page' (a landing page is always built); never 'content-only'
-  landingPagePath: '/[slug]',  // only if landing-page type
+  landingPagePath: '/[slug]',  // required — sanitized & frozen as the canonical /lp/ slug
   assets: [
     { assetType: 'landing-page', title: '[page title]', description: '[what it contains]' },
     { assetType: 'blog', title: '[blog title]', scheduledDate: '[YYYY-MM-DD]', description: '[angle]' },

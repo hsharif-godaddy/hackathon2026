@@ -7,6 +7,10 @@ import type { CreateSimpleCampaignParams, CreateSimpleCampaignContentParams } fr
 import { SimpleCampaignStatus } from '../../../database/schema.js'
 import type { SimpleCampaignContentType, SimpleCampaignContentStatus } from '../../../database/schema.js'
 import { MediaSearchTool } from '../../../tools/media-search-tool.js'
+import { createForWorkspace } from '../../../workspace/index.js'
+import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
 
 const logger = Logger.create({ component: 'marketing-campaigns-tools' })
 
@@ -19,6 +23,57 @@ function isCampaignsEnabled(context: any): boolean {
 
 function campaignsDisabledResult(): { success: false; error: string } {
   return { success: false, error: 'Marketing campaigns are not available.' }
+}
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const LANDING_PAGE_TEMPLATE_PATH = path.resolve(__dirname, '../templates/pages/campaign-landing.tsx')
+
+export function sanitizeSlug(raw: string): string {
+  const slug = raw
+    .replace(/^\/+/, '')
+    .split(/[/\\]/).pop()!
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-|-$/g, '')
+  return slug || 'campaign'
+}
+
+export async function buildLandingPage(slug: string, startDate: string, endDate: string): Promise<string> {
+  const safe = slug.replace(/^(\d)/, 'c$1')
+  const componentName = safe
+    .split('-')
+    .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+    .join('') + 'Page'
+
+  const template = await readFile(LANDING_PAGE_TEMPLATE_PATH, 'utf-8')
+
+  return template
+    .replace(/__SALE_END__/g, JSON.stringify(`${endDate}T23:59:59Z`))
+    .replace(/__SALE_START__/g, JSON.stringify(`${startDate}T00:00:00Z`))
+    .replace(/__COMPONENT_NAME__/g, componentName)
+}
+
+async function scaffoldLandingPage(appId: string, landingPagePath: string, startDate: string, endDate: string): Promise<{ success: boolean; filesWritten: string[] }> {
+  const workspace = createForWorkspace(appId, 'preview')
+  if (!workspace) {
+    logger.warn('campaign-scaffold.workspace_unavailable', { appId })
+    return { success: false, filesWritten: [] }
+  }
+
+  const slug = sanitizeSlug(landingPagePath)
+  const filesWritten: string[] = []
+
+  try {
+    const content = await buildLandingPage(slug, startDate, endDate)
+    await workspace.files.write({ path: `src/pages/lp/${slug}.tsx`, content })
+    filesWritten.push(`src/pages/lp/${slug}.tsx`)
+  } catch (err) {
+    logger.error('campaign-scaffold.write_failed', { appId, error: err instanceof Error ? err.message : String(err) })
+  }
+
+  logger.info('campaign-scaffold.complete', { appId, filesWritten })
+  return { success: filesWritten.length === 1, filesWritten }
 }
 
 const plannedAssetSchema = z.object({
@@ -50,6 +105,7 @@ CRITICAL RULES:
     startDate: z.string().describe('Campaign start date (YYYY-MM-DD)'),
     endDate: z.string().describe('Campaign end date (YYYY-MM-DD)'),
     assets: z.array(plannedAssetSchema).min(1).describe('List of planned content pieces'),
+    landingPagePath: z.string().describe('Desired slug for the landing page (e.g. "summer-sale", "halloween"). Will be sanitized and frozen as the canonical slug used across all CTAs and the route.'),
     assumptions: z.array(z.string()).min(1).describe('3-4 short plain-language assumptions you inferred about the business (audience, main goal, what to feature). Rendered on the card under "Here\'s what I\'m assuming — tell me if any of this is off" so the owner can correct a wrong guess before anything is built.'),
     whyThisMix: z.string().describe('One or two plain sentences explaining why this channel mix serves their goal and what the key assets do (e.g. landing page = one place to buy, blog = search traffic over time, social = reach your followers). No jargon.'),
     expectation: z.string().describe('A rough, directional, honest expectation — a ballpark, NEVER precise numbers or guarantees (e.g. "a small first wave of visitors and a handful of early sales, with the blog building over the following weeks"). Frame as depending on their audience and offer.'),
@@ -63,10 +119,13 @@ CRITICAL RULES:
 
     const appId = context?.metadata?.appId as string | undefined
 
+    const canonicalSlug = sanitizeSlug(input.landingPagePath)
+
     logger.info('campaign-plan-propose.called', {
       appId,
       campaignName: input.name,
       assetCount: input.assets.length,
+      canonicalSlug,
     })
 
     return {
@@ -79,27 +138,68 @@ CRITICAL RULES:
           offer: input.offer,
           startDate: input.startDate,
           endDate: input.endDate,
+          landingPageSlug: canonicalSlug,
+          landingPageRoute: `/lp/${canonicalSlug}`,
           assets: input.assets,
           assumptions: input.assumptions,
           whyThisMix: input.whyThisMix,
           expectation: input.expectation,
         },
       },
-      message: `Campaign plan "${input.name}" presented for approval. Waiting for user response.`,
+      message: `Campaign plan "${input.name}" presented for approval. Landing page will be at /lp/${canonicalSlug}. Waiting for user response.`,
+    }
+  }
+}
+
+export const campaignScaffoldPage: SkillToolDefinition = {
+  name: 'campaignScaffoldPage',
+  description: `Scaffold the landing page template with countdown timer and date-gating. Call this AFTER social posts and email/ad copy are created, BEFORE the handoff to the builder.
+
+This tool writes a landing page file to the workspace with:
+- A countdown timer to the sale end date
+- Three states: coming soon (before start), active sale (with countdown), and sale ended (after end)
+- Placeholder content for the builder to fill in
+
+The landing page MUST exist before the build handoff so the builder can EDIT it (not recreate from scratch).
+
+CRITICAL TIMING: Call this tool in GENERATE Step 3, after socialPostCreate and email/ad, before the handoff.`,
+  parameters: z.object({
+    startDate: z.string().describe('Campaign start date (YYYY-MM-DD)'),
+    endDate: z.string().describe('Campaign end date (YYYY-MM-DD)'),
+    landingPagePath: z.string().describe('The canonical slug from the approved plan (plan.landingPageSlug). Pass exactly the value returned by campaignPlanPropose — do NOT invent a new slug.'),
+  }),
+  async execute(args, context) {
+    if (!isCampaignsEnabled(context)) {
+      logger.warn('campaign-scaffold.feature_disabled', { appId: context?.metadata?.appId })
+      return campaignsDisabledResult()
+    }
+
+    const appId = context?.metadata?.appId as string | undefined
+    if (!appId) {
+      return { success: false, error: 'No appId in context' }
+    }
+
+    const result = await scaffoldLandingPage(appId, args.landingPagePath, args.startDate, args.endDate)
+    return {
+      success: result.success,
+      filesWritten: result.filesWritten,
+      message: result.success
+        ? `Landing page scaffolded at ${result.filesWritten[0]}. Route: /lp/${sanitizeSlug(args.landingPagePath)}. Import path for routes.tsx: ./pages/lp/${sanitizeSlug(args.landingPagePath)}.tsx. The builder will EDIT this file to add creative content.`
+        : 'Failed to scaffold landing page — check logs.',
     }
   }
 }
 
 export const campaignPlanCreate: SkillToolDefinition = {
   name: 'campaignPlanCreate',
-  description: `Save a completed campaign and render the campaign artifact card with a "Launch Campaign" button.
-
-CRITICAL TIMING: Call this tool ONLY in the SUMMARY step — AFTER all content has been fully generated (landing page built, blog posts written, social posts created, email/ad copy written). This is the LAST tool you call in the campaign flow.
+  description: `Save the completed campaign and render the campaign card. Call this ONLY in the SUMMARY step — AFTER all content has been fully generated (landing page built, blog posts written, social posts created, email/ad copy written). This is the LAST tool you call in the campaign flow.
 
 DO NOT call this tool:
 - During the planning/discovery phase
 - Before the user approves the plan
-- Before content generation is complete`,
+- Before content generation is complete
+
+CRITICAL TIMING: Call this tool ONLY in SUMMARY, after the build handoff has completed.`,
   parameters: z.object({
     name: z.string().describe('Campaign name'),
     offer: z.string().describe('The campaign offer or goal — keep to 5 words or fewer (e.g. "Increase revenue by 2x")'),
@@ -274,6 +374,7 @@ This tool persists the campaign record together with its actual generated assets
 
 export const tools: SkillToolDefinition[] = [
   campaignPlanPropose,
+  campaignScaffoldPage,
   campaignPlanCreate,
   campaignCreate,
 ]
