@@ -710,6 +710,48 @@ body:has(#UpgradeLibraryPortal .ux-modal) .tooltip[role="tooltip"] {
     }
   }
 
+  /* Edit-mode accent frame: a light band sweeps along the canvas border.
+     The ring is drawn from currentColor (the feedbackHighContrastInfo intent set
+     via a text- class on the element), so the color stays token-driven. */
+  @keyframes edit-mode-border-shimmer {
+    0% { background-position: 150% 0; }
+    100% { background-position: -50% 0; }
+  }
+
+  .edit-mode-shimmer-border::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 2px;
+    background: linear-gradient(
+      100deg,
+      currentColor 0%,
+      currentColor 42%,
+      rgba(255, 255, 255, 0.9) 50%,
+      currentColor 58%,
+      currentColor 100%
+    );
+    background-size: 200% auto;
+    animation: edit-mode-border-shimmer 2.6s linear infinite;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .edit-mode-shimmer-border::before {
+      animation: none;
+      background: currentColor;
+    }
+  }
+
   @keyframes paywall-skeleton-shimmer {
     0% { background-position: 100% 100%; opacity: 0.6; }
     50% { opacity: 1; }

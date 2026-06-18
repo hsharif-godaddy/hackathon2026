@@ -255,6 +255,7 @@ export default function PreviewPane({
   const isCanvasTabsEnabled = useCommanderCanvasTabsEnabled();
   /** Switchboard: translucent creation overlay + edit chip behavior. */
   const isPreviewEnhancedOverlaysEnabled = useSwitchboard('appbuilder-preview-enhanced-overlays') === true;
+  const isEditModeCueEnabled = useSwitchboard('appbuilder-edit-mode-cue') === true;
   /**
    * Switchboard: evidence-based iframe recovery. When on, a missing
    * IFRAME_READY no longer blindly remounts the iframe on a 3s timer.
@@ -284,6 +285,7 @@ export default function PreviewPane({
   const selectedDeviceId = useDevelopPageStore((state) => state.selectedDeviceId)
   const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
   const mobileMode = useDevelopPageStore((state) => state.mobileMode)
+  const isMobileInlineEditActive = useDevelopPageStore((state) => state.isMobileInlineEditActive)
   const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange)
   const inboxBrandId = useDevelopPageStore((state) => state.inboxBrandId)
   // Get device dimensions from preset
@@ -1435,6 +1437,17 @@ export default function PreviewPane({
       (isProcessing || isMutatingFiles) &&
       editingChipPosition
     )
+    // Edit-mode awareness cue (appbuilder-edit-mode-cue): a persistent frame + tab on the
+    // canvas while the user is editing — distinct from the transient processing chip above.
+    // Desktop edits via viewMode EDIT; mobile via the inline-edit toggle (the bottom pencil).
+    const showEditModeCue = Boolean(
+      isEditModeCueEnabled &&
+      !showBuildingOverlay &&
+      (
+        (!isMobile && viewMode === ViewMode.EDIT) ||
+        (isMobile && isMobileInlineEditActive)
+      )
+    )
     return (
       <div className="h-full flex flex-col pr-e md:pe-2.5 ps-1">
         <div className="inset-0 relative h-full">
@@ -1525,6 +1538,32 @@ export default function PreviewPane({
                         tabIndex={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || showBuildingOverlay ? -1 : undefined}
                         inert={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || showBuildingOverlay ? true : undefined}
                       />
+                      {/* Shimmering accent frame for Edit mode. A masked gradient ring whose
+                          color is driven by currentColor (the feedbackHighContrastInfo intent
+                          via the text- class), with a light band sweeping along it. */}
+                      {showEditModeCue && (
+                        <div
+                          aria-hidden="true"
+                          className="edit-mode-shimmer-border pointer-events-none absolute inset-0 z-10 rounded-lg md:rounded-b-none text-intents-ux-feedbackHighContrastInfo-feedbackColor"
+                        />
+                      )}
+                      {/* Edit-mode tab — fused to the canvas border (frame-accent color) so it
+                          reads as frame chrome, not floating content. In-flow inside the shell,
+                          so no portal or position tracking. Anchored to the border nearest the
+                          edit control: top-right on desktop (toggle up top), bottom-right on
+                          mobile (pencil in the bottom toolbar). Hidden while the transient
+                          processing chip is up. */}
+                      {showEditModeCue && !showEditingChip && (
+                        <div
+                          data-testid="preview-edit-mode-chip"
+                          className={clsx(
+                            'pointer-events-none absolute right-4 z-20 bg-intents-ux-feedbackHighContrastInfo-feedbackColor px-2 py-0.5 shadow-md text-xs font-medium whitespace-nowrap text-intents-ux-feedbackHighContrastInfo-onFeedbackColor',
+                            isMobile ? 'bottom-0 rounded-t-md' : 'top-0 rounded-b-md',
+                          )}
+                        >
+                          {t('builder_edit_mode_chip', undefined, 'Edit mode')}
+                        </div>
+                      )}
                     </div>
                   </div>
 

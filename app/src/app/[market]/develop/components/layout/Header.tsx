@@ -1,5 +1,6 @@
 'use client';
 
+import clsx from 'clsx';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { useMemo } from 'react';
@@ -44,12 +45,18 @@ import { logClickEvent } from '@/utils/instrumentation'
 // Transparent inactive state lets the rail bg show through so the pill reads as one toggle.
 const PREVIEW_EDIT_TOGGLE_INACTIVE_TRANSPARENT = '[&[aria-checked=false]]:!bg-transparent';
 
+// Edit-mode awareness cue (appbuilder-edit-mode-cue): tint the active Edit pill with the
+// feedbackInfo accent so "I'm in Edit mode" reads from the toggle's color, not just its label.
+const PREVIEW_EDIT_TOGGLE_EDIT_ACTIVE_ACCENT =
+  '[&[aria-checked=true]]:!bg-intents-ux-feedbackHighContrastInfo-feedbackColor [&[aria-checked=true]]:!text-intents-ux-feedbackHighContrastInfo-onFeedbackColor';
+
 interface DevelopHeaderProps {
   onPreviewRefresh: () => void;
 }
 
 export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) {
   const t = useTranslations();
+  const isEditModeCueEnabled = useSwitchboard('appbuilder-edit-mode-cue') === true;
   const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook');
   // The design-kit wizard renders inside the "Logo & Brand" tab, so the tab must be
   // visible whenever the wizard profile is active (gated on the appbuilder-agent-profile
@@ -165,7 +172,10 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                   value={ViewMode.EDIT}
                   icon={<InlineEditIcon className="size-2.5" />}
                   label={t('builder_preview_button_edit')}
-                  className={PREVIEW_EDIT_TOGGLE_INACTIVE_TRANSPARENT}
+                  className={clsx(
+                    PREVIEW_EDIT_TOGGLE_INACTIVE_TRANSPARENT,
+                    isEditModeCueEnabled && PREVIEW_EDIT_TOGGLE_EDIT_ACTIVE_ACCENT,
+                  )}
                   disabled={isVersionHistoryOpen}
                 />
               </ButtonGroup>
