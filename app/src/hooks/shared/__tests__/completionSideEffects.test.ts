@@ -4,15 +4,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { checkNewPageCreation, handleCommitComplete, postInitialBuildEvent, trackToolResult } from "../completionSideEffects";
-
-const { mockExtractNewPageRoute } = vi.hoisted(() => ({
-  mockExtractNewPageRoute: vi.fn(),
-}));
-
-vi.mock("@/app/[market]/develop/components/utils", () => ({
-  extractNewPageRoute: mockExtractNewPageRoute,
-}));
+import { handleCommitComplete, postInitialBuildEvent, trackToolResult } from "../completionSideEffects";
 
 const { mockLogImpressionEvent, mockSendToolImpressionEvent } = vi.hoisted(() => ({
   mockLogImpressionEvent: vi.fn(() => vi.fn()),
@@ -344,28 +336,20 @@ describe("completionSideEffects", () => {
       vi.spyOn(window, "postMessage").mockImplementation(() => {});
     });
 
-    it("invalidates the media surfaces (pages, slot usage, manifest) so a newly built page appears without a refresh", async () => {
+    it("invalidates git-history and secretsDiff caches", async () => {
       await handleCommitComplete(COMMIT, APP_ID);
 
       expect(mockInvalidateQueries).toHaveBeenCalledWith({
-        queryKey: ["appPages", APP_ID],
+        queryKey: ["git-history", APP_ID],
         refetchType: "active",
       });
       expect(mockInvalidateQueries).toHaveBeenCalledWith({
-        queryKey: ["mediaSlotUsage", APP_ID],
-        refetchType: "active",
-      });
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({
-        queryKey: ["mediaManifest", APP_ID],
+        queryKey: ["secretsDiff", APP_ID],
         refetchType: "active",
       });
     });
 
-    it("still updates the selected commit even if a media-surface invalidation rejects", async () => {
-      mockInvalidateQueries.mockImplementation(({ queryKey }: { queryKey: unknown[] }) =>
-        queryKey[0] === "mediaSlotUsage" ? Promise.reject(new Error("boom")) : Promise.resolve(undefined),
-      );
-
+    it("updates the selected commit hash", async () => {
       await handleCommitComplete(COMMIT, APP_ID);
 
       expect(mockSetSelectedCommitHash).toHaveBeenCalledWith(APP_ID, COMMIT);
@@ -376,46 +360,6 @@ describe("completionSideEffects", () => {
 
       expect(mockClearRedoStack).toHaveBeenCalledWith(APP_ID);
       expect(mockSetUndoCursor).toHaveBeenCalledWith(APP_ID, COMMIT);
-    });
-  });
-
-  describe("checkNewPageCreation", () => {
-    const APP_ID = "app-123";
-
-    beforeEach(() => {
-      vi.clearAllMocks();
-      mockInvalidateQueries.mockResolvedValue(undefined);
-      mockGetQueryClient.mockReturnValue({ invalidateQueries: mockInvalidateQueries });
-      vi.spyOn(window, "postMessage").mockImplementation(() => {});
-    });
-
-    it("refreshes the media surfaces when a new page was built without a commit hash", async () => {
-      mockGetStreamingState.mockReturnValue({
-        messages: [{ role: "assistant", toolCalls: [{ name: "write_file" }] }],
-      });
-      mockExtractNewPageRoute.mockReturnValue("/our-story");
-
-      await checkNewPageCreation(APP_ID);
-
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({
-        queryKey: ["appPages", APP_ID],
-        refetchType: "active",
-      });
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({
-        queryKey: ["mediaManifest", APP_ID],
-        refetchType: "active",
-      });
-    });
-
-    it("does not refresh the media surfaces when no new page route is detected", async () => {
-      mockGetStreamingState.mockReturnValue({
-        messages: [{ role: "assistant", toolCalls: [{ name: "write_file" }] }],
-      });
-      mockExtractNewPageRoute.mockReturnValue(null);
-
-      await checkNewPageCreation(APP_ID);
-
-      expect(mockInvalidateQueries).not.toHaveBeenCalled();
     });
   });
 });

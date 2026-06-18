@@ -28,14 +28,11 @@ import {
   deletePersistentUploadFiles,
 } from '../../services/media-upload-deletion.js';
 import { normalizeSearchQuery } from '../../services/image-search/normalize.js';
-import { AppRepository } from '../../database/repositories/AppRepository.js';
 
 import { logger } from '../../logging/index.js';
 import { validateAppOwnership } from '../middleware/app-ownership.js';
 import { validateVideoMagicBytes, VIDEO_MIME_TYPE } from '../../services/media-upload-video.js';
 import { getPersistentPublicDir } from '../../utils/persistent-assets.js';
-import { discoverPageRoutes } from '../../services/seo-audit.js';
-import { computeSlotUsageByRoute } from '../../services/media-slot-usage.js';
 import { createForWorkspace } from '../../workspace/index.js';
 import { generateImageCaptionFromBuffer, generateVideoCaptionFromBuffer } from '../../services/MediaCaptionService.js';
 import { emitToApp } from '../ai-lib-websocket-server.js';
@@ -154,25 +151,6 @@ const ALLOWED_IMAGE_TYPES: Record<string, string> = {
   [IMAGE_MIME_TYPE.GIF]: 'gif',
 };
 
-/**
- * Derive a page slug from its route: "/" → "home", others drop the leading slash.
- * Lowercased to match the canonical slot-path convention (e.g. "/Contact" → "contact").
- */
-export function deriveSlug(route: string): string {
-  return (route === '/' ? 'home' : route.replace(/^\//, '')).toLowerCase();
-}
-
-/**
- * Turn a page slug into a human-readable title.
- * "about" → "About", "blog/post" → "Blog / Post".
- */
-function titleFromSlug(slug: string): string {
-  return slug
-    .split('/')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).replace(/-/g, ' '))
-    .join(' / ');
-}
-
 // Allowed video MIME types → file extensions
 const ALLOWED_VIDEO_TYPES: Record<string, string> = {
   [VIDEO_MIME_TYPE.MP4]: 'mp4',
@@ -259,82 +237,6 @@ router.use('/:appId', (req, res, next) => {
   // Cast to any to allow dynamic property assignment
   (req.params as Record<string, string>).id = req.params.appId ?? '';
   validateAppOwnership(req, res, next);
-});
-
-/**
- * GET /media/:appId/pages
- * Get the list of an app's pages, derived deterministically from the page files
- * discovered in `src/pages`. De-duped by slug and lowercased to match the
- * canonical slot-path convention.
- */
-router.get('/:appId/pages', async (req: Request, res: Response) => {
-  try {
-    const appId = req.params.appId;
-    if (!appId) {
-      return res.status(400).json({ success: false, error: 'App ID is required' });
-    }
-
-    const appRepository = new AppRepository();
-    const app = appRepository.findById(appId);
-    if (!app) {
-      return res.status(404).json({ success: false, error: `App not found: ${appId}` });
-    }
-
-    const routes = discoverPageRoutes(app.path);
-
-    // De-dupe by slug so an app with both an `index` file and a `home` file
-    // collapses into a single "Home" section rather than producing a duplicate
-    // (acypert-godaddy PR feedback). Slugs are lowercased via deriveSlug to
-    // match the canonical slot-path convention.
-    const slugs = new Set<string>();
-    const pages: Array<{ slug: string; title: string; route: string }> = [];
-    for (const route of routes) {
-      const slug = deriveSlug(route);
-      if (slugs.has(slug)) continue;
-      slugs.add(slug);
-      pages.push({ slug, title: titleFromSlug(slug), route });
-    }
-
-    return res.json({ success: true, pages });
-  } catch (error) {
-    logger.error('route.media.get_pages.error', {
-      appId: req.params.appId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return res.status(500).json({ success: false, error: 'Failed to get pages' });
-  }
-});
-
-/**
- * GET /media/:appId/slot-usage
- * Deterministic `route → slot[]` map computed by static source analysis of each
- * page's import closure. Used by the media grid to bucket slots into per-page
- * and "Shared" sections without rendering the preview. Replaces the old runtime
- * DOM-scan approach.
- */
-router.get('/:appId/slot-usage', async (req: Request, res: Response) => {
-  try {
-    const appId = req.params.appId;
-    if (!appId) {
-      return res.status(400).json({ success: false, error: 'App ID is required' });
-    }
-
-    const appRepository = new AppRepository();
-    const app = appRepository.findById(appId);
-    if (!app) {
-      return res.status(404).json({ success: false, error: `App not found: ${appId}` });
-    }
-
-    const usageByRoute = computeSlotUsageByRoute(app.path);
-
-    return res.json({ success: true, usageByRoute });
-  } catch (error) {
-    logger.error('route.media.get_slot_usage.error', {
-      appId: req.params.appId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return res.status(500).json({ success: false, error: 'Failed to compute slot usage' });
-  }
 });
 
 /**

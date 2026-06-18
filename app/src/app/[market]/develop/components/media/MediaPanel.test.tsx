@@ -41,35 +41,6 @@ vi.mock('@/hooks/useMediaManifest', () => ({
   }),
 }));
 
-const mockSetInputValue = vi.fn();
-vi.mock('@/stores/useStreamingConversationStore.selectors', () => ({
-  useSetInputValue: () => mockSetInputValue,
-}));
-
-vi.mock('@/hooks/useAppPages', () => ({
-  useAppPages: () => ({
-    pages: [{ slug: 'home', title: 'Home', route: '/' }],
-    isLoading: false,
-    error: null,
-    refetch: vi.fn(),
-  }),
-}));
-
-vi.mock('@/hooks/useAppDetails', () => ({
-  useAppDetails: () => ({ data: { name: 'My Cool Site' } }),
-}));
-
-vi.mock('@/stores/useCodeSyncStore', () => ({
-  useCodeSyncStore: (selector: any) => selector({
-    changeVersion: 0,
-    fileChanges: new Map(),
-  }),
-}));
-
-vi.mock('@/hooks/useTranslations', () => ({
-  useTranslations: () => (key: string) => key,
-}));
-
 vi.mock('@/stores/useDevelopPageStore', () => {
   const mockGetState = vi.fn(function () { return {
     activeChatTab: mockActiveChatTab,
@@ -129,11 +100,9 @@ vi.mock('@/app/[market]/develop/components/media/MediaSlotDetail', () => ({
 }));
 
 vi.mock('@/app/[market]/develop/components/media/MediaSlotsGrid', () => ({
-  MediaSlotsGrid: ({ onSelectSlot, onAddMedia, onDesignLogo }: { onSelectSlot: (slot: string) => void; onAddMedia?: (title: string) => void; onDesignLogo?: () => void }) => (
+  MediaSlotsGrid: ({ onSelectSlot }: { onSelectSlot: (slot: string) => void }) => (
     <div data-testid="media-slots-grid">
       <button onClick={() => onSelectSlot('slot-1')}>Select slot-1</button>
-      {onAddMedia && <button onClick={() => onAddMedia('Home')}>Add Media Home</button>}
-      {onDesignLogo && <button onClick={() => onDesignLogo()}>Design Logo</button>}
     </div>
   ),
 }));
@@ -244,28 +213,5 @@ describe('MediaPanel', () => {
     renderWithProviders(<MediaPanel />);
 
     expect(mockMediaSlotDialogStore.clearMediaReturnState).toHaveBeenCalled();
-  });
-
-  describe('prompt generation callbacks', () => {
-    it('handleAddMedia prefills chat with page title and site name', async () => {
-      const { user } = renderWithProviders(<MediaPanel />);
-      await user.click(screen.getByText('Add Media Home'));
-
-      expect(mockSetInputValue).toHaveBeenCalledWith(
-        expect.stringContaining('improve the look of my Home page')
-      );
-      expect(mockSetInputValue).toHaveBeenCalledWith(
-        expect.stringContaining('My Cool Site')
-      );
-      expect(mockSetActiveChatTab).toHaveBeenCalledWith(ChatTab.CHAT);
-    });
-
-    it('handleDesignLogo prefills chat with logo prompt', async () => {
-      const { user } = renderWithProviders(<MediaPanel />);
-      await user.click(screen.getByText('Design Logo'));
-
-      expect(mockSetInputValue).toHaveBeenCalledWith('Design a logo for my site');
-      expect(mockSetActiveChatTab).toHaveBeenCalledWith(ChatTab.CHAT);
-    });
   });
 });

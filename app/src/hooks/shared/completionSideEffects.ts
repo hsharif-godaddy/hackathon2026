@@ -8,7 +8,6 @@
 
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { trackBuildComplete } from '@/hooks/shared/initialBuildFunnel'
-import { refreshMediaSurfaces } from '@/hooks/shared/mediaSurfaceRefresh'
 import { sendToolImpressionEvent } from '@/hooks/websocket/useWebSocketHelpers'
 import { appFetch } from '@/lib/gasket-config'
 import { JourneyTracker } from '@/lib/journeyTracker'
@@ -39,9 +38,6 @@ export async function handleCommitComplete(commitHash: string, appId: string): P
     refetchType: 'active',
   })
 
-  // Commit means source changed — refresh the media grid so a newly built page and its images appear.
-  refreshMediaSurfaces(appId)
-
   useGitStore.getState().setSelectedCommitHash(appId, commitHash)
   // A new agent commit invalidates any in-flight redo path and re-anchors
   // the chat-turn cursor to the just-landed turn.
@@ -62,14 +58,12 @@ export async function handleCommitComplete(commitHash: string, appId: string): P
 /**
  * Check finalized messages for new page creation when no commit hash.
  */
-export async function checkNewPageCreation(appId: string | null): Promise<void> {
+export async function checkNewPageCreation(): Promise<void> {
   const { messages } = useStreamingConversationStore.getState()
   const lastMsg = messages[messages.length - 1]
   if (lastMsg?.role === 'assistant' && lastMsg.toolCalls?.length) {
     const { extractNewPageRoute } = await import('@/app/[market]/develop/components/utils')
     if (extractNewPageRoute(lastMsg.toolCalls)) {
-      // No-commit page builds skip the commit refresh path, so refresh the media grid here too.
-      if (appId) refreshMediaSurfaces(appId)
       window.postMessage(
         { type: 'MESSAGE_COMPLETE', source: 'agent' },
         window.location.origin,
@@ -84,16 +78,14 @@ export async function checkNewPageCreation(appId: string | null): Promise<void> 
 export function invalidateMediaManifestIfNeeded(appId: string): void {
   const { messages } = useStreamingConversationStore.getState()
 
-  // Only check the last assistant message (current turn) to avoid session-long invalidation.
+  // Only check the last assistant message (current turn) to avoid session-long invalidation
   const lastAssistantMsg = messages.findLast((msg) => msg.role === 'assistant')
   const hadMediaTools = lastAssistantMsg?.toolCalls?.some((tc) =>
     tc.name === 'media' ||
     tc.name.startsWith('media__') ||
     tc.name.startsWith('media-image__') ||
     tc.name.startsWith('media-video__') ||
-    tc.name.startsWith('media-logo__') ||
-    tc.name === 'generate_logo' ||
-    tc.name === 'set_venture_logo'
+    tc.name.startsWith('media-logo__')
   )
 
   if (hadMediaTools) {

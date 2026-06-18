@@ -16,19 +16,15 @@ import Search from '@ux/search'
 import Skeleton from '@ux/skeleton'
 import Tag from '@ux/tag'
 
-import { getRouteForSlot } from '@/app/[market]/develop/components/media/slot-routing'
 import { getPreviewOrigin, getSlotImageUrl, getSlotThumbnailUrl } from '@/app/[market]/develop/components/media/slotImageUrl'
 import type { DeleteUploadResult, SlotUploadItem } from '@/app/[market]/develop/components/media/UploadedMediaSection'
 import { UploadedMediaSection } from '@/app/[market]/develop/components/media/UploadedMediaSection'
 import { LogoShimmer, logoShimmerOrientation, LogoShimmerOverlay } from '@/app/[market]/develop/components/preview/brand-book/LogoShimmer'
 import { getParentOrigin } from '@/components/security/allowed-frame-ancestors'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
-import { SWITCHBOARD_APPBUILDER_MEDIA_GRID_SLOT_ORGANIZATION } from '@/config/switchboard-flags'
-import { useAppPages } from '@/hooks/useAppPages'
 import { useIsEmbedded } from '@/hooks/useIsEmbedded'
 import { useMediaManifest } from '@/hooks/useMediaManifest'
 import { useMediaSlot } from '@/hooks/useMediaSlot'
-import { useMediaSlotUsage } from '@/hooks/useMediaSlotUsage'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
@@ -82,47 +78,35 @@ const GETTY_LOAD_MORE_COUNT = 9
 // null = any (no filter applied)
 type SearchOrientation = 'horizontal' | 'vertical' | null
 
-/** A single page a media slot renders on. */
-interface SlotInstance {
-  route: string
-  title: string
-}
+/** Small cycling control shown when a media slot appears in multiple places in the preview */
+function MediaSlotInstanceCycler({ slotName }: { slotName: string }) {
+  const totalMatches = useMediaSlotDialogStore((s) => s.mediaScrollTotalMatches)
+  const currentIndex = useMediaSlotDialogStore((s) => s.mediaScrollCurrentIndex)
 
-// Cycles through the pages a media slot appears on, navigating the preview to each. Presentational; hidden when the slot appears on a single page.
-function MediaSlotInstanceCycler({
-  instances,
-  currentIndex,
-  onNavigate,
-}: {
-  instances: SlotInstance[]
-  currentIndex: number
-  onNavigate: (newIndex: number) => void
-}) {
-  const t = useTranslations()
-  // Only meaningful when the slot appears on more than one page. Hiding for 0/1
-  // avoids a redundant "1 of 1" on normal single-page slots.
-  if (instances.length <= 1) return null
+  if (totalMatches <= 1) return null
 
-  const current = instances[Math.min(currentIndex, instances.length - 1)]
+  const handleCycle = (newIndex: number) => {
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement
+    if (iframe) {
+      postMessageToIframe(iframe, { type: 'SCROLL_TO_MEDIA_SLOT', slotPath: slotName, index: newIndex })
+    }
+  }
 
   return (
-    <div className="flex items-center gap-1 mt-1 text-base text-intents-ux-textSubtle-textColor">
-      <span className="font-medium">
-        {t('builder_mediaslot_instance_count', { current: currentIndex + 1, total: instances.length }, '{current} of {total}')}
-        {current ? ` · ${current.title}` : ''}
-      </span>
+    <div className="flex items-center gap-1.5 mt-1 text-xs text-intents-ux-textSubtle-textColor">
+      <span>{currentIndex + 1} of {totalMatches} instances</span>
       <button
         type="button"
-        onClick={() => onNavigate((currentIndex - 1 + instances.length) % instances.length)}
-        className="px-2 py-0.5 rounded text-2xl font-bold hover:bg-intents-ux-box-backgroundColor transition-colors leading-none"
+        onClick={() => handleCycle((currentIndex - 1 + totalMatches) % totalMatches)}
+        className="px-1.5 py-0.5 rounded hover:bg-intents-ux-box-backgroundColor transition-colors"
         aria-label="Previous instance"
       >
         ‹
       </button>
       <button
         type="button"
-        onClick={() => onNavigate((currentIndex + 1) % instances.length)}
-        className="px-2 py-0.5 rounded text-2xl font-bold hover:bg-intents-ux-box-backgroundColor transition-colors leading-none"
+        onClick={() => handleCycle((currentIndex + 1) % totalMatches)}
+        className="px-1.5 py-0.5 rounded hover:bg-intents-ux-box-backgroundColor transition-colors"
         aria-label="Next instance"
       >
         ›
@@ -143,8 +127,6 @@ export function MediaSlotDetail({
   const t = useTranslations()
   const isImageSearchEnabled = useSwitchboard('appbuilder-image-search')
   const isVideoEnabled = useSwitchboard('appbuilder-media-video')
-  const isSectionOrganizationEnabled =
-    useSwitchboard(SWITCHBOARD_APPBUILDER_MEDIA_GRID_SLOT_ORGANIZATION) === true
 
   // Stable timestamp captured at mount time. Because MediaSlotDetail unmounts while the
   // image editor is open and remounts after a save, each post-edit visit gets a new ts,
@@ -158,61 +140,6 @@ export function MediaSlotDetail({
   })
 
   const { manifest, refetch: refetchManifest } = useMediaManifest({ appId, enabled })
-
-  // Pages this slot renders on, from the deterministic usage map (same source as
-  // the media grid's per-page labels). Drives the cross-page instance cycler.
-  const { usageByRoute } = useMediaSlotUsage({
-    appId,
-    enabled: enabled && isSectionOrganizationEnabled,
-  })
-  const { pages } = useAppPages({
-    appId,
-    enabled: enabled && isSectionOrganizationEnabled,
-  })
-  const instances = useMemo<SlotInstance[]>(() => {
-    const titleForRoute = (route: string): string => {
-      const page = pages.find((p) => p.route === route)
-      if (page) return page.title
-      const slug = route === '/' ? 'home' : route.replace(/^\//, '')
-      return slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, ' ')
-    }
-    const routesWithSlot = Object.keys(usageByRoute).filter((r) => usageByRoute[r]?.includes(slotName))
-    const primaryRoute = getRouteForSlot(slotName)
-    const ordered = [
-      ...(primaryRoute && routesWithSlot.includes(primaryRoute) ? [primaryRoute] : []),
-      ...pages.map((p) => p.route).filter((r) => r !== primaryRoute && routesWithSlot.includes(r)),
-      ...routesWithSlot.filter((r) => r !== primaryRoute && !pages.some((p) => p.route === r)),
-    ]
-    return ordered.map((route) => ({ route, title: titleForRoute(route) }))
-  }, [usageByRoute, pages, slotName])
-
-  // Index 0 == the slot's primary route (where the grid already navigated on
-  // click), so the label matches the preview without auto-navigating.
-  const [instanceIndex, setInstanceIndex] = useState(0)
-  useEffect(() => {
-    setInstanceIndex(0)
-  }, [slotName])
-
-  // Navigate the preview to the page at `newIndex` and scroll to this slot.
-  const navigateToInstance = useCallback((newIndex: number) => {
-    const target = instances[newIndex]
-    if (!target) return
-    setInstanceIndex(newIndex)
-    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement | null
-    if (!iframe) return
-    postMessageToIframe(iframe, { type: 'RESTORE_STATE_AFTER_REFRESH', url: target.route })
-    setTimeout(() => {
-      // Re-apply the slot on the page we just navigated to so it reflects the latest
-      // swapped media. Without this, the destination page renders the stale ?src= baked
-      // into its source and shows the old image until a manual refresh.
-      postMessageToIframe(iframe, {
-        type: 'RELOAD_MEDIA_SLOT',
-        slotPath: slotName,
-        ...(slot?.mediaType === 'video' && { isVideo: true }),
-      })
-      postMessageToIframe(iframe, { type: 'SCROLL_TO_MEDIA_SLOT', slotPath: slotName, index: 0 })
-    }, 600)
-  }, [instances, slotName, slot?.mediaType])
 
   const mediaScrollTotalMatches = useMediaSlotDialogStore((s) => s.mediaScrollTotalMatches)
   const mediaScrollCurrentIndex = useMediaSlotDialogStore((s) => s.mediaScrollCurrentIndex)
@@ -586,14 +513,14 @@ export function MediaSlotDetail({
     }
   }, [])
 
-  const handleSwapImage = useCallback(async (targetSlot: string = slotName) => {
+  const handleSwapImage = useCallback(async () => {
     const effectiveUrl = selectedUrl ?? slot?.currentUrl
     if (!slot || !effectiveUrl || effectiveUrl === slot.currentUrl) return
 
     // For video search results, use the actual video preview URL instead of the thumbnail
     const swapUrl = searchVideoUrls[effectiveUrl] || effectiveUrl
 
-    logger.info('media_slot_detail.swap_requested', { appId, slotName: targetSlot, newUrl: swapUrl })
+    logger.info('media_slot_detail.swap_requested', { appId, slotName, newUrl: swapUrl })
     setIsSwapping(true)
 
     try {
@@ -615,7 +542,7 @@ export function MediaSlotDetail({
       // they also need allowExternalUrl + isVideo to be accepted by the backend.
       const isAiVideo = !isVideo && effectiveUrl.startsWith('http') && allAiGeneratedUrls.has(effectiveUrl)
       const response = await fetch(
-        `${baseAgentUrl}/media/${appId}/slots/${targetSlot}`,
+        `${baseAgentUrl}/media/${appId}/slots/${slotName}`,
         {
           method: 'PUT',
           headers: {
@@ -650,7 +577,7 @@ export function MediaSlotDetail({
 
       logger.info('media_slot_detail.swap_success', {
         appId,
-        slotName: targetSlot,
+        slotName,
         newUrl: swapUrl,
         forked: responseData.forked === true,
         slotPath: responseData.slotPath,
@@ -660,7 +587,7 @@ export function MediaSlotDetail({
       // Only treat as video if the selected media IS actually a video (Getty video or AI-generated).
       // Don't use slot.mediaType as fallback — user may be replacing a video with an image.
       const swapIsVideo = isVideo || isAiVideo
-      const reloadedSlot = responseData.slotPath ?? targetSlot
+      const reloadedSlot = responseData.slotPath ?? slotName
       if (responseData.forked) {
         if (responseData.originalSlotPath) {
           reloadPreviewSlot(responseData.originalSlotPath, { isVideo: swapIsVideo })
@@ -692,7 +619,7 @@ export function MediaSlotDetail({
     } catch (err) {
       logger.error('media_slot_detail.swap_failed', {
         appId,
-        slotName: targetSlot,
+        slotName,
         error: err instanceof Error ? err.message : String(err),
       })
       setUploadError(err instanceof Error ? err.message : t('builder_mediaslot_error_fail_use'))
@@ -733,7 +660,7 @@ export function MediaSlotDetail({
   const effectiveSelectedUrl = selectedUrl ?? slot?.currentUrl ?? null
 
   const handleSelectFromUploads = useCallback(
-    async (file: { filename: string; mimeType?: string | null; signedUrl?: string; fullSignedUrl?: string }, targetSlot: string = slotName) => {
+    async (file: { filename: string; mimeType?: string | null; signedUrl?: string; fullSignedUrl?: string }) => {
       setIsApplyingUpload(true)
       setUploadError(null)
 
@@ -751,7 +678,7 @@ export function MediaSlotDetail({
         // directly, avoiding the browser roundtrip (fetch blob → re-upload) that caused
         // 500 errors when blobs arrived corrupted or empty.
         const response = await fetch(
-          `${baseAgentUrl}/media/${appId}/slots/${targetSlot}/apply-upload`,
+          `${baseAgentUrl}/media/${appId}/slots/${slotName}/apply-upload`,
           {
             method: 'POST',
             headers: {
@@ -769,9 +696,9 @@ export function MediaSlotDetail({
 
         const responseData = await response.json()
         const isVideo = file.mimeType?.startsWith('video/') ?? false
-        logger.info('media_slot_detail.upload_from_chat_success', { appId, slotName: targetSlot, filename: file.filename, isVideo })
+        logger.info('media_slot_detail.upload_from_chat_success', { appId, slotName, filename: file.filename, isVideo })
         logImpressionEvent('uploads.mediaslot.success')()
-        reloadPreviewSlot(targetSlot, isVideo ? { isVideo: true } : undefined)
+        reloadPreviewSlot(slotName, isVideo ? { isVideo: true } : undefined)
         // Use response slot data directly (caption arrives async via WS or delayed refetch)
         if (responseData.slot) {
           setSlotData(responseData.slot)
@@ -789,7 +716,7 @@ export function MediaSlotDetail({
       } catch (err) {
         logger.error('media_slot_detail.upload_from_chat_failed', {
           appId,
-          slotName: targetSlot,
+          slotName,
           error: err instanceof Error ? err.message : String(err),
         })
         logImpressionEvent('uploads.mediaslot.failed')()
@@ -800,23 +727,6 @@ export function MediaSlotDetail({
     },
     [appId, slotName, reloadPreviewSlot, refetch, refetchManifest, setSlotData, t]
   )
-
-  // Apply the current selection (upload or swap) to a specific slot.
-  const applySelection = useCallback(
-    async (targetSlot: string) => {
-      if (selectedUploadFile) {
-        await handleSelectFromUploads(selectedUploadFile, targetSlot)
-      } else {
-        await handleSwapImage(targetSlot)
-      }
-    },
-    [selectedUploadFile, handleSelectFromUploads, handleSwapImage]
-  )
-
-  // Entry point for the Apply button — apply the selection to this slot.
-  const handleApplyClick = useCallback(() => {
-    void applySelection(slotName)
-  }, [applySelection, slotName])
 
   // In-flight async logo job. SHARED CONTRACT: when currentUrl is a real hosted https logo this is
   // a regeneration — show the existing logo (dimmed) under an animated overlay. When currentUrl is
@@ -829,22 +739,9 @@ export function MediaSlotDetail({
     (slot.currentUrl.startsWith('http://') || slot.currentUrl.startsWith('https://'))
       ? slot.currentUrl
       : undefined
-
-  // For logo slots, aggregate alternatives from ALL logo slots in the manifest
-  // so the detail page shows every generated logo option across orientations.
-  const allImages = useMemo(() => {
-    if (!slot) return []
-    const urls = new Set([...(isSlotPending ? [] : [slot.currentUrl]), ...slot.alternatives])
-    if (slot.mediaType === 'logo' && manifest) {
-      for (const [name, s] of Object.entries(manifest)) {
-        if (name.startsWith('logo/') && s.mediaType === 'logo') {
-          if (!s.pendingJobId) urls.add(s.currentUrl)
-          for (const alt of s.alternatives) urls.add(alt)
-        }
-      }
-    }
-    return [...urls]
-  }, [slot, manifest, isSlotPending])
+  const allImages = slot
+    ? [...new Set([...(isSlotPending ? [] : [slot.currentUrl]), ...slot.alternatives])]
+    : []
   const gettyImages = allImages.filter((url) => !isUploadUrl(url)).sort()
 
   const allGettyImages = [
@@ -1025,7 +922,7 @@ export function MediaSlotDetail({
   const showSearchSection = !!isImageSearchEnabled && (slot?.mediaType === 'image' || slot?.mediaType === 'video')
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 relative">
+    <div className="flex flex-col flex-1 min-h-0">
       <div className="flex-1 overflow-y-auto pr-1">
         {isLoading ? (
           <SkeletonContent />
@@ -1044,7 +941,7 @@ export function MediaSlotDetail({
               <h3 className="font-semibold text-lg">
                 {formatSlotName(slotName)}
               </h3>
-              <MediaSlotInstanceCycler instances={instances} currentIndex={instanceIndex} onNavigate={navigateToInstance} />
+              <MediaSlotInstanceCycler slotName={slotName} />
 
               <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                 {slot.mediaType && slot.mediaType !== 'image' && (
@@ -1116,7 +1013,7 @@ export function MediaSlotDetail({
                 />
               )}
               <Button
-                onClick={handleApplyClick}
+                onClick={selectedUploadFile ? () => handleSelectFromUploads(selectedUploadFile) : handleSwapImage}
                 design="primary"
                 icon={<RefreshIcon className={`w-4 h-4 ${(isSwapping || isApplyingUpload) ? 'animate-spin' : ''}`} />}
                 disabled={!hasSelection || isSwapping || isApplyingUpload}
@@ -1488,6 +1385,7 @@ export function MediaSlotDetail({
           </div>
         )}
       </div>
+
     </div>
   )
 }
