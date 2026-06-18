@@ -9,10 +9,11 @@
  * Site publish state and ClickHouse responses are mocked so the test does not
  * depend on a live deploy or analytics backend.
  */
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test, expect } from '../helpers/test-fixtures';
 
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
-import { handleSsoLogin, ensureAuthenticated } from '../helpers/auth';
+import { detectSsoType, ensureAuthenticated, handleSsoLogin, isSignInUIResult, loginViaSsoDirect } from '../helpers/auth';
 import {
   AI_RESPONSE_TIMEOUT_MS,
   DEFAULT_TIMEOUT,
@@ -82,6 +83,12 @@ async function mockPublishedAnalyticsSite(page: Page, appId: string): Promise<vo
 test.describe('Analytics Custom Period', () => {
   test.beforeEach(async ({ page }, testInfo) => {
     logTestStart(testInfo);
+    // Authenticate once here via the fast standalone-SSO login (e2e-v2 style).
+    // This replaces the in-body homepage user-menu -> cross-origin sign-in
+    // iframe flow whose credential fill was timing out on prod (the reason
+    // this spec was skipped). The eviction's internal loginIfNeeded then
+    // becomes a fast no-op.
+    await loginViaSsoDirect(page);
     if (!E2E_NO_DELETE) {
       await page.goto('/');
       await evictOldestE2eAppsToFitLimit(page).catch((err) => {
@@ -106,12 +113,13 @@ test.describe('Analytics Custom Period', () => {
     }
   });
 
-  // TODO(@hdewan): re-enable once the SSO login flake is resolved. Since
-  // ~June 9 this spec fails repeatedly in CI before reaching any analytics
-  // assertion: the sign-in iframe appears but the credential fill times out
-  // (locator.fill: Timeout 30000ms) on both attempts, and cleanup then 401s.
-  // See run 27234059953 (prod) shard 3 for a representative failure.
-  test.skip('Custom date range flyout — pick dates, apply, refresh analytics', async ({ page }, testInfo) => {
+  // Re-enabled (VNEXT-80877). Previously skipped because CI failed before any
+  // analytics assertion: the homepage sign-in iframe's credential fill timed
+  // out (locator.fill: Timeout 30000ms) on prod since ~June 9 (run 27234059953
+  // shard 3). Fixed by authenticating once in beforeEach via the fast
+  // standalone-SSO login (loginViaSsoDirect) instead of the in-body iframe
+  // flow; the in-body step is now a conditional re-auth guard.
+  test('Custom date range flyout — pick dates, apply, refresh analytics', async ({ page }, testInfo) => {
     testInfo.setTimeout(AI_RESPONSE_TIMEOUT_MS + 120_000);
 
     await page.addInitScript(() => {
@@ -129,7 +137,15 @@ test.describe('Analytics Custom Period', () => {
 
     await dismissOverlays(page);
     await page.locator('[data-eid*="homepage.prompt.submit"]').click();
-    await handleSsoLogin(page);
+
+    // Already authenticated in beforeEach, so the submit normally redirects
+    // straight to /develop/. Only drive the SSO flow if the session refreshed
+    // mid-test and the sign-in UI actually reappeared.
+    const ssoResult = await detectSsoType(page, true);
+    if (isSignInUIResult(ssoResult)) {
+      console.log('  SSO refresh detected, re-authenticating...');
+      await handleSsoLogin(page);
+    }
 
     await page.waitForURL(/\/develop\//, { timeout: LONG_TIMEOUT });
     await waitForDevelopPage(page);
@@ -155,10 +171,12 @@ test.describe('Analytics Custom Period', () => {
 
     await analyticsTab.click({ force: true });
 
-    const analyticsTitle = page.getByText(/analytics|builder_analytics_title/i);
-    await expect(analyticsTitle.first()).toBeVisible({ timeout: DEFAULT_TIMEOUT });
-
     console.log('Step 4: Open custom date flyout...');
+    // The period picker's custom trigger lives inside the analytics panel, so
+    // its visibility is the panel-rendered signal. (A prior `getByText(/analytics/i)`
+    // title check matched the app name in the chat transcript — the spec's app
+    // prefix contains "analytics" — and resolved to a hidden span; the precise
+    // testid avoids that.)
     const customSegment = page.getByTestId('analytics-period-custom-trigger');
     await expect(customSegment).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await customSegment.click();
