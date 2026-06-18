@@ -14,11 +14,13 @@ import RefreshIcon from '@ux/icon/refresh'
 import ShowIcon from '@ux/icon/show'
 
 import { ButtonGroup } from '@/app/[market]/develop/components/ButtonGroup'
+import { EditNudgeTooltip } from '@/app/[market]/develop/components/EditNudgeTooltip'
 import IconButton from '@/app/[market]/develop/components/IconButton'
 import ShareLink from '@/app/[market]/develop/components/layout/ShareLink'
 import SettingsMenu, { SettingsMenuRef } from '@/app/[market]/develop/components/settings/SettingsMenu'
 import { ChatTab, MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
+import { useEditNudgeTooltip } from '@/app/[market]/develop/hooks/useEditNudgeTooltip'
 import AppPublish from '@/components/layout/AppPublish'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
@@ -63,8 +65,11 @@ export default function ChatToolbar({
   const returnToMain = useGitStore((state) => state.returnToMain);
   const setSelectedCommitHash = useGitStore((state) => state.setSelectedCommitHash);
   const isAnalyticsEnabled = useSwitchboard('appbuilder-analytics');
+  const isEditModeCueEnabled = useSwitchboard('appbuilder-edit-mode-cue') === true;
   const isMobileInlineEditEnabled = useSwitchboard('airo-builder-mobile-inline-edit');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
+  const mobileEditButtonRef = useRef<HTMLDivElement>(null);
+  const { visible: editNudgeVisible, dismissForever: dismissEditNudge } = useEditNudgeTooltip();
 
   const { data: gitHistoryData } = useGitHistoryQuery({
     appId: appId || '',
@@ -243,21 +248,27 @@ export default function ChatToolbar({
             <AnimatePresence>
               {viewMode === ViewMode.PREVIEW && isMobileInlineEditEnabled && (
                 <motion.div
+                  ref={mobileEditButtonRef}
                   initial={{ x: -20, opacity: 0 }}
                   animate={{ x: 0, opacity: 1 }}
                   exit={{ x: -20, opacity: 0 }}
                   transition={{ duration: 0.2, ease: 'easeInOut', delay: 0.5 }}
+                  className="relative"
                 >
                   <IconButton
                     icon={<InlineEditIcon className="size-2.5" />}
                     onClick={() => {
                       logClickEvent('develop.chat_toolbar.inline_edit', clickContext)()
+                      dismissEditNudge()
                       toggleMobileInlineEdit()
                     }}
                     label={t('builder_preview_button_edit')}
                     showLabelWhenActive={false}
                     active={isMobileInlineEditActive}
                   />
+                  {isEditModeCueEnabled && editNudgeVisible && (
+                    <EditNudgeTooltip anchorRef={mobileEditButtonRef} placement="top" />
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

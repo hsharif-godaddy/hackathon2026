@@ -222,6 +222,7 @@ export interface BusEventMap {
   SPEECH_QUERY_SUPPORT: object;
   SPEECH_START: object;
   SPEECH_STOP: object;
+  EDITABLE_ELEMENT_CLICKED_IN_PREVIEW: { tagName: string };
 }
 
 export type SeoRegressionEventData = {

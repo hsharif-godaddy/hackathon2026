@@ -3,7 +3,7 @@
 import clsx from 'clsx';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import Box from '@ux/box';
 import Growl from '@ux/growl';
 import Apps2Icon from '@ux/icon/apps2'
@@ -20,6 +20,7 @@ import WorldIcon from '@ux/icon/world'
 import Tag from '@ux/tag';
 
 import { ButtonGroup } from '@/app/[market]/develop/components/ButtonGroup';
+import { EditNudgeTooltip } from '@/app/[market]/develop/components/EditNudgeTooltip';
 import { MOBILE_MODE_EID_MAP, VIEW_MODE_EID_MAP } from '@/app/[market]/develop/components/headerEids';
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import ShareLink from '@/app/[market]/develop/components/layout/ShareLink';
@@ -27,6 +28,7 @@ import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/p
 import DeviceSelector from '@/app/[market]/develop/components/preview/DeviceSelector'
 import { MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
+import { useEditNudgeTooltip } from '@/app/[market]/develop/hooks/useEditNudgeTooltip'
 import { useInboxUnresolvedCount } from '@/app/[market]/develop/hooks/useInbox'
 import { RedoIcon, UndoIcon } from '@/components/icons/UndoRedoIcons';
 import { AiroLogo } from '@/components/layout/AiroLogo';
@@ -60,6 +62,8 @@ interface DevelopHeaderProps {
 export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) {
   const t = useTranslations();
   const isEditModeCueEnabled = useSwitchboard('appbuilder-edit-mode-cue') === true;
+  const editButtonRef = useRef<HTMLDivElement>(null);
+  const { visible: editNudgeVisible, dismissForever: dismissEditNudge } = useEditNudgeTooltip();
   const isBrandBookEnabled = useSwitchboard('appbuilder-brandbook');
   // The design-kit wizard renders inside the "Logo & Brand" tab, so the tab must be
   // visible whenever the wizard profile is active (gated on the appbuilder-agent-profile
@@ -102,6 +106,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
       return
     }
     handleViewModeChange(value as ViewMode, hasUnsavedChanges)
+    if (value === ViewMode.EDIT) dismissEditNudge()
     if (VIEW_MODE_EID_MAP[value]) logClickEvent(VIEW_MODE_EID_MAP[value], clickContext)()
   }
 
@@ -197,16 +202,21 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                   label={t('builder_preview_button_preview')}
                   className={PREVIEW_EDIT_TOGGLE_INACTIVE_TRANSPARENT}
                 />
-                <ButtonGroup.Item
-                  value={ViewMode.EDIT}
-                  icon={<InlineEditIcon className="size-2.5" />}
-                  label={t('builder_preview_button_edit')}
-                  className={clsx(
-                    PREVIEW_EDIT_TOGGLE_INACTIVE_TRANSPARENT,
-                    isEditModeCueEnabled && PREVIEW_EDIT_TOGGLE_EDIT_ACTIVE_ACCENT,
+                <div ref={editButtonRef} className="relative inline-flex">
+                  <ButtonGroup.Item
+                    value={ViewMode.EDIT}
+                    icon={<InlineEditIcon className="size-2.5" />}
+                    label={t('builder_preview_button_edit')}
+                    className={clsx(
+                      PREVIEW_EDIT_TOGGLE_INACTIVE_TRANSPARENT,
+                      isEditModeCueEnabled && PREVIEW_EDIT_TOGGLE_EDIT_ACTIVE_ACCENT,
+                    )}
+                    disabled={isVersionHistoryOpen}
+                  />
+                  {isEditModeCueEnabled && editNudgeVisible && (
+                    <EditNudgeTooltip anchorRef={editButtonRef} placement="bottom" />
                   )}
-                  disabled={isVersionHistoryOpen}
-                />
+                </div>
               </ButtonGroup>
 
               {/* Secondary tools: Code, Domain, Brand, Inbox. */}

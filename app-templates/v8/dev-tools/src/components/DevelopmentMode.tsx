@@ -9,6 +9,7 @@ import ElementHoverBar from "./ElementHoverBar";
 import { setTranslations } from "../utils/translations";
 import { resolveRouteForModule } from "../route-discovery";
 import { collectMediaSlotDomMatches } from "../utils/media-slot-dom";
+import { isClickable, isInsideNavSurface, isDevToolsElement, FORM_TAGS } from "../utils/element-detection";
 
 export default function DevelopmentMode() {
   const [isEditModeActive, setIsEditModeActive] = useState(false); // off by default, parent enables via EDIT_MODE_ENABLED message
@@ -1532,6 +1533,24 @@ export default function DevelopmentMode() {
       if (navigationTimeout) clearTimeout(navigationTimeout)
     }
   }, [])
+
+  useEffect(() => {
+    if (isEditModeActive) return
+
+    const handlePreviewClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null
+      if (!target) return
+      if (isClickable(target)) return
+      if (isInsideNavSurface(target)) return
+      if (isDevToolsElement(target)) return
+      if (FORM_TAGS.has(target.tagName.toLowerCase())) return
+      if (window.parent === window) return
+      send({ type: 'EDITABLE_ELEMENT_CLICKED_IN_PREVIEW', tagName: target.tagName.toLowerCase() })
+    }
+
+    document.addEventListener('click', handlePreviewClick, true)
+    return () => document.removeEventListener('click', handlePreviewClick, true)
+  }, [isEditModeActive])
 
   return (
     <div data-airo-dev-tools>
