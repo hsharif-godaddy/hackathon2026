@@ -1,0 +1,106 @@
+metadata:
+  name: Skill Loader - App Transfer
+  version: 1.0.0
+
+cases:
+  # --- Positive: app-transfer skill should load ---
+
+  - id: transfer-app-explicit
+    prompt: 'Can I transfer my app to another account?'
+    expectedSkill: app-transfer
+    tags: [positive]
+    rationale: Direct transfer request — clearest signal to load the app-transfer skill
+
+  - id: move-app-to-account
+    prompt: 'move my app to another account'
+    expectedSkill: app-transfer
+    tags: [positive]
+    rationale: Minimal move-to-another-account phrasing must route to the skill
+
+  - id: accept-transfer-code
+    prompt: 'Someone sent me a transfer code for an app — how do I accept it?'
+    expectedSkill: app-transfer
+    tags: [positive]
+    rationale: Recipient side of the flow — accepting a transfer with a code
+
+  - id: change-app-owner
+    prompt: 'How do I change the owner of this app to a different GoDaddy account?'
+    expectedSkill: app-transfer
+    tags: [positive]
+    rationale: Changing ownership between accounts is the app-transfer flow
+
+  - id: transfer-effect-on-domain
+    prompt: 'What happens to my custom domain if I transfer my app to someone else?'
+    expectedSkill: app-transfer
+    tags: [positive]
+    rationale: Explanatory question about transfer effects, no action verb — should still load
+
+  - id: undo-pending-transfer
+    prompt: 'I started a transfer by mistake — can I undo it?'
+    expectedSkill: app-transfer
+    tags: [positive]
+    rationale: Cancelling a pending transfer (Cancel Transfer before acceptance) is covered by the skill
+
+  - id: commerce-app-eligibility
+    prompt: 'Can I transfer an app that has a GoDaddy Commerce store?'
+    expectedSkill: app-transfer
+    tags: [positive]
+    rationale: Transfer-eligibility question the skill answers (Commerce apps cannot be transferred)
+
+  # --- Positive: harder cases (synonyms / buried intent) ---
+
+  - id: freelancer-handoff
+    prompt: "I'm a freelancer and finished a client's site — how do I hand it off to their account?"
+    expectedSkill: app-transfer
+    tags: [positive, hard]
+    rationale: '"Hand off to their account" is a layperson synonym for transferring the app'
+
+  - id: give-app-to-someone
+    prompt: 'How do I give this app to someone else so it becomes theirs?'
+    expectedSkill: app-transfer
+    tags: [positive, hard]
+    rationale: Give/becomes-theirs expresses ownership transfer without the word "transfer"
+
+  # --- Negative: "transfer"/"move" near-misses that must NOT load app-transfer ---
+
+  - id: transfer-domain-registrar
+    prompt: 'I want to transfer my domain to GoDaddy'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Transferring a domain registration is a registrar operation, not moving an app between accounts — must not load app-transfer
+
+  - id: move-section
+    prompt: 'Move the hero section to the bottom of the homepage'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: '"Move" here is a layout edit — no app-transfer intent'
+
+  - id: transfer-content-between-pages
+    prompt: 'Can you transfer the text from my About page to the Home page?'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: '"Transfer" here means moving content within the app — not transferring ownership'
+
+  # --- Negative: no skill should be loaded ---
+  # The agent runs against a minimal app (bare package.json). For these cases the agent
+  # will attempt to explore the project and begin the task before stopping at maxSteps (4).
+  # Skill loading is a routing decision made in the first 1-2 steps, so 4 steps is enough
+  # to confirm the agent correctly avoids loading any skill.
+
+  - id: add-contact-form
+    prompt: 'Add a contact form to my site'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Feature addition — no transfer intent
+
+  - id: fix-mobile-layout
+    prompt: 'The mobile layout is broken, please fix it'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Layout bug fix — no transfer intent
+
+  - id: change-color-scheme
+    prompt: 'Change the color scheme to something more professional'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Design change — no transfer intent
