@@ -106,6 +106,35 @@ export function useAdSenseSettingsForm(settings: AdSenseSettings | null | undefi
     setFieldErrors((current) => clearFieldError(current, field));
   };
 
+  const setServerErrors = (errors: AdSenseValidationErrors) => {
+    setValues((current) => {
+      let next = { ...current };
+
+      if (errors.enabled || errors.scriptSnippet) {
+        next = { ...next, enabled: true };
+      }
+
+      if (errors.adsTxt) {
+        next = {
+          ...next,
+          enabled: true,
+          adsTxt: { ...next.adsTxt, enabled: true },
+        };
+      }
+
+      if (errors.appAdsTxt) {
+        next = {
+          ...next,
+          enabled: true,
+          appAdsTxt: { ...next.appAdsTxt, enabled: true },
+        };
+      }
+
+      return next;
+    });
+    setFieldErrors(errors);
+  };
+
   const reset = (nextSettings: AdSenseSettings | null | undefined) => {
     const nextValues = toFormValues(nextSettings);
     setValues(nextValues);
@@ -124,7 +153,7 @@ export function useAdSenseSettingsForm(settings: AdSenseSettings | null | undefi
     values,
     fieldErrors,
     isDirty,
-    setServerErrors: setFieldErrors,
+    setServerErrors,
     updateEnabled,
     updateScriptSnippet,
     updateTextFileEnabled,

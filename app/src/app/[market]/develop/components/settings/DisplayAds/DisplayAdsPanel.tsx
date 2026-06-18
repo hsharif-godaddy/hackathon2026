@@ -1,13 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { type ReactNode, useEffect, useState } from 'react';
 import type { AdSenseSettings, AdSenseValidationErrors } from '@airo/shared/adsense';
 import Alert from '@ux/alert';
 import Box from '@ux/box';
 import Button from '@ux/button';
-import Checkbox from '@ux/checkbox';
+import Growl from '@ux/growl';
+import CheckmarkIcon from '@ux/icon/checkmark';
 import Spinner from '@ux/spinner';
 import text from '@ux/text';
+import ToggleButton from '@ux/toggle-button';
 
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState';
 import SettingsSection from '@/app/[market]/develop/components/settings/SettingsSection';
@@ -16,9 +19,45 @@ import { useTranslations } from '@/hooks/useTranslations';
 import { useAdSenseSettingsForm } from './useAdSenseSettingsForm';
 
 const ADSENSE_GET_STARTED_URL = 'https://adsense.google.com/start/';
+const SAVE_SAVED_FEEDBACK_LIFETIME_MS = 1500;
+const collapseTransition = { duration: 0.2, ease: [0.4, 0, 0.2, 1] as const };
+
+interface CollapseSectionProps {
+  show: boolean;
+  children: ReactNode;
+}
+
+function CollapseSection({ show, children }: CollapseSectionProps) {
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <AnimatePresence initial={false}>
+      {show && (
+        <motion.div
+          initial={reduceMotion ? false : { height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
+          transition={reduceMotion ? { duration: 0 } : collapseTransition}
+          className="overflow-hidden"
+        >
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
 
 interface DisplayAdsPanelProps {
   appId: string;
+}
+
+interface DisplayAdsToggleProps {
+  id: string;
+  label: string;
+  active: boolean;
+  disabled?: boolean;
+  errorMessage?: string;
+  onChange: (active: boolean) => void;
 }
 
 interface TextFileSectionProps {
@@ -28,7 +67,6 @@ interface TextFileSectionProps {
   toggleLabel: string;
   contentLabel: string;
   enabled: boolean;
-  disabled: boolean;
   content: string;
   error?: string;
   onEnabledChange: (enabled: boolean) => void;
@@ -56,6 +94,37 @@ function textAreaClassName(hasError: boolean) {
   ].join(' ');
 }
 
+function DisplayAdsToggle({
+  id,
+  label,
+  active,
+  disabled = false,
+  errorMessage,
+  onChange,
+}: DisplayAdsToggleProps) {
+  const errorId = `${id}-error`;
+
+  return (
+    <Box gap="sm">
+      <div className="flex items-center gap-3">
+        <ToggleButton
+          id={id}
+          active={active}
+          disabled={disabled}
+          aria-label={label}
+          onClick={() => onChange(!active)}
+        />
+        <label htmlFor={id} className="text-sm font-medium">
+          {label}
+        </label>
+      </div>
+      {errorMessage && (
+        <FieldError id={errorId}>{errorMessage}</FieldError>
+      )}
+    </Box>
+  );
+}
+
 function TextFileSection({
   field,
   title,
@@ -63,28 +132,28 @@ function TextFileSection({
   toggleLabel,
   contentLabel,
   enabled,
-  disabled,
   content,
   error,
   onEnabledChange,
   onContentChange,
 }: TextFileSectionProps) {
-  const checkboxId = `display-ads-${field}-enabled`;
+  const toggleId = `display-ads-${field}-enabled`;
   const textareaId = `display-ads-${field}-content`;
   const errorId = `display-ads-${field}-error`;
 
   return (
-    <SettingsSection title={title} description={description} hideStatus>
-      <Box gap="sm">
-        <Checkbox
-          id={checkboxId}
-          name={checkboxId}
-          checked={enabled}
-          onChange={onEnabledChange}
-          label={toggleLabel}
-          disabled={disabled}
-        />
-        <Box gap="sm">
+    <Box gap="sm">
+      <DisplayAdsToggle
+        id={toggleId}
+        label={toggleLabel}
+        active={enabled}
+        errorMessage={error}
+        onChange={onEnabledChange}
+      />
+      <CollapseSection show={enabled}>
+        <Box gap="sm" className="pt-1">
+          <text.h3 as="title">{title}</text.h3>
+          <text.p>{description}</text.p>
           <label htmlFor={textareaId} className="text-sm font-medium">
             {contentLabel}
           </label>
@@ -94,14 +163,12 @@ function TextFileSection({
             aria-invalid={Boolean(error)}
             aria-describedby={error ? errorId : undefined}
             className={textAreaClassName(Boolean(error))}
-            disabled={disabled || !enabled}
             value={content}
             onChange={(event) => onContentChange(event.target.value)}
           />
-          <FieldError id={errorId}>{error}</FieldError>
         </Box>
-      </Box>
-    </SettingsSection>
+      </CollapseSection>
+    </Box>
   );
 }
 
@@ -117,37 +184,68 @@ function hasFieldErrors(fields: AdSenseValidationErrors | undefined): fields is 
   return Boolean(fields && Object.keys(fields).length > 0);
 }
 
+function hasFieldSaveErrors(errors: AdSenseValidationErrors): boolean {
+  return Object.keys(errors).length > 0;
+}
+
+function firstFieldErrorMessage(fields: AdSenseValidationErrors): string | undefined {
+  return fields.enabled ?? fields.scriptSnippet ?? fields.adsTxt ?? fields.appAdsTxt;
+}
+
 export function DisplayAdsPanel({ appId }: DisplayAdsPanelProps) {
   const t = useTranslations();
   const { settings, isLoading, error, refetch, saveSettings, isSaving } = useAdSenseSettings(appId);
   const form = useAdSenseSettingsForm(settings);
-  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showSavedFeedback, setShowSavedFeedback] = useState(false);
   const isAdSenseEnabled = form.values.enabled;
+  const fieldSaveErrors = form.fieldErrors;
+
+  useEffect(() => {
+    if (!showSavedFeedback) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setShowSavedFeedback(false);
+    }, SAVE_SAVED_FEEDBACK_LIFETIME_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [showSavedFeedback]);
 
   const handleSave = async () => {
-    setSaveMessage(null);
+    setShowSavedFeedback(false);
     form.setServerErrors({});
 
     try {
       const saved = await saveSettings(form.toInput()) as AdSenseSettings;
       form.reset(saved);
-      setSaveMessage({
-        type: 'success',
-        text: t('builder_settings_display_ads_save_success', undefined, 'Display Ads settings saved'),
-      });
+      setShowSavedFeedback(true);
     } catch (saveError) {
       const fields = getAdSenseSettingsErrorFields(saveError);
       if (hasFieldErrors(fields)) {
         form.setServerErrors(fields);
+        Growl.addGrowlMessage({
+          id: 'display-ads-save-field-errors',
+          title: t('builder_status_error', undefined, 'Error'),
+          children: firstFieldErrorMessage(fields)
+            ?? t('builder_settings_display_ads_save_error', undefined, 'Unable to save Display Ads settings'),
+          emphasis: 'critical',
+          lifetime: 5000,
+        });
         return;
       }
 
-      setSaveMessage({
-        type: 'error',
-        text: getSaveErrorMessage(
+      Growl.addGrowlMessage({
+        id: 'display-ads-save-error',
+        title: t('builder_status_error', undefined, 'Error'),
+        children: getSaveErrorMessage(
           saveError,
           t('builder_settings_display_ads_save_error', undefined, 'Unable to save Display Ads settings'),
         ),
+        emphasis: 'critical',
+        lifetime: 5000,
       });
     }
   };
@@ -179,15 +277,6 @@ export function DisplayAdsPanel({ appId }: DisplayAdsPanelProps) {
 
   return (
     <Box gap="lg" className="@container">
-      {saveMessage && (
-        <Alert
-          emphasis={saveMessage.type === 'success' ? 'success' : 'critical'}
-          onClose={() => setSaveMessage(null)}
-        >
-          {saveMessage.text}
-        </Alert>
-      )}
-
       <SettingsSection
         title={t('builder_settings_display_ads_title', undefined, 'Google AdSense')}
         description={t(
@@ -198,113 +287,136 @@ export function DisplayAdsPanel({ appId }: DisplayAdsPanelProps) {
         hideStatus
       >
         <Box gap="md">
-          <Checkbox
+          <DisplayAdsToggle
             id="display-ads-enabled"
-            name="display-ads-enabled"
-            checked={isAdSenseEnabled}
-            onChange={(enabled) => form.updateEnabled(enabled)}
-            label={t('builder_settings_display_ads_title', undefined, 'Google AdSense')}
-            invalid={Boolean(form.fieldErrors.enabled)}
+            label={t('builder_settings_display_ads_enable_toggle', undefined, 'Enable Google AdSense')}
+            active={isAdSenseEnabled}
             errorMessage={form.fieldErrors.enabled}
+            onChange={(enabled) => form.updateEnabled(enabled)}
           />
-          <Box gap="sm">
-            <label htmlFor="display-ads-script-snippet" className="text-sm font-medium">
-              {t('builder_settings_display_ads_script_label', undefined, 'AdSense script snippet')}
-            </label>
-            <textarea
-              id="display-ads-script-snippet"
-              aria-label={t('builder_settings_display_ads_script_label', undefined, 'AdSense script snippet')}
-              aria-invalid={Boolean(form.fieldErrors.scriptSnippet)}
-              aria-describedby={form.fieldErrors.scriptSnippet ? 'display-ads-script-error' : undefined}
-              className={`${textAreaClassName(Boolean(form.fieldErrors.scriptSnippet))} font-mono`}
-              disabled={!isAdSenseEnabled}
-              value={form.values.scriptSnippet}
-              onChange={(event) => form.updateScriptSnippet(event.target.value)}
-            />
-            <text.p as="caption" emphasis="passive">
-              {t(
-                'builder_settings_display_ads_script_helper',
-                undefined,
-                'Paste the AdSense script tag from Google. The saved site uses the canonical Google loader on publish.',
-              )}
-            </text.p>
-            {!form.values.scriptSnippet.trim() && (
+          <CollapseSection show={isAdSenseEnabled}>
+            <Box gap="sm" className="pt-1">
+              <label htmlFor="display-ads-script-snippet" className="text-sm font-medium">
+                {t('builder_settings_display_ads_script_label', undefined, 'AdSense script snippet')}
+              </label>
+              <textarea
+                id="display-ads-script-snippet"
+                aria-label={t('builder_settings_display_ads_script_label', undefined, 'AdSense script snippet')}
+                aria-invalid={Boolean(form.fieldErrors.scriptSnippet)}
+                aria-describedby={form.fieldErrors.scriptSnippet ? 'display-ads-script-error' : undefined}
+                className={`${textAreaClassName(Boolean(form.fieldErrors.scriptSnippet))} font-mono`}
+                value={form.values.scriptSnippet}
+                onChange={(event) => form.updateScriptSnippet(event.target.value)}
+              />
               <text.p as="caption" emphasis="passive">
                 {t(
-                  'builder_settings_display_ads_adsense_setup_prompt',
+                  'builder_settings_display_ads_script_helper',
                   undefined,
-                  'Need an AdSense account?',
-                )}{' '}
-                <Button
-                  className="ux-text ux-text-caption ux-text-link"
-                  design="inline"
-                  href={ADSENSE_GET_STARTED_URL}
-                  external
-                  text={t(
-                    'builder_settings_display_ads_adsense_setup_link',
-                    undefined,
-                    'Get started with Google AdSense',
-                  )}
-                />
+                  'Paste the AdSense script tag from Google. The saved site uses the canonical Google loader on publish.',
+                )}
               </text.p>
-            )}
-            <FieldError id="display-ads-script-error">{form.fieldErrors.scriptSnippet}</FieldError>
-          </Box>
+              {!form.values.scriptSnippet.trim() && (
+                <text.p as="caption" emphasis="passive">
+                  {t(
+                    'builder_settings_display_ads_adsense_setup_prompt',
+                    undefined,
+                    'Need an AdSense account?',
+                  )}{' '}
+                  <Button
+                    className="ux-text ux-text-caption ux-text-link"
+                    design="inline"
+                    href={ADSENSE_GET_STARTED_URL}
+                    external
+                    text={t(
+                      'builder_settings_display_ads_adsense_setup_link',
+                      undefined,
+                      'Get started with Google AdSense',
+                    )}
+                  />
+                </text.p>
+              )}
+              <FieldError id="display-ads-script-error">{form.fieldErrors.scriptSnippet}</FieldError>
+            </Box>
+          </CollapseSection>
         </Box>
       </SettingsSection>
 
-      <TextFileSection
-        field="adsTxt"
-        title='ads.txt'
-        description={t(
-          'builder_settings_display_ads_ads_txt_description',
-          undefined,
-          'Host ads.txt content for Google verification on the published site.',
-        )}
-        toggleLabel={t('builder_settings_display_ads_ads_txt_toggle', undefined, 'Enable ads.txt')}
-        contentLabel={t('builder_settings_display_ads_ads_txt_label', undefined, 'ads.txt content')}
-        enabled={form.values.adsTxt.enabled}
-        disabled={!isAdSenseEnabled}
-        content={form.values.adsTxt.content}
-        error={form.fieldErrors.adsTxt}
-        onEnabledChange={(enabled) => form.updateTextFileEnabled('adsTxt', enabled)}
-        onContentChange={(content) => form.updateTextFileContent('adsTxt', content)}
-      />
+      <CollapseSection show={isAdSenseEnabled}>
+        <Box gap="lg">
+          <TextFileSection
+            field="adsTxt"
+            title='ads.txt'
+            description={t(
+              'builder_settings_display_ads_ads_txt_description',
+              undefined,
+              'Host ads.txt content for Google verification on the published site.',
+            )}
+            toggleLabel={t('builder_settings_display_ads_ads_txt_toggle', undefined, 'Enable ads.txt')}
+            contentLabel={t('builder_settings_display_ads_ads_txt_label', undefined, 'ads.txt content')}
+            enabled={form.values.adsTxt.enabled}
+            content={form.values.adsTxt.content}
+            error={form.fieldErrors.adsTxt}
+            onEnabledChange={(enabled) => form.updateTextFileEnabled('adsTxt', enabled)}
+            onContentChange={(content) => form.updateTextFileContent('adsTxt', content)}
+          />
 
-      <TextFileSection
-        field="appAdsTxt"
-        title='app-ads.txt'
-        description={t(
-          'builder_settings_display_ads_app_ads_txt_description',
-          undefined,
-          'Host app-ads.txt content for app inventory verification on the published site.',
-        )}
-        toggleLabel={t('builder_settings_display_ads_app_ads_txt_toggle', undefined, 'Enable app-ads.txt')}
-        contentLabel={t('builder_settings_display_ads_app_ads_txt_label', undefined, 'app-ads.txt content')}
-        enabled={form.values.appAdsTxt.enabled}
-        disabled={!isAdSenseEnabled}
-        content={form.values.appAdsTxt.content}
-        error={form.fieldErrors.appAdsTxt}
-        onEnabledChange={(enabled) => form.updateTextFileEnabled('appAdsTxt', enabled)}
-        onContentChange={(content) => form.updateTextFileContent('appAdsTxt', content)}
-      />
+          <TextFileSection
+            field="appAdsTxt"
+            title='app-ads.txt'
+            description={t(
+              'builder_settings_display_ads_app_ads_txt_description',
+              undefined,
+              'Host app-ads.txt content for app inventory verification on the published site.',
+            )}
+            toggleLabel={t('builder_settings_display_ads_app_ads_txt_toggle', undefined, 'Enable app-ads.txt')}
+            contentLabel={t('builder_settings_display_ads_app_ads_txt_label', undefined, 'app-ads.txt content')}
+            enabled={form.values.appAdsTxt.enabled}
+            content={form.values.appAdsTxt.content}
+            error={form.fieldErrors.appAdsTxt}
+            onEnabledChange={(enabled) => form.updateTextFileEnabled('appAdsTxt', enabled)}
+            onContentChange={(content) => form.updateTextFileContent('appAdsTxt', content)}
+          />
+        </Box>
+      </CollapseSection>
 
-      <Box gap="sm" inlineAlignChildren="end">
-        <text.p as="caption" emphasis="passive">
-          {t('builder_settings_display_ads_next_publish', undefined, 'Changes apply on your next publish')}
-        </text.p>
-        <Button
-          design="primary"
-          size="sm"
-          text={isSaving
-            ? t('builder_settings_display_ads_saving', undefined, 'Saving...')
-            : t('builder_common_save', undefined, 'Save')
-          }
-          icon={isSaving ? <Spinner size="sm" /> : undefined}
-          disabled={!form.isDirty || isSaving || !appId}
-          onClick={handleSave}
-        />
-      </Box>
+      <CollapseSection show={isAdSenseEnabled || form.isDirty || showSavedFeedback || hasFieldSaveErrors(fieldSaveErrors)}>
+        <Box gap="sm" className="pt-1">
+          {hasFieldSaveErrors(fieldSaveErrors) && (
+            <Alert emphasis="critical" onClose={() => form.setServerErrors({})}>
+              {t(
+                'builder_settings_display_ads_save_field_errors',
+                undefined,
+                "Couldn't save. Check the highlighted fields.",
+              )}
+            </Alert>
+          )}
+          <Box gap="sm" inlineAlignChildren="end">
+          <Button
+            design="primary"
+            size="sm"
+            className={showSavedFeedback
+              ? '!border-intents-ux-feedbackSuccess-feedbackColor !bg-intents-ux-feedbackSuccess-feedbackColor !text-intents-ux-feedbackSuccess-onFeedbackColor'
+              : undefined
+            }
+            text={showSavedFeedback
+              ? t('builder_settings_display_ads_saved', undefined, 'Saved!')
+              : t('builder_common_save', undefined, 'Save')
+            }
+            icon={isSaving
+              ? <Spinner size="sm" />
+              : showSavedFeedback
+                ? <CheckmarkIcon />
+                : undefined
+            }
+            disabled={isSaving || !appId || (!showSavedFeedback && !form.isDirty)}
+            onClick={handleSave}
+          />
+          <text.p as="caption" emphasis="passive">
+            {t('builder_settings_display_ads_next_publish', undefined, 'To see changes live, publish now.')}
+          </text.p>
+          </Box>
+        </Box>
+      </CollapseSection>
     </Box>
   );
 }
