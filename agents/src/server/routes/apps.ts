@@ -22,6 +22,7 @@ import type { App, CreateAppRequest, UpdateAppRequest } from '../../database/ind
 import { DirectoryListingTool, DirectoryListingNotFoundError } from '../../tools/directory-listing.js';
 import { createForWorkspace } from '../../workspace/index.js';
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
+import { isAppInRebuildFlow } from '../../services/rebuild/validate-inline-font.js';
 import { ASTStyleEditor } from '../../tools/ast-style-editor.js';
 import { ASTTextEditor } from '../../tools/ast-text-editor.js';
 import { TextFixAgent } from '../../agents/text-fix-agent.js';
@@ -1030,7 +1031,8 @@ router.post('/:id/styles/edit', async (req: Request, res: Response) => {
       value,
       newClassName,
       newStyle,
-      elementInfo
+      elementInfo,
+      isRebuildFlow: await isAppInRebuildFlow(app.id),
     }, app.id);
 
     if (!editResult.success) {

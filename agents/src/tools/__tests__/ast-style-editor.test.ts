@@ -1489,6 +1489,66 @@ export default function Page() {
       expect(updatedFile).toContain('Georgia, serif');
     });
 
+    it('should reject hardcoded fontFamily during rebuild flow', async () => {
+      const request = {
+        selector: 'p.text-base',
+        property: 'fontFamily',
+        value: 'Georgia, serif',
+        newClassName: 'text-base mt-4',
+        isRebuildFlow: true,
+        elementInfo: {
+          tagName: 'p',
+          className: 'text-base text-yellow-600 mt-4',
+          id: '',
+          textContent: 'This is a sample paragraph for testing.',
+          selector: 'p.text-base',
+          dataId: '',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'HomePage',
+            lineNumber: 7
+          },
+          rect: { top: 100, left: 50, width: 200, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/Hardcoded fontFamily is not allowed during website rebuild/);
+    });
+
+    it('should allow CSS variable fontFamily during rebuild flow', async () => {
+      const request = {
+        selector: 'p.text-base',
+        property: 'fontFamily',
+        value: 'var(--font-heading)',
+        newClassName: 'text-base mt-4',
+        isRebuildFlow: true,
+        elementInfo: {
+          tagName: 'p',
+          className: 'text-base text-yellow-600 mt-4',
+          id: '',
+          textContent: 'This is a sample paragraph for testing.',
+          selector: 'p.text-base',
+          dataId: '',
+          devContext: {
+            fileName: '/src/frontend/pages/index.page.tsx',
+            componentName: 'HomePage',
+            lineNumber: 7
+          },
+          rect: { top: 100, left: 50, width: 200, height: 20 },
+          computedStyles: {}
+        }
+      };
+
+      const result = await astEditor.editElementStyle(testAppPath, request, TEST_APP_ID);
+      expect(result.success).toBe(true);
+
+      const updatedFile = await readFile(testFilePath, 'utf-8');
+      expect(updatedFile).toContain('var(--font-heading)');
+    });
+
     it('should strip Tailwind font-sans class when applying fontFamily', async () => {
       const component = `import React from 'react';
 

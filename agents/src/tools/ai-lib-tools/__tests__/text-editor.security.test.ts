@@ -75,9 +75,9 @@ import { textEditorAITool, textEditorSchemaAITool } from '../text-editor.js';
 import { clearPostEditHandlers, registerPostEditHandler } from '../post-edit-handlers.js';
 import { seoRoutesPostEditHandler } from '../../../services/seo-routes-post-edit-handler.js';
 
-const createExecutionOptions = (appId: string) => ({
+const createExecutionOptions = (appId: string, metadata: Record<string, unknown> = {}) => ({
   experimental_context: {
-    metadata: { appId },
+    metadata: { appId, ...metadata },
   },
 });
 
@@ -452,6 +452,76 @@ describe('textEditorAITool — blocked path wiring', function textEditorSecurity
 
     expect(result).toContain('SEO: synced static routes');
     expect(result).toContain('SEO sync warnings: could not read existing seo-routes metadata: EACCES');
+  });
+});
+
+describe('textEditorAITool — rebuild inline font guard', function rebuildFontGuardTests() {
+  let appPath: string;
+  const appId = 'test-text-editor-rebuild-font-app';
+
+  beforeEach(function setup() {
+    vi.clearAllMocks();
+    clearPostEditHandlers();
+    const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    appPath = join(tmpdir(), `text-editor-font-${unique}`);
+    mkdirSync(appPath, { recursive: true });
+    mockFindById.mockReturnValue({ id: appId, path: appPath });
+    mockFiles.view.mockResolvedValue({ content: '', encoding: 'utf-8', lines: 0, size: 0, truncated: false, path: '' });
+  });
+
+  afterEach(function teardown() {
+    clearPostEditHandlers();
+    if (appPath && existsSync(appPath)) {
+      rmSync(appPath, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects hardcoded fontFamily during rebuild before handleStrReplace', async function blockRebuildFont() {
+    await expect(
+      textEditorAITool.execute(
+        {
+          command: 'str_replace',
+          path: 'src/pages/Home.tsx',
+          old_str: 'className="title"',
+          new_str: 'style={{ fontFamily: "Inter" }} className="title"',
+        },
+        createExecutionOptions(appId, { isRebuildFlow: true }),
+      ),
+    ).rejects.toThrow(/FORBIDDEN during website rebuild/);
+
+    expect(handleStrReplace).not.toHaveBeenCalled();
+  });
+
+  it('allows CSS variable fontFamily during rebuild', async function allowRebuildVar() {
+    vi.mocked(handleStrReplace).mockResolvedValue('ok');
+
+    await textEditorAITool.execute(
+      {
+        command: 'str_replace',
+        path: 'src/pages/Home.tsx',
+        old_str: 'className="title"',
+        new_str: 'style={{ fontFamily: "var(--font-heading)" }} className="title"',
+      },
+      createExecutionOptions(appId, { isRebuildFlow: true }),
+    );
+
+    expect(handleStrReplace).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows hardcoded fontFamily outside rebuild flow', async function allowNormalDevelop() {
+    vi.mocked(handleStrReplace).mockResolvedValue('ok');
+
+    await textEditorAITool.execute(
+      {
+        command: 'str_replace',
+        path: 'src/pages/Home.tsx',
+        old_str: 'className="title"',
+        new_str: 'style={{ fontFamily: "Inter" }} className="title"',
+      },
+      createExecutionOptions(appId),
+    );
+
+    expect(handleStrReplace).toHaveBeenCalledTimes(1);
   });
 });
 

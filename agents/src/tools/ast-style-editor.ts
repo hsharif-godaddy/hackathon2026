@@ -1,6 +1,8 @@
 import * as t from '@babel/types';
+
 import { ASTEditorBase, BaseEditContext, BaseEditResult } from './ast-editor-base.js';
 import { logger } from '../logging/index.js';
+import { checkRebuildFontEditAllowed } from '../services/rebuild/validate-inline-font.js';
 
 export type StyleEditContext = BaseEditContext;
 
@@ -28,6 +30,8 @@ export interface StyleEditRequest {
   newClassName: string;
   newStyle?: string;
   elementInfo: ElementInfo;
+  /** When true, hardcoded fontFamily values are rejected (website rebuild). */
+  isRebuildFlow?: boolean;
 }
 
 export interface StyleEditResult extends BaseEditResult {
@@ -632,6 +636,16 @@ export class ASTStyleEditor extends ASTEditorBase {
     error?: string;
   } {
     const { elementInfo, selector } = request;
+
+    const fontGuard = checkRebuildFontEditAllowed(
+      request.property,
+      request.value,
+      request.isRebuildFlow,
+      request.newStyle,
+    );
+    if (!fontGuard.allowed) {
+      return { success: false, error: fontGuard.error };
+    }
 
     // Parse the CSS selector to get tagName and className if not provided
     const parsedSelector = this.parseCSSSelector(selector);

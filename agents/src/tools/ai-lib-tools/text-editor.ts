@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { createTool, PROVIDER_TOOL_FALLBACK } from '@airo/ai-lib';
 import type { Tool, AgentContext } from '@airo/ai-lib';
 import { AppRepository } from '../../database/repositories/AppRepository.js';
-import { translateDockerPath } from '../../utils/path-helper.js';
+import { validateNoHardcodedFonts } from '../../services/rebuild/validate-inline-font.js';
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
 import { runPostEditHandlers } from './post-edit-handlers.js';
 import { isFileBlocked } from '../read-file.js';
@@ -34,6 +34,7 @@ import {
   handleCreate,
   handleInsert,
 } from '../text-editor-workspace.js';
+import { translateDockerPath } from '../../utils/path-helper.js';
 import { createForWorkspace } from '../../workspace/index.js';
 import type { WorkspaceFiles } from '../../workspace/files.js';
 
@@ -149,6 +150,15 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
     const validation = validateNoApiPaths(content, path);
     if (!validation.valid) {
       throw new Error(validation.error);
+    }
+
+    const fontValidation = validateNoHardcodedFonts(
+      content,
+      path,
+      context?.metadata?.isRebuildFlow === true,
+    );
+    if (!fontValidation.valid) {
+      throw new Error(fontValidation.error);
     }
   }
 
