@@ -324,7 +324,7 @@ export async function validateFontPairing(
 /**
  * Fallback function to detect font category when LLM doesn't provide it
  */
-function detectFontCategory(fontName: string): FontCategory {
+export function detectFontCategory(fontName: string): FontCategory {
   const fontLower = fontName.toLowerCase()
   
   const serifFonts = [
@@ -584,10 +584,34 @@ export function normalizeFontTheme(theme: FontTheme): { headerFont: FontInfo; bo
 }
 
 /**
+ * Persist typography to the brand memory key for brand-data API consumption.
+ * Non-fatal: logs warnings on failure but never throws.
+ */
+export async function persistBrandTypographyToMemory(
+  appId: string,
+  customerId: string | undefined,
+  fontTheme: { name: string; headerFont: FontInfo; bodyFont: FontInfo },
+  logEventPrefix: string,
+): Promise<void> {
+  try {
+    await memoryStore.set(workspaceScopeFromAppId(appId, customerId), 'brand.typography', {
+      name: fontTheme.name,
+      heading: { family: fontTheme.headerFont.name, weights: fontTheme.headerFont.weights },
+      body: { family: fontTheme.bodyFont.name, weights: fontTheme.bodyFont.weights },
+    })
+  } catch (error) {
+    logger.warn(`${logEventPrefix}.memory_write_failed`, {
+      appId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+/**
  * Persist font theme selection to the app plan.
  * Non-fatal: logs warnings on failure but never throws.
  */
-async function persistFontThemeToPlan(
+export async function persistFontThemeToPlan(
   appId: string,
   fontTheme: { name: string; headerFont: FontInfo; bodyFont: FontInfo },
   logEventPrefix: string
@@ -927,19 +951,12 @@ MODE SELECTION GUIDE:
           'fontTheme.set'
         )
 
-        // Persist to memory table for brand-data API (BrandDataTypography shape)
-        try {
-          await memoryStore.set(workspaceScopeFromAppId(appId, customerIdFromContext(context)), 'brand.typography', {
-            name: selectedFont.name,
-            heading: { family: selectedFont.headerFont.name, weights: selectedFont.headerFont.weights },
-            body: { family: selectedFont.bodyFont.name, weights: selectedFont.bodyFont.weights },
-          })
-        } catch (error) {
-          logger.warn('fontTheme.set.memory_write_failed', {
-            appId,
-            error: error instanceof Error ? error.message : String(error)
-          })
-        }
+        await persistBrandTypographyToMemory(
+          appId,
+          customerIdFromContext(context),
+          { name: selectedFont.name, headerFont: selectedFont.headerFont, bodyFont: selectedFont.bodyFont },
+          'fontTheme.set',
+        )
 
         logger.info('fontTheme.set.complete', {
           appId,
@@ -1261,19 +1278,12 @@ MODE SELECTION GUIDE:
       // Persist font theme to app plan
       await persistFontThemeToPlan(appId, { name: themeName, headerFont, bodyFont }, 'fontTheme.apply')
 
-      // Persist to memory table for brand-data API (BrandDataTypography shape)
-      try {
-        await memoryStore.set(workspaceScopeFromAppId(appId, customerIdFromContext(context)), 'brand.typography', {
-          name: themeName,
-          heading: { family: headerFont.name, weights: headerFont.weights },
-          body: { family: bodyFont.name, weights: bodyFont.weights },
-        })
-      } catch (error) {
-        logger.warn('fontTheme.apply.memory_write_failed', {
-          appId,
-          error: error instanceof Error ? error.message : String(error)
-        })
-      }
+      await persistBrandTypographyToMemory(
+        appId,
+        customerIdFromContext(context),
+        { name: themeName, headerFont, bodyFont },
+        'fontTheme.apply',
+      )
 
       return {
         success: true,

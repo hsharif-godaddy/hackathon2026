@@ -41,6 +41,11 @@ vi.mock('../../AssetProcessingService.js', () => ({
   },
 }));
 
+const applyRebuildTypographyMock = vi.fn(async () => ({ applied: true }));
+vi.mock('../typography.js', () => ({
+  applyRebuildTypography: (...args: unknown[]) => applyRebuildTypographyMock(...args),
+}));
+
 import { buildPageSpec, RebuildPromptBuilder } from '../prompt-builder.js';
 
 const baseSiteMetadata: SiteMetadata = {
@@ -312,11 +317,38 @@ describe('RebuildPromptBuilder.buildPage — rebuild Langfuse tagging (Leg A)', 
 
   beforeEach(() => {
     generateMock.mockClear();
+    applyRebuildTypographyMock.mockClear();
     analyzePageAssetsMock.mockResolvedValue({ pageAssets: [], analyzedImageCount: 0 });
     mockFindById.mockReturnValue({
       subscriptionId: 'sub-123',
       customerId: 'cust-456',
     });
+  });
+
+  it('applies rebuild typography before generating the homepage prompt', async function applyTypographyFirst() {
+    const persistence = {
+      loadSourceSiteData: vi.fn(async () => sourceSiteData),
+    } as unknown as PagePersistenceService;
+
+    const builder = new RebuildPromptBuilder('/app', '/app/.source-site', persistence, false);
+    const state = {
+      stylePreferences: baseStylePreferences,
+      pagesBuilt: [],
+    } as unknown as RebuildWorkflowState;
+
+    await builder.buildPage('app123', 'homepage', state);
+
+    expect(applyRebuildTypographyMock).toHaveBeenCalledOnce();
+    expect(applyRebuildTypographyMock).toHaveBeenCalledWith(
+      'app123',
+      baseSiteMetadata.typography,
+      baseStylePreferences,
+      true,
+    );
+    expect(generateMock).toHaveBeenCalledOnce();
+    expect(applyRebuildTypographyMock.mock.invocationCallOrder[0]).toBeLessThan(
+      generateMock.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('threads isRebuildFlow executionContext into PagePromptAgent.generate', async () => {

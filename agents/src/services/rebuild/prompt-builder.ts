@@ -29,6 +29,7 @@ import { normalizeAssetPath, resolveFavicon } from '../../utils/asset-paths.js';
 import { resolvePageTitle } from '../../utils/rebuild-utils.js';
 import { resizeForVision } from '../../utils/image-resize.js';
 import { AssetProcessingService } from '../AssetProcessingService.js';
+import { applyRebuildTypography } from './typography.js';
 import type { PagePersistenceService } from './page-persistence.js';
 
 const logger = Logger.create({ component: 'rebuild-orchestration-service' });
@@ -117,6 +118,19 @@ export class RebuildPromptBuilder {
 
     const pageAssetManifest = await this.analyzePageAssets(appId, pageSlug, pageContent, sourceSiteData);
     const screenshotBase64 = isFirstPage ? await this.loadHomepageScreenshot(appId, pageSlug) : undefined;
+
+    const typographyResult = await applyRebuildTypography(
+      appId,
+      sourceSiteData.metadata.typography,
+      state.stylePreferences,
+      isFirstPage,
+    );
+    logger.info('rebuild-orchestration.typography', {
+      appId,
+      pageSlug,
+      isFirstPage,
+      ...typographyResult,
+    });
 
     const prompt = await this.runPagePromptAgent(
       appId,
