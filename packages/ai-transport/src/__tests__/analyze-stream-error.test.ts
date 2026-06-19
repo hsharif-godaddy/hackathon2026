@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { TypeValidationError } from 'ai'
 import { analyzeStreamError, isNetworkError, isUpstreamTimeoutError } from '../analyze-stream-error.js'
 
 describe('isNetworkError', () => {
@@ -106,6 +107,27 @@ describe('analyzeStreamError', () => {
     const info = analyzeStreamError('plain string')
     expect(info.message).toBe('plain string')
     expect(info.type).toBe('UnknownError')
+  })
+
+  it('surfaces the offending chunk as validationValue for a TypeValidationError', () => {
+    // The exact non-standard SSE chunk that failed the provider's
+    // discriminatedUnion lives on TypeValidationError.value — the one
+    // diagnostic that pins down which upstream chunk broke the stream.
+    const chunk = { type: 'internalServerException', message: 'boom' }
+    const err = new TypeValidationError({ value: chunk, cause: new Error('No matching discriminator') })
+    const info = analyzeStreamError(err)
+    expect(info.validationValue).toBe(JSON.stringify(chunk))
+  })
+
+  it('truncates validationValue to 1000 chars', () => {
+    const chunk = { type: 'x', blob: 'a'.repeat(2000) }
+    const err = new TypeValidationError({ value: chunk, cause: new Error('No matching discriminator') })
+    const info = analyzeStreamError(err)
+    expect(info.validationValue).toHaveLength(1000)
+  })
+
+  it('leaves validationValue undefined for non-TypeValidationError', () => {
+    expect(analyzeStreamError(new Error('plain')).validationValue).toBeUndefined()
   })
 
   it('does not throw when cause is a circular-reference object', () => {

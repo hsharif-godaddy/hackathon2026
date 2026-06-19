@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { APICallError, RetryError } from 'ai'
+import { APICallError, RetryError, TypeValidationError } from 'ai'
 import { BudgetExceededError } from '@airo/ai-common'
 import {
   BudgetServiceError,
@@ -81,6 +81,25 @@ describe('classifyTurnError', () => {
       statusCode: 504,
       isRetryable: false,
       clientMessage: 'The AI took too long to respond and the request timed out. Please send your message again.',
+    })
+  })
+
+  it('classifies TypeValidationError (malformed upstream stream chunk) with a 502 + friendly resend message', () => {
+    // The @ai-sdk/anthropic stream parser emits this in-band when a chunk
+    // fails its `discriminatedUnion("type", ...)` validation ("No matching
+    // discriminator") — e.g. a Bedrock exception/guardrail envelope leaked by
+    // the GoCode/LiteLLM proxy, or a content-block type newer than the pinned
+    // provider knows. Without this branch it falls through to a blank-status
+    // terminal error (no statusCode, no errorType).
+    const err = new TypeValidationError({
+      value: { type: 'internalServerException', message: 'boom' },
+      cause: new Error('No matching discriminator'),
+    })
+    expect(classifyTurnError(err)).toEqual({
+      errorType: 'STREAM_TYPE_VALIDATION',
+      statusCode: 502,
+      isRetryable: false,
+      clientMessage: 'The AI service returned an unexpected response. Please send your message again.',
     })
   })
 

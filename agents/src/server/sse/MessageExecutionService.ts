@@ -2739,6 +2739,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           appId, conversationId, ...errorFields(err), ...(requestId && { requestId }),
           ...(terminalErrorInfo.statusCode !== undefined && { statusCode: terminalErrorInfo.statusCode }),
           ...(terminalErrorInfo.responseBody !== undefined && { responseBody: terminalErrorInfo.responseBody }),
+          ...(terminalErrorInfo.validationValue !== undefined && { validationValue: terminalErrorInfo.validationValue }),
           errorClass: terminalErrorInfo.type,
           isNetworkError: terminalErrorInfo.isNetworkError,
           ...(streamState.lastTrackerSnapshot && {

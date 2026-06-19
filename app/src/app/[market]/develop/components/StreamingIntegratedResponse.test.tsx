@@ -347,7 +347,7 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
 
       // BUDGET_NO_CAPACITY is not in the BMS error branch, should fall through to generic
       expect(screen.queryByText('builder_bms_error_title')).not.toBeInTheDocument();
-      expect(screen.getByText('Error')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
       expect(screen.getByText('Test error message')).toBeInTheDocument();
     });
 
@@ -415,9 +415,22 @@ describe('StreamingIntegratedResponse', function streamingIntegratedResponseTest
         />
       );
 
-      expect(screen.getByText('Error')).toBeInTheDocument();
+      expect(screen.getByText('builder_common_error_title')).toBeInTheDocument();
       expect(screen.getByText('Something went wrong')).toBeInTheDocument();
       expect(screen.queryByText('builder_connection_dropped_title')).not.toBeInTheDocument();
+    });
+
+    it('shows the stream-error banner for STREAM_TYPE_VALIDATION', function streamTypeValidationError() {
+      renderWithProviders(
+        <StreamingIntegratedResponse
+          message={upstreamErrorMessage('STREAM_TYPE_VALIDATION')}
+          streamingState="idle"
+        />
+      );
+
+      expect(screen.getByText('builder_stream_error_title')).toBeInTheDocument();
+      expect(screen.getByText('builder_stream_error_message')).toBeInTheDocument();
+      expect(screen.queryByText('builder_common_error_title')).not.toBeInTheDocument();
     });
   });
 

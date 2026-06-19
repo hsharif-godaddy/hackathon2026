@@ -1,4 +1,4 @@
-import { APICallError, RetryError } from 'ai'
+import { APICallError, RetryError, TypeValidationError } from 'ai'
 import { BudgetExceededError } from '@airo/ai-common'
 import { isBudgetServiceError, mapBudgetErrorToResponse, type BudgetErrorType } from '@airo/shared/budget'
 import { AgentNotFoundError } from './agent-execution-loop.js'
@@ -12,6 +12,7 @@ export type TurnErrorType =
   | 'APP_NOT_FOUND'
   | 'BUDGET_EXCEEDED'
   | 'RETRY_ERROR'
+  | 'STREAM_TYPE_VALIDATION'
   | BudgetErrorType
 
 /** Result of classifying a turn-terminating error. `isRetryable` is always
@@ -83,6 +84,23 @@ export function classifyTurnError(error: unknown): ClassifiedTurnError {
       ...(isUpstreamTimeoutError(error) && {
         clientMessage: 'The AI took too long to respond and the request timed out. Please send your message again.',
       }),
+    }
+  }
+
+  // In-band stream validation failure from the AI SDK provider parser
+  // (`@ai-sdk/anthropic` validates each SSE chunk against a
+  // `discriminatedUnion("type", ...)`; a chunk whose `type` is not in the
+  // pinned schema fails with "No matching discriminator"). This surfaces as a
+  // TypeValidationError emitted in-band, which is none of the classes above,
+  // so without this branch it falls through to a blank-status terminal error.
+  // The offending chunk is logged separately via `analyzeStreamError`'s
+  // `validationValue`. 502 = upstream/proxy returned a response we can't parse.
+  if (TypeValidationError.isInstance(error)) {
+    return {
+      errorType: 'STREAM_TYPE_VALIDATION',
+      statusCode: 502,
+      isRetryable: false,
+      clientMessage: 'The AI service returned an unexpected response. Please send your message again.',
     }
   }
 

@@ -2648,6 +2648,7 @@ export class WebSocketServer {
         causeChain: topLevelErrorInfo.causeChain,
         isNetworkError: topLevelErrorInfo.isNetworkError,
         responseBody: topLevelErrorInfo.responseBody,
+        ...(topLevelErrorInfo.validationValue !== undefined && { validationValue: topLevelErrorInfo.validationValue }),
       });
 
       // Construct error metadata object explicitly

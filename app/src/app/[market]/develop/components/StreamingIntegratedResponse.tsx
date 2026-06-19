@@ -311,6 +311,13 @@ export default function StreamingIntegratedResponse({
               title={t('builder_bms_error_title', undefined, 'Unable to Process Request')}
               message={t('builder_bms_error_message', undefined, 'Something went wrong on our end. Please try again.')}
             />
+          ) : message.errorType === 'STREAM_TYPE_VALIDATION' ? (
+            /* Malformed upstream stream chunk (AI SDK TypeValidationError) */
+            <StreamingAlertMessage
+              type="Critical"
+              title={t('builder_stream_error_title', undefined, 'Unexpected response')}
+              message={t('builder_stream_error_message', undefined, 'The AI service returned an unexpected response. Please try again, and rephrase your message if it keeps happening.')}
+            />
           ) : /\bterminated\b/i.test(message.error ?? '') && !(hasSegments || chronologicalContent.length > 0) ? (
             <StreamingAlertMessage
               type="Critical"
@@ -325,8 +332,8 @@ export default function StreamingIntegratedResponse({
             /* Generic upstream error for all other types */
             <StreamingAlertMessage
               type="Critical"
-              title="Error"
-              message={message.error || "Sorry, an error occurred while processing your request. Please try again."}
+              title={t('builder_common_error_title', undefined, 'Something went wrong')}
+              message={message.error || t('builder_common_error_generic', undefined, 'Something went wrong. Please try again.')}
             />
           )}
         </>

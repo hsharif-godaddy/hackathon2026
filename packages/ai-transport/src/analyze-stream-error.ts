@@ -1,3 +1,5 @@
+import { TypeValidationError } from 'ai'
+
 /** Structured breakdown of a stream-time error for logs and Langfuse
  * emission. */
 export interface AnalyzedStreamError {
@@ -9,6 +11,14 @@ export interface AnalyzedStreamError {
   causeChain: string[]
   statusCode: number | undefined
   responseBody: string | undefined
+  /** For an AI-SDK `TypeValidationError` (a stream chunk that failed the
+   * provider's `discriminatedUnion` validation), the JSON-serialized offending
+   * chunk (`error.value`), truncated to 1000 chars. This is the one field that
+   * identifies *which* non-standard upstream chunk broke the stream — e.g. a
+   * Bedrock exception/guardrail envelope leaked by the GoCode/LiteLLM proxy.
+   * Undefined for every other error class. The "No matching discriminator"
+   * reason is captured separately in `causeChain`. */
+  validationValue: string | undefined
 }
 
 const KNOWN_NETWORK_CODES = new Set([
@@ -123,6 +133,18 @@ export function analyzeStreamError(error: unknown): AnalyzedStreamError {
   const rawBody = (error as { responseBody?: unknown })?.responseBody
   const responseBody = typeof rawBody === 'string' ? rawBody.slice(0, 500) : undefined
 
+  let validationValue: string | undefined
+  if (TypeValidationError.isInstance(error)) {
+    // error.value is the parsed-but-unrecognized SSE chunk. It originates as
+    // JSON, so it serializes cleanly; the try/catch mirrors the causeChain
+    // defense so a pathological value can't bubble out of the outer catch.
+    try {
+      validationValue = JSON.stringify(error.value)?.slice(0, 1000)
+    } catch {
+      validationValue = '[non-serializable value]'
+    }
+  }
+
   return {
     type: errorType,
     message: errorMessage,
@@ -132,5 +154,6 @@ export function analyzeStreamError(error: unknown): AnalyzedStreamError {
     causeChain,
     statusCode,
     responseBody,
+    validationValue,
   }
 }
