@@ -201,6 +201,16 @@ describe('hasCustomDomainAttachments', () => {
     ).toBe(true);
   });
 
+  it('should return true for pending non-prefix domain', () => {
+    expect(
+      hasCustomDomainAttachments({
+        domains: [
+          { domainType: DomainType.CUSTOM, status: DomainStatus.PENDING, fqdn: 'example.com', isPrimary: false, prefix: '', createdAt: '', updatedAt: '' },
+        ],
+      })
+    ).toBe(true);
+  });
+
   it('should ignore domains in DELETING status', () => {
     expect(
       hasCustomDomainAttachments({

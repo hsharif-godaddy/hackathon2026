@@ -724,6 +724,10 @@ export default function DomainAttachWidget({
     .filter((d) => d.domainType !== 'prefix')
     .some((d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE);
 
+  const hasDeletingDomain = siteDomains
+    .filter((d) => d.domainType !== 'prefix')
+    .some((d) => d.status === DomainStatus.DELETING);
+
   const isPublished = hasBeenPublished(site);
 
   // In local dev (no subscription_id), allow domain operations without requiring publish
@@ -733,6 +737,7 @@ export default function DomainAttachWidget({
   const shouldDisableAddingDomain =
     hasActiveOrPendingCustomDomain ||
     hasActiveOrPendingDomain ||
+    hasDeletingDomain ||
     requiresPublish ||
     modifyDomainsMutation.isPending;
   const isDomainDataReady = isDomainsFetched && isAppDetailsFetched;

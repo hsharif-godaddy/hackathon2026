@@ -633,6 +633,80 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
     });
   });
 
+  it('disables external domain input when a non-prefix domain is in DELETING status', async function inputDisabledWhileDeleting() {
+    const { useAppDetails } = await import('@/hooks/useAppDetails');
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+
+    const deletingDomain: AppDomain = {
+      fqdn: 'deleting.com',
+      isPrimary: false,
+      status: DomainStatus.DELETING,
+      domainType: 'custom',
+    };
+
+    vi.mocked(useAppDetails).mockReturnValue({
+      data: {
+        id: 'test-app-123',
+        name: 'Test App',
+        status: 'running',
+        domains: [deletingDomain],
+      },
+      isFetched: true,
+    } as any);
+
+    renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+    await waitFor(function waitForExternalInput() {
+      expect(document.getElementById('external-domain-input')).toBeInTheDocument();
+    });
+
+    expect(document.getElementById('external-domain-input')).toBeDisabled();
+  });
+
+  it('does not disable external domain input when only a prefix domain is in DELETING status', async function inputEnabledForPrefixDeleting() {
+    const { useAppDetails } = await import('@/hooks/useAppDetails');
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+
+    const prefixDeletingDomain: AppDomain = {
+      fqdn: 'prefix.airoapp.ai',
+      isPrimary: false,
+      status: DomainStatus.DELETING,
+      domainType: 'prefix',
+    };
+
+    vi.mocked(useAppDetails).mockReturnValue({
+      data: {
+        id: 'test-app-123',
+        name: 'Test App',
+        status: 'running',
+        domains: [prefixDeletingDomain],
+      },
+      isFetched: true,
+    } as any);
+
+    renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+    await waitFor(function waitForExternalInput() {
+      expect(document.getElementById('external-domain-input')).toBeInTheDocument();
+    });
+
+    expect(document.getElementById('external-domain-input')).not.toBeDisabled();
+  });
+
   describe('feature flag gating', function featureFlagTests() {
     it('should return null when domain attach feature flag is disabled', async function disabled() {
       const { useSwitchboard } = await import('@/hooks/useSwitchboard');

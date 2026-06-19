@@ -812,10 +812,13 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   const hasActiveOrPendingDomain = appDetails?.domains
     ?.filter((d) => d.domainType !== 'prefix')
     ?.some((d) => d.status === DomainStatus.PENDING || d.status === DomainStatus.ACTIVE);
+  const hasDeletingDomain = appDetails?.domains
+    ?.filter((d) => d.domainType !== 'prefix')
+    ?.some((d) => d.status === DomainStatus.DELETING) ?? false;
 
   const isPublished = hasBeenPublished(site);
 
-  const isDomainMutationBusy = !isPublished || modifyDomainsMutation.isPending;
+  const isDomainMutationBusy = !isPublished || modifyDomainsMutation.isPending || hasDeletingDomain;
   const isDomainDataReady = isDomainsFetched && isAppDetailsFetched;
 
   const isSelectedDomainAlreadyConnected = Boolean(

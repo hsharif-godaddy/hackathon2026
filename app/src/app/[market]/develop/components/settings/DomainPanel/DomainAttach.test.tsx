@@ -1296,6 +1296,82 @@ describe('DomainAttach', function domainAttachTests() {
     });
   });
 
+  it('disables Connect Domain when a non-prefix domain is in DELETING status', async function connectDisabledWhileDeleting() {
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [{ domain: 'available.com', name: 'available.com' }],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+
+    const deletingDomain: AppDomain = {
+      fqdn: 'deleting.com',
+      isPrimary: false,
+      status: DomainStatus.DELETING,
+      domainType: 'custom',
+    };
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [deletingDomain],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForDomainList() {
+      expect(screen.getByLabelText('available.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText('available.com'));
+
+    expect(screen.getByRole('button', { name: 'builder_domain_button_connect' })).toBeDisabled();
+  });
+
+  it('does not disable Connect Domain when only a prefix domain is in DELETING status', async function connectEnabledForPrefixDeleting() {
+    const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
+
+    vi.mocked(useDomainsQuery).mockReturnValue({
+      data: [{ domain: 'available.com', name: 'available.com' }],
+      isLoading: false,
+      error: null,
+      isFetched: true,
+    } as any);
+
+    const prefixDeletingDomain: AppDomain = {
+      fqdn: 'prefix.airoapp.ai',
+      isPrimary: false,
+      status: DomainStatus.DELETING,
+      domainType: 'prefix',
+    };
+
+    renderWithProviders(
+      <DomainAttach
+        appDetails={{
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [prefixDeletingDomain],
+        } as any}
+        isAppDetailsFetched={true}
+      />
+    );
+
+    await waitFor(function waitForDomainList() {
+      expect(screen.getByLabelText('available.com')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText('available.com'));
+
+    expect(screen.getByRole('button', { name: 'builder_domain_button_connect' })).toBeEnabled();
+  });
+
   it('disables Connect Domain without a radio selection', async function connectSelectedDisabledWithoutSelection() {
     const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
 
