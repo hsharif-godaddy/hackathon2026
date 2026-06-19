@@ -51,10 +51,10 @@ import { logClickEvent } from '@/utils/instrumentation'
 // Transparent inactive state lets the rail bg show through so the pill reads as one toggle.
 const PREVIEW_EDIT_TOGGLE_INACTIVE_TRANSPARENT = '[&[aria-checked=false]]:!bg-transparent';
 
-// Edit-mode awareness cue (appbuilder-edit-mode-cue): tint the active Edit pill with the
-// feedbackInfo accent so "I'm in Edit mode" reads from the toggle's color, not just its label.
+// Edit-mode awareness cue (appbuilder-edit-mode-cue): tint the active Edit pill with Airo
+// Proud Purple 200 so "I'm in Edit mode" reads from the toggle's color, not just its label.
 const PREVIEW_EDIT_TOGGLE_EDIT_ACTIVE_ACCENT =
-  '[&[aria-checked=true]]:!bg-intents-ux-feedbackHighContrastInfo-feedbackColor [&[aria-checked=true]]:!text-intents-ux-feedbackHighContrastInfo-onFeedbackColor';
+  '[&[aria-checked=true]]:!bg-light-purple-solid [&[aria-checked=true]]:!text-ai-dark';
 
 interface DevelopHeaderProps {
   onPreviewRefresh: () => void;

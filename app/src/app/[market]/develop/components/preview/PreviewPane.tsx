@@ -1548,12 +1548,12 @@ export default function PreviewPane({
                         inert={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || showBuildingOverlay ? true : undefined}
                       />
                       {/* Shimmering accent frame for Edit mode. A masked gradient ring whose
-                          color is driven by currentColor (the feedbackHighContrastInfo intent
-                          via the text- class), with a light band sweeping along it. */}
+                          color is driven by currentColor (Proud Purple 200 via
+                          text-light-purple-solid), with a light band sweeping along it. */}
                       {showEditModeCue && (
                         <div
                           aria-hidden="true"
-                          className="edit-mode-shimmer-border pointer-events-none absolute inset-0 z-10 rounded-lg md:rounded-b-none text-intents-ux-feedbackHighContrastInfo-feedbackColor"
+                          className="edit-mode-shimmer-border pointer-events-none absolute inset-0 z-10 rounded-lg md:rounded-b-none text-light-purple-solid"
                         />
                       )}
                       {/* Edit-mode tab — fused to the canvas border (frame-accent color) so it
@@ -1566,11 +1566,13 @@ export default function PreviewPane({
                         <div
                           data-testid="preview-edit-mode-chip"
                           className={clsx(
-                            'pointer-events-none absolute right-4 z-20 bg-intents-ux-feedbackHighContrastInfo-feedbackColor px-2 py-0.5 shadow-md text-xs font-medium whitespace-nowrap text-intents-ux-feedbackHighContrastInfo-onFeedbackColor',
-                            isMobile ? 'bottom-0 rounded-t-md' : 'top-0 rounded-b-md',
+                            'edit-mode-chip-shimmer pointer-events-none absolute right-4 z-20 flex items-center px-2 py-0.5 shadow-sm text-sm font-medium leading-none whitespace-nowrap',
+                            isMobile ? 'bottom-0 rounded-t-xmd' : 'top-0 rounded-b-xmd',
                           )}
                         >
-                          {t('builder_edit_mode_chip', undefined, 'Edit mode')}
+                          <span className="relative z-[1] text-ai-dark">
+                            {t('builder_edit_mode_chip', undefined, 'Edit mode')}
+                          </span>
                         </div>
                       )}
                     </div>

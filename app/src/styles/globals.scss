@@ -711,8 +711,8 @@ body:has(#UpgradeLibraryPortal .ux-modal) .tooltip[role="tooltip"] {
   }
 
   /* Edit-mode accent frame: a light band sweeps along the canvas border.
-     The ring is drawn from currentColor (the feedbackHighContrastInfo intent set
-     via a text- class on the element), so the color stays token-driven. */
+     The ring is drawn from currentColor (Proud Purple 200 via text-light-purple-solid
+     on the element), so the color stays token-driven. */
   @keyframes edit-mode-border-shimmer {
     0% { background-position: 150% 0; }
     100% { background-position: -50% 0; }
@@ -728,7 +728,7 @@ body:has(#UpgradeLibraryPortal .ux-modal) .tooltip[role="tooltip"] {
       100deg,
       currentColor 0%,
       currentColor 42%,
-      rgba(255, 255, 255, 0.9) 50%,
+      var(--color-ai-light) 50%,
       currentColor 58%,
       currentColor 100%
     );
@@ -745,10 +745,50 @@ body:has(#UpgradeLibraryPortal .ux-modal) .tooltip[role="tooltip"] {
     pointer-events: none;
   }
 
+  /* Edit-mode tab ribbon: Proud Purple 200 base with a white shine on the background. */
+  .edit-mode-chip-shimmer {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--color-light-purple-solid);
+    isolation: isolate;
+  }
+
+  .edit-mode-chip-shimmer::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      100deg,
+      var(--color-light-purple-solid) 0%,
+      var(--color-light-purple-solid) 42%,
+      rgba(255, 255, 255, 0.35) 46%,
+      rgba(255, 255, 255, 0.55) 50%,
+      rgba(255, 255, 255, 0.35) 54%,
+      var(--color-light-purple-solid) 58%,
+      var(--color-light-purple-solid) 100%
+    );
+    background-size: 200% auto;
+    animation: edit-mode-chip-bg-shimmer 3.2s cubic-bezier(0.55, 0, 0.15, 1) infinite;
+    pointer-events: none;
+  }
+
+  @keyframes edit-mode-chip-bg-shimmer {
+    0% { background-position: 150% center; }
+    100% { background-position: -50% center; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .edit-mode-shimmer-border::before {
       animation: none;
       background: currentColor;
+      background-size: auto;
+    }
+
+    .edit-mode-chip-shimmer::before {
+      animation: none;
+      display: none;
     }
   }
 
