@@ -255,6 +255,7 @@ export default function MediaPanel() {
           appId={appId}
           isLoading={isLoading}
           error={error}
+          onRetry={() => { void refetch() }}
           onSelectSlot={handleSelectSlot}
           thumbnailBustKey={thumbnailBustKey}
         />

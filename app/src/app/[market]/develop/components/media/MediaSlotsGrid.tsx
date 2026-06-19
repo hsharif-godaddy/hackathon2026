@@ -2,6 +2,7 @@
 
 import { Play } from 'lucide-react'
 
+import { MediaLoadError } from '@/app/[market]/develop/components/media/MediaLoadError'
 import { formatSlotName, getPreviewOrigin } from '@/app/[market]/develop/components/media/MediaSlotDetail'
 import type { MediaSlot } from '@/app/[market]/develop/components/media/types'
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
@@ -21,6 +22,7 @@ interface MediaSlotsGridProps {
   appId: string
   isLoading: boolean
   error: string | null
+  onRetry: () => void
   onSelectSlot: (slotName: string) => void
   /** Increment to bust browser cache for upload thumbnails (e.g. after an overwrite edit) */
   thumbnailBustKey?: number
@@ -58,6 +60,7 @@ export function MediaSlotsGrid({
   appId,
   isLoading,
   error,
+  onRetry,
   onSelectSlot,
   thumbnailBustKey,
 }: MediaSlotsGridProps) {
@@ -91,14 +94,7 @@ export function MediaSlotsGrid({
   }
 
   if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-48 text-center px-4">
-        <p className="text-intents-ux-textSubtle-textColor">
-          {t('builder_mediaslot_error_fail_load')}
-        </p>
-        <p className="text-sm text-intents-ux-textSubtle-textColor mt-1">{error}</p>
-      </div>
-    )
+    return <MediaLoadError onRetry={onRetry} />
   }
 
   if (!manifest || slotNames.length === 0) {

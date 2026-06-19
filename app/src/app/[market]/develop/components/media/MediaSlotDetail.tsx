@@ -16,6 +16,7 @@ import Search from '@ux/search'
 import Skeleton from '@ux/skeleton'
 import Tag from '@ux/tag'
 
+import { MediaLoadError } from '@/app/[market]/develop/components/media/MediaLoadError'
 import { getPreviewOrigin, getSlotImageUrl, getSlotThumbnailUrl } from '@/app/[market]/develop/components/media/slotImageUrl'
 import type { DeleteUploadResult, SlotUploadItem } from '@/app/[market]/develop/components/media/UploadedMediaSection'
 import { UploadedMediaSection } from '@/app/[market]/develop/components/media/UploadedMediaSection'
@@ -133,13 +134,17 @@ export function MediaSlotDetail({
   // which cache-busts upload thumbnails that were overwritten in-place.
   const [cacheBustTs] = useState(() => Date.now())
 
-  const { slot, isLoading, error, refetch, setSlotData } = useMediaSlot({
+  const { slot: fetchedSlot, isLoading, isFetching, error, refetch, setSlotData } = useMediaSlot({
     appId,
     slotName,
     enabled,
   })
 
-  const { manifest, refetch: refetchManifest } = useMediaManifest({ appId, enabled })
+  const { manifest, isLoading: isManifestLoading, refetch: refetchManifest } = useMediaManifest({ appId, enabled })
+
+  const slot = fetchedSlot ?? manifest?.[slotName] ?? null
+  const showLoading = (isLoading || isFetching || isManifestLoading) && !slot
+  const showLoadError = Boolean(error && !slot && !isLoading && !isFetching && !isManifestLoading)
 
   const mediaScrollTotalMatches = useMediaSlotDialogStore((s) => s.mediaScrollTotalMatches)
   const mediaScrollCurrentIndex = useMediaSlotDialogStore((s) => s.mediaScrollCurrentIndex)
@@ -924,17 +929,10 @@ export function MediaSlotDetail({
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="flex-1 overflow-y-auto pr-1">
-        {isLoading ? (
+        {showLoading ? (
           <SkeletonContent />
-        ) : error ? (
-          <div className="flex flex-col items-center justify-center h-48 text-center">
-            <p className="text-intents-ux-textSubtle-textColor">
-              {t('builder_mediaslot_error_fail_load')}
-            </p>
-            <p className="text-sm text-intents-ux-textSubtle-textColor mt-1">
-              {error}
-            </p>
-          </div>
+        ) : showLoadError ? (
+          <MediaLoadError onRetry={() => { void Promise.all([refetch(), refetchManifest()]) }} />
         ) : slot && (allImages.length > 0 || isSlotPending) ? (
           <div className="flex flex-col gap-2">
             <div>

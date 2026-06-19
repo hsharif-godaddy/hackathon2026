@@ -2,6 +2,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { GetSlotResponse, MediaSlot } from '@/app/[market]/develop/components/media/types';
 import { dynamicApiConfigService } from '@/config/dynamic-api';
+import {
+  mediaFetchRetry,
+  mediaFetchRetryDelay,
+  resolveBaseAgentUrl,
+  throwIfMediaFetchNotOk,
+} from '@/hooks/media-fetch-utils';
 import { regenerateToken } from '@/lib/jwt-regeneration';
 import { logger } from '@/lib/request-context';
 
@@ -15,10 +21,12 @@ interface UseMediaSlotOptions {
 }
 
 interface UseMediaSlotResult {
-  /** The slot data */
+  /** The slot data from the latest successful fetch (null until first success) */
   slot: MediaSlot | null;
-  /** Whether the data is loading */
+  /** Whether the initial fetch is in progress with no cached data */
   isLoading: boolean;
+  /** Whether a fetch (including background retry) is in progress */
+  isFetching: boolean;
   /** Error message if fetch failed */
   error: string | null;
   /** Refetch the slot data */
@@ -67,8 +75,10 @@ export function useMediaSlot({
           throw new Error('Agent URL not available');
         }
 
+        const baseAgentUrl = resolveBaseAgentUrl(apiConfig.agentUrl, appId);
+
         const response = await fetch(
-          `${apiConfig.agentUrl}/media/${appId}/slots/${slotName}`,
+          `${baseAgentUrl}/media/${appId}/slots/${slotName}`,
           {
             method: 'GET',
             headers: {
@@ -78,8 +88,7 @@ export function useMediaSlot({
         );
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-          throw new Error(errorData.error || `Failed to fetch slot: ${response.status}`);
+          await throwIfMediaFetchNotOk(response, 'slot');
         }
 
         const data: GetSlotResponse = await response.json();
@@ -102,12 +111,14 @@ export function useMediaSlot({
     enabled: enabled && !!appId && !!slotName,
     staleTime: 30_000, // Fresh for 30s; mutations update cache directly
     gcTime: 5 * 60 * 1000, // Cache for 5 minutes
-    retry: 1,
+    retry: mediaFetchRetry,
+    retryDelay: mediaFetchRetryDelay,
   });
 
   return {
     slot: query.data ?? null,
     isLoading: query.isLoading,
+    isFetching: query.isFetching,
     error: query.error instanceof Error ? query.error.message : null,
     refetch: async () => {
       await query.refetch();

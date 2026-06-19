@@ -109,6 +109,7 @@ describe('MediaSlotDetail', () => {
         searchQuery: 'test query',
       },
       isLoading: false,
+      isFetching: false,
       error: null,
       refetch: mockRefetch,
     } as unknown as ReturnType<typeof useMediaSlot>);
@@ -117,28 +118,90 @@ describe('MediaSlotDetail', () => {
       manifest: {
         'hero/image': { currentUrl: '/img1.jpg', alternatives: ['/img2.jpg'] },
       },
+      isLoading: false,
       refetch: mockRefetchManifest,
     } as unknown as ReturnType<typeof useMediaManifest>);
   });
 
   it('renders loading state', () => {
-    vi.mocked(useMediaSlot).mockReturnValue({ isLoading: true, error: null, slot: null } as unknown as ReturnType<typeof useMediaSlot>);
-    
+    vi.mocked(useMediaSlot).mockReturnValue({
+      isLoading: true,
+      isFetching: true,
+      error: null,
+      slot: null,
+      refetch: mockRefetch,
+    } as unknown as ReturnType<typeof useMediaSlot>);
+    vi.mocked(useMediaManifest).mockReturnValue({
+      manifest: null,
+      isLoading: false,
+      refetch: mockRefetchManifest,
+    } as unknown as ReturnType<typeof useMediaManifest>);
+
     const { container } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
     expect(container.querySelector('.ux-skeleton')).toBeInTheDocument();
   });
 
-  it('renders error state', () => {
-    vi.mocked(useMediaSlot).mockReturnValue({ isLoading: false, error: 'Failed to load slot', slot: null } as unknown as ReturnType<typeof useMediaSlot>);
-    
+  it('renders error state with retry action', async () => {
+    vi.mocked(useMediaSlot).mockReturnValue({
+      slot: null,
+      isLoading: false,
+      isFetching: false,
+      error: 'Failed to fetch',
+      refetch: mockRefetch,
+    } as unknown as ReturnType<typeof useMediaSlot>);
+
+    vi.mocked(useMediaManifest).mockReturnValue({
+      manifest: null,
+      isLoading: false,
+      refetch: mockRefetchManifest,
+    } as unknown as ReturnType<typeof useMediaManifest>);
+
+    const { user } = renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
+    expect(screen.getByText('builder_mediaslot_error_fail_title')).toBeInTheDocument();
+    expect(screen.getByText('Try again in a minute.')).toBeInTheDocument();
+    expect(screen.queryByText('Failed to fetch')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'builder_common_retry' }));
+    expect(mockRefetch).toHaveBeenCalled();
+    expect(mockRefetchManifest).toHaveBeenCalled();
+  });
+
+  it('uses manifest slot data when per-slot fetch fails', () => {
+    vi.mocked(useMediaSlot).mockReturnValue({
+      slot: null,
+      isLoading: false,
+      isFetching: false,
+      error: 'Failed to fetch',
+      refetch: mockRefetch,
+    } as unknown as ReturnType<typeof useMediaSlot>);
+
+    vi.mocked(useMediaManifest).mockReturnValue({
+      manifest: {
+        'hero/image': { currentUrl: '/img1.jpg', alternatives: ['/img2.jpg'] },
+      },
+      isLoading: false,
+      refetch: mockRefetchManifest,
+    } as unknown as ReturnType<typeof useMediaManifest>);
+
     renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
-    expect(screen.getByText('builder_mediaslot_error_fail_load')).toBeInTheDocument();
-    expect(screen.getByText('Failed to load slot')).toBeInTheDocument();
+    expect(screen.getByText('Hero Image')).toBeInTheDocument();
+    expect(screen.queryByText('builder_mediaslot_error_fail_title')).not.toBeInTheDocument();
   });
 
   it('renders empty state when no images', () => {
-    vi.mocked(useMediaSlot).mockReturnValue({ isLoading: false, error: null, slot: null } as unknown as ReturnType<typeof useMediaSlot>);
-    
+    vi.mocked(useMediaSlot).mockReturnValue({
+      isLoading: false,
+      isFetching: false,
+      error: null,
+      slot: null,
+      refetch: mockRefetch,
+    } as unknown as ReturnType<typeof useMediaSlot>);
+    vi.mocked(useMediaManifest).mockReturnValue({
+      manifest: null,
+      isLoading: false,
+      refetch: mockRefetchManifest,
+    } as unknown as ReturnType<typeof useMediaManifest>);
+
     renderWithProviders(<MediaSlotDetail appId={mockAppId} slotName={mockSlotName} />);
     expect(screen.getByText('builder_mediaslot_no_images')).toBeInTheDocument();
   });

@@ -1,15 +1,17 @@
-import { beforeEach,describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * @vitest-environment jsdom
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
+import * as mediaFetchUtils from './media-fetch-utils';
 import { useMediaManifest } from './useMediaManifest';
 
 // Capture the options (notably refetchInterval) passed to useQuery so we can test
 // the polling self-heal logic directly without driving real timers.
 let capturedQueryOptions: Record<string, unknown> | undefined;
+let enableRetryInTests = false;
 
 vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>();
@@ -17,7 +19,11 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
     ...actual,
     useQuery: (options: unknown) => {
       capturedQueryOptions = options as Record<string, unknown>;
-      return actual.useQuery({ ...(options as Record<string, unknown>), retry: false });
+      return actual.useQuery(
+        enableRetryInTests
+          ? (options as Record<string, unknown>)
+          : { ...(options as Record<string, unknown>), retry: false },
+      );
     },
   };
 });
@@ -50,13 +56,13 @@ vi.mock('@/lib/request-context', () => ({
 }));
 
 const createWrapper = () => {
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-        },
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: enableRetryInTests ? true : false,
       },
-    });
+    },
+  });
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
@@ -66,6 +72,7 @@ describe('useMediaManifest', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedQueryOptions = undefined;
+    enableRetryInTests = false;
     global.fetch = vi.fn();
   });
 
@@ -118,7 +125,7 @@ describe('useMediaManifest', () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,
       status: 500,
-      json: async () => ({ error: 'Internal Server Error' }),
+      text: async () => JSON.stringify({ error: 'Internal Server Error' }),
     });
 
     const { result } = renderHook(() => useMediaManifest({ appId: mockAppId }), {
@@ -129,6 +136,54 @@ describe('useMediaManifest', () => {
       expect(result.current.isLoading).toBe(false);
     });
     expect(result.current.error).toBe('Internal Server Error');
+  });
+
+  it('handles plain-text dev-supervisor startup errors', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: async () => 'Service temporarily unavailable',
+    });
+
+    const { result } = renderHook(() => useMediaManifest({ appId: mockAppId }), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+    expect(result.current.error).toBe('Service temporarily unavailable');
+  });
+
+  describe('retry behavior', () => {
+    beforeEach(() => {
+      enableRetryInTests = true;
+      vi.spyOn(mediaFetchUtils, 'mediaFetchRetryDelay').mockReturnValue(0);
+    });
+
+    afterEach(() => {
+      enableRetryInTests = false;
+      vi.restoreAllMocks();
+    });
+
+    it('retries transient 503 errors before surfacing failure', async () => {
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ok: false,
+        status: 503,
+        text: async () => 'Service temporarily unavailable',
+      });
+
+      const { result } = renderHook(() => useMediaManifest({ appId: mockAppId }), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledTimes(mediaFetchUtils.MEDIA_FETCH_MAX_RETRIES + 1);
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      expect(result.current.error).toBe('Service temporarily unavailable');
+    });
   });
 
   it('handles missing agent url', async () => {

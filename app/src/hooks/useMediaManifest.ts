@@ -2,6 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 
 import type { MediaSlot } from '@/app/[market]/develop/components/media/types';
 import { dynamicApiConfigService } from '@/config/dynamic-api';
+import {
+  mediaFetchRetry,
+  mediaFetchRetryDelay,
+  resolveBaseAgentUrl,
+  throwIfMediaFetchNotOk,
+} from '@/hooks/media-fetch-utils';
 import { regenerateToken } from '@/lib/jwt-regeneration';
 import { logger } from '@/lib/request-context';
 
@@ -45,7 +51,7 @@ export function useMediaManifest({
           throw new Error('Agent URL not available');
         }
 
-        const baseAgentUrl = apiConfig.agentUrl.replace(`/apps/${appId}`, '');
+        const baseAgentUrl = resolveBaseAgentUrl(apiConfig.agentUrl, appId);
 
         const response = await fetch(
           `${baseAgentUrl}/media/${appId}/manifest`,
@@ -58,8 +64,7 @@ export function useMediaManifest({
         );
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-          throw new Error(errorData.error || `Failed to fetch manifest: ${response.status}`);
+          await throwIfMediaFetchNotOk(response, 'manifest');
         }
 
         const data: GetManifestResponse = await response.json();
@@ -84,7 +89,8 @@ export function useMediaManifest({
     enabled: enabled && !!appId,
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
-    retry: 1,
+    retry: mediaFetchRetry,
+    retryDelay: mediaFetchRetryDelay,
     // Self-heal for a dropped WS/SSE `logo` event: while any slot is mid-generation
     // (pendingJobId set), poll every 4s so the completed slot swaps in within one
     // poll. Disables itself the moment the backend clears pendingJobId.

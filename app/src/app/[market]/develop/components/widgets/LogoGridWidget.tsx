@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
+import { resolveBaseAgentUrl } from '@/hooks/media-fetch-utils'
 import { useTranslations } from '@/hooks/useTranslations'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { logger } from '@/lib/request-context'
@@ -63,7 +64,7 @@ export default function LogoGridWidget({ logos, className = '' }: LogoGridWidget
       if (!apiConfig.agentUrl) throw new Error('Agent URL not available')
 
       const response = await fetch(
-        `${apiConfig.agentUrl}/media/${appId}/slots/${slotName}`,
+        `${resolveBaseAgentUrl(apiConfig.agentUrl, appId)}/media/${appId}/slots/${slotName}`,
         {
           method: 'PUT',
           headers: {

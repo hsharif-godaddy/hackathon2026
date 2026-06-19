@@ -31,6 +31,7 @@ describe('MediaSlotsGrid', () => {
     appId: mockAppId,
     isLoading: false,
     error: null,
+    onRetry: vi.fn(),
     onSelectSlot: vi.fn(),
   };
 
@@ -44,10 +45,16 @@ describe('MediaSlotsGrid', () => {
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
-  it('renders error state', () => {
-    renderWithProviders(<MediaSlotsGrid {...defaultProps} error="Failed to load" />);
-    expect(screen.getByText('builder_mediaslot_error_fail_load')).toBeInTheDocument();
-    expect(screen.getByText('Failed to load')).toBeInTheDocument();
+  it('renders error state with retry action', async () => {
+    const onRetry = vi.fn();
+    const { user } = renderWithProviders(
+      <MediaSlotsGrid {...defaultProps} error="Failed to fetch" onRetry={onRetry} />,
+    );
+    expect(screen.getByText('builder_mediaslot_error_fail_title')).toBeInTheDocument();
+    expect(screen.getByText('Try again in a minute.')).toBeInTheDocument();
+    expect(screen.queryByText('Failed to fetch')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'builder_common_retry' }));
+    expect(onRetry).toHaveBeenCalled();
   });
 
   it('renders empty state when manifest is null', () => {
