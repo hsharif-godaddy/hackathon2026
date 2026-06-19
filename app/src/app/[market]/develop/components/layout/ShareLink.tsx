@@ -27,6 +27,7 @@ import type { ShareToken } from '@/hooks/useShareTokens';
 import { ShareTokenError, useCreateShareToken, useShareTokens } from '@/hooks/useShareTokens';
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations';
+import type { SiteInfo } from '@/lib/control-plane/types';
 import { logger } from '@/lib/request-context';
 import {
   Popover,
@@ -42,6 +43,10 @@ import { hasBeenPublished } from '@/utils/site';
 type SegmentId = 'published' | 'preview';
 
 const PUBLIC_LINK_DAYS = 7;
+
+/** Match develop-header share popover: white selected pill, purple border, dark text. */
+const SHARE_LINK_SEGMENT_CLASS =
+  '[--controller-item-bg-selected:var(--background,#fff)] [--controller-item-border-selected:var(--color-ai,#613EA3)] [--controller-item-fg-selected:var(--foreground,#111)]'
 
 // Upper bound on auto-create POSTs per popover-open (reset on reopen and on
 // explicit user retry). Backstop guaranteeing the auto-create effect can never
@@ -344,15 +349,18 @@ function PreviewContent({
   );
 }
 
-interface ShareLinkProps {
-  location?: string;
+interface ShareLinkContentProps {
+  appId: string | null | undefined;
+  site: SiteInfo | null | undefined;
+  isMobile: boolean;
+  /** When false, data fetching is paused and state resets are skipped. */
+  open: boolean;
+  location: string;
 }
 
-export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
+export function ShareLinkContent({ appId, site, isMobile, open, location }: ShareLinkContentProps) {
   const t = useTranslations();
-  const appId = useAppIdFromParams();
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId]);
-  const [open, setOpen] = useState(false);
   const [segment, setSegment] = useState<SegmentId>('preview');
   const [copied, setCopied] = useState(false);
   const [createError, setCreateError] = useState(false);
@@ -378,8 +386,6 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
     };
   }, []);
 
-  const site = useDevelopPageStore((state) => state.site);
-  const isMobile = useDevelopPageStore((state) => state.isMobile);
   const previewUrl = site?.preview_url;
   const publishedUrl = site?.published_url;
   const isPublished = hasBeenPublished(site);
@@ -426,11 +432,9 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
 
   const isPublishedSection = isPublished && segment === 'published';
 
-  const displayUrl = useMemo(() => {
-    if (isPublishedSection) return publishedUrl ?? '';
-    if (!isShareLinksEnabled) return previewUrl ?? '';
-    return shareUrl;
-  }, [isPublishedSection, publishedUrl, isShareLinksEnabled, previewUrl, shareUrl]);
+  const publishedDisplayUrl = publishedUrl ?? '';
+  const previewDisplayUrl = isShareLinksEnabled ? shareUrl : (previewUrl ?? '');
+  const displayUrl = isPublishedSection ? publishedDisplayUrl : previewDisplayUrl;
 
   const { changesSincePublish, isLoading: isSyncLoading, isError: isSyncError } =
     usePublishSyncState({
@@ -438,7 +442,6 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
       enabled: !!appId && isPublished && open,
     });
 
-  const isDisabled = !previewUrl && !isPublished;
   const isPreviewError = isTokensError || createError;
   const isPreviewLoading = isShareLinksEnabled && !!appId && !isPreviewError && !activeToken;
 
@@ -454,7 +457,7 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
   };
 
   useEffect(() => {
-    if (!open || !isShareLinksEnabled || !appId || isPublishedSection) return;
+    if (!open || !isShareLinksEnabled || !appId) return;
     if (isTokensError || createError) return;
     if (activeToken || isTokensLoading || isCreatingRef.current) return;
 
@@ -517,7 +520,7 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
     }
 
     createLink();
-  }, [open, isShareLinksEnabled, appId, isPublishedSection, activeToken, isTokensLoading, createToken.mutateAsync, refetchTokens, retryCount]);
+  }, [open, isShareLinksEnabled, appId, activeToken, isTokensLoading, createToken.mutateAsync, refetchTokens, retryCount]);
 
   const handleRetry = () => {
     setCreateError(false);
@@ -579,11 +582,11 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
     return t('builder_share_link_error_create');
   };
 
-  const previewContent = (
+  const renderPreviewContent = (url: string) => (
     <PreviewContent
       status={getPreviewStatus()}
       centered={isPublished}
-      url={displayUrl}
+      url={url}
       copied={copied}
       onCopy={handleCopy}
       onOpen={handleOpen}
@@ -599,6 +602,97 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
   );
 
   return (
+    <div className="flex w-full min-w-0 flex-col gap-0.5">
+      {!isPublished && (
+        <text.span as="title" size={-2} text={t('builder_common_preview')} />
+      )}
+      {isPublished ? (
+        <>
+          <SegmentedController
+            aria-label={t('builder_share_link_segment_label')}
+            value={segment}
+            onSelectionChange={handleSegmentChange}
+            data-testid="share-link-segment"
+            className={cn('mt-1.5 mb-1.5 self-center', SHARE_LINK_SEGMENT_CLASS, isPublished && 'mt-0')}
+          >
+            <SegmentedControllerItem
+              value="published"
+              icon={<WorldIcon className="size-2" />}
+            >
+              {t('builder_common_published')}
+            </SegmentedControllerItem>
+            <SegmentedControllerItem
+              value="preview"
+              icon={<ShowIcon className="size-2" />}
+            >
+              {t('builder_common_preview')}
+            </SegmentedControllerItem>
+          </SegmentedController>
+
+          <div className="grid">
+            <div
+              className={cn(
+                'col-start-1 row-start-1 min-w-0',
+                segment === 'published' ? 'visible' : 'invisible'
+              )}
+              aria-hidden={segment !== 'published'}
+            >
+              <PublishedContent
+                url={publishedDisplayUrl}
+                status={getPublishedStatus()}
+                isLoading={isSyncLoading}
+                copied={copied}
+                onCopy={handleCopy}
+                onOpen={handleOpen}
+                showQR={!isMobile}
+                t={t}
+              />
+            </div>
+            <div
+              className={cn(
+                'col-start-1 row-start-1 min-w-0',
+                segment === 'preview' ? 'visible' : 'invisible'
+              )}
+              aria-hidden={segment !== 'preview'}
+            >
+              {renderPreviewContent(previewDisplayUrl)}
+            </div>
+          </div>
+        </>
+      ) : (
+        renderPreviewContent(displayUrl)
+      )}
+    </div>
+  );
+}
+
+interface ShareLinkProps {
+  location?: string;
+}
+
+export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
+  const t = useTranslations();
+  const appId = useAppIdFromParams();
+  const [open, setOpen] = useState(false);
+
+  const site = useDevelopPageStore((state) => state.site);
+  const isMobile = useDevelopPageStore((state) => state.isMobile);
+  const previewUrl = site?.preview_url;
+  const isPublished = hasBeenPublished(site);
+  const isDisabled = !previewUrl && !isPublished;
+
+  const logOpen = () => {
+    try {
+      logClickEvent(`${location}.share_link.open`, appId ? { appId } : undefined)();
+    } catch (err) {
+      logger.warn('share-link.clickLogFailure', {
+        event: `${location}.share_link.open`,
+        message: err instanceof Error ? err.message : 'Unknown instrumentation error',
+      });
+    }
+  };
+
+  return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <IconButton
@@ -609,7 +703,7 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
           onClick={() => {
             setOpen((wasOpen) => {
               if (!wasOpen) {
-                logEvent(`${location}.share_link.open`);
+                logOpen();
               }
               return !wasOpen;
             });
@@ -625,50 +719,13 @@ export default function ShareLink({ location = 'develop' }: ShareLinkProps) {
         className="flex w-[320px] min-w-0 flex-col gap-0.5 p-2"
         data-testid="share-link-popover"
       >
-        {!isPublished && (
-          <text.span as="title" size={-2} text={t('builder_common_preview')} />
-        )}
-        {isPublished ? (
-          <>
-            <SegmentedController
-              aria-label={t('builder_share_link_segment_label')}
-              value={segment}
-              onSelectionChange={handleSegmentChange}
-              data-testid="share-link-segment"
-              className={cn('mt-1.5 mb-1.5 self-center', isPublished && 'mt-0')}
-            >
-              <SegmentedControllerItem
-                value="published"
-                icon={<WorldIcon className="size-2" />}
-              >
-                {t('builder_common_published')}
-              </SegmentedControllerItem>
-              <SegmentedControllerItem
-                value="preview"
-                icon={<ShowIcon className="size-2" />}
-              >
-                {t('builder_common_preview')}
-              </SegmentedControllerItem>
-            </SegmentedController>
-
-            {segment === 'published' ? (
-              <PublishedContent
-                url={publishedUrl ?? ''}
-                status={getPublishedStatus()}
-                isLoading={isSyncLoading}
-                copied={copied}
-                onCopy={handleCopy}
-                onOpen={handleOpen}
-                showQR={!isMobile}
-                t={t}
-              />
-            ) : (
-              previewContent
-            )}
-          </>
-        ) : (
-          previewContent
-        )}
+        <ShareLinkContent
+          appId={appId}
+          site={site}
+          isMobile={isMobile}
+          open={open}
+          location={location}
+        />
       </PopoverContent>
     </Popover>
   );

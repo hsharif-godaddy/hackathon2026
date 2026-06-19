@@ -67,7 +67,7 @@ test.describe('Authentication', () => {
       // Test See All navigation
       await page.locator('[data-eid*="apps_menu.see_all"]').click();
       await expect(page).toHaveURL(/\/apps/);
-      await expect(page.getByTestId('apps-page-title')).toBeVisible();
+      await expect(page.getByTestId('projects-page-title')).toBeVisible();
       console.log('  ✓ See All navigates to /apps');
     } else {
       console.log('  ⚠ No apps menu (user has no apps)');
@@ -81,7 +81,7 @@ test.describe('Authentication', () => {
     await page.getByTestId('homepage-prompt-input').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
 
     await page.goto('/apps');
-    await expect(page.getByTestId('apps-page-title')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(page.getByTestId('projects-page-title')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
     await page.goto('/');
     await verifyAuthenticated(page);
@@ -92,10 +92,10 @@ test.describe('Authentication', () => {
     // ========================================
     console.log('🔃 Step 5: Testing protected content after refresh...');
     await page.goto('/apps');
-    await expect(page.getByTestId('apps-page-title')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(page.getByTestId('projects-page-title')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
     await page.reload();
-    await expect(page.getByTestId('apps-page-title')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(page.getByTestId('projects-page-title')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     console.log('  ✓ Protected content persists after refresh');
 
     // ========================================

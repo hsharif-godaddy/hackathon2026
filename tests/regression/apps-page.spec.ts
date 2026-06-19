@@ -108,27 +108,27 @@ test.describe('Apps Page & Navigation', () => {
     // ========================================
     console.log('📋 Step 3: Verifying apps page content...');
     await page.goto('/apps');
-    await page.getByTestId('app-card-edit-button').first().waitFor({ state: 'visible', timeout: 30000 });
+    await page.getByTestId('project-card-edit-button').first().waitFor({ state: 'visible', timeout: 30000 });
 
     // Verify page header
-    const appsPageTitle = page.getByTestId('apps-page-title');
+    const appsPageTitle = page.getByTestId('projects-page-title');
     await expect(appsPageTitle).toBeVisible();
     console.log('  ✓ Page header visible');
 
-    // Verify app count — the count Tag is rendered inside `apps-page-title` via
+    // Verify app count — the count Tag is rendered inside `projects-page-title` via
     // the `builder_apps_count` i18n key, so the exact wording ("apps", "projects",
     // pluralization) can change externally. Assert the invariant: a numeric count
     // is shown next to the title.
     await expect(appsPageTitle).toContainText(/\d+/);
     console.log('  ✓ App count displayed');
 
-    // Verify Create button (desktop uses create-app-card in action bar)
-    await expect(page.getByTestId('create-app-card')).toBeVisible();
-    await expect(page.getByTestId('create-app-card')).not.toBeDisabled();
+    // Verify Create button (desktop uses create-project-button in action bar)
+    await expect(page.getByTestId('create-project-button')).toBeVisible();
+    await expect(page.getByTestId('create-project-button')).not.toBeDisabled();
     console.log('  ✓ Create button visible and enabled (action bar)');
 
     // Verify app card exists
-    const cardCount = await page.getByTestId('app-card-edit-button').count();
+    const cardCount = await page.getByTestId('project-card-edit-button').count();
     expect(cardCount).toBeGreaterThanOrEqual(1);
     console.log(`  ✓ Found ${cardCount} app card(s)`);
 
@@ -136,10 +136,10 @@ test.describe('Apps Page & Navigation', () => {
     // STEP 4: Check Preview button in menu
     // ========================================
     console.log('👁️ Step 4: Checking Preview button...');
-    await page.getByTestId('app-card-menu-button').first().click();
+    await page.getByTestId('project-card-menu-button').first().click();
     await page.locator('[role="menu"], [role="menuitem"]').first().waitFor({ state: 'visible', timeout: 5000 });
 
-    const viewButton = page.getByTestId('app-card-view-button');
+    const viewButton = page.getByTestId('project-card-view-button');
     if (await viewButton.isVisible({ timeout: 2000 }).catch(() => false)) {
       console.log('  ✓ Preview button found in menu');
     } else {
@@ -151,8 +151,8 @@ test.describe('Apps Page & Navigation', () => {
     // STEP 5: Test "Create a new app" modal
     // ========================================
     console.log('🏠 Step 5: Testing Create modal...');
-    // Use create-app-card from action bar (visible on desktop when apps exist)
-    await page.getByTestId('create-app-card').click();
+    // Use create-project-button from action bar (visible on desktop when apps exist)
+    await page.getByTestId('create-project-button').click();
     await page.getByTestId('apps-prompt-input').waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
     console.log('  ✓ Prompt modal opened with input visible');
     // Close modal before continuing
@@ -163,8 +163,8 @@ test.describe('Apps Page & Navigation', () => {
     // ========================================
     console.log('✏️ Step 6: Testing Edit navigation from /apps...');
     await page.goto('/apps');
-    await page.getByTestId('app-card-edit-button').first().waitFor({ state: 'visible', timeout: 30000 });
-    await page.getByTestId('app-card-edit-button').first().click();
+    await page.getByTestId('project-card-edit-button').first().waitFor({ state: 'visible', timeout: 30000 });
+    await page.getByTestId('project-card-edit-button').first().click();
 
     await expect(page).toHaveURL(/\/develop\//);
 
@@ -221,9 +221,9 @@ test.describe('Apps Page & Navigation', () => {
     console.log('🗑️ Step 8: Deleting app...');
     await ensureAuthenticated(page);
     await page.goto('/apps');
-    await page.getByTestId('app-card-edit-button').first().waitFor({ state: 'visible', timeout: 30000 });
+    await page.getByTestId('project-card-edit-button').first().waitFor({ state: 'visible', timeout: 30000 });
 
-    const countBefore = await page.getByTestId('app-card-edit-button').count();
+    const countBefore = await page.getByTestId('project-card-edit-button').count();
     console.log(`  Apps before delete: ${countBefore}`);
 
     // The apps grid paginates at APPS_GRID_PAGE_SIZE (11 in app code). When the
@@ -232,10 +232,10 @@ test.describe('Apps Page & Navigation', () => {
     // count-based assertion can never go below the page size. Identify the
     // specific card we're about to delete via its aria-label so the assertion
     // is pagination-independent.
-    const deletedCardLabel = await page.getByTestId('app-card-edit-button').first().getAttribute('aria-label');
+    const deletedCardLabel = await page.getByTestId('project-card-edit-button').first().getAttribute('aria-label');
     expect(deletedCardLabel, 'expected first app card to expose an aria-label so we can verify it disappears').toBeTruthy();
     const escapedLabel = deletedCardLabel!.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    const deletedCardLocator = page.locator(`[data-testid="app-card-edit-button"][aria-label="${escapedLabel}"]`);
+    const deletedCardLocator = page.locator(`[data-testid="project-card-edit-button"][aria-label="${escapedLabel}"]`);
     const matchingBefore = await deletedCardLocator.count();
 
     // The delete confirmation UI is gated by the appbuilder-app-delete-modal
@@ -250,10 +250,10 @@ test.describe('Apps Page & Navigation', () => {
     const confirmButtonTestId = deleteModalEnabled ? 'delete-project-confirm-button' : 'confirm-button';
 
     await dismissBanners(page);
-    await page.getByTestId('app-card-menu-button').first().click();
-    await page.getByTestId('app-card-delete-button').waitFor({ state: 'visible', timeout: 10000 });
+    await page.getByTestId('project-card-menu-button').first().click();
+    await page.getByTestId('project-card-delete-button').waitFor({ state: 'visible', timeout: 10000 });
     await dismissBanners(page);
-    await page.getByTestId('app-card-delete-button').click();
+    await page.getByTestId('project-card-delete-button').click();
 
     // Verify confirmation UI
     await expect(page.getByTestId(confirmationTestId)).toBeVisible();
@@ -333,14 +333,14 @@ test.describe('Apps Page & Navigation', () => {
       // ========================================
       console.log('📋 Step 3: Verifying first page...');
       await page.goto('/apps');
-      await page.getByTestId('app-card-edit-button').first().waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+      await page.getByTestId('project-card-edit-button').first().waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
 
       // The cookie-consent banner is fixed to the bottom of the viewport and
       // overlays the pagination nav (also bottom-anchored), so clicking
       // Next/Prev fails actionability ("not visible/stable") until it's gone.
       await dismissOverlays(page);
 
-      const firstPageCards = await page.getByTestId('app-card-edit-button').count();
+      const firstPageCards = await page.getByTestId('project-card-edit-button').count();
       expect(firstPageCards).toBe(APPS_GRID_PAGE_SIZE);
       console.log(`  ✓ First page shows ${firstPageCards} cards (expected ${APPS_GRID_PAGE_SIZE})`);
 
@@ -364,7 +364,7 @@ test.describe('Apps Page & Navigation', () => {
       await expect(page.getByText(`Pagination App ${APPS_GRID_PAGE_SIZE + 1}`)).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       await expect(page.getByText(`Pagination App ${TOTAL_SITES}`)).toBeVisible();
 
-      const secondPageCards = await page.getByTestId('app-card-edit-button').count();
+      const secondPageCards = await page.getByTestId('project-card-edit-button').count();
       expect(secondPageCards).toBe(TOTAL_SITES - APPS_GRID_PAGE_SIZE);
       console.log(`  ✓ Page 2 shows ${secondPageCards} cards (expected ${TOTAL_SITES - APPS_GRID_PAGE_SIZE})`);
 
@@ -386,7 +386,7 @@ test.describe('Apps Page & Navigation', () => {
       await expect(page.getByText(`Pagination App ${APPS_GRID_PAGE_SIZE}`)).toBeVisible();
       await expect(page.getByText(`Pagination App ${APPS_GRID_PAGE_SIZE + 1}`)).not.toBeVisible();
 
-      const backToFirstPageCards = await page.getByTestId('app-card-edit-button').count();
+      const backToFirstPageCards = await page.getByTestId('project-card-edit-button').count();
       expect(backToFirstPageCards).toBe(APPS_GRID_PAGE_SIZE);
       console.log(`  ✓ Back to page 1 with ${backToFirstPageCards} cards`);
 

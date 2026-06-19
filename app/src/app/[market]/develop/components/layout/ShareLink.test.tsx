@@ -5,7 +5,7 @@ import '@testing-library/jest-dom';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useMutation } from '@tanstack/react-query';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 
 import { mockInstrumentation } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
@@ -938,7 +938,8 @@ describe('ShareLink', () => {
       const { user } = renderWithProviders(<ShareLink />);
       await openPopover();
 
-      await user.click(screen.getByTestId('share-link-open'));
+      const publishedSection = screen.getByTestId('share-link-published-content');
+      await user.click(within(publishedSection).getByTestId('share-link-open'));
 
       expect(mockWithPreviewParam).not.toHaveBeenCalled();
       expect(mockOpen).toHaveBeenCalledWith(

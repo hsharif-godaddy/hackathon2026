@@ -49,15 +49,15 @@ describe('AcceptTransferDialog', function dialogTests() {
   it('should render the token input form', function renderForm() {
     renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
-    expect(screen.getByRole('heading', { name: 'Accept Transfer' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'builder_transfer_accept_title' })).toBeInTheDocument();
     expect(screen.getByRole('textbox')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Accept Transfer' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'builder_transfer_accept_submit' })).toBeInTheDocument();
   });
 
   it('should disable submit when token is too short', function disableSubmit() {
     renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
-    expect(screen.getByRole('button', { name: 'Accept Transfer' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'builder_transfer_accept_submit' })).toBeDisabled();
   });
 
   it('should enable submit when token is 6 characters', async function enableSubmit() {
@@ -65,7 +65,7 @@ describe('AcceptTransferDialog', function dialogTests() {
 
     await user.type(screen.getByRole('textbox'), 'abc123');
 
-    expect(screen.getByRole('button', { name: 'Accept Transfer' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'builder_transfer_accept_submit' })).not.toBeDisabled();
   });
 
   it('should filter non-alphanumeric characters from input', async function filterInput() {
@@ -92,13 +92,13 @@ describe('AcceptTransferDialog', function dialogTests() {
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'abc123');
-    await user.click(screen.getByRole('button', { name: 'Accept Transfer' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_accept_submit' }));
 
     await waitFor(() => {
       expect(screen.getByText('Transfer in progress. This may take a moment...')).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('button', { name: 'Dismiss' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'builder_transfer_processing_dismiss' })).toBeInTheDocument();
   });
 
   it('should auto-close when accept returns completed', async function immediateClose() {
@@ -120,7 +120,7 @@ describe('AcceptTransferDialog', function dialogTests() {
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'abc123');
-    await user.click(screen.getByRole('button', { name: 'Accept Transfer' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_accept_submit' }));
 
     await waitFor(() => {
       expect(defaultProps.onClose).toHaveBeenCalled();
@@ -153,7 +153,7 @@ describe('AcceptTransferDialog', function dialogTests() {
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'abc123');
-    await user.click(screen.getByRole('button', { name: 'Accept Transfer' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_accept_submit' }));
 
     await waitFor(() => {
       expect(screen.getByText('Transfer in progress. This may take a moment...')).toBeInTheDocument();
@@ -185,7 +185,7 @@ describe('AcceptTransferDialog', function dialogTests() {
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'abc123');
-    await user.click(screen.getByRole('button', { name: 'Accept Transfer' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_accept_submit' }));
 
     await waitFor(() => {
       expect(screen.getByText('Transfer in progress. This may take a moment...')).toBeInTheDocument();
@@ -216,7 +216,7 @@ describe('AcceptTransferDialog', function dialogTests() {
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'abc123');
-    await user.click(screen.getByRole('button', { name: 'Accept Transfer' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_accept_submit' }));
 
     await waitFor(() => {
       expect(screen.getByText('Transfer in progress. This may take a moment...')).toBeInTheDocument();
@@ -249,7 +249,7 @@ describe('AcceptTransferDialog', function dialogTests() {
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'abc123');
-    await user.click(screen.getByRole('button', { name: 'Accept Transfer' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_accept_submit' }));
 
     await waitFor(() => {
       expect(screen.getByText('Transfer in progress. This may take a moment...')).toBeInTheDocument();
@@ -277,7 +277,7 @@ describe('AcceptTransferDialog', function dialogTests() {
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'abc123');
-    await user.click(screen.getByRole('button', { name: 'Accept Transfer' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_accept_submit' }));
 
     await waitFor(() => {
       expect(screen.getByText('CUSTOMER_MISMATCH')).toBeInTheDocument();
@@ -297,13 +297,13 @@ describe('AcceptTransferDialog', function dialogTests() {
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'abc123');
-    await user.click(screen.getByRole('button', { name: 'Accept Transfer' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_accept_submit' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Dismiss' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'builder_transfer_processing_dismiss' })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_processing_dismiss' }));
 
     expect(defaultProps.onAccepted).not.toHaveBeenCalled();
     expect(defaultProps.onClose).toHaveBeenCalled();
@@ -320,13 +320,13 @@ describe('AcceptTransferDialog', function dialogTests() {
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'abc123');
-    await user.click(screen.getByRole('button', { name: 'Accept Transfer' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_accept_submit' }));
 
     await waitFor(() => {
       expect(screen.getByText('TRANSFER_EXPIRED')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('button', { name: 'Try Again' }));
+    await user.click(screen.getByRole('button', { name: 'builder_common_try_again' }));
 
     expect(screen.getByRole('textbox')).toBeInTheDocument();
   });
@@ -351,7 +351,7 @@ describe('AcceptTransferDialog', function dialogTests() {
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'abc123');
-    await user.click(screen.getByRole('button', { name: 'Accept Transfer' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_accept_submit' }));
 
     await waitFor(() => {
       expect(defaultProps.onClose).toHaveBeenCalled();
@@ -372,7 +372,7 @@ describe('AcceptTransferDialog', function dialogTests() {
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'abc123');
-    await user.click(screen.getByRole('button', { name: 'Accept Transfer' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_accept_submit' }));
 
     await waitFor(() => {
       expect(screen.getByText('INVALID_TOKEN')).toBeInTheDocument();
@@ -401,7 +401,7 @@ describe('AcceptTransferDialog', function dialogTests() {
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'abc123');
-    await user.click(screen.getByRole('button', { name: 'Accept Transfer' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_accept_submit' }));
 
     await waitFor(() => {
       expect(screen.getByText('Transfer in progress. This may take a moment...')).toBeInTheDocument();
@@ -422,10 +422,10 @@ describe('AcceptTransferDialog', function dialogTests() {
     const { user } = renderWithProviders(<AcceptTransferDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'abc123');
-    await user.click(screen.getByRole('button', { name: 'Accept Transfer' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_accept_submit' }));
 
     await waitFor(() => {
-      expect(screen.getByText('Failed to accept transfer')).toBeInTheDocument();
+      expect(screen.getByText('builder_transfer_error_accept_failed')).toBeInTheDocument();
     });
 
     expect(instrumentation.logClickEvent).not.toHaveBeenCalledWith('apps.transfer.accept_submit', expect.anything());

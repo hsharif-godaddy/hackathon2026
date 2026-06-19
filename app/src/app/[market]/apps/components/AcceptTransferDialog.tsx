@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
-import Modal from '@ux/modal'
 import Spinner from '@ux/spinner'
 import text from '@ux/text'
 import TextInput from '@ux/text-input'
 
 import { TRANSFER_TOKEN_LENGTH, TRANSFER_TOKEN_PATTERN, transferEventProps } from '@/app/[market]/apps/components/transfer-constants'
+import ProjectsActionModal, {
+  ProjectsActionModalFooter,
+} from '@/app/[market]/projects/components/ProjectsActionModal'
 import { useTranslations } from '@/hooks/useTranslations'
 import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
@@ -164,7 +166,7 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
 
       if (!response.ok) {
         logClickEvent('apps.transfer.accept_error', transferEventProps(transferAppIdRef.current))()
-        setError(data.error || data.message || t('builder_transfer_error_accept_failed', undefined, 'Failed to accept transfer'))
+        setError(data.error || data.message || t('builder_transfer_error_accept_failed'))
         setStep('error')
         return
       }
@@ -184,116 +186,105 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
       logger.error('transfer.accept.ui.error', {
         error: err instanceof Error ? err.message : String(err)
       })
-      setError(t('builder_transfer_error_accept_failed', undefined, 'Failed to accept transfer'))
+      setError(t('builder_transfer_error_accept_failed'))
       setStep('error')
     } finally {
       setIsLoading(false)
     }
   }
 
+  const footer =
+    step === 'input' ? (
+      <ProjectsActionModalFooter
+        onCancel={onClose}
+        cancelText={t('builder_common_cancel')}
+        onConfirm={handleAccept}
+        confirmText={
+          isLoading
+            ? t('builder_transfer_accepting')
+            : t('builder_transfer_accept_submit')
+        }
+        isLoading={isLoading}
+        confirmDisabled={transferToken.trim().length !== TRANSFER_TOKEN_LENGTH}
+        cancelEid={generateClickEID('apps.transfer.accept_cancel')}
+        confirmEid={generateClickEID('apps.transfer.accept_submit')}
+      />
+    ) : step === 'processing' ? (
+      <Button
+        onClick={handleClose}
+        design="secondary"
+        size="sm"
+        data-partial="componentAiro"
+        className="w-full md:w-auto"
+        data-eid={generateClickEID('apps.transfer.processing_dismiss')}
+        text={t('builder_transfer_processing_dismiss')}
+      />
+    ) : (
+      <ProjectsActionModalFooter
+        onCancel={() => {
+          transferAppIdRef.current = undefined
+          setStep('input')
+          setError(null)
+        }}
+        cancelText={t('builder_common_try_again')}
+        onConfirm={onClose}
+        confirmText={t('builder_common_close')}
+        cancelEid={generateClickEID('apps.transfer.accept_retry')}
+        confirmEid={generateClickEID('apps.transfer.accept_close')}
+      />
+    )
+
   return (
-    <Modal
-      title={t('builder_transfer_accept_title', undefined, 'Accept Transfer')}
+    <ProjectsActionModal
+      title={t('builder_transfer_accept_title')}
+      description={
+        step === 'input'
+          ? t('builder_transfer_accept_description')
+          : undefined
+      }
       onClose={handleClose}
-      centered
-      focusLock={false}
+      footer={footer}
+      testId="accept-transfer-dialog"
     >
       {step === 'input' && (
-        <Box orientation="vertical" gap="md" className="max-w-md">
-          <text.p size={0} emphasis="passive">
-            {t('builder_transfer_accept_description', undefined, 'Enter the 6-character code you received from the app owner.')}
-          </text.p>
-
-          <Box orientation="vertical" gap="sm">
-            <TextInput
-              id="transfer-token"
-              data-eid={generateClickEID('apps.transfer.accept_token_input')}
-              label={t('builder_transfer_token_label', undefined, 'Transfer Code')}
-              value={transferToken}
-              onChange={(value) => {
-                setTransferToken(value.replace(/[^a-zA-Z0-9]/g, '').slice(0, TRANSFER_TOKEN_LENGTH))
-                setError(null)
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !isLoading) {
-                  handleAccept()
-                }
-              }}
-              errorMessage={error || undefined}
-              disabled={isLoading}
-              visualSize="sm"
-              placeholder={t('builder_transfer_token_placeholder', undefined, 'Enter 6-character code')}
-              multiline={false}
-            />
-          </Box>
-
-          <Box orientation="horizontal" gap="sm" className="pt-4 justify-end">
-            <Button
-              onClick={onClose}
-              disabled={isLoading}
-              design="secondary"
-              size="sm"
-              data-eid={generateClickEID('apps.transfer.accept_cancel')}
-              text={t('builder_common_cancel', undefined, 'Cancel')}
-            />
-            <Button
-              onClick={handleAccept}
-              disabled={isLoading || transferToken.trim().length !== TRANSFER_TOKEN_LENGTH}
-              design="primary"
-              size="sm"
-              data-eid={generateClickEID('apps.transfer.accept_submit')}
-              text={isLoading ? t('builder_transfer_accepting', undefined, 'Accepting...') : t('builder_transfer_accept_submit', undefined, 'Accept Transfer')}
-            />
-          </Box>
-        </Box>
+        <TextInput
+          id="transfer-token"
+          data-eid={generateClickEID('apps.transfer.accept_token_input')}
+          label={t('builder_transfer_token_label')}
+          value={transferToken}
+          onChange={(value) => {
+            setTransferToken(value.replace(/[^a-zA-Z0-9]/g, '').slice(0, TRANSFER_TOKEN_LENGTH))
+            setError(null)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !isLoading) {
+              handleAccept()
+            }
+          }}
+          errorMessage={error || undefined}
+          disabled={isLoading}
+          visualSize="sm"
+          placeholder={t('builder_transfer_token_placeholder')}
+          multiline={false}
+        />
       )}
 
       {step === 'processing' && (
-        <Box orientation="vertical" gap="md" className="max-w-md items-center py-4">
+        <Box orientation="vertical" gap="md" className="w-full items-center py-2">
           <Spinner size="md" />
           <text.p size={0} emphasis="passive" className="text-center">
             {t('builder_transfer_processing', undefined, 'Transfer in progress. This may take a moment...')}
           </text.p>
-          <Button
-            onClick={handleClose}
-            design="secondary"
-            size="sm"
-            data-eid={generateClickEID('apps.transfer.processing_dismiss')}
-            text={t('builder_transfer_processing_dismiss', undefined, 'Dismiss')}
-          />
         </Box>
       )}
 
       {step === 'error' && (
-        <Box orientation="vertical" gap="md" className="max-w-md">
-          <div className="bg-intents-ux-criticalBox-backgroundColor border border-intents-ux-criticalBox-borderColor rounded-lg p-4 text-center">
-            <text.p size={0} emphasis="critical">
-              {error || t('builder_transfer_error_accept_failed', undefined, 'Failed to accept transfer')}
-            </text.p>
-          </div>
-
-          <Box orientation="horizontal" gap="sm" className="pt-2 justify-end">
-            <Button
-              onClick={() => {
-                transferAppIdRef.current = undefined
-                setStep('input')
-                setError(null)
-              }}
-              design="secondary"
-              size="sm"
-              data-eid={generateClickEID('apps.transfer.accept_retry')}
-              text={t('builder_common_try_again', undefined, 'Try Again')}
-            />
-            <Button
-              onClick={onClose}
-              design="primary"
-              size="sm"
-              data-eid={generateClickEID('apps.transfer.accept_close')}
-              text={t('builder_common_close', undefined, 'Close')}
-            />
-          </Box>
-        </Box>
+        <div className="rounded-lg border border-intents-ux-criticalBox-borderColor bg-intents-ux-criticalBox-backgroundColor p-4 text-center">
+          <text.p size={0} emphasis="critical">
+            {error || t('builder_transfer_error_accept_failed')}
+          </text.p>
+        </div>
       )}
-    </Modal>
+    </ProjectsActionModal>
   )
 }

@@ -5,9 +5,11 @@ import Alert from '@ux/alert';
 import Box from '@ux/box';
 import Button from '@ux/button';
 import InfoIcon from '@ux/icon/information';
-import Modal from '@ux/modal';
 import text from '@ux/text';
 
+import ProjectsActionModal, {
+  ProjectsActionModalFooter,
+} from '@/app/[market]/projects/components/ProjectsActionModal';
 import { useTranslations } from '@/hooks/useTranslations';
 import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID } from '@/utils/instrumentation';
@@ -44,13 +46,67 @@ export default function UnpublishConfirmationModal({
     onConfirm(true);
   };
 
+  const footer = customDomain ? (
+    <Box orientation="vertical" gap="sm" className="w-full">
+      <Button
+        design="primary"
+        data-partial="componentAiro"
+        data-eid={generateClickEID('unpublish.buttons.confirm')}
+        text={t('builder_unpublish_confirm')}
+        onClick={handleConfirm}
+        disabled={isLoading}
+        className="w-full md:w-auto"
+      />
+      <Button
+        design="secondary"
+        data-partial="componentAiro"
+        data-eid={generateClickEID('unpublish.buttons.disconnect_and_unpublish')}
+        text={t('builder_unpublish_disconnect_and_unpublish')}
+        onClick={handleDisconnectAndUnpublish}
+        disabled={isLoading}
+        className="w-full md:w-auto"
+      />
+      <Button
+        design="secondary"
+        data-partial="componentAiro"
+        data-eid={generateClickEID('unpublish.buttons.cancel')}
+        text={t('builder_unpublish_cancel')}
+        onClick={onClose}
+        disabled={isLoading}
+        className="w-full md:w-auto"
+      />
+    </Box>
+  ) : (
+    <ProjectsActionModalFooter
+      onCancel={onClose}
+      cancelText={t('builder_unpublish_cancel')}
+      onConfirm={handleConfirm}
+      confirmText={isLoading ? t('builder_unpublish_processing') : t('builder_unpublish_confirm')}
+      isLoading={isLoading}
+      cancelEid={generateClickEID('unpublish.buttons.cancel')}
+      confirmEid={generateClickEID('unpublish.buttons.confirm')}
+    />
+  );
+
+  const confirmationMessage = (
+    <FormattedMessage
+      id="builder_unpublish_confirmation_message"
+      values={{
+        publishedUrl: publishedUrl?.replace(/^https?:\/\//, ''),
+        strong: (chunks) => <strong>{chunks}</strong>,
+      }}
+    />
+  )
+
   return (
-    <Modal
+    <ProjectsActionModal
       title={t('builder_unpublish_modal_title')}
+      description={confirmationMessage}
       onClose={onClose}
-      data-partial="componentAiro"
+      footer={footer}
+      testId="unpublish-confirmation-modal"
     >
-      <Box className="md:max-w-lg" orientation="vertical" gap="lg">
+      <Box orientation="vertical" gap="sm" className="w-full text-left md:max-w-lg">
         {error && (
           <Alert
             emphasis="critical"
@@ -82,72 +138,22 @@ export default function UnpublishConfirmationModal({
           </Alert>
         )}
 
-      <Box orientation="vertical" gap="sm">
-        <text.p>
-          <FormattedMessage
-            id="builder_unpublish_confirmation_message"
-            values={{
-              publishedUrl: publishedUrl?.replace(/^https?:\/\//, ''),
-              strong: (chunks) => <strong>{chunks}</strong>,
-            }}
-          />
-        </text.p>
-        <Box orientation="horizontal" gap="sm" className="bg-ai-light/15 rounded-lg p-3">
-          <InfoIcon className="w-3 h-3 flex-shrink-0" />
-          <text.p size={-1}>
-            <FormattedMessage
-              id="builder_unpublish_info"
-            />
+        <Box
+          orientation="horizontal"
+          gap="sm"
+          className="items-start rounded-lg bg-ai-light/15 p-3 text-left"
+        >
+          <InfoIcon className="mt-0.5 h-3 w-3 shrink-0" />
+          <text.p size={-1} className="m-0 text-left">
+            <FormattedMessage id="builder_unpublish_info" />
           </text.p>
         </Box>
-          {
-            customDomain && (
-              <FormattedMessage
-                id="builder_unpublish_confirmation_description_with_domain"
-              />
-            )
-          }
-      </Box>
-        { customDomain ? (
-          <Box orientation="vertical" gap="sm">
-            <Button
-              design="primary"
-              data-partial="componentAiro"
-              data-eid={generateClickEID('unpublish.buttons.confirm')}
-              text={t('builder_unpublish_confirm')}
-              onClick={handleConfirm}
-              disabled={isLoading}
-            />
-            <Button
-              design="secondary"
-              data-partial="componentAiro"
-              data-eid={generateClickEID('unpublish.buttons.disconnect_and_unpublish')}
-              text={t('builder_unpublish_disconnect_and_unpublish')}
-              onClick={handleDisconnectAndUnpublish}
-              disabled={isLoading}
-            />
-          </Box>
-        ) : (
-          <Box orientation="horizontal" gap="sm">
-            <Button
-              design="primary"
-              data-partial="componentAiro"
-              data-eid={generateClickEID('unpublish.buttons.confirm')}
-              text={isLoading ? t('builder_unpublish_processing') : t('builder_unpublish_confirm')}
-              onClick={handleConfirm}
-              disabled={isLoading}
-            />
-            <Button
-              design="secondary"
-              data-partial="componentAiro"
-              data-eid={generateClickEID('unpublish.buttons.cancel')}
-              text={t('builder_unpublish_cancel')}
-              onClick={onClose}
-              disabled={isLoading}
-            />
-          </Box>
+        {customDomain && (
+          <text.p className="m-0 text-left">
+            <FormattedMessage id="builder_unpublish_confirmation_description_with_domain" />
+          </text.p>
         )}
       </Box>
-    </Modal>
+    </ProjectsActionModal>
   );
 }

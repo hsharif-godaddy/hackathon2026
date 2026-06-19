@@ -103,10 +103,11 @@ describe('UnpublishConfirmationModal', function unpublishModalTests() {
     });
 
     it('should render info section', function renderInfo() {
-      const { container } = renderWithProviders(<UnpublishConfirmationModal {...defaultProps} />);
+      renderWithProviders(<UnpublishConfirmationModal {...defaultProps} />);
 
-      // Info section with icon exists (FormattedMessage renders the content)
-      expect(container.querySelector('[class*="bg-ai-light"]')).toBeInTheDocument();
+      // Info section with icon exists (FormattedMessage renders the content).
+      // Sheet/modal content may portal outside the RTL container.
+      expect(document.querySelector('[class*="bg-ai-light"]')).toBeInTheDocument();
     });
 
     it('should render cancel and confirm buttons', function renderButtons() {

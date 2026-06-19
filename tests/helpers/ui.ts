@@ -224,7 +224,7 @@ export async function waitForAppsPage(page: Page): Promise<void> {
   await page.waitForResponse('**/api/sites');
 
   // Wait for page content
-  await page.getByTestId('apps-page-title').waitFor({
+  await page.getByTestId('projects-page-title').waitFor({
     state: 'visible',
     timeout: DEFAULT_TIMEOUT,
   });
@@ -292,7 +292,7 @@ export async function waitForChatInput(page: Page, options?: WaitForChatInputOpt
  */
 export async function visitAppsPage(page: Page): Promise<void> {
   await page.goto('/apps');
-  await page.getByTestId('app-card-edit-button').first().waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+  await page.getByTestId('project-card-edit-button').first().waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
 }
 
 /**

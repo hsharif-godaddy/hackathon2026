@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import CopyIcon from '@ux/icon/copy'
-import Modal from '@ux/modal'
 import text from '@ux/text'
 import TextInput from '@ux/text-input'
 
 import { transferEventProps } from '@/app/[market]/apps/components/transfer-constants'
+import ProjectsActionModal, {
+  ProjectsActionModalFooter,
+} from '@/app/[market]/projects/components/ProjectsActionModal'
 import { useTranslations } from '@/hooks/useTranslations'
 import { appFetch, AuthDismissedError } from '@/lib/gasket-config'
 import { logger } from '@/lib/request-context'
@@ -110,102 +112,134 @@ export default function TransferInitiateDialog({
 
   const modalTitle = `${t('builder_transfer_initiate_title', undefined, 'Transfer')} \u201C${appName}\u201D`
 
+  const handleClose = () => {
+    if (transferToken) onTransferCreated(transferToken, transferExpiresAt)
+    onClose()
+  }
+
+  const footer =
+    step === 'input' ? (
+      <ProjectsActionModalFooter
+        onCancel={handleClose}
+        cancelText={t('builder_common_cancel')}
+        onConfirm={handleInitiate}
+        confirmText={
+          isLoading
+            ? t('builder_transfer_initiating')
+            : t('builder_transfer_initiate_submit')
+        }
+        isLoading={isLoading}
+        confirmDisabled={!email.trim()}
+        cancelEid={generateClickEID('apps.transfer.initiate_cancel')}
+        confirmEid={generateClickEID('apps.transfer.initiate_submit')}
+      />
+    ) : (
+      <Button
+        onClick={() => {
+          logClickEvent('apps.transfer.done', eventProps)()
+          if (transferToken) onTransferCreated(transferToken, transferExpiresAt)
+          onClose()
+        }}
+        design="primary"
+        size="sm"
+        data-partial="componentAiro"
+        className="w-full md:w-auto"
+        text={t('builder_common_done', undefined, 'Done')}
+      />
+    )
+
   return (
-    <Modal
+    <ProjectsActionModal
       title={modalTitle}
-      onClose={() => {
-        if (transferToken) onTransferCreated(transferToken, transferExpiresAt)
-        onClose()
-      }}
-      centered
-      focusLock={false}
+      description={
+        step === 'input'
+          ? t('builder_transfer_initiate_description', { appName })
+          : step === 'token'
+            ? t('builder_transfer_token_description')
+            : undefined
+      }
+      onClose={handleClose}
+      footer={footer}
+      testId="transfer-initiate-dialog"
     >
       {step === 'input' && (
-        <div className="text-left">
-          <Box orientation="vertical" gap="md">
-            <text.p size={0} emphasis="passive">
-              {t('builder_transfer_initiate_description', { appName }, 'Start a transfer by entering the recipient\u2019s email. They must have a GoDaddy account linked to this email.')}
-            </text.p>
+        <Box orientation="vertical" gap="md" className="w-full text-left">
+          <ul className="list-disc space-y-1 pl-5">
+            <li>
+              <text.span size={-1}>
+                {t('builder_transfer_bullet_unpublish')}
+              </text.span>
+            </li>
+            <li>
+              <text.span size={-1}>
+                {t('builder_transfer_bullet_domain')}
+              </text.span>
+            </li>
+            <li>
+              <text.span size={-1}>
+                {t('builder_transfer_bullet_republish')}
+              </text.span>
+            </li>
+            <li>
+              <text.span size={-1}>
+                {t('builder_transfer_bullet_secrets')}
+              </text.span>
+            </li>
+          </ul>
 
-            <ul className="list-disc pl-5 space-y-1">
-              <li><text.span size={0}>{t('builder_transfer_bullet_unpublish', undefined, 'The app will be unpublished')}</text.span></li>
-              <li><text.span size={0}>{t('builder_transfer_bullet_domain', undefined, 'Any connected domain will be disconnected')}</text.span></li>
-              <li><text.span size={0}>{t('builder_transfer_bullet_republish', undefined, 'The recipient will need to publish again')}</text.span></li>
-              <li><text.span size={0}>{t('builder_transfer_bullet_secrets', undefined, 'Any store secrets will be transferred')}</text.span></li>
-            </ul>
+          <text.p size={-1} emphasis="passive">
+            {t('builder_transfer_initiate_description_2')}
+          </text.p>
 
-            <text.p size={0} emphasis="passive">
-              {t('builder_transfer_initiate_description_2', undefined, 'We\u2019ll generate a transfer code for you to share with them.')}
-            </text.p>
-
-            <TextInput
-              id="target-email"
-              data-eid={generateClickEID('apps.transfer.email_input')}
-              label={t('builder_transfer_email_label', undefined, 'Recipient\u2019s GoDaddy email')}
-              value={email}
-              onChange={(value) => {
-                setEmail(value)
-                setError(null)
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !isLoading) {
-                  handleInitiate()
-                }
-              }}
-              errorMessage={error || undefined}
-              disabled={isLoading}
-              placeholder={t('builder_transfer_email_placeholder', undefined, 'Recipient\u2019s GoDaddy email')}
-              multiline={false}
-            />
-
-            <Button
-              onClick={handleInitiate}
-              disabled={isLoading || !email.trim()}
-              design="primary"
-              size="sm"
-              data-eid={generateClickEID('apps.transfer.initiate_submit')}
-              text={isLoading ? t('builder_transfer_initiating', undefined, 'Generating...') : t('builder_transfer_initiate_submit', undefined, 'Generate Code')}
-            />
-          </Box>
-        </div>
+          <TextInput
+            id="target-email"
+            data-eid={generateClickEID('apps.transfer.email_input')}
+            label={t('builder_transfer_email_label')}
+            value={email}
+            onChange={(value) => {
+              setEmail(value)
+              setError(null)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !isLoading) {
+                handleInitiate()
+              }
+            }}
+            errorMessage={error || undefined}
+            disabled={isLoading}
+            placeholder={t('builder_transfer_email_placeholder')}
+            multiline={false}
+          />
+        </Box>
       )}
 
       {step === 'token' && transferToken && (
-        <Box orientation="vertical" gap="md">
-          <Box orientation="vertical" gap="sm">
-            <text.p size={0} emphasis="passive">
-              {t('builder_transfer_token_description', undefined, 'Share this code with the recipient. They\u2019ll need it to accept the transfer.')}
-            </text.p>
-            <text.p size={0} emphasis="passive">
-              {t('builder_transfer_token_expiry_note', undefined, 'This code will expire in 72 hours.')}
-            </text.p>
-          </Box>
+        <Box orientation="vertical" gap="md" className="w-full">
+          <text.p size={-1} emphasis="passive">
+            {t('builder_transfer_token_expiry_note')}
+          </text.p>
 
-          <div className="border border-intents-ux-box-borderColor rounded-lg p-4 flex items-center justify-between gap-4">
-            <text.p size={4} className="font-mono tracking-widest font-bold select-all">
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-intents-ux-box-borderColor p-4">
+            <text.p size={4} className="select-all font-mono font-bold tracking-widest">
               {transferToken}
             </text.p>
             <Button
               onClick={handleCopy}
               design="primary"
               size="sm"
+              data-partial="componentAiro"
               icon={<CopyIcon />}
-              text={copied ? t('builder_transfer_token_copied', undefined, 'Copied!') : copyError ? t('builder_common_error', undefined, 'Error') : t('builder_transfer_copy_code', undefined, 'Copy Code')}
+              text={
+                copied
+                  ? t('builder_transfer_token_copied')
+                  : copyError
+                    ? t('builder_common_error')
+                    : t('builder_transfer_copy_code')
+              }
             />
           </div>
-
-          <Button
-            onClick={() => {
-              logClickEvent('apps.transfer.done', eventProps)()
-              if (transferToken) onTransferCreated(transferToken, transferExpiresAt)
-              onClose()
-            }}
-            design="primary"
-            size="sm"
-            text={t('builder_common_done', undefined, 'Done')}
-          />
         </Box>
       )}
-    </Modal>
+    </ProjectsActionModal>
   )
 }

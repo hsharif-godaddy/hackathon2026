@@ -44,7 +44,7 @@ describe('TransferInitiateDialog', function dialogTests() {
 
     expect(screen.getByText(/Transfer \u201CMy Test App\u201D/)).toBeInTheDocument();
     expect(screen.getByRole('textbox')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Generate Code' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'builder_transfer_initiate_submit' })).toBeInTheDocument();
   });
 
   it('should show error for empty email', async function emptyEmailError() {
@@ -54,7 +54,7 @@ describe('TransferInitiateDialog', function dialogTests() {
     await user.type(input, ' ');
     await user.clear(input);
 
-    const submitButton = screen.getByRole('button', { name: 'Generate Code' });
+    const submitButton = screen.getByRole('button', { name: 'builder_transfer_initiate_submit' });
     expect(submitButton).toBeDisabled();
   });
 
@@ -62,7 +62,7 @@ describe('TransferInitiateDialog', function dialogTests() {
     const { user } = renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'notanemail');
-    await user.click(screen.getByRole('button', { name: 'Generate Code' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_initiate_submit' }));
 
     await waitFor(() => {
       expect(screen.getByText('Please enter a valid email address')).toBeInTheDocument();
@@ -83,7 +83,7 @@ describe('TransferInitiateDialog', function dialogTests() {
     const input = screen.getByRole('textbox');
     await user.type(input, 'ksutar@godaddy.com');
 
-    const submitButton = screen.getByRole('button', { name: 'Generate Code' });
+    const submitButton = screen.getByRole('button', { name: 'builder_transfer_initiate_submit' });
     await user.click(submitButton);
 
     await waitFor(() => {
@@ -108,7 +108,7 @@ describe('TransferInitiateDialog', function dialogTests() {
     const { user } = renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'invalid@test.com');
-    await user.click(screen.getByRole('button', { name: 'Generate Code' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_initiate_submit' }));
 
     await waitFor(() => {
       expect(screen.getByText('Target email not found')).toBeInTheDocument();
@@ -118,7 +118,7 @@ describe('TransferInitiateDialog', function dialogTests() {
   it('should call onClose when modal close is clicked', async function closeModal() {
     const { user } = renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
 
-    await user.click(screen.getByTestId('modal-close'));
+    await user.click(screen.getByRole('button', { name: 'Close' }));
 
     expect(defaultProps.onClose).toHaveBeenCalled();
   });
@@ -133,13 +133,13 @@ describe('TransferInitiateDialog', function dialogTests() {
     const { user } = renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'ksutar@godaddy.com');
-    await user.click(screen.getByRole('button', { name: 'Generate Code' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_initiate_submit' }));
 
     await waitFor(() => {
       expect(screen.getByText('abc123')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByTestId('modal-close'));
+    await user.click(screen.getByRole('button', { name: 'Close' }));
 
     expect(defaultProps.onTransferCreated).toHaveBeenCalledWith('abc123', '2026-04-02T12:00:00.000Z');
     expect(defaultProps.onClose).toHaveBeenCalled();
@@ -161,7 +161,7 @@ describe('TransferInitiateDialog', function dialogTests() {
     const { user } = renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'test@godaddy.com');
-    await user.click(screen.getByRole('button', { name: 'Generate Code' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_initiate_submit' }));
 
     await waitFor(() => {
       expect(screen.getByText('abc123')).toBeInTheDocument();
@@ -181,7 +181,7 @@ describe('TransferInitiateDialog', function dialogTests() {
     const { user } = renderWithProviders(<TransferInitiateDialog {...defaultProps} />);
 
     await user.type(screen.getByRole('textbox'), 'bad@test.com');
-    await user.click(screen.getByRole('button', { name: 'Generate Code' }));
+    await user.click(screen.getByRole('button', { name: 'builder_transfer_initiate_submit' }));
 
     await waitFor(() => {
       expect(screen.getByText('Target email not found')).toBeInTheDocument();

@@ -966,10 +966,6 @@ describe('AppCard', () => {
       await waitFor(() => {
         expect(screen.getByTestId('delete-project-confirmation-modal')).toBeInTheDocument();
       });
-      expect(screen.getByTestId('mock-modal')).toHaveAttribute(
-        'aria-label',
-        'Delete “Test Application”'
-      );
     });
 
     it('should hide confirmation modal when cancel is clicked', async () => {

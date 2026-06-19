@@ -196,11 +196,6 @@ describe('Sites Page', () => {
       expect(screen.getByText('builder_apps_empty_state')).toBeInTheDocument();
     });
 
-    it('should show create project button in empty state', () => {
-      renderWithProviders(<Sites />);
-
-      expect(screen.getByTestId('create-app-empty-state')).toBeInTheDocument();
-    });
   });
 
   describe('renders sites list', () => {
@@ -230,7 +225,7 @@ describe('Sites Page', () => {
 
       renderWithProviders(<Sites />);
 
-      expect(screen.getByText('2')).toBeInTheDocument();
+      expect(screen.getByTestId('projects-page-title')).toHaveTextContent('(2)');
     });
 
     it('should show count for 1 app', () => {
@@ -240,7 +235,7 @@ describe('Sites Page', () => {
 
       renderWithProviders(<Sites />);
 
-      expect(screen.getByText('1')).toBeInTheDocument();
+      expect(screen.getByTestId('projects-page-title')).toHaveTextContent('(1)');
     });
   });
 
@@ -385,163 +380,6 @@ describe('Sites Page', () => {
       await waitFor(() => {
         expect(refreshSites).toHaveBeenCalled();
       });
-    });
-  });
-
-  describe('renders transfer UI', () => {
-    it('should render transfer app card', () => {
-      renderWithProviders(<Sites />);
-
-      expect(screen.getByTestId('transfer-app-card')).toBeInTheDocument();
-    });
-
-    it('should open accept transfer dialog via transfer card', async function openDialog() {
-      const { user } = renderWithProviders(<Sites />);
-
-      await user.click(screen.getByTestId('transfer-app-card'));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('accept-transfer-dialog')).toBeInTheDocument();
-      });
-    });
-
-    it('should close accept transfer dialog when dismissed', async function closeDialog() {
-      const { user } = renderWithProviders(<Sites />);
-
-      await user.click(screen.getByTestId('transfer-app-card'));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('accept-transfer-dialog')).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByText('Close'));
-
-      await waitFor(() => {
-        expect(screen.queryByTestId('accept-transfer-dialog')).not.toBeInTheDocument();
-      });
-    });
-
-    it('should keep dialog open when loading starts mid-operation', async function dialogSurvivesLoading() {
-      const { user } = renderWithProviders(<Sites />);
-
-      await user.click(screen.getByTestId('transfer-app-card'));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('accept-transfer-dialog')).toBeInTheDocument();
-      });
-
-      useSitesStore.setState({ isLoadingAll: true });
-
-      expect(screen.getByTestId('accept-transfer-dialog')).toBeInTheDocument();
-    });
-  });
-
-  describe('hides action bar while SSO login modal is open', () => {
-    it('should not render create/transfer buttons when SSO modal is open', () => {
-      useAuthUIStore.setState({ isSsoLoginOpen: true });
-
-      renderWithProviders(<Sites />);
-
-      expect(screen.queryByTestId('create-app-card')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('transfer-app-card')).not.toBeInTheDocument();
-    });
-
-    it('should restore the buttons after the SSO modal closes', async () => {
-      useAuthUIStore.setState({ isSsoLoginOpen: true });
-
-      renderWithProviders(<Sites />);
-
-      expect(screen.queryByTestId('create-app-card')).not.toBeInTheDocument();
-
-      useAuthUIStore.setState({ isSsoLoginOpen: false });
-
-      await waitFor(() => {
-        expect(screen.getByTestId('create-app-card')).toBeInTheDocument();
-      });
-    });
-  });
-
-  describe('hides transfer UI when flag is disabled', () => {
-    it('should not show transfer card when flag is off', () => {
-      vi.mocked(useSwitchboard).mockReturnValue(false);
-
-      renderWithProviders(<Sites />);
-
-      expect(screen.queryByTestId('transfer-app-card')).not.toBeInTheDocument();
-    });
-  });
-
-  describe('transfer UI visibility based on flag', () => {
-    it('should show transfer card when flag is true (even for TLAs)', async () => {
-      vi.mocked(useSwitchboard).mockReturnValue(true);
-      const { useAuth } = await import('@/hooks/useAuth');
-      vi.mocked(useAuth).mockReturnValue({
-        authState: { details: { shopperId: 'abc' } },
-      } as ReturnType<typeof useAuth>);
-
-      renderWithProviders(<Sites />);
-
-      expect(screen.getByTestId('transfer-app-card')).toBeInTheDocument();
-    });
-
-    it('should show transfer card for non-TLAs when flag is true', async () => {
-      vi.mocked(useSwitchboard).mockReturnValue(true);
-      const { useAuth } = await import('@/hooks/useAuth');
-      vi.mocked(useAuth).mockReturnValue({
-        authState: { details: { shopperId: '123456789' } },
-      } as ReturnType<typeof useAuth>);
-
-      renderWithProviders(<Sites />);
-
-      expect(screen.getByTestId('transfer-app-card')).toBeInTheDocument();
-    });
-
-    it('should hide transfer card for TLAs when flag is false (no override)', async () => {
-      vi.mocked(useSwitchboard).mockReturnValue(false);
-      const { useAuth } = await import('@/hooks/useAuth');
-      vi.mocked(useAuth).mockReturnValue({
-        authState: { details: { shopperId: 'abc' } },
-      } as ReturnType<typeof useAuth>);
-
-      renderWithProviders(<Sites />);
-
-      expect(screen.queryByTestId('transfer-app-card')).not.toBeInTheDocument();
-    });
-
-    it('should hide transfer card for TLAs when flag is loading (undefined)', async () => {
-      vi.mocked(useSwitchboard).mockReturnValue(undefined);
-      const { useAuth } = await import('@/hooks/useAuth');
-      vi.mocked(useAuth).mockReturnValue({
-        authState: { details: { shopperId: 'abc' } },
-      } as ReturnType<typeof useAuth>);
-
-      renderWithProviders(<Sites />);
-
-      expect(screen.queryByTestId('transfer-app-card')).not.toBeInTheDocument();
-    });
-
-    it('should show transfer card for non-TLAs when flag is loading (undefined)', async () => {
-      vi.mocked(useSwitchboard).mockReturnValue(undefined);
-      const { useAuth } = await import('@/hooks/useAuth');
-      vi.mocked(useAuth).mockReturnValue({
-        authState: { details: { shopperId: '123456789' } },
-      } as ReturnType<typeof useAuth>);
-
-      renderWithProviders(<Sites />);
-
-      expect(screen.getByTestId('transfer-app-card')).toBeInTheDocument();
-    });
-
-    it('should show transfer card when authState is null (non-JWT/mock-auth mode)', async () => {
-      vi.mocked(useSwitchboard).mockReturnValue(true);
-      const { useAuth } = await import('@/hooks/useAuth');
-      vi.mocked(useAuth).mockReturnValue({
-        authState: null,
-      } as ReturnType<typeof useAuth>);
-
-      renderWithProviders(<Sites />);
-
-      expect(screen.getByTestId('transfer-app-card')).toBeInTheDocument();
     });
   });
 
