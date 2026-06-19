@@ -52,6 +52,17 @@ describe('mutatesFiles', function mutatesFilesTests() {
     expect(mutatesFiles(makeTc({ input: { command: 'view', path: 'src/pages/index.tsx' } }))).toBe(false)
   })
 
+  it('returns false for text_editor with command view', function textEditorSnakeView() {
+    expect(
+      mutatesFiles(
+        makeTc({
+          name: 'text_editor',
+          input: { command: 'view', path: 'src/pages/index.tsx' },
+        }),
+      ),
+    ).toBe(false)
+  })
+
   it('returns false for an unrelated tool name', function unrelatedTool() {
     expect(mutatesFiles(makeTc({ name: 'search_tool', input: { query: 'x' } }))).toBe(false)
   })

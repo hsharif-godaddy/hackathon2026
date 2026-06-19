@@ -252,6 +252,22 @@ describe('Canvas.Status', () => {
       expect(indicator).toHaveAttribute('aria-hidden', 'true');
     });
 
+    it('applies overlay elevation via @ux/box', () => {
+      const { container } = render(<Canvas.Status label="Editing…" />);
+      const root = container.querySelector('.airo-surfaces-canvas-status');
+      expect(root).toHaveClass('ux-box--elevation-overlay');
+    });
+
+    it('sizes from content without pinning inline width', () => {
+      const { container, rerender } = render(<Canvas.Status label="Working" />);
+      const root = container.querySelector('.airo-surfaces-canvas-status') as HTMLElement;
+      expect(root.style.width).toBe('');
+
+      rerender(<Canvas.Status label="Checking your project" />);
+      expect(root.style.width).toBe('');
+      expect(root).toHaveTextContent('Checking your project');
+    });
+
     it('applies the `componentAiro` data partial to the chip root', () => {
       const { container } = render(<Canvas.Status label="Editing…" />);
       const root = container.querySelector('.airo-surfaces-canvas-status');
@@ -270,9 +286,8 @@ describe('Canvas.Status', () => {
       render(<Canvas.Status label="Editing…" data-testid="chip" />);
       const root = screen.getByTestId('chip');
       expect(root).toHaveAttribute('role', 'status');
-      // CanvasStatus is a `<Box>` (div) under the hood — switching to Box
-      // gets us the standard `inlinePadding="md"` / `blockPadding="md"` /
-      // `gap="sm"` knobs without hand-rolling padding declarations.
+      // CanvasStatus is a `<Box>` (div) under the hood — padding and gap
+      // are pinned in styles.css to the pill spec; Box owns flex alignment.
       expect(root.tagName.toLowerCase()).toBe('div');
     });
 

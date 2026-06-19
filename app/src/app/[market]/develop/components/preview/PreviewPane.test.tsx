@@ -7,6 +7,7 @@ import type React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 
+import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore';
 import { renderWithProviders } from '@/tests/test-utils';
 import { postMessageToIframe } from '@/utils/postMessage';
 import PreviewPane, { restoreIframeState } from './PreviewPane';
@@ -274,6 +275,7 @@ describe('PreviewPane', () => {
     mockIsInitialBuildFunnelActive.mockReturnValue(true);
     mockIsInitialBuildComplete.mockReturnValue(false);
     mockInitialAgentCohort.current = undefined;
+    useStreamingConversationStore.setState({ activeStream: null, messages: [] });
   });
 
   afterEach(() => {
@@ -385,7 +387,7 @@ describe('PreviewPane', () => {
     expect(iframe).toHaveAttribute('inert');
   });
 
-  it('should render desktop status chip with Thinking label when processing and not mutating', async () => {
+  it('should render desktop status chip with Working label when processing and not mutating', async () => {
     mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
 
     renderWithProviders(
@@ -400,11 +402,12 @@ describe('PreviewPane', () => {
     await waitFor(() => {
       expect(screen.getByTestId('preview-editing-chip')).toBeInTheDocument();
     });
-    expect(screen.getByText('Thinking…')).toBeInTheDocument();
-    expect(screen.queryByText('Editing…')).not.toBeInTheDocument();
+    const editingChip = screen.getByTestId('preview-editing-chip');
+    expect(within(editingChip).getByRole('status', { name: 'Working' })).toBeInTheDocument();
+    expect(within(editingChip).queryByRole('status', { name: 'Updating your project' })).not.toBeInTheDocument();
   });
 
-  it('should render desktop status chip with Editing label when mutating', async () => {
+  it('should render desktop status chip with Updating your project label when mutating', async () => {
     mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
 
     renderWithProviders(
@@ -419,8 +422,47 @@ describe('PreviewPane', () => {
     await waitFor(() => {
       expect(screen.getByTestId('preview-editing-chip')).toBeInTheDocument();
     });
-    expect(screen.getByText('Editing…')).toBeInTheDocument();
-    expect(screen.queryByText('Thinking…')).not.toBeInTheDocument();
+    const editingChip = screen.getByTestId('preview-editing-chip');
+    expect(within(editingChip).getByRole('status', { name: 'Updating your project' })).toBeInTheDocument();
+    expect(within(editingChip).queryByRole('status', { name: 'Working' })).not.toBeInTheDocument();
+  });
+
+  it('should render desktop status chip with summarized label when a tool is running', async () => {
+    mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
+    useStreamingConversationStore.setState({
+      activeStream: {
+        id: 'stream-1',
+        role: 'assistant',
+        content: '',
+        segments: [],
+        toolCalls: [
+          {
+            id: 'tc-1',
+            name: 'grepSearch',
+            input: { query: 'hero' },
+            status: 'running',
+          },
+        ],
+        timestamp: new Date(),
+        isComplete: false,
+      },
+    });
+
+    renderWithProviders(
+      <PreviewPane
+        onPreviewRefresh={vi.fn()}
+        isProcessing={true}
+        isMutatingFiles={false}
+        showBuildingOverlay={false}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('preview-editing-chip')).toBeInTheDocument();
+    });
+    const editingChip = screen.getByTestId('preview-editing-chip');
+    expect(within(editingChip).getByRole('status', { name: 'Checking your project' })).toBeInTheDocument();
+    expect(screen.queryByText('builder_tools_active_grep_search')).not.toBeInTheDocument();
   });
 
   it.each([
@@ -534,7 +576,7 @@ describe('PreviewPane', () => {
     expect(mockDevelopPageStore.setPreviewViewMode).toHaveBeenCalledWith(PreviewViewMode.DESKTOP);
   });
 
-  it('should keep mobile Thinking label when processing and not mutating', () => {
+  it('should keep mobile Thinker with builder_agent_thinking when enhanced overlays flag is off', () => {
     mockSwitchboardResults[EDITING_CHIP_FLAG] = false;
 
     renderWithProviders(
@@ -551,7 +593,7 @@ describe('PreviewPane', () => {
     expect(screen.queryByTestId('preview-mobile-status-pill')).not.toBeInTheDocument();
   });
 
-  it('should show mobile status pill with Thinking label when enhanced overlays flag is on and not mutating', () => {
+  it('should show mobile status pill with Working label when enhanced overlays flag is on and not mutating', () => {
     mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
 
     renderWithProviders(
@@ -567,11 +609,29 @@ describe('PreviewPane', () => {
     const mobileStatusPill = screen.getByTestId('preview-mobile-status-pill');
 
     expect(mobileStatusPill).toBeInTheDocument();
-    expect(within(mobileStatusPill).getByText('Thinking…')).toBeInTheDocument();
+    expect(mobileStatusPill).toHaveAccessibleName('Working');
   });
 
-  it('should show mobile status pill with Editing label when enhanced overlays flag is on and mutating', () => {
+  it('should show mobile status pill with Updating your project label when enhanced overlays flag is on and mutating', () => {
     mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
+    useStreamingConversationStore.setState({
+      activeStream: {
+        id: 'stream-1',
+        role: 'assistant',
+        content: '',
+        segments: [],
+        toolCalls: [
+          {
+            id: 'tc-1',
+            name: 'fileEdit',
+            input: { path: 'src/pages/index.tsx' },
+            status: 'running',
+          },
+        ],
+        timestamp: new Date(),
+        isComplete: false,
+      },
+    });
 
     renderWithProviders(
       <PreviewPane
@@ -586,8 +646,7 @@ describe('PreviewPane', () => {
     const mobileStatusPill = screen.getByTestId('preview-mobile-status-pill');
 
     expect(mobileStatusPill).toBeInTheDocument();
-    expect(within(mobileStatusPill).getByText('Editing…')).toBeInTheDocument();
-    expect(within(mobileStatusPill).queryByText('Thinking…')).not.toBeInTheDocument();
+    expect(mobileStatusPill).toHaveAccessibleName('Updating your project');
   });
 
   it('should open mobile tools when mobile status pill wrapper is clicked', () => {
@@ -644,7 +703,7 @@ describe('PreviewPane', () => {
     expect(screen.queryByTestId('preview-mobile-status-pill')).not.toBeInTheDocument();
   });
 
-  it('should show mobile status pill with editing label when mutating without processing', () => {
+  it('should show mobile status pill with Updating your project label when mutating without processing', () => {
     mockSwitchboardResults[EDITING_CHIP_FLAG] = true;
 
     renderWithProviders(
@@ -660,7 +719,7 @@ describe('PreviewPane', () => {
     const mobileStatusPill = screen.getByTestId('preview-mobile-status-pill');
 
     expect(mobileStatusPill).toBeInTheDocument();
-    expect(within(mobileStatusPill).getByText('Editing…')).toBeInTheDocument();
+    expect(mobileStatusPill).toHaveAccessibleName('Updating your project');
   });
 
   it('should not show mobile status pill during building overlay', () => {

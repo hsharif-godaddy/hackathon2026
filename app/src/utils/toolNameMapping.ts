@@ -1,8 +1,144 @@
+import {
+  type CanvasStatusKey,
+  defaultMessageForCanvasStatusKey,
+} from '@/lib/translations/canvas-status-defaults'
+
+export type { CanvasStatusKey } from '@/lib/translations/canvas-status-defaults'
+
 type Translator = (
   id: string,
   values?: Record<string, any>,
   defaultMessage?: string
 ) => string
+
+function translateCanvasStatusKey(key: CanvasStatusKey, t: Translator): string {
+  return t(key, undefined, defaultMessageForCanvasStatusKey(key))
+}
+
+/**
+ * Maps a running tool name to a summarized canvas status i18n key.
+ *
+ * Bucket definitions: docs/superpowers/plans/2026-06-18-canvas-status-pill-copy.md
+ */
+export function getCanvasStatusKey(toolName: string): CanvasStatusKey {
+  if (!toolName) {
+    return 'builder_canvas_status_working'
+  }
+
+  switch (toolName) {
+    case 'file_read':
+    case 'fileRead':
+    case 'read_file':
+    case 'readFile':
+    case 'grep_search':
+    case 'grepSearch':
+    case 'directory_listing':
+    case 'directoryListing':
+    case 'code_search':
+    case 'codeSearch':
+    case 'codebase_search':
+    case 'codebaseSearch':
+    case 'ragSearch':
+    case 'knowledgeSearch':
+    case 'memoryRead':
+    case 'memorySearch':
+    case 'memoryListKeys':
+    case 'view_logs':
+    case 'viewLogs':
+    case 'websiteScraper':
+    case 'crawlPages':
+    case 'screenshot':
+    case 'showDoc':
+      return 'builder_canvas_status_checking_project'
+    case 'file_edit':
+    case 'fileEdit':
+    case 'str_replace_based_edit_tool':
+    case 'text_editor':
+    case 'textEditor':
+    case 'write_file':
+    case 'writeFile':
+      return 'builder_canvas_status_updating_project'
+    case 'app_plan':
+    case 'appPlan':
+    case 'todo_list':
+    case 'todoList':
+      return 'builder_canvas_status_planning'
+    case 'colorScheme':
+    case 'fontTheme':
+    case 'cssColor':
+    case 'cssSuggest':
+    case 'brand':
+    case 'brandBook':
+    case 'brandIdentity':
+    case 'loadUiKit':
+    case 'installDesignSystem':
+    case 'listDesignSystems':
+    case 'media':
+    case 'media_search':
+    case 'mediaSearch':
+    case 'imageEditor':
+    case 'widgetRender':
+    case 'websiteRebuild':
+    case 'rebuildPageSelector':
+      return 'builder_canvas_status_adding_styles'
+    case 'httpCheck':
+    case 'http_check':
+    case 'icons_validator':
+    case 'iconsValidator':
+    case 'validateCode':
+    case 'validate_code':
+    case 'qaAnalyze':
+    case 'seoAnalysis':
+    case 'run_tests':
+    case 'runTests':
+      return 'builder_canvas_status_checking_project'
+    case 'terminal':
+    case 'terminal_command':
+    case 'terminalCommand':
+    case 'run_command':
+    case 'runCommand':
+    case 'run_terminal_cmd':
+    case 'runTerminalCmd':
+    case 'server_restart':
+    case 'serverRestart':
+    case 'server_status':
+    case 'serverStatus':
+    case 'git_operation':
+    case 'gitOperation':
+    case 'mysql_operation':
+    case 'mysqlOperation':
+      return 'builder_canvas_status_setting_up'
+    case 'runAgent':
+    case 'awaitAgents':
+      return 'builder_canvas_status_building'
+    case 'returnToParent':
+      return 'builder_canvas_status_wrapping_up'
+    // Streamed git-restore tool only; user Undo/Version History restore is not a running tool today.
+    case 'restore':
+      return 'builder_canvas_status_restoring'
+    // Explicit Working bucket — not merely unmapped; keeps UX-facing tools out of default fallthrough.
+    case 'askQuestion':
+    case 'suggestedResponse':
+    case 'setWizardStep':
+    case 'skill':
+    case 'social_post_create':
+    case 'socialPostCreate':
+    case 'socialPostPublish':
+    case 'socialRead':
+    case 'requestSecrets':
+      return 'builder_canvas_status_working'
+    default:
+      return 'builder_canvas_status_working'
+  }
+}
+
+/**
+ * Summarized status label for the canvas status pill. Maps tool names to
+ * high-level copy (builder_canvas_status_*) instead of granular Thinker labels.
+ */
+export function getCanvasStatusDisplayName(toolName: string, t: Translator): string {
+  return translateCanvasStatusKey(getCanvasStatusKey(toolName), t)
+}
 
 /**
  * Active-voice, present-continuous label for a tool that's currently running.

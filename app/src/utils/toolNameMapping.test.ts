@@ -1,7 +1,76 @@
 import { describe, expect, it } from 'vitest';
 
-import { getToolDisplayName } from './toolNameMapping';
+import { FILE_MUTATION_TOOL_NAMES } from '@/app/[market]/develop/utils/fileMutationTools';
+import { getCanvasStatusDisplayName, getCanvasStatusKey, getToolDisplayName } from './toolNameMapping';
 
+function mockT(id: string, _values?: Record<string, unknown>, defaultMessage?: string) {
+  return defaultMessage ?? id;
+}
+
+describe('getCanvasStatusKey', function canvasStatusKeyTests() {
+  it('maps read-only tools to checking project', function checkingProjectRead() {
+    expect(getCanvasStatusKey('readFile')).toBe('builder_canvas_status_checking_project');
+    expect(getCanvasStatusKey('grepSearch')).toBe('builder_canvas_status_checking_project');
+    expect(getCanvasStatusKey('directoryListing')).toBe('builder_canvas_status_checking_project');
+  });
+
+  it('maps file edit aliases to updating project', function updatingProject() {
+    expect(getCanvasStatusKey('fileEdit')).toBe('builder_canvas_status_updating_project');
+    expect(getCanvasStatusKey('str_replace_based_edit_tool')).toBe('builder_canvas_status_updating_project');
+  });
+
+  it('maps planning tools', function planningTools() {
+    expect(getCanvasStatusKey('appPlan')).toBe('builder_canvas_status_planning');
+    expect(getCanvasStatusKey('todoList')).toBe('builder_canvas_status_planning');
+  });
+
+  it('maps design tools to adding styles', function addingStyles() {
+    expect(getCanvasStatusKey('colorScheme')).toBe('builder_canvas_status_adding_styles');
+    expect(getCanvasStatusKey('media')).toBe('builder_canvas_status_adding_styles');
+  });
+
+  it('maps validation tools to checking project', function checkingProjectValidate() {
+    expect(getCanvasStatusKey('httpCheck')).toBe('builder_canvas_status_checking_project');
+    expect(getCanvasStatusKey('validateCode')).toBe('builder_canvas_status_checking_project');
+    expect(getCanvasStatusKey('qaAnalyze')).toBe('builder_canvas_status_checking_project');
+  });
+
+  it('maps infra tools to setting up', function settingUp() {
+    expect(getCanvasStatusKey('terminalCommand')).toBe('builder_canvas_status_setting_up');
+    expect(getCanvasStatusKey('serverRestart')).toBe('builder_canvas_status_setting_up');
+  });
+
+  it('maps multi-agent tools to building', function building() {
+    expect(getCanvasStatusKey('runAgent')).toBe('builder_canvas_status_building');
+    expect(getCanvasStatusKey('awaitAgents')).toBe('builder_canvas_status_building');
+  });
+
+  it('maps returnToParent to wrapping up', function wrappingUp() {
+    expect(getCanvasStatusKey('returnToParent')).toBe('builder_canvas_status_wrapping_up');
+  });
+
+  it('maps restore to restoring', function restoring() {
+    expect(getCanvasStatusKey('restore')).toBe('builder_canvas_status_restoring');
+  });
+
+  it('maps unknown tools to working', function workingFallback() {
+    expect(getCanvasStatusKey('commerce__execute_tool')).toBe('builder_canvas_status_working');
+    expect(getCanvasStatusKey('')).toBe('builder_canvas_status_working');
+  });
+
+  it('maps every file mutation tool name to updating project', function mutationToolNames() {
+    for (const toolName of FILE_MUTATION_TOOL_NAMES) {
+      expect(getCanvasStatusKey(toolName)).toBe('builder_canvas_status_updating_project');
+    }
+  });
+});
+
+describe('getCanvasStatusDisplayName', function canvasStatusDisplayTests() {
+  it('returns dev fallback copy via translator defaultMessage', function translates() {
+    expect(getCanvasStatusDisplayName('grepSearch', mockT)).toBe('Checking your project');
+    expect(getCanvasStatusDisplayName('fileEdit', mockT)).toBe('Updating your project');
+  });
+});
 describe('getToolDisplayName', () => {
   describe('empty and invalid inputs', () => {
     it('should return "Unknown Tool" for empty string', () => {

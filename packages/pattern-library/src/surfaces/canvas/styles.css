@@ -141,36 +141,30 @@
 
 /* --- Canvas.Status pill ---------------------------------------------- */
 
-/* Layout (display, orientation, padding, gap, alignment) is owned by the
- * `<Box>` element CanvasStatus wraps around — see CanvasStatus.tsx. This
- * stylesheet only carries the chrome (border, radius, background,
- * shadow) and the spinner-size pin below.
+/* Layout alignment and elevation are owned by the `<Box>` in
+ * CanvasStatus.tsx (`elevation="overlay"`); padding and gap are pinned here.
+ * Chrome (radius, background) lives on the same root rule.
  *
  * `data-partial="componentAiro"` on the chip root flips the intent
  * palette (background / foreground / spinner color) to the Airo-purple
  * surface for a single-color chip read. */
 .airo-surfaces-canvas-status {
+  box-sizing: border-box;
+  /* Pill inset — 6px block, 8px inline-start (spinner side), 12px inline-end. */
+  padding-block: 6px;
+  padding-inline: 8px 12px;
   /* Rounded-full pill — large radius regardless of inline size. */
   border-radius: 9999px;
   background-color: intent('ux.box.backgroundColor');
   color: intent('ux.box.foregroundColor');
-  border: 1px solid intent('ux.box.borderColor');
-  /* Triple-layer literal-px shadow — same recipe as ColorSwatchGroup so the
-     elevation cue is consistent across the library. Black + alpha only. */
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.1), 0 0 0 0.5px
-    rgba(0, 0, 0, 0.04);
   white-space: nowrap;
-  /* Typography is owned by `<text.span as="label">` inside the chip — no
-     hand-rolled font-size / weight / line-height declarations here. */
+  /* Spinner ↔ label — 0.5 × density (4px at default scale). */
+  gap: calc(intent('ux.box.density') * 0.5);
 }
 
-/* Pin the spinner to 22px — matches the line-height of the `<text.span
-   as="label">` sitting next to it, so the chip reads as a balanced
-   icon-text pair regardless of the active theme's density. The double-
-   class selector wins over ThinkingIndicator's single-class
-   `dot-size` declaration regardless of stylesheet load order, and goes
-   through the indicator's documented `--…-dot-size` theming hook
-   (spinner = `dot-size × 3`). */
+/* Pin the spinner to 20×20px via the indicator's `--…-dot-size` hook
+   (spinner = `dot-size × 3`). The double-class selector wins over
+   ThinkingIndicator's single-class declaration regardless of load order. */
 .airo-surfaces-canvas-status__indicator.airo-primitives-thinking-indicator {
-  --airo-primitives-thinking-indicator-dot-size: calc(22px / 3);
+  --airo-primitives-thinking-indicator-dot-size: calc(20px / 3);
 }

@@ -17,6 +17,7 @@ import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThink
 import DomainBar from '@/app/[market]/develop/components/layout/DomainBar'
 import { getDevicePreset, isFullWidthDevice } from '@/app/[market]/develop/components/preview/devicePresets'
 import Inbox from '@/app/[market]/develop/components/preview/inbox/Inbox'
+import { useCanvasStatusLabel } from '@/app/[market]/develop/components/preview/useCanvasStatusLabel'
 const DocsView = lazy(() => import('@/app/[market]/develop/components/preview/DocsView'))
 import PreviewCode from '@/app/[market]/develop/components/preview/PreviewCode'
 import PreviewError from '@/app/[market]/develop/components/preview/PreviewError'
@@ -246,6 +247,7 @@ export default function PreviewPane({
 }: PreviewPaneProps) {
   const t = useTranslations();
   const thinkerLabel = useThinkerLabel()
+  const canvasStatusLabel = useCanvasStatusLabel(isMutatingFiles, isProcessing)
   const thinkerIndicator = useThinkerIndicator()
   const intl = useIntl();
   const isDomainBarEnabled = useSwitchboard('appbuilder-domain-bar');
@@ -1599,11 +1601,7 @@ export default function PreviewPane({
                       {isPreviewEnhancedOverlaysEnabled ? (
                         <Canvas.Status
                           data-testid="preview-mobile-status-pill"
-                          label={
-                            isMutatingFiles
-                              ? t('builder_preview_editing', undefined, 'Editing…')
-                              : t('builder_agent_thinking', undefined, 'Thinking…')
-                          }
+                          label={canvasStatusLabel}
                         />
                       ) : (
                         <div className="bg-intents-ux-box-backgroundColor rounded-full px-2 pt-0.5 pb-0 shadow-lg border">
@@ -1682,11 +1680,7 @@ export default function PreviewPane({
                   animate={{ opacity: 1, x: '-50%', y: 0 }}
                   transition={{ duration: 0.175 }}
                 >
-                  <Canvas.Status
-                    label={isMutatingFiles
-                      ? t('builder_preview_editing', undefined, 'Editing…')
-                      : t('builder_agent_thinking', undefined, 'Thinking…')}
-                  />
+                  <Canvas.Status label={canvasStatusLabel} />
                 </motion.div>,
                 document.body
               )}

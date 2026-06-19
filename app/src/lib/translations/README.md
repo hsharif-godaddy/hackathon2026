@@ -880,6 +880,12 @@ const messages = await loadTranslations("en-US", [
 - **Client Hook (Packages)**: `app/src/hooks/useTranslationPackages.ts`
 - **Public API Route**: `app/src/app/api/i18n/package/route.ts`
 
+### Dev fallback keys (pre-publish)
+
+Some keys ship English defaults in-repo until published to AAB. Pre-commit validates them via `scripts/validate-i18n.mjs`.
+
+- **Canvas status pill**: `app/src/lib/translations/canvas-status-defaults.ts` — spec in `docs/superpowers/plans/2026-06-18-canvas-status-pill-copy.md`
+
 ### Documentation
 
 - **This README**: `app/src/lib/translations/README.md`

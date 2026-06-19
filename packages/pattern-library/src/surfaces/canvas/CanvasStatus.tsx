@@ -5,6 +5,26 @@ import { type HTMLAttributes, type ReactNode, forwardRef } from 'react';
 
 import { ThinkingIndicator } from '../../primitives/thinking-indicator';
 
+interface CanvasStatusBodyProps {
+  label: ReactNode;
+}
+
+function CanvasStatusBody({ label }: CanvasStatusBodyProps) {
+  return (
+    <>
+      <ThinkingIndicator
+        variant="spinner"
+        aria-hidden="true"
+        label=""
+        className="airo-surfaces-canvas-status__indicator"
+      />
+      <text.span as="label" size={-1} className="airo-surfaces-canvas-status__label">
+        {label}
+      </text.span>
+    </>
+  );
+}
+
 /**
  * Props for `Canvas.Status`.
  */
@@ -30,10 +50,7 @@ export interface CanvasStatusProps extends HTMLAttributes<HTMLDivElement> {
  * "Saving…" → "Done"). The inner spinner is `aria-hidden`, so the announced
  * text is exactly the visible label and never doubles up.
  *
- * The component renders no positioning by itself — it is a flow-level pill.
- * When passed as `Canvas`'s `status` prop, the canvas anchors it top-center
- * over the content area; consumers that need viewport-anchored or portaled
- * placement should wrap `Canvas.Status` in their own positioned element.
+ * Width follows content + padding (no JS measurement).
  *
  * @example Inside a `Canvas`
  * ```tsx
@@ -53,15 +70,6 @@ export const CanvasStatus = forwardRef<HTMLDivElement, CanvasStatusProps>(functi
   { label, className, ...rest },
   ref,
 ) {
-  // Compute the accessible name for the live region. Order of precedence:
-  //   1. consumer-passed `aria-label` (escape hatch / non-string label),
-  //   2. the string form of `label` (the common case — visible text doubles
-  //      as accessible name),
-  //   3. nothing (when `label` is a non-string node and the consumer did not
-  //      pass `aria-label`, the chip falls back to text-content naming).
-  // Setting `aria-label` explicitly avoids edge cases where the inner
-  // aria-hidden indicator wins the accessible-name calculation against the
-  // outer live region.
   const { 'aria-label': consumerAriaLabel, ...restProps } = rest;
   const ariaLabel =
     consumerAriaLabel !== undefined
@@ -82,33 +90,14 @@ export const CanvasStatus = forwardRef<HTMLDivElement, CanvasStatusProps>(functi
       // surface rather than a neutral pill.
       data-partial="componentAiro"
       className={classnames('airo-surfaces-canvas-status', className)}
-      // Layout — Box owns inline-flex / horizontal / center alignment / SM
-      // padding both axes / SM gap, so the chip's stylesheet only carries
-      // the chrome (border, radius, background, shadow).
+      elevation="overlay"
+      // Layout — Box owns inline-flex / horizontal / center alignment and
+      // overlay elevation; padding and gap are pinned in styles.css.
       displayType="inline-flex"
       orientation="horizontal"
       blockAlignChildren="center"
-      inlinePadding="sm"
-      blockPadding="sm"
-      gap="sm"
     >
-      <ThinkingIndicator
-        variant="spinner"
-        // The chip's outer `role="status"` already announces the label, so
-        // suppress the indicator's own live-region announcement to avoid
-        // double-reads on mount.
-        aria-hidden="true"
-        // Empty string keeps the indicator's accessible name out of the
-        // accessibility tree entirely (paired with aria-hidden).
-        label=""
-        className="airo-surfaces-canvas-status__indicator"
-      />
-      {/* `<text.span as="label">` gives the chip the UXCore label-size
-          typography (size, weight, leading) instead of hand-rolled
-          font-size declarations. */}
-      <text.span as="label" className="airo-surfaces-canvas-status__label">
-        {label}
-      </text.span>
+      <CanvasStatusBody label={label} />
     </Box>
   );
 });
