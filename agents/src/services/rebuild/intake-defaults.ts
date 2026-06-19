@@ -38,22 +38,51 @@ export function resolveDesignDirection(
   return DEFAULT_STYLE_PREFERENCES.designDirection;
 }
 
+/** Narrow an untrusted free-text intent to a non-blank, trimmed string. */
+function normalizeIntent(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 /**
- * Default style preferences with design direction from client choice, tool arg, or default.
+ * Resolve the customer's free-text design intent: client/intake source wins
+ * over the agent tool arg (mirrors resolveDesignDirection's precedence). Returns
+ * undefined when neither supplies a usable value, so callers can omit the key.
+ */
+export function resolveDesignIntent(
+  clientIntent?: unknown,
+  toolIntent?: unknown,
+): string | undefined {
+  return normalizeIntent(clientIntent) ?? normalizeIntent(toolIntent);
+}
+
+/**
+ * Default style preferences with design direction from client choice, tool arg,
+ * or default, plus the customer's free-text designIntent when one was supplied.
  */
 export function stylePreferencesForDirection(
   designDirection?: unknown,
   toolDirection?: unknown,
+  clientIntent?: unknown,
+  toolIntent?: unknown,
 ): StylePreferences {
+  const designIntent = resolveDesignIntent(clientIntent, toolIntent);
   return {
     ...DEFAULT_STYLE_PREFERENCES,
     designDirection: resolveDesignDirection(designDirection, toolDirection),
+    ...(designIntent ? { designIntent } : {}),
   };
 }
 
-export function defaultIntakeChoices(designDirection?: unknown, toolDirection?: unknown): RebuildIntakeChoices {
+export function defaultIntakeChoices(
+  designDirection?: unknown,
+  toolDirection?: unknown,
+  clientIntent?: unknown,
+  toolIntent?: unknown,
+): RebuildIntakeChoices {
   return {
     scope: DEFAULT_REBUILD_SCOPE,
-    stylePreferences: stylePreferencesForDirection(designDirection, toolDirection),
+    stylePreferences: stylePreferencesForDirection(designDirection, toolDirection, clientIntent, toolIntent),
   };
 }

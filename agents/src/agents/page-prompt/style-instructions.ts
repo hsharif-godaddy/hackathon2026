@@ -71,6 +71,19 @@ Use the user's specified colors:
   return '';
 }
 
+/**
+ * The structure-axis counterpart to design-preserve's fidelity rules: the
+ * redesign directions (modernize/simplify/bold) were aesthetic-only, so they
+ * reskinned the source's structure instead of departing from it (AIROBUILD-2682).
+ * This grants explicit permission to restructure — the mirror of the preserve
+ * path's "build ONLY the sections that exist" — while keeping the source's
+ * content. Shared across all three redesign directions; keep-similar never sees it.
+ */
+const STRUCTURAL_FREEDOM = `Structural freedom (this is a REDESIGN, not a clone):
+- You are NOT bound to the source's section order, count, or composition. Reorganize the information architecture to serve the new design.
+- Rework the navigation and hero composition; merge, split, drop, or add sections as the redesign calls for.
+- Keep the source's CONTENT and messaging (headlines, copy, CTAs, contact) — but re-present it. The source structure below tells you WHAT content exists, not HOW to arrange it.`;
+
 export function buildDesignInstructions(prefs: StylePreferences, metadata: SiteMetadata, hasScreenshot: boolean): string {
   if (shouldPreserveDesign(prefs)) {
     // Reference line + the trailing "as seen in…" clause both depend on
@@ -99,7 +112,9 @@ Aesthetic fidelity:
 
   if (prefs.designDirection === 'modernize') {
     return `DESIGN DIRECTION (Modernize):
-Update the design with contemporary patterns while maintaining brand recognition.
+${STRUCTURAL_FREEDOM}
+
+Aesthetic updates:
 - Use modern typography trends
 - Update spacing and whitespace
 - Contemporary UI patterns and interactions
@@ -108,7 +123,9 @@ Update the design with contemporary patterns while maintaining brand recognition
 
   if (prefs.designDirection === 'simplify') {
     return `DESIGN DIRECTION (Simplify):
-Create a cleaner, more minimal design.
+${STRUCTURAL_FREEDOM}
+
+Aesthetic updates:
 - Reduce visual clutter
 - Increase whitespace
 - Simpler color palette
@@ -118,7 +135,9 @@ Create a cleaner, more minimal design.
 
   if (prefs.designDirection === 'bold') {
     return `DESIGN DIRECTION (Bold):
-Create a striking, attention-grabbing design.
+${STRUCTURAL_FREEDOM}
+
+Aesthetic updates:
 - Strong visual hierarchy
 - Bold typography choices
 - Vibrant colors

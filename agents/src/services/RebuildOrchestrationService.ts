@@ -120,9 +120,11 @@ export class RebuildOrchestrationService {
   }
 
   /** Apply default intake and start scrape (timeout / dismiss fallback).
-   * Honors the homepage modal design direction when one was captured. */
-  async submitDefaultIntake(appId: string, designDirection?: unknown): Promise<RebuildWorkflowState> {
-    return this.submitIntake(appId, defaultIntakeChoices(designDirection));
+   * Honors the homepage modal design direction and the customer's free-text
+   * designIntent when either was captured (AIROBUILD-2682) — otherwise a typed
+   * "reimagine from scratch" would be lost on the intake-timeout path. */
+  async submitDefaultIntake(appId: string, designDirection?: unknown, designIntent?: unknown): Promise<RebuildWorkflowState> {
+    return this.submitIntake(appId, defaultIntakeChoices(designDirection, undefined, designIntent));
   }
 
   private async initializeWorkflow(
@@ -294,9 +296,16 @@ export class RebuildOrchestrationService {
 
       await this.saveState(state);
 
+      // Log a safe summary, not the raw preferences: designIntent carries the
+      // customer's free-text prose (potential PII) and must not reach Loki
+      // verbatim — surface only its presence, like websiteRebuild.start does.
       logger.info('rebuild-orchestration.preferences-saved', {
         appId,
-        preferences
+        designDirection: preferences.designDirection,
+        colorPreference: preferences.colorPreference,
+        typographyStyle: preferences.typographyStyle,
+        layoutApproach: preferences.layoutApproach,
+        hasDesignIntent: !!preferences.designIntent,
       });
 
       return state;

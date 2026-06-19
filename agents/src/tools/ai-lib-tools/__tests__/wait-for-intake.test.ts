@@ -79,7 +79,7 @@ describe('waitForIntake', () => {
     const result = await pending;
 
     expect(result.intakeTimedOut).toBe(true);
-    expect(submitDefaultIntake).toHaveBeenCalledWith('app-123', undefined);
+    expect(submitDefaultIntake).toHaveBeenCalledWith('app-123', undefined, undefined);
     expect(result.state).toEqual(defaultState);
   });
 
@@ -96,7 +96,27 @@ describe('waitForIntake', () => {
     await vi.runAllTimersAsync();
     await pending;
 
-    expect(submitDefaultIntake).toHaveBeenCalledWith('app-123', 'modernize');
+    expect(submitDefaultIntake).toHaveBeenCalledWith('app-123', 'modernize', undefined);
+  });
+
+  it('forwards the customer designIntent to submitDefaultIntake on timeout', async function timeoutIntent() {
+    const getStatus = vi.fn().mockResolvedValue(awaitingState());
+    const submitDefaultIntake = vi.fn().mockResolvedValue({
+      ...awaitingState(),
+      intakeCompleted: true,
+      status: 'scraping' as const,
+    });
+    const service = mockService({ getStatus, submitDefaultIntake });
+
+    const pending = waitForIntake(service, 'app-123', {
+      designDirection: 'modernize',
+      designIntent: 'reimagine from scratch, ignore the existing layout',
+      maxWaitMs: 1_000,
+    });
+    await vi.runAllTimersAsync();
+    await pending;
+
+    expect(submitDefaultIntake).toHaveBeenCalledWith('app-123', 'modernize', 'reimagine from scratch, ignore the existing layout');
   });
 
   it('re-reads state on timeout when user submitted during final sleep window', async function timeoutRace() {
@@ -145,7 +165,7 @@ describe('waitForIntake', () => {
 
     expect(result.intakeTimedOut).toBe(false);
     expect(result.state).toEqual(userSubmitted);
-    expect(submitDefaultIntake).toHaveBeenCalledWith('app-123', undefined);
+    expect(submitDefaultIntake).toHaveBeenCalledWith('app-123', undefined, undefined);
   });
 
   it('uses 400ms poll cadence for the first 18 iterations', async function pollCadence() {

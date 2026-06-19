@@ -73,7 +73,11 @@ function baseState(overrides: Partial<RebuildWorkflowState> = {}): RebuildWorkfl
 
 function run(
   metadata: Record<string, unknown>,
-  input: { url: string; designDirection?: 'keep-similar' | 'modernize' | 'simplify' | 'bold' } = {
+  input: {
+    url: string;
+    designDirection?: 'keep-similar' | 'modernize' | 'simplify' | 'bold';
+    designIntent?: string;
+  } = {
     url: 'https://example.com',
   },
 ) {
@@ -233,6 +237,32 @@ describe('websiteRebuild orchestration', function websiteRebuildOrchestration() 
 
     expect(mockSubmitStylePreferences).toHaveBeenCalledWith('app1', expect.objectContaining({
       designDirection: 'keep-similar',
+    }));
+  });
+
+  it('threads the agent tool designIntent onto the submitted style preferences', async function toolDesignIntent() {
+    mockWaitForScrapeCompletion.mockResolvedValue(baseState({ stylePreferences: undefined }));
+
+    await run(
+      { rebuildIntakeFormEnabled: false },
+      { url: 'https://example.com', designDirection: 'modernize', designIntent: 'reimagine from first principles, ignore the existing layout' },
+    );
+
+    expect(mockSubmitStylePreferences).toHaveBeenCalledWith('app1', expect.objectContaining({
+      designIntent: 'reimagine from first principles, ignore the existing layout',
+    }));
+  });
+
+  it('prefers a client/modal rebuildDesignIntent over the agent tool designIntent', async function modalIntentOverridesTool() {
+    mockWaitForScrapeCompletion.mockResolvedValue(baseState({ stylePreferences: undefined }));
+
+    await run(
+      { rebuildIntakeFormEnabled: false, rebuildDesignIntent: 'from the intake form' },
+      { url: 'https://example.com', designIntent: 'from the tool arg' },
+    );
+
+    expect(mockSubmitStylePreferences).toHaveBeenCalledWith('app1', expect.objectContaining({
+      designIntent: 'from the intake form',
     }));
   });
 

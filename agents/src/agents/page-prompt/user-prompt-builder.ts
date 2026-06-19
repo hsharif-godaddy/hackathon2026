@@ -63,12 +63,25 @@ export function buildUserPrompt(args: BuildUserPromptArgs): string {
   const categorizedAssets = categorizeAssets(promptAssets);
   const assetsList = renderAssetList(promptAssets);
 
-  // 4KB cap on the verbose full-content reference — the extracted key content
-  // and the categorized assets are the load-bearing inputs; the full text is
-  // a fallback for anything the regexes missed.
-  const fullContent = pageContent.sanitizedContent.substring(0, 4000);
+  // Cap on the verbose full-content reference — the extracted key content and
+  // the categorized assets are the load-bearing inputs; the full text is a
+  // fallback for anything the regexes missed. In redesign mode this verbatim,
+  // section-ordered dump is the strongest "clone this" anchor, so trim it harder
+  // (the extracted key content still carries the copy) and reframe it below as
+  // content-only, not a layout blueprint (AIROBUILD-2682).
+  const fullContent = pageContent.sanitizedContent.substring(0, preserveDesign ? 4000 : 2000);
+  const fullContentLabel = preserveDesign
+    ? 'reference for context'
+    : 'content & messaging reference ONLY — NOT a layout blueprint';
+  // Redesign mode adds a "not a blueprint" note so the verbatim, section-ordered
+  // dump stops anchoring the agent toward cloning the source structure.
+  const fullContentNote = preserveDesign
+    ? ''
+    : "\nUse this only to capture the real copy. Do NOT mirror the section order or structure below — it is the source's old layout. Arrange the content freshly per the design direction.";
+  const fullContentSection = `=== FULL PAGE CONTENT (${fullContentLabel}) ===${fullContentNote}\n${fullContent}`;
   const extractedContent = extractKeyContent(pageContent.sanitizedContent);
 
+  const designIntentBlock = buildDesignIntentBlock(stylePreferences.designIntent);
   const colorInstructions = isFirstPage ? buildColorInstructions(stylePreferences, siteMetadata, hasScreenshot) : '';
   const designInstructions = isFirstPage ? buildDesignInstructions(stylePreferences, siteMetadata, hasScreenshot) : '';
   const typographyInstructions = buildTypographyInstructions(stylePreferences, siteMetadata);
@@ -85,7 +98,7 @@ export function buildUserPrompt(args: BuildUserPromptArgs): string {
   const siteType = siteMetadata.siteType ?? 'content';
   const siteTypeRules = buildSiteTypeRules(siteType, isFirstPage);
 
-  const patternsBlock = buildPatternsBlock(pageContent.structure.interactivePatterns);
+  const patternsBlock = buildPatternsBlock(pageContent.structure.interactivePatterns, preserveDesign);
   const formsBlock = buildFormsBlock(pageContent.structure.forms);
   const contentLinksBlock = buildContentLinksBlock(pageContent.structure.contentLinks);
   const navigationBlock = buildNavigationBlock(pageContent.structure.navigation);
@@ -116,6 +129,7 @@ STYLE PREFERENCES FROM USER:
 - Typography Style: ${stylePreferences.typographyStyle}
 - Layout Approach: ${stylePreferences.layoutApproach}
 
+${designIntentBlock}
 ${colorInstructions}
 
 ${designInstructions}
@@ -129,8 +143,7 @@ ${patternsBlock}${formsBlock}${contentLinksBlock}${navigationBlock}${footerNavBl
 === EXTRACTED KEY CONTENT (use this for the rebuild) ===
 ${extractedContent}
 
-=== FULL PAGE CONTENT (reference for context) ===
-${fullContent}
+${fullContentSection}
 
 === AVAILABLE ASSETS (from source website) ===
 
@@ -181,14 +194,54 @@ ${isFirstPage ? `6. **HOMEPAGE STRUCTURE**:
 ${isFirstPage ? 'Generate a comprehensive, actionable prompt (400-1000 words)' : 'Generate a focused, actionable prompt (300-600 words)'} that enables the develop agent to rebuild this page with the REAL content optimized for the ${isFirstPage ? 'new' : 'existing'} design.`;
 }
 
+/** Length cap on the rendered design-intent block — enough for a real instruction,
+ *  short enough that it can't crowd out the rest of the prompt. */
+const MAX_DESIGN_INTENT_CHARS = 600;
+
+/**
+ * Render the customer's free-text design instruction as a high-priority prompt
+ * block (AIROBUILD-2682). The four-enum designDirection can't encode intent like
+ * "ignore the existing structure"; this carries the customer's actual words so
+ * the develop agent can honor them over the generic direction guidance.
+ *
+ * The intent is the customer's own input but still LLM-bound text: strip control
+ * chars, collapse runs of `=` so it can't forge a `=== … ===` section header,
+ * and cap length so it can't crowd out the rest of the prompt. Returns '' when
+ * absent (the field is optional — only the typed/NL rebuild path supplies it).
+ *
+ * Only `===` is neutralized because that's the only delimiter this prompt
+ * template uses to mark sections; `##`/`---`/backticks have no structural
+ * meaning here, and the threat model is mild anyway (the customer is steering
+ * their own rebuild, and their text is a user message, not the system prompt).
+ */
+export function buildDesignIntentBlock(designIntent: string | undefined): string {
+  if (!designIntent) return '';
+  const sanitized = designIntent
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x08\x0B-\x1F]/g, '') // strip control chars, keep newline (\x0A) + tab (\x09)
+    .replace(/={3,}/g, '==') // neutralize forged prompt-section delimiters
+    .slice(0, MAX_DESIGN_INTENT_CHARS)
+    .trim();
+  if (!sanitized) return '';
+  return `=== CUSTOMER'S DESIGN INSTRUCTION (highest priority — follow this over the generic direction guidance below) ===
+"${sanitized}"
+This is the customer's own description of what they want, in their words. It takes precedence over the generic DESIGN DIRECTION guidance below. If it asks to depart from the source's structure, layout, navigation, or content organization, do so.
+`;
+}
+
 // ----- Section blocks (DETECTED PATTERNS / DETECTED FORMS / NAVIGATION / FOOTER NAV / CONTACT) ---
 
-export function buildPatternsBlock(patterns: PageContent['structure']['interactivePatterns']): string {
+export function buildPatternsBlock(patterns: PageContent['structure']['interactivePatterns'], preserveDesign: boolean): string {
   if (!patterns || patterns.length === 0) return '';
   const lines = patterns.map(
     p => `- ${p.type} (${p.occurrences} match${p.occurrences === 1 ? '' : 'es'}; evidence: \`${p.evidence}\`)`
   );
-  return `\n=== DETECTED INTERACTIVE PATTERNS (from source HTML — preserve in the rebuild) ===\n${lines.join('\n')}\n`;
+  // Clone reproduces the source patterns; a redesign keeps only the ones that
+  // still serve the new design, so its framing must not read as "preserve".
+  const framing = preserveDesign
+    ? 'preserve in the rebuild'
+    : 'reuse where they still serve the new design';
+  return `\n=== DETECTED INTERACTIVE PATTERNS (from source HTML — ${framing}) ===\n${lines.join('\n')}\n`;
 }
 
 export function buildContentLinksBlock(contentLinks: ContentLink[] | undefined): string {

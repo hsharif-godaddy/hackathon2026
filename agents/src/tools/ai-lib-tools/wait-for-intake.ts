@@ -17,6 +17,9 @@ export type WaitForIntakeResult = {
 export interface WaitForIntakeOptions {
   /** Homepage modal design direction, applied if the intake times out. */
   designDirection?: unknown
+  /** Customer free-text design intent, applied if the intake times out so a
+   * typed "reimagine from scratch" survives the fallback (AIROBUILD-2682). */
+  designIntent?: unknown
   maxWaitMs?: number
 }
 
@@ -25,7 +28,7 @@ export async function waitForIntake(
   appId: string,
   options: WaitForIntakeOptions = {},
 ): Promise<WaitForIntakeResult> {
-  const { designDirection, maxWaitMs = INTAKE_WAIT_MS } = options
+  const { designDirection, designIntent, maxWaitMs = INTAKE_WAIT_MS } = options
   const startTime = Date.now()
   let pollIteration = 0
 
@@ -62,7 +65,7 @@ export async function waitForIntake(
 
   try {
     return {
-      state: await service.submitDefaultIntake(appId, designDirection),
+      state: await service.submitDefaultIntake(appId, designDirection, designIntent),
       intakeTimedOut: true,
     }
   } catch (error) {

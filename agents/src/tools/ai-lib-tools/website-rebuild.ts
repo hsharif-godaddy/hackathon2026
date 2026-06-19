@@ -6,6 +6,7 @@ import { Logger } from '../../logging/index.js'
 import { RebuildOrchestrationService } from '../../services/RebuildOrchestrationService.js'
 import {
   resolveDesignDirection,
+  resolveDesignIntent,
   stylePreferencesForDirection,
 } from '../../services/rebuild/intake-defaults.js'
 import {
@@ -36,6 +37,8 @@ async function ensureStylePreferencesReady(
   completedState: RebuildWorkflowState,
   designDirection?: unknown,
   toolDirection?: unknown,
+  clientIntent?: unknown,
+  toolIntent?: unknown,
 ): Promise<void> {
   if (completedState.stylePreferences) {
     if (completedState.status === 'style_questions') {
@@ -45,7 +48,7 @@ async function ensureStylePreferencesReady(
   }
   await service.submitStylePreferences(
     appId,
-    stylePreferencesForDirection(designDirection, toolDirection),
+    stylePreferencesForDirection(designDirection, toolDirection, clientIntent, toolIntent),
   )
 }
 
@@ -71,12 +74,17 @@ This tool starts the website rebuild process:
 - Omit designDirection only when the user gives no design signal (defaults to modernize).
 - Homepage modal / intake form choices override designDirection when the customer already picked one.
 
+**DESIGN INTENT (pass designIntent whenever the user describes what they want in their own words):**
+- The four directions above can't capture nuance like "ignore the existing structure" or "reimagine from first principles." When the user gives any free-text design instruction, copy it into designIntent close to verbatim — their words, not a summary.
+- This is additive to designDirection: pass both when the user gives a free-text instruction (the instruction also implies a direction). Omit designIntent only when the user gives no free-text design description (e.g. a bare "rebuild my site").
+
 **WORKFLOW:**
 1. Detect rebuild intent with URL in user message
 2. Infer designDirection from user intent (including paraphrases and non-English phrasing)
-3. Call this tool with url and designDirection when applicable
-4. Tool shows progress widget while scraping
-5. Tool automatically generates homepage build prompt and passes it to the develop agent
+3. Capture the user's free-text design instruction into designIntent (close to verbatim) when they give one
+4. Call this tool with url, designDirection, and designIntent when applicable
+5. Tool shows progress widget while scraping
+6. Tool automatically generates homepage build prompt and passes it to the develop agent
 `,
   z.object({
     url: z.url().describe('The URL of the website to rebuild'),
@@ -85,6 +93,12 @@ This tool starts the website rebuild process:
       .optional()
       .describe(
         'Design direction inferred from user intent. keep-similar = faithful clone; modernize = updated look; simplify = cleaner; bold = striking. Omit when user gives no design signal.',
+      ),
+    designIntent: z
+      .string()
+      .optional()
+      .describe(
+        "The user's free-text design instruction, copied close to verbatim (their words, not a summary). Carries nuance the four directions can't — e.g. \"ignore the current layout and reimagine from scratch.\" Omit when the user gives no free-text design description.",
       ),
   }),
   async (input, context) => {
@@ -115,6 +129,10 @@ This tool starts the website rebuild process:
       rebuildDesignDirection,
       input.designDirection,
     )
+    // Free-text design intent. rebuildDesignIntent is the future intake-form
+    // source (mirrors rebuildDesignDirection, unset today); the agent tool arg is
+    // the live source for typed/NL rebuilds. Client source wins (resolveDesignIntent).
+    const rebuildDesignIntent = context?.metadata?.rebuildDesignIntent
 
     logger.info('websiteRebuild.start', {
       appId,
@@ -125,6 +143,7 @@ This tool starts the website rebuild process:
       rebuildDesignDirection: rebuildDesignDirection ?? null,
       toolDesignDirection: input.designDirection ?? null,
       resolvedDesignDirection,
+      hasDesignIntent: !!(rebuildDesignIntent ?? input.designIntent),
       initialBuildComplete: !!app.initialBuildComplete,
     })
 
@@ -139,7 +158,10 @@ This tool starts the website rebuild process:
 
     try {
       if (rebuildIntakeFormEnabled) {
-        const intakeResult = await waitForIntake(service, appId, { designDirection: resolvedDesignDirection })
+        const intakeResult = await waitForIntake(service, appId, {
+          designDirection: resolvedDesignDirection,
+          designIntent: resolveDesignIntent(rebuildDesignIntent, input.designIntent),
+        })
         intakeTimedOut = intakeResult.intakeTimedOut
       }
 
@@ -157,6 +179,8 @@ This tool starts the website rebuild process:
         completedState,
         rebuildDesignDirection,
         input.designDirection,
+        rebuildDesignIntent,
+        input.designIntent,
       )
 
       const { slugs, homepagePrompt } = await service.buildUpfrontPagePrompts(appId)

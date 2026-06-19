@@ -8,6 +8,7 @@ vi.mock('../../../logging/index.js', () => ({
 const {
   isValidDesignDirection,
   resolveDesignDirection,
+  resolveDesignIntent,
   stylePreferencesForDirection,
   defaultIntakeChoices,
   DEFAULT_STYLE_PREFERENCES,
@@ -62,12 +63,50 @@ describe('resolveDesignDirection', () => {
   });
 });
 
+describe('resolveDesignIntent', () => {
+  it('prefers the client/intake intent over the tool arg', () => {
+    expect(resolveDesignIntent('reimagine from scratch', 'modernize it')).toBe('reimagine from scratch');
+  });
+
+  it('uses the tool intent when the client intent is missing', () => {
+    expect(resolveDesignIntent(undefined, 'ignore the existing layout')).toBe('ignore the existing layout');
+  });
+
+  it('trims surrounding whitespace', () => {
+    expect(resolveDesignIntent(undefined, '  fresh and modern  ')).toBe('fresh and modern');
+  });
+
+  it('returns undefined for blank, empty, or non-string values', () => {
+    expect(resolveDesignIntent(undefined, undefined)).toBeUndefined();
+    expect(resolveDesignIntent('', '')).toBeUndefined();
+    expect(resolveDesignIntent(undefined, '   ')).toBeUndefined();
+    expect(resolveDesignIntent(42, { foo: 'bar' })).toBeUndefined();
+  });
+
+  it('falls through to the tool intent when the client intent is blank', () => {
+    expect(resolveDesignIntent('   ', 'bold and dramatic')).toBe('bold and dramatic');
+  });
+});
+
 describe('stylePreferencesForDirection', () => {
   it('applies a valid direction over the defaults', () => {
     expect(stylePreferencesForDirection('keep-similar')).toEqual({
       ...DEFAULT_STYLE_PREFERENCES,
       designDirection: 'keep-similar',
     });
+  });
+
+  it('carries a resolved designIntent when one is supplied', () => {
+    expect(stylePreferencesForDirection('modernize', undefined, undefined, 'reimagine from first principles')).toEqual({
+      ...DEFAULT_STYLE_PREFERENCES,
+      designDirection: 'modernize',
+      designIntent: 'reimagine from first principles',
+    });
+  });
+
+  it('omits the designIntent key entirely when no intent is supplied', () => {
+    const prefs = stylePreferencesForDirection('modernize');
+    expect(prefs).not.toHaveProperty('designIntent');
   });
 
   it('returns modernize defaults with no warning when no choice was supplied', () => {
@@ -97,6 +136,17 @@ describe('defaultIntakeChoices', () => {
     expect(defaultIntakeChoices('bold')).toEqual({
       scope: 'homepage_only',
       stylePreferences: { ...DEFAULT_STYLE_PREFERENCES, designDirection: 'bold' },
+    });
+  });
+
+  it('carries a resolved designIntent into the fallback choices (intake-timeout path)', () => {
+    expect(defaultIntakeChoices('modernize', undefined, 'reimagine from scratch')).toEqual({
+      scope: 'homepage_only',
+      stylePreferences: {
+        ...DEFAULT_STYLE_PREFERENCES,
+        designDirection: 'modernize',
+        designIntent: 'reimagine from scratch',
+      },
     });
   });
 });

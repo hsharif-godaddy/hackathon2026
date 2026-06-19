@@ -31,6 +31,15 @@ export interface RebuildScopeEstimate {
  */
 export interface StylePreferences {
   designDirection: 'keep-similar' | 'modernize' | 'simplify' | 'bold';
+  /**
+   * The customer's free-text design instruction, carried close to verbatim.
+   * The four-enum `designDirection` can't encode intent like "ignore the
+   * existing structure"; this preserves the actual words so the page prompt can
+   * honor them (AIROBUILD-2682). Optional — only the typed/NL rebuild path
+   * supplies it (the modal is a button choice). Source is pluggable: the agent
+   * tool arg today, a future intake-form free-text field via `resolveDesignIntent`.
+   */
+  designIntent?: string;
   colorPreference: 'keep-original' | 'suggest-new' | 'custom';
   customColors?: {
     primary?: string;

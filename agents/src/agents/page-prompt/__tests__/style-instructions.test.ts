@@ -185,6 +185,33 @@ describe('buildDesignInstructions', () => {
   });
 });
 
+describe('buildDesignInstructions — redesign structure axis (AIROBUILD-2682)', () => {
+  for (const designDirection of ['modernize', 'simplify', 'bold'] as const) {
+    it(`grants structural freedom for ${designDirection} — permission to depart from source structure`, () => {
+      const result = buildDesignInstructions({ ...keepOriginalPrefs, designDirection }, baseMetadata, true);
+      expect(result).toMatch(/not bound to|reorganize|restructure/i);
+      expect(result).toMatch(/REDESIGN, not a clone/i);
+    });
+
+    it(`keeps the per-direction aesthetic guidance alongside the structural freedom (${designDirection})`, () => {
+      const result = buildDesignInstructions({ ...keepOriginalPrefs, designDirection }, baseMetadata, true);
+      const label = designDirection.charAt(0).toUpperCase() + designDirection.slice(1);
+      expect(result).toContain(`DESIGN DIRECTION (${label})`);
+    });
+  }
+
+  it('keeps the structural-freedom preamble out of keep-similar (clone) — guards the AIROBUILD-2241 inverse', () => {
+    const result = buildDesignInstructions(keepOriginalPrefs, baseMetadata, true);
+    expect(result).not.toMatch(/REDESIGN, not a clone/i);
+    expect(result).not.toMatch(/not bound to the source/i);
+  });
+
+  it('preserves the source CONTENT even while granting structural freedom (modernize)', () => {
+    const result = buildDesignInstructions({ ...keepOriginalPrefs, designDirection: 'modernize' }, baseMetadata, true);
+    expect(result).toMatch(/keep the source's content|content and messaging/i);
+  });
+});
+
 describe('buildColorInstructions', () => {
   it('preserves the detected source palette for keep-original (no "Airo must pick")', () => {
     const result = buildColorInstructions(keepOriginalPrefs, baseMetadata, true);

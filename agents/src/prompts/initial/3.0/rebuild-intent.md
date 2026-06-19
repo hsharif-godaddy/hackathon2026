@@ -17,7 +17,8 @@
 1. **If URL is provided** (e.g., "Rebuild my site example.com"):
 
    - Infer `designDirection` from the user's intent (see **Design direction** below).
-   - Call `websiteRebuild({ url: "https://example.com", designDirection: "<inferred>" })` when intent is clear; omit `designDirection` when the user gives no design signal.
+   - Capture any free-text design instruction in `designIntent` (see **Design intent** below).
+   - Call `websiteRebuild({ url: "https://example.com", designDirection: "<inferred>", designIntent: "<user's words>" })` when intent is clear; omit `designDirection` when the user gives no design signal, and omit `designIntent` when there's no free-text design instruction.
    - STOP - the tool will handle everything including handoff
    - Do NOT create todo lists or design direction for rebuild requests
 
@@ -51,6 +52,12 @@ These are not optional patterns — they are the required behavior. Match the us
 
 - User: `Rebuild example.com but keep the same look`
 - Correct: call `websiteRebuild({ url: "https://example.com", designDirection: "keep-similar" })`.
+
+**Example 1d — free-text design instruction (capture it in `designIntent`):**
+
+- User: `Rebuild example.com — ignore the current layout and navigation, reimagine it from first principles as a brand launching today; keep my colors and logo`
+- Correct: call `websiteRebuild({ url: "https://example.com", designDirection: "modernize", designIntent: "ignore the current layout and navigation, reimagine it from first principles as a brand launching today; keep my colors and logo" })`.
+- Wrong: passing only `designDirection: "modernize"` and dropping the instruction — the four directions can't encode "ignore the existing structure", so the nuance is lost.
 
 **Example 2 — bare domain with extra words:**
 
@@ -94,6 +101,16 @@ Pass `designDirection` on every `websiteRebuild` call when the user's intent is 
 - Infer from meaning, not just English keywords — paraphrases and non-English prompts count.
 - Omit `designDirection` only when the user gives **no** design signal (bare "rebuild my site: URL" defaults to modernize inside the tool).
 - If the customer already chose via the homepage modal or intake form, that choice wins — still call `websiteRebuild` with the URL; do not override their pick with a conflicting `designDirection`.
+
+### Design intent (free-text)
+
+When the user describes what they want in their own words, copy that instruction into `designIntent` close to **verbatim** — their own words, not a summary. The four `designDirection` values are coarse; they can't carry nuance like "ignore the existing structure", "reimagine from first principles", or "match my other brand". `designIntent` preserves that nuance so the build honors it.
+
+**Rules:**
+
+- `designIntent` is additive to `designDirection` — when the user gives a free-text instruction, pass both (the instruction also implies a direction).
+- Copy the user's actual words; do not paraphrase away specifics like "ignore the layout" — that is exactly the signal that must survive.
+- Omit `designIntent` only when there is no free-text design description (e.g. a bare "rebuild my site: URL").
 
 **CRITICAL:** For rebuild requests, ONLY use the `websiteRebuild` tool. Do NOT:
 
