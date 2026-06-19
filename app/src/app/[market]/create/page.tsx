@@ -99,6 +99,11 @@ function CreatePageContent() {
       promptLength: trimmedPrompt.length,
     })
 
+    const entryPoint = resolveEntryPoint(
+      [searchParams.get('location'), searchParams.get(ITC_QUERY_PARAM), searchParams.get('site_location')],
+      'create_route',
+    )
+
     // Don't check auth upfront - just call the API
     // If the user is not authenticated, the API will return 401 and trigger SSO via onAuthRequired
     // This is more reliable than checking isAuthenticated upfront, which can be stale
@@ -107,10 +112,10 @@ function CreatePageContent() {
         prompt: trimmedPrompt,
         source: 'create-page',
         templateId: template || undefined,
-        entryPoint: resolveEntryPoint(
-          [searchParams.get('location'), searchParams.get(ITC_QUERY_PARAM), searchParams.get('site_location')],
-          'create_route',
-        ),
+        entryPoint,
+        onSuccess: () => {
+          logImpressionEvent('homepage.redirect.develop', { entry_point: entryPoint })()
+        },
         onAuthRequired: (prompt) => {
           // API returned 401 - user not authenticated or token expired
           logger.info('create_page.auth_required', {

@@ -175,15 +175,17 @@ function LandingPageContent({ data }: LandingPageProps) {
         landingSlug: slug
       })
 
+      const entryPoint = resolveEntryPoint(
+        [searchParams.get('location'), searchParams.get('itc'), searchParams.get('site_location')],
+        'aab_landing_page',
+      )
       // Landing page is always free text — no template or file upload path here
       setQuickCreateSessionFlags(siteData.id, promptToUse, undefined, {
-        entryPoint: resolveEntryPoint(
-          [searchParams.get('location'), searchParams.get('itc'), searchParams.get('site_location')],
-          'aab_landing_page',
-        ),
+        entryPoint,
         creationSource: 'free_text',
       })
 
+      logImpressionEvent('homepage.redirect.develop', { entry_point: entryPoint })()
       router.push(buildDevelopUrl(siteData.id, siteData.type))
     } catch (err) {
       logger.error('landing.start_building.failed', {

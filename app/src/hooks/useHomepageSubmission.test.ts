@@ -343,4 +343,30 @@ describe('useHomepageSubmission', () => {
     })
   })
 
+  describe('homepage.redirect.develop impression', () => {
+    it('includes entryPoint in both data and impressionProps when location param is present', async () => {
+      mockSearchParams.value = new URLSearchParams('location=godaddy.com%2Fhosting')
+
+      const { result } = renderHook(() => useHomepageSubmission())
+      await act(async () => { await result.current.handleStartBuilding('build me a site') })
+
+      const call = mockLogAnalytics.mock.calls.find(c => c[0] === 'homepage.redirect.develop')
+      expect(call).toBeDefined()
+      expect(call![1]).toMatchObject({ entryPoint: 'godaddy.com/hosting' })
+      expect(call![2]).toMatchObject({ impressionProps: { entry_point: 'godaddy.com/hosting' } })
+    })
+
+    it('falls back to aab_homepage in both data and impressionProps when no location params', async () => {
+      mockSearchParams.value = new URLSearchParams()
+
+      const { result } = renderHook(() => useHomepageSubmission())
+      await act(async () => { await result.current.handleStartBuilding('build me a site') })
+
+      const call = mockLogAnalytics.mock.calls.find(c => c[0] === 'homepage.redirect.develop')
+      expect(call).toBeDefined()
+      expect(call![1]).toMatchObject({ entryPoint: 'aab_homepage' })
+      expect(call![2]).toMatchObject({ impressionProps: { entry_point: 'aab_homepage' } })
+    })
+  })
+
 })

@@ -8,6 +8,7 @@ import { render, waitFor } from '@testing-library/react'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { createSiteAndRedirect } from '@/lib/site-creation'
 import { useAuthUIStore } from '@/stores/useAuthUIStore'
+import { logImpressionEvent } from '@/utils/instrumentation'
 import CreatePage from './page'
 
 vi.mock('next/navigation', () => ({
@@ -311,6 +312,31 @@ describe('CreatePage', () => {
     onErrorCallback('Test error')
 
     expect(mockRouter.replace).toHaveBeenCalledWith('/?initialPrompt=test%20prompt')
+  })
+
+  it('fires logImpressionEvent with entryPoint on successful site creation', async () => {
+    mockSearchParams.get.mockImplementation(function (key: string) {
+      if (key === 'initialPrompt') return 'test prompt'
+      return null
+    })
+    let onSuccessCallback: ((siteId: string, siteType: string) => void) | undefined
+
+    ;(createSiteAndRedirect as any).mockImplementation(function (options: any) {
+      onSuccessCallback = options.onSuccess
+    })
+
+    render(<CreatePage />)
+
+    await waitFor(() => {
+      expect(createSiteAndRedirect).toHaveBeenCalled()
+    })
+
+    onSuccessCallback?.('site123', 'site')
+
+    expect(logImpressionEvent).toHaveBeenCalledWith(
+      'homepage.redirect.develop',
+      { entry_point: 'create_route' }
+    )
   })
 
   it('renders spinner while loading', () => {

@@ -224,6 +224,7 @@ describe('Home Page', () => {
         );
         expect(logImpressionEvent).toHaveBeenCalledWith('homepage.redirect.develop', {
           cohort: 'test-cohort',
+          entry_point: 'aab_homepage',
         });
       });
     });

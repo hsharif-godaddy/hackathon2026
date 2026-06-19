@@ -366,9 +366,10 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
         ?? uploadedFiles.find(f => f.isZip)
         ?? uploadedFiles[0]
         ?? null
+      const entryPoint = resolveEntryPoint([locationParam, itcParam, siteLocationParam], isHomepage ? 'aab_homepage' : 'aab_apps')
       setQuickCreateSessionFlags(siteData.id, promptToUse, selectedTemplate, {
         uploadedFiles,
-        entryPoint: resolveEntryPoint([locationParam, itcParam, siteLocationParam], isHomepage ? 'aab_homepage' : 'aab_apps'),
+        entryPoint,
         creationSource: resolveCreationSource(primaryUploadedFile, selectedTemplate, submitSourceRef.current),
         designKitSlug: designKitSlugToUse,
       })
@@ -392,7 +393,7 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
       const redirectUrl = buildDevelopUrl(siteData.id, siteData.type)
 
       logger.info('page.site.redirect', { message: 'Redirecting to develop page', siteId: siteData.id, idType: siteData.type, redirectUrl })
-      logAnalytics('homepage.redirect.develop', { submitSource }, { kind: 'impression', eid: 'homepage.redirect.develop' })
+      logAnalytics('homepage.redirect.develop', { submitSource, entryPoint }, { kind: 'impression', eid: 'homepage.redirect.develop', impressionProps: { entry_point: entryPoint } })
 
       pendingHomepageErrorRef.current = null
       router.push(redirectUrl)
