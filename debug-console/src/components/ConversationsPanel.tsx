@@ -4,9 +4,8 @@ import React, { useEffect, useState } from 'react';
 
 import AIAgentPanel from '@/components/AIAgentPanel';
 import LangfuseEbPanel from '@/components/LangfuseEbPanel';
-import LangfusePanel from '@/components/LangfusePanel';
 
-export type ConversationsSource = 'langfuse' | 'eb' | 'agent';
+export type ConversationsSource = 'eb' | 'agent';
 
 interface Props {
     globalAppId: string;
@@ -42,16 +41,10 @@ export default function ConversationsPanel({
             <div style={toggleRowStyle}>
                 <div style={toggleGroupStyle}>
                     <ToggleButton
-                        active={source === 'langfuse'}
-                        disabled={disabled}
-                        onClick={() => onSourceChange('langfuse')}
-                        label="LF Native"
-                    />
-                    <ToggleButton
                         active={source === 'eb'}
                         disabled={disabled}
                         onClick={() => onSourceChange('eb')}
-                        label="LF EB"
+                        label="Langfuse"
                     />
                     <ToggleButton
                         active={source === 'agent'}
@@ -61,16 +54,6 @@ export default function ConversationsPanel({
                     />
                 </div>
             </div>
-
-            {visitedSources.has('langfuse') && (
-                <div style={{ display: source === 'langfuse' ? 'block' : 'none' }}>
-                    <LangfusePanel
-                        globalAppId={globalAppId}
-                        refreshKey={refreshKey}
-                        onRefresh={onRefresh}
-                    />
-                </div>
-            )}
 
             {visitedSources.has('eb') && (
                 <div style={{ display: source === 'eb' ? 'block' : 'none' }}>

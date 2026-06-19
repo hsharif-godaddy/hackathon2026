@@ -1,17 +1,25 @@
 import archiver from "archiver";
 import { Readable } from "node:stream";
 
+import { buildAppIdFilter } from "@/lib/langfuse-eb-client";
 import { logger } from "@/lib/logger";
 
 export async function findAnchorTimestamp(
   lf: { baseUrl: string; authHeader: string },
   appId: string,
+  customerId: string | null,
 ): Promise<{ timestamp: string | null; warning?: string }> {
-  const url = `${lf.baseUrl}/api/public/traces?${new URLSearchParams({
+  // EB keys traces by metadata.business_data_appId (advanced filter). That
+  // predicate is unindexed, so pair it with the indexed userId=customerId when
+  // available to avoid the "query too broad" 422; otherwise fall back to the
+  // filter alone (best-effort — may 422 on high-volume apps).
+  const anchorParams = new URLSearchParams({
     page: "1",
     limit: "1",
-    userId: appId,
-  })}`;
+    filter: buildAppIdFilter(appId),
+  });
+  if (customerId) anchorParams.set("userId", customerId);
+  const url = `${lf.baseUrl}/api/public/traces?${anchorParams}`;
   const res = await fetch(url, {
     headers: {
       Authorization: lf.authHeader,
@@ -54,6 +62,7 @@ export async function findAnchorTimestamp(
 export async function streamTraces(
   lf: { baseUrl: string; authHeader: string },
   appId: string,
+  customerId: string | null,
   from: string,
   to: string,
   archive: archiver.Archiver,
@@ -64,13 +73,16 @@ export async function streamTraces(
   const MAX_PAGES = 5;
 
   for (let page = 1; page <= MAX_PAGES; page++) {
+    // Pair the unindexed appId metadata filter with the indexed userId=customerId
+    // (when available) so the list query isn't a "too broad" 422-prone scan.
     const params = new URLSearchParams({
       page: String(page),
       limit: String(PAGE_LIMIT),
-      userId: appId,
+      filter: buildAppIdFilter(appId),
       fromTimestamp: from,
       toTimestamp: to,
     });
+    if (customerId) params.set("userId", customerId);
     const listRes = await fetch(`${lf.baseUrl}/api/public/traces?${params}`, {
       headers: {
         Authorization: lf.authHeader,

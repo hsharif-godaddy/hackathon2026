@@ -15,8 +15,9 @@ vi.mock('@/lib/logger', () => ({
   },
 }));
 
-vi.mock('@/lib/langfuse-client', () => ({
-  getLangfuseConfig: () => null,
+vi.mock('@/lib/langfuse-eb-client', () => ({
+  getLangfuseEbConfig: () => null,
+  resolveCustomerId: vi.fn().mockResolvedValue(null),
 }));
 
 const streamConfiguredLogSourcesMock = vi.fn();

@@ -32,7 +32,7 @@ describe('findAnchorTimestamp', () => {
       ) as unknown as Response,
     );
 
-    const result = await findAnchorTimestamp(lf, 'app-1');
+    const result = await findAnchorTimestamp(lf, 'app-1', 'cust-1');
 
     expect(result).toEqual({ timestamp: '2026-04-22T00:00:00Z' });
   });
@@ -45,7 +45,7 @@ describe('findAnchorTimestamp', () => {
       new Response('<html>error</html>', { status: 200 }) as unknown as Response,
     );
 
-    const result = await findAnchorTimestamp(lf, 'app-1');
+    const result = await findAnchorTimestamp(lf, 'app-1', 'cust-1');
 
     expect(result.timestamp).toBeNull();
     expect(result.warning).toMatch(/non-JSON 200/);
@@ -56,7 +56,7 @@ describe('findAnchorTimestamp', () => {
       new Response(JSON.stringify({ data: [] }), { status: 200 }) as unknown as Response,
     );
 
-    const result = await findAnchorTimestamp(lf, 'app-1');
+    const result = await findAnchorTimestamp(lf, 'app-1', 'cust-1');
 
     expect(result.timestamp).toBeNull();
     expect(result.warning).toMatch(/No Langfuse traces/);
@@ -67,10 +67,34 @@ describe('findAnchorTimestamp', () => {
       new Response('boom', { status: 502 }) as unknown as Response,
     );
 
-    const result = await findAnchorTimestamp(lf, 'app-1');
+    const result = await findAnchorTimestamp(lf, 'app-1', 'cust-1');
 
     expect(result.timestamp).toBeNull();
     expect(result.warning).toMatch(/HTTP 502/);
+  });
+
+  it('pairs the indexed userId=customerId with the appId metadata filter', async () => {
+    const spy = vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ timestamp: '2026-04-22T00:00:00Z' }] }), { status: 200 }) as unknown as Response,
+    );
+
+    await findAnchorTimestamp(lf, 'app-1', 'cust-1');
+
+    const url = new URL(String(spy.mock.calls[0]![0]));
+    expect(url.searchParams.get('userId')).toBe('cust-1');
+    expect(url.searchParams.get('filter')).toContain('business_data_appId');
+  });
+
+  it('falls back to a filter-only query when customerId is null', async () => {
+    const spy = vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ timestamp: '2026-04-22T00:00:00Z' }] }), { status: 200 }) as unknown as Response,
+    );
+
+    await findAnchorTimestamp(lf, 'app-1', null);
+
+    const url = new URL(String(spy.mock.calls[0]![0]));
+    expect(url.searchParams.get('userId')).toBeNull();
+    expect(url.searchParams.get('filter')).toContain('business_data_appId');
   });
 });
 
@@ -97,7 +121,7 @@ describe('streamTraces', () => {
     );
 
     const archive = makeArchive();
-    const result = await streamTraces(lf, 'app-1', '2026-04-22T00:00:00Z', '2026-04-22T01:00:00Z', archive);
+    const result = await streamTraces(lf, 'app-1', 'cust-1', '2026-04-22T00:00:00Z', '2026-04-22T01:00:00Z', archive);
     archive.finalize().catch(() => { /* ignore */ });
 
     expect(result.traceCount).toBe(0);
@@ -124,7 +148,7 @@ describe('streamTraces', () => {
       );
 
     const archive = makeArchive();
-    const result = await streamTraces(lf, 'app-1', '2026-04-22T00:00:00Z', '2026-04-22T01:00:00Z', archive);
+    const result = await streamTraces(lf, 'app-1', 'cust-1', '2026-04-22T00:00:00Z', '2026-04-22T01:00:00Z', archive);
     archive.finalize().catch(() => { /* ignore */ });
 
     expect(fetchSpy).toHaveBeenCalledTimes(3);
@@ -138,7 +162,7 @@ describe('streamTraces', () => {
     );
 
     const archive = makeArchive();
-    const result = await streamTraces(lf, 'app-1', '2026-04-22T00:00:00Z', '2026-04-22T01:00:00Z', archive);
+    const result = await streamTraces(lf, 'app-1', 'cust-1', '2026-04-22T00:00:00Z', '2026-04-22T01:00:00Z', archive);
     archive.finalize().catch(() => { /* ignore */ });
 
     expect(result.traceCount).toBe(0);

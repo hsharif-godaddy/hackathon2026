@@ -42,7 +42,7 @@ function formatMoney(n: number): string {
 }
 
 function formatCredits(n: number): string {
-    return n.toLocaleString('en-US', { maximumFractionDigits: 4 });
+    return n.toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
 export interface DailyRow {
@@ -422,18 +422,22 @@ interface Props {
 }
 
 export function BmsBudgetView({ subscriptionId, spend }: Props) {
+    // Newest credits first (most recently created budget item on top).
+    const sortedGrants = [...spend.grants].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {spend.budget && <BudgetHeaderCard budget={spend.budget} />}
 
             <SpendRollup rollup={spend.rollup} />
 
-            {spend.grants.length > 0 && (
+            {sortedGrants.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        Budget items ({spend.grants.length})
+                        Budget items ({sortedGrants.length})
                     </div>
-                    {spend.grants.map((grant) => (
+                    {sortedGrants.map((grant) => (
                         <GrantRow key={grant.id} grant={grant} />
                     ))}
                 </div>

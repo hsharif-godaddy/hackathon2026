@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { findAnchorTimestamp, streamTraces } from "@/app/api/support-bundle/langfuse-streams";
 import { streamConfiguredLogSources } from "@/app/api/support-bundle/log-streams";
 import { withAuth } from "@/lib/api-auth";
-import { getLangfuseConfig } from "@/lib/langfuse-client";
+import { getLangfuseEbConfig, resolveCustomerId } from "@/lib/langfuse-eb-client";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -42,16 +42,26 @@ export const GET = withAuth(async (request) => {
   let windowStartIso: string;
   let windowEndIso: string;
   let now: string;
-  let lf: ReturnType<typeof getLangfuseConfig>;
+  let lf: ReturnType<typeof getLangfuseEbConfig>;
+  // EB scopes traces by an unindexed metadata filter; pairing it with the
+  // indexed userId=customerId avoids the "too broad" 422. Resolved once and
+  // reused by both the anchor lookup and the trace stream.
+  let customerId: string | null = null;
 
   try {
     // 1. Determine time window anchor
-    lf = getLangfuseConfig();
+    lf = getLangfuseEbConfig();
     let anchorIso: string;
     anchorWarnings = [];
 
     if (lf) {
-      const anchor = await findAnchorTimestamp(lf, appId);
+      customerId = await resolveCustomerId(appId);
+      if (!customerId) {
+        anchorWarnings.push(
+          "Could not resolve customerId; Langfuse queries fall back to a broad (slower) filter",
+        );
+      }
+      const anchor = await findAnchorTimestamp(lf, appId, customerId);
       anchorIso = anchor.timestamp || new Date().toISOString();
       if (anchor.warning) anchorWarnings.push(anchor.warning);
       if (!anchor.timestamp) {
@@ -104,6 +114,7 @@ export const GET = withAuth(async (request) => {
           const result = await streamTraces(
             lf,
             appId,
+            customerId,
             windowStartIso,
             windowEndIso,
             archive,

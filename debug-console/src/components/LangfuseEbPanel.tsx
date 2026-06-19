@@ -4,7 +4,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { renderToolCall } from '@/components/agent-tool-renderers';
 import type { ToolCall } from '@/lib/agent-message-types';
+import { type CostSummary, extractCostAttribution, summarizeCost } from '@/lib/eb-cost';
 import { langfuseEbProjectUrl, langfuseEbTraceUrl } from '@/lib/langfuse-eb-ui';
+import { fullStorySessionUrl, langfuseTraceUrl } from '@/lib/langfuse-ui';
+
+// Default-expand preference for the steps block: set by the toolbar toggle and
+// consumed by each TraceTurn's initial showSteps. Persisted in localStorage.
+const ExpandStepsContext = React.createContext(false);
+const EXPAND_STEPS_STORAGE_KEY = 'aab.eb.expandSteps';
 
 const LOAD_ALL_CONFIRM = (remaining: number): string =>
     `Load all ${remaining} remaining pages?\n\n` +
@@ -70,6 +77,8 @@ interface EbTrace {
     latency?: number | null;
     scores?: EbScore[];
     observations?: EbObservation[];
+    /** Normalized cost summary computed by the EB sessions API. */
+    cost?: CostSummary;
 }
 
 interface EbSession {
@@ -112,12 +121,36 @@ export default function LangfuseEbPanel({ globalAppId, refreshKey = 0, onRefresh
     const [totalPages, setTotalPages] = useState(1);
     const [totalItems, setTotalItems] = useState<number | null>(null);
     const [hasMore, setHasMore] = useState(true);
+    // Toolbar prefs: default-expand the steps block (persisted) + terms legend.
+    const [expandSteps, setExpandSteps] = useState(false);
+    const [showLegend, setShowLegend] = useState(false);
 
     const loadingMoreRef = useRef(false);
     const loadAllAbortRef = useRef<AbortController | null>(null);
     const prefetchedRef = useRef(new Map<number, SessionsResponse>());
     const prefetchingRef = useRef(new Set<number>());
     const inFlightRef = useRef<AbortController | null>(null);
+
+    // Load the persisted expand-steps preference once on mount (client-only, so
+    // it doesn't affect SSR/hydration).
+    useEffect(function loadExpandStepsPref() {
+        try {
+            setExpandSteps(window.localStorage.getItem(EXPAND_STEPS_STORAGE_KEY) === '1');
+        } catch {
+            // localStorage may be unavailable; fall back to the default (collapsed).
+        }
+    }, []);
+    const toggleExpandSteps = useCallback(function toggle() {
+        setExpandSteps(function flip(prev) {
+            const next = !prev;
+            try {
+                window.localStorage.setItem(EXPAND_STEPS_STORAGE_KEY, next ? '1' : '0');
+            } catch {
+                // Persisting is best-effort.
+            }
+            return next;
+        });
+    }, []);
 
     const mergeSessions = useCallback(function merge(
         existing: EbSession[],
@@ -355,6 +388,26 @@ export default function LangfuseEbPanel({ globalAppId, refreshKey = 0, onRefresh
                     {loading && <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Loading…</span>}
                 </div>
                 <div style={toolbarRightStyle}>
+                    <label style={toggleLabelStyle} title="Expand the steps block by default in every turn">
+                        <input type="checkbox" checked={expandSteps} onChange={toggleExpandSteps} />
+                        Expand steps
+                    </label>
+                    <span style={legendAnchorStyle}>
+                        <button
+                            type="button"
+                            onClick={function toggle() { setShowLegend(function flip(s) { return !s; }); }}
+                            style={legendButtonStyle}
+                            title="What do these terms mean?"
+                            aria-label="Explain terms"
+                        >
+                            ?
+                        </button>
+                        {showLegend && (
+                            <div style={legendPopoverStyle}>
+                                <TermsLegend />
+                            </div>
+                        )}
+                    </span>
                     {onRefresh && (
                         <button
                             type="button"
@@ -418,7 +471,7 @@ export default function LangfuseEbPanel({ globalAppId, refreshKey = 0, onRefresh
                         rel="noreferrer"
                         style={langfuseLinkStyle}
                     >
-                        Langfuse EB ↗
+                        Langfuse ↗
                     </a>
                 </div>
             )}
@@ -487,13 +540,15 @@ export default function LangfuseEbPanel({ globalAppId, refreshKey = 0, onRefresh
             )}
 
             {sessions.length > 0 && (
-                <div style={threadStyle}>
-                    {sessions.map(function eachSession(session) {
-                        return (
-                            <SessionBlock key={session.sessionId} session={session} />
-                        );
-                    })}
-                </div>
+                <ExpandStepsContext.Provider value={expandSteps}>
+                    <div style={threadStyle}>
+                        {sessions.map(function eachSession(session) {
+                            return (
+                                <SessionBlock key={session.sessionId} session={session} />
+                            );
+                        })}
+                    </div>
+                </ExpandStepsContext.Provider>
             )}
         </div>
     );
@@ -525,7 +580,12 @@ function SessionBlock({ session }: { session: EbSession }) {
 
 function TraceTurn({ trace }: { trace: EbTrace }) {
     const [showScores, setShowScores] = useState(false);
-    const [showRaw, setShowRaw] = useState(false);
+    // Steps (tool calls + intermediate generations) collapse into one block.
+    // Initial expanded state follows the toolbar's persisted preference; toggling
+    // that preference re-applies to every turn (users can still toggle per-turn).
+    const expandStepsDefault = React.useContext(ExpandStepsContext);
+    const [showSteps, setShowSteps] = useState(expandStepsDefault);
+    useEffect(function syncExpandDefault() { setShowSteps(expandStepsDefault); }, [expandStepsDefault]);
 
     // EB returns observations newest-first; sort by startTime to render in chat order.
     const sortedObs = useMemo(
@@ -539,9 +599,25 @@ function TraceTurn({ trace }: { trace: EbTrace }) {
     const outputText = extractAssistantContent(trace, sortedObs);
     const steps = useMemo(function build() { return buildSteps(sortedObs); }, [sortedObs]);
     const showAssistantTurn = steps.length > 0 || !!outputText;
+    const stepToolCount = steps.reduce(function sum(n, s) { return n + s.tools.length; }, 0);
+    const stepErrorCount = steps.reduce(function sum(n, s) {
+        return n + s.tools.filter((t) => t.level === 'ERROR' || (typeof t.statusMessage === 'string' && t.statusMessage.length > 0)).length;
+    }, 0);
 
-    const metadata = trace.metadata ?? {};
+    const metadata = useMemo(function meta() { return trace.metadata ?? {}; }, [trace.metadata]);
     const executionOutcome = typeof metadata.executionOutcome === 'string' ? metadata.executionOutcome : null;
+
+    // Cost summary is computed by the EB sessions API (incl. credits); fall back to a
+    // client-side derive (no credits) for older payloads that predate it.
+    const cost = useMemo(
+        function summarize() {
+            return trace.cost ?? summarizeCost(trace, extractCostAttribution(sortedObs), null);
+        },
+        [trace, sortedObs],
+    );
+    // Key eval scores surfaced inline (the rest stay behind the scores toggle).
+    const keyScores = useMemo(function picks() { return pickKeyScores(trace.scores); }, [trace.scores]);
+    const metaLinks = useMemo(function links() { return extractMetaLinks(metadata); }, [metadata]);
 
     return (
         <div style={turnGroupStyle}>
@@ -570,16 +646,32 @@ function TraceTurn({ trace }: { trace: EbTrace }) {
                     }
                 />
             )}
+            <div style={assistantGroupStyle}>
             {showAssistantTurn && (
                 <Turn
                     role="assistant"
                     timestamp={trace.timestamp}
                     content={steps.length === 0 ? (outputText || '(no text — see tools below)') : undefined}
                     body={steps.length > 0 ? (
-                        <div style={stepListStyle}>
-                            {steps.map(function block(step) {
-                                return <StepBlock key={step.generation?.id ?? `step-${step.index}`} step={step} />;
-                            })}
+                        <div style={stepsBlockStyle}>
+                            <button
+                                type="button"
+                                onClick={function toggle() { setShowSteps(function flip(s) { return !s; }); }}
+                                style={stepsToggleStyle}
+                            >
+                                {showSteps ? '▾' : '▸'} {steps.length} step{steps.length === 1 ? '' : 's'}
+                                {stepToolCount > 0 && ` · ${stepToolCount} tool${stepToolCount === 1 ? '' : 's'}`}
+                                {stepErrorCount > 0 && (
+                                    <span style={stepsErrorCountStyle}> · {stepErrorCount} error{stepErrorCount === 1 ? '' : 's'}</span>
+                                )}
+                            </button>
+                            {showSteps && (
+                                <div style={stepListStyle}>
+                                    {steps.map(function block(step) {
+                                        return <StepBlock key={step.generation?.id ?? `step-${step.index}`} step={step} />;
+                                    })}
+                                </div>
+                            )}
                         </div>
                     ) : undefined}
                     headerExtras={
@@ -587,11 +679,21 @@ function TraceTurn({ trace }: { trace: EbTrace }) {
                             {trace.latency != null && (
                                 <span style={turnHeaderMutedStyle}>{formatLatency(trace.latency)}</span>
                             )}
-                            {executionOutcome && (
+                            {executionOutcome && executionOutcome.toUpperCase() !== 'SUCCESS' && (
                                 <span style={outcomeBadgeStyle(executionOutcome)}>
                                     {executionOutcome.toLowerCase()}
                                 </span>
                             )}
+                            {keyScores.map(function chip(s) {
+                                return (
+                                    <span key={s.name} style={keyScoreChipStyle(s.tone)} title={s.title}>
+                                        {s.label}
+                                    </span>
+                                );
+                            })}
+                            {trace.tags.filter(isUsefulTag).map(function tag(t) {
+                                return <span key={t} style={tagChipStyle} title={t}>{t.replace(/^airo-app-builder-/, '')}</span>;
+                            })}
                         </>
                     }
                     headerRight={
@@ -599,8 +701,17 @@ function TraceTurn({ trace }: { trace: EbTrace }) {
                             {usage.output > 0 && (
                                 <span style={tokenOutChipStyle}>out: {formatNumber(usage.output)}</span>
                             )}
-                            {trace.totalCost != null && (
-                                <span style={tokenCostChipStyle}>{formatCost(trace.totalCost)}</span>
+                            {cost.total != null && (
+                                <span style={tokenCostChipStyle}>
+                                    cost: {formatCost(cost.total)}
+                                    {cost.hasSplit && (
+                                        <span style={costSplitStyle}>
+                                            {' '}(cust: {formatCost(cost.customer)}
+                                            {cost.credits != null && ` ≈${formatCredits(cost.credits)}cr${cost.mixedRatios ? '*' : ''}`}
+                                            {' '}+ gd: {formatCost(cost.godaddy)})
+                                        </span>
+                                    )}
+                                </span>
                             )}
                         </>
                     }
@@ -612,44 +723,65 @@ function TraceTurn({ trace }: { trace: EbTrace }) {
                                 target="_blank"
                                 rel="noreferrer"
                                 style={turnFooterLinkStyle}
-                                title={trace.id}
+                                title={`Langfuse (EB) trace — ${trace.id}`}
                             >
-                                trace {truncMiddle(trace.id, 16)} ↗
+                                Langfuse ↗
                             </a>
-                            {(trace.scores?.length ?? 0) > 0 && (
-                                <button
-                                    type="button"
-                                    onClick={function toggle() { setShowScores(function flip(s) { return !s; }); }}
-                                    style={inlineLinkButtonStyle}
-                                >
-                                    {showScores ? '▾' : '▸'} {trace.scores!.length} score{trace.scores!.length === 1 ? '' : 's'}
-                                </button>
-                            )}
-                            <button
-                                type="button"
-                                onClick={function toggle() { setShowRaw(function flip(s) { return !s; }); }}
-                                style={inlineLinkButtonStyle}
+                            <a
+                                href={langfuseTraceUrl(trace.id)}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={turnFooterLinkStyle}
+                                title={`Raw AI-SDK trace in Langfuse Native — ${trace.id}`}
                             >
-                                {showRaw ? '▾' : '▸'} raw
-                            </button>
+                                Native LF ↗
+                            </a>
+                            {metaLinks.publishedUrl && (
+                                <a href={metaLinks.publishedUrl} target="_blank" rel="noreferrer" style={turnFooterLinkStyle}>
+                                    published ↗
+                                </a>
+                            )}
+                            {metaLinks.deploymentId && (
+                                <span style={turnFooterMutedStyle} title="deploymentId">deploy {truncMiddle(metaLinks.deploymentId, 12)}</span>
+                            )}
+                            {metaLinks.fullStorySessionId && (
+                                <a
+                                    href={fullStorySessionUrl(metaLinks.fullStorySessionId)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={turnFooterLinkStyle}
+                                    title="FullStory session replay ↗"
+                                >
+                                    FullStory ↗
+                                </a>
+                            )}
+                            {metaLinks.errorType && (
+                                <span style={errorBadgeStyle} title={metaLinks.errorPhase ? `phase: ${metaLinks.errorPhase}${metaLinks.isRetryable ? ' · retryable' : ''}` : undefined}>
+                                    {metaLinks.errorType}
+                                </span>
+                            )}
                         </div>
                     }
                 />
             )}
 
-            {showScores && trace.scores && trace.scores.length > 0 && (
-                <div style={subSectionStyle}>
-                    {trace.scores.map(function row(score) {
-                        return <ScoreRow key={score.id} score={score} />;
-                    })}
+            {(trace.scores?.length ?? 0) > 0 && (
+                <div style={evalsBlockStyle}>
+                    <button
+                        type="button"
+                        onClick={function toggle() { setShowScores(function flip(s) { return !s; }); }}
+                        style={stepsToggleStyle}
+                    >
+                        {showScores ? '▾' : '▸'} {trace.scores!.length} eval{trace.scores!.length === 1 ? '' : 's'}
+                    </button>
+                    {showScores &&
+                        trace.scores!.map(function row(score) {
+                            return <ScoreRow key={score.id} score={score} />;
+                        })}
                 </div>
             )}
+            </div>
 
-            {showRaw && (
-                <pre style={rawPreStyle}>
-                    {JSON.stringify(trace, null, 2)}
-                </pre>
-            )}
         </div>
     );
 }
@@ -684,8 +816,8 @@ function Turn({
                     {headerExtras}
                     {headerRight && <span style={turnHeaderRightStyle}>{headerRight}</span>}
                 </div>
-                {body !== undefined ? body : <div style={bubbleStyle(isUser)}>{content}</div>}
                 {footer}
+                {body !== undefined ? body : <div style={bubbleStyle(isUser)}>{content}</div>}
             </div>
         </div>
     );
@@ -947,6 +1079,113 @@ function formatCost(value: number | null | undefined): string {
     return `$${value.toFixed(2)}`;
 }
 
+function formatCredits(n: number): string {
+    return n.toLocaleString('en-US', { maximumFractionDigits: 4 });
+}
+
+// Constant infra/plumbing tags that carry no per-turn signal. Matched as exact
+// values (not prefixes) so an anomalous value — e.g. a non-c1 userType or a
+// non-lambda phase — still surfaces as a chip. `cost-attribution` is redundant
+// with the rendered cost strip; `develop` is the constant builder-phase tag.
+const NOISE_TAGS = new Set([
+    'userType:c1',
+    'phase:lambda',
+    'producer:agent-events-nodejs',
+    'airo-app-builder-cost-attribution',
+    'airo-app-builder-develop',
+]);
+
+function isUsefulTag(tag: string): boolean {
+    return !NOISE_TAGS.has(tag);
+}
+
+type ScoreTone = 'good' | 'bad' | 'warn' | 'neutral';
+
+// Scores surfaced inline as chips; the rest stay behind the `▸ N scores` toggle.
+function pickKeyScores(
+    scores: EbScore[] | undefined,
+): Array<{ name: string; label: string; title: string; tone: ScoreTone }> {
+    if (!scores || scores.length === 0) return [];
+    const out: Array<{ name: string; label: string; title: string; tone: ScoreTone }> = [];
+    const seen = new Set<string>();
+    for (const s of scores) {
+        const value = s.stringValue ?? (s.value == null ? '' : String(s.value));
+        if (!value) continue;
+        if (s.name === 'user_satisfied' && !seen.has('user_satisfied')) {
+            seen.add('user_satisfied');
+            const tone: ScoreTone =
+                value === 'satisfied' ? 'good' : value === 'dissatisfied' ? 'bad' : 'neutral';
+            const emoji = value === 'satisfied' ? '😊' : value === 'dissatisfied' ? '😞' : '😐';
+            out.push({ name: s.name, label: emoji, title: `user_satisfied: ${value}`, tone });
+        } else if (s.name === 'tool-error-eval' && !seen.has('tool-error-eval')) {
+            seen.add('tool-error-eval');
+            out.push({ name: s.name, label: `tool err: ${value}`, title: s.name, tone: 'warn' });
+        }
+    }
+    return out;
+}
+
+interface MetaLinks {
+    publishedUrl?: string;
+    deploymentId?: string;
+    fullStorySessionId?: string;
+    errorType?: string;
+    errorPhase?: string;
+    isRetryable?: boolean;
+}
+
+function str(v: unknown): string | undefined {
+    return typeof v === 'string' && v.length > 0 ? v : undefined;
+}
+
+// Guarded extraction of high-value metadata into displayable links/badges.
+function extractMetaLinks(metadata: Record<string, unknown>): MetaLinks {
+    const links: MetaLinks = {
+        fullStorySessionId: str(metadata.context_fullStorySessionId),
+        errorType: str(metadata.errorType),
+        errorPhase: str(metadata.errorPhase),
+        isRetryable: metadata.isRetryable === true || metadata.isRetryable === 'true',
+    };
+    // responseData[].output may carry a published URL / deployment id.
+    const responseData = metadata.responseData;
+    if (Array.isArray(responseData)) {
+        for (const item of responseData) {
+            const output = (item as { output?: unknown })?.output;
+            if (output && typeof output === 'object') {
+                const o = output as Record<string, unknown>;
+                links.publishedUrl ??= str(o.publishedUrl);
+                links.deploymentId ??= str(o.deploymentId);
+            }
+        }
+    }
+    return links;
+}
+
+// Toolbar `?` glossary explaining the header/cost terms.
+const LEGEND_TERMS: Array<[string, string]> = [
+    ['in', 'Input tokens sent to the model this turn.'],
+    ['out', 'Output tokens the model generated this turn.'],
+    ['c.read', 'Cached input tokens reused from a prior turn (cheap). The % is the share of input served from cache.'],
+    ['c.write', 'Tokens written to the prompt cache this turn (cache creation).'],
+    ['cust', "Cost charged to the customer's credits."],
+    ['gd', 'Cost absorbed by GoDaddy — the customer is not charged.'],
+    ['cost ≈ / cr', 'Cost and credits are approximate (rounded). A trailing * means the budget mixes credit ratios, so the credit figure is an estimate.'],
+];
+
+function TermsLegend() {
+    return (
+        <div style={legendPanelStyle}>
+            <div style={legendIntroStyle}>What the numbers mean</div>
+            {LEGEND_TERMS.map(([term, desc]) => (
+                <div key={term} style={legendRowStyle}>
+                    <span style={legendTermStyle}>{term}</span>
+                    <span style={legendDescStyle}>{desc}</span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
 function formatLatency(seconds: number | null | undefined): string {
     if (seconds == null) return '—';
     if (seconds < 1) return `${(seconds * 1000).toFixed(0)} ms`;
@@ -1085,8 +1324,7 @@ function formatDayLabel(value: string): string {
     }
 }
 
-// Match LangfusePanel.formatTime so EB and Native render identically:
-// "May 1, 01:29 AM GMT+5:30".
+// Renders timestamps like "May 1, 01:29 AM GMT+5:30".
 function formatTurnTime(value: string): string {
     try {
         return new Date(value).toLocaleString('en-US', {
@@ -1132,6 +1370,88 @@ const toolbarRightStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
     gap: '0.5rem',
+};
+
+const toggleLabelStyle: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.3rem',
+    fontSize: '0.72rem',
+    color: '#475569',
+    cursor: 'pointer',
+    userSelect: 'none',
+};
+
+const legendAnchorStyle: React.CSSProperties = {
+    position: 'relative',
+    display: 'inline-flex',
+};
+
+const legendButtonStyle: React.CSSProperties = {
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    lineHeight: 1,
+    width: '18px',
+    height: '18px',
+    borderRadius: '50%',
+    backgroundColor: '#f1f5f9',
+    color: '#475569',
+    border: '1px solid #cbd5e1',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+};
+
+const legendPopoverStyle: React.CSSProperties = {
+    position: 'absolute',
+    top: 'calc(100% + 6px)',
+    right: 0,
+    zIndex: 40,
+    width: '320px',
+    maxWidth: '80vw',
+    padding: '0.6rem 0.75rem',
+    backgroundColor: '#ffffff',
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    boxShadow: '0 6px 18px rgba(15, 23, 42, 0.18)',
+    textAlign: 'left',
+    cursor: 'default',
+};
+
+const legendPanelStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.4rem',
+};
+
+const legendIntroStyle: React.CSSProperties = {
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    color: '#0f172a',
+};
+
+const legendRowStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: '0.5rem',
+    fontSize: '0.68rem',
+    color: '#475569',
+    lineHeight: 1.4,
+};
+
+const legendTermStyle: React.CSSProperties = {
+    flexShrink: 0,
+    minWidth: '58px',
+    fontFamily: 'monospace',
+    fontWeight: 600,
+    color: '#0f172a',
+};
+
+const legendDescStyle: React.CSSProperties = {
+    flex: 1,
+    minWidth: 0,
 };
 
 function pageStatusStyle(hasMore: boolean): React.CSSProperties {
@@ -1449,21 +1769,88 @@ const badgeNeutralStyle: React.CSSProperties = {
     fontFamily: 'monospace',
 };
 
-const inlineLinkButtonStyle: React.CSSProperties = {
-    fontSize: '0.65rem',
+const tagChipStyle: React.CSSProperties = {
+    fontSize: '0.6rem',
     padding: '0.1rem 0.35rem',
     borderRadius: '3px',
-    backgroundColor: 'transparent',
-    color: '#1d4ed8',
-    border: '1px solid #cbd5e1',
-    cursor: 'pointer',
+    backgroundColor: '#eef2ff',
+    color: '#4338ca',
+    border: '1px solid #e0e7ff',
 };
 
-const subSectionStyle: React.CSSProperties = {
+function keyScoreChipStyle(tone: ScoreTone): React.CSSProperties {
+    const palette: Record<ScoreTone, { bg: string; fg: string; bd: string }> = {
+        good: { bg: '#dcfce7', fg: '#166534', bd: '#bbf7d0' },
+        bad: { bg: '#fee2e2', fg: '#991b1b', bd: '#fecaca' },
+        warn: { bg: '#fffbeb', fg: '#92400e', bd: '#fde68a' },
+        neutral: { bg: '#f3f4f6', fg: '#475569', bd: '#e5e7eb' },
+    };
+    const c = palette[tone];
+    return {
+        fontSize: '0.6rem',
+        padding: '0.1rem 0.35rem',
+        borderRadius: '3px',
+        backgroundColor: c.bg,
+        color: c.fg,
+        border: `1px solid ${c.bd}`,
+        fontWeight: 600,
+    };
+}
+
+const errorBadgeStyle: React.CSSProperties = {
+    fontSize: '0.6rem',
+    padding: '0.1rem 0.35rem',
+    borderRadius: '3px',
+    backgroundColor: '#fef2f2',
+    color: '#991b1b',
+    border: '1px solid #fecaca',
+    fontFamily: 'monospace',
+};
+
+// Muted breakdown text shown inside the cost chip — "(cust: $… + gd: $…)".
+const costSplitStyle: React.CSSProperties = {
+    fontWeight: 400,
+    color: '#64748b',
+};
+
+// Groups the assistant turn with its evals block at a tight gap, so the evals
+// pill sits just under the steps pill rather than a full turn-gap (1.25rem) away.
+const assistantGroupStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+};
+
+// Eval toggle + expanded score rows, stacked below the steps block. Indented to
+// align with the message content column: avatar width (32px) + turn row gap
+// (0.75rem ≈ 12px) = 44px.
+const evalsBlockStyle: React.CSSProperties = {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.3rem',
-    paddingLeft: '36px',
+    paddingLeft: '44px',
+};
+
+const stepsBlockStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+};
+
+const stepsToggleStyle: React.CSSProperties = {
+    alignSelf: 'flex-start',
+    padding: '0.2rem 0.5rem',
+    fontSize: '0.72rem',
+    fontWeight: 600,
+    color: '#475569',
+    backgroundColor: '#f1f5f9',
+    border: '1px solid #e2e8f0',
+    borderRadius: '6px',
+    cursor: 'pointer',
+};
+
+const stepsErrorCountStyle: React.CSSProperties = {
+    color: '#dc2626',
 };
 
 const stepListStyle: React.CSSProperties = {
@@ -1617,16 +2004,3 @@ const scoreCommentStyle: React.CSSProperties = {
     lineHeight: 1.4,
 };
 
-const rawPreStyle: React.CSSProperties = {
-    fontSize: '0.55rem',
-    backgroundColor: '#0f172a',
-    color: '#f8fafc',
-    padding: '0.5rem',
-    borderRadius: '4px',
-    overflow: 'auto',
-    maxHeight: '320px',
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
-    margin: 0,
-    marginLeft: '36px',
-};

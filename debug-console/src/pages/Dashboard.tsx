@@ -110,7 +110,7 @@ export default function Dashboard() {
   // just this app's domains instead of the whole fleet.
   const [loadedAppDomains, setLoadedAppDomains] = useState<string[]>([]);
 
-  const [conversationsSource, setConversationsSource] = useState<ConversationsSource>("langfuse");
+  const [conversationsSource, setConversationsSource] = useState<ConversationsSource>("eb");
 
   const [refreshKeys, setRefreshKeys] = useState({
     details: 0,
@@ -250,7 +250,7 @@ export default function Dashboard() {
     // Migrate legacy tab IDs to the merged Conversations tab.
     if (urlTab === "conversation") {
       setActiveTab("conversations");
-      setConversationsSource("langfuse");
+      setConversationsSource("eb");
     } else if (urlTab === "aiAgent") {
       setActiveTab("conversations");
       setConversationsSource("agent");
@@ -261,11 +261,13 @@ export default function Dashboard() {
       setLogsView("summary");
     } else if (urlTab && (VALID_TAB_IDS as readonly string[]).includes(urlTab)) {
       setActiveTab(urlTab as TabId);
-      if (
-        urlTab === "conversations" &&
-        (urlSource === "langfuse" || urlSource === "eb" || urlSource === "agent")
-      ) {
-        setConversationsSource(urlSource);
+      if (urlTab === "conversations") {
+        // Legacy "langfuse" (the retired Main source) maps to the EB view.
+        if (urlSource === "langfuse" || urlSource === "eb") {
+          setConversationsSource("eb");
+        } else if (urlSource === "agent") {
+          setConversationsSource("agent");
+        }
       }
     }
     const urlLogsView = searchParams?.get("logsView");

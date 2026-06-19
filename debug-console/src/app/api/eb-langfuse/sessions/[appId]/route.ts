@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
-import { buildAppIdFilter, getLangfuseEbConfig } from '@/lib/langfuse-eb-client';
+import { NOT_BMS_RATIO, resolveCreditRatio } from '@/lib/bms-credit-ratio';
+import { type CostSummary, extractCostAttribution, summarizeCost } from '@/lib/eb-cost';
+import { buildAppIdFilter, getLangfuseEbConfig, resolveCustomerId } from '@/lib/langfuse-eb-client';
 import { logger } from '@/lib/logger';
 
 interface EbObservation {
@@ -50,6 +52,8 @@ interface EbTrace {
   latency?: number | null;
   scores?: EbScore[];
   observations?: EbObservation[];
+  /** Normalized cost-attribution summary (customer/GoDaddy split, credits, categories). */
+  cost?: CostSummary;
 }
 
 interface EbSession {
@@ -65,6 +69,57 @@ const PAGE_SIZE = 20;
 const DETAIL_BATCH_SIZE = 20;
 // Same shape as the agent routes' APP_ID_RE: alphanumeric + `_-`, 1..128 chars.
 const APP_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+/**
+ * Fetch one page of an app's traces by combining the indexed `userId`
+ * (= customerId) with the `metadata.business_data_appId` filter in a single
+ * query. The userId index narrows to one customer's traces first, so the
+ * metadata predicate runs on a small set rather than scanning all history —
+ * fast, and with accurate pagination totals. Throws (with `.status`) on an
+ * upstream non-OK so the caller can surface it (or fall back to the scan).
+ */
+async function fetchAppPageByCustomer(
+  lf: { baseUrl: string; authHeader: string },
+  appId: string,
+  customerId: string,
+  page: number,
+  limit: number,
+  fromTimestamp: string | null,
+  toTimestamp: string | null,
+  signal: AbortSignal,
+): Promise<{ ids: string[]; totalPages: number; totalItems: number | null }> {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+    userId: customerId,
+    filter: buildAppIdFilter(appId),
+  });
+  if (fromTimestamp) params.append('fromTimestamp', fromTimestamp);
+  if (toTimestamp) params.append('toTimestamp', toTimestamp);
+  const res = await fetch(`${lf.baseUrl}/api/public/traces?${params}`, {
+    headers: {
+      Authorization: lf.authHeader,
+      'Content-Type': 'application/json',
+      'Accept-Encoding': 'gzip, deflate, br',
+    },
+    signal,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    const err = new Error(`Langfuse EB list ${res.status}: ${body.slice(0, 200)}`) as Error & {
+      status?: number;
+    };
+    err.status = res.status;
+    throw err;
+  }
+  const data = await res.json();
+  const items = (data.data || []) as Array<{ id: string }>;
+  return {
+    ids: items.map((t) => t.id),
+    totalPages: (data.meta?.totalPages as number | undefined) ?? 1,
+    totalItems: (data.meta?.totalItems as number | undefined) ?? null,
+  };
+}
 
 export const GET = withAuth<{ appId: string }>(async function ebSessions(request, _auth, context) {
   const requestStartedAt = Date.now();
@@ -86,8 +141,8 @@ export const GET = withAuth<{ appId: string }>(async function ebSessions(request
     }
     appIdForLog = appId;
     const searchParams = request.nextUrl.searchParams;
-    const fromTimestamp = searchParams.get('fromTimestamp');
     const toTimestamp = searchParams.get('toTimestamp');
+    const explicitFrom = searchParams.get('fromTimestamp');
     const pageRaw = parseInt(searchParams.get('page') || '1', 10);
     const requestedPage = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.min(pageRaw, 10_000) : 1;
 
@@ -95,51 +150,54 @@ export const GET = withAuth<{ appId: string }>(async function ebSessions(request
       appId,
       page: requestedPage,
       pageSize: PAGE_SIZE,
-      hasFromTimestamp: !!fromTimestamp,
+      hasFromTimestamp: !!explicitFrom,
       hasToTimestamp: !!toTimestamp,
     });
 
-    const tracesParams = new URLSearchParams({
-      page: String(requestedPage),
-      limit: String(PAGE_SIZE),
-      filter: buildAppIdFilter(appId),
-    });
-    if (fromTimestamp) tracesParams.append('fromTimestamp', fromTimestamp);
-    if (toTimestamp) tracesParams.append('toTimestamp', toTimestamp);
-
-    const tracesRequestStartedAt = Date.now();
-    const tracesResponse = await fetch(`${lf.baseUrl}/api/public/traces?${tracesParams}`, {
-      headers: {
-        Authorization: lf.authHeader,
-        'Content-Type': 'application/json',
-        'Accept-Encoding': 'gzip, deflate, br',
-      },
-      signal: request.signal,
-    });
-
-    if (!tracesResponse.ok) {
-      const errorText = await tracesResponse.text();
-      logger.warn(
-        'langfuse.eb.sessions.list.error',
-        {
-          appId,
-          page: requestedPage,
-          status: tracesResponse.status,
-          message: errorText.slice(0, 200),
-        },
-        { duration: Date.now() - tracesRequestStartedAt },
-      );
+    // Resolve the BMS cost→credit ratio (best-effort, null on failure) and the
+    // customerId in parallel. The customerId is EB's indexed `userId`; pairing it
+    // with the appId metadata filter lets the index narrow the set before the
+    // metadata predicate runs, so the query is fast and not 422-prone.
+    const creditRatioPromise = resolveCreditRatio(appId, request).catch(() => NOT_BMS_RATIO);
+    const customerId = await resolveCustomerId(appId);
+    if (!customerId) {
+      logger.error('langfuse.eb.sessions.customerId.missing', { appId });
       return NextResponse.json(
-        { error: `Langfuse EB API error: ${tracesResponse.status}`, message: errorText },
-        { status: tracesResponse.status },
+        { error: 'Could not resolve customerId for app (required to scope EB traces)' },
+        { status: 502 },
       );
     }
 
-    const tracesData = await tracesResponse.json();
-    const listItems = (tracesData.data || []) as Array<{ id: string }>;
-    const traceIds = listItems.map((t) => t.id);
-    const totalPages = tracesData.meta?.totalPages || 1;
-    const totalItems = tracesData.meta?.totalItems ?? null;
+    const tracesRequestStartedAt = Date.now();
+    let page: { ids: string[]; totalPages: number; totalItems: number | null };
+    try {
+      page = await fetchAppPageByCustomer(
+        lf,
+        appId,
+        customerId,
+        requestedPage,
+        PAGE_SIZE,
+        explicitFrom,
+        toTimestamp,
+        request.signal,
+      );
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError' || request.signal.aborted) throw err;
+      const status = (err as { status?: number }).status ?? 502;
+      logger.warn(
+        'langfuse.eb.sessions.list.error',
+        { appId, page: requestedPage, status, message: (err as Error).message?.slice(0, 200) },
+        { duration: Date.now() - tracesRequestStartedAt },
+      );
+      return NextResponse.json(
+        { error: `Langfuse EB API error: ${status}`, message: (err as Error).message },
+        { status },
+      );
+    }
+
+    const traceIds = page.ids;
+    const totalPages = page.totalPages;
+    const totalItems = page.totalItems;
     const hasMore = requestedPage < totalPages;
 
     logger.info(
@@ -193,6 +251,13 @@ export const GET = withAuth<{ appId: string }>(async function ebSessions(request
       for (const t of batchResults) {
         if (t) fullTraces.push(t);
       }
+    }
+
+    // Stamp the normalized cost summary (incl. credits) onto each trace so the
+    // API — not just the UI — exposes the attribution shape.
+    const creditRatio = await creditRatioPromise;
+    for (const t of fullTraces) {
+      t.cost = summarizeCost(t, extractCostAttribution(t.observations), creditRatio);
     }
 
     const degraded = traceIds.length > 0 && failedFetches > traceIds.length / 2;
