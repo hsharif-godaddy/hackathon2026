@@ -1,5 +1,5 @@
 psycopg[binary]==3.2.3
-pyarrow==18.1.0
+pyarrow==23.0.1
 boto3
 cryptography>=42.0.4,<45
 pyjwt~=2.8
