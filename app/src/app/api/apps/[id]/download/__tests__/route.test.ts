@@ -84,6 +84,13 @@ vi.mock('@/lib/request-context', function mockLoggerModule() {
   };
 });
 
+// Route calls enforceAabMultiUserVentureRelation → checkSwitchboardFlag; mock it
+// to "off" so it no-ops without hitting real gasket (Atlas plugin → fetch error).
+vi.mock('@/lib/switchboard/server', () => ({
+  checkSwitchboardFlag: vi.fn().mockResolvedValue(false),
+  checkSwitchboardValue: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock('@/lib/customer-auth', async function mockCustomerAuthModule() {
   const actual = await vi.importActual('@/lib/customer-auth');
   return {
@@ -299,6 +306,29 @@ describe('download POST', function downloadTests() {
 
       // Should not call tracking
       expect(mockAiroMgmtClient.recordExport).not.toHaveBeenCalled();
+    });
+
+    it('bypasses the paywall for a shared app (owner-pays); FGA canDownload already authorized', async function sharedBypass() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+      mockControlPlaneAdapter.getSite.mockResolvedValue({ ...MOCK_V2_SITE, sharedWithMe: true });
+      // Would 403 a non-shared caller — must be skipped entirely for a shared app.
+      mockPaywallProvider.checkPaywallEligibility.mockResolvedValue({
+        hasAccess: false,
+        reason: 'No active subscription'
+      });
+
+      const request = createMockRequest(MOCK_SITE_ID);
+      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.downloadUrl).toBe(`${MOCK_V2_SITE.agent_url}/apps/${MOCK_SITE_ID}/zip`);
+      // The subscription paywall must not even be consulted for a shared app.
+      expect(mockPaywallProvider.checkPaywallEligibility).not.toHaveBeenCalled();
     });
 
     it('should return 404 when site is not found', async function siteNotFound() {

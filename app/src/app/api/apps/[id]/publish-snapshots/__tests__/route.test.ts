@@ -45,6 +45,15 @@ vi.mock('@/lib/request-context', () => ({
   logger: mockLogger,
 }))
 
+// The route calls enforceAabMultiUserVentureRelation → checkSwitchboardFlag.
+// Without this mock, checkSwitchboardFlag hits real gasket → the Atlas/Visitor
+// plugin → an AtlasFetchError unhandled rejection in the test env. Mock it to
+// "off" so enforce no-ops (allow) without touching gasket.
+vi.mock('@/lib/switchboard/server', () => ({
+  checkSwitchboardFlag: vi.fn().mockResolvedValue(false),
+  checkSwitchboardValue: vi.fn().mockResolvedValue(null),
+}))
+
 const AUTHED = { isAuthenticated: true, user: { customerId: 'c-1' }, jwt: 'jwt-token' }
 const UNAUTHED = { isAuthenticated: false, error: 'Invalid token' }
 const MOCK_SITE = { id: 'app-123', account_id: 'acc-1' }
@@ -99,7 +108,7 @@ describe('apps/[id]/publish-snapshots POST', function publishSnapshotsTests() {
   it('calls getSite with appId and customer JWT for ownership check', async function ownershipCheck() {
     mockAuthenticateCustomer.mockResolvedValue(AUTHED)
     await POST(makeRequest(APP_ID, validFields()), PARAMS)
-    expect(mockGetSite).toHaveBeenCalledWith(APP_ID, 'jwt-token')
+    expect(mockGetSite).toHaveBeenCalledWith(APP_ID, 'jwt-token', undefined, { multiUserEnabled: false })
   })
 
   it('returns 503 when bucket env var is missing', async function noBucket() {

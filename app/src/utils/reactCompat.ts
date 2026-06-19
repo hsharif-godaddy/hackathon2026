@@ -96,3 +96,29 @@ function applyAndLog(react: unknown): void {
     })
   }
 }
+
+/**
+ * Redirects Symbol.for("react.element") to the React 19 transitional symbol
+ * so CDS bundles compiled with classic-runtime createElement (R18) produce
+ * elements that pass R19's $$typeof check. Without this, R18 bundles that
+ * call React.createElement get the legacy symbol and R19 throws minified
+ * error #525 ("Objects are not valid as a React child").
+ *
+ * Must be called before any CDS bundle is fetched.
+ */
+export function installR18ElementSymbolBridge(): void {
+  if (typeof window === 'undefined') return
+
+  const LEGACY_ELEMENT: symbol = Symbol.for('react.element')
+  const TRANSITIONAL_ELEMENT: symbol = Symbol.for('react.transitional.element')
+
+  if (LEGACY_ELEMENT === TRANSITIONAL_ELEMENT) return
+
+  const origFor = Symbol.for.bind(Symbol)
+  Symbol.for = function patchedFor(key: string) {
+    if (key === 'react.element') {
+      return TRANSITIONAL_ELEMENT
+    }
+    return origFor(key)
+  } as typeof Symbol.for
+}

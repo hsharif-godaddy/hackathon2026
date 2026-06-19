@@ -9,9 +9,15 @@ import CdsComponentLoader from '@venture/cds-loader'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { logger } from '@/lib/request-context'
 import { ensurePropTypes } from '@/utils/propTypes'
-import { shimReactInternals } from '@/utils/reactCompat'
+import { installR18ElementSymbolBridge, shimReactInternals } from '@/utils/reactCompat'
 
 shimReactInternals()
+
+// Installed at cdsLoader module load (before any CDS bundle is fetched / its
+// vendored R18 createElement runs). Redirects Symbol.for("react.element") to
+// the transitional symbol so bundles still using classic-runtime element
+// creation pass R19's $$typeof check instead of throwing minified error #525.
+installR18ElementSymbolBridge()
 
 // UMD CDS components expect PropTypes and react-intl on window globals.
 // The ESM path injects deps directly, but UMD fallback still needs these.
@@ -37,6 +43,11 @@ interface CdsComponentLoaderProps extends Record<string, unknown> {
   renderErrorFallback?: (error: Error) => ReactNode
   source?: string
   onLoadError?: (error: Error) => void
+  // Class for the body-level portal wrapper. Defaults to the paywall portal
+  // (transparent, pointer-events:none — the paywall paints its own modal). Pass
+  // a dedicated class (e.g. `cds-team-portal`) for full-page page-style bundles
+  // that need an opaque, scrollable, clickable container.
+  containerClassName?: string
 }
 
 // TODO: remove MutationObserver fallback detection once CDS surfaces proper
@@ -53,6 +64,7 @@ export function ComponentLoader({
   renderErrorFallback,
   source,
   onLoadError,
+  containerClassName = 'cds-paywall-portal',
   ...props
 }: CdsComponentLoaderProps) {
   const [error, setError] = useState<Error | null>(null)
@@ -135,7 +147,7 @@ export function ComponentLoader({
   if (error) return renderErrorFallback ? <>{renderErrorFallback(error)}</> : null
 
   const loader = (
-    <div ref={containerRef} className="cds-paywall-portal" data-testid="cds-loader-root">
+    <div ref={containerRef} className={containerClassName} data-testid="cds-loader-root">
       <CdsComponentLoader source={source} onError={handleError} {...props} {...(props.loaderMode === 'esm' && { deps: depsEsm })} />
     </div>
   )

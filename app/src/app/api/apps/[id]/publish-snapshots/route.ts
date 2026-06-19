@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
+import { enforceAabMultiUserVentureRelation } from '@/lib/authz-fga/enforce-venture-relation';
+import { resolveMultiUserFlag } from '@/lib/authz-fga/multi-user-flag';
+import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
@@ -19,9 +22,22 @@ export const POST = withCustomerAuth(async (
   try {
     const { id: appId } = await params;
 
-    const site = await getControlPlaneAdapter().getSite(appId, authContext.jwt);
+    const multiUserEnabled = await resolveMultiUserFlag(request);
+    const site = await getControlPlaneAdapter().getSite(appId, authContext.jwt, undefined, { multiUserEnabled });
     if (!site) {
       return NextResponse.json({ error: 'App not found' }, { status: 404 });
+    }
+
+    const snapshotDeny = await enforceAabMultiUserVentureRelation({
+      request,
+      siteId: appId,
+      customerId: authContext.user.customerId,
+      siteInfo: site,
+      relation: AUTHZ_FGA_RELATIONS.canPublish,
+      forbiddenMessage: 'You do not have permission to upload publish snapshots for this app.',
+    });
+    if (snapshotDeny) {
+      return snapshotDeny;
     }
 
     const bucketName = process.env.EVAL_SNAPSHOTS_BUCKET;

@@ -53,7 +53,8 @@ export default function DomainPanel() {
     return state.loading[currentAppId] ?? false;
   });
 
-  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility();
+  // Pass appId so an invited collaborator (owner-pays) bypasses the paywall.
+  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(currentAppId);
   const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal);
 
   const { handlePublish, isPublishDisabled, publishState } = usePublishForDomain(currentAppId, site);

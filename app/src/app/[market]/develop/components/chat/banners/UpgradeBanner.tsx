@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FormattedMessage } from 'react-intl'
 
+import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -10,6 +11,7 @@ import { useTranslations } from '@/hooks/useTranslations'
 import ChatBanner from '@/lib/ChatBanner'
 import { canUpgradePlan, PAYWALL_ITC } from '@/lib/paywall/shared'
 import { usePaywallStore } from '@/stores/usePaywallStore'
+import { useSiteStore } from '@/stores/useSiteStore'
 import { getPlanFromSubscription } from '@/utils/credits'
 import { logClickEvent, logImpressionEvent } from '@/utils/instrumentation'
 
@@ -39,7 +41,10 @@ export default function UpgradeBanner({ onDismiss }: UpgradeBannerProps) {
   const [mounted, setMounted] = useState(false)
   const featureEnabled = useSwitchboard('appbuilder-airoplus-upgrade-banner')
   const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal)
-  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility()
+  const appId = useAppIdFromParams()
+  const isSharedWithMe = useSiteStore((state) => (appId ? state.getSite(appId)?.sharedWithMe : false))
+  // Pass appId so an invited collaborator (owner-pays) bypasses the paywall.
+  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId)
   const { data: subscription } = useSubscription()
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : undefined
 
@@ -51,7 +56,9 @@ export default function UpgradeBanner({ onDismiss }: UpgradeBannerProps) {
     setMounted(true)
   }, [])
 
+  // Invited users (sharedWithMe) are using the owner's subscription — never show the upgrade banner
   const shouldShowBanner = mounted && !isPaywallLoading && featureEnabled && !isDismissed &&
+    !isSharedWithMe &&
     (showPaywall || canUpgradePlan(currentPlan))
   useEffect(() => {
     if (shouldShowBanner && !hasLoggedImpressionRef.current) {
@@ -60,8 +67,12 @@ export default function UpgradeBanner({ onDismiss }: UpgradeBannerProps) {
     }
   }, [shouldShowBanner])
 
-  // Wait for loading, then show only if feature enabled and user can upgrade (non-Ultimate users)
-  if (!mounted || isPaywallLoading || !featureEnabled || isDismissed ||
+  // Wait for loading, then show only if feature enabled and user can upgrade (non-Ultimate users).
+  // Invited users (sharedWithMe) are on the owner's subscription — never show the upgrade banner.
+  // `isSharedWithMe` must gate the actual render (not just the impression log above): the
+  // canUpgradePlan branch can still be true for an invitee on a free plan, so without this an
+  // invitee would see the banner even though showPaywall is bypassed.
+  if (!mounted || isPaywallLoading || !featureEnabled || isDismissed || isSharedWithMe ||
       (!showPaywall && !canUpgradePlan(currentPlan))) return null
 
   const handleClose = () => {

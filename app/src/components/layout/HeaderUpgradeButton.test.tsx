@@ -14,6 +14,7 @@ import HeaderUpgradeButton from './HeaderUpgradeButton';
 const mockOpenUpgradeModal = vi.fn();
 const mockShipAnalyticsLog = vi.fn();
 const mockLogClickEvent = vi.fn(function () { return vi.fn(); });
+const mockGetSite = vi.fn(function (): unknown { return null; });
 
 vi.mock('@/utils/instrumentation', () => ({
   logClickEvent: (...args: unknown[]) => {
@@ -55,6 +56,10 @@ vi.mock('@/stores/usePaywallStore', () => ({
   }),
 }));
 
+vi.mock('@/stores/useSiteStore', () => ({
+  useSiteStore: (selector: any) => selector({ getSite: mockGetSite }),
+}));
+
 vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: (...args: any[]) => mockShipAnalyticsLog(...args),
 }));
@@ -70,12 +75,24 @@ vi.mock('next/navigation', () => ({
 describe('HeaderUpgradeButton', function headerUpgradeButtonTests() {
   beforeEach(async function setup() {
     vi.clearAllMocks();
+    mockGetSite.mockReturnValue(null); // default: not a shared app
     // Reset pathname mock to develop page for each test
     const nextNavigation = await import('next/navigation');
     vi.mocked(nextNavigation).usePathname.mockReturnValue('/develop/test-app');
     // Restore default non-treatment eligibility (clearAllMocks wipes the mock implementation)
     const { usePublishUpsellEligibility } = await import('@/hooks/usePublishUpsellEligibility');
     vi.mocked(usePublishUpsellEligibility).mockReturnValue({ isExperimentEligible: false, isTreatment: false, isLoading: false });
+  });
+
+  it('is hidden for a shared app (owner-pays), even when paywall/upgrade would show', async function hiddenForSharedApp() {
+    const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+    // Would otherwise render (free invitee: showPaywall true, canUpgradePlan true).
+    vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
+    mockGetSite.mockReturnValue({ sharedWithMe: true });
+
+    renderWithProviders(<HeaderUpgradeButton location="test" />);
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   describe('rendering conditions', function renderingTests() {

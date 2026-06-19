@@ -18,6 +18,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+import { enforceAabMultiUserVentureRelation } from '@/lib/authz-fga/enforce-venture-relation';
+import { resolveMultiUserFlag } from '@/lib/authz-fga/multi-user-flag';
+import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import {
   createCustomerAuthError,
@@ -49,6 +52,7 @@ interface TrackingResult {
 async function recordExportTracking(
   siteId: string,
   authContext: CustomerAuthContext,
+  multiUserEnabled: boolean,
   siteName?: string
 ): Promise<TrackingResult | { authResponse: NextResponse }> {
   const { user, jwt } = authContext;
@@ -56,7 +60,7 @@ async function recordExportTracking(
   try {
     // Get site to check for V2 metadata
     const adapter = getControlPlaneAdapter();
-    const site = await adapter.getSite(siteId, jwt);
+    const site = await adapter.getSite(siteId, jwt, undefined, { multiUserEnabled });
 
     if (!site) {
       return { tracked: false, message: 'Site not found' };
@@ -185,13 +189,26 @@ export const POST = withCustomerAuth(async (
     logger.info('download.proxy.start', { siteId, customerId: user.customerId });
 
     const adapter = getControlPlaneAdapter();
-    const site = await adapter.getSite(siteId, jwt);
+    const multiUserEnabled = await resolveMultiUserFlag(request);
+    const site = await adapter.getSite(siteId, jwt, undefined, { multiUserEnabled });
 
     if (!site) {
       return NextResponse.json(
         { error: 'Site not found' },
         { status: 404 }
       );
+    }
+
+    const downloadDeny = await enforceAabMultiUserVentureRelation({
+      request,
+      siteId,
+      customerId: user.customerId,
+      siteInfo: site,
+      relation: AUTHZ_FGA_RELATIONS.canDownload,
+      forbiddenMessage: 'You do not have permission to download this app.',
+    });
+    if (downloadDeny) {
+      return downloadDeny;
     }
 
     if (!site.agent_url) {
@@ -201,35 +218,40 @@ export const POST = withCustomerAuth(async (
       );
     }
 
-    let canDownload = false;
-    try {
-      const provider = new ServerPaywallProvider(jwt, user.customerId, request.headers);
-      const eligibility = await checkPaywallEligibility(provider, siteId, PaywallAction.Download);
-      canDownload = eligibility.hasAccess;
+    // Owner-pays: a collaborator on a shared app is never the billing principal.
+    // Their download permission was already authorized by the FGA canDownload
+    // check above, so skip the subscription paywall — it is keyed on the caller's
+    // own (absent) plan and would 403 them. Mirrors the agent-token route, which
+    // derives canDownload from FGA for shared apps.
+    if (!site.sharedWithMe) {
+      try {
+        const provider = new ServerPaywallProvider(jwt, user.customerId, request.headers);
+        const eligibility = await checkPaywallEligibility(provider, siteId, PaywallAction.Download);
 
-      if (!canDownload) {
-        logger.info('download.proxy.paywall-blocked', {
+        if (!eligibility.hasAccess) {
+          logger.info('download.proxy.paywall-blocked', {
+            siteId,
+            customerId: user.customerId,
+            reason: eligibility.reason,
+          });
+          return NextResponse.json(
+            { error: 'Download requires Paid subscription', reason: eligibility.reason },
+            { status: 403 }
+          );
+        }
+      } catch (error) {
+        logger.error('download.proxy.paywall-error', {
           siteId,
-          customerId: user.customerId,
-          reason: eligibility.reason,
+          error: error instanceof Error ? error.message : String(error),
         });
         return NextResponse.json(
-          { error: 'Download requires Paid subscription', reason: eligibility.reason },
-          { status: 403 }
+          { error: 'Unable to verify download eligibility' },
+          { status: 500 }
         );
       }
-    } catch (error) {
-      logger.error('download.proxy.paywall-error', {
-        siteId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return NextResponse.json(
-        { error: 'Unable to verify download eligibility' },
-        { status: 500 }
-      );
     }
 
-    const trackingResult = await recordExportTracking(siteId, authContext, site.name);
+    const trackingResult = await recordExportTracking(siteId, authContext, multiUserEnabled, site.name);
     if ('authResponse' in trackingResult) {
       return trackingResult.authResponse;
     }

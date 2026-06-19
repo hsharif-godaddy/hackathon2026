@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { enforceAabMultiUserVentureRelation } from '@/lib/authz-fga/enforce-venture-relation';
+import { resolveMultiUserFlag } from '@/lib/authz-fga/multi-user-flag';
+import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { handleControlPlaneError } from '@/lib/control-plane/error-handler';
 import { CORS_ROUTES, createCorsOptionsHandler } from '@/lib/cors';
@@ -25,9 +28,15 @@ async function handleGetSites(request: NextRequest, jwt: string) {
 
   const adapter = getControlPlaneAdapter();
 
+  // Resolve aab-multi-user once so the adapter can skip all shared-app
+  // discovery (the shared-apps listing) entirely when the feature is off —
+  // no extra latency/load and no chance of a stale shared row leaking for the
+  // GA population. Treat a Switchboard outage as "off" (safe default).
+  const multiUserEnabled = await resolveMultiUserFlag(request);
+
   if (siteId) {
     // Get specific site
-    const site = await adapter.getSite(siteId, jwt);
+    const site = await adapter.getSite(siteId, jwt, undefined, { multiUserEnabled });
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
@@ -58,8 +67,9 @@ async function handleGetSites(request: NextRequest, jwt: string) {
   // must stay lightweight and this endpoint is intentionally un-paginated,
   // so there is no per-site work here: share tokens are injected on-demand
   // via the ?site_id= path above when a preview is actually opened (see the
-  // Projects-page AppCard preview button).
-  const sites = await adapter.listSites(jwt);
+  // Projects-page AppCard preview button). multiUserEnabled is forwarded so the
+  // adapter gates shared-app discovery on the flag.
+  const sites = await adapter.listSites(jwt, multiUserEnabled);
   return NextResponse.json(sites);
 }
 
@@ -163,10 +173,31 @@ export const DELETE = withCustomerAuth(async (request: NextRequest, authContext:
 
     const adapter = getControlPlaneAdapter();
 
+    // Resolve the multi-user flag once and thread it through getSite so a
+    // shared (non-owned) app the caller can manage is discoverable. With the
+    // flag off this is `false` → adapter skips all shared-app discovery and the
+    // lookup is owned-only, preserving existing single-user behavior exactly.
+    const multiUserEnabled = await resolveMultiUserFlag(request);
+
     // Get site to verify ownership
-    const site = await adapter.getSite(siteId, authContext.jwt);
+    const site = await adapter.getSite(siteId, authContext.jwt, undefined, { multiUserEnabled });
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+    }
+
+    // Authorization gate for shared (non-owner) callers. No-op when the flag is
+    // off or when the caller is the owner; otherwise the caller must hold the
+    // `admin` relation on this app's venture to delete it.
+    const deny = await enforceAabMultiUserVentureRelation({
+      request,
+      siteId,
+      customerId: user.customerId,
+      siteInfo: site,
+      relation: AUTHZ_FGA_RELATIONS.canDelete,
+      forbiddenMessage: 'You do not have permission to delete this app.',
+    });
+    if (deny) {
+      return deny;
     }
 
     // Delete site, passing system_id and subscription_id to avoid redundant getSite call

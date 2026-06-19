@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { enforceAabMultiUserVentureRelation } from '@/lib/authz-fga/enforce-venture-relation';
+import { resolveMultiUserFlag } from '@/lib/authz-fga/multi-user-flag';
+import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { handleControlPlaneError } from '@/lib/control-plane/error-handler';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, withCustomerAuth } from '@/lib/customer-auth';
@@ -67,8 +70,24 @@ export const GET = withCustomerAuth(async (
 			return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
 		}
 
-		// Get secrets using control plane adapter
 		const adapter = getControlPlaneAdapter();
+		const multiUserEnabled = await resolveMultiUserFlag(request);
+		const site = await adapter.getSite(appId, authContext.jwt, undefined, { multiUserEnabled });
+		if (!site) {
+			return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+		}
+		const secretsReadDeny = await enforceAabMultiUserVentureRelation({
+			request,
+			siteId: appId,
+			customerId: user.customerId,
+			siteInfo: site,
+			relation: AUTHZ_FGA_RELATIONS.canManageSecrets,
+			forbiddenMessage: 'You do not have permission to view secrets for this app.',
+		});
+		if (secretsReadDeny) {
+			return secretsReadDeny;
+		}
+
 		const result = await adapter.getSecrets(appId, variant, authContext.jwt);
 
 		return NextResponse.json(result, {
@@ -149,6 +168,24 @@ export const POST = withCustomerAuth(async (
 			return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
 		}
 
+		const adapter = getControlPlaneAdapter();
+		const multiUserEnabled = await resolveMultiUserFlag(request);
+		const site = await adapter.getSite(appId, authContext.jwt, undefined, { multiUserEnabled });
+		if (!site) {
+			return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+		}
+		const secretsWriteDeny = await enforceAabMultiUserVentureRelation({
+			request,
+			siteId: appId,
+			customerId: user.customerId,
+			siteInfo: site,
+			relation: AUTHZ_FGA_RELATIONS.canManageSecrets,
+			forbiddenMessage: 'You do not have permission to modify secrets for this app.',
+		});
+		if (secretsWriteDeny) {
+			return secretsWriteDeny;
+		}
+
 		// Parse request body
 		const body: OperationsRequest = await request.json();
 		const { operations } = body;
@@ -157,8 +194,6 @@ export const POST = withCustomerAuth(async (
 			return NextResponse.json({ error: 'Operations object is required' }, { status: 400 });
 		}
 
-		// Perform operations using control plane adapter
-		const adapter = getControlPlaneAdapter();
 		const result = await adapter.updateSecrets(appId, variant, operations, authContext.jwt);
 
 		return NextResponse.json(result);

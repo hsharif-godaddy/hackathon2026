@@ -63,6 +63,14 @@ vi.mock('@/lib/control-plane', () => ({
   getControlPlaneAdapter: vi.fn()
 }));
 
+// The handler resolves aab-multi-user via resolveMultiUserFlag → checkSwitchboardFlag.
+// Mock it so the test never hits the real gasket switchboard, whose visitor/Atlas
+// pipeline fires a network fetch and surfaces as an unhandled AtlasFetchError
+// rejection (which fails the run even though every assertion passes). Default off.
+vi.mock('@/lib/switchboard/server', () => ({
+  checkSwitchboardFlag: vi.fn().mockResolvedValue(false),
+}));
+
 // The airoShareToken-injection path runs on the single-site ?site_id= variant
 // (the list returns the control-plane payload as-is, with no per-app work).
 // The auth/error/screenshot tests below use sites without preview_url/agent_url
@@ -107,7 +115,7 @@ describe('/api/sites', function sitesRouteTests() {
       // Should return 401 for client-side redirect
       expect(response.status).toBe(401);
       expect(body.error).toBe('Unauthorized');
-      expect(mockAdapter.listSites).toHaveBeenCalledWith('test-jwt-token');
+      expect(mockAdapter.listSites).toHaveBeenCalledWith('test-jwt-token', false);
     });
 
     it('should return 403 when adapter.listSites throws 403 error', async function test403FromAdapter() {
@@ -181,7 +189,7 @@ describe('/api/sites', function sitesRouteTests() {
       expect(body).toHaveLength(2);
       expect(body[0].id).toBe('site-1');
       expect(body[1].id).toBe('site-2');
-      expect(mockAdapter.listSites).toHaveBeenCalledWith('test-jwt-token');
+      expect(mockAdapter.listSites).toHaveBeenCalledWith('test-jwt-token', false);
     });
 
     it('should return 500 for generic errors', async function testGenericError() {
@@ -303,7 +311,7 @@ describe('/api/sites', function sitesRouteTests() {
       // Should return 401 for client-side redirect
       expect(response.status).toBe(401);
       expect(body.error).toBe('Unauthorized');
-      expect(mockAdapter.getSite).toHaveBeenCalledWith('test-site-123', 'test-jwt-token');
+      expect(mockAdapter.getSite).toHaveBeenCalledWith('test-site-123', 'test-jwt-token', undefined, { multiUserEnabled: false });
     });
   });
 

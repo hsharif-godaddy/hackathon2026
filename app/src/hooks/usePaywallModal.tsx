@@ -78,10 +78,20 @@ export function usePaywallModal({
   const [hasCompletedPurchase, setHasCompletedPurchase] = useState(false)
   const queryClient = useQueryClient()
   const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal)
-  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility()
+  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId)
   const site = useSiteStore((state) => (appId ? state.getSite(appId) : null))
 
-  // Publish limit check (only applies when source is 'publish')
+  // Owner-pays: an app shared with the caller (invited collaborator) never hits
+  // a paywall. Their publish/download permission already comes from FGA
+  // (canPublish/canDownload on the agent token); plan limits and billing belong
+  // to the subscription owner. Without this, the invitee — who has no
+  // subscription of their own — resolves to Free/limit:0 and gets routed into
+  // the UpgradeContainer, which is both wrong (they're not the billing
+  // principal) and currently fatal (the plans/pricing CDS bundle crashes).
+  const isSharedApp = Boolean(site?.sharedWithMe)
+
+  // Publish limit check (only applies when source is 'publish'); skipped for
+  // shared apps so the invitee's empty/own subscription never gates publish.
   const isPublishSource = source === 'publish'
   const {
     canPublish: canPublishWithLimit,
@@ -90,7 +100,7 @@ export function usePaywallModal({
     plan,
     publishedApps,
     isLoading: isPublishLimitLoading,
-  } = usePublishLimitCheck({ currentAppId: appId, enabled: isPublishSource })
+  } = usePublishLimitCheck({ currentAppId: appId, enabled: isPublishSource && !isSharedApp })
 
   const handlePurchaseSuccess = useCallback(async () => {
     setShowAiroPlusPaywall(false)
@@ -128,6 +138,13 @@ export function usePaywallModal({
 
   const checkAndShowPaywall = useCallback(
     async (action: () => Promise<void>) => {
+      // Owner-pays bypass: a collaborator on a shared app is never the billing
+      // principal, so skip the paywall entirely and run the (FGA-gated) action.
+      if (isSharedApp) {
+        await action()
+        return
+      }
+
       // For publish source, check publish limits first
       if (isPublishSource && !canPublishWithLimit) {
         // Free plan or no plan (limit === 0) - show paywall
@@ -182,6 +199,7 @@ export function usePaywallModal({
       showPaywall,
       site?.name,
       source,
+      isSharedApp,
       isPublishSource,
       canPublishWithLimit,
       plan,
@@ -253,7 +271,7 @@ export function usePaywallModal({
   return {
     checkAndShowPaywall,
     paywallModal,
-    shouldShowPaywall: !hasCompletedPurchase && showPaywall,
+    shouldShowPaywall: !isSharedApp && !hasCompletedPurchase && showPaywall,
     isPaywallLoading,
     isPublishLimitLoading,
   }

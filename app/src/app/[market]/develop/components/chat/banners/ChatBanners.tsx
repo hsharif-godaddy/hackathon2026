@@ -57,7 +57,8 @@ export default function ChatBanners({ appId }: ChatBannersProps) {
   const feedbackBannerEnabled = useSwitchboard('appbuilder-feedback-banner');
   const suspendedComplianceBannerEnabled = useSwitchboard('appbuilder-suspended-compliance-banner');
   const suspendedNonPaymentBannerEnabled = useSwitchboard('appbuilder-suspended-nonpayment-banner');
-  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility();
+  // Pass appId so an invited collaborator (owner-pays) bypasses the paywall.
+  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(appId ?? undefined);
   const { data: subscription } = useSubscription();
   const showFeedbackBannerFromStore = useDevelopPageStore((state) => state.showFeedbackBanner);
   const showAppGenerationFeedbackBanner = useDevelopPageStore(

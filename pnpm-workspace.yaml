@@ -57,8 +57,11 @@ catalog:
   '@types/supertest': ^7.2.0
   '@types/ws': ^8.18.1
   '@types/xlsx-populate': github:JanLoebel/types-xlsx-populate
+  '@ux/dialog': ^2500.11.3
   '@ux/field-frame': ^2500.11.3
   '@ux/popover': ^2500.11.3
+  '@ux/progress-bar': ^2500.12.0
+  '@ux/space': ^2500.9.0
   '@ux/text-entry': ^2500.11.1
   '@ux/tooltip': ^2500.11.1
   '@ux/util': ^2400.11.0
@@ -105,6 +108,8 @@ catalog:
   react-filerobot-image-editor: 5.0.0-beta.156
   react-focus-lock: ^2.13.7
   react-markdown: ^10.1.0
+
+  react-router-dom: ^6.30.3
   react-speech-recognition: ^4.0.1
   react-transition-group: ^4.4.5
   remark-gfm: ^4.0.1
@@ -131,9 +136,14 @@ catalog:
 # - GHSA-88fw-hqm2-52qc: hono <4.12.25 via @ai-sdk/devtools in agents/ (bumped to ^0.0.20 which requires hono ^4.12.25)
 # - GHSA-w5hq-g745-h8pq: uuid <11.1.1 in GoDaddy internal packages (major version, can't override)
 # - GHSA-pxg6-pf52-xh8x: cookie <0.7.0 in @social/social-flows (breaking semver, owned by another team)
+# - GHSA-72gw-mp4g-v24j: multer <2.2.0 DoS (deeply nested field names) in agents/. TEMPORARY —
+#   the fix (multer 2.2.0, published 2026-06-15) is younger than the 7-day release-age quarantine
+#   (.npmrc minimum-release-age). Remove this entry AND bump catalog `multer` to ^2.2.0 after
+#   ~2026-06-22, once 2.2.0 clears quarantine. Risk meanwhile: DoS on internal, auth-gated upload routes.
 auditConfig:
   ignoreGhsas:
     - GHSA-2pvr-wf23-7pc7
+    - GHSA-72gw-mp4g-v24j
     - GHSA-8hv8-536x-4wqp
     - GHSA-88fw-hqm2-52qc
     - GHSA-67mh-4wv8-2f99

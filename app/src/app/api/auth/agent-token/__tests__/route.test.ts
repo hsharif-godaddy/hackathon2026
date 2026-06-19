@@ -5,7 +5,7 @@
  * authorization, and site ownership validation.
  */
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { POST } from '../route';
@@ -14,7 +14,7 @@ import { clearSiteValidationCache } from '../site-validation-cache';
 /**
  * Mock dependencies using vi.hoisted to avoid hoisting issues
  */
-const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockCheckSwitchboardFlag, mockCheckSwitchboardValue, mockMgmtClient, mockGetExperimentCohorts, mockLogger } = vi.hoisted(function setup() {
+const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockCheckSwitchboardFlag, mockCheckSwitchboardValue, mockMgmtClient, mockEnforceAabMultiUserCanBuild, mockGetExperimentCohorts, mockLogger } = vi.hoisted(function setup() {
   return {
     mockJWTService: {
       getToken: vi.fn(),
@@ -30,8 +30,21 @@ const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockC
     mockMgmtClient: {
       getSubscription: vi.fn()
     },
+    mockEnforceAabMultiUserCanBuild: vi.fn().mockResolvedValue(null),
     mockGetExperimentCohorts: vi.fn(),
     mockLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+  };
+});
+
+vi.mock('@/lib/authz-fga/enforce-can-build', function mockEnforceCanBuild() {
+  return {
+    enforceAabMultiUserCanBuild: mockEnforceAabMultiUserCanBuild
+  };
+});
+
+vi.mock('@/lib/authz-fga/ensure-app-venture', function mockEnsureAppVenture() {
+  return {
+    ensureAppTeamVenture: vi.fn().mockResolvedValue(null)
   };
 });
 
@@ -205,6 +218,7 @@ describe('agent-token', function packageTests() {
       mockGetExperimentCohorts.mockResolvedValue({});
       mockControlPlaneAdapter.appExists.mockResolvedValue(true);
       mockMgmtClient.getSubscription.mockResolvedValue({ bmsBudgetId: null });
+      mockControlPlaneAdapter.getSite.mockResolvedValue({});
       mockJWTService.getToken.mockResolvedValue({
         token: MOCK_JWT_TOKEN,
         expires: MOCK_TOKEN_EXPIRES
@@ -213,6 +227,7 @@ describe('agent-token', function packageTests() {
         token: MOCK_JWT_TOKEN,
         expires: MOCK_TOKEN_EXPIRES
       });
+      mockEnforceAabMultiUserCanBuild.mockResolvedValue(null);
     });
 
     it('should create agent token for authenticated user with valid site', async function createToken() {
@@ -236,7 +251,7 @@ describe('agent-token', function packageTests() {
         type: 'jwt',
         budgetServiceEnabled: false,
       });
-      expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledWith(MOCK_SITE_ID, 'user-jwt-token', 'AiroAppBuilder');
+      expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledWith(MOCK_SITE_ID, 'user-jwt-token', 'AiroAppBuilder', false);
       expect(mockJWTService.getToken).toHaveBeenCalledWith({
         siteId: MOCK_SITE_ID,
         customerId: 'customer-789',
@@ -270,6 +285,49 @@ describe('agent-token', function packageTests() {
         purchaseIntentClassifierEnabled: false,
         skillSuggestionsEnabled: false,
       });
+    });
+
+    it('returns 403 when multi-user FGA gate denies', async function fgaDeny() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+      mockEnforceAabMultiUserCanBuild.mockResolvedValue(
+        NextResponse.json({ error: 'Forbidden', message: 'no builder' }, { status: 403 })
+      );
+
+      const request = createMockRequest({ siteId: MOCK_SITE_ID });
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error).toBe('Forbidden');
+      expect(mockJWTService.getToken).not.toHaveBeenCalled();
+    });
+
+    it('passes isOwner true when hosting owner matches customer', async function ownerClaim() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+      mockControlPlaneAdapter.getSite.mockResolvedValue({
+        id: MOCK_SITE_ID,
+        subscription_id: 'sub-123',
+        owner_customer_id: 'customer-789',
+      });
+
+      const request = createMockRequest({ siteId: MOCK_SITE_ID });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      expect(mockJWTService.getToken).toHaveBeenCalledWith(
+        expect.objectContaining({
+          siteId: MOCK_SITE_ID,
+          customerId: 'customer-789',
+          isOwner: true,
+        })
+      );
     });
 
     it('should reject unauthenticated requests', async function rejectUnauth() {
@@ -365,9 +423,10 @@ describe('agent-token', function packageTests() {
       const data = await response.json();
 
       expect(response.status).toBe(500);
+      // Generic detail (internal error text is logged server-side, not echoed).
       expect(data).toEqual({
         error: 'Token creation failed',
-        details: 'Control plane connection failed'
+        details: 'An unexpected error occurred. Please try again.'
       });
     });
 
@@ -388,7 +447,7 @@ describe('agent-token', function packageTests() {
       expect(response.status).toBe(500);
       expect(data).toEqual({
         error: 'Token creation failed',
-        details: 'JWT generation failed'
+        details: 'An unexpected error occurred. Please try again.'
       });
     });
 
