@@ -68,7 +68,7 @@
     "dotenv": "catalog:",
     "gd-auth-client": "catalog:",
     "openai": "catalog:",
-    "undici": "^6.25.0",
+    "undici": "^6.27.0",
     "zod": "catalog:"
   },
   "peerDependencies": {
