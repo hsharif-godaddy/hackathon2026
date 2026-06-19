@@ -47,12 +47,14 @@ export interface ShareFeedbackFormData {
   topics: string[];
   comment: string;
   customerConsent: boolean;
+  publicShareConsent: boolean;
 }
 
 export interface FeedbackStorePayload {
   app_id: string | null;
   feedback_text: string | null;
   consent_flag: boolean | null;
+  public_share_consent_flag?: boolean | null;
   rating: number | null;
   plan_type_name: SubscriptionPlan | null;
   subscription_id: string | null;

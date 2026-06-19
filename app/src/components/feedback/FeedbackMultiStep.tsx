@@ -58,6 +58,7 @@ function buildFanoutPayload(
   fields: {
     feedbackText: string | null;
     consent: boolean;
+    publicShareConsent: boolean;
     rating: number | null;
     topics: readonly string[];
   },
@@ -83,6 +84,7 @@ function buildFanoutPayload(
     app_id: effectiveAppId,
     feedback_text: fields.feedbackText,
     consent_flag: fields.consent,
+    public_share_consent_flag: fields.publicShareConsent,
     rating: fields.rating,
     plan_type_name: ctx.planType,
     subscription_id: ctx.subscriptionId,
@@ -213,7 +215,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
       logDevFeedbackBlockMessage(buildSupportRequestBlocks(data, origin, ctx));
       const storeResult = await storeToS3(buildFanoutPayload(
         'support',
-        { feedbackText: data.description, consent: data.followUp, rating: null, topics: data.topics },
+        { feedbackText: data.description, consent: data.followUp, publicShareConsent: false, rating: null, topics: data.topics },
         currentAppId, getSite, ctx, origin,
       ));
       // The BFF call IS the entire fanout — a 4xx/5xx means NOTHING fanned out
@@ -278,7 +280,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
       logDevFeedbackBlockMessage(buildBugReportBlocks(data, origin, ctx));
       const storeResult = await storeToS3(buildFanoutPayload(
         'issue',
-        { feedbackText: data.description, consent: data.followUp, rating: null, topics: data.topics },
+        { feedbackText: data.description, consent: data.followUp, publicShareConsent: false, rating: null, topics: data.topics },
         currentAppId, getSite, ctx, origin,
       ));
       // BFF call IS the fanout. Treat any failure as user-visible.
@@ -331,6 +333,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
           apiData['topics'] = data.topics.join(', ');
         }
         apiData['customer-consent'] = data.customerConsent;
+        apiData['public-share-consent'] = data.publicShareConsent;
 
         await saveToCompanionHub(feedbackId, apiData, customerId);
         companionHubOk = true;
@@ -347,7 +350,7 @@ export function FeedbackMultiStep(props: FeedbackProps) {
       logDevFeedbackBlockMessage(buildFeedbackBlocks(data, origin, ctx));
       const storeResult = await storeToS3(buildFanoutPayload(
         'feedback',
-        { feedbackText: data.comment ?? null, consent: data.customerConsent, rating: data.rating ?? null, topics: data.topics },
+        { feedbackText: data.comment ?? null, consent: data.customerConsent, publicShareConsent: data.publicShareConsent, rating: data.rating ?? null, topics: data.topics },
         currentAppId, getSite, ctx, origin,
       ));
       // BFF call IS the fanout. Treat any failure as user-visible.

@@ -6,6 +6,8 @@ export interface FeedbackS3Record {
   feedback_utc_ts: string;
   feedback_text: string | null;
   consent_flag: boolean | null;
+  /** True when user consented to GoDaddy publicly sharing their feedback and business name/website. Only set when rating >= 6. */
+  public_share_consent_flag: boolean | null;
   rating: number | null;
   plan_type_name: string | null;
   subscription_id: string | null;

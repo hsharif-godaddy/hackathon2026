@@ -26,6 +26,7 @@ export function ShareFeedbackStep({ onBack, onSubmit, onDone, hideRating }: Shar
   const [topics, setTopics] = useState<Set<string>>(new Set());
   const [comment, setComment] = useState('');
   const [customerConsent, setCustomerConsent] = useState(false);
+  const [publicShareConsent, setPublicShareConsent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [showRatingError, setShowRatingError] = useState(false);
@@ -49,7 +50,7 @@ export function ShareFeedbackStep({ onBack, onSubmit, onDone, hideRating }: Shar
     setIsSubmitting(true);
     setSubmitError(false);
     try {
-      const success = await onSubmit({ rating, topics: Array.from(topics), comment, customerConsent });
+      const success = await onSubmit({ rating, topics: Array.from(topics), comment, customerConsent, publicShareConsent });
       if (success) {
         setSubmitted(true);
         logImpressionEvent('feedback.share.submitSuccess')();
@@ -70,7 +71,11 @@ export function ShareFeedbackStep({ onBack, onSubmit, onDone, hideRating }: Shar
           <NpsRating
             label={t('builder_feedback_share_rating_label')}
             value={rating}
-            onChange={(v) => { setRating(v); setShowRatingError(false); }}
+            onChange={(v) => {
+              setRating(v);
+              setShowRatingError(false);
+              if (v == null || v < 6) setPublicShareConsent(false);
+            }}
             error={showRatingError}
           />
         )}
@@ -106,6 +111,16 @@ export function ShareFeedbackStep({ onBack, onSubmit, onDone, hideRating }: Shar
           checked={customerConsent}
           onChange={() => setCustomerConsent(!customerConsent)}
         />
+
+        {rating != null && rating >= 6 && (
+          <Checkbox
+            id="feedback-share-public-consent"
+            name="feedback-share-public-consent"
+            label={t('builder_feedback_share_public_consent_label')}
+            checked={publicShareConsent}
+            onChange={() => setPublicShareConsent(!publicShareConsent)}
+          />
+        )}
 
         {submitError && (
           <text.p as="caption" emphasis="critical">

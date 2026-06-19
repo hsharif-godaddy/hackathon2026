@@ -218,6 +218,7 @@ export const POST = withCustomerAuth(async (
   const appId = typeof body.app_id === 'string' ? body.app_id : null;
   const feedbackText = typeof body.feedback_text === 'string' ? body.feedback_text : null;
   const consentFlag = typeof body.consent_flag === 'boolean' ? body.consent_flag : null;
+  const publicShareConsentFlag = typeof body.public_share_consent_flag === 'boolean' ? body.public_share_consent_flag : null;
   const rating = typeof body.rating === 'number' && Number.isInteger(body.rating) ? body.rating : null;
   const planTypeName = typeof body.plan_type_name === 'string' ? body.plan_type_name : null;
   const subscriptionId = typeof body.subscription_id === 'string' ? body.subscription_id : null;
@@ -354,6 +355,7 @@ export const POST = withCustomerAuth(async (
     feedback_utc_ts: tsStr,
     feedback_text: feedbackText,
     consent_flag: consentFlag,
+    public_share_consent_flag: publicShareConsentFlag,
     rating,
     plan_type_name: planTypeName,
     subscription_id: subscriptionId,
