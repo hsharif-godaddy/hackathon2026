@@ -23,6 +23,7 @@ import {
   getBuildCommand,
   detectPackageManager,
   resolveStartCommand,
+  PAAS_NODEJS_V1_PRODUCT_ID,
   type PackageManager,
 } from './AppRestartService.js';
 
@@ -477,13 +478,6 @@ export class ProjectImportService {
           exitCode: installResult.exitCode,
           packageManager: detectedPm,
         });
-        await this.preserveDiagnoseSnapshotForFailure({
-          jobId,
-          appId,
-          appPath: app.path,
-          agentZipPath,
-        });
-        await this.gitRollback(appId, app.path);
         await this.importJobRepo.markFailed(
           jobId,
           installFailedMsg,
@@ -504,7 +498,7 @@ export class ProjectImportService {
       if (validation.hasBuildScript) {
         await this.updateStatus(jobId, ImportJobStatus.BUILDING);
         const buildStartTime = Date.now();
-        const buildResult = await appRestartService.runBuild(appId, app.path, detectedPm);
+        const buildResult = await appRestartService.runBuild(appId, app.path, detectedPm, { production: params.productId === PAAS_NODEJS_V1_PRODUCT_ID });
         buildDurationMs = Date.now() - buildStartTime;
 
         if (buildResult.output) {
@@ -522,13 +516,6 @@ export class ProjectImportService {
             exitCode: buildResult.exitCode,
             packageManager: detectedPm,
           });
-          await this.preserveDiagnoseSnapshotForFailure({
-            jobId,
-            appId,
-            appPath: app.path,
-            agentZipPath,
-          });
-          await this.gitRollback(appId, app.path);
           await this.importJobRepo.markFailed(
             jobId,
             buildFailedMsg,
@@ -1244,55 +1231,6 @@ export class ProjectImportService {
         jobId: args.jobId,
         appId: args.appId,
         snapshotPath,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  /**
-   * Rollback git changes on failure
-   * Uses git reset --hard to discard all changes and git clean to remove untracked files
-   */
-  private async gitRollback(appId: string, appPath: string): Promise<void> {
-    try {
-      this.logger.info('project-import.rollback.start', { appId });
-
-      const workspace = createForWorkspace(appId, 'preview');
-      const gitTool = new GitTool(workspace?.tasks);
-
-      // Step 1: Reset all tracked files to HEAD (discards all changes)
-      const resetResult = await gitTool.executeGitOperation(appPath, {
-        operation: 'reset',
-        options: {
-          mode: 'hard',
-          hash: 'HEAD',
-        },
-      });
-
-      if (!resetResult.success) {
-        this.logger.warn('project-import.rollback.reset-failed', {
-          appId,
-          error: resetResult.error,
-        });
-        return;
-      }
-
-      // Step 2: Remove all untracked files and directories
-      const cleanResult = await gitTool.executeGitOperation(appPath, {
-        operation: 'clean',
-      });
-
-      if (cleanResult.success) {
-        this.logger.info('project-import.rollback.success', { appId });
-      } else {
-        this.logger.warn('project-import.rollback.clean-failed', {
-          appId,
-          error: cleanResult.error,
-        });
-      }
-    } catch (error) {
-      this.logger.warn('project-import.rollback.error', {
-        appId,
         error: error instanceof Error ? error.message : String(error),
       });
     }

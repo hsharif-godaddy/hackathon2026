@@ -714,7 +714,8 @@ export class AppRestartService {
   async runBuild(
     appId: string,
     appPath: string,
-    packageManager: PackageManager = 'npm'
+    packageManager: PackageManager = 'npm',
+    { production = false }: { production?: boolean } = {}
   ): Promise<{ success: boolean; output?: string; error?: string; exitCode?: number }> {
     try {
       const workspace = createForWorkspace(appId, 'preview');
@@ -727,7 +728,7 @@ export class AppRestartService {
       }
 
       const terminalTool = new TerminalTool(workspace.tasks);
-      const buildCommand = getBuildCommand(packageManager);
+      const buildCommand = getBuildCommand(packageManager, production);
 
       this.logger.info('app-restart.build.begin', { appId, packageManager, command: buildCommand });
 

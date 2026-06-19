@@ -367,6 +367,23 @@ describe('AppRestartService', () => {
       });
     });
 
+    it('should prefix NODE_ENV=production when production option is true', async () => {
+      mockTerminalTool.executeCommand.mockResolvedValue({
+        success: true,
+        exitCode: 0,
+        stdout: 'build completed',
+        stderr: '',
+      });
+
+      const result = await service.runBuild(testAppId, testAppPath, 'npm', { production: true });
+
+      expect(result.success).toBe(true);
+      expect(mockTerminalTool.executeCommand).toHaveBeenCalledWith(testAppPath, {
+        command: 'NODE_ENV=production npm run build',
+        timeout: 10 * 60 * 1000,
+      });
+    });
+
     it('should return error when workspace is not available', async () => {
       vi.mocked(createForWorkspace).mockReturnValue(null);
 
