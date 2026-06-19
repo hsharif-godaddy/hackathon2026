@@ -105,10 +105,27 @@ describe('buildUploadHandlingGuidance', () => {
     expect(out).not.toContain('media-upload');
   });
 
-  it('unclear → do not place yet, ask where it should go', () => {
-    const out = buildUploadHandlingGuidance(input({ placementIntent: 'unclear' }));
+  it('unclear → ask where it goes but carry filename + import_upload so a later "yes" can act', () => {
+    const out = buildUploadHandlingGuidance(
+      input({ placementIntent: 'unclear', storedUploadFilename: 'app123_456_photo.jpg' }),
+    );
     expect(out).toContain('unclear');
-    expect(out).toContain('do not place');
+    expect(out).toContain('Ask where');
+    // The confirmation path must be actionable, not a dead-end: it carries the
+    // stored filename and the import_upload mechanics so a follow-up "yes"
+    // (in any later turn) lets the agent place the image without losing context.
+    expect(out).toContain('import_upload');
+    expect(out).toContain('app123_456_photo.jpg');
+    expect(out).not.toContain('do not place');
+    // Replacing an existing image must reuse that element's slot, not mint a new
+    // one — same add-vs-replace rule the display_on_site branch carries.
+    expect(out).toContain('REPLACING');
+  });
+
+  it('unclear without a stored filename falls back to the listUploadedFiles placeholder', () => {
+    const out = buildUploadHandlingGuidance(input({ placementIntent: 'unclear' }));
+    expect(out).toContain('import_upload');
+    expect(out).toContain('<stored-upload-filename-from-listUploadedFiles>');
   });
 
   it('non-image documents are labelled as document', () => {

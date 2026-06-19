@@ -944,6 +944,43 @@ export class GitUtils {
         workingDir: '/app',
         timeoutSeconds: 5,
       });
+
+      // Carry slot-upload bytes into the archive. Media slots whose currentUrl is
+      // /airo-assets/uploads/<file> are served by dev-supervisor from the live
+      // public/ tree, but a dist-only archive only tars dist/. If the upload
+      // happened after the last build, the file never made it into dist/ — so the
+      // published slot 404s while preview (serving live public/) works. Mirror the
+      // two upload destinations into their dist/ locations to match dev-supervisor's
+      // publish-mode media search paths:
+      //   - "use this image" (importSlot)        → public/media
+      //   - chat upload (importChatUploadToSlot)  → public/assets/media
+      // Each spec is wrapped in `if test -d <src>; then …; fi` so an absent
+      // source dir is a clean no-op (exit 0), while a genuine mkdir/cp failure
+      // (I/O, permission, ENOSPC) surfaces a non-zero exit we can warn on —
+      // shipping a partial upload mirror would 404 the slot after publish, the
+      // exact failure this copy exists to prevent.
+      const mediaCopySpecs = [
+        // public/media → dist/media and dist/client/media
+        'if test -d public/media; then mkdir -p dist/media && cp -R public/media/. dist/media/; fi',
+        'if test -d public/media && test -d dist/client; then mkdir -p dist/client/media && cp -R public/media/. dist/client/media/; fi',
+        // public/assets/media → dist/assets/media and dist/client/assets/media
+        'if test -d public/assets/media; then mkdir -p dist/assets/media && cp -R public/assets/media/. dist/assets/media/; fi',
+        'if test -d public/assets/media && test -d dist/client; then mkdir -p dist/client/assets/media && cp -R public/assets/media/. dist/client/assets/media/; fi',
+      ];
+      for (const spec of mediaCopySpecs) {
+        const mediaCopyResult = await this.tasks!.runCommandSync({
+          command: buildShellCommand(['sh', '-c', spec]),
+          workingDir: '/app',
+          timeoutSeconds: 30,
+        });
+        if (mediaCopyResult.exitCode !== 0) {
+          logger.warn('git.archive.media_copy.failed', {
+            spec,
+            exitCode: mediaCopyResult.exitCode,
+            stderr: mediaCopyResult.stderr,
+          });
+        }
+      }
     }
 
     // Create output directory

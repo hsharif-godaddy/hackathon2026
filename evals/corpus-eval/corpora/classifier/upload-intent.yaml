@@ -1,6 +1,6 @@
 metadata:
   name: Classifier - Upload Placement Intent
-  version: 1.0.0
+  version: 1.2.0
 
 # Verifies the chat-upload classifier reads the user's prompt and assigns the
 # correct placementIntent. Image content is a neutral placeholder on purpose —
@@ -13,8 +13,29 @@ cases:
   - id: use-as-hero
     prompt: 'Use this as the hero image on my homepage'
     expectedPlacementIntent: display_on_site
-    tags: [display]
-    rationale: Explicit request to place the upload as the hero
+    expectedAssetRole: hero_image
+    tags: [display, hero]
+    rationale: Prompt explicitly assigns the hero role — hero_image is correct
+
+  # assetRole must follow the PROMPT, not the image's appearance. A display image
+  # the user places in a NEW/specific location must be null even if it looks like
+  # a hero — hero_image/background auto-register into the single canonical slot
+  # and would overwrite the real hero (AIROBUILD-2364: a "new section" upload
+  # tagged hero_image silently hijacked pages/home/hero).
+
+  - id: new-section-not-hero
+    prompt: 'make one more section and use these images'
+    expectedPlacementIntent: display_on_site
+    expectedAssetRole: null
+    tags: [display, asset-role]
+    rationale: Prompt targets a new section, not the hero — assetRole null even though the photo may look hero-ish
+
+  - id: add-card-not-hero
+    prompt: 'add this as a card in the about section'
+    expectedPlacementIntent: display_on_site
+    expectedAssetRole: null
+    tags: [display, asset-role]
+    rationale: A card in a specific section is generic content, not the hero/background role
 
   - id: put-on-menu
     prompt: 'Put this photo on the menu page'
@@ -92,7 +113,10 @@ cases:
     tags: [reference]
     rationale: Color/style cue, not an image to place
 
-  # --- unclear: prompt does not say whether to display or reference ---
+  # --- unclear: prompt does not say whether to display or reference. The
+  # agent asks where to place it; on confirmation it places via import_upload
+  # (the guidance carries the stored filename so a later "yes" never loses the
+  # image — AIROBUILD-2364 follow-up). ---
 
   - id: bare-build
     prompt: 'Build my site'
@@ -110,4 +134,16 @@ cases:
     prompt: ''
     expectedPlacementIntent: unclear
     tags: [unclear]
-    rationale: No prompt at all — must default to unclear, never auto-place
+    rationale: No prompt at all — default to unclear and ask where it should go
+
+  - id: question-about-file
+    prompt: 'What do you think of this?'
+    expectedPlacementIntent: unclear
+    tags: [unclear]
+    rationale: A question about the file is neither a placement nor a reference directive
+
+  - id: opinion-about-file
+    prompt: 'Is this any good?'
+    expectedPlacementIntent: unclear
+    tags: [unclear]
+    rationale: Soliciting an opinion gives no signal to display or reference the upload

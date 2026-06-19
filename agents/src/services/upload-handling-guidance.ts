@@ -88,8 +88,14 @@ export function buildUploadHandlingGuidance(input: UploadHandlingInput): string 
     return lines.join('\n')
   }
 
+  const unclearFilename = input.storedUploadFilename ?? '<stored-upload-filename-from-listUploadedFiles>'
   lines.push(
-    '- User intent: **unclear** — do not place this image in code yet; ask where it should go or wait for an explicit request to use it on the site',
+    '- User intent: **unclear** — the user uploaded this but has not said where it should go.',
+    '- Ask where they want it before placing it. Do NOT place it on the site until the user tells you where.',
+    '- The moment the user confirms a location — in THIS turn or a later reply such as "yes" / "the hero" / "on the homepage" — register it immediately, do NOT re-ask:',
+    `\`media({ action: "import_upload", slot: "<semantic-name>", filename: "${unclearFilename}" })\``,
+    '- REPLACING an existing image (e.g. "use this for the hero", "swap the about photo") → pass that element\'s EXACT existing slot path so the image updates in place; do NOT invent a new slot. ADDING a brand-new element → use a new semantic slot name.',
+    '- Then use the returned `slotUrl` in `<img src="…">` or CSS background-image. Do NOT copy to public/assets or use /files/uploads/ for this image.',
   )
   return lines.join('\n')
 }

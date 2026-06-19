@@ -18,6 +18,64 @@ import (
 // ErrSlotNotFound is returned when a requested image slot does not exist in the manifest.
 var ErrSlotNotFound = errors.New("image slot not found")
 
+// buildMediaSearchPaths returns the ordered filesystem roots the media slot /
+// upload handlers search when resolving a /airo-assets/uploads/{name} reference
+// to a local file (first match wins).
+//
+// Two deployment shapes must both resolve:
+//   - Preview serves from the live workspace under public/ (agent + chat uploads
+//     land in public/assets/{media,images,uploads} and public/media).
+//   - Publish serves from a dist-only archive that ships only dist/. The build
+//     mirrors public/<x> to dist/client/<x> (and some templates emit to dist/<x>),
+//     so the dist/ entries must mirror the public/ tree — INCLUDING the assets/
+//     subtree. Without dist/client/assets/media, chat-uploaded images 404 in
+//     published apps even though the bytes are present in the archive.
+func buildMediaSearchPaths(appDir, sharedStorageDir string) []string {
+	paths := make([]string, 0, 24)
+
+	// Shared storage (production CephFS mount) takes precedence when configured.
+	if sharedStorageDir != "" {
+		base := filepath.Join(sharedStorageDir, "public", "assets")
+		paths = append(paths,
+			base,
+			filepath.Join(base, "media"),
+			filepath.Join(base, "images"),
+			filepath.Join(base, "uploads"),
+		)
+	}
+
+	// Live workspace (preview) public/ roots.
+	publicAssets := filepath.Join(appDir, "public", "assets")
+	paths = append(paths,
+		publicAssets,
+		filepath.Join(publicAssets, "media"),
+		filepath.Join(publicAssets, "images"),
+		filepath.Join(publicAssets, "uploads"),
+		filepath.Join(appDir, "public", "media"),
+		filepath.Join(appDir, "public", "images"),
+	)
+
+	// Built artifact (publish) dist/ roots — mirror of the public/ tree. The build
+	// maps public/<x> to dist/client/<x>; dist/<x> is listed too for templates that
+	// emit there directly.
+	for _, distBase := range []string{
+		filepath.Join(appDir, "dist"),
+		filepath.Join(appDir, "dist", "client"),
+	} {
+		distAssets := filepath.Join(distBase, "assets")
+		paths = append(paths,
+			distAssets,
+			filepath.Join(distAssets, "media"),
+			filepath.Join(distAssets, "images"),
+			filepath.Join(distAssets, "uploads"),
+			filepath.Join(distBase, "media"),
+			filepath.Join(distBase, "images"),
+		)
+	}
+
+	return paths
+}
+
 // ImageSize represents the requested dimensions for an image slot.
 // The Fit field is stored for future use by image transformation services.
 type ImageSize struct {

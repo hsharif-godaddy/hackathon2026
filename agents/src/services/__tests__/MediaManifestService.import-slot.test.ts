@@ -2,15 +2,23 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
 import type { MediaSlot } from "../MediaManifestService.js";
 
-vi.mock("node:fs/promises", () => ({
-  default: {
+vi.mock("node:fs/promises", () => {
+  // FileUploadService (a module-singleton built when MediaManifestService is
+  // imported) does `import { mkdir, … } from 'fs/promises'` and calls mkdir() in
+  // its constructor, so the mock must expose NAMED exports too — not just
+  // default — and mkdir must resolve at import time, before any beforeEach runs.
+  const mod = {
     readFile: vi.fn(),
     writeFile: vi.fn(),
     rename: vi.fn(),
     stat: vi.fn(),
-    mkdir: vi.fn(),
-  },
-}));
+    mkdir: vi.fn().mockResolvedValue(undefined),
+    readdir: vi.fn().mockResolvedValue([]),
+    unlink: vi.fn().mockResolvedValue(undefined),
+    rm: vi.fn().mockResolvedValue(undefined),
+  };
+  return { default: mod, ...mod };
+});
 
 vi.mock("../../database/repositories/AppRepository.js", () => ({
   AppRepository: vi.fn().mockImplementation(function () { return {
@@ -43,6 +51,7 @@ vi.mock("../../workspace/index.js", () => ({
 vi.mock("../../tools/ast-image-editor.js", () => ({
   astImageEditor: {
     replaceImage: vi.fn().mockResolvedValue({ success: true }),
+    replaceUrlInSource: vi.fn().mockResolvedValue({ success: true }),
   },
 }));
 
@@ -703,6 +712,132 @@ describe("MediaManifestService - importSlot", () => {
       expect(imageInfo.currentUrl).not.toMatch(/^\/airo-assets\/uploads\//);
       // Should be the normalized pathname that matches what's in source code
       expect(imageInfo.currentUrl).toBe("/assets/photo.jpg");
+    });
+
+    it("falls back to URL-based source rewrite when JSX replace refuses a dynamic src", async () => {
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+      vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+      vi.mocked(astImageEditor.replaceImage).mockResolvedValueOnce({
+        success: false,
+        error:
+          "Image src at line 6 uses a dynamic expression that cannot be safely rewritten. Edit the source array or prop declaration directly.",
+      });
+
+      const result = await service.importSlot("test-app", {
+        imageUrl: "https://example.com/eng.jpg",
+        imageAlt: "Engineering",
+        devContext: {
+          fileName: "src/pages/services.tsx",
+          componentName: "Services",
+          lineNumber: 6,
+        },
+      });
+
+      expect(result.success).toBe(true);
+      expect(astImageEditor.replaceUrlInSource).toHaveBeenCalledWith(
+        "/tmp/test-app",
+        expect.objectContaining({
+          oldUrl: "https://example.com/eng.jpg",
+          newUrl: "/airo-assets/images/pages/services/engineering",
+          label: "Engineering",
+          scopeFile: "src/pages/services.tsx",
+        }),
+        "test-app"
+      );
+    });
+
+    it("commits the data file the URL fallback actually rewrote, not just the clicked component", async () => {
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+      vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+      vi.mocked(astImageEditor.replaceImage).mockResolvedValueOnce({
+        success: false,
+        error: "dynamic expression that cannot be safely rewritten",
+      });
+      vi.mocked(astImageEditor.replaceUrlInSource).mockResolvedValueOnce({
+        success: true,
+        filePath: "src/data/services.ts",
+      });
+
+      const commitSpy = vi
+        .spyOn(service as unknown as { commitManifestChange: (...args: unknown[]) => Promise<unknown> }, "commitManifestChange")
+        .mockResolvedValue(undefined);
+
+      await service.importSlot("test-app", {
+        imageUrl: "https://example.com/eng.jpg",
+        imageAlt: "Engineering",
+        devContext: {
+          fileName: "src/pages/services.tsx",
+          componentName: "Services",
+          lineNumber: 6,
+        },
+      });
+
+      const additionalFiles = commitSpy.mock.calls[0]?.[3] as string[] | undefined;
+      expect(additionalFiles).toContain("src/data/services.ts");
+
+      commitSpy.mockRestore();
+    });
+
+    it("still succeeds (manifest import) and stages only the clicked file when JSX refuses AND the URL fallback also fails", async () => {
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+      vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+      vi.mocked(astImageEditor.replaceImage).mockResolvedValueOnce({
+        success: false,
+        error: "dynamic expression that cannot be safely rewritten",
+      });
+      vi.mocked(astImageEditor.replaceUrlInSource).mockResolvedValueOnce({
+        success: false,
+        error: "URL not found in source",
+      });
+
+      const commitSpy = vi
+        .spyOn(service as unknown as { commitManifestChange: (...args: unknown[]) => Promise<unknown> }, "commitManifestChange")
+        .mockResolvedValue(undefined);
+
+      const result = await service.importSlot("test-app", {
+        imageUrl: "https://example.com/eng.jpg",
+        imageAlt: "Engineering",
+        devContext: {
+          fileName: "src/pages/services.tsx",
+          componentName: "Services",
+          lineNumber: 6,
+        },
+      });
+
+      // Manifest import is independent of the source rewrite — slot is still created.
+      expect(result.success).toBe(true);
+
+      // No phantom file staged: only the clicked component, since the fallback
+      // never resolved a different file to rewrite.
+      const additionalFiles = commitSpy.mock.calls[0]?.[3] as string[] | undefined;
+      expect(additionalFiles).toEqual(["src/pages/services.tsx"]);
+
+      commitSpy.mockRestore();
+    });
+
+    it("does not call the URL fallback when JSX replace succeeds", async () => {
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify({}));
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+      vi.mocked(fs.rename).mockResolvedValue(undefined);
+
+      await service.importSlot("test-app", {
+        imageUrl: "https://example.com/photo.jpg",
+        imageAlt: "Hero",
+        devContext: {
+          fileName: "src/pages/index.tsx",
+          componentName: "HeroSection",
+          lineNumber: 10,
+        },
+      });
+
+      expect(astImageEditor.replaceImage).toHaveBeenCalled();
+      expect(astImageEditor.replaceUrlInSource).not.toHaveBeenCalled();
     });
 
     it("skips AST update when devContext is not provided", async () => {

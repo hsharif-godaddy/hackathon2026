@@ -637,6 +637,55 @@ export class ASTImageEditor extends ASTEditorBase {
   }
 
   /**
+   * Repoint a raw source URL (e.g. `/assets/eng.jpg`) to a new URL anywhere it
+   * appears as a string literal in src/ — used as the import-slot fallback when
+   * JSX-targeted replacement refuses a dynamic `src` (e.g. `arr.map(s => <img
+   * src={s.image} />)`). The URL almost always lives as a literal in the backing
+   * data array/object, so matching by the URL string (optionally disambiguated
+   * by a sibling label property) repoints it without touching the dynamic JSX.
+   *
+   * Strategy order mirrors {@link replaceSharedSlotReference}: labeled record
+   * first (when a label is known), then the Nth string-literal occurrence.
+   */
+  async replaceUrlInSource(
+    appPath: string,
+    options: {
+      oldUrl: string;
+      newUrl: string;
+      label?: string | null;
+      scopeFile?: string | null;
+      occurrenceIndex?: number | null;
+    },
+    appId: string
+  ): Promise<ImageReplaceResult> {
+    const label = options.label?.trim() || null;
+    if (label) {
+      const labeledResult = await this.replaceSlotUrlInLabeledRecord(appPath, {
+        label,
+        oldUrl: options.oldUrl,
+        newUrl: options.newUrl,
+        scopeFile: options.scopeFile,
+      }, appId);
+      if (labeledResult.success) {
+        return labeledResult;
+      }
+    }
+
+    // This is the last-resort import fallback (no JSX path after it), so always
+    // attempt the occurrence match — but normalize null/negative to 0 (match the
+    // first occurrence) for parity with replaceSharedSlotReference's >= 0 gate; a
+    // negative index would otherwise pass through and silently never match.
+    const occurrenceIndex =
+      options.occurrenceIndex != null && options.occurrenceIndex >= 0 ? options.occurrenceIndex : 0;
+    return this.replaceSlotUrlOccurrenceInSource(appPath, {
+      oldUrl: options.oldUrl,
+      newUrl: options.newUrl,
+      occurrenceIndex,
+      scopeFile: options.scopeFile,
+    }, appId);
+  }
+
+  /**
    * Replace a shared slot URL with a forked slot URL for one collection item.
    * Tries JSX targeting first, then falls back to the Nth string literal match in src/.
    */

@@ -7,6 +7,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GitUtils } from '../git.js';
+import { logger } from '../../logging/index.js';
 
 // Mock WorkspaceTasks
 const createMockTasks = () => ({
@@ -532,13 +533,19 @@ describe('GitUtils', () => {
     it('should copy airo-media.json into dist/ when it exists', async () => {
       const commitHash = 'abc1234';
 
-      // Flow: dist check -> manifest check (found) -> copy manifest -> copy to dist/client -> mkdir -> tar
+      // Flow: dist check -> manifest check (found) -> cp manifest dist/ -> cp manifest
+      // dist/client/ -> 4 media copies (public/media + public/assets/media, each ->
+      // dist + dist/client) -> mkdir -> tar
       // Note: Using explicit includeSource: false to skip auto-detect
       mockTasks.runCommandSync
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // airo-media.json check (found)
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp airo-media.json dist/
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp airo-media.json dist/client/
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/media dist/media
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/media dist/client/media
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/assets/media dist/assets/media
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/assets/media dist/client/assets/media
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
 
@@ -549,8 +556,8 @@ describe('GitUtils', () => {
         commitHash
       });
 
-      // Verify 6 calls including both copies
-      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(6);
+      // Verify 10 calls including manifest + media copies
+      expect(mockTasks.runCommandSync).toHaveBeenCalledTimes(10);
 
       // Verify manifest was copied to dist/
       const copyCallArgs = mockTasks.runCommandSync.mock.calls[2][0];
@@ -563,7 +570,7 @@ describe('GitUtils', () => {
       expect(clientCopyArgs.command).toContain('dist/client');
 
       // Verify final tar only archives dist/
-      const tarCallArgs = mockTasks.runCommandSync.mock.calls[5][0];
+      const tarCallArgs = mockTasks.runCommandSync.mock.calls[9][0];
       expect(tarCallArgs.command).toContain('tar');
       expect(tarCallArgs.command).toContain('dist');
     });
@@ -571,12 +578,17 @@ describe('GitUtils', () => {
     it('should copy airo-media.json to dist/client/ for AI video runtime discovery', async () => {
       const commitHash = 'a1b2c3d';
 
-      // Flow: dist check -> manifest check (found) -> cp to dist/ -> cp to dist/client/ -> mkdir -> tar
+      // Flow: dist check -> manifest check (found) -> cp to dist/ -> cp to dist/client/ ->
+      // 4 media copies -> mkdir -> tar
       mockTasks.runCommandSync
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // airo-media.json check (found)
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp airo-media.json dist/
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp airo-media.json dist/client/
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/media dist/media
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/media dist/client/media
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/assets/media dist/assets/media
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/assets/media dist/client/assets/media
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
         .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
 
@@ -587,6 +599,73 @@ describe('GitUtils', () => {
       const clientCopyArgs = mockTasks.runCommandSync.mock.calls[3][0];
       expect(clientCopyArgs.command).toContain('dist/client');
       expect(clientCopyArgs.command).toContain('airo-media.json');
+    });
+
+    it('should copy public uploads into dist/ so dist-only archives carry the bytes', async () => {
+      const commitHash = 'abc1234';
+
+      // Flow (manifest found): dist check -> manifest check -> cp manifest dist/ ->
+      // cp manifest dist/client/ -> 4 media copies -> mkdir -> tar
+      mockTasks.runCommandSync
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // airo-media.json check (found)
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp airo-media.json dist/
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp airo-media.json dist/client/
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/media dist/media
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/media dist/client/media
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/assets/media dist/assets/media
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/assets/media dist/client/assets/media
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+
+      await gitUtils.createArchive('/app', commitHash, undefined, { includeSource: false });
+
+      // "use this image" uploads: public/media -> dist/media + dist/client/media
+      const mediaCopyArgs = mockTasks.runCommandSync.mock.calls[4][0];
+      expect(mediaCopyArgs.command).toContain('public/media');
+      expect(mediaCopyArgs.command).toContain('dist/media');
+
+      const clientMediaCopyArgs = mockTasks.runCommandSync.mock.calls[5][0];
+      expect(clientMediaCopyArgs.command).toContain('public/media');
+      expect(clientMediaCopyArgs.command).toContain('dist/client/media');
+
+      // chat uploads: public/assets/media -> dist/assets/media + dist/client/assets/media
+      const assetsMediaCopyArgs = mockTasks.runCommandSync.mock.calls[6][0];
+      expect(assetsMediaCopyArgs.command).toContain('public/assets/media');
+      expect(assetsMediaCopyArgs.command).toContain('dist/assets/media');
+
+      const clientAssetsMediaCopyArgs = mockTasks.runCommandSync.mock.calls[7][0];
+      expect(clientAssetsMediaCopyArgs.command).toContain('public/assets/media');
+      expect(clientAssetsMediaCopyArgs.command).toContain('dist/client/assets/media');
+    });
+
+    it('should warn (not silently swallow) when a media-copy command fails mid-archive', async () => {
+      // Source dir present but the copy errors (I/O, permission, ENOSPC) — must
+      // surface as a warn, not be swallowed by the old `|| true`, otherwise a
+      // partial upload mirror ships and the published slot 404s.
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined as never);
+      mockTasks.runCommandSync
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // dist/ check
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // airo-media.json check (found)
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp airo-media.json dist/
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp airo-media.json dist/client/
+        .mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'cp: write error: No space left on device', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/media dist/media — FAILS
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/media dist/client/media
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/assets/media dist/assets/media
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // cp public/assets/media dist/client/assets/media
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' })  // mkdir output dir
+        .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '', timedOut: false, executionTimeMs: 0, taskId: 't' }); // tar
+
+      // A failed media copy is warn-and-continue, not fatal — the archive still completes.
+      await expect(
+        gitUtils.createArchive('/app', 'abc1234', undefined, { includeSource: false })
+      ).resolves.toMatchObject({ commitHash: 'abc1234' });
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        'git.archive.media_copy.failed',
+        expect.objectContaining({ exitCode: 1, stderr: 'cp: write error: No space left on device' })
+      );
+      warnSpy.mockRestore();
     });
 
     it('should throw error when copying airo-media.json fails', async () => {

@@ -892,8 +892,12 @@ export class MediaManifestService {
       const manifestPath = this.getManifestPath(app.path);
       await this.writeManifest(manifestPath, manifest);
 
-      // Update the source file to use the new slot URL via AST-based replacement
+      // Update the source file to use the new slot URL via AST-based replacement.
+      // The URL fallback may rewrite a different file than the clicked component
+      // (e.g. a shared src/data/* collection), so track which file actually
+      // changed to stage it for the commit below.
       const newSlotUrl = `/airo-assets/images/${slotPath}`;
+      let rewrittenSourceFile: string | undefined;
       if (options.devContext) {
         try {
           const replaceResult = await astImageEditor.replaceImage(
@@ -916,18 +920,46 @@ export class MediaManifestService {
           );
 
           if (replaceResult.success) {
+            rewrittenSourceFile = options.devContext.fileName;
             logger.info('media_manifest.import_slot.source_updated', {
               appId,
               slotPath,
               fileName: options.devContext.fileName,
             });
           } else {
-            logger.warn('media_manifest.import_slot.source_update_failed', {
-              appId,
-              slotPath,
-              fileName: options.devContext.fileName,
-              error: replaceResult.error,
-            });
+            // JSX-targeted replace refused (commonly a dynamic src such as
+            // `arr.map(s => <img src={s.image} />)`). The source URL still
+            // lives as a string literal in the backing data array/object, so
+            // fall back to a URL-based rewrite there — repointing the data
+            // without touching the dynamic JSX expression.
+            const fallbackResult = await astImageEditor.replaceUrlInSource(
+              app.path,
+              {
+                oldUrl: sourceFileUrl,
+                newUrl: newSlotUrl,
+                label: options.imageAlt,
+                scopeFile: options.devContext.fileName,
+              },
+              appId
+            );
+
+            if (fallbackResult.success) {
+              rewrittenSourceFile = fallbackResult.filePath || options.devContext.fileName;
+              logger.info('media_manifest.import_slot.source_updated', {
+                appId,
+                slotPath,
+                fileName: rewrittenSourceFile,
+                strategy: 'url_fallback',
+              });
+            } else {
+              logger.warn('media_manifest.import_slot.source_update_failed', {
+                appId,
+                slotPath,
+                fileName: options.devContext.fileName,
+                error: replaceResult.error,
+                fallbackError: fallbackResult.error,
+              });
+            }
           }
         } catch (sourceError) {
           // Log but don't fail - manifest import was still successful
@@ -940,10 +972,17 @@ export class MediaManifestService {
         }
       }
 
-      // Commit to git (includes both manifest and source file changes)
-      const additionalFiles = options.devContext?.fileName
-        ? [options.devContext.fileName]
-        : undefined;
+      // Commit to git (includes both manifest and source file changes). Stage
+      // the file the rewrite actually touched: the URL fallback may resolve to a
+      // different file (e.g. src/data/*) than the clicked one.
+      const filesToStage = new Set<string>();
+      if (options.devContext?.fileName) {
+        filesToStage.add(options.devContext.fileName);
+      }
+      if (rewrittenSourceFile) {
+        filesToStage.add(rewrittenSourceFile);
+      }
+      const additionalFiles = filesToStage.size > 0 ? [...filesToStage] : undefined;
       try {
         await this.commitManifestChange(appId, slotPath, 'create', additionalFiles);
       } catch (gitError) {

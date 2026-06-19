@@ -205,66 +205,8 @@ func (p *HTTPProxy) Start() error {
 		persistentDir = filepath.Join(appDir, "public")
 	}
 
-	// Define media search paths for all handlers - single source of truth
-	// For forwards/backwards compatibility, we check both shared storage and v4 default paths.
-	// When SHARED_STORAGE_DIR is set, those paths take precedence.
-	var mediaSearchPaths []string
-
-	if sharedStorageDir != "" {
-		// Shared storage enabled: prefer shared storage paths, fall back to v4 default paths
-		// URL pattern: /airo-assets/uploads/{filename} where filename may include subdirectories
-		//
-		// Search order (first match wins):
-		// 1. Base assets directory - catches agent-written files in any subdirectory
-		//    /shared-storage/public/assets/{subdirs}/{filename}
-		//    Example: /airo-assets/uploads/pdfs/doc.pdf → /shared-storage/public/assets/pdfs/doc.pdf
-		//
-		// 2-4. Specific tool directories - explicit paths for known file types
-		//    /shared-storage/public/assets/media/{filename}   (media slot uploads)
-		//    /shared-storage/public/assets/images/{filename}  (AI-generated images)
-		//    /shared-storage/public/assets/uploads/{filename} (runtime user uploads)
-		//
-		// 5-12. Fallback paths for v4 layout, legacy workspace, and publish mode
-		mediaSearchPaths = []string{
-			filepath.Join(sharedStorageDir, "public", "assets"),
-			filepath.Join(sharedStorageDir, "public", "assets", "media"),
-			filepath.Join(sharedStorageDir, "public", "assets", "images"),
-			filepath.Join(sharedStorageDir, "public", "assets", "uploads"),
-			filepath.Join(appDir, "public", "assets"),
-			filepath.Join(appDir, "public", "assets", "media"),
-			filepath.Join(appDir, "public", "assets", "images"),
-			filepath.Join(appDir, "public", "assets", "uploads"),
-			filepath.Join(appDir, "public", "media"),
-			filepath.Join(appDir, "public", "images"),
-			filepath.Join(appDir, "dist", "media"),
-			filepath.Join(appDir, "dist", "client", "media"),
-		}
-	} else {
-		// No shared storage: use v4 default paths, check legacy workspace paths too
-		// URL pattern: /airo-assets/uploads/{filename} where filename may include subdirectories
-		//
-		// Search order (first match wins):
-		// 1. Base assets directory - catches agent-written files in any subdirectory
-		//    /app/public/assets/{subdirs}/{filename}
-		//    Example: /airo-assets/uploads/pdfs/doc.pdf → /app/public/assets/pdfs/doc.pdf
-		//
-		// 2-4. Specific tool directories - explicit paths for known file types
-		//    /app/public/assets/media/{filename}   (media slot uploads)
-		//    /app/public/assets/images/{filename}  (AI-generated images)
-		//    /app/public/assets/uploads/{filename} (runtime user uploads)
-		//
-		// 5-8. Fallback paths for legacy workspace and publish mode
-		mediaSearchPaths = []string{
-			filepath.Join(appDir, "public", "assets"),
-			filepath.Join(appDir, "public", "assets", "media"),
-			filepath.Join(appDir, "public", "assets", "images"),
-			filepath.Join(appDir, "public", "assets", "uploads"),
-			filepath.Join(appDir, "public", "media"),
-			filepath.Join(appDir, "public", "images"),
-			filepath.Join(appDir, "dist", "media"),
-			filepath.Join(appDir, "dist", "client", "media"),
-		}
-	}
+	// Define media search paths for all handlers - single source of truth.
+	mediaSearchPaths := buildMediaSearchPaths(appDir, sharedStorageDir)
 
 	// Manifest paths - check multiple locations for different deployment modes:
 	// - Preview mode: {appDir}/airo-media.json (agents write here directly)
