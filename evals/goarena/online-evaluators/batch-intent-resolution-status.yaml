@@ -1,0 +1,146 @@
+---
+evaluatorId: "airo-batch-intent-resolution-status"
+name: "Batch Intent Resolution Status Evaluator"
+# schema-only: not read by the batch runner
+description: "Session-level batch evaluator for production traces. Scores how well the agent resolved the user's goal for the session, infers an intent tag for the session's primary objective, and records an outcome classification. Runs on every session (alwaysRun: true) — not skill-gated."
+
+type: llm
+customOutputSchema: true
+
+# schema-only: not read by the batch runner
+scoreType: NUMERIC
+scoreName: "session_objective_completion"
+# schema-only: not read by the batch runner
+scoreConfig:
+  min: 0
+  max: 100
+
+llmConfig:
+  model: gpt-5.2
+  temperature: 0
+  maxTokens: 2000
+
+staticContext: |
+  You are a senior QA analyst evaluating production sessions of an AI coding agent
+  (Airo Builder). Your task is to score how well the agent resolved the user's goal
+  for the entire session.
+
+  Scoring rules:
+  - Follow the goal/outcome pattern: infer the user's goal, infer the achieved end
+    state from the workflow evidence, then score how well that end state satisfies
+    the goal.
+  - Score the ACHIEVED END STATE, not effort or intent. A plan, an explanation of
+    what the assistant will do, or a stated intention with no executed result is NOT
+    resolution: cap such intent-only / plan-only sessions at 50 (use lower when
+    nothing was attempted).
+  - Tool success/exit status is NOT goal completion. "SUCCESS"/"OK" outcomes only
+    mean the call did not error; they are not evidence the user's goal was met. Do
+    not infer completion from the mere presence or success of edit/publish/audit/
+    status tools.
+  - Weigh the actual tool RESULT text and the assistant's own output: these describe
+    what was actually produced or changed. Prefer concrete result evidence over tool
+    counts or outcomes.
+  - A FAILURE outcome or an error in tool results is strong evidence the goal was
+    not met; weigh it heavily.
+  - If edits occurred but there is no result/validation evidence of the end state,
+    treat the goal as attempted/unverified (mid-band), not fully resolved.
+  - A user correction or re-request means a prior attempt did NOT satisfy the user.
+    Lower the score for sessions with repeated corrections; persistent re-requests
+    on the same goal indicate the goal was not resolved.
+  - Scores are 0–100. Rubric:
+      90–100: fully satisfies the goal WITH end-state evidence
+      70–89:  largely satisfies it with minor gaps
+      50–69:  partially satisfies it
+      25–49:  poorly aligns with the goal
+      0–24:   fails or contradicts the goal
+    Reserve 90+ for clear evidence of a completed end state, not merely successful
+    tool calls.
+  - Use only the transcript, tool names, tool outcomes, tool results, and supplied
+    metadata. Do not require screenshots, browser navigation, or rendered artifacts.
+  - Never assume or hallucinate steps that are not present in the transcript.
+
+template: |
+  {{staticContext}}
+
+  Score this production session for objective completion.
+
+  Session:
+  {{workflow}}
+
+  Response Format:
+  Return ONLY a valid JSON object — no markdown, no prose, no trailing text.
+  Required fields:
+
+    score         — integer 0–100 following the rubric above
+    outcome       — one of: fully_resolved | largely_resolved | partial | poor | failed
+                    Map from score range: 90–100 → fully_resolved, 70–89 → largely_resolved,
+                    50–69 → partial, 25–49 → poor, 0–24 → failed
+    confidence    — float 0–1: your confidence in this evaluation (1.0 = certain, 0.0 = guessing)
+    intent_tag    — the single best-fitting tag for the session's primary objective.
+                    Must be exactly one of:
+                      add_feature | edit_text | edit_media | troubleshoot | publish_deploy |
+                      rebuild_redesign | explore_test | create_new | migrate |
+                      post_build_guidance | other
+                    Use "other" only when none of the above fit.
+    reason        — string ≤500 chars: one- or two-sentence rationale citing key evidence
+
+onlineConfig:
+  enabled: true
+  version: "v1"
+  # schema-only: scope, target, metadataFilters not read by the batch runner
+  scope: trace
+  target:
+    langfuseProjectIds:
+      - cmj7ew7m20026tr41gsi9knd4
+  metadataFilters:
+    tagsAnyOf:
+      - airo-app-builder
+  criteria:
+    batchConfig:
+      # alwaysRun: true — this evaluator scores every session regardless of detection
+      # signals. Objective completion is not a skill detector; empty patterns alone
+      # would fast-path every session to nonMatchValue and never call the judge.
+      alwaysRun: true
+      detectionKeywords: []
+      detectionToolPatterns: []
+      # scoreMapping maps LLM output fields → Langfuse score names.
+      # nonMatchValue is moot under alwaysRun: true but set as a sentinel.
+      scoreMapping:
+        - langfuseName: "session_objective_completion"
+          sourceField: "score"
+          type: NUMERIC
+          nonMatchValue: -1
+          description: "How well the agent resolved the user's goal for the session (0–100)"
+        - langfuseName: "session_objective_outcome"
+          sourceField: "outcome"
+          type: CATEGORICAL
+          nonMatchValue: "unknown"
+          description: "Overall session outcome classification"
+        - langfuseName: "session_objective_confidence"
+          sourceField: "confidence"
+          type: NUMERIC
+          nonMatchValue: -1
+          description: "LLM judge confidence in its evaluation (0–1)"
+        - langfuseName: "session_intent_tag"
+          sourceField: "intent_tag"
+          type: CATEGORICAL
+          nonMatchValue: "other"
+          description: "Primary intent category for the session's objective"
+
+# schema-only: not read by the batch runner
+criteriaSchema:
+  type: object
+  properties:
+    relevanceKeywordMatch:
+      type: boolean
+      description: "Pre-detected: true if any user message matches relevance keywords (always false for this evaluator)"
+    skillDetected:
+      type: boolean
+      description: "Pre-detected: true if skill install evidence found (always false for this evaluator)"
+    skillEvidence:
+      type: string
+      description: "Pre-detected: evidence string or 'none'"
+    batchConfig:
+      type: object
+      description: "Fast-path detection config — alwaysRun, detectionKeywords, detectionToolPatterns, scoreMapping"
+  additionalProperties: false
