@@ -19,7 +19,9 @@ export const SSE_INTENTIONALLY_IGNORED: ReadonlySet<StreamingEventType> = new Se
  * Events emitted by SSE routes but not part of the channel event type union.
  * `history_loaded` and `history_complete` are client-synthesized in loadHistory(),
  * not server-emitted over SSE. `history_message`, `stream_error`, and `oauth_result`
- * are emitted directly by the SSE route handler.
+ * are emitted directly by the SSE route handler. `media_caption` is an out-of-band
+ * app push fanned out by the agents `EventStreamRegistry` after async caption
+ * generation (AIROBUILD-2680).
  */
 export const ROUTE_EVENT_TYPES = [
   'history_message',
@@ -27,6 +29,7 @@ export const ROUTE_EVENT_TYPES = [
   'history_complete',
   'stream_error',
   'oauth_result',
+  'media_caption',
 ] as const
 
 export const SSE_REGISTERED_EVENT_TYPES = [...STREAMING_EVENT_TYPES, ...ROUTE_EVENT_TYPES].filter(

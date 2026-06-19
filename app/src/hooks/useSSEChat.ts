@@ -61,6 +61,7 @@ import {
 } from './shared/completionSideEffects'
 import { isInitialBuildComplete, isInitialBuildFunnelActive } from './shared/initialBuildFunnel'
 import { handleLogoNotification } from './shared/logoNotification'
+import { handleMediaCaptionNotification } from './shared/mediaCaptionNotification'
 import { mapToolCall, mapToolResult, mapToolStart } from './shared/toolMappers'
 import { detectRebuildIntent, handleToolCallSideEffects, handleToolResultSideEffects } from './shared/toolSideEffects'
 import { handleToolStartSideEffects } from './shared/toolStartSideEffects'
@@ -795,6 +796,15 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                   clientAppId: store.currentAppId,
                   t: tRef.current,
                   logPrefix: 'sse.logo',
+                })
+              } else if (type === 'media_caption') {
+                // Ported from the WS MediaCaptionHandler: patch the media-slot +
+                // manifest React Query caches so a freshly generated caption shows
+                // in place without a manifest refetch (AIROBUILD-2680).
+                handleMediaCaptionNotification({
+                  raw: event.data,
+                  clientAppId: store.currentAppId,
+                  logPrefix: 'sse.media_caption',
                 })
               } else if (type === 'recovery_status') {
                 const payload = event.data as any

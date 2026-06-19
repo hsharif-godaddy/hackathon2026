@@ -35,7 +35,7 @@ import { validateVideoMagicBytes, VIDEO_MIME_TYPE } from '../../services/media-u
 import { getPersistentPublicDir } from '../../utils/persistent-assets.js';
 import { createForWorkspace } from '../../workspace/index.js';
 import { generateImageCaptionFromBuffer, generateVideoCaptionFromBuffer } from '../../services/MediaCaptionService.js';
-import { emitToApp } from '../ai-lib-websocket-server.js';
+import { emitMediaCaption } from '../media-caption-emit.js';
 
 // Image-level caption cache: persistent URL → caption.
 // Prevents re-captioning the same image across slots or on swap-back.
@@ -52,7 +52,7 @@ function setCaptionCache(url: string, caption: string): void {
 }
 
 /**
- * Fire-and-forget: generate a caption asynchronously, persist it, and push to the client via WS.
+ * Fire-and-forget: generate a caption asynchronously, persist it, and push to the client via WS + SSE.
  */
 function captionAsync(opts: {
   appId: string;
@@ -67,7 +67,7 @@ function captionAsync(opts: {
   if (imageCaptionCache.has(url)) {
     const cached = imageCaptionCache.get(url)!;
     mediaManifestService.updateSlotCaption(appId, slotName, cached, url).then(() => {
-      emitToApp(appId, 'message', { type: 'media_caption', content: '', data: { appId, slotName, caption: cached } });
+      emitMediaCaption({ appId, slotName, caption: cached });
     }).catch(() => {});
     return;
   }
@@ -90,7 +90,7 @@ function captionAsync(opts: {
       setCaptionCache(url, caption);
       const persist = await mediaManifestService.updateSlotCaption(appId, slotName, caption, url);
       if (persist.success) {
-        emitToApp(appId, 'message', { type: 'media_caption', content: '', data: { appId, slotName, caption } });
+        emitMediaCaption({ appId, slotName, caption });
       }
     } catch (err) {
       logger.warn('route.media.caption_async_failed', {
@@ -944,7 +944,7 @@ router.put('/:appId/slots/:slotName(*)', async (req: Request, res: Response) => 
       });
     }
 
-    // Fire-and-forget async captioning — result pushed via WS `media_caption` event.
+    // Fire-and-forget async captioning — result pushed via WS + SSE `media_caption` event.
     const hasSearchCaption = typeof searchQuery === 'string' && searchQuery.trim();
     const isLogo = result.slot?.mediaType === 'logo';
     if (!hasSearchCaption && !isLogo && result.slot?.currentUrl) {
@@ -1165,7 +1165,7 @@ router.post(
         sourceFilename: filename,
       });
 
-      // Fire-and-forget async captioning — result pushed via WS `media_caption` event.
+      // Fire-and-forget async captioning — result pushed via WS + SSE `media_caption` event.
       const isLogo = updateResult.slot?.mediaType === 'logo';
       if (!isLogo) {
         const captionMimeType = isVideo
@@ -1671,7 +1671,7 @@ router.post(
         chatUploadFilename,
       });
 
-      // Fire-and-forget async captioning — result pushed via WS `media_caption` event.
+      // Fire-and-forget async captioning — result pushed via WS + SSE `media_caption` event.
       const isLogoUpload = updateResult.slot?.mediaType === 'logo';
       if (!isLogoUpload) {
         const uploadBuffer = file.buffer;
