@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { enforceAabMultiUserVentureRelation } from '@/lib/authz-fga/enforce-venture-relation';
-import { resolveMultiUserFlag } from '@/lib/authz-fga/multi-user-flag';
-import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { handleControlPlaneError } from '@/lib/control-plane/error-handler';
 import {
   createCustomerAuthError,
   type CustomerAuthContext,
   customerHasAccount,
-  withCustomerAuth,
-} from '@/lib/customer-auth';
+  withCustomerAuth} from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
 
 // In-memory deployment lock to prevent concurrent deployments
@@ -88,26 +84,8 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
     }
 
+    // Use control plane adapter
     const adapter = getControlPlaneAdapter();
-    const multiUserEnabled = await resolveMultiUserFlag(request);
-    const site = await adapter.getSite(siteId, authContext.jwt, undefined, { multiUserEnabled });
-    if (!site) {
-      releaseDeploymentLock(siteId);
-      return NextResponse.json({ error: 'Site not found' }, { status: 404 });
-    }
-    const deployDeny = await enforceAabMultiUserVentureRelation({
-      request,
-      siteId,
-      customerId: user.customerId,
-      siteInfo: site,
-      relation: AUTHZ_FGA_RELATIONS.canPublish,
-      forbiddenMessage: 'You do not have permission to deploy this app.',
-    });
-    if (deployDeny) {
-      releaseDeploymentLock(siteId);
-      return deployDeny;
-    }
-
     const result = await adapter.deploySite(siteId, authContext.jwt, {
       variant,
       resumeFromHibernation,

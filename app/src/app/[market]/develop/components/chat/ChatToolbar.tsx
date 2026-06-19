@@ -300,7 +300,6 @@ export default function ChatToolbar({
           <Box orientation="horizontal" gap="sm">
             <ShareLink location="develop.chat_toolbar" />
             <AppPublish location="develop.chat_toolbar" />
-            <SettingsMenu />
           </Box>
         </>
       )}

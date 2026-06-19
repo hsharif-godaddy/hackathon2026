@@ -58,5 +58,4 @@ describe('useSwitchboard', () => {
     expect(getSwitchboardFlag).toBe(useSwitchboard);
     expect(getSwitchboardFlag('flag-true')).toBe(true);
   });
-
 });

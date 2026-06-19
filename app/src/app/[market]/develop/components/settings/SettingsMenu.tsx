@@ -102,7 +102,7 @@ const SettingsMenu = forwardRef<SettingsMenuRef>((props, ref) => {
         </PopoverAnchor>
       <PopoverContent
         align={isMobile ? "center" : "end"}
-        className="max-h-[min(70vh,28rem)] overflow-y-auto p-1"
+        className="p-1"
         onInteractOutside={(e) => {
           // Anchor clicks are toggled externally via the ButtonGroup onChange → togglePopover ref; suppress Radix dismiss
           if (anchorRef.current?.contains(e.target as Node)) {

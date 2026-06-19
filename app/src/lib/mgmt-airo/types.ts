@@ -698,42 +698,6 @@ export interface AiroMgmtClientConfig {
 }
 
 /**
- * AAB multi-user app collaborator (consumer track). Mirrors the airo-go
- * `airo_app_collaborators` row recorded when an owner invites a collaborator to
- * an app. The subscription owner stays the paying principal (owner-pays).
- */
-export interface AiroCollaborator {
-  id: string;
-  subscriptionId: string;
-  appId: string;
-  customerId: string;
-  role: string;
-  grantedBy?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/**
- * POST body for granting a collaborator. `collaboratorShopperId` is optional —
- * mgmt-airo registers the customer with whatever it receives so later calls
- * clear its RequireRegisteredCustomer gate; when absent the row is created with
- * an empty shopper id and reconciled when the collaborator next authenticates.
- */
-export interface AiroGrantCollaboratorPayload {
-  collaboratorCustomerId: string;
-  collaboratorShopperId?: string;
-  role?: string;
-}
-
-export interface AiroGrantCollaboratorResponse {
-  collaborator: AiroCollaborator;
-}
-
-export interface AiroListCollaboratorsResponse {
-  collaborators: AiroCollaborator[];
-}
-
-/**
  * Secret metadata from mgmt-airo
  */
 export interface AiroSecretMetadata {

@@ -19,7 +19,6 @@ import (
 	"github.com/airo-ai-builder/local-control-plane/internal/docker"
 	"github.com/airo-ai-builder/local-control-plane/internal/setup"
 	"github.com/airo-ai-builder/local-control-plane/internal/store"
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
 
@@ -71,10 +70,6 @@ func appToResponse(app *store.App) map[string]any {
 		})
 	}
 
-	if app.Variables == nil {
-		app.Variables = map[string]any{}
-	}
-
 	// topLifecycleState resolves the API's top-level lifecycleState from two
 	// sources: the persisted app.LifecycleState column (set by the upgrade
 	// orchestrator in Phase 4 to values like "upgrade_pending"), and a locally
@@ -94,7 +89,6 @@ func appToResponse(app *store.App) map[string]any {
 		"id":                    app.ID,
 		"subscriptionId":        app.SubscriptionID,
 		"systemId":              app.SystemID,
-		"customerId":            store.DefaultCustomerID,
 		"status":                app.Status,
 		"variables":             app.Variables,
 		"variants":              app.Variants,
@@ -143,23 +137,6 @@ func appToResponse(app *store.App) map[string]any {
 	return resp
 }
 
-func ensureAabTeamVentureID(variables map[string]any) bool {
-	if variables == nil {
-		return false
-	}
-	if _, ok := variables["aabTeamVentureId"]; ok {
-		return false
-	}
-	if _, ok := variables["aab_team_venture_id"]; ok {
-		return false
-	}
-	if _, ok := variables["teamVentureId"]; ok {
-		return false
-	}
-	variables["aabTeamVentureId"] = uuid.New().String()
-	return true
-}
-
 func (s *Server) ListApps(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
@@ -171,7 +148,6 @@ func (s *Server) ListApps(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]map[string]any, 0, len(apps))
 	for _, app := range apps {
-		s.backfillVentureID(app)
 		result = append(result, appToResponse(app))
 	}
 
@@ -188,22 +164,10 @@ func (s *Server) GetAllApps(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]map[string]any, 0, len(apps))
 	for _, app := range apps {
-		s.backfillVentureID(app)
 		result = append(result, appToResponse(app))
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"apps": result})
-}
-
-func (s *Server) backfillVentureID(app *store.App) {
-	if app.Variables == nil {
-		app.Variables = map[string]any{}
-	}
-	if ensureAabTeamVentureID(app.Variables) {
-		if _, err := s.DB.UpdateApp(app.ID, nil, map[string]any{"aabTeamVentureId": app.Variables["aabTeamVentureId"]}, nil); err != nil {
-			slog.Warn("app.backfill_venture_id.failed", "app_id", app.ID, "error", err)
-		}
-	}
 }
 
 func (s *Server) GetApp(w http.ResponseWriter, r *http.Request) {
@@ -219,7 +183,6 @@ func (s *Server) GetApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.backfillVentureID(app)
 	writeJSON(w, http.StatusOK, appToResponse(app))
 }
 
@@ -238,13 +201,7 @@ func (s *Server) CreateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	variables := body.Variables
-	if variables == nil {
-		variables = map[string]any{}
-	}
-	ensureAabTeamVentureID(variables)
-
-	app, err := s.DB.CreateApp(vars["subId"], vars["sysId"], variables, body.Variants)
+	app, err := s.DB.CreateApp(vars["subId"], vars["sysId"], body.Variables, body.Variants)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -321,8 +278,6 @@ func (s *Server) Signup(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-
-	ensureAabTeamVentureID(variables)
 
 	app, err := s.DB.CreateApp(subID, sysID, variables, variants)
 	if err != nil {

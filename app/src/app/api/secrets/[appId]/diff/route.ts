@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { enforceAabMultiUserVentureRelation } from '@/lib/authz-fga/enforce-venture-relation';
-import { resolveMultiUserFlag } from '@/lib/authz-fga/multi-user-flag';
-import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
@@ -97,23 +94,8 @@ export const GET = withCustomerAuth(async (
       return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
     }
 
+    // Get control plane adapter and compare secrets
     const adapter = getControlPlaneAdapter();
-    const multiUserEnabled = await resolveMultiUserFlag(request);
-    const site = await adapter.getSite(appId, authContext.jwt, undefined, { multiUserEnabled });
-    if (!site) {
-      return NextResponse.json({ error: 'Site not found' }, { status: 404 });
-    }
-    const secretsDiffDeny = await enforceAabMultiUserVentureRelation({
-      request,
-      siteId: appId,
-      customerId: user.customerId,
-      siteInfo: site,
-      relation: AUTHZ_FGA_RELATIONS.canManageSecrets,
-      forbiddenMessage: 'You do not have permission to compare secrets for this app.',
-    });
-    if (secretsDiffDeny) {
-      return secretsDiffDeny;
-    }
 
     logger.info('secrets.diff.start', {
       appId,
@@ -125,8 +107,7 @@ export const GET = withCustomerAuth(async (
       appId,
       sourceVariant as 'preview' | 'publish',
       destinationVariant as 'preview' | 'publish',
-      authContext.jwt,
-      multiUserEnabled
+      authContext.jwt
     );
 
     logger.info('secrets.diff.success', {
@@ -160,4 +141,4 @@ export const GET = withCustomerAuth(async (
       { status: 500 }
     );
   }
-}, { level: 3 });
+});

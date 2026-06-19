@@ -3,7 +3,6 @@ const hostEsmConfig = {
     'prop-types': 'prop-types',
     'axios': 'axios',
     'redux': 'redux',
-    'events': 'events'
   }
 }
 

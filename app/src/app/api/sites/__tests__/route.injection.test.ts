@@ -31,13 +31,6 @@ vi.mock('@/lib/control-plane', () => ({
 }));
 vi.mock('@/lib/agent-fetch', () => ({ agentFetch: mockAgentFetch }));
 vi.mock('@/lib/request-context', () => ({ logger: mockLogger }));
-// Mock the switchboard so resolveMultiUserFlag → checkSwitchboardFlag never hits
-// the real gasket visitor/Atlas pipeline (a network fetch that surfaces as an
-// unhandled AtlasFetchError rejection and fails the run). getSite/listSites are
-// mocked, so the resolved flag value doesn't affect these injection assertions.
-vi.mock('@/lib/switchboard/server', () => ({
-  checkSwitchboardFlag: vi.fn().mockResolvedValue(false),
-}));
 vi.mock('@/lib/translations/server-intl', () => ({
   detectTranslationLocale: vi.fn().mockResolvedValue('en-US'),
 }));

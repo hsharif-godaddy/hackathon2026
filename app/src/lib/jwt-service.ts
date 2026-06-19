@@ -39,7 +39,6 @@ export interface CreateTokenOptions {
   useAtlasCrawler?: boolean; // Route rebuild scraping through the Atlas REST API instead of the external web-scraper API (switchboard: appbuilder-atlas-crawler)
   rebuildIntakeFormEnabled?: boolean; // Show initial-rebuild intake form before scraping (switchboard: appbuilder-rebuild-intake-form)
   debugStatsEnabled?: boolean; // Agents service should emit per-LLM-call debug_turn_stats events to this client (switchboard: appbuilder-debug-drawer)
-  isOwner?: boolean; // App owner vs collaborator when owner id is known from hosting
   market?: string; // User's resolved market locale (e.g. 'en-US', 'es-MX')
   marketingCampaignsEnabled?: boolean; // Enable Marketing Campaigns feature (switchboard: appbuilder-marketing-campaigns)
   asmDualWriteEnabled?: boolean; // Mirror SQLite conversation writes to ASM (switchboard: appbuilder-asm-dual-write)
@@ -208,7 +207,6 @@ export class JWTService {
       ...(options.agentProfile && { agentProfile: options.agentProfile }),
       agentProfileSelectorEnabled: options.agentProfileSelectorEnabled ?? false,
       costAttributionDryRun: options.costAttributionDryRun ?? false,
-      ...(options.isOwner !== undefined && { isOwner: options.isOwner }),
       useAtlasCrawler: options.useAtlasCrawler ?? false,
       rebuildIntakeFormEnabled: options.rebuildIntakeFormEnabled ?? false,
       debugStatsEnabled: options.debugStatsEnabled ?? false,

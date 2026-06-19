@@ -676,13 +676,8 @@ export default function AppCard({ site, transferAllowed = false }: { site: SiteI
     <Tag emphasis="critical">{t('builder_status_error')}</Tag>
   )
 
-  const sharedTag = site.sharedWithMe && (
-    <Tag emphasis="info">{t('builder_apps_shared_with_you', undefined, 'Shared with you')}</Tag>
-  )
-
-  const statusTags = (sharedTag || suspendedTag || publishedTag || errorTag) && (
+  const statusTags = (suspendedTag || publishedTag || errorTag) && (
     <Box data-partial="componentAiro" orientation="horizontal" gap="sm" wrap>
-      {sharedTag}
       {suspendedTag}
       {publishedTag}
       {errorTag}

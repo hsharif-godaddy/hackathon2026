@@ -63,9 +63,6 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   // Show on mobile (no header tab there), or on desktop when the tab flag is off or unresolved —
   // fail open so users aren't locked out while Switchboard loads or if the flag is missing.
   const showDomainSettingsItem = isMobile || !isTopLevelDomainEnabled;
-  // NOTE: the team / "Users" management UI was moved out of Settings into the
-  // develop-header "Share access" popover (see ShareAccess.tsx). It is no longer
-  // a Settings nav item — gating for it now lives in that component.
 
   const handleFeedbackClick = () => {
     localStorage.removeItem(`airo-feedback-shown:${FEEDBACK_ID}`);

@@ -384,11 +384,9 @@ export default makeGasket({
       baseUrl: process.env.CDS_API_BASE_URL || 'https://cds.api.int.godaddy.com',
       logPath: '/log'
     },
-    // Remote module ids the app may load via @venture/cds-loader (must match `type` prop).
     componentTypes: [
       'godaddyUnifiedPlansAndPricingLibraryEsm',
-      'godaddyUnifiedPlansAndPricingLibrary',
-      'multiusersEsm',
+      'godaddyUnifiedPlansAndPricingLibrary'
     ],
     appName: 'airo-app-builder',
     enabledRoutes: ['/', '/page', '/develop', '/develop/*'],

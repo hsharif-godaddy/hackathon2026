@@ -24,7 +24,6 @@ import { EditNudgeTooltip } from '@/app/[market]/develop/components/EditNudgeToo
 import { MOBILE_MODE_EID_MAP, VIEW_MODE_EID_MAP } from '@/app/[market]/develop/components/headerEids';
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import { InboxUnresolvedBadge } from '@/app/[market]/develop/components/layout/InboxUnresolvedBadge';
-import ShareAccess from '@/app/[market]/develop/components/layout/ShareAccess';
 import ShareLink from '@/app/[market]/develop/components/layout/ShareLink';
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import DeviceSelector from '@/app/[market]/develop/components/preview/DeviceSelector'
@@ -302,7 +301,6 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
                   </span>
                 </>
               )}
-              <ShareAccess />
               <ShareLink />
 
               {/* Always show Upgrade/Publish/UserMenu */}

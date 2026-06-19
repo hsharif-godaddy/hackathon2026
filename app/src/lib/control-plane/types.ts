@@ -182,18 +182,6 @@ export interface SiteInfo {
   ownerProduct?: string; // V2 only: Owner product family (e.g., "AiroAppBuilder", "PaaSNodeJS")
   compositionId?: string; // V2 only: Composition type (e.g., "ai-builder", "node-app")
   cellId?: string; // V2 only: Cell identifier (e.g., "c35-prod-sxb1-eu-central-1" or "c36-prod-p3-us-west-2")
-  /** Per-app team venture for OpenFGA `venture:<id>` (hosting `variables.aabTeamVentureId` when set). */
-  team_venture_id?: string;
-  /** App owner's GoDaddy customer id when returned by mgmt-hosting (owner vs collaborator / FGA bypass). */
-  owner_customer_id?: string;
-  /**
-   * Set when this `SiteInfo` represents an app the caller doesn't own but has
-   * been invited to via the multi-user FGA flow. The owned-app listing
-   * (mgmt-airo `/customers/me/apps`) never marks this; only the
-   * shared-app listing (the shared-apps listing) does. Frontend uses
-   * this to render a "Shared with you" badge and adjust available actions.
-   */
-  sharedWithMe?: boolean;
   screenshots?: SiteScreenshots; // V2 only: Pre-rendered screenshot URLs from mgmt-hosting (preview/publish × desktop/mobile)
   published?: boolean; // V2 only: Authoritative publish state from mgmt-airo (airo_apps enrichment). See getAppScreenshotUrl for usage.
 }
@@ -306,11 +294,9 @@ export interface IControlPlaneAdapter {
    * @param siteId - Site identifier
    * @param jwt - Customer JWT token
    * @param owningProduct - Optional owner product filter
-   * @param multiUserEnabled - Resolved `aab-multi-user` flag. When `false`, the
-   *   shared-apps fallback is skipped entirely; `undefined` preserves prior behavior.
    * @returns true if app exists, false otherwise
    */
-  appExists(siteId: string, jwt: string, owningProduct?: string, multiUserEnabled?: boolean): Promise<boolean>;
+  appExists(siteId: string, jwt: string, owningProduct?: string): Promise<boolean>;
 
   /**
    * Create a new site
@@ -328,19 +314,18 @@ export interface IControlPlaneAdapter {
    * @param siteId - Site identifier (statusJobId or appId)
    * @param jwt - Customer JWT token
    * @param owningProduct - Optional owner product filter (defaults to AiroAppBuilder)
-   * @param options - Optional flags; `includeCdn` (default: false) controls whether CDN-related data (cdnStatus, anycastIp) is included in the response. `multiUserEnabled` is the resolved `aab-multi-user` flag — when `false`, the shared-apps fallback is skipped entirely.
+   * @param options - Optional flags; `includeCdn` (default: false) controls whether CDN-related data (cdnStatus, anycastIp) is included in the response
    * @returns Site information or null if not found
    */
-  getSite(siteId: string, jwt: string, owningProduct?: string, options?: { includeCdn?: boolean; multiUserEnabled?: boolean }): Promise<SiteInfo | null>;
+  getSite(siteId: string, jwt: string, owningProduct?: string, options?: { includeCdn?: boolean }): Promise<SiteInfo | null>;
 
   /**
    * List all sites for customer
    *
    * @param jwt - Customer JWT token
-   * @param multiUserEnabled - Resolved `aab-multi-user` flag. When `false`, shared-app listing (the shared-apps listing) is skipped; `undefined` preserves prior behavior.
    * @returns Array of site information
    */
-  listSites(jwt: string, multiUserEnabled?: boolean): Promise<SiteInfo[]>;
+  listSites(jwt: string): Promise<SiteInfo[]>;
 
   /**
    * Delete site
@@ -465,8 +450,7 @@ export interface IControlPlaneAdapter {
     appId: string,
     sourceVariant: 'preview' | 'publish',
     destinationVariant: 'preview' | 'publish',
-    jwt: string,
-    multiUserEnabled?: boolean
+    jwt: string
   ): Promise<SecretsDiffResult>;
 
   /**

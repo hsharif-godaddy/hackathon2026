@@ -20,13 +20,6 @@ vi.mock('@/lib/request-context', () => ({
   },
 }));
 
-// Route calls enforceAabMultiUserVentureRelation → checkSwitchboardFlag; mock it
-// to "off" so it no-ops without hitting real gasket (Atlas plugin → fetch error).
-vi.mock('@/lib/switchboard/server', () => ({
-  checkSwitchboardFlag: vi.fn().mockResolvedValue(false),
-  checkSwitchboardValue: vi.fn().mockResolvedValue(null),
-}));
-
 vi.mock('@/lib/customer-auth', () => ({
   withCustomerAuth: function withAuth(handler: any) {
     return async function wrapped(request: NextRequest, routeContext: { params: Promise<{ id: string }> }) {

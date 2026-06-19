@@ -15,7 +15,6 @@
     "paths": {
       "@/gasket": ["./dist/gasket.js"],
       "@/*": ["src/*"],
-      "@cds/*": ["cds/*"],
       "@cds/deps-esm": ["./cds/deps-esm.js"]
     },
     "allowJs": true,

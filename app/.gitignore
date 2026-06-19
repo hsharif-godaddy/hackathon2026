@@ -63,9 +63,6 @@ next-env.d.ts
 
 /src/generated/prisma
 
-# CDS generated dependency files (from postinstall)
-/cds
-
 # App secrets storage (local development)
 /app-secrets
 

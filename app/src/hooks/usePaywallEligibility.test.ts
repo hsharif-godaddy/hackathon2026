@@ -16,25 +16,6 @@ vi.mock('./useSubscription', () => ({
   useSubscription: vi.fn(),
 }));
 
-// Site store mock:
-//  - 'shared-app'  → loaded, shared (owner-pays)
-//  - 'owned-app'   → loaded, not shared
-//  - 'loading-app' → present but still loading
-//  - anything else → not in store yet (null)
-// No-appId tests are unaffected (the appId-gated branches are skipped).
-vi.mock('@/stores/useSiteStore', () => ({
-  useSiteStore: (selector: (s: unknown) => unknown) =>
-    selector({
-      loading: { 'loading-app': true } as Record<string, boolean>,
-      getSite: (id?: string) => {
-        if (id === 'shared-app') return { sharedWithMe: true };
-        if (id === 'owned-app') return { sharedWithMe: false };
-        if (id === 'loading-app') return { sharedWithMe: true };
-        return null;
-      },
-    }),
-}));
-
 import { usePaywallEligibility } from './usePaywallEligibility';
 import { useSubscription } from './useSubscription';
 
@@ -50,38 +31,6 @@ describe('usePaywallEligibility', function hook() {
       error: null,
       refetch: vi.fn(),
     } as any);
-  });
-
-  describe('Owner-pays bypass for shared apps', function sharedApp() {
-    it('never shows the paywall for a shared app, even on a Free plan', function shared() {
-      // useSubscription is Free (would normally paywall), but the app is shared.
-      const { result } = renderHookWithProviders(() => usePaywallEligibility('shared-app'));
-
-      expect(result.current.showPaywall).toBe(false);
-      expect(result.current.isLoading).toBe(false);
-    });
-
-    it('still paywalls a non-shared app on a Free plan (control)', function notShared() {
-      const { result } = renderHookWithProviders(() => usePaywallEligibility('owned-app'));
-
-      expect(result.current.showPaywall).toBe(true);
-    });
-  });
-
-  describe('Defer until the site is known (no free-owner flash for invitees)', function defer() {
-    it('defers (isLoading, no paywall) while the site is not yet in the store', function notLoaded() {
-      const { result } = renderHookWithProviders(() => usePaywallEligibility('not-in-store-yet'));
-
-      expect(result.current.isLoading).toBe(true);
-      expect(result.current.showPaywall).toBe(false);
-    });
-
-    it('defers while the site is still loading, even if present', function stillLoading() {
-      const { result } = renderHookWithProviders(() => usePaywallEligibility('loading-app'));
-
-      expect(result.current.isLoading).toBe(true);
-      expect(result.current.showPaywall).toBe(false);
-    });
   });
 
   describe('Account-level subscription checks', function accountLevel() {

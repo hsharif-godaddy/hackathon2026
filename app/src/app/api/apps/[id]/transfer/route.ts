@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { agentFetch } from '@/lib/agent-fetch';
-import { enforceAabMultiUserVentureRelation } from '@/lib/authz-fga/enforce-venture-relation';
-import { resolveMultiUserFlag } from '@/lib/authz-fga/multi-user-flag';
-import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { type SiteInfo } from '@/lib/control-plane/types';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
@@ -107,23 +104,10 @@ export const POST = withCustomerAuth(async (
     }
 
     const adapter = getControlPlaneAdapter();
-    const multiUserEnabled = await resolveMultiUserFlag(request);
-    const site = await adapter.getSite(id, authContext.jwt, undefined, { multiUserEnabled });
+    const site = await adapter.getSite(id, authContext.jwt);
 
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
-    }
-
-    const transferDeny = await enforceAabMultiUserVentureRelation({
-      request,
-      siteId: id,
-      customerId: authContext.user.customerId,
-      siteInfo: site,
-      relation: AUTHZ_FGA_RELATIONS.canTransfer,
-      forbiddenMessage: 'You do not have permission to transfer this app.',
-    });
-    if (transferDeny) {
-      return transferDeny;
     }
 
     const agentBaseUrl = site.agent_url || process.env.AGENTS_SERVICE_URL || 'http://localhost:4000';
@@ -226,24 +210,6 @@ export const DELETE = withCustomerAuth(async (
   try {
     if (!authContext.jwt) {
       return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
-    }
-
-    const adapter = getControlPlaneAdapter();
-    const multiUserEnabled = await resolveMultiUserFlag(_request);
-    const site = await adapter.getSite(id, authContext.jwt, undefined, { multiUserEnabled });
-    if (!site) {
-      return NextResponse.json({ error: 'Site not found' }, { status: 404 });
-    }
-    const cancelTransferDeny = await enforceAabMultiUserVentureRelation({
-      request: _request,
-      siteId: id,
-      customerId: authContext.user.customerId,
-      siteInfo: site,
-      relation: AUTHZ_FGA_RELATIONS.canTransfer,
-      forbiddenMessage: 'You do not have permission to cancel a transfer for this app.',
-    });
-    if (cancelTransferDeny) {
-      return cancelTransferDeny;
     }
 
     const data = await createClient(authContext.jwt).cancelTransfer(id);

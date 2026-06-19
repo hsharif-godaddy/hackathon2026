@@ -12,15 +12,6 @@ import { VentureService } from '@/lib/venture-service';
 
 export const dynamic = 'force-dynamic';
 
-// Local dev rarely has S2S Product Graph certs configured. Without
-// GRAPHQL_CLIENT_CERT (env or file), VentureService blocks for 30+s on each
-// SSO timeout, which compounds into multi-minute /api/sites and /api/venture
-// responses. Mirror the guard already present in `ensure-app-venture.ts`.
-function hasProductGraphCert(): boolean {
-    if (process.env.GRAPHQL_CLIENT_CERT && process.env.GRAPHQL_CLIENT_KEY) return true;
-    return Boolean(process.env.GRAPHQL_CLIENT_CERT_PATH && process.env.GRAPHQL_CLIENT_KEY_PATH);
-}
-
 /**
  * GET /api/venture - Get or create venture ID for authenticated user
  *
@@ -48,29 +39,6 @@ export const GET = withCustomerAuth(
                     success: true,
                     ventureId: `mock-venture-${user.customerId}`,
                 });
-            }
-
-            // Short-circuit when Product Graph S2S certs aren't configured.
-            // Otherwise VentureService.createProfileForShopper hangs ~30s per SSO
-            // retry (a real problem on dev machines running local.test/local.prod
-            // without certs). We do NOT fabricate a venture id here — a fake id
-            // would build broken Dashboard / AssetManager links pointing at a
-            // non-existent venture. Return an explicit "unavailable" instead:
-            // logged as an error in deployed environments (certs are always
-            // provisioned there, so a miss is a real misconfiguration to alert on)
-            // and a warning locally. 404 keeps useVenture from retrying.
-            if (!hasProductGraphCert()) {
-                const isDeployed = process.env.NODE_ENV === 'production';
-                const log = isDeployed ? logger.error : logger.warn;
-                log('api.venture.get.no-cert', {
-                    message: 'Product Graph cert not configured; venture lookup unavailable',
-                    customerId: user.customerId,
-                    deployed: isDeployed,
-                });
-                return NextResponse.json(
-                    { success: false, error: 'Venture service is not configured' },
-                    { status: 404 }
-                );
             }
 
             if (!user.customerId) {

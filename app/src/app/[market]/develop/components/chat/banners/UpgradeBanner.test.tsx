@@ -41,18 +41,6 @@ vi.mock('@/hooks/usePaywallEligibility', () => ({
   usePaywallEligibility: vi.fn(function () { return { showPaywall: true, isLoading: false, isError: false, error: null }; }),
 }));
 
-// Default: a non-shared app, so existing render cases are unaffected. The
-// invitee test overrides useSiteStore to return sharedWithMe: true.
-vi.mock('@/app/[market]/develop/components/utils', () => ({
-  useAppIdFromParams: vi.fn(function () { return 'app-1'; }),
-}));
-
-vi.mock('@/stores/useSiteStore', () => ({
-  useSiteStore: vi.fn(function (selector: any) {
-    return selector({ getSite: function () { return { sharedWithMe: false }; } });
-  }),
-}));
-
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(function () { return true; }),
 }));
@@ -85,17 +73,11 @@ vi.mock('@/utils/instrumentation', () => ({
 }));
 
 describe('UpgradeBanner', function upgradeBannerTests() {
-  beforeEach(async function setup() {
+  beforeEach(function setup() {
     vi.clearAllMocks();
     localStorage.clear();
     mockLogImpressionEvent.mockClear();
     mockLogClickEvent.mockClear();
-    // clearAllMocks does not reset implementations — re-establish the default
-    // non-shared site so the invitee test's override doesn't leak to others.
-    const { useSiteStore } = await import('@/stores/useSiteStore');
-    vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
-      return selector({ getSite: function () { return { sharedWithMe: false }; } });
-    });
   });
 
   describe('rendering', function renderingTests() {
@@ -111,24 +93,6 @@ describe('UpgradeBanner', function upgradeBannerTests() {
       await waitFor(function waitForBanner() {
         expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).toBeInTheDocument();
       });
-    });
-
-    it('should not render for an invited collaborator (sharedWithMe) even when showPaywall is true', async function noRenderForInvitee() {
-      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
-      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
-      const { useSiteStore } = await import('@/stores/useSiteStore');
-
-      // showPaywall true would normally render the banner — the sharedWithMe
-      // render guard must suppress it for owner-pays invitees.
-      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: true, isLoading: false, isError: false, error: null });
-      vi.mocked(useSwitchboard).mockReturnValue(true);
-      vi.mocked(useSiteStore).mockImplementation(function (selector: any) {
-        return selector({ getSite: function () { return { sharedWithMe: true }; } });
-      });
-
-      const { container } = renderWithProviders(<UpgradeBanner />);
-
-      expect(container.querySelector('.bg-intents-ux-feedbackInfo-feedbackColor')).not.toBeInTheDocument();
     });
 
     it('should not render when user has Ultimate plan', async function noRenderWithUltimate() {

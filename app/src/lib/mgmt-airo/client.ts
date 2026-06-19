@@ -12,7 +12,6 @@ import {
   type AiroArchiveStatusResponse,
   type AiroAttribute,
   type AiroBulkAppsResponse,
-  type AiroCollaborator,
   type AiroCreateAppPayload,
   type AiroCreateAppResponse,
   type AiroCreateAttributePayload,
@@ -31,13 +30,10 @@ import {
   type AiroEventPayload,
   type AiroEventResponse,
   type AiroGetCreditGrantsResponse,
-  type AiroGrantCollaboratorPayload,
-  type AiroGrantCollaboratorResponse,
   AiroHttpError,
   type AiroImageStatusResponse,
   type AiroJob,
   type AiroJobStatus,
-  type AiroListCollaboratorsResponse,
   type AiroMgmtClientConfig,
   type AiroModifyDomainsPayload,
   type AiroModifyDomainsResponse,
@@ -980,25 +976,6 @@ export class AiroMgmtClient {
   }
 
   /**
-   * Get apps the customer collaborates on but does not own (AAB multi-user
-   * "shared with me"). Returns the same enriched app shape as
-   * `getAllAppsForCustomer`, each tagged `sharedWithMe: true` and carrying
-   * `ownerCustomerId` (the real owner — never the caller).
-   *
-   * GET /api/airo/v1/customers/me/shared-apps
-   */
-  async getSharedAppsForCustomer(): Promise<AiroApp[]> {
-    const response = await this.request<AiroBulkAppsResponse>(
-      'GET',
-      `/api/airo/v1/customers/me/shared-apps`,
-      undefined,
-      { logEvent: 'mgmt-airo.get-shared-apps-for-customer', noCache: true }
-    );
-
-    return response.apps || [];
-  }
-
-  /**
    * Get complete customer tree (subscriptions → systems → apps)
    *
    * This is the ultimate performance optimization that replaces many sequential API calls:
@@ -1490,70 +1467,6 @@ export class AiroMgmtClient {
       `/api/airo/v1/transfer/metadata?transferToken=${encodeURIComponent(transferToken)}`,
       undefined,
       { logEvent: 'mgmt-airo.get-transfer-metadata-by-token' }
-    );
-  }
-
-  /**
-   * Grant a collaborator access to an app (AAB multi-user, consumer track).
-   *
-   * Idempotent: a repeat call updates the role/scope in place. The endpoint is
-   * OWNER-authorized (mgmt-airo EntityOwnerAuthorization) — construct this client
-   * with the inviting owner's sso-jwt; a collaborator cannot grant (no
-   * self-escalation). It is NOT service-principal/IAM authorized.
-   *
-   * POST /api/airo/v1/subscriptions/:subscriptionId/apps/:appId/collaborators
-   */
-  async grantCollaborator(
-    subscriptionId: string,
-    appId: string,
-    payload: AiroGrantCollaboratorPayload
-  ): Promise<AiroGrantCollaboratorResponse> {
-    return this.request<AiroGrantCollaboratorResponse>(
-      'POST',
-      `/api/airo/v1/subscriptions/${subscriptionId}/apps/${appId}/collaborators`,
-      payload,
-      { logEvent: 'mgmt-airo.grant-collaborator' }
-    );
-  }
-
-  /**
-   * Revoke a collaborator's access to an app. No-op upstream when the row is
-   * already absent (safe to retry).
-   *
-   * DELETE /api/airo/v1/subscriptions/:subscriptionId/apps/:appId/collaborators/:collaboratorCustomerId
-   */
-  async revokeCollaborator(
-    subscriptionId: string,
-    appId: string,
-    collaboratorCustomerId: string
-  ): Promise<{ success: boolean }> {
-    // POST (not DELETE): the mgmt edge gateway forwards GET/POST to airo-go but
-    // rejects DELETE for the collaborators route at the gateway (bodyless 401,
-    // x-error-info:1) before it reaches the app — so a DELETE revoke silently
-    // never deletes the row and the invitee keeps access. airo-go exposes a POST
-    // `/collaborators/:cid/revoke` alias (same handler) that the gateway forwards.
-    return this.request<{ success: boolean }>(
-      'POST',
-      `/api/airo/v1/subscriptions/${subscriptionId}/apps/${appId}/collaborators/${encodeURIComponent(collaboratorCustomerId)}/revoke`,
-      undefined,
-      { logEvent: 'mgmt-airo.revoke-collaborator' }
-    );
-  }
-
-  /**
-   * List collaborators recorded for an app.
-   *
-   * GET /api/airo/v1/subscriptions/:subscriptionId/apps/:appId/collaborators
-   */
-  async listCollaborators(
-    subscriptionId: string,
-    appId: string
-  ): Promise<AiroListCollaboratorsResponse> {
-    return this.request<AiroListCollaboratorsResponse>(
-      'GET',
-      `/api/airo/v1/subscriptions/${subscriptionId}/apps/${appId}/collaborators`,
-      undefined,
-      { logEvent: 'mgmt-airo.list-collaborators', noCache: true }
     );
   }
 

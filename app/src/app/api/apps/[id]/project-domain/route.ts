@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { enforceAabMultiUserVentureRelation } from '@/lib/authz-fga/enforce-venture-relation';
-import { resolveMultiUserFlag } from '@/lib/authz-fga/multi-user-flag';
-import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import {
   createCustomerAuthError,
   type CustomerAuthContext,
   customerHasAccount,
-  withCustomerAuth,
-} from '@/lib/customer-auth';
+  withCustomerAuth} from '@/lib/customer-auth';
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
 import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { logger } from '@/lib/request-context';
@@ -107,26 +103,13 @@ export const PUT = withCustomerAuth(
 
       // Get site from control plane adapter to get subscription/system IDs
       const adapter = getControlPlaneAdapter();
-      const multiUserEnabled = await resolveMultiUserFlag(request);
-      const site = await adapter.getSite(appId, authContext.jwt, undefined, { multiUserEnabled });
+      const site = await adapter.getSite(appId, authContext.jwt);
 
       if (!site) {
         return NextResponse.json(
           { error: 'Site not found' },
           { status: 404 }
         );
-      }
-
-      const projectDomainDeny = await enforceAabMultiUserVentureRelation({
-        request,
-        siteId: appId,
-        customerId: user.customerId,
-        siteInfo: site,
-        relation: AUTHZ_FGA_RELATIONS.canManageDomains,
-        forbiddenMessage: 'You do not have permission to update the project domain for this app.',
-      });
-      if (projectDomainDeny) {
-        return projectDomainDeny;
       }
 
       // Check if site has subscription and system IDs (required for mgmt-airo)

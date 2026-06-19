@@ -26,17 +26,6 @@ vi.mock('@/lib/control-plane', () => ({
 }));
 vi.mock('@/lib/agent-fetch', () => ({ agentFetch: mockAgentFetch }));
 vi.mock('@/lib/request-context', () => ({ logger: mockLogger }));
-vi.mock('@/lib/switchboard/server', () => ({
-  checkSwitchboardFlag: vi.fn().mockResolvedValue(false),
-  checkSwitchboardValue: vi.fn().mockResolvedValue(null),
-  checkSwitchboardObject: vi.fn().mockResolvedValue(null),
-}));
-vi.mock('@/lib/authz-fga/multi-user-flag', () => ({
-  resolveMultiUserFlag: vi.fn().mockResolvedValue(false),
-}));
-vi.mock('@/lib/authz-fga/enforce-venture-relation', () => ({
-  enforceAabMultiUserVentureRelation: vi.fn().mockResolvedValue(null),
-}));
 
 vi.mock('@/lib/customer-auth', () => ({
   withCustomerAuth: (handler: any) => async (request: NextRequest, ...args: any[]) =>

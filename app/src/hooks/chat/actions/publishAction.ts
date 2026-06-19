@@ -30,7 +30,6 @@ import {
 } from '@/lib/subscription'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { usePaywallStore } from '@/stores/usePaywallStore'
-import { useSiteStore } from '@/stores/useSiteStore'
 import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import { hasBeenPublished } from '@/utils/site'
 import type { ClientActionExecutor } from './types'
@@ -140,19 +139,10 @@ export const publishAction: ClientActionExecutor = async (params, context, reque
   }
 
   try {
-    // Owner-pays: a collaborator on a shared app is never the billing principal,
-    // so skip the paywall entirely — their publish permission is authorized by FGA
-    // server-side. Without this, the invitee's absent subscription denies publish
-    // and pops the owner-only upgrade paywall.
-    const isSharedApp = Boolean(useSiteStore.getState().getSite(appId)?.sharedWithMe)
-
     // Check paywall eligibility using core algorithm with client provider
     const provider = new ClientPaywallProvider()
-    const eligibility = isSharedApp
-      ? null
-      : await checkPaywallEligibility(provider, appId, PaywallAction.Publish)
-    if (eligibility && !eligibility.hasAccess) {
-      const { reason, details } = eligibility
+    const { hasAccess, reason, details } = await checkPaywallEligibility(provider, appId, PaywallAction.Publish)
+    if (!hasAccess) {
       logger.warn('publish-action.access-denied', { appId, reason })
 
       // Record the blocked attempt so publish attempt rate can be calculated accurately

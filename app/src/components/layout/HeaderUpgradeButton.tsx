@@ -20,7 +20,6 @@ import { canUpgradePlan, isPaidPlanForGrants, PAYWALL_ITC } from '@/lib/paywall/
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { usePaywallStore } from '@/stores/usePaywallStore';
-import { useSiteStore } from '@/stores/useSiteStore';
 import { getPlanFromSubscription } from '@/utils/credits';
 import { logClickEvent } from '@/utils/instrumentation';
 
@@ -36,13 +35,9 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
   const isDevelopPage = isBuilderPagePath(pathname);
   const currentAppId = useDevelopPageStore((state) => state.currentAppId);
   const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal);
-  // Owner-pays: an invited collaborator never upgrades a shared app. Hide the
-  // button outright — showPaywall alone isn't enough, because canUpgradePlan()
-  // returns true for a no-plan invitee and would otherwise render it.
-  const isSharedApp = useSiteStore((state) => (currentAppId ? Boolean(state.getSite(currentAppId)?.sharedWithMe) : false));
 
   const featureEnabled = useSwitchboard('appbuilder-airoplus-upgrade-button');
-  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(currentAppId);
+  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility();
   const { isTreatment } = usePublishUpsellEligibility();
   const { data: subscription } = useSubscription();
   const currentPlan = subscription ? getPlanFromSubscription(subscription) : undefined;
@@ -52,7 +47,7 @@ export default function HeaderUpgradeButton({ location = 'unknown' }: HeaderUpgr
   );
 
   // Only show on develop page, when feature enabled, and user can upgrade (non-Ultimate users)
-  if (!isDevelopPage || isPaywallLoading || !featureEnabled || isSharedApp || isTreatment ||
+  if (!isDevelopPage || isPaywallLoading || !featureEnabled || isTreatment ||
       (!showPaywall && !canUpgradePlan(currentPlan))) return null;
 
   const handleUpgradeClick = () => {
