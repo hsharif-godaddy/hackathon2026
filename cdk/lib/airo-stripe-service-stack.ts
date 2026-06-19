@@ -237,9 +237,52 @@ export class AiroStripeServiceStack extends GDStack {
       scope: 'REGIONAL',
       defaultAction: { block: {} },
       rules: [
+        // Evaluated first (priority 0): blocks over-limit requests to
+        // /webhooks/stripe. Under-limit or non-webhook requests fall through
+        // to the AllowGatewayEgressIPs rule (priority 1). Allow is a
+        // terminating action in AWS WAF, so the rate rule must have the lower
+        // priority number to fire before traffic is allowed and evaluation stops.
+        // Stripe retries on its backoff schedule so transient 429s are safe.
+        //
+        // XFF trust assumption: FORWARDED_IP keys on the first value in
+        // X-Forwarded-For, which is only trustworthy if the frontdoor gateway
+        // overwrites (not appends to) the header. If the gateway appends, a
+        // caller can rotate a spoofed leading IP and avoid bucket accumulation.
+        // The IP-allowlist rule (priority 1) remains the hard perimeter either
+        // way; this rule is defence-in-depth. fallbackBehavior: NO_MATCH means
+        // header-less requests are not counted and fall through unchanged.
+        {
+          name: 'RateLimitWebhookEndpoint',
+          priority: 0,
+          action: { block: {} },
+          statement: {
+            rateBasedStatement: {
+              limit: 50000,
+              aggregateKeyType: 'FORWARDED_IP',
+              evaluationWindowSec: 300,
+              forwardedIpConfig: {
+                headerName: 'X-Forwarded-For',
+                fallbackBehavior: 'NO_MATCH',
+              },
+              scopeDownStatement: {
+                byteMatchStatement: {
+                  fieldToMatch: { uriPath: {} },
+                  positionalConstraint: 'EXACTLY',
+                  searchString: '/webhooks/stripe',
+                  textTransformations: [{ priority: 0, type: 'NONE' }],
+                },
+              },
+            },
+          },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: `${config.envName}-airo-stripe-webhook-ratelimit`,
+          },
+        },
         {
           name: 'AllowGatewayEgressIPs',
-          priority: 0,
+          priority: 1,
           action: { allow: {} },
           statement: {
             ipSetReferenceStatement: { arn: gatewayIpSet.attrArn },

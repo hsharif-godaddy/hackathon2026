@@ -93,6 +93,26 @@ describe('KMS CMK key policy — kms:GetPublicKey grant is present', () => {
   });
 });
 
+describe('WAFv2 WebACL — rule ordering', () => {
+  // Allow is a terminating action: if AllowGatewayEgressIPs fires first, the
+  // rate rule is never evaluated for legitimate gateway traffic and provides
+  // zero protection. The rate rule must have a lower priority number.
+  it('RateLimitWebhookEndpoint priority is lower than AllowGatewayEgressIPs priority', () => {
+    const acls = devTemplate.findResources('AWS::WAFv2::WebACL');
+    const rules: any[] = Object.values(acls)[0].Properties.Rules;
+    const rateRule = rules.find((r: any) => r.Name === 'RateLimitWebhookEndpoint');
+    const allowRule = rules.find((r: any) => r.Name === 'AllowGatewayEgressIPs');
+    expect(rateRule, 'RateLimitWebhookEndpoint rule missing').toBeDefined();
+    expect(allowRule, 'AllowGatewayEgressIPs rule missing').toBeDefined();
+    expect(rateRule.Priority).toBeLessThan(allowRule.Priority);
+    expect(rateRule.Action).toEqual({ Block: {} });
+    expect(rateRule.Statement.RateBasedStatement.AggregateKeyType).toBe('FORWARDED_IP');
+    expect(
+      rateRule.Statement.RateBasedStatement.ScopeDownStatement.ByteMatchStatement.SearchString
+    ).toBe('/webhooks/stripe');
+  });
+});
+
 describe('prod hardening — deletionProtection and multiRegion', () => {
   let prodTemplate: Template;
 
