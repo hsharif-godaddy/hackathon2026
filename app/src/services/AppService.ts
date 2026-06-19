@@ -843,10 +843,24 @@ export class AppService {
   }
 
   /**
-   * Read file content
+   * Read file content.
+   *
+   * `maxLines` raises the agents read route's line cap for whole-file reads
+   * (e.g. JSON snapshots that must parse intact). Omitted → the dev-supervisor's
+   * default cap applies, which is the right behavior for code previews. The
+   * returned `truncated` lets callers detect a clipped read instead of silently
+   * parsing a partial document.
    */
-  async readFile(appId: string, filePath: string): Promise<{ content: string }> {
-    const apiUrl = await buildDynamicApiUrl(`files/read?path=${encodeURIComponent(filePath)}`, appId)
+  async readFile(
+    appId: string,
+    filePath: string,
+    options?: { maxLines?: number },
+  ): Promise<{ content: string; truncated: boolean }> {
+    const limitQuery = options?.maxLines ? `&limit=${options.maxLines}` : ''
+    const apiUrl = await buildDynamicApiUrl(
+      `files/read?path=${encodeURIComponent(filePath)}${limitQuery}`,
+      appId,
+    )
     const response = await agentFetch(apiUrl, { siteId: appId })
 
     if (!response.ok) {
@@ -857,7 +871,8 @@ export class AppService {
       throw error
     }
 
-    return response.json()
+    const data = (await response.json()) as { content: string; truncated?: boolean }
+    return { content: data.content, truncated: data.truncated ?? false }
   }
 
   /**

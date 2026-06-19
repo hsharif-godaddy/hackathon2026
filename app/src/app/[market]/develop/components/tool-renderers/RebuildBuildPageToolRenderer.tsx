@@ -50,6 +50,12 @@ interface ManifestJson {
 // Max images to show in the grid before showing "+N more" note
 const MAX_GRID_IMAGES = 12
 
+// These snapshots (esp. the asset manifest) run to thousands of lines; the
+// agents read route caps reads at the supervisor's default line limit, which
+// would clip a large file into invalid JSON. Request the whole file and treat
+// any residual truncation as a hard failure rather than parsing a partial doc.
+const SNAPSHOT_MAX_LINES = 1_000_000
+
 /**
  * Custom renderer for the rebuildBuildPage tool.
  *
@@ -105,11 +111,11 @@ export default function RebuildBuildPageToolRenderer({
     // real failure (non-404 status, or a JSON parse throw), never for an expected
     // 404. A 404 is benign absence and is NOT logged.
     const pagePromise = appService
-      .readFile(appId, `.source-site/pages/${pageSlug}.json`)
-      .then(({ content }): { value: PageJson | null; errored: boolean } => ({
-        value: JSON.parse(content) as PageJson,
-        errored: false,
-      }))
+      .readFile(appId, `.source-site/pages/${pageSlug}.json`, { maxLines: SNAPSHOT_MAX_LINES })
+      .then(({ content, truncated }): { value: PageJson | null; errored: boolean } => {
+        if (truncated) throw new Error('page snapshot truncated')
+        return { value: JSON.parse(content) as PageJson, errored: false }
+      })
       .catch((err: unknown): { value: PageJson | null; errored: boolean } => {
         const errStatus = (err as { status?: number })?.status
         if (errStatus === 404) return { value: null, errored: false }
@@ -122,11 +128,11 @@ export default function RebuildBuildPageToolRenderer({
       })
 
     const manifestPromise = appService
-      .readFile(appId, `.source-site/assets/manifest.json`)
-      .then(({ content }): { value: ManifestJson; errored: boolean } => ({
-        value: JSON.parse(content) as ManifestJson,
-        errored: false,
-      }))
+      .readFile(appId, `.source-site/assets/manifest.json`, { maxLines: SNAPSHOT_MAX_LINES })
+      .then(({ content, truncated }): { value: ManifestJson; errored: boolean } => {
+        if (truncated) throw new Error('manifest truncated')
+        return { value: JSON.parse(content) as ManifestJson, errored: false }
+      })
       .catch((err: unknown): { value: ManifestJson; errored: boolean } => {
         const errStatus = (err as { status?: number })?.status
         if (errStatus === 404) return { value: { assets: [] }, errored: false }
@@ -270,32 +276,35 @@ export default function RebuildBuildPageToolRenderer({
               <text.p size={-1} className="font-semibold">
                 {t('builder_rebuild_count_images', { count: displayedImages.length })}
               </text.p>
-              <div
-                className="grid gap-2"
-                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))' }}
-              >
+              {/* One row per image: thumbnail plus its full description wrapping
+                  alongside. Multiline (no truncation) so nothing scrolls horizontally,
+                  and the caption fills the row width next to a fixed-size thumbnail. */}
+              <Box gap="md">
                 {displayedImages.map((img, i) => {
                   const caption = img.altText || img.description || ''
                   const filename = img.url.split('/').pop()?.split('?')[0] ?? ''
                   const alt = caption || filename
                   return (
-                    <div key={i} className="flex flex-col gap-1">
+                    // Stack thumbnail-over-caption on narrow screens; side-by-side from sm up.
+                    <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
+                      {/* Larger + centered when stacked on mobile; compact + left when
+                          side-by-side from sm up. object-contain keeps mixed assets
+                          (wide logos, square icons) uncropped. */}
                       <img // eslint-disable-line @next/next/no-img-element
                         src={thumbUrl(img.url)}
                         alt={alt}
                         loading="lazy"
-                        className="w-full rounded border border-intents-ux-box-borderColor bg-intents-ux-boxLowContrast-backgroundColor"
-                        style={{ height: 64, objectFit: 'cover' }}
+                        className="mx-auto h-20 w-32 shrink-0 rounded border border-intents-ux-box-borderColor bg-intents-ux-boxLowContrast-backgroundColor object-contain sm:mx-0 sm:h-12 sm:w-[72px]"
                       />
                       {caption && (
-                        <text.p size={-2} emphasis="passive" className="truncate text-center">
+                        <text.p size={-1} emphasis="passive" className="min-w-0 break-words sm:flex-1">
                           {caption}
                         </text.p>
                       )}
                     </div>
                   )
                 })}
-              </div>
+              </Box>
               {extraImageCount > 0 && (
                 <text.p size={-2} emphasis="passive">
                   {t('builder_analytics_more_items', { count: extraImageCount })}

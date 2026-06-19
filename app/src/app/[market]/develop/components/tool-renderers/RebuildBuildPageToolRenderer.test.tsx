@@ -173,6 +173,7 @@ describe('RebuildBuildPageToolRenderer — View source modal', () => {
     readFileMock.mockImplementation((_appId: string, path: string) => {
       if (path.includes('/pages/')) {
         return Promise.resolve({
+          truncated: false,
           content: JSON.stringify({
             metadata: { description: 'About page description' },
             structure: { navigation: [{ label: 'Home', url: '/', isExternal: false }] },
@@ -181,6 +182,7 @@ describe('RebuildBuildPageToolRenderer — View source modal', () => {
         })
       }
       return Promise.resolve({
+        truncated: false,
         content: JSON.stringify({
           assets: [{ url: 'https://cdn/x.jpg', type: 'image', sourcePages: ['https://x.com/about'], altText: 'pic' }],
         }),
@@ -199,6 +201,39 @@ describe('RebuildBuildPageToolRenderer — View source modal', () => {
     expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument()
     expect(screen.queryByText('No snapshot available')).not.toBeInTheDocument()
     expect(warnMock).not.toHaveBeenCalled()
+  })
+
+  // Whole-file reads: both snapshots must bypass the supervisor's default line
+  // cap, or a large manifest comes back clipped and JSON.parse throws (AIROBUILD-2670).
+  it('requests both snapshots as whole-file reads (raised line cap)', async () => {
+    readFileMock.mockResolvedValue({ truncated: false, content: JSON.stringify({ assets: [] }) })
+
+    openModal()
+
+    await screen.findByTestId('tool-modal')
+    const calls = readFileMock.mock.calls
+    const pageCall = calls.find(([, p]: [string, string]) => p.includes('/pages/'))
+    const manifestCall = calls.find(([, p]: [string, string]) => p.includes('manifest.json'))
+    expect(pageCall?.[2]?.maxLines).toBeGreaterThan(0)
+    expect(manifestCall?.[2]?.maxLines).toBeGreaterThan(0)
+  })
+
+  // A truncated read (clipped JSON) must surface as a real error, never the benign
+  // empty state — otherwise a half-parsed manifest reads as "no snapshot".
+  it('treats a truncated read as a load failure, not the empty state', async () => {
+    readFileMock.mockImplementation((_appId: string, path: string) => {
+      if (path.includes('/pages/')) {
+        return Promise.resolve({ truncated: false, content: JSON.stringify({ sanitizedContent: 'About body' }) })
+      }
+      // Manifest comes back clipped — content is no longer valid JSON.
+      return Promise.resolve({ truncated: true, content: '{ "assets": [ {' })
+    })
+
+    openModal()
+
+    expect(await screen.findByText('Something went wrong')).toBeInTheDocument()
+    expect(screen.queryByText('No snapshot available')).not.toBeInTheDocument()
+    expect(warnMock).toHaveBeenCalled()
   })
 
   it('shows an error message (not the empty state) on a real load failure', async () => {

@@ -598,7 +598,7 @@ router.get('/:id/files', async (req: Request, res: Response) => {
 router.get('/:id/files/read', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { path: filePath } = req.query;
+    const { path: filePath, limit: limitRaw } = req.query;
 
     if (!id) {
       return res.status(400).json({ error: 'App ID is required' });
@@ -613,7 +613,15 @@ router.get('/:id/files/read', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'App not found' });
     }
 
-    const result = await workspace.files.view({ path: filePath });
+    // Optional `limit` (max lines). Callers reading a whole JSON snapshot pass a
+    // large value to defeat the supervisor's default line cap, which would
+    // otherwise clip a large file (e.g. the rebuild asset manifest) into invalid
+    // JSON. Omitted → supervisor default applies, so code-preview reads stay capped.
+    const limit = typeof limitRaw === 'string' ? Number.parseInt(limitRaw, 10) : Number.NaN;
+    const result = await workspace.files.view({
+      path: filePath,
+      ...(Number.isInteger(limit) && limit > 0 ? { limit } : {}),
+    });
 
     if (result.encoding === 'base64') {
       return res.status(422).json({ error: 'Binary file — not readable as text', encoding: 'base64', path: result.path });
@@ -631,7 +639,25 @@ router.get('/:id/files/read', async (req: Request, res: Response) => {
     });
   } catch (error) {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
-    log.error(contextLogger, 'route.apps.files.read.error', error as Error, {});
+    const requestedPath = typeof req.query.path === 'string' ? req.query.path : undefined;
+    // Mirror the files/list route's error mapping: a missing file is a 404, not a
+    // 500, so callers (e.g. rebuild "View source") can treat benign absence as the
+    // empty state rather than a hard error. Only genuine failures are logged.
+    if (error instanceof DevSupervisorError) {
+      if (error.code === 'not_found') {
+        return res.status(404).json({ error: 'File not found' });
+      }
+      if (error.code === 'permission_denied') {
+        return res.status(403).json({ error: error.message });
+      }
+      log.error(contextLogger, 'route.apps.files.read.error', error as Error, {
+        path: requestedPath,
+        code: error.code,
+        statusCode: error.statusCode,
+      });
+      return res.status(503).json({ error: 'Workspace temporarily unavailable' });
+    }
+    log.error(contextLogger, 'route.apps.files.read.error', error as Error, { path: requestedPath });
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

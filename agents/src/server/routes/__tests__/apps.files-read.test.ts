@@ -7,6 +7,7 @@ vi.mock('../../../workspace/index.js', () => ({
 }));
 
 import { createForWorkspace } from '../../../workspace/index.js';
+import { DevSupervisorError } from '../../../services/DevSupervisorClient.js';
 import { appsRouter } from '../apps.js';
 
 const mockCreateForWorkspace = vi.mocked(createForWorkspace);
@@ -117,5 +118,62 @@ describe('GET /apps/:id/files/read', () => {
     expect(response.body.truncated).toBe(true);
     expect(response.body.totalLines).toBe(5000);
     expect(response.body.linesRead).toEqual({ start: 1, end: 2 });
+  });
+
+  it('forwards a valid limit to view() so whole-file reads bypass the default cap', async () => {
+    const view = vi.fn().mockResolvedValue({
+      path: '.source-site/assets/manifest.json',
+      content: '{}',
+      encoding: 'utf-8',
+      lines: 1,
+      size: 2,
+      truncated: false,
+    });
+    mockCreateForWorkspace.mockReturnValue({ files: { view } } as any);
+
+    await request(app)
+      .get('/apps/abc1234567/files/read?path=.source-site/assets/manifest.json&limit=1000000')
+      .expect(200);
+
+    expect(view).toHaveBeenCalledWith({ path: '.source-site/assets/manifest.json', limit: 1000000 });
+  });
+
+  it('omits limit (uses supervisor default) when the param is absent or invalid', async () => {
+    const view = vi.fn().mockResolvedValue({
+      path: 'src/app.tsx', content: 'x', encoding: 'utf-8', lines: 1, size: 1, truncated: false,
+    });
+    mockCreateForWorkspace.mockReturnValue({ files: { view } } as any);
+
+    await request(app).get('/apps/abc1234567/files/read?path=src/app.tsx&limit=abc').expect(200);
+
+    expect(view).toHaveBeenCalledWith({ path: 'src/app.tsx' });
+  });
+
+  it('maps a dev-supervisor not_found to 404 (benign absence, not a 500)', async () => {
+    mockCreateForWorkspace.mockReturnValue({
+      files: { view: vi.fn().mockRejectedValue(new DevSupervisorError('not_found', 404, 'no such file')) },
+    } as any);
+
+    const response = await request(app)
+      .get('/apps/abc1234567/files/read?path=.source-site/pages/missing.json')
+      .expect(404);
+
+    expect(response.body.error).toBe('File not found');
+  });
+
+  it('maps a dev-supervisor permission_denied to 403', async () => {
+    mockCreateForWorkspace.mockReturnValue({
+      files: { view: vi.fn().mockRejectedValue(new DevSupervisorError('permission_denied', 403, 'denied')) },
+    } as any);
+
+    await request(app).get('/apps/abc1234567/files/read?path=secret').expect(403);
+  });
+
+  it('returns 500 for a non-dev-supervisor error', async () => {
+    mockCreateForWorkspace.mockReturnValue({
+      files: { view: vi.fn().mockRejectedValue(new Error('boom')) },
+    } as any);
+
+    await request(app).get('/apps/abc1234567/files/read?path=src/app.tsx').expect(500);
   });
 });
