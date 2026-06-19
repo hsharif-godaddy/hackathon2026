@@ -188,6 +188,15 @@ async function probePreviewAuth(previewUrl: string): Promise<boolean> {
  * SAME-ORIGIN relative `redirect` so the bootstrap returns to exactly where
  * the iframe was headed.
  */
+// Permissions delegated to preview iframes. Each entry requires an explicit
+// user gesture or browser prompt (camera/mic → getUserMedia prompt,
+// geolocation → Geolocation API prompt, clipboard-read → Permissions API
+// prompt, fullscreen → user-initiated). `payment` is intentionally absent:
+// Apple/Google Pay require a verified merchant domain and would silently fail
+// anyway. `usb`, `serial`, and `xr-spatial-tracking` are excluded because no
+// generated app template uses them today; add only with a concrete use case.
+const PREVIEW_IFRAME_ALLOW = 'camera; microphone; geolocation; clipboard-read; fullscreen'
+
 function buildStorageAccessUrl(previewUrl: string): string {
   const u = new URL(previewUrl)
   const redirectPath = `${u.pathname}${u.search}`
@@ -1383,6 +1392,7 @@ export default function PreviewPane({
             onError={handleIframeError}
             onLoad={handleIframeLoad}
             sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation allow-storage-access-by-user-activation"
+            allow={PREVIEW_IFRAME_ALLOW}
             title={t('builder_preview_preview_for', { appId })}
           />
         </div>
@@ -1544,6 +1554,7 @@ export default function PreviewPane({
                         onError={handleIframeError}
                         onLoad={handleIframeLoad}
                         sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation allow-storage-access-by-user-activation"
+                        allow={PREVIEW_IFRAME_ALLOW}
                         title={t('builder_preview_preview_for', { appId })}
                         aria-hidden={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || showBuildingOverlay ? 'true' : undefined}
                         tabIndex={viewMode === ViewMode.CODE || viewMode === ViewMode.BRAND || showBuildingOverlay ? -1 : undefined}

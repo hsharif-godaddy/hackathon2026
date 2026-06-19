@@ -297,6 +297,20 @@ describe('PreviewPane', () => {
     });
   });
 
+  it('preview-iframe has permission allow= with required features and no payment', async () => {
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    const iframe = await screen.findByTestId('preview-iframe');
+    const allow = iframe.getAttribute('allow') ?? '';
+    expect(allow).toContain('camera');
+    expect(allow).toContain('microphone');
+    expect(allow).toContain('geolocation');
+    expect(allow).toContain('clipboard-read');
+    expect(allow).toContain('fullscreen');
+    expect(allow).not.toContain('payment');
+    expect(allow).not.toContain('clipboard-write');
+  });
+
   it('should show code view when viewMode is CODE', () => {
     mockDevelopPageStore.viewMode = ViewMode.CODE;
 
