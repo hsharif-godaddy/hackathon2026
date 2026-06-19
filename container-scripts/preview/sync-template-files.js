@@ -448,6 +448,22 @@ const SYNC_MANIFEST = [
     description: 'ESLint flat config for SAST security scanning (eslint-plugin-security + no-unsanitized)',
     known_hashes: [],
     force: false
+  },
+  {
+    file: 'package.json',
+    description: 'Template dependency manifest — synced to push security patches to customer apps',
+    known_hashes: [
+      '9c795a81d30c266ae7c54b58df716ba5', // before vitest 4.x + tsx/esbuild/babel security upgrades
+    ],
+    force: false
+  },
+  {
+    file: 'package-lock.json',
+    description: 'Lockfile for template dependencies — synced alongside package.json for security patches',
+    known_hashes: [
+      'af484ed6d3e61e6f1292a3417163f57a', // before vitest 4.x + tsx/esbuild/babel security upgrades
+    ],
+    force: false
   }
 ];
 
