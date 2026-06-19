@@ -186,7 +186,8 @@ async function main(): Promise<void> {
         }
       : undefined;
     const client = new AABClient({
-      socketUrl: config.aab.socketUrl,
+      // SSE/HTTP base URL of the agents server; the client drives chat over SSE.
+      agentsUrl: config.aab.agentsUrl,
       ...(agentContext ? {
         auth: {
           agentContext,

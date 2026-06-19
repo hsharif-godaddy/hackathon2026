@@ -1332,15 +1332,15 @@ importers:
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
+      eventsource:
+        specifier: ^4.1.0
+        version: 4.1.0
       openai:
         specifier: 'catalog:'
         version: 6.37.0(ws@8.21.0(bufferutil@4.1.0))(zod@4.4.3)
       playwright:
         specifier: ^1.59.1
         version: 1.59.1
-      socket.io-client:
-        specifier: 'catalog:'
-        version: 4.8.3(bufferutil@4.1.0)
       undici:
         specifier: '>=8.5.0 <9'
         version: 8.5.0

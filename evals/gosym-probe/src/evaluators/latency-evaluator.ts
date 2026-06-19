@@ -1,13 +1,13 @@
 /**
  * Measures chunk-level stream latency for AAB agent responses.
  *
- * Probe-side: hooks into AABClient socket events to record
+ * Probe-side: hooks into AABClient SSE events to record
  * time-to-first-chunk (TTFC) and inter-chunk gaps per trial.
  *
  * AAB-side diagnostics: when `SOCKET_DIAGNOSTICS=true` is set in
- * AAB's `agents/.env`, AAB emits `stream.timing.summary`,
- * `stream.chunk.slow_gap`, and `stream.chunk.timeout` as standalone
- * Socket.IO events. These are captured here and surfaced in
+ * AAB's `agents/.env`, AAB emits `stream_timing_summary`,
+ * `stream_chunk_slow_gap`, and `stream_chunk_timeout` as standalone
+ * SSE events. These are captured here and surfaced in
  * `details.aabDiagnostics`. The timing summary breaks the probe's
  * end-to-end TTFC into two components:
  *   - `timeToStreamStartMs`: agent init time before the LLM call

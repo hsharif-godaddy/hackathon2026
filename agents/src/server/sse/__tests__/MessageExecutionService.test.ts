@@ -2736,6 +2736,194 @@ describe('MessageExecutionService', () => {
     })
   })
 
+  describe('SOCKET_DIAGNOSTICS diagnostic events (AIROBUILD-2681)', () => {
+    const ORIGINAL_DIAGNOSTICS = process.env.SOCKET_DIAGNOSTICS
+
+    afterEach(() => {
+      if (ORIGINAL_DIAGNOSTICS === undefined) {
+        delete process.env.SOCKET_DIAGNOSTICS
+      } else {
+        process.env.SOCKET_DIAGNOSTICS = ORIGINAL_DIAGNOSTICS
+      }
+    })
+
+    function createUsageDeps() {
+      const d = createMockDeps()
+      d.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockResolvedValue({
+          textStream: (async function* () {})(),
+          baseStream: makeReadableStream([{ type: 'text-delta', text: 'hello' }]),
+          getFinalResult: vi.fn().mockResolvedValue({
+            finishReason: 'complete',
+            totalUsage: { inputTokens: 100, outputTokens: 40, totalTokens: 140 },
+          }),
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      return d
+    }
+
+    it('publishes token_usage_summary and stream_timing_summary when the flag is on', async () => {
+      process.env.SOCKET_DIAGNOSTICS = 'true'
+      deps = createUsageDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'token_usage_summary',
+          data: expect.objectContaining({
+            inputTokens: 100,
+            outputTokens: 40,
+            totalTokens: 140,
+            modelName: 'unknown',
+            totalCost: expect.any(Number),
+            inputCost: expect.any(Number),
+            outputCost: expect.any(Number),
+            savings: expect.any(Number),
+            currency: 'USD',
+          }),
+        }),
+      )
+      expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({
+          type: 'stream_timing_summary',
+          data: expect.objectContaining({
+            timeToStreamStartMs: expect.any(Number),
+            chunksRead: expect.any(Number),
+            streamDurationMs: expect.any(Number),
+            maxChunkGapMs: expect.any(Number),
+          }),
+        }),
+      )
+    })
+
+    it('reports timeToStreamStartMs covering pre-stream init time', async () => {
+      process.env.SOCKET_DIAGNOSTICS = 'true'
+      const d = createMockDeps()
+      d.getAgent.mockReturnValue({
+        // ~30ms of pre-stream work (agent init + LLM connect) before the stream
+        // handle resolves; timeToStreamStartMs must reflect at least that.
+        streamGenerate: vi.fn().mockImplementation(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 30))
+          return {
+            textStream: (async function* () {})(),
+            baseStream: makeReadableStream([{ type: 'text-delta', text: 'hi' }]),
+            getFinalResult: vi.fn().mockResolvedValue({
+              finishReason: 'complete',
+              totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+            }),
+          }
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      deps = d
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      const summary = deps.eventChannel.publish.mock.calls
+        .map((c) => c[1] as { type: string; data?: { timeToStreamStartMs?: number } })
+        .find((e) => e.type === 'stream_timing_summary')
+      expect(summary?.data?.timeToStreamStartMs).toBeGreaterThanOrEqual(20)
+    })
+
+    it('publishes neither diagnostic event when the flag is unset', async () => {
+      delete process.env.SOCKET_DIAGNOSTICS
+      deps = createUsageDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      const publishedTypes = deps.eventChannel.publish.mock.calls.map((c) => (c[1] as { type: string }).type)
+      expect(publishedTypes).not.toContain('token_usage_summary')
+      expect(publishedTypes).not.toContain('stream_timing_summary')
+    })
+
+    it('publishes neither diagnostic event when the flag is "false"', async () => {
+      process.env.SOCKET_DIAGNOSTICS = 'false'
+      deps = createUsageDeps()
+      service = new MessageExecutionService(deps as any)
+
+      await service.execute(DEFAULT_PARAMS)
+
+      const publishedTypes = deps.eventChannel.publish.mock.calls.map((c) => (c[1] as { type: string }).type)
+      expect(publishedTypes).not.toContain('token_usage_summary')
+      expect(publishedTypes).not.toContain('stream_timing_summary')
+    })
+
+    // Stalls the stream so the chunk-timeout guard aborts, driving
+    // handleChunkTimeout() → tracker.recordTimeout().
+    function createTimeoutDeps() {
+      const d = createMockDeps()
+      d.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockImplementation(function (_message: string, opts: { abortSignal: AbortSignal }) {
+          return {
+            textStream: (async function* () {})(),
+            baseStream: new ReadableStream({
+              start(controller) {
+                opts.abortSignal.addEventListener('abort', () => {
+                  controller.error(new Error(String(opts.abortSignal.reason ?? 'aborted')))
+                }, { once: true })
+              },
+            }),
+          }
+        }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      return d
+    }
+
+    it('publishes stream_chunk_timeout on a chunk-timeout when the flag is on', async () => {
+      const previousTimeout = process.env.AI_CHUNK_TIMEOUT_MS
+      process.env.SOCKET_DIAGNOSTICS = 'true'
+      process.env.AI_CHUNK_TIMEOUT_MS = '5'
+      try {
+        deps = createTimeoutDeps()
+        service = new MessageExecutionService(deps as any)
+
+        await service.execute(DEFAULT_PARAMS)
+
+        expect(deps.eventChannel.publish).toHaveBeenCalledWith(
+          'conv_1',
+          expect.objectContaining({
+            type: 'stream_chunk_timeout',
+            data: expect.objectContaining({
+              error: expect.stringContaining('Stream chunk timeout'),
+              chunksRead: expect.any(Number),
+              streamElapsedMs: expect.any(Number),
+              maxChunkGapMs: expect.any(Number),
+            }),
+          }),
+        )
+      } finally {
+        if (previousTimeout === undefined) delete process.env.AI_CHUNK_TIMEOUT_MS
+        else process.env.AI_CHUNK_TIMEOUT_MS = previousTimeout
+      }
+    })
+
+    it('does not publish stream_chunk_timeout on a chunk-timeout when the flag is unset', async () => {
+      const previousTimeout = process.env.AI_CHUNK_TIMEOUT_MS
+      delete process.env.SOCKET_DIAGNOSTICS
+      process.env.AI_CHUNK_TIMEOUT_MS = '5'
+      try {
+        deps = createTimeoutDeps()
+        service = new MessageExecutionService(deps as any)
+
+        await service.execute(DEFAULT_PARAMS)
+
+        const publishedTypes = deps.eventChannel.publish.mock.calls.map((c) => (c[1] as { type: string }).type)
+        expect(publishedTypes).not.toContain('stream_chunk_timeout')
+      } finally {
+        if (previousTimeout === undefined) delete process.env.AI_CHUNK_TIMEOUT_MS
+        else process.env.AI_CHUNK_TIMEOUT_MS = previousTimeout
+      }
+    })
+  })
+
   describe('per-stream publish rejection isolation', () => {
     it('does not abort the turn when a single in-stream publish rejects', async () => {
       // Pre-guard, a blocking-subscriber rejection on a chunk publish would

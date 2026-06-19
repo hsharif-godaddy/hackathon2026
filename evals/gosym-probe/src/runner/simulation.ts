@@ -54,7 +54,10 @@ export class InactivityGuard {
 }
 
 export function isFatalError(error: string): boolean {
-  return /\bAAB disconnected\b/.test(error)
+  // The SSE client surfaces a dead transport as `AAB stream error[: detail]`
+  // (the prior Socket.IO `AAB disconnected` string is never emitted now), so
+  // match that to abort immediately instead of waiting out the turn timeout.
+  return /\bAAB stream error\b/.test(error)
     || /\bunauthorized\b/i.test(error)
     || /\bS2S token\b/i.test(error);
 }

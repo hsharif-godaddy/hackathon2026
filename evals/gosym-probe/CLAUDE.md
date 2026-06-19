@@ -14,7 +14,7 @@ saved baselines.
 **Prerequisites**
 
 - Node.js 20+, pnpm
-- AAB running locally (Socket.IO `:4000`, Next.js UI `:8443`)
+- AAB running locally (SSE chat transport over HTTP on the agents server `:4000`, Next.js UI `:8443`)
 - AWS SSO authenticated: `aws sso login --profile airobuild-dev-private-sso`
 
 **Setup**
@@ -153,7 +153,7 @@ src/save-baseline.ts  Baseline snapshot script
 
 src/runner/       SuiteRunner, Simulation, TrialAggregator,
                   GoalTracker, types
-src/clients/      AABClient (Socket.IO), GocodeClient (OpenAI-compat),
+src/clients/      AABClient (SSE), GocodeClient (OpenAI-compat),
                   DOMCapture (Playwright)
 src/evaluators/   Evaluator interface + concrete evaluators
 src/scenarios/    Scenario types + registry + concrete scenarios
@@ -181,7 +181,7 @@ index.ts
   └─ SuiteRunner
        ├─ Simulation × k trials
        │    ├─ SyntheticUserAgent  →  GoCode (LLM)
-       │    ├─ AABClient           →  AAB Socket.IO :4000
+       │    ├─ AABClient           →  AAB SSE :4000
        │    └─ DOMCapture          →  AAB Next.js UI :8443
        ├─ TrialAggregator  →  pass@k / pass^k per evaluator
        ├─ RegressionComparator  →  current vs baseline
@@ -232,13 +232,13 @@ Configured in `.env` (copy from `.env.example`).
 | `MAX_ROUTES`            | No       | `20`                        | Max routes captured per trial; `--max-routes` overrides                         |
 | `MAX_TURNS`             | No       | `10`                        | Max turns per simulation; `--max-turns` overrides                               |
 | `AWS_PROFILE`           | No       | `airobuild-dev-private-sso` | AWS SSO profile; required for S2S and AAB                                       |
-| `PROBE_DEBUG_EVENTS`    | No       | —                           | Set to `1` to log AAB socket events                                             |
+| `PROBE_DEBUG_EVENTS`    | No       | —                           | Set to `1` to log AAB SSE events                                                |
 
 ### AAB-side variables (set in `agents/.env` at repo root, not probe `.env`)
 
 | Variable             | Required | Default | Description                                                                                                                                                                                                         |
 | -------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SOCKET_DIAGNOSTICS` | No       | —       | Set to `true` in AAB to emit `stream.timing.summary`, `stream.chunk.slow_gap`, and `stream.chunk.timeout` as Socket.IO events. Required for `LatencyEvaluator` to capture AAB-side timing (agent init vs LLM TTFC). |
+| `SOCKET_DIAGNOSTICS` | No       | —       | Set to `true` in AAB to gate the SSE diagnostic events `token_usage_summary`, `stream_timing_summary`, `stream_chunk_slow_gap`, and `stream_chunk_timeout` (emitted by the SSE path), consumed by `LatencyEvaluator` and the token-usage collector. When unset, no diagnostic events are emitted. |
 
 ---
 

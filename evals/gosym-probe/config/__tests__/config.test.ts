@@ -66,8 +66,8 @@ describe('loadConfig', () => {
   });
 
   describe('config shape', () => {
-    it('aab.socketUrl is a valid URL', () => {
-      expect(() => new URL(loadConfig().aab.socketUrl)).not.toThrow();
+    it('aab.agentsUrl is a valid URL', () => {
+      expect(() => new URL(loadConfig().aab.agentsUrl)).not.toThrow();
     });
 
     it('aab.bffUrl is a valid URL', () => {

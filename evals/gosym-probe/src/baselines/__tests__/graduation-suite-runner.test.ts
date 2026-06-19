@@ -57,7 +57,7 @@ function makeScenario(name: string, overrides?: Partial<Scenario>): Scenario {
 function makeConfig(overrides?: Partial<ResolvedConfig>): ResolvedConfig {
   return {
     env: 'local.dev',
-    aab: { socketUrl: 'ws://localhost:4000', bffUrl: 'http://localhost:3000', controlPlaneUrl: 'http://localhost:4100' },
+    aab: { agentsUrl: 'http://localhost:4000', bffUrl: 'http://localhost:3000', controlPlaneUrl: 'http://localhost:4100' },
     gocode: { baseUrl: 'http://localhost', apiKey: 'key', model: 'test' },
     eval: { defaultTrials: 3, maxTurns: 30, turnTimeoutMs: 30000, maxConcurrency: 2, firstTurnInactivityMs: 600_000, firstTurnRetryScheduleMs: [600_000, 120_000, 120_000, 120_000], maxFirstTurnRetries: 2 },
     playwright: { ignoreHttpsErrors: true },

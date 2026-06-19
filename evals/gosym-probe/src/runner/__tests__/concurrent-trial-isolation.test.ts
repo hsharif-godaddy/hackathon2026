@@ -77,7 +77,7 @@ const GOCODE_CONFIG = {
 
 const EVAL_CONFIG: ResolvedConfig = {
   env: 'test',
-  aab: { socketUrl: '', bffUrl: '', controlPlaneUrl: '' },
+  aab: { agentsUrl: '', bffUrl: '', controlPlaneUrl: '' },
   gocode: GOCODE_CONFIG,
   eval: {
     defaultTrials: 2,

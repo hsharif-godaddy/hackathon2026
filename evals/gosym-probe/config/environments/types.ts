@@ -24,7 +24,7 @@ export interface StatisticalRegressionConfig {
 export interface Config {
   env: string;
   aab: {
-    socketUrl: string;
+    agentsUrl: string;
     bffUrl: string;
     controlPlaneUrl: string;
   };

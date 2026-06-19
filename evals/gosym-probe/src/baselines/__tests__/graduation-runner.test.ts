@@ -121,7 +121,7 @@ const mockScenario: Scenario = {
 const mockConfig: ResolvedConfig = {
   env: 'local.test',
   aab: {
-    socketUrl: 'http://localhost:4000',
+    agentsUrl: 'http://localhost:4000',
     bffUrl: 'https://local.gasket.dev-godaddy.com:8443',
     controlPlaneUrl: 'http://localhost:4001',
   },

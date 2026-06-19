@@ -97,7 +97,7 @@ function makeConfig(): Config {
   return {
     env: 'test',
     aab: {
-      socketUrl: 'wss://test',
+      agentsUrl: 'http://test',
       bffUrl: 'http://test',
       controlPlaneUrl: 'http://test',
     },

@@ -9,7 +9,7 @@ export function createConfig(): Config {
   return {
     env: 'local.prod',
     aab: {
-      socketUrl: 'https://local.gasket.dev-godaddy.com:4000',
+      agentsUrl: 'https://local.gasket.dev-godaddy.com:4000',
       bffUrl: 'https://local.gasket.dev-godaddy.com:8443',
       controlPlaneUrl: 'http://localhost:4100',
     },

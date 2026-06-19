@@ -9,7 +9,9 @@ export function createConfig(): Config {
   return {
     env: 'local.dev',
     aab: {
-      socketUrl: 'https://local.gasket.dev-godaddy.com:4000',
+      // HTTP base URL of the agents server. The AAB client drives chat over SSE
+      // (POST conversation + GET stream).
+      agentsUrl: 'https://local.gasket.dev-godaddy.com:4000',
       bffUrl: 'https://local.gasket.dev-godaddy.com:8443',
       controlPlaneUrl: 'http://localhost:4100',
     },

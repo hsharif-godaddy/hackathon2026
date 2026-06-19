@@ -64,7 +64,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
     env: 'test',
     aab: {
-      socketUrl: 'wss://test',
+      agentsUrl: 'http://test',
       bffUrl: 'http://test',
       controlPlaneUrl: 'http://test',
     },
@@ -110,7 +110,7 @@ describe('sanitizeConfig', () => {
   it('preserves aab config', () => {
     const result = sanitizeConfig(makeConfig());
     expect(result.aab).toEqual({
-      socketUrl: 'wss://test',
+      agentsUrl: 'http://test',
       bffUrl: 'http://test',
       controlPlaneUrl: 'http://test',
     });

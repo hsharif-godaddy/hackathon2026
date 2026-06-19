@@ -1,4 +1,4 @@
-import type { ConversationEventChannel, ConversationMessage, PersistenceStreamingEvent, ConversationContext, ValidationMessageEventData, StreamTimingData, TurnSnapshotState, TurnSnapshotUpdate } from '@airo/ai-transport'
+import type { ConversationEventChannel, ConversationMessage, PersistenceStreamingEvent, ConversationContext, ValidationMessageEventData, StreamTimingData, StreamingEventType, TurnSnapshotState, TurnSnapshotUpdate } from '@airo/ai-transport'
 import {
   StreamPartProcessor,
   StreamTimingTracker,
@@ -62,7 +62,7 @@ import {
   type ExecutionStep,
 } from '@airo/ai-lib/budget'
 import { checkCorrelationIdRace, safeProcessBudgetReport } from '../budget-report-handler.js'
-import { parseChunkTimeoutMs, runWithModelOverride, buildTokenUsage } from '@airo/ai-lib'
+import { parseChunkTimeoutMs, runWithModelOverride, buildTokenUsage, calculateCostEstimate } from '@airo/ai-lib'
 import { resolveProfile, runWithProfile } from '../../profiles/index.js'
 import { guardAllowedOverrideModel, resolveOverride } from '../model-override.js'
 import type { AssessmentOutcome } from '../../agents/assessment-agent/index.js'
@@ -100,6 +100,13 @@ import { buildAppliedSkillsContextMessage } from '../applied-skills-context.js'
  *  already seeing a failure, so don't delay terminal events for a slow classifier.
  *  usedFreeGrants defaults to false when the outcome is unavailable. */
 const ERRORED_TURN_ASSESSMENT_TIMEOUT_MS = 500
+
+/** Server-side eval-only diagnostics gate. Single source of truth for the
+ *  SOCKET_DIAGNOSTICS flag so the call sites can't drift on the var name. The
+ *  StreamTimingTracker gates its own socket.emit on the same env var internally. */
+function isDiagnosticsEnabled(): boolean {
+  return process.env.SOCKET_DIAGNOSTICS === 'true'
+}
 
 interface ExecutionDeps {
   getAgent: (agentId?: string) => any
@@ -852,6 +859,9 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
        *  -attached swap can be gated on install success); prepended on the first turn. */
       forcedKitMessages?: Array<{ role: string; content: unknown }>
       fullStorySessionId?: string
+      /** Wall-clock at message-handling start (executeUnderTrace), used for the
+       *  stream_timing_summary diagnostic's timeToStreamStartMs. */
+      turnStartMs: number
     },
   ): Promise<{ accumulatedContent: string; currentStep: number; finalResult: any; finishReason: string; responseMetadata: ResponseMetadata; steps: ExecutionStep[] }> {
     const {
@@ -866,8 +876,13 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       turnSnapshot,
       forcedKitMessages,
       fullStorySessionId,
+      turnStartMs,
     } = opts
     const abortSignal = abortController.signal
+    // Wall-clock of the first baseStream read; with turnStartMs this yields the
+    // pre-stream init duration for the timing diagnostic. Defaults to turnStartMs
+    // so a turn that never reads a stream reports 0 rather than a negative delta.
+    let streamFirstReadMs = turnStartMs
 
     // Inject the user's current message text into metadata BEFORE loadContextMessages
     // runs so context-manager.processContextAttachments can read it for upload
@@ -903,9 +918,25 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     }
 
     const modelName = agent?.getConfig?.()?.modelName ?? 'unknown'
-    // emit is a no-op: tracker diagnostics surface via logger.warn, not the event channel.
+    // Forward the tracker's incremental diagnostics (stream.chunk.slow_gap from
+    // recordChunk; stream.chunk.timeout from recordTimeout in handleChunkTimeout)
+    // onto the SSE stream as first-class events. The tracker gates these emits on
+    // SOCKET_DIAGNOSTICS internally, so the adapter only fires when the flag is
+    // on; dotted event names are normalized to the underscore form registered in
+    // STREAMING_EVENT_TYPES.
     const tracker = new StreamTimingTracker({
-      socket: { id: sseSocketId, emit: () => {} },
+      socket: {
+        id: sseSocketId,
+        emit: (event: string, data: unknown) => {
+          this.publishNonTerminal(appId, conversationId, {
+            conversationId,
+            type: event.replace(/\./g, '_') as StreamingEventType,
+            content: '',
+            data: data as Record<string, unknown>,
+            agentName,
+          })
+        },
+      },
       agentName,
       modelName,
       logger,
@@ -1205,6 +1236,15 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     // breaks the loop) when content/finish is present; otherwise fail fast via
     // throwChunkTimeoutError (preserving today's behaviour).
     const handleChunkTimeout = (): void => {
+      // Diagnostic parity with the WS server (which called recordTimeout at its
+      // abort sites): emit the structured stream.chunk.timeout WARN log and,
+      // under SOCKET_DIAGNOSTICS, the stream_chunk_timeout event the eval's
+      // LatencyEvaluator collects. recordTimeout gates the socket emit on the
+      // flag internally, so production only gets the warn log. Reached only when
+      // the abort reason is chunk_timeout, and each call site breaks after, so
+      // this fires once per timeout across both the soft-commit and fail-fast
+      // paths below.
+      tracker.recordTimeout(`Stream chunk timeout after ${this.chunkTimeoutMs!}ms`)
       const outcome = decideChunkTimeoutFinalization({
         isFinished: processor.isFinished(),
         hasContent: processor.getAccumulatedContent().length > 0,
@@ -1388,6 +1428,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
 
       const baseStream = streamResult.baseStream
       if (baseStream) {
+        streamFirstReadMs = Date.now()
         const reader: ReadableStreamDefaultReader = (baseStream as ReadableStream).getReader()
         let readerReleased = false
         try {
@@ -1466,6 +1507,27 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       const timingData: StreamTimingData = tracker.finalize()
       guard?.dispose()
       logger.info('sse.stream.timing', { appId, conversationId, agentName, ...timingData })
+
+      // Restore the WS `stream.timing.summary` diagnostic as a first-class SSE
+      // event for the gosym-probe eval's LatencyEvaluator (AIROBUILD-2681).
+      // timeToStreamStartMs is the agent-init + LLM-connect time before the first
+      // stream read (turnStartMs → streamFirstReadMs), mirroring the WS server's
+      // processStreamStartMs − startTime.
+      if (isDiagnosticsEnabled()) {
+        this.publishNonTerminal(appId, conversationId, {
+          conversationId,
+          type: 'stream_timing_summary',
+          content: '',
+          agentName,
+          data: {
+            timeToStreamStartMs: streamFirstReadMs - turnStartMs,
+            timeToFirstTextChunkMs: timingData.timeToFirstTextChunkMs,
+            maxChunkGapMs: timingData.maxChunkGapMs,
+            chunksRead: timingData.chunksRead,
+            streamDurationMs: timingData.streamDurationMs,
+          },
+        })
+      }
 
       let finishReason = 'complete'
       let finalResult: any
@@ -1553,14 +1615,42 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         // cost so the Langfuse invocation span carries it like WS does.
         let totalCost: number | undefined
         if (usageToTrack) {
+          const usage = buildTokenUsage(usageToTrack)
           const { totalCost: cost } = recordTokenUsageObservability({
-            usage: buildTokenUsage(usageToTrack),
+            usage,
             metadata: { appId, agentName, modelName, conversationId },
             apmTracker: this.deps.conversationPersistence,
             logger,
             eventPrefix: 'sse.token_usage',
           })
           totalCost = cost
+          // Restore the WS `token.usage.summary` diagnostic as a first-class SSE
+          // event for the gosym-probe eval's token-usage collector (AIROBUILD-2681).
+          // The cost breakdown is computed only inside this flag branch to avoid a
+          // redundant calculateCostEstimate on the production path.
+          if (isDiagnosticsEnabled()) {
+            const costEstimate = calculateCostEstimate(usage, modelName)
+            this.publishNonTerminal(appId, conversationId, {
+              conversationId,
+              type: 'token_usage_summary',
+              content: '',
+              agentName,
+              data: {
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
+                totalTokens: usage.totalTokens,
+                ...(usage.cachedInputTokensRead !== undefined && { cachedInputTokensRead: usage.cachedInputTokensRead }),
+                ...(usage.cachedInputTokensWrite !== undefined && { cachedInputTokensWrite: usage.cachedInputTokensWrite }),
+                modelName,
+                totalCost: costEstimate.totalCost,
+                inputCost: costEstimate.inputCost,
+                outputCost: costEstimate.outputCost,
+                ...(costEstimate.cachedInputCost !== undefined && { cachedInputCost: costEstimate.cachedInputCost }),
+                savings: costEstimate.savings,
+                currency: costEstimate.currency,
+              },
+            })
+          }
         }
         invocation.endSuccess({
           outputText: accumulatedContent,
@@ -1800,6 +1890,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
   }
 
   private async executeUnderTrace(params: ExecuteParams, turnSnapshot: TurnSnapshotState): Promise<TurnExecutionResult> {
+    // Start of message handling — anchors the stream_timing_summary diagnostic's
+    // timeToStreamStartMs (agent init + LLM-connect time before the first stream
+    // read). Mirrors the WS server's per-message startTime.
+    const turnStartMs = Date.now()
     const {
       appId, conversationId, content, siteId, agentId,
       templateId, modelOverride, rebuildBuildPageSlug, rebuildDesignDirection,
@@ -2135,6 +2229,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
             executionContext, persistenceContext, streamState, agentMessageId: activeAgentMessageId,
             turnSnapshot,
             forcedKitMessages,
+            turnStartMs,
             ...(params.fullStorySessionId !== undefined && { fullStorySessionId: params.fullStorySessionId }),
           })
 

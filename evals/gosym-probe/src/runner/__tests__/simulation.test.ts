@@ -67,7 +67,7 @@ const mockPersona: Persona = {
 const mockConfig: ResolvedConfig = {
   env: 'local.test',
   aab: {
-    socketUrl: 'http://localhost:4000',
+    agentsUrl: 'http://localhost:4000',
     bffUrl: 'https://local.gasket.dev-godaddy.com:8443',
     controlPlaneUrl: 'http://localhost:4001',
   },
@@ -1859,13 +1859,13 @@ describe('preview URL pre-warm', () => {
 
 describe('fatal AAB error abort', () => {
   it(
-    'aborts immediately when AAB disconnects mid-turn',
+    'aborts immediately when the AAB stream errors mid-turn',
     async () => {
       const scenario = makeScenario();
       const syntheticUser: SyntheticUserAgent = {
         nextMessage: vi.fn().mockResolvedValue('hello'),
       };
-      // Agent emits a disconnect error with no 'complete' —
+      // Agent emits a transport stream error with no 'complete' —
       // the simulation must abort instead of waiting for the
       // turn timeout.
       const agent = new MockAgentClient();
@@ -1875,8 +1875,7 @@ describe('fatal AAB error abort', () => {
           Promise.resolve().then(() => {
             agent.emit({
               type: 'error',
-              error:
-                'AAB disconnected: io server disconnect',
+              error: 'AAB stream error: io server disconnect',
             });
           });
         },
@@ -1898,7 +1897,7 @@ describe('fatal AAB error abort', () => {
       }).run(0);
 
       expect(transcript.errors).toContain(
-        'AAB disconnected: io server disconnect',
+        'AAB stream error: io server disconnect',
       );
       const userTurns = transcript.turns.filter(
         (t) => t.role === 'user',
@@ -1915,8 +1914,8 @@ describe('fatal AAB error abort', () => {
 
 describe('isFatalError', () => {
   it.each([
-    ['AAB disconnected: io server disconnect'],
-    ['AAB disconnected: transport close'],
+    ['AAB stream error'],
+    ['AAB stream error: 500 internal'],
     ['unauthorized access'],
     ['Unauthorized'],
     ['S2S token expired'],
@@ -1930,6 +1929,7 @@ describe('isFatalError', () => {
     ['429 rate limit'],
     [''],
     ['connection reset'],
+    ['AAB disconnected: transport close'],
   ])('returns false for "%s"', (msg) => {
     expect(isFatalError(msg)).toBe(false);
   });
