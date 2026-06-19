@@ -420,6 +420,8 @@ export default makeGasket({
           'vh_dashboard_logo_to_airo_builder_redirect',
           // Canonical ID: EXPERIMENT_IDS.initialAgent in app/src/config/experiments.ts
           'airo-build-initial-agent',
+          // Canonical ID: EXPERIMENT_IDS.domainExpeditePurchase in app/src/config/experiments.ts
+          'airo-app-builder-domain-expedite-purchase',
         ]
       }
     }

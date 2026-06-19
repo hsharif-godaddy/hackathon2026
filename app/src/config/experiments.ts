@@ -16,6 +16,9 @@ export const EXPERIMENT_IDS = {
   buildingTipsVariant: 'endgame_first_build_action_h1_update',
   /** Combine Upgrade + Publish into a single Publish button with an educational upsell popup. */
   combineUpgradeWithPublish: 'aab_combine_upgrade_with_publish',
+  /** DomainBar suggested-domain expedite: clicking the banner domain adds it to the cart
+   *  and opens Express Checkout (treatment `on`) vs. sending a chat prompt (control `off`). */
+  domainExpeditePurchase: 'airo-app-builder-domain-expedite-purchase',
 } as const
 
 /**

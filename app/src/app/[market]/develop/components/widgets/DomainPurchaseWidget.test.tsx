@@ -88,6 +88,14 @@ vi.mock('@/utils/reactCompat', () => ({
   shimReactInternals: vi.fn(),
 }));
 
+vi.mock('@/utils/instrumentation', async (importActual) => {
+  const actual = await importActual<typeof import('@/utils/instrumentation')>();
+  return { ...actual, logImpressionEvent: vi.fn(function () { return vi.fn(); }) };
+});
+
+const { logImpressionEvent } = await import('@/utils/instrumentation');
+const mockLogImpressionEvent = vi.mocked(logImpressionEvent);
+
 // -- External package mocks --
 
 vi.mock('next/dynamic', () => ({
@@ -527,5 +535,57 @@ describe('DomainPurchaseWidget — ISC offer flow', function () {
     expect(
       screen.queryByTestId('domain-offer-disclaimer')
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('DomainPurchaseWidget — impression analytics', function () {
+  beforeEach(function () {
+    vi.clearAllMocks();
+    mockUseSwitchboard.mockReturnValue(true);
+    mockUseDomainSearch.mockReturnValue({ data: null, isLoading: false, error: null });
+    mockUseIscResolver.mockReturnValue({ isc: null, source: null });
+    mockUseOfferEligibility.mockReturnValue({ eligible: false });
+  });
+
+  it('emits chat.domainPurchase.view impression once when the widget appears', async function () {
+    const { rerender } = renderWithProviders(
+      <DomainPurchaseWidget brandName="testapp" />
+    );
+
+    await screen.findByText('builder_domain_purchase_search_button');
+
+    expect(mockLogImpressionEvent).toHaveBeenCalledWith('chat.domainPurchase.view', {
+      from_domain_attach: false,
+    });
+
+    rerender(<DomainPurchaseWidget brandName="testapp" />);
+    await act(async () => { await Promise.resolve(); });
+
+    expect(mockLogImpressionEvent.mock.calls.filter(
+      ([eid]) => eid === 'chat.domainPurchase.view'
+    )).toHaveLength(1);
+  });
+
+  it('marks from_domain_attach true when launched from the attach flow', async function () {
+    renderWithProviders(
+      <DomainPurchaseWidget brandName="testapp" onCancel={vi.fn()} />
+    );
+
+    await screen.findByText('builder_domain_purchase_search_button');
+
+    expect(mockLogImpressionEvent).toHaveBeenCalledWith('chat.domainPurchase.view', {
+      from_domain_attach: true,
+    });
+  });
+
+  it('does not emit the impression when the feature flag is disabled', function () {
+    mockUseSwitchboard.mockReturnValue(false);
+
+    renderWithProviders(<DomainPurchaseWidget brandName="testapp" />);
+
+    expect(mockLogImpressionEvent).not.toHaveBeenCalledWith(
+      'chat.domainPurchase.view',
+      expect.anything(),
+    );
   });
 });

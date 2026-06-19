@@ -29,6 +29,7 @@ import { logger } from '@/lib/request-context';
 import { useSiteStore } from '@/stores/useSiteStore';
 import type { Domain, DomainPurchaseWidgetProps, Product } from '@/types/domain-purchase';
 import { getRootDomain } from '@/utils/getRootDomain';
+import { logImpressionEvent } from '@/utils/instrumentation';
 import { shimReactInternals } from '@/utils/reactCompat';
 import {
   buildSearchResultsLogKey,
@@ -221,6 +222,17 @@ export default function DomainPurchaseWidget({
     searchMeta?.spinsFulfilled,
     searchMeta?.spinsRejected,
   ]);
+
+  // CSP impression: the domain purchase widget appeared on screen. Fired
+  // once per mount via a ref; the tool renderer only mounts the full
+  // interactive widget for the last assistant message, so a mount maps to
+  // a genuine on-screen appearance. appId is auto-merged by mergeContext.
+  const hasLoggedImpressionRef = useRef(false);
+  useEffect(() => {
+    if (!isDomainPurchaseEnabled || hasLoggedImpressionRef.current) return;
+    hasLoggedImpressionRef.current = true;
+    logImpressionEvent('chat.domainPurchase.view', { from_domain_attach: isFromDomainAttach })();
+  }, [isDomainPurchaseEnabled, isFromDomainAttach]);
 
   function runSearch() {
     const q = searchInput.trim();
