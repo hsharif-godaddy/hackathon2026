@@ -1728,6 +1728,44 @@ describe('SSE routes', () => {
       expect(res.body.purchaseIntent).toBe(true)
     })
 
+    it('logs sse.budget.exceeded.pre_stream so the pre-stream paywall block is visible', async () => {
+      const { BudgetExceededError } = await import('@airo/ai-common')
+      const mockExec = {
+        execute: vi.fn(),
+        stop: vi.fn(),
+        subscribeStream: vi.fn(),
+        hasActiveStream: vi.fn().mockReturnValue(false),
+      }
+      ;(deps as any).executionService = mockExec
+      app = express()
+      app.use(express.json())
+      app.use('/api/conversations', createSSERoutes(deps as any))
+
+      mockBudgetPreCheck.mockRejectedValueOnce(
+        new BudgetExceededError('quota exceeded', 402, '{}', { purchaseIntent: true }),
+      )
+
+      const loggerMod = await import('../../../logging/index.js')
+      const warnSpy = vi.spyOn(loggerMod.logger, 'warn')
+      try {
+        const res = await request(app)
+          .post('/api/conversations/abcdefghij/conv_1/messages')
+          .send({ content: 'hi' })
+
+        expect(res.status).toBe(402)
+        const blockLog = warnSpy.mock.calls.find(c => c[0] === 'sse.budget.exceeded.pre_stream')
+        expect(blockLog).toBeDefined()
+        expect(blockLog?.[1]).toMatchObject({
+          conversationId: 'conv_1',
+          siteId: 'abcdefghij',
+          statusCode: 402,
+          purchaseIntent: true,
+        })
+      } finally {
+        warnSpy.mockRestore()
+      }
+    })
+
     it('passes bmsBudgetId and budgetSessionId to execute when pre-check succeeds', async () => {
       const mockExec = {
         execute: vi.fn().mockResolvedValue(undefined),

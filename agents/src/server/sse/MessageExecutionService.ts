@@ -1571,6 +1571,16 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
               ...errorFields(err),
             })
             finishReason = 'incomplete'
+          } else if (abortSignal.aborted) {
+            // An aborted turn (user_stopped / server_shutdown) rejects
+            // getFinalResult with a non-network abort error — expected, not a
+            // fetch failure. Log distinctly so result_fetch_failed (trusted by
+            // the dashboard / sse-rollout-check.py) counts only genuine failures.
+            logger.info('sse.execution.getFinalResult.aborted', {
+              appId, conversationId,
+              reason: String(abortSignal.reason ?? 'unknown'),
+            })
+            finishReason = 'aborted'
           } else {
             logger.warn('sse.execution.getFinalResult.failed', { appId, conversationId, ...errorFields(err) })
             finishReason = 'result_fetch_failed'

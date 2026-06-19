@@ -3796,6 +3796,53 @@ describe('MessageExecutionService', () => {
       )
     })
 
+    it('logs getFinalResult.aborted (not .failed) when getFinalResult rejects on an aborted turn', async () => {
+      let resolveStream: () => void
+      const streamGate = new Promise<void>(r => { resolveStream = r })
+
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockImplementation(async function (_content: string, opts: any) { return {
+          textStream: (async function* () {})(),
+          baseStream: new ReadableStream({
+            async pull(controller) {
+              await streamGate
+              controller.close()
+            },
+          }),
+          // The dead socket rejects the final-result fetch with the abort error,
+          // exactly as user_stopped does in prod (non-network, signal aborted).
+          getFinalResult: vi.fn().mockImplementation(async () => {
+            throw new Error(String(opts?.abortSignal?.reason ?? 'This operation was aborted'))
+          }),
+        }; }),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      const loggerMod = await import('../../../logging/index.js')
+      const infoSpy = vi.spyOn(loggerMod.logger, 'info')
+      const warnSpy = vi.spyOn(loggerMod.logger, 'warn')
+      try {
+        const execPromise = service.execute(DEFAULT_PARAMS)
+        const sg = deps.getAgent().streamGenerate as any
+        for (let i = 0; i < 100; i++) {
+          if (sg.mock.calls.length > 0) break
+          await new Promise(r => setTimeout(r, 5))
+        }
+        service.stop('conv_1')
+        resolveStream!()
+        await execPromise
+
+        const abortedLog = infoSpy.mock.calls.find(c => c[0] === 'sse.execution.getFinalResult.aborted')
+        expect(abortedLog).toBeDefined()
+        expect(abortedLog?.[1]).toMatchObject({ conversationId: 'conv_1', reason: 'user_stopped' })
+        expect(warnSpy.mock.calls.some(c => c[0] === 'sse.execution.getFinalResult.failed')).toBe(false)
+      } finally {
+        infoSpy.mockRestore()
+        warnSpy.mockRestore()
+      }
+    })
+
     it('ends the invocation span with error:<err>, success:false when streamGenerate throws', async () => {
       const boom = new Error('streamGenerate boom')
       deps.getAgent.mockReturnValue({

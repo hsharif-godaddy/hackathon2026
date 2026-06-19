@@ -571,6 +571,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     }
 
     const agentContext = (req as AuthenticatedRequest).agentContext
+    const siteId = agentContext?.siteId ?? 'unknown'
     if (apmTransaction) {
       if (agentContext?.customerId) apmTransaction.setLabel('customerId', agentContext.customerId)
       if (agentContext?.trafficSessionId) apmTransaction.setLabel('sessionId', agentContext.trafficSessionId)
@@ -611,6 +612,17 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
           apmTransaction.setOutcome('failure')
           apmTransaction.end()
         }
+        // Pre-stream BMS capacity gate: the turn never starts, so it produces no
+        // terminal sse.execution.error. WS surfaced this as a 402 agent.error;
+        // emit a structured event here to keep paywall-block rate visible on SSE.
+        logger.warn('sse.budget.exceeded.pre_stream', {
+          appId,
+          conversationId,
+          siteId,
+          subscriptionId: effectiveSubscriptionId,
+          statusCode: err.statusCode,
+          purchaseIntent: err.purchaseIntent,
+        })
         res.status(402).json({
           error: err.message,
           ...(err.purchaseIntent !== undefined && { purchaseIntent: err.purchaseIntent }),
@@ -647,8 +659,6 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     }
 
     res.status(202).json({ accepted: true })
-
-    const siteId = agentContext?.siteId ?? 'unknown'
 
     // isInitialPrompt: the route has already persisted the incoming user message,
     // so a single-message conversation means this is the first prompt.
