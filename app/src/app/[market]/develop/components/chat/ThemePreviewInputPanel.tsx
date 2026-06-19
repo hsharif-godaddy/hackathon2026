@@ -23,11 +23,6 @@ export interface ThemePreviewInputPanelProps {
    * Used with {@link CollapsibleChatInputSection} when `airo-builder-theme-selection-chat` is enabled.
    */
   children?: (parts: { body: ReactNode; footer: ReactNode }) => ReactNode
-  /**
-   * When true, disables all interactions (radio buttons and action buttons).
-   * Used when preview iframe is not visible (e.g., on Code or Settings tabs).
-   */
-  disabled?: boolean
 }
 
 export default function ThemePreviewInputPanel({
@@ -37,7 +32,6 @@ export default function ThemePreviewInputPanel({
   selectedIndex: controlledSelectedIndex,
   onSelectedIndexChange,
   children: childrenFn,
-  disabled = false,
 }: ThemePreviewInputPanelProps) {
   const t = useTranslations()
   const sendUserMessage = useSendUserMessage()
@@ -77,7 +71,6 @@ export default function ThemePreviewInputPanel({
   }, [toolCallId])
 
   function selectPalette(index: number) {
-    if (disabled) return
     const option = palettes[index]
     if (!option) return
     setSelectedIndex(index)
@@ -86,7 +79,7 @@ export default function ThemePreviewInputPanel({
 
   function handleApply() {
     const selectedPalette = palettes[selectedIndex]
-    if (!selectedPalette || isProcessing || applyingTheme || disabled || !sendUserMessage) return
+    if (!selectedPalette || isProcessing || applyingTheme || !sendUserMessage) return
     setApplyingTheme(true)
     setSelectedIndex(0)
     sendUserMessage(
@@ -96,7 +89,7 @@ export default function ThemePreviewInputPanel({
   }
 
   function handleMoreOptions() {
-    if (isProcessing || applyingTheme || disabled || !sendUserMessage) return
+    if (isProcessing || applyingTheme || !sendUserMessage) return
     handleCancel()
     sendUserMessage(t('builder_tools_css_color_scheme_more_options', undefined, 'Show me more color scheme options'), { isActionRequest: true })
   }
@@ -132,9 +125,7 @@ export default function ThemePreviewInputPanel({
               key={`${toolCallId}-${index}`}
               htmlFor={inputId}
               data-testid="theme-preview-option"
-              className={`flex items-center gap-2 rounded-md border-2 px-1.5 py-0.5 transition-all duration-200 ${
-                disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:shadow-md'
-              }`}
+              className="flex cursor-pointer items-center gap-2 rounded-md border-2 px-1.5 py-0.5 transition-all duration-200 hover:shadow-md"
               style={{
                 backgroundColor: palette.background,
                 color: palette.foreground,
@@ -148,7 +139,6 @@ export default function ThemePreviewInputPanel({
                 name={radioName}
                 value={index}
                 checked={isSelected}
-                disabled={disabled}
                 onChange={() => selectPalette(index)}
               />
               <span
@@ -193,9 +183,9 @@ export default function ThemePreviewInputPanel({
       applyTestId="theme-preview-apply"
       cancelLabel={t('builder_common_cancel', undefined, 'Cancel')}
       cancelTestId="theme-preview-cancel"
-      disableApply={isProcessing || applyingTheme || disabled || !palettes[selectedIndex]}
+      disableApply={isProcessing || applyingTheme || !palettes[selectedIndex]}
       disableCancel={isProcessing || applyingTheme}
-      disableGenerateMore={isProcessing || applyingTheme || disabled}
+      disableGenerateMore={isProcessing || applyingTheme}
       generateMoreLabel={t('builder_common_generate_more', undefined, 'Generate More')}
       generateMoreTestId="theme-preview-more-options"
       onApply={handleApply}
@@ -206,8 +196,8 @@ export default function ThemePreviewInputPanel({
     <AgentChoiceActionFooter
       applyLabel={t('builder_common_apply', undefined, 'Apply')}
       applyTestId="theme-preview-apply"
-      disableApply={isProcessing || applyingTheme || disabled || !palettes[selectedIndex]}
-      disableGenerateMore={isProcessing || applyingTheme || disabled}
+      disableApply={isProcessing || applyingTheme || !palettes[selectedIndex]}
+      disableGenerateMore={isProcessing || applyingTheme}
       generateMoreLabel={t('builder_common_generate_more', undefined, 'Generate More')}
       generateMoreTestId="theme-preview-more-options"
       onApply={handleApply}

@@ -30,7 +30,6 @@ function rowFromOption(t: FontThemeSuggestOption): FontThemeRow {
 
 export interface FontThemePreviewInputPanelProps {
   children?: (parts: { body: ReactNode; footer: ReactNode }) => ReactNode
-  disabled?: boolean
   onCancel?: () => void
   selectedIndex?: number
   onSelectedIndexChange?: (index: number) => void
@@ -40,7 +39,6 @@ export interface FontThemePreviewInputPanelProps {
 
 export default function FontThemePreviewInputPanel({
   children: childrenFn,
-  disabled = false,
   onCancel,
   selectedIndex: controlledSelectedIndex,
   onSelectedIndexChange,
@@ -107,7 +105,6 @@ export default function FontThemePreviewInputPanel({
   }, [rows])
 
   function selectIndex(index: number) {
-    if (disabled) return
     const row = rows[index]
     if (!row) return
     setSelectedIndex(index)
@@ -116,7 +113,7 @@ export default function FontThemePreviewInputPanel({
 
   function handleApply() {
     const row = rows[selectedIndex]
-    if (!row || isProcessing || applying || disabled || !sendUserMessage) return
+    if (!row || isProcessing || applying || !sendUserMessage) return
     setApplying(true)
     setSelectedIndex(0)
     sendUserMessage(
@@ -126,7 +123,7 @@ export default function FontThemePreviewInputPanel({
   }
 
   function handleMoreOptions() {
-    if (isProcessing || applying || disabled || !sendUserMessage) return
+    if (isProcessing || applying || !sendUserMessage) return
     handleCancel()
     sendUserMessage(
       t('builder_font_theme_more_options_message', undefined, 'Show me more font options'),
@@ -161,14 +158,10 @@ export default function FontThemePreviewInputPanel({
           const bodyWeight = row.bodyFont.weights[0] || '400'
           const isSameFont = row.headerFont.name === row.bodyFont.name
 
-          const isDisabled = disabled
-
           return (
             <label
               key={row.id}
-              className={`flex cursor-pointer items-center gap-2 rounded-md border-2 px-1.5 py-0.5 transition-all duration-200 ${
-                isDisabled ? 'cursor-not-allowed opacity-50' : 'hover:shadow-md'
-              }`}
+              className="flex cursor-pointer items-center gap-2 rounded-md border-2 px-1.5 py-0.5 transition-all duration-200 hover:shadow-md"
               style={{
                 backgroundColor: 'var(--intents-ux-box-backgroundColor)',
                 borderColor: isSelected ? '#000000' : undefined,
@@ -179,7 +172,6 @@ export default function FontThemePreviewInputPanel({
               <input
                 checked={isSelected}
                 className="sr-only"
-                disabled={isDisabled}
                 id={inputId}
                 name={radioName}
                 onChange={() => selectIndex(index)}
@@ -274,9 +266,9 @@ export default function FontThemePreviewInputPanel({
       applyTestId="font-theme-preview-apply"
       cancelLabel={t('builder_common_cancel', undefined, 'Cancel')}
       cancelTestId="font-theme-preview-cancel"
-      disableApply={isProcessing || applying || disabled || !rows[selectedIndex]}
+      disableApply={isProcessing || applying || !rows[selectedIndex]}
       disableCancel={isProcessing || applying}
-      disableGenerateMore={isProcessing || applying || disabled}
+      disableGenerateMore={isProcessing || applying}
       generateMoreLabel={t('builder_common_generate_more', undefined, 'Generate More')}
       generateMoreTestId="font-theme-preview-more-options"
       onApply={handleApply}
@@ -287,8 +279,8 @@ export default function FontThemePreviewInputPanel({
     <AgentChoiceActionFooter
       applyLabel={t('builder_common_apply', undefined, 'Apply')}
       applyTestId="font-theme-preview-apply"
-      disableApply={isProcessing || applying || disabled || !rows[selectedIndex]}
-      disableGenerateMore={isProcessing || applying || disabled}
+      disableApply={isProcessing || applying || !rows[selectedIndex]}
+      disableGenerateMore={isProcessing || applying}
       generateMoreLabel={t('builder_common_generate_more', undefined, 'Generate More')}
       generateMoreTestId="font-theme-preview-more-options"
       onApply={handleApply}

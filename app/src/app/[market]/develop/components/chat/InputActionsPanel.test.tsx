@@ -633,7 +633,7 @@ describe('InputActionsPanel', () => {
       vi.mocked(StreamingStore.useMessages).mockReturnValue([])
     })
 
-    it('should pass disabled=false when in PREVIEW mode', () => {
+    it('should keep color options interactive in PREVIEW mode', () => {
       vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.PREVIEW }); }
       )
 
@@ -647,7 +647,7 @@ describe('InputActionsPanel', () => {
       })
     })
 
-    it('should pass disabled=false when in EDIT mode', () => {
+    it('should keep color options interactive in EDIT mode', () => {
       vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.EDIT }); }
       )
 
@@ -661,7 +661,7 @@ describe('InputActionsPanel', () => {
       })
     })
 
-    it('should pass disabled=true when in CODE mode', () => {
+    it('should keep color options interactive in CODE mode', () => {
       vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.CODE }); }
       )
 
@@ -671,11 +671,11 @@ describe('InputActionsPanel', () => {
 
       const radios = screen.getAllByRole('radio') as HTMLInputElement[]
       radios.forEach(radio => {
-        expect(radio).toBeDisabled()
+        expect(radio).not.toBeDisabled()
       })
     })
 
-    it('should pass disabled=true when in BRAND mode', () => {
+    it('should keep color options interactive in BRAND mode', () => {
       vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) { return selector({ viewMode: ViewMode.BRAND }); }
       )
 
@@ -685,7 +685,7 @@ describe('InputActionsPanel', () => {
 
       const radios = screen.getAllByRole('radio') as HTMLInputElement[]
       radios.forEach(radio => {
-        expect(radio).toBeDisabled()
+        expect(radio).not.toBeDisabled()
       })
     })
 
@@ -769,10 +769,9 @@ describe('InputActionsPanel', () => {
 
       rerender(<InputActionsPanel activeColorSchemeSuggest={activeColorSchemeSuggest} />)
 
-      // Selection should still be at index 0, just disabled
+      // Selection should still be at index 0 (CODE mode no longer resets it)
       const radios = screen.getAllByRole('radio') as HTMLInputElement[]
       expect(radios[0].checked).toBe(true)
-      expect(radios[0]).toBeDisabled()
     })
   })
 

@@ -1404,7 +1404,6 @@ function InputActionsPanelThemeSelection({
               onCancel={handleColorCancel}
               selectedIndex={selectedThemeIndex}
               onSelectedIndexChange={setSelectedThemeIndex}
-              disabled={!isPreviewMode}
             >
               {({ body, footer }) => (
                 <CollapsibleChatInputSection
@@ -1421,7 +1420,6 @@ function InputActionsPanelThemeSelection({
           ) : showFont && activeFontThemeSuggest ? (
             <FontThemePreviewInputPanel
               key={activeFontThemeSuggest.toolCallId}
-              disabled={!isPreviewMode}
               onCancel={handleFontCancel}
               selectedIndex={selectedFontIndex}
               themes={themesWithCurrent}
