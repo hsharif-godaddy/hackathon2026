@@ -38,6 +38,7 @@ on:
           - 'LambdaBaseEcrStack'
           - 'AiroInvestigatorStack'
           - 'SeoQualityS3Stack'
+          - 'SeoQualityLakePartitionStack'
           - 'S2sIamJwtStack'
           - 'TransactionalEventsKinesisStack'
           - 'TransactionalEventsKMSStack'

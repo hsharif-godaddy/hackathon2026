@@ -5,7 +5,7 @@ import { PutObjectCommand } from '@aws-sdk/client-s3';
 
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
-import { APP_ID_PATTERN, buildS3Key, formatUtcTs, s3Client, s3ClientInitError } from '@/lib/s3-parquet';
+import { APP_ID_PATTERN, buildLakePartitionS3Key, formatUtcTs, s3Client, s3ClientInitError, SAFE_FILE_ID_PATTERN } from '@/lib/s3-parquet';
 import { encodeSeoQualityParquet } from './seo-quality-to-parquet';
 import type { SeoQualityS3Record, SeoQualityStorePayload } from './types';
 
@@ -53,7 +53,8 @@ export const POST = withCustomerAuth(async (
   }
 
   const appId = typeof body.app_id === 'string' ? body.app_id : null;
-  const snapshotId = typeof body.snapshot_id === 'string' ? body.snapshot_id : randomUUID();
+  const rawSnapshotId = typeof body.snapshot_id === 'string' ? body.snapshot_id : null;
+  const snapshotId = rawSnapshotId !== null && SAFE_FILE_ID_PATTERN.test(rawSnapshotId) ? rawSnapshotId : randomUUID();
   const score = typeof body.score === 'number' ? body.score : 0;
   const pageScores = typeof body.page_scores === 'string' ? body.page_scores : null;
   const missingElements = typeof body.missing_elements === 'string' ? body.missing_elements : null;
@@ -70,7 +71,7 @@ export const POST = withCustomerAuth(async (
   }
 
   const now = new Date();
-  const s3Key = buildS3Key(SEO_QUALITY_TABLE_PREFIX, appId, now);
+  const s3Key = buildLakePartitionS3Key(SEO_QUALITY_TABLE_PREFIX, now, snapshotId);
   const tsStr = formatUtcTs(now);
 
   const record: SeoQualityS3Record = {

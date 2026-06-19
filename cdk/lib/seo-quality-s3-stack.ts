@@ -12,7 +12,8 @@ import config from "./config";
  * Stores SEO quality snapshots captured after every publish as Parquet files
  * for Athena/Lake Formation querying.
  *
- * Key structure: {table_prefix}/year=.../month=.../day=.../hour=.../appId=.../{timestamp}.parquet
+ * Key structure: {table_prefix}/partition_utc_year=.../partition_utc_month=.../
+ *   partition_utc_day=.../partition_utc_hour=.../{timestamp}.parquet
  */
 export class SeoQualityS3Stack extends GDStack {
   public readonly marketingBucket: s3.Bucket;

@@ -196,6 +196,15 @@ interface Config {
   budgetServiceLakeExport: {
     dbUrlSecretName: string;
   };
+  /**
+   * Hourly DLMS partition registration for SEO quality lake table.
+   * Empty `lakeDatabaseName` makes SeoQualityLakePartitionStack a no-op.
+   */
+  seoQualityLakePartition: {
+    lakeDatabaseName: string;
+    lakeTableName: string;
+    lakeApiEnv: 'dev' | 'test' | 'prod';
+  };
 }
 
 const devConfig: Config = {
@@ -315,6 +324,12 @@ const devConfig: Config = {
     // before flipping the export on for prod.
     dbUrlSecretName: '/Katana/Secrets/airobuilde/budget-service/dev-private/DATABASE_URL',
   },
+  seoQualityLakePartition: {
+    lakeDatabaseName: 'airo_builder_cln_laketest',
+    lakeTableName: 'airo_builder_seo_quality_cln_laketest',
+    // Laketest tables are registered in DLMS test (not dev API).
+    lakeApiEnv: 'test',
+  },
 };
 
 const testConfig: Config = {
@@ -406,6 +421,11 @@ const testConfig: Config = {
   salesforceLightningBase: 'https://godaddy2.lightning.force.com',
   budgetServiceLakeExport: {
     dbUrlSecretName: '/Katana/Secrets/airobuilde/budget-service/test/DATABASE_URL',
+  },
+  seoQualityLakePartition: {
+    lakeDatabaseName: '',
+    lakeTableName: '',
+    lakeApiEnv: 'test',
   },
 };
 
@@ -513,6 +533,11 @@ const prodConfig: Config = {
   salesforceLightningBase: 'https://godaddy2.lightning.force.com',
   budgetServiceLakeExport: {
     dbUrlSecretName: '/Katana/Secrets/airobuilde/budget-service/prod/DATABASE_URL',
+  },
+  seoQualityLakePartition: {
+    lakeDatabaseName: 'airo_builder_cln',
+    lakeTableName: 'airo_builder_seo_quality_cln',
+    lakeApiEnv: 'prod',
   },
 };
 

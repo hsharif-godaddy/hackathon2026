@@ -21,6 +21,7 @@ export const s3ClientInitError = _s3ClientInitError;
 // ---- Shared constants ----
 
 export const APP_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+export const SAFE_FILE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 // ---- Key / timestamp helpers ----
 
@@ -30,6 +31,15 @@ export function buildS3Key(tablePrefix: string, appId: string | null, now: Date)
   const day = String(now.getUTCDate()).padStart(2, '0');
   const hour = String(now.getUTCHours()).padStart(2, '0');
   return `${tablePrefix}/year=${year}/month=${month}/day=${day}/hour=${hour}/appId=${appId ?? 'unknown'}/${now.getTime()}.parquet`;
+}
+
+/** DLMS snapshot-style Hive keys (partition_utc_*), used by SEO quality lake tables. */
+export function buildLakePartitionS3Key(tablePrefix: string, now: Date, fileId: string): string {
+  const year = String(now.getUTCFullYear());
+  const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(now.getUTCDate()).padStart(2, '0');
+  const hour = String(now.getUTCHours()).padStart(2, '0');
+  return `${tablePrefix}/partition_utc_year=${year}/partition_utc_month=${month}/partition_utc_day=${day}/partition_utc_hour=${hour}/${fileId}.parquet`;
 }
 
 export function formatUtcTs(date: Date): string {

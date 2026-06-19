@@ -18,6 +18,7 @@ import { LambdaBaseEcrStack } from "../lib/lambda-base-ecr-stack";
 import { FeedbackAutomationStack } from "../lib/feedback-automation-stack";
 import { FeedbackFanoutStack } from "../lib/feedback-fanout-stack";
 import { SeoQualityS3Stack } from "../lib/seo-quality-s3-stack";
+import { SeoQualityLakePartitionStack } from "../lib/seo-quality-lake-partition-stack";
 import { AiroInvestigatorStack } from "../lib/investigator-stack";
 import { S2sIamJwtStack } from "../lib/s2s-iam-jwt-stack";
 import { TransactionalEventsKinesisStack } from "../lib/transactional-events-kinesis-stack";
@@ -101,6 +102,7 @@ async function main() {
   // Dev + prod only (same gate as FeedbackS3Stack — test excluded intentionally).
   if (config.envName === 'dev' || config.envName === 'prod') {
     new SeoQualityS3Stack(app, 'SeoQualityS3Stack', { env });
+    new SeoQualityLakePartitionStack(app, 'SeoQualityLakePartitionStack', { env });
   }
 
   // Dedicated S3 bucket for product-analytics events (dev-private, test, prod).
