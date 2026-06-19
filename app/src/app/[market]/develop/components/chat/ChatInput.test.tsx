@@ -501,6 +501,46 @@ describe('ChatInput', () => {
     expect(screen.queryByTestId('chat-send-button')).not.toBeInTheDocument();
   });
 
+  it('should re-apply action button testid after DOM remount', async function actionButtonRetagSurvivesRemount() {
+    renderWithProviders(<ChatInput {...defaultProps} inputValue="Test" />);
+
+    const card = await screen.findByTestId('chat-input-card');
+    const original = card.querySelector<HTMLButtonElement>('.airo-input-prompt-box__action button');
+    expect(original).not.toBeNull();
+    expect(original!.getAttribute('data-testid')).toBe('chat-send-button');
+
+    await act(async () => {
+      original!.removeAttribute('data-testid');
+      original!.removeAttribute('id');
+      const wrapper = card.querySelector('.airo-input-prompt-box__action')!;
+      wrapper.removeChild(original!);
+      const replacement = document.createElement('button');
+      replacement.type = 'submit';
+      wrapper.appendChild(replacement);
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    const replacement = card.querySelector<HTMLButtonElement>('.airo-input-prompt-box__action button');
+    expect(replacement).not.toBeNull();
+    expect(replacement!.getAttribute('data-testid')).toBe('chat-send-button');
+    expect(replacement!.id).toBe('chat-send-button');
+  });
+
+  it('should keep chat-send-button testid when streaming with queue mode active', () => {
+    renderWithProviders(
+      <ChatInput
+        {...defaultProps}
+        inputValue="Test"
+        isStreaming={true}
+        onStopGeneration={vi.fn()}
+        isQueueEnabled={true}
+      />
+    );
+
+    expect(screen.getByTestId('chat-send-button')).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-stop-button')).not.toBeInTheDocument();
+  });
+
   it('should log stop disabled enter action when awaiting stream starts', () => {
     const { rerender } = renderWithProviders(
       <ChatInput

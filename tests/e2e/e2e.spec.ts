@@ -44,13 +44,13 @@ import {
   getSpecPrefix,
 } from '../helpers/constants';
 import {
-  approveAgentPublish,
   dismissOverlays,
   expectPublishSuccessVisible,
   logTestResult,
   logTestStart,
   waitForChatInput,
   waitForDevelopPage,
+  waitForGenerationComplete,
 } from '../helpers/ui';
 
 /**
@@ -176,22 +176,10 @@ test.describe('E2E - Critical Path', () => {
     await test.step('Step 3: Preview controls + auto-publish verification', async () => {
       await dismissOverlays(page);
 
-      if (autoPublishSupported) {
-        // Guard: ensure we are still on the develop page. If the test environment
-        // had a session/network hiccup and redirected away, this fails fast with a
-        // clear URL mismatch instead of silently burning the full PUBLISH_TIMEOUT_MS.
-        await expect(page).toHaveURL(/\/develop\//, { timeout: DEFAULT_TIMEOUT });
-
-        // The agent calls publishing__publish as a tool call mid-stream, which blocks
-        // the stream until approved — approve BEFORE waiting for chat-send-button or
-        // the stream can never complete (deadlock: send-button only appears after stream
-        // ends, but stream is paused awaiting the publish tool response).
-        await approveAgentPublish(page, PUBLISH_TIMEOUT_MS);
-        console.log('  Approved agent publish confirmation');
-      }
-
-      // Wait for initial AI generation to complete
-      await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+      // Wait for generation to complete. The publish confirmation modal (HITL)
+      // blocks the agent stream in ALL environments — handle it concurrently with
+      // the send-button wait so it gets clicked regardless of env.
+      await waitForGenerationComplete(page, AI_RESPONSE_TIMEOUT_MS, { approvePublish: true });
       console.log('  Initial app generation completed');
 
       if (autoPublishSupported) {
@@ -290,7 +278,7 @@ test.describe('E2E - Critical Path', () => {
       await expect(transcript.getByText(clickMessage, { exact: true })).toBeVisible({ timeout: 10000 });
       console.log('  Message sent');
 
-      await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+      await waitForGenerationComplete(page, AI_RESPONSE_TIMEOUT_MS);
       console.log('  AI response completed');
     });
 
@@ -305,7 +293,7 @@ test.describe('E2E - Critical Path', () => {
       await expect(transcript.getByText(enterMessage, { exact: true })).toBeVisible({ timeout: DEFAULT_TIMEOUT });
       console.log('  Message sent');
 
-      await expect(page.getByTestId('chat-send-button')).toBeVisible({ timeout: AI_RESPONSE_TIMEOUT_MS });
+      await waitForGenerationComplete(page, AI_RESPONSE_TIMEOUT_MS);
       console.log('  AI response completed');
 
       await ensureAuthenticated(page);

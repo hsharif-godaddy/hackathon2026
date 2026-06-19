@@ -3,6 +3,7 @@ import { expect } from '@playwright/test';
 
 import { detectSsoType, handleSsoLogin, isSignInUIResult, userMenuTrigger } from './auth';
 import {
+  AI_RESPONSE_TIMEOUT_MS,
   CHAT_INPUT_TIMEOUT,
   DEFAULT_TIMEOUT,
   DEPLOYMENT_TIMEOUT_MS,
@@ -455,5 +456,79 @@ export async function dismissGoLiveModalIfPresent(page: Page, waitTime = GO_LIVE
 
   console.log('No Go Live modal appeared (republish or already gone live)');
   return false;
+}
+
+/**
+ * Wait for AI generation to complete. Handles interruptions that block the
+ * stream: ask-question panels (clicks Skip to dismiss) and publish
+ * confirmation modals (clicks approve). Waits until chat-send-button appears.
+ *
+ * The publish confirmation modal (HITL gate) blocks the agent stream in ALL
+ * environments — including local where no real deployment pipeline exists.
+ * Always pass approvePublish: true when the prompt instructs the agent to publish.
+ */
+export async function waitForGenerationComplete(
+  page: Page,
+  timeout = AI_RESPONSE_TIMEOUT_MS,
+  { approvePublish = false }: { approvePublish?: boolean } = {},
+): Promise<void> {
+  const sendButton = page.getByTestId('chat-send-button');
+  const askQuestionSkip = page.getByTestId('ask-question-skip');
+
+  const aborted = { value: false };
+
+  const handlePublishLoop = approvePublish
+    ? (async () => {
+        const confirmButton = page.getByTestId('agent-publish-confirm-button');
+        while (!aborted.value) {
+          const found = await confirmButton.waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false);
+          if (aborted.value) return;
+          if (found) {
+            console.log('  Approving agent publish confirmation');
+            await confirmButton.click().catch((err) => console.log('  [publish click failed]', err.message));
+            await confirmButton.waitFor({ state: 'hidden', timeout: DEFAULT_TIMEOUT }).catch(() => {});
+            continue;
+          }
+          // Fallback: @ux/disrupt portals can evade Playwright visibility checks.
+          const clicked = await page.evaluate(() => {
+            const btn = document.querySelector('[data-testid="agent-publish-confirm-button"]') as HTMLElement | null;
+            if (btn) {
+              btn.click();
+              return true;
+            }
+            return false;
+          });
+          if (clicked) {
+            console.log('  Approving agent publish confirmation (DOM fallback)');
+            await page.waitForTimeout(1000);
+          }
+        }
+      })()
+    : Promise.resolve();
+
+  const handleAskQuestionLoop = (async () => {
+    while (!aborted.value) {
+      const found = await askQuestionSkip.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
+      if (aborted.value) return;
+      if (found) {
+        const firstOption = page.locator('.airo-input-choice-list [role="option"]').first();
+        if (await firstOption.isVisible().catch(() => false)) {
+          console.log('  Ask-question detected, picking first option');
+          await firstOption.click().catch((err) => console.log('  [option click failed]', err.message));
+        } else {
+          console.log('  Ask-question detected, clicking Skip (no options visible)');
+          await askQuestionSkip.click().catch((err) => console.log('  [skip click failed]', err.message));
+        }
+        await page.waitForTimeout(1000);
+      }
+    }
+  })();
+
+  try {
+    await expect(sendButton).toBeVisible({ timeout });
+  } finally {
+    aborted.value = true;
+    await Promise.allSettled([handlePublishLoop, handleAskQuestionLoop]);
+  }
 }
 

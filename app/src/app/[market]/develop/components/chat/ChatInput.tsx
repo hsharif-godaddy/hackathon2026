@@ -646,33 +646,60 @@ export default function ChatInput({
   // gate. PromptBox has no API for either; we reach into its action wrapper
   // by class name. We OR `isPromptDisabled` so the action button stays
   // disabled in the isDisabled / isBudgetExceeded cases too.
+  //
+  // Uses a MutationObserver (like tagAndBindInnerEditor) so attributes are
+  // re-applied when React reconciliation replaces or updates the button DOM
+  // element — the layout effect alone missed re-renders where its deps were
+  // unchanged but the button lost imperative attributes.
+  const actionButtonStateRef = useRef({ isStreaming, isAwaitingStream, onStopGeneration, submitGated, isPromptDisabled, isBudgetExceeded, isQueueModeActive })
+  actionButtonStateRef.current = { isStreaming, isAwaitingStream, onStopGeneration, submitGated, isPromptDisabled, isBudgetExceeded, isQueueModeActive }
+
   useLayoutEffect(function syncActionButtonAttrs() {
-    const btn = findPromptBoxActionButton(composerCardRef.current)
-    if (!btn) return
-    const isPending = !isQueueModeActive && Boolean((isStreaming || isAwaitingStream) && onStopGeneration)
-    const isAwaitingNotStreaming = Boolean(isAwaitingStream && !isStreaming && onStopGeneration)
-    if (isPending) {
-      btn.setAttribute('data-testid', 'chat-stop-button')
-      btn.removeAttribute('id')
-      if (isAwaitingNotStreaming) {
-        btn.removeAttribute('disabled')
-        btn.setAttribute('aria-disabled', 'true')
-        btn.setAttribute('tabindex', '-1')
-        btn.classList.add(...STOP_BUTTON_ARIA_DISABLED_CLASSES)
+    const card = composerCardRef.current
+    if (!card) return
+
+    function applyAttrs(btn: HTMLButtonElement): void {
+      const { isStreaming: streaming, isAwaitingStream: awaiting, onStopGeneration: onStop, submitGated: gated, isPromptDisabled: promptDisabled, isBudgetExceeded: budgetExceeded, isQueueModeActive: queueActive } = actionButtonStateRef.current
+      const isPending = !queueActive && Boolean((streaming || awaiting) && onStop)
+      const isAwaitingNotStreaming = Boolean(awaiting && !streaming && onStop)
+      if (isPending) {
+        btn.setAttribute('data-testid', 'chat-stop-button')
+        btn.removeAttribute('id')
+        if (isAwaitingNotStreaming) {
+          btn.removeAttribute('disabled')
+          btn.setAttribute('aria-disabled', 'true')
+          btn.setAttribute('tabindex', '-1')
+          btn.classList.add(...STOP_BUTTON_ARIA_DISABLED_CLASSES)
+        } else {
+          btn.removeAttribute('aria-disabled')
+          btn.removeAttribute('tabindex')
+          btn.classList.remove(...STOP_BUTTON_ARIA_DISABLED_CLASSES)
+          btn.toggleAttribute('disabled', false)
+        }
       } else {
+        btn.setAttribute('data-testid', 'chat-send-button')
+        btn.id = 'chat-send-button'
         btn.removeAttribute('aria-disabled')
         btn.removeAttribute('tabindex')
         btn.classList.remove(...STOP_BUTTON_ARIA_DISABLED_CLASSES)
-        btn.toggleAttribute('disabled', false)
+        btn.toggleAttribute('disabled', gated || promptDisabled || Boolean(budgetExceeded))
       }
-    } else {
-      btn.setAttribute('data-testid', 'chat-send-button')
-      btn.id = 'chat-send-button'
-      btn.removeAttribute('aria-disabled')
-      btn.removeAttribute('tabindex')
-      btn.classList.remove(...STOP_BUTTON_ARIA_DISABLED_CLASSES)
-      btn.toggleAttribute('disabled', submitGated || isPromptDisabled || Boolean(isBudgetExceeded))
     }
+
+    const observerOptions: MutationObserverInit = { childList: true, subtree: true }
+
+    const btn = findPromptBoxActionButton(card)
+    if (btn) applyAttrs(btn)
+
+    const observer = new MutationObserver(() => {
+      const current = findPromptBoxActionButton(card)
+      if (!current) return
+      observer.disconnect()
+      applyAttrs(current)
+      observer.observe(card, observerOptions)
+    })
+    observer.observe(card, observerOptions)
+    return () => { observer.disconnect() }
   }, [isStreaming, isAwaitingStream, onStopGeneration, submitGated, isPromptDisabled, isBudgetExceeded, isQueueModeActive])
 
   useEffect(function trackStopButtonDisabledTransitions() {
