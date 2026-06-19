@@ -10,8 +10,18 @@
 import type { Request, Response } from 'express';
 import { getAuth } from '@/lib/auth/auth';
 import { toWebRequest, sendWebResponse } from '@/lib/auth/express-adapter';
+import { tryClearStaleSession } from '@/lib/auth/session-cookies';
 
 export async function authHandler(req: Request, res: Response) {
+  // Stale-session recovery escape hatch (`?clearCookies=1`). A stale
+  // `better-auth.session_token` makes `useSession()` resolve to an error/pending
+  // state with no thrown error to surface, leaving the app blank; the cookie is
+  // HttpOnly so only the server can expire it. Handled before getAuth() so it
+  // still works when auth/db is itself unavailable.
+  if (tryClearStaleSession(req, res, { preview: process.env.AIRO_PREVIEW === 'true' })) {
+    return;
+  }
+
   try {
     const auth = getAuth();
     const webResponse = await auth.handler(toWebRequest(req));

@@ -9,11 +9,70 @@ import { createAuthClient } from 'better-auth/react';
 import { ReactNode, useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
+import {
+  SESSION_RECOVERY_URL,
+  claimSessionRecovery,
+  clearSessionRecovery,
+} from './session-recovery';
+
 // Auth client - baseURL must be the full origin for BetterAuth's URL construction.
 // window.location.origin works in all environments (local dev, iframe preview, published).
 const _authClient = createAuthClient({
   baseURL: typeof window !== 'undefined' ? window.location.origin : '',
 });
+
+// How long an unsettled session may stay pending before we treat it as a stuck
+// stale-cookie state and attempt recovery. Generous enough to clear a slow but
+// healthy first load; short enough that a blank preview self-heals quickly.
+const SESSION_RECOVERY_PENDING_TIMEOUT_MS = 8000;
+
+/**
+ * Clear the stale HttpOnly session cookie server-side, then reload into a clean
+ * unauthenticated state. One-shot per tab (see `claimSessionRecovery`) so an
+ * unfixable session can't reload-loop.
+ */
+function recoverFromStaleSession(): void {
+  if (typeof window === 'undefined') return;
+  if (!claimSessionRecovery(window.sessionStorage)) return;
+
+  void fetch(SESSION_RECOVERY_URL, { cache: 'no-store', credentials: 'include' })
+    .catch(() => undefined)
+    .finally(() => {
+      // Logged so a future "preview keeps reloading" report is diagnosable —
+      // more than one of these per tab points at a clear that isn't sticking.
+      console.info(JSON.stringify({ event: 'auth.session.recovery.reloading' }));
+      window.location.reload();
+    });
+}
+
+/**
+ * Self-heal a stale-cookie session. A failed session lookup is a returned
+ * `error`, not a thrown one, so no error boundary fires and the app would sit
+ * blank. Recover on an explicit error, or when the session never settles within
+ * the pending timeout. A healthy session resets the guard so a later genuine
+ * failure can recover again in the same tab.
+ */
+function useStaleSessionRecovery(error: unknown, isPending: boolean, isAuthenticated: boolean): void {
+  useEffect(
+    function staleSessionRecovery() {
+      if (typeof window === 'undefined') return;
+
+      if (error) {
+        recoverFromStaleSession();
+        return;
+      }
+      if (isAuthenticated) {
+        clearSessionRecovery(window.sessionStorage);
+        return;
+      }
+      if (!isPending) return;
+
+      const timer = setTimeout(recoverFromStaleSession, SESSION_RECOVERY_PENDING_TIMEOUT_MS);
+      return () => clearTimeout(timer);
+    },
+    [error, isPending, isAuthenticated],
+  );
+}
 
 export const authClient = _authClient;
 export const { signIn, signUp, signOut } = _authClient;
@@ -30,12 +89,16 @@ export const { signIn, signUp, signOut } = _authClient;
  */
 export function useSession() {
   const { data: session, isPending, error } = _authClient.useSession();
+  const isAuthenticated = !isPending && !!session?.user;
+
+  useStaleSessionRecovery(error, isPending, isAuthenticated);
+
   return {
     session,
     user: session?.user ?? null,
     isPending,
     error,
-    isAuthenticated: !isPending && !!session?.user,
+    isAuthenticated,
   };
 }
 
