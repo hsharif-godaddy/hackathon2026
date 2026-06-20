@@ -5,7 +5,7 @@ go 1.25.7
 require (
 	github.com/anthropics/anthropic-sdk-go v1.35.1
 	github.com/coder/websocket v1.8.14
-	github.com/jedib0t/go-pretty/v6 v6.8.0
+	github.com/jedib0t/go-pretty/v6 v6.8.1
 	github.com/joho/godotenv v1.5.1
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
