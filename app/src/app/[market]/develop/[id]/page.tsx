@@ -343,6 +343,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
   const setAiEditContext = useSetAiEditContext()
   const addAiEditContext = useAddAiEditContext()
   const isMultiElementSelect = useSwitchboard('appbuilder-multi-element-select')
+  const cmsInlineEditEnabled = useSwitchboard('appbuilder-cms-inline-edit') ?? false
   const isIntroTourEnabled = useSwitchboard('appbuilder-intro-tour')
   const isGitHubSyncEnabled = useSwitchboard('appbuilder-github-sync')
   const autoSendInitialMessage = useAutoSendInitialMessage()
@@ -1222,6 +1223,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
   // types route through the typed eventBus inside this hook.
   useDevToolsBusBindings({
     appId,
+    cmsInlineEditEnabled,
     isProcessingRef,
     pendingPublishSnapshotRef,
     lastIframeState,

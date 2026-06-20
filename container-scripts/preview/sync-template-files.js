@@ -286,6 +286,38 @@ const SYNC_MANIFEST = [
     ],
     force: false
   },
+  // content-plugin + content-lib are framework infra (the virtual:content
+  // provider and the runtime per-item-index wrapper). vite.config.ts imports
+  // content-plugin, so a migrated customer app that gets the new vite.config
+  // WITHOUT these files fails to build ("Could not resolve ./content-plugin/
+  // src/index"). force:true — customers never edit these (same class as the
+  // rsync-managed source-mapper/ and dev-tools/), so always replace; this also
+  // lets fixes propagate to existing apps. Listed before vite.config.ts so they
+  // land in the same sync pass that upgrades the config that imports them.
+  {
+    file: 'content-plugin/src/index.ts',
+    description: 'Vite content plugin (virtual:content) — imported by vite.config.ts',
+    known_hashes: [],
+    force: true,
+  },
+  {
+    file: 'content-plugin/src/parse.ts',
+    description: 'content-plugin JSON parse helper',
+    known_hashes: [],
+    force: true,
+  },
+  {
+    file: 'content-lib/src/index.ts',
+    description: 'content-lib barrel (ContentListContext) — content-layer runtime',
+    known_hashes: [],
+    force: true,
+  },
+  {
+    file: 'content-lib/src/ContentListContext.tsx',
+    description: 'Runtime per-item content-list index wrapper',
+    known_hashes: [],
+    force: true,
+  },
   {
     file: 'vite.config.ts',
     description: 'Vite build and dev server configuration',
@@ -338,6 +370,7 @@ const SYNC_MANIFEST = [
       '6861d7c711f511108a57129d637bcc33', // 86f24d0f6 (AIROBUILD-1971) - before format override template runtime
       '2880be775a2ab33ded88ffdd944a1b19', // preview-load fix - before server.warmup added
       'a229eb3610393644d6d07000792f96bb', // preview-load fix - warmup comment revision (within-branch)
+      '91878f06aa011a0e51db432778c254c9', // feat/cms-ile-data-bound-slice1 - before contentPlugin() registration
     ],
     force: false,
     syncGroup: 'ssrMigration'

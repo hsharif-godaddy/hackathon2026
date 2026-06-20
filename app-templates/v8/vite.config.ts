@@ -8,6 +8,7 @@ import { fullStoryPlugin } from "./fullstory-plugin";
 import { errorInterceptorPlugin } from "./dev-tools/src/vite-error-interceptor";
 import { mediaVersionsPlugin } from "./dev-tools/src/vite-media-versions-plugin";
 import { formatOverridesPlugin } from "./format-overrides-plugin";
+import { contentPlugin } from "./content-plugin/src/index";
 
 function extractHostname(value: string): string {
 	try {
@@ -75,6 +76,7 @@ export default defineConfig(({ mode, isSsrBuild }) => ({
 			}),
 			apiDevPlugin(),
 			formatOverridesPlugin(__dirname),
+			contentPlugin(),
 			...(mode === "development"
 			? [
 					devToolsPlugin() as Plugin,

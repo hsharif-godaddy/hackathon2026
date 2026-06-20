@@ -13,6 +13,7 @@
  * Keep this file focused on basic CRUD operations only.
  */
 
+import path from 'node:path';
 import { Router, Request, Response, IRouter } from 'express';
 import { parseAgentCommand } from '@airo/ai-transport';
 
@@ -22,11 +23,13 @@ import type { App, CreateAppRequest, UpdateAppRequest } from '../../database/ind
 import { DirectoryListingTool, DirectoryListingNotFoundError } from '../../tools/directory-listing.js';
 import { createForWorkspace } from '../../workspace/index.js';
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
+import { GitUtils } from '../../utils/git.js';
 import { isAppInRebuildFlow } from '../../services/rebuild/validate-inline-font.js';
 import { ASTStyleEditor } from '../../tools/ast-style-editor.js';
 import { ASTTextEditor } from '../../tools/ast-text-editor.js';
 import { TextFixAgent } from '../../agents/text-fix-agent.js';
 import { astImageEditor } from '../../tools/ast-image-editor.js';
+import { editContent } from '../../tools/content-editor.js';
 import { astElementRemover } from '../../tools/ast-element-remover.js';
 import { mediaManifestService } from '../../services/MediaManifestService.js';
 import {
@@ -50,6 +53,43 @@ const astStyleEditor = new ASTStyleEditor();
 const astTextEditor = new ASTTextEditor();
 
 const logger = Logger.create({ component: 'apps-routes' });
+
+async function commitContentFile(
+  appId: string,
+  appPath: string,
+  relPath: string,
+  contentKey: string,
+  contextLogger: ReturnType<typeof log.forApp>,
+): Promise<string | undefined> {
+  try {
+    const workspace = createForWorkspace(appId, 'preview');
+    if (!workspace) return undefined;
+    const gitUtils = new GitUtils(workspace.tasks);
+    const addResult = await gitUtils.addFiles(appPath, [relPath]);
+    if (!addResult.success) {
+      contextLogger.warn('route.apps.content-edit.commit-failed', {
+        appId, stage: 'add', relPath,
+        exitCode: addResult.exitCode, stderr: addResult.stderr, timedOut: addResult.timedOut,
+      });
+      return undefined;
+    }
+    const commitResult = await gitUtils.commitFiles(appPath, `Update content: ${contentKey}`, [relPath]);
+    if (!commitResult.success) {
+      contextLogger.warn('route.apps.content-edit.commit-failed', {
+        appId, stage: 'commit', relPath,
+        exitCode: commitResult.exitCode, stderr: commitResult.stderr, timedOut: commitResult.timedOut,
+      });
+      return undefined;
+    }
+    return await gitUtils.getCurrentCommit(appPath);
+  } catch (error) {
+    contextLogger.warn('route.apps.content-edit.commit-failed', {
+      appId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
 
 /**
  * GET /apps - List all apps (scoped to authenticated user's siteId)
@@ -992,6 +1032,53 @@ router.post('/:id/text/fix', async (req: Request, res: Response) => {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
     log.error(contextLogger, 'route.apps.text-fix.error', error as Error, {});
     return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /apps/:id/content/edit - Edit a field in the content layer (src/content/**).
+ * Body: { contentKey: string, kind: 'copy' | 'richText', value: string }
+ */
+router.post('/:id/content/edit', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ ok: false, error: { code: 'invalid-key', message: 'App ID is required' } });
+    }
+    const { contentKey, kind, value } = req.body ?? {};
+    const contextLogger = log.forApp(id);
+
+    if (typeof contentKey !== 'string' || typeof value !== 'string' || (kind !== 'copy' && kind !== 'richText')) {
+      contextLogger.warn('route.apps.content-edit.validation.failed', {
+        hasContentKey: typeof contentKey === 'string', kind, hasValue: typeof value === 'string',
+      });
+      return res.status(400).json({
+        ok: false,
+        error: { code: 'invalid-value', message: 'contentKey (string), kind ("copy"|"richText"), and value (string) are required' },
+      });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      contextLogger.warn('route.apps.content-edit.app-not-found', { appId: id });
+      return res.status(404).json({ ok: false, error: { code: 'app-not-found', message: 'App not found' } });
+    }
+
+    const contentDir = path.join(app.path, 'src', 'content');
+    const result = await editContent(contentDir, { contentKey, kind, value });
+
+    if (!result.ok) {
+      contextLogger.warn('route.apps.content-edit.rejected', { contentKey, kind, errorCode: result.error.code });
+      return res.status(400).json(result);
+    }
+
+    const commitHash = await commitContentFile(id, app.path, path.relative(app.path, result.file), contentKey, contextLogger);
+    contextLogger.info('route.apps.content-edit.success', { contentKey, kind, file: result.file, commitHash });
+    return res.json({ ...result, ...(commitHash ? { commitHash } : {}) });
+  } catch (error) {
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.content-edit.error', error as Error, {});
+    return res.status(500).json({ ok: false, error: { code: 'internal-error', message: 'Internal server error' } });
   }
 });
 

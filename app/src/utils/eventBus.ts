@@ -99,6 +99,13 @@ export interface BusTextUpdatePayload {
   newAttributes?: string | null;
 }
 
+export interface BusContentUpdatePayload {
+  contentKey: string
+  kind: 'copy' | 'richText'
+  oldText?: string
+  newText: string
+}
+
 export interface BusStyleUpdatePayload {
   commitId?: string;
   selector: string;
@@ -174,6 +181,7 @@ export interface BusEventMap {
     properties?: Record<string, string | number | boolean>;
   };
   TEXT_UPDATED: { data: BusTextUpdatePayload };
+  CONTENT_UPDATED: { data: BusContentUpdatePayload };
   COMPLIANCE_FIELD_UPDATED: { data: BusComplianceFieldUpdatePayload };
   COMPLIANCE_SECTION_TOGGLED: { data: BusComplianceSectionTogglePayload };
   TEXT_FIX_REQUESTED: { data: { requestId: string; oldText: string } };

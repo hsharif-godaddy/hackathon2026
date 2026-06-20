@@ -44,6 +44,7 @@ interface IframeStateRef {
 
 export interface DevToolsBusBindingsDeps {
   appId: string
+  cmsInlineEditEnabled: boolean
   isProcessingRef: MutableRefObject<boolean>
   pendingPublishSnapshotRef: MutableRefObject<boolean>
   lastIframeState: MutableRefObject<IframeStateRef>
@@ -74,6 +75,7 @@ export interface DevToolsBusBindingsDeps {
 
 const REGISTERED_TYPES: readonly BusEventType[] = [
   'TEXT_UPDATED',
+  'CONTENT_UPDATED',
   'TEXT_FIX_REQUESTED',
   'TEXT_FIX_ACCEPTED',
   'TEXT_FIX_REJECTED',
@@ -196,6 +198,32 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
             appId: cur.appId,
             fieldKey,
             error: err instanceof Error ? err.message : String(err),
+          })
+          handlePreviewRefresh({ lastIframeState: cur.lastIframeState })
+        }
+      })()
+    })
+
+    on('CONTENT_UPDATED', (m) => {
+      const cur = d()
+      if (!cur.cmsInlineEditEnabled) return
+      const { contentKey, kind, newText } = m.data
+      logger.info('develop-page.content-updated-from-iframe', { appId: cur.appId, contentKey, kind })
+      void (async () => {
+        try {
+          const url = await buildDynamicApiUrl('content/edit', cur.appId)
+          const res = await agentFetch(url, {
+            method: 'POST',
+            siteId: cur.appId,
+            body: JSON.stringify({ contentKey, kind, value: newText }),
+          })
+          if (!res.ok) {
+            logger.error('develop-page.content-updated.failed', { appId: cur.appId, contentKey, status: res.status })
+            handlePreviewRefresh({ lastIframeState: cur.lastIframeState })
+          }
+        } catch (err) {
+          logger.error('develop-page.content-updated.error', {
+            appId: cur.appId, contentKey, error: err instanceof Error ? err.message : String(err),
           })
           handlePreviewRefresh({ lastIframeState: cur.lastIframeState })
         }
