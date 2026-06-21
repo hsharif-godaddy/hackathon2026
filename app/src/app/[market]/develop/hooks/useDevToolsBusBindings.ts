@@ -1,6 +1,7 @@
 'use client'
 
 import { type MutableRefObject, useEffect, useRef } from 'react'
+import Growl from '@ux/growl'
 
 import type { AiEditContext } from '@/app/[market]/develop/components/types'
 import { ChatTab, MobileMode } from '@/app/[market]/develop/components/types'
@@ -10,6 +11,7 @@ import {
   navigatePreviewToRoute,
   requestPreviewScreenshot,
 } from '@/app/[market]/develop/components/utils'
+import { contentEditErrorCopy } from '@/app/[market]/develop/utils/contentEditErrors'
 import { handle as handleProcessingState } from '@/app/[market]/develop/utils/iframeProcessingState'
 import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { agentFetch } from '@/lib/agent-fetch'
@@ -70,6 +72,7 @@ export interface DevToolsBusBindingsDeps {
     openEditor: boolean | undefined,
   ) => unknown
   speechBridge: SpeechBridge
+  t: (key: string, values?: Record<string, unknown>, fallback?: string) => string
   wsSend: (options: SendMessageOptions) => Promise<unknown> | unknown
 }
 
@@ -127,6 +130,34 @@ function getPreviewIframe(): HTMLIFrameElement | null {
  * The legacy `switch` is gone; only the `IFRAME_READY` handshake stays
  * outside the bus because origin/source validation depends on it.
  */
+type Translate = DevToolsBusBindingsDeps['t']
+
+/** Read the agents error code from a failed content-edit response. Never throws. */
+async function readContentEditErrorCode(res: Response): Promise<string | undefined> {
+  try {
+    const body = (await res.json()) as { error?: { code?: string } } | null
+    return body?.error?.code
+  } catch {
+    return undefined
+  }
+}
+
+/** Show a rejection toast. Best-effort — must never block the revert/logging that follow it. */
+function notifyContentEditFailed(t: Translate, contentKey: string, code: string | undefined): void {
+  try {
+    const copy = contentEditErrorCopy(code)
+    Growl.addGrowlMessage({
+      id: `cms-edit-failed-${contentKey}`,
+      title: t(copy.titleKey, undefined, copy.titleFallback),
+      children: t(copy.bodyKey, undefined, copy.bodyFallback),
+      emphasis: 'critical',
+      lifetime: 5000,
+    })
+  } catch {
+    // toast is cosmetic; swallow so the revert still runs
+  }
+}
+
 export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
   const depsRef = useRef(deps)
   depsRef.current = deps
@@ -219,12 +250,14 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
           })
           if (!res.ok) {
             logger.error('develop-page.content-updated.failed', { appId: cur.appId, contentKey, status: res.status })
+            notifyContentEditFailed(cur.t, contentKey, await readContentEditErrorCode(res))
             handlePreviewRefresh({ lastIframeState: cur.lastIframeState })
           }
         } catch (err) {
           logger.error('develop-page.content-updated.error', {
             appId: cur.appId, contentKey, error: err instanceof Error ? err.message : String(err),
           })
+          notifyContentEditFailed(cur.t, contentKey, undefined)
           handlePreviewRefresh({ lastIframeState: cur.lastIframeState })
         }
       })()

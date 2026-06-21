@@ -448,6 +448,58 @@ describe('auto-wrap content expressions in mixed-child parents', () => {
   });
 });
 
+describe('jsxSourceMapper — multi-field collection item (canonical S3 pattern)', () => {
+  // The canonical pattern the agent emits: ContentListContext wrapping a .map()
+  // with name / description / price fields. This locks attribution for every
+  // field and guards against regressions in the pre-pass mixed-child wrap path
+  // (price has a literal "$" sibling → triggers wrap instead of direct attribution).
+
+  it('attributes all three fields of a multi-field map item', () => {
+    const output = transform(`
+      import { products } from 'virtual:content';
+      export default () => (
+        <ul>
+          {products.map((p) => (
+            <article key={p.id}>
+              <h3>{p.name}</h3>
+              <p>{p.description}</p>
+              <span>$\{p.price}</span>
+            </article>
+          ))}
+        </ul>
+      );
+    `);
+    // name and description: sole expression children → direct attribution on the element
+    expect(output).toContain('data-dev-content-key-template="products[].name"');
+    expect(output).toContain('data-dev-content-key-template="products[].description"');
+    // price: mixed "$" text + expression → pre-pass wraps the expression in a span
+    expect(output).toContain('data-dev-content-key-template="products[].price"');
+    // No plain content-key should leak for any products field (all are template keys inside a map).
+    expect(output).not.toMatch(/data-dev-content-key="products\./);
+  });
+
+  it('price field with literal-dollar prefix gets a wrapper span, not direct outer-span attribution', () => {
+    // <span>${p.price}</span> has two children (JSXText "$" + JSXExpressionContainer).
+    // The pre-pass wraps {p.price} in a new <span data-dev-content-key-template="products[].price">.
+    // The outer <span> itself must NOT carry data-dev-content-key-template directly.
+    const output = transform(`
+      import { products } from 'virtual:content';
+      export default () => (
+        <ul>
+          {products.map((p) => (
+            <span>$\{p.price}</span>
+          ))}
+        </ul>
+      );
+    `);
+    expect(output).toContain('data-dev-content-key-template="products[].price"');
+    // The wrapper span with the template key should appear as a child, not on the
+    // outermost <span> that also holds the literal "$" text node.
+    // We verify by checking there is exactly one template key attribution in the output.
+    expect((output.match(/data-dev-content-key-template="products\[\]\.price"/g) ?? []).length).toBe(1);
+  });
+});
+
 describe('jsxSourceMapper — data-dev-id', () => {
   it('injects data-dev-id on every element', () => {
     const output = transform('<section><div><h1>Hello</h1></div></section>');

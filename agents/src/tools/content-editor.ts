@@ -22,6 +22,7 @@ export type ContentEditErrorCode =
   | 'parse-failed'
   | 'write-failed'
   | 'invalid-value'
+  | 'type-unsupported'
   | 'internal-error';
 
 export interface ContentEditError {
@@ -135,6 +136,35 @@ export async function resolveContentFile(
 }
 
 /**
+ * Coerce an incoming (string) edit to the type of the value already at the
+ * field. Inline editing only produces text; the existing JSON value tells us
+ * what type to write back so we don't corrupt numbers into strings.
+ */
+function coerceToExistingType(
+  value: unknown,
+  existing: unknown,
+): { value: unknown } | ContentEditError {
+  if (typeof existing === 'string') return { value };
+  if (typeof existing === 'number') {
+    if (typeof value === 'number' && Number.isFinite(value)) return { value };
+    const trimmed = typeof value === 'string' ? value.trim() : '';
+    // Decimal only (leading digit required, no +prefix) — reject hex/octal/scientific
+    if (!/^-?\d+(\.\d+)?$/.test(trimmed)) {
+      return { code: 'invalid-value', message: `"${String(value)}" is not a valid number` };
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) {
+      return { code: 'invalid-value', message: `"${trimmed}" overflows numeric range` };
+    }
+    return { value: parsed };
+  }
+  return {
+    code: 'type-unsupported',
+    message: `field of type ${existing === null ? 'null' : Array.isArray(existing) ? 'array' : typeof existing} is not inline-editable`,
+  };
+}
+
+/**
  * Set a value at `path` within `doc`, in place. Returns an error if any
  * intermediate segment is missing or has the wrong type (no autovivification —
  * users edit existing fields, they don't conjure new structure).
@@ -168,7 +198,9 @@ export function setAtPath(
     if (last >= cursor.length) {
       return { code: 'missing-path', message: `index ${last} out of range (length ${cursor.length})` };
     }
-    cursor[last] = value;
+    const coerced = coerceToExistingType(value, cursor[last]);
+    if ('code' in coerced) return coerced;
+    cursor[last] = coerced.value;
   } else {
     if (!isPlainObject(cursor)) {
       return { code: 'missing-path', message: `expected object at ${parentPath}` };
@@ -176,7 +208,10 @@ export function setAtPath(
     if (!Object.prototype.hasOwnProperty.call(cursor, last)) {
       return { code: 'missing-path', message: `field "${last}" not present at ${parentPath}` };
     }
-    (cursor as Record<string, unknown>)[last] = value;
+    const target = cursor as Record<string, unknown>;
+    const coerced = coerceToExistingType(value, target[last]);
+    if ('code' in coerced) return coerced;
+    target[last] = coerced.value;
   }
   return null;
 }

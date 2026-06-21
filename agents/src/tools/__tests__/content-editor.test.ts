@@ -141,6 +141,82 @@ describe('setAtPath', () => {
     expect(err).toMatchObject({ code: 'missing-path' });
     expect(typeof ({}).toString).toBe('function');
   });
+
+  it('coerces a numeric string into an existing number field', () => {
+    const doc = { products: [{ price: 19.99 }] };
+    expect(setAtPath(doc, ['products', 0, 'price'], '24.5')).toBeNull();
+    expect(doc.products[0].price).toBe(24.5);
+    expect(typeof doc.products[0].price).toBe('number');
+  });
+
+  it('preserves integers when coercing', () => {
+    const doc = { stats: { count: 3 } };
+    expect(setAtPath(doc, ['stats', 'count'], '10')).toBeNull();
+    expect(doc.stats.count).toBe(10);
+  });
+
+  it('rejects a non-numeric string for a number field with invalid-value', () => {
+    const doc = { products: [{ price: 9.99 }] };
+    expect(setAtPath(doc, ['products', 0, 'price'], 'abc')).toMatchObject({ code: 'invalid-value' });
+    expect(doc.products[0].price).toBe(9.99);
+  });
+
+  it('rejects an empty string for a number field', () => {
+    const doc = { products: [{ price: 9.99 }] };
+    expect(setAtPath(doc, ['products', 0, 'price'], '   ')).toMatchObject({ code: 'invalid-value' });
+  });
+
+  it('rejects Infinity/NaN-producing input for a number field', () => {
+    const doc = { products: [{ price: 9.99 }] };
+    expect(setAtPath(doc, ['products', 0, 'price'], 'Infinity')).toMatchObject({ code: 'invalid-value' });
+  });
+
+  it('rejects a regex-valid decimal that overflows to Infinity', () => {
+    const doc = { products: [{ price: 9.99 }] };
+    const huge = '1' + '0'.repeat(309);
+    expect(setAtPath(doc, ['products', 0, 'price'], huge)).toMatchObject({ code: 'invalid-value' });
+    expect(doc.products[0].price).toBe(9.99);
+  });
+
+  it('rejects hex notation for a number field with invalid-value, field unchanged', () => {
+    const doc = { products: [{ price: 9.99 }] };
+    expect(setAtPath(doc, ['products', 0, 'price'], '0x1F')).toMatchObject({ code: 'invalid-value' });
+    expect(doc.products[0].price).toBe(9.99);
+  });
+
+  it('rejects scientific notation for a number field with invalid-value, field unchanged', () => {
+    const doc = { products: [{ price: 9.99 }] };
+    expect(setAtPath(doc, ['products', 0, 'price'], '1e2')).toMatchObject({ code: 'invalid-value' });
+    expect(doc.products[0].price).toBe(9.99);
+  });
+
+  it('accepts a negative decimal string for a number field', () => {
+    const doc = { stats: { delta: 0 } };
+    expect(setAtPath(doc, ['stats', 'delta'], '-5')).toBeNull();
+    expect(doc.stats.delta).toBe(-5);
+  });
+
+  it('rejects a null-valued field as type-unsupported', () => {
+    const doc = { settings: { threshold: null } };
+    expect(setAtPath(doc, ['settings', 'threshold'], 'x')).toMatchObject({ code: 'type-unsupported' });
+  });
+
+  it('writes a string field verbatim (copy path unchanged)', () => {
+    const doc = { hero: { title: 'Old' } };
+    expect(setAtPath(doc, ['hero', 'title'], '42')).toBeNull();
+    expect(doc.hero.title).toBe('42'); // stays a string
+  });
+
+  it('rejects editing a boolean field as type-unsupported', () => {
+    const doc = { flags: { featured: true } };
+    expect(setAtPath(doc, ['flags', 'featured'], 'false')).toMatchObject({ code: 'type-unsupported' });
+    expect(doc.flags.featured).toBe(true);
+  });
+
+  it('rejects editing an object/array field as type-unsupported', () => {
+    const doc = { hero: { image: { src: '/x.jpg' } } };
+    expect(setAtPath(doc, ['hero', 'image'], 'nope')).toMatchObject({ code: 'type-unsupported' });
+  });
 });
 
 describe('resolveContentFile', () => {
@@ -299,5 +375,40 @@ describe('editContent', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  it('edits a numeric list-item field and preserves the number type', async () => {
+    const file = await writeJson(dir, 'data/products.json', [
+      { id: 'a', name: 'A', price: 9.99 },
+      { id: 'b', name: 'B', price: 19.99 },
+    ]);
+    const result = await editContent(dir, { contentKey: 'products[1].price', kind: 'copy', value: '24.5' });
+    expect(result.ok).toBe(true);
+    const read = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(read[1].price).toBe(24.5);
+    expect(typeof read[1].price).toBe('number');
+    expect(read[0].price).toBe(9.99);
+  });
+
+  it('rejects a non-numeric edit to a numeric field, leaving the file unchanged', async () => {
+    const file = await writeJson(dir, 'data/products.json', [{ id: 'a', price: 9.99 }]);
+    const result = await editContent(dir, { contentKey: 'products[0].price', kind: 'copy', value: 'free' });
+    expect(result).toMatchObject({ ok: false, error: { code: 'invalid-value' } });
+    const read = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(read[0].price).toBe(9.99);
+  });
+
+  it('returns type-unsupported for a boolean field, leaving the file unchanged', async () => {
+    const file = await writeJson(dir, 'data/products.json', [
+      { id: 'a', name: 'Widget', featured: true },
+    ]);
+    const result = await editContent(dir, {
+      contentKey: 'products[0].featured',
+      kind: 'copy',
+      value: 'false',
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: 'type-unsupported' } });
+    const read = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(read[0].featured).toBe(true);
   });
 });

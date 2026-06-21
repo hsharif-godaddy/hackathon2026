@@ -110,6 +110,62 @@ describe('POST /apps/:id/content/edit', () => {
     expect(content[0].name).toBe('A');
   });
 
+  it('coerces a numeric string to a number for a numeric collection field', async () => {
+    const productsPath = join(testAppPath, 'src', 'content', 'data', 'products.json');
+    await writeFile(
+      productsPath,
+      JSON.stringify([{ id: 'p1', name: 'Widget', price: 19.99 }], null, 2) + '\n',
+    );
+
+    const response = await request(app)
+      .post(`/apps/${testAppId}/content/edit`)
+      .send({ contentKey: 'products[0].price', kind: 'copy', value: '29.95' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.ok).toBe(true);
+
+    const content = JSON.parse(await readFile(productsPath, 'utf8'));
+    expect(typeof content[0].price).toBe('number');
+    expect(content[0].price).toBe(29.95);
+  });
+
+  it('rejects a non-numeric string for a numeric collection field with invalid-value', async () => {
+    const productsPath = join(testAppPath, 'src', 'content', 'data', 'products.json');
+    await writeFile(
+      productsPath,
+      JSON.stringify([{ id: 'p1', name: 'Widget', price: 19.99 }], null, 2) + '\n',
+    );
+
+    const response = await request(app)
+      .post(`/apps/${testAppId}/content/edit`)
+      .send({ contentKey: 'products[0].price', kind: 'copy', value: 'abc' });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ ok: false, error: { code: 'invalid-value' } });
+
+    // File must be unchanged
+    const content = JSON.parse(await readFile(productsPath, 'utf8'));
+    expect(content[0].price).toBe(19.99);
+  });
+
+  it('rejects a boolean field with 400 type-unsupported, file unchanged', async () => {
+    const productsPath = join(testAppPath, 'src', 'content', 'data', 'products.json');
+    await writeFile(
+      productsPath,
+      JSON.stringify([{ id: 'p1', name: 'Widget', featured: true }], null, 2) + '\n',
+    );
+
+    const response = await request(app)
+      .post(`/apps/${testAppId}/content/edit`)
+      .send({ contentKey: 'products[0].featured', kind: 'copy', value: 'false' });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ ok: false, error: { code: 'type-unsupported' } });
+
+    const content = JSON.parse(await readFile(productsPath, 'utf8'));
+    expect(content[0].featured).toBe(true);
+  });
+
   it('returns 400 with structured error when the path is missing', async () => {
     const response = await request(app)
       .post(`/apps/${testAppId}/content/edit`)

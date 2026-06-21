@@ -1243,6 +1243,7 @@ function DevelopPageContent({ layout = BuilderLayout.Develop }: { layout?: Build
     handleEvalViewportScreenshot,
     handleAutoImportMediaSlot,
     speechBridge,
+    t,
     wsSend: ws.actions.send,
   })
   // Warn user before leaving page with unsaved changes

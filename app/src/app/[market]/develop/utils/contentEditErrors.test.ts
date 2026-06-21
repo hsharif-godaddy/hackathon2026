@@ -1,0 +1,45 @@
+import { describe, expect, it } from 'vitest'
+
+import { contentEditErrorCopy } from './contentEditErrors'
+
+describe('contentEditErrorCopy', function contentEditErrorCopyTests() {
+  it("maps 'invalid-value' to the number-validation copy", function invalidValue() {
+    const result = contentEditErrorCopy('invalid-value')
+    expect(result.titleKey).toBe('builder_cms_edit_error_title')
+    expect(result.titleFallback).toBe('Change not saved')
+    expect(result.bodyKey).toBe('builder_cms_edit_error_invalid_number')
+    expect(result.bodyFallback).toBe("That value couldn't be saved — enter a valid number.")
+  })
+
+  it("maps 'type-unsupported' to the unsupported-field copy", function typeUnsupported() {
+    const result = contentEditErrorCopy('type-unsupported')
+    expect(result.titleKey).toBe('builder_cms_edit_error_title')
+    expect(result.titleFallback).toBe('Change not saved')
+    expect(result.bodyKey).toBe('builder_cms_edit_error_unsupported')
+    expect(result.bodyFallback).toBe("This field can't be edited inline.")
+  })
+
+  it("maps an unknown code to the generic copy", function unknownCode() {
+    const result = contentEditErrorCopy('missing-path')
+    expect(result.titleKey).toBe('builder_cms_edit_error_title')
+    expect(result.titleFallback).toBe('Change not saved')
+    expect(result.bodyKey).toBe('builder_cms_edit_error_generic')
+    expect(result.bodyFallback).toBe("Couldn't save that change. Please try again.")
+  })
+
+  it('maps undefined to the generic copy', function undefinedCode() {
+    const result = contentEditErrorCopy(undefined)
+    expect(result.titleKey).toBe('builder_cms_edit_error_title')
+    expect(result.titleFallback).toBe('Change not saved')
+    expect(result.bodyKey).toBe('builder_cms_edit_error_generic')
+    expect(result.bodyFallback).toBe("Couldn't save that change. Please try again.")
+  })
+
+  it('maps any other arbitrary unknown code to the generic copy', function arbitraryCode() {
+    const result = contentEditErrorCopy('some-future-unknown-code')
+    expect(result.titleKey).toBe('builder_cms_edit_error_title')
+    expect(result.titleFallback).toBe('Change not saved')
+    expect(result.bodyKey).toBe('builder_cms_edit_error_generic')
+    expect(result.bodyFallback).toBe("Couldn't save that change. Please try again.")
+  })
+})

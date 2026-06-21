@@ -359,6 +359,33 @@ describe('element-detection', () => {
       const element = buildElement('<h3 data-dev-content-key-template="products[].name">A</h3>');
       expect(resolveContentKey(element)).toBeNull();
     });
+
+    it('resolves all three fields of a multi-field collection item at index 2', () => {
+      // Mirrors the canonical S3 agent pattern:
+      //   <ContentListContext field="products"> injects data-dev-content-list="products"
+      //   Each child gets data-dev-content-list-index (injected by ContentListContext)
+      //   source-mapper emits data-dev-content-key-template for name/description/price
+      // This test locks the full attribution + resolution chain for a 3-field item.
+      const root = document.createElement('div');
+      // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
+      root.innerHTML = `
+        <div data-dev-content-list="products">
+          <article data-dev-content-list-index="2">
+            <h3 data-dev-content-key-template="products[].name">Gadget</h3>
+            <p data-dev-content-key-template="products[].description">A great gadget</p>
+            <span><span data-dev-content-key-template="products[].price">9.99</span></span>
+          </article>
+        </div>
+      `;
+      const nameEl = root.querySelector('h3') as HTMLElement;
+      const descEl = root.querySelector('p') as HTMLElement;
+      // price is on the inner wrapper span (the pre-pass wraps ${p.price} in a child span)
+      const priceEl = root.querySelector('span[data-dev-content-key-template]') as HTMLElement;
+
+      expect(resolveContentKey(nameEl)).toEqual({ key: 'products[2].name', kind: 'copy' });
+      expect(resolveContentKey(descEl)).toEqual({ key: 'products[2].description', kind: 'copy' });
+      expect(resolveContentKey(priceEl)).toEqual({ key: 'products[2].price', kind: 'copy' });
+    });
   });
 
   // ─── isBodyTextElement ────────────────────────────────────────────────────────

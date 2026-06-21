@@ -15,14 +15,21 @@ vi.mock('@/app/[market]/develop/components/utils', async (importOriginal) => {
   return { ...actual, handlePreviewRefresh: (...a: unknown[]) => handlePreviewRefreshMock(...a) }
 })
 
-function deps(cmsInlineEditEnabled: boolean) {
-  return { appId: 'app1', cmsInlineEditEnabled, lastIframeState: { current: {} } } as never
+const addGrowlMessageMock = vi.fn()
+vi.mock('@ux/growl', () => ({ default: { addGrowlMessage: (...a: unknown[]) => addGrowlMessageMock(...a) } }))
+
+type T = (key: string, values?: unknown, fallback?: string) => string
+const defaultT: T = (key, _values, fallback) => fallback ?? key
+
+function deps(cmsInlineEditEnabled: boolean, t: T = defaultT) {
+  return { appId: 'app1', cmsInlineEditEnabled, lastIframeState: { current: {} }, t } as never
 }
 const evt = { type: 'CONTENT_UPDATED', data: { contentKey: 'products[1].name', kind: 'copy', oldText: 'B', newText: 'B2' } }
 
 afterEach(() => {
   fetchMock.mockClear()
   handlePreviewRefreshMock.mockClear()
+  addGrowlMessageMock.mockClear()
 })
 
 describe('CONTENT_UPDATED bus handler', () => {
@@ -40,16 +47,29 @@ describe('CONTENT_UPDATED bus handler', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('calls handlePreviewRefresh when fetch resolves with !ok', async () => {
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 500 })
+  it('reverts and shows a rejection toast when fetch resolves with !ok', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: { code: 'invalid-value' } }) })
     renderHook(() => useDevToolsBusBindings(deps(true)))
     dispatch(evt as never)
     await vi.waitFor(() => expect(handlePreviewRefreshMock).toHaveBeenCalledTimes(1))
+    expect(addGrowlMessageMock).toHaveBeenCalledTimes(1)
+    expect(addGrowlMessageMock.mock.calls[0][0]).toMatchObject({ emphasis: 'critical' })
   })
 
-  it('calls handlePreviewRefresh when fetch throws', async () => {
+  it('reverts and shows a toast when fetch throws', async () => {
     fetchMock.mockRejectedValueOnce(new Error('network error'))
     renderHook(() => useDevToolsBusBindings(deps(true)))
+    dispatch(evt as never)
+    await vi.waitFor(() => expect(handlePreviewRefreshMock).toHaveBeenCalledTimes(1))
+    expect(addGrowlMessageMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('still reverts when the toast itself throws (toast is best-effort)', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: { code: 'invalid-value' } }) })
+    const throwingT: T = () => {
+      throw new Error('t boom')
+    }
+    renderHook(() => useDevToolsBusBindings(deps(true, throwingT)))
     dispatch(evt as never)
     await vi.waitFor(() => expect(handlePreviewRefreshMock).toHaveBeenCalledTimes(1))
   })
