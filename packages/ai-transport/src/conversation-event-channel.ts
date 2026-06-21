@@ -401,7 +401,7 @@ export class ConversationEventChannel {
    *
    * @example
    * ```typescript
-   * channel.subscribe('conv_123', new WebSocketSubscriber(socket))
+   * channel.subscribe('conv_123', new SSESubscriber(writer, appId))
    * ```
    */
   subscribe(conversationId: string, subscriber: EventSubscriber): void {
@@ -424,7 +424,7 @@ export class ConversationEventChannel {
    * Unregisters a subscriber from a conversation.
    *
    * The event buffer is intentionally retained until TTL cleanup. A client can
-   * lose the tail of an SSE/WebSocket stream while the server already published
+   * lose the tail of an SSE stream while the server already published
    * terminal events; retaining the buffer lets reconnect replay those terminal
    * events instead of reporting an in-progress stream forever.
    *
@@ -433,7 +433,7 @@ export class ConversationEventChannel {
    *
    * @example
    * ```typescript
-   * channel.unsubscribe('conv_123', 'websocket-subscriber-1')
+   * channel.unsubscribe('conv_123', 'sse-subscriber-1')
    * ```
    */
   unsubscribe(conversationId: string, subscriberId: string): void {

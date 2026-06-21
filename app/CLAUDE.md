@@ -137,7 +137,7 @@ Chat streaming uses Server-Sent Events as the **only** transport. (The legacy So
 
 **Connection state:** lives on the store `connection` field (`useConnectionState` selector, `setConnectionState` setter) — written by `useSSEChat` for the debug drawer. SSE reconnect is stateless per request (`Last-Event-ID`); there is no connection state machine, recovery handshake, or ACK protocol.
 
-**Out-of-band server pushes** (`build_phase`, `logo`, `video`, `media_caption`, `oauth_result`) arrive over the same SSE event stream via the agents `EventStreamRegistry`.
+**Out-of-band server pushes** (`build_phase`, `logo`, `video`, `oauth_result`, `media_caption`) arrive over the same SSE event stream via the agents `EventStreamRegistry`. `media_caption` is fanned out by `emitMediaCaption` (`agents/src/server/media-caption-emit.ts`) after async caption generation; `useSSEChat`'s `media_caption` branch calls `handleMediaCaptionNotification`, which patches the media-slot + manifest React Query caches so captions surface live without a manifest refetch (AIROBUILD-2680).
 
 Auth docs: `docs/ui-agents-authentication-architecture.md`.
 

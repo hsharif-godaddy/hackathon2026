@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Hoisted mocks — declared before vi.mock factories that reference them.
-const { setMock, emitMock, syncBrandTokensCssMock, createForWorkspaceMock } = vi.hoisted(() => ({
+const { setMock, publishMock, getConversationsByAppMock, syncBrandTokensCssMock, createForWorkspaceMock } = vi.hoisted(() => ({
   setMock: vi.fn(async () => ({ success: true })),
-  emitMock: vi.fn(),
+  publishMock: vi.fn(),
+  getConversationsByAppMock: vi.fn(() => ['conv-1']),
   syncBrandTokensCssMock: vi.fn(async () => undefined),
   createForWorkspaceMock: vi.fn(() => ({ files: { write: vi.fn() } })),
 }))
@@ -15,23 +16,14 @@ vi.mock('../../../memory/adapters/index.js', () => ({
   getKvMemoryStore: () => ({ set: setMock }),
 }))
 
-// IMPORTANT: the implementation imports `emitToApp` from
-// `../../server/ai-lib-websocket-server.js` (the same module
-// video-generation-tool.ts uses), NOT a `websocket/emit-to-app` module.
-// The vi.mock specifier must match that import exactly (one level deeper
-// here because the test lives under __tests__/).
-vi.mock('../../../server/ai-lib-websocket-server.js', () => ({
-  emitToApp: emitMock,
-}))
-
-// The tool also imports the SSE emit seam (registry + event channel). Mock both
-// to inert getters so the SSE branch is skipped and importing them pulls in no
-// heavy server/DB side effects in this unit test.
+// The tool emits via the SSE seam (registry + event channel). Mock both so the
+// build_phase publish can be asserted without pulling in heavy server/DB side
+// effects in this unit test.
 vi.mock('../../../server/sse/registry-singleton.js', () => ({
-  getSSERegistry: () => null,
+  getSSERegistry: () => ({ getConversationsByApp: getConversationsByAppMock }),
 }))
 vi.mock('../../../server/agent-runtime.js', () => ({
-  getEventChannel: () => null,
+  getEventChannel: () => ({ publish: publishMock }),
 }))
 
 // Step 4 syncs public/brand-tokens.css for the showcase via the workspace.
@@ -69,7 +61,9 @@ const createContext = (appId: string) => ({
 describe('setWizardStepAITool execution', () => {
   beforeEach(() => {
     setMock.mockClear()
-    emitMock.mockClear()
+    publishMock.mockClear()
+    getConversationsByAppMock.mockClear()
+    getConversationsByAppMock.mockReturnValue(['conv-1'])
     syncBrandTokensCssMock.mockClear()
     createForWorkspaceMock.mockClear()
     setMock.mockResolvedValue({ success: true })
@@ -101,10 +95,10 @@ describe('setWizardStepAITool execution', () => {
       { step: 3 },
     )
 
-    expect(emitMock).toHaveBeenCalledWith(
-      'app1234567',
-      'message',
+    expect(publishMock).toHaveBeenCalledWith(
+      'conv-1',
       expect.objectContaining({
+        conversationId: 'conv-1',
         type: 'build_phase',
         data: expect.objectContaining({ step: 3, appId: 'app1234567' }),
       }),
@@ -123,7 +117,7 @@ describe('setWizardStepAITool execution', () => {
     expect(result).toContain('Error')
     expect(result).toContain('No app ID')
     expect(setMock).not.toHaveBeenCalled()
-    expect(emitMock).not.toHaveBeenCalled()
+    expect(publishMock).not.toHaveBeenCalled()
   })
 
   it('returns an error and skips the emit when the memory write fails', async () => {
@@ -136,12 +130,12 @@ describe('setWizardStepAITool execution', () => {
 
     expect(result).toContain('Error')
     expect(result).toContain('Failed to save wizard step')
-    expect(emitMock).not.toHaveBeenCalled()
+    expect(publishMock).not.toHaveBeenCalled()
   })
 
-  it('still returns success when emitToApp throws (emit failure is swallowed)', async () => {
-    emitMock.mockImplementationOnce(() => {
-      throw new Error('socket gone')
+  it('still returns success when the SSE publish throws (emit failure is swallowed)', async () => {
+    publishMock.mockImplementationOnce(() => {
+      throw new Error('stream gone')
     })
 
     const result = await setWizardStepAITool.execute(

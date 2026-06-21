@@ -141,7 +141,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
     // Last-Event-Id present = polyfill resuming from a delivered cursor.
     // Absent = first open of a JS session; client has no in-memory deltas,
     // so the server must replay the full buffer to reconstruct in-progress
-    // turns. Matches the WS ConnectionRecoveryManager clientHasNoState policy.
+    // turns.
     const parsedLeid = parseInt(req.headers['last-event-id'] as string ?? '', 10)
     const hasCursor = Number.isFinite(parsedLeid) && parsedLeid >= 0
     const lastEventId = hasCursor ? parsedLeid : null

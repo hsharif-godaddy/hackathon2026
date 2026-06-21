@@ -1,6 +1,6 @@
 /**
  * Budget pre-execution check + session creation.
- * Extracted for testability from ai-lib-websocket-server onMessageStart.
+ * Extracted for testability from the message-start path.
  *
  * The Budget Service's createSession endpoint validates credits and returns 402
  * NO_BUDGET_CAPACITY if the customer has insufficient credits. This eliminates

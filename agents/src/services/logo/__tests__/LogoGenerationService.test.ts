@@ -12,7 +12,6 @@ vi.mock('../../../logging/index.js', () => ({
 const {
   FakeBudgetError,
   mockGenerate,
-  mockEmitToApp,
   mockSendToApp,
   mockReadLogoJob,
   mockWriteLogoJob,
@@ -29,7 +28,6 @@ const {
   return {
     FakeBudgetError,
     mockGenerate: vi.fn(),
-    mockEmitToApp: vi.fn(() => 1),
     mockSendToApp: vi.fn(),
     mockReadLogoJob: vi.fn(),
     mockWriteLogoJob: vi.fn(),
@@ -49,8 +47,6 @@ const {
 vi.mock('@airo/ai-common', () => ({ BudgetExceededError: FakeBudgetError }))
 
 vi.mock('../../LogoService.js', () => ({ logoService: { generate: mockGenerate } }))
-
-vi.mock('../../../server/ai-lib-websocket-server.js', () => ({ emitToApp: mockEmitToApp }))
 
 vi.mock('../../../server/sse/registry-singleton.js', () => ({
   getSSERegistry: () => ({ sendToApp: mockSendToApp }),
@@ -92,7 +88,6 @@ const abortable = () => mockGenerate.mockImplementation(({ signal }: { signal?: 
 
 beforeEach(() => {
   vi.clearAllMocks(); lastJob = null
-  mockEmitToApp.mockReturnValue(1)
   mockReadLogoJob.mockImplementation(async () => lastJob)
   mockWriteLogoJob.mockImplementation(async (_ws: unknown, _appId: string, job: LogoJob) => { lastJob = job })
   mockEnsureShimmer.mockResolvedValue({
@@ -125,9 +120,8 @@ describe('LogoGenerationService.start (happy path)', () => {
     // userModified guard knows which pending marker it legitimately owns.
     expect(mockSaveSlots).toHaveBeenCalledWith('app-1', okResponse, 'q', res.jobId)
     expect(lastJob?.status).toBe('completed')
-    expect(mockEmitToApp).toHaveBeenCalledWith('app-1', 'message',
-      expect.objectContaining({ type: 'logo', data: expect.objectContaining({ status: 'completed', jobId: res.jobId }) }))
-    expect(mockSendToApp).toHaveBeenCalledWith('app-1', 'logo', expect.objectContaining({ status: 'completed' }))
+    expect(mockSendToApp).toHaveBeenCalledWith('app-1', 'logo',
+      expect.objectContaining({ status: 'completed', jobId: res.jobId }))
   })
 
   it('includes the hosted logo (id + urls) in the completed emit payload', async () => {
@@ -135,16 +129,6 @@ describe('LogoGenerationService.start (happy path)', () => {
     const res = await logoGenerationService.start({ ...baseParams, layouts: ['horizontal'] })
     await res.done
 
-    expect(mockEmitToApp).toHaveBeenCalledWith('app-1', 'message',
-      expect.objectContaining({
-        type: 'logo',
-        data: expect.objectContaining({
-          status: 'completed',
-          logoId: okResponse.logo.id,
-          logo: okResponse.logo,
-        }),
-      }))
-    // SSE mirror carries the same payload so non-WS clients render the logo too.
     expect(mockSendToApp).toHaveBeenCalledWith('app-1', 'logo',
       expect.objectContaining({ status: 'completed', logoId: okResponse.logo.id, logo: okResponse.logo }))
   })
@@ -158,8 +142,8 @@ describe('LogoGenerationService failure handling', () => {
     expect(mockGenerate).toHaveBeenCalledTimes(1)
     expect(mockRevert).toHaveBeenCalledTimes(1)
     expect(lastJob?.status).toBe('failed')
-    expect(mockEmitToApp).toHaveBeenCalledWith('app-1', 'message',
-      expect.objectContaining({ data: expect.objectContaining({ status: 'failed', errorKind: 'budget' }) }))
+    expect(mockSendToApp).toHaveBeenCalledWith('app-1', 'logo',
+      expect.objectContaining({ status: 'failed', errorKind: 'budget' }))
   })
 
   it('retries a transient error then succeeds (~1s backoff)', async () => {
@@ -190,8 +174,8 @@ describe('LogoGenerationService error-path resilience (no stuck shimmer)', () =>
     expect(outcome).toMatchObject({ status: 'failed', jobId: res.jobId })
     expect(mockRevert).toHaveBeenCalledTimes(1)
     expect(lastJob?.status).toBe('failed')
-    expect(mockEmitToApp).toHaveBeenCalledWith('app-1', 'message',
-      expect.objectContaining({ data: expect.objectContaining({ status: 'failed', jobId: res.jobId }) }))
+    expect(mockSendToApp).toHaveBeenCalledWith('app-1', 'logo',
+      expect.objectContaining({ status: 'failed', jobId: res.jobId }))
   })
 })
 
@@ -202,8 +186,8 @@ describe('LogoGenerationService.cancel', () => {
     await Promise.all([logoGenerationService.cancel('app-1', res.jobId), res.done])
     expect(mockRevert).toHaveBeenCalledTimes(1)
     expect(lastJob?.status).toBe('cancelled')
-    expect(mockEmitToApp).toHaveBeenCalledWith('app-1', 'message',
-      expect.objectContaining({ data: expect.objectContaining({ status: 'cancelled', jobId: res.jobId }) }))
+    expect(mockSendToApp).toHaveBeenCalledWith('app-1', 'logo',
+      expect.objectContaining({ status: 'cancelled', jobId: res.jobId }))
   })
 
   it('is a no-op when no job is in flight', async () => {
@@ -224,8 +208,8 @@ describe('LogoGenerationService.cancel', () => {
     expect(mockRevert).not.toHaveBeenCalled()
     // Still a terminal cancelled state + emit so the chat clears its in-progress UI.
     expect(lastJob?.status).toBe('cancelled')
-    expect(mockEmitToApp).toHaveBeenCalledWith('app-1', 'message',
-      expect.objectContaining({ data: expect.objectContaining({ status: 'cancelled', jobId: res.jobId }) }))
+    expect(mockSendToApp).toHaveBeenCalledWith('app-1', 'logo',
+      expect.objectContaining({ status: 'cancelled', jobId: res.jobId }))
   })
 })
 

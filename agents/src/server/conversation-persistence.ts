@@ -749,9 +749,10 @@ export class AgentsMessagePersistence implements ConversationPersistenceWithClea
       contextLogger.info('conversation.agent_response.saved', {})
     }
 
-    // Note: Token tracking is now handled exclusively by the onTokenUsage callback
-    // in experimental-websocket-server.ts. This ensures 100% capture regardless of
-    // conversation state and eliminates any risk of double counting.
+    // Note: Token tracking is now handled exclusively by the SSE execution
+    // path (recordTokenUsageObservability in MessageExecutionService). This
+    // ensures 100% capture regardless of conversation state and eliminates
+    // any risk of double counting.
 
     // Track handoff token usage from tool results
     if (toolCalls.length > 0 && context.appId) {

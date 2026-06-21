@@ -5,8 +5,8 @@ import type { BuildPageResult } from '../services/rebuild/prompt-builder.js';
 
 const logger = Logger.create({ component: 'rebuild-build-page-message' });
 
-// Module-level instance (matches ai-lib-websocket-server.ts) — avoids
-// constructing a fresh AppRepository on every rebuild-build message.
+// Module-level instance — avoids constructing a fresh AppRepository on every
+// rebuild-build message.
 const appRepo = new AppRepository();
 
 export interface RebuildBuildPageConfirmation {

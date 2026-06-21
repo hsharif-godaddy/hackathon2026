@@ -31,11 +31,13 @@ interface AppBranchInfo {
  * Tracks branches per appId since git operations are per-repository.
  *
  * Shutdown integration:
- * When the server receives SIGTERM, wsServer.close() fires socket disconnect
- * events which trigger handleConnectionEnd asynchronously. The shutdown sequence
- * in app.ts calls waitForInFlightOps() to block until those git operations
- * complete, ensuring no work is lost. Callers must register promises via
- * trackOperation() for this to work.
+ * The shutdown sequence in app.ts calls waitForInFlightOps() to block until any
+ * git operations registered via trackOperation() complete. The legacy WS server
+ * (deleted in AIROBUILD-2632) was the only registrant — its socket-disconnect
+ * handlers tracked the per-connection git drain. On the SSE path the equivalent
+ * drain lives in MessageExecutionService.shutdown(), which awaits in-flight turns
+ * (including their git commits) before app.ts closes the DB. trackOperation() now
+ * has no caller, so this drain is inert pending removal; see follow-up.
  */
 export class GitHookService {
   private appRepository: AppRepository;

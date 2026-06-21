@@ -41,11 +41,9 @@ vi.mock('../ai-lib-tools/drivers/website-scraper-driver.js', () => ({
   }; })
 }));
 
-// Mock emitToApp so tests can assert per-app scoped WS emits.
-const emitToAppMock = vi.fn(function () { return 1; });
-vi.mock('../../server/ai-lib-websocket-server.js', () => ({
-  emitToApp: (appId: string, event: string, payload: unknown) => emitToAppMock(appId, event, payload),
-}));
+// SSE registry mock so tests can assert per-app scoped SSE emits. Injected onto
+// each tool instance via setSSERegistry() in createTool().
+const sendEventMock = vi.fn();
 
 // Workspace mock — delegates to local filesystem for .airo/video.json reads/writes
 const { MockDevSupervisorError, testBaseDir, testAppPath, hoistedFs, hoistedPath } = vi.hoisted(() => {
@@ -143,7 +141,9 @@ describe('video-generation-tool', function packageTests() {
   const defaultCtx = { appId: 'test-app-123', appPath: testAppPath, previewUrl: 'https://test-app.preview.airo.dev' };
 
   function createTool(overrides = {}) {
-    return new VideoGenerationTool({ ...defaultCtx, ...overrides });
+    const tool = new VideoGenerationTool({ ...defaultCtx, ...overrides });
+    tool.setSSERegistry({ sendEvent: sendEventMock });
+    return tool;
   }
 
   beforeEach(() => {
@@ -335,13 +335,10 @@ describe('video-generation-tool', function packageTests() {
       const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
       expect(metadata.status).toBe('failed');
       expect(metadata.error).toBe('Failed to submit video job to OpenAI');
-      expect(emitToAppMock).toHaveBeenCalledWith('test-app-123', 'message', expect.objectContaining({
-        type: 'video',
-        data: expect.objectContaining({
-          status: 'failed',
-          error: 'Failed to submit video job to OpenAI',
-          appId: 'test-app-123'
-        })
+      expect(sendEventMock).toHaveBeenCalledWith('test-app-123', 'video', expect.objectContaining({
+        status: 'failed',
+        error: 'Failed to submit video job to OpenAI',
+        appId: 'test-app-123'
       }));
     });
   });
@@ -400,9 +397,8 @@ describe('video-generation-tool', function packageTests() {
       const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
       expect(metadata.status).toBe('failed');
       expect(metadata.error).toBeTruthy();
-      expect(emitToAppMock).toHaveBeenCalledWith('test-app-123', 'message', expect.objectContaining({
-        type: 'video',
-        data: expect.objectContaining({ status: 'failed', jobId: 'vid-failed' })
+      expect(sendEventMock).toHaveBeenCalledWith('test-app-123', 'video', expect.objectContaining({
+        status: 'failed', jobId: 'vid-failed'
       }));
       expect(logger.error).toHaveBeenCalledWith(
         'video-generation.polling.failed',
@@ -507,9 +503,8 @@ describe('video-generation-tool', function packageTests() {
       const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
       expect(metadata.status).toBe('failed');
       expect(metadata.error).toBeTruthy();
-      expect(emitToAppMock).toHaveBeenCalledWith('test-app-123', 'message', expect.objectContaining({
-        type: 'video',
-        data: expect.objectContaining({ status: 'failed', jobId: 'vid-timeout' })
+      expect(sendEventMock).toHaveBeenCalledWith('test-app-123', 'video', expect.objectContaining({
+        status: 'failed', jobId: 'vid-timeout'
       }));
     });
 
@@ -661,13 +656,10 @@ describe('video-generation-tool', function packageTests() {
         expect(metadata.status).toBe('completed');
         expect(metadata.url).toBeTruthy();
 
-        expect(emitToAppMock).toHaveBeenCalledWith('test-app-123', 'message', expect.objectContaining({
-          type: 'video',
-          data: expect.objectContaining({
-            status: 'completed',
-            jobId: 'vid-outro-fail',
-            appId: 'test-app-123'
-          })
+        expect(sendEventMock).toHaveBeenCalledWith('test-app-123', 'video', expect.objectContaining({
+          status: 'completed',
+          jobId: 'vid-outro-fail',
+          appId: 'test-app-123'
         }));
       } finally {
         if (!outroExisted) {
@@ -711,18 +703,14 @@ describe('video-generation-tool', function packageTests() {
         expect(metadata.status).toBe('completed');
         expect(metadata.url).toBeTruthy();
 
-        expect(emitToAppMock).toHaveBeenCalledWith('test-app-123', 'message', {
-          type: 'video',
-          content: '',
-          data: {
-            status: 'completed',
-            jobId: 'vid-success',
-            videoUrl: expect.stringContaining('/airo-assets/uploads/'),
-            appId: 'test-app-123'
-          }
+        expect(sendEventMock).toHaveBeenCalledWith('test-app-123', 'video', {
+          status: 'completed',
+          jobId: 'vid-success',
+          videoUrl: expect.stringContaining('/airo-assets/uploads/'),
+          appId: 'test-app-123'
         });
         expect(logger.info).toHaveBeenCalledWith(
-          'video-generation.websocket.emit',
+          'video-generation.sse.emit',
           expect.objectContaining({ appId: 'test-app-123', jobId: 'vid-success' })
         );
       } finally {
@@ -776,15 +764,11 @@ describe('video-generation-tool', function packageTests() {
       expect(metadata.error).toBe('Test error message');
       expect(metadata.jobId).toBe('vid-1');
       expect(metadata.createdAt).toBe('2024-01-01T00:00:00.000Z');
-      expect(emitToAppMock).toHaveBeenCalledWith('test-app-123', 'message', {
-        type: 'video',
-        content: '',
-        data: {
-          status: 'failed',
-          jobId: 'vid-1',
-          error: 'Test error message',
-          appId: 'test-app-123'
-        }
+      expect(sendEventMock).toHaveBeenCalledWith('test-app-123', 'video', {
+        status: 'failed',
+        jobId: 'vid-1',
+        error: 'Test error message',
+        appId: 'test-app-123'
       });
     });
 
@@ -795,9 +779,8 @@ describe('video-generation-tool', function packageTests() {
       const metadata = JSON.parse(fs.readFileSync(path.join(airoDir, 'video.json'), 'utf-8'));
       expect(metadata.status).toBe('failed');
       expect(metadata.error).toBe('Test error');
-      expect(emitToAppMock).toHaveBeenCalledWith('test-app-123', 'message', expect.objectContaining({
-        type: 'video',
-        data: expect.objectContaining({ status: 'failed' })
+      expect(sendEventMock).toHaveBeenCalledWith('test-app-123', 'video', expect.objectContaining({
+        status: 'failed'
       }));
     });
 

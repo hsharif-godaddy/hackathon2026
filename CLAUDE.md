@@ -41,14 +41,14 @@ if (options.token && options.repoUrl) {
 
 | Service                    | Package              | Port | Notes                                                                           |
 |----------------------------|----------------------|------|---------------------------------------------------------------------------------|
-| **agents/**                | `@airo/agents`       | 4000 | Express API, AI agents, SQLite, WebSocket                                       |
+| **agents/**                | `@airo/agents`       | 4000 | Express API, AI agents, SQLite, SSE streaming                                   |
 | **app/**                   | `website`            | 3000 | Next.js BFF + builder UI                                                        |
 | **dev-supervisor/**        | Go + Rust            | —    | PID1 (Rust), process lifecycle, HTTP proxy, JWT auth (Go)                       |
 | **local-control-plane/**   | Go binary            | 4100 | Local mgmt-airo API, SQLite + Docker                                            |
 | **budget-service/**        | Go binary            | 8080 | Standalone Postgres-backed REST API for cost to credit management               |
 | **packages/shared/**       | `@airo/shared`       | —    | Shared types and pure utilities (grants, context-attachment, social, websocket) |
 | **packages/ai-lib/**       | `@airo/ai-lib`       | —    | AI SDK wrapper, consumed by agents                                              |
-| **packages/ai-transport/** | `@airo/ai-transport` | —    | Transport-agnostic shared code for WS + SSE servers (loop, processor, events)   |
+| **packages/ai-transport/** | `@airo/ai-transport` | —    | Shared server code for the SSE chat transport (loop, processor, events)         |
 
 Additional: `app-templates/` (v8 template), `packages/design-extractor/` (PDF RAG), `tests/` (Playwright E2E tests), `debug-console/` (internal dev-team dashboard — review pragmatically, see [debug-console/CLAUDE.md](debug-console/CLAUDE.md))
 

@@ -1,8 +1,8 @@
 # @airo/ai-transport
 
-Transport-agnostic infrastructure shared by the WebSocket and SSE servers. The two transports (`experimental-websocket-server.ts` + `agents/src/server/sse/MessageExecutionService.ts`) are adapters — the behavior lives here.
+Infrastructure for the SSE chat server. The SSE adapter (`agents/src/server/sse/MessageExecutionService.ts`) wires callbacks — the behavior lives here. (The WebSocket transport was removed in AIROBUILD-2632; this package is now SSE-only but stays callback-driven rather than branching on transport.)
 
-**If a change applies to both transports, it belongs in this package.** Adding it to one transport and not the other is a bug, even when the tests still pass.
+**Cross-cutting chat behavior belongs in this package**, behind a callback interface, rather than inlined into the SSE adapter.
 
 ## What lives here
 
@@ -11,32 +11,29 @@ Transport-agnostic infrastructure shared by the WebSocket and SSE servers. The t
 | `agent-execution-loop.ts` | Handoff + auto-continuation loop. Transport-agnostic via callbacks. |
 | `stream-part-processor.ts` | AI SDK stream-part → tool/text lifecycle events. |
 | `conversation-event-channel.ts` | Pub/sub event channel with per-conversation circular buffer for replay. |
-| `subscribers/` | `WebSocketSubscriber`, `SSESubscriber`, `PersistenceSubscriber`, `APMSubscriber`, `EventCoalescer`. |
-| `connection-state-manager.ts`, `connection-recovery-manager.ts` | Connection lifecycle + recovery. |
-| `client-action-registry.ts` | Client-side action dispatch shared by both transports. |
+| `subscribers/` | `SSESubscriber`, `BaseEventSubscriber`, `PersistenceSubscriber`, `APMSubscriber`, `EventCoalescer`. |
+| `client-action-registry.ts` | Client-side action dispatch. |
 | `sse-format.ts`, `sse-writer.ts` | SSE wire format — also consumed by the SSE client. |
 | `coalesce-events.ts`, `chunk-timeout-guard.ts`, `stream-timing-tracker.ts` | Shared utilities. |
 
 ## Rules
 
-1. **Transport servers wire callbacks, they don't branch on transport.** No `if (transport === 'sse')` inside this package. If you reach for one, invert: add a callback to the existing interface.
+1. **The SSE adapter wires callbacks, this package doesn't branch on transport.** Keep behavior here behind the callback seams rather than reaching into the SSE server.
 
-2. **Shared behavior goes behind an existing callback interface.** `AgentExecutionLoopCallbacks`, `PartProcessorCallbacks`, and the subscriber interfaces are the seams. Extend them rather than duplicating logic in each transport.
+2. **Shared behavior goes behind an existing callback interface.** `AgentExecutionLoopCallbacks`, `PartProcessorCallbacks`, and the subscriber interfaces are the seams. Extend them rather than duplicating logic between this package and the SSE adapter.
 
 3. **Respect the documented error contracts.** `AgentExecutionLoopCallbacks` and `PartProcessorCallbacks` have JSDoc that spells out which hooks may throw (fatal — propagates and aborts the turn) and which must not (additive — implementor wraps in try/catch). When you add a hook, document where it sits on that spectrum; when you implement one, honor it.
 
 4. **Event shape is wire-visible.** Changes to stream-part → event mapping, tool lifecycle events, or the SSE envelope affect both the server and the SSE client (`formatSSEEvent`). Update producers, consumers, and `__tests__/` together.
 
-5. **New metadata flags land in shared code.** `context.metadata.__autoContinue` / `__continuationPrompt` are the prior art — the pattern is: tools mutate metadata, the loop's `getAutoContinuation` picks it up. Don't introduce a metadata channel that only one transport reads.
+5. **New metadata flags land in shared code.** `context.metadata.__autoContinue` / `__continuationPrompt` are the prior art — the pattern is: tools mutate metadata, the loop's `getAutoContinuation` picks it up.
 
-6. **Tests live next to the module, not in the transport.** `packages/ai-transport/src/__tests__/` covers the extracted behavior with direct unit tests. Transport-level tests verify wiring (the callbacks are connected correctly), not the behavior itself.
+6. **Tests live next to the module, not in the transport.** `packages/ai-transport/src/__tests__/` covers the extracted behavior with direct unit tests. The SSE adapter's tests verify wiring (the callbacks are connected correctly), not the behavior itself.
 
 ## Reviewer checklist — red flags
 
-- Logic duplicated in `experimental-websocket-server.ts` and `MessageExecutionService.ts`. Lift into a callback on the loop/processor.
+- Behavior inlined into `MessageExecutionService.ts` that belongs behind a callback on the loop/processor.
 - Transport-specific branching inside this package.
-- Tool-lifecycle or event-shape change made in only one transport.
-- New `__*` metadata flag read by only one transport.
 - New hook added without a JSDoc error-contract note.
 - Shared-behavior change landing without a test in `__tests__/`.
 

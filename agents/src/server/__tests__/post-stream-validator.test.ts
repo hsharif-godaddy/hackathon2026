@@ -196,11 +196,11 @@ describe('createPostStreamValidator', () => {
   });
 
   it('is __autoContinue-agnostic (transport is the sole gatekeeper)', async () => {
-    // The transport layer (`experimental-websocket-server.ts`) skips
-    // calling this validator entirely when a tool has already requested
-    // an auto-continuation, so the validator itself does not (and must
-    // not) short-circuit on `__autoContinue`. Documented here so nobody
-    // adds the guard back without also moving the transport-side gate.
+    // The SSE execution path skips calling this validator entirely when a
+    // tool has already requested an auto-continuation, so the validator
+    // itself does not (and must not) short-circuit on `__autoContinue`.
+    // Documented here so nobody adds the guard back without also moving the
+    // transport-side gate.
     const { deps, mocks } = makeDeps();
     const validator = createPostStreamValidator(deps);
     await validator(

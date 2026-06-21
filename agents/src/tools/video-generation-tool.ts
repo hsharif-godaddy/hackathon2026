@@ -3,7 +3,7 @@
  *
  * Single-request async pipeline: the client makes one HTTP request, the backend
  * runs prompt → screenshot → job → poll → download → stitch in the background,
- * then pushes the result to the client via WebSocket (eventType "video").
+ * then pushes the result to the client via SSE (event type "video").
  *
  * Generated videos are saved to the persistent assets directory.
  * State is tracked in .airo/video.json; if the file already exists with a
@@ -18,7 +18,6 @@ import { createOpenAIClient } from '@airo/ai-lib';
 import { AIRO_ASSET_UPLOADS_URL_PREFIX } from '@airo/shared/media';
 import { videoApiFetch } from '../helper/video-api-helper.js';
 import { logger } from '../logging/index.js';
-import { emitToApp } from '../server/ai-lib-websocket-server.js';
 import { DevSupervisorError } from '../services/DevSupervisorClient.js';
 import { getVideoPromptGenerationService } from '../services/video-prompt-generation.js';
 import { createForWorkspace } from '../workspace/index.js';
@@ -479,7 +478,7 @@ export class VideoGenerationTool {
 
   /**
    * Background polling loop - polls OpenAI every 10 seconds up to 100 times
-   * Downloads and processes video on completion, emits WebSocket events
+   * Downloads and processes video on completion, emits SSE events
    */
   private async startBackgroundPolling(
     options: VideoGenerationOptions,
@@ -604,7 +603,7 @@ export class VideoGenerationTool {
   }
 
   /**
-   * Delete metadata file and emit WebSocket failure event
+   * Delete metadata file and emit SSE failure event
    */
   private async deleteMetadata(videoId: string = '', errorMessage?: string): Promise<void> {
     await this.saveVideoMetadata(
@@ -621,31 +620,24 @@ export class VideoGenerationTool {
     });
   }
 
-  // WS delivery is scoped via emitToApp so the event only reaches sockets
-  // authenticated for this appId (no cross-tenant broadcast).
+  // SSE delivery is scoped to this appId so the event only reaches conversation
+  // streams for this app (no cross-tenant broadcast).
   private emitVideoEvent(data: Record<string, unknown>): void {
     const { appId } = this;
     const eventData = { ...data, appId };
-    const payload = { type: 'video', content: '', data: eventData };
-
-    const wsDelivered = emitToApp(appId, 'message', payload);
-    logger.info('video-generation.websocket.emit', {
-      appId,
-      status: data.status,
-      jobId: data.jobId,
-      wsDelivered,
-    });
 
     if (this.sseRegistry) {
       logger.info('video-generation.sse.emit', { appId, status: data.status, jobId: data.jobId });
       this.sseRegistry.sendEvent(appId, 'video', eventData);
+    } else {
+      logger.warn('video-generation.sse.no_targets', { appId, status: data.status, jobId: data.jobId });
     }
   }
 
   /**
-   * Download completed video from OpenAI, validate, stitch outro, and emit WebSocket event.
+   * Download completed video from OpenAI, validate, stitch outro, and emit SSE event.
    * Uses a temp directory for ffmpeg processing, then uploads via workspace API.
-   * On failure: deletes video.json and emits WebSocket failure event.
+   * On failure: deletes video.json and emits SSE failure event.
    */
   private async downloadAndProcessVideo(
     options: VideoGenerationOptions,

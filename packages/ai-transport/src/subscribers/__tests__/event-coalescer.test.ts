@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EventCoalescer, type CoalescerConfig, type CoalescedMessage } from '../event-coalescer.js'
-import type { WebSocketMessage } from '../websocket-subscriber.js'
+
+interface WebSocketMessage {
+  type: string
+  content: string
+  data: Record<string, unknown>
+}
 
 function msg(type: string, content: string, data: Record<string, unknown> = {}): WebSocketMessage {
   return { type: type as any, content, data }

@@ -2,8 +2,8 @@ import { getCoalesceKey, mergeCoalescedData } from '../interfaces.js'
 
 /**
  * Minimal shape required to participate in coalescing.
- * Both `WebSocketMessage` and `StreamingEvent` satisfy this — the coalescer is
- * generic so the same policy serves both transports.
+ * `StreamingEvent` satisfies this — the coalescer is generic over any
+ * coalesceable message so the same policy can serve any transport.
  */
 export interface CoalesceableMessage {
   type: string
@@ -180,8 +180,8 @@ export class EventCoalescer<T extends CoalesceableMessage> {
       try {
         this.onFlush([message])
       } catch (err) {
-        // sequence is transport-specific (StreamingEvent has it; WebSocketMessage
-        // doesn't) — include when present so SSE operators see the lost frame's
+        // sequence is optional on the coalesceable message (StreamingEvent
+        // has it) — include when present so SSE operators see the lost frame's
         // cursor without forcing the field onto the base CoalesceableMessage.
         const seq = (message as { sequence?: unknown }).sequence
         this.logger?.warn('coalescer.flush_threw', {

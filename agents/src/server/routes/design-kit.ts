@@ -16,7 +16,6 @@ import { updateCssColorPalette, type ColorPalette } from '../../tools/css-color-
 import { updateCssFontVariables, validateFontPairing } from '../../tools/ai-lib-tools/font-theme.js';
 import { syncBrandTokensCss } from '../../services/design-system/brand-tokens-css.js';
 import { appPlanTool } from '../../tools/app-plan-tool.js';
-import { emitToApp } from '../ai-lib-websocket-server.js'; // match video-generation-tool.ts import
 import { getSSERegistry } from '../sse/registry-singleton.js';
 import { getEventChannel } from '../agent-runtime.js';
 
@@ -212,11 +211,9 @@ router.put('/apps/:id/design-kit/wizard-step', validateAppOwnership, async (req:
       log.forApp(appId).error('designKit.wizardStep.persist_failed', { appId, error: writeResult.error });
       res.status(500).json({ error: 'Failed to set wizard step' }); return;
     }
-    try { emitToApp(appId, 'message', { type: 'build_phase', content: '', data: { step, appId } }); } catch { /* non-fatal */ }
     try {
-      // SSE delivery: emitToApp only reaches Socket.IO sockets, so SSE clients
-      // would never see the step change. Publish to each active SSE conversation
-      // for this app via the event channel (mirrors set-wizard-step.ts).
+      // SSE delivery: publish to each active SSE conversation for this app via
+      // the event channel (mirrors set-wizard-step.ts).
       const sseRegistry = getSSERegistry();
       const eventChannel = getEventChannel();
       if (sseRegistry && eventChannel) {

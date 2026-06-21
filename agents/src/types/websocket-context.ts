@@ -3,7 +3,6 @@
  * Base types come from @airo/shared/websocket
  */
 
-import type { ChatMessage } from '@airo/ai-transport'
 import type { AgentsAppContext as BaseAgentsAppContext } from '@airo/shared/websocket'
 import type { IClientActionService } from '../services/ClientActionService.js'
 
@@ -19,13 +18,6 @@ export interface AgentsAppContext extends BaseAgentsAppContext {
     asmDualWriteEnabled?: boolean
     purchaseIntentClassifierEnabled?: boolean
   }
-}
-
-/**
- * Agents-specific ChatMessage with typed context (extends ai-lib ChatMessage)
- */
-export interface AgentsAppChatMessage extends Omit<ChatMessage, 'context'> {
-  context?: AgentsAppContext
 }
 
 /**

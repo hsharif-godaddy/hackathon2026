@@ -8,10 +8,10 @@
 import { describe, it, expect, vi } from 'vitest'
 import { BudgetExceededError, containsBudgetExceededPattern } from '@airo/ai-common'
 import { hasNonIdempotentTools } from '../non-idempotent-tools.js'
-import type { WebSocketConfig } from '../experimental-websocket-server.js'
+import type { BudgetRecoveryCallback, BudgetRecoveryResult } from '../budget-recovery.js'
 
-type BudgetCallback = NonNullable<WebSocketConfig['onBudgetExhaustedMidStream']>
-type BudgetCallbackResult = Awaited<ReturnType<BudgetCallback>>
+type BudgetCallback = BudgetRecoveryCallback
+type BudgetCallbackResult = BudgetRecoveryResult
 
 describe('mid-stream budget recovery', () => {
   describe('callback contract', () => {

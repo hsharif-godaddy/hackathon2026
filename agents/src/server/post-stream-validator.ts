@@ -21,8 +21,8 @@
  * phase independently increments its own retry counter — per-turn budgets
  * are preserved.
  *
- * Wire-up: consumed by `ai-lib-websocket-server.ts` in the
- * `postStreamValidator` slot of ai-transport's options. Unit tests live in
+ * Wire-up: consumed via the `postStreamValidator` slot of ai-transport's
+ * options. Unit tests live in
  * `agents/src/server/__tests__/post-stream-validator.test.ts`.
  */
 
@@ -768,10 +768,10 @@ export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps
       return { skipped: true, reason: 'initial_agent' };
     }
 
-    // Note: the transport layer (`experimental-websocket-server.ts`) is
-    // the sole gatekeeper for `__autoContinue` — it skips invoking this
-    // validator entirely when a tool has already requested an
-    // auto-continuation, so we don't need to re-check it here.
+    // Note: the SSE execution path is the sole gatekeeper for
+    // `__autoContinue` — it skips invoking this validator entirely when a
+    // tool has already requested an auto-continuation, so we don't need to
+    // re-check it here.
 
     // Fast-skip gate: if the working tree is clean we know neither
     // phase has anything new to validate. We still treat a *failure*

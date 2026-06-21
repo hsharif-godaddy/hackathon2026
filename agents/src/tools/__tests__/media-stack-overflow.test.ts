@@ -577,8 +577,8 @@ describe('Media tool stack overflow diagnostic', () => {
   // ── Test 18: ROOT CAUSE - stateManager in metadata causes overflow ──
 
   it('18. sanitizeSensitiveData handles metadata with stateManager Timeout (circular refs)', async () => {
-    // In production, ai-lib-websocket-server.ts line 573 does:
-    //   agentsAppContext.metadata.stateManager = stateManager
+    // In production, the message-execution path attaches the SessionStateManager:
+    //   context.metadata.stateManager = stateManager
     //
     // When a tool fails, wrapToolWithExecutionHooks logs:
     //   logger.error('tool.execution.failure', { ..., context: { metadata: context.metadata } })
@@ -588,7 +588,7 @@ describe('Media tool stack overflow diagnostic', () => {
     // sanitizeSensitiveData() recurses into these with no cycle detection -> stack overflow.
 
     // Simulate SessionStateManager which has a cleanupInterval (setInterval Timeout)
-    // In production: ai-lib-websocket-server.ts line 573 sets metadata.stateManager
+    // In production: the message-execution path sets metadata.stateManager
     const fakeStateManager = {
       sessions: new Map(),
       config: { defaultAgentId: 'develop', sessionTimeout: 3600000 },

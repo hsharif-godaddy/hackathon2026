@@ -1173,9 +1173,8 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     }
 
     // Create the Langfuse-facing agent-invocation span under the trace context
-    // established in execute(). This mirrors the WS path (streamAgentResponse)
-    // so both transports produce identical invocation telemetry. The handle
-    // ends on every exit path (success, abort, error), idempotently.
+    // established in execute(). The handle ends on every exit path (success,
+    // abort, error), idempotently.
     const invocation = createAgentInvocation({
       agent,
       agentName,
@@ -1185,8 +1184,8 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     })
 
     // Propagate OTel trace ID to GoCode via x-trace-id header for cross-service
-    // log correlation (mirrors WS at experimental-websocket-server.ts:3761-3770).
-    // unified-provider reads this off executionContext.metadata.traceId when
+    // log correlation. unified-provider reads this off
+    // executionContext.metadata.traceId when
     // building outgoing GoCode requests; without it, SSE-initiated LLM calls
     // land in GoCode logs with no trace link back to the conversation.
     const invocationSpan = trace.getSpan(invocation.context)
@@ -1200,8 +1199,8 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     if (invocationSpan && fullStorySessionId) {
       invocationSpan.setAttribute('langfuse.trace.metadata.fullStorySessionId', fullStorySessionId)
     }
-    // Mutate metadata in place (mirrors WS at experimental-websocket-server.ts).
-    // Spreading into a new metadata object breaks tool writes such as
+    // Mutate metadata in place. Spreading into a new metadata object breaks
+    // tool writes such as
     // websiteRebuild's isRebuildFlow flag — the handoff develop leg would
     // rebuild tags from the stale executionContext.metadata snapshot.
     if (!executionContext.metadata || typeof executionContext.metadata !== 'object') {
@@ -1620,9 +1619,9 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         invocation.endError(prematureCloseError, { finishReason })
       } else {
         const usageToTrack = finalResult?.totalUsage ?? finalResult?.usage
-        // Per-LLM-call token observability (cost/cache logs + APM), shared with
-        // the WS path via recordTokenUsageObservability. Returns the estimated
-        // cost so the Langfuse invocation span carries it like WS does.
+        // Per-LLM-call token observability (cost/cache logs + APM) via
+        // recordTokenUsageObservability. Returns the estimated cost so the
+        // Langfuse invocation span carries it.
         let totalCost: number | undefined
         if (usageToTrack) {
           const usage = buildTokenUsage(usageToTrack)
@@ -2103,7 +2102,6 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     }
 
     // Inject event emitter for sub-agent streaming events (used by runAgent tool).
-    // Mirrors the WebSocket path in ai-lib-websocket-server.ts.
     const execMeta = executionContext.metadata as Record<string, unknown>
     execMeta.eventEmitter = {
       emit: (type: string, data: unknown): void => {
@@ -2366,8 +2364,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
               .map((e: any) => ({ toolName: e.data.tool.name, args: e.data.tool.input }))
 
             // Forward `stopAfterTools` to the validator so it can apply the
-            // combined gate (skip iff stop-after AND clean tree). Mirrors the
-            // WS transport in `experimental-websocket-server.ts`.
+            // combined gate (skip iff stop-after AND clean tree).
             const agent = this.deps.getAgent(agentName)
             const stopAfterTools = agent?.getConfig?.()?.stopAfterTools
 

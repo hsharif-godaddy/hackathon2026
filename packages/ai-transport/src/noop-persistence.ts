@@ -6,7 +6,7 @@
  * - Generates conversation IDs locally using crypto.randomUUID()
  * - Allows streaming to work without persistence infrastructure
  *
- * Use this when you need WebSocket functionality without database persistence:
+ * Use this when you need streaming to work without database persistence:
  * - Unit tests
  * - Integration tests
  * - Examples and demos
@@ -14,12 +14,9 @@
  *
  * @example
  * ```typescript
- * import { createWebSocketServer, createNoOpPersistence } from '@airo/ai-transport'
+ * import { createNoOpPersistence } from '@airo/ai-transport'
  *
- * const wsServer = createWebSocketServer(httpServer, {
- *   agents,
- *   messagePersistence: createNoOpPersistence()
- * })
+ * const persistence = createNoOpPersistence()
  * ```
  */
 
@@ -115,10 +112,7 @@ export class NoOpPersistence implements ConversationPersistenceWithCleanup {
  *
  * @example
  * ```typescript
- * const wsServer = createWebSocketServer(httpServer, {
- *   agents,
- *   messagePersistence: createNoOpPersistence()
- * })
+ * const persistence = createNoOpPersistence()
  * ```
  */
 export function createNoOpPersistence(): ConversationPersistenceWithCleanup {

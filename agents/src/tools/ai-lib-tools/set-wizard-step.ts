@@ -5,8 +5,6 @@ import { customerIdFromContext, workspaceScopeFromAppId } from '../../memory/int
 import { createForWorkspace } from '../../workspace/index.js'
 import { syncBrandTokensCss } from '../../services/design-system/brand-tokens-css.js'
 import { Logger } from '../../logging/index.js'
-// Import emitToApp from the SAME path video-generation-tool.ts uses.
-import { emitToApp } from '../../server/ai-lib-websocket-server.js'
 import { getSSERegistry } from '../../server/sse/registry-singleton.js'
 import { getEventChannel } from '../../server/agent-runtime.js'
 
@@ -64,17 +62,8 @@ export const setWizardStepAITool: Tool = createTool(
     const eventData = { step: input.step, appId }
 
     try {
-      // WS delivery is scoped via emitToApp so the event only reaches sockets
-      // authenticated for this appId (mirrors video-generation-tool.ts).
-      emitToApp(appId, 'message', { type: 'build_phase', content: '', data: eventData })
-    } catch (error) {
-      logger.warn('setWizardStep.emit.failed', { appId, error: error instanceof Error ? error.message : String(error) })
-    }
-
-    try {
-      // SSE delivery: emitToApp only reaches Socket.IO sockets, so SSE clients
-      // would never see the step change. Publish to each active SSE conversation
-      // for this app via the event channel (mirrors the video route's wiring).
+      // SSE delivery: publish to each active SSE conversation for this app via
+      // the event channel (mirrors the video route's wiring).
       const sseRegistry = getSSERegistry()
       const eventChannel = getEventChannel()
       if (sseRegistry && eventChannel) {

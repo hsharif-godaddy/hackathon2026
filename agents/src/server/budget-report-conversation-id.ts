@@ -3,13 +3,13 @@ import type { AgentsAppContext } from '../types/websocket-context.js'
 /**
  * Select the conversationId to write into `budgetReportConversationCache` for OTel
  * cost-attribution context. Prefers `context.metadata.conversationId` (server-populated
- * by `attachConversationId` before `onMessageStart`) over the client-sent
+ * in `MessageExecutionService.execute()` before the turn runs) over the client-sent
  * `context.conversation.conversationId`. Returns a tagged `{ value, source }` so the
  * call site can log which field was used without re-deriving it.
  *
- * Lives in its own side-effect-free module so unit tests do not import the full
- * websocket server (which opens the SQLite DB and constructs GitHookService at
- * module load). See `__tests__/budget-report-conversation-cache.test.ts`.
+ * Lives in its own side-effect-free module so unit tests do not transitively pull in
+ * the message-execution path (which opens the SQLite DB and constructs GitHookService
+ * at module load). See `__tests__/budget-report-conversation-cache.test.ts`.
  */
 export type CacheConversationIdSelection =
   | { value: string; source: 'metadata' | 'conversation' }

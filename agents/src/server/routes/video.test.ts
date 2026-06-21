@@ -57,10 +57,6 @@ vi.mock('../../tools/video-generation-tool.js', () => ({
   VideoGenerationTool: vi.fn()
 }));
 
-vi.mock('../ai-lib-websocket-server.js', () => ({
-  getSocketIO: vi.fn(function () { return null; })
-}));
-
 vi.mock('../agent-runtime.js', () => ({
   getEventChannel: vi.fn(function () { return null; }),
 }));

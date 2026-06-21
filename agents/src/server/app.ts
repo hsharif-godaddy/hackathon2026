@@ -185,8 +185,6 @@ import compression from 'compression';
 import { create as createServer } from './server-factory.js';
 import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware, validateProductAccess } from './middleware/index.js';
 import { agentsRouter, appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, securityReportRouter, secretsScanRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, adsenseRouter, complianceRouter, socialRouter, blogPostsRouter, customerLogsRouter, diagnoseRouter, autoFixRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, profilesRouter, transferValidateRouter, runtimeErrorsRouter, formatOverridesRouter, brandDataRouter, designKitRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, inboxAccountRouter, seoQualityRouter, campaignsRouter, appMetadataRouter, commerceRouter, dkimRouter } from './routes/index.js';
-// Phase 3: Replace legacy WebSocket with AI-Lib WebSocket server
-import { setupAILibWebSocketServer, getWebSocketServerInfo } from './ai-lib-websocket-server.js';
 import { initAgentRuntime, getEventChannel, getAgentFactory, getMessageLifecycleDeps, getGitHookService } from './agent-runtime.js';
 import { EventStreamRegistry } from './sse/EventStreamRegistry.js';
 import { initSSERegistry } from './sse/registry-singleton.js';
@@ -218,18 +216,16 @@ import { resolveAppBaseUrl } from '../utils/share-token.js';
 const app: Express = express();
 const port = process.env.PORT || 4000;
 
-// Create HTTP(S) server to support both Express and WebSocket
+// Create HTTP(S) server for the Express app.
 const { server, secure } = createServer(app);
 const scheme = secure ? 'https' : 'http';
-const wsScheme = secure ? 'wss' : 'ws';
 const localHost = secure ? 'local.gasket.dev-godaddy.com' : 'localhost';
-let wsServer: Awaited<ReturnType<typeof setupAILibWebSocketServer>>['wsServer'] | null = null;
 let isShuttingDown = false;
 const sseRegistry = new EventStreamRegistry();
 initSSERegistry(sseRegistry);
 let memoryLogInterval: NodeJS.Timeout | null = null;
 
-// Shared history loader for SSE (same config as WS path in ai-lib-websocket-server.ts)
+// Shared history loader for SSE (10-message context window).
 const sseConversationContextManager = new ConversationContextManager(getMessageStore(), 10)
 
 // Lazy SSE execution service — created on first request after init completes
@@ -275,7 +271,7 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
       }),
     },
     loadConversationHistory: async (conversationId, appId, agentName) => {
-      // Resolution order matches ai-lib-websocket-server.ts messageProvider:
+      // Model resolution order:
       // 1. AI_MODEL_OVERRIDE env var (dev/test)
       // 2. ALS-scoped override set by MessageExecutionService.runWithOverride
       //    (resolved from JWT/per-project preferences) — required so Kimi traffic
@@ -414,7 +410,6 @@ app.get('/', (req, res) => {
       appDetails: '/apps/{app-id}',
       chat: '/agent/{agent-id}/chat',
       chatStreaming: '/agent/{agent-id}/chat-streaming',
-      websocketChat: `${wsScheme}://${localHost}:${port}/ws/{agent-id}`,
     },
     documentation: 'See README.md for detailed API documentation',
   });
@@ -683,32 +678,12 @@ async function initialize() {
       })
     }
 
-    // Phase 3: Setup AI-Lib WebSocket Server
-    logger.info('server.websocket.init.begin', { phase: 3 });
-    const websocketSetup = await setupAILibWebSocketServer(server);
-    wsServer = websocketSetup.wsServer;
-    logger.info('server.websocket.init.success', { phase: 3 });
-
     // Pre-warm all classifiers via AssessmentAgent to avoid cold start on first prompt.
     const { getAssessmentAgent } = await import('../agents/assessment-agent/index.js');
     await getAssessmentAgent().initialize();
 
     // Start periodic memory logging
     startPeriodicMemoryLogging();
-
-    // Get WebSocket server info for health checks
-    const wsInfo = getWebSocketServerInfo();
-    logger.info('server.websocket.info', {
-      totalAgents: wsInfo.totalAgents,
-      defaultAgent: wsInfo.defaultAgent,
-      availableAgents: wsInfo.agentIds,
-    });
-
-    logger.info('server.websocket.connection.info', {
-      socketIO: 'Available on default path for ai-playground compatibility',
-      frontendClient: 'Use Socket.IO client (not native WebSocket)',
-      migrationNote: 'Frontend migrated from native WebSocket to Socket.IO',
-    });
 
     // Start server
     server.listen(port, () => {
@@ -725,13 +700,11 @@ async function initialize() {
         features: [
           'All tools converted to ai-lib createTool() format',
           'BaseAgent replaced with ai-lib Agent composition',
-          'WebSocket integrated with ai-lib multi-agent server',
         ],
       });
 
       logger.info('server.features.active', {
         features: [
-          'Multi-agent WebSocket server with agent selection',
           'Direct streaming and tool execution through ai-lib',
           'Automatic agent discovery and metadata management',
           'Native ai-lib message formats and events',
@@ -760,7 +733,6 @@ async function initialize() {
         chat: {
           standard: 'POST /agent/{id}/chat - Send message to AI agent (non-streaming)',
           streaming: 'POST /agent/{id}/chat-streaming - Real-time streaming chat with AI',
-          websocket: 'WS /ws/{id} - WebSocket connection for live AI development',
         },
         usage: {
           summary: 'GET /apps/{id}/usage - Get token usage summary for app',
@@ -831,28 +803,8 @@ async function shutdown() {
       }
     }
 
-    if (wsServer) {
-      try {
-        // Socket.IO 4.8.3: io.close() no longer throws on a stopped server,
-        // but we still catch to keep shutdown best-effort for unexpected errors.
-        wsServer.close();
-        logger.info('server.websocket.shutdown.success', {
-          service: serviceName,
-        });
-      } catch (error) {
-        logger.warn('server.websocket.shutdown.unexpected_error', {
-          service: serviceName,
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-        });
-      } finally {
-        wsServer = null;
-      }
-    }
-
-    // Wait for disconnect-triggered git operations to complete.
-    // wsServer.close() fires socket disconnect events which trigger handleConnectionEnd
-    // asynchronously. We must await those before exiting or work will be lost.
+    // Wait for any in-flight git operations to complete before exiting,
+    // or work triggered late in a turn's lifecycle will be lost.
     try {
       const gitHookService = getGitHookService();
 

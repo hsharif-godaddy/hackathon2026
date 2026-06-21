@@ -1,14 +1,5 @@
-// Modern WebSocket Server
-export {
-  WebSocketServer,
-  createWebSocketServer,
-  createSingleAgentFactory,
-  createSingleAgentWebSocketServer,
-  restoreBudgetMetadata
-} from './experimental-websocket-server.js'
+// Shared persistence/context types
 export type {
-  WebSocketConfig,
-  ChatMessage,
   MessageProvider,
   ContextProvider,
   ConversationPersistence,
@@ -16,7 +7,7 @@ export type {
   ConversationMessage,
   PersistenceStreamingEvent,
   ConversationContext
-} from './experimental-websocket-server.js'
+} from './interfaces.js'
 
 // Event Channel Infrastructure
 export {
@@ -50,9 +41,6 @@ export {
 // Event Subscribers
 export { BaseEventSubscriber } from './subscribers/base-subscriber.js'
 export {
-  WebSocketSubscriber
-} from './subscribers/websocket-subscriber.js'
-export {
   SSESubscriber
 } from './subscribers/sse-subscriber.js'
 export {
@@ -64,10 +52,6 @@ export type {
 export {
   APMSubscriber
 } from './subscribers/apm-subscriber.js'
-export type {
-  WebSocketMessage,
-  IsDisconnectedFn
-} from './subscribers/websocket-subscriber.js'
 export type { CoalescerConfig, CoalescedMessage } from './subscribers/event-coalescer.js'
 export { EventCoalescer } from './subscribers/event-coalescer.js'
 export type {
@@ -75,19 +59,6 @@ export type {
   APMSpan,
   APMTransaction
 } from './subscribers/apm-subscriber.js'
-
-// Connection State Management
-export {
-  ConnectionStateManager
-} from './connection-state-manager.js'
-export type {
-  ConnectionState,
-  ConnectionStateData,
-  CreateConnectionParams,
-  TransitionParams,
-  ConnectionStateManagerConfig,
-  StateManagerLogger
-} from './connection-state-manager.js'
 
 // LLM Response Metadata Capture (shared by WS + SSE)
 export { captureResponseMetadata, awaitResponseMetadata } from './response-metadata-capture.js'
@@ -249,18 +220,6 @@ export type { RecoveryPlan, RecoveryPlanInput } from './recovery-plan.js'
 
 // Payload size measurement (shared by WS + SSE size-limit checks)
 export { stringPayloadLength } from './payload-length.js'
-
-// Connection Recovery Management
-export {
-  ConnectionRecoveryManager
-} from './connection-recovery-manager.js'
-export type {
-  RecoveryMode,
-  RecoveryContext,
-  ConnectionRecoveryManagerConfig,
-  ConnectionRecoveryManagerDependencies,
-  RecoveryManagerLogger
-} from './connection-recovery-manager.js'
 
 export { runPreflightTools } from './preflight-tools.js'
 export type { RunPreflightToolsInput } from './preflight-tools.js'

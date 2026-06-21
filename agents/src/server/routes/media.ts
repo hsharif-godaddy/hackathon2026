@@ -110,11 +110,9 @@ export { VIDEO_MIME_TYPE } from '../../services/media-upload-video.js';
  * Cancel an in-flight logo generation job that currently owns a slot, before a
  * manual override (slot swap / upload) writes a new value. Best-effort.
  *
- * `logoGenerationService` is imported dynamically here so that the media routes
- * do NOT pull the websocket-server module graph (emitToApp → logger.child) at
- * module-eval time — that coupling breaks media-route unit tests whose logger
- * mock has no `.child`. The chain is only loaded when an override actually
- * races an in-flight job.
+ * `logoGenerationService` is imported dynamically here so the LogoGenerationService
+ * module graph is only loaded when an override actually races an in-flight job,
+ * not at media-route eval time.
  */
 async function cancelPendingLogoJob(
   appId: string,

@@ -14,10 +14,8 @@
  *
  * Mirrors the pattern at
  *   packages/ai-lib/src/budget/cost-attribution/emit-cost-attribution-result.ts:157
- *   agents/src/server/ai-lib-websocket-server.ts:2293-2308
  * but synthesizes an OTel context from client-sent IDs because HTTP handlers
- * have no active OTel context at entry (unlike WS, which does its own
- * createTraceContext upstream).
+ * have no active OTel context at entry.
  */
 
 import { Router, type Request, type Response } from 'express';

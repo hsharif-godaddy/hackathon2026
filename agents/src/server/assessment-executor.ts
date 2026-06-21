@@ -2,8 +2,8 @@
  * Assessment Executor
  *
  * Handles assessment agent execution in both parallel (budget service) and
- * blocking (grants) modes. Extracted from ai-lib-websocket-server.ts for
- * cleaner separation of concerns and easier testing.
+ * blocking (grants) modes. Extracted into its own module for cleaner
+ * separation of concerns and easier testing.
  */
 
 import { getAssessmentAgent, type AssessmentOutcome, type ClassifierMode, AssessmentTaskType } from '../agents/assessment-agent/index.js'
@@ -183,7 +183,7 @@ export async function executeAssessment(
     // Note: The eager .then() in onMessageStart also has its own catch with logging.
     assessmentPromise.catch(() => {
       // Intentionally no-op here - logging happens in the eager cache handler
-      // in ai-lib-websocket-server.ts (assessment.parallel_mode.eager_cache_rejection)
+      // (assessment.parallel_mode.eager_cache_rejection)
     })
 
     return {

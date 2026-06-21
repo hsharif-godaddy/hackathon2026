@@ -13,15 +13,10 @@ export type ChunkTimeoutOutcome =
 
 /** Decide how a `chunk_timeout`-aborted turn should finalize. Pure: callers
  * supply the processor's terminal-frame state and whether any content has
- * accumulated. Shared by SSE (`MessageExecutionService`) and WS
- * (`experimental-websocket-server`) so the two transports stay identical.
- *
- * Note: the WebSocket transport computes finishReason outside the processor
- * scope and passes `isFinished: false`, so on WS this helper only ever returns
- * `'incomplete'` or `fail` (never `'stop'`). SSE passes the real
+ * accumulated. Used by SSE (`MessageExecutionService`), which passes the real
  * `processor.isFinished()`. For the targeted GoCode stall (idle after the full
- * response, no terminal `finish` frame), both transports take the
- * `'incomplete'`/`fail` paths, so they agree in practice. */
+ * response, no terminal `finish` frame), this takes the `'incomplete'`/`fail`
+ * paths. */
 export function decideChunkTimeoutFinalization(input: {
   isFinished: boolean
   hasContent: boolean

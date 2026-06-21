@@ -5,7 +5,6 @@ import { SubAgentRunner, buildContinuationMessage, type SubAgentEvent } from '..
 import { getSubAgentConfig, type SubAgentName as BackgroundAgentName } from '../../agents/sub-agents/index.js'
 import { interactiveSubAgentManager } from '../../agents/interactive-sub-agent-manager.js'
 import { createInteractiveInterviewConfig } from '../../agents/sub-agents/interview.js'
-import { maybeEmitDebugTurnStats } from '../../server/debug-stats-emit.js'
 import { computeDebugTurnStats } from '../../utils/debug-turn-stats.js'
 import { Logger } from '../../logging/index.js'
 import { subAgentJobRegistry } from '../../agents/sub-agent-job-registry.js'
@@ -101,9 +100,7 @@ Available agents: discovery (research/scraping), planning (write implementation 
             cacheWriteInputTokens: usage.cacheWriteInputTokens,
             steps: usage.steps,
           }
-          // WS path: emit via Socket.IO directly
-          maybeEmitDebugTurnStats(statsInput)
-          // SSE path: emit via eventEmitter → event channel
+          // Emit via eventEmitter → SSE event channel
           if (emitter) {
             const payload = computeDebugTurnStats(statsInput)
             emitter.emit('debug_turn_stats', payload)

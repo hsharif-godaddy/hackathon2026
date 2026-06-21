@@ -11,8 +11,7 @@ export type { RuntimeErrorEntry };
  *   expected outcome for turns that exhaust the full `maxWaitMs` without
  *   any buffered errors; we deliberately wait the full budget so the
  *   preview has time to boot and surface first-paint crashes (see the
- *   `RUNTIME_ERROR_POLL_MAX_WAIT_MS` comment in
- *   `ai-lib-websocket-server.ts`).
+ *   `runtimeErrorPollMaxWaitMs` default in `post-stream-validator.ts`).
  * - `ok=false, errors=[...]` — real runtime errors the agent should fix.
  * - `ok=true, skipped=true, reason='aborted'` — the caller aborted (user
  *   stopped the turn, socket closed, etc.). Callers must treat this as
@@ -28,8 +27,8 @@ export interface RuntimeErrorResult {
 }
 
 // Fallbacks used only when the caller doesn't override them. Production
-// callers pass explicit values (see `RUNTIME_ERROR_POLL_MAX_WAIT_MS` in
-// `ai-lib-websocket-server.ts`); these exist so unit-test callers that
+// callers pass explicit values (see `runtimeErrorPollMaxWaitMs` in
+// `post-stream-validator.ts`); these exist so unit-test callers that
 // don't care about timing still see sensible defaults. Kept in sync with
 // the production budget so they don't drift into "almost 4s" territory
 // and mislead new callers.

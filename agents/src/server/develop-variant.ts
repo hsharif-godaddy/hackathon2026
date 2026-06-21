@@ -25,12 +25,12 @@ interface AgentIdStore {
 }
 
 /**
- * The handoff write seam shared by both transports' `onAgentChanged` callbacks
- * (WS `ai-lib-websocket-server.ts`, SSE `app.ts`). Maps the handoff target to the
- * active profile's concrete develop variant, then persists it as the
- * conversation's frozen agent. Mapping and persistence are deliberately atomic
- * here: a call site cannot persist an unmapped id, so the `develop-<profile>`
- * mapping can't silently regress without also dropping the persist. Reads the
+ * The handoff write seam used by the SSE `onAgentChanged` callback (`app.ts`).
+ * Maps the handoff target to the active profile's concrete develop variant,
+ * then persists it as the conversation's frozen agent. Mapping and persistence
+ * are deliberately atomic here: a call site cannot persist an unmapped id, so
+ * the `develop-<profile>` mapping can't silently regress without also dropping
+ * the persist. Reads the
  * active profile from the ALS context the handoff runs inside (runWithProfile).
  * Returns the concrete id actually stored (for the caller's logging).
  */

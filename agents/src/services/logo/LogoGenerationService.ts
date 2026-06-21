@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto'
 import { BudgetExceededError } from '@airo/ai-common'
 
 import { logger } from '../../logging/index.js'
-import { emitToApp } from '../../server/ai-lib-websocket-server.js'
 import { getSSERegistry } from '../../server/sse/registry-singleton.js'
 import { createForWorkspace } from '../../workspace/index.js'
 import type { WorkspaceFiles } from '../../workspace/files.js'
@@ -385,7 +384,7 @@ class LogoGenerationService {
   }
 
   /** Public terminal-event entrypoint for the reconciler, which has no access to
-   *  the private emit path but must surface the same WS+SSE `logo` event after it
+   *  the private emit path but must surface the same SSE `logo` event after it
    *  reverts an interrupted job's slots. Delegates to the single emit implementation. */
   emitTerminalEvent(appId: string, data: Record<string, unknown>): void {
     this.emitLogoEvent(appId, data)
@@ -393,13 +392,11 @@ class LogoGenerationService {
 
   private emitLogoEvent(appId: string, data: Record<string, unknown>): void {
     const eventData = { ...data, appId }
-    const wsDelivered = emitToApp(appId, 'message', { type: 'logo', content: '', data: eventData })
-    logger.info('logo.emit.ws', { appId, status: data.status, jobId: data.jobId, wsDelivered })
     const sse = getSSERegistry()
     if (sse) {
       sse.sendToApp(appId, 'logo', eventData)
       logger.debug('logo.emit.sse', { appId, status: data.status, jobId: data.jobId })
-    } else if (wsDelivered === 0) {
+    } else {
       logger.warn('logo.emit.no_targets', { appId, status: data.status, jobId: data.jobId })
     }
   }

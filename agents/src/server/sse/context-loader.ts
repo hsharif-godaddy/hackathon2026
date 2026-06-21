@@ -1,9 +1,8 @@
 /**
  * SSE context-loader: builds context messages for a turn and enriches
  * `context.metadata` in-place so tools (e.g. website-rebuild) and
- * agent prompts (e.g. hasUnbuiltRebuildPages gating) see the same
- * fields the WS path provides via `ai-lib-websocket-server.ts`
- * loadContextMessages.
+ * agent prompts (e.g. hasUnbuiltRebuildPages gating) see the
+ * fields they expect at execution time.
  *
  * Extracted into its own module so the three enrichments
  * (stateManager, hasUnbuiltRebuildPages, per-agent contextPreferences)

@@ -5,7 +5,7 @@ import express, { type Express, type Request, type Response, type NextFunction }
 // All mock fns are created via vi.hoisted so the (hoisted) vi.mock factories below
 // can close over them without a temporal-dead-zone "Cannot access X before
 // initialization" error.
-const { setMock, getMock, filesWrite, updateCssColorPalette, updateCssFontVariables, syncBrandTokensCss, validateFontPairing, emitToApp, appPlanExecute, getConversationsByApp, ssePublish, getSSERegistry, getEventChannel } =
+const { setMock, getMock, filesWrite, updateCssColorPalette, updateCssFontVariables, syncBrandTokensCss, validateFontPairing, appPlanExecute, getConversationsByApp, ssePublish, getSSERegistry, getEventChannel } =
   vi.hoisted(() => {
     const getConversationsByApp = vi.fn(() => [] as string[]);
     const ssePublish = vi.fn();
@@ -21,7 +21,6 @@ const { setMock, getMock, filesWrite, updateCssColorPalette, updateCssFontVariab
       updateCssFontVariables: vi.fn(async () => ({ success: true, message: 'ok' })),
       syncBrandTokensCss: vi.fn(async () => undefined),
       validateFontPairing: vi.fn(async () => ({ valid: true, networkError: false })),
-      emitToApp: vi.fn(),
       appPlanExecute: vi.fn(async () => ({ success: true })),
       getConversationsByApp,
       ssePublish,
@@ -55,13 +54,8 @@ vi.mock('../../../services/design-system/brand-tokens-css.js', () => ({ syncBran
 // App plan tool — colours/fonts routes mirror colorScheme/fontTheme by also persisting here.
 vi.mock('../../../tools/app-plan-tool.js', () => ({ appPlanTool: { execute: appPlanExecute } }));
 
-// emitToApp lives at server/ai-lib-websocket-server.js — the EXACT specifier the route
-// imports (`../ai-lib-websocket-server.js`). From this test file the path is
-// `../../ai-lib-websocket-server.js`.
-vi.mock('../../ai-lib-websocket-server.js', () => ({ emitToApp }));
-
-// SSE dual-emit on the wizard-step route mirrors set-wizard-step.ts: publish to
-// each active SSE conversation for the app via the event channel.
+// SSE emit on the wizard-step route mirrors set-wizard-step.ts: publish to each
+// active SSE conversation for the app via the event channel.
 vi.mock('../../sse/registry-singleton.js', () => ({ getSSERegistry }));
 vi.mock('../../agent-runtime.js', () => ({ getEventChannel }));
 
@@ -103,7 +97,6 @@ describe('design-kit direct-edit routes', () => {
     syncBrandTokensCss.mockClear();
     validateFontPairing.mockClear();
     validateFontPairing.mockResolvedValue({ valid: true, networkError: false } as never);
-    emitToApp.mockClear();
     appPlanExecute.mockClear();
     getConversationsByApp.mockClear();
     getConversationsByApp.mockReturnValue([]);
@@ -229,21 +222,22 @@ describe('design-kit direct-edit routes', () => {
     expect(setMock).not.toHaveBeenCalled();
   });
 
-  it('PUT wizard-step persists and emits build_phase', async () => {
+  it('PUT wizard-step persists and publishes build_phase', async () => {
+    getConversationsByApp.mockReturnValueOnce(['conv-a']);
+
     const res = await request(makeApp())
       .put('/apps/app1234567/design-kit/wizard-step')
       .send({ step: 3 });
 
     expect(res.status).toBe(200);
     expect(setMock).toHaveBeenCalledWith(expect.anything(), 'brand.wizard.step', { step: 3 });
-    expect(emitToApp).toHaveBeenCalledWith(
-      'app1234567',
-      'message',
+    expect(ssePublish).toHaveBeenCalledWith(
+      'conv-a',
       expect.objectContaining({ type: 'build_phase', data: expect.objectContaining({ step: 3, appId: 'app1234567' }) }),
     );
   });
 
-  it('PUT wizard-step also publishes build_phase to active SSE conversations', async () => {
+  it('PUT wizard-step publishes build_phase to active SSE conversations', async () => {
     getConversationsByApp.mockReturnValueOnce(['conv-a', 'conv-b']);
 
     const res = await request(makeApp())
@@ -251,8 +245,6 @@ describe('design-kit direct-edit routes', () => {
       .send({ step: 3 });
 
     expect(res.status).toBe(200);
-    // WS path still fires.
-    expect(emitToApp).toHaveBeenCalled();
     // SSE path: one publish per active conversation for this app.
     expect(getConversationsByApp).toHaveBeenCalledWith('app1234567');
     expect(ssePublish).toHaveBeenCalledTimes(2);
@@ -277,7 +269,7 @@ describe('design-kit direct-edit routes', () => {
 
     expect(res.status).toBe(400);
     expect(setMock).not.toHaveBeenCalled();
-    expect(emitToApp).not.toHaveBeenCalled();
+    expect(ssePublish).not.toHaveBeenCalled();
   });
 
   it('PUT voice merges into brand.identity', async () => {

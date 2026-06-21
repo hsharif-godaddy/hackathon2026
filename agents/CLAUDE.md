@@ -1,6 +1,6 @@
 # Agents Service
 
-Express API (port 4000) providing AI agent orchestration, app lifecycle, WebSocket streaming, and SQLite persistence.
+Express API (port 4000) providing AI agent orchestration, app lifecycle, SSE streaming, and SQLite persistence.
 
 ## Security — Tenant Isolation
 
@@ -25,13 +25,13 @@ router.use('/:id([a-z0-9]{10})', validateAppOwnership);
 
 **BYPASS_SITE_IDS** (`src/services/features.ts`): `bypass-site`, `default-site`, `local-dev-site`, `mock-site-id`, `unknown-site` — skip isolation for local dev/testing. Never in production.
 
-**WebSocket security** (`src/server/ai-lib-websocket-server.ts`): Three layers — connection JWT validation, per-message appId validation, conversation ownership verification.
+**SSE chat security** (`src/server/sse/routes.ts`): Every SSE route runs `authenticate` (JWT) → `validateAppOwnershipFromParam('appId')` (from `src/server/middleware/app-ownership.ts`) → `validateConversationOwnership` (defined in `routes.ts`, pivots on the authenticated `siteId` to confirm the conversation belongs to the caller's site).
 
 ## Agent System
 
 ### Agent Selection Flow
 
-When a user sends a message (`ai-lib-websocket-server.ts` → `experimental-websocket-server.ts`):
+When a user sends a message (`src/server/sse/routes.ts` `POST /:appId/:conversationId/messages` → `src/server/sse/MessageExecutionService.ts`):
 
 1. **Manual override** — message starts with `/agent <name>`
 2. **Session state** — existing active agent for this socket/app
@@ -78,13 +78,10 @@ Key methods: `addFiles`, `removeFiles`, `writeTree`, `commitTree`, `reset`, `pus
 `packages/ai-lib/` is consumed by agents. It wraps Vercel AI SDK and provides:
 
 - **AgentFactory** — multi-agent lifecycle, tool calling loops, streaming
-- **WebSocket server** — `experimental-websocket-server.ts` (base class extended by agents service)
 - **Provider abstraction** — OpenAI, Anthropic, Google (Bedrock removed as of 2026-03-30)
 - **Message building** — history normalization, cache points
 
-**Integration via callbacks** (not hard coupling): `agentRouter`, `contextProvider`, `messageProvider`, `messagePersistence`. The agents service provides domain-specific implementations.
-
-Key integration file: `src/server/ai-lib-websocket-server.ts` (extends ai-lib's base WS server).
+**Integration via callbacks** (not hard coupling): `agentRouter`, `contextProvider`, `messageProvider`, `messagePersistence`. The agents service provides domain-specific implementations, wired into the SSE chat path (`src/server/sse/MessageExecutionService.ts`).
 
 **Shared domain types** (grants, context-attachment, social, websocket) live in `@airo/shared`. Agents-specific extensions (type guards, Zod schemas, rendering infrastructure) stay local in `src/types/`.
 
@@ -96,7 +93,7 @@ Key integration file: `src/server/ai-lib-websocket-server.ts` (extends ai-lib's 
 
 OpenTelemetry + Langfuse via `@signals/otel-sdk`, `@godaddy/agent-otel-sdk`, `@godaddy/agent-observability-events`. Context layers: `createTraceContext` → `createAgentContext` → `createAgentInvocationSpan` → AI SDK spans inherit context. Explicit events: `emitConversationStart`, `emitHandoff`, `emitError` — LLM/tool events are automatic via the span processor. Config: `ENABLE_OBSERVABILITY_EVENTS=true`; env derived from `GODADDY_API_BASE_URL`. Key files: `src/server/instrumentation.ts`, `src/server/conversation-persistence.ts`.
 
-**conversationId for cost-attribution context**: server-populated `conversationId` lives on `context.metadata.conversationId` (written by `attachConversationId` in `packages/ai-transport/src/experimental-websocket-server.ts` before `onMessageStart`). The client-sent `context.conversation.conversationId` is only populated on follow-up messages once the frontend has a prior conversationId to send. Any code reading `conversationId` from the message context inside `onMessageStart` or earlier must prefer `metadata.conversationId` and fall back to `conversation.conversationId`, or InitialAgent first-message sessions will silently drop their OTel cost-attribution spans. Use `selectCacheConversationId()` from `src/server/budget-report-conversation-id.ts` as the canonical helper.
+**conversationId for cost-attribution context**: server-populated `conversationId` lives on `context.metadata.conversationId`, written when `MessageExecutionService.execute()` (`src/server/sse/MessageExecutionService.ts`) builds the `executionContext.metadata` object. The client-sent `context.conversation.conversationId` is only populated on follow-up messages once the frontend has a prior conversationId to send. Any code reading `conversationId` from the message context must prefer `metadata.conversationId` and fall back to `conversation.conversationId`, or InitialAgent first-message sessions will silently drop their OTel cost-attribution spans. Use `selectCacheConversationId()` from `src/server/budget-report-conversation-id.ts` as the canonical helper.
 
 ## Memory Debugging
 

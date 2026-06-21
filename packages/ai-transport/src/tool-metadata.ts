@@ -1,11 +1,10 @@
 /**
  * Shared tool-frame metadata resolution.
  *
- * Both transports (WS `experimental-websocket-server.ts` and SSE
- * `MessageExecutionService.ts`) attach transport-level metadata — currently
- * `skillName` for per-skill MCP tools — to the `tool` object on `tool_result`
- * / `tool_error` frames. The resolution is identical, so it lives here behind
- * a single injected resolver rather than being duplicated per transport.
+ * The SSE transport (`MessageExecutionService.ts`) attaches transport-level
+ * metadata — currently `skillName` for per-skill MCP tools — to the `tool`
+ * object on `tool_result` / `tool_error` frames. The resolution lives here
+ * behind a single injected resolver so it stays transport-agnostic and reusable.
  *
  * The agents service provides the resolver (it knows skill→tool mappings);
  * this package stays domain-agnostic and only owns the merge shape.

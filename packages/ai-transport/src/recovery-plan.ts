@@ -21,15 +21,14 @@ export interface RecoveryPlanInput {
   clientHasNoState: boolean
   /**
    * Authoritative "is a producer still attached?" signal. Callers should
-   * pass executionService.hasActiveStream(conversationId) on SSE, or
-   * ConnectionStateManager.hasActiveStreamForConversation(...) on WS.
+   * pass executionService.hasActiveStream(conversationId).
    * This is the only correct "is the turn done?" signal — buffer-level
    * heuristics that look at the pending-message set go transiently empty
    * between agent steps and misreport a still-running turn as completed.
    */
   hasActiveStream: boolean
   /** Drops resolved client_action events from replay. Optional; omit on
-   *  transports that don't publish client_action through this channel (WS). */
+   *  transports that don't publish client_action through this channel. */
   isClientActionPending?: (requestId: string) => boolean
 }
 
