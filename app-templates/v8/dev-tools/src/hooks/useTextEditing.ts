@@ -31,6 +31,7 @@ import {
   isSingleLine,
   showIndicator,
   createFixedOverlay,
+  watchTextReflected,
   mergeRootAttrsOntoOverlay,
   mergeOriginalClasses,
   injectEditorCss,
@@ -71,6 +72,9 @@ export function useTextEditing(isEditModeActive: boolean) {
 
   // Optimistic preview overlay — shows new content without mutating React DOM
   const overlayRef = useRef<HTMLElement | null>(null);
+  // Disconnects the MutationObserver that retires the overlay once the real
+  // element reflects the saved value (see watchTextReflected).
+  const overlayWatcherRef = useRef<(() => void) | null>(null);
 
   // ── Cleanup Lexical overlay ──
 
@@ -89,6 +93,10 @@ export function useTextEditing(isEditModeActive: boolean) {
   }, []);
 
   const cleanupOverlay = useCallback((element?: HTMLElement) => {
+    if (overlayWatcherRef.current) {
+      overlayWatcherRef.current();
+      overlayWatcherRef.current = null;
+    }
     if (overlayRef.current) {
       overlayRef.current.remove();
       overlayRef.current = null;
@@ -109,6 +117,7 @@ export function useTextEditing(isEditModeActive: boolean) {
     (element: HTMLElement, originalText: string) => {
       pendingSaveRef.current = { element, originalText };
       updateState({ saveStatus: "saving" });
+      showIndicator(element, "saving");
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = setTimeout(() => {
         if (pendingSaveRef.current) {
@@ -164,10 +173,20 @@ export function useTextEditing(isEditModeActive: boolean) {
         });
 
         cleanupOverlay();
-        const overlay = createFixedOverlay(element);
-        if (overlay) {
-          overlay.textContent = newText;
-          overlayRef.current = overlay;
+        // The content edit triggers an HMR re-render that updates this element
+        // to newText, usually before the save-success ACK. Only show the
+        // optimistic overlay if the element doesn't already reflect newText,
+        // and retire it the moment the re-render lands — otherwise the overlay
+        // and the re-rendered element both paint, slightly offset (a ghost).
+        if ((element.textContent ?? "").trim() !== newText.trim()) {
+          const overlay = createFixedOverlay(element);
+          if (overlay) {
+            overlay.textContent = newText;
+            overlayRef.current = overlay;
+            overlayWatcherRef.current = watchTextReflected(element, newText, () =>
+              cleanupOverlay(element),
+            );
+          }
         }
         commitCleanup();
         return;

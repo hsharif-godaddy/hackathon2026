@@ -19,6 +19,7 @@ import {
   extractThemeColors,
   ensureBoldFontLoaded,
   INLINE_TAGS,
+  watchTextReflected,
 } from "../text-editing-helpers";
 
 vi.mock("../translations", () => ({
@@ -503,6 +504,37 @@ describe("showIndicator", () => {
     expect(indicators).toHaveLength(1);
     expect(indicators[0].textContent).toBe("Edit failed");
   });
+
+  it("creates a saving indicator with a spinner and persists (no auto-dismiss)", () => {
+    vi.useFakeTimers();
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    el.getBoundingClientRect = () => ({ top: 100, right: 200, bottom: 120, left: 50, width: 150, height: 20, x: 50, y: 100, toJSON: () => {} });
+
+    showIndicator(el, "saving");
+    const indicator = document.getElementById("edit-mode-save-indicator");
+    expect(indicator).not.toBeNull();
+    expect(indicator!.textContent).toContain("Saving");
+    expect(indicator!.querySelector(".airo-edit-spinner")).not.toBeNull();
+
+    // Terminal indicators auto-dismiss; "saving" must stay until replaced.
+    vi.advanceTimersByTime(10_000);
+    expect(document.getElementById("edit-mode-save-indicator")).not.toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("a success indicator replaces the saving spinner", () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    el.getBoundingClientRect = () => ({ top: 0, right: 0, bottom: 0, left: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => {} });
+
+    showIndicator(el, "saving");
+    showIndicator(el, "success");
+    const indicators = document.querySelectorAll("#edit-mode-save-indicator");
+    expect(indicators).toHaveLength(1);
+    expect(indicators[0].textContent).toBe("Saved");
+    expect(indicators[0].querySelector(".airo-edit-spinner")).toBeNull();
+  });
 });
 
 // ── injectEditorCss ──
@@ -865,5 +897,57 @@ describe("ensureBoldFontLoaded", () => {
     ensureBoldFontLoaded(el);
     expect(document.head.querySelectorAll('link[rel="stylesheet"]').length).toBe(2);
     warnSpy.mockRestore();
+  });
+});
+
+// ── watchTextReflected ──
+
+describe("watchTextReflected", () => {
+  const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("fires synchronously when the source already shows the expected text", () => {
+    const el = html("<span>$8.50</span>").querySelector("span") as HTMLElement;
+    const onReflected = vi.fn();
+    watchTextReflected(el, "$8.50", onReflected);
+    expect(onReflected).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires once when a later mutation brings the source into agreement", async () => {
+    const el = html("<span>$4.00</span>").querySelector("span") as HTMLElement;
+    const onReflected = vi.fn();
+    watchTextReflected(el, "$8.50", onReflected);
+    expect(onReflected).not.toHaveBeenCalled();
+
+    el.textContent = "$8.50"; // simulate the HMR re-render landing
+    await tick();
+    expect(onReflected).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores mutations that do not match the expected text", async () => {
+    const el = html("<span>$4.00</span>").querySelector("span") as HTMLElement;
+    const onReflected = vi.fn();
+    watchTextReflected(el, "$8.50", onReflected);
+
+    el.textContent = "$7.00";
+    await tick();
+    expect(onReflected).not.toHaveBeenCalled();
+  });
+
+  it("stops watching after the returned disconnect is called", async () => {
+    const el = html("<span>$4.00</span>").querySelector("span") as HTMLElement;
+    const onReflected = vi.fn();
+    const disconnect = watchTextReflected(el, "$8.50", onReflected);
+
+    disconnect();
+    el.textContent = "$8.50";
+    await tick();
+    expect(onReflected).not.toHaveBeenCalled();
+  });
+
+  it("trims whitespace when comparing", () => {
+    const el = html("<span>  $8.50  </span>").querySelector("span") as HTMLElement;
+    const onReflected = vi.fn();
+    watchTextReflected(el, "$8.50", onReflected);
+    expect(onReflected).toHaveBeenCalledTimes(1);
   });
 });

@@ -251,8 +251,20 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
           if (!res.ok) {
             logger.error('develop-page.content-updated.failed', { appId: cur.appId, contentKey, status: res.status })
             notifyContentEditFailed(cur.t, contentKey, await readContentEditErrorCode(res))
+            // NACK so the dev-tools editor flips "saving" → "Edit failed" and
+            // unblocks immediately (symmetric with the AST path's TEXT_EDIT_FAILED),
+            // independent of the reload below. The reload still reverts the
+            // optimistic DOM back to the saved content.
+            const failedIframe = getPreviewIframe()
+            if (failedIframe) postMessageToIframe(failedIframe, { type: 'CONTENT_EDIT_FAILED' })
             handlePreviewRefresh({ lastIframeState: cur.lastIframeState })
+            return
           }
+          // ACK the save so the dev-tools editor clears its "saving" state and
+          // re-enables click-to-edit immediately. Without this the editor stays
+          // locked until a 30s timeout — the post-blur lag.
+          const iframe = getPreviewIframe()
+          if (iframe) postMessageToIframe(iframe, { type: 'CONTENT_EDIT_SUCCEEDED' })
         } catch (err) {
           logger.error('develop-page.content-updated.error', {
             appId: cur.appId, contentKey, error: err instanceof Error ? err.message : String(err),

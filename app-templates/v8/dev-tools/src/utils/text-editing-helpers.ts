@@ -523,6 +523,39 @@ export function mergeRootAttrsOntoOverlay(target: HTMLElement, source: HTMLEleme
   }
 }
 
+/**
+ * Retire the optimistic overlay the moment the real `source` element reflects
+ * the saved value. The content edit triggers an HMR re-render that updates the
+ * source element to `expectedText`; that re-render usually lands well before
+ * the save-success ACK. If the overlay (a positioned clone showing the same
+ * text) lingers until the ACK, it and the re-rendered element both paint —
+ * slightly offset — producing a ghost/double. This calls `onReflected` as soon
+ * as the source matches so the caller can drop the overlay immediately.
+ *
+ * Fires synchronously if the source already matches; otherwise watches for the
+ * re-render via a MutationObserver. Returns an idempotent disconnect function.
+ */
+export function watchTextReflected(
+  source: HTMLElement,
+  expectedText: string,
+  onReflected: () => void,
+): () => void {
+  const expected = expectedText.trim();
+  const matches = (): boolean => (source.textContent ?? "").trim() === expected;
+  if (matches()) {
+    onReflected();
+    return () => {};
+  }
+  const observer = new MutationObserver(() => {
+    if (matches()) {
+      observer.disconnect();
+      onReflected();
+    }
+  });
+  observer.observe(source, { childList: true, characterData: true, subtree: true });
+  return () => observer.disconnect();
+}
+
 // ── Theme color extraction ──
 
 const THEME_TEXT_SELECTOR = "p, h1, h2, h3, h4, h5, h6, span, a, li, button, label";
@@ -609,7 +642,8 @@ export function mergeOriginalClasses(newHtml: string, originalClasses: string): 
 
 // ── UI ──
 
-export function showIndicator(element: HTMLElement, type: "success" | "error") {
+export function showIndicator(element: HTMLElement, type: "success" | "error" | "saving") {
+  injectEditorCss();
   const existing = document.getElementById("edit-mode-save-indicator");
   if (existing) existing.remove();
 
@@ -617,14 +651,28 @@ export function showIndicator(element: HTMLElement, type: "success" | "error") {
   const indicator = document.createElement("div");
   indicator.id = "edit-mode-save-indicator";
 
-  const isError = type === "error";
-  indicator.textContent = isError
-    ? t("devtools_edit_failed", "Edit failed")
-    : t("devtools_saved", "Saved");
-
-  const color = isError ? "#dc2626" : "var(--color-success)";
-  const bg = isError ? "#fef2f2" : "var(--color-success-bg)";
-  const border = isError ? "#fecaca" : "var(--color-success-border)";
+  let color: string;
+  let bg: string;
+  let border: string;
+  if (type === "error") {
+    color = "#dc2626";
+    bg = "#fef2f2";
+    border = "#fecaca";
+    indicator.textContent = t("devtools_edit_failed", "Edit failed");
+  } else if (type === "saving") {
+    color = "#6b7280";
+    bg = "#f9fafb";
+    border = "#e5e7eb";
+    const spinner = document.createElement("span");
+    spinner.className = "airo-edit-spinner";
+    indicator.appendChild(spinner);
+    indicator.appendChild(document.createTextNode(t("devtools_saving", "Saving…")));
+  } else {
+    color = "var(--color-success)";
+    bg = "var(--color-success-bg)";
+    border = "var(--color-success-border)";
+    indicator.textContent = t("devtools_saved", "Saved");
+  }
 
   indicator.style.cssText = `
     position: fixed;
@@ -649,10 +697,14 @@ export function showIndicator(element: HTMLElement, type: "success" | "error") {
     indicator.style.opacity = "1";
   });
 
-  setTimeout(() => {
-    indicator.style.opacity = "0";
-    setTimeout(() => indicator.remove(), 200);
-  }, INDICATOR_MS);
+  // "saving" persists until a terminal state (success/error) replaces it; only
+  // the terminal indicators auto-dismiss.
+  if (type !== "saving") {
+    setTimeout(() => {
+      indicator.style.opacity = "0";
+      setTimeout(() => indicator.remove(), 200);
+    }, INDICATOR_MS);
+  }
 }
 
 let cssInjected = false;
@@ -660,7 +712,7 @@ export function injectEditorCss() {
   if (cssInjected) return;
   cssInjected = true;
   const style = document.createElement("style");
-  style.textContent = ".airo-rte-p { margin: 0; text-align: inherit; } .airo-rte-single-line { white-space: nowrap; overflow: hidden; } .airo-rte-italic { font-style: italic; } .airo-rte-ul { list-style: disc; padding-left: 1.5em; margin: 0; } .airo-rte-ol { list-style: decimal; padding-left: 1.5em; margin: 0; } .airo-rte-li { margin: 0; }";
+  style.textContent = ".airo-rte-p { margin: 0; text-align: inherit; } .airo-rte-single-line { white-space: nowrap; overflow: hidden; } .airo-rte-italic { font-style: italic; } .airo-rte-ul { list-style: disc; padding-left: 1.5em; margin: 0; } .airo-rte-ol { list-style: decimal; padding-left: 1.5em; margin: 0; } .airo-rte-li { margin: 0; } @keyframes airo-edit-spin { to { transform: rotate(360deg); } } .airo-edit-spinner { display: inline-block; width: 9px; height: 9px; border: 1.5px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: airo-edit-spin 0.6s linear infinite; margin-right: 5px; vertical-align: -1px; }";
   document.head.appendChild(style);
 }
 

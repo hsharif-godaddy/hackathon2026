@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 
 import { useDevToolsBusBindings } from '@/app/[market]/develop/hooks/useDevToolsBusBindings'
@@ -18,6 +18,9 @@ vi.mock('@/app/[market]/develop/components/utils', async (importOriginal) => {
 const addGrowlMessageMock = vi.fn()
 vi.mock('@ux/growl', () => ({ default: { addGrowlMessage: (...a: unknown[]) => addGrowlMessageMock(...a) } }))
 
+const postMessageToIframeMock = vi.fn()
+vi.mock('@/utils/postMessage', () => ({ postMessageToIframe: (...a: unknown[]) => postMessageToIframeMock(...a) }))
+
 type T = (key: string, values?: unknown, fallback?: string) => string
 const defaultT: T = (key, _values, fallback) => fallback ?? key
 
@@ -26,10 +29,18 @@ function deps(cmsInlineEditEnabled: boolean, t: T = defaultT) {
 }
 const evt = { type: 'CONTENT_UPDATED', data: { contentKey: 'products[1].name', kind: 'copy', oldText: 'B', newText: 'B2' } }
 
+beforeEach(() => {
+  const iframe = document.createElement('iframe')
+  iframe.id = 'preview-iframe'
+  document.body.appendChild(iframe)
+})
+
 afterEach(() => {
   fetchMock.mockClear()
   handlePreviewRefreshMock.mockClear()
   addGrowlMessageMock.mockClear()
+  postMessageToIframeMock.mockClear()
+  document.getElementById('preview-iframe')?.remove()
 })
 
 describe('CONTENT_UPDATED bus handler', () => {
@@ -41,10 +52,12 @@ describe('CONTENT_UPDATED bus handler', () => {
     expect(JSON.parse(opts.body)).toEqual({ contentKey: 'products[1].name', kind: 'copy', value: 'B2' })
   })
 
-  it('does nothing when flag OFF', () => {
+  it('does not forward or ACK when flag OFF', () => {
     renderHook(() => useDevToolsBusBindings(deps(false)))
     dispatch(evt as never)
     expect(fetchMock).not.toHaveBeenCalled()
+    // Gating: nothing is posted back to the iframe either (no leaked ACK).
+    expect(postMessageToIframeMock).not.toHaveBeenCalled()
   })
 
   it('reverts and shows a rejection toast when fetch resolves with !ok', async () => {
@@ -72,5 +85,23 @@ describe('CONTENT_UPDATED bus handler', () => {
     renderHook(() => useDevToolsBusBindings(deps(true, throwingT)))
     dispatch(evt as never)
     await vi.waitFor(() => expect(handlePreviewRefreshMock).toHaveBeenCalledTimes(1))
+  })
+
+  it('posts CONTENT_EDIT_SUCCEEDED to the preview on a successful save (clears the dev-tools "saving" lock)', async () => {
+    renderHook(() => useDevToolsBusBindings(deps(true)))
+    dispatch(evt as never)
+    await vi.waitFor(() => expect(postMessageToIframeMock).toHaveBeenCalled())
+    const types = postMessageToIframeMock.mock.calls.map((c) => (c[1] as { type: string }).type)
+    expect(types).toContain('CONTENT_EDIT_SUCCEEDED')
+  })
+
+  it('NACKs (CONTENT_EDIT_FAILED, not SUCCEEDED) and reverts via refresh when the save is rejected', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: { code: 'invalid-value' } }) })
+    renderHook(() => useDevToolsBusBindings(deps(true)))
+    dispatch(evt as never)
+    await vi.waitFor(() => expect(handlePreviewRefreshMock).toHaveBeenCalledTimes(1))
+    const types = postMessageToIframeMock.mock.calls.map((c) => (c[1] as { type: string }).type)
+    expect(types).toContain('CONTENT_EDIT_FAILED')
+    expect(types).not.toContain('CONTENT_EDIT_SUCCEEDED')
   })
 })
