@@ -203,6 +203,61 @@ describe('usePaywallModal', () => {
     });
   });
 
+  describe('Owner-pays bypass for shared apps', () => {
+    it('runs the action and shows no paywall for a shared app even when showPaywall is true', async () => {
+      // Invited collaborator: app is shared, caller has no/own subscription so
+      // usePaywallEligibility would normally gate them.
+      mockGetSite.mockReturnValue({ name: 'Shared Site', sharedWithMe: true });
+      const mockUsePaywallEligibility = await import('./usePaywallEligibility');
+      vi.mocked(mockUsePaywallEligibility.usePaywallEligibility).mockReturnValue({
+        showPaywall: true,
+        isLoading: false,
+        isError: false,
+        error: null,
+      });
+
+      const { result } = renderHook(
+        () => usePaywallModal({ appId: 'app-shared', source: 'publish' }),
+        { wrapper }
+      );
+
+      const action = vi.fn(async () => {});
+      await act(async () => {
+        await result.current.checkAndShowPaywall(action);
+      });
+
+      expect(action).toHaveBeenCalledTimes(1);
+      expect(result.current.paywallModal).toBeNull();
+      expect(result.current.shouldShowPaywall).toBe(false);
+    });
+
+    it('still gates a non-shared app (control)', async () => {
+      mockGetSite.mockReturnValue({ name: 'Owned Site' }); // no sharedWithMe
+      const mockUsePaywallEligibility = await import('./usePaywallEligibility');
+      vi.mocked(mockUsePaywallEligibility.usePaywallEligibility).mockReturnValue({
+        showPaywall: true,
+        isLoading: false,
+        isError: false,
+        error: null,
+      });
+
+      const { result } = renderHook(
+        () => usePaywallModal({ appId: 'app-owned', source: 'download' }),
+        { wrapper }
+      );
+
+      const action = vi.fn(async () => {});
+      await act(async () => {
+        await result.current.checkAndShowPaywall(action);
+      });
+
+      // Paywall engaged: action is NOT executed and the modal renders.
+      expect(action).not.toHaveBeenCalled();
+      expect(result.current.paywallModal).not.toBeNull();
+      expect(result.current.shouldShowPaywall).toBe(true);
+    });
+  });
+
   describe('Integration with usePaywallEligibility', () => {
     it('should pass appId to usePaywallEligibility', async () => {
       const mockUsePaywallEligibility = await import('./usePaywallEligibility');

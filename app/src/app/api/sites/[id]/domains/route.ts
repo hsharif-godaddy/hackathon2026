@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { enforceAabMultiUserVentureRelation } from '@/lib/authz-fga/enforce-venture-relation';
+import { resolveMultiUserFlag } from '@/lib/authz-fga/multi-user-flag';
+import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth';
 import { type AiroApiError, type AiroApiErrorV2, AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
@@ -53,13 +56,26 @@ export const POST = withCustomerAuth(async (
 
     // Get site to retrieve subscription_id and system_id
     const adapter = getControlPlaneAdapter();
-    const site = await adapter.getSite(siteId, authContext.jwt);
+    const multiUserEnabled = await resolveMultiUserFlag(request);
+    const site = await adapter.getSite(siteId, authContext.jwt, undefined, { multiUserEnabled });
 
     if (!site) {
       return NextResponse.json(
         { code: ApiErrorCode.SITE_NOT_FOUND, error: 'Site not found' },
         { status: 404 }
       );
+    }
+
+    const domainsDeny = await enforceAabMultiUserVentureRelation({
+      request,
+      siteId,
+      customerId: authContext.user.customerId,
+      siteInfo: site,
+      relation: AUTHZ_FGA_RELATIONS.canManageDomains,
+      forbiddenMessage: 'You do not have permission to manage domains for this app.',
+    });
+    if (domainsDeny) {
+      return domainsDeny;
     }
 
     if (!site.subscription_id || !site.system_id) {

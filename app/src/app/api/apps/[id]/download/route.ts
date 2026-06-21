@@ -18,6 +18,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+import { enforceAabMultiUserVentureRelation } from '@/lib/authz-fga/enforce-venture-relation';
+import { resolveMultiUserFlag } from '@/lib/authz-fga/multi-user-flag';
+import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import {
   createCustomerAuthError,
@@ -30,7 +33,9 @@ import { AiroMgmtClient } from '@/lib/mgmt-airo';
 import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { checkPaywallEligibility, PaywallAction } from '@/lib/paywall/core';
 import { ServerPaywallProvider } from '@/lib/paywall/server-provider';
+import { isPaidPlanForGrants } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
+import { getPlanFromSubscription } from '@/utils/credits';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +54,7 @@ interface TrackingResult {
 async function recordExportTracking(
   siteId: string,
   authContext: CustomerAuthContext,
+  multiUserEnabled: boolean,
   siteName?: string
 ): Promise<TrackingResult | { authResponse: NextResponse }> {
   const { user, jwt } = authContext;
@@ -56,7 +62,7 @@ async function recordExportTracking(
   try {
     // Get site to check for V2 metadata
     const adapter = getControlPlaneAdapter();
-    const site = await adapter.getSite(siteId, jwt);
+    const site = await adapter.getSite(siteId, jwt, undefined, { multiUserEnabled });
 
     if (!site) {
       return { tracked: false, message: 'Site not found' };
@@ -185,13 +191,26 @@ export const POST = withCustomerAuth(async (
     logger.info('download.proxy.start', { siteId, customerId: user.customerId });
 
     const adapter = getControlPlaneAdapter();
-    const site = await adapter.getSite(siteId, jwt);
+    const multiUserEnabled = await resolveMultiUserFlag(request);
+    const site = await adapter.getSite(siteId, jwt, undefined, { multiUserEnabled });
 
     if (!site) {
       return NextResponse.json(
         { error: 'Site not found' },
         { status: 404 }
       );
+    }
+
+    const downloadDeny = await enforceAabMultiUserVentureRelation({
+      request,
+      siteId,
+      customerId: user.customerId,
+      siteInfo: site,
+      relation: AUTHZ_FGA_RELATIONS.canDownload,
+      forbiddenMessage: 'You do not have permission to download this app.',
+    });
+    if (downloadDeny) {
+      return downloadDeny;
     }
 
     if (!site.agent_url) {
@@ -201,35 +220,94 @@ export const POST = withCustomerAuth(async (
       );
     }
 
-    let canDownload = false;
-    try {
-      const provider = new ServerPaywallProvider(jwt, user.customerId, request.headers);
-      const eligibility = await checkPaywallEligibility(provider, siteId, PaywallAction.Download);
-      canDownload = eligibility.hasAccess;
+    // Paywall gate. Download is a paid capability.
+    //
+    // Owner-pays: a collaborator on a shared app is not the billing principal,
+    // so we cannot key the paywall on the caller's own (absent) plan. But the
+    // FGA canDownload grant alone is NOT sufficient — the app OWNER must be on a
+    // grants-paid plan, or a FREE owner's app would be downloadable by any
+    // collaborator holding the relation (a paywall bypass). So:
+    //   - owned app  → caller's own paywall (caller IS the owner).
+    //   - shared app → the OWNER's plan (the app's subscription_id) must be
+    //                  grants-paid. Mirrors the agent-token owner-pays gate.
+    // Fail closed in every branch.
+    if (!site.sharedWithMe) {
+      try {
+        const provider = new ServerPaywallProvider(jwt, user.customerId, request.headers);
+        const eligibility = await checkPaywallEligibility(provider, siteId, PaywallAction.Download);
 
-      if (!canDownload) {
-        logger.info('download.proxy.paywall-blocked', {
+        if (!eligibility.hasAccess) {
+          logger.info('download.proxy.paywall-blocked', {
+            siteId,
+            customerId: user.customerId,
+            reason: eligibility.reason,
+          });
+          return NextResponse.json(
+            { error: 'Download requires Paid subscription', reason: eligibility.reason },
+            { status: 403 }
+          );
+        }
+      } catch (error) {
+        logger.error('download.proxy.paywall-error', {
           siteId,
-          customerId: user.customerId,
-          reason: eligibility.reason,
+          error: error instanceof Error ? error.message : String(error),
         });
         return NextResponse.json(
-          { error: 'Download requires Paid subscription', reason: eligibility.reason },
+          { error: 'Unable to verify download eligibility' },
+          { status: 500 }
+        );
+      }
+    } else {
+      if (!site.subscription_id) {
+        logger.warn('download.proxy.shared-owner-subscription-missing', {
+          siteId,
+          customerId: user.customerId,
+        });
+        return NextResponse.json(
+          { error: 'Download requires Paid subscription', reason: 'owner_subscription_unknown' },
           { status: 403 }
         );
       }
-    } catch (error) {
-      logger.error('download.proxy.paywall-error', {
-        siteId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return NextResponse.json(
-        { error: 'Unable to verify download eligibility' },
-        { status: 500 }
-      );
+      try {
+        const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
+        const client = new AiroMgmtClient({ baseUrl, jwt });
+        const ownerSubscription = await client.getSubscription(site.subscription_id, { includeAttributes: true });
+        const ownerIsPaid = isPaidPlanForGrants(getPlanFromSubscription(ownerSubscription));
+
+        logger.info('download.proxy.shared-owner-paywall', {
+          siteId,
+          customerId: user.customerId,
+          subscriptionId: site.subscription_id,
+          ownerIsPaid,
+        });
+
+        if (!ownerIsPaid) {
+          return NextResponse.json(
+            { error: 'Download requires Paid subscription', reason: 'owner_plan_not_paid' },
+            { status: 403 }
+          );
+        }
+      } catch (error) {
+        // An expired HBI (level-3) token surfaces here as a 401 from mgmt-airo;
+        // return the auth-reprompt response rather than a generic 500.
+        const authResponse = mgmtAiro401Response(error, 'download.proxy.shared-owner-paywall-hbi-expired', { siteId });
+        if (authResponse) {
+          return authResponse;
+        }
+        logger.error('download.proxy.shared-owner-paywall-error', {
+          siteId,
+          customerId: user.customerId,
+          subscriptionId: site.subscription_id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return NextResponse.json(
+          { error: 'Unable to verify download eligibility' },
+          { status: 500 }
+        );
+      }
     }
 
-    const trackingResult = await recordExportTracking(siteId, authContext, site.name);
+    const trackingResult = await recordExportTracking(siteId, authContext, multiUserEnabled, site.name);
     if ('authResponse' in trackingResult) {
       return trackingResult.authResponse;
     }

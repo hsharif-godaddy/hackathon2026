@@ -8,6 +8,11 @@ const mockGetTransferMetadata = vi.fn();
 const mockCancelTransfer = vi.fn();
 const mockUnpublishApp = vi.fn();
 const mockCreateToken = vi.fn();
+const mockEnforce = vi.fn();
+
+vi.mock('@/lib/authz-fga/enforce-venture-relation', () => ({
+  enforceAabMultiUserVentureRelation: (...args: any[]) => mockEnforce(...args),
+}));
 
 vi.mock('@/lib/agent-fetch', () => ({
   agentFetch: (...args: any[]) => mockAgentFetch(...args),
@@ -58,6 +63,13 @@ vi.mock('@/lib/request-context', () => ({
   },
 }));
 
+// Route calls enforceAabMultiUserVentureRelation → checkSwitchboardFlag; mock it
+// to "off" so it no-ops without hitting real gasket (Atlas plugin → fetch error).
+vi.mock('@/lib/switchboard/server', () => ({
+  checkSwitchboardFlag: vi.fn().mockResolvedValue(false),
+  checkSwitchboardValue: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock('@/lib/customer-auth', () => ({
   withCustomerAuth: (handler: any) => {
     return async (request: any, ...args: any[]) => {
@@ -104,10 +116,28 @@ const mockFetch = vi.fn();
 describe('/api/apps/[id]/transfer', function transferRouteTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    mockEnforce.mockResolvedValue(null);
     mockGetSite.mockResolvedValue(MOCK_SITE);
     mockCreateToken.mockResolvedValue({ token: 'agent-jwt-token' });
     mockFetch.mockResolvedValue({ ok: true });
     vi.stubGlobal('fetch', mockFetch);
+  });
+
+  describe('POST - FGA transfer gate', function postFgaGateTests() {
+    it('returns the deny response and does NOT validate or initiate when the FGA transfer gate denies', async function fgaDenies() {
+      mockEnforce.mockResolvedValue(new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 }));
+
+      const { POST } = await import('../route');
+      const response = await POST(
+        createPostRequest('app-1', { targetEmail: 'test@godaddy.com' }),
+        { params: Promise.resolve({ id: 'app-1' }) }
+      );
+
+      expect(response.status).toBe(403);
+      expect(mockEnforce).toHaveBeenCalledTimes(1);
+      expect(mockAgentFetch).not.toHaveBeenCalled();
+      expect(mockInitiateTransfer).not.toHaveBeenCalled();
+    });
   });
 
   describe('POST - Commerce validation guard', function postGuardTests() {

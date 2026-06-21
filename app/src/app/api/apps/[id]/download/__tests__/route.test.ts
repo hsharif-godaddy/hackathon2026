@@ -11,6 +11,7 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { SubscriptionPlan } from '@/types/credits';
 import { POST } from '../route';
 
 const {
@@ -27,7 +28,8 @@ const {
     },
     mockAuthenticateCustomer: vi.fn(),
     mockAiroMgmtClient: {
-      recordExport: vi.fn()
+      recordExport: vi.fn(),
+      getSubscription: vi.fn()
     },
     mockJwtService: {
       createToken: vi.fn()
@@ -83,6 +85,13 @@ vi.mock('@/lib/request-context', function mockLoggerModule() {
     logger: mockLogger
   };
 });
+
+// Route calls enforceAabMultiUserVentureRelation → checkSwitchboardFlag; mock it
+// to "off" so it no-ops without hitting real gasket (Atlas plugin → fetch error).
+vi.mock('@/lib/switchboard/server', () => ({
+  checkSwitchboardFlag: vi.fn().mockResolvedValue(false),
+  checkSwitchboardValue: vi.fn().mockResolvedValue(null),
+}));
 
 vi.mock('@/lib/customer-auth', async function mockCustomerAuthModule() {
   const actual = await vi.importActual('@/lib/customer-auth');
@@ -186,6 +195,7 @@ describe('download POST', function downloadTests() {
     });
 
     mockAiroMgmtClient.recordExport.mockResolvedValue(MOCK_EXPORT_RESPONSE);
+    mockAiroMgmtClient.getSubscription.mockResolvedValue({ plan: SubscriptionPlan.Starter });
   });
 
   describe('#POST', function postTests() {
@@ -298,6 +308,102 @@ describe('download POST', function downloadTests() {
       expect(data.error).toBe('Download requires Paid subscription');
 
       // Should not call tracking
+      expect(mockAiroMgmtClient.recordExport).not.toHaveBeenCalled();
+    });
+
+    it('allows a shared-app download when the OWNER is on a paid plan (owner-pays)', async function sharedPaidOwner() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'collaborator-jwt'
+      });
+      mockControlPlaneAdapter.getSite.mockResolvedValue({ ...MOCK_V2_SITE, sharedWithMe: true });
+      // The caller's own paywall is irrelevant for a shared app; the OWNER's plan governs.
+      mockPaywallProvider.checkPaywallEligibility.mockResolvedValue({ hasAccess: false, reason: 'No active subscription' });
+      mockAiroMgmtClient.getSubscription.mockResolvedValue({ plan: SubscriptionPlan.Starter });
+
+      const request = createMockRequest(MOCK_SITE_ID);
+      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.downloadUrl).toBe(`${MOCK_V2_SITE.agent_url}/apps/${MOCK_SITE_ID}/zip`);
+      expect(data.token).toBeTruthy();
+      // The OWNER's subscription must be the one consulted, not the caller's paywall.
+      expect(mockAiroMgmtClient.getSubscription).toHaveBeenCalledWith(MOCK_SUBSCRIPTION_ID, { includeAttributes: true });
+      expect(mockPaywallProvider.checkPaywallEligibility).not.toHaveBeenCalled();
+      // The download actually proceeds: export tracked + token minted.
+      expect(mockAiroMgmtClient.recordExport).toHaveBeenCalled();
+    });
+
+    it('blocks a shared-app download when the owner is on a legacy AiroPlus plan (not grants-paid)', async function sharedLegacyAiroPlusOwner() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'collaborator-jwt'
+      });
+      mockControlPlaneAdapter.getSite.mockResolvedValue({ ...MOCK_V2_SITE, sharedWithMe: true });
+      // No `plan`; legacy AiroPlus derives from productId + hadAiroPlus → AiroPlus, which is NOT grants-paid.
+      mockAiroMgmtClient.getSubscription.mockResolvedValue({ productId: 'aab-v1', hadAiroPlus: true, isTrial: false });
+
+      const response = await POST(createMockRequest(MOCK_SITE_ID), { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.reason).toBe('owner_plan_not_paid');
+      expect(mockAiroMgmtClient.recordExport).not.toHaveBeenCalled();
+    });
+
+    it('blocks a shared-app download when the OWNER is on a FREE plan (owner-pays bypass closed)', async function sharedFreeOwner() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'collaborator-jwt'
+      });
+      mockControlPlaneAdapter.getSite.mockResolvedValue({ ...MOCK_V2_SITE, sharedWithMe: true });
+      mockAiroMgmtClient.getSubscription.mockResolvedValue({ plan: SubscriptionPlan.Free });
+
+      const request = createMockRequest(MOCK_SITE_ID);
+      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error).toBe('Download requires Paid subscription');
+      expect(data.reason).toBe('owner_plan_not_paid');
+      expect(mockAiroMgmtClient.recordExport).not.toHaveBeenCalled();
+    });
+
+    it('fails closed (403) when a shared app has no owner subscription_id', async function sharedMissingSubscription() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'collaborator-jwt'
+      });
+      const { subscription_id: _omit, ...siteWithoutSubscription } = MOCK_V2_SITE;
+      mockControlPlaneAdapter.getSite.mockResolvedValue({ ...siteWithoutSubscription, sharedWithMe: true });
+
+      const request = createMockRequest(MOCK_SITE_ID);
+      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.reason).toBe('owner_subscription_unknown');
+      expect(mockAiroMgmtClient.getSubscription).not.toHaveBeenCalled();
+    });
+
+    it('fails closed (500) when the owner subscription fetch errors for a shared app', async function sharedOwnerFetchError() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'collaborator-jwt'
+      });
+      mockControlPlaneAdapter.getSite.mockResolvedValue({ ...MOCK_V2_SITE, sharedWithMe: true });
+      mockAiroMgmtClient.getSubscription.mockRejectedValue(new Error('mgmt-airo unavailable'));
+
+      const request = createMockRequest(MOCK_SITE_ID);
+      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+
+      expect(response.status).toBe(500);
       expect(mockAiroMgmtClient.recordExport).not.toHaveBeenCalled();
     });
 

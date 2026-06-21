@@ -214,6 +214,16 @@ describe('useSettingsNavItems', () => {
     expect(localStorage.getItem('airo-feedback-shown:airo#app-builder')).toBeNull();
   });
 
+  it('should NOT include a team item even when aab-multi-user is enabled (moved to the header Share access popover)', () => {
+    mockSwitchboardResults['aab-multi-user'] = true;
+    mockSwitchboardResults['appbuilder-settings-team'] = true;
+
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+    const teamItem = result.current.find(item => item.id === SettingsSection.TEAM);
+    expect(teamItem).toBeUndefined();
+  });
+
   it('should have icons for all items', () => {
     const { result } = renderHookWithProviders(() => useSettingsNavItems());
 

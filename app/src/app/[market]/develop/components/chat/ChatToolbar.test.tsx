@@ -244,14 +244,13 @@ describe('ChatToolbar', () => {
     expect(settingsButton).toBeInTheDocument();
   });
 
-  it('should not render settings button on mobile preview mode', () => {
+  it('should render settings menu control in mobile preview mode', () => {
     mockDevelopStore.isMobile = true;
     mockDevelopStore.mobileMode = MobileMode.PREVIEW;
 
-    const { container } = renderWithProviders(<ChatToolbar {...defaultProps} />);
+    renderWithProviders(<ChatToolbar {...defaultProps} />);
 
-    const settingsButton = container.querySelector('[data-eid="develop.chat_toolbar.settings"]');
-    expect(settingsButton).not.toBeInTheDocument();
+    expect(screen.getByTestId('chat-toolbar-settings-button')).toBeInTheDocument();
   });
 
   it('should log toolbar tab clicks via logClickEvent', async () => {

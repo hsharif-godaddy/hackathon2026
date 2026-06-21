@@ -3,14 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { POST } from '../route'
 
-const { mockAuthenticateCustomer, mockGetSite, mockS3Send, mockLogger } = vi.hoisted(function setup() {
+const { mockAuthenticateCustomer, mockGetSite, mockS3Send, mockLogger, mockEnforce } = vi.hoisted(function setup() {
   return {
     mockAuthenticateCustomer: vi.fn(),
     mockGetSite: vi.fn(),
     mockS3Send: vi.fn(),
     mockLogger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
+    mockEnforce: vi.fn(),
   }
 })
+
+vi.mock('@/lib/authz-fga/enforce-venture-relation', () => ({
+  enforceAabMultiUserVentureRelation: mockEnforce,
+}))
 
 vi.mock('@/lib/customer-auth', async function mockCustomerAuth() {
   const actual = await vi.importActual('@/lib/customer-auth')
@@ -45,6 +50,15 @@ vi.mock('@/lib/request-context', () => ({
   logger: mockLogger,
 }))
 
+// The route calls enforceAabMultiUserVentureRelation → checkSwitchboardFlag.
+// Without this mock, checkSwitchboardFlag hits real gasket → the Atlas/Visitor
+// plugin → an AtlasFetchError unhandled rejection in the test env. Mock it to
+// "off" so enforce no-ops (allow) without touching gasket.
+vi.mock('@/lib/switchboard/server', () => ({
+  checkSwitchboardFlag: vi.fn().mockResolvedValue(false),
+  checkSwitchboardValue: vi.fn().mockResolvedValue(null),
+}))
+
 const AUTHED = { isAuthenticated: true, user: { customerId: 'c-1' }, jwt: 'jwt-token' }
 const UNAUTHED = { isAuthenticated: false, error: 'Invalid token' }
 const MOCK_SITE = { id: 'app-123', account_id: 'acc-1' }
@@ -76,6 +90,7 @@ describe('apps/[id]/publish-snapshots POST', function publishSnapshotsTests() {
     vi.stubEnv('EVAL_SNAPSHOTS_BUCKET', 'test-bucket')
     mockS3Send.mockResolvedValue({})
     mockGetSite.mockResolvedValue(MOCK_SITE)
+    mockEnforce.mockResolvedValue(null)
   })
 
   afterEach(function restoreEnv() {
@@ -96,10 +111,19 @@ describe('apps/[id]/publish-snapshots POST', function publishSnapshotsTests() {
     expect(await response.json()).toMatchObject({ error: 'App not found' })
   })
 
+  it('returns the deny response and does NOT upload when the FGA publish gate denies', async function fgaDenies() {
+    mockAuthenticateCustomer.mockResolvedValue(AUTHED)
+    mockEnforce.mockResolvedValue(Response.json({ error: 'Forbidden' }, { status: 403 }))
+    const response = await POST(makeRequest(APP_ID, validFields()), PARAMS)
+    expect(response.status).toBe(403)
+    expect(mockEnforce).toHaveBeenCalledTimes(1)
+    expect(mockS3Send).not.toHaveBeenCalled()
+  })
+
   it('calls getSite with appId and customer JWT for ownership check', async function ownershipCheck() {
     mockAuthenticateCustomer.mockResolvedValue(AUTHED)
     await POST(makeRequest(APP_ID, validFields()), PARAMS)
-    expect(mockGetSite).toHaveBeenCalledWith(APP_ID, 'jwt-token')
+    expect(mockGetSite).toHaveBeenCalledWith(APP_ID, 'jwt-token', undefined, { multiUserEnabled: false })
   })
 
   it('returns 503 when bucket env var is missing', async function noBucket() {

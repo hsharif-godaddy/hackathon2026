@@ -2119,7 +2119,11 @@ describe('V2ControlPlaneAdapter', () => {
         .mockResolvedValueOnce({ ok: true }) // customer check
         .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 'sub-123' }] }) // subscriptions
         .mockResolvedValueOnce({ ok: true, json: async () => [{ systemId: MOCK_SYSTEM_ID, subscriptionId: 'sub-123' }] }) // getSystems
-        .mockResolvedValueOnce({ ok: true, json: async () => ({ apps: [] }) }); // no apps
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ apps: [] }) }) // no apps
+        // getSite's not-found fallback now consults the shared-apps endpoint
+        // (GET /customers/me/shared-apps); return an empty list so it resolves
+        // immediately instead of burning the mgmt client's retry backoff.
+        .mockResolvedValue({ ok: true, json: async () => ({ apps: [] }) });
 
       const result = await adapter.updateSiteVariables(
         'nonexistent-app',
@@ -2447,6 +2451,89 @@ describe('V2ControlPlaneAdapter', () => {
 
       await expect(adapter.reloadImages(MOCK_APP_ID, MOCK_JWT))
         .rejects.toHaveProperty('status', 404);
+    });
+  });
+
+  describe('reconcileSharedOwnership (shared-ownership safety net)', () => {
+    // Minimal owned-path site: the caller appears as the owner.
+    const ownerSite = {
+      id: 'app-xyz',
+      owner_customer_id: 'customer-123',
+      sharedWithMe: false,
+      account_id: 'customer-123',
+    };
+
+    beforeEach(async () => {
+      const { extractCustomerId } = await import('@/lib/utils/jwt-utils');
+      vi.mocked(extractCustomerId).mockReturnValue('customer-123');
+    });
+
+    it('skips entirely (no shared-apps fetch) when multiUserEnabled is undefined', async () => {
+      const result = await (adapter as any).reconcileSharedOwnership(
+        ownerSite,
+        MOCK_JWT,
+        'customer-123',
+        undefined,
+      );
+      expect(result).toBe(ownerSite);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('returns the site unchanged when it is not in the caller\'s shared list', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ apps: [] }) });
+      const result = await (adapter as any).reconcileSharedOwnership(
+        ownerSite,
+        MOCK_JWT,
+        'customer-123',
+        true,
+      );
+      expect(result).toBe(ownerSite);
+    });
+
+    it('re-tags as shared with the real owner when the owned-path site is actually shared with the caller', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          apps: [
+            {
+              id: 'app-xyz',
+              ownerCustomerId: 'real-owner',
+              createdAt: '2026-01-01T00:00:00Z',
+              updatedAt: '2026-01-01T00:00:00Z',
+            },
+          ],
+        }),
+      });
+      const result = await (adapter as any).reconcileSharedOwnership(
+        ownerSite,
+        MOCK_JWT,
+        'customer-123',
+        true,
+      );
+      expect(result.sharedWithMe).toBe(true);
+      expect(result.owner_customer_id).toBe('real-owner');
+    });
+
+    it('fails CLOSED (clears owner_customer_id) when the shared-apps lookup throws', async () => {
+      // mapAppToSiteInfo optimistically stamped owner_customer_id = caller. If we
+      // can't confirm ownership via shared-apps (here a 401 propagates out of the
+      // mgmt-airo client), returning the caller stamp would hand a collaborator the
+      // owner-bypass in enforceAabMultiUserVentureRelation. So the caller stamp must
+      // be cleared, deferring downstream authz to FGA (the authoritative source).
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        text: async () => '',
+      });
+      const result = await (adapter as any).reconcileSharedOwnership(
+        ownerSite,
+        MOCK_JWT,
+        'customer-123',
+        true,
+      );
+      expect(result.owner_customer_id).toBeUndefined();
+      expect(result.id).toBe('app-xyz');
     });
   });
 });

@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { enforceAabMultiUserVentureRelation } from '@/lib/authz-fga/enforce-venture-relation';
+import { resolveMultiUserFlag } from '@/lib/authz-fga/multi-user-flag';
+import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import {
   createCustomerAuthError,
   type CustomerAuthContext,
   customerHasAccount,
-  withCustomerAuth} from '@/lib/customer-auth';
+  withCustomerAuth,
+} from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
 import { injectShareTokenIntoPreviewUrl } from '@/lib/share/inject-preview-token';
 
@@ -16,7 +20,9 @@ export const dynamic = 'force-dynamic';
 async function handleGetSite(request: NextRequest, siteId: string, authContext: CustomerAuthContext) {
   const includeCdn = request.nextUrl.searchParams.get('includeCdn') === 'true';
   const adapter = getControlPlaneAdapter();
-  const site = await adapter.getSite(siteId, authContext.jwt, undefined, { includeCdn });
+  // Gate shared-app discovery on aab-multi-user (off → skip the shared-apps listing).
+  const multiUserEnabled = await resolveMultiUserFlag(request);
+  const site = await adapter.getSite(siteId, authContext.jwt, undefined, { includeCdn, multiUserEnabled });
 
   if (!site) {
     return NextResponse.json({ error: 'Site not found' }, { status: 404 });
@@ -108,10 +114,26 @@ export const DELETE = withCustomerAuth(async (request: NextRequest, authContext:
 
     const adapter = getControlPlaneAdapter();
 
+    // Thread the multi-user flag so a shared (non-owned) app is discoverable;
+    // off → owned-only lookup, preserving existing single-user behavior.
+    const multiUserEnabled = await resolveMultiUserFlag(request);
+
     // Get site first to verify existence and get system_id (only one expensive search)
-    const site = await adapter.getSite(siteId, authContext.jwt);
+    const site = await adapter.getSite(siteId, authContext.jwt, undefined, { multiUserEnabled });
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+    }
+
+    const deleteDeny = await enforceAabMultiUserVentureRelation({
+      request,
+      siteId,
+      customerId: user.customerId,
+      siteInfo: site,
+      relation: AUTHZ_FGA_RELATIONS.canDelete,
+      forbiddenMessage: 'You do not have permission to delete this app.',
+    });
+    if (deleteDeny) {
+      return deleteDeny;
     }
 
     // Delete via adapter, passing system_id and subscription_id to avoid redundant getSite call
@@ -167,11 +189,30 @@ export const PATCH = withCustomerAuth(async (request: NextRequest, authContext: 
 
     const adapter = getControlPlaneAdapter();
 
+    // Thread the multi-user flag so a shared (non-owned) app is discoverable;
+    // off → owned-only lookup, preserving existing single-user behavior.
+    const multiUserEnabled = await resolveMultiUserFlag(request);
+
     // Check site exists and ownership
-    const existingSite = await adapter.getSite(siteId, authContext.jwt);
+    const existingSite = await adapter.getSite(siteId, authContext.jwt, undefined, { multiUserEnabled });
 
     if (!existingSite) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+    }
+
+    // Authorization gate for shared (non-owner) callers. No-op when the flag is
+    // off or when the caller is the owner; otherwise the caller must hold the
+    // `airo_app_build` relation on this app's venture to mutate it.
+    const updateDeny = await enforceAabMultiUserVentureRelation({
+      request,
+      siteId,
+      customerId: user.customerId,
+      siteInfo: existingSite,
+      relation: AUTHZ_FGA_RELATIONS.canBuild,
+      forbiddenMessage: 'You do not have permission to update this app.',
+    });
+    if (updateDeny) {
+      return updateDeny;
     }
 
     // Update site via adapter

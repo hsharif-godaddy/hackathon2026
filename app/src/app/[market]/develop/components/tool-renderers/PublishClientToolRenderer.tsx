@@ -69,7 +69,7 @@ export default function PublishClientToolRenderer({
   const currentAppId = useDevelopPageStore((state) => state.currentAppId)
   const requestPublishPopoverOpen = useDevelopPageStore((state) => state.requestPublishPopoverOpen)
   const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal)
-  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility()
+  const { showPaywall, isLoading: isPaywallLoading } = usePaywallEligibility(currentAppId)
   const hasHandledRef = useRef(false)
   const lastLoggedErrorRef = useRef<string | null>(null)
 

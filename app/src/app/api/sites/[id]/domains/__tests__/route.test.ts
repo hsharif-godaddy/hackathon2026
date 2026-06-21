@@ -4,12 +4,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiErrorCode } from '@/utils/api-errors';
 import { DomainApiErrorCode } from '@/utils/domain-validation';
 
-const { mockGetSite, mockModifyDomains } = vi.hoisted(function hoisted() {
+const { mockGetSite, mockModifyDomains, mockEnforce } = vi.hoisted(function hoisted() {
   return {
     mockGetSite: vi.fn(),
     mockModifyDomains: vi.fn(),
+    mockEnforce: vi.fn(),
   };
 });
+
+vi.mock('@/lib/authz-fga/enforce-venture-relation', () => ({
+  enforceAabMultiUserVentureRelation: mockEnforce,
+}));
 
 vi.mock('@/lib/request-context', () => ({
   logger: {
@@ -18,6 +23,13 @@ vi.mock('@/lib/request-context', () => ({
     error: vi.fn(),
     debug: vi.fn(),
   },
+}));
+
+// Route calls enforceAabMultiUserVentureRelation → checkSwitchboardFlag; mock it
+// to "off" so it no-ops without hitting real gasket (Atlas plugin → fetch error).
+vi.mock('@/lib/switchboard/server', () => ({
+  checkSwitchboardFlag: vi.fn().mockResolvedValue(false),
+  checkSwitchboardValue: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock('@/lib/customer-auth', () => ({
@@ -70,16 +82,31 @@ function createRequest(body: Record<string, unknown>) {
 describe('/api/sites/[id]/domains', function domainsRouteTests() {
   beforeEach(function setup() {
     vi.clearAllMocks();
+    mockEnforce.mockResolvedValue(null);
     mockGetSite.mockResolvedValue({
       id: 'site-1',
       subscription_id: 'sub-1',
       system_id: 'sys-1',
+      team_venture_id: 'v1',
+      owner_customer_id: 'owner-9',
     });
     mockModifyDomains.mockResolvedValue({
       statusJobId: 'job-1',
       status: 'pending',
       message: 'started',
     });
+  });
+
+  it('returns the deny response and does NOT modify domains when the FGA manage-domains gate denies', async function fgaDenies() {
+    const { POST } = await import('../route');
+    mockEnforce.mockResolvedValue(new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 }));
+    const request = createRequest({ domainsToCreate: [{ fqdn: 'example.com' }] });
+
+    const response = await POST(request, routeParams('site-1'));
+
+    expect(response.status).toBe(403);
+    expect(mockEnforce).toHaveBeenCalledTimes(1);
+    expect(mockModifyDomains).not.toHaveBeenCalled();
   });
 
   it('lowercases fqdn in domainsToCreate and domainsToDelete', async function lowercasesFqdn() {

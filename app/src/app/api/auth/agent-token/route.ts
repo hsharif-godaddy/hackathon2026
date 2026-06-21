@@ -12,21 +12,29 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isEmployeeAuthType, type ProductType } from '@airo/shared/auth';
 
 import { EXPERIMENT_IDS, INITIAL_AGENT_COHORT_TO_PROFILE } from '@/config/experiments';
+import { getAuthzFgaConfig } from '@/lib/authz-fga/config';
+import { enforceAabMultiUserCanBuild } from '@/lib/authz-fga/enforce-can-build';
+import { ensureAppTeamVenture } from '@/lib/authz-fga/ensure-app-venture';
+import { listObjects as fgaListObjects } from '@/lib/authz-fga/list-objects';
+import { getAuthzFgaAccessToken } from '@/lib/authz-fga/oauth-token';
+import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { checkBmsMigration, getMigrationDate, shouldCheckBmsMigration } from '@/lib/bms-migration';
 import {
   fetchHivemindCohorts,
   normalizeHivemindCohort,
 } from '@/lib/budget-service-experiment';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
+import type { SiteInfo } from '@/lib/control-plane/types';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, type CustomerUser, withCustomerAuth } from '@/lib/customer-auth';
 import { getJWTService } from '@/lib/jwt-service';
 import { resolveMarketId } from '@/lib/market/resolve-market';
 import { AIRO_OWNER_PRODUCTS, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { checkPaywallEligibility, PaywallAction } from '@/lib/paywall/core';
 import { ServerPaywallProvider } from '@/lib/paywall/server-provider';
-import { PaywallDenialReason } from '@/lib/paywall/shared';
+import { isPaidPlanForGrants, PaywallDenialReason } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag, checkSwitchboardValue } from '@/lib/switchboard/server';
+import { getPlanFromSubscription } from '@/utils/credits';
 import { trafficPathwaySessionId } from '@/utils/traffic-signals';
 import { visitorIdFromVisitorCookieRaw } from '@/utils/visitor-id';
 import { getSiteValidationFromCache, setSiteValidationCache } from './site-validation-cache';
@@ -48,14 +56,14 @@ const MAX_EXPIRATION_SECONDS = 12 * 60 * 60; // 43200 seconds
  * Validate site existence using control plane adapter (lightweight)
  * Uses appExists() instead of getSite() to avoid expensive getApp() API call
  */
-async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: string, owningProduct?: string): Promise<NextResponse | null> {
+async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: string, owningProduct?: string, multiUserEnabled?: boolean): Promise<NextResponse | null> {
   if (!customerHasAccount(user)) {
     return createCustomerAuthError('You must have an account to create agent tokens', 403);
   }
 
   const adapter = getControlPlaneAdapter();
   const productFilter = owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER;
-  const exists = await adapter.appExists(siteId, jwt, productFilter);
+  const exists = await adapter.appExists(siteId, jwt, productFilter, multiUserEnabled);
 
   if (!exists) {
     return NextResponse.json({
@@ -143,6 +151,42 @@ function resolveSubscriptionId(
   return result.value?.subscription_id;
 }
 
+/**
+ * Owner-pays gate for shared-app collaborators.
+ *
+ * A collaborator on a shared app operates under the OWNER's subscription, so
+ * publish/download must be gated on the OWNER's plan — not the collaborator's
+ * plan and not the FGA relation alone. Without this, a FREE owner's app could be
+ * published/downloaded by any collaborator holding the relation, bypassing the
+ * paywall entirely.
+ *
+ * Gate = the owner is on a grants-paid plan (Starter/Professional/Ultimate),
+ * read from the app's subscription (`subscriptionId`) with the caller's JWT —
+ * the same path the BMS block and shared getSite already use.
+ *
+ * We deliberately do NOT enforce the owner's published-app COUNT limit here.
+ * That limit depends on the owner's account-best plan and full app inventory,
+ * which can't be reconstructed reliably from a collaborator's JWT against a
+ * single subscription (e.g. an Ultimate owner with 27/50 published read as a
+ * lower tier → wrongly blocked). The owner's own publishes are still
+ * count-limited via the normal owner paywall; this matches the download gate
+ * (which is also plan-only), and mhp-core does not enforce the count regardless.
+ *
+ * Fails closed (throws) on any error; callers must treat a throw as "deny".
+ */
+async function resolveOwnerPaywall(args: {
+  subscriptionId: string;
+  jwt: string;
+}): Promise<{ ownerAllowsPublish: boolean; ownerAllowsDownload: boolean }> {
+  const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
+  const client = new AiroMgmtClient({ baseUrl, jwt: args.jwt });
+
+  const ownerSubscription = await client.getSubscription(args.subscriptionId, { includeAttributes: true });
+  const ownerIsPaid = isPaidPlanForGrants(getPlanFromSubscription(ownerSubscription));
+
+  return { ownerAllowsPublish: ownerIsPaid, ownerAllowsDownload: ownerIsPaid };
+}
+
 function resolveBooleanFlag(
   result: PromiseSettledResult<boolean>,
   logEvent: string,
@@ -168,6 +212,22 @@ function resolveStringFlag(
 ): string | null {
   if (result.status === 'rejected') {
     logger.warn(logEvent, {
+      siteId,
+      customerId,
+      error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+    });
+    return null;
+  }
+  return result.value;
+}
+
+function resolveSiteInfoFromGetSite(
+  result: PromiseSettledResult<SiteInfo | null>,
+  siteId: string,
+  customerId: string,
+): SiteInfo | null {
+  if (result.status === 'rejected') {
+    logger.warn('agent-token.get-site-info-failed', {
       siteId,
       customerId,
       error: result.reason instanceof Error ? result.reason.message : String(result.reason),
@@ -241,6 +301,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let agentProfileSelectorEnabled = false;
     let agentProfile: string | undefined;
     let costAttributionDryRun = false;
+    let siteInfo: SiteInfo | null = null;
     let useAtlasCrawler = false;
     let rebuildIntakeFormEnabled = false;
     let debugStatsEnabled = false;
@@ -251,6 +312,19 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let skillSuggestionsEnabled = false;
 
     const { visitorMarket: market } = await resolveMarketId(request);
+
+    // Resolve aab-multi-user once so getSite/appExists skip all shared-app
+    // discovery (the shared-apps listing) when the feature is off. Fast
+    // in-memory cache lookup; treat a Switchboard outage as off.
+    let multiUserEnabled = false;
+    try {
+      multiUserEnabled = await checkSwitchboardFlag('aab-multi-user', request);
+    } catch (err) {
+      logger.warn('aab-multi-user.flag.lookupError', {
+        siteId: body.siteId,
+        error: err instanceof Error ? err.message : 'Unknown switchboard error',
+      });
+    }
 
     if (siteValidationCacheHit) {
       // Cache hit: skip site validation, run paywall + switchboard + subscription lookup in parallel
@@ -265,7 +339,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-test-budget', request),
         checkSwitchboardFlag('app-builder-budget-service', request),
         checkSwitchboardFlag('app-builder-bms-existing', request),
-        adapter.getSite(body.siteId, authContext.jwt || '', body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER),
+        adapter.getSite(body.siteId, authContext.jwt || '', body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER, { multiUserEnabled }),
         checkSwitchboardFlag('appbuilder-assessment-agent', request),
         checkSwitchboardFlag('appbuilder-assessment-override', request),
         checkSwitchboardValue('appbuilder-assessment-classifier', request),
@@ -306,6 +380,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       // and wins over the experiment.
       agentProfile = rawAgentProfile && rawAgentProfile !== 'default' && rawAgentProfile !== 'hivemind' ? rawAgentProfile : undefined;
       costAttributionDryRun = resolveBooleanFlag(costAttributionDryRunResult, 'agent-token.cost-attribution-dry-run-flag-check-failed', body.siteId, user.customerId);
+      siteInfo = resolveSiteInfoFromGetSite(siteInfoResult, body.siteId, user.customerId);
       useAtlasCrawler = resolveBooleanFlag(useAtlasCrawlerResult, 'agent-token.atlas-crawler-flag-check-failed', body.siteId, user.customerId);
       rebuildIntakeFormEnabled = resolveBooleanFlag(rebuildIntakeFormResult, 'agent-token.rebuild-intake-form-flag-check-failed', body.siteId, user.customerId);
       debugStatsEnabled = resolveBooleanFlag(debugDrawerResult, 'agent-token.debug-drawer-flag-check-failed', body.siteId, user.customerId);
@@ -318,7 +393,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       // Cache miss: run site validation, paywall, switchboard, and subscription lookup all in parallel
       const parallelStart = Date.now();
       const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileSelectorResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, marketingCampaignsResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult] = await Promise.allSettled([
-        validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct),
+        validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct, multiUserEnabled),
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
           body.siteId,
@@ -328,7 +403,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         checkSwitchboardFlag('appbuilder-test-budget', request),
         checkSwitchboardFlag('app-builder-budget-service', request),
         checkSwitchboardFlag('app-builder-bms-existing', request),
-        adapter.getSite(body.siteId, authContext.jwt || '', body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER),
+        adapter.getSite(body.siteId, authContext.jwt || '', body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER, { multiUserEnabled }),
         checkSwitchboardFlag('appbuilder-assessment-agent', request),
         checkSwitchboardFlag('appbuilder-assessment-override', request),
         checkSwitchboardValue('appbuilder-assessment-classifier', request),
@@ -378,6 +453,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       // and wins over the experiment.
       agentProfile = rawAgentProfile && rawAgentProfile !== 'default' && rawAgentProfile !== 'hivemind' ? rawAgentProfile : undefined;
       costAttributionDryRun = resolveBooleanFlag(costAttributionDryRunResult, 'agent-token.cost-attribution-dry-run-flag-check-failed', body.siteId, user.customerId);
+      siteInfo = resolveSiteInfoFromGetSite(siteInfoResult, body.siteId, user.customerId);
       useAtlasCrawler = resolveBooleanFlag(useAtlasCrawlerResult, 'agent-token.atlas-crawler-flag-check-failed', body.siteId, user.customerId);
       rebuildIntakeFormEnabled = resolveBooleanFlag(rebuildIntakeFormResult, 'agent-token.rebuild-intake-form-flag-check-failed', body.siteId, user.customerId);
       debugStatsEnabled = resolveBooleanFlag(debugDrawerResult, 'agent-token.debug-drawer-flag-check-failed', body.siteId, user.customerId);
@@ -447,6 +523,82 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         owningProduct: body.owningProduct,
       });
       canDownload = true;
+    }
+
+    // Invited users on shared apps (sharedWithMe) are operating under the app
+    // owner's subscription — the paywall's billing gate must not block them.
+    // Instead, derive canPublish / canDownload from FGA relations: the Team
+    // panel controls what each invited user is allowed to do, and those grants
+    // live in OpenFGA, not in the user's (empty) subscription record.
+    if (siteInfo?.sharedWithMe) {
+      const ventureId = siteInfo.team_venture_id;
+      const fgaCfg = ventureId ? getAuthzFgaConfig() : null;
+      if (fgaCfg && ventureId) {
+        try {
+          const accessToken = await getAuthzFgaAccessToken(fgaCfg);
+          const userTuple = `customer:${user.customerId}`;
+          // Use listObjects (not checkPermission) — FGA Check resolves
+          // computed relations incorrectly on this store configuration.
+          const [publishVentures, downloadVentures] = await Promise.all([
+            fgaListObjects(fgaCfg, accessToken, { user: userTuple, relation: AUTHZ_FGA_RELATIONS.canPublish, type: 'venture' }),
+            fgaListObjects(fgaCfg, accessToken, { user: userTuple, relation: AUTHZ_FGA_RELATIONS.canDownload, type: 'venture' }),
+          ]);
+          const publishAllowed = publishVentures.includes(ventureId);
+          const downloadAllowed = downloadVentures.includes(ventureId);
+
+          // Owner-pays gate: the collaborator's FGA grant is necessary but not
+          // sufficient. The action must also be permitted by the OWNER's
+          // subscription (the app's subscription_id), or a FREE owner's app
+          // could be published by any collaborator holding the publish
+          // relation — bypassing the paywall. Short-circuit the owner fetch
+          // when the collaborator has no grant at all. Fail closed if the
+          // owner's subscription is unknown or the lookup fails.
+          if (!publishAllowed && !downloadAllowed) {
+            canPublish = false;
+            canDownload = false;
+          } else if (!subscriptionId) {
+            logger.warn('agent-token.shared-app-owner-subscription-missing', {
+              siteId: body.siteId,
+              customerId: user.customerId,
+              ventureId,
+            });
+            canPublish = false;
+            canDownload = false;
+          } else {
+            const { ownerAllowsPublish, ownerAllowsDownload } = await resolveOwnerPaywall({
+              subscriptionId,
+              jwt: authContext.jwt || '',
+            });
+            canPublish = publishAllowed && ownerAllowsPublish;
+            canDownload = downloadAllowed && ownerAllowsDownload;
+            logger.info('agent-token.shared-app-fga-paywall-override', {
+              siteId: body.siteId,
+              customerId: user.customerId,
+              ventureId,
+              subscriptionId,
+              publishAllowed,
+              downloadAllowed,
+              ownerAllowsPublish,
+              ownerAllowsDownload,
+              canPublish,
+              canDownload,
+            });
+          }
+        } catch (err) {
+          logger.warn('agent-token.shared-app-fga-check-failed', {
+            siteId: body.siteId,
+            customerId: user.customerId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          // Fail closed on FGA error — don't grant permissions we can't verify
+          canPublish = false;
+          canDownload = false;
+        }
+      } else {
+        // No FGA config or venture id — can't verify, fail closed
+        canPublish = false;
+        canDownload = false;
+      }
     }
 
     // Three-lever BMS migration check (see checkBmsMigration for details)
@@ -522,6 +674,34 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       return validationError;
     }
 
+    // Resolve (or lazily create) the app's team venture WITHOUT mutating the
+    // shared siteInfo — build a copy so downstream reads (FGA enforce, isOwner)
+    // see the venture without an in-place mutation crossing this boundary.
+    const createdVentureId =
+      siteInfo?.team_venture_id
+        ? undefined
+        : await ensureAppTeamVenture({
+            request,
+            siteId: body.siteId,
+            customerId: user.customerId,
+            jwt: authContext.jwt || '',
+            siteInfo,
+          });
+    const resolvedSiteInfo =
+      createdVentureId && siteInfo
+        ? { ...siteInfo, team_venture_id: createdVentureId }
+        : siteInfo;
+
+    const fgaDeny = await enforceAabMultiUserCanBuild({
+      request,
+      siteId: body.siteId,
+      customerId: user.customerId,
+      siteInfo: resolvedSiteInfo,
+    });
+    if (fgaDeny) {
+      return fgaDeny;
+    }
+
     const jwtStart = Date.now();
     const jwtService = getJWTService();
     const product = body.owningProduct || AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER;
@@ -561,6 +741,9 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       canDownload,
       canPublish,
       canPurchaseDomain,
+      ...(typeof resolvedSiteInfo?.owner_customer_id === 'string'
+        ? { isOwner: resolvedSiteInfo.owner_customer_id === user.customerId }
+        : {}),
       authType: user.authType || 'basic',
       isE2S: user.isE2S ?? false,
       useTestBudget,
@@ -611,9 +794,16 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     return NextResponse.json(response);
 
   } catch (error) {
+    // Log server-side (a failure before any sub-logger fires would otherwise
+    // produce a 500 with no log line) and return a GENERIC detail — the raw
+    // message can carry internal FGA / mgmt-airo error text we don't echo to clients.
+    logger.error('agent-token.unhandled-error', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return NextResponse.json({
       error: 'Token creation failed',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: 'An unexpected error occurred. Please try again.'
     }, { status: 500 });
   }
 });

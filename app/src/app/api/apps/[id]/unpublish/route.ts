@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { enforceAabMultiUserVentureRelation } from '@/lib/authz-fga/enforce-venture-relation';
+import { resolveMultiUserFlag } from '@/lib/authz-fga/multi-user-flag';
+import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { DomainStatus, DomainType } from '@/lib/control-plane/types';
 import {
@@ -93,13 +96,26 @@ export const POST = withCustomerAuth(async (
 
     // Get site from control plane adapter (handles auth and ownership)
     const adapter = getControlPlaneAdapter();
-    const site = await adapter.getSite(siteId, authContext.jwt);
+    const multiUserEnabled = await resolveMultiUserFlag(request);
+    const site = await adapter.getSite(siteId, authContext.jwt, undefined, { multiUserEnabled });
 
     if (!site) {
       return NextResponse.json(
         { error: 'Site not found' },
         { status: 404 }
       );
+    }
+
+    const unpublishDeny = await enforceAabMultiUserVentureRelation({
+      request,
+      siteId,
+      customerId: user.customerId,
+      siteInfo: site,
+      relation: AUTHZ_FGA_RELATIONS.canPublish,
+      forbiddenMessage: 'You do not have permission to unpublish this app.',
+    });
+    if (unpublishDeny) {
+      return unpublishDeny;
     }
 
     logger.info('unpublish.api.start', {

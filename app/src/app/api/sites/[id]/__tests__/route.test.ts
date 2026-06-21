@@ -13,29 +13,45 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   mockGetSite,
+  mockDeleteSite,
+  mockEnforce,
   mockAgentFetch,
   mockLogger,
 } = vi.hoisted(() => ({
   mockGetSite: vi.fn(),
+  mockDeleteSite: vi.fn(),
+  mockEnforce: vi.fn(),
   mockAgentFetch: vi.fn(),
   mockLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
 vi.mock('@/lib/control-plane', () => ({
-  getControlPlaneAdapter: vi.fn(function () { return { getSite: mockGetSite }; }),
+  getControlPlaneAdapter: vi.fn(function () { return { getSite: mockGetSite, deleteSite: mockDeleteSite }; }),
 }));
 vi.mock('@/lib/agent-fetch', () => ({ agentFetch: mockAgentFetch }));
 vi.mock('@/lib/request-context', () => ({ logger: mockLogger }));
+vi.mock('@/lib/switchboard/server', () => ({
+  checkSwitchboardFlag: vi.fn().mockResolvedValue(false),
+  checkSwitchboardValue: vi.fn().mockResolvedValue(null),
+  checkSwitchboardObject: vi.fn().mockResolvedValue(null),
+}));
+vi.mock('@/lib/authz-fga/multi-user-flag', () => ({
+  resolveMultiUserFlag: vi.fn().mockResolvedValue(false),
+}));
+vi.mock('@/lib/authz-fga/enforce-venture-relation', () => ({
+  enforceAabMultiUserVentureRelation: mockEnforce,
+}));
 
 vi.mock('@/lib/customer-auth', () => ({
   withCustomerAuth: (handler: any) => async (request: NextRequest, ...args: any[]) =>
-    handler(request, { isAuthenticated: true, jwt: 'test-jwt', user: {} }, ...args),
+    handler(request, { isAuthenticated: true, jwt: 'test-jwt', user: { customerId: 'cust-1' } }, ...args),
   customerHasAccount: vi.fn(function () { return true; }),
-  createCustomerAuthError: vi.fn(),
+  createCustomerAuthError: vi.fn((message: string, status: number) =>
+    new Response(JSON.stringify({ error: message }), { status })),
 }));
 
 import { __clearTokenCacheForTesting } from '@/lib/share/inject-preview-token';
-import { GET } from '../route';
+import { DELETE, GET } from '../route';
 
 const APP_ID = 'app-123';
 const AGENT_URL = 'https://agent.test';
@@ -563,5 +579,38 @@ describe('GET /api/sites/[id] — preview_url airoShareToken injection', () => {
       'share.previewUrl.mint.alreadyActive',
       expect.objectContaining({ appId: APP_ID }),
     );
+  });
+});
+
+describe('DELETE /api/sites/[id] — FGA delete gate', () => {
+  function deleteRequest(): NextRequest {
+    return new NextRequest(`https://airo.test/api/sites/${APP_ID}`, { method: 'DELETE' });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockEnforce.mockResolvedValue(null);
+    mockGetSite.mockResolvedValue({ id: APP_ID, team_venture_id: 'v1', owner_customer_id: 'owner-9' });
+    mockDeleteSite.mockResolvedValue({ success: true });
+  });
+
+  it('returns the deny response and does NOT delete when the FGA delete gate denies', async () => {
+    mockEnforce.mockResolvedValue(new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 }));
+
+    const res = await DELETE(deleteRequest(), { params });
+
+    expect(res.status).toBe(403);
+    expect(mockEnforce).toHaveBeenCalledTimes(1);
+    expect(mockDeleteSite).not.toHaveBeenCalled();
+  });
+
+  it('proceeds to delete when the FGA delete gate allows (null)', async () => {
+    mockEnforce.mockResolvedValue(null);
+
+    const res = await DELETE(deleteRequest(), { params });
+
+    expect(res.status).toBe(200);
+    expect(mockEnforce).toHaveBeenCalledTimes(1);
+    expect(mockDeleteSite).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,5 +1,6 @@
 import { isGrantsHoldoutParticipant, logBmsLaunchAATriggered, logGrantsHoldoutTriggered } from '@/lib/budget-service-experiment';
-import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, AiroMgmtClient, extractKatanaVersion, getOwnerProductFromProductId } from '@/lib/mgmt-airo';
+import { AIRO_OWNER_PRODUCTS, AIRO_PRODUCT_IDS, AiroHttpError, AiroMgmtClient, extractKatanaVersion, getOwnerProductFromProductId } from '@/lib/mgmt-airo';
+import type { AiroApp } from '@/lib/mgmt-airo/types';
 import { logger } from '@/lib/request-context';
 import { checkSwitchboardFlag } from '@/lib/switchboard/server';
 import { getDatacenterFromMarketId } from '@/lib/utils/dc-mapping';
@@ -13,6 +14,23 @@ import gasket from '../../../gasket.ts';
  * ID length constants for distinguishing job IDs from app IDs
  */
 const APP_ID_LENGTH = 10; // App IDs are exactly 10 chars (nanoId format)
+
+/**
+ * Owned-app entries always win over shared-app entries with the same app id.
+ * Owners of an app appear in their own owned list AND in any FGA `airo_app_*`
+ * tuple they wrote on themselves; we only want to surface the owned record so
+ * the UI doesn't tag their own apps as "shared with you".
+ */
+function mergeOwnedAndSharedSites(
+  ownedSites: readonly SiteInfo[],
+  sharedSites: readonly SiteInfo[]
+): SiteInfo[] {
+  const ownedIds = new Set(ownedSites.map((s) => s.id));
+  return [
+    ...ownedSites,
+    ...sharedSites.filter((s) => s.id && !ownedIds.has(s.id)),
+  ];
+}
 
 /**
  * Transform backend variants to SiteVariant format
@@ -62,14 +80,62 @@ function hasPublishVariant(variants: unknown): boolean {
   });
 }
 
+function teamVentureFromVariables(variables: unknown): string | undefined {
+  if (!variables || typeof variables !== 'object') {
+    return undefined;
+  }
+  const v = variables as Record<string, unknown>;
+  const raw = v.aabTeamVentureId ?? v.aab_team_venture_id ?? v.teamVentureId;
+  return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
+}
+
+function ownerCustomerFromApp(app: MgmtAppRecord): string | undefined {
+  // mgmt-airo's app object does not carry customerId at any level — the customer
+  // lives at the subscription level (subscription -> system -> app). The local
+  // control plane DOES inline `customerId` for convenience. Read app-level fields
+  // first so the local path keeps working unchanged; the v2 adapter falls back to
+  // the subscription-derived `customerId` parameter at the call site below.
+  const raw = app.customerId ?? app.ownerCustomerId ?? app.accountId;
+  if (typeof raw === 'string' && raw.length > 0) {
+    return raw;
+  }
+  return undefined;
+}
+
 /**
  * V2 Control Plane Adapter
  *
  * Uses mgmt-airo + mgmt-hosting APIs via AiroMgmtClient.
  * During creation, returns temporary jobId which transitions to permanent appId once ready.
  */
+/**
+ * Shape of a single app record as returned by mgmt-airo / mgmt-hosting and
+ * consumed by {@link V2ControlPlaneAdapter.mapAppToSiteInfo}. Extends the base
+ * {@link AiroApp} with the hosting-enriched fields the mapping reads that aren't
+ * on the base type (custom domains, ceph infra, the nested system object, and
+ * the composition id). All additions are optional, so any `AiroApp` is assignable.
+ */
+interface MgmtAppRecord extends AiroApp {
+  domains?: SiteDomain[];
+  infrastructure?: { cephMountId?: string; cephDirNumber?: string };
+  system?: { ownerProduct?: string; productId?: string };
+  compositionId?: string;
+  // Owner fields the local control plane inlines for convenience (absent on the
+  // real mgmt-airo response — see ownerCustomerFromApp). Read opportunistically.
+  customerId?: string;
+  ownerCustomerId?: string;
+  accountId?: string;
+}
+
 export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
   private mgmtAiroBaseUrl: string;
+  // Per-instance memo of the caller's shared-apps list, keyed by customerId.
+  // A single getSite/appExists cascade asks for this list several times
+  // (appExists fallback, getSite outer catch, reconcileSharedOwnership); without
+  // memoization each is a fresh GET /customers/me/shared-apps. The adapter is
+  // created fresh per getControlPlaneAdapter() call, so this never leaks across
+  // requests. Stores the in-flight promise so concurrent callers share one fetch.
+  private sharedSitesMemo = new Map<string, Promise<SiteInfo[]>>();
 
   constructor() {
     this.mgmtAiroBaseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
@@ -413,23 +479,26 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
    * Note: only queries AAB apps via subscription cache. Non-AAB owningProduct
    * falls back to getSite() for full cross-product search.
    */
-  async appExists(siteId: string, jwt: string, owningProduct?: string): Promise<boolean> {
+  async appExists(siteId: string, jwt: string, owningProduct?: string, multiUserEnabled?: boolean): Promise<boolean> {
     try {
       const customerId = extractCustomerId(jwt);
       if (!customerId) {
         return false;
       }
 
-      // Non-AAB products require full search — fall back to getSite()
+      // Non-AAB products require full search — fall back to getSite() (which
+      // already includes the shared-apps fallback for invited users).
       const shouldSkipCache = owningProduct && owningProduct !== AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER;
       if (shouldSkipCache) {
-        const site = await this.getSite(siteId, jwt, owningProduct);
+        const site = await this.getSite(siteId, jwt, owningProduct, { multiUserEnabled });
         return site !== null;
       }
 
       const subscriptionCache = useSubscriptionCacheStore.getState();
 
-      // Initialize cache on first use (cold BFF)
+      // Initialize cache on first use (cold BFF). Throws for invited users
+      // with no AAB subscription — caught by the outer try/catch which
+      // delegates to the shared-app fallback below.
       if (!subscriptionCache.customerId) {
         await subscriptionCache.initialize(jwt);
       }
@@ -449,7 +518,9 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         if (retryLocation) {
           return true;
         }
-        return false;
+        // Caller has an AAB subscription but no matching app in their
+        // tree — could still have access via the multi-user invite flow.
+        return await this.appExistsViaSharedApps(siteId, jwt, multiUserEnabled);
       }
 
       // Non-APP_ID_LENGTH: try job lookup (apps still being created)
@@ -461,20 +532,49 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         return true;
       }
 
-      return false;
+      return await this.appExistsViaSharedApps(siteId, jwt, multiUserEnabled);
     } catch (error: any) {
       if (error.status === 401) {
         throw error;
       }
+      // Most common case here: invited user with no AAB subscription —
+      // subscriptionCache.initialize threw because mgmt-airo /customers/me
+      // 404'd. Don't return false yet; check the shared-apps listing. (Without
+      // this the agent-token route returns 404 even when the invitee is a
+      // collaborator on the app, breaking the open-app flow.)
+      logger.warn('v2-control-plane.app-exists.outer-catch-shared-fallback', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      try {
+        const exists = await this.appExistsViaSharedApps(siteId, jwt, multiUserEnabled);
+        if (exists) return true;
+      } catch (fallbackError) {
+        logger.warn('v2-control-plane.app-exists.shared-fallback-also-failed', {
+          siteId,
+          error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+        });
+      }
       logger.error('v2-control-plane.app-exists.error', {
         siteId,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
       return false;
     }
   }
 
-  async getSite(siteId: string, jwt: string, owningProduct?: string, options?: { includeCdn?: boolean }): Promise<SiteInfo | null> {
+  /**
+   * Lightweight equivalent of `tryGetSharedSite` for `appExists` — returns true
+   * iff the caller collaborates on `siteId` (per mgmt-airo's shared-apps
+   * listing), without bothering to build the full SiteInfo.
+   */
+  private async appExistsViaSharedApps(siteId: string, jwt: string, multiUserEnabled?: boolean): Promise<boolean> {
+    const site = await this.tryGetSharedSite(siteId, jwt, multiUserEnabled);
+    return site !== null;
+  }
+
+  async getSite(siteId: string, jwt: string, owningProduct?: string, options?: { includeCdn?: boolean; multiUserEnabled?: boolean }): Promise<SiteInfo | null> {
+    const multiUserEnabled = options?.multiUserEnabled;
     try {
       const customerId = extractCustomerId(jwt);
       if (!customerId) {
@@ -515,7 +615,11 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
             );
 
             if (result) {
-              return result;
+              // The cache/tree can contain an app the caller only collaborates on
+              // (not owns); directAppLookup stamps owner=caller + no sharedWithMe.
+              // Reconcile against shared-apps so an invitee's single-app getSite
+              // matches the list path (owner-pays paywall bypass + FGA perms).
+              return this.reconcileSharedOwnership(result, jwt, customerId, multiUserEnabled);
             }
           } catch (error) {
             logger.warn('v2-control-plane.get-site.cache-lookup-failed', {
@@ -542,7 +646,7 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
             );
 
             if (result) {
-              return result;
+              return this.reconcileSharedOwnership(result, jwt, customerId, multiUserEnabled);
             }
           } catch (error) {
             logger.warn('v2-control-plane.get-site.refreshed-cache-lookup-failed', {
@@ -579,7 +683,11 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
         if (error.message?.includes('Rate limited')) {
           throw error;
         }
-        return null;
+        // No mgmt-airo customer record (most commonly an invited user who's
+        // never created their own AAB app). Fall through to shared-app
+        // index — they may have FGA `airo_app_view` on a venture that maps
+        // to this app. Returns null if that lookup also misses.
+        return this.tryGetSharedSite(siteId, jwt, multiUserEnabled);
       }
 
       // Use ownerProduct for forward compatibility
@@ -618,33 +726,54 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
             // Fetch full app details to get variables (including initialPrompt)
             try {
               const fullApp = await client.getApp(sub.id, match.system.id, match.app.id, options?.includeCdn);
-              return this.mapAppToSiteInfo(fullApp, customerId);
+              return this.reconcileSharedOwnership(this.tagSharedOwnership(this.mapAppToSiteInfo(fullApp, customerId), sub.customerId, customerId), jwt, customerId, multiUserEnabled);
             } catch (fetchError) {
               logger.warn('v2-control-plane.get-site.full-app-fetch-failed', {
                 siteId,
                 error: fetchError instanceof Error ? fetchError.message : 'Unknown error'
               });
-              return this.mapAppToSiteInfo(match.app, customerId);
+              return this.reconcileSharedOwnership(this.tagSharedOwnership(this.mapAppToSiteInfo(match.app, customerId), sub.customerId, customerId), jwt, customerId, multiUserEnabled);
             }
           }
         }
       }
 
-      return null;
+      // Caller has an AAB customer record but doesn't own this app. Could
+      // still have it via the multi-user invite flow — check the shared-apps listing.
+      return this.tryGetSharedSite(siteId, jwt, multiUserEnabled);
     } catch (error: any) {
       // Re-throw 401 for auth redirect
       if (error.status === 401) {
         throw error;
       }
+      // Anything else thrown inside the try block (most commonly:
+      // `subscriptionCache.initialize(jwt)` 404/403-ing for an invited user
+      // with no AAB customer record, before we reach the explicit
+      // tryGetSharedSite call after the full-search section). Don't give up
+      // here — try the shared-app fallback once more before returning null,
+      // so invited users opening a shared app actually get a SiteInfo.
+      logger.warn('v2-control-plane.get-site.outer-catch-shared-fallback', {
+        siteId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      try {
+        const sharedSite = await this.tryGetSharedSite(siteId, jwt, multiUserEnabled);
+        if (sharedSite) return sharedSite;
+      } catch (fallbackError) {
+        logger.warn('v2-control-plane.get-site.shared-fallback-also-failed', {
+          siteId,
+          error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+        });
+      }
       logger.error('v2-control-plane.get-site.error', {
         siteId,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
       return null;
     }
   }
 
-  async listSites(jwt: string): Promise<SiteInfo[]> {
+  async listSites(jwt: string, multiUserEnabled?: boolean): Promise<SiteInfo[]> {
     try {
       const customerId = extractCustomerId(jwt);
       if (!customerId) {
@@ -652,10 +781,56 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       }
 
       const client = this.createClient(jwt);
-      const apps = await client.getAllAppsForCustomer(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER);
-      const sites = apps.map(app => this.mapAppToSiteInfo(app, customerId));
 
-      return sites.sort((a, b) => {
+      // Owned apps (mgmt-airo `/customers/me/apps`) and shared apps
+      // (`/customers/me/shared-apps`) run in parallel. Each side is wrapped in its own
+      // .catch so a failure on one side never zeroes out the other:
+      //   - Owned: an invited user has no AAB subscription in mgmt-airo, so
+      //     `/customers/me/apps?ownerProduct=AiroAppBuilder` returns 404/403
+      //     and the client throws AiroHttpError. Without this catch, the
+      //     Promise.all rejects, the outer try/catch returns [], and the
+      //     invited user sees nothing on /apps even though they have shared
+      //     apps. Treat 404/403 as "no owned apps" and let shared flow
+      //     through. 401 still bubbles up for SSO redirect.
+      //   - Shared: any FGA / Postgres failure shouldn't kill the owner's
+      //     listing either.
+      // See docs/multi-user-shared-app-listing.md.
+      const [ownedApps, sharedSites] = await Promise.all([
+        client
+          .getAllAppsForCustomer(AIRO_OWNER_PRODUCTS.AIRO_APP_BUILDER)
+          .catch((err) => {
+            if (err instanceof AiroHttpError && err.status === 401) {
+              throw err; // SSO redirect — preserve existing behavior
+            }
+            if (
+              err instanceof AiroHttpError &&
+              (err.status === 403 || err.status === 404)
+            ) {
+              logger.info('v2-control-plane.list-sites.no-aab-subscription', {
+                status: err.status,
+                customerId,
+              });
+              return [] as AiroApp[];
+            }
+            logger.warn('v2-control-plane.list-sites.owned-fetch-failed', {
+              error: err instanceof Error ? err.message : String(err),
+              status: err instanceof AiroHttpError ? err.status : undefined,
+            });
+            return [] as AiroApp[];
+          }),
+        this.listSharedSites(jwt, multiUserEnabled).catch((err) => {
+          logger.warn('v2-control-plane.list-shared-sites.failed', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return [] as SiteInfo[];
+        }),
+      ]);
+
+      const ownedSites = ownedApps.map(app => this.mapAppToSiteInfo(app, customerId));
+
+      const merged = mergeOwnedAndSharedSites(ownedSites, sharedSites);
+
+      return merged.sort((a, b) => {
         const updatedA = new Date(a.updated_at).getTime();
         const updatedB = new Date(b.updated_at).getTime();
         const updatedDiff = updatedB - updatedA;
@@ -676,6 +851,105 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       });
       return [];
     }
+  }
+
+  /**
+   * Build SiteInfo[] for apps the caller collaborates on but doesn't own, via
+   * mgmt-airo's `GET /customers/me/shared-apps` (backed by airo_app_collaborators).
+   * The collaborator row already carries (subscriptionId, appId), so mgmt-airo
+   * enriches each app server-side and stamps the real `ownerCustomerId`.
+   *
+   * Each returned SiteInfo has `sharedWithMe: true`. Returns [] when the feature
+   * is off, the JWT yields no customer, or the endpoint reports no shared apps.
+   */
+  private async listSharedSites(jwt: string, multiUserEnabled?: boolean): Promise<SiteInfo[]> {
+    // Hard gate: when the caller resolved `aab-multi-user` to false, skip the
+    // shared-app lookup entirely. Keeps the feature fully inert for the GA
+    // population while the flag is off. `undefined` preserves prior behavior.
+    if (multiUserEnabled === false) {
+      return [];
+    }
+
+    const customerId = extractCustomerId(jwt);
+    if (!customerId) {
+      return [];
+    }
+
+    // Reuse an in-flight/resolved fetch for this customer within this request-
+    // scoped adapter instance (see sharedSitesMemo). On failure we drop the memo
+    // entry so a later call can retry rather than replay a stale rejection.
+    const memoized = this.sharedSitesMemo.get(customerId);
+    if (memoized) {
+      return memoized;
+    }
+    const promise = this.fetchSharedSites(jwt, customerId).catch((err) => {
+      this.sharedSitesMemo.delete(customerId);
+      throw err;
+    });
+    this.sharedSitesMemo.set(customerId, promise);
+    return promise;
+  }
+
+  private async fetchSharedSites(jwt: string, customerId: string): Promise<SiteInfo[]> {
+    try {
+      const sharedApps = await this.createClient(jwt).getSharedAppsForCustomer();
+      return sharedApps.map<SiteInfo>((app) => {
+        const site = this.mapAppToSiteInfo(app, customerId);
+        // mapAppToSiteInfo doesn't set sharedWithMe; the endpoint already stamps
+        // the real ownerCustomerId, so owner_customer_id is the owner (not the
+        // caller) — preserving the FGA-bypass distinction in enforce checks.
+        site.sharedWithMe = true;
+        return site;
+      });
+    } catch (err) {
+      if (err instanceof AiroHttpError && err.status === 401) {
+        throw err; // SSO redirect — preserve existing behavior
+      }
+      logger.warn('v2-control-plane.list-shared-sites.fetch-failed', {
+        customerId,
+        status: err instanceof AiroHttpError ? err.status : undefined,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    }
+  }
+
+  /**
+   * Single-app fallback for `getSite`: resolve a `SiteInfo` for an app the
+   * caller collaborates on but can't see via mgmt-airo's owned (`/me`) listing
+   * (typically an invited user). Delegates to `listSharedSites` (mgmt-airo
+   * `GET /customers/me/shared-apps`) and filters to the requested appId, so the
+   * caller can only resolve apps they actually collaborate on.
+   *
+   * Returns null when the JWT yields no customerId, the feature is off, or the
+   * app isn't in the caller's shared-apps list.
+   */
+  private async tryGetSharedSite(siteId: string, jwt: string, multiUserEnabled?: boolean): Promise<SiteInfo | null> {
+    // Hard gate: skip entirely when aab-multi-user resolved to false.
+    if (multiUserEnabled === false) {
+      return null;
+    }
+
+    const customerId = extractCustomerId(jwt);
+    if (!customerId) {
+      logger.info('v2-control-plane.try-get-shared-site.skip-no-customer', { siteId });
+      return null;
+    }
+
+    // Delegate entirely to listSharedSites — the single source of truth for the
+    // caller's shared apps (mgmt-airo /customers/me/shared-apps). We filter its
+    // results to the requested siteId instead of duplicating the lookup.
+    const sharedSites = await this.listSharedSites(jwt, multiUserEnabled);
+    const site = sharedSites.find((s) => s.id === siteId) ?? null;
+
+    logger.info('v2-control-plane.try-get-shared-site.list-result', {
+      siteId,
+      customerId,
+      sharedCount: sharedSites.length,
+      found: site !== null,
+    });
+
+    return site;
   }
 
   /**
@@ -1237,7 +1511,86 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
    * @param app - App data from mgmt-hosting
    * @param customerId - Customer ID from subscription cache (defaults to 'customer' if not provided)
    */
-  private mapAppToSiteInfo(app: any, customerId?: string): SiteInfo {
+
+  /**
+   * Correct ownership on an owned-path SiteInfo. mgmt-airo's `/subscriptions`
+   * listing returns subscriptions the caller can ACCESS (including ones they only
+   * collaborate on), so the full-search can resolve an app the caller doesn't own.
+   * mapAppToSiteInfo then defaults `owner_customer_id` to the caller — wrongly
+   * marking a collaborator as the owner. The subscription's `customerId` is the
+   * REAL owner: when it isn't the caller, this is a shared app — stamp the real
+   * owner and `sharedWithMe` so the owner-pays paywall bypass and listing work.
+   */
+  private tagSharedOwnership(
+    site: SiteInfo,
+    subscriptionOwnerId: string | undefined,
+    callerCustomerId: string
+  ): SiteInfo {
+    if (subscriptionOwnerId && subscriptionOwnerId !== callerCustomerId) {
+      site.owner_customer_id = subscriptionOwnerId;
+      site.sharedWithMe = true;
+    }
+    return site;
+  }
+
+  /**
+   * Safety net for the full-search path. `tagSharedOwnership` relies on the
+   * subscription's `customerId` being the REAL owner; if mgmt-airo returns the
+   * collaborator-accessed subscription without that owner (or equal to the
+   * caller), the tag can't fire and a shared app comes back stamped as
+   * caller-owned with `sharedWithMe` unset — which wrongly runs the owner
+   * paywall on publish (loading the plans bundle, which then crashes) and skips
+   * FGA enforcement. The authoritative source is mgmt-airo's shared-apps listing
+   * (`/customers/me/shared-apps`, backed by `airo_app_collaborators`), which
+   * carries the real owner and `sharedWithMe: true`. When a resolved site still
+   * looks caller-owned and isn't yet flagged shared, reconcile against it. A
+   * genuine owner's app isn't in their shared-apps list, so this is a no-op for
+   * them; fully inert when `aab-multi-user` is off.
+   */
+  private async reconcileSharedOwnership(
+    site: SiteInfo,
+    jwt: string,
+    callerCustomerId: string,
+    multiUserEnabled?: boolean
+  ): Promise<SiteInfo> {
+    // Only run the shared-ownership safety net when the caller explicitly
+    // resolved aab-multi-user to true. When it's undefined (route didn't resolve
+    // the flag) we skip — an owner viewing their own app never appears in their
+    // own shared-apps list, so firing listSharedSites here just adds latency to
+    // every owned-path getSite for no behavioral change.
+    if (multiUserEnabled !== true || site.sharedWithMe || site.owner_customer_id !== callerCustomerId) {
+      return site;
+    }
+    try {
+      const shared = await this.tryGetSharedSite(site.id, jwt, multiUserEnabled);
+      if (shared) {
+        logger.info('v2-control-plane.reconcile-shared-ownership.tagged', {
+          siteId: site.id,
+          owner: shared.owner_customer_id,
+        });
+        return shared;
+      }
+    } catch (error) {
+      // Fail CLOSED. mapAppToSiteInfo optimistically stamps owner_customer_id =
+      // caller, and reconcile is the step that corrects a mis-stamped shared app
+      // to its real owner. If the shared-apps lookup throws (FGA/mgmt-airo
+      // timeout, 5xx, OAuth failure) we cannot confirm ownership — returning the
+      // caller-owned stamp would trigger the owner-bypass in
+      // enforceAabMultiUserVentureRelation for an actual collaborator. Clear
+      // owner_customer_id so downstream authz defers to FGA (the authoritative
+      // source): a real owner still passes via the venture `owner` tuple; an
+      // unverifiable caller is denied. Matches the fail-closed posture of the
+      // sibling read paths.
+      logger.warn('v2-control-plane.reconcile-shared-ownership.fail-closed', {
+        siteId: site.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { ...site, owner_customer_id: undefined };
+    }
+    return site;
+  }
+
+  private mapAppToSiteInfo(app: MgmtAppRecord, customerId?: string): SiteInfo {
     // Use URLs from V2 response if available, otherwise construct them as fallback
     let agent_url: string | undefined;
     let preview_url: string | undefined;
@@ -1297,6 +1650,8 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
       name: app.variables?.title || app.id,
       status: this.mapAppStatus(app.status),
       account_id: customerId || 'customer', // Use provided customerId or fallback to 'customer'
+      team_venture_id: teamVentureFromVariables(app.variables),
+      owner_customer_id: ownerCustomerFromApp(app) ?? customerId,
       initial_prompt,
       fqdn,
       agent_url,
@@ -1596,11 +1951,15 @@ export class V2ControlPlaneAdapter implements IControlPlaneAdapter {
     appId: string,
     sourceVariant: 'preview' | 'publish',
     destinationVariant: 'preview' | 'publish',
-    jwt: string
+    jwt: string,
+    multiUserEnabled?: boolean
   ): Promise<SecretsDiffResult> {
     try {
       const client = this.createClient(jwt);
-      const site = await this.getSite(appId, jwt);
+      // Thread the multi-user flag so a shared (invited) app resolves via the
+      // shared-apps listing; without it this internal re-fetch returns no site for
+      // invited users and we'd throw "missing system/subscription IDs" (500).
+      const site = await this.getSite(appId, jwt, undefined, { multiUserEnabled });
 
       if (!site || !site.system_id || !site.subscription_id) {
         logger.warn('v2-control-plane.get-secrets.missing-ids', {

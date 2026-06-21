@@ -5,16 +5,18 @@
  * authorization, and site ownership validation.
  */
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
+import { SubscriptionPlan } from '@/types/credits';
 import { POST } from '../route';
 import { clearSiteValidationCache } from '../site-validation-cache';
 
 /**
  * Mock dependencies using vi.hoisted to avoid hoisting issues
  */
-const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockCheckSwitchboardFlag, mockCheckSwitchboardValue, mockMgmtClient, mockGetExperimentCohorts, mockLogger } = vi.hoisted(function setup() {
+const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockCheckSwitchboardFlag, mockCheckSwitchboardValue, mockMgmtClient, mockEnforceAabMultiUserCanBuild, mockGetExperimentCohorts, mockLogger, mockFgaListObjects } = vi.hoisted(function setup() {
   return {
     mockJWTService: {
       getToken: vi.fn(),
@@ -28,11 +30,41 @@ const { mockJWTService, mockAuthenticateCustomer, mockControlPlaneAdapter, mockC
     mockCheckSwitchboardFlag: vi.fn(),
     mockCheckSwitchboardValue: vi.fn(),
     mockMgmtClient: {
-      getSubscription: vi.fn()
+      getSubscription: vi.fn(),
+      getApps: vi.fn()
     },
+    mockEnforceAabMultiUserCanBuild: vi.fn().mockResolvedValue(null),
     mockGetExperimentCohorts: vi.fn(),
-    mockLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    mockLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    mockFgaListObjects: vi.fn()
   };
+});
+
+vi.mock('@/lib/authz-fga/enforce-can-build', function mockEnforceCanBuild() {
+  return {
+    enforceAabMultiUserCanBuild: mockEnforceAabMultiUserCanBuild
+  };
+});
+
+vi.mock('@/lib/authz-fga/ensure-app-venture', function mockEnsureAppVenture() {
+  return {
+    ensureAppTeamVenture: vi.fn().mockResolvedValue(null)
+  };
+});
+
+/**
+ * Mock FGA primitives used by the sharedWithMe (collaborator) paywall branch.
+ */
+vi.mock('@/lib/authz-fga/list-objects', function mockListObjects() {
+  return { listObjects: mockFgaListObjects };
+});
+
+vi.mock('@/lib/authz-fga/oauth-token', function mockOauthToken() {
+  return { getAuthzFgaAccessToken: vi.fn().mockResolvedValue('fga-access-token') };
+});
+
+vi.mock('@/lib/authz-fga/config', function mockAuthzFgaConfig() {
+  return { getAuthzFgaConfig: vi.fn().mockReturnValue({ apiUrl: 'https://fga.example', storeId: 'store-1' }) };
 });
 
 /**
@@ -205,6 +237,9 @@ describe('agent-token', function packageTests() {
       mockGetExperimentCohorts.mockResolvedValue({});
       mockControlPlaneAdapter.appExists.mockResolvedValue(true);
       mockMgmtClient.getSubscription.mockResolvedValue({ bmsBudgetId: null });
+      mockMgmtClient.getApps.mockResolvedValue([]);
+      mockFgaListObjects.mockResolvedValue([]);
+      mockControlPlaneAdapter.getSite.mockResolvedValue({});
       mockJWTService.getToken.mockResolvedValue({
         token: MOCK_JWT_TOKEN,
         expires: MOCK_TOKEN_EXPIRES
@@ -213,6 +248,7 @@ describe('agent-token', function packageTests() {
         token: MOCK_JWT_TOKEN,
         expires: MOCK_TOKEN_EXPIRES
       });
+      mockEnforceAabMultiUserCanBuild.mockResolvedValue(null);
     });
 
     it('should create agent token for authenticated user with valid site', async function createToken() {
@@ -236,7 +272,7 @@ describe('agent-token', function packageTests() {
         type: 'jwt',
         budgetServiceEnabled: false,
       });
-      expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledWith(MOCK_SITE_ID, 'user-jwt-token', 'AiroAppBuilder');
+      expect(mockControlPlaneAdapter.appExists).toHaveBeenCalledWith(MOCK_SITE_ID, 'user-jwt-token', 'AiroAppBuilder', false);
       expect(mockJWTService.getToken).toHaveBeenCalledWith({
         siteId: MOCK_SITE_ID,
         customerId: 'customer-789',
@@ -270,6 +306,49 @@ describe('agent-token', function packageTests() {
         purchaseIntentClassifierEnabled: false,
         skillSuggestionsEnabled: false,
       });
+    });
+
+    it('returns 403 when multi-user FGA gate denies', async function fgaDeny() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+      mockEnforceAabMultiUserCanBuild.mockResolvedValue(
+        NextResponse.json({ error: 'Forbidden', message: 'no builder' }, { status: 403 })
+      );
+
+      const request = createMockRequest({ siteId: MOCK_SITE_ID });
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error).toBe('Forbidden');
+      expect(mockJWTService.getToken).not.toHaveBeenCalled();
+    });
+
+    it('passes isOwner true when hosting owner matches customer', async function ownerClaim() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+      mockControlPlaneAdapter.getSite.mockResolvedValue({
+        id: MOCK_SITE_ID,
+        subscription_id: 'sub-123',
+        owner_customer_id: 'customer-789',
+      });
+
+      const request = createMockRequest({ siteId: MOCK_SITE_ID });
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      expect(mockJWTService.getToken).toHaveBeenCalledWith(
+        expect.objectContaining({
+          siteId: MOCK_SITE_ID,
+          customerId: 'customer-789',
+          isOwner: true,
+        })
+      );
     });
 
     it('should reject unauthenticated requests', async function rejectUnauth() {
@@ -365,9 +444,10 @@ describe('agent-token', function packageTests() {
       const data = await response.json();
 
       expect(response.status).toBe(500);
+      // Generic detail (internal error text is logged server-side, not echoed).
       expect(data).toEqual({
         error: 'Token creation failed',
-        details: 'Control plane connection failed'
+        details: 'An unexpected error occurred. Please try again.'
       });
     });
 
@@ -388,7 +468,7 @@ describe('agent-token', function packageTests() {
       expect(response.status).toBe(500);
       expect(data).toEqual({
         error: 'Token creation failed',
-        details: 'JWT generation failed'
+        details: 'An unexpected error occurred. Please try again.'
       });
     });
 
@@ -1392,6 +1472,107 @@ describe('agent-token', function packageTests() {
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
           expect.objectContaining({ budgetServiceEnabled: true, bmsBudgetId: 'budget-123' })
         );
+      });
+    });
+
+    describe('sharedWithMe owner-pays gate', function ownerPaysTests() {
+      const SHARED_SITE = {
+        sharedWithMe: true,
+        team_venture_id: 'venture-1',
+        subscription_id: 'owner-sub-1',
+        owner_customer_id: 'owner-1',
+      };
+
+      function grantFga(grants: { publish?: boolean; download?: boolean }) {
+        mockFgaListObjects.mockImplementation((_cfg: unknown, _token: unknown, opts: { relation: string }) => {
+          if (opts.relation === AUTHZ_FGA_RELATIONS.canPublish) {
+            return Promise.resolve(grants.publish ? ['venture-1'] : []);
+          }
+          if (opts.relation === AUTHZ_FGA_RELATIONS.canDownload) {
+            return Promise.resolve(grants.download ? ['venture-1'] : []);
+          }
+          return Promise.resolve([]);
+        });
+      }
+
+      async function mintedPerms() {
+        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
+        expect(response.status).toBe(200);
+        return mockJWTService.getToken.mock.calls[0][0];
+      }
+
+      beforeEach(function authAsCollaborator() {
+        mockAuthenticateCustomer.mockResolvedValue({
+          isAuthenticated: true,
+          user: MOCK_USER,
+          jwt: 'collaborator-jwt',
+        });
+        mockControlPlaneAdapter.getSite.mockResolvedValue({ ...SHARED_SITE });
+      });
+
+      it('blocks publish + download when the owner is on a FREE plan, even with the FGA grants', async function freeOwner() {
+        grantFga({ publish: true, download: true });
+        mockMgmtClient.getSubscription.mockResolvedValue({ plan: SubscriptionPlan.Free });
+
+        expect(await mintedPerms()).toMatchObject({ canPublish: false, canDownload: false });
+      });
+
+      it('allows publish when the owner is on a paid plan', async function paidOwner() {
+        grantFga({ publish: true });
+        mockMgmtClient.getSubscription.mockResolvedValue({ plan: SubscriptionPlan.Starter });
+
+        expect(await mintedPerms()).toMatchObject({ canPublish: true });
+      });
+
+      it('allows a paid owner regardless of published-app count (no per-collaborator count limit)', async function paidOwnerNoCountLimit() {
+        // Regression: an Ultimate owner with many published apps (e.g. 27/50) must
+        // not be blocked. The gate is plan-only and never fetches the app inventory.
+        grantFga({ publish: true, download: true });
+        mockMgmtClient.getSubscription.mockResolvedValue({ plan: SubscriptionPlan.Ultimate });
+
+        expect(await mintedPerms()).toMatchObject({ canPublish: true, canDownload: true });
+        expect(mockMgmtClient.getApps).not.toHaveBeenCalled();
+      });
+
+      it('gates download on the owner plan (free blocked, paid allowed)', async function downloadGate() {
+        grantFga({ download: true });
+        mockMgmtClient.getSubscription.mockResolvedValue({ plan: SubscriptionPlan.Free });
+        expect(await mintedPerms()).toMatchObject({ canDownload: false });
+      });
+
+      it('denies both and skips the owner lookup when the collaborator has no FGA grant', async function noGrant() {
+        grantFga({ publish: false, download: false });
+        mockMgmtClient.getSubscription.mockResolvedValue({ plan: SubscriptionPlan.Ultimate });
+
+        expect(await mintedPerms()).toMatchObject({ canPublish: false, canDownload: false });
+        expect(mockMgmtClient.getSubscription).not.toHaveBeenCalled();
+      });
+
+      it('fails closed when the owner subscription fetch fails', async function subscriptionFetchError() {
+        grantFga({ publish: true, download: true });
+        mockMgmtClient.getSubscription.mockRejectedValue(new Error('mgmt-airo unavailable'));
+
+        expect(await mintedPerms()).toMatchObject({ canPublish: false, canDownload: false });
+      });
+
+      it('fails closed and skips the owner lookup when the shared app has no subscription_id', async function missingSubscriptionId() {
+        mockControlPlaneAdapter.getSite.mockResolvedValue({
+          sharedWithMe: true,
+          team_venture_id: 'venture-1',
+          owner_customer_id: 'owner-1',
+        });
+        grantFga({ publish: true, download: true });
+
+        expect(await mintedPerms()).toMatchObject({ canPublish: false, canDownload: false });
+        expect(mockMgmtClient.getSubscription).not.toHaveBeenCalled();
+      });
+
+      it('blocks a legacy AiroPlus owner (not a grants-paid plan)', async function legacyAiroPlusOwner() {
+        grantFga({ publish: true, download: true });
+        // No `plan`; legacy AiroPlus is derived from productId + hadAiroPlus → AiroPlus, which is NOT grants-paid.
+        mockMgmtClient.getSubscription.mockResolvedValue({ productId: 'aab-v1', hadAiroPlus: true, isTrial: false });
+
+        expect(await mintedPerms()).toMatchObject({ canPublish: false, canDownload: false });
       });
     });
   });

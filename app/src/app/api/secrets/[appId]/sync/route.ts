@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { enforceAabMultiUserVentureRelation } from '@/lib/authz-fga/enforce-venture-relation';
+import { resolveMultiUserFlag } from '@/lib/authz-fga/multi-user-flag';
+import { AUTHZ_FGA_RELATIONS } from '@/lib/authz-fga/relations';
 import { getControlPlaneAdapter } from '@/lib/control-plane';
 import { createCustomerAuthError, type CustomerAuthContext, customerHasAccount, withCustomerAuth } from '@/lib/customer-auth';
 import { logger } from '@/lib/request-context';
@@ -66,6 +69,24 @@ export const POST = withCustomerAuth(async (
       return NextResponse.json({ error: 'Authentication token required' }, { status: 401 });
     }
 
+    const adapter = getControlPlaneAdapter();
+    const multiUserEnabled = await resolveMultiUserFlag(request);
+    const site = await adapter.getSite(appId, authContext.jwt, undefined, { multiUserEnabled });
+    if (!site) {
+      return NextResponse.json({ error: 'Site not found' }, { status: 404 });
+    }
+    const secretsSyncDeny = await enforceAabMultiUserVentureRelation({
+      request,
+      siteId: appId,
+      customerId: user.customerId,
+      siteInfo: site,
+      relation: AUTHZ_FGA_RELATIONS.canManageSecrets,
+      forbiddenMessage: 'You do not have permission to sync secrets for this app.',
+    });
+    if (secretsSyncDeny) {
+      return secretsSyncDeny;
+    }
+
     // Parse request body
     let body;
     try {
@@ -111,8 +132,6 @@ export const POST = withCustomerAuth(async (
     }
 
     // Get control plane adapter and sync secrets
-    const adapter = getControlPlaneAdapter();
-
     logger.info('api.secrets.sync.syncing', {
       appId,
       sourceVariant,
