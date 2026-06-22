@@ -114,6 +114,13 @@ export function useComplianceFieldEditor(enabled: boolean): void {
   useEffect(() => {
     if (!enabled || typeof document === 'undefined') return;
 
+    // Teardowns reverse every affordance the scan applies (contentEditable,
+    // injected selects, toggle buttons, listeners, marker attrs) so leaving
+    // edit mode returns the document to read-only presentation. They preserve
+    // committed content — only the editing chrome is removed. Run on cleanup,
+    // i.e. when `enabled` flips false.
+    const teardowns: Array<() => void> = [];
+
     // Propagate a committed value to every span sharing this data-field
     // (including hidden branches) and notify the builder to persist it. The
     // value is kept raw/unescaped here — the server markdown-escapes on write.
@@ -201,6 +208,16 @@ export function useComplianceFieldEditor(enabled: boolean): void {
 
       span.addEventListener('blur', commit);
       span.addEventListener('keydown', onKeydown);
+
+      teardowns.push(() => {
+        span.removeEventListener('blur', commit);
+        span.removeEventListener('keydown', onKeydown);
+        span.removeAttribute('contenteditable');
+        span.removeAttribute('spellcheck');
+        span.classList.remove('airo-editable-field', 'airo-editable-field-invalid');
+        span.removeAttribute(WIRED);
+        span.removeAttribute(ORIGINAL);
+      });
     };
 
     // Replace a us_states field span's inline editing with a <select> dropdown.
@@ -250,6 +267,21 @@ export function useComplianceFieldEditor(enabled: boolean): void {
       // Render the select in place of the text; keep the span as the anchor.
       span.textContent = '';
       span.appendChild(select);
+
+      teardowns.push(() => {
+        // Restore the chosen jurisdiction as read-only text; removing the
+        // select also drops its change listener.
+        const value = select.value || span.getAttribute(ORIGINAL) || '';
+        select.remove();
+        span.textContent = value;
+        span.classList.remove(
+          'airo-editable-field',
+          'airo-editable-field-select',
+          'airo-editable-field-invalid',
+        );
+        span.removeAttribute(WIRED);
+        span.removeAttribute(ORIGINAL);
+      });
     };
 
     // ── Section toggling ─────────────────────────────────────────────────────
@@ -305,6 +337,13 @@ export function useComplianceFieldEditor(enabled: boolean): void {
       });
 
       span.parentNode?.insertBefore(toggle, span);
+
+      teardowns.push(() => {
+        // Remove only the toggle control. The branch visibility it set is a
+        // committed edit (already sent to the builder), so leave it as-is.
+        toggle.remove();
+        span.removeAttribute(SECTION_WIRED);
+      });
     };
 
     // Resolve the document type lazily on every scan (not once at mount) so a
@@ -322,7 +361,11 @@ export function useComplianceFieldEditor(enabled: boolean): void {
     const observer = new MutationObserver(scan);
     observer.observe(document.body, { childList: true, subtree: true });
 
-    return () => observer.disconnect();
+    return () => {
+      // Disconnect first so teardown DOM mutations don't re-trigger scan().
+      observer.disconnect();
+      teardowns.forEach((teardown) => teardown());
+    };
   }, [enabled]);
 }
 

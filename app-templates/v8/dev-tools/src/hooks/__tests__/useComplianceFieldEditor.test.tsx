@@ -248,3 +248,66 @@ describe('useComplianceFieldEditor — data-type validation', () => {
     expect(span.classList.contains('airo-editable-field-invalid')).toBe(true);
   });
 });
+
+describe('useComplianceFieldEditor — teardown when edit mode is disabled', () => {
+  it('un-wires a text field so it is read-only again', () => {
+    const span = addField('businessName', 'Acme Inc.');
+    const { rerender } = renderHook(({ enabled }) => useComplianceFieldEditor(enabled), {
+      initialProps: { enabled: true },
+    });
+    expect(span.getAttribute('contenteditable')).toBe('true');
+
+    rerender({ enabled: false });
+
+    expect(span.hasAttribute('contenteditable')).toBe(false);
+    expect(span.classList.contains('airo-editable-field')).toBe(false);
+  });
+
+  it('restores a us_states field to plain text on teardown', () => {
+    const span = addField('jurisdiction', 'California', 'us_states');
+    const { rerender } = renderHook(({ enabled }) => useComplianceFieldEditor(enabled), {
+      initialProps: { enabled: true },
+    });
+    const select = span.querySelector('select.airo-state-select') as HTMLSelectElement;
+    select.value = 'New York';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+
+    rerender({ enabled: false });
+
+    expect(span.querySelector('select.airo-state-select')).toBeNull();
+    expect(span.textContent).toBe('New York');
+  });
+
+  it('removes the section toggle but preserves the committed branch visibility', () => {
+    const truthy = addSectionBranch('children', 'true', true, 'COPPA yes');
+    const falsy = addSectionBranch('children', 'false', false, 'COPPA no');
+    const { rerender } = renderHook(({ enabled }) => useComplianceFieldEditor(enabled), {
+      initialProps: { enabled: true },
+    });
+
+    const toggle = document.getElementById('airo-section-toggle-children') as HTMLButtonElement;
+    toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // true branch now visible, false branch hidden.
+    expect(truthy.getAttribute('data-hidden')).toBeNull();
+    expect(falsy.getAttribute('data-hidden')).toBe('true');
+
+    rerender({ enabled: false });
+
+    // Toggle control is gone, but the committed visibility state stays.
+    expect(document.getElementById('airo-section-toggle-children')).toBeNull();
+    expect(truthy.getAttribute('data-hidden')).toBeNull();
+    expect(falsy.getAttribute('data-hidden')).toBe('true');
+  });
+
+  it('re-wires fields when edit mode is re-enabled after a teardown', () => {
+    const span = addField('businessName', 'Acme Inc.');
+    const { rerender } = renderHook(({ enabled }) => useComplianceFieldEditor(enabled), {
+      initialProps: { enabled: true },
+    });
+    rerender({ enabled: false });
+    expect(span.hasAttribute('contenteditable')).toBe(false);
+
+    rerender({ enabled: true });
+    expect(span.getAttribute('contenteditable')).toBe('true');
+  });
+});

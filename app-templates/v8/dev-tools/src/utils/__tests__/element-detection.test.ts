@@ -13,6 +13,8 @@ import {
   isContentElement,
   isClickable,
   isInsideNavSurface,
+  isManagedPath,
+  hasManagedDocMarkup,
   HEADING_TAGS,
   INLINE_TEXT_TAGS,
   BLOCK_TEXT_TAGS,
@@ -526,6 +528,56 @@ describe('element-detection', () => {
 
     it('returns false for container elements', () => {
       expect(isBodyTextElement(buildElement('<div>Content</div>'))).toBe(false);
+    });
+  });
+
+  // ─── isManagedPath ────────────────────────────────────────────────────────────
+
+  describe('isManagedPath', () => {
+    it('returns true for the privacy and terms pages (and their subpaths)', () => {
+      expect(isManagedPath('/privacy')).toBe(true);
+      expect(isManagedPath('/privacy/')).toBe(true);
+      expect(isManagedPath('/privacy-policy')).toBe(true);
+      expect(isManagedPath('/terms')).toBe(true);
+      expect(isManagedPath('/terms-of-use')).toBe(true);
+    });
+
+    it('returns false for non-managed pages', () => {
+      expect(isManagedPath('/')).toBe(false);
+      expect(isManagedPath('/about')).toBe(false);
+      expect(isManagedPath('/contact')).toBe(false);
+      expect(isManagedPath('/pricing')).toBe(false);
+    });
+  });
+
+  // ─── hasManagedDocMarkup ──────────────────────────────────────────────────────
+
+  describe('hasManagedDocMarkup', () => {
+    // Parse via DOMParser (not innerHTML) into a wrapping <div> so the markup is
+    // a descendant of the returned root, matching how querySelector scopes.
+    function buildContainer(html: string): HTMLElement {
+      const doc = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html');
+      return doc.body.firstElementChild as HTMLElement;
+    }
+
+    it('returns true when an editable compliance field span is present', () => {
+      const root = buildContainer('<p>Contact <span data-field="email" data-type="email" data-editable="true">a@x.com</span></p>');
+      expect(hasManagedDocMarkup(root)).toBe(true);
+    });
+
+    it('returns true when a section branch is present', () => {
+      const root = buildContainer('<span data-section="children" data-section-when="true">COPPA</span>');
+      expect(hasManagedDocMarkup(root)).toBe(true);
+    });
+
+    it('returns false for a plain page with no compliance markup', () => {
+      const root = buildContainer('<h1>Privacy Policy</h1><p>Some hand-written legal prose.</p>');
+      expect(hasManagedDocMarkup(root)).toBe(false);
+    });
+
+    it('returns false for a data-field span that is not marked editable', () => {
+      const root = buildContainer('<span data-field="businessName">Acme</span>');
+      expect(hasManagedDocMarkup(root)).toBe(false);
     });
   });
 })

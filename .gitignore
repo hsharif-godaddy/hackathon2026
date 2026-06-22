@@ -126,3 +126,5 @@ investigator/node_modules/
 
 #cert folder
 certs/
+.temporary
+.screenshots

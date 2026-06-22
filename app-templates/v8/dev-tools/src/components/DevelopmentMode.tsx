@@ -9,19 +9,29 @@ import ElementHoverBar from "./ElementHoverBar";
 import { setTranslations } from "../utils/translations";
 import { resolveRouteForModule } from "../route-discovery";
 import { collectMediaSlotDomMatches } from "../utils/media-slot-dom";
-import { isClickable, isInsideNavSurface, isDevToolsElement, FORM_TAGS } from "../utils/element-detection";
+import { isClickable, isInsideNavSurface, isDevToolsElement, isManagedPath, hasManagedDocMarkup, FORM_TAGS } from "../utils/element-detection";
 
 export default function DevelopmentMode() {
   const [isEditModeActive, setIsEditModeActive] = useState(false); // off by default, parent enables via EDIT_MODE_ENABLED message
   const [isMultiSelectActive, setIsMultiSelectActive] = useState(false); // off by default, parent enables via MULTI_SELECT_ENABLED message
   const [, setTranslationsLoaded] = useState(0); // counter that always changes to force re-render
+  const [pathname, setPathname] = useState(() => window.location.pathname); // updated synchronously on SPA navigation (see onNavigate)
+  const [hasManagedMarkup, setHasManagedMarkup] = useState(false); // true once compliance markup is detected on the page (see effect below)
 
-  const { hoveredElement, toolbarMode, setToolbarMode, handleBarMouseEnter, handleBarMouseLeave } = useEditMode(isEditModeActive, isMultiSelectActive)
+  // A "managed doc" is a /privacy or /terms page that actually carries the
+  // compliance markup (data-editable / data-section). On those, the only editable
+  // content is the annotated compliance fields (handled by useComplianceFieldEditor),
+  // so the general inline editor must stand down. A plain pre-existing privacy/terms
+  // page without the markup is NOT managed and keeps full inline editing.
+  const isManagedDoc = isManagedPath(pathname) && hasManagedMarkup
+
+  const { hoveredElement, toolbarMode, setToolbarMode, handleBarMouseEnter, handleBarMouseLeave } = useEditMode(isEditModeActive && !isManagedDoc, isMultiSelectActive)
 
   // Compliance docs: highlight + inline-edit field values and toggle boolean
-  // sections directly in the preview. Self-managing; only acts on /privacy and
-  // /terms pages that contain the annotated markup.
-  useComplianceFieldEditor(true)
+  // sections, gated to edit mode like every other inline-editing affordance.
+  // Self-managing; only acts on /privacy and /terms pages with the annotated
+  // markup, and tears its affordances down when edit mode is switched off.
+  useComplianceFieldEditor(isEditModeActive)
   const [quickEditActive, setQuickEditActive] = useState(false)
   const frozenElementRef = useRef(hoveredElement)
 
@@ -1254,17 +1264,27 @@ export default function DevelopmentMode() {
       }, 150)
     }
 
+    // Sync the compliance-page gate immediately on navigation (NOT inside the
+    // debounce): if it lagged, navigating into /privacy or /terms while in edit
+    // mode would leave a window where isManagedDoc is still false and the general
+    // editor could fire on the surrounding prose. The markup half (hasManagedMarkup)
+    // is updated by its own MutationObserver as the new page renders.
+    const onNavigate = () => {
+      setPathname(window.location.pathname)
+      handleNavigation()
+    }
+
     // Intercept pushState/replaceState for SPA navigation detection
     // React Router uses pushState for <Link> clicks, which doesn't fire popstate
     const originalPushState = history.pushState.bind(history)
     const originalReplaceState = history.replaceState.bind(history)
     history.pushState = (...args: Parameters<typeof history.pushState>) => {
       originalPushState(...args)
-      handleNavigation()
+      onNavigate()
     }
     history.replaceState = (...args: Parameters<typeof history.replaceState>) => {
       originalReplaceState(...args)
-      handleNavigation()
+      onNavigate()
     }
 
     // Initialize when DOM is ready
@@ -1278,7 +1298,7 @@ export default function DevelopmentMode() {
     window.addEventListener('scroll', handleScroll, { passive: true })
     window.addEventListener('resize', handleResize)
     // Listen for browser back/forward (popstate covers hash changes in modern browsers)
-    window.addEventListener('popstate', handleNavigation)
+    window.addEventListener('popstate', onNavigate)
 
     // Listen for visual context requests from parent window
     const handleMessage = (event: MessageEvent) => {
@@ -1481,7 +1501,7 @@ export default function DevelopmentMode() {
       window.removeEventListener('message', handleMessage)
       window.removeEventListener('scroll', handleScroll)
       window.removeEventListener('resize', handleResize)
-      window.removeEventListener('popstate', handleNavigation)
+      window.removeEventListener('popstate', onNavigate)
       document.removeEventListener('DOMContentLoaded', setupSectionObserver)
       if (scrollTimeout) clearTimeout(scrollTimeout)
       if (resizeTimeout) clearTimeout(resizeTimeout)
@@ -1495,6 +1515,9 @@ export default function DevelopmentMode() {
     const handlePreviewClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null
       if (!target) return
+      // Managed compliance docs restrict editing to compliance fields; don't
+      // prompt the builder to enter general edit mode from a click here.
+      if (isManagedPath() && hasManagedDocMarkup()) return
       if (isClickable(target)) return
       if (isInsideNavSurface(target)) return
       if (isDevToolsElement(target)) return
@@ -1507,9 +1530,20 @@ export default function DevelopmentMode() {
     return () => document.removeEventListener('click', handlePreviewClick, true)
   }, [isEditModeActive])
 
+  // Track whether the current page is a real managed compliance doc (carries the
+  // compliance markup). Re-checked on every DOM mutation so it stays correct
+  // across SPA navigation and async/HMR renders.
+  useEffect(() => {
+    const check = () => setHasManagedMarkup(hasManagedDocMarkup())
+    check()
+    const observer = new MutationObserver(check)
+    observer.observe(document.body, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [])
+
   return (
     <div data-airo-dev-tools>
-      {isEditModeActive && effectiveElement && !(isMultiSelectActive && effectiveElement.element.hasAttribute("data-ai-selected-num")) && (
+      {isEditModeActive && !isManagedDoc && effectiveElement && !(isMultiSelectActive && effectiveElement.element.hasAttribute("data-ai-selected-num")) && (
         <ElementHoverBar
           hoveredElement={effectiveElement}
           isMultiSelectActive={isMultiSelectActive}

@@ -81,6 +81,30 @@ export function isInsideNavSurface(element: HTMLElement): boolean {
   return !!element.closest("nav, [role='navigation'], [role='menu'], [role='menubar']");
 }
 
+/** True on pages where editing is restricted to the annotated managed fields
+ *  (data-editable / data-section) rather than free-form inline editing —
+ *  currently the compliance pages (/privacy, /terms), handled by
+ *  useComplianceFieldEditor. On these pages the general inline editor must stand
+ *  down so customers can't edit the surrounding prose. Mirrors the path check in
+ *  useComplianceFieldEditor's inferDocumentType. */
+export function isManagedPath(pathname: string = window.location.pathname): boolean {
+  return pathname.startsWith("/privacy") || pathname.startsWith("/terms");
+}
+
+/** Selector for the compliance fields a generated managed doc contains. Keep in
+ *  sync with useComplianceFieldEditor's FIELD_SELECTOR / SECTION_SELECTOR. */
+const MANAGED_DOC_SELECTOR = '[data-editable="true"][data-field], [data-section][data-section-when]';
+
+/** True when the document actually contains compliance markup — i.e. it is a
+ *  generated managed doc, not a plain page that merely lives at /privacy or
+ *  /terms. The data-editable / data-section attributes are present in the
+ *  rendered HTML regardless of edit mode, so this is a reliable structural
+ *  signal: a pre-existing privacy/terms page without the markup is NOT treated
+ *  as managed and keeps full inline editing. */
+export function hasManagedDocMarkup(root: ParentNode = document): boolean {
+  return !!root.querySelector(MANAGED_DOC_SELECTOR);
+}
+
 /** Returns true for elements where block-level formatting (alignment, lists) makes sense for inline editing. */
 export function isBodyTextElement(element: HTMLElement): boolean {
   const tag = element.tagName.toLowerCase();
