@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"time"
 )
 
 // FakeClient returns obvious-fake values (all IDs prefixed `*_fake_*`) with
@@ -15,18 +16,47 @@ type FakeClient struct{}
 // Compile-time check that FakeClient satisfies Client.
 var _ Client = FakeClient{}
 
+// fakeNow lets tests override the wall clock used to derive synthetic
+// expires_at values. Production callers don't touch it; the default
+// time.Now is fine for everything but deterministic tests.
+var fakeNow = time.Now
+
 // CreateClaimableSandbox returns a Sandbox with a random 8-hex-char suffix.
 // Two calls produce different SandboxIDs.
+//
+// ExpiresAt and OnboardingLinkExpiresAt mirror Stripe's documented 60-day
+// / 7-day windows so handler-level expiry logic (warnings, auto-renew)
+// exercises with realistic timestamps in fake-mode tests.
 func (FakeClient) CreateClaimableSandbox(_ context.Context, _ CreateSandboxInput) (Sandbox, error) {
 	suffix := randomHex(8)
 	sandboxID := "cbsbx_fake_" + suffix
+	now := fakeNow().UTC()
 	return Sandbox{
-		SandboxID:      sandboxID,
-		AccountID:      "acct_fake_" + suffix,
-		PublishableKey: "pk_test_fake_" + suffix,
-		SecretKey:      "sk_test_fake_" + suffix,
-		MCPKey:         "ek_test_fake_" + suffix,
-		ClaimURL:       "https://dashboard.stripe.com/fake-claim/" + sandboxID,
+		SandboxID:               sandboxID,
+		AccountID:               "acct_fake_" + suffix,
+		PublishableKey:          "pk_test_fake_" + suffix,
+		SecretKey:               "sk_test_fake_" + suffix,
+		MCPKey:                  "ek_test_fake_" + suffix,
+		ClaimURL:                "https://dashboard.stripe.com/fake-claim/" + sandboxID,
+		ExpiresAt:               now.AddDate(0, 0, 60),
+		OnboardingLinkExpiresAt: now.AddDate(0, 0, 7),
+	}, nil
+}
+
+// RenewOnboardingLink returns a fresh fake-claim URL whose suffix differs
+// from the original (so callers persisting the new value can confirm a
+// round-trip) and a new 7-day expires_at.
+func (FakeClient) RenewOnboardingLink(_ context.Context, in RenewOnboardingLinkInput) (RenewedOnboardingLink, error) {
+	if in.SandboxID == "" {
+		return RenewedOnboardingLink{}, errors.New("stripe.FakeClient.RenewOnboardingLink: SandboxID is required")
+	}
+	if in.IdempotencyKey == "" {
+		return RenewedOnboardingLink{}, errors.New("stripe.FakeClient.RenewOnboardingLink: IdempotencyKey is required")
+	}
+	suffix := deterministicSuffix(in.SandboxID, in.IdempotencyKey)
+	return RenewedOnboardingLink{
+		ClaimURL:  "https://dashboard.stripe.com/fake-claim/" + in.SandboxID + "?renewed=" + suffix,
+		ExpiresAt: fakeNow().UTC().AddDate(0, 0, 7),
 	}, nil
 }
 

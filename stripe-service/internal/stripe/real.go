@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/stripeapi"
 )
@@ -86,6 +87,13 @@ type stripeAPIClient interface {
 		req stripeapi.CreateClaimableSandboxRequest,
 	) (*stripeapi.CreateClaimableSandboxResponse, error)
 
+	RenewOnboardingLink(
+		ctx context.Context,
+		idempotencyKey string,
+		sandboxID string,
+		req stripeapi.RenewOnboardingLinkRequest,
+	) (*stripeapi.RenewOnboardingLinkResponse, error)
+
 	CreateAPIKey(
 		ctx context.Context,
 		idempotencyKey string,
@@ -124,11 +132,25 @@ type jweDecrypter interface {
 // depend only on the Client interface, so swapping FakeClient for
 // RealClient is a one-line change in main.go.
 type RealClient struct {
-	innerTest stripeAPIClient // sk_test_<platform>; CreateClaimableSandbox
+	innerTest stripeAPIClient // sk_test_<platform>; CreateClaimableSandbox + RenewOnboardingLink
 	innerLive stripeAPIClient // sk_live_<platform>; MintLiveAPIKeys (may be nil if not exercising the live-key flow)
 	pem       pemFetcher
 	decrypt   jweDecrypter
 }
+
+// onboardingRefreshURL is what we hand to Stripe as
+// onboarding_link_details.refresh_url on every Create/Renew call. Stripe
+// requires the field; it 302s the user there if they follow an expired
+// claim link. The destination is the main Airo app — the user lands on
+// the homepage and can ask the agent to run stripe__setup again
+// (idempotent POST /v1/sandboxes auto-renews when the cached URL is
+// near or past expiry).
+//
+// Single hardcoded value rather than an env-derived map: nothing in
+// Airo reads the URL, the user has to navigate back to their session
+// regardless of which env's homepage they land on, and Stripe just
+// needs *a* valid URL on every request.
+const onboardingRefreshURL = "https://airo-builder.godaddy.com/"
 
 // Compile-time check that RealClient satisfies Client.
 var _ Client = (*RealClient)(nil)
@@ -144,7 +166,12 @@ func NewRealClient(innerTest, innerLive stripeAPIClient, pem pemFetcher, decrypt
 	if innerTest == nil {
 		return nil, errors.New("stripe.NewRealClient: innerTest stripeAPIClient is required")
 	}
-	return &RealClient{innerTest: innerTest, innerLive: innerLive, pem: pem, decrypt: decrypt}, nil
+	return &RealClient{
+		innerTest: innerTest,
+		innerLive: innerLive,
+		pem:       pem,
+		decrypt:   decrypt,
+	}, nil
 }
 
 // CreateClaimableSandbox calls Stripe's v2.core.claimableSandboxes.create
@@ -179,10 +206,12 @@ func (r *RealClient) CreateClaimableSandbox(ctx context.Context, in CreateSandbo
 		AppChannel:      "testing",
 		EnableMcpAccess: true,
 		OnboardingLinkDetails: &stripeapi.OnboardingLinkDetails{
-			// TODO(env-config): hardcoded marketing URL while we have a single
-			// deployment target. Lift to env (e.g. STRIPE_ONBOARDING_REFRESH_URL)
-			// when test/prod environments need different landing pages.
-			RefreshURL: "https://airo-builder.godaddy.com",
+			// refresh_url is where Stripe redirects the user when their
+			// onboarding link expires. We point it at the main Airo app so
+			// the user lands in a familiar place and can ask the agent to
+			// generate a fresh link via stripe__setup (the idempotent path
+			// auto-renews when the cached URL is near or past expiry).
+			RefreshURL: onboardingRefreshURL,
 		},
 		Prefill: &stripeapi.SandboxPrefill{
 			Email:   in.PrefillEmail,
@@ -196,13 +225,62 @@ func (r *RealClient) CreateClaimableSandbox(ctx context.Context, in CreateSandbo
 		return Sandbox{}, fmt.Errorf("CreateClaimableSandbox: %w", err)
 	}
 	return Sandbox{
-		SandboxID:      resp.ID,
-		AccountID:      resp.SandboxDetails.Account,
-		PublishableKey: resp.SandboxDetails.APIKeys.Publishable,
-		SecretKey:      resp.SandboxDetails.APIKeys.Secret,
-		MCPKey:         resp.SandboxDetails.APIKeys.MCP,
-		ClaimURL:       resp.OnboardingLinkDetails.URL,
+		SandboxID:               resp.ID,
+		AccountID:               resp.SandboxDetails.Account,
+		PublishableKey:          resp.SandboxDetails.APIKeys.Publishable,
+		SecretKey:               resp.SandboxDetails.APIKeys.Secret,
+		MCPKey:                  resp.SandboxDetails.APIKeys.MCP,
+		ClaimURL:                resp.OnboardingLinkDetails.URL,
+		ExpiresAt:               parseStripeTime(resp.ExpiresAt),
+		OnboardingLinkExpiresAt: parseStripeTime(resp.OnboardingLinkDetails.ExpiresAt),
 	}, nil
+}
+
+// RenewOnboardingLink calls Stripe's renew_onboarding_link endpoint via
+// the test-mode platform key (sandbox lifecycle lives in test mode) and
+// returns the fresh URL plus its new expiry. Stripe invalidates the
+// previous URL the moment it issues the new one, so callers persist
+// before redirecting.
+//
+// We re-supply onboardingRefreshURL on every renewal because Stripe doesn't
+// retain the previous request's value — leaving it out means a future
+// expiry would have no refresh callback.
+func (r *RealClient) RenewOnboardingLink(ctx context.Context, in RenewOnboardingLinkInput) (RenewedOnboardingLink, error) {
+	if in.SandboxID == "" {
+		return RenewedOnboardingLink{}, errors.New("stripe.RealClient.RenewOnboardingLink: SandboxID is required")
+	}
+	if in.IdempotencyKey == "" {
+		return RenewedOnboardingLink{}, errors.New("stripe.RealClient.RenewOnboardingLink: IdempotencyKey is required")
+	}
+	resp, err := r.innerTest.RenewOnboardingLink(ctx, in.IdempotencyKey, in.SandboxID, stripeapi.RenewOnboardingLinkRequest{
+		OnboardingLinkDetails: &stripeapi.OnboardingLinkDetails{RefreshURL: onboardingRefreshURL},
+	})
+	if err != nil {
+		return RenewedOnboardingLink{}, fmt.Errorf("RenewOnboardingLink: %w", err)
+	}
+	return RenewedOnboardingLink{
+		ClaimURL:  resp.OnboardingLinkDetails.URL,
+		ExpiresAt: parseStripeTime(resp.OnboardingLinkDetails.ExpiresAt),
+	}, nil
+}
+
+// parseStripeTime parses the ISO 8601 timestamp strings Stripe's v2
+// preview API returns for expires_at fields (e.g. "2026-08-17T00:00:00.000Z").
+// Returns the zero time when s is empty so a missing/omitted field doesn't
+// masquerade as a real expiry.
+func parseStripeTime(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
+	// Try RFC3339Nano first (covers "2026-08-17T00:00:00.000Z" and plain "Z" variants).
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t.UTC()
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC()
+	}
+	slog.Warn("stripe.parseStripeTime.unparseable", "value", s)
+	return time.Time{}
 }
 
 // MintLiveAPIKeys issues two v2.iam.api_keys.create calls (secret,

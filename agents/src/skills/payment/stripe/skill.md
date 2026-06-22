@@ -79,6 +79,22 @@ Sample framing for the chat reply after `stripe__setup` succeeds:
 
 **🛑 At this point the runtime keys are already in the env.** `stripe__setup` pushes `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, and `STRIPE_MCP_KEY` into the alloc env via hosting before it returns. **Do NOT** call `requestSecrets` for any Stripe key. Proceed directly to Step 2 (install templates).
 
+### Sandbox + claim-link expiry (auto-provisioned flow)
+
+Stripe enforces two clocks on a claimable sandbox; the response from `stripe__setup` and `stripe__status` carries both as RFC3339 strings:
+
+- **`expiresAt` — sandbox hard-expiry, ~60 days from creation.** Stripe deletes the sandbox if the user never claims it. Stripe also emails the user at day 53 (7 days before expiry). Mention this proactively only when there are ≤14 days left — earlier mentions are noise. Sample: "Your Stripe sandbox expires on \<date>; if you want to take real payments you'll need to complete the claim at \<claimUrl> before then."
+- **`claimUrlExpiresAt` — onboarding-link expiry, ~7 days from creation/last refresh.** The platform auto-renews the URL when you re-call `stripe__setup` on an existing sandbox. **If the user reports "the claim link doesn't work" or "Stripe says my link expired"**, call `stripe__setup({})` (no inputs) — it will return a freshly minted `claimUrl` you can hand back. If the user clicked the expired link before returning to Airo, Stripe redirects them back to the main Airo page — they just need to open a chat and ask for a new link.
+- **Don't act on `undefined` for either field.** Sandboxes provisioned before this schema landed have neither — treat as "unknown, no warning needed."
+
+### MCP-tool access ends 7 days after claim
+
+The `STRIPE_MCP_KEY` Stripe issues with the sandbox is valid until **7 days after the user *claims* the sandbox** (or until they complete the full claim+install→live transition, whichever comes first). After that, MCP tools (`stripe__create_product`, `stripe__list_products`, etc.) will start returning 401 errors.
+
+- The happy path is fast: claim → install → live in one session, and at that point the platform deletes `STRIPE_MCP_KEY` deliberately (MCP is sandbox-only) and the agent directs the user to the Stripe dashboard for product management.
+- The hazardous window is **claimed-but-not-installed for >7 days**: the merchant clicked the claim link, completed identity verification, but never finished installing the GoDaddy app in their live account. MCP tool calls will start 401-ing.
+- **If a `stripe__*` MCP call fails with an auth/key error** (the tool surfaces a structured `{ error: 'stripe_mcp_key_expired' }` response), tell the user: "Your Stripe authentication has expired. Please finish setting up your live account at \<claimUrl> — once that's complete I can manage products again." Do **not** retry the MCP call until the user confirms.
+
 ### Graceful degradation
 
 If `stripe__setup` returns `{stripeProvisioningUnavailable: true}` with a `message`, the upstream Stripe API is unavailable — usually because the platform Stripe API isn't enabled for this project yet. Tell the user the literal `message`. **Do not** retry within the same conversation; suggest they try again later.

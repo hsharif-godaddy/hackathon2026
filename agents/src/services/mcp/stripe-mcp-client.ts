@@ -150,16 +150,79 @@ function readStripeMcpKey(appId?: string): string | null {
 }
 
 /**
- * Wrap an MCP tool's execute so it re-checks the current STRIPE_MCP_KEY in
- * config before running. Tool registration is sticky: once registered into a
- * conversation, a tool stays callable even after the key is deleted from config
- * (e.g. at go-live, when MCP becomes sandbox-only). Without this guard the
- * agent could keep calling create_product against the stale sandbox session.
+ * Detect whether an error thrown by the MCP transport represents a 401/
+ * unauthorized response from Stripe. We see this when the
+ * `STRIPE_MCP_KEY` Stripe issued is still locally cached but Stripe has
+ * server-side expired it — happens 7 days after a user claims the
+ * sandbox without completing the live install (Stripe's documented
+ * lifetime for the MCP key).
  *
- * The check is a single local config read (sub-ms, page-cached) — no network
- * call — so it adds negligible latency per tool execution. It refuses when the
- * key is gone (deleted at go-live) or has rotated to a different value (the
- * cached session no longer matches what config says is current).
+ * The Vercel AI SDK / MCP transport surfaces the upstream HTTP error
+ * shape inconsistently across versions, so we check two anchors:
+ *   1. A numeric status (401 on the error object itself) — the most
+ *      reliable signal when the transport preserves the HTTP status.
+ *   2. A message substring, but ONLY when the status is also 401 or
+ *      absent-from-the-object entirely — avoids false-positive matches
+ *      on unrelated "unauthorized" messages from downstream operations
+ *      (e.g. a Stripe API call that rejects because of insufficient
+ *      permissions on the merchant account, not a bad key).
+ *
+ * We deliberately omit pure-substring-only matches ("unauthorized" with
+ * no status signal) to avoid false positives. False positives steer the
+ * user to a "claim again" flow that doesn't apply; false negatives just
+ * let the original error propagate and surface to the user directly.
+ */
+function isMcpKeyExpiredError(err: unknown): boolean {
+  if (!err) return false;
+  const e = err as { status?: number; statusCode?: number; message?: string };
+  const numericStatus = e.status ?? e.statusCode;
+  if (numericStatus === 401) return true;
+  // Only use message substring when there's no numeric status to anchor on
+  // (some transports omit the field entirely and put "401" in the message).
+  if (numericStatus === undefined) {
+    const msg = typeof e.message === 'string' ? e.message.toLowerCase() : '';
+    if (msg.startsWith('401') || msg.includes('401 unauthorized')) return true;
+  }
+  return false;
+}
+
+/**
+ * Structured response a guarded tool returns when Stripe rejects the
+ * MCP call as unauthorized. The skill prompt branches on the literal
+ * `error: 'stripe_mcp_key_expired'` to drive the "ask the user to
+ * complete claim+install" flow without retrying.
+ */
+const MCP_KEY_EXPIRED_RESPONSE = {
+  error: 'stripe_mcp_key_expired',
+  message:
+    'Your Stripe authentication has expired. Stripe issues the MCP key for seven days after ' +
+    'a sandbox is claimed; once that window passes, product/price tools stop working until the ' +
+    'merchant finishes the claim+install flow and goes live. Tell the user to open their saved ' +
+    "claim URL and complete the live setup, then they'll be able to manage products from the " +
+    'Stripe Dashboard.',
+} as const;
+
+/**
+ * Wrap an MCP tool's execute so it (a) re-checks the current
+ * STRIPE_MCP_KEY in config before running and (b) translates 401-shaped
+ * errors thrown by Stripe into a structured `stripe_mcp_key_expired`
+ * response.
+ *
+ * Tool registration is sticky: once registered into a conversation, a
+ * tool stays callable even after the key is deleted from config (e.g.
+ * at go-live, when MCP becomes sandbox-only). The pre-flight key check
+ * catches that case (`tool_blocked_stale_key`).
+ *
+ * The 401 catch covers a different case: the key is still locally
+ * present but Stripe has server-side revoked it (typically 7 days
+ * after claim). The user-facing distinction matters — "claim again"
+ * vs "talk to the dashboard" — so the two branches return different
+ * structured errors, and the skill prompt branches on the literal
+ * `error` field.
+ *
+ * The pre-flight check is a single local config read (sub-ms,
+ * page-cached) — no network call — so it adds negligible latency per
+ * tool execution.
  */
 function guardToolWithCurrentKey(
   toolName: string,
@@ -189,7 +252,30 @@ function guardToolWithCurrentKey(
             'the Stripe Dashboard (https://dashboard.stripe.com/products).',
         };
       }
-      return (originalExecute as (a: unknown, o: unknown) => Promise<unknown>)(args, options);
+      try {
+        return await (originalExecute as (a: unknown, o: unknown) => Promise<unknown>)(args, options);
+      } catch (err) {
+        if (isMcpKeyExpiredError(err)) {
+          logger.warn('stripe_mcp_client.tool_blocked_key_expired', {
+            appId,
+            toolName,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          // Drop the cached session — the bound key is now invalid
+          // server-side, and a re-init wouldn't help (the key in
+          // config is the same Stripe just rejected). The next skill
+          // activation will see the same key, reach this path again,
+          // and surface the same message. Recovery is the user
+          // completing the claim+install flow Stripe is asking for.
+          const cached = cachedToolsByKey.get(boundKey);
+          if (cached) {
+            cachedToolsByKey.delete(boundKey);
+            cached.close().catch(() => {});
+          }
+          return MCP_KEY_EXPIRED_RESPONSE;
+        }
+        throw err;
+      }
     },
   };
 }

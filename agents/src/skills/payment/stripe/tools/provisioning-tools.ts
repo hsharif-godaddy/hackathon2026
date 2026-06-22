@@ -289,6 +289,16 @@ export const setupTool: SkillToolDefinition = {
         sandboxId: sandbox.sandboxId,
         accountId: sandbox.accountId,
         claimUrl: sandbox.claimUrl,
+        // Surface expiries so the LLM can warn the user when either is
+        // close. expiresAt: sandbox-level 60-day expiry (unclaimed
+        // sandboxes are deleted at this time); claimUrlExpiresAt:
+        // 7-day onboarding-link expiry (auto-renewed on the
+        // idempotent path; the agent sees freshly-bumped values when
+        // it re-calls setup near expiry). Absent on legacy rows that
+        // predate the schema; the skill prompt tells the LLM not to
+        // act on undefined.
+        ...(sandbox.expiresAt && { expiresAt: sandbox.expiresAt }),
+        ...(sandbox.claimUrlExpiresAt && { claimUrlExpiresAt: sandbox.claimUrlExpiresAt }),
         // Named to signal next-turn availability so the model doesn't attempt a
         // same-turn MCP call (which would silently no-op against the snapshot).
         mcpToolsReadyNextTurn,
@@ -311,8 +321,11 @@ export const statusTool: SkillToolDefinition = {
   name: 'status',
   description:
     'Read the current Stripe sandbox claim state for this app. ' +
-    'Returns {hasStripe: false} when no sandbox has been provisioned yet, otherwise {hasStripe: true, sandboxId, claimStatus, liveAccountId?}. ' +
-    'claimStatus advances: provisioned → claimed → live. Read-only and safe to call any time.',
+    'Returns {hasStripe: false} when no sandbox has been provisioned yet, otherwise ' +
+    '{hasStripe: true, sandboxId, claimStatus, liveAccountId?, expiresAt?, claimUrlExpiresAt?}. ' +
+    'claimStatus advances: provisioned → claimed → live. expiresAt is the sandbox 60-day expiry ' +
+    '(deleted by Stripe if unclaimed); claimUrlExpiresAt is the 7-day onboarding-link expiry ' +
+    '(both RFC3339 UTC; absent for sandboxes provisioned before this schema). Read-only and safe to call any time.',
   parameters: z.object({}),
   config: {
     requiresApp: true,
@@ -349,6 +362,9 @@ export const statusTool: SkillToolDefinition = {
         sandboxId: status.sandboxId,
         claimStatus: status.claimStatus,
         ...(status.liveAccountId && { liveAccountId: status.liveAccountId }),
+        // Surface expiries — see setupTool for context on these fields.
+        ...(status.expiresAt && { expiresAt: status.expiresAt }),
+        ...(status.claimUrlExpiresAt && { claimUrlExpiresAt: status.claimUrlExpiresAt }),
       };
     } catch (err) {
       // /v1/status doesn't call Stripe so STRIPE_CREATE_FAILED shouldn't

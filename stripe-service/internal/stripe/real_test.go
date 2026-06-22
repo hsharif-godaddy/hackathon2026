@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/gdcorp-partners/airo-app-builder/stripe-service/internal/stripeapi"
 )
@@ -31,6 +32,16 @@ type fakeCreator struct {
 	apiKeyLastCtx   string
 	apiKeyLastReq   stripeapi.CreateAPIKeyRequest
 	apiKeyResponses map[stripeapi.APIKeyType]*stripeapi.CreateAPIKeyResponse // optional per-type override
+
+	// Renew-side fields (RenewOnboardingLink). Tests that don't exercise
+	// renewal leave them zero; the stub returns the canned `renewOut`
+	// (or `renewErr`) and records inputs for assertion.
+	renewOut      *stripeapi.RenewOnboardingLinkResponse
+	renewErr      error
+	renewCalls    int
+	renewLastIdem string
+	renewLastID   string
+	renewLastReq  stripeapi.RenewOnboardingLinkRequest
 }
 
 func (f *fakeCreator) CreateClaimableSandbox(
@@ -45,6 +56,22 @@ func (f *fakeCreator) CreateClaimableSandbox(
 		return nil, f.err
 	}
 	return f.out, nil
+}
+
+func (f *fakeCreator) RenewOnboardingLink(
+	_ context.Context,
+	idempotencyKey string,
+	sandboxID string,
+	req stripeapi.RenewOnboardingLinkRequest,
+) (*stripeapi.RenewOnboardingLinkResponse, error) {
+	f.renewCalls++
+	f.renewLastIdem = idempotencyKey
+	f.renewLastID = sandboxID
+	f.renewLastReq = req
+	if f.renewErr != nil {
+		return nil, f.renewErr
+	}
+	return f.renewOut, nil
 }
 
 func (f *fakeCreator) CreateAPIKey(
@@ -132,9 +159,11 @@ func TestRealClient_CreateClaimableSandbox_TranslatesInput(t *testing.T) {
 	if fc.lastReq.OnboardingLinkDetails == nil {
 		t.Fatalf("OnboardingLinkDetails: want non-nil")
 	}
-	if fc.lastReq.OnboardingLinkDetails.RefreshURL != "https://airo-builder.godaddy.com" {
-		t.Errorf("OnboardingLinkDetails.RefreshURL: want %q, got %q",
-			"https://airo-builder.godaddy.com", fc.lastReq.OnboardingLinkDetails.RefreshURL)
+	// refresh_url is passed through directly — Stripe redirects expired-
+	// link visitors here so they land on Airo and can ask the agent for
+	// a fresh link.
+	if got, want := fc.lastReq.OnboardingLinkDetails.RefreshURL, onboardingRefreshURL; got != want {
+		t.Errorf("OnboardingLinkDetails.RefreshURL: want %q, got %q", want, got)
 	}
 }
 
@@ -169,13 +198,15 @@ func TestRealClient_CreateClaimableSandbox_IdempotencyKeyIsAppScoped(t *testing.
 func TestRealClient_CreateClaimableSandbox_TranslatesOutput(t *testing.T) {
 	fc := &fakeCreator{
 		out: &stripeapi.CreateClaimableSandboxResponse{
-			ID: "clmsbx_real_X",
+			ID:        "clmsbx_real_X",
+			ExpiresAt: "2026-08-17T00:00:00.000Z",
 			SandboxDetails: stripeapi.SandboxDetails{
 				Account: "acct_real_X",
 				APIKeys: stripeapi.SandboxAPIKeys{Secret: "sk_test_X", Publishable: "pk_test_X", MCP: "ek_test_X"},
 			},
 			OnboardingLinkDetails: stripeapi.OnboardingLinkResponseDetails{
-				URL: "https://dashboard.stripe.com/claim/clmsbx_real_X",
+				URL:       "https://dashboard.stripe.com/claim/clmsbx_real_X",
+				ExpiresAt: "2026-06-25T12:34:56.000Z",
 			},
 		},
 	}
@@ -200,6 +231,74 @@ func TestRealClient_CreateClaimableSandbox_TranslatesOutput(t *testing.T) {
 		if c.got != c.want {
 			t.Errorf("%s: want %q, got %q", c.name, c.want, c.got)
 		}
+	}
+
+	// Assert expiry strings were parsed by parseStripeTime. The wire
+	// format previously regressed once (int64 epoch → ISO 8601 string);
+	// asserting the parsed values catches a future drift loud.
+	wantSandboxExpiry := time.Date(2026, 8, 17, 0, 0, 0, 0, time.UTC)
+	if !sb.ExpiresAt.Equal(wantSandboxExpiry) {
+		t.Errorf("ExpiresAt: want %v, got %v", wantSandboxExpiry, sb.ExpiresAt)
+	}
+	wantLinkExpiry := time.Date(2026, 6, 25, 12, 34, 56, 0, time.UTC)
+	if !sb.OnboardingLinkExpiresAt.Equal(wantLinkExpiry) {
+		t.Errorf("OnboardingLinkExpiresAt: want %v, got %v", wantLinkExpiry, sb.OnboardingLinkExpiresAt)
+	}
+}
+
+// TestParseStripeTime pins the wire-format contract for Stripe v2 preview
+// timestamp strings. This is the parser that previously regressed from
+// int64 epoch to RFC3339 string mid-PR, so it gets a dedicated table test.
+func TestParseStripeTime(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      string
+		want    time.Time
+		isZero  bool
+		warnMsg string
+	}{
+		{
+			name: "RFC3339Nano with .000Z",
+			in:   "2026-08-17T00:00:00.000Z",
+			want: time.Date(2026, 8, 17, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "RFC3339Nano with sub-second precision",
+			in:   "2026-06-25T12:34:56.789Z",
+			want: time.Date(2026, 6, 25, 12, 34, 56, 789_000_000, time.UTC),
+		},
+		{
+			name: "plain RFC3339 no fractional",
+			in:   "2026-08-17T00:00:00Z",
+			want: time.Date(2026, 8, 17, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name:   "empty string returns zero time",
+			in:     "",
+			isZero: true,
+		},
+		{
+			name:   "unparseable returns zero time",
+			in:     "not-a-timestamp",
+			isZero: true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := parseStripeTime(c.in)
+			if c.isZero {
+				if !got.IsZero() {
+					t.Errorf("parseStripeTime(%q): want zero time, got %v", c.in, got)
+				}
+				return
+			}
+			if !got.Equal(c.want) {
+				t.Errorf("parseStripeTime(%q): want %v, got %v", c.in, c.want, got)
+			}
+			if got.Location() != time.UTC {
+				t.Errorf("parseStripeTime(%q): want UTC location, got %v", c.in, got.Location())
+			}
+		})
 	}
 }
 
@@ -467,5 +566,58 @@ func TestRealClient_CreateClaimableSandbox_RoutesToInnerTest(t *testing.T) {
 	}
 	if got := fcLive.apiKeyCalls; got != 0 {
 		t.Errorf("fcLive.apiKeyCalls: want 0 on sandbox path, got %d", got)
+	}
+}
+
+// Pin: RenewOnboardingLink forwards the configured refreshURL to Stripe
+// so a future expiry sends the user back to Airo rather than a generic
+// Stripe error page.
+func TestRealClient_RenewOnboardingLink_ForwardsRefreshURL(t *testing.T) {
+	fc := &fakeCreator{
+		renewOut: &stripeapi.RenewOnboardingLinkResponse{
+			OnboardingLinkDetails: stripeapi.OnboardingLinkResponseDetails{
+				URL:       "https://dashboard.stripe.com/claim/renewed",
+				ExpiresAt: "2099-01-01T00:00:00.000Z",
+			},
+		},
+	}
+	rc, err := NewRealClient(fc, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("NewRealClient: %v", err)
+	}
+
+	if _, err := rc.RenewOnboardingLink(context.Background(), RenewOnboardingLinkInput{
+		SandboxID:      "cbsbx_test_x",
+		IdempotencyKey: "k-1",
+	}); err != nil {
+		t.Fatalf("RenewOnboardingLink: %v", err)
+	}
+
+	if fc.renewCalls != 1 {
+		t.Fatalf("renewCalls: want 1, got %d", fc.renewCalls)
+	}
+	if got, want := fc.renewLastReq.OnboardingLinkDetails.RefreshURL, onboardingRefreshURL; got != want {
+		t.Errorf("RenewOnboardingLink RefreshURL: want %q, got %q", want, got)
+	}
+	if got := fc.renewLastID; got != "cbsbx_test_x" {
+		t.Errorf("RenewOnboardingLink sandboxID: want cbsbx_test_x, got %q", got)
+	}
+}
+
+func TestRealClient_RenewOnboardingLink_RejectsEmptyFields(t *testing.T) {
+	rc, _ := NewRealClient(&fakeCreator{}, nil, nil, nil)
+	cases := []struct {
+		name string
+		in   RenewOnboardingLinkInput
+	}{
+		{"empty SandboxID", RenewOnboardingLinkInput{IdempotencyKey: "k"}},
+		{"empty IdempotencyKey", RenewOnboardingLinkInput{SandboxID: "cbsbx_x"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if _, err := rc.RenewOnboardingLink(context.Background(), c.in); err == nil {
+				t.Errorf("want error for %s, got nil", c.name)
+			}
+		})
 	}
 }

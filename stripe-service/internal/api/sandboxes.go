@@ -23,12 +23,23 @@ import (
 // of an OOM.
 const maxSandboxBody = 1 << 20 // 1 MiB
 
+// claimURLRenewMargin is how close to the onboarding-link expiry we
+// preemptively renew on the idempotent postSandboxes path. The link is
+// valid for 7 days, so this is the "if there's less than a day of life
+// left, just mint a fresh one rather than hand the agent a value the
+// user is likely to time out on." Conservative; tighter values would
+// burn unnecessary Stripe calls without buying anything.
+const claimURLRenewMargin = 24 * time.Hour
+
 // sandboxStore is the subset of store.Sandboxes the handlers depend on.
 // Lets tests plug a fake without constructing a real *dynamodb.Client.
 type sandboxStore interface {
 	Put(ctx context.Context, s store.Sandbox) error
 	QueryByAppID(ctx context.Context, appID string) ([]store.Sandbox, error)
 	UpdateClaimStatus(ctx context.Context, sandboxID string, status store.ClaimStatus, liveAccountID string) error
+	// UpdateClaimURL writes a refreshed onboarding URL + its new expiry.
+	// Called by the auto-renew path in postSandboxes.
+	UpdateClaimURL(ctx context.Context, sandboxID, claimURL string, expiresAt time.Time) error
 	// GetBySandboxID is used by the owner-account-updated webhook handler to
 	// resolve appID from sandboxID. The webhook envelope only carries the
 	// sandbox ID; live-key provisioning needs appID to know which app's
@@ -237,16 +248,59 @@ type createSandboxRequest struct {
 	Country string `json:"country,omitempty"`
 }
 
+// sandboxResponse is the body of POST /v1/sandboxes (and the idempotent
+// 200 path). ExpiresAt is the sandbox's hard 60-day expiry;
+// ClaimURLExpiresAt is the onboarding-link 7-day expiry. Both are
+// RFC3339 strings; absent fields render as the zero string ("") so a
+// row written before this schema landed doesn't surface a misleading
+// 1970-01-01 — the agent treats empty as "unknown, don't warn".
 type sandboxResponse struct {
-	SandboxID string `json:"sandboxId"`
-	AccountID string `json:"accountId"`
-	ClaimURL  string `json:"claimUrl"`
+	SandboxID         string `json:"sandboxId"`
+	AccountID         string `json:"accountId"`
+	ClaimURL          string `json:"claimUrl"`
+	ExpiresAt         string `json:"expiresAt,omitempty"`
+	ClaimURLExpiresAt string `json:"claimUrlExpiresAt,omitempty"`
 }
 
 type statusResponse struct {
-	SandboxID     string            `json:"sandboxId"`
-	ClaimStatus   store.ClaimStatus `json:"claimStatus"`
-	LiveAccountID string            `json:"liveAccountId,omitempty"`
+	SandboxID         string            `json:"sandboxId"`
+	ClaimStatus       store.ClaimStatus `json:"claimStatus"`
+	LiveAccountID     string            `json:"liveAccountId,omitempty"`
+	ExpiresAt         string            `json:"expiresAt,omitempty"`
+	ClaimURLExpiresAt string            `json:"claimUrlExpiresAt,omitempty"`
+}
+
+// formatTime renders a UTC RFC3339 string, returning "" for the zero
+// time so JSON `omitempty` actually omits the field. Absent-vs-1970 is
+// a meaningful distinction for sandboxes provisioned before the expiry
+// schema landed.
+func formatTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
+// shouldRenewClaimURL decides whether the idempotent postSandboxes
+// path renews the onboarding URL before handing it back. We renew when
+// the link has less than claimURLRenewMargin of life left AND the
+// sandbox is still pre-claim — once a merchant has already claimed
+// (claimed/live/revoked), the URL is no longer the path forward and
+// renewing wastes a Stripe call.
+//
+// Sandboxes written before the expiry schema landed have a zero-time
+// ClaimURLExpiresAt; we don't renew those because we have no signal
+// that anything is actually wrong, and renewing every old row would
+// thunder on Stripe. The agent can trigger a manual renewal by calling
+// stripe__setup, which hits the same idempotent POST /v1/sandboxes path.
+func shouldRenewClaimURL(sb store.Sandbox) bool {
+	if sb.ClaimStatus != store.ClaimStatusProvisioned {
+		return false
+	}
+	if sb.ClaimURLExpiresAt.IsZero() {
+		return false
+	}
+	return time.Until(sb.ClaimURLExpiresAt) < claimURLRenewMargin
 }
 
 // postSandboxes is idempotent on appId: if the app already has a sandbox it
@@ -300,14 +354,59 @@ func (s *Server) postSandboxes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(existing) > 0 {
+		sb := existing[0]
 		// Idempotent: app already has a sandbox, return it. The incoming
 		// customerId / country are not used to update the existing sandbox's
 		// prefill — that would require a Stripe API we don't have yet.
 		// A deliberate re-provision flow can land as a PATCH later.
+		//
+		// If the cached onboarding link is past expiry (or within
+		// claimURLRenewMargin of it) and the sandbox is still
+		// pre-claim, renew it before handing the URL back. The
+		// alternative is the agent rendering a known-stale link and
+		// the user landing on Stripe's "expired" page; renewing here
+		// is a single cheap Stripe call that avoids that.
+		if shouldRenewClaimURL(sb) {
+			renewed, renewErr := s.Stripe.RenewOnboardingLink(ctx, stripeclient.RenewOnboardingLinkInput{
+				SandboxID:      sb.SandboxID,
+				IdempotencyKey: fmt.Sprintf("renew-%s-%s", sb.SandboxID, sb.ClaimURLExpiresAt.UTC().Format(time.RFC3339)),
+			})
+			if renewErr != nil {
+				// Don't fail the call — the agent can still render the
+				// stale URL and retry via stripe__setup (the idempotent
+				// POST /v1/sandboxes path auto-renews). Log loud so
+				// the alarm fires.
+				slog.Error("stripe_service.sandboxes.idempotent_renew_failed",
+					"sandboxId", sb.SandboxID, "appId", appID, "error", renewErr)
+			} else {
+				if persistErr := s.Sandboxes.UpdateClaimURL(ctx, sb.SandboxID, renewed.ClaimURL, renewed.ExpiresAt); persistErr != nil {
+					// Stripe minted a fresh URL but DDB persistence
+					// failed: in-memory sb still has the new URL and we
+					// return it to the caller, but the next QueryByAppID
+					// will see the stale claim_url + expired
+					// claim_url_expires_at in DDB and trigger another
+					// renew. Stripe's idempotency window (and our
+					// deterministic key derived from the unchanged
+					// claim_url_expires_at) makes that retry collapse
+					// to the same URL Stripe just minted, so we
+					// converge — but we log loud so the alarm fires
+					// while there's transient divergence.
+					slog.Error("stripe_service.sandboxes.idempotent_renew_persist_failed",
+						"sandboxId", sb.SandboxID, "appId", appID, "error", persistErr)
+				}
+				sb.ClaimURL = renewed.ClaimURL
+				sb.ClaimURLExpiresAt = renewed.ExpiresAt
+				slog.Info("stripe_service.sandboxes.idempotent_renew.success",
+					"sandboxId", sb.SandboxID, "appId", appID,
+					"claimURLExpiresAt", renewed.ExpiresAt.Format(time.RFC3339))
+			}
+		}
 		writeJSON(w, http.StatusOK, sandboxResponse{
-			SandboxID: existing[0].SandboxID,
-			AccountID: existing[0].AccountID,
-			ClaimURL:  existing[0].ClaimURL,
+			SandboxID:         sb.SandboxID,
+			AccountID:         sb.AccountID,
+			ClaimURL:          sb.ClaimURL,
+			ExpiresAt:         formatTime(sb.ExpiresAt),
+			ClaimURLExpiresAt: formatTime(sb.ClaimURLExpiresAt),
 		})
 		return
 	}
@@ -391,13 +490,15 @@ func (s *Server) postSandboxes(w http.ResponseWriter, r *http.Request) {
 	// they were never persisted in stripe-service.
 	now := time.Now().UTC()
 	persisted := store.Sandbox{
-		SandboxID:   sb.SandboxID,
-		AppID:       appID,
-		AccountID:   sb.AccountID,
-		ClaimURL:    sb.ClaimURL,
-		ClaimStatus: store.ClaimStatusProvisioned,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		SandboxID:         sb.SandboxID,
+		AppID:             appID,
+		AccountID:         sb.AccountID,
+		ClaimURL:          sb.ClaimURL,
+		ClaimStatus:       store.ClaimStatusProvisioned,
+		ExpiresAt:         sb.ExpiresAt,
+		ClaimURLExpiresAt: sb.OnboardingLinkExpiresAt,
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 	if err := s.Sandboxes.Put(ctx, persisted); err != nil {
 		slog.Error("stripe_service.sandboxes.put_failed", "appId", appID, "sandboxId", sb.SandboxID, "error", err)
@@ -406,9 +507,11 @@ func (s *Server) postSandboxes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, sandboxResponse{
-		SandboxID: persisted.SandboxID,
-		AccountID: persisted.AccountID,
-		ClaimURL:  persisted.ClaimURL,
+		SandboxID:         persisted.SandboxID,
+		AccountID:         persisted.AccountID,
+		ClaimURL:          persisted.ClaimURL,
+		ExpiresAt:         formatTime(persisted.ExpiresAt),
+		ClaimURLExpiresAt: formatTime(persisted.ClaimURLExpiresAt),
 	})
 }
 
@@ -432,8 +535,10 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	sb := sandboxes[0]
 	writeJSON(w, http.StatusOK, statusResponse{
-		SandboxID:     sb.SandboxID,
-		ClaimStatus:   sb.ClaimStatus,
-		LiveAccountID: sb.LiveAccountID,
+		SandboxID:         sb.SandboxID,
+		ClaimStatus:       sb.ClaimStatus,
+		LiveAccountID:     sb.LiveAccountID,
+		ExpiresAt:         formatTime(sb.ExpiresAt),
+		ClaimURLExpiresAt: formatTime(sb.ClaimURLExpiresAt),
 	})
 }

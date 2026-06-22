@@ -269,3 +269,117 @@ func TestCreateClaimableSandbox_PropagatesDecodeError(t *testing.T) {
 		t.Errorf("error should mention 'decode response'; got %q", err.Error())
 	}
 }
+
+// --- RenewOnboardingLink HTTP tests ---
+
+func TestRenewOnboardingLink_SendsExpectedRequest(t *testing.T) {
+	var got recordedRequest
+	c, _ := newFakeServer(t, &got, http.StatusOK,
+		`{"onboarding_link_details":{"url":"https://stripe.com/claim/renewed","expires_at":"2026-05-25T00:00:00.000Z"}}`)
+
+	resp, err := c.RenewOnboardingLink(context.Background(), "renew-clmsbx_abc-2026-05-18T00:00:00Z", "clmsbx_abc",
+		RenewOnboardingLinkRequest{
+			OnboardingLinkDetails: &OnboardingLinkDetails{
+				RefreshURL: "https://airo-builder.godaddy.com",
+			},
+		})
+	if err != nil {
+		t.Fatalf("RenewOnboardingLink: %v", err)
+	}
+
+	if got.Method != http.MethodPost {
+		t.Errorf("method: want POST, got %s", got.Method)
+	}
+	wantPath := "/v2/core/claimable_sandboxes/clmsbx_abc/renew_onboarding_link"
+	if got.Path != wantPath {
+		t.Errorf("path: want %q, got %q", wantPath, got.Path)
+	}
+	if got.Idempotency != "renew-clmsbx_abc-2026-05-18T00:00:00Z" {
+		t.Errorf("Idempotency-Key: want renew-clmsbx_abc-2026-05-18T00:00:00Z, got %q", got.Idempotency)
+	}
+	if got.StripeContext != "" {
+		t.Errorf("Stripe-Context: want absent (sandbox ops use platform key, not merchant context), got %q", got.StripeContext)
+	}
+
+	var bodyParsed struct {
+		OnboardingLinkDetails *OnboardingLinkDetails `json:"onboarding_link_details"`
+	}
+	if err := json.Unmarshal(got.Body, &bodyParsed); err != nil {
+		t.Fatalf("unmarshal sent body: %v (raw=%q)", err, string(got.Body))
+	}
+	if bodyParsed.OnboardingLinkDetails == nil {
+		t.Fatalf("body.onboarding_link_details missing (raw=%q)", string(got.Body))
+	}
+	if bodyParsed.OnboardingLinkDetails.RefreshURL != "https://airo-builder.godaddy.com" {
+		t.Errorf("onboarding_link_details.refresh_url: want %q, got %q",
+			"https://airo-builder.godaddy.com", bodyParsed.OnboardingLinkDetails.RefreshURL)
+	}
+
+	// Response shape
+	if resp.OnboardingLinkDetails.URL != "https://stripe.com/claim/renewed" {
+		t.Errorf("resp.OnboardingLinkDetails.URL: want https://stripe.com/claim/renewed, got %q",
+			resp.OnboardingLinkDetails.URL)
+	}
+	if resp.OnboardingLinkDetails.ExpiresAt != "2026-05-25T00:00:00.000Z" {
+		t.Errorf("resp.OnboardingLinkDetails.ExpiresAt: want 2026-05-25T00:00:00.000Z, got %q",
+			resp.OnboardingLinkDetails.ExpiresAt)
+	}
+}
+
+func TestRenewOnboardingLink_RejectsEmptyIdempotencyKey(t *testing.T) {
+	c, err := New(Config{APIKey: "sk_test_x", BaseURL: "https://stripe.example.com"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, err = c.RenewOnboardingLink(context.Background(), "", "clmsbx_abc", RenewOnboardingLinkRequest{})
+	if err == nil {
+		t.Fatalf("want error for empty idempotency key, got nil")
+	}
+	if !strings.Contains(err.Error(), "idempotencyKey") {
+		t.Errorf("error should mention idempotencyKey; got %q", err.Error())
+	}
+}
+
+func TestRenewOnboardingLink_RejectsEmptySandboxID(t *testing.T) {
+	c, err := New(Config{APIKey: "sk_test_x", BaseURL: "https://stripe.example.com"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, err = c.RenewOnboardingLink(context.Background(), "some-key", "", RenewOnboardingLinkRequest{})
+	if err == nil {
+		t.Fatalf("want error for empty sandboxID, got nil")
+	}
+	if !strings.Contains(err.Error(), "sandboxID") {
+		t.Errorf("error should mention sandboxID; got %q", err.Error())
+	}
+}
+
+func TestRenewOnboardingLink_ReturnsErrorWhenURLMissing(t *testing.T) {
+	// A 2xx that decodes to a response with no onboarding_link_details.url
+	// must be rejected — callers depend on the URL being populated.
+	var got recordedRequest
+	c, _ := newFakeServer(t, &got, http.StatusOK, `{"onboarding_link_details":{}}`)
+
+	_, err := c.RenewOnboardingLink(context.Background(), "k", "clmsbx_abc", RenewOnboardingLinkRequest{})
+	if err == nil {
+		t.Fatalf("want error for missing url, got nil")
+	}
+	if !strings.Contains(err.Error(), "missing onboarding_link_details.url") {
+		t.Errorf("error should mention missing url; got %q", err.Error())
+	}
+}
+
+func TestRenewOnboardingLink_PropagatesStripeError(t *testing.T) {
+	var got recordedRequest
+	c, _ := newFakeServer(t, &got, http.StatusNotFound,
+		`{"error":{"type":"invalid_request_error","code":"resource_missing","message":"sandbox not found"}}`)
+
+	_, err := c.RenewOnboardingLink(context.Background(), "k", "clmsbx_missing", RenewOnboardingLinkRequest{})
+	var se *StripeError
+	if !errors.As(err, &se) {
+		t.Fatalf("want *StripeError, got %T (%v)", err, err)
+	}
+	if se.Code != "resource_missing" {
+		t.Errorf("Code: want resource_missing, got %q", se.Code)
+	}
+}

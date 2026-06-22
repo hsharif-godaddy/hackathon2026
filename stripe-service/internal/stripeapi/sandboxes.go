@@ -37,8 +37,18 @@ type SandboxPrefill struct {
 }
 
 // CreateClaimableSandboxResponse mirrors the v2 preview payload.
+//
+// ExpiresAt is the top-level sandbox expiration (RFC3339 string, e.g.
+// "2026-08-17T00:00:00.000Z" — parsed by stripe.parseStripeTime).
+// Claimable sandboxes are permanently deleted at T+60d if unclaimed;
+// Stripe sends a reminder email to prefill.email seven days before
+// expiry. We surface ExpiresAt to the agent via /v1/status so the
+// skill can warn the user proactively.
+//
+// See https://docs.stripe.com/sandboxes/claimable-sandboxes.
 type CreateClaimableSandboxResponse struct {
-	ID                    string                        `json:"id"` // clmsbx_*
+	ID                    string                        `json:"id"`         // clmsbx_*
+	ExpiresAt             string                        `json:"expires_at"` // ISO 8601; e.g. "2026-08-17T00:00:00.000Z"
 	SandboxDetails        SandboxDetails                `json:"sandbox_details"`
 	OnboardingLinkDetails OnboardingLinkResponseDetails `json:"onboarding_link_details"`
 }
@@ -50,10 +60,16 @@ type SandboxDetails struct {
 }
 
 // OnboardingLinkResponseDetails is the response counterpart of
-// OnboardingLinkDetails on the request side. URL is the hosted
-// claim flow.
+// OnboardingLinkDetails on the request side.
+//
+// URL is the hosted claim flow. ExpiresAt is the link's own expiry
+// (RFC3339 string, e.g. "2026-04-29T00:00:00.000Z"; seven days from
+// creation/renewal). Stripe redirects expired-link visitors to
+// OnboardingLinkDetails.RefreshURL, which must call the Renew
+// Onboarding Link API to mint a fresh URL.
 type OnboardingLinkResponseDetails struct {
-	URL string `json:"url"`
+	URL       string `json:"url"`
+	ExpiresAt string `json:"expires_at"` // ISO 8601; e.g. "2026-04-29T00:00:00.000Z"
 }
 
 // SandboxAPIKeys are the three test-mode keys Stripe issues alongside
@@ -121,6 +137,68 @@ func (c *Client) CreateClaimableSandbox(
 	}
 	if out.OnboardingLinkDetails.URL == "" {
 		return nil, fmt.Errorf("stripeapi CreateClaimableSandbox: response missing onboarding_link_details.url")
+	}
+	return &out, nil
+}
+
+// RenewOnboardingLinkRequest is the body of
+// POST /v2/core/claimable_sandboxes/:id/renew_onboarding_link.
+// onboarding_link_details.refresh_url is required by Stripe — omitting
+// the block re-uses the previous request's value, but we always re-supply
+// the URL on every renewal so renewed links continue to point at Airo.
+type RenewOnboardingLinkRequest struct {
+	OnboardingLinkDetails *OnboardingLinkDetails `json:"onboarding_link_details,omitempty"`
+}
+
+// RenewOnboardingLinkResponse mirrors the renew endpoint's payload.
+// Stripe returns the full sandbox object on renew (status / claimed_at /
+// expires_at / owner_details / etc.); we only consume the onboarding-link
+// block since the rest is unchanged by a renewal. Go's json decoder
+// silently ignores the extra fields.
+type RenewOnboardingLinkResponse struct {
+	OnboardingLinkDetails OnboardingLinkResponseDetails `json:"onboarding_link_details"`
+}
+
+// RenewOnboardingLink calls POST
+// /v2/core/claimable_sandboxes/:id/renew_onboarding_link to mint a fresh
+// seven-day onboarding URL for an existing sandbox. The previous URL is
+// invalidated server-side as soon as the new one is issued, so callers
+// must persist the returned URL before any user-visible redirect.
+//
+// Stripe rejects with 400 claimable_sandbox_cant_renew_link if the
+// sandbox status is not `unclaimed` or `claimed`. Callers should gate
+// on claim_status before invoking — see api.shouldRenewClaimURL for the
+// existing pre-claim guard.
+func (c *Client) RenewOnboardingLink(
+	ctx context.Context,
+	idempotencyKey string,
+	sandboxID string,
+	req RenewOnboardingLinkRequest,
+) (*RenewOnboardingLinkResponse, error) {
+	if idempotencyKey == "" {
+		return nil, errors.New("stripeapi: RenewOnboardingLink: idempotencyKey is required")
+	}
+	if sandboxID == "" {
+		return nil, errors.New("stripeapi: RenewOnboardingLink: sandboxID is required")
+	}
+
+	rawResp, err := c.do(
+		ctx,
+		http.MethodPost,
+		"/v2/core/claimable_sandboxes/"+sandboxID+"/renew_onboarding_link",
+		requestHeaders{idempotencyKey: idempotencyKey},
+		req,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var out RenewOnboardingLinkResponse
+	if err := json.Unmarshal(rawResp, &out); err != nil {
+		return nil, fmt.Errorf("stripeapi RenewOnboardingLink: decode response: %w", err)
+	}
+	if out.OnboardingLinkDetails.URL == "" {
+		return nil, fmt.Errorf("stripeapi RenewOnboardingLink: response missing onboarding_link_details.url")
 	}
 	return &out, nil
 }

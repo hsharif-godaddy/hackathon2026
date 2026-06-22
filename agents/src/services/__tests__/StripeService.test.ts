@@ -192,6 +192,26 @@ describe('StripeService', () => {
       expect(result).toEqual({ sandboxId: 'cbsbx_fake_X', claimStatus: 'provisioned' });
     });
 
+    it('passes through expiresAt and claimUrlExpiresAt when present', async () => {
+      const { stripeService } = await import('../StripeService.js');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            sandboxId: 'cbsbx_fake_X',
+            claimStatus: 'provisioned',
+            expiresAt: '2026-08-14T10:30:00Z',
+            claimUrlExpiresAt: '2026-06-22T10:30:00Z',
+          }),
+      });
+
+      const result = await stripeService.getStatus('app-1');
+      expect(result?.expiresAt).toBe('2026-08-14T10:30:00Z');
+      expect(result?.claimUrlExpiresAt).toBe('2026-06-22T10:30:00Z');
+    });
+
     it('passes through liveAccountId when present', async () => {
       const { stripeService } = await import('../StripeService.js');
 

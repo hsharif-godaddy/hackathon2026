@@ -2,7 +2,10 @@
 // and provides concrete implementations of it.
 package stripe
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // CreateSandboxInput is what the api handler forwards to the Stripe client.
 //
@@ -28,13 +31,36 @@ type CreateSandboxInput struct {
 // to the fields stripe-service cares about. This is a protocol DTO — the
 // persistence shape (with ClaimStatus, timestamps, etc.) lives in
 // internal/store.Sandbox.
+//
+// ExpiresAt is the sandbox's hard expiry (T+60d); it never changes for a
+// given sandbox. OnboardingLinkExpiresAt is the claim URL's own expiry
+// (T+7d) and is bumped each time RenewOnboardingLink runs. Both UTC.
 type Sandbox struct {
+	SandboxID               string
+	AccountID               string
+	PublishableKey          string
+	SecretKey               string
+	MCPKey                  string
+	ClaimURL                string
+	ExpiresAt               time.Time
+	OnboardingLinkExpiresAt time.Time
+}
+
+// RenewOnboardingLinkInput carries the sandbox id whose onboarding link
+// is being renewed. IdempotencyKey scopes Stripe-side dedup; one renew
+// per auto-renew check is the expected cadence so a fresh timestamp-
+// keyed value per call is appropriate.
+type RenewOnboardingLinkInput struct {
 	SandboxID      string
-	AccountID      string
-	PublishableKey string
-	SecretKey      string
-	MCPKey         string
-	ClaimURL       string
+	IdempotencyKey string
+}
+
+// RenewedOnboardingLink is what RenewOnboardingLink returns: a fresh
+// claim URL plus its new expires_at. The sandbox itself (id / api_keys
+// / 60-day expiry) is unchanged by a renewal.
+type RenewedOnboardingLink struct {
+	ClaimURL  string
+	ExpiresAt time.Time
 }
 
 // MintLiveAPIKeysInput carries the merchant context for live-key minting.
@@ -73,6 +99,13 @@ type LiveAPIKeys struct {
 //     ENVIRONMENT=local, and by deploys not yet pointed at real Stripe.
 type Client interface {
 	CreateClaimableSandbox(ctx context.Context, in CreateSandboxInput) (Sandbox, error)
+
+	// RenewOnboardingLink mints a fresh seven-day claim URL for an
+	// existing sandbox. Called by the agent-driven idempotent POST
+	// /v1/sandboxes path when the cached URL is near or past expiry.
+	// Stripe redirects expired-link visitors to the configured RefreshURL
+	// (the main Airo app), where the agent retries stripe__setup.
+	RenewOnboardingLink(ctx context.Context, in RenewOnboardingLinkInput) (RenewedOnboardingLink, error)
 
 	// MintLiveAPIKeys runs v2.iam.api_keys.create calls scoped to the
 	// merchant's account, JWE-decrypts the secret response, and returns

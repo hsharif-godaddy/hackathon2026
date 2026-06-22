@@ -207,6 +207,91 @@ describe('stripe-mcp-client', () => {
         expect.objectContaining({ reason: 'key_rotated' }),
       );
     });
+
+    // 401 detection: the key is still locally present, but Stripe has
+    // expired it server-side (the documented 7-days-after-claim window).
+    // The wrapper should translate the upstream error into the structured
+    // stripe_mcp_key_expired response without rethrowing.
+    //
+    // Matching is intentionally narrow: we require a numeric status=401
+    // (or a message that starts with "401" / contains "401 unauthorized"
+    // when there is no numeric status). Pure message-only matches like
+    // "Unauthorized" or "invalid api key" are NOT treated as key-expired
+    // — they could be downstream permission errors unrelated to our key.
+    describe('upstream 401 (key expired server-side)', () => {
+      // Cases that SHOULD trigger key-expired handling.
+      const matchCases: Array<{ name: string; err: unknown }> = [
+        { name: 'numeric status 401', err: Object.assign(new Error('Unauthorized'), { status: 401 }) },
+        { name: 'numeric statusCode 401', err: Object.assign(new Error('forbidden'), { statusCode: 401 }) },
+        { name: 'message starts with 401 (no numeric status)', err: new Error('401 Unauthorized') },
+        { name: 'message contains 401 unauthorized (no numeric status)', err: new Error('HTTP 401 unauthorized: invalid api key') },
+      ];
+      for (const { name, err } of matchCases) {
+        it(`maps ${name} to stripe_mcp_key_expired`, async () => {
+          const upstreamExecute = vi.fn().mockRejectedValue(err);
+          const fakeClient = makeFakeClient({ create_product: { execute: upstreamExecute } });
+          mockCreateMCPClient.mockResolvedValue(fakeClient);
+          setupLocalConfig('app1', 'ek_test_key');
+
+          const tools = await loadStripeMcpTools('app1');
+          const result = (await tools.create_product.execute!({ name: 'T-Shirt' }, {})) as {
+            error?: string;
+            message?: string;
+          };
+
+          expect(upstreamExecute).toHaveBeenCalledOnce();
+          expect(result.error).toBe('stripe_mcp_key_expired');
+          expect(result.message).toContain('seven days');
+          expect(mockLogger.warn).toHaveBeenCalledWith(
+            'stripe_mcp_client.tool_blocked_key_expired',
+            expect.objectContaining({ appId: 'app1', toolName: 'create_product' }),
+          );
+        });
+      }
+
+      // Cases that should NOT trigger key-expired — they should propagate.
+      const noMatchCases: Array<{ name: string; err: unknown }> = [
+        { name: 'message-only Unauthorized (no status)', err: new Error('Unauthorized') },
+        { name: 'message-only invalid api key (no status)', err: new Error('invalid api key provided') },
+        { name: 'message-only permission denied (no status)', err: new Error('Permission denied: insufficient scope') },
+        { name: 'transient network error', err: new Error('socket hang up') },
+        { name: 'non-401 status code', err: Object.assign(new Error('server error'), { status: 500 }) },
+      ];
+      for (const { name, err } of noMatchCases) {
+        it(`rethrows ${name} rather than treating as key-expired`, async () => {
+          const upstreamExecute = vi.fn().mockRejectedValue(err);
+          const fakeClient = makeFakeClient({ create_product: { execute: upstreamExecute } });
+          mockCreateMCPClient.mockResolvedValue(fakeClient);
+          setupLocalConfig('app1', 'ek_test_key');
+
+          const tools = await loadStripeMcpTools('app1');
+          await expect(tools.create_product.execute!({ name: 'T-Shirt' }, {})).rejects.toThrow();
+          expect(mockLogger.warn).not.toHaveBeenCalledWith(
+            'stripe_mcp_client.tool_blocked_key_expired',
+            expect.anything(),
+          );
+        });
+      }
+
+      it('drops the cached session so the next loadStripeMcpTools opens a fresh client', async () => {
+        const upstreamExecute = vi
+          .fn()
+          .mockRejectedValueOnce(Object.assign(new Error('Unauthorized'), { status: 401 }))
+          .mockResolvedValue({ ok: true });
+        const fakeClient = makeFakeClient({ create_product: { execute: upstreamExecute } });
+        mockCreateMCPClient.mockResolvedValue(fakeClient);
+        setupLocalConfig('app1', 'ek_test_key');
+
+        const firstTools = await loadStripeMcpTools('app1');
+        await firstTools.create_product.execute!({ name: 'T-Shirt' }, {}); // 401 → drops cache
+
+        // Cache evicted: the next load re-init's createMCPClient. (Note: in
+        // production the user has to claim+install before the new key is
+        // valid; this test just pins the cache-eviction half.)
+        await loadStripeMcpTools('app1');
+        expect(mockCreateMCPClient).toHaveBeenCalledTimes(2);
+      });
+    });
   });
 
   // ── Caching ────────────────────────────────────────────────────────────────

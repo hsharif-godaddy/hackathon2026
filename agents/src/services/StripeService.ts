@@ -40,6 +40,21 @@ export interface SandboxResponse {
   sandboxId: string;
   accountId: string;
   claimUrl: string;
+  /**
+   * Sandbox hard-expiry timestamp (RFC3339, UTC). Stripe deletes
+   * unclaimed claimable sandboxes 60 days after creation; the agent
+   * uses this to warn the user as the deadline approaches. Absent
+   * when the underlying row predates the expiry schema.
+   */
+  expiresAt?: string;
+  /**
+   * Onboarding-link expiry timestamp (RFC3339, UTC). The hosted claim
+   * URL Stripe issues is valid for 7 days. stripe-service auto-renews
+   * the URL on idempotent re-create, but the agent surfaces this field
+   * so it can convey "this link will expire on X" in chat. Absent when
+   * the underlying row predates the expiry schema.
+   */
+  claimUrlExpiresAt?: string;
 }
 
 export type ClaimStatus = 'provisioned' | 'claimed' | 'live' | 'revoked';
@@ -48,6 +63,10 @@ export interface StatusResponse {
   sandboxId: string;
   claimStatus: ClaimStatus;
   liveAccountId?: string;
+  /** See SandboxResponse.expiresAt. */
+  expiresAt?: string;
+  /** See SandboxResponse.claimUrlExpiresAt. */
+  claimUrlExpiresAt?: string;
 }
 
 /**

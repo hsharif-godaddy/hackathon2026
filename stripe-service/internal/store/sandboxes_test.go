@@ -58,13 +58,19 @@ func (f *fakeDDB) Query(_ context.Context, in *dynamodb.QueryInput, _ ...func(*d
 	return &dynamodb.QueryOutput{Items: f.queryItems[appAttr.Value]}, nil
 }
 
-// UpdateItem evaluates the production condition expression we generate
-// (attribute_exists(sandbox_id) AND #cs IN (:a0, :a1, ...)) by looking at
-// `getItems` for the keyed row and matching its current claim_status
-// against any ExpressionAttributeValues whose key starts with ":a". On
-// success it applies the SET clauses we know we generate (claim_status,
-// updated_at, optionally live_account_id) by mutating the map in place,
-// so a follow-up GetBySandboxID reflects the update.
+// UpdateItem evaluates the production condition expressions we generate:
+//
+//  1. attribute_exists(sandbox_id) AND #cs IN (:a0, :a1, ...) — used by
+//     UpdateClaimStatus; checks that the row exists AND its current
+//     claim_status is in the allowed-source set.
+//
+//  2. attribute_exists(sandbox_id) — used by UpdateClaimURL; only checks
+//     that the row exists (no claim_status guard).
+//
+// On success it applies all SET clauses we know we generate (claim_status,
+// updated_at, optionally live_account_id, claim_url, claim_url_expires_at)
+// by mutating the map in place, so a follow-up GetBySandboxID reflects the
+// update.
 func (f *fakeDDB) UpdateItem(_ context.Context, in *dynamodb.UpdateItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error) {
 	if f.updateErr != nil {
 		return nil, f.updateErr
@@ -81,23 +87,37 @@ func (f *fakeDDB) UpdateItem(_ context.Context, in *dynamodb.UpdateItemInput, _ 
 		if !exists {
 			return nil, &types.ConditionalCheckFailedException{}
 		}
-		currentCS := ""
-		if cs, ok := item["claim_status"].(*types.AttributeValueMemberS); ok {
-			currentCS = cs.Value
-		}
-		allowedHit := false
-		for k, v := range in.ExpressionAttributeValues {
-			if !strings.HasPrefix(k, ":a") {
-				continue
-			}
-			if sv, ok := v.(*types.AttributeValueMemberS); ok && sv.Value == currentCS {
-				allowedHit = true
+		// If the expression contains ":a" placeholders it carries a
+		// claim_status IN guard (UpdateClaimStatus). Verify the current
+		// status is in the allowed set.
+		hasStatusGuard := false
+		for k := range in.ExpressionAttributeValues {
+			if strings.HasPrefix(k, ":a") {
+				hasStatusGuard = true
 				break
 			}
 		}
-		if !allowedHit {
-			return nil, &types.ConditionalCheckFailedException{}
+		if hasStatusGuard {
+			currentCS := ""
+			if cs, ok := item["claim_status"].(*types.AttributeValueMemberS); ok {
+				currentCS = cs.Value
+			}
+			allowedHit := false
+			for k, v := range in.ExpressionAttributeValues {
+				if !strings.HasPrefix(k, ":a") {
+					continue
+				}
+				if sv, ok := v.(*types.AttributeValueMemberS); ok && sv.Value == currentCS {
+					allowedHit = true
+					break
+				}
+			}
+			if !allowedHit {
+				return nil, &types.ConditionalCheckFailedException{}
+			}
 		}
+		// No ":a" placeholders means purely attribute_exists — already
+		// satisfied by the !exists check above.
 	}
 
 	if exists {
@@ -105,14 +125,26 @@ func (f *fakeDDB) UpdateItem(_ context.Context, in *dynamodb.UpdateItemInput, _ 
 		for k, v := range item {
 			newItem[k] = v
 		}
-		if v, ok := in.ExpressionAttributeValues[":s"]; ok {
-			newItem["claim_status"] = v
-		}
-		if v, ok := in.ExpressionAttributeValues[":u"]; ok {
-			newItem["updated_at"] = v
-		}
-		if v, ok := in.ExpressionAttributeValues[":l"]; ok {
-			newItem["live_account_id"] = v
+		if _, isStatusUpdate := in.ExpressionAttributeValues[":s"]; isStatusUpdate {
+			// UpdateClaimStatus: :s=claim_status, :u=updated_at, :l=live_account_id
+			newItem["claim_status"] = in.ExpressionAttributeValues[":s"]
+			if v, ok := in.ExpressionAttributeValues[":u"]; ok {
+				newItem["updated_at"] = v
+			}
+			if v, ok := in.ExpressionAttributeValues[":l"]; ok {
+				newItem["live_account_id"] = v
+			}
+		} else {
+			// UpdateClaimURL: :u=claim_url, :e=claim_url_expires_at, :n=updated_at
+			if v, ok := in.ExpressionAttributeValues[":u"]; ok {
+				newItem["claim_url"] = v
+			}
+			if v, ok := in.ExpressionAttributeValues[":e"]; ok {
+				newItem["claim_url_expires_at"] = v
+			}
+			if v, ok := in.ExpressionAttributeValues[":n"]; ok {
+				newItem["updated_at"] = v
+			}
 		}
 		f.getItems[idAttr.Value] = newItem
 	}
@@ -492,5 +524,141 @@ func TestUpdateClaimStatus_AllowsLivePromotionFromAllNonRevokedStates(t *testing
 				t.Errorf("live_account_id from %s: want acct_live_xyz, got %v", tc.current, item["live_account_id"])
 			}
 		})
+	}
+}
+
+func TestUpdateClaimURL_HappyPath(t *testing.T) {
+	now := time.Date(2026, 5, 11, 10, 30, 0, 0, time.UTC)
+	ddb := &fakeDDB{
+		getItems: map[string]map[string]types.AttributeValue{
+			"cbsbx_fake_abc": {
+				"sandbox_id":   &types.AttributeValueMemberS{Value: "cbsbx_fake_abc"},
+				"app_id":       &types.AttributeValueMemberS{Value: "app-1"},
+				"claim_url":    &types.AttributeValueMemberS{Value: "https://stripe.com/old"},
+				"claim_status": &types.AttributeValueMemberS{Value: "provisioned"},
+				"created_at":   &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
+				"updated_at":   &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
+			},
+		},
+	}
+	s := NewSandboxes(ddb, "test-table")
+
+	newExpiry := time.Date(2026, 5, 18, 10, 30, 0, 0, time.UTC)
+	err := s.UpdateClaimURL(context.Background(), "cbsbx_fake_abc", "https://stripe.com/new", newExpiry)
+	if err != nil {
+		t.Fatalf("UpdateClaimURL: %v", err)
+	}
+	if len(ddb.updateInputs) != 1 {
+		t.Fatalf("UpdateItem calls: want 1, got %d", len(ddb.updateInputs))
+	}
+
+	item := ddb.getItems["cbsbx_fake_abc"]
+	if v, _ := item["claim_url"].(*types.AttributeValueMemberS); v == nil || v.Value != "https://stripe.com/new" {
+		t.Errorf("claim_url: want https://stripe.com/new, got %v", item["claim_url"])
+	}
+	if v, _ := item["claim_url_expires_at"].(*types.AttributeValueMemberS); v == nil || v.Value != newExpiry.UTC().Format(time.RFC3339) {
+		t.Errorf("claim_url_expires_at: want %s, got %v", newExpiry.UTC().Format(time.RFC3339), item["claim_url_expires_at"])
+	}
+	if v, _ := item["updated_at"].(*types.AttributeValueMemberS); v == nil || v.Value == now.Format(time.RFC3339) {
+		t.Errorf("updated_at: should be bumped, still shows original value %v", item["updated_at"])
+	}
+}
+
+func TestUpdateClaimURL_ReturnsErrSandboxNotFound(t *testing.T) {
+	ddb := &fakeDDB{}
+	s := NewSandboxes(ddb, "test-table")
+
+	newExpiry := time.Date(2026, 5, 18, 10, 30, 0, 0, time.UTC)
+	err := s.UpdateClaimURL(context.Background(), "missing", "https://stripe.com/new", newExpiry)
+	if !errors.Is(err, ErrSandboxNotFound) {
+		t.Fatalf("want errors.Is(err, ErrSandboxNotFound), got %v", err)
+	}
+}
+
+func TestUpdateClaimURL_RejectsEmptyClaimURL(t *testing.T) {
+	ddb := &fakeDDB{}
+	s := NewSandboxes(ddb, "test-table")
+
+	newExpiry := time.Date(2026, 5, 18, 10, 30, 0, 0, time.UTC)
+	err := s.UpdateClaimURL(context.Background(), "cbsbx_fake_abc", "", newExpiry)
+	if err == nil {
+		t.Fatalf("want error for empty claimURL, got nil")
+	}
+	if len(ddb.updateInputs) != 0 {
+		t.Errorf("UpdateItem should not be called on validation failure; got %d calls", len(ddb.updateInputs))
+	}
+}
+
+func TestUpdateClaimURL_RejectsZeroExpiresAt(t *testing.T) {
+	ddb := &fakeDDB{}
+	s := NewSandboxes(ddb, "test-table")
+
+	err := s.UpdateClaimURL(context.Background(), "cbsbx_fake_abc", "https://stripe.com/new", time.Time{})
+	if err == nil {
+		t.Fatalf("want error for zero expiresAt, got nil")
+	}
+	if len(ddb.updateInputs) != 0 {
+		t.Errorf("UpdateItem should not be called on validation failure; got %d calls", len(ddb.updateInputs))
+	}
+}
+
+func TestToItemFromItem_RoundTrip_ExpiryFields(t *testing.T) {
+	// Verify that ExpiresAt and ClaimURLExpiresAt survive a toItem+fromItem
+	// round trip. A missing RFC3339 tag or wrong attribute name would zero
+	// both fields and silently break the auto-renew check.
+	now := time.Date(2026, 5, 11, 10, 30, 0, 0, time.UTC)
+	expiresAt := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	claimExpiry := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+
+	in := Sandbox{
+		SandboxID:         "cbsbx_fake_abc",
+		AppID:             "app-1",
+		AccountID:         "acct_fake_abc",
+		ClaimURL:          "https://example.com/claim",
+		ClaimStatus:       ClaimStatusProvisioned,
+		ExpiresAt:         expiresAt,
+		ClaimURLExpiresAt: claimExpiry,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+
+	out := fromItem(toItem(in))
+
+	if !out.ExpiresAt.Equal(expiresAt) {
+		t.Errorf("ExpiresAt: want %v, got %v", expiresAt, out.ExpiresAt)
+	}
+	if !out.ClaimURLExpiresAt.Equal(claimExpiry) {
+		t.Errorf("ClaimURLExpiresAt: want %v, got %v", claimExpiry, out.ClaimURLExpiresAt)
+	}
+}
+
+func TestToItemFromItem_RoundTrip_ZeroExpiryFieldsOmitted(t *testing.T) {
+	// A Sandbox with zero ExpiresAt/ClaimURLExpiresAt (e.g. a row written
+	// before the expiry schema landed) must round-trip as zero, not 1970.
+	// toItem omits the attributes when zero; fromItem returns zero for
+	// missing attributes.
+	now := time.Date(2026, 5, 11, 10, 30, 0, 0, time.UTC)
+	in := Sandbox{
+		SandboxID:   "cbsbx_fake_abc",
+		AppID:       "app-1",
+		ClaimStatus: ClaimStatusProvisioned,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+
+	item := toItem(in)
+	if _, present := item["expires_at"]; present {
+		t.Errorf("expires_at should be omitted when zero; got %v", item["expires_at"])
+	}
+	if _, present := item["claim_url_expires_at"]; present {
+		t.Errorf("claim_url_expires_at should be omitted when zero; got %v", item["claim_url_expires_at"])
+	}
+
+	out := fromItem(item)
+	if !out.ExpiresAt.IsZero() {
+		t.Errorf("ExpiresAt: want zero, got %v", out.ExpiresAt)
+	}
+	if !out.ClaimURLExpiresAt.IsZero() {
+		t.Errorf("ClaimURLExpiresAt: want zero, got %v", out.ClaimURLExpiresAt)
 	}
 }

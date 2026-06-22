@@ -53,6 +53,14 @@ type fakeStripe struct {
 	mintErr       error
 	mintCalls     int
 	mintLastInput stripeclient.MintLiveAPIKeysInput
+
+	// Renew-side fields (RenewOnboardingLink). Tests that don't exercise
+	// renewal leave them zero; the stub returns the canned value or err
+	// and records inputs for assertion.
+	renewOut       stripeclient.RenewedOnboardingLink
+	renewErr       error
+	renewCalls     int
+	renewLastInput stripeclient.RenewOnboardingLinkInput
 }
 
 func (f *fakeStripe) CreateClaimableSandbox(_ context.Context, in stripeclient.CreateSandboxInput) (stripeclient.Sandbox, error) {
@@ -67,16 +75,24 @@ func (f *fakeStripe) MintLiveAPIKeys(_ context.Context, in stripeclient.MintLive
 	return f.mintOut, f.mintErr
 }
 
+func (f *fakeStripe) RenewOnboardingLink(_ context.Context, in stripeclient.RenewOnboardingLinkInput) (stripeclient.RenewedOnboardingLink, error) {
+	f.renewCalls++
+	f.renewLastInput = in
+	return f.renewOut, f.renewErr
+}
+
 // fakeStore is a test double for the api-internal sandboxStore interface.
 type fakeStore struct {
 	byApp          map[string][]store.Sandbox
 	bySandboxID    map[string]store.Sandbox
 	puts           []store.Sandbox
 	updates        []fakeStoreUpdate
+	urlUpdates     []fakeStoreURLUpdate
 	putErr         error
 	queryErr       error
 	updateErr      error
 	updateNotFound bool
+	urlUpdateErr   error
 	getErr         error
 }
 
@@ -84,6 +100,12 @@ type fakeStoreUpdate struct {
 	SandboxID     string
 	ClaimStatus   store.ClaimStatus
 	LiveAccountID string
+}
+
+type fakeStoreURLUpdate struct {
+	SandboxID string
+	ClaimURL  string
+	ExpiresAt time.Time
 }
 
 func newFakeStore() *fakeStore {
@@ -130,6 +152,23 @@ func (f *fakeStore) GetBySandboxID(_ context.Context, sandboxID string) (store.S
 		return store.Sandbox{}, store.ErrSandboxNotFound
 	}
 	return sb, nil
+}
+
+func (f *fakeStore) UpdateClaimURL(_ context.Context, sandboxID, claimURL string, expiresAt time.Time) error {
+	if f.urlUpdateErr != nil {
+		return f.urlUpdateErr
+	}
+	f.urlUpdates = append(f.urlUpdates, fakeStoreURLUpdate{
+		SandboxID: sandboxID,
+		ClaimURL:  claimURL,
+		ExpiresAt: expiresAt,
+	})
+	if sb, ok := f.bySandboxID[sandboxID]; ok {
+		sb.ClaimURL = claimURL
+		sb.ClaimURLExpiresAt = expiresAt
+		f.bySandboxID[sandboxID] = sb
+	}
+	return nil
 }
 
 // fakeEmailLookup is a test double for customerEmailLookup. Returns a
@@ -815,6 +854,254 @@ func TestBuildSecretsOps_FiveOpShape(t *testing.T) {
 // TestBuildLiveSecretsOps: always 5 ops — delete STRIPE_MCP_KEY (MCP is
 // sandbox-only; live product management uses Stripe dashboard) + sk/pk on
 // both preview and publish variants.
+// expiry surfacing: getStatus and the create-201 path both echo
+// expiresAt + claimUrlExpiresAt when the sandbox row carries them, and
+// omit them when zero (so a row written before this schema landed
+// doesn't surface a misleading 1970-01-01).
+func TestGetStatus_SurfacesExpiry(t *testing.T) {
+	srv := newTestRouterServer("dev", "0.0.0", "none")
+	st := srv.Sandboxes.(*fakeStore)
+	expires := time.Date(2026, 8, 14, 10, 30, 0, 0, time.UTC)
+	urlExp := time.Date(2026, 6, 22, 10, 30, 0, 0, time.UTC)
+	st.byApp["app-1"] = []store.Sandbox{{
+		SandboxID:         "cbsbx_fake_abc",
+		AppID:             "app-1",
+		ClaimStatus:       store.ClaimStatusProvisioned,
+		ExpiresAt:         expires,
+		ClaimURLExpiresAt: urlExp,
+	}}
+	h := NewRouter(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status?appId=app-1", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d", rec.Code)
+	}
+	var resp statusResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.ExpiresAt != "2026-08-14T10:30:00Z" {
+		t.Errorf("expiresAt: want 2026-08-14T10:30:00Z, got %q", resp.ExpiresAt)
+	}
+	if resp.ClaimURLExpiresAt != "2026-06-22T10:30:00Z" {
+		t.Errorf("claimUrlExpiresAt: want 2026-06-22T10:30:00Z, got %q", resp.ClaimURLExpiresAt)
+	}
+}
+
+func TestGetStatus_OmitsZeroExpiry(t *testing.T) {
+	// A row predating this schema carries zero-time ExpiresAt /
+	// ClaimURLExpiresAt fields. The wire shape must omit them so the
+	// agent treats them as "unknown" rather than acting on 1970.
+	srv := newTestRouterServer("dev", "0.0.0", "none")
+	st := srv.Sandboxes.(*fakeStore)
+	st.byApp["app-1"] = []store.Sandbox{{
+		SandboxID:   "cbsbx_fake_old",
+		AppID:       "app-1",
+		ClaimStatus: store.ClaimStatusProvisioned,
+	}}
+	h := NewRouter(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status?appId=app-1", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "expiresAt") {
+		t.Errorf("zero expiresAt should be omitted; got %q", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "claimUrlExpiresAt") {
+		t.Errorf("zero claimUrlExpiresAt should be omitted; got %q", rec.Body.String())
+	}
+}
+
+// Idempotent path: when the existing sandbox's onboarding URL is past
+// (or near) expiry, postSandboxes auto-renews before handing the URL
+// back. This is what stops the agent from rendering a stale claim
+// link the user will time out on.
+func TestPostSandboxes_AutoRenewsStaleClaimURL(t *testing.T) {
+	srv := newTestRouterServer("dev", "0.0.0", "none")
+	st := srv.Sandboxes.(*fakeStore)
+	stripe := srv.Stripe.(*fakeStripe)
+
+	staleSandbox := store.Sandbox{
+		SandboxID:         "cbsbx_fake_stale",
+		AppID:             "app-1",
+		ClaimURL:          "https://stripe.example/claim/old",
+		ClaimStatus:       store.ClaimStatusProvisioned,
+		ClaimURLExpiresAt: time.Now().Add(-1 * time.Hour), // already expired
+	}
+	st.byApp["app-1"] = []store.Sandbox{staleSandbox}
+	st.bySandboxID[staleSandbox.SandboxID] = staleSandbox
+
+	freshExp := time.Now().Add(7 * 24 * time.Hour).UTC().Truncate(time.Second)
+	stripe.renewOut = stripeclient.RenewedOnboardingLink{
+		ClaimURL:  "https://stripe.example/claim/fresh",
+		ExpiresAt: freshExp,
+	}
+
+	body, _ := json.Marshal(createSandboxRequest{AppID: "app-1"})
+	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	NewRouter(srv).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: want 200 (idempotent), got %d (body=%q)", rec.Code, rec.Body.String())
+	}
+	var resp sandboxResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.ClaimURL != "https://stripe.example/claim/fresh" {
+		t.Errorf("ClaimURL: want renewed URL, got %q", resp.ClaimURL)
+	}
+	if stripe.renewCalls != 1 {
+		t.Errorf("Stripe.renewCalls: want 1, got %d", stripe.renewCalls)
+	}
+	if len(st.urlUpdates) != 1 {
+		t.Errorf("UpdateClaimURL: want 1 call, got %d", len(st.urlUpdates))
+	}
+}
+
+// Renew-succeeds, persist-fails resilience path: Stripe minted a fresh
+// URL but DDB UpdateClaimURL errored. The handler must still hand the
+// agent the freshly-minted URL (and log the persist failure) — the
+// alternative is sending back a Stripe-invalidated URL that won't work
+// for the user. A future regression (e.g. moving the sb.ClaimURL
+// assignment inside the else branch) would silently re-introduce the
+// stale-link bug, so pin the behavior with a test.
+func TestPostSandboxes_AutoRenew_ReturnsFreshURL_WhenPersistFails(t *testing.T) {
+	srv := newTestRouterServer("dev", "0.0.0", "none")
+	st := srv.Sandboxes.(*fakeStore)
+	stripe := srv.Stripe.(*fakeStripe)
+
+	staleSandbox := store.Sandbox{
+		SandboxID:         "cbsbx_fake_stale",
+		AppID:             "app-1",
+		ClaimURL:          "https://stripe.example/claim/old",
+		ClaimStatus:       store.ClaimStatusProvisioned,
+		ClaimURLExpiresAt: time.Now().Add(-1 * time.Hour),
+	}
+	st.byApp["app-1"] = []store.Sandbox{staleSandbox}
+	st.bySandboxID[staleSandbox.SandboxID] = staleSandbox
+
+	freshExp := time.Now().Add(7 * 24 * time.Hour).UTC().Truncate(time.Second)
+	stripe.renewOut = stripeclient.RenewedOnboardingLink{
+		ClaimURL:  "https://stripe.example/claim/fresh",
+		ExpiresAt: freshExp,
+	}
+	// Force the DDB write to fail after Stripe has minted the new URL.
+	st.urlUpdateErr = errors.New("ddb transient")
+
+	body, _ := json.Marshal(createSandboxRequest{AppID: "app-1"})
+	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	NewRouter(srv).ServeHTTP(rec, req)
+
+	// Response must still be 200 with the freshly-minted URL — the
+	// old URL is invalidated server-side by Stripe and would 404.
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: want 200 even when persist fails, got %d (body=%q)", rec.Code, rec.Body.String())
+	}
+	var resp sandboxResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.ClaimURL != "https://stripe.example/claim/fresh" {
+		t.Errorf("ClaimURL: want renewed URL on persist-failure path, got %q", resp.ClaimURL)
+	}
+	if resp.ClaimURLExpiresAt != freshExp.Format(time.RFC3339) {
+		t.Errorf("ClaimURLExpiresAt: want %q, got %q", freshExp.Format(time.RFC3339), resp.ClaimURLExpiresAt)
+	}
+	// Stripe was hit exactly once and persist was attempted but
+	// rejected — confirm the path that produces the divergent log line.
+	if stripe.renewCalls != 1 {
+		t.Errorf("Stripe.renewCalls: want 1, got %d", stripe.renewCalls)
+	}
+	if len(st.urlUpdates) != 0 {
+		t.Errorf("urlUpdates: want 0 successful persists, got %d", len(st.urlUpdates))
+	}
+}
+
+// Auto-renew is gated on (a) pre-claim status and (b) a known expiry
+// near or past. Sandboxes that are already claimed/live (URL is moot)
+// or that predate the expiry schema (zero-time) must NOT trigger
+// renewal — those would just burn Stripe calls for nothing.
+func TestPostSandboxes_DoesNotRenew_WhenClaimedOrUnknownExpiry(t *testing.T) {
+	cases := []struct {
+		name string
+		sb   store.Sandbox
+	}{
+		{
+			name: "claimed sandbox",
+			sb: store.Sandbox{
+				SandboxID:         "cbsbx_fake_claimed",
+				AppID:             "app-1",
+				ClaimURL:          "https://stripe.example/claim/whatever",
+				ClaimStatus:       store.ClaimStatusClaimed,
+				ClaimURLExpiresAt: time.Now().Add(-1 * time.Hour),
+			},
+		},
+		{
+			name: "live sandbox",
+			sb: store.Sandbox{
+				SandboxID:         "cbsbx_fake_live",
+				AppID:             "app-1",
+				ClaimURL:          "https://stripe.example/claim/whatever",
+				ClaimStatus:       store.ClaimStatusLive,
+				ClaimURLExpiresAt: time.Now().Add(-1 * time.Hour),
+			},
+		},
+		{
+			name: "pre-schema sandbox (zero expiry)",
+			sb: store.Sandbox{
+				SandboxID:   "cbsbx_fake_old",
+				AppID:       "app-1",
+				ClaimURL:    "https://stripe.example/claim/old",
+				ClaimStatus: store.ClaimStatusProvisioned,
+				// ClaimURLExpiresAt left zero
+			},
+		},
+		{
+			name: "fresh expiry (>24h out)",
+			sb: store.Sandbox{
+				SandboxID:         "cbsbx_fake_fresh",
+				AppID:             "app-1",
+				ClaimURL:          "https://stripe.example/claim/fresh",
+				ClaimStatus:       store.ClaimStatusProvisioned,
+				ClaimURLExpiresAt: time.Now().Add(48 * time.Hour),
+			},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			srv := newTestRouterServer("dev", "0.0.0", "none")
+			st := srv.Sandboxes.(*fakeStore)
+			stripe := srv.Stripe.(*fakeStripe)
+			st.byApp["app-1"] = []store.Sandbox{c.sb}
+			st.bySandboxID[c.sb.SandboxID] = c.sb
+
+			body, _ := json.Marshal(createSandboxRequest{AppID: "app-1"})
+			req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			NewRouter(srv).ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status: want 200, got %d", rec.Code)
+			}
+			if stripe.renewCalls != 0 {
+				t.Errorf("Stripe must not be called for %s; got %d calls", c.name, stripe.renewCalls)
+			}
+		})
+	}
+}
+
 func TestBuildLiveSecretsOps(t *testing.T) {
 	ops := buildLiveSecretsOps("sk_live_X", "pk_live_X")
 	if len(ops) != 5 {
