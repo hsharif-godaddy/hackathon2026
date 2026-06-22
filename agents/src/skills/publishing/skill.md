@@ -9,6 +9,8 @@ whenToUse: >-
   deployment work even with no action verb — e.g. what happens on publish,
   why the live site differs from the preview, or how to monitor and track a
   deploy.
+intents:
+  - publish/deploy/go live/launch/make it live/put it online/ship it
 ---
 
 # Publishing

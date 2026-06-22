@@ -94,6 +94,10 @@ vi.mock('@/utils/site', () => ({
   hasBeenPublished: vi.fn(),
 }))
 
+vi.mock('@/lib/publish-polling', () => ({
+  pollPublishStatus: vi.fn(),
+}))
+
 import { getQueryClient } from '@/components/providers/QueryClientProvider'
 import { dynamicApiConfigService } from '@/config/dynamic-api'
 import { appFetch, authPreflight } from '@/lib/gasket-config'
@@ -101,6 +105,7 @@ import { regenerateToken } from '@/lib/jwt-regeneration'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { DeploymentStatus } from '@/lib/mgmt-airo/types'
 import { checkPaywallEligibility } from '@/lib/paywall/core'
+import { pollPublishStatus } from '@/lib/publish-polling'
 import { PublishComplianceBlockReason } from '@/lib/subscription'
 import { appService } from '@/services/AppService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
@@ -133,6 +138,7 @@ describe('publishAction', () => {
       requestAgentPublishConfirmation: vi.fn(),
       resolveAgentPublishConfirmation: vi.fn(),
       resetAgentPublishConfirmation: vi.fn(),
+      publishStates: { 'app-123': { showPaywallModal: false } },
     }
 
     vi.mocked(useDevelopPageStore.getState).mockReturnValue(mockStoreActions)
@@ -185,8 +191,12 @@ describe('publishAction', () => {
       isStatic: false,
     })
 
-    // Mock global fetch for agent service calls
-    global.fetch = vi.fn()
+    // Mock global fetch for agent service calls (async publish returns 202 with jobId)
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 202,
+      json: async () => ({ jobId: 'pub_1', phase: 'building' }),
+    } as Response)
 
     const defaultFetchedSite = {
       id: 'app-123',
@@ -213,6 +223,9 @@ describe('publishAction', () => {
 
     // Default has been published - false for first-time publishing
     vi.mocked(hasBeenPublished).mockReturnValue(false)
+
+    // Default poll result: publish succeeds
+    vi.mocked(pollPublishStatus).mockResolvedValue({ phase: 'deployed', commitHash: 'abc123', version: 'v1' })
 
     // Default analytics logging - mock to return a function
     vi.mocked(logAiroHQEvent).mockReturnValue(() => {})
@@ -265,7 +278,8 @@ describe('publishAction', () => {
       // Mock successful flow
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ commitHash: 'abc123' }),
+        status: 202,
+        json: async () => ({ jobId: 'pub_1', phase: 'building' }),
       } as Response)
 
       await expect(publishAction(params, context)).resolves.toBeDefined()
@@ -279,7 +293,8 @@ describe('publishAction', () => {
 
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ commitHash: 'abc123' }),
+        status: 202,
+        json: async () => ({ jobId: 'pub_1', phase: 'building' }),
       } as Response)
 
       await publishAction(params, context)
@@ -324,7 +339,8 @@ describe('publishAction', () => {
 
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ commitHash: 'abc123' }),
+        status: 202,
+        json: async () => ({ jobId: 'pub_1', phase: 'building' }),
       } as Response)
 
       // Default subscribe mock approves the publish.
@@ -361,7 +377,8 @@ describe('publishAction', () => {
 
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ commitHash: 'abc123' }),
+        status: 202,
+        json: async () => ({ jobId: 'pub_1', phase: 'building' }),
       } as Response)
 
       // No requestId (e.g. older dispatch path) — reset is simply skipped.
@@ -377,7 +394,8 @@ describe('publishAction', () => {
 
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ commitHash: 'abc123' }),
+        status: 202,
+        json: async () => ({ jobId: 'pub_1', phase: 'building' }),
       } as Response)
 
       await publishAction(params, context)
@@ -400,7 +418,8 @@ describe('publishAction', () => {
 
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ commitHash: 'abc123' }),
+        status: 202,
+        json: async () => ({ jobId: 'pub_1', phase: 'building' }),
       } as Response)
 
       await expect(publishAction(params, context)).resolves.toBeDefined()
@@ -537,7 +556,8 @@ describe('publishAction', () => {
 
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ commitHash: 'abc123' }),
+        status: 202,
+        json: async () => ({ jobId: 'pub_1', phase: 'building' }),
       } as Response)
 
       await publishAction(params, context)
@@ -551,7 +571,8 @@ describe('publishAction', () => {
 
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ commitHash: 'abc123' }),
+        status: 202,
+        json: async () => ({ jobId: 'pub_1', phase: 'building' }),
       } as Response)
 
       await publishAction(params, context)
@@ -569,7 +590,8 @@ describe('publishAction', () => {
 
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ commitHash: 'abc123' }),
+        status: 202,
+        json: async () => ({ jobId: 'pub_1', phase: 'building' }),
       } as Response)
 
       // Should not throw - continues despite store error
@@ -584,16 +606,13 @@ describe('publishAction', () => {
 
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({
-          success: true,
-          commitHash: 'response-hash',
-          archive: { path: '/path/to/archive' }
-        }),
+        status: 202,
+        json: async () => ({ jobId: 'pub_1', phase: 'building' }),
       } as Response)
+      vi.mocked(pollPublishStatus).mockResolvedValue({ phase: 'deployed', commitHash: 'response-hash', version: 'v1' })
 
       await publishAction(params, context)
 
-      // Verify commit hash from response is stored
       expect(mockStoreActions.setLastPublishedCommitHash).toHaveBeenCalledWith(
         'app-123',
         'response-hash'
@@ -631,7 +650,8 @@ describe('publishAction', () => {
       // Mock global.fetch for publish call
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ commitHash: 'abc123' }),
+        status: 202,
+        json: async () => ({ jobId: 'pub_1', phase: 'building' }),
       } as Response)
 
       await publishAction(params, context)
@@ -671,7 +691,8 @@ describe('publishAction', () => {
       // Mock global.fetch for publish call (should still succeed)
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ commitHash: 'abc123' }),
+        status: 202,
+        json: async () => ({ jobId: 'pub_1', phase: 'building' }),
       } as Response)
 
       // Should not throw - continues despite sync error
@@ -707,7 +728,8 @@ describe('publishAction', () => {
       // Mock global.fetch for publish call (should still succeed)
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ commitHash: 'abc123' }),
+        status: 202,
+        json: async () => ({ jobId: 'pub_1', phase: 'building' }),
       } as Response)
 
       await expect(publishAction(params, context)).resolves.toBeDefined()
@@ -727,7 +749,8 @@ describe('publishAction', () => {
 
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ commitHash: 'abc123' }),
+        status: 202,
+        json: async () => ({ jobId: 'pub_1', phase: 'building' }),
       } as Response)
 
       await publishAction(params, context)
@@ -738,7 +761,7 @@ describe('publishAction', () => {
       // Verify dynamic API config fetch
       expect(dynamicApiConfigService.getConfigForSite).toHaveBeenCalledWith('app-123')
 
-      // Verify publish API call to agent service
+      // Verify publish API call to agent service (async mode)
       expect(global.fetch).toHaveBeenCalledWith(
         'http://localhost:4000/apps/app-123/publish',
         expect.objectContaining({
@@ -747,7 +770,7 @@ describe('publishAction', () => {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer mock-jwt-token',
           },
-          body: JSON.stringify({ publishedUrl: null }),
+          body: JSON.stringify({ publishedUrl: null, async: true }),
         })
       )
     })
@@ -756,36 +779,24 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      vi.mocked(appService.getGitHistory).mockResolvedValue({
-        currentCommit: 'abc123',
-        commits: [],
-        hasMore: false,
+      vi.mocked(pollPublishStatus).mockResolvedValue({ phase: 'deployed', commitHash: 'abc123', version: 'v1' })
+
+      vi.mocked(appFetch).mockImplementation(async function (url: string) {
+        if (url.includes('/deployments')) {
+          return { ok: true, json: async () => ({ deploymentId: 'deploy-456', status: 'deploying' }) } as Response
+        }
+        if (url.includes('/secrets')) {
+          return { ok: true, json: async () => ({}) } as Response
+        }
+        return { ok: false, status: 404, json: async () => ({}) } as Response
       })
-
-      const mockResult = {
-        commitHash: 'abc123',
-        archive: { path: '/path/to/archive' },
-        deployment: {
-          deploymentId: 'deploy-456',
-          status: 'in_progress',
-          message: 'Deploying...',
-        },
-      }
-
-      vi.mocked(global.fetch).mockResolvedValue({
-        ok: true,
-        json: async () => mockResult,
-      } as Response)
 
       const result = await publishAction(params, context)
 
-      expect(useDevelopPageStore.subscribe).toHaveBeenCalled()
       expect(result).toEqual({
         commitHash: 'abc123',
-        archivePath: '/path/to/archive',
         deploymentId: 'deploy-456',
         deploymentStatus: DeploymentStatus.DEPLOYED,
-        deploymentMessage: 'Deploying...',
       })
     })
 
@@ -1229,13 +1240,15 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      vi.mocked(global.fetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          commitHash: 'abc123',
-          deployment: { deploymentId: 'deploy-456' },
-        }),
-      } as Response)
+      vi.mocked(appFetch).mockImplementation(async function (url: string) {
+        if (url.includes('/deployments')) {
+          return { ok: true, json: async () => ({ deploymentId: 'deploy-456' }) } as Response
+        }
+        if (url.includes('/secrets')) {
+          return { ok: true, json: async () => ({}) } as Response
+        }
+        return { ok: false, status: 404, json: async () => ({}) } as Response
+      })
 
       await publishAction(params, context)
 
@@ -1249,13 +1262,15 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      vi.mocked(global.fetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          commitHash: 'abc123',
-          deployment: { deploymentId: 'deploy-456' },
-        }),
-      } as Response)
+      vi.mocked(appFetch).mockImplementation(async function (url: string) {
+        if (url.includes('/deployments')) {
+          return { ok: true, json: async () => ({ deploymentId: 'deploy-456' }) } as Response
+        }
+        if (url.includes('/secrets')) {
+          return { ok: true, json: async () => ({}) } as Response
+        }
+        return { ok: false, status: 404, json: async () => ({}) } as Response
+      })
 
       await publishAction(params, context)
 
@@ -1289,7 +1304,8 @@ describe('publishAction', () => {
 
       vi.mocked(global.fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ commitHash: 'abc123' }),
+        status: 202,
+        json: async () => ({ jobId: 'pub_1', phase: 'building' }),
       } as Response)
 
       await publishAction(params, context)
@@ -1340,115 +1356,30 @@ describe('publishAction', () => {
       await expect(publishAction(params, context)).resolves.toBeDefined()
     })
 
-    it('should reject when deployment wait reports failed', async () => {
+    it('should reject when polling reports failed', async () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      vi.mocked(useDevelopPageStore.subscribe).mockImplementation(function (callback: any) {
-        Promise.resolve().then(() => {
-          callback({
-            publishStates: {
-              'app-123': {
-                // Approve the publish gate, then report a failed deployment.
-                agentPublishConfirmation: 'approved',
-                deploymentInProgressId: null,
-                publishError: true,
-              },
-            },
-          });
-        });
-        return vi.fn();
+      vi.mocked(pollPublishStatus).mockResolvedValue({
+        phase: 'failed',
+        error: 'Build timed out',
+        logs: ['error output'],
       })
 
-      vi.mocked(global.fetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          commitHash: 'abc123',
-          deployment: { deploymentId: 'deploy-456', status: 'deploying' },
-        }),
-      } as Response)
-
-      vi.mocked(useDevelopPageStore.getState).mockReturnValue({
-        ...mockStoreActions,
-        publishStates: {
-          'app-123': {
-            showPaywallModal: false,
-            isPublishing: false,
-            publishError: false,
-          },
-        },
-      })
-
-      await expect(publishAction(params, context)).rejects.toThrow(
-        'Deployment failed. Check the Publish panel for details.'
-      )
+      await expect(publishAction(params, context)).rejects.toThrow('Build timed out')
 
       expect(mockStoreActions.setPublishError).toHaveBeenCalledWith('app-123', true)
       expect(mockStoreActions.setIsPublishing).toHaveBeenCalledWith('app-123', false)
     })
 
-    it('should reject when deployment wait times out', async () => {
-      vi.useFakeTimers()
+    it('should throw when polling times out', async () => {
+      const context = createMockMessageContext()
+      const params = { appId: 'app-123', commitHash: 'abc123' }
 
-      try {
-        const context = createMockMessageContext()
-        const params = { appId: 'app-123', commitHash: 'abc123' }
+      vi.mocked(pollPublishStatus).mockResolvedValue({ phase: 'timeout' })
 
-        // Approve the publish gate, but keep the deployment in-progress so
-        // waitForPublishResult never resolves and hits its timeout.
-        vi.mocked(useDevelopPageStore.subscribe).mockImplementation(function (callback: any) {
-          Promise.resolve().then(() => {
-            callback({
-              publishStates: {
-                'app-123': {
-                  agentPublishConfirmation: 'approved',
-                  deploymentInProgressId: 'deploy-456',
-                  publishError: false,
-                },
-              },
-            });
-          });
-          return vi.fn();
-        })
-
-        vi.mocked(global.fetch).mockResolvedValue({
-          ok: true,
-          json: async () => ({
-            commitHash: 'abc123',
-            deployment: { deploymentId: 'deploy-456' },
-          }),
-        } as Response)
-
-        vi.mocked(useDevelopPageStore.getState).mockReturnValue({
-          ...mockStoreActions,
-          publishStates: {
-            'app-123': {
-              showPaywallModal: false,
-              isPublishing: false,
-              publishError: false,
-            },
-          },
-        })
-
-        const promise = publishAction(params, context)
-        // Attach rejection handler early to prevent Node.js unhandled-rejection
-        // warning during timer advancement (the assertion below still observes
-        // the original rejection).
-        promise.catch(() => {})
-
-        // Flush microtasks so publishAction reaches waitForPublishResult
-        await vi.advanceTimersByTimeAsync(0)
-        // Advance past the 5-minute timeout
-        await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 1)
-
-        await expect(promise).rejects.toThrow(
-          'Deployment did not reach a finished state within the time limit. Check the Publish panel or try again.'
-        )
-
-        expect(mockStoreActions.setPublishError).toHaveBeenCalledWith('app-123', true)
-      } finally {
-        vi.useRealTimers()
-      }
+      await expect(publishAction(params, context)).rejects.toThrow('Publish did not complete within the time limit')
+      expect(mockStoreActions.setIsPublishing).toHaveBeenCalledWith('app-123', false)
     })
   })
 
@@ -1703,13 +1634,8 @@ describe('publishAction', () => {
       const context = createMockMessageContext()
       const params = { appId: 'app-123' }
 
-      vi.mocked(appService.getGitHistory).mockResolvedValue({
-        currentCommit: 'fetched-hash',
-        commits: [],
-        hasMore: false,
-      })
+      vi.mocked(pollPublishStatus).mockResolvedValue({ phase: 'deployed', commitHash: 'fetched-hash', version: 'v1' })
 
-      // Mock appFetch for app details and secrets sync
       vi.mocked(appFetch).mockImplementation(async function (url: string) {
         if (url.startsWith('/api/sites/app-123')) {
           return {
@@ -1722,66 +1648,28 @@ describe('publishAction', () => {
             }),
           } as Response
         }
+        if (url.includes('/deployments')) {
+          return { ok: true, json: async () => ({ deploymentId: 'deploy-789', status: 'deploying' }) } as Response
+        }
         if (url.includes('secrets')) {
           return { ok: true, json: async () => ({}) } as Response
         }
         throw new Error('Unexpected appFetch call')
       })
 
-      // Mock global.fetch for publish call to agent service
-      vi.mocked(global.fetch).mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          commitHash: 'fetched-hash',
-          archive: { path: '/archive/path' },
-          deployment: {
-            deploymentId: 'deploy-789',
-            status: 'in_progress',
-            message: 'Deploying to production',
-          },
-        }),
-      } as Response)
-
       const result = await publishAction(params, context)
 
-      // Verify state updates
       expect(mockStoreActions.clearPublishStatus).toHaveBeenCalledWith('app-123')
       expect(mockStoreActions.setIsPublishing).toHaveBeenCalledWith('app-123', true)
-      expect(mockStoreActions.setLastPublishedCommitHash).toHaveBeenCalledWith(
-        'app-123',
-        'fetched-hash'
-      )
-      expect(mockStoreActions.setDeploymentInProgressId).toHaveBeenCalledWith(
-        'app-123',
-        'deploy-789'
-      )
-
-      // Verify JWT regeneration
+      expect(mockStoreActions.setLastPublishedCommitHash).toHaveBeenCalledWith('app-123', 'fetched-hash')
+      expect(mockStoreActions.setDeploymentInProgressId).toHaveBeenCalledWith('app-123', 'deploy-789')
       expect(regenerateToken).toHaveBeenCalledWith({ siteId: 'app-123', force: true })
-
-      // Verify dynamic API config fetch
       expect(dynamicApiConfigService.getConfigForSite).toHaveBeenCalledWith('app-123')
 
-      // Verify publish API call to agent service
-      expect(global.fetch).toHaveBeenCalledWith(
-        'http://localhost:4000/apps/app-123/publish',
-        expect.objectContaining({
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer mock-jwt-token',
-          },
-        })
-      )
-
-      // Verify result
-      expect(useDevelopPageStore.subscribe).toHaveBeenCalled()
       expect(result).toEqual({
         commitHash: 'fetched-hash',
-        archivePath: '/archive/path',
         deploymentId: 'deploy-789',
         deploymentStatus: DeploymentStatus.DEPLOYED,
-        deploymentMessage: 'Deploying to production',
       })
     })
   })

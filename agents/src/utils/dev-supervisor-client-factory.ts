@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+
 import { DevSupervisorClient, createDevSupervisorClient, isDevSupervisorAvailable } from '../services/DevSupervisorClient.js';
 import { AppRepository } from '../database/index.js';
 import { Logger } from '../logging/index.js';
@@ -78,6 +80,11 @@ export class DevSupervisorClientFactory {
    * @throws Error if app not found
    */
   static createForPublishSupervisor(appId: string): DevSupervisorClient | null {
+    const publishSocketPath = process.env.AIRO_SUPERVISOR_PUBLISH_SOCKET_PATH;
+    if (publishSocketPath && existsSync(publishSocketPath)) {
+      return this.createForSocketPath(publishSocketPath, appId);
+    }
+
     const app = this.getAppRepository().findById(appId);
     if (!app) {
       this.logger.error('dev_supervisor.client.create.app_not_found', {
@@ -87,7 +94,6 @@ export class DevSupervisorClientFactory {
       throw new Error(`App with ID ${appId} not found`);
     }
 
-    // Use stored publishSupervisorPath for V4 unified jobs
     if (!app.publishSupervisorPath) {
       this.logger.debug('dev_supervisor.client.create.no_publish_supervisor', {
         appId,

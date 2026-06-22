@@ -79,6 +79,8 @@ const mockDevelopState = {
   setLastPublishedCommitHash: mockSetLastPublishedCommitHash,
   setPublishSuccess: mockSetPublishSuccess,
   setShowFirstPublishCongrats: mockSetShowFirstPublishCongrats,
+  publishStates: {} as Record<string, any>,
+  getPublishState: (appId: string) => mockDevelopState.publishStates[appId] || {},
 };
 
 vi.mock('@/stores/useDevelopPageStore', () => ({
@@ -91,9 +93,15 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
   ),
 }));
 
+const mockSiteStoreState = {
+  fetchSite: mockFetchSite,
+  getSite: () => ({ published_url: null }),
+};
 vi.mock('@/stores/useSiteStore', () => ({
-  useSiteStore: (selector: (state: { fetchSite: typeof mockFetchSite }) => unknown) =>
-    selector({ fetchSite: mockFetchSite }),
+  useSiteStore: Object.assign(
+    (selector: (state: typeof mockSiteStoreState) => unknown) => selector(mockSiteStoreState),
+    { getState: () => mockSiteStoreState },
+  ),
 }));
 
 vi.mock('@/stores/useSitesStore', () => ({
@@ -105,40 +113,41 @@ vi.mock('@/utils/site', () => ({
   hasBeenPublished: (...args: unknown[]) => mockHasBeenPublished(...args),
 }));
 
+const mockPollPublishStatus = vi.fn();
+vi.mock('@/lib/publish-polling', () => ({
+  pollPublishStatus: (...args: unknown[]) => mockPollPublishStatus(...args),
+}));
+
 describe('usePublishApp', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
   });
 
-  it('includes dnsUpdateConsent=true in deployment payload', async () => {
-    mockAppFetch.mockImplementation(function (url: string) {
-      if (url.includes('/deployments')) {
-        return Promise.resolve({
-          ok: false,
-          status: 500,
-          json: async () => ({ error: 'failed to create deployment' }),
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({}),
-      });
-    });
+  function setupMocks() {
     mockAuthPreflight.mockResolvedValue(null);
     mockFetchAppDetails.mockResolvedValue({ id: 'app-123', variants: [] });
     mockGetConfigForSite.mockResolvedValue({ agentUrl: 'https://agent.test' });
     mockRegenerateToken.mockResolvedValue({ token: 'token-123' });
     mockIsPublishBlockedByComplianceRules.mockReturnValue(false);
-    mockUseSwitchboard.mockReturnValue({ data: false });
+    mockUseSwitchboard.mockReturnValue(true);
     mockHasBeenPublished.mockReturnValue(false);
+    mockPollPublishStatus.mockResolvedValue({ phase: 'deployed', commitHash: 'abc123', version: 'v1' });
     vi.spyOn(global, 'fetch').mockResolvedValue({
       ok: true,
-      json: async () => ({
-        commitHash: 'abc123',
-        success: true,
-      }),
+      status: 202,
+      json: async () => ({ jobId: 'pub_1', phase: 'building' }),
     } as Response);
+  }
+
+  it('includes dnsUpdateConsent=true in deployment payload', async () => {
+    setupMocks();
+    mockAppFetch.mockImplementation(function (url: string) {
+      if (url.includes('/deployments')) {
+        return Promise.resolve({ ok: true, json: async () => ({ deploymentId: 'dep-1', status: 'deploying' }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
 
     const { result } = renderHookWithProviders(() => usePublishApp());
 
@@ -158,33 +167,13 @@ describe('usePublishApp', () => {
   });
 
   it('omits dnsUpdateConsent when it is undefined', async () => {
+    setupMocks();
     mockAppFetch.mockImplementation(function (url: string) {
       if (url.includes('/deployments')) {
-        return Promise.resolve({
-          ok: false,
-          status: 500,
-          json: async () => ({ error: 'failed to create deployment' }),
-        });
+        return Promise.resolve({ ok: true, json: async () => ({ deploymentId: 'dep-1', status: 'deploying' }) });
       }
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({}),
-      });
+      return Promise.resolve({ ok: true, json: async () => ({}) });
     });
-    mockAuthPreflight.mockResolvedValue(null);
-    mockFetchAppDetails.mockResolvedValue({ id: 'app-123', variants: [] });
-    mockGetConfigForSite.mockResolvedValue({ agentUrl: 'https://agent.test' });
-    mockRegenerateToken.mockResolvedValue({ token: 'token-123' });
-    mockIsPublishBlockedByComplianceRules.mockReturnValue(false);
-    mockUseSwitchboard.mockReturnValue({ data: false });
-    mockHasBeenPublished.mockReturnValue(false);
-    vi.spyOn(global, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        commitHash: 'abc123',
-        success: true,
-      }),
-    } as Response);
 
     const { result } = renderHookWithProviders(() => usePublishApp());
 
@@ -203,33 +192,13 @@ describe('usePublishApp', () => {
   });
 
   it('includes dnsUpdateConsent=false in deployment payload', async () => {
+    setupMocks();
     mockAppFetch.mockImplementation(function (url: string) {
       if (url.includes('/deployments')) {
-        return Promise.resolve({
-          ok: false,
-          status: 500,
-          json: async () => ({ error: 'failed to create deployment' }),
-        });
+        return Promise.resolve({ ok: true, json: async () => ({ deploymentId: 'dep-1', status: 'deploying' }) });
       }
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({}),
-      });
+      return Promise.resolve({ ok: true, json: async () => ({}) });
     });
-    mockAuthPreflight.mockResolvedValue(null);
-    mockFetchAppDetails.mockResolvedValue({ id: 'app-123', variants: [] });
-    mockGetConfigForSite.mockResolvedValue({ agentUrl: 'https://agent.test' });
-    mockRegenerateToken.mockResolvedValue({ token: 'token-123' });
-    mockIsPublishBlockedByComplianceRules.mockReturnValue(false);
-    mockUseSwitchboard.mockReturnValue({ data: false });
-    mockHasBeenPublished.mockReturnValue(false);
-    vi.spyOn(global, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        commitHash: 'abc123',
-        success: true,
-      }),
-    } as Response);
 
     const { result } = renderHookWithProviders(() => usePublishApp());
 
@@ -246,5 +215,86 @@ describe('usePublishApp', () => {
       gitHash: 'abc123',
       dnsUpdateConsent: false,
     });
+  });
+
+  it('throws on poll phase=failed with build error details', async () => {
+    setupMocks();
+    mockPollPublishStatus.mockResolvedValue({
+      phase: 'failed',
+      error: 'Build script exited with code 1',
+      logs: ['ERR: missing dependency'],
+    });
+
+    const { result } = renderHookWithProviders(() => usePublishApp());
+
+    await expect(
+      act(async () => {
+        await result.current.mutateAsync({ appId: 'app-123' });
+      }),
+    ).rejects.toThrow('Build script exited with code 1');
+
+    expect(mockSetBuildErrorDetails).toHaveBeenCalledWith('app-123', {
+      error: 'Build script exited with code 1',
+      details: 'ERR: missing dependency',
+    });
+  });
+
+  it('throws on poll phase=timeout', async () => {
+    setupMocks();
+    mockPollPublishStatus.mockResolvedValue({ phase: 'timeout' });
+
+    const { result } = renderHookWithProviders(() => usePublishApp());
+
+    await expect(
+      act(async () => {
+        await result.current.mutateAsync({ appId: 'app-123' });
+      }),
+    ).rejects.toThrow('Publish may have failed');
+  });
+
+  it('throws on poll phase=aborted', async () => {
+    setupMocks();
+    mockPollPublishStatus.mockResolvedValue({ phase: 'aborted' });
+
+    const { result } = renderHookWithProviders(() => usePublishApp());
+
+    await expect(
+      act(async () => {
+        await result.current.mutateAsync({ appId: 'app-123' });
+      }),
+    ).rejects.toThrow('Publish polling was cancelled');
+  });
+
+  it('throws when deployed without commitHash', async () => {
+    setupMocks();
+    mockPollPublishStatus.mockResolvedValue({ phase: 'deployed', commitHash: undefined });
+
+    const { result } = renderHookWithProviders(() => usePublishApp());
+
+    await expect(
+      act(async () => {
+        await result.current.mutateAsync({ appId: 'app-123' });
+      }),
+    ).rejects.toThrow('Publish succeeded but no commit hash returned');
+  });
+
+  it('returns immediately on local-dev sync response (published: true)', async () => {
+    setupMocks();
+    mockUseSwitchboard.mockReturnValue(false);
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ published: true, commitHash: 'local-abc' }),
+    } as Response);
+
+    const { result } = renderHookWithProviders(() => usePublishApp());
+
+    let data: any;
+    await act(async () => {
+      data = await result.current.mutateAsync({ appId: 'app-123' });
+    });
+
+    expect(data.commitHash).toBe('local-abc');
+    expect(mockPollPublishStatus).not.toHaveBeenCalled();
   });
 });

@@ -23,6 +23,7 @@ import { scoreAuditReport, detectRegressionFromSnapshot } from '../../services/S
 import { SeoQualityRepository } from '../../database/repositories/SeoQualityRepository.js';
 import type { ILogger } from '../../logging/types.js';
 import { resolvePublicHttpsFetchUrl } from '../../utils/public-fetch-url.js';
+import { publishJobRegistry, ConflictError } from './publish/job-registry.js';
 
 const router: Router = Router();
 const appRepository = new AppRepository();
@@ -82,6 +83,141 @@ async function captureSeoQuality(
       });
     }
   }
+}
+
+interface AsyncPublishParams {
+  appId: string;
+  jobId: string;
+  strategy: ReturnType<typeof getPublishStrategy>;
+  publishContext: PublishContext;
+  isUnifiedJob: boolean;
+  publishSocketPath: string | undefined;
+  contextLogger: ReturnType<typeof log.forApp>;
+  publishedUrl: string | null;
+  bodyPublishedUrl: string | null;
+  customerId: string | undefined;
+  workspace: NonNullable<ReturnType<typeof createForWorkspace>>;
+}
+
+function runAsyncPublish(params: AsyncPublishParams): void {
+  const { appId, jobId, strategy, publishContext, isUnifiedJob, publishSocketPath, contextLogger, publishedUrl, bodyPublishedUrl, customerId, workspace } = params;
+
+  const startedAt = Date.now();
+
+  const BUILD_TIMEOUT_MS = 9 * 60 * 1000;
+
+  (async (): Promise<void> => {
+    let buildTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const buildResult = await Promise.race([
+        strategy.prepareBuild(publishContext),
+        new Promise<never>((_, reject) => {
+          buildTimer = setTimeout(() => reject(new Error('Build timed out after 9 minutes')), BUILD_TIMEOUT_MS);
+        }),
+      ]);
+      clearTimeout(buildTimer);
+
+      const gitHookService = getGitHookService();
+      if (gitHookService.hasActiveBranch(appId)) {
+        gitHookService.clearBranchTracking(appId);
+      }
+
+      publishJobRegistry.update(appId, { phase: 'deploying', commitHash: buildResult.commitHash }, jobId);
+
+      if (isUnifiedJob) {
+        let publishSupervisor: DevSupervisorClient | null = null;
+        if (publishSocketPath) {
+          publishSupervisor = DevSupervisorClientFactory.createForSocketPath(publishSocketPath, appId);
+        } else {
+          const appRecord = appRepository.findById(appId);
+          if (appRecord?.publishSupervisorPath) {
+            publishSupervisor = DevSupervisorClientFactory.createForSocketPath(appRecord.publishSupervisorPath, appId);
+          }
+        }
+
+        if (!publishSupervisor) {
+          publishJobRegistry.update(appId, { phase: 'failed', error: 'Publish supervisor unavailable' }, jobId);
+          return;
+        }
+
+        const healthTimeoutSeconds = strategy.key === 'paas' ? 120 : 60;
+        const DEPLOY_TIMEOUT_MS = (healthTimeoutSeconds + 60) * 1000;
+
+        const publishRequest: PublishRequest = {
+          commitHash: buildResult.commitHash,
+          force: false,
+          waitForHealthy: true,
+          healthTimeoutSeconds,
+        };
+
+        let deployTimer: ReturnType<typeof setTimeout> | undefined;
+        const deployResponse = await Promise.race([
+          strategy.deploy(publishSupervisor, publishRequest, contextLogger),
+          new Promise<never>((_, reject) => {
+            deployTimer = setTimeout(() => reject(new Error(`Deploy timed out after ${DEPLOY_TIMEOUT_MS / 1000}s`)), DEPLOY_TIMEOUT_MS);
+          }),
+        ]);
+        clearTimeout(deployTimer);
+
+        if (deployResponse.status === 'error') {
+          publishJobRegistry.update(appId, {
+            phase: 'failed',
+            error: deployResponse.error || 'Deploy failed',
+            logs: deployResponse.logs?.map(l => l.message) || null,
+          }, jobId);
+          return;
+        }
+
+        publishJobRegistry.update(appId, { phase: 'deployed', version: deployResponse.version }, jobId);
+      } else {
+        publishJobRegistry.update(appId, { phase: 'deployed', commitHash: buildResult.commitHash }, jobId);
+      }
+
+      // Fire-and-forget SEO audit + compliance (mirrors sync path). Isolated
+      // catch so a failure here never overwrites the deployed phase.
+      if (!seoAuditInProgress.has(appId)) {
+        seoAuditInProgress.add(appId);
+        try {
+          const resolvedUrl = resolvePublicHttpsFetchUrl(publishedUrl, bodyPublishedUrl);
+          const report = await runSeoAudit({
+            appId,
+            appPath: publishContext.appPath,
+            publishedUrl: resolvedUrl,
+            isPublished: !!resolvedUrl,
+            includeSourceScan: true,
+          });
+          logSeoAuditReport(appId, report, contextLogger);
+          await captureSeoQuality(appId, report, contextLogger);
+        } catch (seoErr) {
+          contextLogger.error('seo.audit.exception', { error: seoErr instanceof Error ? seoErr.message : String(seoErr) });
+        } finally {
+          seoAuditInProgress.delete(appId);
+        }
+      }
+
+      const trimmedCustomerId = customerId?.trim();
+      if (trimmedCustomerId && trimmedCustomerId !== 'not-provided') {
+        await reportPublishedComplianceStatus(appId, trimmedCustomerId, workspace, contextLogger).catch((err) => {
+          contextLogger.warn('compliance.publishReport.exception', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
+      contextLogger.info('route.publish.async.complete', { phase: 'deployed', totalMs: Date.now() - startedAt });
+    } catch (error) {
+      clearTimeout(buildTimer);
+      const message = error instanceof Error ? error.message : String(error);
+      const logs = error instanceof BuildError && error.details ? [error.details] : null;
+      const isTimeout = message.includes('timed out');
+      publishJobRegistry.update(appId, { phase: 'failed', error: message, logs, buildTimeoutSeconds: isTimeout ? BUILD_TIMEOUT_MS / 1000 : null }, jobId);
+      contextLogger.error('route.publish.async.failed', { error: message, totalMs: Date.now() - startedAt });
+    }
+  })().catch((err) => {
+    contextLogger.error('route.publish.async.unhandled', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    publishJobRegistry.update(appId, { phase: 'failed', error: 'Unhandled error during publish' }, jobId);
+  });
 }
 
 // SECURITY: Apply ownership validation to all publish routes
@@ -213,7 +349,7 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
     // Detect environment and job type for archive path
     const isLocalDev = !process.env.NOMAD_ALLOC_DIR;
     const publishSocketPath = process.env.AIRO_SUPERVISOR_PUBLISH_SOCKET_PATH;
-    const isUnifiedJob = isLocalDev || (publishSocketPath && existsSync(publishSocketPath));
+    const isUnifiedJob = isLocalDev || !!(publishSocketPath && existsSync(publishSocketPath));
     const targetDir = isUnifiedJob && isLocalDev ? '/dist' : undefined;
 
     // Get strategy via factory
@@ -242,7 +378,44 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
         : {}),
     };
 
-    // Execute strategy - Phase 1: Prepare build artifact
+    // Async publish branch: return immediately, run build+deploy in background
+    if (req.body.async === true) {
+      let job: ReturnType<typeof publishJobRegistry.create>;
+      try {
+        job = publishJobRegistry.create(id);
+      } catch (error) {
+        if (error instanceof ConflictError) {
+          return res.status(409).json({
+            error: 'Publish already in progress',
+            jobId: error.activeJob.jobId,
+            phase: error.activeJob.phase,
+          });
+        }
+        throw error;
+      }
+
+      contextLogger.info('route.publish.async.started', { jobId: job.jobId });
+      res.status(202).json({ mode: 'async', jobId: job.jobId, phase: job.phase });
+
+      const bodyUrl = typeof req.body.publishedUrl === 'string' ? req.body.publishedUrl.trim() : null;
+      runAsyncPublish({
+        appId: id,
+        jobId: job.jobId,
+        strategy,
+        publishContext,
+        isUnifiedJob,
+        publishSocketPath,
+        contextLogger,
+        publishedUrl: app.publishedUrl ?? null,
+        bodyPublishedUrl: bodyUrl,
+        customerId: app.customerId,
+        workspace,
+      });
+
+      return;
+    }
+
+    // Synchronous publish path (default, PaaS backward compat)
     let fullCommitHash: string;
     let archivePath: string;
 
@@ -374,6 +547,7 @@ router.post('/apps/:id/publish', requirePermission('canPublish'), async (req, re
     });
 
     const response: any = {
+      mode: 'sync',
       success: true,
       commitHash: fullCommitHash,
       archive: {
@@ -672,6 +846,71 @@ router.post('/apps/:id/publish/restart', requirePermission('canPublish'), async 
     return res.status(500).json({
       error: 'Failed to restart published server',
       details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+/**
+ * GET /apps/:id/publish/status
+ *
+ * Returns the publish container's current status (version, health, process state).
+ * Used by the browser to check actual deploy state when its timeout fires.
+ */
+router.get('/apps/:id/publish/status', requirePermission('canPublish'), async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const { id } = req.params;
+
+  if (!id) {
+    return res.status(400).json({ error: 'App ID is required' });
+  }
+
+  const contextLogger = log.forApp(id);
+
+  // Check job registry first: active async job takes precedence
+  const activeJob = publishJobRegistry.get(id);
+  if (activeJob) {
+    const response: Record<string, unknown> = {
+      source: 'job',
+      jobId: activeJob.jobId,
+      phase: activeJob.phase,
+      startedAt: activeJob.startedAt,
+    };
+    if (activeJob.commitHash !== null) response.commitHash = activeJob.commitHash;
+    if (activeJob.version !== null) response.version = activeJob.version;
+    if (activeJob.error !== null) response.error = activeJob.error;
+    if (activeJob.logs !== null) response.logs = activeJob.logs;
+    if (activeJob.buildTimeoutSeconds !== null) response.buildTimeoutSeconds = activeJob.buildTimeoutSeconds;
+    return res.json(response);
+  }
+
+  // No active job: fall back to container state via supervisor
+  try {
+    const publishSupervisor = DevSupervisorClientFactory.createForPublishSupervisor(id);
+
+    if (!publishSupervisor) {
+      contextLogger.warn('route.publish.status.supervisor-unavailable', {});
+      return res.status(503).json({ error: 'Publish supervisor unavailable', source: 'supervisor' });
+    }
+
+    const status = await publishSupervisor.getPublishStatus({ lines: 0, includeLogs: false });
+
+    return res.json({
+      source: 'supervisor',
+      version: status.version,
+      health: status.health,
+      process: status.process,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('not available') ||
+        message.includes('connection refused') ||
+        message.includes('not found')) {
+      contextLogger.warn('route.publish.status.supervisor-unavailable', { reason: message });
+      return res.status(503).json({ error: 'Publish supervisor unavailable' });
+    }
+    log.error(contextLogger, 'route.publish.status.error', error as Error, {});
+    return res.status(500).json({
+      error: 'Failed to get publish status',
     });
   }
 });

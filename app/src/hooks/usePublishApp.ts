@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { dynamicApiConfigService } from '@/config/dynamic-api';
@@ -226,6 +227,10 @@ export function usePublishApp() {
   const fetchSite = useSiteStore((state) => state.fetchSite);
   const fetchSitesList = useSitesStore((state) => state.fetchSite);
   const isSecretsSyncEnabled = useSwitchboard('appbuilder-settings-secrets');
+  const isAsyncPublishEnabled = useSwitchboard('appbuilder-async-publish');
+  const pollAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => { pollAbortRef.current?.abort(); }, []);
 
   return useMutation<PublishResult, Error, PublishParams>({
     mutationFn: async ({ appId, dnsUpdateConsent }) => {
@@ -312,15 +317,62 @@ export function usePublishApp() {
         appId,
         tokenResult.token,
         site.published_url,
+        isAsyncPublishEnabled !== false,
       );
+
+      if (response.status === 409) {
+        const conflictData = await response.json();
+        if (conflictData.jobId) {
+          logger.info('publish.reattaching-existing-job', { appId, jobId: conflictData.jobId, phase: conflictData.phase });
+          const { pollPublishStatus } = await import('@/lib/publish-polling');
+          pollAbortRef.current?.abort();
+          const pollController = new AbortController();
+          pollAbortRef.current = pollController;
+          const pollResult = await pollPublishStatus(
+            apiConfig.agentUrl,
+            appId,
+            tokenResult.token,
+            {
+              signal: pollController.signal,
+              refreshToken: async function refreshPublishToken() {
+                return regenerateToken({ siteId: appId, force: true });
+              },
+            },
+          );
+
+          if (pollResult.phase === 'aborted') {
+            throw new Error('Publish polling was cancelled');
+          }
+
+          if (pollResult.phase === 'failed') {
+            const errorDetails = pollResult.logs?.join('\n') || pollResult.error || 'Unknown error';
+            setBuildErrorDetails(appId, {
+              error: pollResult.error || 'Publish failed',
+              details: errorDetails,
+            });
+            throw new Error(pollResult.error || 'Publish failed');
+          }
+
+          if (pollResult.phase === 'timeout') {
+            logger.warn('publish.poll-timeout', { appId });
+            throw new Error('Publish may have failed. Check the Publish panel or try again.');
+          }
+
+          if (!pollResult.commitHash) {
+            throw new Error('Publish succeeded but no commit hash returned');
+          }
+
+          setLastPublishedCommitHash(appId, pollResult.commitHash);
+          setIsPublishing(appId, false);
+          return { result: { success: true, commitHash: pollResult.commitHash }, commitHash: pollResult.commitHash };
+        }
+        throw new Error(conflictData.error || 'Publish failed: 409');
+      }
 
       if (!response.ok) {
         const errorData = await response.json();
 
-        // If this is a build/runtime error with details or logs, store it for the UI to handle
-        // This includes both 400 (build errors) and 500 (supervisor/runtime errors)
         if (errorData.details || errorData.logs) {
-          // Combine details and logs so the agent gets the full picture
           const logText = errorData.logs
             ? errorData.logs.map((log: any) => log.message || log).join('\n')
             : '';
@@ -331,15 +383,6 @@ export function usePublishApp() {
             details: errorDetails,
             exitCode: errorData.exitCode
           });
-
-          logger.info('publish.error.build-error-stored', {
-            appId,
-            error: errorData.error,
-            status: response.status,
-            hasDetails: !!errorData.details,
-            hasLogs: !!errorData.logs,
-            exitCode: errorData.exitCode
-          });
         }
 
         throw new Error(errorData.error || `Publish failed: ${response.status}`);
@@ -347,62 +390,88 @@ export function usePublishApp() {
 
       const result = await response.json();
 
-      // Store the commit hash from the response for retry functionality
-      if (result.commitHash) {
-        setLastPublishedCommitHash(appId, result.commitHash);
-      }
+      let commitHash: string;
 
-      // Step 3: Create deployment record via app service (secure, trusted service)
-      // Only if archive was created successfully
-      if (result.success && result.commitHash) {
-        try {
-          logger.info('publish.creating-deployment', {
-            appId,
-            commitHash: result.commitHash.substring(0, 7),
-          });
-
-          const deploymentResponse = await appFetch(`/api/apps/${appId}/deployments`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
+      if (!result.jobId) {
+        // Sync path (flag off or local dev): server already completed publish
+        commitHash = result.commitHash;
+      } else {
+        // Async mode: poll until terminal
+        const { pollPublishStatus } = await import('@/lib/publish-polling');
+        pollAbortRef.current?.abort();
+        const pollController = new AbortController();
+        pollAbortRef.current = pollController;
+        const pollResult = await pollPublishStatus(
+          apiConfig.agentUrl,
+          appId,
+          tokenResult.token,
+          {
+            signal: pollController.signal,
+            refreshToken: async function refreshPublishToken() {
+              return regenerateToken({ siteId: appId, force: true });
             },
-            body: JSON.stringify({
-              gitHash: result.commitHash,
-              ...(dnsUpdateConsent === undefined ? {} : { dnsUpdateConsent }),
-            }),
-          });
+          },
+        );
 
-          if (!deploymentResponse.ok) {
-            const deploymentError = await deploymentResponse.json().catch(() => ({
-              error: 'Failed to create deployment',
-            }));
-
-            logger.warn('publish.deployment-creation-failed', {
-              appId,
-              status: deploymentResponse.status,
-              error: deploymentError.error,
-            });
-            // Don't throw - archive was created successfully, deployment is secondary
-          } else {
-            const deploymentData = await deploymentResponse.json();
-            result.deployment = deploymentData;
-
-            logger.info('publish.deployment-created', {
-              appId,
-              deploymentId: deploymentData.deploymentId,
-              status: deploymentData.status,
-            });
-          }
-        } catch (deploymentError) {
-          logger.warn('publish.deployment-creation-error', {
-            appId,
-            error: deploymentError instanceof Error ? deploymentError.message : String(deploymentError),
-          });
-          // Don't throw - archive was created successfully
+        if (pollResult.phase === 'aborted') {
+          throw new Error('Publish polling was cancelled');
         }
+
+        if (pollResult.phase === 'failed') {
+          const errorDetails = pollResult.logs?.join('\n') || pollResult.error || 'Unknown error';
+          setBuildErrorDetails(appId, {
+            error: pollResult.error || 'Publish failed',
+            details: errorDetails,
+          });
+          throw new Error(pollResult.error || 'Publish failed');
+        }
+
+        if (pollResult.phase === 'timeout') {
+          logger.warn('publish.poll-timeout', { appId });
+          throw new Error('Publish may have failed. Check the Publish panel or try again.');
+        }
+
+        if (!pollResult.commitHash) {
+          throw new Error('Publish succeeded but no commit hash returned');
+        }
+        commitHash = pollResult.commitHash;
       }
 
-      return { result, commitHash: result.commitHash };
+      setLastPublishedCommitHash(appId, commitHash);
+
+      try {
+        const deploymentResponse = await appFetch(`/api/apps/${appId}/deployments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gitHash: commitHash,
+            ...(dnsUpdateConsent === undefined ? {} : { dnsUpdateConsent }),
+          }),
+        });
+
+        if (deploymentResponse.ok) {
+          const deploymentData = await deploymentResponse.json();
+          result.deployment = deploymentData;
+          logger.info('publish.deployment-created', {
+            appId,
+            deploymentId: deploymentData.deploymentId,
+          });
+        } else {
+          logger.warn('publish.deployment-creation-failed', {
+            appId,
+            status: deploymentResponse.status,
+          });
+        }
+      } catch (deploymentError) {
+        logger.warn('publish.deployment-creation-error', {
+          appId,
+          error: deploymentError instanceof Error ? deploymentError.message : String(deploymentError),
+        });
+      }
+
+      result.commitHash = commitHash;
+      result.success = true;
+      return { result, commitHash };
     },
     onSuccess: async (data, variables) => {
       // PRODUCTION FLOW: Deployment tracking with polling
@@ -461,7 +530,17 @@ export function usePublishApp() {
         return;
       }
 
+      // Async publish succeeded but no deployment record (creation failed)
+      // Show success immediately since the app IS deployed
+      setIsPublishing(variables.appId, false);
+      setPublishSuccess(variables.appId, true);
       useDevelopPageStore.getState().setFirstPublishDeployPending(variables.appId, false);
+
+      if (typeof window !== 'undefined' && data.commitHash) {
+        window.dispatchEvent(new CustomEvent('publish-snapshot-request', {
+          detail: { appId: variables.appId, commitHash: data.commitHash },
+        }));
+      }
     },
     onError: (error, variables) => {
       if (error instanceof AuthDismissedError) return;

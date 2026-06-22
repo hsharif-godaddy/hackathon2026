@@ -15,6 +15,7 @@ import {
   type AppDetailsResponse,
   fetchAppDetails,
 } from '@/hooks/useAppDetails'
+import { getSwitchboardFlag } from '@/hooks/useSwitchboard'
 import { appFetch, AuthDismissedError, authPreflight } from '@/lib/gasket-config'
 import { regenerateToken } from '@/lib/jwt-regeneration'
 import { shipAnalyticsLog } from '@/lib/logging'
@@ -35,8 +36,6 @@ import { logAiroHQEvent, logImpressionEvent } from '@/utils/instrumentation'
 import { hasBeenPublished } from '@/utils/site'
 import type { ClientActionExecutor } from './types'
 
-const MAX_PUBLISH_WAIT_MS = 5 * 60 * 1000;
-
 // How long to wait for the user to approve/decline an agent-initiated publish.
 // This budgets the human think-time window only. On APPROVAL the browser signals
 // the agent (via context.resetActionTimeout) to reset the pending publish action's
@@ -54,8 +53,8 @@ const PUBLISH_CONFIRMATION_TIMEOUT_MS = 5 * 60 * 1000;
  * approval here cannot double-prompt a user-initiated publish.
  *
  * Sets the store to 'pending' (which renders AgentPublishConfirmationModal) and
- * resolves when the user approves/declines, mirroring the subscribe pattern in
- * waitForPublishResult. Resolves to false on timeout so the modal is dismissed.
+ * resolves when the user approves/declines. Resolves to false on timeout so the
+ * modal is dismissed.
  *
  * NOTE: this is the harness's FIRST human-in-the-loop gate and is a deliberate
  * one-off, not a reusable primitive. It only works because publish already
@@ -98,38 +97,6 @@ function awaitAgentPublishApproval(appId: string, onApproved?: () => void): Prom
   });
 }
 
-/**
- * Subscribes to useDevelopPageStore and resolves when the existing
- * useDeploymentsQuery polling detects a terminal deployment status
- * (signaled by deploymentInProgressId being cleared to null).
- *
- * @throws Error if deployment fails or the wait exceeds MAX_PUBLISH_WAIT_MS
- */
-function waitForPublishResult(appId: string): Promise<DeploymentStatus> {
-  return new Promise(function awaitTerminalStatus(resolve, reject) {
-    const timeout = setTimeout(function handleTimeout() {
-      unsubscribe();
-      logger.warn('publish-action.deployment-wait.timeout', { appId, elapsedMs: MAX_PUBLISH_WAIT_MS });
-      reject(new Error(
-        'Deployment did not reach a finished state within the time limit. Check the Publish panel or try again.',
-      ));
-    }, MAX_PUBLISH_WAIT_MS);
-
-    const unsubscribe = useDevelopPageStore.subscribe(function checkPublishState(state) {
-      const publishState = state.publishStates[appId];
-      if (!publishState || publishState.deploymentInProgressId !== null) return;
-
-      clearTimeout(timeout);
-      unsubscribe();
-
-      if (publishState.publishError) {
-        reject(new Error('Deployment failed. Check the Publish panel for details.'));
-      } else {
-        resolve(DeploymentStatus.DEPLOYED);
-      }
-    });
-  });
-}
 
 export const publishAction: ClientActionExecutor = async (params, context, requestId) => {
   const { appId } = params
@@ -402,45 +369,39 @@ export const publishAction: ClientActionExecutor = async (params, context, reque
     const publishUrl = postAgentPublish.url(apiConfig.agentUrl, appId)
     logger.info('websocket.client-action.publish.calling-agent', { appId, url: publishUrl })
 
+    const isAsyncPublishEnabled = getSwitchboardFlag('appbuilder-async-publish')
     const { response, parsedBody } = await postAgentPublish.postWithStaleRetry({
       agentUrl: apiConfig.agentUrl,
       appId,
       token: tokenResult.token,
       publishedUrl: appDetails.published_url,
+      async: isAsyncPublishEnabled !== false,
       refreshToken: async function refreshPublishToken() {
         logger.info('websocket.client-action.publish.token-stale-retry', { appId })
         return regenerateToken({ siteId: appId, force: true })
       },
     })
 
-    if (!response.ok) {
+    if (response.status === 409) {
+      const conflictData: any = parsedBody ?? {}
+      if (conflictData.jobId) {
+        logger.info('websocket.client-action.publish.reattaching-existing-job', { appId, jobId: conflictData.jobId, phase: conflictData.phase })
+      }
+    }
+
+    if (!response.ok && !(response.status === 409 && (parsedBody as any)?.jobId)) {
       const errorData: any = parsedBody ?? { error: 'Unknown error' }
 
-      // If this is a build/runtime error with details or logs, store it for the UI to handle
-      // This includes both 400 (build errors) and 500 (supervisor/runtime errors)
       if (errorData.details || errorData.logs) {
         try {
-          const setBuildErrorDetails = useDevelopPageStore.getState().setBuildErrorDetails
-
-          // Combine details and logs so the agent gets the full picture
           const logText = errorData.logs
             ? errorData.logs.map((log: any) => log.message || log).join('\n')
-            : '';
-          const errorDetails = [errorData.details, logText].filter(Boolean).join('\n\n') || 'Unknown error';
-
-          setBuildErrorDetails(appId, {
+            : ''
+          const errorDetails = [errorData.details, logText].filter(Boolean).join('\n\n') || 'Unknown error'
+          useDevelopPageStore.getState().setBuildErrorDetails(appId, {
             error: errorData.error || 'Publish failed',
             details: errorDetails,
             exitCode: errorData.exitCode,
-          })
-
-          logger.info('websocket.client-action.publish.error.build-error-stored', {
-            appId,
-            error: errorData.error,
-            status: response.status,
-            hasDetails: !!errorData.details,
-            hasLogs: !!errorData.logs,
-            exitCode: errorData.exitCode
           })
         } catch (storeError) {
           logger.warn('websocket.client-action.publish.error-store-failed', {
@@ -450,18 +411,10 @@ export const publishAction: ClientActionExecutor = async (params, context, reque
         }
       }
 
-      // Set error state and clear publishing state (matches UI behavior)
-      // EXCEPT when paywall modal is showing - in that case, don't show error alert
       try {
         const store = useDevelopPageStore.getState()
         const showPaywallModal = store.publishStates[appId]?.showPaywallModal ?? false
-
-        // Only set publish error if paywall modal is not showing
-        // This prevents showing both paywall modal and error alert
-        if (!showPaywallModal) {
-          store.setPublishError(appId, true)
-        }
-
+        if (!showPaywallModal) store.setPublishError(appId, true)
         store.setFirstPublishDeployPending(appId, false)
         store.setIsPublishing(appId, false)
       } catch (storeError) {
@@ -471,13 +424,6 @@ export const publishAction: ClientActionExecutor = async (params, context, reque
         })
       }
 
-      logger.error('websocket.client-action.publish.failed', {
-        appId,
-        status: response.status,
-        error: errorData.error,
-      })
-
-      // Create error with additional metadata attached
       const error: any = new Error(errorData.error || `Publish failed with status ${response.status}`)
       error.errorDetails = errorData.details
       error.logs = errorData.logs
@@ -485,142 +431,111 @@ export const publishAction: ClientActionExecutor = async (params, context, reque
       throw error
     }
 
-    const result = await response.json()
+    const submitResult = response.status === 409 ? (parsedBody as any) : await response.json()
+    logger.info('websocket.client-action.publish.submitted', { appId, jobId: submitResult.jobId })
 
-    // Store the commit hash from the response for retry functionality
-    if (result.commitHash) {
-      try {
-        const setLastPublishedCommitHash = useDevelopPageStore.getState().setLastPublishedCommitHash
-        setLastPublishedCommitHash(appId, result.commitHash)
-      } catch (storeError) {
-        logger.warn('websocket.client-action.publish.store-update-failed', {
-          appId,
-          error: storeError instanceof Error ? storeError.message : String(storeError),
-        })
-      }
-    }
+    let commitHash: string | undefined
 
-    // Step 3: Create deployment record via app service (secure, trusted service)
-    // Only if archive was created successfully
-    if (result.success && result.commitHash) {
-      try {
-        logger.info('websocket.client-action.publish.archive-created', {
-          appId,
-          commitHash: result.commitHash.substring(0, 7),
-        })
-
-        logger.info('websocket.client-action.publish.creating-deployment', {
-          appId,
-          commitHash: result.commitHash.substring(0, 7),
-        })
-
-        const deploymentResponse = await appFetch(`/api/apps/${appId}/deployments`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            gitHash: result.commitHash,
-          }),
-        })
-
-        if (!deploymentResponse.ok) {
-          const deploymentError = await deploymentResponse.json().catch(() => ({
-            error: 'Failed to create deployment',
-          }))
-
-          logger.warn('websocket.client-action.publish.deployment-creation-failed', {
-            appId,
-            status: deploymentResponse.status,
-            error: deploymentError.error,
-          })
-          // Don't throw - archive was created successfully, deployment is secondary
-        } else {
-          const deploymentData = await deploymentResponse.json()
-          result.deployment = deploymentData
-
-          logger.info('websocket.client-action.publish.deployment-created', {
-            appId,
-            deploymentId: deploymentData.deploymentId,
-            status: deploymentData.status,
-          })
-        }
-      } catch (deploymentError) {
-        logger.warn('websocket.client-action.publish.deployment-creation-error', {
-          appId,
-          error: deploymentError instanceof Error ? deploymentError.message : String(deploymentError),
-        })
-        // Don't throw - archive was created successfully
-      }
-    }
-
-    logger.info('websocket.client-action.publish.success', {
-      appId,
-      commitHash: result.commitHash?.substring(0, 7),
-      deploymentId: result.deployment?.deploymentId,
-    })
-
-    // Update UI state to trigger deployment polling (matches UI behavior)
-    if (result.deployment?.deploymentId) {
-      try {
-        const setDeploymentInProgressId = useDevelopPageStore.getState().setDeploymentInProgressId
-        setDeploymentInProgressId(appId, result.deployment.deploymentId)
-      } catch (storeError) {
-        logger.warn('websocket.client-action.publish.deployment-id-store-failed', {
-          appId,
-          error: storeError instanceof Error ? storeError.message : String(storeError),
-        })
-      }
-
-      // Invalidate queries to refresh UI
-      try {
-        const queryClient = getQueryClient()
-        if (queryClient) {
-          // Invalidate git history to refresh commit list in history tab
-          // Do NOT use refetchType: 'active' - we need to invalidate even if History tab is not currently open
-          // so that when user switches to it, the query refetches with fresh data
-          await queryClient.invalidateQueries({
-            queryKey: ['git-history', appId],
-          })
-
-          // Invalidate deployments queries to trigger immediate refetch with polling
-          await queryClient.invalidateQueries({
-            queryKey: ['deployments', appId],
-            refetchType: 'active',
-          })
-        } else {
-          logger.warn('websocket.client-action.publish.no-query-client', {
-            appId,
-            message: 'QueryClient not available, queries not invalidated',
-          })
-        }
-      } catch (queryError) {
-        logger.warn('websocket.client-action.publish.query-invalidation-failed', {
-          appId,
-          error: queryError instanceof Error ? queryError.message : String(queryError),
-        })
-      }
-
-      logger.debug('websocket.client-action.publish.ui-updated', {
+    if (!submitResult.jobId) {
+      // Sync path: server already completed publish, use response directly
+      commitHash = submitResult.commitHash
+    } else {
+      // Async path: poll until terminal state
+      const { pollPublishStatus } = await import('@/lib/publish-polling')
+      const pollResult = await pollPublishStatus(
+        apiConfig.agentUrl,
         appId,
-        deploymentId: result.deployment.deploymentId,
+        tokenResult.token,
+        {
+          refreshToken: async function refreshPollToken() {
+            return regenerateToken({ siteId: appId, force: true })
+          },
+        },
+      )
+
+      if (pollResult.phase === 'timeout') {
+        logger.warn('websocket.client-action.publish.poll-timeout', { appId })
+        try {
+          const store = useDevelopPageStore.getState()
+          store.setFirstPublishDeployPending(appId, false)
+          store.setIsPublishing(appId, false)
+        } catch (e) {
+          logger.warn('websocket.client-action.publish.store-update-failed', { appId, context: 'timeout', error: e instanceof Error ? e.message : String(e) })
+        }
+        throw new Error('Publish did not complete within the time limit. The site may still be deploying; check the Publish panel.')
+      }
+
+      if (pollResult.phase === 'failed') {
+        const errorDetails = pollResult.logs?.join('\n') || pollResult.error || 'Unknown error'
+        try {
+          useDevelopPageStore.getState().setBuildErrorDetails(appId, {
+            error: pollResult.error || 'Publish failed',
+            details: errorDetails,
+          })
+        } catch (e) {
+          logger.warn('websocket.client-action.publish.store-update-failed', { appId, context: 'failed', error: e instanceof Error ? e.message : String(e) })
+        }
+
+        const error: any = new Error(pollResult.error || 'Publish failed')
+        error.errorDetails = errorDetails
+        error.logs = pollResult.logs
+        throw error
+      }
+
+      commitHash = pollResult.commitHash
+    }
+
+    // Deployed: create deployment record and update UI
+    if (!commitHash) {
+      throw new Error('Publish succeeded but no commit hash returned')
+    }
+    try {
+      useDevelopPageStore.getState().setLastPublishedCommitHash(appId, commitHash)
+    } catch (e) {
+      logger.warn('websocket.client-action.publish.store-update-failed', { appId, context: 'commitHash', error: e instanceof Error ? e.message : String(e) })
+    }
+
+    let deploymentId: string | undefined
+    try {
+      const deploymentResponse = await appFetch(`/api/apps/${appId}/deployments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gitHash: commitHash }),
       })
 
-      const finalDeploymentStatus = await waitForPublishResult(appId)
-      result.deployment.status = finalDeploymentStatus
+      if (deploymentResponse.ok) {
+        const deploymentData = await deploymentResponse.json()
+        deploymentId = deploymentData.deploymentId
+        logger.info('websocket.client-action.publish.deployment-created', {
+          appId,
+          deploymentId: deploymentData.deploymentId,
+        })
+      } else {
+        logger.warn('websocket.client-action.publish.deployment-creation-failed', {
+          appId,
+          status: deploymentResponse.status,
+        })
+      }
+    } catch (deploymentError) {
+      logger.warn('websocket.client-action.publish.deployment-creation-error', {
+        appId,
+        error: deploymentError instanceof Error ? deploymentError.message : String(deploymentError),
+      })
+    }
 
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('publish-snapshot-request', {
-          detail: {
-            appId,
-            deploymentId: result.deployment.deploymentId,
-            commitHash: result.commitHash,
-          }
-        }))
+    // Update UI state
+    if (deploymentId) {
+      try {
+        useDevelopPageStore.getState().setDeploymentInProgressId(appId, deploymentId)
+        const queryClient = getQueryClient()
+        if (queryClient) {
+          await queryClient.invalidateQueries({ queryKey: ['git-history', appId] })
+          await queryClient.invalidateQueries({ queryKey: ['deployments', appId], refetchType: 'active' })
+        }
+      } catch (e) {
+        logger.warn('websocket.client-action.publish.store-update-failed', { appId, context: 'deployment-tracking', error: e instanceof Error ? e.message : String(e) })
       }
     } else {
-      // No deployment tracking available (local dev or deployment creation failure),
-      // show success immediately instead of polling
       try {
         const store = useDevelopPageStore.getState()
         if (store.getPublishState(appId).firstPublishDeployPending) {
@@ -629,31 +544,23 @@ export const publishAction: ClientActionExecutor = async (params, context, reque
         store.setFirstPublishDeployPending(appId, false)
         store.setIsPublishing(appId, false)
         store.setPublishSuccess(appId, true)
-      } catch (storeError) {
-        logger.warn('websocket.client-action.publish.publish-success-store-failed', {
-          appId,
-          error: storeError instanceof Error ? storeError.message : String(storeError),
-        })
-      }
-
-      if (typeof window !== 'undefined' && result.commitHash) {
-        window.dispatchEvent(new CustomEvent('publish-snapshot-request', {
-          detail: {
-            appId,
-            deploymentId: result.deployment?.deploymentId,
-            commitHash: result.commitHash,
-          }
-        }))
+      } catch (e) {
+        logger.warn('websocket.client-action.publish.store-update-failed', { appId, context: 'publish-success', error: e instanceof Error ? e.message : String(e) })
       }
     }
 
-    // Return minimal result data
+    if (typeof window !== 'undefined' && commitHash) {
+      window.dispatchEvent(new CustomEvent('publish-snapshot-request', {
+        detail: { appId, deploymentId, commitHash },
+      }))
+    }
+
+    logger.info('websocket.client-action.publish.success', { appId, commitHash: commitHash.substring(0, 7) })
+
     return {
-      commitHash: result.commitHash,
-      archivePath: result.archive?.path,
-      deploymentId: result.deployment?.deploymentId,
-      deploymentStatus: result.deployment?.status,
-      deploymentMessage: result.deployment?.message,
+      commitHash,
+      deploymentId,
+      deploymentStatus: deploymentId ? DeploymentStatus.DEPLOYED : undefined,
     }
   } catch (error) {
     if (error instanceof AuthDismissedError) return { cancelled: true }

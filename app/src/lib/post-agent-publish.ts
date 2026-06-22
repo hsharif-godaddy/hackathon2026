@@ -4,18 +4,18 @@ export function url(agentUrl: string, appId: string): string {
   return `${agentUrl}/apps/${appId}/publish`;
 }
 
-export function body(publishedUrl: string | null | undefined): string {
-  return JSON.stringify({ publishedUrl: publishedUrl ?? null });
+export function body(publishedUrl: string | null | undefined, async?: boolean): string {
+  return JSON.stringify({ publishedUrl: publishedUrl ?? null, ...(async ? { async: true } : {}) });
 }
 
-function init(token: string, publishedUrl: string | null | undefined): RequestInit {
+function init(token: string, publishedUrl: string | null | undefined, async?: boolean): RequestInit {
   return {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
     },
-    body: body(publishedUrl),
+    body: body(publishedUrl, async),
   };
 }
 
@@ -24,8 +24,9 @@ export async function post(
   appId: string,
   token: string,
   publishedUrl: string | null | undefined,
+  async?: boolean,
 ): Promise<Response> {
-  return fetch(url(agentUrl, appId), init(token, publishedUrl));
+  return fetch(url(agentUrl, appId), init(token, publishedUrl, async));
 }
 
 export async function postWithStaleRetry(options: {
@@ -34,9 +35,10 @@ export async function postWithStaleRetry(options: {
   token: string;
   publishedUrl: string | null | undefined;
   refreshToken: () => Promise<{ token: string }>;
+  async?: boolean;
 }): Promise<{ response: Response; parsedBody: Record<string, unknown> | null }> {
   const publishUrl = url(options.agentUrl, options.appId);
-  let response = await fetch(publishUrl, init(options.token, options.publishedUrl));
+  let response = await fetch(publishUrl, init(options.token, options.publishedUrl, options.async));
 
   let parsedBody: Record<string, unknown> | null = null;
   if (!response.ok) {
@@ -47,7 +49,7 @@ export async function postWithStaleRetry(options: {
 
   if (response.status === 401 && parsedBody?.code === PublishErrorCode.TokenStale) {
     const retryToken = await options.refreshToken();
-    response = await fetch(publishUrl, init(retryToken.token, options.publishedUrl));
+    response = await fetch(publishUrl, init(retryToken.token, options.publishedUrl, options.async));
     parsedBody = !response.ok
       ? await response.json().catch(function parseRetryError() {
         return {};
