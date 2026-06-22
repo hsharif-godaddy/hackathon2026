@@ -215,7 +215,7 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
     // Skip if user aborted AND noValueDelivered AND no cost override - user's choice to abort, not an agent failure
     // But if there's a cost override (publish/domain) or infrastructure tools, always do per-call attribution
     const hasCostOverride = executionData.costOverride.actionCallIds.size > 0
-    const hasInfrastructure = executionData.infrastructureCallIds.size > 0
+    const hasInfrastructure = executionData.infrastructureCalls.size > 0
     const needsPerCallAttribution = executionData.hadFailures || hasCostOverride || hasInfrastructure
     if (
       needsPerCallAttribution &&

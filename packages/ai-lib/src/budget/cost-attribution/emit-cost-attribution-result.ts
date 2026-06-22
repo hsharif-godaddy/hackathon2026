@@ -65,6 +65,13 @@ function truncate(value: string, max: number): string {
   return value.length <= max ? value : value.slice(0, max)
 }
 
+function serializeInfrastructureCallIds(value: unknown): string[] {
+  if (!value) return []
+  if (value instanceof Map) return Array.from(value.keys())
+  if (typeof value === 'object' && !Array.isArray(value)) return Object.keys(value)
+  return []
+}
+
 // Defensive: nullish-coalesce Set/Map fields so partial events still flow.
 // `intent` is dropped (lives on input.assessment in this event).
 function serializeExecutionData(data: ExecutionData) {
@@ -81,7 +88,7 @@ function serializeExecutionData(data: ExecutionData) {
       followUpCallIds: Array.from(data.costOverride?.followUpCallIds ?? []),
       actions: Object.fromEntries(data.costOverride?.actions ?? new Map()),
     },
-    infrastructureCallIds: Array.from(data.infrastructureCallIds ?? []),
+    infrastructureCallIds: serializeInfrastructureCallIds(data.infrastructureCalls),
   }
 }
 

@@ -17,6 +17,7 @@ import {
   CostOverrideAction,
   Payer,
   AttributionReason,
+  InfrastructureToolType,
   type AttributionReasonType,
   type ExecutionStep,
   type ExecutionData,
@@ -26,12 +27,13 @@ import {
   type PatternResult,
   type CausalChain,
   type CostOverrideData,
+  type InfrastructureToolTypeName,
 } from './types.js'
 import { extractFailedCallIds, extractFailedTargets } from './failure-extraction.js'
 import { detectHighConfidencePatterns } from './pattern-detection.js'
 import { detectCausalChains, getCausalChainCallIds } from './causal-chain-detection.js'
 import { analyzeCostOverrideActions } from './cost-override-detection.js'
-import { extractInfrastructureCallIds } from './infrastructure-detection.js'
+import { extractInfrastructureCalls } from './infrastructure-detection.js'
 import type { ReportItemRequest } from '../report-types.js'
 import type { SessionItem } from '@airo/shared/budget'
 
@@ -62,8 +64,6 @@ export function analyzeExecution(steps: ExecutionStep[]): ExecutionData {
   const causalChains = detectCausalChains(steps)
   const failedTargets = extractFailedTargets(steps)
   const costOverride = analyzeCostOverrideActions(steps)
-  const infrastructureCallIds = extractInfrastructureCallIds(steps)
-
   const hadFailures =
     failedCallIds.size > 0 || patterns.length > 0 || causalChains.length > 0
 
@@ -93,22 +93,28 @@ export function analyzeExecution(steps: ExecutionStep[]): ExecutionData {
     totalSteps: steps.length,
     noValueDelivered,
     costOverride,
-    infrastructureCallIds,
+    infrastructureCalls: extractInfrastructureCalls(steps),
   }
 }
 
 // COST ATTRIBUTION
 
+function addLabel(labels: ReportLabel[], label: ReportLabel): void {
+  if (!labels.includes(label)) {
+    labels.push(label)
+  }
+}
+
 /**
  * Determine labels describing the session.
- * Returns an array with cost override labels first (if any), then failure labels.
- * E.g., ['publish-task', 'tool-failure'] for a publish session with errors.
+ * Returns contextual labels first, then labels with actual attributed costs.
  */
 function determineLabels(
   patterns: PatternResult[],
   causalChains: CausalChain[],
   hasDirectFailures: boolean,
-  costOverride: CostOverrideData
+  costOverride: CostOverrideData,
+  attributedLabels: Iterable<ReportLabel>
 ): ReportLabel[] {
   const labels: ReportLabel[] = []
 
@@ -116,10 +122,10 @@ function determineLabels(
   if (costOverride.actions.size > 0) {
     const actions = Array.from(costOverride.actions.values())
     if (actions.includes(CostOverrideAction.Publish)) {
-      labels.push(ReportLabel.PublishTask)
+      addLabel(labels, ReportLabel.PublishTask)
     }
     if (actions.includes(CostOverrideAction.Domain)) {
-      labels.push(ReportLabel.DomainTask)
+      addLabel(labels, ReportLabel.DomainTask)
     }
   }
 
@@ -127,13 +133,17 @@ function determineLabels(
   if (patterns.length > 0) {
     const sorted = [...patterns].sort((a, b) => b.severity - a.severity)
     const top = sorted[0]
-    if (top) labels.push(patternTypeToLabel(top.type))
+    if (top) addLabel(labels, patternTypeToLabel(top.type))
   }
   if (causalChains.length > 0) {
-    labels.push(ReportLabel.CausalChain)
+    addLabel(labels, ReportLabel.CausalChain)
   }
   if (hasDirectFailures) {
-    labels.push(ReportLabel.ToolFailure)
+    addLabel(labels, ReportLabel.ToolFailure)
+  }
+
+  for (const label of attributedLabels) {
+    addLabel(labels, label)
   }
 
   // Default to General if no labels
@@ -166,6 +176,19 @@ function patternTypeToLabel(patternType: string): ReportLabel {
   }
 }
 
+function infrastructureToolTypeToLabel(toolType: InfrastructureToolTypeName): ReportLabel {
+  switch (toolType) {
+    case InfrastructureToolType.TodoList:
+      return ReportLabel.TodoListOverhead
+    case InfrastructureToolType.SuggestedResponse:
+      return ReportLabel.SuggestedResponseOverhead
+    default: {
+      const exhaustive: never = toolType
+      return exhaustive
+    }
+  }
+}
+
 /**
  * Determine attribution for a single session item.
  */
@@ -176,7 +199,7 @@ function determineAttribution(
   patterns: PatternResult[],
   causalChains: CausalChain[],
   costOverride: CostOverrideData,
-  infrastructureCallIds: Set<string>
+  infrastructureCalls: Map<string, InfrastructureToolTypeName>
 ): ItemAttribution {
   // Check if this call is in the GoDaddy set
   if (!godaddyCallIds.has(callRequestId)) {
@@ -222,6 +245,19 @@ function determineAttribution(
     }
   }
 
+  // Check infrastructure tools (suggestedResponse, todoList) before generic
+  // failure patterns so retry/error labels do not hide agent overhead.
+  const infrastructureToolType = infrastructureCalls.get(callRequestId)
+  if (infrastructureToolType) {
+    return {
+      callRequestId,
+      cost,
+      payer: Payer.GoDaddy,
+      reason: AttributionReason.InfrastructureOverhead,
+      label: infrastructureToolTypeToLabel(infrastructureToolType),
+    }
+  }
+
   // Find which pattern this call belongs to
   for (const pattern of patterns) {
     if (pattern.callIds.includes(callRequestId)) {
@@ -263,17 +299,6 @@ function determineAttribution(
     }
   }
 
-  // Check infrastructure tools (suggestedResponse, todoList)
-  if (infrastructureCallIds.has(callRequestId)) {
-    return {
-      callRequestId,
-      cost,
-      payer: Payer.GoDaddy,
-      reason: AttributionReason.InfrastructureOverhead,
-      label: ReportLabel.InfrastructureOverhead,
-    }
-  }
-
   // Default: direct tool error
   return {
     callRequestId,
@@ -306,7 +331,15 @@ export function attributeSessionItems(
   executionData: ExecutionData,
   context: AttributionContext
 ): AttributionResult {
-  const { failedCallIds, patterns, causalChains, noValueDelivered, costOverride, infrastructureCallIds } = executionData
+  const {
+    failedCallIds,
+    patterns,
+    causalChains,
+    noValueDelivered,
+    costOverride,
+    infrastructureCalls,
+  } = executionData
+  const safeInfrastructureCalls = infrastructureCalls ?? new Map<string, InfrastructureToolTypeName>()
   const totalCost = sessionItems.reduce((sum, item) => sum + item.cost, 0)
 
   // Handle noValueDelivered override: 100% GoDaddy
@@ -366,7 +399,7 @@ export function attributeSessionItems(
   }
 
   // 5. Infrastructure tools (suggestedResponse, todoList) - agent overhead
-  for (const callId of infrastructureCallIds) {
+  for (const callId of safeInfrastructureCalls.keys()) {
     godaddyCallIds.add(callId)
   }
 
@@ -380,7 +413,7 @@ export function attributeSessionItems(
     fromDirectFailures: failedCallIds.size,
     fromPatterns: patterns.reduce((sum, p) => sum + p.callIds.length, 0),
     fromCausalChains: causalCallIds.size,
-    fromInfrastructure: infrastructureCallIds.size,
+    fromInfrastructure: safeInfrastructureCalls.size,
   })
 
   // Attribute each session item and log
@@ -396,7 +429,7 @@ export function attributeSessionItems(
       patterns,
       causalChains,
       costOverride,
-      infrastructureCallIds
+      safeInfrastructureCalls
     )
 
     // Log every attribution decision with cost override details
@@ -442,7 +475,8 @@ export function attributeSessionItems(
     patterns,
     causalChains,
     failedCallIds.size > 0,
-    costOverride
+    costOverride,
+    costsByLabel.keys()
   )
 
   // Log cost override summary if any cost overrides were applied
@@ -654,4 +688,4 @@ export {
   COST_OVERRIDE_TOOLS,
   type CostOverrideResult,
 } from './cost-override-detection.js'
-export { extractInfrastructureCallIds } from './infrastructure-detection.js'
+export { extractInfrastructureCallIds, extractInfrastructureCalls } from './infrastructure-detection.js'

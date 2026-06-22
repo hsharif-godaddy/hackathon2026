@@ -455,6 +455,19 @@ describe('tool_retry pattern', () => {
     const patterns = detectHighConfidencePatterns(steps)
     expect(patterns.find(p => p.type === PatternType.ToolRetry)).toBeUndefined()
   })
+
+  it('does not classify skill-namespaced workflow tools as retries', () => {
+    const steps = [
+      ...Array.from({ length: 4 }, (_, i) =>
+        createStep([toolResult('initial__todoList', { items: [] })], `todo-${i}`)
+      ),
+      ...Array.from({ length: 4 }, (_, i) =>
+        createStep([toolResult('develop__suggestedResponse', { text: 'Try this' })], `suggested-${i}`)
+      ),
+    ]
+    const patterns = detectHighConfidencePatterns(steps)
+    expect(patterns.find(p => p.type === PatternType.ToolRetry)).toBeUndefined()
+  })
 })
 
 // REAL PRODUCTION TOOL NAMES

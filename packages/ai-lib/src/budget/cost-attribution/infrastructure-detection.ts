@@ -7,7 +7,12 @@
  */
 
 import { createLogger } from '@airo/ai-common'
-import { isInfrastructureTool, StepContentType, type ExecutionStep } from './types.js'
+import {
+  getInfrastructureToolType,
+  StepContentType,
+  type ExecutionStep,
+  type InfrastructureToolTypeName,
+} from './types.js'
 
 const logger = createLogger('infrastructure-detection')
 
@@ -17,10 +22,10 @@ const logger = createLogger('infrastructure-detection')
  * that should always be attributed to GoDaddy.
  *
  * @param steps - Array of execution steps from onFinish
- * @returns Set of correlation IDs for infrastructure tool calls
+ * @returns Map of correlation IDs to their infrastructure tool category
  */
-export function extractInfrastructureCallIds(steps: ExecutionStep[]): Set<string> {
-  const infrastructureCallIds = new Set<string>()
+export function extractInfrastructureCalls(steps: ExecutionStep[]): Map<string, InfrastructureToolTypeName> {
+  const infrastructureCalls = new Map<string, InfrastructureToolTypeName>()
 
   for (const step of steps) {
     const correlationId = step.response?.headers?.['x-correlation-id']
@@ -29,14 +34,19 @@ export function extractInfrastructureCallIds(steps: ExecutionStep[]): Set<string
     // Check if any tool in this step is an infrastructure tool
     for (const item of step.content) {
       if (
-        (item.type === StepContentType.ToolCall || item.type === StepContentType.ToolResult) &&
-        item.toolName &&
-        isInfrastructureTool(item.toolName)
+        (item.type === StepContentType.ToolCall ||
+          item.type === StepContentType.ToolResult ||
+          item.type === StepContentType.ToolError) &&
+        item.toolName
       ) {
-        infrastructureCallIds.add(correlationId)
+        const toolType = getInfrastructureToolType(item.toolName)
+        if (!toolType) continue
+
+        infrastructureCalls.set(correlationId, toolType)
         logger.debug('infrastructure.tool.detected', {
           correlationId,
           toolName: item.toolName,
+          toolType,
         })
         break // One infrastructure tool in a step is enough to mark it
       }
@@ -45,9 +55,14 @@ export function extractInfrastructureCallIds(steps: ExecutionStep[]): Set<string
 
   logger.debug('infrastructure.detection.completed', {
     totalSteps: steps.length,
-    totalInfrastructureCallIds: infrastructureCallIds.size,
-    infrastructureCallIds: Array.from(infrastructureCallIds),
+    totalInfrastructureCalls: infrastructureCalls.size,
+    infrastructureCalls: Object.fromEntries(infrastructureCalls),
   })
 
-  return infrastructureCallIds
+  return infrastructureCalls
+}
+
+/** Extract correlation IDs for steps containing infrastructure tool calls. */
+export function extractInfrastructureCallIds(steps: ExecutionStep[]): Set<string> {
+  return new Set(extractInfrastructureCalls(steps).keys())
 }

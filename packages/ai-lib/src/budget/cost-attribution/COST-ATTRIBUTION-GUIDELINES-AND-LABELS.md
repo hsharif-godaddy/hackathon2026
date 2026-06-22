@@ -139,7 +139,8 @@ The `allowOverage` flag appears in two BMS API calls and serves a specific purpo
 
 | Label | Value | Trigger | Rationale |
 |-------|-------|---------|-----------|
-| InfrastructureOverhead | `airo-builder:infrastructure-overhead` | `suggestedResponse` or `todoList` tools used | System-initiated tools, not user-requested, always charged to GoDaddy |
+| SuggestedResponseOverhead | `airo-builder:suggested-response-overhead` | `suggestedResponse` tool used | System-initiated response suggestions, not user-requested, always charged to GoDaddy |
+| TodoListOverhead | `airo-builder:todo-list-overhead` | `todoList` tool used | System-initiated planning, not user-requested, always charged to GoDaddy |
 
 ### Failure Patterns (GoDaddy absorbs wasted tokens)
 
@@ -179,13 +180,13 @@ The `allowOverage` flag appears in two BMS API calls and serves a specific purpo
 When per-call attribution runs, each call is checked in this order — first match wins:
 
 1. **Cost override actions** — PublishTask / DomainTask (publish/domain tool calls + follow-ups)
-2. **Failure patterns** — highest-severity detected pattern wins (severity is computed at runtime, not a static ranking; the pattern with the highest score is selected)
-3. **Causal chains** — CausalChain (edit caused problem → agent fixed it)
-4. **Infrastructure overhead** — InfrastructureOverhead (suggestedResponse, todoList)
+2. **Infrastructure overhead** — SuggestedResponseOverhead / TodoListOverhead (suggestedResponse, todoList)
+3. **Failure patterns** — highest-severity detected pattern wins (severity is computed at runtime, not a static ranking; the pattern with the highest score is selected)
+4. **Causal chains** — CausalChain (edit caused problem → agent fixed it)
 5. **Direct tool errors** — ToolFailure (fallback for GoDaddy-attributed calls not matched above)
 6. **Productive work** — General (call not in the GoDaddy set → customer pays)
 
-> **Note:** In practice, infrastructure tools (suggestedResponse/todoList) and pattern tools (edit/read/grep/terminal) are disjoint — no single call can match both sets. The ordering matters for correctness guarantees, but won't produce different results today.
+> **Note:** Infrastructure is checked before generic patterns so failed or repeated system tools keep their specific overhead labels.
 
 ## Pattern Detection Thresholds
 

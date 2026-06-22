@@ -784,23 +784,28 @@ describe('processBudgetReport', () => {
       const infra1Attr = attributions.find(a => a.callRequestId === infraCallId1)
       expect(infra1Attr?.payer).toBe('godaddy')
       expect(infra1Attr?.reason).toBe('infrastructure_overhead')
-      expect(infra1Attr?.label).toBe(ReportLabel.InfrastructureOverhead)
+      expect(infra1Attr?.label).toBe(ReportLabel.SuggestedResponseOverhead)
 
       const infra2Attr = attributions.find(a => a.callRequestId === infraCallId2)
       expect(infra2Attr?.payer).toBe('godaddy')
       expect(infra2Attr?.reason).toBe('infrastructure_overhead')
-      expect(infra2Attr?.label).toBe(ReportLabel.InfrastructureOverhead)
+      expect(infra2Attr?.label).toBe(ReportLabel.TodoListOverhead)
 
       // Verify all cost goes to GoDaddy
       expect(result.attributionResult!.godaddyCost).toBe(5.0)
       expect(result.attributionResult!.customerCost).toBe(0)
       expect(result.sessionWasFree).toBe(true)
 
-      // Verify report items have infrastructure overhead label
+      // Verify report items split infrastructure overhead by tool type
       expect(result.reportItems).toContainEqual({
         budgetCost: '0',
-        productCost: '5',
-        label: ReportLabel.InfrastructureOverhead,
+        productCost: '2',
+        label: ReportLabel.SuggestedResponseOverhead,
+      })
+      expect(result.reportItems).toContainEqual({
+        budgetCost: '0',
+        productCost: '3',
+        label: ReportLabel.TodoListOverhead,
       })
     })
 

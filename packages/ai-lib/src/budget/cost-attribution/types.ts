@@ -29,7 +29,8 @@ export enum ReportLabel {
   NoOutput = 'airo-builder:no-output',
 
   // Infrastructure overhead (always GoDaddy)
-  InfrastructureOverhead = 'airo-builder:infrastructure-overhead',
+  TodoListOverhead = 'airo-builder:todo-list-overhead',
+  SuggestedResponseOverhead = 'airo-builder:suggested-response-overhead',
 
   // Severity-based patterns
   RepeatedReads = 'airo-builder:repeated-reads',
@@ -186,8 +187,18 @@ export function classifyFileOp(name: string, input: unknown): FileOpKind | null 
 
 /** Check if tool name is a workflow tool (repeated calls expected) */
 export function isWorkflowTool(name: string): boolean {
-  return WORKFLOW_TOOLS.has(name.toLowerCase())
+  return matchesToolSet(name, WORKFLOW_TOOLS)
 }
+
+export const InfrastructureToolType = {
+  TodoList: 'todo_list',
+  SuggestedResponse: 'suggested_response',
+} as const
+
+export type InfrastructureToolTypeName = (typeof InfrastructureToolType)[keyof typeof InfrastructureToolType]
+
+const TODO_LIST_TOOLS = new Set(['todolist', 'todo_list'])
+const SUGGESTED_RESPONSE_TOOLS = new Set(['suggestedresponse', 'suggested_response'])
 
 /**
  * Infrastructure tools - agent overhead, not customer-requested work.
@@ -197,15 +208,15 @@ export function isWorkflowTool(name: string): boolean {
  * and represents actual execution flow, not just overhead.
  */
 export const INFRASTRUCTURE_TOOLS = new Set([
-  'suggestedresponse',
-  'suggested_response',
-  'todolist',
-  'todo_list',
+  ...TODO_LIST_TOOLS,
+  ...SUGGESTED_RESPONSE_TOOLS,
 ])
 
-/** Check if tool name is an infrastructure tool (always GoDaddy cost) */
-export function isInfrastructureTool(name: string): boolean {
-  return matchesToolSet(name, INFRASTRUCTURE_TOOLS)
+/** Get the infrastructure category for a tool name, if it is infrastructure overhead. */
+export function getInfrastructureToolType(name: string): InfrastructureToolTypeName | undefined {
+  if (matchesToolSet(name, TODO_LIST_TOOLS)) return InfrastructureToolType.TodoList
+  if (matchesToolSet(name, SUGGESTED_RESPONSE_TOOLS)) return InfrastructureToolType.SuggestedResponse
+  return undefined
 }
 
 // SDK STEP TYPES (minimal interface for cost attribution)
@@ -362,8 +373,8 @@ export interface ExecutionData {
   intent?: AssessmentIntent
   /** Agent produced no output, no successful tool calls, and wasn't user-aborted */
   noValueDelivered?: boolean
-  /** Correlation IDs for infrastructure tool calls (always GoDaddy cost) */
-  infrastructureCallIds: Set<string>
+  /** Correlation IDs mapped to their infrastructure tool category (always GoDaddy cost) */
+  infrastructureCalls: Map<string, InfrastructureToolTypeName>
 }
 
 /**
@@ -383,7 +394,7 @@ export function emptyExecutionData(): ExecutionData {
       followUpCallIds: new Set(),
       actions: new Map(),
     },
-    infrastructureCallIds: new Set(),
+    infrastructureCalls: new Map(),
   }
 }
 

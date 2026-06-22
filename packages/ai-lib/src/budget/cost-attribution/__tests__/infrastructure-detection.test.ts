@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { extractInfrastructureCallIds } from '../infrastructure-detection.js'
-import type { ExecutionStep, StepContentItem } from '../types.js'
+import { extractInfrastructureCallIds, extractInfrastructureCalls } from '../infrastructure-detection.js'
+import { InfrastructureToolType, type ExecutionStep, type StepContentItem } from '../types.js'
 
 // HELPERS
 
@@ -21,6 +21,10 @@ function toolCall(toolName: string): StepContentItem {
 
 function toolResult(toolName: string): StepContentItem {
   return { type: 'tool-result', toolName }
+}
+
+function toolError(toolName: string): StepContentItem {
+  return { type: 'tool-error', toolName }
 }
 
 describe('extractInfrastructureCallIds', () => {
@@ -44,6 +48,9 @@ describe('extractInfrastructureCallIds', () => {
     ]
     const result = extractInfrastructureCallIds(steps)
     expect(result.has('call-1')).toBe(true)
+
+    const categorized = extractInfrastructureCalls(steps)
+    expect(categorized.get('call-1')).toBe(InfrastructureToolType.SuggestedResponse)
   })
 
   it('detects suggested_response (snake_case variant)', () => {
@@ -60,6 +67,9 @@ describe('extractInfrastructureCallIds', () => {
     ]
     const result = extractInfrastructureCallIds(steps)
     expect(result.has('call-1')).toBe(true)
+
+    const categorized = extractInfrastructureCalls(steps)
+    expect(categorized.get('call-1')).toBe(InfrastructureToolType.TodoList)
   })
 
   it('detects todo_list (snake_case variant)', () => {
@@ -78,6 +88,10 @@ describe('extractInfrastructureCallIds', () => {
     const result = extractInfrastructureCallIds(steps)
     expect(result.has('call-1')).toBe(true)
     expect(result.has('call-2')).toBe(true)
+
+    const categorized = extractInfrastructureCalls(steps)
+    expect(categorized.get('call-1')).toBe(InfrastructureToolType.SuggestedResponse)
+    expect(categorized.get('call-2')).toBe(InfrastructureToolType.TodoList)
   })
 
   it('detects skill-namespaced infrastructure tools', () => {
@@ -88,6 +102,10 @@ describe('extractInfrastructureCallIds', () => {
     const result = extractInfrastructureCallIds(steps)
     expect(result.has('call-1')).toBe(true)
     expect(result.has('call-2')).toBe(true)
+
+    const categorized = extractInfrastructureCalls(steps)
+    expect(categorized.get('call-1')).toBe(InfrastructureToolType.SuggestedResponse)
+    expect(categorized.get('call-2')).toBe(InfrastructureToolType.TodoList)
   })
 
   it('detects tool-call type (not just tool-result)', () => {
@@ -96,6 +114,20 @@ describe('extractInfrastructureCallIds', () => {
     ]
     const result = extractInfrastructureCallIds(steps)
     expect(result.has('call-1')).toBe(true)
+  })
+
+  it('detects tool-error type for failed infrastructure calls', () => {
+    const steps = [
+      createStep([toolError('initial__todoList')], 'call-1'),
+      createStep([toolError('develop__suggestedResponse')], 'call-2'),
+    ]
+    const result = extractInfrastructureCallIds(steps)
+    expect(result.has('call-1')).toBe(true)
+    expect(result.has('call-2')).toBe(true)
+
+    const categorized = extractInfrastructureCalls(steps)
+    expect(categorized.get('call-1')).toBe(InfrastructureToolType.TodoList)
+    expect(categorized.get('call-2')).toBe(InfrastructureToolType.SuggestedResponse)
   })
 
   it('ignores steps without correlation ID', () => {

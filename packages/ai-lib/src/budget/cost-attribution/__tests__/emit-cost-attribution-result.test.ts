@@ -30,7 +30,7 @@ function createExecutionData(overrides: Partial<ExecutionData> = {}): ExecutionD
       followUpCallIds: new Set<string>(),
       actions: new Map(),
     },
-    infrastructureCallIds: new Set<string>(),
+    infrastructureCalls: new Map(),
     ...overrides,
   }
 }
@@ -191,7 +191,7 @@ describe('emitCostAttributionResult', function suite() {
     expect(input.executionData.failedCallIds).toEqual(['a', 'b', 'c'])
   })
 
-  it('should serialize costOverride Sets/Map and infrastructureCallIds Set', function costOverrideAndInfra() {
+  it('should serialize costOverride Sets/Map and infrastructure call IDs', function costOverrideAndInfra() {
     emitCostAttributionResult({
       ...IDS,
       executionData: createExecutionData({
@@ -203,7 +203,10 @@ describe('emitCostAttributionResult', function suite() {
             ['call-publ2', 'publish'],
           ]),
         },
-        infrastructureCallIds: new Set(['call-infra1', 'call-infra2']),
+        infrastructureCalls: new Map([
+          ['call-infra1', 'todo_list'],
+          ['call-infra2', 'suggested_response'],
+        ]),
       }),
       totalCost: 1.0,
       sessionWasFree: false,
@@ -213,7 +216,12 @@ describe('emitCostAttributionResult', function suite() {
 
     const { eventData } = vi.mocked(emitCustomEvent).mock.calls[0][0]
     const { input } = eventData.data as {
-      input: { executionData: { costOverride: Record<string, unknown>; infrastructureCallIds: unknown } }
+      input: {
+        executionData: {
+          costOverride: Record<string, unknown>
+          infrastructureCallIds: unknown
+        }
+      }
     }
 
     expect(input.executionData.costOverride).toEqual({
@@ -287,7 +295,7 @@ describe('emitCostAttributionResult', function suite() {
       hadFailures: false,
       totalSteps: 0,
       costOverride: { actionCallIds: new Set<string>(), followUpCallIds: new Set<string>(), actions: new Map() },
-      infrastructureCallIds: new Set<string>(),
+      infrastructureCalls: new Map(),
     } satisfies ExecutionData
 
     expect(() =>
@@ -323,7 +331,7 @@ describe('emitCostAttributionResult', function suite() {
       costOverride: {
         actionCallIds: new Set<string>(['call-publ1']),
       },
-      infrastructureCallIds: new Set<string>(),
+      infrastructureCalls: new Map(),
     } as unknown as ExecutionData
 
     expect(() =>
@@ -351,6 +359,32 @@ describe('emitCostAttributionResult', function suite() {
       followUpCallIds: [],
       actions: {},
     })
+  })
+
+  it('emits infrastructureCallIds when infrastructureCalls is already serialized', function tolerateSerializedInfrastructureCalls() {
+    const malformed = createExecutionData({
+      infrastructureCalls: {
+        'call-infra1': 'todo_list',
+      } as unknown as ExecutionData['infrastructureCalls'],
+    })
+
+    expect(() =>
+      emitCostAttributionResult({
+        ...IDS,
+        executionData: malformed,
+        totalCost: 1.0,
+        sessionWasFree: false,
+        attributionPath: 'per_call',
+        attribution: perCallAttribution(),
+      }),
+    ).not.toThrow()
+
+    const { eventData } = vi.mocked(emitCustomEvent).mock.calls[0][0]
+    const { input } = eventData.data as {
+      input: { executionData: { infrastructureCallIds: string[] } }
+    }
+
+    expect(input.executionData.infrastructureCallIds).toEqual(['call-infra1'])
   })
 
   it('should pass costsByLabel through verbatim on the attribution payload', function costsByLabel() {
