@@ -34,6 +34,7 @@ on:
           - 'FeedbackFanoutStack'
           - 'FeedbackL1TranscriptStack'
           - 'FeedbackS3Stack'
+          - 'SupportplaneDynamoStack'
           - 'LakeFormationAdminsStack'
           - 'LambdaBaseEcrStack'
           - 'AiroInvestigatorStack'

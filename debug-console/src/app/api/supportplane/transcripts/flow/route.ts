@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { getL1TranscriptsDb } from '@/lib/l1-transcript-db';
+import { queryTranscripts } from '@/lib/l1-transcript-db';
 
 async function handler(request: NextRequest) {
   try {
@@ -18,32 +18,18 @@ async function handler(request: NextRequest) {
     const startDate = searchParams.get('start_date') || undefined;
     const endDate = searchParams.get('end_date') || undefined;
 
-    const db = getL1TranscriptsDb();
-
-    // Build WHERE clause for date filtering
-    let dateFilter = '';
-    const params: any = {};
-    if (startDate) {
-      dateFilter += ' AND created_at >= @start_date';
-      params.start_date = startDate;
-    }
-    if (endDate) {
-      dateFilter += ' AND created_at <= @end_date';
-      params.end_date = endDate;
-    }
-
-    // Fetch all rows with raw_data
-    const allRows = db.prepare(`
-      SELECT raw_data FROM l1_transcripts
-      WHERE raw_data IS NOT NULL${dateFilter}
-    `).all(params) as Array<{ raw_data: string }>;
+    const allRows = (await queryTranscripts({
+      end_date: endDate,
+      start_date: startDate,
+    })).filter((row) => row.raw_data !== null && row.raw_data !== undefined);
 
     // Build 3-way flow matrix
     const flowCounts: Record<string, number> = {};
 
     allRows.forEach(row => {
       try {
-        const data = JSON.parse(row.raw_data);
+        const data =
+          typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
         const friction = data.friction_point;
         const intent = data.sub_intent;
         const resolution = data.issue_resolution;

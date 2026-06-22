@@ -9,7 +9,7 @@ export const GET = withAuth(async (req: NextRequest) => {
         const env = req.nextUrl.searchParams.get('env') ?? (process.env.FEEDBACK_ENV ?? 'dev');
         const granularity = (req.nextUrl.searchParams.get('granularity') ?? 'day') as 'day' | 'week' | 'month';
         const days = parseInt(req.nextUrl.searchParams.get('days') ?? '30', 10);
-        const trends = getFeedbackTrends(env, granularity, days);
+        const trends = await getFeedbackTrends(env, granularity, days);
         return NextResponse.json({ trends, granularity, days });
     } catch (error) {
         logger.error('supportplane.feedback.trends.error', { error: String(error) });

@@ -36,16 +36,26 @@ import {
 // ── Config from env ───────────────────────────────────────────────
 
 function cfg() {
+  const feedbackEnv = (process.env.FEEDBACK_ENV ?? process.env.ENVIRONMENT_NAME ?? 'dev') as 'dev' | 'prod';
+  const isProd = feedbackEnv === 'prod';
+  // S3 bucket/prefix vars are split by env so both can coexist in .env.local.
+  // Falls back to the legacy FEEDBACK_S3_BUCKET/PREFIX if the split vars are absent.
+  const s3Bucket = isProd
+    ? (process.env.S3_FEEDBACK_BUCKET_PROD ?? process.env.FEEDBACK_S3_BUCKET ?? 'airo-builder-feedback-prod')
+    : (process.env.S3_FEEDBACK_BUCKET_DEV  ?? process.env.FEEDBACK_S3_BUCKET ?? 'airo-builder-feedback-dev');
+  const s3Prefix = isProd
+    ? (process.env.S3_FEEDBACK_TABLE_PROD ?? process.env.FEEDBACK_S3_PREFIX ?? 'airo_builder_feedback_cln/')
+    : (process.env.S3_FEEDBACK_TABLE_DEV  ?? process.env.FEEDBACK_S3_PREFIX ?? 'airo_builder_feedback_cln_laketest/');
   return {
-    env: (process.env.ENVIRONMENT_NAME ?? 'dev') as 'dev' | 'prod',
+    env: feedbackEnv,
     startDate: process.env.FEEDBACK_START_DATE ?? '2026-04-01',
-    awsRegion: process.env.AWS_DEFAULT_REGION ?? 'us-west-2',
+    awsRegion: process.env.AWS_DEFAULT_REGION ?? process.env.AWS_REGION ?? 'us-west-2',
     awsProfile: process.env.AWS_PROFILE ?? '',
     awsKeyId: process.env.AWS_ACCESS_KEY_ID ?? '',
     awsSecret: process.env.AWS_SECRET_ACCESS_KEY ?? '',
     awsToken: process.env.AWS_SESSION_TOKEN ?? '',
-    s3FeedbackBucket: process.env.FEEDBACK_S3_BUCKET ?? 'airo-builder-feedback-dev',
-    s3FeedbackPrefix: process.env.FEEDBACK_S3_PREFIX ?? 'airo_builder_feedback_cln_laketest/',
+    s3FeedbackBucket: s3Bucket,
+    s3FeedbackPrefix: s3Prefix,
     athenaDb: process.env.ATHENA_DATABASE ?? 'airo_builder_cln',
     athenaTable: process.env.ATHENA_TABLE ?? 'airo_builder_feedback_cln',
     athenaOutput: process.env.ATHENA_OUTPUT_BUCKET ?? '',
@@ -384,7 +394,7 @@ function rowParamsS3(row: Record<string, unknown>, env: string, sourceUrl: strin
 
 export async function runFeedbackIngestion(
   onProgress?: ProgressCallback,
-  opts: { force?: boolean } = {}
+  opts: { force?: boolean; sources?: 'athena' | 's3' | 'both' } = {}
 ): Promise<IngestProgress> {
   const c = cfg();
   const env = c.env;
@@ -421,11 +431,11 @@ export async function runFeedbackIngestion(
   // Force resync: wipe all source data and ingestion history so everything is re-fetched.
   if (opts.force) {
     emit({ phase: 'scanning', message: 'Force resync: clearing local data…' });
-    clearFeedbackData(env);
+    await clearFeedbackData(env);
     logger.info('feedback-ingest.force-clear', { env });
   }
 
-  const alreadyDone = getAlreadyIngestedKeys();
+  const alreadyDone = await getAlreadyIngestedKeys();
   const affectedDates = new Set<string>();
 
   // ── Phase 1: Athena — all months from startDate through current month ──
@@ -470,15 +480,15 @@ export async function runFeedbackIngestion(
         for (const row of rows) {
           const ts = str(row['feedback_utc_ts']);
           if (ts) affectedDates.add(ts.slice(0, 10));
-          written += insertFeedbackAthenaRow(rowParamsAthena(row, env, key));
+          written += await insertFeedbackAthenaRow(rowParamsAthena(row, env, key));
         }
-        logIngestionSuccess(key, 'athena', written);
+        await logIngestionSuccess(key, 'athena', written);
         progress.processed++;
         progress.newRows += written;
         emit({ message: `Athena ${ym}: ${written} rows written` });
       } catch (err) {
         const msg = (err as Error).message;
-        logIngestionError(key, 'athena', msg);
+        await logIngestionError(key, 'athena', msg);
         progress.errors++;
         logger.warn('feedback-ingest.athena.error', { ym, error: msg });
         emit({ message: `Athena ${ym} error: ${msg.slice(0, 120)}` });
@@ -542,14 +552,14 @@ export async function runFeedbackIngestion(
       for (const row of rows) {
         const ts = str(row['feedback_utc_ts']);
         if (ts) affectedDates.add(ts.slice(0, 10));
-        written += insertFeedbackS3Row(rowParamsS3(row, env, file.s3Url));
+        written += await insertFeedbackS3Row(rowParamsS3(row, env, file.s3Url));
       }
-      logIngestionSuccess(file.s3Url, 's3', written);
+      await logIngestionSuccess(file.s3Url, 's3', written);
       progress.processed++;
       progress.newRows += written;
     } catch (err) {
       const msg = (err as Error).message;
-      logIngestionError(file.s3Url, 's3', msg);
+      await logIngestionError(file.s3Url, 's3', msg);
       progress.errors++;
       logger.warn('feedback-ingest.s3.file.error', { url: file.s3Url, error: msg });
     }
@@ -558,12 +568,12 @@ export async function runFeedbackIngestion(
 
   // ── Phase 3: rebuild composite (feedback_athena + feedback_s3 → feedback_raw) ──
   emit({ phase: 'aggregating', message: 'Rebuilding composite (Athena + S3 merge)…' });
-  const compositeRows = rebuildFeedbackComposite(env);
+  const compositeRows = await rebuildFeedbackComposite(env);
   emit({ message: `Composite rebuilt — ${compositeRows.toLocaleString()} total rows` });
 
   // ── Phase 4: recompute daily aggregates ──────────────────────
   emit({ message: `Recomputing stats for ${affectedDates.size} dates…` });
-  if (affectedDates.size > 0) recomputeDailyStats(env, [...affectedDates]);
+  if (affectedDates.size > 0) await recomputeDailyStats(env, [...affectedDates]);
 
   emit({
     phase: 'done',
@@ -580,4 +590,14 @@ export async function runFeedbackIngestion(
   });
 
   return progress;
+}
+
+// ── Standalone rebuild helper (called by rebuild route) ───────────
+
+export async function runRebuildComposite(): Promise<{ rows: number }> {
+  const c = cfg();
+  const env = c.env;
+  const rows = await rebuildFeedbackComposite(env);
+  await recomputeDailyStats(env);
+  return { rows };
 }

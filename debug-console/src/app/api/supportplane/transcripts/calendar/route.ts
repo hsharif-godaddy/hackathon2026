@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { getL1TranscriptsDb } from '@/lib/l1-transcript-db';
+import { queryTranscripts } from '@/lib/l1-transcript-db';
 
 interface CalendarDay {
   date: string;
@@ -20,28 +20,35 @@ async function handler(request: NextRequest) {
     const year = parseInt(searchParams.get('year') || new Date().getFullYear().toString(), 10);
     const month = parseInt(searchParams.get('month') || (new Date().getMonth() + 1).toString(), 10);
 
-    const db = getL1TranscriptsDb();
+    const allRows = await queryTranscripts({});
+    const targetMonth = month.toString().padStart(2, '0');
+    const dayMap = new Map<string, number>();
 
-    // Get transcript counts by date for the specified month
-    const data = db.prepare(`
-      SELECT
-        DATE(created_at) as date,
-        COUNT(*) as count
-      FROM l1_transcripts
-      WHERE strftime('%Y', created_at) = ?
-        AND strftime('%m', created_at) = ?
-      GROUP BY DATE(created_at)
-      ORDER BY date
-    `).all(year.toString(), month.toString().padStart(2, '0')) as CalendarDay[];
+    for (const row of allRows) {
+      if (!row.created_at) {
+        continue;
+      }
+      const date = row.created_at.slice(0, 10);
+      if (date.slice(0, 4) !== year.toString() || date.slice(5, 7) !== targetMonth) {
+        continue;
+      }
+      dayMap.set(date, (dayMap.get(date) || 0) + 1);
+    }
 
-    // Get min/max dates for date range info
-    const dateRange = db.prepare(`
-      SELECT
-        MIN(DATE(created_at)) as min_date,
-        MAX(DATE(created_at)) as max_date,
-        COUNT(*) as total
-      FROM l1_transcripts
-    `).get() as { min_date: string | null; max_date: string | null; total: number };
+    const data: CalendarDay[] = [...dayMap.entries()]
+      .map(([date, count]) => ({ date, count }))
+      .sort((left, right) => left.date.localeCompare(right.date));
+
+    const dates = allRows
+      .map((row) => row.created_at?.slice(0, 10))
+      .filter((value): value is string => Boolean(value))
+      .sort((left, right) => left.localeCompare(right));
+
+    const dateRange = {
+      max_date: dates.length ? dates[dates.length - 1] : null,
+      min_date: dates.length ? dates[0] : null,
+      total: allRows.length,
+    };
 
     logger.info('supportplane.transcripts.calendar.success', {
       year,

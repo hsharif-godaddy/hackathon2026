@@ -7,6 +7,8 @@ export const dynamic = 'force-dynamic';
 
 export const GET = withAuth(async (req: NextRequest) => {
     const force = req.nextUrl.searchParams.get('force') === 'true';
+    const rawSources = req.nextUrl.searchParams.get('sources');
+    const sources = (rawSources === 'athena' || rawSources === 's3' || rawSources === 'both') ? rawSources : 'both';
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream({
@@ -19,11 +21,11 @@ export const GET = withAuth(async (req: NextRequest) => {
 
             try {
                 const { runFeedbackIngestion } = await import('@/lib/feedback-ingest');
-                logger.info('supportplane.feedback.sync.stream.start', { force });
+                logger.info('supportplane.feedback.sync.stream.start', { force, sources });
 
                 await runFeedbackIngestion((progress) => {
                     send(progress);
-                }, { force });
+                }, { force, sources });
                 // runFeedbackIngestion already emits a complete done event; nothing extra needed.
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);

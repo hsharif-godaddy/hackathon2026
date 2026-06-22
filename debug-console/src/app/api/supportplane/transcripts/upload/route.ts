@@ -57,7 +57,7 @@ async function handler(request: NextRequest, auth: AuthenticatedRequest) {
     // Check if this exact file was already uploaded successfully
     // Log it but don't block - allow reprocessing in case previous upload failed
     const { checkDuplicateUpload } = await import('@/lib/l1-transcript-db');
-    const existingUpload = checkDuplicateUpload(fileHash);
+    const existingUpload = await checkDuplicateUpload(fileHash);
 
     if (existingUpload && existingUpload.status === 'completed') {
       logger.warn('supportplane.transcripts.upload.duplicate_file', {
@@ -70,9 +70,6 @@ async function handler(request: NextRequest, auth: AuthenticatedRequest) {
       // Continue processing - duplicates will be handled at interaction_id level
     }
 
-    // PRE-UPLOAD BACKUP removed - using automatic timestamped backups instead
-    const dbPath = process.env.L1_TRANSCRIPTS_DB_PATH || './data/l1_transcripts.db';
-
     // Upload xlsx to S3
     logger.info('supportplane.transcripts.upload.s3.start', {});
     const s3Key = generateUploadS3Key(uploadId, file.name);
@@ -80,7 +77,7 @@ async function handler(request: NextRequest, auth: AuthenticatedRequest) {
 
     // Create upload record
     const uploadedBy = auth.user?.email || 'system';
-    createUploadRecord({
+    await createUploadRecord({
       upload_id: uploadId,
       uploaded_by: uploadedBy,
       file_name: file.name,
@@ -94,7 +91,7 @@ async function handler(request: NextRequest, auth: AuthenticatedRequest) {
     const rows = await parseXlsxFile(buffer, file.name);
 
     if (rows.length === 0) {
-      updateUploadRecord(uploadId, {
+      await updateUploadRecord(uploadId, {
         status: 'failed',
         error_message: 'No rows found in xlsx file',
       });
@@ -120,7 +117,7 @@ async function handler(request: NextRequest, auth: AuthenticatedRequest) {
         errors: csvValidation.errors,
       });
 
-      updateUploadRecord(uploadId, {
+      await updateUploadRecord(uploadId, {
         status: 'failed',
         error_message: errorMessage,
       });
@@ -155,7 +152,7 @@ async function handler(request: NextRequest, auth: AuthenticatedRequest) {
     // POST-UPLOAD BACKUP removed - using automatic timestamped backups instead
 
     // Update upload record with results
-    updateUploadRecord(uploadId, {
+    await updateUploadRecord(uploadId, {
       status: result.errors === 0 ? 'completed' : 'failed',
       processed_count: result.inserted,
       duplicate_count: result.skipped,
@@ -164,25 +161,25 @@ async function handler(request: NextRequest, auth: AuthenticatedRequest) {
 
     // Start AI tagging in background (non-blocking)
     const transcriptsForTagging = rows.map((row, idx) => ({
-      interaction_id: row.interaction_id || `generated-${idx}`,
+      interaction_id: row.interaction_id ? String(row.interaction_id).trim() : `generated-${idx}`,
       full_transcript: row.full_transcript || '',
       conversation_summary: row.conversation_summary,
     }));
 
-    tagTranscriptsBatch(transcriptsForTagging, function onTagged(interactionId, tags) {
-      updateTranscriptTags(interactionId, tags);
+    tagTranscriptsBatch(transcriptsForTagging, async function onTagged(interactionId, tags) {
+      await updateTranscriptTags(interactionId, tags);
     })
-      .then(function onComplete(taggingResult) {
+      .then(async function onComplete(taggingResult) {
         logger.info('supportplane.transcripts.upload.ai_tagging.completed', {
           uploadId,
           tagged: taggingResult.tagged,
           failed: taggingResult.failed,
         });
-        updateUploadTaggingStatus(uploadId, 'completed');
+        await updateUploadTaggingStatus(uploadId, 'completed');
       })
-      .catch(function onError(error) {
+      .catch(async function onError(error) {
         logger.error('supportplane.transcripts.upload.ai_tagging.failed', { uploadId }, { error: error as Error });
-        updateUploadTaggingStatus(uploadId, 'failed');
+        await updateUploadTaggingStatus(uploadId, 'failed');
       });
 
     return NextResponse.json({

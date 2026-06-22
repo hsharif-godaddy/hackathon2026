@@ -24,7 +24,7 @@ export const GET = withAuth(async function ticketsBrowse(request: NextRequest) {
       offset: searchParams.get('offset') ? Number(searchParams.get('offset')) : 0,
     };
 
-    const tickets = listTickets(filters);
+    const tickets = await listTickets(filters);
 
     return NextResponse.json({
       tickets,

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { callGoCode, isGoCodeConfigured } from '@/lib/gocode-client';
 import { logger } from '@/lib/logger';
-import { getL1TranscriptsDb } from '@/lib/l1-transcript-db';
+import { queryTranscripts as queryTranscriptRows } from '@/lib/l1-transcript-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -458,137 +458,38 @@ async function queryL1Transcripts(params: {
   limit?: number;
 }): Promise<string> {
   try {
-    const db = getL1TranscriptsDb();
-
-    let query = `
-      SELECT
-        interaction_id,
-        app_id,
-        domain,
-        shopper_id,
-        customer_id,
-        category,
-        subcategory,
-        tags,
-        conversation_summary,
-        created_at,
-        sentiment_score,
-        interaction_status,
-        interaction_type,
-        agent_name,
-        language
-      FROM l1_transcripts
-      WHERE 1=1
-    `;
-
-    const queryParams: Record<string, string | number> = {};
-
-    if (params.interaction_id) {
-      query += ' AND interaction_id = @interaction_id';
-      queryParams.interaction_id = params.interaction_id;
-    }
-    if (params.app_id) {
-      query += ' AND app_id = @app_id';
-      queryParams.app_id = params.app_id;
-    }
-    if (params.domain) {
-      query += ' AND domain LIKE @domain';
-      queryParams.domain = `%${params.domain}%`;
-    }
-    if (params.shopper_id) {
-      query += ' AND shopper_id = @shopper_id';
-      queryParams.shopper_id = params.shopper_id;
-    }
-    if (params.customer_id) {
-      query += ' AND customer_id = @customer_id';
-      queryParams.customer_id = params.customer_id;
-    }
-    if (params.category) {
-      query += ' AND category = @category';
-      queryParams.category = params.category;
-    }
-    if (params.subcategory) {
-      query += ' AND subcategory = @subcategory';
-      queryParams.subcategory = params.subcategory;
-    }
-    if (params.interaction_status) {
-      query += ' AND interaction_status = @interaction_status';
-      queryParams.interaction_status = params.interaction_status;
-    }
-    if (params.interaction_type) {
-      query += ' AND interaction_type = @interaction_type';
-      queryParams.interaction_type = params.interaction_type;
-    }
-    if (params.agent_name) {
-      query += ' AND agent_name LIKE @agent_name';
-      queryParams.agent_name = `%${params.agent_name}%`;
-    }
-    if (params.language) {
-      query += ' AND language = @language';
-      queryParams.language = params.language;
-    }
-    if (params.tags && params.tags.length > 0) {
-      // JSON array search - match any of the provided tags
-      const tagConditions = params.tags.map((_, idx) => `tags LIKE @tag${idx}`).join(' OR ');
-      query += ` AND (${tagConditions})`;
-      params.tags.forEach((tag, idx) => {
-        queryParams[`tag${idx}`] = `%"${tag}"%`;
-      });
-    }
-    if (params.sub_intent) {
-      query += ' AND raw_data LIKE @sub_intent';
-      queryParams.sub_intent = `%"sub_intent":"${params.sub_intent}"%`;
-    }
-    if (params.friction_point) {
-      query += ' AND raw_data LIKE @friction_point';
-      queryParams.friction_point = `%"friction_point":"${params.friction_point}"%`;
-    }
-    if (params.min_sentiment !== undefined) {
-      query += ' AND sentiment_score >= @min_sentiment';
-      queryParams.min_sentiment = params.min_sentiment;
-    }
-    if (params.max_sentiment !== undefined) {
-      query += ' AND sentiment_score <= @max_sentiment';
-      queryParams.max_sentiment = params.max_sentiment;
-    }
-    if (params.text_search) {
-      query += ' AND (conversation_summary LIKE @text_search OR full_transcript LIKE @text_search)';
-      queryParams.text_search = `%${params.text_search}%`;
-    }
-    if (params.start_date) {
-      query += ' AND created_at >= @start_date';
-      queryParams.start_date = params.start_date;
-    }
-    if (params.end_date) {
-      query += ' AND created_at <= @end_date';
-      queryParams.end_date = params.end_date;
-    }
-
-    query += ' ORDER BY created_at DESC LIMIT @limit';
-    queryParams.limit = Math.min(params.limit ?? 10, 50);
-
-    const rows = db.prepare(query).all(queryParams) as Array<{
-      interaction_id: string;
-      app_id: string | null;
-      domain: string | null;
-      shopper_id: string;
-      customer_id: string | null;
-      category: string | null;
-      subcategory: string | null;
-      tags: string;
-      conversation_summary: string | null;
-      created_at: string;
-      sentiment_score: number | null;
-      interaction_status: string | null;
-      interaction_type: string | null;
-      agent_name: string | null;
-      language: string | null;
-    }>;
+    const limit = Math.min(params.limit ?? 10, 50);
+    const rows = (await queryTranscriptRows({
+      app_id: params.app_id,
+      category: params.category,
+      customer_id: params.customer_id,
+      end_date: params.end_date,
+      friction_point: params.friction_point,
+      interaction_id: params.interaction_id,
+      interaction_status: params.interaction_status,
+      shopper_id: params.shopper_id,
+      start_date: params.start_date,
+      sub_intent: params.sub_intent,
+      tags: params.tags,
+      text_search: params.text_search,
+    }))
+      .filter((row) => !params.domain || (row.domain || '').includes(params.domain))
+      .filter((row) => !params.subcategory || row.subcategory === params.subcategory)
+      .filter((row) => !params.interaction_type || row.interaction_type === params.interaction_type)
+      .filter((row) => !params.agent_name || (row.agent_name || '').includes(params.agent_name))
+      .filter((row) => !params.language || row.language === params.language)
+      .filter((row) => params.min_sentiment === undefined || Number(row.sentiment_score || 0) >= params.min_sentiment)
+      .filter((row) => params.max_sentiment === undefined || Number(row.sentiment_score || 0) <= params.max_sentiment)
+      .slice(0, limit);
 
     // Format results with parsed tags
     const results = rows.map(row => ({
       ...row,
-      tags: row.tags ? JSON.parse(row.tags) : [],
+      tags: Array.isArray(row.tags)
+        ? row.tags
+        : row.tags
+          ? JSON.parse(row.tags)
+          : [],
     }));
 
     return JSON.stringify({

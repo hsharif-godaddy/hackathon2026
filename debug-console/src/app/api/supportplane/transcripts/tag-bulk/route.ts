@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { getL1TranscriptsDb, updateTranscriptTags } from '@/lib/l1-transcript-db';
+import { getUntaggedTranscripts, updateTranscriptTags } from '@/lib/l1-transcript-db';
 import { tagTranscriptsBatch } from '@/lib/l1-transcript-ai-tagging';
 import { isGoCodeConfigured } from '@/lib/gocode-client';
 
@@ -29,21 +29,7 @@ async function handler(request: NextRequest) {
 
     logger.info('supportplane.transcripts.tag_bulk.start', { batch_size: batchSize });
 
-    const db = getL1TranscriptsDb();
-
-    // Find transcripts without tags (NULL = not yet analyzed)
-    const untagged = db.prepare(`
-      SELECT interaction_id, full_transcript, conversation_summary
-      FROM l1_transcripts
-      WHERE tags IS NULL
-        AND full_transcript IS NOT NULL
-        AND full_transcript != ''
-      LIMIT ?
-    `).all(batchSize) as Array<{
-      interaction_id: string;
-      full_transcript: string;
-      conversation_summary: string | null;
-    }>;
+    const untagged = await getUntaggedTranscripts(batchSize);
 
     if (untagged.length === 0) {
       logger.info('supportplane.transcripts.tag_bulk.no_work', {});
@@ -105,8 +91,8 @@ async function processTaggingInBackground(
           full_transcript: t.full_transcript,
           conversation_summary: t.conversation_summary || undefined,
         })),
-        (interactionId: string, tags: string[]) => {
-          updateTranscriptTags(interactionId, tags);
+        async function update(interactionId: string, tags: string[]) {
+          await updateTranscriptTags(interactionId, tags);
         }
       );
 
@@ -115,11 +101,6 @@ async function processTaggingInBackground(
         failed: result.failed,
         total: untagged.length,
       });
-
-      // Trigger S3 backup after bulk tagging completes
-      const { scheduleUpload } = await import('@/lib/db-backup');
-      const dbPath = process.env.L1_TRANSCRIPTS_DB_PATH || './data/l1_transcripts.db';
-      scheduleUpload(dbPath, 'l1_transcripts.db');
     } catch (error) {
       logger.error('supportplane.transcripts.tag_bulk.background_error', {}, { error: error as Error });
     }

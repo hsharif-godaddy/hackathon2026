@@ -7,7 +7,42 @@ import sp from '@/components/supportplane/sp.module.css';
 import type { PanelId } from '@/components/supportplane/types';
 
 export default function TranscriptsBrowsePanel({ onUpload }: { onUpload: () => void }) {
+    const parseTags = (value: unknown): string[] => {
+        if (Array.isArray(value)) {
+            return value.filter((entry): entry is string => typeof entry === 'string');
+        }
+        if (typeof value === 'string') {
+            try {
+                const parsed = JSON.parse(value);
+                return Array.isArray(parsed)
+                    ? parsed.filter((entry): entry is string => typeof entry === 'string')
+                    : [];
+            } catch {
+                return [];
+            }
+        }
+        return [];
+    };
+
+    const parseRawData = (value: unknown): Record<string, any> | null => {
+        if (!value) {
+            return null;
+        }
+        if (typeof value === 'string') {
+            try {
+                return JSON.parse(value);
+            } catch {
+                return null;
+            }
+        }
+        if (typeof value === 'object') {
+            return value as Record<string, any>;
+        }
+        return null;
+    };
+
     const [transcripts, setTranscripts] = useState<any[]>([]);
+    const [expandedTranscript, setExpandedTranscript] = useState<Record<string, any>>({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [pagination, setPagination] = useState<any>(null);
@@ -15,7 +50,7 @@ export default function TranscriptsBrowsePanel({ onUpload }: { onUpload: () => v
     const [showRawData, setShowRawData] = useState<Record<string, boolean>>({});
     const [modalTranscript, setModalTranscript] = useState<any | null>(null);
     const [modalWidth, setModalWidth] = useState(50);
-    const [filters, setFilters] = useState({ limit: 50, offset: 0 });
+    const [filters, setFilters] = useState({ limit: 50, offset: 0, _key: 0 });
     const [searchFilters, setSearchFilters] = useState({
         interaction_id: '',
         shopper_id: '',
@@ -52,7 +87,7 @@ export default function TranscriptsBrowsePanel({ onUpload }: { onUpload: () => v
         try {
             const params = new URLSearchParams();
             Object.entries({...filters, ...searchFilters}).forEach(([key, value]) => {
-                if (value) params.append(key, String(value));
+                if (key !== '_key' && value) params.append(key, String(value));
             });
             const response = await fetch(`/api/supportplane/transcripts/browse?${params}`);
             const data = await response.json();
@@ -62,10 +97,14 @@ export default function TranscriptsBrowsePanel({ onUpload }: { onUpload: () => v
                 setTranscripts(data.transcripts || []);
                 setPagination(data.pagination);
 
-                // Server tells us definitively whether tagging is still running
                 const stillActive: boolean = data.tagging_active ?? false;
                 setTaggingInProgress(stillActive);
-                if (!stillActive && pollRef.current) {
+                if (stillActive && !pollRef.current) {
+                    pollRef.current = setInterval(() => {
+                        void fetchTranscripts(true);
+                        void fetchUntaggedCount();
+                    }, 10000);
+                } else if (!stillActive && pollRef.current) {
                     clearInterval(pollRef.current);
                     pollRef.current = null;
                 }
@@ -89,16 +128,10 @@ export default function TranscriptsBrowsePanel({ onUpload }: { onUpload: () => v
         }
     }, []);
 
-    // On first mount: fetch immediately, then poll every 10s while tagging is active
+    // On first mount: fetch immediately, then poll every 10s ONLY while tagging is active
     useEffect(() => {
         void fetchTranscripts();
         void fetchUntaggedCount();
-
-        if (pollRef.current) clearInterval(pollRef.current);
-        pollRef.current = setInterval(() => {
-            void fetchTranscripts(true);
-            void fetchUntaggedCount();
-        }, 10000);
 
         return () => {
             if (pollRef.current) {
@@ -130,7 +163,23 @@ export default function TranscriptsBrowsePanel({ onUpload }: { onUpload: () => v
         void fetchFilters();
     }, []);
 
-    const toggleExpand = (id: string) => setExpandedId(expandedId === id ? null : id);
+    const toggleExpand = (id: string) => {
+        if (expandedId === id) {
+            setExpandedId(null);
+            return;
+        }
+        setExpandedId(id);
+        if (!expandedTranscript[id]) {
+            fetch(`/api/supportplane/transcripts/detail?id=${encodeURIComponent(id)}`)
+                .then(r => r.ok ? r.json() : null)
+                .then(data => {
+                    if (data?.transcript) {
+                        setExpandedTranscript(prev => ({ ...prev, [id]: data.transcript }));
+                    }
+                })
+                .catch(() => {});
+        }
+    };
     const handleNextPage = () => {
         if (pagination?.has_more) setFilters(prev => ({ ...prev, offset: prev.offset + prev.limit }));
     };
@@ -139,8 +188,7 @@ export default function TranscriptsBrowsePanel({ onUpload }: { onUpload: () => v
     };
 
     const handleSearch = () => {
-        setFilters(prev => ({ ...prev, offset: 0 }));
-        void fetchTranscripts();
+        setFilters(prev => ({ ...prev, offset: 0, _key: prev._key + 1 }));
     };
 
     const handleClearSearch = () => {
@@ -163,13 +211,11 @@ export default function TranscriptsBrowsePanel({ onUpload }: { onUpload: () => v
     };
 
     const handleTagClick = (tag: string) => {
-        // Add tag to filter
         const currentTags = searchFilters.tags.split(',').filter(Boolean);
         if (!currentTags.includes(tag)) {
             const newTags = [...currentTags, tag].join(',');
             setSearchFilters(prev => ({ ...prev, tags: newTags }));
             setTagInput(newTags);
-            void fetchTranscripts();
         }
     };
 
@@ -550,15 +596,8 @@ export default function TranscriptsBrowsePanel({ onUpload }: { onUpload: () => v
                     <div className={sp.fileList}>
                         {transcripts.map((t) => {
                             // Parse raw_data and tags for header display
-                            let rawData: any = null;
-                            let tags: string[] = [];
-                            try {
-                                rawData = t.raw_data ? JSON.parse(t.raw_data) : null;
-                            } catch {}
-                            try {
-                                const parsed = t.tags ? JSON.parse(t.tags) : [];
-                                tags = Array.isArray(parsed) ? parsed : [];
-                            } catch {}
+                            const rawData = parseRawData(t.raw_data);
+                            const tags = parseTags(t.tags);
 
                             return (<div key={t.interaction_id} style={{background:'var(--sp-s1)',border:'1px solid var(--sp-border)',borderRadius:10,overflow:'hidden',transition:'all 0.2s',boxShadow:expandedId===t.interaction_id?'0 2px 12px rgba(0,0,0,0.08)':'none'}}>
                                     <div
@@ -660,7 +699,8 @@ export default function TranscriptsBrowsePanel({ onUpload }: { onUpload: () => v
                                     </div>
                                 </div>
                                 {expandedId === t.interaction_id && (() => {
-                                    const messages = (t.full_transcript || '').split('|||').map((msg: string) => {
+                                    const detail = expandedTranscript[t.interaction_id] || t;
+                                    const messages = (detail.full_transcript || '').split('|||').map((msg: string) => {
                                         const match = msg.match(/^(Customer|Agent|Bot):\s*(.*)$/s);
                                         if (match) {
                                             return { role: match[1], text: match[2].trim() };
@@ -668,19 +708,8 @@ export default function TranscriptsBrowsePanel({ onUpload }: { onUpload: () => v
                                         return null;
                                     }).filter(Boolean);
 
-                                    let tags: string[] = [];
-                                    let rawData: any = null;
-                                    try {
-                                        const parsed = t.tags ? JSON.parse(t.tags) : [];
-                                        tags = Array.isArray(parsed) ? parsed : [];
-                                    } catch {
-                                        tags = [];
-                                    }
-                                    try {
-                                        rawData = t.raw_data ? JSON.parse(t.raw_data) : null;
-                                    } catch {
-                                        rawData = null;
-                                    }
+                                    const tags = parseTags(t.tags);
+                                    const rawData = parseRawData(t.raw_data);
 
                                     return (
                                         <div style={{padding:'20px 24px',background:'var(--sp-bg)',borderTop:'1px solid var(--sp-border)'}}>
@@ -690,7 +719,7 @@ export default function TranscriptsBrowsePanel({ onUpload }: { onUpload: () => v
                                                     Summary
                                                 </div>
                                                 <div style={{padding:16,background:'var(--sp-s1)',borderRadius:10,border:'1px solid var(--sp-border)',fontSize:13,lineHeight:1.6,color:'var(--sp-tx1)'}}>
-                                                    {t.conversation_summary||<span style={{color:'var(--sp-txm)',fontStyle:'italic'}}>No summary available</span>}
+                                                    {detail.conversation_summary||<span style={{color:'var(--sp-txm)',fontStyle:'italic'}}>{expandedTranscript[t.interaction_id] ? 'No summary available' : 'Loading...'}</span>}
                                                 </div>
                                             </div>
 
@@ -700,7 +729,7 @@ export default function TranscriptsBrowsePanel({ onUpload }: { onUpload: () => v
                                                     Full Conversation
                                                 </div>
                                                 <button
-                                                    onClick={() => setModalTranscript(t)}
+                                                    onClick={() => setModalTranscript(expandedTranscript[t.interaction_id] || t)}
                                                     className={sp.btnPrimary}
                                                     style={{width:'100%',padding:'12px',fontSize:13,fontWeight:600}}
                                                 >

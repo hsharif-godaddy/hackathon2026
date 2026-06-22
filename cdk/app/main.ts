@@ -24,6 +24,7 @@ import { S2sIamJwtStack } from "../lib/s2s-iam-jwt-stack";
 import { TransactionalEventsKinesisStack } from "../lib/transactional-events-kinesis-stack";
 import { TransactionalEventsKMSStack } from "../lib/transactional-events-kms-stack";
 import { FeedbackL1TranscriptStack } from "../lib/feedback-l1-transcript-stack";
+import { SupportplaneDynamoStack } from "../lib/supportplane-dynamodb-stack";
 import { TranscriptsS3Stack } from "../lib/transcripts-s3-stack";
 
 /**
@@ -166,6 +167,16 @@ async function main() {
   // Env var for debug-console: S3_TRANSCRIPTS_BUCKET (set via Katana secret or .env.local)
   if (config.envName === 'dev' || config.envName === 'prod') {
     new TranscriptsS3Stack(app, 'TranscriptsS3Stack', { env });
+  }
+
+  // SupportPlane DynamoDB data plane for transcript migration.
+  // Uses generic keys (pk/sk) so non-key attributes can evolve without schema migrations.
+  // Env vars for debug-console:
+  // - SP_L1_TRANSCRIPTS_TABLE
+  // - SP_L1_UPLOADS_TABLE
+  // - SP_L1_ANALYTICS_TABLE
+  if (config.envName === 'dev' || config.envName === 'prod') {
+    new SupportplaneDynamoStack(app, 'SupportplaneDynamoStack', { env });
   }
 
   // KMS key for encrypting the transactional events Kinesis stream.

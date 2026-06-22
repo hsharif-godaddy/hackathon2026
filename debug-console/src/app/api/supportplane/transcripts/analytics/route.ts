@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { getL1TranscriptsDb } from '@/lib/l1-transcript-db';
+import { queryTranscripts } from '@/lib/l1-transcript-db';
 
 async function handler(request: NextRequest) {
   try {
@@ -17,133 +17,111 @@ async function handler(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('start_date') || undefined;
     const endDate = searchParams.get('end_date') || undefined;
+    const rows = await queryTranscripts({
+      end_date: endDate,
+      start_date: startDate,
+    });
+    const total = rows.length;
 
-    const db = getL1TranscriptsDb();
-
-    // Build WHERE clause for date filtering
-    let dateFilter = '';
-    const params: any = {};
-    if (startDate) {
-      dateFilter += ' AND created_at >= @start_date';
-      params.start_date = startDate;
-    }
-    if (endDate) {
-      dateFilter += ' AND created_at <= @end_date';
-      params.end_date = endDate;
-    }
-
-    // Total transcripts
-    const totalResult = db.prepare(`SELECT COUNT(*) as count FROM l1_transcripts WHERE 1=1${dateFilter}`).get(params) as { count: number };
-    const total = totalResult.count;
-
-    // By category
-    const categoryStats = db.prepare(`
-      SELECT category, COUNT(*) as count
-      FROM l1_transcripts
-      WHERE category IS NOT NULL AND category != ''${dateFilter}
-      GROUP BY category
-      ORDER BY count DESC
-      LIMIT 10
-    `).all(params) as Array<{ category: string; count: number }>;
-
-    // By sentiment
-    const sentimentStats = db.prepare(`
-      SELECT
-        CASE
-          WHEN sentiment_score >= 0.7 THEN 'Positive'
-          WHEN sentiment_score >= 0.4 THEN 'Neutral'
-          ELSE 'Negative'
-        END as sentiment,
-        COUNT(*) as count
-      FROM l1_transcripts
-      WHERE sentiment_score IS NOT NULL${dateFilter}
-      GROUP BY sentiment
-    `).all(params) as Array<{ sentiment: string; count: number }>;
-
-    // Top tags
-    const transcriptsWithTags = db.prepare(`
-      SELECT tags FROM l1_transcripts WHERE tags IS NOT NULL AND tags != '[]'${dateFilter}
-    `).all(params) as Array<{ tags: string }>;
+    const categoryCounts: Record<string, number> = {};
+    const sentimentCounts: Record<string, number> = {};
+    const allRowsForHeatmaps: Array<{ category: string; raw_data: unknown }> = [];
+    const issueResolutionCounts: Record<string, number> = {};
+    const frictionPointCounts: Record<string, number> = {};
+    const inboundDriverCounts: Record<string, number> = {};
+    const productLineCounts: Record<string, number> = {};
+    const subIntentCounts: Record<string, number> = {};
 
     const tagCounts: Record<string, number> = {};
-    transcriptsWithTags.forEach(row => {
+    rows.forEach(row => {
+      if (row.category) {
+        categoryCounts[row.category] = (categoryCounts[row.category] || 0) + 1;
+      }
+
+      if (typeof row.sentiment_score === 'number') {
+        const sentiment = row.sentiment_score >= 0.7 ? 'Positive' : row.sentiment_score >= 0.4 ? 'Neutral' : 'Negative';
+        sentimentCounts[sentiment] = (sentimentCounts[sentiment] || 0) + 1;
+      }
+
       try {
-        const tags = JSON.parse(row.tags) as string[];
+        const tags = Array.isArray(row.tags)
+          ? row.tags
+          : typeof row.tags === 'string'
+            ? (JSON.parse(row.tags) as string[])
+            : [];
         tags.forEach(tag => {
           tagCounts[tag] = (tagCounts[tag] || 0) + 1;
         });
       } catch {
         // Skip invalid JSON
       }
-    });
 
-    const topTags = Object.entries(tagCounts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 15)
-      .map(([tag, count]) => ({ tag, count }));
-
-    // Timeline - use created_at (from filename or CSV)
-    const timelineQuery = startDate || endDate
-      ? `SELECT DATE(created_at) as date, COUNT(*) as count
-         FROM l1_transcripts
-         WHERE created_at IS NOT NULL${dateFilter}
-         GROUP BY DATE(created_at)
-         ORDER BY date ASC`
-      : `SELECT DATE(created_at) as date, COUNT(*) as count
-         FROM l1_transcripts
-         WHERE created_at IS NOT NULL
-           AND created_at >= date('now', '-30 days')
-         GROUP BY DATE(created_at)
-         ORDER BY date ASC`;
-
-    const timeline = db.prepare(timelineQuery).all(params) as Array<{ date: string; count: number }>;
-
-    // Resolution stats
-    const resolutionStats = db.prepare(`
-      SELECT interaction_status, COUNT(*) as count
-      FROM l1_transcripts
-      WHERE interaction_status IS NOT NULL AND interaction_status != ''${dateFilter}
-      GROUP BY interaction_status
-    `).all(params) as Array<{ interaction_status: string; count: number }>;
-
-    // Parse raw_data for sub_intent, friction_point, airo_product_line, issue_resolution
-    const rawDataRows = db.prepare(`
-      SELECT raw_data FROM l1_transcripts WHERE raw_data IS NOT NULL${dateFilter}
-    `).all(params) as Array<{ raw_data: string }>;
-
-    const subIntentCounts: Record<string, number> = {};
-    const frictionPointCounts: Record<string, number> = {};
-    const productLineCounts: Record<string, number> = {};
-    const issueResolutionCounts: Record<string, number> = {};
-    const inboundDriverCounts: Record<string, number> = {};
-
-    rawDataRows.forEach(row => {
       try {
-        const data = JSON.parse(row.raw_data);
-
-        if (data.sub_intent && data.sub_intent !== 'N/A' && data.sub_intent !== '') {
-          subIntentCounts[data.sub_intent] = (subIntentCounts[data.sub_intent] || 0) + 1;
+        const data =
+          typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
+        if (!data || typeof data !== 'object') {
+          return;
         }
 
-        if (data.friction_point && data.friction_point !== 'N/A' && data.friction_point !== '') {
-          frictionPointCounts[data.friction_point] = (frictionPointCounts[data.friction_point] || 0) + 1;
+        if (row.category) {
+          allRowsForHeatmaps.push({ category: row.category, raw_data: data });
         }
 
-        if (data.airo_product_line && data.airo_product_line !== 'N/A' && data.airo_product_line !== '') {
-          productLineCounts[data.airo_product_line] = (productLineCounts[data.airo_product_line] || 0) + 1;
+        if ((data as any).sub_intent && (data as any).sub_intent !== 'N/A' && (data as any).sub_intent !== '') {
+          subIntentCounts[(data as any).sub_intent] = (subIntentCounts[(data as any).sub_intent] || 0) + 1;
         }
 
-        if (data.issue_resolution && data.issue_resolution !== 'N/A' && data.issue_resolution !== '') {
-          issueResolutionCounts[data.issue_resolution] = (issueResolutionCounts[data.issue_resolution] || 0) + 1;
+        if ((data as any).friction_point && (data as any).friction_point !== 'N/A' && (data as any).friction_point !== '') {
+          frictionPointCounts[(data as any).friction_point] = (frictionPointCounts[(data as any).friction_point] || 0) + 1;
         }
 
-        if (data.inbound_volume_driver && data.inbound_volume_driver !== 'N/A' && data.inbound_volume_driver !== '') {
-          inboundDriverCounts[data.inbound_volume_driver] = (inboundDriverCounts[data.inbound_volume_driver] || 0) + 1;
+        if ((data as any).airo_product_line && (data as any).airo_product_line !== 'N/A' && (data as any).airo_product_line !== '') {
+          productLineCounts[(data as any).airo_product_line] = (productLineCounts[(data as any).airo_product_line] || 0) + 1;
+        }
+
+        if ((data as any).issue_resolution && (data as any).issue_resolution !== 'N/A' && (data as any).issue_resolution !== '') {
+          issueResolutionCounts[(data as any).issue_resolution] = (issueResolutionCounts[(data as any).issue_resolution] || 0) + 1;
+        }
+
+        if ((data as any).inbound_volume_driver && (data as any).inbound_volume_driver !== 'N/A' && (data as any).inbound_volume_driver !== '') {
+          inboundDriverCounts[(data as any).inbound_volume_driver] = (inboundDriverCounts[(data as any).inbound_volume_driver] || 0) + 1;
         }
       } catch {
         // Skip invalid JSON
       }
     });
+
+    const categoryStats = Object.entries(categoryCounts)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([category, count]) => ({ category, count }));
+    const sentimentStats = Object.entries(sentimentCounts).map(([sentiment, count]) => ({ sentiment, count }));
+    const topTags = Object.entries(tagCounts)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 15)
+      .map(([tag, count]) => ({ tag, count }));
+
+    const timelineRows = startDate || endDate
+      ? rows
+      : rows.filter((row) => Boolean(row.created_at) && new Date(row.created_at as string).getTime() >= Date.now() - (30 * 24 * 60 * 60 * 1000));
+    const timelineMap: Record<string, number> = {};
+    timelineRows.forEach((row) => {
+      if (!row.created_at) return;
+      const date = row.created_at.slice(0, 10);
+      timelineMap[date] = (timelineMap[date] || 0) + 1;
+    });
+    const timeline = Object.entries(timelineMap)
+      .map(([date, count]) => ({ date, count }))
+      .sort((left, right) => left.date.localeCompare(right.date));
+
+    const resolutionMap: Record<string, number> = {};
+    rows.forEach((row) => {
+      if (row.interaction_status) {
+        resolutionMap[row.interaction_status] = (resolutionMap[row.interaction_status] || 0) + 1;
+      }
+    });
+    const resolutionStats = Object.entries(resolutionMap)
+      .map(([interaction_status, count]) => ({ interaction_status, count }));
 
     const topSubIntents = Object.entries(subIntentCounts)
       .sort(([, a], [, b]) => b - a)
@@ -169,17 +147,12 @@ async function handler(request: NextRequest) {
       .map(([name, count]) => ({ name, count }));
 
     // Cross-dimensional heatmaps
-    const allRows = db.prepare(`
-      SELECT category, raw_data FROM l1_transcripts
-      WHERE category IS NOT NULL AND category != '' AND raw_data IS NOT NULL${dateFilter}
-    `).all(params) as Array<{ category: string; raw_data: string }>;
-
     // Helper to build heatmap matrix
-    const buildHeatmap = (rows: Array<{ category: string; raw_data: string }>, rowField: string, colField: string) => {
+    const buildHeatmap = (rows: Array<{ category: string; raw_data: unknown }>, rowField: string, colField: string) => {
       const matrix: Record<string, Record<string, number>> = {};
       rows.forEach(row => {
         try {
-          const data = JSON.parse(row.raw_data);
+          const data = typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
           const rowValue = rowField === 'category' ? row.category : data[rowField];
           const colValue = colField === 'category' ? row.category : data[colField];
 
@@ -198,13 +171,13 @@ async function handler(request: NextRequest) {
     };
 
     // Friction Point × Category
-    const frictionCategoryHeatmap = buildHeatmap(allRows, 'friction_point', 'category');
+    const frictionCategoryHeatmap = buildHeatmap(allRowsForHeatmaps, 'friction_point', 'category');
 
     // Friction Point × Resolution
-    const frictionResolutionHeatmap = buildHeatmap(allRows, 'friction_point', 'issue_resolution');
+    const frictionResolutionHeatmap = buildHeatmap(allRowsForHeatmaps, 'friction_point', 'issue_resolution');
 
     // Friction Point × Intent
-    const frictionIntentHeatmap = buildHeatmap(allRows, 'friction_point', 'sub_intent');
+    const frictionIntentHeatmap = buildHeatmap(allRowsForHeatmaps, 'friction_point', 'sub_intent');
 
     return NextResponse.json({
       success: true,

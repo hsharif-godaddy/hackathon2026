@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { getL1TranscriptsDb } from '@/lib/l1-transcript-db';
-import { getFeedbackDb } from '@/lib/feedback-db';
-import { getSupportDb } from '@/lib/support-db';
+import { queryTranscripts } from '@/lib/l1-transcript-db';
+import { getRecentFeedback } from '@/lib/feedback-db';
+import { listTickets } from '@/lib/support-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,94 +33,55 @@ interface TodayStats {
   };
 }
 
-/**
- * GET /api/supportplane/today
- *
- * Cross-domain daily rollup for executive TODAY dashboard
- */
 export const GET = withAuth(async function todayStats(_request: NextRequest) {
   try {
-    const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0]!;
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]!;
+    const yesterdayStart = `${yesterday}T00:00:00.000Z`;
+    const todayEnd = `${today}T23:59:59.999Z`;
+    const env = process.env.FEEDBACK_ENV ?? process.env.SP_ENV ?? 'dev';
+
+    const [transcriptRows, feedbackResult, tickets] = await Promise.all([
+      queryTranscripts({ start_date: yesterdayStart, end_date: todayEnd }),
+      getRecentFeedback(env, 5000, 0, { days: 2 }),
+      listTickets({ limit: 5000 }),
+    ]);
 
     // L1 Transcripts
-    const transcriptsDb = getL1TranscriptsDb();
-    const transcriptsToday = transcriptsDb.prepare(
-      'SELECT COUNT(*) as count FROM l1_transcripts WHERE DATE(created_at) = ?'
-    ).get(today) as { count: number };
-    const transcriptsYesterday = transcriptsDb.prepare(
-      'SELECT COUNT(*) as count FROM l1_transcripts WHERE DATE(created_at) = ?'
-    ).get(yesterday) as { count: number };
+    const transcriptsToday = transcriptRows.filter((r) => r.created_at?.slice(0, 10) === today).length;
+    const transcriptsYesterday = transcriptRows.filter((r) => r.created_at?.slice(0, 10) === yesterday).length;
 
-    // Feedback
-    const feedbackDb = getFeedbackDb();
-    const feedbackToday = feedbackDb.prepare(
-      'SELECT COUNT(*) as count FROM feedback_raw WHERE DATE(feedback_utc_ts) = ?'
-    ).get(today) as { count: number };
-    const feedbackYesterday = feedbackDb.prepare(
-      'SELECT COUNT(*) as count FROM feedback_raw WHERE DATE(feedback_utc_ts) = ?'
-    ).get(yesterday) as { count: number };
+    // Feedback counts
+    const feedbackRows = feedbackResult.rows;
+    const feedbackToday = feedbackRows.filter((r) => r.feedback_utc_ts?.slice(0, 10) === today).length;
+    const feedbackYesterday = feedbackRows.filter((r) => r.feedback_utc_ts?.slice(0, 10) === yesterday).length;
 
-    // Feedback sentiment (1-3 negative, 4 neutral, 5-7 positive)
-    const sentiment = feedbackDb.prepare(`
-      SELECT
-        SUM(CASE WHEN rating >= 5 THEN 1 ELSE 0 END) as positive,
-        SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END) as neutral,
-        SUM(CASE WHEN rating <= 3 AND rating IS NOT NULL THEN 1 ELSE 0 END) as negative
-      FROM feedback_raw
-      WHERE DATE(feedback_utc_ts) = ?
-    `).get(today) as { positive: number; neutral: number; negative: number };
+    const todayFeedback = feedbackRows.filter((r) => r.feedback_utc_ts?.slice(0, 10) === today);
+    const positive = todayFeedback.filter((r) => (r.rating ?? 0) >= 5).length;
+    const neutral = todayFeedback.filter((r) => r.rating === 4).length;
+    const negative = todayFeedback.filter((r) => (r.rating ?? 0) <= 3 && r.rating !== null).length;
 
     // Support Tickets
-    const supportDb = getSupportDb();
-    const openTickets = supportDb.prepare(
-      'SELECT COUNT(*) as count FROM tickets WHERE status NOT IN (?, ?)'
-    ).get('Done', 'Closed') as { count: number };
-    const resolvedToday = supportDb.prepare(
-      'SELECT COUNT(*) as count FROM tickets WHERE DATE(resolved_utc) = ?'
-    ).get(today) as { count: number };
-    const p1Count = supportDb.prepare(
-      'SELECT COUNT(*) as count FROM tickets WHERE priority = ? AND status NOT IN (?, ?)'
-    ).get('P1', 'Done', 'Closed') as { count: number };
-
-    const createdToday = supportDb.prepare(
-      'SELECT COUNT(*) as count FROM tickets WHERE DATE(created_utc) = ?'
-    ).get(today) as { count: number };
-    const backlogVelocity = createdToday.count - resolvedToday.count;
+    const resolved = new Set(['Done', 'Closed']);
+    const openCount = tickets.filter((t) => !resolved.has(t.status ?? '')).length;
+    const resolvedToday = tickets.filter((t) => t.resolved_utc?.slice(0, 10) === today).length;
+    const p1Count = tickets.filter((t) => t.priority === 'P1' && !resolved.has(t.status ?? '')).length;
+    const createdToday = tickets.filter((t) => t.created_utc?.slice(0, 10) === today).length;
+    const backlogVelocity = createdToday - resolvedToday;
 
     const stats: TodayStats = {
       date: today,
-      transcripts: {
-        today: transcriptsToday.count,
-        yesterday: transcriptsYesterday.count,
-        delta: transcriptsToday.count - transcriptsYesterday.count,
-      },
+      transcripts: { today: transcriptsToday, yesterday: transcriptsYesterday, delta: transcriptsToday - transcriptsYesterday },
       feedback: {
-        today: feedbackToday.count,
-        yesterday: feedbackYesterday.count,
-        delta: feedbackToday.count - feedbackYesterday.count,
-        sentiment: {
-          positive: sentiment.positive ?? 0,
-          neutral: sentiment.neutral ?? 0,
-          negative: sentiment.negative ?? 0,
-        },
+        today: feedbackToday, yesterday: feedbackYesterday, delta: feedbackToday - feedbackYesterday,
+        sentiment: { positive, neutral, negative },
       },
-      support: {
-        open: openTickets.count,
-        resolved_today: resolvedToday.count,
-        p1_count: p1Count.count,
-        backlog_velocity: backlogVelocity,
-      },
+      support: { open: openCount, resolved_today: resolvedToday, p1_count: p1Count, backlog_velocity: backlogVelocity },
     };
 
     return NextResponse.json(stats);
   } catch (err) {
     logger.error('supportplane.today.error', {}, { error: err as Error });
-    return NextResponse.json(
-      {
-        error: err instanceof Error ? err.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 });
   }
 });

@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { getL1TranscriptsDb } from '@/lib/l1-transcript-db';
+import { queryTranscripts } from '@/lib/l1-transcript-db';
 
 interface TagClusterData {
   tag: string;
@@ -31,35 +31,45 @@ async function handler(request: NextRequest) {
     const daysBack = parseInt(searchParams.get('days_back') || '30', 10);
     const minCount = parseInt(searchParams.get('min_count') || '5', 10);
 
-    const db = getL1TranscriptsDb();
+    const cutoff = Date.now() - daysBack * 24 * 60 * 60 * 1000;
+    const rows = (await queryTranscripts({}))
+      .filter((row) => Boolean(row.created_at) && new Date(row.created_at as string).getTime() >= cutoff);
 
-    // Get tag data with metrics
-    const tagData = db.prepare(`
-      WITH tag_expanded AS (
-        SELECT
-          json_each.value as tag,
-          interaction_id,
-          sentiment_score,
-          interaction_status
-        FROM l1_transcripts, json_each(l1_transcripts.tags)
-        WHERE created_at >= datetime('now', '-${daysBack} days')
-          AND tags IS NOT NULL
-      )
-      SELECT
+    const tagMetrics = new Map<string, { count: number; sentimentTotal: number; unresolved: number }>();
+    for (const row of rows) {
+      const tags =
+        Array.isArray(row.tags)
+          ? row.tags
+          : typeof row.tags === 'string'
+            ? (() => {
+                try {
+                  return JSON.parse(row.tags) as string[];
+                } catch {
+                  return [] as string[];
+                }
+              })()
+            : [];
+
+      for (const tag of tags) {
+        const metric = tagMetrics.get(tag) || { count: 0, sentimentTotal: 0, unresolved: 0 };
+        metric.count += 1;
+        metric.sentimentTotal += Number(row.sentiment_score || 0);
+        if (row.interaction_status === 'unresolved') {
+          metric.unresolved += 1;
+        }
+        tagMetrics.set(tag, metric);
+      }
+    }
+
+    const tagData = [...tagMetrics.entries()]
+      .map(([tag, metric]) => ({
+        avg_sentiment: metric.count ? metric.sentimentTotal / metric.count : 0,
+        count: metric.count,
         tag,
-        COUNT(*) as count,
-        AVG(COALESCE(sentiment_score, 0)) as avg_sentiment,
-        SUM(CASE WHEN interaction_status = 'unresolved' THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as unresolved_rate
-      FROM tag_expanded
-      GROUP BY tag
-      HAVING count >= ${minCount}
-      ORDER BY count DESC
-    `).all() as Array<{
-      tag: string;
-      count: number;
-      avg_sentiment: number;
-      unresolved_rate: number;
-    }>;
+        unresolved_rate: metric.count ? (metric.unresolved * 100) / metric.count : 0,
+      }))
+      .filter((item) => item.count >= minCount)
+      .sort((left, right) => right.count - left.count);
 
     if (tagData.length === 0) {
       return NextResponse.json({
@@ -72,7 +82,7 @@ async function handler(request: NextRequest) {
 
     // Build co-occurrence matrix
     const tags = tagData.map(t => t.tag);
-    const cooccurrence = buildCooccurrenceMatrix(db, tags, daysBack);
+    const cooccurrence = buildCooccurrenceMatrix(rows, tags);
 
     // Perform clustering using co-occurrence similarity
     const clusters = clusterTags(tags, cooccurrence, 4); // 4 clusters
@@ -126,9 +136,8 @@ async function handler(request: NextRequest) {
  * Build co-occurrence matrix (how often tags appear together)
  */
 function buildCooccurrenceMatrix(
-  db: any,
+  rows: Array<{ tags?: string[] | string | null }>,
   tags: string[],
-  daysBack: number
 ): Map<string, Map<string, number>> {
   const matrix = new Map<string, Map<string, number>>();
 
@@ -137,19 +146,19 @@ function buildCooccurrenceMatrix(
     matrix.set(tag, new Map());
   });
 
-  // Get all transcripts with multiple tags
-  const transcripts = db.prepare(`
-    SELECT tags
-    FROM l1_transcripts
-    WHERE created_at >= datetime('now', '-${daysBack} days')
-      AND tags IS NOT NULL
-      AND json_array_length(tags) > 1
-  `).all() as Array<{ tags: string }>;
-
   // Count co-occurrences
-  transcripts.forEach(({ tags: tagsJson }) => {
+  rows.forEach((row) => {
     try {
-      const transcriptTags = JSON.parse(tagsJson) as string[];
+      const transcriptTags =
+        Array.isArray(row.tags)
+          ? row.tags
+          : typeof row.tags === 'string'
+            ? (JSON.parse(row.tags) as string[])
+            : [];
+
+      if (transcriptTags.length < 2) {
+        return;
+      }
 
       // For each pair of tags in this transcript
       for (let i = 0; i < transcriptTags.length; i++) {

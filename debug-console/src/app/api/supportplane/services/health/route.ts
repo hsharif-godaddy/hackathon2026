@@ -1,11 +1,6 @@
-import fs from 'node:fs';
-import path from 'node:path';
-
 import { NextResponse } from 'next/server';
 import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { fromIni } from '@aws-sdk/credential-providers';
-
-import BetterSqlite3 from 'better-sqlite3';
 
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
@@ -208,34 +203,20 @@ async function checkSharePoint(): Promise<ServiceHealth> {
     }
 }
 
-// ── S3 · Transcripts — SQLite row count (no live API call needed) ────
+// ── DynamoDB · Transcripts — row count from DynamoDB store ───────────
 
-function checkTranscriptsDb(): ServiceHealth {
+async function checkTranscriptsDynamo(): Promise<ServiceHealth> {
     try {
-        const dbPath = process.env.L1_DB_PATH
-            ?? path.resolve(process.cwd(), 'data', 'l1_transcripts.db');
-
-        if (!fs.existsSync(dbPath)) {
-            return { name: 'S3 · Transcripts', ok: false, detail: 'Transcripts DB not found — sync from SharePoint first' };
-        }
-
-        const stat = fs.statSync(dbPath);
-        if (stat.size < 100) {
-            return { name: 'S3 · Transcripts', ok: false, detail: 'Transcripts DB is empty' };
-        }
-
-        const db = new BetterSqlite3(dbPath, { readonly: true });
-        const row = db.prepare(`SELECT COUNT(*) AS c FROM l1_transcripts`).get() as { c: number } | undefined;
-        db.close();
-        const count = row?.c ?? 0;
-
+        const { getStore } = await import('@/lib/supportplane-store');
+        const store = getStore();
+        const hasData = await store.hasTranscripts();
         return {
-            name: 'S3 · Transcripts',
-            ok: count > 0,
-            detail: count > 0 ? `${count.toLocaleString()} transcripts loaded` : 'No transcripts — sync from SharePoint',
+            name: 'DynamoDB · Transcripts',
+            ok: hasData,
+            detail: hasData ? 'Connected · transcripts available' : 'No transcripts — sync from SharePoint',
         };
     } catch (err) {
-        return { name: 'S3 · Transcripts', ok: false, detail: `DB error: ${(err as Error).message.slice(0, 100)}` };
+        return { name: 'DynamoDB · Transcripts', ok: false, detail: `DynamoDB error: ${(err as Error).message.slice(0, 100)}` };
     }
 }
 
@@ -285,12 +266,13 @@ async function checkFeedbackS3(): Promise<ServiceHealth> {
 
 export const GET = withAuth(async () => {
     try {
-        const [goCaaS, jira, serviceNow, sharePoint, feedbackS3] = await Promise.all([
+        const [goCaaS, jira, serviceNow, sharePoint, feedbackS3, transcriptsDynamo] = await Promise.all([
             checkGoCaaS(),
             checkJira(),
             checkServiceNow(),
             checkSharePoint(),
             checkFeedbackS3(),
+            checkTranscriptsDynamo(),
         ]);
 
         const results: ServiceHealth[] = [
@@ -298,7 +280,7 @@ export const GET = withAuth(async () => {
             jira,
             serviceNow,
             sharePoint,
-            checkTranscriptsDb(),
+            transcriptsDynamo,
             feedbackS3,
         ];
 

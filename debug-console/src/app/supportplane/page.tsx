@@ -89,7 +89,10 @@ function SupportPlaneApp() {
                     {panel === 'dash-tickets'     && <TicketsDashboard     onNav={setPanel} />}
 
                     {/* L1 Transcripts section */}
-                    {panel === 'transcripts'     && <TranscriptsBrowsePanel onUpload={() => setPanel('upload')} />}
+                    {/* Keep TranscriptsBrowsePanel mounted to preserve loaded data and avoid re-fetching on every nav */}
+                    <div style={{display: panel === 'transcripts' ? 'contents' : 'none'}}>
+                        <TranscriptsBrowsePanel onUpload={() => setPanel('upload')} />
+                    </div>
                     {panel === 'upload'          && <UploadPanel onUploadComplete={() => setPanel('transcripts')} />}
                     {panel === 'analysis'        && <AnalysisPanel />}
                     {panel === 'transcript-chat' && <TranscriptChatPanel />}

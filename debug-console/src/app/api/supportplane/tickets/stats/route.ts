@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
  */
 export const GET = withAuth(async function ticketsStats(_request: NextRequest) {
   try {
-    const stats = getTicketStats();
+    const stats = await getTicketStats();
 
     return NextResponse.json(stats);
   } catch (err) {

@@ -6,7 +6,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { getL1TranscriptsDb } from '@/lib/l1-transcript-db';
+import { queryTranscripts } from '@/lib/l1-transcript-db';
+
+const FILTERS_CACHE_TTL_MS = 60000;
+let filtersCache:
+  | {
+      expiresAt: number;
+      payload: {
+        success: true;
+        filters: {
+          categories: string[];
+          interaction_statuses: string[];
+          sub_intents: string[];
+          friction_points: string[];
+          tags: string[];
+        };
+      };
+    }
+  | null = null;
 
 async function handler(request: NextRequest) {
   try {
@@ -14,33 +31,39 @@ async function handler(request: NextRequest) {
       return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
     }
 
-    const db = getL1TranscriptsDb();
+    if (filtersCache && filtersCache.expiresAt > Date.now()) {
+      return NextResponse.json(filtersCache.payload);
+    }
 
-    // Get distinct categories
-    const categories = db.prepare(`
-      SELECT DISTINCT category FROM l1_transcripts
-      WHERE category IS NOT NULL AND category != ''
-      ORDER BY category
-    `).all() as Array<{ category: string }>;
-
-    // Get distinct interaction statuses
-    const statuses = db.prepare(`
-      SELECT DISTINCT interaction_status FROM l1_transcripts
-      WHERE interaction_status IS NOT NULL AND interaction_status != ''
-      ORDER BY interaction_status
-    `).all() as Array<{ interaction_status: string }>;
-
-    // Get distinct sub_intents and friction_points from raw_data
-    const rawDataRows = db.prepare(`
-      SELECT raw_data FROM l1_transcripts WHERE raw_data IS NOT NULL
-    `).all() as Array<{ raw_data: string }>;
+    const rows = await queryTranscripts({});
+    const categories = new Set<string>();
+    const statuses = new Set<string>();
+    const tagsSet = new Set<string>();
 
     const subIntentSet = new Set<string>();
     const frictionPointSet = new Set<string>();
 
-    rawDataRows.forEach(row => {
+    rows.forEach(row => {
+      if (row.category) {
+        categories.add(row.category);
+      }
+      if (row.interaction_status) {
+        statuses.add(row.interaction_status);
+      }
+      if (Array.isArray(row.tags)) {
+        row.tags.forEach((tag) => tagsSet.add(tag));
+      } else if (typeof row.tags === 'string') {
+        try {
+          const tags = JSON.parse(row.tags) as string[];
+          tags.forEach((tag) => tagsSet.add(tag));
+        } catch {
+          // skip
+        }
+      }
+
       try {
-        const data = JSON.parse(row.raw_data);
+        const data =
+          typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
         if (data.sub_intent && data.sub_intent !== 'N/A' && data.sub_intent !== '') {
           subIntentSet.add(data.sub_intent);
         }
@@ -54,27 +77,25 @@ async function handler(request: NextRequest) {
 
     const subIntents = Array.from(subIntentSet).sort();
     const frictionPoints = Array.from(frictionPointSet).sort();
+    const tags = Array.from(tagsSet).sort();
 
-    // Get distinct tags
-    const tagsRows = db.prepare(`
-      SELECT DISTINCT json_each.value as tag
-      FROM l1_transcripts, json_each(l1_transcripts.tags)
-      WHERE tags IS NOT NULL
-      ORDER BY tag
-    `).all() as Array<{ tag: string }>;
-
-    const tags = tagsRows.map(t => t.tag);
-
-    return NextResponse.json({
+    const payload = {
       success: true,
       filters: {
-        categories: categories.map(c => c.category),
-        interaction_statuses: statuses.map(s => s.interaction_status),
+        categories: Array.from(categories).sort(),
+        interaction_statuses: Array.from(statuses).sort(),
         sub_intents: subIntents,
         friction_points: frictionPoints,
         tags: tags,
       },
-    });
+    } as const;
+
+    filtersCache = {
+      expiresAt: Date.now() + FILTERS_CACHE_TTL_MS,
+      payload,
+    };
+
+    return NextResponse.json(payload);
   } catch (error) {
     logger.error('supportplane.transcripts.filters.error', { error: String(error) });
     return NextResponse.json(

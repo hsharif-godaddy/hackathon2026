@@ -8,7 +8,13 @@ import { createHash } from 'node:crypto';
 
 import { withAuth } from '@/lib/api-auth';
 import { uploadFileToS3 } from '@/lib/l1-transcript-backup';
-import { getL1TranscriptsDb } from '@/lib/l1-transcript-db';
+import {
+  bulkInsertTranscripts,
+  checkDuplicateUpload,
+  createUploadRecord,
+  getExistingInteractionIds,
+  updateUploadRecord,
+} from '@/lib/l1-transcript-db';
 import { parseXlsxFile, processAllRows } from '@/lib/l1-transcript-ingestion';
 import {
   downloadFile,
@@ -64,8 +70,6 @@ async function handler(request: NextRequest) {
         new Date(b.lastModifiedDateTime).getTime() - new Date(a.lastModifiedDateTime).getTime()
     );
 
-    const db = getL1TranscriptsDb();
-    const dbPath = process.env.L1_TRANSCRIPTS_DB_PATH || './data/l1_transcripts.db';
     let filesProcessed = 0;
     let filesSkipped = 0;
     let totalNewRows = 0;
@@ -87,11 +91,11 @@ async function handler(request: NextRequest) {
         const fileHash = createHash('sha256').update(fileBuffer).digest('hex');
 
         // Check if already processed
-        const existingUpload = db
-          .prepare('SELECT upload_id, status FROM l1_transcript_uploads WHERE file_hash = ?')
-          .get(fileHash) as { upload_id: string; status: string } | undefined;
+        const existingUpload = (await checkDuplicateUpload(fileHash)) as
+          | { upload_id?: string; status?: string }
+          | null;
 
-        if (existingUpload && existingUpload.status === 'completed') {
+        if (existingUpload?.status === 'completed') {
           logger.info('sharepoint.sync.file_already_processed', {
             file_name: file.name,
             file_hash: fileHash,
@@ -133,13 +137,7 @@ async function handler(request: NextRequest) {
         }
 
         // Get existing interaction_ids to detect new rows
-        const existingIds = new Set(
-          (
-            db.prepare('SELECT interaction_id FROM l1_transcripts').all() as Array<{
-              interaction_id: string;
-            }>
-          ).map((r) => r.interaction_id)
-        );
+        const existingIds = await getExistingInteractionIds();
 
         // Filter to only new rows
         const newRows = rows.filter(
@@ -162,68 +160,29 @@ async function handler(request: NextRequest) {
         });
 
         // Insert upload record
-        db.prepare(
-          `INSERT INTO l1_transcript_uploads (
-            upload_id, uploaded_at, uploaded_by, file_name, file_hash,
-            s3_key, row_count, processed_count, duplicate_count, error_count, status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).run(
-          uploadId,
-          new Date().toISOString(),
-          'sharepoint-sync',
-          file.name,
-          fileHash,
-          s3Key,
-          rows.length,
-          0,
-          rows.length - newRows.length,
-          0,
-          'processing'
-        );
+        await createUploadRecord({
+          file_hash: fileHash,
+          file_name: file.name,
+          row_count: rows.length,
+          s3_key: s3Key,
+          source: 'sharepoint',
+          status: 'processing',
+          upload_id: uploadId,
+          uploaded_by: 'sharepoint-sync',
+        });
 
         // Process rows (maps CSV to transcript records and inserts)
-        const insertFn = async (records: any[]) => {
-          const stmt = db.prepare(`
-            INSERT OR IGNORE INTO l1_transcripts (
-              interaction_id, app_id, domain, shopper_id, customer_id,
-              tags, conversation_summary, full_transcript,
-              created_at, updated_at, ingested_at,
-              source_s3_key, source_file_hash, xlsx_row_index,
-              interaction_type, interaction_status, resolution_time_seconds,
-              agent_name, category, subcategory, sentiment_score, language, raw_data
-            ) VALUES (
-              @interaction_id, @app_id, @domain, @shopper_id, @customer_id,
-              @tags, @conversation_summary, @full_transcript,
-              @created_at, @updated_at, @ingested_at,
-              @source_s3_key, @source_file_hash, @xlsx_row_index,
-              @interaction_type, @interaction_status, @resolution_time_seconds,
-              @agent_name, @category, @subcategory, @sentiment_score, @language, @raw_data
-            )
-          `);
-
-          let inserted = 0;
-          db.transaction(() => {
-            for (const record of records) {
-              inserted += stmt.run(record).changes;
-            }
-          })();
-
-          return {
-            inserted,
-            skipped: records.length - inserted,
-          };
-        };
+        const insertFn = async (records: any[]) => bulkInsertTranscripts(records as any);
 
         const result = await processAllRows(newRows, fileHash, s3Key, insertFn, file.name);
 
         // Update upload record
-        db.prepare(
-          'UPDATE l1_transcript_uploads SET status = ?, processed_count = ?, duplicate_count = ? WHERE upload_id = ?'
-        ).run('completed', result.inserted, rows.length - result.inserted, uploadId);
-
-        // Trigger backup after sharepoint sync completes
-        const { scheduleUpload } = await import('@/lib/db-backup');
-        scheduleUpload(dbPath, 'l1_transcripts.db');
+        await updateUploadRecord(uploadId, {
+          duplicate_count: rows.length - result.inserted,
+          error_count: result.errors,
+          processed_count: result.inserted,
+          status: 'completed',
+        });
 
         logger.info('sharepoint.sync.file_processed', {
           file_name: file.name,

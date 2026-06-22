@@ -25,9 +25,10 @@ export const POST = withAuth(async (req: NextRequest) => {
 export const GET = withAuth(async (req: NextRequest) => {
     const env = req.nextUrl.searchParams.get('env') ?? (process.env.FEEDBACK_ENV ?? 'dev');
     const { getFeedbackIngestionStatus, getDataCoverage, getIngestionLog } = await import('@/lib/feedback-db');
-    return NextResponse.json({
-        status:   getFeedbackIngestionStatus(),
-        coverage: getDataCoverage(env),
-        log:      getIngestionLog(100),
-    });
+    const [status, coverage, log] = await Promise.all([
+        getFeedbackIngestionStatus(),
+        getDataCoverage(env),
+        getIngestionLog(100),
+    ]);
+    return NextResponse.json({ status, coverage, log });
 });

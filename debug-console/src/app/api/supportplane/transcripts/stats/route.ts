@@ -2,58 +2,70 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { getL1TranscriptsDb } from '@/lib/l1-transcript-db';
+import { queryTranscripts } from '@/lib/l1-transcript-db';
 
 export const GET = withAuth(async (_req: NextRequest) => {
     try {
-        const db = getL1TranscriptsDb();
+        const all = await queryTranscripts({});
+        const nowMs = Date.now();
+        const days7Ms = 7 * 24 * 60 * 60 * 1000;
+        const days14Ms = 14 * 24 * 60 * 60 * 1000;
+        const days30Ms = 30 * 24 * 60 * 60 * 1000;
+        const days60Ms = 60 * 24 * 60 * 60 * 1000;
 
-        const total = (db.prepare('SELECT COUNT(*) as n FROM l1_transcripts').get() as { n: number }).n;
+        const timestamps = all
+          .map((row) => (row.created_at ? new Date(row.created_at).getTime() : Number.NaN))
+          .filter((value) => Number.isFinite(value));
 
-        // This week
-        const thisWeek = (db.prepare(
-            "SELECT COUNT(*) as n FROM l1_transcripts WHERE created_at >= datetime('now', '-7 days')"
-        ).get() as { n: number }).n;
+        const total = all.length;
+        const thisWeek = timestamps.filter((value) => value >= nowMs - days7Ms).length;
+        const lastWeek = timestamps.filter(
+          (value) => value >= nowMs - days14Ms && value < nowMs - days7Ms
+        ).length;
+        const thisMonth = timestamps.filter((value) => value >= nowMs - days30Ms).length;
+        const lastMonth = timestamps.filter(
+          (value) => value >= nowMs - days60Ms && value < nowMs - days30Ms
+        ).length;
 
-        // Last week (for WoW comparison)
-        const lastWeek = (db.prepare(
-            "SELECT COUNT(*) as n FROM l1_transcripts WHERE created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')"
-        ).get() as { n: number }).n;
+        const createdAts = all
+          .map((row) => row.created_at)
+          .filter((value): value is string => Boolean(value))
+          .sort((left, right) => left.localeCompare(right));
+        const dateRange = {
+          from_date: createdAts.length ? createdAts[0] : null,
+          to_date: createdAts.length ? createdAts[createdAts.length - 1] : null,
+        };
 
-        // This month
-        const thisMonth = (db.prepare(
-            "SELECT COUNT(*) as n FROM l1_transcripts WHERE created_at >= datetime('now', '-30 days')"
-        ).get() as { n: number }).n;
+        const categoryMap = new Map<string, number>();
+        const byDayMap = new Map<string, number>();
+        let durationTotal = 0;
+        let durationCount = 0;
 
-        // Last month (for MoM comparison)
-        const lastMonth = (db.prepare(
-            "SELECT COUNT(*) as n FROM l1_transcripts WHERE created_at >= datetime('now', '-60 days') AND created_at < datetime('now', '-30 days')"
-        ).get() as { n: number }).n;
+        for (const row of all) {
+          if (row.category) {
+            categoryMap.set(row.category, (categoryMap.get(row.category) || 0) + 1);
+          }
+          if (row.created_at) {
+            const createdMs = new Date(row.created_at).getTime();
+            if (createdMs >= nowMs - days30Ms) {
+              const day = row.created_at.slice(0, 10);
+              byDayMap.set(day, (byDayMap.get(day) || 0) + 1);
+            }
+          }
+          if (typeof row.resolution_time_seconds === 'number') {
+            durationTotal += row.resolution_time_seconds;
+            durationCount += 1;
+          }
+        }
 
-        const dateRange = db.prepare(
-            'SELECT MIN(created_at) as from_date, MAX(created_at) as to_date FROM l1_transcripts'
-        ).get() as { from_date: string | null; to_date: string | null };
+        const topCategories = [...categoryMap.entries()]
+          .map(([label, count]) => ({ count, label }))
+          .sort((left, right) => right.count - left.count)
+          .slice(0, 8);
 
-        const topCategories = db.prepare(`
-            SELECT category as label, COUNT(*) as count
-            FROM l1_transcripts
-            WHERE category IS NOT NULL AND category != ''
-            GROUP BY category
-            ORDER BY count DESC
-            LIMIT 8
-        `).all() as { label: string; count: number }[];
-
-        const byDay = db.prepare(`
-            SELECT DATE(created_at) as date, COUNT(*) as count
-            FROM l1_transcripts
-            WHERE created_at >= datetime('now', '-30 days')
-            GROUP BY DATE(created_at)
-            ORDER BY date ASC
-        `).all() as { date: string; count: number }[];
-
-        const avgDurationRow = db.prepare(
-            'SELECT AVG(resolution_time_seconds) as avg FROM l1_transcripts WHERE resolution_time_seconds IS NOT NULL'
-        ).get() as { avg: number | null };
+        const byDay = [...byDayMap.entries()]
+          .map(([date, count]) => ({ count, date }))
+          .sort((left, right) => left.date.localeCompare(right.date));
 
         // Calculate deltas
         const weekDelta = thisWeek - lastWeek;
@@ -71,7 +83,7 @@ export const GET = withAuth(async (_req: NextRequest) => {
             lastMonth,
             monthDelta,
             monthDeltaPct,
-            avgDuration: avgDurationRow.avg ? Math.round(avgDurationRow.avg) : null,
+            avgDuration: durationCount > 0 ? Math.round(durationTotal / durationCount) : null,
             dateRange: { from: dateRange.from_date, to: dateRange.to_date },
             topCategories,
             byDay,

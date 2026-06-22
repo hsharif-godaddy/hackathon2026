@@ -1,52 +1,7 @@
 /**
- * Chat persistence layer
- * Stores chat sessions and messages per user
+ * chat-db.ts — in-memory chat session store (no persistence).
+ * Sessions are cleared on server restart; acceptable for an internal tool.
  */
-
-import Database from 'better-sqlite3';
-import { join } from 'node:path';
-
-import { scheduleUpload } from './db-backup';
-
-const DB_PATH = join(process.cwd(), 'data', 'feedback_analytics.db');
-
-let db: Database.Database | null = null;
-
-export function getChatDb(): Database.Database {
-  if (!db) {
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    initChatSchema(db);
-  }
-  return db;
-}
-
-function initChatSchema(db: Database.Database): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS chat_sessions (
-      session_id TEXT PRIMARY KEY,
-      user_email TEXT NOT NULL,
-      context TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_email ON chat_sessions(user_email);
-    CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at ON chat_sessions(updated_at);
-
-    CREATE TABLE IF NOT EXISTS chat_messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
-      content TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (session_id) REFERENCES chat_sessions(session_id) ON DELETE CASCADE
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id);
-    CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages(created_at);
-  `);
-}
 
 export interface ChatSession {
   session_id: string;
@@ -64,127 +19,67 @@ export interface ChatMessage {
   created_at: string;
 }
 
-/**
- * Get or create active session for user + context
- */
-export function getOrCreateSession(
-  userEmail: string,
-  context: string
-): ChatSession {
-  const db = getChatDb();
+const sessions = new Map<string, ChatSession>();
+const messages = new Map<string, ChatMessage[]>();
+let msgIdSeq = 1;
 
-  // Check for existing session (within last 24 hours)
-  const existing = db
-    .prepare<[string, string]>(
-      `SELECT * FROM chat_sessions
-       WHERE user_email = ? AND context = ?
-       AND updated_at >= datetime('now', '-1 day')
-       ORDER BY updated_at DESC
-       LIMIT 1`
-    )
-    .get(userEmail, context) as ChatSession | undefined;
-
-  if (existing) {
-    return existing;
-  }
-
-  // Create new session
-  const sessionId = `${context}_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-  db.prepare(
-    `INSERT INTO chat_sessions (session_id, user_email, context) VALUES (?, ?, ?)`
-  ).run(sessionId, userEmail, context);
-
-  // Schedule S3 backup after new session created
-  scheduleUpload(DB_PATH, 'feedback_analytics.db');
-
-  return db
-    .prepare<[string]>(`SELECT * FROM chat_sessions WHERE session_id = ?`)
-    .get(sessionId) as ChatSession;
+function now(): string {
+  return new Date().toISOString();
 }
 
-/**
- * Save a chat message
- */
+export function getOrCreateSession(userEmail: string, context: string): ChatSession {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  for (const s of sessions.values()) {
+    if (s.user_email === userEmail && s.context === context && s.updated_at >= cutoff) {
+      return s;
+    }
+  }
+  const sessionId = `${context}_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+  const session: ChatSession = {
+    session_id: sessionId,
+    user_email: userEmail,
+    context,
+    created_at: now(),
+    updated_at: now(),
+  };
+  sessions.set(sessionId, session);
+  return session;
+}
+
 export function saveChatMessage(
   sessionId: string,
   role: 'user' | 'assistant' | 'system',
   content: string
 ): void {
-  const db = getChatDb();
-
-  db.prepare(
-    `INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)`
-  ).run(sessionId, role, content);
-
-  // Update session timestamp
-  db.prepare(
-    `UPDATE chat_sessions SET updated_at = datetime('now') WHERE session_id = ?`
-  ).run(sessionId);
-
-  // Schedule S3 backup after chat message saved
-  scheduleUpload(DB_PATH, 'feedback_analytics.db');
+  const msg: ChatMessage = { id: msgIdSeq++, session_id: sessionId, role, content, created_at: now() };
+  const list = messages.get(sessionId) ?? [];
+  list.push(msg);
+  messages.set(sessionId, list);
+  const s = sessions.get(sessionId);
+  if (s) s.updated_at = now();
 }
 
-/**
- * Get all messages for a session
- */
 export function getChatMessages(sessionId: string): ChatMessage[] {
-  const db = getChatDb();
-
-  return db
-    .prepare<[string]>(
-      `SELECT * FROM chat_messages WHERE session_id = ? ORDER BY created_at ASC`
-    )
-    .all(sessionId) as ChatMessage[];
+  return [...(messages.get(sessionId) ?? [])];
 }
 
-/**
- * Get recent sessions for a user
- */
-export function getUserSessions(
-  userEmail: string,
-  context?: string,
-  limit = 10
-): ChatSession[] {
-  const db = getChatDb();
-
-  if (context) {
-    return db
-      .prepare<[string, string, number]>(
-        `SELECT * FROM chat_sessions
-         WHERE user_email = ? AND context = ?
-         ORDER BY updated_at DESC
-         LIMIT ?`
-      )
-      .all(userEmail, context, limit) as ChatSession[];
-  }
-
-  return db
-    .prepare<[string, number]>(
-      `SELECT * FROM chat_sessions
-       WHERE user_email = ?
-       ORDER BY updated_at DESC
-       LIMIT ?`
-    )
-    .all(userEmail, limit) as ChatSession[];
+export function getUserSessions(userEmail: string, context?: string, limit = 10): ChatSession[] {
+  const all = [...sessions.values()].filter(
+    (s) => s.user_email === userEmail && (!context || s.context === context)
+  );
+  all.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  return all.slice(0, limit);
 }
 
-/**
- * Clear old sessions (cleanup job)
- */
 export function clearOldSessions(daysOld = 30): number {
-  const db = getChatDb();
-
-  const result = db
-    .prepare(
-      `DELETE FROM chat_sessions WHERE updated_at < datetime('now', '-${daysOld} days')`
-    )
-    .run();
-
-  // Schedule S3 backup after cleanup
-  if (result.changes > 0) {
-    scheduleUpload(DB_PATH, 'feedback_analytics.db');
+  const cutoff = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000).toISOString();
+  let removed = 0;
+  for (const [id, s] of sessions.entries()) {
+    if (s.updated_at < cutoff) {
+      sessions.delete(id);
+      messages.delete(id);
+      removed++;
+    }
   }
-
-  return result.changes;
+  return removed;
 }

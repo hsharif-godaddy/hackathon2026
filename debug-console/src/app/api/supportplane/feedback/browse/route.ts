@@ -20,7 +20,7 @@ export const GET = withAuth(async (req: NextRequest) => {
         const sortDir = (searchParams.get('order') === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc';
         const sort = sortCol ? { col: sortCol, dir: sortDir } : undefined;
 
-        const { rows, total } = getRecentFeedback(env, limit, offset, filters, sort);
+        const { rows, total } = await getRecentFeedback(env, limit, offset, filters, sort);
         return NextResponse.json({
             rows, total,
             pagination: { limit, offset, has_more: total > offset + rows.length },

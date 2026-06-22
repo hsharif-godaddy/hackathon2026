@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { getL1TranscriptsDb } from '@/lib/l1-transcript-db';
+import { queryTranscripts } from '@/lib/l1-transcript-db';
 
 const VALID_DIMENSIONS = [
   'category',
@@ -40,32 +40,18 @@ async function handler(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid dimension' }, { status: 400 });
     }
 
-    const db = getL1TranscriptsDb();
-
-    // Build WHERE clause for date filtering
-    let dateFilter = '';
-    const params: any = {};
-    if (startDate) {
-      dateFilter += ' AND created_at >= @start_date';
-      params.start_date = startDate;
-    }
-    if (endDate) {
-      dateFilter += ' AND created_at <= @end_date';
-      params.end_date = endDate;
-    }
-
-    // Fetch all rows with category and raw_data
-    const allRows = db.prepare(`
-      SELECT category, raw_data FROM l1_transcripts
-      WHERE raw_data IS NOT NULL${dateFilter}
-    `).all(params) as Array<{ category: string; raw_data: string }>;
+    const allRows = (await queryTranscripts({
+      end_date: endDate,
+      start_date: startDate,
+    })).filter((row) => row.raw_data !== null && row.raw_data !== undefined);
 
     // Build heatmap matrix
     const matrix: Record<string, Record<string, number>> = {};
 
     allRows.forEach(row => {
       try {
-        const data = JSON.parse(row.raw_data);
+        const data =
+          typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
 
         // Get row value
         const rowValue = rowDimension === 'category' ? row.category : data[rowDimension];

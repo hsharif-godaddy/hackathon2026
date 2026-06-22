@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/api-auth';
 import { logger } from '@/lib/logger';
-import { getL1TranscriptsDb } from '@/lib/l1-transcript-db';
+import { queryTranscripts } from '@/lib/l1-transcript-db';
 
 interface TagResolutionData {
   tag: string;
@@ -24,36 +24,54 @@ async function handler(request: NextRequest) {
     const daysBack = parseInt(searchParams.get('days_back') || '30', 10);
     const minCount = parseInt(searchParams.get('min_count') || '3', 10);
 
-    const db = getL1TranscriptsDb();
+    const cutoff = Date.now() - daysBack * 24 * 60 * 60 * 1000;
+    const rows = (await queryTranscripts({}))
+      .filter((row) => Boolean(row.created_at) && new Date(row.created_at as string).getTime() >= cutoff);
 
-    // Get tag vs resolution data
-    const data = db.prepare(`
-      WITH tag_expanded AS (
-        SELECT
-          json_each.value as tag,
-          CASE
-            WHEN LOWER(interaction_status) IN ('resolved', 'yes') THEN 'resolved'
-            WHEN LOWER(interaction_status) IN ('unresolved', 'no') THEN 'unresolved'
-            ELSE 'unknown'
-          END as resolution_status
-        FROM l1_transcripts, json_each(l1_transcripts.tags)
-        WHERE created_at >= datetime('now', '-${daysBack} days')
-          AND tags IS NOT NULL
-          AND json_each.value IS NOT NULL
-      )
-      SELECT
+    const buckets = new Map<string, { resolved: number; unresolved: number; unknown: number; total: number }>();
+
+    for (const row of rows) {
+      const tags =
+        Array.isArray(row.tags)
+          ? row.tags
+          : typeof row.tags === 'string'
+            ? (() => {
+                try {
+                  return JSON.parse(row.tags) as string[];
+                } catch {
+                  return [] as string[];
+                }
+              })()
+            : [];
+
+      let resolution: 'resolved' | 'unresolved' | 'unknown' = 'unknown';
+      const status = (row.interaction_status || '').toLowerCase();
+      if (status === 'resolved' || status === 'yes') {
+        resolution = 'resolved';
+      } else if (status === 'unresolved' || status === 'no') {
+        resolution = 'unresolved';
+      }
+
+      for (const tag of tags) {
+        const bucket = buckets.get(tag) || { resolved: 0, total: 0, unknown: 0, unresolved: 0 };
+        bucket.total += 1;
+        bucket[resolution] += 1;
+        buckets.set(tag, bucket);
+      }
+    }
+
+    const data: TagResolutionData[] = [...buckets.entries()]
+      .filter(([, bucket]) => bucket.total >= minCount)
+      .map(([tag, bucket]) => ({
+        resolution_rate: bucket.total ? Math.round((bucket.resolved / bucket.total) * 1000) / 10 : 0,
+        resolved: bucket.resolved,
         tag,
-        COUNT(*) as total,
-        SUM(CASE WHEN resolution_status = 'resolved' THEN 1 ELSE 0 END) as resolved,
-        SUM(CASE WHEN resolution_status = 'unresolved' THEN 1 ELSE 0 END) as unresolved,
-        SUM(CASE WHEN resolution_status = 'unknown' THEN 1 ELSE 0 END) as unknown,
-        ROUND(CAST(SUM(CASE WHEN resolution_status = 'resolved' THEN 1 ELSE 0 END) AS FLOAT) / COUNT(*) * 100, 1) as resolution_rate
-      FROM tag_expanded
-      GROUP BY tag
-      HAVING COUNT(*) >= ${minCount}
-      ORDER BY total DESC
-      LIMIT 20
-    `).all() as TagResolutionData[];
+        total: bucket.total,
+        unknown: bucket.unknown,
+        unresolved: bucket.unresolved,
+      }))
+      .sort((left, right) => right.total - left.total)
+      .slice(0, 20);
 
     logger.info('supportplane.tag_resolution.success', {
       tags_count: data.length,

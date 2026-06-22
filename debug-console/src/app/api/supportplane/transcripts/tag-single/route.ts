@@ -3,7 +3,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getL1TranscriptsDb, updateTranscriptTags, getTranscriptById } from '@/lib/l1-transcript-db';
+import { getTranscriptById, updateTranscriptTags } from '@/lib/l1-transcript-db';
 import { extractTagsFromTranscript } from '@/lib/l1-transcript-ai-tagging';
 import { logger } from '@/lib/logger';
 
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Get the transcript
-    const transcript = getTranscriptById(interaction_id) as any;
+    const transcript = (await getTranscriptById(interaction_id)) as any;
     if (!transcript) {
       return NextResponse.json(
         { error: 'Transcript not found' },
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
 
     // Update in database
-    updateTranscriptTags(interaction_id, tags);
+    await updateTranscriptTags(interaction_id, tags);
 
     logger.info('supportplane.l1_transcript.tag_single.done', {
       interaction_id,

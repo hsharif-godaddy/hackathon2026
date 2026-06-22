@@ -8,8 +8,8 @@ export const GET = withAuth(async (req: NextRequest) => {
     try {
         const env = req.nextUrl.searchParams.get('env') ?? (process.env.FEEDBACK_ENV ?? 'dev');
         const days = req.nextUrl.searchParams.get('days');
-        const summary = getFeedbackSummary(env, days ? parseInt(days, 10) : undefined);
-        const status = getFeedbackIngestionStatus();
+        const summary = await getFeedbackSummary(env, days ? parseInt(days, 10) : undefined);
+        const status = await getFeedbackIngestionStatus();
         return NextResponse.json({ summary, ingestion: status });
     } catch (error) {
         logger.error('supportplane.feedback.summary.error', { error: String(error) });

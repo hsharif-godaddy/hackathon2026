@@ -94,7 +94,7 @@ async function jiraFetch(url: string): Promise<Response> {
 // ── Sync Logic ────────────────────────────────────────────────────────────────
 
 async function syncJiraTickets(): Promise<{ total: number; new: number; updated: number }> {
-  const lastSync = getLastSyncTime('jira');
+  const lastSync = await getLastSyncTime('jira');
   const jql = lastSync
     ? `project in (CIEC, AABSP) AND updated >= "${lastSync}" ORDER BY updated ASC`
     : 'project in (CIEC, AABSP) ORDER BY updated DESC';
@@ -189,8 +189,8 @@ async function syncJiraTickets(): Promise<{ total: number; new: number; updated:
   });
 
   if (tickets.length > 0) {
-    upsertTickets(tickets);
-    setLastSyncTime('jira', new Date().toISOString());
+    await upsertTickets(tickets);
+    await setLastSyncTime('jira', new Date().toISOString());
   }
 
   logger.info('supportplane.tickets.sync.complete', { count: tickets.length });
