@@ -1,0 +1,76 @@
+/**
+ * @vitest-environment jsdom
+ */
+import '@testing-library/jest-dom'
+
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { screen } from '@testing-library/react'
+
+import { useCommanderStore } from '@/stores/useCommanderStore'
+import { renderWithProviders } from '@/tests/test-utils'
+import { CanvasMenu } from './CanvasMenu'
+import { CanvasId, DEFAULT_OPEN_CANVAS_IDS, PINNED_CANVAS_ID } from './registry'
+
+const switchboardValues: Record<string, unknown> = {}
+
+vi.mock('@/hooks/useSwitchboard', () => ({
+  useSwitchboard: (flag: string) => switchboardValues[flag],
+}))
+
+vi.mock('@/utils/instrumentation', () => ({
+  logClickEvent: () => () => {},
+}))
+
+const resetCommanderStore = (openCanvasIds: CanvasId[] = [...DEFAULT_OPEN_CANVAS_IDS]) => {
+  useCommanderStore.setState({
+    openCanvasIds,
+    activeCanvasId: PINNED_CANVAS_ID,
+    isCanvasSettingsOpen: false,
+  })
+}
+
+afterEach(() => {
+  for (const key of Object.keys(switchboardValues)) {
+    delete switchboardValues[key]
+  }
+  resetCommanderStore()
+})
+
+const openMenu = async () => {
+  const { user, ...rest } = renderWithProviders(<CanvasMenu />)
+  await user.click(screen.getByTestId('commander-canvas-tabs-menu-trigger'))
+  return { user, ...rest }
+}
+
+describe('CanvasMenu', () => {
+  it('does not offer SettingsDomain — the top-level Domain canvas is the canonical surface', async () => {
+    switchboardValues['appbuilder-domain-top-level'] = true
+    switchboardValues['appbuilder-settings-domain'] = true
+    resetCommanderStore([CanvasId.Preview])
+
+    await openMenu()
+
+    expect(screen.queryByTestId(`commander-canvas-tabs-menu-${CanvasId.SettingsDomain}`))
+      .not.toBeInTheDocument()
+  })
+
+  it('hides any canvas already open in the tab strip', async () => {
+    switchboardValues['appbuilder-brandbook'] = true
+    resetCommanderStore([CanvasId.Preview, CanvasId.Brand])
+
+    await openMenu()
+
+    expect(screen.queryByTestId(`commander-canvas-tabs-menu-${CanvasId.Brand}`))
+      .not.toBeInTheDocument()
+  })
+
+  it('offers the top-level Domain canvas in the menu when its flag is on and it is not currently open', async () => {
+    switchboardValues['appbuilder-domain-top-level'] = true
+    resetCommanderStore([CanvasId.Preview])
+
+    await openMenu()
+
+    expect(screen.getByTestId(`commander-canvas-tabs-menu-${CanvasId.Domain}`))
+      .toBeInTheDocument()
+  })
+})

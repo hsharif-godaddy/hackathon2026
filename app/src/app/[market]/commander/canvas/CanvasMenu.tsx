@@ -23,7 +23,6 @@ const MENU_ORDER: readonly CanvasId[] = [
   CanvasId.Domain,
   CanvasId.Inbox,
   CanvasId.SettingsProject,
-  CanvasId.SettingsDomain,
   CanvasId.SettingsBackups,
   CanvasId.SettingsSecurity,
   CanvasId.SettingsDatabase,
