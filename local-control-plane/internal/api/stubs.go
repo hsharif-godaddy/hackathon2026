@@ -644,3 +644,17 @@ func (s *Server) UpdateAttribute(w http.ResponseWriter, r *http.Request) {
 		"updatedAt": now,
 	})
 }
+
+// GetPIECustomer stubs the GoDaddy PIE customer proxy endpoint called by
+// stripe-service to resolve prefill email for Stripe's claimable-sandbox
+// create. Returns a static local-dev address for any customer ID — the
+// email itself only appears in Stripe's sandbox prefill form and in the
+// 7-day expiry reminder Stripe sends before deleting an unclaimed sandbox.
+func (s *Server) GetPIECustomer(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	customerID := vars["customerId"]
+	writeJSON(w, http.StatusOK, map[string]string{
+		"customerId": customerID,
+		"email":      "local-dev@airo.test",
+	})
+}

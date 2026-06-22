@@ -170,16 +170,24 @@ func Load() (Config, error) {
 	if (cfg.TLSCertPath != "") != (cfg.TLSKeyPath != "") {
 		return Config{}, fmt.Errorf("SERVER_CERT_PATH and SERVER_KEY_PATH must both be set or both empty")
 	}
+	if cfg.AuthType, err = parseAuthType(getEnv("AUTH_TYPE", "jwt")); err != nil {
+		return Config{}, err
+	}
 	// TLS is mandatory in every deployed environment — there must be no path
 	// by which stripe-service starts in plain HTTP outside local dev. The
 	// container image (Dockerfile) bakes both paths in, so prod/test/dev get
 	// TLS by construction; this check makes that contract explicit and fails
 	// loud if an env-var passthrough or build change ever drops the cert.
-	if cfg.Environment != EnvLocal && (cfg.TLSCertPath == "" || cfg.TLSKeyPath == "") {
+	//
+	// Narrow exception: ENVIRONMENT=dev AUTH_TYPE=none is the runbook
+	// invocation for testing with real Stripe on a laptop
+	// (ENVIRONMENT=dev STRIPE_CLIENT=real AUTH_TYPE=none go run ./cmd/server).
+	// ENVIRONMENT=local always forces STRIPE_CLIENT=fake and is already
+	// excluded. test/prod are never allowed to skip TLS even with AUTH_TYPE=none
+	// — a billing service must not silently serve plain HTTP in those envs.
+	localDevBypass := cfg.AuthType == "none" && (cfg.Environment == EnvLocal || cfg.Environment == EnvDev)
+	if !localDevBypass && cfg.Environment != EnvLocal && (cfg.TLSCertPath == "" || cfg.TLSKeyPath == "") {
 		return Config{}, fmt.Errorf("SERVER_CERT_PATH and SERVER_KEY_PATH are required when ENVIRONMENT=%s", cfg.Environment)
-	}
-	if cfg.AuthType, err = parseAuthType(getEnv("AUTH_TYPE", "jwt")); err != nil {
-		return Config{}, err
 	}
 	cfg.SSOHost = strings.TrimSpace(os.Getenv("SSO_HOST"))
 	if cfg.AuthType == "jwt" && cfg.SSOHost == "" {

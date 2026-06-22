@@ -149,6 +149,13 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService, ssoMW *auth.SSOMiddlew
 	v1.HandleFunc("/attributes/{ownerType}/{ownerId}", srv.CreateAttribute).Methods("POST")
 	v1.HandleFunc("/attributes/{attributeId}", srv.UpdateAttribute).Methods("PUT")
 
+	// Service dependency stubs — local replacements for external APIs that
+	// calling services (e.g. stripe-service) expect to be present.
+	// PIE customer proxy: stripe-service calls this to resolve prefill email
+	// before creating a Stripe claimable sandbox. Returns a static local-dev
+	// address; path matches hosting.GetCustomerEmail in stripe-service.
+	r.HandleFunc("/api/pie/v1/proxy/customers/{customerId}", srv.GetPIECustomer).Methods("GET")
+
 	// Debug endpoints for error injection
 	r.HandleFunc("/api/_debug/inject-error", srv.InjectError).Methods("POST")
 	r.HandleFunc("/api/_debug/clear-error", srv.ClearError).Methods("POST")

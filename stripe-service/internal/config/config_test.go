@@ -185,16 +185,58 @@ func TestLoadAcceptsBothTLSPaths(t *testing.T) {
 // plain-HTTP-allowed for dev convenience; dev/test/prod must error out at
 // startup if SERVER_CERT_PATH / SERVER_KEY_PATH aren't set, so a build or
 // env-var passthrough regression can't silently produce a non-TLS prod task.
+//
+// AUTH_TYPE=none is the explicit local-dev override — it intentionally
+// bypasses the TLS check so engineers can run ENVIRONMENT=dev STRIPE_CLIENT=real
+// AUTH_TYPE=none on a laptop. The test uses AUTH_TYPE=jwt (the deployed
+// default) to verify the check still fires in normal deployed conditions.
 func TestLoadRequiresTLSInDeployedEnvs(t *testing.T) {
 	for _, env := range []string{"dev", "test", "prod"} {
 		t.Run(env, func(t *testing.T) {
 			clearEnv(t)
 			t.Setenv("ENVIRONMENT", env)
-			// dev/test/prod also require SSO_HOST when AUTH_TYPE=jwt; clearEnv
-			// sets AUTH_TYPE=none so the TLS check is what fails first.
+			t.Setenv("AUTH_TYPE", "jwt")
+			t.Setenv("SSO_HOST", "sso.godaddy.com") // satisfy the SSO_HOST check
 			_, err := Load()
 			if err == nil {
 				t.Fatalf("ENVIRONMENT=%s: want error when TLS paths unset, got nil", env)
+			}
+			if !strings.Contains(err.Error(), "SERVER_CERT_PATH") {
+				t.Errorf("ENVIRONMENT=%s: error should mention SERVER_CERT_PATH; got %q", env, err)
+			}
+		})
+	}
+}
+
+// TestLoadAllowsPlainHTTPWithAuthTypeNone verifies that the narrow local-dev
+// override (ENVIRONMENT=dev AUTH_TYPE=none) bypasses TLS, while test and prod
+// still require TLS even with AUTH_TYPE=none — a billing service must never
+// silently serve plain HTTP in those envs regardless of auth type.
+func TestLoadAllowsPlainHTTPWithAuthTypeNone(t *testing.T) {
+	// dev bypass — the runbook invocation for testing with real Stripe locally.
+	t.Run("dev", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("ENVIRONMENT", "dev")
+		t.Setenv("AUTH_TYPE", "none")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("ENVIRONMENT=dev AUTH_TYPE=none: want no error without TLS, got %v", err)
+		}
+		if cfg.TLSCertPath != "" || cfg.TLSKeyPath != "" {
+			t.Errorf("TLS paths should be empty; got cert=%q key=%q", cfg.TLSCertPath, cfg.TLSKeyPath)
+		}
+	})
+
+	// test/prod must still require TLS even with AUTH_TYPE=none.
+	for _, env := range []string{"test", "prod"} {
+		env := env
+		t.Run(env+"_auth_none_still_requires_tls", func(t *testing.T) {
+			clearEnv(t)
+			t.Setenv("ENVIRONMENT", env)
+			t.Setenv("AUTH_TYPE", "none")
+			_, err := Load()
+			if err == nil {
+				t.Fatalf("ENVIRONMENT=%s AUTH_TYPE=none: want TLS error when certs unset, got nil", env)
 			}
 			if !strings.Contains(err.Error(), "SERVER_CERT_PATH") {
 				t.Errorf("ENVIRONMENT=%s: error should mention SERVER_CERT_PATH; got %q", env, err)

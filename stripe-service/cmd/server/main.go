@@ -151,7 +151,13 @@ func main() {
 		switch {
 		case cfg.TLSCertPath != "":
 			err = httpSrv.ListenAndServeTLS(cfg.TLSCertPath, cfg.TLSKeyPath)
-		case cfg.Environment == config.EnvLocal:
+		case cfg.Environment == config.EnvLocal || (cfg.AuthType == "none" && cfg.Environment == config.EnvDev):
+			// Plain HTTP is allowed for local dev only:
+			//   - ENVIRONMENT=local: standard laptop dev (forces STRIPE_CLIENT=fake)
+			//   - ENVIRONMENT=dev AUTH_TYPE=none: laptop dev against real Stripe
+			// test/prod always require TLS regardless of AUTH_TYPE — the
+			// config.Load guard above already enforces this; the default
+			// branch below is defence-in-depth.
 			err = httpSrv.ListenAndServe()
 		default:
 			// Defense-in-depth: config.Load should have already errored, but
