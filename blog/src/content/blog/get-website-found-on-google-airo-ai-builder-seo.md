@@ -1,163 +1,216 @@
 ---
-title: "Your Website Is Live. But Is It Getting Found? | Airo AI Builder"
-description: "The Airo AI Builder SEO Skill optimizes every page of your site automatically — no plugins, no SEO expertise needed. Built-in SEO for small businesses."
-pubDate: 2026-05-21
-category: "How-To"
-heroImage: "/images/seo-skill-implementation-summary.webp"
+title: "Get Found on Google and AI | Airo AI Builder SEO & AEO Update"
+description: "Airo AI Builder builds SEO and AEO into every site, validates AI search readiness on publish, and alerts you if quality drops. No plugins."
+pubDate: 2026-06-15
+category: "Product Update"
+heroImage: "/images/seo-skill-hero-get-found-google-ai.webp"
 ---
 
-You built a website. You hit publish. And then... nothing happened.
+You built a website. It looks great. But when someone searches for your business on Google, or asks an AI assistant for a recommendation in your category, your site doesn't show up.
 
-No traffic. No customers. Just silence.
+**Here's what changed:** [Airo AI Builder](https://www.godaddy.com/airo/ai-builder) now helps you get found in more places, not just traditional search results. SEO and AEO (Answer Engine Optimization) are built in when your site is created. Every publish validates that your pages are still search-ready and AI-ready. And if you want to go deeper, you can ask the SEO Skill to optimize your whole site in plain language.
 
-That's one of the most common problems for small businesses online: being live and being found are two different things. Most website builders only solve the first one. The Airo AI Builder SEO Skill solves both.
+No plugins. No technical setup. No hunting through settings.
 
-<iframe width="100%" style="aspect-ratio: 16/9;" src="https://www.youtube.com/embed/G5yb1WSPK8g" title="How to Optimize SEO Automatically with Airo AI Builder | No Code SEO Tool" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
-
----
-
-## What Is the Airo AI Builder SEO Skill?
-
-The **Airo AI Builder SEO Skill** is a built-in skill inside [Airo AI Builder](https://www.godaddy.com/airo/ai-builder), GoDaddy's AI-powered website and app builder. It analyzes every page of your site, generates recommendations specific to your business, and applies the changes directly in the project. No plugins, no SEO expertise, no manual meta tag setup.
-
-It doesn't start with meta tags. It starts by reading your site to understand what kind of business you are, who you're trying to reach, what makes you different, and what your customers are searching for.
+<iframe width="100%" style="aspect-ratio: 16/9;" src="https://www.youtube.com/embed/G5yb1WSPK8g" title="Airo AI Builder SEO Skill walkthrough" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
 
 ---
 
-## Why Generic SEO Advice Doesn't Work
+## What do SEO and AEO mean?
 
-Most SEO tools run a checklist and return the same advice regardless of your business:
+**SEO** is how people find you on Google and other search engines. It's the page title, description, and business details that show up when someone searches for what you offer.
 
-- "Add more keywords."
-- "Write a meta description."
-- "Include an FAQ."
+**AEO** (Answer Engine Optimization) is how AI tools understand your business. When someone asks ChatGPT, Google AI Overviews, or another AI assistant for a recommendation in your category, AEO is what helps your site be part of that answer.
 
-That advice doesn't know whether you're a local restaurant trying to show up in "best tacos near me" or a B2B SaaS company targeting "project management software for remote teams." It treats every website the same.
+In plain terms, Airo AI Builder handles both from the start. Your site is set up to be found on Google and understood by AI before you do anything extra.
 
-**The Airo AI Builder SEO Skill was built on a different principle: context first.**
+When Airo AI Builder creates your site, it already adds:
 
-Here's what the difference looks like in practice:
+- A **page title and description** for Google (the name and short blurb people see in search results)
+- **Clear headings** on each page so search engines and AI tools know what the page is about
+- **Structured data** (business name, type, location, hours, and contact info formatted so Google and AI can read it)
+- **Link previews for social media**, so when you share your site on LinkedIn, iMessage, or Slack, people see your business name, a description, and an image instead of a bare URL
+- **Image descriptions** (alt text) so search engines and AI understand your photos
+- A **sitemap** so Google can find your About, Services, and Contact pages, not just your homepage
 
-| Generic SEO advice | Airo AI Builder SEO Skill |
-|---|---|
-| "Add an FAQ section" | "Add an FAQ addressing sustainable sourcing questions your eco-conscious customers are searching for" |
-| "Include more keywords" | "Incorporate 'farm-to-table Austin' naturally in your homepage hero to capture local searches" |
-| "Add meta descriptions" | "Write meta descriptions that highlight your 24-hour delivery guarantee, a key search differentiator" |
+After you publish, Airo AI Builder scores your site and compares each version to the last one. If something slips, you get an alert with a button to fix it. Want recommendations tailored to your specific business? Just ask the SEO Skill.
 
 ---
 
-## How Does the Airo AI Builder SEO Skill Work?
+## Why this matters
 
-The SEO Skill follows a six-step process from activation to verification.
+A site can look finished and still be hard to find. Not broken. Just missing the behind-the-scenes details that Google, social platforms, and AI tools need to understand and surface you.
 
-### Step 1: Activate with plain language
+People don't only search on Google. They ask AI assistants for recommendations, use AI Overviews, and share links on social. If your site is only set up for one of those channels, you miss discovery elsewhere.
 
-You don't need to know technical SEO to use this feature. Just tell Airo AI Builder what you need:
+Before this update, many sites launched without structured data or AI search readiness. There was a post-publish SEO tool you could run, but only if you knew it existed or thought to ask for SEO in your build prompt.
 
+---
+
+## SEO and AEO built in from day one
+
+**No setup required.** Every site you build with Airo AI Builder includes basic SEO and AEO automatically.
+
+You don't install anything. You don't run a separate setup step. You don't need to know what "structured data" means.
+
+When the AI builds your site, the search, sharing, and AI-readiness basics are already there. Your site is ready to be found from the moment it goes live.
+
+### New pages get it too
+
+Add a new page to your site? **Structured data and AI search readiness are applied automatically.** Each new page is checked and set up for search and AI without you asking. You don't have to remember to optimize every page as your site grows.
+
+---
+
+## Validation on every publish
+
+Editing your site can accidentally break SEO or AEO. Maybe a new page is missing a description. Maybe structured data got removed. You might not notice for weeks.
+
+Airo AI Builder runs checks every time you publish, including structured data validation, AI readiness checks, and SEO quality monitoring.
+
+**At publish, your site is validated for:**
+
+- Structured data across all pages
+- AI search readiness (can AI tools read and understand your content?)
+- Traditional SEO elements (titles, descriptions, social tags, and more)
+
+### SEO quality monitoring
+
+1. **Your first publish** gives you a starting score from 0 to 100, based on what's in place.
+2. **Every publish after that** is compared to your last version.
+3. If your score **drops by 10 points or more**, or **new issues show up on any page**, you'll see an alert in the builder right after you publish.
+
+The check runs in the background. It won't stop you from publishing. And the alert includes a **"Run SEO Scan"** button so you can fix problems in one step.
+
+---
+
+## The SEO Skill: when you want to go deeper
+
+The built-in SEO, AEO, and publish checks handle the basics. The **Airo AI Builder SEO Skill** goes further when you want advice specific to your business.
+
+Just type what you need:
+
+- "Analyze SEO for my app"
 - "Optimize my SEO"
+- "Optimize my site for AEO"
 - "Get my site found on Google"
 - "Do an SEO audit on my site"
-- "Add meta tags to my pages"
-- "Generate a sitemap"
 
-In Airo v8 apps, the skill also activates automatically whenever a new page or route is added, helping new public content get SEO coverage without you needing to ask.
+The skill reads your whole site, understands what kind of business you run, and makes the changes for you. You don't get a to-do list to work through on your own.
+
+![User prompt to optimize for AEO and the SEO Skill loading automatically](/blog/images/seo-skill-aeo-prompt-loaded.png)
+
+![The SEO Skill analyzing the site and implementing AEO and SEO improvements across all pages](/blog/images/seo-skill-aeo-implementation.png)
+
+### Generic advice vs. advice for your business
+
+| What most SEO tools say | What the Airo AI Builder SEO Skill does |
+|---|---|
+| "Add an FAQ section" | "Add an FAQ about sustainable sourcing, since your customers search for that" |
+| "Include more keywords" | "Use 'farm-to-table Austin' on your homepage to capture local searches" |
+| "Add meta descriptions" | "Highlight your 24-hour delivery guarantee in your page descriptions" |
+
+The skill works with how your site is already built. It doesn't force in new tools or create a mess you have to clean up later.
 
 ![The SEO Skill loading and beginning to analyze the Rootstock restaurant site](/blog/images/seo-skill-activation.webp)
 
-### Step 2: Business context analysis
+It updates every page on your site:
 
-Before touching your site, the skill reads your app to derive context: your business name, type, and location; your target audience; your brand voice; your unique selling points; and the keywords your customers are searching for.
+- Unique titles and descriptions for each page
+- The right tags so Google knows which page is the main version
+- Social sharing previews for every page
+- Structured data formatted so Google and AI can read your business details
+- Better image descriptions
+- An updated sitemap so new pages get discovered
 
-### Step 3: Full site analysis
+![The SEO Skill applying updates across all pages of the Rootstock site simultaneously](/blog/images/seo-skill-implementation-progress.webp)
 
-The skill reads every page in your site, not just the homepage. It audits page titles, meta descriptions, heading structure, content quality, keyword alignment, image alt text, structured data, social sharing tags, and existing SEO patterns already in your codebase.
+![Implementation complete: every page now has titles, descriptions, social tags, and business details in place](/blog/images/seo-skill-implementation-summary.webp)
 
-It also detects how SEO is already implemented. If your project uses Next.js metadata, Remix meta functions, `<Head>`, or Helmet, the skill follows that pattern instead of introducing a new one. That keeps your project consistent and easier to maintain.
+![Detailed summary showing page-specific business details, schema types per page, and image updates applied across the Rootstock site](/blog/images/seo-skill-jsonld-verification.webp)
 
-### Step 4: Recommendations specific to your business
+![The published Rootstock homepage showing the optimized page details Google and social platforms use](/blog/images/seo-skill-live-page-devtools.webp)
 
-A local business gets local search strategy: "near me" keywords, location schema, mobile-first signals. An e-commerce brand gets product-specific optimization and trust signals. A B2B company gets content targeting the searches buyers make before they've decided what to buy.
-
-### Step 5: Direct implementation
-
-The SEO Skill doesn't hand you a report and walk away. It implements every recommendation directly:
-
-- **Unique page titles and meta descriptions** on every page
-- **Canonical URLs** to prevent duplicate content issues
-- **Open Graph and Twitter Card tags** for social preview optimization
-- **JSON-LD structured data** using the appropriate schema type for your page, such as `LocalBusiness`, `Product`, `FAQPage`, `BlogPosting`, or `Organization`, to help search engines better understand your content
-- **Image SEO improvements** with descriptive alt text and sizing attributes where appropriate
-- **Sitemap registration** so search engines can more easily discover every public page (robots.txt is generated automatically)
-
-The skill detected that Rootstock uses Helmet and applied it consistently across all pages in parallel (no new libraries added).
-
-![The SEO Skill applying Helmet blocks across all pages of the Rootstock site simultaneously](/blog/images/seo-skill-implementation-progress.webp)
-
-Once complete, the skill summarizes every change made across the site.
-
-![Implementation complete: every page now has canonical URLs, Open Graph tags, Twitter cards, page-specific JSON-LD schema, and image hygiene applied](/blog/images/seo-skill-implementation-summary.webp)
-
-The summary includes the specific schema type chosen for each page e.g. `Restaurant` for the homepage, `BlogPosting` for each article, `Menu` for the menu page - along with image hygiene changes applied throughout.
-
-![Detailed summary showing BlogPosting JSON-LD with article-specific metadata, schema types per page, and image hygiene attributes applied across the Rootstock site](/blog/images/seo-skill-jsonld-verification.webp)
-
-### Step 6: Post-publish validation
-
-After you publish, the built-in validator can fetch the live URL and automatically check key SEO essentials, including:
-
-- Unique title and meta description
-- Canonical URL present
-- All Open Graph tags (`og:title`, `og:description`, `og:image`, `og:url`, `og:type`)
-- Twitter Card tags
-- At least one valid JSON-LD structured data block
-- At least one H1 matching page intent
-
-You get confirmation that your SEO essentials are in place after publishing.
-
-![The published Rootstock homepage with DevTools open showing the full optimized head: title, meta description, canonical URL, Open Graph tags, Twitter cards, and JSON-LD structured data](/blog/images/seo-skill-live-page-devtools.webp)
+Already built a site before this update? Run the SEO Skill on what's live. It works the same way on existing projects.
 
 ---
 
-## Who Is the Airo AI Builder SEO Skill For?
+## Four things working for you automatically
 
-The SEO Skill works for any business built with Airo AI Builder. Here's how the strategy adapts by business type:
+| What | When | What it does for you |
+|---|---|---|
+| **SEO & AEO at create** | When your site is built | Titles, descriptions, structured data, social previews, and sitemap are already in place |
+| **Search & AI setup on new pages** | When you add a page | Structured data and AI search readiness applied automatically |
+| **Publish validation** | Every time you publish | Validates structured data, AI readiness, and SEO across all pages; alerts you if quality drops |
+| **SEO Skill** | When you ask for it | Full-site optimization tailored to your business |
 
-**Local businesses** get optimization for "near me" searches, local business schema, and mobile search signals that surface your location to nearby customers.
+You don't pick one. New sites get the first two automatically. Every publish gets the third. The fourth is there when you want more or need to fix an older site.
 
-**E-commerce brands** get product-specific keyword targeting, buyer trust signals, and review schema that convert searchers into buyers.
+---
 
-**B2B brands** get strategy around problem-aware searches, thought-leadership content optimization, and competitor comparison keywords that reach buyers earlier in their decision process.
+## Who is this for?
+
+If you run a small business, you probably don't have time to learn technical SEO or how AI search works. That's the point.
+
+**Local businesses** (restaurants, salons, plumbers) get location and hours set up so nearby customers can find you on Google and in AI-powered search.
+
+**Online stores** get product pages set up so shoppers and AI tools can understand what you sell.
+
+**B2B businesses** get pages tuned to the searches and questions people ask before they choose a vendor.
+
+And if you edit your site after launch, publish validation catches problems before they go unnoticed.
 
 ---
 
 ## Frequently Asked Questions
 
-**Does the Airo AI Builder SEO Skill require technical knowledge?**
-No. Type something like "optimize my SEO" or "get my site found on Google" and the skill handles the rest.
+**Do I need to turn on SEO or AEO when I build a site?**
+No. Both are included automatically when Airo AI Builder creates your site.
 
-**Does it only optimize the homepage?**
-Every page, not just the homepage. The skill reads your full site before making any changes.
+**What is AEO?**
+AEO (Answer Engine Optimization) helps AI tools like ChatGPT and Google AI Overviews understand your business. It uses the same structured data and clear page content that powers traditional SEO, set up so AI can read your site accurately.
 
-**What SEO elements does it implement?**
-Page titles, meta descriptions, canonical URLs, Open Graph tags, Twitter Card tags, JSON-LD structured data, H1 improvements, image alt text, image sizing attributes, and sitemap registration.
+**What happens when I add a new page?**
+Structured data and AI search readiness are applied automatically. You don't need to run a separate optimization step.
 
-**What is JSON-LD structured data and why does it matter?**
-It's code in your page's `<head>` that tells search engines what type of content they're looking at: a local business, a product, an FAQ, a blog post. Getting it right makes you eligible for rich results in Google — things like review stars (from `AggregateRating` schema), FAQ entries displayed directly in search results, product details, and recipe cards — making your listing stand out before anyone clicks.
+**What does the publish check look at?**
+It validates structured data and AI readiness across all pages, plus traditional SEO: page titles, descriptions, social sharing tags, and more. It also scores your site from 0 to 100 and compares each publish to the last.
+
+**When will I see an alert?**
+After you publish, if your score drops by 10 points or more compared to your last publish, or if new issues appear on any page. Your first publish sets the starting score.
+
+**Will the check stop me from publishing?**
+No. It runs in the background and doesn't block you from going live.
+
+**What do I do if I get an alert?**
+Tap **"Run SEO Scan"** on the alert. That starts the SEO Skill to find and fix the issues.
+
+**Does the SEO Skill only fix the homepage?**
+No. It reads and updates every page on your site.
+
+**What is structured data?**
+It's the behind-the-scenes business info on your site (name, type, location, hours) that helps Google and AI tools understand what you do. When it's set up right, your listing can show extra details in search results.
 
 **How is this different from other SEO tools?**
-Most SEO tools hand you a list and stop there. This one makes the changes for you, directly in the codebase, following the patterns already in your project.
+Most tools give you a checklist and leave the work to you. Airo AI Builder builds SEO and AEO into new sites, validates both on every publish, and makes fixes for you when you run the SEO Skill.
 
-**How can I try the Airo AI Builder SEO Skill?**
-Airo AI Builder offers 50 free credits to get started, and the SEO Skill is included.
+**How can I try it?**
+Airo AI Builder offers 50 free credits to get started. Build a new site to see SEO and AEO built in from the start, or say "analyze SEO for my app" on a site you've already made.
 
 ---
 
-## Your Website Should Work for You, Even When You're Not Working
+## Key takeaways
 
-Most sites that don't get traffic aren't badly built. They just don't have the page titles, metadata, and structured data that search engines need to understand them.
+- SEO, AEO, publish validation, and quality monitoring are built into Airo AI Builder automatically.
+- New pages get structured data and AI search readiness without you asking.
+- Every publish validates structured data and AI readiness across all pages, with a score compared to your last version. A big drop or new issues triggers an alert with a **Run SEO Scan** button.
+- The SEO Skill goes deeper when you ask for it. Use it on older sites or when you want recommendations specific to your business.
 
-The Airo AI Builder SEO Skill handles all of that in a single step, working with what's already in your codebase rather than introducing something new.
+---
 
-**[Start building with Airo AI Builder](https://airo-builder.godaddy.com?referralId=DamWZ-ryeCH7)** — and use your 50 free credits to create a site that's not just live, but easier to find.
+## Your site should be findable in more places
+
+You shouldn't need an SEO degree to get customers online. Airo AI Builder is designed to help you show up on Google, in AI-powered search, and when people share your link.
+
+**[Start building with Airo AI Builder](https://social.godaddy/3REyagr)** with 50 free credits.
 
 Join the community on [Discord](https://discord.gg/EfybfxAXg8) to see how other builders are using it.
