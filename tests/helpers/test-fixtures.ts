@@ -15,10 +15,13 @@
  */
 import { test as base, expect } from '@playwright/test';
 
-import { seedReturningUserCookie } from './auth';
+import { seedReturningUserCookie, seedDarkVersionCookie } from './auth';
 
 export const test = base.extend({
   page: async ({ page }, use) => {
+    // When DARK_URL is set (release pipeline's dark run) this pins the context
+    // to the dark-release build before any navigation; otherwise it's a no-op.
+    await seedDarkVersionCookie(page);
     await seedReturningUserCookie(page);
     await use(page);
   },

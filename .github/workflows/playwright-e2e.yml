@@ -55,6 +55,11 @@ on:
         required: false
         type: boolean
         default: false
+      dark_url:
+        description: 'Dark-release URL to pin tests to (carries the x-katana-version selector). Empty = test the stable build.'
+        required: false
+        type: string
+        default: ''
 
   # Allow triggering from other GitHub Actions
   workflow_call:
@@ -74,6 +79,11 @@ on:
         required: false
         type: boolean
         default: false
+      dark_url:
+        description: 'Dark-release URL to pin tests to (carries the x-katana-version selector). Empty = test the stable build.'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   id-token: write # required for artifactory token login
@@ -420,6 +430,10 @@ jobs:
           PLAYWRIGHT_BASE_URL: ${{ steps.env-config.outputs.base_url }}
           PLAYWRIGHT_ENV: ${{ steps.env-config.outputs.environment }}
           TEST_ENVIRONMENT: ${{ steps.env-config.outputs.environment }}
+          # When set (release pipeline's dark run), tests/helpers/auth.ts seeds the
+          # x_katana_version cookie parsed from this URL so every spec — and any app
+          # the run creates — hits the dark build. Empty (schedule/normal) = stable.
+          DARK_URL: ${{ inputs.dark_url }}
           ES_URL: ${{ steps.get-es-credentials.outputs.es_url }}
           ES_API_KEY: ${{ steps.get-es-credentials.outputs.es_api_key }}
         run: |
@@ -569,11 +583,15 @@ jobs:
   # 'e2e' (+ 'e2e-then-regression' for legacy callers) triggers the PaaS suite
   # exactly once per release. Scheduled prod runs still trigger it via the
   # github.event_name == 'schedule' branch regardless of filter.
+  # The `(inputs.dark_url || '') == ''` clause below additionally skips this on
+  # dark runs: the PaaS suite isn't dark-aware (it runs hosting-web-apps' own
+  # tests, not the dark AAB build), so there's no point dispatching it then.
   host-paas-e2e:
-    if: >
-      ${{ (inputs.environment || 'prod') == 'prod'
-          && (github.event_name == 'schedule'
-              || contains(fromJSON('["e2e", "e2e-then-regression"]'), inputs.test_filter || 'e2e')) }}
+    if: >-
+      (inputs.environment || 'prod') == 'prod'
+      && (inputs.dark_url || '') == ''
+      && (github.event_name == 'schedule'
+          || contains(fromJSON('["e2e", "e2e-then-regression"]'), inputs.test_filter || 'e2e'))
     name: E2E Tests (host-paas, prod)
     uses: gdcorp-partners/hosting-web-apps/.github/workflows/e2e-playwright.yml@main
     with:

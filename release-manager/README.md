@@ -37,7 +37,7 @@ aws sso login --profile airobuild-dev-private-sso
 | `--dry-run`              | `-n`  | Run full pipeline without triggering any workflows (read-only)                                             |
 | `--auto-approve`         |       | Skip interactive confirmations (combine with `--dry-run`)                                                  |
 | `--branch`               |       | Branch to build from (default: `main`)                                                                     |
-| `--fail-stage`           |       | Stage ID to simulate failure in dry-run (repeatable, e.g. `--fail-stage deploy-app --fail-stage e2e-test`) |
+| `--fail-stage`           |       | Stage ID to simulate failure in dry-run (repeatable, e.g. `--fail-stage deploy-app --fail-stage e2e-prod`) |
 | `--no-slack`             |       | Disable Slack notifications                                                                                |
 | `--force-lock`           |       | Break through an existing deploy lock held by another operator                                             |
 | `--rollback-artifact-id` |       | Override the previous-good app artifact ID (skips the GitHub lookup for it)                                |
@@ -108,10 +108,11 @@ pipeline:
 2. **Deploy lock** — acquires an SSM Parameter Store lock to prevent concurrent deploys
 3. **Rollback snapshot** — fetches current production state from GitHub for verification
 4. **Release notes + commit pinning** — resolves the target branch to a specific commit SHA, then lists merged PRs since the last production deploy. The pinned SHA is stored and used by all subsequent stages, ensuring deterministic builds even if the branch advances during the deploy.
-5. **Test deployment** — deploys app + builds images in parallel, then E2E + regression tests + manual checklist
-6. **Production gate** — confirmation prompt before prod deploy
-7. **Production deployment** — promotes images, then promotes app + upserts pre-prov in parallel, then E2E + regression tests + prod checklist
-8. **Completion** — offers Done or Rollback options
+5. **Test deployment** — deploys app + builds images in parallel, then health check + simulation eval + manual checklist
+6. **Dark phase (PROD-DARK)** — runs BEFORE the prod gate: dark-deploys the builder to prod via Katana `dark_release` (0% traffic), binds the agent/preview/publish images to that build's commit SHA via a cohort-less Release Group, runs advisory dark E2E + regression against the dark URL, and posts the dark URL to the Slack thread for manual testing
+7. **Production gate** — the approver reviews the live, already-tested dark build (dark E2E/regression results + the Slack dark URL), then approves the fleet-wide promote. On decline, the dark Release Group is torn down and the release stops
+8. **Production deployment** — rolls the dark Release Group back first (reverting enrolled apps to stable), then promotes images, promotes app + upserts pre-prov in parallel, and runs prod E2E + regression + checklist
+9. **Completion** — offers Done or Rollback options
 
 ## Commit SHA Pinning
 

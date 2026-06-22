@@ -761,12 +761,18 @@ func TestValidateStagesAdvisoryActualConfig(t *testing.T) {
 	}
 
 	advisoryStages := []string{
-		// test phase
-		"e2e-test", "regression-test", "health-check-test", "simulation-eval-test",
+		// test phase (e2e/regression moved to the prod-dark phase below)
+		"health-check-test", "simulation-eval-test",
 		// prod phase
 		"e2e-prod", "regression-prod", "health-check-prod",
+		// prod-dark phase — surfaced in Slack, must NOT gate the promote (for now)
+		"dark-e2e", "dark-regression",
 	}
 	for _, id := range advisoryStages {
+		if _, ok := advisory[id]; !ok {
+			t.Errorf("advisory stage %q not found in config (removed or renamed?)", id)
+			continue
+		}
 		if !advisory[id] {
 			t.Errorf("validate stage %q must be advisory (non-blocking)", id)
 		}
@@ -777,8 +783,14 @@ func TestValidateStagesAdvisoryActualConfig(t *testing.T) {
 		"deploy-app", "build-images",
 		// prod phase
 		"promote-images", "promote-app", "upsert-reload-preprov",
+		// prod-dark phase — a failed dark deploy / RG bind / teardown must halt the release
+		"dark-deploy-app", "dark-create-rg", "rg-rollback",
 	}
 	for _, id := range blockingStages {
+		if _, ok := advisory[id]; !ok {
+			t.Errorf("blocking stage %q not found in config (removed or renamed?)", id)
+			continue
+		}
 		if advisory[id] {
 			t.Errorf("deploy stage %q must be blocking, not advisory", id)
 		}
@@ -809,5 +821,22 @@ func TestLoadActualConfig(t *testing.T) {
 		if env == "prod" && !testSeen {
 			t.Error("prod appeared before test in environment order")
 		}
+	}
+
+	// The dark phase must run between test and the prod gate: test → prod-dark →
+	// prod. (The dark deploy + advisory dark e2e/regression run BEFORE approve-prod
+	// so the approver reviews a live, already-tested dark build; the prod env then
+	// rolls the dark RG back and promotes.)
+	pos := make(map[string]int, len(order))
+	for i, env := range order {
+		pos[env] = i
+	}
+	for _, env := range []string{"test", "prod-dark", "prod"} {
+		if _, ok := pos[env]; !ok {
+			t.Fatalf("environment %q missing from order %v", env, order)
+		}
+	}
+	if pos["test"] >= pos["prod-dark"] || pos["prod-dark"] >= pos["prod"] {
+		t.Errorf("environment order must be test → prod-dark → prod, got %v", order)
 	}
 }

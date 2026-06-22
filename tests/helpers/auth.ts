@@ -111,6 +111,69 @@ export async function seedReturningUserCookie(page: Page): Promise<void> {
   }, RETURNING_USER_COOKIE);
 }
 
+/**
+ * Name of the cookie Katana's edge reads to route a browser to a dark-release
+ * artifact (0% traffic). Mirrors `KATANA_VERSION_COOKIE` in
+ * `app/src/lib/mgmt-airo/katana-version.ts` — a literal here because the test
+ * suite is a separate package and cannot import app internals. NOTE the
+ * underscores: the cookie is `x_katana_version`, while the query-param/header
+ * form is `x-katana-version` (hyphens). If the app renames it, update here.
+ */
+const DARK_VERSION_COOKIE = 'x_katana_version';
+
+/**
+ * Pin this browser to a dark-release build BEFORE any app page loads.
+ *
+ * When the release pipeline runs e2e/regression against a dark deploy it sets
+ * `DARK_URL` (= `https://<builder-host>?x-katana-version=<sha>&cookie=1`). We
+ * seed the `x_katana_version` cookie (value = that `<sha>` selector) onto the
+ * context so Katana's edge routes every request — including the very first
+ * top-level navigation — to the dark artifact, and so the BFF forwards the
+ * selector to the hosting calls (apps the run *creates* then land on the dark
+ * agent/preview/publish images too).
+ *
+ * Why `context.addCookies`, not `addInitScript` like `seedReturningUserCookie`:
+ * the returning-user cookie is read client-side AFTER the document loads, so an
+ * init script (which runs before page scripts) is in time. Dark routing is
+ * decided by the edge on the initial top-level GET — sent BEFORE any init
+ * script runs — so the cookie must already be on the context. `addCookies`
+ * puts it there; an init script would route the first page load to stable.
+ *
+ * Fails loud when `DARK_URL` is set but unparseable / missing the selector:
+ * silently falling through would route to the STABLE build and report a false
+ * green for the dark run. No-op when `DARK_URL` is unset (the normal path).
+ * Call once per test BEFORE the first `page.goto`.
+ */
+export async function seedDarkVersionCookie(page: Page): Promise<void> {
+  const darkUrl = process.env.DARK_URL;
+  if (!darkUrl) {
+    return; // normal, non-dark run — nothing to pin
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(darkUrl);
+  } catch {
+    throw new Error(`[dark] DARK_URL is set but is not a valid URL: ${darkUrl}`);
+  }
+  const selector = parsed.searchParams.get('x-katana-version');
+  if (!selector) {
+    throw new Error(`[dark] DARK_URL is set but has no x-katana-version selector: ${darkUrl}`);
+  }
+  await page.context().addCookies([
+    {
+      name: DARK_VERSION_COOKIE,
+      value: selector,
+      domain: parsed.hostname,
+      path: '/',
+      secure: true,
+      // Match the live ingress cookie (SameSite=None; Secure, per katana-version.ts) so the
+      // dark cookie behaves identically to prod in cross-site/iframe contexts, not just
+      // top-level navigation. None requires Secure, which is set above.
+      sameSite: 'None',
+    },
+  ]);
+}
+
 /** SSO detection result types */
 export type SsoDetectionResult = 'iframe' | 'modal' | 'redirect' | 'authenticated' | 'timeout' | null;
 

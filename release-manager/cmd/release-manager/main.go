@@ -122,7 +122,7 @@ func fileExists(path string) bool {
 func runHeadless(args []string) int {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	headlessFlag := fs.Bool("headless", false, "run without the TUI (required)")
-	mode := fs.String("mode", "", "phase to run: test | prod | rollback | abort")
+	mode := fs.String("mode", "", "phase to run: test | prod-dark | prod | rollback | abort")
 	branch := fs.String("branch", "main", "branch to release from")
 	dryRun := fs.Bool("dry-run", false, "skip real workflow dispatches (read-only)")
 	stateFile := fs.String("state-file", "", "phase state file: the test phase writes it, the prod/abort phases read it")
@@ -143,9 +143,9 @@ func runHeadless(args []string) int {
 		return 2
 	}
 	switch headless.Mode(*mode) {
-	case headless.ModeTest, headless.ModeProd, headless.ModeRollback, headless.ModeAbort:
+	case headless.ModeTest, headless.ModeProdDark, headless.ModeProd, headless.ModeRollback, headless.ModeAbort:
 	default:
-		fmt.Fprintf(os.Stderr, "Error: --mode must be test|prod|rollback|abort (got %q)\n", *mode)
+		fmt.Fprintf(os.Stderr, "Error: --mode must be test|prod-dark|prod|rollback|abort (got %q)\n", *mode)
 		return 2
 	}
 

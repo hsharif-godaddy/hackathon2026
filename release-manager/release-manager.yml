@@ -92,35 +92,9 @@ pipeline:
               job_match: 'build-airo-app-builder-publish.*Send Notifications'
               pattern: 'MOST_SPECIFIC_IMMUTABLE_TAG_SUFFIX=(pi-[a-f0-9]+-ext-[a-f0-9]+)'
 
-        # --- E2E + regression + manual checklist run in parallel after deploy group finishes ---
-        # e2e and regression dispatch as two independent playwright-e2e.yml runs (separate run URLs,
-        # independent retry) rather than one combined e2e-then-regression run.
-        - id: e2e-test
-          name: E2E Tests
-          group: validate
-          advisory: true # surfaced for the reviewer; does not block the prod gate
-          test_summary: true # render per-suite counts + failed tests from the run's e2e-summary artifact
-          repo: gdcorp-partners/airo-app-builder
-          workflow: playwright-e2e.yml
-          active_run_check: false
-          ref: '{{branch}}'
-          inputs:
-            environment: test
-            test_filter: e2e
-
-        - id: regression-test
-          name: Regression Tests
-          group: validate
-          advisory: true # surfaced for the reviewer; does not block the prod gate
-          test_summary: true # render per-suite counts + failed tests from the run's e2e-summary artifact
-          repo: gdcorp-partners/airo-app-builder
-          workflow: playwright-e2e.yml
-          active_run_check: false
-          ref: '{{branch}}'
-          inputs:
-            environment: test
-            test_filter: regression
-
+        # --- Health check + manual checklist + simulation eval run in parallel after the deploy
+        # group finishes. E2E + regression no longer run against the test env here — they run
+        # against the real prod build in the PROD-DARK phase (dark-e2e / dark-regression). ---
         - id: health-check-test
           name: Health Check (Test)
           group: validate
@@ -158,9 +132,112 @@ pipeline:
             fail-on-threshold: 'true'
             score-threshold: '70'
 
-    prod:
+    # ===================== PROD-DARK: dark-deploy + advisory dark tests, BEFORE the approve-prod gate =====================
+    # Deploy the new builder (Katana dark_release @ 0% traffic) and bind the agent/preview/publish
+    # images to that build's commit SHA via a cohort-less Release Group, so the approver — and any
+    # app the dark e2e creates — hits the full dark stack. This phase runs BEFORE approve-prod
+    # (release.yml's dark-phase job), so the human reviews a live, already-tested dark build + the
+    # Slack dark URL, then approves the fleet-wide promote. Dark e2e/regression are ADVISORY: they
+    # inform the approver (test_summary in Slack) but do not auto-gate.
+    #
+    # NOTE: dark-create-rg + rg-rollback (in the prod env below) dispatch pioneer-infra's
+    # release-group-simple.yml in its cohort-less form (katanaSelector, no appIds), enabled by
+    # pioneer-infra #5479 (merged 2026-06-19) and reconciled against its merged workflow_dispatch
+    # contract: Create + Reload uses action / environment / katanaSelector / compositionId /
+    # compositionVersion / agentImageTag / previewImageTag / publishImageTag; Rollback uses
+    # action / environment / releaseGroupId. rolloutPct is hard-coded to 0 inside the workflow
+    # (not an input) and variant is hard-coded to "preview", so neither is passed here.
+    #
+    # The dark selector + URL are NOT scraped from the dispatched promote-artifact run (brittle —
+    # it depends on which branch's workflow is dispatched; see Release #95). They are derived by the
+    # release-manager: katanaSelector = the pinned {{commit}} (the dark artifact's x-katana-version
+    # selector IS the build commit SHA); dark_url = {{dark_url}}, which the prod-dark phase computes
+    # from {{commit}} + the prod builder host (see runProdDark).
+    prod-dark:
       requires: test
       stages:
+        - id: dark-deploy-app
+          name: Dark-deploy App to Prod (0% traffic)
+          repo: gdcorp-partners/airo-app-builder
+          workflow: promote-artifact.yml
+          ref: '{{branch}}'
+          inputs:
+            component: app
+            environment: prod
+            artifact_id: '{{test.deploy-app.artifact_id}}'
+            strategy: dark_release
+            skip_e2e: 'true'
+
+        - id: dark-create-rg
+          name: Create + bind dark Release Group
+          repo: gdcorp-commerce/pioneer-infra
+          workflow: release-group-simple.yml
+          inputs:
+            action: 'Create + Reload'
+            environment: mgmt-prod-us-west-2
+            # Cohort-less: bind by the builder's commit SHA only (no appIds) — enabled by #5479.
+            # The selector IS the pinned release commit — derived, not scraped (see the phase note).
+            # rolloutPct (hard-coded to 0) and variant ("preview") are internal to the workflow.
+            katanaSelector: '{{commit}}'
+            agentImageTag: '{{test.build-images.agent_image_tag}}'
+            previewImageTag: '{{test.build-images.preview_image_tag}}'
+            publishImageTag: '{{test.build-images.publish_image_tag}}'
+            compositionId: ai-builder
+            compositionVersion: v4
+          outputs:
+            release_group_id:
+              from: run-log
+              pattern: "RELEASE_GROUP_ID=(\\S+)"
+
+        # --- Dark e2e + regression run in parallel against the dark URL. Advisory: surfaced in
+        # Slack for the reviewer, they do not block the promote (for now). ---
+        - id: dark-e2e
+          name: Dark E2E (Prod)
+          group: dark-validate
+          advisory: true # surfaced in Slack; does NOT gate the promote (for now)
+          test_summary: true
+          repo: gdcorp-partners/airo-app-builder
+          workflow: playwright-e2e.yml
+          active_run_check: false
+          ref: '{{branch}}'
+          inputs:
+            environment: prod
+            test_filter: e2e
+            dark_url: '{{dark_url}}'
+
+        - id: dark-regression
+          name: Dark Regression (Prod)
+          group: dark-validate
+          advisory: true # surfaced in Slack; does NOT gate the promote (for now)
+          test_summary: true
+          repo: gdcorp-partners/airo-app-builder
+          workflow: playwright-e2e.yml
+          active_run_check: false
+          ref: '{{branch}}'
+          inputs:
+            environment: prod
+            test_filter: regression
+            dark_url: '{{dark_url}}'
+
+    prod:
+      requires: prod-dark
+      stages:
+        # Tear the dark experiment down (clears the SHA binding, reverts enrolled apps to stable)
+        # FIRST — after the approve-prod gate, before the fleet-wide promote. Blocking: if teardown
+        # fails, halt rather than promote over a half-removed Release Group. On a DECLINED gate (or
+        # a failed/cancelled dark-phase) the prod env never runs; the release-manager abort path
+        # (release.yml's gate-declined / cancel cleanup) tears the RG down instead, using the
+        # release_group_id carried in state.json.
+        - id: rg-rollback
+          name: Roll back dark Release Group
+          repo: gdcorp-commerce/pioneer-infra
+          workflow: release-group-simple.yml
+          inputs:
+            action: Rollback
+            environment: mgmt-prod-us-west-2
+            releaseGroupId: '{{prod-dark.dark-create-rg.release_group_id}}'
+
+        # ===================== Fleet-wide stable promote (unchanged) =====================
         # --- Promote images first (fast, upsert-reload-preprov depends on this) ---
         - id: promote-images
           name: Promote Images to Prod

@@ -339,3 +339,69 @@ func TestWriteChecklistSection(t *testing.T) {
 		t.Errorf("expected no output for an env without a checklist, got %q", none.String())
 	}
 }
+
+// recordingRunner records Trigger dispatches so the dark-RG teardown's guard and
+// dispatch contract can be asserted.
+type recordingRunner struct {
+	fakeRunner
+	triggers []triggeredWorkflow
+}
+
+type triggeredWorkflow struct {
+	repo, workflow string
+	inputs         map[string]string
+}
+
+func (r *recordingRunner) Trigger(ctx context.Context, repo, workflow, ref string, inputs map[string]string) (string, error) {
+	r.triggers = append(r.triggers, triggeredWorkflow{repo: repo, workflow: workflow, inputs: inputs})
+	return "https://github.com/o/r/actions/runs/123", nil
+}
+
+// teardownDarkRG must no-op when no dark Release Group was created (e.g. a cancel
+// during the test phase), so the abort path never dispatches a bogus rollback.
+func TestTeardownDarkRGNoopWithoutReleaseGroupID(t *testing.T) {
+	runner := &recordingRunner{}
+	r := newRun(runner)
+	r.teardownDarkRG(context.Background())
+	if len(runner.triggers) != 0 {
+		t.Fatalf("teardownDarkRG dispatched %d workflow(s) with no release_group_id; want 0", len(runner.triggers))
+	}
+}
+
+// When the dark phase captured a Release Group id, the abort path rolls it back
+// via pioneer-infra release-group-simple.yml with the reconciled inputs.
+func TestTeardownDarkRGRollsBackWhenPresent(t *testing.T) {
+	runner := &recordingRunner{}
+	r := newRun(runner)
+	r.p.SetValue("prod-dark.dark-create-rg.release_group_id", "rg-abc123")
+
+	r.teardownDarkRG(context.Background())
+
+	if len(runner.triggers) != 1 {
+		t.Fatalf("expected exactly 1 teardown dispatch, got %d", len(runner.triggers))
+	}
+	got := runner.triggers[0]
+	if got.repo != darkRGRepo || got.workflow != darkRGWorkflow {
+		t.Errorf("dispatched %s/%s, want %s/%s", got.repo, got.workflow, darkRGRepo, darkRGWorkflow)
+	}
+	if got.inputs["action"] != "Rollback" {
+		t.Errorf("action = %q, want Rollback", got.inputs["action"])
+	}
+	if got.inputs["releaseGroupId"] != "rg-abc123" {
+		t.Errorf("releaseGroupId = %q, want rg-abc123", got.inputs["releaseGroupId"])
+	}
+	if got.inputs["environment"] != darkRGMgmtEnv {
+		t.Errorf("environment = %q, want %s", got.inputs["environment"], darkRGMgmtEnv)
+	}
+}
+
+// darkURL must produce a URL whose hostname + x-katana-version selector are what
+// tests/helpers/auth.ts seedDarkVersionCookie parses (cookie domain = hostname,
+// value = selector), pinned to the build commit.
+func TestDarkURL(t *testing.T) {
+	got := darkURL("abc123def")
+	want := "https://airo-builder.godaddy.com?x-katana-version=abc123def&cookie=1"
+	if got != want {
+		t.Errorf("darkURL = %q, want %q", got, want)
+	}
+}

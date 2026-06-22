@@ -39,11 +39,36 @@ import (
 type Mode string
 
 const (
-	ModeTest     Mode = "test"     // preflight + release notes + run the test environment
-	ModeProd     Mode = "prod"     // import test state + run prod + cut the GitHub release
-	ModeRollback Mode = "rollback" // discover previous-good + run the rollback group
-	ModeAbort    Mode = "abort"    // import test state + finalize a gate-declined release in place
+	ModeTest     Mode = "test"      // preflight + release notes + run the test environment
+	ModeProd     Mode = "prod"      // import test state + run prod + cut the GitHub release
+	ModeProdDark Mode = "prod-dark" // import test state + dark-deploy + advisory dark tests, before the gate
+	ModeRollback Mode = "rollback"  // discover previous-good + run the rollback group
+	ModeAbort    Mode = "abort"     // import state + finalize a gate-declined release + tear down any dark RG
 )
+
+// prodBuilderHost is the prod Katana builder host the derived dark URL points at
+// (the dark phase is prod-only). Deriving the URL from the pinned commit + this
+// host avoids scraping the dispatched promote-artifact run. Mirrors
+// playwright-e2e.yml's prod base_url.
+const prodBuilderHost = "airo-builder.godaddy.com"
+
+// Dark Release Group teardown target: the abort path dispatches pioneer-infra's
+// release-group-simple.yml (Rollback) to clear a dark RG on a declined/cancelled
+// release. Mirrors the rg-rollback stage in release-manager.yml.
+const (
+	darkRGRepo     = "gdcorp-commerce/pioneer-infra"
+	darkRGWorkflow = "release-group-simple.yml"
+	darkRGMgmtEnv  = "mgmt-prod-us-west-2"
+)
+
+// darkURL builds the dark-release URL the dark e2e/regression pin to and the
+// approver tests: the prod builder host + the build's commit SHA as the
+// x-katana-version selector, with cookie=1 so the picker sets the persistent
+// cookie. The format must stay parseable by tests/helpers/auth.ts
+// seedDarkVersionCookie (hostname + the x-katana-version query param).
+func darkURL(commit string) string {
+	return fmt.Sprintf("https://%s?x-katana-version=%s&cookie=1", prodBuilderHost, commit)
+}
 
 // Options configures a headless run. Populated from CLI flags + env in main.
 type Options struct {
@@ -146,6 +171,8 @@ func Run(ctx context.Context, cfg *config.Config, runner gh.Runner, notifier *sl
 	switch opts.Mode {
 	case ModeTest:
 		return r.runTest(ctx, opts)
+	case ModeProdDark:
+		return r.runProdDark(ctx, opts)
 	case ModeProd:
 		return r.runProd(ctx, opts)
 	case ModeRollback:
@@ -153,7 +180,7 @@ func Run(ctx context.Context, cfg *config.Config, runner gh.Runner, notifier *sl
 	case ModeAbort:
 		return r.runAbort(ctx, opts)
 	default:
-		return fmt.Errorf("unknown mode %q (want test|prod|rollback|abort)", opts.Mode)
+		return fmt.Errorf("unknown mode %q (want test|prod|prod-dark|rollback|abort)", opts.Mode)
 	}
 }
 
@@ -204,19 +231,10 @@ func (r *run) runTest(ctx context.Context, opts Options) error {
 		r.fail(ctx, "writing phase state failed")
 		return fmt.Errorf("writing phase state: %w", err)
 	}
-	// TEST done and state persisted — edit the single status message to the
-	// "awaiting prod approval" CTA…
-	r.updateAwaiting(ctx)
-	// …then ping the approvers in a SEPARATE, fresh post. The edit above can't
-	// notify anyone (Slack only delivers @-mentions on a new message, never on
-	// a chat.update edit), so resolve the approver handles → mention tokens (one
-	// Slack lookup, at the gate) and post them as a broadcast threaded reply.
-	// Best-effort: unresolved handles / a missing scope just yield no ping.
-	if r.notifier != nil && len(r.approvalMentions) > 0 {
-		if mentions := r.notifier.ResolveMentions(ctx, r.approvalMentions); len(mentions) > 0 {
-			r.notifier.PostReply(ctx, approvalPing(r.runURL, mentions))
-		}
-	}
+	// TEST done. The dark phase runs next (before the prod gate), so keep the
+	// message "in progress" — the awaiting-approval CTA + approver ping moved to
+	// the end of the dark phase (runProdDark), when the gate is actually imminent.
+	r.update(ctx, false)
 	r.writeTestSummary()
 	return nil
 }
@@ -270,6 +288,83 @@ func (r *run) runProd(ctx context.Context, opts Options) error {
 	return nil
 }
 
+// runProdDark dark-deploys the build (Katana dark_release @ 0% traffic), binds
+// the agent/preview/publish images to it via a cohort-less Release Group, and
+// runs the advisory dark e2e/regression — all BEFORE the prod approval gate, so
+// the approver reviews a live, already-tested dark build. It imports the test
+// state, runs the prod-dark environment, persists the augmented state (so the
+// later prod phase can roll the Release Group back, and the gate-declined/cancel
+// abort path can tear it down), posts the dark URL for manual testing, then
+// edits the message to the awaiting-approval CTA and pings the approvers.
+func (r *run) runProdDark(ctx context.Context, opts Options) error {
+	st, err := readState(opts.StateFile)
+	if err != nil {
+		return fmt.Errorf("reading phase state: %w", err)
+	}
+	if err := r.p.ImportState(st.Pipeline); err != nil {
+		return fmt.Errorf("importing pipeline state: %w", err)
+	}
+	r.releaseNotes, r.releaseNotesURL = st.ReleaseNotes, st.ReleaseNotesURL
+	r.authorMentions = st.AuthorMentions
+	r.operator, r.branch = st.Operator, st.Branch
+	if st.StartUnix > 0 {
+		r.start = time.Unix(st.StartUnix, 0)
+	}
+	if r.notifier != nil && st.SlackTS != "" {
+		r.notifier.SeedTS(st.SlackTS) // edit the existing message in place
+	}
+
+	// Derive the dark URL the e2e/regression stages pin to, from the pinned
+	// release commit + the prod builder host — rather than scraping it from the
+	// dispatched promote-artifact run (brittle: depends on which branch's workflow
+	// is dispatched; see the prod-dark note in release-manager.yml and Release
+	// #95). The dark artifact's x-katana-version selector IS the build commit SHA,
+	// so the katanaSelector stage input uses {{commit}} directly.
+	if commit := r.p.Values()["commit"]; commit != "" {
+		r.p.SetValue("dark_url", darkURL(commit))
+	}
+
+	if err := r.p.BuildStages("prod-dark"); err != nil {
+		return err
+	}
+	r.update(ctx, false) // PROD-DARK section now visible, stages pending
+	// Persist early (with the Slack ts) so a mid-orchestrate cancel can finalize
+	// the message AND tear down the RG via --mode abort.
+	if err := r.writeState(opts.StateFile); err != nil {
+		logger.Log("headless.warn: early prod-dark state write failed (%v)", err)
+	}
+	if err := r.orchestrate(ctx, r.p.StageGroups("prod-dark")); err != nil {
+		r.teardownDarkRG(ctx) // best-effort: don't leave the RG bound on a failed dark phase
+		r.fail(ctx, "dark phase failed")
+		return err
+	}
+
+	// Persist the dark outputs (release_group_id) so the prod phase can roll the
+	// RG back and the abort path can tear it down on a declined gate.
+	if err := r.writeState(opts.StateFile); err != nil {
+		r.fail(ctx, "writing phase state failed")
+		return fmt.Errorf("writing phase state: %w", err)
+	}
+
+	// Surface the dark URL for manual testing before the gate.
+	if r.notifier != nil {
+		if darkURL := r.p.Values()["dark_url"]; darkURL != "" {
+			r.notifier.PostReply(ctx, fmt.Sprintf(":mag: *Dark build live on prod (0%% traffic)* — test it before approving:\n%s", darkURL))
+		}
+	}
+
+	// Gate is next: edit to the awaiting-approval CTA, then ping the approvers in
+	// a SEPARATE fresh post (an in-place edit can't notify). Moved here from the
+	// test phase so approvers are pinged only once the dark build is live+tested.
+	r.updateAwaiting(ctx)
+	if r.notifier != nil && len(r.approvalMentions) > 0 {
+		if mentions := r.notifier.ResolveMentions(ctx, r.approvalMentions); len(mentions) > 0 {
+			r.notifier.PostReply(ctx, approvalPing(r.runURL, mentions))
+		}
+	}
+	return nil
+}
+
 // runAbort finalizes a release that did NOT proceed past the prod gate, editing
 // the SINGLE existing message in place to a terminal state — so the channel
 // sees one updated message, not a stuck "Awaiting approval" plus a separate
@@ -296,6 +391,10 @@ func (r *run) runAbort(ctx context.Context, opts Options) error {
 	if st.StartUnix > 0 {
 		r.start = time.Unix(st.StartUnix, 0)
 	}
+	// Tear down the dark Release Group if the dark phase created one (best-effort,
+	// guarded by the id in state). Runs regardless of Slack state — a declined or
+	// cancelled release must not leave the dark RG bound.
+	r.teardownDarkRG(ctx)
 	if r.notifier == nil || st.SlackTS == "" {
 		// Nothing to finalize (Slack disabled, or the run never posted a
 		// message). Don't create a stray new message — just exit.
@@ -305,6 +404,33 @@ func (r *run) runAbort(ctx context.Context, opts Options) error {
 	r.notifier.SeedTS(st.SlackTS)                 // edit the existing message in place
 	r.fail(ctx, r.abortMessage(ctx, opts.Reason)) // terminal aborted footer + notified=true
 	return nil
+}
+
+// teardownDarkRG best-effort rolls back the dark Release Group the dark phase
+// created, dispatching pioneer-infra's release-group-simple.yml (Rollback) with
+// the release_group_id carried in state. Called from the abort path
+// (gate-declined + cancel cleanup) so a release that does not proceed past the
+// gate doesn't leave the dark RG bound. No-op when no RG was created (e.g. a
+// cancel during the test phase). Fire-and-forget + non-fatal: the abort must
+// finish fast (the cancel path has a ~10s grace window) and a failed dispatch is
+// bounded by the RG's rolloutPct=0 + the dark artifact's 24h ttl.
+func (r *run) teardownDarkRG(ctx context.Context) {
+	rgID := r.p.Values()["prod-dark.dark-create-rg.release_group_id"]
+	if rgID == "" {
+		return
+	}
+	if r.dryRun {
+		logger.Log("headless.abort: [DRY RUN] would roll back dark Release Group %s", rgID)
+		return
+	}
+	logger.Log("headless.abort: rolling back dark Release Group %s", rgID)
+	if _, err := r.runner.Trigger(ctx, darkRGRepo, darkRGWorkflow, "", map[string]string{
+		"action":         "Rollback",
+		"environment":    darkRGMgmtEnv,
+		"releaseGroupId": rgID,
+	}); err != nil {
+		logger.Log("headless.abort.warn: dark Release Group teardown dispatch failed (%v); roll it back manually (bounded by rolloutPct=0 + 24h ttl)", err)
+	}
 }
 
 // abortMessage is the terminal status line for an aborted release: an explicit
