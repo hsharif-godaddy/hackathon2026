@@ -50,6 +50,7 @@ on:
           - develop-brand-book
           - develop-dpp-handoff
           - develop-analytics-period
+          - develop-view-share
       post_promotion:
         description: 'Triggered by promotion workflow (internal use)'
         required: false
