@@ -13,7 +13,7 @@
 import { test, expect } from '../helpers/test-fixtures';
 
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
-import { handleSsoLogin, ensureAuthenticated } from '../helpers/auth';
+import { loginViaSsoDirect, ensureAuthenticated } from '../helpers/auth';
 import { LONG_TIMEOUT, DEFAULT_TIMEOUT, AI_RESPONSE_TIMEOUT_MS, E2E_NO_DELETE, getSpecPrefix } from '../helpers/constants';
 import { dismissOverlays, logTestResult, logTestStart, waitForDevelopPage } from '../helpers/ui';
 
@@ -23,6 +23,13 @@ const SPEC_PREFIXES = ['brand-book'] as const;
 test.describe('Brand Book Tab', () => {
   test.beforeEach(async ({ page }, testInfo) => {
     logTestStart(testInfo);
+    await loginViaSsoDirect(page);
+    // loginViaSsoDirect already awaits domcontentloaded, but the SSO host may
+    // still be running a post-login client-side redirect when we return. A best-
+    // effort 'load' wait lets that redirect settle so the subsequent page.goto('/')
+    // doesn't race it and get ERR_ABORTED. Safe to swallow: auth is already set
+    // and page.goto('/') will navigate correctly regardless.
+    await page.waitForLoadState('load').catch(() => {});
     if (!E2E_NO_DELETE) {
       await page.goto('/');
       await evictOldestE2eAppsToFitLimit(page).catch(() => {});
@@ -44,16 +51,16 @@ test.describe('Brand Book Tab', () => {
     }
   });
 
-  // TODO(@hdewan): re-enable once prod homepage initial-load issue is sorted.
-  // CI run 25675567980 against --env=prod showed `handleSsoLogin` timing out
-  // because no SSO surface ever appeared after submit — the page snapshot
-  // at failure shows the homepage stuck on
-  // `<main><status>Your content is loading</status></main>` with no header,
-  // so the submit click landed on an unhydrated shell and silently no-op'd.
-  // Same shape as the apps-page and develop-edit-interactions failures from
-  // the same run. Skipped to keep CI green until the underlying homepage
-  // load issue is investigated.
-  test.skip('Brand Book tab switch and content render', async ({ page }, testInfo) => {
+  // Re-enabled (VNEXT-80875). The original skip (CI run 25675567980) had two
+  // root causes: (1) handleSsoLogin timed out because the homepage submit
+  // landed on an unhydrated shell — fixed by pre-authenticating via
+  // loginViaSsoDirect in beforeEach (same pattern as develop-edit-interactions
+  // VNEXT-80873), and (2) the submit button was clicked before React hydration
+  // completed — fixed by gating on toBeEnabled + a 10s hydration wait before
+  // clicking (matching develop-edit-interactions). The underlying homepage
+  // load issue is sidestepped rather than fixed: logging in before navigation
+  // ensures the page hydrates fully as an authenticated user.
+  test('Brand Book tab switch and content render', async ({ page }, testInfo) => {
     // AI_RESPONSE_TIMEOUT_MS (300s) is just the wait budget for initial
     // generation; add headroom for login, navigation and the brand-book steps.
     testInfo.setTimeout(AI_RESPONSE_TIMEOUT_MS + 60_000);
@@ -73,9 +80,13 @@ test.describe('Brand Book Tab', () => {
     await promptInput.waitFor({ state: 'visible', timeout: LONG_TIMEOUT });
     await promptInput.fill(`${getSpecPrefix('brand-book')} Simple pet photography business - do not ask follow up questions`);
 
-    await page.locator('[data-eid*="homepage.prompt.submit"]').click();
-
-    await handleSsoLogin(page);
+    const submitButton = page.locator('[data-eid*="homepage.prompt.submit"]');
+    await expect(submitButton).toBeEnabled({ timeout: DEFAULT_TIMEOUT });
+    // The disabled→enabled flip is server-rendered, so toBeEnabled alone is not
+    // proof that React has hydrated. Without this wait, clicks land on the shell
+    // before event handlers attach and silently no-op (see authentication.spec.ts).
+    await page.waitForTimeout(10_000);
+    await submitButton.click();
 
     await page.waitForURL(/\/develop\//, { timeout: LONG_TIMEOUT });
     await waitForDevelopPage(page);
