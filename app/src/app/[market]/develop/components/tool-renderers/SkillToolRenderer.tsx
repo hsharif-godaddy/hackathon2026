@@ -59,14 +59,23 @@ interface SkillInstallResult {
 /**
  * Union type for all skill result types
  */
-type SkillResult = SkillListResult | SkillLoadResult | SkillInstallResult
+type SkillResult = SkillListResult | SkillLoadResult | SkillInstallResult | SkillLoadReferenceResult
+
+/**
+ * Result from skill loadReference action
+ */
+interface SkillLoadReferenceResult {
+  path: string
+  instructions?: string
+}
 
 /**
  * Skill action input
  */
 interface SkillInput {
-  action: 'list' | 'load' | 'install'
+  action: 'list' | 'load' | 'install' | 'loadReference' | 'unload' | 'pin' | 'unpin'
   skill?: string
+  path?: string
 }
 
 /**
@@ -149,6 +158,14 @@ function getSkillMessage(action: string, result: SkillResult | null): { message:
       return {
         message: `Installed ${formatSkillName(installSkillName)} (${filesCount} ${filesCount === 1 ? 'file' : 'files'}${depInfo})`,
         icon: <Package className="w-2 h-2" />
+      }
+    }
+    case 'loadReference': {
+      const refPath = (result && 'path' in result) ? result.path : ''
+      const refLabel = refPath ? refPath.split('/').pop() ?? refPath : 'reference'
+      return {
+        message: `Loaded reference: ${refLabel}`,
+        icon: <BookOpen className="w-2 h-2" />
       }
     }
     default:
@@ -383,10 +400,12 @@ export default function SkillToolRenderer({
   let inputSkillName = ''
 
   // Get action and skill name from input
+  let inputRefPath = ''
   if (input && typeof input === 'object') {
     const inputObj = input as Partial<SkillInput>
     action = inputObj.action || ''
     inputSkillName = inputObj.skill || ''
+    inputRefPath = inputObj.path || ''
   }
 
   // Progress phases for install action
@@ -421,6 +440,9 @@ export default function SkillToolRenderer({
       displayMessage = 'Loading available skills...'
     } else if (action === 'load') {
       displayMessage = `Loading ${skillLabel}...`
+    } else if (action === 'loadReference') {
+      const refLabel = inputRefPath ? inputRefPath.split('/').pop() ?? inputRefPath : 'reference'
+      displayMessage = `Loading reference: ${refLabel}...`
     }
   }
 
@@ -442,6 +464,13 @@ export default function SkillToolRenderer({
         'dependenciesInstalled' in parsedResult ? parsedResult.dependenciesInstalled : undefined,
         'skillDependenciesInstalled' in parsedResult ? parsedResult.skillDependenciesInstalled : undefined
       )
+    } else if (action === 'loadReference' && 'path' in parsedResult) {
+      modalContentElement = (
+        <div className="flex items-center gap-2">
+          <BookOpen className="w-4 h-4 text-foreground/60" />
+          <span className="text-sm font-mono text-foreground">{parsedResult.path}</span>
+        </div>
+      )
     }
   }
 
@@ -449,6 +478,8 @@ export default function SkillToolRenderer({
     ? 'Available Skills'
     : action === 'load'
     ? `Skill Loaded: ${formatSkillName(parsedResult && 'skill' in parsedResult ? parsedResult.skill : '')}`
+    : action === 'loadReference'
+    ? `Reference: ${parsedResult && 'path' in parsedResult ? parsedResult.path : inputRefPath}`
     : `Skill Installed: ${formatSkillName(parsedResult && 'skill' in parsedResult ? parsedResult.skill : '')}`
 
   return (

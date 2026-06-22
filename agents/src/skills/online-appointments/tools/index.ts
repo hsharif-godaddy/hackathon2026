@@ -1,6 +1,3 @@
-import { readdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import type { SkillToolDefinition, SkillHooks, SkillSessionAnnouncements } from '@airo/ai-skills';
 import { trace } from '@opentelemetry/api';
@@ -75,59 +72,6 @@ export const getBookingConfigTool: SkillToolDefinition = {
   // timeout enforced by the framework as Promise.race — prevents indefinite hangs.
   config: { requiresApp: true, timeout: 240_000 },
 };
-
-// Section-tracking tools — one per `.md` file in templates/sections/, built
-// dynamically at module load. The model is instructed (in skill.md) to call
-// the matching tool when it loads a section, surfacing the section as a
-// tool_call in Langfuse traces. The tool body is a no-op beyond a structured
-// log line.
-const SECTIONS_DIR = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  'templates',
-  'sections'
-);
-
-function discoverSectionSlugs(): string[] {
-  try {
-    return readdirSync(SECTIONS_DIR)
-      .filter(f => f.endsWith('.md'))
-      .map(f => f.slice(0, -'.md'.length))
-      .sort();
-  } catch (err) {
-    logger.warn('online-appointments.skill.sections.discover_failed', {
-      dir: SECTIONS_DIR,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return [];
-  }
-}
-
-function makeSectionTool(slug: string): SkillToolDefinition {
-  return {
-    name: `section-${slug}`,
-    description:
-      `Mark that the online-appointments \`templates/sections/${slug}.md\` section is being used. ` +
-      `Call this immediately before reading that section file so the section invocation is tracked in Langfuse. ` +
-      `Takes no input and returns nothing meaningful — it exists purely as a tracing signal.`,
-    parameters: z.object({}),
-
-    async execute(_input, _context) {
-      logger.info('online-appointments.skill.section.invoked', {
-        section: `online-appointments/${slug}`,
-      });
-      return { ok: true };
-    },
-
-    config: { requiresApp: false, timeout: 5_000 },
-  };
-}
-
-// Exported as an array — the skill-tools loader flattens arrays of tool
-// definitions, which lets us register an arbitrary number of tools without
-// listing them statically.
-export const sectionTools: SkillToolDefinition[] =
-  discoverSectionSlugs().map(makeSectionTool);
 
 // The appointments UI renders React components (date picker, booking form).
 // Skills that install npm packages may pull in transitive deps that bundle

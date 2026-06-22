@@ -326,6 +326,54 @@ export class SkillLoaderTool {
   }
 
   /**
+   * Validate a reference file path to prevent directory traversal attacks.
+   * Requires at least two path segments — a bare skill name is not a valid
+   * reference path and should use loadSkill() instead.
+   * @private
+   */
+  private validateReferencePath(refPath: string): boolean {
+    // Requires 2+ slash-separated segments, each alphanumeric/hyphen/underscore.
+    // Rejects: bare names, ../traversal, /absolute, empty segments, .md suffix.
+    const validPattern = /^[a-zA-Z0-9_-]+(\/[a-zA-Z0-9_-]+)+$/;
+    return validPattern.test(refPath);
+  }
+
+  /**
+   * Load a reference file (plain markdown) from within the skills directory.
+   * Unlike loadSkill(), this is a pure file read — no frontmatter parsing,
+   * no gating checks, no template loading, no lifecycle hooks.
+   *
+   * @param refPath - Path relative to the skills directory, without .md extension.
+   *   Must contain at least two segments, e.g. 'connecting-calendars/sections/02a-google-setup'.
+   */
+  async loadReference(refPath: string): Promise<SkillLoaderResult> {
+    this.logger.info('skill.loadReference.start', { refPath });
+
+    if (!this.validateReferencePath(refPath)) {
+      const error = `Invalid reference path '${refPath}'. Must be at least two slash-separated segments of letters, numbers, hyphens, or underscores (e.g. 'connecting-calendars/sections/02a-google-setup'). Do not include a .md extension.`;
+      this.logger.warn('skill.loadReference.invalid_path', { refPath });
+      return { success: false, skill: refPath, error };
+    }
+
+    const filePath = path.join(this.skillsDir, `${refPath}.md`);
+
+    try {
+      const instructions = await fs.readFile(filePath, 'utf-8');
+      this.logger.info('skill.loadReference.success', { refPath, size: instructions.length });
+      return { success: true, skill: refPath, instructions };
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') {
+        this.logger.warn('skill.loadReference.not_found', { refPath, filePath });
+        return { success: false, skill: refPath, error: `Reference file not found: '${refPath}.md'` };
+      }
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error('skill.loadReference.error', { refPath, error: errorMessage });
+      return { success: false, skill: refPath, error: errorMessage };
+    }
+  }
+
+  /**
    * Validate npm package name to prevent malicious package installation
    * @see https://docs.npmjs.com/cli/v9/configuring-npm/package-json#name
    * @private

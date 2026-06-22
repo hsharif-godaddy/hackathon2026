@@ -1257,4 +1257,117 @@ description: Unrestricted skill
   // #getDistinctMarkets was removed — market filtering happens per-turn via
   // AgentContextPipeline calling listSkills({ market }), so the startup-time
   // distinct-markets scan is no longer needed.
+
+  describe('#validateReferencePath', function validateReferenceTests() {
+    let tool: SkillLoaderTool;
+
+    beforeEach(() => {
+      tool = new SkillLoaderTool();
+    });
+
+    function validate(refPath: string): boolean {
+      return (tool as any).validateReferencePath(refPath);
+    }
+
+    it('should accept valid multi-segment reference paths', function validPaths() {
+      expect(validate('connecting-calendars/sections/02a-google-setup')).toBe(true);
+      expect(validate('connecting-calendars/sections/03-two-way-sync')).toBe(true);
+      expect(validate('online-conferencing/steps/01-setup')).toBe(true);
+      expect(validate('a/b/c/d')).toBe(true);
+    });
+
+    it('should reject bare skill names (single segment)', function bareNames() {
+      expect(validate('blog')).toBe(false);
+      expect(validate('connecting-calendars')).toBe(false);
+    });
+
+    it('should reject directory traversal attempts', function traversal() {
+      expect(validate('../etc/passwd')).toBe(false);
+      expect(validate('skill/../../etc/passwd')).toBe(false);
+      expect(validate('../../root')).toBe(false);
+    });
+
+    it('should reject absolute paths', function absolutePaths() {
+      expect(validate('/etc/passwd')).toBe(false);
+      expect(validate('/skills/connecting-calendars/sections/02a')).toBe(false);
+    });
+
+    it('should reject paths with .md extension', function mdExtension() {
+      expect(validate('connecting-calendars/sections/02a-google-setup.md')).toBe(false);
+    });
+
+    it('should reject empty string', function empty() {
+      expect(validate('')).toBe(false);
+    });
+  });
+
+  describe('#loadReference', function loadReferenceTests() {
+    let tool: SkillLoaderTool;
+    let tempDir: string;
+    let skillsDir: string;
+
+    beforeEach(async () => {
+      tool = new SkillLoaderTool();
+      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'skill-ref-test-'));
+      skillsDir = path.join(tempDir, 'skills');
+      await fs.mkdir(skillsDir, { recursive: true });
+      (tool as any).skillsDir = skillsDir;
+    });
+
+    afterEach(async () => {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    async function createReferenceFile(refPath: string, content: string): Promise<void> {
+      const fullPath = path.join(skillsDir, `${refPath}.md`);
+      await fs.mkdir(path.dirname(fullPath), { recursive: true });
+      await fs.writeFile(fullPath, content);
+    }
+
+    it('should load a valid reference file and return its content as instructions', async function loadValid() {
+      const content = '## Step 2A: Google Calendar Setup\n\nFollow these steps...';
+      await createReferenceFile('connecting-calendars/sections/02a-google-setup', content);
+
+      const result = await tool.loadReference('connecting-calendars/sections/02a-google-setup');
+      expect(result.success).toBe(true);
+      expect(result.instructions).toBe(content);
+      expect(result.skill).toBe('connecting-calendars/sections/02a-google-setup');
+    });
+
+    it('should return success: false for a non-existent file', async function loadMissing() {
+      const result = await tool.loadReference('connecting-calendars/sections/99-nonexistent');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('not found');
+    });
+
+    it('should return success: false for a bare skill name (single segment)', async function loadBareName() {
+      const result = await tool.loadReference('connecting-calendars');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Invalid reference path');
+    });
+
+    it('should reject directory traversal attempts', async function loadTraversal() {
+      const result = await tool.loadReference('../../etc/passwd');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Invalid reference path');
+    });
+
+    it('should not require a .md extension — the method appends it', async function loadNoExtension() {
+      const content = '# Section content';
+      await createReferenceFile('skill-a/sections/01-intro', content);
+
+      const result = await tool.loadReference('skill-a/sections/01-intro');
+      expect(result.success).toBe(true);
+      expect(result.instructions).toBe(content);
+    });
+
+    it('should not parse frontmatter — raw file content is returned as-is', async function loadRaw() {
+      const content = '---\nname: some-key\n---\n# Body content';
+      await createReferenceFile('skill-a/sections/02-with-frontmatter', content);
+
+      const result = await tool.loadReference('skill-a/sections/02-with-frontmatter');
+      expect(result.success).toBe(true);
+      expect(result.instructions).toBe(content);
+    });
+  });
 });

@@ -16,10 +16,11 @@ import { skillToolManager } from '../skill-tool-manager.js';
  * - install: Directly copy skill template files to app directory
  */
 export const skillAITool: Tool = createTool(
-  'Manage skills - list, load, unload, pin, unpin, or install. Skills provide specialized knowledge and tools. Pinning keeps a skill loaded for the entire conversation and injects its instructions into every turn (used for mode-style skills like deep-build).',
+  'Manage skills - list, load, unload, pin, unpin, install, or loadReference. Skills provide specialized knowledge and tools. Pinning keeps a skill loaded for the entire conversation and injects its instructions into every turn (used for mode-style skills like deep-build).',
   z.object({
-    action: z.enum(['list', 'load', 'unload', 'pin', 'unpin', 'install']).describe('Action to perform'),
-    skill: z.string().optional().describe('Skill name (required for load, unload, pin, unpin, install)'),
+    action: z.enum(['list', 'load', 'unload', 'pin', 'unpin', 'install', 'loadReference']).describe('Action to perform'),
+    skill: z.string().optional().describe('Skill name — use for load/unload/pin/unpin/install. Short identifier like "blog" or "payment/stripe". NOT for loadReference.'),
+    path: z.string().optional().describe('Reference file path — use ONLY for loadReference. Full path from skills root without .md extension, e.g. "connecting-calendars/sections/02a-google-setup". NOT for load/install.'),
   }),
   async (input, context?: AgentContext) => {
     const skillLoader = new SkillLoaderTool();
@@ -47,7 +48,21 @@ export const skillAITool: Tool = createTool(
       };
     }
 
-    // Load and install actions require skill name
+    if (input.action === 'loadReference') {
+      if (!input.path) {
+        throw new Error('loadReference requires the `path` parameter, not `skill`. Example: { action: "loadReference", path: "connecting-calendars/sections/02a-google-setup" }');
+      }
+      const result = await skillLoader.loadReference(input.path);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      return {
+        path: input.path,
+        instructions: result.instructions,
+        message: `Reference '${input.path}' loaded.`
+      };
+    }
+
     if (!input.skill) {
       throw new Error(`Skill name is required for action "${input.action}"`);
     }

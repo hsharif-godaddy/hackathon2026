@@ -104,22 +104,12 @@ Confirm), and only after the customer says yes do you start touching files.
 
 ## How to load detailed sections
 
-Detailed implementation lives in `templates/sections/`. Each `## §` section is a separate
-file named `NN-slug.md`. Load only the section you need.
+Detailed implementation lives in `sections/`. Each section is a separate file named
+`NN-slug.md`. Load only the section you need:
 
-```text
-Read agents/src/skills/online-appointments/templates/sections/08-payment-integration.md
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/NN-slug' })
 ```
-
-When this skill.md says **"→ Read `templates/sections/NN-name.md`"**, read that file directly.
-`templates/IMPLEMENTATION.md` is now a thin index pointing to each section file.
-
-**Section tracking (REQUIRED):** Immediately before reading a section file, call the
-matching section tool so the invocation is recorded in Langfuse. The tools are named
-`online-appointments__section-<NN>-<slug>` (one per file in `templates/sections/`),
-take no arguments, and exist purely for tracing. Example: after reading
-`templates/sections/08-payment-integration.md`, call
-`online-appointments__section-08-payment-integration`.
 
 ---
 
@@ -134,7 +124,10 @@ Customer Portal (conditional).
 
 ## Step 1: Discovery ✓
 
-**For full conversational scripts:** → Read `templates/sections/01-discovery-questions.md`.
+**For full conversational scripts:**
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/01-discovery-questions' })
+```
 
 ### Quick Discovery Checklist
 
@@ -143,7 +136,7 @@ Gather the answers below. The shipped `AppointmentsConfigSchema` validates
 `timezone`, `currency`, and optional `pricingTiers[]` (each with `label`, `duration`,
 `amount`, **`skuId`**). Anything else listed below is either a per-booking input (not
 stored on config) or requires a schema extension before it can be used. See
-`templates/sections/02-configuration-examples.md` § 2.0 for the authoritative table.
+`sections/02-configuration-examples.md` § 2.0 for the authoritative table.
 
 1. **Business type:** "What type of appointments are you offering?"
    → Used by discovery to pick suggestions; not stored on config.
@@ -195,7 +188,7 @@ stored on config) or requires a schema extension before it can be used. See
     → **Schema extension required.** Add `freeFirstAppointment: boolean` to
     `AppointmentsConfigSchema` before relying on it.
 
-The full `templates/sections/01-discovery-questions.md` section covers conversational scripts, context-aware
+The full `sections/01-discovery-questions.md` section covers conversational scripts, context-aware
 suggestions per service type, payment detection patterns, and edge cases.
 
 ---
@@ -247,7 +240,9 @@ through Sunday") rather than `[1,2,3,4,5]`.
 
 ## Step 3: Configuration Examples
 
-**→ Read `templates/sections/02-configuration-examples.md`.**
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/02-configuration-examples' })
+```
 
 Shows:
 - Single fixed price config (coaching at $80/session)
@@ -273,7 +268,10 @@ This installs MySQL + Drizzle ORM. The database skill creates:
 
 **After database skill is installed, add the `appointment` table to `src/server/db/schema.ts`.**
 
-**For the authoritative schema + migrations:** → Read `templates/sections/03-database-setup.md`.
+**For the authoritative schema + migrations:**
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/03-database-setup' })
+```
 The columns mirror what `templates/server/api/appointments/POST.ts` and `GET.ts` write.
 
 **CRITICAL CONCEPT: orderId is the draft-order handle**
@@ -284,7 +282,9 @@ The columns mirror what `templates/server/api/appointments/POST.ts` and `GET.ts`
 - **Free-first check:** any prior row for the same email with `orderId IS NOT NULL` AND `provider.getOrderStatus(orderId).status === 'paid'` counts as a paid appointment.
 
 **For authentication tables (only if needed for credits/portal):**
-→ Read `templates/sections/04-authentication-integration.md`.
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/04-authentication-integration' })
+```
 
 Then run: `npx drizzle-kit generate && npx drizzle-kit migrate`
 
@@ -312,7 +312,9 @@ This installs:
 
 ## Step 6: UI Components ✓
 
-**→ Read `templates/sections/06-ui-components.md`.**
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/06-ui-components' })
+```
 
 ### Components to Create
 
@@ -327,7 +329,9 @@ Place under `src/components/appointments/` (Vite + React Router; no `'use client
 
 ## Step 7: Booking Page Flow ✓
 
-**→ Read `templates/sections/07-booking-page-flow.md`.**
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/07-booking-page-flow' })
+```
 
 **Flow:** Select Date → Time → Fill Form → Confirmation. Variable pricing prepends a
 "Select Tier" step.
@@ -344,7 +348,9 @@ or `'use client'` directives.
 
 **CRITICAL: Payment is complex. Read the full section before implementing.**
 
-**→ Read `templates/sections/08-payment-integration.md` (REQUIRED).**
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/08-payment-integration' })
+```
 
 ### Key Concepts (Read Full Section First!)
 
@@ -404,7 +410,9 @@ or `'use client'` directives.
 
 ## Step 9: Email Notifications ✓
 
-**→ Read `templates/sections/09-email-notifications.md`.**
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/09-email-notifications' })
+```
 
 ### Quick Setup
 
@@ -423,14 +431,19 @@ or `'use client'` directives.
 
 ## Step 10: Admin Dashboard 📖 (Optional)
 
-**→ Read `templates/sections/10-admin-dashboard.md`.**
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/10-admin-dashboard' })
+```
 
 Shows:
 - Appointment list view (uses `GET /api/appointments?includeOrderStatus=true` for live payment status)
 - Order details modal (handles both paid and free appointments)
 - Admin authentication setup
 
-**Admin seed:** → Read `templates/sections/05-admin-user-seed.md`.
+**Admin seed:**
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/05-admin-user-seed' })
+```
 
 ---
 
@@ -438,7 +451,9 @@ Shows:
 
 **Only if `requiresCustomerPortal === true`.**
 
-**→ Read `templates/sections/11-customer-portal.md`.**
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/11-customer-portal' })
+```
 
 Features:
 - Login/signup pages (provided by authentication skill)
@@ -452,9 +467,11 @@ Features:
 
 **Only if `classPackages` array exists.**
 
-**CRITICAL: Read the full section before implementing.**
+**CRITICAL: Load and read the full section before implementing.**
 
-**→ Read `templates/sections/12-class-credits-system.md`.**
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/12-class-credits-system' })
+```
 
 Shows:
 - Purchase flow for class packages (redirect to GoDaddy Commerce)
@@ -466,7 +483,9 @@ Shows:
 
 ## Troubleshooting
 
-**→ Read `templates/sections/13-troubleshooting.md`.**
+```typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/13-troubleshooting' })
+```
 
 Covers:
 - Race-condition double-booking
@@ -479,13 +498,11 @@ Covers:
 
 ## Quick Decisions
 
-- **Section index:** `templates/IMPLEMENTATION.md` lists every section file; per-step "→ Read"
-  pointers in this skill.md jump straight to the right one.
 - **Payment required?** YES iff `config.pricingTiers` has ≥1 entry. There is no
   `config.requiresPayment` — for a fixed price, write a single-entry `pricingTiers` array.
 - **Authentication required?** YES if any of `requiresCustomerPortal`,
   `requiresAdminDashboard`, or `classPackages` is set. Otherwise anonymous booking only.
-- **Free first appointment:** see `templates/sections/08-payment-integration.md` § 8.7 for
+- **Free first appointment:** see `sections/08-payment-integration.md` § 8.7 for
   the authoritative `getOrderStatus`-based check.
 
 ---
@@ -522,7 +539,9 @@ Tailor message based on configuration:
 
 ## Key Takeaways
 
-1. **Discovery is critical** - Use full scripts from `templates/sections/01-discovery-questions.md`
+1. **Discovery is critical** - Load full scripts via ````typescript
+skill({ action: 'loadReference', path: 'online-appointments/sections/01-discovery-questions' })
+````
 2. **Always confirm before building** - Step 2 reads every captured answer back in plain
    English and waits for an explicit yes. Do not start file edits or skill installs until
    the customer confirms.
@@ -535,7 +554,7 @@ Tailor message based on configuration:
    from `lib/appointments` for all UI/email money rendering
 7. **Authentication is conditional** - Only needed for portals or class credits
 8. **Email skill is a recipe** - Construct the nodemailer transport inline; do not import a `sendEmail` module
-9. **`templates/sections/` is your detailed guide** - Load each `## §` section by its file path
+9. **`sections/` is your detailed guide** - Use `skill({ action: 'loadReference', path: 'online-appointments/sections/NN-slug' })` to load any section on demand
 
 ---
 
@@ -543,8 +562,8 @@ Tailor message based on configuration:
 
 ### Section Loading
 
-Sections under `templates/sections/` are loaded on demand by file path. Each section is
-self-contained. Read only the file you need; do not pre-load all of them.
+Sections under `sections/` are loaded on demand via `loadReference`. Each section is
+self-contained. Load only the section you need; do not pre-load all of them.
 
 **Approximate context cost:**
 - Skill.md only: ~5K tokens
@@ -558,7 +577,7 @@ self-contained. Read only the file you need; do not pre-load all of them.
 
 ### Edge Cases Covered
 
-All edge cases documented in `templates/sections/13-troubleshooting.md`:
+All edge cases documented in `sections/13-troubleshooting.md`:
 - Race-condition double-booking prevention
 - Success-page polling and the lack of webhooks
 - Free-first appointment edge cases (verifies via `getOrderStatus`, not draft presence)
