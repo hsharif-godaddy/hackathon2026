@@ -132,9 +132,14 @@ jobs:
         if: always()
         run: rm -f /tmp/.npmrc-secret
 
-      # Publish the built container image to Katana with the katana-publish-artifact GitHub Action
+      # Publish the built container image to Katana with the katana-publish-artifact GitHub Action.
+      # continue-on-error: Katana artifacts are immutable per (app, version=commit SHA). Re-deploying
+      # a commit that was already published — but whose image rebuilt to a different checksum (Docker
+      # builds aren't byte-reproducible) — returns 409 Conflict. Rather than fail the deploy, the
+      # steps below reuse the artifact already published for this version.
       - id: katana-publish
         name: Publish Katana Artifact
+        continue-on-error: true
         uses: gdcorp-actions/katana-publish-artifact@df952a1ac3cecf94b34c838265ce23f6271838f8 # v1
         with:
           namespace: ${{ steps.katana-app.outputs.namespace }}
@@ -149,6 +154,77 @@ jobs:
               "healthcheckGracePeriod": 30
             }
 
+      # On a publish failure (typically the 409 for an already-published commit), list this app's
+      # artifacts so the next step can reuse the one already published for this version.
+      - id: katana-artifacts
+        name: List Katana Artifacts (only when publish failed)
+        if: steps.katana-publish.outcome == 'failure'
+        uses: gdcorp-actions/katana-api@b83a427b8cb7b421b765ff0357b954ab572e15c0 # v1
+        with:
+          method: GET
+          path: /v1/apps/${{ steps.katana-app.outputs.namespace }}/${{ steps.katana-app.outputs.app }}/artifacts
+
+      # Resolve the artifact id to promote: the just-published one on success, else the existing
+      # artifact for this version (idempotent re-deploy). Fails loud if publish failed AND no
+      # existing artifact matches — that's a real publish error, not a benign already-exists 409.
+      - id: resolve-artifact
+        name: Resolve artifact id (published or existing)
+        env:
+          PUBLISH_OUTCOME: ${{ steps.katana-publish.outcome }}
+          PUBLISHED_ID: ${{ steps.katana-publish.outputs.artifact_id }}
+          PUBLISHED_IMAGE: ${{ steps.katana-publish.outputs.image_uri }}
+          ARTIFACTS_JSON: ${{ steps.katana-artifacts.outputs.body_json }}
+          APP: ${{ steps.katana-app.outputs.app }}
+          VERSION: ${{ inputs.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          # Happy path: publish succeeded — it must have returned an artifact id.
+          if [ "$PUBLISH_OUTCOME" = "success" ]; then
+            if [ -z "$PUBLISHED_ID" ]; then
+              echo "::error::Publish reported success but returned no artifact_id." >&2
+              exit 1
+            fi
+            echo "Published new artifact $PUBLISHED_ID for $VERSION"
+            echo "artifact_id=$PUBLISHED_ID" >> "$GITHUB_OUTPUT"
+            echo "source=published" >> "$GITHUB_OUTPUT"
+            echo "image=$PUBLISHED_IMAGE" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Publish FAILED. This is expected ONLY for the immutability 409 (commit already
+          # published). continue-on-error also swallows genuine failures (expired creds, registry
+          # unreachable, bad image), so warn loudly — a real failure on an already-published SHA
+          # would otherwise be masked by the reuse below and report green.
+          echo "::warning::Publish step failed; attempting to reuse an existing artifact for $VERSION. If this was NOT an expected re-deploy of an already-published commit, check the 'Publish Katana Artifact' step log for a real failure (credentials, registry, image)."
+
+          # The katana-api body must be a JSON array (per the Katana get-artifact-id docs); guard so
+          # a wrapped/empty/error body yields a clear message instead of an opaque jq abort.
+          if ! printf '%s' "$ARTIFACTS_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
+            echo "::error::katana-api did not return a JSON array of artifacts for $APP (response shape changed?)." >&2
+            exit 1
+          fi
+          MATCHES=$(printf '%s' "$ARTIFACTS_JSON" | jq --arg n "$APP" --arg v "$VERSION" \
+            '[.[] | select(.name == $n and .version == $v)]')
+          COUNT=$(printf '%s' "$MATCHES" | jq 'length')
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::Publish failed and no existing artifact found for $APP version $VERSION — treating as a real publish error, not a benign conflict." >&2
+            exit 1
+          fi
+          if [ "$COUNT" -gt 1 ]; then
+            echo "::warning::Found $COUNT artifacts for $APP version $VERSION (expected 1, per Katana's per-commit invariant); using the first."
+          fi
+          ID=$(printf '%s' "$MATCHES" | jq -r '.[0].artifactId // empty')
+          if [ -z "$ID" ]; then
+            echo "::error::Matched an artifact for $VERSION but it has no artifactId (katana-api response shape changed?)." >&2
+            exit 1
+          fi
+          echo "Reusing already-published artifact $ID for $VERSION (Katana artifacts are immutable per commit)."
+          echo "artifact_id=$ID" >> "$GITHUB_OUTPUT"
+          echo "source=reused" >> "$GITHUB_OUTPUT"
+          # Best-effort: surface the reused artifact's image in the summary (// empty if the
+          # response omits the field — no hard dependency, just a possibly-blank Image line).
+          echo "image=$(printf '%s' "$MATCHES" | jq -r '.[0].options.containerUri // empty')" >> "$GITHUB_OUTPUT"
+
       # Promote the published artifact to the selected environment with the katana-promote-artifact GitHub Action
       - name: Promote to ${{ inputs.DEPLOY_TO_ENV }} Environment
         id: promote
@@ -158,7 +234,7 @@ jobs:
           namespace: ${{ steps.katana-app.outputs.namespace }}
           app: ${{ steps.katana-app.outputs.app }}
           environment: ${{ inputs.DEPLOY_TO_ENV }}
-          artifact_id: ${{ steps.katana-publish.outputs.artifact_id }}
+          artifact_id: ${{ steps.resolve-artifact.outputs.artifact_id }}
           strategy: ${{ inputs.strategy }}
           # dark_release: cap at 12 dark artifacts (current + 11 retained); ttl demotes each after 24h.
           # simple/canary: keep 1 warm standby for rollback; no ttl.
@@ -170,13 +246,16 @@ jobs:
         env:
           STRATEGY: ${{ inputs.strategy }}
           CUSTOM_URL: ${{ steps.promote.outputs.promoted_artifact_custom_url }}
+          SOURCE: ${{ steps.resolve-artifact.outputs.source }}
+          ARTIFACT_ID: ${{ steps.resolve-artifact.outputs.artifact_id }}
+          IMAGE: ${{ steps.resolve-artifact.outputs.image }}
         run: |
           {
             printf '**Build Summary:**\n\n```\n'
-            echo "Artifact ID: ${{ steps.katana-publish.outputs.artifact_id }}"
+            echo "Artifact ID: $ARTIFACT_ID ($SOURCE)"
             echo "Deployed to: ${{ inputs.DEPLOY_TO_ENV }}"
             echo "Strategy: ${{ inputs.strategy }}"
-            echo "Image: ${{ steps.katana-publish.outputs.image_uri }}"
+            echo "Image: $IMAGE"
             echo "Commit: ${{ inputs.sha || github.sha }}"
             echo "Branch: ${{ github.ref_name }}"
             echo "Actor: ${{ github.actor }}"
