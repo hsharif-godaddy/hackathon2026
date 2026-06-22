@@ -7,7 +7,7 @@
  */
 
 import { logger } from '../logging/index.js'
-import type { AssessmentOutcome } from '../agents/assessment-agent/index.js'
+import { AssessmentTaskType, type AssessmentOutcome } from '../agents/assessment-agent/index.js'
 import {
   emptyExecutionData,
   generateReportItems,
@@ -107,6 +107,34 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
       sessionWasFree: true,
       attributionPath: 'override_session',
       labels: [overrideLabel],
+    }
+  }
+
+  // Fix intent override: assessment agent classified as fix with high confidence → 100% GoDaddy.
+  // The LR classifier only predicts fix/general. overrideApplied is already gated on confidence ≥ 65%.
+  // This mirrors the legacy grants behavior where fix intent = customer doesn't pay.
+  if (assessmentOutcome?.overrideApplied && assessmentOutcome.result?.taskType === AssessmentTaskType.Fix) {
+    const label = ReportLabel.FixTask
+
+    logger.info('budget.report.fix_intent_override', {
+      budgetId,
+      sessionId,
+      taskType: assessmentOutcome.result.taskType,
+      confidence: assessmentOutcome.result.confidence,
+      appliedBudget: assessmentOutcome.appliedBudget,
+      totalCost,
+    })
+
+    return {
+      reportItems: [{
+        budgetCost: '0',
+        productCost: totalCost.toString(),
+        label,
+      }],
+      executionData: emptyExecutionData(),
+      sessionWasFree: true,
+      attributionPath: 'fix_intent',
+      labels: [label],
     }
   }
 

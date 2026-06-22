@@ -10,8 +10,13 @@ import type { AssessmentOutcome } from '../../agents/assessment-agent/index.js'
 import { logger } from '../../logging/index.js'
 import { ReportLabel, type ExecutionStep } from '@airo/ai-lib/budget'
 
-// Mock the logger to prevent console output during tests
+// Mock the logger to prevent console output during tests.
+// Logger (class) is also mocked because importing AssessmentTaskType as a value
+// causes embedding-classifier.ts to be evaluated, which calls Logger.create() at init.
 vi.mock('../../logging/index.js', () => ({
+  Logger: {
+    create: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+  },
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
@@ -950,6 +955,140 @@ describe('processBudgetReport', () => {
       expect(result.reportItems[0]?.label).toBe(ReportLabel.General)
       expect(result.reportItems[0]?.budgetCost).toBe('5')
       expect(result.reportItems[0]?.productCost).toBe('0')
+    })
+  })
+
+  describe('fix intent override', () => {
+    it('attributes 100% to GoDaddy when assessment says fix with override applied', () => {
+      const context: BudgetReportContext = {
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        totalCost: 10.0,
+        sessionItems: createSessionItems(3, 3.33),
+        assessmentOutcome: {
+          result: { taskType: 'fix', confidence: 80 },
+          overrideApplied: true,
+          appliedBudget: 'airo-builder:fix-task',
+          completedInTime: true,
+          durationMs: 200,
+          reason: 'embedding_completed',
+        } as AssessmentOutcome,
+      }
+
+      const result = processBudgetReport(context)
+
+      expect(result.sessionWasFree).toBe(true)
+      expect(result.attributionPath).toBe('fix_intent')
+      expect(result.labels).toEqual([ReportLabel.FixTask])
+      expect(result.reportItems).toHaveLength(1)
+      expect(result.reportItems[0]).toEqual({
+        budgetCost: '0',
+        productCost: '10',
+        label: ReportLabel.FixTask,
+      })
+    })
+
+    it('does NOT override when overrideApplied is false (low confidence)', () => {
+      const context: BudgetReportContext = {
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        totalCost: 5.0,
+        sessionItems: createSessionItems(1, 5.0),
+        assessmentOutcome: {
+          result: { taskType: 'fix', confidence: 50 },
+          overrideApplied: false,
+          completedInTime: true,
+          durationMs: 150,
+          reason: 'embedding_completed',
+        } as AssessmentOutcome,
+      }
+
+      const result = processBudgetReport(context)
+
+      expect(result.sessionWasFree).toBe(false)
+      expect(result.attributionPath).toBe('default')
+    })
+
+    it('does NOT override for general intent even with overrideApplied', () => {
+      const context: BudgetReportContext = {
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        totalCost: 5.0,
+        sessionItems: createSessionItems(1, 5.0),
+        assessmentOutcome: {
+          result: { taskType: 'general', confidence: 90 },
+          overrideApplied: false,
+          completedInTime: true,
+          durationMs: 100,
+          reason: 'embedding_completed',
+        } as AssessmentOutcome,
+      }
+
+      const result = processBudgetReport(context)
+
+      expect(result.sessionWasFree).toBe(false)
+      expect(result.attributionPath).toBe('default')
+    })
+
+    it('skips execution analysis when fix intent override fires', () => {
+      const failedCallId = 'corr-fail-001'
+      const failureSteps: ExecutionStep[] = [{
+        stepType: 'tool-call',
+        response: { headers: { 'x-correlation-id': failedCallId } },
+        content: [{
+          type: 'tool-error' as const,
+          toolName: 'bash',
+          error: 'Command failed',
+        }],
+      }] as unknown as ExecutionStep[]
+
+      const context: BudgetReportContext = {
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        totalCost: 8.0,
+        sessionItems: [{ callRequestId: failedCallId, cost: 8.0 }],
+        steps: failureSteps,
+        assessmentOutcome: {
+          result: { taskType: 'fix', confidence: 75 },
+          overrideApplied: true,
+          appliedBudget: 'airo-builder:fix-task',
+          completedInTime: true,
+          durationMs: 300,
+          reason: 'llm_completed',
+        } as AssessmentOutcome,
+      }
+
+      const result = processBudgetReport(context)
+
+      expect(result.sessionWasFree).toBe(true)
+      expect(result.attributionPath).toBe('fix_intent')
+      expect(result.executionData).toBeDefined()
+      expect(result.attributionResult).toBeUndefined()
+    })
+
+    it('BMS override takes priority over fix intent when both present', () => {
+      // Edge case: care agent fixing something - BMS override fires first (higher priority)
+      const context: BudgetReportContext = {
+        budgetId: 'b-1',
+        sessionId: 'sess-1',
+        totalCost: 5.0,
+        sessionItems: createSessionItems(1, 5.0),
+        subscriptionId: 'airo-builder:care-agent',
+        assessmentOutcome: {
+          result: { taskType: 'fix', confidence: 80 },
+          overrideApplied: true,
+          appliedBudget: 'airo-builder:fix-task',
+          completedInTime: true,
+          durationMs: 200,
+          reason: 'embedding_completed',
+        } as AssessmentOutcome,
+      }
+
+      const result = processBudgetReport(context)
+
+      // BMS override fires first (higher priority in the code), both result in GoDaddy paying
+      expect(result.sessionWasFree).toBe(true)
+      expect(result.attributionPath).toBe('override_session')
     })
   })
 

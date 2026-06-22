@@ -17,6 +17,7 @@ export enum ReportLabel {
   // Full override intents
   PublishTask = 'airo-builder:publish-task',
   DomainTask = 'airo-builder:domain-task',
+  FixTask = 'airo-builder:fix-task',
 
   // Failure attribution
   ToolFailure = 'airo-builder:tool-failure',
@@ -450,6 +451,7 @@ export type AttributionPath =
   | 'default'
   | 'attribution_failed'
   | 'override_session'
+  | 'fix_intent'
 
 // CONTEXT TYPES
 
