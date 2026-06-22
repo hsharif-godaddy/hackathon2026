@@ -73,5 +73,9 @@ func NewRouter(s *Server) http.Handler {
 	awsiam := s.Auth.AuthenticateWithKind("awsiam")
 	r.Handle("/v1/sandboxes", awsiam(http.HandlerFunc(s.postSandboxes))).Methods(http.MethodPost)
 	r.Handle("/v1/status", awsiam(http.HandlerFunc(s.getStatus))).Methods(http.MethodGet)
+	// /v1/legacy records a metadata-only `legacy` row. Written by the agent
+	// skill (self-mark on requestSecrets) and the cmd/backfill-legacy job;
+	// read back as a short-circuit by /v1/sandboxes in PR2 of the rollout.
+	r.Handle("/v1/legacy", awsiam(http.HandlerFunc(s.postLegacy))).Methods(http.MethodPost)
 	return r
 }

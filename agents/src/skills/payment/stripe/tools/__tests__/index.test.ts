@@ -15,11 +15,13 @@ class MockStripeServiceError extends Error {
 
 const mockCreateSandbox = vi.fn();
 const mockGetStatus = vi.fn();
+const mockMarkLegacy = vi.fn();
 
 vi.mock('../../../../../services/StripeService.js', () => ({
   stripeService: {
     createSandbox: mockCreateSandbox,
     getStatus: mockGetStatus,
+    markLegacy: mockMarkLegacy,
   },
   StripeServiceError: MockStripeServiceError,
 }));
@@ -91,6 +93,7 @@ describe('stripe skill tools', () => {
       expect(mockCreateSandbox).toHaveBeenCalledWith({ appId: 'app-1', customerId: 'cust-1', country: 'US' });
       expect(result).toEqual({
         success: true,
+        mode: 'managed',
         sandboxId: 'cbsbx_fake_X',
         accountId: 'acct_fake_X',
         claimUrl: 'https://dashboard.stripe.com/fake-claim/cbsbx_fake_X',
@@ -286,12 +289,36 @@ describe('stripe skill tools', () => {
   describe('setupTool — flag-gated execute', () => {
     it('returns autoProvisioningUnavailable (no inputs needed) when the flag is OFF', async () => {
       mockProfileFlag.mockReturnValue(false);
+      mockMarkLegacy.mockResolvedValueOnce(undefined);
 
       const result = await setupTool.execute({ country: 'US' }, APP);
 
       expect(result).toMatchObject({ autoProvisioningUnavailable: true });
       expect((result as { message: string }).message).toContain('Manual key flow');
       expect(mockCreateSandbox).not.toHaveBeenCalled();
+    });
+
+    it('self-marks the app as legacy when the flag is OFF', async () => {
+      mockProfileFlag.mockReturnValue(false);
+      mockMarkLegacy.mockResolvedValueOnce(undefined);
+
+      await setupTool.execute({ country: 'US' }, APP);
+
+      expect(mockMarkLegacy).toHaveBeenCalledTimes(1);
+      expect(mockMarkLegacy).toHaveBeenCalledWith('app-1');
+    });
+
+    it('still returns autoProvisioningUnavailable when markLegacy fails (best-effort)', async () => {
+      mockProfileFlag.mockReturnValue(false);
+      mockMarkLegacy.mockRejectedValueOnce(new Error('stripe-service down'));
+
+      const result = await setupTool.execute({ country: 'US' }, APP);
+
+      expect(result).toMatchObject({ autoProvisioningUnavailable: true });
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        'skill.stripe.setup.mark_legacy_failed',
+        expect.objectContaining({ appId: 'app-1', error: 'stripe-service down' }),
+      );
     });
 
     it('returns needsInputs when flag is ON but country omitted', async () => {
@@ -314,11 +341,27 @@ describe('stripe skill tools', () => {
         await vi.runAllTimersAsync();
         const result = await pending;
 
-        expect(result).toMatchObject({ success: true, sandboxId: 's' });
+        expect(result).toMatchObject({ success: true, mode: 'managed', sandboxId: 's' });
         expect(mockCreateSandbox).toHaveBeenCalled();
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it('returns mode:legacy when stripe-service short-circuits with legacy:true', async () => {
+      mockProfileFlag.mockReturnValue(true);
+      mockCreateSandbox.mockResolvedValueOnce({
+        sandboxId: '',
+        accountId: '',
+        claimUrl: '',
+        legacy: true,
+      });
+
+      const result = await setupTool.execute({ country: 'US' }, APP);
+
+      expect(result).toMatchObject({ success: true, mode: 'legacy' });
+      expect((result as { message: string }).message).toContain('already has a Stripe integration');
+      expect(mockLoadStripeMcpTools).not.toHaveBeenCalled();
     });
   });
 

@@ -18,8 +18,9 @@ skill-deps:
 
 **Call `stripe__setup()` without arguments first — its response tells you which flow to use:**
 
-- **Returns `sandboxId` → Auto-provisioned flow.** Keys are auto-provisioned into the app; **never** call `requestSecrets` for any `STRIPE_*` key. MCP catalog tools (`stripe__create_product`, `stripe__list_products`, etc.) are available for product setup.
+- **Returns `{ mode: "managed", sandboxId, ... }` → Auto-provisioned flow.** Keys are auto-provisioned into the app; **never** call `requestSecrets` for any `STRIPE_*` key. MCP catalog tools (`stripe__create_product`, `stripe__list_products`, etc.) are available for product setup.
 - **Returns `{ autoProvisionedFlow: true, needsInputs: true }` → Auto-provisioned, but needs country.** Ask the user for their country (e.g. "US"), then call `stripe__setup({ country })` again.
+- **Returns `{ mode: "legacy", message }` → Legacy mode.** The app already has a Stripe integration set up with the user's own key (pre-auto-provisioning). Keep the existing key — checkout and products work as before. **Do NOT call `requestSecrets`, do NOT provision a sandbox, and do NOT use MCP product tools** (there is no MCP key in this mode). Use the existing Stripe templates/scripts for any product changes. Skip Step 1; templates may already be installed but Step 2 (`skill install`) is idempotent and safe to re-run.
 - **Returns `{ autoProvisioningUnavailable: true }` → Manual key flow.** Platform provisioning is not enabled for this shopper. Collect their Stripe keys via `requestSecrets`.
 
 Both flows install the **same** checkout templates; only key acquisition (Step 1) and product registration (Step 4) differ.

@@ -86,9 +86,11 @@ type fakeStore struct {
 	byApp          map[string][]store.Sandbox
 	bySandboxID    map[string]store.Sandbox
 	puts           []store.Sandbox
+	legacyPuts     []string
 	updates        []fakeStoreUpdate
 	urlUpdates     []fakeStoreURLUpdate
 	putErr         error
+	putLegacyErr   error
 	queryErr       error
 	updateErr      error
 	updateNotFound bool
@@ -140,6 +142,21 @@ func (f *fakeStore) UpdateClaimStatus(_ context.Context, sandboxID string, statu
 		return store.ErrSandboxNotFound
 	}
 	f.updates = append(f.updates, fakeStoreUpdate{SandboxID: sandboxID, ClaimStatus: status, LiveAccountID: liveAccountID})
+	return nil
+}
+
+func (f *fakeStore) PutLegacy(_ context.Context, appID string) error {
+	if f.putLegacyErr != nil {
+		return f.putLegacyErr
+	}
+	f.legacyPuts = append(f.legacyPuts, appID)
+	sb := store.Sandbox{
+		SandboxID:   store.LegacySandboxID(appID),
+		AppID:       appID,
+		ClaimStatus: store.ClaimStatusLegacy,
+	}
+	f.byApp[appID] = append(f.byApp[appID], sb)
+	f.bySandboxID[sb.SandboxID] = sb
 	return nil
 }
 
@@ -1151,5 +1168,203 @@ func TestBuildLiveSecretsOps(t *testing.T) {
 		if op.Type != hosting.SecretOpUpsert {
 			t.Errorf("op %+v type: want upsert, got %q", k, op.Type)
 		}
+	}
+}
+
+// TestPostSandboxes_LegacyShortCircuit is the core safety guarantee: when an
+// app already has a `legacy` row (pre-stripe-v2 pasted key), POST
+// /v1/sandboxes must return {legacy:true} and make ZERO Stripe and hosting
+// calls — provisioning would push sk_test_* over the merchant's pasted
+// sk_live_* and break live checkout.
+func TestPostSandboxes_LegacyShortCircuit(t *testing.T) {
+	srv := newTestRouterServer("dev", "0.0.0", "none")
+	stripe := srv.Stripe.(*fakeStripe)
+	secrets := srv.Secrets.(*fakeSecretsPusher)
+	st := srv.Sandboxes.(*fakeStore)
+	if err := st.PutLegacy(context.Background(), "app-legacy"); err != nil {
+		t.Fatalf("seed PutLegacy: %v", err)
+	}
+	h := NewRouter(srv)
+
+	body := `{"appId":"app-legacy","country":"US"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d (body=%q)", rec.Code, rec.Body.String())
+	}
+	var resp sandboxResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !resp.Legacy {
+		t.Errorf("response should set legacy:true; got %+v", resp)
+	}
+	if resp.SandboxID != "" {
+		t.Errorf("legacy response should not carry a sandboxId; got %q", resp.SandboxID)
+	}
+	if stripe.callCount != 0 {
+		t.Errorf("stripe must not be called for a legacy app; callCount=%d", stripe.callCount)
+	}
+	if secrets.calls != 0 {
+		t.Errorf("secrets must not be pushed for a legacy app; calls=%d", secrets.calls)
+	}
+	for _, p := range st.puts {
+		if p.ClaimStatus != store.ClaimStatusLegacy {
+			t.Errorf("unexpected non-legacy put: %+v", p)
+		}
+	}
+}
+
+// TestPostSandboxes_LegacyWinsOverManagedRow locks in the precedence contract:
+// if a stale managed row and a backfilled legacy row both exist for the same
+// app (distinct items — managed keyed on cbsbx_*, legacy on legacy#<appId>),
+// the legacy short-circuit must still win regardless of GSI return order.
+func TestPostSandboxes_LegacyWinsOverManagedRow(t *testing.T) {
+	srv := newTestRouterServer("dev", "0.0.0", "none")
+	stripe := srv.Stripe.(*fakeStripe)
+	secrets := srv.Secrets.(*fakeSecretsPusher)
+	st := srv.Sandboxes.(*fakeStore)
+	now := time.Now().UTC()
+	// Seed managed FIRST so it precedes the legacy row in byApp — proves the
+	// scan doesn't just return the first element.
+	if err := st.Put(context.Background(), store.Sandbox{
+		SandboxID:   "cbsbx_stale",
+		AppID:       "app-both",
+		AccountID:   "acct_stale",
+		ClaimURL:    "https://dashboard.stripe.com/claim/cbsbx_stale",
+		ClaimStatus: store.ClaimStatusProvisioned,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("seed managed Put: %v", err)
+	}
+	if err := st.PutLegacy(context.Background(), "app-both"); err != nil {
+		t.Fatalf("seed PutLegacy: %v", err)
+	}
+	h := NewRouter(srv)
+
+	body := `{"appId":"app-both","country":"US"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/sandboxes", bytes.NewBufferString(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d (body=%q)", rec.Code, rec.Body.String())
+	}
+	var resp sandboxResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !resp.Legacy {
+		t.Errorf("legacy must win even with a managed row present; got %+v", resp)
+	}
+	if resp.SandboxID != "" {
+		t.Errorf("legacy response should not carry a sandboxId; got %q", resp.SandboxID)
+	}
+	if stripe.callCount != 0 {
+		t.Errorf("stripe must not be called when a legacy row exists; callCount=%d", stripe.callCount)
+	}
+	if secrets.calls != 0 {
+		t.Errorf("secrets must not be pushed when a legacy row exists; calls=%d", secrets.calls)
+	}
+}
+
+// TestGetStatus_LegacyWinsOverManagedRow mirrors the postSandboxes precedence
+// contract for getStatus: if a legacy row and a managed row coexist, the legacy
+// row must be returned regardless of QueryByAppID GSI return order.
+func TestGetStatus_LegacyWinsOverManagedRow(t *testing.T) {
+	srv := newTestRouterServer("dev", "0.0.0", "none")
+	st := srv.Sandboxes.(*fakeStore)
+	now := time.Now().UTC()
+	if err := st.Put(context.Background(), store.Sandbox{
+		SandboxID:   "cbsbx_stale",
+		AppID:       "app-both",
+		AccountID:   "acct_stale",
+		ClaimStatus: store.ClaimStatusProvisioned,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("seed managed Put: %v", err)
+	}
+	if err := st.PutLegacy(context.Background(), "app-both"); err != nil {
+		t.Fatalf("seed PutLegacy: %v", err)
+	}
+	h := NewRouter(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status?appId=app-both", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d (body=%q)", rec.Code, rec.Body.String())
+	}
+	var resp statusResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.ClaimStatus != store.ClaimStatusLegacy {
+		t.Errorf("ClaimStatus: want legacy, got %q — legacy row must win over managed row", resp.ClaimStatus)
+	}
+}
+
+func TestPostLegacy_RecordsRow(t *testing.T) {
+	srv := newTestRouterServer("dev", "0.0.0", "none")
+	stripe := srv.Stripe.(*fakeStripe)
+	secrets := srv.Secrets.(*fakeSecretsPusher)
+	st := srv.Sandboxes.(*fakeStore)
+	h := NewRouter(srv)
+
+	body := `{"appId":"app-legacy"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/legacy", bytes.NewBufferString(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d (body=%q)", rec.Code, rec.Body.String())
+	}
+	var resp sandboxResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !resp.Legacy {
+		t.Errorf("response should set legacy:true; got %+v", resp)
+	}
+	if len(st.legacyPuts) != 1 || st.legacyPuts[0] != "app-legacy" {
+		t.Errorf("PutLegacy not recorded as expected; legacyPuts=%v", st.legacyPuts)
+	}
+	if stripe.callCount != 0 || secrets.calls != 0 {
+		t.Errorf("legacy record must not touch Stripe/hosting; stripe=%d secrets=%d", stripe.callCount, secrets.calls)
+	}
+}
+
+func TestPostLegacy_MissingAppID(t *testing.T) {
+	srv := newTestRouterServer("dev", "0.0.0", "none")
+	h := NewRouter(srv)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/legacy", bytes.NewBufferString(`{}`))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: want 400 for missing appId, got %d", rec.Code)
+	}
+}
+
+func TestPostLegacy_500OnPutLegacyError(t *testing.T) {
+	srv := newTestRouterServer("dev", "0.0.0", "none")
+	srv.Sandboxes.(*fakeStore).putLegacyErr = errors.New("ddb write failure")
+	h := NewRouter(srv)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/legacy", bytes.NewBufferString(`{"appId":"app-fail"}`))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status: want 500 on PutLegacy failure, got %d (body=%q)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "STORE_PUT_FAILED") {
+		t.Errorf("body should mention STORE_PUT_FAILED; got %q", rec.Body.String())
 	}
 }

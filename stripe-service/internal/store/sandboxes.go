@@ -33,7 +33,27 @@ const (
 	ClaimStatusClaimed     ClaimStatus = "claimed"
 	ClaimStatusLive        ClaimStatus = "live"
 	ClaimStatusRevoked     ClaimStatus = "revoked"
+	// ClaimStatusLegacy marks an app that already had a Stripe integration via
+	// the pre-stripe-v2 "paste your secret key" flow. These rows are written by
+	// either the backfill job (cmd/backfill-legacy) for dormant apps or by the
+	// agent skill itself when it processes a requestSecrets for STRIPE_SECRET_KEY
+	// — never by a Stripe webhook, since Stripe doesn't know about these
+	// accounts. The row is metadata-only and exists solely so postSandboxes can
+	// refuse to provision over a working pasted key. Terminal: never advanced
+	// by UpdateClaimStatus.
+	ClaimStatusLegacy ClaimStatus = "legacy"
 )
+
+// LegacySandboxID builds the synthetic partition key for a legacy row. Legacy
+// merchants never went through Stripe's claim flow, so there is no real
+// sandbox_id — but sandbox_id is the table's partition key and cannot be
+// empty. The `legacy#` prefix namespaces these synthetic keys so they can't
+// collide with real Stripe sandbox IDs (cbsbx_*) and are trivially greppable.
+// Exported so callers and test doubles share one source of truth for the
+// namespace instead of hardcoding the prefix.
+func LegacySandboxID(appID string) string {
+	return "legacy#" + appID
+}
 
 // appIDIndex is the name of the GSI on app_id declared in the CDK stack.
 const appIDIndex = "app_id-index"
@@ -97,6 +117,37 @@ func (s *Sandboxes) Put(ctx context.Context, sb Sandbox) error {
 		return fmt.Errorf("put sandbox %q: %w", sb.SandboxID, err)
 	}
 	return nil
+}
+
+// PutLegacy records a metadata-only row marking appID as a pre-stripe-v2
+// ("paste your secret key") integration. Idempotent: overwrites any existing
+// legacy row for the same app (same synthetic sandbox_id). The row carries no
+// Stripe credentials, account ID, or claim URL — it exists only so
+// postSandboxes can short-circuit and avoid clobbering a working pasted key.
+//
+// Deliberately does NOT guard against overwriting a real (provisioned/claimed/
+// live) row: the synthetic `legacy#<appId>` key can't collide with a real
+// cbsbx_* sandbox_id anyway, so a legacy row and a managed row for the same
+// app are distinct items that coexist at the storage layer. At the API
+// layer they are NOT equal: postSandboxes queries app_id-index and a legacy
+// row always wins the short-circuit — the intended Phase 1 gate, biased toward
+// never provisioning over a pasted key.
+//
+// Re-run note: this rewrites created_at on every call (full PutItem overwrite),
+// so re-running the backfill or repeated agent self-marks for an already-
+// recorded app reset the timestamp. Acceptable because the row is metadata-only
+// and created_at feeds no audit or ordering query. If that changes, switch to
+// an UpdateItem with created_at = if_not_exists(created_at, :now) to preserve
+// first-write history.
+func (s *Sandboxes) PutLegacy(ctx context.Context, appID string) error {
+	now := time.Now().UTC()
+	return s.Put(ctx, Sandbox{
+		SandboxID:   LegacySandboxID(appID),
+		AppID:       appID,
+		ClaimStatus: ClaimStatusLegacy,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
 }
 
 // GetBySandboxID fetches the sandbox with the given sandbox_id. Returns
@@ -214,6 +265,14 @@ func allowedSourceStatuses(target ClaimStatus) []ClaimStatus {
 	case ClaimStatusProvisioned:
 		// Initial state — only set via Put, never via UpdateClaimStatus.
 		return nil
+	case ClaimStatusLegacy:
+		// Terminal. Set only via PutLegacy (backfill or agent self-mark),
+		// never reached by a webhook (Stripe doesn't emit events for these
+		// accounts) and never a valid UpdateClaimStatus target. A future
+		// upgrade that moves a legacy account onto the managed flow would
+		// land via its own dedicated path, not through this monotonic-
+		// progression helper.
+		return nil
 	default:
 		return nil
 	}
@@ -307,15 +366,23 @@ func toItem(s Sandbox) map[string]types.AttributeValue {
 	item := map[string]types.AttributeValue{
 		"sandbox_id":   &types.AttributeValueMemberS{Value: s.SandboxID},
 		"app_id":       &types.AttributeValueMemberS{Value: s.AppID},
-		"account_id":   &types.AttributeValueMemberS{Value: s.AccountID},
-		"claim_url":    &types.AttributeValueMemberS{Value: s.ClaimURL},
 		"claim_status": &types.AttributeValueMemberS{Value: string(s.ClaimStatus)},
 		"created_at":   &types.AttributeValueMemberS{Value: s.CreatedAt.UTC().Format(time.RFC3339)},
 		"updated_at":   &types.AttributeValueMemberS{Value: s.UpdatedAt.UTC().Format(time.RFC3339)},
 	}
-	// Omit live_account_id while empty so readers can distinguish pre-claim
-	// from live-but-empty (which shouldn't happen post-live but would otherwise
-	// be indistinguishable from a data bug).
+	// account_id / claim_url / live_account_id are omitted while empty.
+	// Normal sandbox rows always set account_id and claim_url at creation, so
+	// this only affects metadata-only `legacy` rows (which carry none of them),
+	// keeping those rows genuinely minimal. fromItem reads absent attributes as
+	// "" so reads are unchanged. live_account_id is additionally meaningful when
+	// absent: it distinguishes pre-claim from live (a post-live empty would be a
+	// data bug, not a valid state).
+	if s.AccountID != "" {
+		item["account_id"] = &types.AttributeValueMemberS{Value: s.AccountID}
+	}
+	if s.ClaimURL != "" {
+		item["claim_url"] = &types.AttributeValueMemberS{Value: s.ClaimURL}
+	}
 	if s.LiveAccountID != "" {
 		item["live_account_id"] = &types.AttributeValueMemberS{Value: s.LiveAccountID}
 	}

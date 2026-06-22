@@ -277,6 +277,54 @@ describe('StripeService', () => {
     });
   });
 
+  describe('markLegacy', () => {
+    it('POSTs /v1/legacy with bearer token, x-app-key, and the appId body', async () => {
+      const { stripeService } = await import('../StripeService.js');
+
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200 });
+
+      await stripeService.markLegacy('app-legacy-1');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${TEST_BASE_URL}/v1/legacy`,
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            Authorization: 'Bearer mock-s2s-token',
+            'x-app-key': 'airo-app-builder',
+          }),
+        }),
+      );
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body).toEqual({ appId: 'app-legacy-1' });
+    });
+
+    it('throws StripeServiceError on non-2xx response', async () => {
+      const { stripeService, StripeServiceError } = await import('../StripeService.js');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: () => Promise.resolve(JSON.stringify({ code: 'INVALID_JSON', error: 'bad body' })),
+      });
+
+      const promise = stripeService.markLegacy('app-legacy-1');
+      await expect(promise).rejects.toBeInstanceOf(StripeServiceError);
+      await expect(promise).rejects.toMatchObject({ status: 400, code: 'INVALID_JSON' });
+    });
+
+    it('rethrows network errors', async () => {
+      const { stripeService } = await import('../StripeService.js');
+
+      const networkError = new TypeError('fetch failed');
+      mockFetch.mockRejectedValueOnce(networkError);
+
+      await expect(stripeService.markLegacy('app-legacy-1')).rejects.toBe(networkError);
+    });
+  });
+
   describe('URL fallback', () => {
     it('uses env-keyed default when STRIPE_SERVICE_API_URL is unset', async () => {
       // Production-path coverage: when the operator hasn't set

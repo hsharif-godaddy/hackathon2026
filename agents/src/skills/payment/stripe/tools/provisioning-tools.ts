@@ -203,10 +203,11 @@ export const setupTool: SkillToolDefinition = {
   description:
     'Provision (or fetch the existing) Stripe sandbox for this app. ' +
     'country is optional — call without it first to check flow availability, then provide it when the auto-provisioned flow is active. ' +
-    '(1) Returns { sandboxId, accountId, claimUrl } → auto-provisioned flow: keys are in the env, never call requestSecrets. ' +
+    '(1) Returns { mode: "managed", sandboxId, accountId, claimUrl } → auto-provisioned flow: keys are in the env, never call requestSecrets. ' +
     '(2) Returns { autoProvisionedFlow: true, needsInputs: true } → auto-provisioned flow confirmed but country required — ask the user and call again. ' +
-    '(3) Returns { autoProvisioningUnavailable: true } → manual key flow: collect keys via requestSecrets. ' +
-    '(4) Returns { stripeProvisioningUnavailable: true, message } → Stripe API unavailable: surface the message verbatim, do not retry this conversation. ' +
+    '(3) Returns { mode: "legacy", message } → app already has a pasted Stripe key: surface the message, keep existing key, do NOT provision or use MCP product tools. ' +
+    '(4) Returns { autoProvisioningUnavailable: true } → manual key flow: collect keys via requestSecrets. ' +
+    '(5) Returns { stripeProvisioningUnavailable: true, message } → Stripe API unavailable: surface the message verbatim, do not retry this conversation. ' +
     'Idempotent: repeated calls for the same app return the same sandbox.',
   parameters: z.object({
     country: z
@@ -242,6 +243,19 @@ export const setupTool: SkillToolDefinition = {
     // users.
     if (!profileFlag(PLATFORM_MANAGED_FLAG, false)) {
       logger.info('skill.stripe.setup.platform_managed_unavailable', { appId });
+      // Self-mark on every entry to the flag-OFF branch (idempotent — PutLegacy
+      // rewrites the same row). Closes the ongoing gap so postSandboxes
+      // short-circuit refuses to provision over a pasted key once
+      // auto-provisioning is enabled. Best-effort: errors are logged and
+      // swallowed; the backfill job catches anyone this misses.
+      try {
+        await stripeService.markLegacy(appId);
+      } catch (error) {
+        logger.warn('skill.stripe.setup.mark_legacy_failed', {
+          appId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       return {
         autoProvisioningUnavailable: true,
         message:
@@ -272,6 +286,24 @@ export const setupTool: SkillToolDefinition = {
         customerId: context?.metadata?.customerId,
         country: input.country,
       });
+      // Legacy coexistence: stripe-service refused to provision because the app
+      // already has a pre-platform-managed pasted Stripe key. Surface legacy
+      // mode so the agent keeps the existing key, skips Step 1 of the skill,
+      // and does NOT use MCP product tools (no MCP key was pushed). The
+      // existing legacy templates/scripts handle product changes.
+      if (sandbox.legacy) {
+        logger.info('skill.stripe.setup.legacy', { appId });
+        return {
+          success: true,
+          mode: 'legacy' as const,
+          message:
+            "This app already has a Stripe integration set up with the user's own key. " +
+            'Keep using it — checkout and products work as before. Do NOT call requestSecrets, ' +
+            'do NOT provision a sandbox, and do NOT use MCP product tools (there is no MCP key). ' +
+            'Use the existing Stripe templates/scripts for product changes.',
+        };
+      }
+
       logger.info('skill.stripe.setup.success', { appId, sandboxId: sandbox.sandboxId });
 
       // Provisioning just pushed STRIPE_MCP_KEY into the alloc. Register the
@@ -286,6 +318,7 @@ export const setupTool: SkillToolDefinition = {
 
       return {
         success: true,
+        mode: 'managed' as const,
         sandboxId: sandbox.sandboxId,
         accountId: sandbox.accountId,
         claimUrl: sandbox.claimUrl,

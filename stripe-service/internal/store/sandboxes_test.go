@@ -206,6 +206,53 @@ func TestPut_MarshalsExpectedItem(t *testing.T) {
 	}
 }
 
+func TestPutLegacy_WritesSyntheticKeyMetadataOnly(t *testing.T) {
+	ddb := &fakeDDB{}
+	store := NewSandboxes(ddb, "test-table")
+
+	if err := store.PutLegacy(context.Background(), "app-legacy"); err != nil {
+		t.Fatalf("PutLegacy: %v", err)
+	}
+	if len(ddb.putInputs) != 1 {
+		t.Fatalf("PutItem calls: want 1, got %d", len(ddb.putInputs))
+	}
+	item := ddb.putInputs[0].Item
+
+	sid, ok := item["sandbox_id"].(*types.AttributeValueMemberS)
+	if !ok || sid.Value != "legacy#app-legacy" {
+		t.Errorf("sandbox_id: want synthetic %q, got %v", "legacy#app-legacy", item["sandbox_id"])
+	}
+	cs, ok := item["claim_status"].(*types.AttributeValueMemberS)
+	if !ok || cs.Value != "legacy" {
+		t.Errorf("claim_status: want legacy, got %v", item["claim_status"])
+	}
+	app, ok := item["app_id"].(*types.AttributeValueMemberS)
+	if !ok || app.Value != "app-legacy" {
+		t.Errorf("app_id: want app-legacy, got %v", item["app_id"])
+	}
+	for _, attr := range []string{"account_id", "claim_url", "live_account_id", "secret_key", "publishable_key", "mcp_key"} {
+		if _, present := item[attr]; present {
+			t.Errorf("legacy row must not carry %q", attr)
+		}
+	}
+}
+
+// TestLegacyIsTerminal proves a webhook can never advance a legacy row:
+// legacy is not an allowed source for any UpdateClaimStatus target, and is
+// not itself a valid target.
+func TestLegacyIsTerminal(t *testing.T) {
+	if got := allowedSourceStatuses(ClaimStatusLegacy); got != nil {
+		t.Errorf("legacy must not be a valid UpdateClaimStatus target; got allowed sources %v", got)
+	}
+	for _, target := range []ClaimStatus{ClaimStatusClaimed, ClaimStatusLive, ClaimStatusRevoked} {
+		for _, src := range allowedSourceStatuses(target) {
+			if src == ClaimStatusLegacy {
+				t.Errorf("legacy must not be an allowed source for target %q", target)
+			}
+		}
+	}
+}
+
 func TestPut_IncludesLiveAccountIDWhenSet(t *testing.T) {
 	ddb := &fakeDDB{}
 	store := NewSandboxes(ddb, "test-table")

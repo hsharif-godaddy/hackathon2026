@@ -45,6 +45,11 @@ type sandboxStore interface {
 	// sandbox ID; live-key provisioning needs appID to know which app's
 	// alloc env to push the keys to via hosting.
 	GetBySandboxID(ctx context.Context, sandboxID string) (store.Sandbox, error)
+	// PutLegacy records a metadata-only `legacy` row for an app that already
+	// has a pre-stripe-v2 pasted-key integration. Written via POST /v1/legacy
+	// (agent self-mark, backfill job); read back by postSandboxes in PR2 to
+	// short-circuit and avoid clobbering the pasted key.
+	PutLegacy(ctx context.Context, appID string) error
 }
 
 // secretsPusher is the subset of hosting.Client used by postSandboxes.
@@ -260,6 +265,12 @@ type sandboxResponse struct {
 	ClaimURL          string `json:"claimUrl"`
 	ExpiresAt         string `json:"expiresAt,omitempty"`
 	ClaimURLExpiresAt string `json:"claimUrlExpiresAt,omitempty"`
+	// Legacy is true when the app already has a pre-stripe-v2 ("paste your
+	// secret key") Stripe integration. Returned by POST /v1/legacy and (in PR2
+	// of the rollout) by POST /v1/sandboxes when a legacy row exists for the
+	// app. The agent surfaces this as legacy mode and does not provision. When
+	// true, the sandbox fields are empty.
+	Legacy bool `json:"legacy,omitempty"`
 }
 
 type statusResponse struct {
@@ -354,6 +365,23 @@ func (s *Server) postSandboxes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(existing) > 0 {
+		// Legacy short-circuit. A `legacy` row means this app already has a
+		// working Stripe integration from the pre-stripe-v2 "paste your secret
+		// key" flow. Provisioning a sandbox would push sk_test_* over their
+		// pasted sk_live_* and break live checkout. Return a legacy marker and
+		// do NOT call Stripe or push secrets. Rows are written by the agent
+		// skill (self-mark on entry to the manual-key branch) and by
+		// cmd/backfill-legacy for dormant apps. Scanned ahead of the
+		// idempotent-return path because GSI return order is not guaranteed
+		// and a legacy row + a managed row can coexist for the same app
+		// (distinct items: legacy#<appId> vs cbsbx_*).
+		for _, sb := range existing {
+			if sb.ClaimStatus == store.ClaimStatusLegacy {
+				slog.Info("stripe_service.sandboxes.legacy_short_circuit", "appId", appID)
+				writeJSON(w, http.StatusOK, sandboxResponse{Legacy: true})
+				return
+			}
+		}
 		sb := existing[0]
 		// Idempotent: app already has a sandbox, return it. The incoming
 		// customerId / country are not used to update the existing sandbox's
@@ -533,7 +561,16 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "no sandbox for this appId")
 		return
 	}
+	// Legacy-first scan: mirrors the postSandboxes precedence rule. A legacy
+	// row and a managed row can coexist (distinct DDB items); GSI return order
+	// is not guaranteed, so scan the full slice before falling back to index 0.
 	sb := sandboxes[0]
+	for _, row := range sandboxes {
+		if row.ClaimStatus == store.ClaimStatusLegacy {
+			sb = row
+			break
+		}
+	}
 	writeJSON(w, http.StatusOK, statusResponse{
 		SandboxID:         sb.SandboxID,
 		ClaimStatus:       sb.ClaimStatus,
@@ -541,4 +578,53 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt:         formatTime(sb.ExpiresAt),
 		ClaimURLExpiresAt: formatTime(sb.ClaimURLExpiresAt),
 	})
+}
+
+type legacyRequest struct {
+	AppID string `json:"appId"`
+}
+
+// postLegacy records a metadata-only `legacy` row marking an app as a
+// pre-stripe-v2 ("paste your secret key") integration. Idempotent on appId.
+//
+// Two callers in the rollout:
+//   - The agent skill, fired from setupTool when stripe__setup is about to
+//     return autoProvisioningUnavailable (i.e. the user is about to paste
+//     keys via requestSecrets). Closes the ongoing-gap as new manual-key
+//     users come through, so future cohorts don't need backfilling.
+//   - cmd/backfill-legacy, run once before stripe-v2 enablement to mark
+//     dormant apps that already pasted keys but haven't re-engaged the skill.
+//
+// Makes no Stripe or hosting calls — pure DDB write. PR2 of the rollout adds
+// the consumer in postSandboxes that short-circuits provisioning when a legacy
+// row exists.
+func (s *Server) postLegacy(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxSandboxBody)
+	var req legacyRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, "PAYLOAD_TOO_LARGE", "request body exceeds size limit")
+			return
+		}
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", "request body is not valid JSON")
+		return
+	}
+	appID := strings.TrimSpace(req.AppID)
+	if appID == "" {
+		writeError(w, http.StatusBadRequest, "MISSING_APP_ID", "appId is required")
+		return
+	}
+
+	if err := s.Sandboxes.PutLegacy(ctx, appID); err != nil {
+		slog.Error("stripe_service.legacy.put_failed", "appId", appID, "error", err)
+		writeError(w, http.StatusInternalServerError, "STORE_PUT_FAILED", "failed to record legacy app")
+		return
+	}
+	slog.Info("stripe_service.legacy.recorded", "appId", appID)
+	writeJSON(w, http.StatusOK, sandboxResponse{Legacy: true})
 }

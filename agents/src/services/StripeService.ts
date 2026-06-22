@@ -55,9 +55,14 @@ export interface SandboxResponse {
    * the underlying row predates the expiry schema.
    */
   claimUrlExpiresAt?: string;
+  /** True when the app already has a pre-stripe-v2 ("paste your secret key")
+   *  Stripe integration. stripe-service returns this instead of provisioning a
+   *  sandbox, so the new flow never overwrites the merchant's pasted key. When
+   *  true, sandboxId/accountId/claimUrl are empty. */
+  legacy?: boolean;
 }
 
-export type ClaimStatus = 'provisioned' | 'claimed' | 'live' | 'revoked';
+export type ClaimStatus = 'provisioned' | 'claimed' | 'live' | 'revoked' | 'legacy';
 
 export interface StatusResponse {
   sandboxId: string;
@@ -223,6 +228,41 @@ class StripeService {
       return result;
     } catch (error) {
       this.handleCatchError(error, 'create_sandbox', input.appId);
+    }
+  }
+
+  /**
+   * Record `appId` as a pre-stripe-v2 ("paste your secret key") integration.
+   * Writes a metadata-only `legacy` row in stripe-service so that PR2's
+   * postSandboxes short-circuit refuses to provision over the merchant's
+   * pasted key. Idempotent on appId: re-calling for the same app rewrites the
+   * same synthetic `legacy#<appId>` row and is harmless.
+   *
+   * Best-effort by design — callers should treat failures as non-fatal and
+   * continue. The backfill job is the safety net; missing a self-mark just
+   * means that app must be in the next backfill cohort.
+   */
+  async markLegacy(appId: string): Promise<void> {
+    const url = `${getStripeServiceBaseUrl()}/v1/legacy`;
+
+    logger.info('stripe_service.mark_legacy.begin', { appId, url });
+
+    try {
+      const headers = await this.buildHeaders();
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ appId }),
+        signal: AbortSignal.timeout(5_000),
+      });
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response, 'mark_legacy', appId);
+      }
+
+      logger.info('stripe_service.mark_legacy.success', { appId });
+    } catch (error) {
+      this.handleCatchError(error, 'mark_legacy', appId);
     }
   }
 
