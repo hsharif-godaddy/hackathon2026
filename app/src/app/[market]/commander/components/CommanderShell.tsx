@@ -7,6 +7,8 @@ import { CanvasId } from '@/app/[market]/commander/canvas/registry'
 import { useCanvasSync } from '@/app/[market]/commander/canvas/useCanvasSync'
 import { CommanderPosition } from '@/app/[market]/commander/types'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
+import { DesignKitWizard } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitWizard'
+import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
 import { MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
 import {
   useCommanderCanvasEnabled,
@@ -15,6 +17,7 @@ import {
   useEffectiveCommanderPosition,
 } from '@/stores/useCommanderStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import { Commander, COMMANDER_LAYOUT_METRICS } from './Commander'
 import { CommanderCanvasSettingsOverlay } from './CommanderCanvasSettingsOverlay'
 import CommanderHeader from './CommanderHeader'
@@ -43,6 +46,11 @@ export function CommanderShell({
   const mobileMode = useDevelopPageStore((state) => state.mobileMode)
   const activeCanvasId = useCommanderStore((state) => state.activeCanvasId)
   const isCanvasSettingsOpen = useCommanderStore((state) => state.isCanvasSettingsOpen)
+  const showDesignKitWizard = useIsDesignKitWizardProfile()
+  const designKitPreviewUrl = useServerPollingStore((state) => {
+    const server = appId ? state.servers.get(appId)?.server : null
+    return server?.isReady ? server.url : null
+  })
   useCanvasSync()
 
   // In canvas-tabs mode the active canvas drives what's visible in the right pane,
@@ -54,6 +62,12 @@ export function CommanderShell({
     : viewMode === ViewMode.BRAND && !isCanvasSettingsOpen
 
   const mobileLogo = <CommanderLogo appId={appId} source="header" />
+
+  const brandOverlayContent =
+    appId &&
+    (showDesignKitWizard
+      ? <DesignKitWizard appId={appId} previewUrl={designKitPreviewUrl ?? undefined} />
+      : <BrandBookView appId={appId} />)
 
   if (isMobile) {
     const isPreviewMobile = mobileMode === MobileMode.PREVIEW
@@ -70,9 +84,9 @@ export function CommanderShell({
             }}
           >
             {previewPaneNode}
-            {isBrandActive && appId && (
+            {isBrandActive && brandOverlayContent && (
               <div className="absolute inset-0 z-20 overflow-hidden" data-testid="brand-book-overlay">
-                <BrandBookView appId={appId} />
+                {brandOverlayContent}
               </div>
             )}
           </div>
@@ -124,7 +138,7 @@ export function CommanderShell({
           <div id="preview-pane-container" className="absolute inset-0 flex flex-col isolate [&>div]:pe-1!">
             {previewPaneNode}
           </div>
-          {isBrandActive && appId && (
+          {isBrandActive && brandOverlayContent && (
             <div
               className={
                 isCanvasTabsEnabled
@@ -133,7 +147,7 @@ export function CommanderShell({
               }
               data-testid="brand-book-overlay"
             >
-              <BrandBookView appId={appId} />
+              {brandOverlayContent}
             </div>
           )}
           {isCanvasEnabled && <CommanderCanvasSettingsOverlay />}
