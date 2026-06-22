@@ -125,8 +125,6 @@ export function CommanderShell({
 
   return (
     <>
-      <Commander appId={appId} chatPane={chatPaneNode} />
-
       <motion.div
         className="absolute top-0 end-0 bottom-0 flex flex-col"
         initial={false}
@@ -153,6 +151,9 @@ export function CommanderShell({
           {isCanvasEnabled && <CommanderCanvasSettingsOverlay />}
         </div>
       </motion.div>
+
+      {/* Commander needs to be after content to ensure it's on top of the content while breaking z-index rules */}
+      <Commander appId={appId} chatPane={chatPaneNode} />
     </>
   )
 }

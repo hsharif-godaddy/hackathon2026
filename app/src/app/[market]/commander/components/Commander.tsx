@@ -25,7 +25,7 @@ export const COMMANDER_LAYOUT_METRICS = {
 const VERTICAL_INSET = 8
 const PILL_TOP_PADDING = 24
 const PILL_BORDER_HEIGHT = 2
-const PILL_HALO_INSET = 8
+const PILL_HALO_INSET = 16
 const PILL_INNER_BORDER_RADIUS = 16
 const PILL_OUTER_BORDER_RADIUS = PILL_INNER_BORDER_RADIUS + PILL_HALO_INSET
 
@@ -193,7 +193,7 @@ export function Commander({ appId, chatPane }: CommanderProps) {
         data-testid="commander-panel"
         data-position={position}
         aria-label="Commander"
-        className={`absolute z-1 flex flex-col ${asideSurfaceClass}`}
+        className={`absolute flex flex-col ${asideSurfaceClass}`}
         initial={false}
         animate={animateProps}
         transition={POSITION_TRANSITION}
