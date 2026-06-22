@@ -44,3 +44,5 @@ For full reasoning and examples, load the `content-system` skill.
 ```
 
 5. **Two-element composition around dynamic values.** `<span>Label </span><span>{value}</span>`, not `<p>Label {value}</p>` (a content value must be the sole expression child of its element).
+
+6. **Collection items carry a managed `id`.** The `content_scaffold` tool adds a stable `id` to every item in a list (e.g. each menu item, each product). Keep it: it anchors inline edits so a user's change stays attached to the right item when the list is reordered. Do not hand-author, renumber, or strip these ids — the tool manages them. You never need to reference `id` in JSX.

@@ -158,36 +158,47 @@ export function resolveContentKey(element: HTMLElement): { key: string; kind: "c
   // ContentListContext layout (field on wrapper, index on child). Each [] in the
   // template is resolved left→right by matching the prefix before that [] to a
   // collected pair's field.
-  const pairs: Array<{ field: string; index: string }> = [];
+  const pairs: Array<{ field: string; index: string; id: string | null }> = [];
   let pendingIndex: string | null = null;
+  let pendingId: string | null = null;
   let cursor: HTMLElement | null = element;
   while (cursor) {
     const field = cursor.getAttribute("data-dev-content-list");
     const idx = cursor.getAttribute("data-dev-content-list-index");
+    const itemId = cursor.getAttribute("data-dev-item-id");
     if (field !== null) {
       // Index = own idx if present, else the nearest pending index from below.
       const resolvedIndex = idx ?? pendingIndex;
       if (resolvedIndex !== null) {
-        pairs.push({ field, index: resolvedIndex });
+        pairs.push({ field, index: resolvedIndex, id: itemId ?? pendingId });
         pendingIndex = null;
+        pendingId = null;
       }
-    } else if (idx !== null && pendingIndex === null) {
-      // No field on this element — stash the index for the next field above.
-      pendingIndex = idx;
+    } else {
+      if (idx !== null && pendingIndex === null) {
+        // No field on this element — stash the index for the next field above.
+        pendingIndex = idx;
+      }
+      if (itemId !== null && pendingId === null) {
+        // No field here — stash the item id for the next field above.
+        pendingId = itemId;
+      }
     }
     cursor = cursor.parentElement;
   }
 
   // Substitute each [] left→right. The prefix before the i-th [] is the
   // template-form list path (e.g. "menu.categories[].items"); match it to a
-  // collected pair's field and splice in that pair's index.
+  // collected pair's field and splice in that pair's id-anchored ref (@id) when
+  // present, else its positional index.
   const segments = template.split("[]");
   let result = segments[0];
   for (let i = 1; i < segments.length; i++) {
     const prefix = segments.slice(0, i).join("[]");
     const pair = pairs.find((p) => p.field === prefix);
     if (!pair) return null;
-    result += `[${pair.index}]${segments[i]}`;
+    const ref = pair.id !== null ? `@${pair.id}` : pair.index;
+    result += `[${ref}]${segments[i]}`;
   }
 
   return { key: result, kind };

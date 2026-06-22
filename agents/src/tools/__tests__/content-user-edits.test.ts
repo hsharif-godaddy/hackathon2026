@@ -6,6 +6,7 @@ import {
   USER_EDITS_FILE,
   readUserLocks,
   recordUserLock,
+  writeUserLocks,
 } from '../content-user-edits.js';
 
 async function mkTempContentDir(): Promise<string> {
@@ -101,6 +102,40 @@ describe('recordUserLock', () => {
     const spy = vi.spyOn(fsUtils, 'atomicWrite').mockRejectedValueOnce(new Error('disk full'));
     try {
       await expect(recordUserLock(dir, 'site.brand')).resolves.toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe('writeUserLocks', () => {
+  let dir: string;
+  beforeEach(async () => { dir = await mkTempContentDir(); });
+  afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('writes sorted deduped keys and returns true', async () => {
+    const result = await writeUserLocks(dir, ['root.items[1].price', 'root.items[0].name', 'root.items[0].name']);
+    expect(result).toBe(true);
+    expect(await readLockFile(dir)).toEqual({ lockedKeys: ['root.items[0].name', 'root.items[1].price'] });
+  });
+
+  it('overwrites an existing lock file with the new set', async () => {
+    await writeUserLocks(dir, ['root.items[@a].price']);
+    await writeUserLocks(dir, ['root.items[@b].price']);
+    expect(await readUserLocks(dir)).toEqual(['root.items[@b].price']);
+  });
+
+  it('writes pretty JSON with a trailing newline', async () => {
+    await writeUserLocks(dir, ['site.brand']);
+    const raw = await fs.readFile(path.join(dir, USER_EDITS_FILE), 'utf8');
+    expect(raw).toBe('{\n  "lockedKeys": [\n    "site.brand"\n  ]\n}\n');
+  });
+
+  it('returns false (and does not throw) when atomicWrite rejects', async () => {
+    const fsUtils = await import('../../utils/fs-utils.js');
+    const spy = vi.spyOn(fsUtils, 'atomicWrite').mockRejectedValueOnce(new Error('disk full'));
+    try {
+      await expect(writeUserLocks(dir, ['site.brand'])).resolves.toBe(false);
     } finally {
       spy.mockRestore();
     }

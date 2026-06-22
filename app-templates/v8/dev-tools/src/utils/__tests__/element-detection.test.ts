@@ -389,6 +389,23 @@ describe('element-detection', () => {
       expect(resolveContentKey(priceEl)).toEqual({ key: 'products[2].price', kind: 'copy' });
     });
 
+    it('stashes data-dev-item-id from a field-less child onto the field-bearing wrapper above (split layout → [@id])', () => {
+      // Manual <ContentListContext> layout: field on the wrapper, index+item-id on
+      // the field-less child. Exercises the pendingId stash branch — the id is held
+      // until the next field-bearing ancestor, then applied as the @id ref.
+      const root = document.createElement('div');
+      // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
+      root.innerHTML = `
+        <div data-dev-content-list="products">
+          <article data-dev-content-list-index="2" data-dev-item-id="gizmo">
+            <h3 data-dev-content-key-template="products[].name">Gizmo</h3>
+          </article>
+        </div>
+      `;
+      const nameEl = root.querySelector('h3') as HTMLElement;
+      expect(resolveContentKey(nameEl)).toEqual({ key: 'products[@gizmo].name', kind: 'copy' });
+    });
+
     it('resolves a 2-level nested key using self-describing layout (field+index on same element)', () => {
       const root = document.createElement('div');
       // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
@@ -492,6 +509,62 @@ describe('element-detection', () => {
       `;
       const span = root.querySelector('span') as HTMLElement;
       expect(resolveContentKey(span)).toEqual({ key: 'a.b[0].c[1].d[2].e', kind: 'copy' });
+    });
+
+    it('substitutes [@id] when data-dev-item-id is present on the list element', () => {
+      const root = document.createElement('div');
+      // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
+      root.innerHTML = `
+        <div data-dev-content-list="items" data-dev-content-list-index="0" data-dev-item-id="burger">
+          <span data-dev-content-key-template="items[].price">$9.99</span>
+        </div>
+      `;
+      const span = root.querySelector('span') as HTMLElement;
+      expect(resolveContentKey(span)).toEqual({ key: 'items[@burger].price', kind: 'copy' });
+    });
+
+    it('falls back to [index] when data-dev-item-id is absent', () => {
+      const root = document.createElement('div');
+      // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
+      root.innerHTML = `
+        <div data-dev-content-list="items" data-dev-content-list-index="0">
+          <span data-dev-content-key-template="items[].price">$9.99</span>
+        </div>
+      `;
+      const span = root.querySelector('span') as HTMLElement;
+      expect(resolveContentKey(span)).toEqual({ key: 'items[0].price', kind: 'copy' });
+    });
+
+    it('resolves a 2-level nested key with outer id-anchored and inner positional', () => {
+      // Mixed per-level resolution: outer level uses @id, inner level uses index.
+      // Verifies that data-dev-item-id preference is applied independently at each level.
+      const root = document.createElement('div');
+      // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
+      root.innerHTML = `
+        <div data-dev-content-list="menu" data-dev-content-list-index="0" data-dev-item-id="burgers">
+          <div data-dev-content-list="menu[].items" data-dev-content-list-index="2">
+            <span data-dev-content-key-template="menu[].items[].name">Cheese</span>
+          </div>
+        </div>
+      `;
+      const span = root.querySelector('span') as HTMLElement;
+      expect(resolveContentKey(span)).toEqual({ key: 'menu[@burgers].items[2].name', kind: 'copy' });
+    });
+
+    it('resolves a 2-level nested key with inner id-anchored and outer positional', () => {
+      // Mixed per-level resolution: outer level uses index, inner level uses @id.
+      // Verifies that data-dev-item-id preference is applied independently at each level.
+      const root = document.createElement('div');
+      // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method, godaddy.js.jquery.security.frameworks.dom-text-interpreted-as-html
+      root.innerHTML = `
+        <div data-dev-content-list="menu" data-dev-content-list-index="0">
+          <div data-dev-content-list="menu[].items" data-dev-content-list-index="2" data-dev-item-id="cheeseburger">
+            <span data-dev-content-key-template="menu[].items[].name">Cheese</span>
+          </div>
+        </div>
+      `;
+      const span = root.querySelector('span') as HTMLElement;
+      expect(resolveContentKey(span)).toEqual({ key: 'menu[0].items[@cheeseburger].name', kind: 'copy' });
     });
   });
 

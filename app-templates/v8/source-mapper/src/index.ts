@@ -248,6 +248,10 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
       cb.params.push(t.identifier(idxParamName));
     }
 
+    const firstParam = cb.params[0];
+    const itemParamName =
+      firstParam !== undefined && t.isIdentifier(firstParam) ? firstParam.name : null;
+
     for (const root of roots) {
       const attrs = root.openingElement.attributes;
       // Guard: skip if already carries data-dev-content-list (e.g. manual ContentListContext)
@@ -259,6 +263,19 @@ export default function jsxSourceMapper(babel: { types: typeof types }): PluginO
           t.jsxExpressionContainer(t.identifier(idxParamName)),
         ),
       );
+      // Defensive: analyzeMapCall already gated on `t.isIdentifier(first)`, so
+      // itemParamName should always be non-null here. But injectListAttrs is safe
+      // if that invariant ever loosens (e.g., a new call site, a relaxed gate).
+      if (itemParamName !== null && !hasAttr(attrs, 'data-dev-item-id')) {
+        attrs.push(
+          t.jsxAttribute(
+            t.jsxIdentifier('data-dev-item-id'),
+            t.jsxExpressionContainer(
+              t.memberExpression(t.identifier(itemParamName), t.identifier('id')),
+            ),
+          ),
+        );
+      }
     }
   }
 

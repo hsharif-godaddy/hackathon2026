@@ -1,12 +1,16 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { nanoid } from 'nanoid';
 import { parse as babelParse } from '@babel/parser';
 import babelGenerate from '@babel/generator';
 import * as t from '@babel/types';
 import { atomicWrite, fileExists } from '../utils/fs-utils.js';
 import { getErrorMessage } from '../utils/error.js';
-import { parseContentKey } from './content-editor.js';
-import { readUserLocks } from './content-user-edits.js';
+import { parseContentKey, isIdRef, type ContentPathSegment } from './content-editor.js';
+import { readUserLocks, writeUserLocks } from './content-user-edits.js';
+import { Logger } from '../logging/index.js';
+
+const logger = Logger.create({ component: 'content-scaffold' });
 
 // Babel generator's default-export has a CJS interop quirk under ESM bundlers.
 
@@ -105,6 +109,117 @@ export function normalizeContent(content: unknown): unknown {
   return content;
 }
 
+function isPlainObjectValue(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Mint a stable, url-safe, collision-resistant item id. Uses the repo-standard
+ * `nanoid` (default 21-char alphabet is `[A-Za-z0-9_-]`, matching the `[@id]`
+ * lock-key charset) so a minted id is always a valid id-anchored path segment.
+ */
+function mintItemId(): string {
+  return nanoid();
+}
+
+/**
+ * Walk a JSON-compatible value in place. Every object that is an element of an
+ * array gets a string `id` minted if it lacks one. Existing ids are preserved.
+ * Idempotent. This is the single enforcement point for collection identity —
+ * generation and lazy migration both flow through it.
+ */
+export function ensureCollectionIds(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const el of value) {
+      if (isPlainObjectValue(el) && typeof el.id !== 'string') {
+        el.id = mintItemId();
+      }
+      ensureCollectionIds(el);
+    }
+    return;
+  }
+  if (isPlainObjectValue(value)) {
+    for (const v of Object.values(value)) ensureCollectionIds(v);
+  }
+}
+
+/**
+ * Before minting, let id-less incoming collection items adopt the existing
+ * item's id at the same position, so identity is stable across re-scaffolds
+ * (a user's inline edit stays anchored to its item even when the agent
+ * regenerates the page without echoing ids). Items beyond the existing
+ * array's length, or whose existing counterpart has no id, are left for
+ * `ensureCollectionIds` to mint fresh. Mutates `incoming` in place; pure
+ * otherwise; never throws.
+ *
+ * INVARIANT: adoption is strictly by position, so it is only correct while
+ * `incoming` preserves the existing item order. If `incoming` inserts/removes/
+ * reorders items, `incoming[i]` would adopt the wrong neighbor's id and a lock
+ * could migrate to the wrong item. This slice has no reorder UI and the agent
+ * is prompted to echo ids back on re-scaffold, so order is preserved in
+ * practice — but that is a prompt-enforced contract, not a code guarantee. The
+ * S4b/c mutation path (which DOES reorder) must reconcile by id, not position.
+ */
+export function inheritExistingIds(existing: unknown, incoming: unknown): void {
+  if (Array.isArray(existing) && Array.isArray(incoming)) {
+    for (let i = 0; i < incoming.length; i++) {
+      // by-position pairing — safe only when incoming preserves existing order
+      const inc = incoming[i];
+      const exist = existing[i];
+      if (isPlainObjectValue(inc) && typeof inc.id !== 'string') {
+        if (isPlainObjectValue(exist) && typeof exist.id === 'string') {
+          inc.id = exist.id;
+        }
+      }
+      // recurse pairwise (exist may be undefined → recursion no-ops)
+      inheritExistingIds(exist, inc);
+    }
+    return;
+  }
+  if (isPlainObjectValue(existing) && isPlainObjectValue(incoming)) {
+    for (const [k, v] of Object.entries(incoming)) {
+      inheritExistingIds(existing[k], v);
+    }
+  }
+}
+
+/**
+ * Defense-in-depth check that every array-of-objects element carries a unique
+ * string `id`. Since `ensureCollectionIds` mints an id for every id-less
+ * element, this should never report issues — a non-empty result signals a
+ * regression in minting (or a direct JSON write that bypassed the tool). Pure;
+ * never throws.
+ */
+export function validateCollectionIds(value: unknown, pathPrefix: string = ''): string[] {
+  const issues: string[] = [];
+  if (Array.isArray(value)) {
+    const objects = value.filter(isPlainObjectValue);
+    if (objects.length > 0) {
+      const seen = new Set<string>();
+      value.forEach((el, i) => {
+        if (!isPlainObjectValue(el)) return;
+        const id = el.id;
+        const at = `${pathPrefix}[${i}]`;
+        if (typeof id !== 'string') {
+          issues.push(`item at ${at} is missing a string id`);
+        } else if (seen.has(id)) {
+          issues.push(`duplicate id "${id}" at ${at}`);
+        } else {
+          seen.add(id);
+        }
+      });
+    }
+    value.forEach((el, i) => issues.push(...validateCollectionIds(el, `${pathPrefix}[${i}]`)));
+    return issues;
+  }
+  if (isPlainObjectValue(value)) {
+    for (const [k, v] of Object.entries(value)) {
+      issues.push(...validateCollectionIds(v, pathPrefix ? `${pathPrefix}.${k}` : k));
+    }
+  }
+  return issues;
+}
+
 export async function scaffoldContent(
   contentDir: string,
   req: ScaffoldRequest,
@@ -131,6 +246,10 @@ export async function scaffoldContent(
         error: { code: 'read-failed', message: `could not read existing content: ${getErrorMessage(err)}` },
       };
     }
+    // Inherit ids from existing items before minting so re-scaffolds without
+    // ids don't break id-anchored locks.
+    inheritExistingIds(existing, incoming);
+    ensureCollectionIds(incoming);
     let lockedKeys: string[];
     try {
       lockedKeys = await readUserLocks(contentDir);
@@ -142,7 +261,25 @@ export async function scaffoldContent(
         error: { code: 'read-failed', message: `could not read user locks: ${getErrorMessage(err)}` },
       };
     }
+    const rekeyed = rekeyPositionalLocks(existing, lockedKeys, key);
+    if (rekeyed.some((k, i) => k !== lockedKeys[i])) {
+      // Best-effort (matches recordUserLock): writeUserLocks logs + returns false
+      // on failure, which we intentionally ignore. In-memory lockedKeys advances
+      // to the rekeyed form for this merge even if the on-disk file kept the old
+      // positional keys; the next scaffold self-heals, and there is no reorder
+      // path this slice that would make a stale on-disk key dangerous.
+      await writeUserLocks(contentDir, rekeyed); // bulk overwrite; lazy migration
+      lockedKeys = rekeyed;
+    }
     finalContent = applyLocks(existing, incoming, lockedKeys, key);
+  } else {
+    ensureCollectionIds(incoming);
+  }
+
+  ensureCollectionIds(finalContent); // merge may have re-introduced id-less defaults
+  const idIssues = validateCollectionIds(finalContent);
+  if (idIssues.length > 0) {
+    logger.warn('content.scaffold.idValidation.failed', { key, issueCount: idIssues.length, issues: idIssues.slice(0, 5) });
   }
 
   let zodCode: string;
@@ -202,6 +339,46 @@ export async function scaffoldContent(
   };
 }
 
+function stringifyKey(rootSegment: string, segments: ContentPathSegment[]): string {
+  let out = rootSegment;
+  for (const seg of segments) {
+    if (typeof seg === 'number') out += `[${seg}]`;
+    else if (isIdRef(seg)) out += `[@${seg.id}]`;
+    else out += `.${seg}`;
+  }
+  return out;
+}
+
+/**
+ * For each lock under `rootKey`, rewrite any positional `[N]` segment that
+ * points at an array element carrying a string `id` into an `[@id]` segment,
+ * using ids present in `existing`. Locks whose element has no id stay
+ * positional (lazy migration: they upgrade on the next touch once ids exist).
+ */
+export function rekeyPositionalLocks(
+  existing: unknown,
+  lockedKeys: string[],
+  rootKey: string,
+): string[] {
+  return lockedKeys.map((lockedKey) => {
+    const parsed = parseContentKey(lockedKey);
+    if ('code' in parsed || parsed.rootSegment !== rootKey) return lockedKey;
+    const rekeyed: ContentPathSegment[] = [];
+    for (let i = 0; i < parsed.path.length; i++) {
+      const seg = parsed.path[i]!;
+      if (typeof seg === 'number') {
+        const container = getAtPath(existing, parsed.path.slice(0, i));
+        const el = Array.isArray(container) ? container[seg] : undefined;
+        const id = el && typeof el === 'object' ? (el as { id?: unknown }).id : undefined;
+        rekeyed.push(typeof id === 'string' ? { id } : seg);
+      } else {
+        rekeyed.push(seg);
+      }
+    }
+    return stringifyKey(parsed.rootSegment, rekeyed);
+  });
+}
+
 /**
  * Replace-except-user-locked merge. Returns a deep clone of `incoming` (the
  * agent's new content = the default), then for each locked key whose root
@@ -210,8 +387,9 @@ export async function scaffoldContent(
  * value there. If `incoming` no longer has the path (restructure), the lock is
  * moot and dropped silently.
  *
- * Pure and defensive: integer bracket indices only; reserved segments
- * (`__proto__`/`constructor`/`prototype`) are rejected by the key parser.
+ * Pure and defensive: bracket segments are integer indices (`[N]`) or
+ * id-anchored refs (`[@id]`, matched against array elements by `.id`); reserved
+ * segments (`__proto__`/`constructor`/`prototype`) are rejected by the key parser.
  * Never throws on a normal value — on anything unexpected it falls back to
  * `incoming` (replace).
  */
@@ -229,7 +407,12 @@ export function applyLocks(
     if (parsed.path.length === 0) continue; // whole-root lock is moot here
     const existingValue = getAtPath(existing, parsed.path);
     if (existingValue === undefined) continue; // user value gone → nothing to preserve
-    if (getAtPath(result, parsed.path) === undefined) continue; // restructured away → drop
+    // Lock target absent in incoming → the user's locked edit is dropped, BY DESIGN:
+    // the path was restructured away, or (for an [@id] lock) no incoming item
+    // carries that id. With ensureCollectionIds running on every scaffold plus the
+    // post-merge pass, the id-orphan case shouldn't arise — but if it does, the edit
+    // is recoverable from git, so dropping beats mis-applying it to the wrong item.
+    if (getAtPath(result, parsed.path) === undefined) continue;
     setAtPath(result, parsed.path, existingValue);
   }
   return result;
@@ -239,12 +422,19 @@ export function applyLocks(
 // here too so neither helper can be tricked by values slipping through.
 const FORBIDDEN_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype']);
 
-/** Read a value at a (string|number) path, or `undefined` if any segment is absent. */
-function getAtPath(value: unknown, segments: (string | number)[]): unknown {
+/** Read a value at a ContentPathSegment path, or `undefined` if any segment is absent. */
+function getAtPath(value: unknown, segments: ContentPathSegment[]): unknown {
   let current: unknown = value;
   for (const seg of segments) {
     if (current === null || typeof current !== 'object') return undefined;
-    if (typeof seg === 'number') {
+    if (isIdRef(seg)) {
+      if (!Array.isArray(current)) return undefined;
+      const found = current.find(
+        (el) => el !== null && typeof el === 'object' && (el as { id?: unknown }).id === seg.id,
+      );
+      if (found === undefined) return undefined;
+      current = found;
+    } else if (typeof seg === 'number') {
       if (!Array.isArray(current) || seg < 0 || seg >= current.length) return undefined;
       current = current[seg];
     } else {
@@ -259,16 +449,23 @@ function getAtPath(value: unknown, segments: (string | number)[]): unknown {
 }
 
 /**
- * Set a value at a (string|number) path on an existing structure. Assumes the
+ * Set a value at a ContentPathSegment path on an existing structure. Assumes the
  * path already exists in `target` (callers guard with getAtPath). No-ops if a
  * parent segment is missing or mistyped, so it never throws on a normal value.
  */
-function setAtPath(target: unknown, segments: (string | number)[], value: unknown): void {
+function setAtPath(target: unknown, segments: ContentPathSegment[], value: unknown): void {
   let current: unknown = target;
   for (let i = 0; i < segments.length - 1; i++) {
     const seg = segments[i]!;
     if (current === null || typeof current !== 'object') return;
-    if (typeof seg === 'number') {
+    if (isIdRef(seg)) {
+      if (!Array.isArray(current)) return;
+      const found = current.find(
+        (el) => el !== null && typeof el === 'object' && (el as { id?: unknown }).id === seg.id,
+      );
+      if (found === undefined) return;
+      current = found;
+    } else if (typeof seg === 'number') {
       if (!Array.isArray(current) || seg < 0 || seg >= current.length) return;
       current = current[seg];
     } else {
@@ -280,7 +477,13 @@ function setAtPath(target: unknown, segments: (string | number)[], value: unknow
   }
   const last = segments[segments.length - 1]!;
   if (current === null || typeof current !== 'object') return;
-  if (typeof last === 'number') {
+  if (isIdRef(last)) {
+    if (!Array.isArray(current)) return;
+    const idx = current.findIndex(
+      (el) => el !== null && typeof el === 'object' && (el as { id?: unknown }).id === last.id,
+    );
+    if (idx !== -1) current[idx] = value;
+  } else if (typeof last === 'number') {
     if (Array.isArray(current) && last >= 0 && last < current.length) current[last] = value;
   } else {
     if (!Array.isArray(current) && !FORBIDDEN_SEGMENTS.has(last)) {
@@ -331,7 +534,14 @@ export function inferZodSchema(value: unknown): string {
   if (typeof value === 'boolean') return 'z.boolean()';
   if (Array.isArray(value)) {
     if (value.length === 0) return 'z.array(z.unknown())';
-    return `z.array(${inferZodSchema(value[0])})`;
+    const first = value[0];
+    if (isPlainObjectValue(first) && !Object.prototype.hasOwnProperty.call(first, 'id')) {
+      const fields = ['"id": z.string()', ...Object.entries(first).map(
+        ([k, v]) => `${JSON.stringify(k)}: ${inferZodSchema(v)}`,
+      )];
+      return `z.array(z.object({ ${fields.join(', ')} }))`;
+    }
+    return `z.array(${inferZodSchema(first)})`;
   }
   if (typeof value === 'object') {
     const entries = Object.entries(value as Record<string, unknown>);

@@ -83,3 +83,16 @@ export async function recordUserLock(contentDir: string, contentKey: string): Pr
     return false;
   }
 }
+
+/** Overwrite the lock file with `lockedKeys` (sorted, deduped). Best-effort. */
+export async function writeUserLocks(contentDir: string, lockedKeys: string[]): Promise<boolean> {
+  try {
+    const sorted = [...new Set(lockedKeys)].sort();
+    const lockFile = path.join(contentDir, USER_EDITS_FILE);
+    await atomicWrite(lockFile, JSON.stringify({ lockedKeys: sorted }, null, 2) + '\n');
+    return true;
+  } catch (err) {
+    logger.warn('content_userEdits.write.failed', { contentDir, error: getErrorMessage(err) });
+    return false;
+  }
+}

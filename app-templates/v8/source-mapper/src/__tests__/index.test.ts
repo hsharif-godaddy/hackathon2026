@@ -984,4 +984,25 @@ describe('jsxSourceMapper — per-item list instrumentation (gap 2b)', () => {
     expect(output).toContain('data-dev-content-list="products"');
     expect(output).toContain('data-dev-content-list-index={');
   });
+
+  it('injects data-dev-item-id from an identifier map param', () => {
+    const out = transform(`
+      import { home } from 'virtual:content';
+      export default () => <>{home.items.map((item) => <div>{item.name}</div>)}</>;
+    `);
+    expect(out).toContain('data-dev-item-id={item.id}');
+  });
+
+  it('does not instrument a .map with a destructured param (analyzeMapCall gates it upstream)', () => {
+    // When the first param is destructured ({name}), analyzeMapCall returns null
+    // at its `if (!t.isIdentifier(first)) return null;` guard, so the map frame
+    // is never created and injectListAttrs never runs. The whole .map is uninstrumented.
+    // This proves the guard works: no frame → no list attrs → no item-id.
+    const out = transform(`
+      import { home } from 'virtual:content';
+      export default () => <>{home.items.map(({name}) => <div>{name}</div>)}</>;
+    `);
+    expect(out).not.toContain('data-dev-item-id');
+    expect(out).not.toContain('data-dev-content-list');
+  });
 });

@@ -9,6 +9,14 @@ const logger = Logger.create({ component: 'content-editor' });
 
 export type ContentKind = 'copy' | 'richText';
 
+export type ContentPathSegment = string | number | { id: string };
+
+export function isIdRef(seg: ContentPathSegment): seg is { id: string } {
+  return typeof seg === 'object' && seg !== null && typeof (seg as { id: unknown }).id === 'string';
+}
+
+const ID_CHARSET = /^[A-Za-z0-9_-]+$/;
+
 export interface ContentEditRequest {
   contentKey: string;
   kind: ContentKind;
@@ -34,7 +42,7 @@ export interface ContentEditError {
 export interface ContentEditSuccess {
   ok: true;
   file: string;
-  contentPath: (string | number)[];
+  contentPath: ContentPathSegment[];
 }
 
 export type ContentEditResult = ContentEditSuccess | { ok: false; error: ContentEditError };
@@ -43,13 +51,14 @@ export type ContentEditResult = ContentEditSuccess | { ok: false; error: Content
  * Parse a content key such as `home.hero.title` or `products[3].image.alt`
  * into the root segment and the remaining path.
  *
- * Only supports direct dotted access and non-negative integer list indices.
+ * Supports direct dotted access, non-negative integer list indices (`[3]`),
+ * and collection-item id references (`[@id]`).
  * Returns a ContentEditError if the key is malformed or any segment matches
  * a reserved name (__proto__, constructor, prototype).
  */
 export function parseContentKey(
   key: string,
-): { rootSegment: string; path: (string | number)[] } | ContentEditError {
+): { rootSegment: string; path: ContentPathSegment[] } | ContentEditError {
   if (typeof key !== 'string' || key.length === 0) {
     return { code: 'invalid-key', message: 'content key must be a non-empty string' };
   }
@@ -57,7 +66,7 @@ export function parseContentKey(
     return { code: 'invalid-key', message: `trailing '.' in "${key}"` };
   }
 
-  const segments: (string | number)[] = [];
+  const segments: ContentPathSegment[] = [];
   let i = 0;
   let current = '';
 
@@ -80,10 +89,17 @@ export function parseContentKey(
         return { code: 'invalid-key', message: `unclosed '[' in "${key}"` };
       }
       const inside = key.slice(i + 1, end);
-      if (!/^\d+$/.test(inside)) {
-        return { code: 'invalid-key', message: `non-integer index "[${inside}]" in "${key}"` };
+      if (inside.startsWith('@')) {
+        const id = inside.slice(1);
+        if (!ID_CHARSET.test(id)) {
+          return { code: 'invalid-key', message: `invalid id "[${inside}]" in "${key}"` };
+        }
+        segments.push({ id });
+      } else if (/^\d+$/.test(inside)) {
+        segments.push(Number(inside));
+      } else {
+        return { code: 'invalid-key', message: `invalid index "[${inside}]" in "${key}"` };
       }
-      segments.push(Number(inside));
       i = end + 1;
       if (key[i] === '.') i++;
     } else if (/[a-zA-Z0-9_]/.test(ch)) {
@@ -165,6 +181,13 @@ function coerceToExistingType(
   };
 }
 
+/** Find the index of the array element whose `.id` equals `ref.id`, or -1. */
+function indexOfId(arr: unknown[], ref: { id: string }): number {
+  return arr.findIndex(
+    (el) => isPlainObject(el) && (el as { id?: unknown }).id === ref.id,
+  );
+}
+
 /**
  * Set a value at `path` within `doc`, in place. Returns an error if any
  * intermediate segment is missing or has the wrong type (no autovivification —
@@ -172,7 +195,7 @@ function coerceToExistingType(
  */
 export function setAtPath(
   doc: unknown,
-  pathSegments: (string | number)[],
+  pathSegments: ContentPathSegment[],
   value: unknown,
 ): ContentEditError | null {
   if (pathSegments.length === 0) {
@@ -192,7 +215,18 @@ export function setAtPath(
   }
   const last = pathSegments[pathSegments.length - 1]!;
   const parentPath = describePath(pathSegments.slice(0, -1));
-  if (typeof last === 'number') {
+  if (isIdRef(last)) {
+    if (!Array.isArray(cursor)) {
+      return { code: 'missing-path', message: `expected array at ${parentPath}` };
+    }
+    const idx = indexOfId(cursor, last);
+    if (idx === -1) {
+      return { code: 'missing-path', message: `no item with id "${last.id}" at ${parentPath}` };
+    }
+    const coerced = coerceToExistingType(value, cursor[idx]);
+    if ('code' in coerced) return coerced;
+    cursor[idx] = coerced.value;
+  } else if (typeof last === 'number') {
     if (!Array.isArray(cursor)) {
       return { code: 'missing-path', message: `expected array at ${parentPath}` };
     }
@@ -287,7 +321,12 @@ export async function editContent(
   return { ok: true, file, contentPath: parsed.path };
 }
 
-function navigate(cursor: unknown, seg: string | number): unknown {
+function navigate(cursor: unknown, seg: ContentPathSegment): unknown {
+  if (isIdRef(seg)) {
+    if (!Array.isArray(cursor)) return undefined;
+    const idx = indexOfId(cursor, seg);
+    return idx === -1 ? undefined : cursor[idx];
+  }
   if (typeof seg === 'number') {
     return Array.isArray(cursor) ? cursor[seg] : undefined;
   }
@@ -301,7 +340,10 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-function describePath(segments: (string | number)[]): string {
+function describePath(segments: ContentPathSegment[]): string {
   if (segments.length === 0) return '<root>';
-  return segments.map((s) => (typeof s === 'number' ? `[${s}]` : `.${s}`)).join('').replace(/^\./, '');
+  return segments
+    .map((s) => (typeof s === 'number' ? `[${s}]` : isIdRef(s) ? `[@${s.id}]` : `.${s}`))
+    .join('')
+    .replace(/^\./, '');
 }

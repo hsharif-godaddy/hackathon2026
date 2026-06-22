@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {
   parseContentKey,
+  isIdRef,
   setAtPath,
   resolveContentFile,
   editContent,
@@ -286,6 +287,36 @@ describe('editContent', () => {
     expect(read[0].name).toBe('A');
   });
 
+  it('edits a nested leaf via id-anchored [@id] keys end-to-end and records the id lock', async () => {
+    const file = await writeJson(dir, 'data/menu.json', {
+      categories: [
+        { id: 'mains', items: [{ id: 'burger', price: '10' }, { id: 'fries', price: '4' }] },
+      ],
+    });
+    const result = await editContent(dir, {
+      contentKey: 'menu.categories[@mains].items[@burger].price',
+      kind: 'copy',
+      value: '12',
+    });
+    expect(result.ok).toBe(true);
+    const read = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(read.categories[0].items[0].price).toBe('12'); // burger, reached via two intermediate id-refs
+    expect(read.categories[0].items[1].price).toBe('4'); // fries untouched
+    // recordUserLock persists the id-anchored key verbatim
+    const locks = JSON.parse(await fs.readFile(path.join(dir, '.user-edits.json'), 'utf8'));
+    expect(locks.lockedKeys).toContain('menu.categories[@mains].items[@burger].price');
+  });
+
+  it('returns missing-path when an [@id] segment matches no item', async () => {
+    await writeJson(dir, 'data/menu.json', { items: [{ id: 'a', price: '1' }] });
+    const result = await editContent(dir, {
+      contentKey: 'menu.items[@nope].price',
+      kind: 'copy',
+      value: '9',
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: 'missing-path' } });
+  });
+
   it('rejects a missing root with unknown-root', async () => {
     const result = await editContent(dir, {
       contentKey: 'nonexistent.field',
@@ -473,5 +504,84 @@ describe('editContent → scaffoldContent lock round-trip (CP1 read agrees with 
     expect(merged.dishes[0].price).toBe(12.5); // user edit preserved
     expect(merged.dishes[0].name).toBe('Soup');
     expect(merged.dishes[0].spicy).toBe(true); // new field added
+  });
+});
+
+describe('setAtPath id-ref resolution', () => {
+  it('sets a leaf addressed by item id', () => {
+    const doc = { items: [{ id: 'a', price: '1' }, { id: 'b', price: '2' }] };
+    const err = setAtPath(doc, ['items', { id: 'b' }, 'price'], '9');
+    expect(err).toBeNull();
+    expect(doc.items[1].price).toBe('9');
+    expect(doc.items[0].price).toBe('1');
+  });
+
+  it('returns missing-path when no item has the id', () => {
+    const doc = { items: [{ id: 'a', price: '1' }] };
+    const err = setAtPath(doc, ['items', { id: 'zzz' }, 'price'], '9');
+    expect(err?.code).toBe('missing-path');
+    expect(err?.message).toMatch(/zzz/);
+  });
+
+  it('still resolves positional indices unchanged', () => {
+    const doc = { items: [{ price: '1' }] };
+    const err = setAtPath(doc, ['items', 0, 'price'], '5');
+    expect(err).toBeNull();
+    expect(doc.items[0].price).toBe('5');
+  });
+
+  it('returns missing-path when an id-ref parent is not an array', () => {
+    const doc = { x: 'str' };
+    const err = setAtPath(doc, [{ id: 'a' }], 'v');
+    expect(err?.code).toBe('missing-path');
+  });
+});
+
+describe('parseContentKey [@id] segments', () => {
+  it('parses an @id index into an id-ref segment', () => {
+    const r = parseContentKey('menu.items[@burger].price');
+    expect('code' in r).toBe(false);
+    if ('code' in r) return;
+    expect(r.rootSegment).toBe('menu');
+    expect(r.path).toEqual(['items', { id: 'burger' }, 'price']);
+  });
+
+  it('allows base64url id charset (A-Za-z0-9_-)', () => {
+    const r = parseContentKey('data.rows[@aB9_-x].name');
+    if ('code' in r) throw new Error(r.message);
+    expect(r.path).toEqual(['rows', { id: 'aB9_-x' }, 'name']);
+  });
+
+  it('coexists with positional indices in one key', () => {
+    const r = parseContentKey('a.b[0].c[@x].d');
+    if ('code' in r) throw new Error(r.message);
+    expect(r.path).toEqual(['b', 0, 'c', { id: 'x' }, 'd']);
+  });
+
+  it('rejects an empty id (@ with no chars)', () => {
+    const r = parseContentKey('a.b[@].c');
+    expect('code' in r && r.code).toBe('invalid-key');
+  });
+
+  it('rejects an invalid id char', () => {
+    const r = parseContentKey('a.b[@no.dot].c');
+    expect('code' in r && r.code).toBe('invalid-key');
+  });
+
+  it('rejects @id as the root segment', () => {
+    const r = parseContentKey('[@x].foo');
+    expect('code' in r && r.code).toBe('invalid-key');
+  });
+
+  it('parses a path ending in an id-ref', () => {
+    const r = parseContentKey('a[@x]');
+    if ('code' in r) throw new Error(r.message);
+    expect(r.path).toEqual([{ id: 'x' }]);
+  });
+
+  it('isIdRef discriminates segment kinds', () => {
+    expect(isIdRef({ id: 'x' })).toBe(true);
+    expect(isIdRef(3)).toBe(false);
+    expect(isIdRef('x')).toBe(false);
   });
 });

@@ -11,6 +11,10 @@ import {
   ensureContentPluginRegistered,
   applyLocks,
   normalizeContent,
+  ensureCollectionIds,
+  validateCollectionIds,
+  rekeyPositionalLocks,
+  inheritExistingIds,
 } from '../content-scaffold.js';
 import { readUserLocks } from '../content-user-edits.js';
 import * as contentUserEdits from '../content-user-edits.js';
@@ -122,6 +126,21 @@ describe('inferZodSchema', () => {
 
   it('throws on null nested inside an object', () => {
     expect(() => inferZodSchema({ a: null })).toThrow(/null/);
+  });
+
+  describe('inferZodSchema id requirement', () => {
+    it('adds required id to an object-array element schema lacking it', () => {
+      const code = inferZodSchema({ items: [{ name: 'a' }] });
+      expect(code).toContain('z.array(z.object({');
+      expect(code).toContain('"id": z.string()');
+    });
+    it('does not duplicate id when already present', () => {
+      const code = inferZodSchema({ items: [{ id: 'x', name: 'a' }] });
+      expect(code.match(/"id": z\.string\(\)/g)?.length).toBe(1);
+    });
+    it('leaves primitive arrays unchanged', () => {
+      expect(inferZodSchema({ tags: ['a'] })).toContain('z.array(z.string())');
+    });
   });
 });
 
@@ -327,7 +346,11 @@ describe('scaffoldContent (end-to-end)', () => {
     if (!result.ok) throw new Error(`expected ok, got ${JSON.stringify(result)}`);
 
     const written = JSON.parse(await fs.readFile(result.file, 'utf8'));
-    expect(written).toEqual({ title: 'Menu', items: [{ name: 'Drip', price: '$4' }] });
+    // id is now minted on collection items — check shape, not exact equality
+    expect(written.title).toBe('Menu');
+    expect(written.items).toHaveLength(1);
+    expect(written.items[0]).toMatchObject({ name: 'Drip', price: '$4' });
+    expect(typeof written.items[0].id).toBe('string');
     expect(typeof written).toBe('object');
 
     const schemasSource = await fs.readFile(path.join(contentDir, 'schemas.ts'), 'utf8');
@@ -435,6 +458,21 @@ describe('scaffoldContent (end-to-end)', () => {
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'schemas-shape-unsupported' } });
   });
+
+  it('mints ids on scaffolded collection items', async () => {
+    const dir = await mkTempContent();
+    const res = await scaffoldContent(dir, {
+      kind: 'page',
+      name: 'home',
+      content: { menu: [{ name: 'Soup' }, { name: 'Salad' }] },
+    });
+    expect(res.ok).toBe(true);
+    const written = JSON.parse(await fs.readFile(path.join(dir, 'pages', 'home.json'), 'utf8'));
+    expect(typeof written.menu[0].id).toBe('string');
+    expect(written.menu[0].id).not.toBe(written.menu[1].id);
+    expect(written.menu[0].name).toBe('Soup');
+    expect(written.menu[1].name).toBe('Salad');
+  });
 });
 
 describe('readUserLocks', () => {
@@ -534,6 +572,67 @@ describe('applyLocks', () => {
     const result = applyLocks({ a: 1 }, { a: 2 }, ['home'], 'home');
     // Lock with no sub-path is moot — applyLocks only overrides leaf paths.
     expect(result).toEqual({ a: 2 });
+  });
+});
+
+describe('validateCollectionIds', () => {
+  it('returns [] when every item has a unique id', () => {
+    expect(validateCollectionIds({ items: [{ id: 'a' }, { id: 'b' }] })).toEqual([]);
+  });
+
+  it('flags an item missing an id', () => {
+    const issues = validateCollectionIds({ items: [{ id: 'a' }, { name: 'x' }] });
+    expect(issues.length).toBe(1);
+    expect(issues[0]).toMatch(/missing/i);
+  });
+
+  it('flags duplicate ids in the same array', () => {
+    const issues = validateCollectionIds({ items: [{ id: 'a' }, { id: 'a' }] });
+    expect(issues.length).toBe(1);
+    expect(issues[0]).toMatch(/duplicate/i);
+  });
+});
+
+describe('ensureCollectionIds', () => {
+  it('mints ids for id-less array-of-object elements', () => {
+    const content = { items: [{ name: 'a' }, { name: 'b' }] };
+    ensureCollectionIds(content);
+    expect(typeof content.items[0].id).toBe('string');
+    expect(content.items[0].id).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(content.items[0].id).not.toBe(content.items[1].id);
+  });
+
+  it('preserves existing ids', () => {
+    const content = { items: [{ id: 'keep', name: 'a' }] };
+    ensureCollectionIds(content);
+    expect(content.items[0].id).toBe('keep');
+  });
+
+  it('is idempotent', () => {
+    const content = { items: [{ name: 'a' }] };
+    ensureCollectionIds(content);
+    const first = content.items[0].id;
+    ensureCollectionIds(content);
+    expect(content.items[0].id).toBe(first);
+  });
+
+  it('recurses into nested collections', () => {
+    const content = { cats: [{ name: 'x', items: [{ name: 'y' }] }] };
+    ensureCollectionIds(content);
+    expect(typeof content.cats[0].id).toBe('string');
+    expect(typeof content.cats[0].items[0].id).toBe('string');
+  });
+
+  it('leaves non-array-element objects alone', () => {
+    const content = { hero: { title: 'hi' } };
+    ensureCollectionIds(content);
+    expect('id' in content.hero).toBe(false);
+  });
+
+  it('leaves primitive arrays alone', () => {
+    const content = { tags: ['a', 'b'] };
+    ensureCollectionIds(content);
+    expect(content.tags).toEqual(['a', 'b']);
   });
 });
 
@@ -654,23 +753,63 @@ describe('scaffoldContent (replace-except-user-locked)', () => {
     expect(content).toEqual({ banner: { heading: 'Agent Heading' } });
   });
 
-  it('preserves a nested array-index locked path across a collection re-scaffold', async () => {
-    await scaffoldContent(contentDir, {
+  it('preserves a nested lock when agent re-scaffolds with same item ids (rekey upgrades positional → id-anchored)', async () => {
+    const firstResult = await scaffoldContent(contentDir, {
       kind: 'page',
       name: 'menu',
       content: { dishes: [{ name: 'Pizza', price: 12 }, { name: 'Pasta', price: 9 }] },
     });
+    if (!firstResult.ok) throw new Error('expected ok');
+    // Read back the minted ids so second scaffold can carry them (realistic agent behaviour)
+    const firstContent = JSON.parse(await fs.readFile(firstResult.file, 'utf8'));
+    const pizzaId: string = firstContent.dishes[0].id;
+    const pastaId: string = firstContent.dishes[1].id;
     await writeLocks(['menu.dishes[0].price']);
 
+    // Agent re-scaffolds preserving the existing ids (so rekey can track them)
     const result = await scaffoldContent(contentDir, {
       kind: 'page',
       name: 'menu',
-      content: { dishes: [{ name: 'Pizza', price: 20 }, { name: 'Pasta', price: 11 }] },
+      content: { dishes: [{ id: pizzaId, name: 'Pizza', price: 20 }, { id: pastaId, name: 'Pasta', price: 11 }] },
     });
     if (!result.ok) throw new Error('expected ok');
 
     const content = JSON.parse(await fs.readFile(result.file, 'utf8'));
-    expect(content).toEqual({ dishes: [{ name: 'Pizza', price: 12 }, { name: 'Pasta', price: 11 }] });
+    // positional lock was upgraded to [@pizzaId].price; that id exists in incoming → locked price preserved
+    expect(content).toMatchObject({ dishes: [{ name: 'Pizza', price: 12 }, { name: 'Pasta', price: 11 }] });
+  });
+
+  it('a locked edit follows its item by id across an INSERT (headline behavior; agent gives every item a stable id)', async () => {
+    // The headline S4 guarantee, previously live-verify only: a user's locked
+    // edit stays on its item when the list grows. This is the realistic /
+    // prompt-enforced shape the live-verify exercised — the agent re-scaffolds
+    // giving EVERY item a stable id (echoing existing ones, fresh for the new
+    // one). NOTE: an id-LESS re-scaffold that inserts would NOT survive — the
+    // by-position inheritExistingIds (see its INVARIANT) would let the inserted
+    // item adopt the moved item's id and migrate the lock. That boundary is the
+    // reason the agent is prompted to echo ids; S4b/c will reconcile by id.
+    const first = await scaffoldContent(contentDir, {
+      kind: 'page',
+      name: 'menu',
+      content: { dishes: [{ name: 'Pizza', price: 12 }] },
+    });
+    if (!first.ok) throw new Error('expected ok');
+    const pizzaId: string = JSON.parse(await fs.readFile(first.file, 'utf8')).dishes[0].id;
+    await writeLocks(['menu.dishes[0].price']);
+
+    // Agent re-scaffolds: Soup inserted at the front (its own fresh id), Pizza
+    // echoes its existing id and is now at index 1, regenerated price 20.
+    const result = await scaffoldContent(contentDir, {
+      kind: 'page',
+      name: 'menu',
+      content: { dishes: [{ id: 'soup-1', name: 'Soup', price: 5 }, { id: pizzaId, name: 'Pizza', price: 20 }] },
+    });
+    if (!result.ok) throw new Error('expected ok');
+
+    const content = JSON.parse(await fs.readFile(result.file, 'utf8'));
+    expect(content.dishes[0].name).toBe('Soup'); // inserted item, untouched
+    expect(content.dishes[1].name).toBe('Pizza');
+    expect(content.dishes[1].price).toBe(12); // lock followed Pizza by id to its NEW slot, not slot 0
   });
 
   it('fails safe (read-failed) without overwriting when reading user locks throws on an existing file', async () => {
@@ -711,5 +850,139 @@ describe('scaffoldContent (replace-except-user-locked)', () => {
 
     const content = JSON.parse(await fs.readFile(result.file, 'utf8'));
     expect(content).toEqual({ hero: { title: 'Agent Title' } });
+  });
+});
+
+describe('applyLocks id-anchored keys', () => {
+  it('preserves a user value by item id across a reorder', () => {
+    const existing = { items: [{ id: 'a', price: '9' }, { id: 'b', price: '2' }] };
+    // incoming has the SAME items in a DIFFERENT order with default prices
+    const incoming = { items: [{ id: 'b', price: '2' }, { id: 'a', price: '1' }] };
+    const result = applyLocks(existing, incoming, ['root.items[@a].price'], 'root') as typeof existing;
+    const a = result.items.find((i) => i.id === 'a')!;
+    expect(a.price).toBe('9'); // followed the id, not the position
+  });
+
+  it('drops an id-anchored lock whose id is gone', () => {
+    const existing = { items: [{ id: 'a', price: '9' }] };
+    const incoming = { items: [{ id: 'b', price: '1' }] };
+    const result = applyLocks(existing, incoming, ['root.items[@a].price'], 'root') as typeof existing;
+    expect(result.items[0].price).toBe('1'); // lock dropped, default kept
+  });
+
+  it('still honors positional locks', () => {
+    const existing = { items: [{ price: '9' }] };
+    const incoming = { items: [{ price: '1' }] };
+    const result = applyLocks(existing, incoming, ['root.items[0].price'], 'root') as typeof existing;
+    expect(result.items[0].price).toBe('9');
+  });
+});
+
+describe('rekeyPositionalLocks', () => {
+  it('rewrites a positional lock to id-anchored using existing ids', () => {
+    const existing = { items: [{ id: 'a', price: '1' }, { id: 'b', price: '2' }] };
+    const out = rekeyPositionalLocks(existing, ['root.items[1].price'], 'root');
+    expect(out).toEqual(['root.items[@b].price']);
+  });
+  it('leaves a lock positional when the element has no id', () => {
+    const existing = { items: [{ price: '1' }] };
+    const out = rekeyPositionalLocks(existing, ['root.items[0].price'], 'root');
+    expect(out).toEqual(['root.items[0].price']);
+  });
+  it('passes through locks for other roots untouched', () => {
+    const existing = { items: [{ id: 'a' }] };
+    const out = rekeyPositionalLocks(existing, ['other.x[0].y'], 'root');
+    expect(out).toEqual(['other.x[0].y']);
+  });
+  it('leaves already id-anchored locks unchanged', () => {
+    const existing = { items: [{ id: 'a', price: '1' }] };
+    const out = rekeyPositionalLocks(existing, ['root.items[@a].price'], 'root');
+    expect(out).toEqual(['root.items[@a].price']);
+  });
+  it('rewrites both segments of a two-level nested positional lock (the depth the feature targets)', () => {
+    // Mirrors the live-verify shape categories[@..].items[@..]: rekey walks
+    // getAtPath per intermediate segment, so a wrong container lookup would
+    // silently leave a segment positional. This pins that both levels resolve.
+    const existing = {
+      categories: [{ id: 'cat', items: [{ id: 'x', price: '1' }, { id: 'y', price: '2' }] }],
+    };
+    const out = rekeyPositionalLocks(existing, ['root.categories[0].items[1].price'], 'root');
+    expect(out).toEqual(['root.categories[@cat].items[@y].price']);
+  });
+  it('rekeys the outer segment but leaves an id-less inner element positional', () => {
+    const existing = { categories: [{ id: 'cat', items: [{ price: '1' }] }] };
+    const out = rekeyPositionalLocks(existing, ['root.categories[0].items[0].price'], 'root');
+    expect(out).toEqual(['root.categories[@cat].items[0].price']);
+  });
+});
+
+describe('inheritExistingIds', () => {
+  it('id-less incoming item adopts existing id at same position', () => {
+    const existing = { dishes: [{ id: 'A', name: 'Pizza' }, { id: 'B', name: 'Pasta' }] };
+    const incoming = { dishes: [{ name: 'Pizza' }, { name: 'Pasta' }] };
+    inheritExistingIds(existing, incoming);
+    expect(incoming.dishes[0].id).toBe('A');
+    expect(incoming.dishes[1].id).toBe('B');
+  });
+  it('leaves incoming id intact when it already has one', () => {
+    const existing = { dishes: [{ id: 'A', name: 'Pizza' }] };
+    const incoming = { dishes: [{ id: 'keep', name: 'Pizza' }] };
+    inheritExistingIds(existing, incoming);
+    expect(incoming.dishes[0].id).toBe('keep');
+  });
+  it('does not mint for new positions beyond existing length', () => {
+    const existing = { dishes: [{ id: 'A', name: 'Pizza' }] };
+    const incoming = { dishes: [{ name: 'Pizza' }, { name: 'New' }] };
+    inheritExistingIds(existing, incoming);
+    expect(incoming.dishes[0].id).toBe('A');
+    expect('id' in incoming.dishes[1]).toBe(false); // ensureCollectionIds mints this later
+  });
+  it('recurses into nested collections', () => {
+    const existing = { menu: [{ id: 'C', items: [{ id: 'D', n: 1 }] }] };
+    const incoming = { menu: [{ items: [{ n: 1 }] }] };
+    inheritExistingIds(existing, incoming);
+    expect(incoming.menu[0].id).toBe('C');
+    expect(incoming.menu[0].items[0].id).toBe('D');
+  });
+});
+
+describe('scaffoldContent (id-less re-scaffold preserves locked edits)', () => {
+  let contentDir: string;
+
+  beforeEach(async () => { contentDir = await mkTempContent(); });
+  afterEach(async () => {
+    await fs.rm(path.dirname(contentDir), { recursive: true, force: true });
+  });
+
+  async function writeLocks(keys: string[]): Promise<void> {
+    await fs.mkdir(contentDir, { recursive: true });
+    await fs.writeFile(
+      path.join(contentDir, '.user-edits.json'),
+      JSON.stringify({ lockedKeys: keys }),
+      'utf8',
+    );
+  }
+
+  it('preserves a collection-item edit across an id-less agent re-scaffold', async () => {
+    // First scaffold: mints ids on disk
+    const firstResult = await scaffoldContent(contentDir, {
+      kind: 'page',
+      name: 'menu',
+      content: { dishes: [{ name: 'Pizza', price: 12 }] },
+    });
+    if (!firstResult.ok) throw new Error('expected ok');
+    // Lock the price at position 0 (positional lock — will be rekeyed to [@id].price)
+    await writeLocks(['menu.dishes[0].price']);
+
+    // Agent re-scaffolds WITHOUT ids (the regression case: fresh ids minted → lock miss)
+    const result = await scaffoldContent(contentDir, {
+      kind: 'page',
+      name: 'menu',
+      content: { dishes: [{ name: 'Pizza', price: 99 }] }, // id-less, price changed
+    });
+    if (!result.ok) throw new Error('expected ok');
+    const content = JSON.parse(await fs.readFile(result.file, 'utf8'));
+    // user edit (price=12) must survive even though agent sent price=99 without ids
+    expect(content.dishes[0].price).toBe(12);
   });
 });
