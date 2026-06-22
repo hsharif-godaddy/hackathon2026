@@ -5,12 +5,20 @@ import { tmpdir } from 'node:os';
 
 const recommendAeoSchemaTypesMock = vi.hoisted(() => vi.fn());
 
+const resolveAppBaseUrlMock = vi.hoisted(() =>
+  vi.fn((previewUrl: string, _appId: string) => previewUrl),
+);
+
 vi.mock('../aeo-schema-recommendations.js', () => ({
   recommendAeoSchemaTypes: recommendAeoSchemaTypesMock,
   extractRoutePageSignals: vi.fn((html: string, path: string) => ({
     path,
     title: 'My Page',
   })),
+}));
+
+vi.mock('../../utils/share-token.js', () => ({
+  resolveAppBaseUrl: resolveAppBaseUrlMock,
 }));
 
 import {
@@ -20,6 +28,7 @@ import {
   discoverAllAuditableRoutes,
   buildPublishedPageUrl,
   resolveHtmlAuditTarget,
+  resolveHtmlAuditFetchBaseUrl,
   isExcludedFromSeoAudit,
   runSeoAudit,
   runSeoCheck,
@@ -45,6 +54,7 @@ describe('seo-audit', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    resolveAppBaseUrlMock.mockImplementation((previewUrl: string) => previewUrl);
   });
 
   it('parseSeoRoutePaths extracts paths from seo-routes.ts', () => {
@@ -141,6 +151,62 @@ describe('seo-audit', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(report.auditMode).toBe('published');
     expect(report.summary.issueCount).toBe(0);
+  });
+
+  it('resolveHtmlAuditFetchBaseUrl appends share token for preview fetches only', () => {
+    resolveAppBaseUrlMock.mockReturnValue(
+      'https://preview.example.com/?airoShareToken=abc123',
+    );
+
+    expect(
+      resolveHtmlAuditFetchBaseUrl('app-1', {
+        baseUrl: 'https://preview.example.com',
+        htmlLayer: 'preview',
+      }),
+    ).toBe('https://preview.example.com/?airoShareToken=abc123');
+    expect(resolveAppBaseUrlMock).toHaveBeenCalledWith('https://preview.example.com', 'app-1');
+
+    resolveAppBaseUrlMock.mockClear();
+    expect(
+      resolveHtmlAuditFetchBaseUrl('app-1', {
+        baseUrl: 'https://live.example.com',
+        htmlLayer: 'published',
+      }),
+    ).toBe('https://live.example.com');
+    expect(resolveAppBaseUrlMock).not.toHaveBeenCalled();
+  });
+
+  it('runSeoAudit fetches preview HTML with share token but omits token from report URLs', async () => {
+    resolveAppBaseUrlMock.mockReturnValue(
+      'https://preview.example.com/?airoShareToken=abc123',
+    );
+
+    const fetchMock = vi.fn().mockImplementation(function (input: RequestInfo | URL) {
+      const url = String(input);
+      expect(url).toContain('airoShareToken=abc123');
+      const html = FULL_HTML.replace(/https:\/\/example\.com\/about/g, url.replace(/\/$/, '') || url);
+      return Promise.resolve(
+        new Response(html, { status: 200, headers: { 'content-type': 'text/html' } }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const appPath = mkdtempSync(join(tmpdir(), 'seo-app-'));
+    const libDir = join(appPath, 'src', 'lib');
+    mkdirSync(libDir, { recursive: true });
+    writeFileSync(join(libDir, 'seo-routes.ts'), `export const seoRoutes = [{ path: "/" }];`);
+
+    const report = await runSeoAudit({
+      appId: 'test-app',
+      appPath,
+      publishedUrl: null,
+      previewUrl: 'https://preview.example.com',
+      includeSourceScan: false,
+    });
+
+    expect(report.htmlBaseUrl).toBe('https://preview.example.com');
+    expect(report.pages[0]?.url).not.toContain('airoShareToken');
+    expect(fetchMock).toHaveBeenCalled();
   });
 
   it('runSeoAudit uses previewUrl when publishedUrl is missing', async () => {

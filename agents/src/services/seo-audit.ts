@@ -17,6 +17,7 @@ import {
 } from './seo-strategy-context.js';
 import { extractSchemaTypesFromHtml, runAeoStructureChecks } from './aeo-structure-validator.js';
 import { fetchPublishedPageHtml, runSeoHtmlChecks, type SeoCheckResult } from './SeoValidator.js';
+import { resolveAppBaseUrl } from '../utils/share-token.js';
 
 export type { SeoStrategyContext } from './seo-strategy-context.js';
 
@@ -146,6 +147,7 @@ export function buildSeoAuditExecutionContext(
   };
 }
 
+/** Choose published or preview base URL for HTML fetches; null when neither is available. */
 export function resolveHtmlAuditTarget(
   publishedUrl?: string | null,
   previewUrl?: string | null,
@@ -163,6 +165,17 @@ export function resolveHtmlAuditTarget(
     return { baseUrl: preview, htmlLayer: 'preview' };
   }
   return null;
+}
+
+/** Preview fetch URL with share token; display/report URLs stay token-free. */
+export function resolveHtmlAuditFetchBaseUrl(
+  appId: string,
+  htmlTarget: { baseUrl: string; htmlLayer: SeoHtmlAuditLayer },
+): string {
+  if (htmlTarget.htmlLayer !== 'preview') {
+    return htmlTarget.baseUrl;
+  }
+  return resolveAppBaseUrl(htmlTarget.baseUrl, appId);
 }
 
 type ValidatorLogger = {
@@ -459,25 +472,29 @@ export async function runSeoAudit(params: RunSeoAuditParams): Promise<SeoAuditRe
   const auditMode: SeoAuditMode = htmlTarget
     ? htmlTarget.htmlLayer
     : 'source-only';
+  const htmlFetchBaseUrl = htmlTarget
+    ? resolveHtmlAuditFetchBaseUrl(appId, htmlTarget)
+    : null;
 
   let schemaAeoByRoute: Record<string, AeoRouteSchemaGuidance> | undefined;
   let schemaTypesByRoute: Record<string, string[]> | undefined;
 
-  if (htmlTarget) {
+  if (htmlTarget && htmlFetchBaseUrl) {
     type FetchedRoute = { routePath: string; html: string; url: string };
     const fetchedRoutes: FetchedRoute[] = [];
     const schemaTypesByRouteAccum: Record<string, string[]> = {};
 
     for (const routePath of routes) {
-      const url = buildPublishedPageUrl(htmlTarget.baseUrl, routePath);
-      const fetched = await fetchPublishedPageHtml(url);
+      const fetchUrl = buildPublishedPageUrl(htmlFetchBaseUrl, routePath);
+      const reportUrl = buildPublishedPageUrl(htmlTarget.baseUrl, routePath);
+      const fetched = await fetchPublishedPageHtml(fetchUrl);
       if (!fetched.ok) {
-        const page = pageAudit(routePath, htmlTarget.htmlLayer, [`fetch failed: ${fetched.detail}`], url);
+        const page = pageAudit(routePath, htmlTarget.htmlLayer, [`fetch failed: ${fetched.detail}`], reportUrl);
         applyRegistryIssueIfNeeded(page, routePath, pageRoutes, registeredSeoRoutes);
         pages.push(page);
         continue;
       }
-      fetchedRoutes.push({ routePath, html: fetched.html, url });
+      fetchedRoutes.push({ routePath, html: fetched.html, url: reportUrl });
     }
 
     const shouldRecommend =
@@ -496,7 +513,7 @@ export async function runSeoAudit(params: RunSeoAuditParams): Promise<SeoAuditRe
       }
     }
 
-    for (const { routePath, html, url } of fetchedRoutes) {
+    for (const { routePath, html, url: reportUrl } of fetchedRoutes) {
       if (schemaAeoByRoute?.[routePath]) {
         schemaTypesByRouteAccum[routePath] = extractSchemaTypesFromHtml(html);
       }
@@ -504,7 +521,7 @@ export async function runSeoAudit(params: RunSeoAuditParams): Promise<SeoAuditRe
         html,
         routePath,
         htmlTarget.htmlLayer,
-        url,
+        reportUrl,
         schemaAeoByRoute?.[routePath]?.types,
       );
       applyRegistryIssueIfNeeded(page, routePath, pageRoutes, registeredSeoRoutes);
