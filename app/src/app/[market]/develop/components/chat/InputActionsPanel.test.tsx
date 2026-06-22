@@ -24,6 +24,10 @@ vi.mock('./ChatContext', () => ({
   useSendUserMessage: vi.fn()
 }))
 
+vi.mock('./ThinkingTip', () => ({
+  default: () => <div data-testid="thinking-tip" />,
+}))
+
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsActivelyStreaming: vi.fn(),
   useIsLoading: vi.fn(),
@@ -197,6 +201,84 @@ describe('InputActionsPanel', () => {
         isMobile: false,
         app: { id: 'test-app-id', initialBuildComplete: false },
       })
+    })
+  })
+
+  describe('ThinkingTip post-build gate', () => {
+    beforeEach(() => {
+      vi.mocked(Switchboard.useSwitchboard).mockImplementation(function (flag: string) {
+        if (flag === 'airo-builder-theme-selection-chat') return false
+        if (flag === 'airo-builder-font-selection-chat') return false
+        return false
+      })
+      vi.mocked(StreamingStore.useIsActivelyStreaming).mockReturnValue(true)
+      vi.mocked(StreamingStore.useIsLoading).mockReturnValue(false)
+    })
+
+    it('does not render ThinkingTip when initialBuildComplete is false', () => {
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) {
+        return selector({
+          viewMode: ViewMode.PREVIEW,
+          isMobile: false,
+          app: { id: 'test-app-id', initialBuildComplete: false },
+        })
+      })
+
+      renderWithProviders(<InputActionsPanel />)
+
+      expect(screen.queryByTestId('thinking-tip')).not.toBeInTheDocument()
+    })
+
+    it('renders ThinkingTip when initialBuildComplete is true', () => {
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) {
+        return selector({
+          viewMode: ViewMode.PREVIEW,
+          isMobile: false,
+          app: { id: 'test-app-id', initialBuildComplete: true },
+        })
+      })
+
+      renderWithProviders(<InputActionsPanel />)
+
+      expect(screen.getByTestId('thinking-tip')).toBeInTheDocument()
+    })
+
+    it('does not render ThinkingTip in theme-selection branch when initialBuildComplete is false', () => {
+      vi.mocked(Switchboard.useSwitchboard).mockImplementation(function (flag: string) {
+        if (flag === 'airo-builder-theme-selection-chat') return true
+        if (flag === 'airo-builder-font-selection-chat') return false
+        return false
+      })
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) {
+        return selector({
+          viewMode: ViewMode.PREVIEW,
+          isMobile: false,
+          app: { id: 'test-app-id', initialBuildComplete: false },
+        })
+      })
+
+      renderWithProviders(<InputActionsPanel />)
+
+      expect(screen.queryByTestId('thinking-tip')).not.toBeInTheDocument()
+    })
+
+    it('renders ThinkingTip in theme-selection branch when initialBuildComplete is true', () => {
+      vi.mocked(Switchboard.useSwitchboard).mockImplementation(function (flag: string) {
+        if (flag === 'airo-builder-theme-selection-chat') return true
+        if (flag === 'airo-builder-font-selection-chat') return false
+        return false
+      })
+      vi.mocked(DevelopPageStore.useDevelopPageStore).mockImplementation(function (selector: any) {
+        return selector({
+          viewMode: ViewMode.PREVIEW,
+          isMobile: false,
+          app: { id: 'test-app-id', initialBuildComplete: true },
+        })
+      })
+
+      renderWithProviders(<InputActionsPanel />)
+
+      expect(screen.getByTestId('thinking-tip')).toBeInTheDocument()
     })
   })
 

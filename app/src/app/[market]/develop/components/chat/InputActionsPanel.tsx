@@ -445,7 +445,7 @@ function InputActionsPanelLegacy({
               </button>
             )}
           </div>
-          <ThinkingTip />
+          {initialBuildComplete && <ThinkingTip />}
 
           <AnimatePresence initial={false}>
             {hasPlan && fullPlanExpanded && (
@@ -1165,7 +1165,7 @@ function InputActionsPanelThemeSelection({
               </button>
             )}
           </div>
-          <ThinkingTip />
+          {initialBuildComplete && <ThinkingTip />}
 
           <AnimatePresence initial={false}>
             {hasPlan && fullPlanExpanded && !showAnySuggest && (
