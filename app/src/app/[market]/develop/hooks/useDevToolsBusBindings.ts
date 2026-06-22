@@ -545,9 +545,11 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
         pathToBuild: m.pathToBuild,
       })
       const messageContent = `The page at path ${m.pathToBuild} doesn't exist yet, please build it with appropriate content.`
-      cur.setInputValue(messageContent)
-      cur.scheduleMicrotask(() => {
-        void cur.wsSend({ content: messageContent, aiEditContext: null })
+      cur.scheduleMicrotask(function sendBuildPageRequest() {
+        void (async function() {
+          await cur.wsSend({ content: messageContent, aiEditContext: null })
+          cur.setInputValue('')
+        })()
       })
     })
 
@@ -564,23 +566,25 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
         exitCode: m.exitCode,
       })
       const messageContent = 'Please analyze and fix this publish failure.'
-      cur.setInputValue(messageContent)
-      cur.scheduleMicrotask(() => {
-        void cur.wsSend({
-          content: messageContent,
-          aiEditContext: null,
-          isActionRequest: false,
-          customContext: {
-            type: 'build_error',
-            data: {
-              error: m.errorMessage,
-              details: m.errorDetails,
-              exitCode: m.exitCode,
+      cur.scheduleMicrotask(function sendBuildErrorFixRequest() {
+        void (async function() {
+          await cur.wsSend({
+            content: messageContent,
+            aiEditContext: null,
+            isActionRequest: false,
+            customContext: {
+              type: 'build_error',
+              data: {
+                error: m.errorMessage,
+                details: m.errorDetails,
+                exitCode: m.exitCode,
+              },
+              persistence: 'ephemeral',
+              source: 'publish-failure',
             },
-            persistence: 'ephemeral',
-            source: 'publish-failure',
-          },
-        })
+          })
+          cur.setInputValue('')
+        })()
       })
     })
 
@@ -603,23 +607,25 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
         currentScore: reg.currentScore,
         affectedPages: reg.regressions.length,
       })
-      cur.setInputValue(messageContent)
-      cur.scheduleMicrotask(() => {
-        void cur.wsSend({
-          content: messageContent,
-          aiEditContext: null,
-          isActionRequest: false,
-          customContext: {
-            type: 'seo_quality_regression',
-            data: {
-              scoreDelta: reg.scoreDelta,
-              currentScore: reg.currentScore,
-              regressions: reg.regressions,
+      cur.scheduleMicrotask(function sendSeoQualityFixRequest() {
+        void (async function() {
+          await cur.wsSend({
+            content: messageContent,
+            aiEditContext: null,
+            isActionRequest: false,
+            customContext: {
+              type: 'seo_quality_regression',
+              data: {
+                scoreDelta: reg.scoreDelta,
+                currentScore: reg.currentScore,
+                regressions: reg.regressions,
+              },
+              persistence: 'ephemeral',
+              source: 'seo-quality-alert',
             },
-            persistence: 'ephemeral',
-            source: 'seo-quality-alert',
-          },
-        })
+          })
+          cur.setInputValue('')
+        })()
       })
     })
 
