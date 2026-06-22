@@ -141,12 +141,14 @@ pipeline:
     # inform the approver (test_summary in Slack) but do not auto-gate.
     #
     # NOTE: dark-create-rg + rg-rollback (in the prod env below) dispatch pioneer-infra's
-    # release-group-simple.yml in its cohort-less form (katanaSelector, no appIds), enabled by
-    # pioneer-infra #5479 (merged 2026-06-19) and reconciled against its merged workflow_dispatch
-    # contract: Create + Reload uses action / environment / katanaSelector / compositionId /
+    # release-group-simple.yml, enabled by pioneer-infra #5479 (merged 2026-06-19) and reconciled
+    # against its merged workflow_dispatch contract: Create + Reload runs cohort-less here
+    # (katanaSelector, no appIds) using action / environment / katanaSelector / compositionId /
     # compositionVersion / agentImageTag / previewImageTag / publishImageTag; Rollback uses
-    # action / environment / releaseGroupId. rolloutPct is hard-coded to 0 inside the workflow
-    # (not an input) and variant is hard-coded to "preview", so neither is passed here.
+    # action / environment / releaseGroupId (it also carries appIds: 'appId' — a declared string
+    # input that the Rollback job ignores, since it resolves the cohort from releaseGroupId).
+    # rolloutPct is hard-coded to 0 inside the workflow (not an input) and variant is hard-coded
+    # to "preview", so neither is passed here.
     #
     # The dark selector + URL are NOT scraped from the dispatched promote-artifact run (brittle —
     # it depends on which branch's workflow is dispatched; see Release #95). They are derived by the
@@ -170,6 +172,7 @@ pipeline:
 
         - id: dark-create-rg
           name: Create + bind dark Release Group
+          advisory: true # RG create is best-effort; a failed create (e.g. 409) must not block the release
           repo: gdcorp-commerce/pioneer-infra
           workflow: release-group-simple.yml
           inputs:
@@ -223,18 +226,30 @@ pipeline:
       requires: prod-dark
       stages:
         # Tear the dark experiment down (clears the SHA binding, reverts enrolled apps to stable)
-        # FIRST — after the approve-prod gate, before the fleet-wide promote. Blocking: if teardown
-        # fails, halt rather than promote over a half-removed Release Group. On a DECLINED gate (or
-        # a failed/cancelled dark-phase) the prod env never runs; the release-manager abort path
+        # FIRST — after the approve-prod gate, before the fleet-wide promote. ADVISORY: a failed
+        # teardown is surfaced in Slack but does NOT halt the already-approved promote. The
+        # fleet-wide stable promote below is the authoritative end state (upsert-reload-preprov
+        # reloads every app to stable regardless), and the dark RG is bounded by rolloutPct=0 +
+        # the dark artifact's 24h ttl. CAVEAT: a failed teardown leaves the dark RG active. Since
+        # dark-create-rg is advisory too, the NEXT release's create then 409s ADVISORILY (mgmt-airo
+        # allows one active RG per composition) — it won't block, but that release's dark stack is
+        # silently partial (the "PARTIAL" Slack warning fires) until the leftover RG is rolled back
+        # manually. A reuse-or-rollback self-heal on dark-create-rg (cf. the Katana publish-409 fix
+        # in #5298) would remove this footgun. Also: if dark-create-rg failed THIS release,
+        # release_group_id is unset, so this stage dispatches Rollback with an unexpanded id —
+        # advisory + harmless (the dispatch fails, but there is no RG to roll back). On a DECLINED
+        # gate (or a failed/cancelled dark-phase) the prod env never runs; the abort path
         # (release.yml's gate-declined / cancel cleanup) tears the RG down instead, using the
         # release_group_id carried in state.json.
         - id: rg-rollback
           name: Roll back dark Release Group
+          advisory: true # teardown is best-effort; a failure must not withhold the approved promote
           repo: gdcorp-commerce/pioneer-infra
           workflow: release-group-simple.yml
           inputs:
             action: Rollback
             environment: mgmt-prod-us-west-2
+            appIds: 'appId' # carried for the release-group-simple.yml string input; the Rollback path resolves the cohort from releaseGroupId
             releaseGroupId: '{{prod-dark.dark-create-rg.release_group_id}}'
 
         # ===================== Fleet-wide stable promote (unchanged) =====================

@@ -765,8 +765,12 @@ func TestValidateStagesAdvisoryActualConfig(t *testing.T) {
 		"health-check-test", "simulation-eval-test",
 		// prod phase
 		"e2e-prod", "regression-prod", "health-check-prod",
+		// prod phase — dark RG teardown is best-effort; a failed teardown must not block the promote
+		"rg-rollback",
 		// prod-dark phase — surfaced in Slack, must NOT gate the promote (for now)
 		"dark-e2e", "dark-regression",
+		// prod-dark phase — RG create is best-effort; a failed create must not block the release
+		"dark-create-rg",
 	}
 	for _, id := range advisoryStages {
 		if _, ok := advisory[id]; !ok {
@@ -783,8 +787,8 @@ func TestValidateStagesAdvisoryActualConfig(t *testing.T) {
 		"deploy-app", "build-images",
 		// prod phase
 		"promote-images", "promote-app", "upsert-reload-preprov",
-		// prod-dark phase — a failed dark deploy / RG bind / teardown must halt the release
-		"dark-deploy-app", "dark-create-rg", "rg-rollback",
+		// prod-dark phase — a failed dark deploy must halt the release
+		"dark-deploy-app",
 	}
 	for _, id := range blockingStages {
 		if _, ok := advisory[id]; !ok {

@@ -70,6 +70,20 @@ func darkURL(commit string) string {
 	return fmt.Sprintf("https://%s?x-katana-version=%s&cookie=1", prodBuilderHost, commit)
 }
 
+// darkURLMessage builds the "dark build live" Slack call-to-action posted before
+// the prod gate. When the Release Group image bind did not complete, rgBound is
+// false: dark-create-rg is advisory, so a failed create no longer halts the
+// phase, but it means only the builder UI is dark while agent/preview/publish
+// stay on stable images. The warning keeps an approver from believing they
+// validated the full dark stack.
+func darkURLMessage(darkURL string, rgBound bool) string {
+	msg := fmt.Sprintf(":mag: *Dark build live on prod (0%% traffic)* — test it before approving:\n%s", darkURL)
+	if !rgBound {
+		msg += "\n:warning: *Dark stack is PARTIAL* — the Release Group image bind did not complete, so only the builder UI is dark; agent/preview/publish are still on stable images. Read the dark E2E/regression results accordingly."
+	}
+	return msg
+}
+
 // Options configures a headless run. Populated from CLI flags + env in main.
 type Options struct {
 	Mode      Mode
@@ -346,10 +360,13 @@ func (r *run) runProdDark(ctx context.Context, opts Options) error {
 		return fmt.Errorf("writing phase state: %w", err)
 	}
 
-	// Surface the dark URL for manual testing before the gate.
+	// Surface the dark URL for manual testing before the gate. If dark-create-rg
+	// (advisory) didn't bind the images, release_group_id is unset — warn that the
+	// dark stack is partial so the approver doesn't over-trust it.
 	if r.notifier != nil {
 		if darkURL := r.p.Values()["dark_url"]; darkURL != "" {
-			r.notifier.PostReply(ctx, fmt.Sprintf(":mag: *Dark build live on prod (0%% traffic)* — test it before approving:\n%s", darkURL))
+			rgBound := r.p.Values()["prod-dark.dark-create-rg.release_group_id"] != ""
+			r.notifier.PostReply(ctx, darkURLMessage(darkURL, rgBound))
 		}
 	}
 

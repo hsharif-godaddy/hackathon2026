@@ -405,3 +405,23 @@ func TestDarkURL(t *testing.T) {
 		t.Errorf("darkURL = %q, want %q", got, want)
 	}
 }
+
+func TestDarkURLMessage(t *testing.T) {
+	const url = "https://airo-builder.godaddy.com?x-katana-version=abc&cookie=1"
+
+	bound := darkURLMessage(url, true)
+	if !strings.Contains(bound, url) {
+		t.Errorf("bound message missing url: %q", bound)
+	}
+	if strings.Contains(bound, "PARTIAL") {
+		t.Errorf("bound (rg bound) must NOT warn partial: %q", bound)
+	}
+
+	partial := darkURLMessage(url, false)
+	if !strings.Contains(partial, url) {
+		t.Errorf("partial message missing url: %q", partial)
+	}
+	if !strings.Contains(partial, "PARTIAL") {
+		t.Errorf("partial (rg not bound) must warn that the dark stack is partial: %q", partial)
+	}
+}
