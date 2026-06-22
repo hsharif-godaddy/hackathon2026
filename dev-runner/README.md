@@ -21,6 +21,7 @@ Runs all three local dev processes (Agents, App, Control Plane) in a single term
 - **Quit confirmation** — `q` prompts for confirmation before shutting down
 - **Graceful shutdown** — Sends SIGTERM to process groups, escalates to SIGKILL after 5s timeout; double Ctrl+C during shutdown forces immediate exit
 - **Color preservation** — Pipes with `FORCE_COLOR=1` preserve ANSI colors from child processes
+- **Probe tab** — Eval runner for gosym-probe: run the golden eval set, browse scenarios/suites, view run results and baselines, and graduate scenarios — all without leaving the TUI
 
 ## Quick Start
 
@@ -187,3 +188,21 @@ dev-runner/
 ├── Makefile
 └── README.md
 ```
+
+## Probe Tab
+
+An interactive eval runner for [gosym-probe](../evals/gosym-probe/) built into the TUI — no separate terminal needed. It runs `pnpm run eval` commands under the hood and streams output inline.
+
+**Menu items:**
+
+1. Run Golden Eval Set (Light)
+2. Most Recent Run Results
+3. Suites
+4. Scenarios
+5. Results (All Runs)
+6. View Baselines
+7. Graduate
+8. Config
+9. Custom Run
+
+See `evals/gosym-probe/` for the full eval workflow, scenario authoring guide, and CLI flags.

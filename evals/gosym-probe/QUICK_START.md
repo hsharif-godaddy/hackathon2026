@@ -145,62 +145,42 @@ Results are written to `results/` (see
 
 ---
 
-## Interactive CLI
+## Interactive UI
 
-```bash
-pnpm start
-```
-
-A terminal UI for running evals, browsing results, managing baselines,
-and editing config without remembering flags. Single-keypress
-navigation, tab autocomplete on scenario names, and inline `.env`
-editing.
-
-See [docs/cli-ui.md](docs/cli-ui.md) for the full menu map and
-keyboard reference.
+Use the **Probe tab** in the Dev Runner TUI (`pnpm run dev` from the repo root)
+for interactive eval execution, menu-driven scenario browsing, and baseline
+management. No flags to remember.
 
 ---
 
-## 6. Bootstrap Regression Testing
+## 6. Regression Testing
 
-Graduation records a baseline from a known-good AAB branch (your control).
-Future eval runs compare against that baseline to detect regressions in a
-test branch.
-
-**Step 1: Graduate against the control branch**
-
-Start AAB on the branch you trust (e.g. `main`):
-
-```bash
-# repo root, on main
-SOCKET_DIAGNOSTICS=true AUTH_TYPE=mock pnpm run dev
-```
-
-Graduate the golden-light suite to save baselines:
-
-```bash
-pnpm run eval --graduate-suite golden-light --fan-out
-```
-
-**Step 2: Gate the test branch**
-
-Switch AAB to the branch under test and restart:
-
-```bash
-# repo root, on your feature branch
-SOCKET_DIAGNOSTICS=true AUTH_TYPE=mock pnpm run dev
-```
-
-Run the suite against the saved baselines:
+The golden-light suite ships with committed baselines in `baselines/`. Run
+the suite directly:
 
 ```bash
 pnpm run eval --suite golden-light --fan-out
 ```
 
-Regressions are flagged automatically per-evaluator against the
-graduated baseline. See
-[Graduating a Scenario](README.md#graduating-a-scenario) for stability
-levels, pass-rate thresholds, and per-evaluator output.
+Regressions are flagged automatically per-evaluator against the saved
+baselines. See
+[Regression Gating](docs/regression-gating.md) for regression thresholds
+and [Graduating a Scenario](README.md#graduating-a-scenario) for stability
+levels and per-evaluator output.
+
+**Updating baselines** — only needed when intentionally changing agent
+behavior on a known-good branch:
+
+```bash
+# repo root, on the control branch (e.g. main)
+SOCKET_DIAGNOSTICS=true AUTH_TYPE=mock pnpm run dev
+
+# graduate to lock in the new baseline
+pnpm run eval --graduate-suite golden-light --fan-out
+```
+
+Baseline files are gitignored (`baselines/**/*.json`). After graduation
+completes, re-add them with `git add -f baselines/` before committing.
 
 ---
 

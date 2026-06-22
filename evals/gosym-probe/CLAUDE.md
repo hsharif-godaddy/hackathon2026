@@ -228,7 +228,7 @@ Configured in `.env` (copy from `.env.example`).
 | `OPENAI_MODEL`          | No       | —                           | Model for the synthetic user (GoCode)                                           |
 | `MAX_CONCURRENCY`       | No       | per-env                     | Max concurrent trials; `--concurrency` overrides                                |
 | `CAPTURE_CONCURRENCY`   | No       | `2`                         | Max concurrent Playwright captures, independent of trial concurrency; `--capture-concurrency` overrides; clamped to `MAX_CAPTURE_CONCURRENCY` |
-| `MAX_CAPTURE_CONCURRENCY` | No     | `8`                         | Hard ceiling for capture concurrency; requests above it are clamped down with a warning |
+| `MAX_CAPTURE_CONCURRENCY` | No     | `8`                         | Ceiling for capture concurrency; requests above it are clamped down with a warning |
 | `MAX_ROUTES`            | No       | `20`                        | Max routes captured per trial; `--max-routes` overrides                         |
 | `MAX_TURNS`             | No       | `10`                        | Max turns per simulation; `--max-turns` overrides                               |
 | `AWS_PROFILE`           | No       | `airobuild-dev-private-sso` | AWS SSO profile; required for S2S and AAB                                       |

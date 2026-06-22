@@ -17,18 +17,18 @@ GoSym-Probe runs a synthetic user against your locally running agent
 harness instance, scores how well the agent handles scripted tasks,
 and flags regressions.
 
-1. **Baseline setup.** Start your agent on `main`, run
-   `pnpm run eval` to get scores for your scenarios.
-2. **Save baseline.** Run `pnpm run save-baseline <run-id>` to lock
-   in those scores as the comparison point.
-3. **Test your changes.** Switch your agent to your feature branch,
-   run the same eval. The harness automatically compares against the
-   saved baseline and surfaces any regressions.
-4. **Ship with confidence.** If scores hold (or improve), your
+1. **Run evals.** Golden-light baselines are already committed. On
+   your feature branch, run `pnpm run eval --suite golden-light`. The
+   harness compares against the committed baselines automatically.
+2. **Review regressions.** Any score drop is surfaced in the run
+   report. Investigate transcript output under `runs/` to understand
+   what changed.
+3. **Ship with confidence.** If scores hold (or improve), your
    feature branch didn't break agent behavior.
-5. **Graduate.** Once stable, run
-   `pnpm run eval --graduate <scenario>` to promote a scenario from
-   `capability` to `regression` and lock in the new baseline.
+4. **Graduate.** To update a baseline after an intentional behavior
+   change, or to promote a new scenario into the regression suite, run
+   `pnpm run eval --graduate <scenario>` and then
+   `pnpm run save-baseline <run-id>`.
 
 Think of it as integration tests for agent behavior, not code.
 
@@ -117,7 +117,7 @@ over the env vars.
 | Env var                   | Default | CLI override            | Purpose                                          |
 | ------------------------- | ------- | ----------------------- | ------------------------------------------------ |
 | `CAPTURE_CONCURRENCY`     | `2`     | `--capture-concurrency` | Concurrent captures, independent of trials       |
-| `MAX_CAPTURE_CONCURRENCY` | `8`     | —                       | Hard ceiling; requests above it clamp + warn     |
+| `MAX_CAPTURE_CONCURRENCY` | `8`     | —                       | Ceiling for capture concurrency; requests above it clamp + warn |
 | `MAX_ROUTES`              | `20`    | `--max-routes`          | Routes captured per trial (capture depth)        |
 
 ### AAB Launch Configuration
@@ -280,11 +280,13 @@ pnpm run eval --skip-baseline
 ```
 
 Baselines are stored per scenario under
-`baselines/{scenario-name}/{timestamp}_{runId}.json` and are **local-only**
-(gitignored). Each developer generates their own baselines against their
-local AAB instance using `pnpm run save-baseline`. This avoids committing
-environment-specific scores that would cause false regressions across
-different machines or configurations.
+`baselines/{scenario-name}/{timestamp}_{runId}.json`. In general these are
+**local-only** (gitignored): each developer generates their own baselines
+against their local AAB instance using `pnpm run save-baseline`. This avoids
+committing environment-specific scores that would cause false regressions
+across different machines or configurations. **Exception:** the golden-light
+suite's baselines are intentionally force-committed (`git add -f`) and serve
+as shared regression gates for all contributors.
 
 Each scenario with a saved baseline is compared against it. The most recent
 file in each directory is loaded automatically.
@@ -567,7 +569,7 @@ src/
 
   index.ts                # CLI entrypoint
 
-baselines/                # Local-only baseline snapshots (gitignored)
+baselines/                # Baseline snapshots; local-only/gitignored except golden-light (force-committed)
 results/                  # Run output (gitignored)
 NOTES.md                  # Integration discoveries and known issues
 ```

@@ -11,7 +11,7 @@ Local, offline eval harness that drives a synthetic user (Claude Sonnet via GoCo
 **Type:** TypeScript (workspace package)
 
 ```bash
-pnpm --filter gosym-probe start          # interactive CLI
+pnpm run dev                             # Dev Runner TUI (use the Probe tab for interactive evals)
 pnpm --filter gosym-probe eval           # headless eval runner
 pnpm --filter gosym-probe save-baseline <run-id>
 ```

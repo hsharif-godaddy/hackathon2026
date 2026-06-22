@@ -18,11 +18,11 @@ SOCKET_DIAGNOSTICS=true AUTH_TYPE=mock pnpm run dev
 # Investigate a single scenario without baseline gating
 pnpm --filter gosym-probe run eval --scenario simple-portfolio --skip-baseline
 
-# Graduate a new baseline — required when none exists or when establishing a new control
-pnpm --filter gosym-probe run eval --graduate-suite golden-light --fan-out
-
-# Run the full suite and gate against the saved baseline
+# Run the full suite and gate against the committed baselines
 pnpm --filter gosym-probe run eval --suite golden-light --fan-out
+
+# Update baselines — only when intentionally changing behavior on a known-good branch
+pnpm --filter gosym-probe run eval --graduate-suite golden-light --fan-out
 ```
 
 `--fan-out` dispatches trials round-robin across a worker pool. Drop it to run sequentially.
@@ -141,14 +141,15 @@ the current scores against that snapshot using per-evaluator thresholds defined 
 `config/environments/local.dev.ts`. Exceeding a threshold for any evaluator is reported as
 a regression.
 
-Run `--skip-baseline` while developing; use `--graduate-suite` to promote a new baseline
-from a known-good branch before gating a feature branch:
+The suite ships with committed baselines — run `--suite golden-light` directly to gate
+against them. Use `--skip-baseline` while developing. Use `--graduate-suite` only when
+intentionally updating the baseline from a known-good branch:
 
 ```bash
-# On main (control)
+# On main (control) — update baselines
 pnpm --filter gosym-probe run eval --graduate-suite golden-light --fan-out
 
-# On your feature branch
+# On your feature branch — gate against saved baselines
 pnpm --filter gosym-probe run eval --suite golden-light --fan-out
 ```
 
