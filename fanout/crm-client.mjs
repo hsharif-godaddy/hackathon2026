@@ -76,6 +76,35 @@ export async function getCase({ crmBaseUrl, caseId }) {
 }
 
 /**
+ * GET /v1/case?recordTypes=escalated&onlyOpen=true — list a customer's open
+ * escalated cases.
+ *
+ * Used to capture the escalated child case SF auto-creates from our standard
+ * case (no API field links the two, so we correlate by caseNumber adjacency +
+ * Airo-Builder scope at the call site). `onlyOpen=true` filters server-side to
+ * unresolved cases; `secondaryCategory` is NOT a CMAPI query param, so the
+ * caller filters returned cases down to "Airo AI Builder" client-side.
+ *
+ * Prefers `shopperId` (CMAPI returns all cases on that shopper's account);
+ * falls back to `customerId`. Returns the raw `data.cases[]` array (possibly
+ * empty); throws on non-2xx other than 404 (→ []).
+ */
+export async function findEscalatedCases({ crmBaseUrl, shopperId, customerId }) {
+  const params = new URLSearchParams({ recordTypes: 'escalated', onlyOpen: 'true' });
+  if (shopperId) params.set('shopperId', shopperId);
+  else if (customerId) params.set('customerId', customerId);
+  const path = `${CASE_PATH}?${params.toString()}`;
+  const res = await authedFetch({ crmBaseUrl, path, init: { method: 'GET' } });
+  const text = await res.text();
+  if (res.status === 404) return [];
+  if (!res.ok) {
+    throw new Error(`CMAPI GET escalated ${res.status}: ${text.slice(0, 300)}`);
+  }
+  const parsed = JSON.parse(text);
+  return parsed?.data?.cases ?? [];
+}
+
+/**
  * GET /v1/case?externalId=... — async-mode case lookup.
  *
  * CMAPI async POST returns only `referenceId` (= the externalSystemId we

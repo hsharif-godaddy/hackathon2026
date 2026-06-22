@@ -2,7 +2,7 @@ import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 
 import { parseFeedbackParquet } from './parquet-reader.mjs';
 import { readState, writeStateConditional } from './state.mjs';
-import { postCase, getCase, getCaseByExternalId, postNote, resolveCaseAsync } from './crm-client.mjs';
+import { postCase, getCase, getCaseByExternalId, postNote, resolveCaseAsync, findEscalatedCases } from './crm-client.mjs';
 import { postSlackMessage } from './slack.mjs';
 import { findIssueByFeedbackId, createIssue } from './jira-client.mjs';
 import { buildJiraIssueBody, parseTopics } from './jira-mapping.mjs';
@@ -12,8 +12,21 @@ import { log } from './logger.mjs';
 const REGION = process.env.AWS_REGION ?? 'us-west-2';
 const s3 = new S3Client({ region: REGION });
 
-const DEDUP_WINDOW_MS = 60 * 60 * 1000;
-const SCHEMA_VERSION = 1;
+// Bumped to 2 when state gained crmCaseNumber + escalatedCrmCaseId and the
+// 1-hour dedup window was replaced by open/closed-status dedup. Legacy v1
+// state (no escalatedCrmCaseId) safely falls through to the fresh path on the
+// next submission, which recaptures the escalated case and rewrites as v2.
+const SCHEMA_VERSION = 2;
+
+// SF auto-escalation copies the standard case's secondaryCategory onto the
+// escalated child, so we scope escalated-case lookups to ours. CMAPI has no
+// secondaryCategory query param, so this filter is applied client-side.
+const AIRO_SECONDARY_CATEGORY = 'Airo AI Builder';
+
+// Escalated-case capture poll schedule (ms). SF creates the escalated child
+// asynchronously after the standard case lands; mirror resolveCaseAsync's
+// backoff. First attempt fires immediately, worst case ~3.5s.
+const ESCALATED_CAPTURE_DELAYS = [0, 500, 1000, 2000];
 
 
 /**
@@ -75,30 +88,25 @@ export async function handler(event) {
   const existing = await readState({ bucket: stateBucket, customerId, appId });
 
   const now = Date.now();
+  // Status-based dedup (replaces the old 1-hour window): if we have a prior
+  // state with an escalated case that is STILL OPEN, this submission updates
+  // that case instead of opening a new one — no matter how long ago the
+  // original was. A new case is opened only once the escalated case closes.
   if (existing) {
-    const age = now - existing.state.startedAt;
-    if (age <= DEDUP_WINDOW_MS) {
-      const handled = await handleDedupHit({
-        existing, row, customerId, appId, submissionId, stateBucket, now, s3Ref,
-      });
-      if (handled) return;
-      // handleDedupHit returned false: existing case is stale (closed) OR
-      // getCase failed transiently OR existing.crmCaseId is null (prior
-      // submission's CRM postCase failed under bulkhead). Fall through to
-      // handleFreshPath which overwrites state with IfMatch using the
-      // existing etag (instead of IfNoneMatch:'*' which would 412 and
-      // silently drop the fanout). Preserve `startedAt` from the existing
-      // state so the 60-min dedup window stays anchored to the FIRST
-      // submission — without this, a customer hammering submit while CRM
-      // is down would re-anchor `startedAt` on every retry, defeating the
-      // dedup contract.
-      await handleFreshPath({
-        row, customerId, appId, submissionId, stateBucket, now, s3Ref,
-        overwriteEtag: existing.etag,
-        preservedStartedAt: existing.state.startedAt,
-      });
-      return;
-    }
+    const handled = await handleDedupHit({
+      existing, row, customerId, appId, submissionId, stateBucket, now, s3Ref,
+    });
+    if (handled) return;
+    // handleDedupHit returned false: escalated case is closed, was never
+    // captured (legacy v1 state / prior capture miss), or getCase failed
+    // transiently. Fall through to handleFreshPath, overwriting state with
+    // IfMatch on the existing etag (IfNoneMatch:'*' would 412 and drop the
+    // fanout). A new standard case is opened and its escalated child captured.
+    await handleFreshPath({
+      row, customerId, appId, submissionId, stateBucket, now, s3Ref,
+      overwriteEtag: existing.etag,
+    });
+    return;
   }
 
   await handleFreshPath({ row, customerId, appId, submissionId, stateBucket, now, s3Ref });
@@ -124,33 +132,52 @@ function crmConfig() {
   };
 }
 
+// A CMAPI case is "open" iff isClosed === false. We MUST gate on isClosed,
+// NOT status === 'Open': escalated cases carry workflow statuses like
+// "Waiting for Risk" / "Waiting for Customer" and are never literally "Open",
+// so a status check would treat every open escalated case as closed and open
+// a duplicate on every repeat submission.
+function isCaseOpen(c) {
+  return c?.isClosed === false;
+}
+
 async function handleDedupHit({ existing, row, customerId, appId, submissionId, stateBucket, now, s3Ref }) {
-  // Prior submission left state.json with no caseId (e.g. CRM postCase
-  // failed → bulkhead skipped). Don't call getCase(null) — it would 500
-  // server-side. Treat as stale → caller falls through to fresh path so
-  // CRM gets retried on this new submission.
-  if (!existing.state.crmCaseId) {
-    log('info', 'fanout.dedup.no_case_id', { customerId, appId, reason: 'state.json has null crmCaseId, retry CRM via fresh path' });
+  // We dedup onto the ESCALATED case (that's the one L2 works). If we never
+  // captured it — legacy v1 state, or the capture missed on the original
+  // submission — fall through to the fresh path so a new case is opened and
+  // its escalated child captured.
+  const escalatedCaseId = existing.state.escalatedCrmCaseId;
+  if (!escalatedCaseId) {
+    log('info', 'fanout.dedup.no_escalated_case', { customerId, appId, reason: 'no escalatedCrmCaseId in state, open fresh case' });
     return false;
   }
 
-  let liveCase;
+  let liveEscalated;
   try {
-    liveCase = await getCase({ ...crmConfig(), caseId: existing.state.crmCaseId });
+    liveEscalated = await getCase({ ...crmConfig(), caseId: escalatedCaseId });
   } catch (err) {
     log('warn', 'fanout.dedup.get_failed', { error: err.message });
     return false;
   }
 
-  if (!liveCase || liveCase.status !== 'Open') {
-    log('info', 'fanout.dedup.stale', { liveStatus: liveCase?.status, caseId: existing.state.crmCaseId });
+  if (!isCaseOpen(liveEscalated)) {
+    // Closed (or missing) → a new case must be opened. Log the raw status so
+    // we can diagnose if CMAPI ever omits isClosed on this route.
+    log('info', 'fanout.dedup.stale', {
+      escalatedCaseId, isClosed: liveEscalated?.isClosed ?? null, liveStatus: liveEscalated?.status ?? null,
+    });
     return false;
   }
 
   const note = renderDuplicateNote({ submissionId, row });
+  // The note is the durable record of the follow-up on the escalated case;
+  // track whether it actually landed so the dedup.hit log distinguishes a
+  // clean dedup from one where the note was dropped (CMAPI blip).
+  let noteOk = true;
   try {
-    await postNote({ ...crmConfig(), caseRecordId: existing.state.crmCaseId, note });
+    await postNote({ ...crmConfig(), caseRecordId: escalatedCaseId, note });
   } catch (err) {
+    noteOk = false;
     log('warn', 'fanout.dedup.note_failed', { error: err.message });
   }
 
@@ -183,63 +210,56 @@ async function handleDedupHit({ existing, row, customerId, appId, submissionId, 
       formData: buildFormDataFromRow(row),
       origin: row.feedback_origin_name ?? undefined,
       ctx: buildDiagnosticContextFromRow(row),
-      enrichment: buildEnrichment({
-        // liveCase is the resolved CMAPI Case from the dedup-path getCase
-        // above. `caseRecordId` is populated whenever the row exists in
-        // SF; `caseNumber` may lag during the SF projection's mid-write
-        // window (rare on dedup since we're reading an older row, but
-        // defended for robustness), hence the `?? null` fallback.
-        caseRecordId: liveCase.caseRecordId,
-        caseNumber: liveCase.caseNumber ?? null,
-        jiraKey,
-      }),
+      // Link the ESCALATED case we just noted (from the live status-check
+      // fetch) — that's where L2 works it. Fall back to the stored standard
+      // case if the live object somehow lacks its record id. Keep id+number
+      // paired to the SAME case: when we link the escalated record we label
+      // with its number (or none on an SF mid-write), never mix the escalated
+      // link with the standard number.
+      enrichment: buildEnrichment(
+        liveEscalated.caseRecordId
+          ? { caseRecordId: liveEscalated.caseRecordId, caseNumber: liveEscalated.caseNumber ?? null, jiraKey }
+          : { caseRecordId: existing.state.crmCaseId ?? null, caseNumber: existing.state.crmCaseNumber ?? null, jiraKey },
+      ),
     });
   } catch (err) {
     log('warn', 'fanout.dedup.slack_failed', { error: err.message });
   }
 
-  log('info', 'fanout.dedup.hit', { customerId, appId, caseId: existing.state.crmCaseId, jiraKey });
+  log('info', 'fanout.dedup.hit', { customerId, appId, escalatedCaseId, noteOk, jiraKey });
   return true;
 }
 
-async function handleFreshPath({ row, customerId, appId, submissionId, stateBucket, now, s3Ref, overwriteEtag, preservedStartedAt }) {
+async function handleFreshPath({ row, customerId, appId, submissionId, stateBucket, now, s3Ref, overwriteEtag }) {
   const baseState = {
     schemaVersion: SCHEMA_VERSION,
     submissionId,
     crmCaseId: null,
-    // Preserve the original `startedAt` when called from handleDedupHit's
-    // fall-through path so the dedup window doesn't slide on every retry
-    // while CRM is failing. New `now` only used when there's no prior
-    // state to anchor to.
-    startedAt: preservedStartedAt ?? now,
+    crmCaseNumber: null,
+    escalatedCrmCaseId: null,
     lastUpdatedAt: now,
   };
   try {
     if (overwriteEtag) {
-      // Caller already saw an existing state and decided to overwrite (stale
-      // closed case, or dedup-check transient failure). IfMatch lets the
-      // overwrite succeed exactly once; if a concurrent writer already moved
-      // the etag the catch below resolves the race the same as the create path.
+      // Caller already saw an existing state and decided to overwrite (closed
+      // escalated case, missing escalated id, or dedup-check transient
+      // failure). IfMatch lets the overwrite succeed exactly once; a concurrent
+      // writer moving the etag is resolved as a lost race below.
       await writeStateConditional({ bucket: stateBucket, customerId, appId, state: baseState, ifMatchEtag: overwriteEtag });
     } else {
       await writeStateConditional({ bucket: stateBucket, customerId, appId, state: baseState });
     }
   } catch (err) {
     if (err.name === 'PreconditionFailed') {
-      const cur = await readState({ bucket: stateBucket, customerId, appId });
-      if (!cur) throw err;
-      const age = now - cur.state.startedAt;
-      if (age > DEDUP_WINDOW_MS) {
-        await writeStateConditional({
-          bucket: stateBucket, customerId, appId, state: baseState, ifMatchEtag: cur.etag,
-        });
-      } else {
-        log('info', 'fanout.fresh.race_lost', { customerId, appId });
-        return;
-      }
-    } else {
-      throw err;
+      // A concurrent submission for the same customer+app won the write race
+      // (state created/updated between our read and write). It owns case
+      // creation for this slot; dropping here avoids opening a duplicate case.
+      // Without a time window the only colliding submissions are effectively
+      // simultaneous (sub-second), i.e. a genuine double-submit.
+      log('info', 'fanout.fresh.race_lost', { customerId, appId });
+      return;
     }
+    throw err;
   }
 
   // CRM postCase — warn-not-throw, matches the bulkhead pattern used by
@@ -349,22 +369,48 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
     });
   }
 
-  // Persist crmCaseId IMMEDIATELY after CRM resolution, before Slack/Jira
-  // run. Tightens the dedup race window: if the handler errors mid-flight
-  // (Slack 5xx, Jira 401, state-write race) AWS will not
-  // retry under retryAttempts=0, but a manual DLQ replay or a spam-click
-  // submission within DEDUP_WINDOW_MS will see the persisted caseId and
-  // dedup-hit instead of opening a duplicate case.
+  // Capture the escalated child case SF auto-creates from our standard case.
+  // Needs the standard caseNumber (to match caseNumber + 1) — only attempt
+  // when CRM resolution produced both the record id and the number.
+  let escalated = null;
+  if (caseRecordId && caseNumber) {
+    escalated = await captureEscalatedCase({
+      row, customerId, standardCaseNumber: caseNumber,
+      context: { customerId, appId, submissionId },
+    });
+  }
+  const escalatedCrmCaseId = escalated?.caseRecordId ?? null;
+
+  // Persist crmCaseId + crmCaseNumber + escalatedCrmCaseId IMMEDIATELY after
+  // CRM resolution, before Slack/Jira run. Tightens the dedup race window: if
+  // the handler errors mid-flight (Slack 5xx, Jira 401) AWS will not retry
+  // under retryAttempts=0, but a manual DLQ replay or a repeat submission will
+  // see the persisted escalatedCrmCaseId and dedup-hit (note the open
+  // escalated case) instead of opening a duplicate.
   const after = await readState({ bucket: stateBucket, customerId, appId });
   if (after) {
     try {
       await writeStateConditional({
         bucket: stateBucket, customerId, appId,
-        state: { ...after.state, crmCaseId: caseId, lastUpdatedAt: Date.now() },
+        state: {
+          ...after.state,
+          crmCaseId: caseId,
+          crmCaseNumber: caseNumber,
+          escalatedCrmCaseId,
+          lastUpdatedAt: Date.now(),
+        },
         ifMatchEtag: after.etag,
       });
     } catch (err) {
-      if (err.name !== 'PreconditionFailed') log('warn', 'fanout.fresh.state_caseId_failed', { error: err.message });
+      if (err.name === 'PreconditionFailed') {
+        // A concurrent submission moved the etag between our read and write,
+        // so crmCaseId/escalatedCrmCaseId went unpersisted on this run. The
+        // next submission would then miss the escalated case and open a
+        // duplicate — log so that cause is diagnosable rather than silent.
+        log('info', 'fanout.fresh.state_caseId_race_lost', { customerId, appId });
+      } else {
+        log('warn', 'fanout.fresh.state_caseId_failed', { error: err.message });
+      }
     }
   }
 
@@ -391,13 +437,70 @@ async function handleFreshPath({ row, customerId, appId, submissionId, stateBuck
       formData: buildFormDataFromRow(row),
       origin: row.feedback_origin_name ?? undefined,
       ctx: buildDiagnosticContextFromRow(row),
-      enrichment: buildEnrichment({ caseRecordId, caseNumber, jiraKey }),
+      // Link the ESCALATED case — that's where L2 works the ticket and where
+      // our note lands. Fall back to the standard case when capture missed
+      // (async escalation slower than our poll, or no confident match) so a
+      // link always renders.
+      enrichment: buildEnrichment({
+        caseRecordId: escalated?.caseRecordId ?? caseRecordId,
+        caseNumber: escalated?.caseNumber ?? caseNumber,
+        jiraKey,
+      }),
     });
   } catch (err) {
     log('warn', 'fanout.slack.failed', { error: err.message });
   }
 
-  log('info', 'fanout.fresh.done', { customerId, appId, caseId, caseNumber, jiraKey });
+  log('info', 'fanout.fresh.done', { customerId, appId, caseId, caseNumber, escalatedCrmCaseId, jiraKey });
+}
+
+/**
+ * Capture the escalated child case Salesforce auto-creates from our standard
+ * case. No CMAPI field links the two, so we correlate by:
+ *   1. caseNumber adjacency — the escalated case's number is the standard's + 1
+ *      (consistent across all observed cases; SF-confirmed). This is the
+ *      primary, deterministic signal.
+ *   2. Airo-Builder scope — secondaryCategory === 'Airo AI Builder', filtered
+ *      client-side (CMAPI has no category query param), so a customer's
+ *      escalated cases on other products can't match.
+ *
+ * SF creates the escalated case asynchronously, so we poll with the same
+ * backoff shape as resolveCaseAsync. Returns `{ caseRecordId, caseNumber }`
+ * for the matched escalated case, or null when no confident match surfaces
+ * within the window (caller leaves escalatedCrmCaseId null → the next
+ * submission opens a fresh case rather than noting the wrong one — fail safe).
+ */
+async function captureEscalatedCase({ row, customerId, standardCaseNumber, context }) {
+  // CMAPI caseNumbers are zero-padded strings ("00012346"), so compare
+  // numerically — the escalated child's number is the standard's + 1.
+  const expectedNumber = Number(standardCaseNumber) + 1;
+  const shopperId = row.shopper_id ?? null;
+  for (const delay of ESCALATED_CAPTURE_DELAYS) {
+    if (delay > 0) {
+      const jitter = Math.floor(Math.random() * 100);
+      await new Promise((r) => setTimeout(r, delay + jitter));
+    }
+    let cases;
+    try {
+      cases = await findEscalatedCases({ ...crmConfig(), shopperId, customerId });
+    } catch (err) {
+      log('warn', 'fanout.crm.escalated.attempt_failed', { ...context, delay, error: err.message });
+      continue;
+    }
+    const match = cases.find(
+      (c) => c.secondaryCategory === AIRO_SECONDARY_CATEGORY && Number(c.caseNumber) === expectedNumber,
+    );
+    if (match?.caseRecordId) {
+      log('info', 'fanout.crm.escalated.captured', {
+        ...context, escalatedCaseId: match.caseRecordId, escalatedCaseNumber: match.caseNumber, standardCaseNumber,
+      });
+      return { caseRecordId: match.caseRecordId, caseNumber: match.caseNumber ?? null };
+    }
+  }
+  log('warn', 'fanout.crm.escalated.capture_timeout', {
+    ...context, standardCaseNumber, expectedNumber, attempts: ESCALATED_CAPTURE_DELAYS.length,
+  });
+  return null;
 }
 
 /**
@@ -714,7 +817,7 @@ function buildEscalationDetails({ row, truncatedDescription }) {
 
 function renderDuplicateNote({ submissionId, row }) {
   return [
-    'Duplicate submission within 60-min window.',
+    'Follow-up submission on an open escalated case.',
     `SubmissionId: ${submissionId}`,
     `Category: ${row.feedback_category ?? 'unknown'}`,
     row.rating != null ? `Rating: ${row.rating}` : null,

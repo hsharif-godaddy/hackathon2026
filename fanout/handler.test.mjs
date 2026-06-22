@@ -15,6 +15,7 @@ let getCaseImpl = async () => null;
 let getCaseByExternalIdImpl = async () => null;
 let postNoteImpl = async () => {};
 let resolveCaseAsyncImpl = async () => null;
+let findEscalatedCasesImpl = async () => [];
 let postSlackMessageImpl = async () => {};
 let findIssueByFeedbackIdImpl = async () => null;
 let createIssueImpl = async () => ({ key: 'AABSP-1', id: '10000' });
@@ -31,6 +32,7 @@ const calls = {
   getCaseByExternalId: [],
   postNote: [],
   resolveCase: [],
+  findEscalated: [],
   stateRead: [],
   stateWrite: [],
   slack: [],
@@ -103,6 +105,10 @@ mock.module('./crm-client.mjs', {
     resolveCaseAsync: async (...args) => {
       calls.resolveCase.push(args[0]);
       return resolveCaseAsyncImpl(...args);
+    },
+    findEscalatedCases: async (...args) => {
+      calls.findEscalated.push(args[0]);
+      return findEscalatedCasesImpl(...args);
     },
   },
 });
@@ -195,13 +201,19 @@ beforeEach(() => {
     created: true,
   });
   // Default: return a case with caseNumber so sync-path caseNumber fetch works.
-  // Dedup tests that need null/Closed override this per-test.
-  getCaseImpl = async () => ({ caseRecordId: '500U900000TP4kYIAT', caseNumber: '00012345', status: 'Open' });
+  // isClosed:false marks it open (dedup gates on isClosed, not status).
+  // Dedup tests that need a closed/missing case override this per-test.
+  getCaseImpl = async () => ({ caseRecordId: '500U900000TP4kYIAT', caseNumber: '00012345', status: 'Open', isClosed: false });
   // Default: pre-POST guard sees no existing case → handler proceeds to postCase.
   // Tests covering the guard-hit scenario override this per-test.
   getCaseByExternalIdImpl = async () => null;
   postNoteImpl = async () => {};
   resolveCaseAsyncImpl = async () => null;
+  // Default: escalated capture finds the matching child (standard 00012345 →
+  // escalated 00012346) under Airo AI Builder. Tests override per-scenario.
+  findEscalatedCasesImpl = async () => [
+    { caseRecordId: '500ESCALATED000001', caseNumber: '00012346', secondaryCategory: 'Airo AI Builder', isClosed: false },
+  ];
   postSlackMessageImpl = async () => {};
   findIssueByFeedbackIdImpl = async () => null;
   createIssueImpl = async () => ({ key: 'AABSP-1', id: '10000' });
@@ -270,11 +282,12 @@ await test('fresh path (issue): opens case, writes state, posts Slack; NO kickof
     description: 'broken thing',
     followUp: true,
   });
-  // Triage-link enrichment: CRM case link present (issue opens a case); Jira
-  // link absent because issue Jira is OFF by default.
+  // Triage-link enrichment: links the ESCALATED case (captured: standard
+  // 00012345 → escalated 00012346) since that's where L2 works it. Jira link
+  // absent because issue Jira is OFF by default.
   assert.ok(calls.slack[0].enrichment);
-  assert.match(calls.slack[0].enrichment.crmCaseUrl, /\/lightning\/r\/Case\/.+\/view$/);
-  assert.equal(calls.slack[0].enrichment.caseNumber, '00012345');
+  assert.match(calls.slack[0].enrichment.crmCaseUrl, /\/lightning\/r\/Case\/500ESCALATED000001\/view$/);
+  assert.equal(calls.slack[0].enrichment.caseNumber, '00012346');
   assert.equal(calls.slack[0].enrichment.jiraKey, undefined);
   assert.equal(calls.slack[0].enrichment.jiraUrl, undefined);
   // Sync path: no resolver poll, but one getCase call to fetch caseNumber
@@ -389,18 +402,16 @@ await test('fresh path: async-mode postCase → resolver polls and materializes 
     caseRecordId: '500U900000TP4kYIAT',
     caseNumber: '00067890',
   });
+  // Escalated child of the async-resolved standard 00067890 → 00067891.
+  findEscalatedCasesImpl = async () => [
+    { caseRecordId: '500ESCALATED067891', caseNumber: '00067891', secondaryCategory: 'Airo AI Builder', isClosed: false },
+  ];
   let readCount = 0;
   readStateImpl = async () => {
     readCount += 1;
     if (readCount === 1) return null;
     return {
-      state: {
-        schemaVersion: 1,
-        submissionId: 'sub-1',
-        crmCaseId: null,
-        startedAt: Date.now(),
-        lastUpdatedAt: Date.now(),
-      },
+      state: { schemaVersion: 2, submissionId: 'sub-1', crmCaseId: null, crmCaseNumber: null, escalatedCrmCaseId: null, lastUpdatedAt: Date.now() },
       etag: '"e-fresh"',
     };
   };
@@ -409,11 +420,11 @@ await test('fresh path: async-mode postCase → resolver polls and materializes 
 
   assert.equal(calls.resolveCase.length, 1);
   assert.equal(calls.resolveCase[0].externalId, 'airo-cust-1-app-1-sub-1');
-  // Slack enrichment should embed the resolved SF Record ID in the URL
-  // (not the referenceId — that would render a broken Lightning link).
+  // Async path resolves the standard SF Record ID, then captures its escalated
+  // child — Slack links the ESCALATED case (where L2 works it).
   assert.ok(calls.slack[0].enrichment);
-  assert.match(calls.slack[0].enrichment.crmCaseUrl, /\/lightning\/r\/Case\/500U900000TP4kYIAT\/view$/);
-  assert.equal(calls.slack[0].enrichment.caseNumber, '00067890');
+  assert.match(calls.slack[0].enrichment.crmCaseUrl, /\/lightning\/r\/Case\/500ESCALATED067891\/view$/);
+  assert.equal(calls.slack[0].enrichment.caseNumber, '00067891');
 });
 
 await test('fresh path: async-mode resolver miss → Slack still posts with no Case link, no crash', async () => {
@@ -577,111 +588,250 @@ await test('runs full flow when row.fanout_via_lambda === true', async () => {
   assert.equal(calls.slack.length, 1);
 });
 
-await test('dedup hit within 60min: posts duplicate note + Slack + Jira; skips new CRM case', async () => {
-  const now = Date.now();
-  readStateImpl = async () => ({
-    state: {
-      schemaVersion: 1,
-      submissionId: 'old',
-      crmCaseId: '500U900000TP4kYIAT',
-      startedAt: now - 30 * 60 * 1000,
-      lastUpdatedAt: now - 30 * 60 * 1000,
-    },
-    etag: '"e1"',
-  });
-  getCaseImpl = async () => ({ caseRecordId: '500U900000TP4kYIAT', status: 'Open' });
-  // Jira: spam-click has unique feedback_id so search returns no match → create runs.
+// Dedup state with a captured escalated case. The escalated case is the
+// dedup TARGET (notes go there); the standard case is what Slack links.
+const DEDUP_STATE = {
+  schemaVersion: 2,
+  submissionId: 'old',
+  crmCaseId: '500U900000TP4kYIAT',
+  crmCaseNumber: '00012345',
+  escalatedCrmCaseId: '500ESCALATED000001',
+  lastUpdatedAt: Date.now(),
+};
+
+await test('dedup hit (escalated open): notes the ESCALATED case, links standard in Slack, no new CRM case', async () => {
+  readStateImpl = async () => ({ state: { ...DEDUP_STATE }, etag: '"e1"' });
+  // getCase(escalatedCaseId) → open. Escalated cases carry a workflow status
+  // (never literally "Open"), so isClosed:false is what marks it open.
+  getCaseImpl = async () => ({ caseRecordId: '500ESCALATED000001', caseNumber: '00012346', status: 'Waiting for Risk', isClosed: false });
   findIssueByFeedbackIdImpl = async () => null;
   // Enable issue-category Jira so the dedup-path Jira create is exercised.
   parseFeedbackParquetImpl = async () => ({ ...FEEDBACK_ROW, jira_eligibility_config: ENABLE_ALL_JIRA });
 
   await handler(S3_EVENT);
 
-  assert.equal(calls.getCase.length, 1);
-  assert.equal(calls.postNote.length, 1, 'one duplicate note posted to existing case');
+  assert.equal(calls.getCase.length, 1, 'one getCase — the escalated status check');
+  assert.equal(calls.getCase[0].caseId, '500ESCALATED000001', 'status check targets the escalated case');
+  assert.equal(calls.postNote.length, 1, 'one note posted');
+  assert.equal(calls.postNote[0].caseRecordId, '500ESCALATED000001', 'note posted to the ESCALATED case');
   assert.equal(calls.postCase.length, 0, 'no new CRM case opened on dedup hit');
   assert.equal(calls.slack.length, 1, 'Slack still pings on dedup hit');
   assert.equal(calls.jiraCreate.length, 1, 'Jira ticket still created on dedup hit (eligibility-gated)');
-  // Dedup-path Slack must carry the same triage-link enrichment as fresh
-  // path: existing CRM case (reused) + new Jira ticket (one per click).
+  // Slack links the ESCALATED case we just noted (from the live status fetch),
+  // labelled with its number — that's where L2 works it.
   assert.ok(calls.slack[0].enrichment, 'dedup Slack call has enrichment');
-  assert.match(calls.slack[0].enrichment.crmCaseUrl, /\/lightning\/r\/Case\/.+\/view$/);
-  // The dedup mock omits `caseNumber` from the live case object, so the
-  // enrichment must NOT carry caseNumber — Slack falls back to plain `Case`.
-  assert.equal(calls.slack[0].enrichment.caseNumber, undefined);
+  assert.match(calls.slack[0].enrichment.crmCaseUrl, /\/lightning\/r\/Case\/500ESCALATED000001\/view$/);
+  assert.equal(calls.slack[0].enrichment.caseNumber, '00012346');
   assert.equal(calls.slack[0].enrichment.jiraKey, 'AABSP-1');
   assert.match(calls.slack[0].enrichment.jiraUrl, /\/browse\/AABSP-1$/);
-  // Dedup-path Jira create must carry the same s3Ref custom field as fresh path.
-  const dedupBody = calls.jiraCreate[0].body;
-  const dedupS3Ref = dedupBody.fields.customfield_36259;
+  const dedupS3Ref = calls.jiraCreate[0].body.fields.customfield_36259;
   assert.ok(typeof dedupS3Ref === 'string' && dedupS3Ref.startsWith('s3://'));
 });
 
-await test('dedup hit: eligibility comes from the NEW row config, not existing state (issue + no config → no Jira)', async () => {
+await test('dedup hit: Jira eligibility comes from the NEW row config, not existing state (issue + no config → no Jira)', async () => {
   // Pins "new-row's jira_eligibility_config decides eligibility" so a future
-  // refactor can't quietly read config off existing.state. Existing dedup
-  // state present; NEW row is issue category with NO config → default OFF →
-  // resolveJiraKey short-circuits before any Jira call. Duplicate note +
-  // Slack still fire (those aren't eligibility-gated).
-  const now = Date.now();
-  readStateImpl = async () => ({
-    state: {
-      schemaVersion: 1,
-      submissionId: 'old',
-      crmCaseId: '500U900000TP4kYIAT',
-      startedAt: now - 30 * 60 * 1000,
-      lastUpdatedAt: now - 30 * 60 * 1000,
-    },
-    etag: '"e1"',
-  });
-  getCaseImpl = async () => ({ caseRecordId: '500U900000TP4kYIAT', status: 'Open' });
+  // refactor can't quietly read config off existing.state. NEW row is issue
+  // category with NO config → default OFF → no Jira call. Note + Slack still fire.
+  readStateImpl = async () => ({ state: { ...DEDUP_STATE }, etag: '"e1"' });
+  getCaseImpl = async () => ({ caseRecordId: '500ESCALATED000001', isClosed: false });
   // Default FEEDBACK_ROW: issue category, no jira_eligibility_config.
 
   await handler(S3_EVENT);
 
   assert.equal(calls.jiraFind.length, 0, 'no Jira find — issue default OFF on dedup path');
   assert.equal(calls.jiraCreate.length, 0, 'no Jira create — eligibility from new row, not existing state');
-  assert.equal(calls.postNote.length, 1, 'duplicate note still posted');
+  assert.equal(calls.postNote.length, 1, 'note still posted to escalated case');
+  assert.equal(calls.postNote[0].caseRecordId, '500ESCALATED000001');
   assert.equal(calls.slack.length, 1, 'Slack still pings');
   assert.equal(calls.postCase.length, 0, 'no new CRM case on dedup hit');
 });
 
-await test('stale state (case closed): falls through to fresh path', async () => {
-  const now = Date.now();
-  readStateImpl = async () => ({
-    state: {
-      schemaVersion: 1,
-      submissionId: 'old',
-      crmCaseId: '500U900000TP4kYIAT',
-      startedAt: now - 10 * 60 * 1000,
-      lastUpdatedAt: now - 10 * 60 * 1000,
-    },
-    etag: '"e1"',
-  });
-  getCaseImpl = async () => ({ caseRecordId: '500U900000TP4kYIAT', status: 'Closed' });
+await test('dedup miss (escalated case CLOSED): falls through to fresh path, opens new case', async () => {
+  readStateImpl = async () => ({ state: { ...DEDUP_STATE }, etag: '"e1"' });
+  getCaseImpl = async () => ({ caseRecordId: '500ESCALATED000001', status: 'Closed', isClosed: true });
 
   await handler(S3_EVENT);
 
-  assert.equal(calls.postCase.length, 1);
+  assert.equal(calls.postNote.length, 0, 'no dedup note when the escalated case is closed');
+  assert.equal(calls.postCase.length, 1, 'a new standard case is opened');
   assert.equal(calls.slack.length, 1);
 });
 
-await test('expired window (>60min): treats as fresh, overwrites state', async () => {
-  const now = Date.now();
+await test('dedup miss (legacy v1 state, no escalatedCrmCaseId): falls through to fresh path', async () => {
+  // Migration: in-flight v1 states lack escalatedCrmCaseId. Next submission
+  // opens a fresh case (and captures its escalated child as v2) rather than
+  // noting a case it can't address.
   readStateImpl = async () => ({
-    state: {
-      schemaVersion: 1,
-      submissionId: 'old',
-      crmCaseId: '500U900000TP4kYIAT',
-      startedAt: now - 90 * 60 * 1000,
-      lastUpdatedAt: now - 90 * 60 * 1000,
-    },
+    state: { schemaVersion: 1, submissionId: 'old', crmCaseId: '500U900000TP4kYIAT', startedAt: Date.now(), lastUpdatedAt: Date.now() },
     etag: '"e1"',
   });
 
   await handler(S3_EVENT);
 
-  assert.equal(calls.postCase.length, 1);
+  assert.equal(calls.postNote.length, 0, 'no dedup note — no escalated case captured in legacy state');
+  assert.equal(calls.postCase.length, 1, 'opens a fresh case');
+});
+
+await test('no time window: old state with an OPEN escalated case still dedups (no age expiry)', async () => {
+  // The 1-hour window is gone — only open/closed status gates dedup. A 90-min-old
+  // state whose escalated case is still open must still dedup, never open a new case.
+  readStateImpl = async () => ({
+    state: { ...DEDUP_STATE, lastUpdatedAt: Date.now() - 90 * 60 * 1000 },
+    etag: '"e1"',
+  });
+  getCaseImpl = async () => ({ caseRecordId: '500ESCALATED000001', isClosed: false });
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.postCase.length, 0, 'no new case — escalated still open 90 min later');
+  assert.equal(calls.postNote.length, 1, 'notes the open escalated case');
+  assert.equal(calls.postNote[0].caseRecordId, '500ESCALATED000001');
+});
+
+await test('fresh path: captures escalated case (caseNumber+1, Airo Builder) into state', async () => {
+  // Standard case 00012345 → escalated child 00012346 under Airo AI Builder.
+  let readCount = 0;
+  readStateImpl = async () => {
+    readCount += 1;
+    if (readCount === 1) return null;
+    return {
+      state: { schemaVersion: 2, submissionId: 'sub-1', crmCaseId: null, crmCaseNumber: null, escalatedCrmCaseId: null, lastUpdatedAt: Date.now() },
+      etag: '"e-fresh"',
+    };
+  };
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.findEscalated.length, 1, 'queried escalated cases once (matched first attempt)');
+  // The post-CRM state write must persist standard id+number AND the escalated id.
+  const lastWrite = calls.stateWrite[calls.stateWrite.length - 1];
+  assert.equal(lastWrite.state.crmCaseId, '500U900000TP4kYIAT');
+  assert.equal(lastWrite.state.crmCaseNumber, '00012345');
+  assert.equal(lastWrite.state.escalatedCrmCaseId, '500ESCALATED000001');
+});
+
+await test('fresh path: escalated capture miss (no caseNumber+1 match) leaves escalatedCrmCaseId null', async () => {
+  let readCount = 0;
+  readStateImpl = async () => {
+    readCount += 1;
+    if (readCount === 1) return null;
+    return {
+      state: { schemaVersion: 2, submissionId: 'sub-1', crmCaseId: null, crmCaseNumber: null, escalatedCrmCaseId: null, lastUpdatedAt: Date.now() },
+      etag: '"e-fresh"',
+    };
+  };
+  // No case with caseNumber 00012346 → capture finds nothing across all polls.
+  findEscalatedCasesImpl = async () => [
+    { caseRecordId: '500OTHER', caseNumber: '00099999', secondaryCategory: 'Airo AI Builder', isClosed: false },
+  ];
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.postCase.length, 1, 'case still opened');
+  const lastWrite = calls.stateWrite[calls.stateWrite.length - 1];
+  assert.equal(lastWrite.state.escalatedCrmCaseId, null, 'no confident match → escalatedCrmCaseId stays null');
+  // Capture missed across all polls → Slack falls back to the STANDARD case.
+  assert.match(calls.slack[0].enrichment.crmCaseUrl, /\/lightning\/r\/Case\/500U900000TP4kYIAT\/view$/);
+  assert.equal(calls.slack[0].enrichment.caseNumber, '00012345');
+});
+
+await test('fresh path: escalated capture ignores non-Airo-Builder cases even at caseNumber+1', async () => {
+  let readCount = 0;
+  readStateImpl = async () => {
+    readCount += 1;
+    if (readCount === 1) return null;
+    return {
+      state: { schemaVersion: 2, submissionId: 'sub-1', crmCaseId: null, crmCaseNumber: null, escalatedCrmCaseId: null, lastUpdatedAt: Date.now() },
+      etag: '"e-fresh"',
+    };
+  };
+  // caseNumber matches (+1) but it's a different product → must NOT be captured.
+  findEscalatedCasesImpl = async () => [
+    { caseRecordId: '500DOMAINS', caseNumber: '00012346', secondaryCategory: 'Domains', isClosed: false },
+  ];
+
+  await handler(S3_EVENT);
+
+  const lastWrite = calls.stateWrite[calls.stateWrite.length - 1];
+  assert.equal(lastWrite.state.escalatedCrmCaseId, null, 'non-Airo escalated case not captured');
+});
+
+await test('fresh path: escalated capture retries — empty first poll, match on a later poll', async () => {
+  // Exercises the backoff loop: SF has not created the escalated child yet on
+  // the first poll, then it appears. Without the retry the capture would miss.
+  let readCount = 0;
+  readStateImpl = async () => {
+    readCount += 1;
+    if (readCount === 1) return null;
+    return {
+      state: { schemaVersion: 2, submissionId: 'sub-1', crmCaseId: null, crmCaseNumber: null, escalatedCrmCaseId: null, lastUpdatedAt: Date.now() },
+      etag: '"e-fresh"',
+    };
+  };
+  let poll = 0;
+  findEscalatedCasesImpl = async () => {
+    poll += 1;
+    if (poll === 1) return []; // not created yet
+    return [{ caseRecordId: '500ESCALATED000001', caseNumber: '00012346', secondaryCategory: 'Airo AI Builder', isClosed: false }];
+  };
+
+  await handler(S3_EVENT);
+
+  assert.ok(calls.findEscalated.length >= 2, 'polled again after the empty first attempt');
+  const lastWrite = calls.stateWrite[calls.stateWrite.length - 1];
+  assert.equal(lastWrite.state.escalatedCrmCaseId, '500ESCALATED000001', 'captured on the retry');
+});
+
+await test('fresh path: escalated capture survives a throwing poll (attempt_failed → continue → match)', async () => {
+  let readCount = 0;
+  readStateImpl = async () => {
+    readCount += 1;
+    if (readCount === 1) return null;
+    return {
+      state: { schemaVersion: 2, submissionId: 'sub-1', crmCaseId: null, crmCaseNumber: null, escalatedCrmCaseId: null, lastUpdatedAt: Date.now() },
+      etag: '"e-fresh"',
+    };
+  };
+  let poll = 0;
+  findEscalatedCasesImpl = async () => {
+    poll += 1;
+    if (poll === 1) throw new Error('CMAPI GET escalated 503'); // transient
+    return [{ caseRecordId: '500ESCALATED000001', caseNumber: '00012346', secondaryCategory: 'Airo AI Builder', isClosed: false }];
+  };
+
+  await handler(S3_EVENT);
+
+  assert.ok(calls.findEscalated.length >= 2, 'kept polling after the throwing attempt');
+  const lastWrite = calls.stateWrite[calls.stateWrite.length - 1];
+  assert.equal(lastWrite.state.escalatedCrmCaseId, '500ESCALATED000001', 'captured after the transient failure');
+});
+
+await test('race on create: writeStateConditional 412 → drops (no duplicate case opened)', async () => {
+  // A concurrent submission for the same customer+app won the create race.
+  // The losing run must drop (no postCase) rather than open a duplicate.
+  readStateImpl = async () => null; // fresh: no prior state
+  writeStateConditionalImpl = async () => {
+    const err = new Error('At least one of the pre-conditions you specified did not hold');
+    err.name = 'PreconditionFailed';
+    throw err;
+  };
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.postCase.length, 0, 'no CRM case opened — race lost, dropped');
+  assert.equal(calls.slack.length, 0, 'no Slack — dropped before fanout');
+});
+
+await test('dedup hit: note POST failure is surfaced (noteOk=false) but Slack/Jira still run', async () => {
+  readStateImpl = async () => ({ state: { ...DEDUP_STATE }, etag: '"e1"' });
+  getCaseImpl = async () => ({ caseRecordId: '500ESCALATED000001', caseNumber: '00012346', isClosed: false });
+  postNoteImpl = async () => { throw new Error('CMAPI note 503'); };
+
+  await handler(S3_EVENT);
+
+  assert.equal(calls.postNote.length, 1, 'note attempted');
+  assert.equal(calls.postCase.length, 0, 'still a dedup hit — no new case despite note failure');
+  assert.equal(calls.slack.length, 1, 'Slack still pings even when the note dropped');
 });
 
 // ---- Jira fanout tests ----
@@ -694,10 +844,11 @@ function freshReadStateImpl() {
     if (readCount === 1) return null;
     return {
       state: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         submissionId: 'sub-1',
         crmCaseId: null,
-        startedAt: Date.now(),
+        crmCaseNumber: null,
+        escalatedCrmCaseId: null,
         lastUpdatedAt: Date.now(),
       },
       etag: '"e-fresh"',
@@ -996,19 +1147,23 @@ await test('crm: pre-POST guard hit → reuses existing case, skips postCase, re
     caseNumber: '00114462',
     status: 'Open',
   });
+  // Reused standard 00114462 still has its escalated child 00114463.
+  findEscalatedCasesImpl = async () => [
+    { caseRecordId: '500ESCALATED114463', caseNumber: '00114463', secondaryCategory: 'Airo AI Builder', isClosed: false },
+  ];
 
   await handler(S3_EVENT);
 
   assert.equal(calls.getCaseByExternalId.length, 1, 'preflight GET fired once');
   assert.equal(calls.postCase.length, 0, 'postCase skipped on guard hit');
   assert.equal(calls.resolveCase.length, 0, 'resolver skipped on guard hit');
-  // Slack rendered with reused case
+  // Slack rendered with the reused case's ESCALATED child.
   assert.equal(calls.slack.length, 1);
   assert.equal(
     calls.slack[0].enrichment?.crmCaseUrl,
-    'https://godaddy2.lightning.force.com/lightning/r/Case/500U900000TeAPvIAN/view',
+    'https://godaddy2.lightning.force.com/lightning/r/Case/500ESCALATED114463/view',
   );
-  assert.equal(calls.slack[0].enrichment?.caseNumber, '00114462');
+  assert.equal(calls.slack[0].enrichment?.caseNumber, '00114463');
   // Kickoff note removed with the investigator → no CRM note on the reused case.
   assert.equal(calls.postNote.length, 0);
 });

@@ -19,6 +19,7 @@ const {
   postNote,
   getCaseByExternalId,
   resolveCaseAsync,
+  findEscalatedCases,
 } = await import('./crm-client.mjs');
 
 const config = {
@@ -323,5 +324,62 @@ await test('resolveCaseAsync aborts on non-retryable auth error and emits unauth
     logs.filter((l) => l.key === 'fanout.crm.resolve.timeout').length,
     0,
     'unauthorized error does not roll into timeout',
+  );
+});
+
+// ---- findEscalatedCases ----
+
+await test('findEscalatedCases queries recordTypes=escalated&onlyOpen=true with shopperId and returns data.cases', async () => {
+  jwtImpl = async () => 'JWT';
+  let calledUrl = '';
+  globalThis.fetch = mock.fn(async (url) => {
+    calledUrl = url;
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        data: { cases: [{ caseRecordId: '500ESC', caseNumber: '00012346', secondaryCategory: 'Airo AI Builder' }] },
+      }),
+    };
+  });
+
+  const cases = await findEscalatedCases({ ...config, shopperId: '9469965' });
+
+  assert.match(calledUrl, /recordTypes=escalated/);
+  assert.match(calledUrl, /onlyOpen=true/);
+  assert.match(calledUrl, /shopperId=9469965/);
+  assert.equal(cases.length, 1);
+  assert.equal(cases[0].caseRecordId, '500ESC');
+});
+
+await test('findEscalatedCases falls back to customerId when no shopperId', async () => {
+  jwtImpl = async () => 'JWT';
+  let calledUrl = '';
+  globalThis.fetch = mock.fn(async (url) => {
+    calledUrl = url;
+    return { ok: true, status: 200, text: async () => JSON.stringify({ data: { cases: [] } }) };
+  });
+
+  await findEscalatedCases({ ...config, customerId: 'cust-1' });
+
+  assert.match(calledUrl, /customerId=cust-1/);
+  assert.doesNotMatch(calledUrl, /shopperId/);
+});
+
+await test('findEscalatedCases returns [] on 404', async () => {
+  jwtImpl = async () => 'JWT';
+  globalThis.fetch = mock.fn(async () => ({ ok: false, status: 404, text: async () => 'not found' }));
+
+  const cases = await findEscalatedCases({ ...config, shopperId: 'none' });
+  assert.deepEqual(cases, []);
+});
+
+await test('findEscalatedCases throws on 5xx', async () => {
+  jwtImpl = async () => 'JWT';
+  globalThis.fetch = mock.fn(async () => ({ ok: false, status: 503, text: async () => 'down' }));
+
+  await assert.rejects(
+    () => findEscalatedCases({ ...config, shopperId: 'x' }),
+    /CMAPI GET escalated 503/,
   );
 });
