@@ -57,6 +57,7 @@ export interface JWTClaims {
   debugStatsEnabled?: boolean;
   marketingCampaignsEnabled?: boolean;
   asmDualWriteEnabled?: boolean;
+  fqdn?: string;
 }
 
 export interface ValidationResult {

@@ -351,6 +351,58 @@ describe('agent-token', function packageTests() {
       );
     });
 
+    it('should include fqdn in token options when getSite returns a fqdn', async function fqdnPresent() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+      mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+      mockControlPlaneAdapter.getSite.mockResolvedValue({ fqdn: 'studiosketch.com' });
+
+      const request = createMockRequest({ siteId: MOCK_SITE_ID });
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(mockJWTService.getToken).toHaveBeenCalledWith(
+        expect.objectContaining({ fqdn: 'studiosketch.com' })
+      );
+    });
+
+    it('should omit fqdn from token options when getSite returns no fqdn', async function fqdnAbsent() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+      mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+      mockControlPlaneAdapter.getSite.mockResolvedValue({ subscription_id: 'sub-123' });
+
+      const request = createMockRequest({ siteId: MOCK_SITE_ID });
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const tokenOptions = mockJWTService.getToken.mock.calls[0][0];
+      expect(tokenOptions).not.toHaveProperty('fqdn');
+    });
+
+    it('should omit fqdn when getSite rejects', async function fqdnGetSiteRejects() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+      mockControlPlaneAdapter.appExists.mockResolvedValue(true);
+      mockControlPlaneAdapter.getSite.mockRejectedValue(new Error('control plane error'));
+
+      const request = createMockRequest({ siteId: MOCK_SITE_ID });
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const tokenOptions = mockJWTService.getToken.mock.calls[0][0];
+      expect(tokenOptions).not.toHaveProperty('fqdn');
+    });
+
     it('should reject unauthenticated requests', async function rejectUnauth() {
       mockAuthenticateCustomer.mockResolvedValue({
         isAuthenticated: false,

@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import type { SkillToolDefinition } from '@airo/ai-skills'
 
+import { readAppFqdn } from '../../../lib/app-fqdn.js'
 import { AppRepository } from '../../../database/repositories/AppRepository.js'
 import { MemoryRepository } from '../../../database/repositories/MemoryRepository.js'
 import { Logger } from '../../../logging/index.js'
@@ -60,6 +61,14 @@ async function purchase(
             error: 'Domain purchase permission not granted',
             message: 'Feature not enabled for this account.'
         }
+    }
+
+    // Proof-of-use: the purchased domain from the DPP handoff is now readable
+    // programmatically (durable app_metadata, per-turn metadata fallback). Not
+    // yet used to default the purchase target — that is a follow-up.
+    const persistedFqdn = readAppFqdn(appId, context)
+    if (persistedFqdn) {
+        logger.info('domain.purchase.persisted-fqdn-available', { appId, persistedFqdn })
     }
 
     const domain = input.domain?.trim() || undefined
@@ -120,6 +129,14 @@ async function attach(
             error: 'Domain purchase permission not granted',
             message: 'Feature not enabled for this account.'
         }
+    }
+
+    // Proof-of-use: the purchased domain from the DPP handoff is now readable
+    // programmatically (durable app_metadata, per-turn metadata fallback). Not
+    // yet used to default the attach target — that is a follow-up.
+    const persistedFqdn = readAppFqdn(appId, context)
+    if (persistedFqdn) {
+        logger.info('domain.attach.persisted-fqdn-available', { appId, persistedFqdn })
     }
 
     const socketId = context?.socketId

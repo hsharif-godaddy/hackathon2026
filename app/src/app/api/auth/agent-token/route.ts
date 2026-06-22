@@ -187,6 +187,22 @@ async function resolveOwnerPaywall(args: {
   return { ownerAllowsPublish: ownerIsPaid, ownerAllowsDownload: ownerIsPaid };
 }
 
+function resolveFqdn(
+  result: PromiseSettledResult<{ fqdn?: string }>,
+  siteId: string,
+  customerId: string,
+): string | undefined {
+  if (result.status === 'rejected') {
+    logger.warn('agent-token.fqdn-lookup-failed', {
+      siteId,
+      customerId,
+      error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+    });
+    return undefined;
+  }
+  return result.value?.fqdn;
+}
+
 function resolveBooleanFlag(
   result: PromiseSettledResult<boolean>,
   logEvent: string,
@@ -293,6 +309,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     let budgetServiceEnabled = false;
     let bmsExistingEnabled = false;
     let subscriptionId: string | undefined;
+    let fqdn: string | undefined;
     let enableAssessmentAgent = false;
     let enableAssessmentOverride = false;
     let assessmentClassifier: string | undefined;
@@ -365,6 +382,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       budgetServiceEnabled = resolveBooleanFlag(budgetServiceResult, 'agent-token.budget-service-flag-check-failed', body.siteId, user.customerId);
       bmsExistingEnabled = resolveBooleanFlag(bmsExistingResult, 'agent-token.bms-existing-flag-check-failed', body.siteId, user.customerId);
       subscriptionId = resolveSubscriptionId(siteInfoResult, body.siteId, user.customerId);
+      fqdn = resolveFqdn(siteInfoResult, body.siteId, user.customerId);
       enableAssessmentAgent = resolveBooleanFlag(assessmentAgentResult, 'agent-token.assessment-agent-flag-check-failed', body.siteId, user.customerId);
       enableAssessmentOverride = resolveBooleanFlag(assessmentOverrideResult, 'agent-token.assessment-override-flag-check-failed', body.siteId, user.customerId);
       const rawAssessmentClassifier = resolveStringFlag(assessmentClassifierResult, 'agent-token.assessment-classifier-flag-check-failed', body.siteId, user.customerId);
@@ -438,6 +456,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       budgetServiceEnabled = resolveBooleanFlag(budgetServiceResult, 'agent-token.budget-service-flag-check-failed', body.siteId, user.customerId);
       bmsExistingEnabled = resolveBooleanFlag(bmsExistingResult, 'agent-token.bms-existing-flag-check-failed', body.siteId, user.customerId);
       subscriptionId = resolveSubscriptionId(siteInfoResult, body.siteId, user.customerId);
+      fqdn = resolveFqdn(siteInfoResult, body.siteId, user.customerId);
       enableAssessmentAgent = resolveBooleanFlag(assessmentAgentResult, 'agent-token.assessment-agent-flag-check-failed', body.siteId, user.customerId);
       enableAssessmentOverride = resolveBooleanFlag(assessmentOverrideResult, 'agent-token.assessment-override-flag-check-failed', body.siteId, user.customerId);
       const rawAssessmentClassifierMiss = resolveStringFlag(assessmentClassifierResult, 'agent-token.assessment-classifier-flag-check-failed', body.siteId, user.customerId);
@@ -738,6 +757,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       ...(visitorIdFromCookie && { visitorId: visitorIdFromCookie }),
       ...(trafficSessionId && { trafficSessionId }),
       ...(market && { market }),
+      ...(fqdn && { fqdn }),
       canDownload,
       canPublish,
       canPurchaseDomain,

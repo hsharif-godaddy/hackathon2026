@@ -1,6 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { createSSEContextLoader, type SSEContextLoaderDeps } from '../context-loader.js'
 import { skillToolManager } from '../../../tools/skill-tool-manager.js'
+import { persistAppFqdn } from '../../../lib/app-fqdn.js'
+
+vi.mock('../../../lib/app-fqdn.js', () => ({
+  persistAppFqdn: vi.fn(),
+}))
 
 function makeDeps(overrides: Partial<SSEContextLoaderDeps> = {}): SSEContextLoaderDeps {
   return {
@@ -48,6 +53,16 @@ describe('createSSEContextLoader', () => {
 
     expect(context.metadata).toBeDefined()
     expect((context.metadata as Record<string, unknown>).stateManager).toBeDefined()
+  })
+
+  it('persists the server-authoritative fqdn from metadata once per turn', async () => {
+    const deps = makeDeps()
+    const loader = createSSEContextLoader(deps)
+    const context: Record<string, unknown> = { metadata: { appId: 'app-1', fqdn: 'studiosketch.com' } }
+
+    await loader(context)
+
+    expect(persistAppFqdn).toHaveBeenCalledWith('app-1', context.metadata)
   })
 
   it('sets hasUnbuiltRebuildPages on metadata when appId is present', async () => {

@@ -11,3 +11,13 @@
  * here; this object is rendered verbatim in the internal debug console.
  */
 export type AppMetadata = Record<string, unknown>;
+
+/**
+ * Canonical well-known keys within the open `AppMetadata` bag. This interface
+ * exists so producers/consumers of established signals are not stringly-typed;
+ * the underlying record stays open and may hold keys not listed here.
+ */
+export interface KnownAppMetadata {
+  /** Purchased domain carried in from the DPP handoff (mirrors SiteInfo.fqdn). */
+  fqdn?: string;
+}

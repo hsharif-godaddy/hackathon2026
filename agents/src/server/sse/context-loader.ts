@@ -14,6 +14,7 @@ import type { AgentContextPreferences } from '../../agents/ai-lib-agents/types.j
 import { buildPinnedSkillsContextMessages } from '../pinned-skills-context.js'
 import { selectCacheConversationId } from '../budget-report-conversation-id.js'
 import { logger } from '../../logging/index.js'
+import { persistAppFqdn } from '../../lib/app-fqdn.js'
 import type { AgentsAppContext } from '../../types/websocket-context.js'
 import { resolveBmsSubscriptionId } from '@airo/ai-grants'
 import { isEmployeeAuthType } from '@airo/shared/auth'
@@ -106,6 +107,12 @@ export function createSSEContextLoader(
         }
       }
     }
+
+    // Persist the server-authoritative fqdn (stamped on metadata by
+    // MessageExecutionService from the JWT claim) once per turn into the durable
+    // app_metadata bag so domain tools can read it without parsing chat.
+    // Fail-soft.
+    persistAppFqdn(appId, metadata)
 
     // Start with existing contextAttachments from MessageExecutionService (e.g., ai_edit_context)
     const contextAttachments: unknown[] = Array.isArray(context.contextAttachments)

@@ -194,6 +194,7 @@ interface LifecycleContext {
     rebuildIntakeFormEnabled?: boolean
     debugStatsEnabled?: boolean
     market?: string
+    fqdn?: string
     marketingCampaignsEnabled?: boolean
     skillSuggestionsEnabled?: boolean
   }
@@ -2078,6 +2079,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         ...(uploadedFileName && { uploadedFileName }),
         ...(designKitSlug && { designKitSlug }),
         ...((agentCtx?.market ?? market) && { market: agentCtx?.market ?? market }),
+        ...(agentCtx?.fqdn && { fqdn: agentCtx.fqdn }),
         ...(userTimezone && { userTimezone }),
         permissions: {
           canDownload: agentCtx?.canDownload ?? false,

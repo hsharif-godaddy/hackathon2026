@@ -95,6 +95,24 @@ describe('JWTAuthMiddleware', function jwtAuthMiddlewareSuite() {
       expect(context.agentProfile).toBeUndefined();
       expect(context.agentProfileSelectorEnabled).toBe(false);
     });
+
+    it('extracts fqdn from raw claims', function extractsFqdn() {
+      const raw = {
+        siteId: 'test-site',
+        canDownload: true,
+        canPublish: true,
+        fqdn: 'studiosketch.com',
+        exp: 9999999999,
+        iat: 1000000000,
+      };
+      const context = buildAgentContext(raw);
+      expect(context.fqdn).toBe('studiosketch.com');
+    });
+
+    it('leaves fqdn undefined when claim absent or empty', function fqdnAbsent() {
+      expect(buildAgentContext({ siteId: 's', canDownload: true, canPublish: true, exp: 1, iat: 1 }).fqdn).toBeUndefined();
+      expect(buildAgentContext({ siteId: 's', canDownload: true, canPublish: true, fqdn: '', exp: 1, iat: 1 }).fqdn).toBeUndefined();
+    });
   });
 
   describe('agent context model override claims', function modelOverrideClaims() {

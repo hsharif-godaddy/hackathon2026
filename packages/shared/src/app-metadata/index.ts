@@ -1,2 +1,2 @@
-export type { AppMetadata } from './types.js';
+export type { AppMetadata, KnownAppMetadata } from './types.js';
 export { mergeAppMetadata } from './merge.js';
