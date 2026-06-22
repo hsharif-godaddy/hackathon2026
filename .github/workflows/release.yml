@@ -174,91 +174,12 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
-  # DARK PHASE — runs BEFORE the approval gate. Dark-deploys the builder (Katana
-  # dark_release @ 0% traffic) + binds the agent/preview/publish images to it via
-  # a cohort-less Release Group, runs the advisory dark e2e/regression, and posts
-  # the dark URL to Slack — so the approver reviews a live, already-tested dark
-  # build. Imports the test state and re-uploads it (overwrite) with the dark
-  # outputs (release_group_id) so the prod phase can roll the RG back and the
-  # gate-declined / cancel abort path can tear it down.
-  # ---------------------------------------------------------------------------
-  dark-phase:
-    needs: [preflight, test-phase]
-    if: needs.preflight.outputs.should_release == 'true'
-    runs-on:
-      labels:
-        - airo-cicd-runners
-        - self-hosted
-    outputs:
-      notified: ${{ steps.run.outputs.notified }}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
-        with:
-          go-version: '1.26'
-          cache-dependency-path: release-manager/go.sum
-      - name: Build release-manager
-        working-directory: release-manager
-        run: go build -o "$RUNNER_TEMP/release-manager" ./cmd/release-manager/
-      - name: Download phase state
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: release-phase-state
-          path: ${{ runner.temp }}
-      - name: Run dark phase
-        id: run
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PIONEER_INFRA_TOKEN: ${{ secrets.PIONEER_INFRA_TOKEN }}
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
-          BRANCH: ${{ needs.preflight.outputs.branch }}
-          DRY_RUN: ${{ inputs.dry_run == true }}
-        run: |
-          DRY=""
-          [ "$DRY_RUN" = "true" ] && DRY="--dry-run"
-          "$RUNNER_TEMP/release-manager" run --headless --mode prod-dark \
-            --branch "$BRANCH" \
-            --state-file "$RUNNER_TEMP/state.json" \
-            $DRY
-      # Cancel mid-dark: finalize the Slack message in place and (best-effort)
-      # tear down the dark Release Group via --mode abort. A dark-phase *failure*
-      # tears the RG down inside the binary (runProdDark), so this only covers an
-      # explicit cancel. PIONEER_INFRA_TOKEN lets the abort dispatch the rollback.
-      - name: Mark cancelled / tear down dark RG
-        if: cancelled()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PIONEER_INFRA_TOKEN: ${{ secrets.PIONEER_INFRA_TOKEN }}
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
-          DRY_RUN: ${{ inputs.dry_run == true }}
-        run: |
-          # Forward --dry-run so a cancelled dry-run stays fully side-effect-free
-          # (abort otherwise dispatches the dark-RG rollback).
-          DRY=""
-          [ "$DRY_RUN" = "true" ] && DRY="--dry-run"
-          "$RUNNER_TEMP/release-manager" run --headless --mode abort \
-            --state-file "$RUNNER_TEMP/state.json" \
-            --reason "Release cancelled" $DRY || true
-      - name: Upload phase state (with dark outputs)
-        # Overwrite the test-phase artifact so the prod / gate-declined jobs import
-        # the dark-inclusive state (carries release_group_id for RG rollback).
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: release-phase-state
-          path: ${{ runner.temp }}/state.json
-          retention-days: 5
-          if-no-files-found: error
-          overwrite: true
-
-  # ---------------------------------------------------------------------------
   # APPROVAL GATE — pauses until a release-prod-approval reviewer approves. The
   # test-phase process has already exited, so "close the browser, release
   # continues" holds. Skipped in dry-run so the flow runs straight through.
   # ---------------------------------------------------------------------------
   approve-prod:
-    needs: [preflight, test-phase, dark-phase]
+    needs: [preflight, test-phase]
     # Runs (and pauses for a reviewer) on schedule, manual dispatch, AND push —
     # the push smoke test must stop here before prod. Only a workflow_dispatch
     # dry_run skips the gate.
@@ -273,9 +194,8 @@ jobs:
           {
             echo "## Approve prod deployment"
             echo
-            echo "Review the **test-phase** + **dark-phase** job summaries (per-stage results +"
-            echo "the dark e2e/regression), and test the live dark build via the dark URL in the"
-            echo "Slack release thread, then approve to start the fleet-wide prod promote."
+            echo "Review the **test-phase** job summary (per-stage results, incl. the e2e +"
+            echo "regression suites), then approve to start the fleet-wide prod promote."
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
@@ -283,14 +203,13 @@ jobs:
   # cuts the GitHub release, finalizes the Slack message.
   # ---------------------------------------------------------------------------
   prod-phase:
-    needs: [preflight, test-phase, dark-phase, approve-prod]
+    needs: [preflight, test-phase, approve-prod]
     # Runs when test-phase succeeded AND either the gate was approved OR it was
     # skipped *because* this is a dry-run (never on a failure-skip).
     if: |
       always() &&
       needs.preflight.outputs.should_release == 'true' &&
       needs.test-phase.result == 'success' &&
-      needs.dark-phase.result == 'success' &&
       (needs.approve-prod.result == 'success' ||
        (needs.approve-prod.result == 'skipped' && inputs.dry_run == true))
     runs-on:
@@ -352,7 +271,7 @@ jobs:
   # leaves the message as-is and the backstop is the safety net.)
   # ---------------------------------------------------------------------------
   gate-declined:
-    needs: [preflight, test-phase, dark-phase, approve-prod]
+    needs: [preflight, test-phase, approve-prod]
     if: |
       always() &&
       needs.preflight.outputs.should_release == 'true' &&
@@ -402,7 +321,7 @@ jobs:
   # in dry-run. Best-effort: never blocks.
   # ---------------------------------------------------------------------------
   slack-failure:
-    needs: [preflight, test-phase, dark-phase, approve-prod, prod-phase, gate-declined]
+    needs: [preflight, test-phase, approve-prod, prod-phase, gate-declined]
     # Only when NONE of the phases already posted a terminal update to the
     # thread (their `notified` output is unset) — otherwise the in-place update
     # already covered it and a second post would be a duplicate.
@@ -411,7 +330,6 @@ jobs:
       needs.preflight.outputs.should_release == 'true' &&
       inputs.dry_run != true &&
       needs.test-phase.outputs.notified != 'true' &&
-      needs.dark-phase.outputs.notified != 'true' &&
       needs.prod-phase.outputs.notified != 'true' &&
       needs.gate-declined.outputs.notified != 'true'
     runs-on:
