@@ -175,6 +175,9 @@ jobs:
       - name: Run linting
         run: pnpm exec turbo run lint --filter=${{ inputs.pnpm-filter }}
 
+      - name: Typecheck
+        run: pnpm exec turbo run typecheck --filter=${{ inputs.pnpm-filter }}
+
       - name: Build
         run: pnpm exec turbo run build --filter=${{ inputs.pnpm-filter }}
 

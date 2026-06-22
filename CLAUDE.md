@@ -66,7 +66,7 @@ See [container-scripts/CLAUDE.md](container-scripts/CLAUDE.md) for publish flow 
 corepack enable                          # Enforces pnpm version from packageManager
 pnpm install && pnpm run dev             # TUI: agents:4000, app:3000, control-plane:4100
 pnpm run dev:legacy                      # Without TUI: agents + app only
-pnpm typecheck / lint / test / build     # build/typecheck/lint use Turborepo (cached)
+pnpm typecheck / lint / test / build     # build/typecheck/lint use Turborepo (cached, rebuilds deps first)
 ```
 
 **Updating dependencies:** `pnpm update --recursive` expands every `"foo": "catalog:"` reference in workspace package.json files to the resolved literal version, defeating the catalog's purpose as a single source of truth. For cataloged deps, edit the version in `pnpm-workspace.yaml` under `catalog:` and run `pnpm install` — the lockfile re-resolves and the `catalog:` references stay intact. Use `pnpm update` only for deps that are NOT in the catalog, and audit the resulting diff for unwanted `catalog:` → literal swaps before committing.
@@ -83,6 +83,8 @@ pnpm --filter @airo/agents test:unit -t "test name"  # By test name
 pnpm --filter website test "pattern"                  # App package
 # pnpm test at root runs all packages via Turborepo (excludes @airo/agents)
 ```
+
+**Typecheck:** prefer `pnpm typecheck` (turbo) over `pnpm --filter website typecheck` (direct). Turbo rebuilds upstream workspace deps (`@airo-ux/pattern-library`, `@airo/shared`) before typechecking, so their `dist/` types are always fresh. The direct `--filter` form skips dep rebuilds and can produce false type errors from stale local builds.
 
 **Logs:**
 
