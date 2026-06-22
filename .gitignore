@@ -126,5 +126,9 @@ investigator/node_modules/
 
 #cert folder
 certs/
+
+# CDS workspace directory
+cds-workspace/
+
 .temporary
 .screenshots

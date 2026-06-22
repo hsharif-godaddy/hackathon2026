@@ -31,20 +31,23 @@ export type SwitchboardRequest = { headers: Headers | Record<string, string> };
  * can fail closed; returns `undefined` when the tree resolves but the key is
  * absent (distinct states).
  */
-async function lookup(featureName: string, req: SwitchboardRequest): Promise<unknown> {
+export async function getSwitchboardTree(req: SwitchboardRequest): Promise<Record<string, unknown>> {
   try {
     const tree = await gasket.actions.getSwitchboardConfig<Record<string, unknown>>(req);
     if (!tree) {
       throw new Error('gasket-plugin-switchboard returned no tree');
     }
-    return tree[featureName];
+    return tree;
   } catch (error) {
     logger.error('switchboard.server.lookup-error', {
-      featureName,
       error: error instanceof Error ? error.message : String(error),
     });
     throw error;
   }
+}
+
+async function lookup(featureName: string, req: SwitchboardRequest): Promise<unknown> {
+  return (await getSwitchboardTree(req))[featureName];
 }
 
 /**

@@ -8,43 +8,47 @@ type AllowedOrigin = { origins: Set<string>; methods: string };
 export const CORS_ROUTES = Object.freeze({
   GET_SITES: 'GET_SITES',
   GET_SUBSCRIPTIONS: 'GET_SUBSCRIPTIONS',
-  QUICK_CREATE: 'QUICK_CREATE'
+  QUICK_CREATE: 'QUICK_CREATE',
+  GET_SWITCHBOARD: 'GET_SWITCHBOARD'
 } as const)
+
+const aiPromptLibOrigins = new Set([
+  'https://www.dev-godaddy.com',
+  'https://www.test-godaddy.com',
+  'https://www.godaddy.com',
+  'https://start.dev-godaddy.com',
+  'https://start.test-godaddy.com',
+  'https://start.dev-godaddy.com:8443',
+  'https://start.test-godaddy.com:8443',
+  'https://start.godaddy.com',
+  'https://dashboard.dev-godaddy.com',
+  'https://dashboard.test-godaddy.com',
+  'https://dashboard.godaddy.com',
+]);
+
+const myaOrigins = new Set([
+  'https://account.test-godaddy.com',
+  'https://account.godaddy.com',
+  'https://local.cx.test-godaddy.com:8443',
+  'https://local.cx.godaddy.com:8443',
+]);
 
 const ALLOWED_ORIGINS_MAP: Record<keyof typeof CORS_ROUTES, AllowedOrigin> = {
   [CORS_ROUTES.GET_SITES]: {
-    origins: new Set([
-      'https://account.test-godaddy.com',
-      'https://account.godaddy.com',
-      'https://local.cx.test-godaddy.com:8443',
-      'https://local.cx.godaddy.com:8443',
-    ]),
+    origins: myaOrigins,
     methods: 'GET, OPTIONS'
   },
   [CORS_ROUTES.GET_SUBSCRIPTIONS]: {
-    origins: new Set([
-      'https://account.test-godaddy.com',
-      'https://account.godaddy.com',
-      'https://local.cx.test-godaddy.com:8443',
-      'https://local.cx.godaddy.com:8443',
-    ]),
+    origins: myaOrigins,
     methods: 'GET, OPTIONS'
   },
   [CORS_ROUTES.QUICK_CREATE]: {
-    origins: new Set([
-      'https://www.dev-godaddy.com',
-      'https://www.test-godaddy.com',
-      'https://www.godaddy.com',
-      'https://start.dev-godaddy.com',
-      'https://start.test-godaddy.com',
-      'https://start.dev-godaddy.com:8443',
-      'https://start.test-godaddy.com:8443',
-      'https://start.godaddy.com',
-      'https://dashboard.dev-godaddy.com',
-      'https://dashboard.test-godaddy.com',
-      'https://dashboard.godaddy.com',
-    ]),
+    origins: aiPromptLibOrigins,
     methods: 'POST, OPTIONS'
+  },
+  [CORS_ROUTES.GET_SWITCHBOARD]: {
+    origins: aiPromptLibOrigins,
+    methods: 'GET, OPTIONS'
   }
 };
 

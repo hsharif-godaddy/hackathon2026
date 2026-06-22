@@ -50,7 +50,7 @@ describe('switchboard server', () => {
       await expect(checkSwitchboardValue('x', req)).rejects.toThrow('boom');
       expect(logger.error).toHaveBeenCalledWith(
         'switchboard.server.lookup-error',
-        expect.objectContaining({ featureName: 'x', error: 'boom' }),
+        expect.objectContaining({ error: 'boom' }),
       );
     });
 
@@ -115,7 +115,7 @@ describe('switchboard server', () => {
       await expect(checkSwitchboardObject('x', req)).rejects.toThrow('boom');
       expect(logger.error).toHaveBeenCalledWith(
         'switchboard.server.lookup-error',
-        expect.objectContaining({ featureName: 'x', error: 'boom' }),
+        expect.objectContaining({ error: 'boom' }),
       );
     });
 
@@ -148,7 +148,7 @@ describe('switchboard server', () => {
       await expect(checkSwitchboardFlag('x', req)).rejects.toThrow('boom');
       expect(logger.error).toHaveBeenCalledWith(
         'switchboard.server.lookup-error',
-        expect.objectContaining({ featureName: 'x', error: 'boom' }),
+        expect.objectContaining({ error: 'boom' }),
       );
     });
 
