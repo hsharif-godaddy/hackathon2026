@@ -53,7 +53,7 @@ import { MessageExecutionService, pickForcedInstallAgent } from '../MessageExecu
 import { skillToolManager, resolveSkillToolMetadata } from '../../../tools/skill-tool-manager.js'
 import { BudgetServiceConflictError } from '@airo/ai-lib/budget'
 import { BudgetExceededError } from '@airo/ai-common'
-import { APICallError, RetryError } from 'ai'
+import { APICallError, RetryError, TypeValidationError } from 'ai'
 
 // Mock agent-runtime action service registry.
 // `actionServiceMap` is module-local so tests can assert registry state
@@ -4741,6 +4741,37 @@ describe('MessageExecutionService', () => {
           expect(errorCall![1].data).not.toHaveProperty(key)
         }
       }
+    })
+
+    it('logs classified statusCode + errorType on the sse.execution.error log (not just the wire event)', async () => {
+      // A TypeValidationError (malformed upstream stream chunk) gets a synthetic
+      // 502/STREAM_TYPE_VALIDATION from classifyTurnError but no statusCode from
+      // analyzeStreamError. The log must carry the classified values, else these
+      // errors stay blank-status + errorType-less and invisible in Loki.
+      deps = createMockDeps([])
+      deps.getAgent.mockReturnValue({
+        streamGenerate: vi.fn().mockRejectedValue(new TypeValidationError({
+          value: { error: { message: 'internalServerException', code: '400' } },
+          cause: new Error('No matching discriminator'),
+        })),
+        getName: vi.fn().mockReturnValue('AI Developer'),
+      })
+      service = new MessageExecutionService(deps as any)
+
+      const loggerMod = await import('../../../logging/index.js')
+      const errorSpy = vi.spyOn(loggerMod.logger, 'error')
+      let errorCalls: any[][] = []
+      try {
+        await service.execute(DEFAULT_PARAMS)
+      } finally {
+        errorCalls = errorSpy.mock.calls.slice()
+        errorSpy.mockRestore()
+      }
+
+      const log = errorCalls.find(c => c[0] === 'sse.execution.error')
+      expect(log).toBeDefined()
+      expect(log?.[1]).toMatchObject({ statusCode: 502, errorType: 'STREAM_TYPE_VALIDATION' })
+      expect(log?.[1]).toHaveProperty('validationValue')
     })
   })
 

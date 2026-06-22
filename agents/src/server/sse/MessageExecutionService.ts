@@ -2787,9 +2787,19 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         const clientMessage = classified.clientMessage ?? err.message
         const { errorType, statusCode, retryAttempts, retryReason } = classified
         const terminalErrorInfo = analyzeStreamError(err)
+        // Log the same status/errorType that drive the client wire event below,
+        // not just analyzeStreamError's. analyzeStreamError has no statusCode for
+        // errors classifyTurnError assigns a synthetic one to (e.g. a
+        // TypeValidationError → STREAM_TYPE_VALIDATION/502), so those otherwise
+        // log as blank-status with no errorType and stay invisible in Loki/the
+        // dashboard. Prefer the analyzed upstream status when present (keeps the
+        // existing 400/408/503/504 capture), fall back to the classified one.
+        // Matches the WS agent.error log shape.
+        const logStatusCode = terminalErrorInfo.statusCode ?? statusCode
         logger.error('sse.execution.error', {
           appId, conversationId, ...errorFields(err), ...(requestId && { requestId }),
-          ...(terminalErrorInfo.statusCode !== undefined && { statusCode: terminalErrorInfo.statusCode }),
+          ...(logStatusCode !== undefined && { statusCode: logStatusCode }),
+          ...(errorType !== undefined && { errorType }),
           ...(terminalErrorInfo.responseBody !== undefined && { responseBody: terminalErrorInfo.responseBody }),
           ...(terminalErrorInfo.validationValue !== undefined && { validationValue: terminalErrorInfo.validationValue }),
           errorClass: terminalErrorInfo.type,
