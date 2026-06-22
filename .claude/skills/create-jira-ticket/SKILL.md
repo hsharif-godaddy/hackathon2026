@@ -44,17 +44,17 @@ Every ticket gets the `aab` label PLUS exactly one of these topic tags. Pick the
 
 | Tag | Squad / topic |
 |---|---|
-| `aab-aesthetics` | Aesthetics — visual and functional quality of sites and projects |
-| `aab-bug` | Bugs |
-| `aab-build` | Build process — skills and agents |
-| `aab-controlplane` | Control Plane (apps hosting) |
-| `aab-editing` | Editing — inline editing experience (Hover Bar, Lexical, RTE, source-mapper, dev-tools) |
-| `aab-growth` | Growth |
-| `aab-manage` | Manage |
-| `aab-paywall` | Paywall |
-| `aab-refinement` | Refinement |
-| `aab-switcher` | Switcher — customer wanting to switch over to Airo Builder |
-| `aab-ux` | UX — overall UI of Airo Builder |
+| `airo-aesthetics` | Aesthetics — visual and functional quality of sites and projects |
+| `airo-bug` | Bugs |
+| `airo-build` | Build process — skills and agents |
+| `airo-controlplane` | Control Plane (apps hosting) |
+| `airo-editing` | Editing — inline editing experience (Hover Bar, Lexical, RTE, source-mapper, dev-tools) |
+| `airo-growth` | Growth |
+| `airo-manage` | Manage |
+| `airo-paywall` | Paywall |
+| `airo-refinement` | Refinement |
+| `airo-switcher` | Switcher — customer wanting to switch over to Airo Builder |
+| `airo-ux` | UX — overall UI of Airo Builder |
 
 Don't apply more than one topic tag. If the user describes work spanning multiple squads, ask which squad owns it; that's the topic tag. If they insist on multiple, file separate tickets — one per squad.
 
