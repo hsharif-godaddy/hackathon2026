@@ -12,6 +12,7 @@ import Tag from "@ux/tag";
 import text from "@ux/text";
 
 import type { AppDomain } from '@/hooks/useAppDetails';
+import { useDomainConflictCheck } from '@/hooks/useDomainConflictCheck';
 import { domainJobQueryKey, useDomainJobPolling } from '@/hooks/useDomainJobPolling';
 import type { Domain } from '@/hooks/useDomainsQuery';
 import { useGasketConfig } from '@/hooks/useGasketConfig';
@@ -114,6 +115,12 @@ export default function DomainItem({
   const domainName = domain.domain || domain.name || '';
   /** True when app details include this domain (any status: PENDING, ACTIVE, …). Not the same as “ACTIVE only”. */
   const isConnected = !!appDomain;
+  const { hasDnsDrift } = useDomainConflictCheck(
+    appId ?? siteId,
+    domainName,
+    appDomain?.anycastIp,
+    isConnected && appDomain?.status === DomainStatus.ACTIVE,
+  );
   const domainJobForApp = useDevelopPageStore((s) => s.domainJobsInProgress[siteId]);
   const activeJobForDomain =
     domainJobForApp && domainJobForApp.fqdn === domainName.trim().toLowerCase()
@@ -357,18 +364,22 @@ export default function DomainItem({
           {showDomainStatusTag && (
             <Tag
               emphasis={
-                polledStatus === 'SUCCESS' ||
-                  polledOverallStatus === 'SUCCESS' ||
-                  appDomain?.status === DomainStatus.ACTIVE
-                  ? 'success'
-                  : polledStatus === 'FAILED' ||
-                      polledOverallStatus === 'FAILED' ||
-                      appDomain?.status === DomainStatus.FAILED ||
-                      appDomain?.status === DomainStatus.ERROR
-                    ? 'critical'
-                    : 'info'}
+                hasDnsDrift
+                  ? 'warning'
+                  : polledStatus === 'SUCCESS' ||
+                      polledOverallStatus === 'SUCCESS' ||
+                      appDomain?.status === DomainStatus.ACTIVE
+                    ? 'success'
+                    : polledStatus === 'FAILED' ||
+                        polledOverallStatus === 'FAILED' ||
+                        appDomain?.status === DomainStatus.FAILED ||
+                        appDomain?.status === DomainStatus.ERROR
+                      ? 'critical'
+                      : 'info'}
             >
-              {connectedTagLabel}
+              {hasDnsDrift
+                ? t('builder_domain_status_dns_conflict', undefined, 'DNS changed')
+                : connectedTagLabel}
             </Tag>
           )}
           {appId && appDomain?.status === DomainStatus.ACTIVE && (
@@ -515,6 +526,13 @@ export default function DomainItem({
                 />
               </span>
             )}
+          </text.p>
+        </Box>
+      )}
+      {hasDnsDrift && (
+        <Box className="mt-2">
+          <text.p className="ux-text ux-text-caption ux-text-feedback-critical">
+            {t('builder_domain_dns_drift_explanation', undefined, 'Your DNS settings were changed. Reconnect if you want your app to work again with the domain.')}
           </text.p>
         </Box>
       )}

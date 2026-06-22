@@ -18,8 +18,9 @@ import { renderWithProviders } from '@/tests/test-utils';
 import { logImpressionEvent } from '@/utils/instrumentation';
 
 const SUPPORT_URL = 'https://support.test/contact';
-const { mockUseDomainJobPolling } = vi.hoisted(() => ({
+const { mockUseDomainJobPolling, mockUseDomainConflictCheck } = vi.hoisted(() => ({
   mockUseDomainJobPolling: vi.fn(),
+  mockUseDomainConflictCheck: vi.fn().mockReturnValue({ hasDnsDrift: false }),
 }));
 
 vi.mock('@/hooks/useGasketConfig', () => ({
@@ -35,6 +36,10 @@ vi.mock('@/hooks/useDomainJobPolling', () => ({
   domainJobQueryKey: (siteId: string, fqdn: string) =>
     ['domain-job', siteId, fqdn.trim().toLowerCase()] as const,
   useDomainJobPolling: (...args: unknown[]) => mockUseDomainJobPolling(...args),
+}));
+
+vi.mock('@/hooks/useDomainConflictCheck', () => ({
+  useDomainConflictCheck: (...args: unknown[]) => mockUseDomainConflictCheck(...args),
 }));
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(() => true),
@@ -106,6 +111,7 @@ describe('DomainItem', () => {
       isLoading: false,
       error: null,
     });
+    mockUseDomainConflictCheck.mockReturnValue({ hasDnsDrift: false });
     useDevelopPageStore.setState({ domainJobsInProgress: {} });
   });
 
@@ -535,6 +541,99 @@ describe('DomainItem', () => {
       expect(screen.queryByText('Verifying domain...')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_domain_job_verifying_domain')).not.toBeInTheDocument();
       expect(screen.queryByText('builder_domain_status_not_connected')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('DNS drift warning tag', () => {
+    const activeDomain: AppDomain = {
+      fqdn: 'example.com',
+      isPrimary: true,
+      status: DomainStatus.ACTIVE,
+      anycastIp: '1.2.3.4',
+    };
+
+    it('shows warning tag when hasDnsDrift is true', () => {
+      mockUseDomainConflictCheck.mockReturnValue({ hasDnsDrift: true });
+
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={activeDomain} />
+      );
+
+      // t() uses defaultMessage='DNS changed' when translations are empty in tests
+      expect(screen.getByText('DNS changed')).toBeInTheDocument();
+    });
+
+    it('shows active tag when hasDnsDrift is false', () => {
+      mockUseDomainConflictCheck.mockReturnValue({ hasDnsDrift: false });
+
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={activeDomain} />
+      );
+
+      expect(screen.getByText('builder_domain_status_active')).toBeInTheDocument();
+      expect(screen.queryByText('DNS changed')).not.toBeInTheDocument();
+    });
+
+    it('shows explanation message when hasDnsDrift is true', () => {
+      mockUseDomainConflictCheck.mockReturnValue({ hasDnsDrift: true });
+
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={activeDomain} />
+      );
+
+      expect(screen.getByText('Your DNS settings were changed. Reconnect if you want your app to work again with the domain.')).toBeInTheDocument();
+    });
+
+    it('does not show explanation message when hasDnsDrift is false', () => {
+      mockUseDomainConflictCheck.mockReturnValue({ hasDnsDrift: false });
+
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={activeDomain} />
+      );
+
+      expect(screen.queryByText('Your DNS settings were changed. Reconnect if you want your app to work again with the domain.')).not.toBeInTheDocument();
+    });
+
+    it('calls useDomainConflictCheck with enabled=true only for ACTIVE connected domain', () => {
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={activeDomain} />
+      );
+
+      expect(mockUseDomainConflictCheck).toHaveBeenCalledWith(
+        'site-123',
+        'example.com',
+        '1.2.3.4',
+        true,
+      );
+    });
+
+    it('calls useDomainConflictCheck with enabled=false for disconnected domain', () => {
+      renderWithProviders(
+        <DomainItem {...defaultProps} appDomain={undefined} />
+      );
+
+      expect(mockUseDomainConflictCheck).toHaveBeenCalledWith(
+        'site-123',
+        'example.com',
+        undefined,
+        false,
+      );
+    });
+
+    it('calls useDomainConflictCheck with enabled=false for PENDING domain', () => {
+      renderWithProviders(
+        <DomainItem
+          {...defaultProps}
+          appDomain={{ fqdn: 'example.com', isPrimary: true, status: DomainStatus.PENDING }}
+        />
+      );
+
+      expect(mockUseDomainConflictCheck).toHaveBeenCalledWith(
+        'site-123',
+        'example.com',
+        undefined,
+        false,
+      );
     });
   });
 });
