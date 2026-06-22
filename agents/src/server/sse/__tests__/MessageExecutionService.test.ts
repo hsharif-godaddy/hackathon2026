@@ -75,11 +75,15 @@ vi.mock('../../agent-runtime.js', () => ({
 const mockRunMessageEndHooks = vi.fn().mockResolvedValue({ commitHash: null, usedFreeGrants: false })
 const mockAwaitOutcome = vi.fn().mockResolvedValue(undefined)
 const mockStartParallelAssessment = vi.fn(function () { return { awaitOutcome: mockAwaitOutcome }; })
-vi.mock('../../message-lifecycle.js', () => ({
-  runStartGitHook: vi.fn().mockResolvedValue(undefined),
-  startParallelAssessment: (...args: any[]) => mockStartParallelAssessment(...args),
-  runMessageEndHooks: (...args: any[]) => mockRunMessageEndHooks(...args),
-}))
+vi.mock('../../message-lifecycle.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../message-lifecycle.js')>()
+  return {
+    runStartGitHook: vi.fn().mockResolvedValue(undefined),
+    startParallelAssessment: (...args: any[]) => mockStartParallelAssessment(...args),
+    runMessageEndHooks: (...args: any[]) => mockRunMessageEndHooks(...args),
+    isOverrideApplicable: actual.isOverrideApplicable,
+  }
+})
 
 const mockResolveRebuildBuildPagePrompt = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 vi.mock('../../rebuild-build-page-message.js', () => ({
@@ -4365,6 +4369,199 @@ describe('MessageExecutionService', () => {
       expect(grantSessionManager.removeSession).toHaveBeenCalledWith(
         expect.stringContaining('sse:'),
       )
+    })
+
+    describe('with lifecycle and assessment override', () => {
+      const lifecycleWithAssessment = {
+        gitHookService: {} as any,
+        getAssessmentAgent: () => ({}) as any,
+        sessionStore: {
+          getLastUserMessage: vi.fn().mockReturnValue(undefined),
+          setLastUserMessage: vi.fn(),
+          getLastAssessmentTaskType: vi.fn().mockReturnValue(undefined),
+          setLastAssessmentTaskType: vi.fn(),
+          clearSession: vi.fn(),
+        },
+        logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
+      }
+
+      beforeEach(() => {
+        mockAwaitOutcome.mockReset()
+        mockAwaitOutcome.mockResolvedValue(undefined)
+        mockRunMessageEndHooks.mockReset()
+        mockRunMessageEndHooks.mockResolvedValue({ commitHash: null, usedFreeGrants: false })
+      })
+
+      afterEach(() => {
+        mockAwaitOutcome.mockReset()
+        mockAwaitOutcome.mockResolvedValue(undefined)
+        mockRunMessageEndHooks.mockReset()
+        mockRunMessageEndHooks.mockResolvedValue({ commitHash: null, usedFreeGrants: false })
+      })
+
+      it('applies override to metadata.subscriptionId and skips registerSession when assessment fires', async () => {
+        const { grantSessionManager } = await import('@airo/ai-grants')
+        vi.spyOn(grantSessionManager, 'registerSession').mockImplementation(function () {})
+        vi.spyOn(grantSessionManager, 'removeSession').mockImplementation(function () {})
+
+        const outcome = {
+          overrideApplied: true,
+          appliedBudget: 'airo-builder:fix-task',
+          durationMs: 350,
+          result: { taskType: 'fix', confidence: 0.9 },
+        } as any
+        mockAwaitOutcome.mockResolvedValueOnce(outcome)
+
+        deps = createMockDeps()
+        service = new MessageExecutionService({ ...deps, lifecycle: lifecycleWithAssessment } as any)
+
+        await service.execute({
+          ...DEFAULT_PARAMS,
+          subscriptionId: 'sub-grant-1',
+          lifecycleContext: {
+            agentContext: {
+              enableAssessmentAgent: true,
+              enableAssessmentOverride: true,
+            },
+          },
+        })
+
+        // Grant session not registered — override budget used instead of customer grant
+        expect(grantSessionManager.registerSession).not.toHaveBeenCalled()
+
+        // metadata.subscriptionId updated to the override value before LLM call
+        const streamCall = deps.getAgent().streamGenerate as ReturnType<typeof vi.fn>
+        const execContext = streamCall.mock.calls[0][1]?.executionContext
+        expect(execContext?.metadata?.subscriptionId).toBe('airo-builder:fix-task')
+
+        // runMessageEndHooks received the outcome so deriveUsedFreeGrants can fire
+        const completeCall = mockRunMessageEndHooks.mock.calls.find(
+          (c: any[]) => c[1]?.reason === 'complete'
+        )
+        expect(completeCall?.[1]?.assessmentOutcome).toBe(outcome)
+
+        // awaitOutcome called exactly once — post-turn guard must skip the second call
+        expect(mockAwaitOutcome).toHaveBeenCalledTimes(1)
+      })
+
+      it('falls through to registerSession when override does not apply', async () => {
+        const { grantSessionManager } = await import('@airo/ai-grants')
+        vi.spyOn(grantSessionManager, 'registerSession').mockImplementation(function () {})
+        vi.spyOn(grantSessionManager, 'removeSession').mockImplementation(function () {})
+
+        const outcome = {
+          overrideApplied: false,
+          durationMs: 350,
+          result: { taskType: 'develop', confidence: 0.7 },
+        } as any
+        mockAwaitOutcome.mockResolvedValueOnce(outcome)
+
+        deps = createMockDeps()
+        service = new MessageExecutionService({ ...deps, lifecycle: lifecycleWithAssessment } as any)
+
+        await service.execute({
+          ...DEFAULT_PARAMS,
+          subscriptionId: 'sub-grant-1',
+          lifecycleContext: {
+            agentContext: {
+              enableAssessmentAgent: true,
+              enableAssessmentOverride: true,
+            },
+          },
+        })
+
+        // Customer grant registered normally — no override
+        expect(grantSessionManager.registerSession).toHaveBeenCalledWith(
+          expect.stringContaining('sse:'),
+          'sub-grant-1',
+        )
+
+        // awaitOutcome called exactly once — outcome cached, post-turn guard skips
+        expect(mockAwaitOutcome).toHaveBeenCalledTimes(1)
+      })
+
+      it('falls through to registerSession and suppresses free_task_completed when assessment times out', async () => {
+        const { grantSessionManager } = await import('@airo/ai-grants')
+        vi.spyOn(grantSessionManager, 'registerSession').mockImplementation(function () {})
+        vi.spyOn(grantSessionManager, 'removeSession').mockImplementation(function () {})
+
+        // mockAwaitOutcome returns undefined (timeout) from beforeEach reset
+
+        deps = createMockDeps()
+        service = new MessageExecutionService({ ...deps, lifecycle: lifecycleWithAssessment } as any)
+
+        await service.execute({
+          ...DEFAULT_PARAMS,
+          subscriptionId: 'sub-grant-1',
+          lifecycleContext: {
+            agentContext: {
+              enableAssessmentAgent: true,
+              enableAssessmentOverride: true,
+            },
+          },
+        })
+
+        // Grant registered — timeout falls through to customer grant
+        expect(grantSessionManager.registerSession).toHaveBeenCalledWith(
+          expect.stringContaining('sse:'),
+          'sub-grant-1',
+        )
+
+        // Sentinel cached — post-turn awaitOutcome is skipped (called once total)
+        expect(mockAwaitOutcome).toHaveBeenCalledTimes(1)
+
+        // runMessageEndHooks gets the no-override sentinel — deriveUsedFreeGrants returns false
+        const completeCall = mockRunMessageEndHooks.mock.calls.find(
+          (c: any[]) => c[1]?.reason === 'complete'
+        )
+        expect(completeCall?.[1]?.assessmentOutcome?.overrideApplied).toBe(false)
+      })
+
+      it('skips early awaitOutcome when budgetServiceEnabled=true (BMS mode)', async () => {
+        const { grantSessionManager } = await import('@airo/ai-grants')
+        vi.spyOn(grantSessionManager, 'registerSession').mockImplementation(function () {})
+        vi.spyOn(grantSessionManager, 'removeSession').mockImplementation(function () {})
+
+        mockAwaitOutcome.mockResolvedValueOnce({
+          overrideApplied: true,
+          appliedBudget: 'airo-builder:fix-task',
+          durationMs: 100,
+          result: { taskType: 'fix', confidence: 0.95 },
+        } as any)
+
+        deps = createMockDeps()
+        service = new MessageExecutionService({ ...deps, lifecycle: lifecycleWithAssessment } as any)
+
+        await service.execute({
+          ...DEFAULT_PARAMS,
+          subscriptionId: 'sub-bms-1',
+          lifecycleContext: {
+            agentContext: {
+              budgetServiceEnabled: true,
+              enableAssessmentAgent: true,
+              enableAssessmentOverride: true,
+            },
+          },
+        })
+
+        // BMS: useGrantRecovery is false, so the early awaitOutcome branch is never entered.
+        // awaitOutcome fires once on the post-turn path only (not early).
+        expect(grantSessionManager.registerSession).not.toHaveBeenCalled()
+        expect(mockAwaitOutcome).toHaveBeenCalledTimes(1)
+
+        // The mocked override result must NOT rewrite metadata.subscriptionId —
+        // BMS relies on retroactive reconciliation, not pre-turn overrides.
+        const streamCall = deps.getAgent().streamGenerate as ReturnType<typeof vi.fn>
+        const execContext = streamCall.mock.calls[0][1]?.executionContext
+        expect(execContext?.metadata?.subscriptionId).not.toBe('airo-builder:fix-task')
+
+        // runMessageEndHooks receives budgetServiceEnabled=true so
+        // deriveUsedFreeGrants returns false (BMS handles billing via onBudgetReport)
+        const completeCall = mockRunMessageEndHooks.mock.calls.find(
+          (c: any[]) => c[1]?.reason === 'complete'
+        )
+        expect(completeCall?.[1]?.budgetServiceEnabled).toBe(true)
+      })
     })
   })
 

@@ -66,7 +66,7 @@ import { parseChunkTimeoutMs, runWithModelOverride, buildTokenUsage, calculateCo
 import { resolveProfile, runWithProfile } from '../../profiles/index.js'
 import { guardAllowedOverrideModel, resolveOverride } from '../model-override.js'
 import type { AssessmentOutcome } from '../../agents/assessment-agent/index.js'
-import { ClassifierMode } from '../../agents/assessment-agent/index.js'
+import { ClassifierMode, AssessmentReason } from '../../agents/assessment-agent/index.js'
 import { PARALLEL_ASSESSMENT_TIMEOUT_MS } from '../assessment-executor.js'
 import { createAgentContext, emitConversationStart } from '@godaddy/agent-otel-sdk'
 import { getBusinessContext, setBusinessContext } from '@signals/otel-sdk'
@@ -80,6 +80,7 @@ import {
 import type { PostStreamValidatorResult } from '../post-stream-validator.js'
 import {
   runStartGitHook, startParallelAssessment, runMessageEndHooks,
+  isOverrideApplicable,
   type MessageLifecycleDeps, type ParallelAssessmentHandle,
 } from '../message-lifecycle.js'
 import {
@@ -2161,7 +2162,53 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       ? createGrantBudgetRecoveryCallback({ logger })
       : undefined
     if (useGrantRecovery) {
-      grantSessionManager.registerSession(sseSocketId, subscriptionId!)
+      if (enableAssessmentOverride && assessmentHandle) {
+        // awaitOutcome is designed never to throw (swallowed classifier
+        // rejection + withTimeout), so a throw here is a contract violation
+        // in startParallelAssessment — guard to match the post-turn error path
+        // and prevent leaving the SSE client waiting for terminal events.
+        const earlyOutcome = await assessmentHandle
+          .awaitOutcome({ timeoutMs: PARALLEL_ASSESSMENT_TIMEOUT_MS })
+          .catch((err) => {
+            logger.error('sse.execution.early_assessment_await_failed', {
+              appId, socketId: sseSocketId, ...errorFields(err),
+            })
+            return undefined
+          })
+        if (earlyOutcome) {
+          assessmentOutcome = earlyOutcome
+          if (isOverrideApplicable(earlyOutcome, enableAssessmentOverride)) {
+            // This is the load-bearing assignment: buildLitellmMetadataFromContext
+            // takes the isBudgetOverride branch when subscriptionId matches a
+            // budget key, routing cost away from the customer's grant. The
+            // registerSession skip below just avoids dead state — the override
+            // branch precedes grant lookup either way.
+            const meta = executionContext.metadata as Record<string, unknown>
+            meta.subscriptionId = earlyOutcome.appliedBudget
+            logger.info('grants.assessment.sse_early_override', {
+              appId,
+              socketId: sseSocketId,
+              appliedBudget: earlyOutcome.appliedBudget,
+              durationMs: earlyOutcome.durationMs,
+            })
+          } else {
+            grantSessionManager.registerSession(sseSocketId, subscriptionId!)
+          }
+        } else {
+          // Timeout: fall through to customer grant. Cache a no-override sentinel so
+          // the post-turn await doesn't re-fire and free_task_completed stays suppressed —
+          // we must not tell the user a task was free when the grant was charged.
+          assessmentOutcome = { result: null, completedInTime: false, durationMs: 0, overrideApplied: false, reason: AssessmentReason.Timeout }
+          logger.warn('grants.assessment.sse_early_override_timeout', {
+            appId,
+            socketId: sseSocketId,
+            reason: 'timeout_or_failure',
+          })
+          grantSessionManager.registerSession(sseSocketId, subscriptionId!)
+        }
+      } else {
+        grantSessionManager.registerSession(sseSocketId, subscriptionId!)
+      }
     }
 
     const allExecutionSteps: ExecutionStep[] = []
@@ -2518,7 +2565,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
       // hooks (usedFreeGrants accounting) and the BMS report below. Timeout
       // yields `undefined`, which both consumers handle (accounting defaults
       // to "customer pays", BMS attribution defaults to the base subscription).
-      if (assessmentHandle) {
+      if (assessmentHandle && !assessmentOutcome) {
         assessmentOutcome = await assessmentHandle.awaitOutcome({ timeoutMs: PARALLEL_ASSESSMENT_TIMEOUT_MS })
       }
 
@@ -2529,7 +2576,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         const endResult = await runMessageEndHooks(this.deps.lifecycle, {
           appId, conversationId, sessionKey: sseSocketId,
           reason: loopAborted ? 'disconnection' : 'complete', userPrompt: content,
-          assessmentOutcome, enableAssessmentOverride,
+          assessmentOutcome, enableAssessmentOverride, budgetServiceEnabled,
         })
         persistenceContext.commitHash = endResult.commitHash
         persistenceContext.usedFreeGrants = endResult.usedFreeGrants
@@ -2562,9 +2609,10 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
           subscriptionId,
         })
         budgetReportFiled = budgetReport.filed
-        // BMS mode: update usedFreeGrants from cost attribution result
-        // (persistenceContext.usedFreeGrants is always false in BMS mode since
-        // deriveUsedFreeGrants returns false when budgetServiceEnabled=true)
+        // BMS mode: reconciliation is the source of truth for free-task billing.
+        // runMessageEndHooks already returns false via deriveUsedFreeGrants when
+        // budgetServiceEnabled=true; this override handles the positive case
+        // (sessionWasFree=true from the budget report).
         if (budgetReport.sessionWasFree !== undefined) {
           usedFreeGrants = budgetReport.sessionWasFree
         }
@@ -2659,7 +2707,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         try {
           const endResult = await runMessageEndHooks(this.deps.lifecycle, {
             appId, conversationId, sessionKey: sseSocketId, reason, userPrompt: content,
-            assessmentOutcome, enableAssessmentOverride,
+            assessmentOutcome, enableAssessmentOverride, budgetServiceEnabled,
           })
           persistenceContext.commitHash = endResult.commitHash
           persistenceContext.usedFreeGrants = endResult.usedFreeGrants

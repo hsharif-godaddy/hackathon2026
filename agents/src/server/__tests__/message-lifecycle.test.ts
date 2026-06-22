@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 
 import {
   LifecycleSessionStore,
+  isOverrideApplicable,
   startParallelAssessment,
 } from '../message-lifecycle.js'
 import type { AssessmentAgent, AssessmentOutcome } from '../../agents/assessment-agent/index.js'
@@ -99,5 +100,31 @@ describe('startParallelAssessment', () => {
     const b = await handle.awaitOutcome({ timeoutMs: 100 })
     expect(a).toBe(b)
     expect(classify).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('isOverrideApplicable', () => {
+  it('returns true when overrideApplied + appliedBudget + enableAssessmentOverride', () => {
+    const outcome = { overrideApplied: true, appliedBudget: 'airo-builder:fix-task' } as AssessmentOutcome
+    expect(isOverrideApplicable(outcome, true)).toBe(true)
+  })
+
+  it('returns false when enableAssessmentOverride is false', () => {
+    const outcome = { overrideApplied: true, appliedBudget: 'airo-builder:fix-task' } as AssessmentOutcome
+    expect(isOverrideApplicable(outcome, false)).toBe(false)
+  })
+
+  it('returns false when overrideApplied is false', () => {
+    const outcome = { overrideApplied: false, appliedBudget: 'airo-builder:fix-task' } as AssessmentOutcome
+    expect(isOverrideApplicable(outcome, true)).toBe(false)
+  })
+
+  it('returns false when appliedBudget is undefined', () => {
+    const outcome = { overrideApplied: true } as AssessmentOutcome
+    expect(isOverrideApplicable(outcome, true)).toBe(false)
+  })
+
+  it('returns false when outcome is undefined', () => {
+    expect(isOverrideApplicable(undefined, true)).toBe(false)
   })
 })

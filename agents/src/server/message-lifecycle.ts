@@ -21,6 +21,7 @@ import type {
   ClassifierMode,
 } from '../agents/assessment-agent/index.js'
 import type { ILogger } from '../logging/types.js'
+import { deriveUsedFreeGrants } from './assessment-executor.js'
 import { withTimeout } from '../utils/promise-utils.js'
 
 type LifecycleLogger = Pick<ILogger, 'info' | 'warn' | 'debug' | 'error'>
@@ -120,6 +121,20 @@ export interface StartAssessmentResult {
 }
 
 /**
+ * Whether an assessment outcome warrants applying a budget override. True when
+ * the classifier flagged a free-task, produced a budget string, and the
+ * override flag is enabled. Used by both the blocking (grants) and early-await
+ * (SSE grants) paths to decide whether to write `appliedBudget` into
+ * `metadata.subscriptionId`.
+ */
+export function isOverrideApplicable(
+  outcome: AssessmentOutcome | undefined,
+  enableAssessmentOverride: boolean,
+): boolean {
+  return !!(outcome?.overrideApplied && outcome?.appliedBudget && enableAssessmentOverride)
+}
+
+/**
  * Classify the prompt and emit pending/dry-run logs. Returns the outcome plus
  * any subscriptionId override the caller should apply to executionContext.
  * When `enableAssessmentAgent` is false, returns an empty result without
@@ -166,11 +181,7 @@ export async function runStartAssessment(
     sessionStore.setLastAssessmentTaskType(sessionKey, assessmentOutcome.result.taskType)
   }
 
-  const willApply = !!(
-    assessmentOutcome.overrideApplied &&
-    assessmentOutcome.appliedBudget &&
-    enableAssessmentOverride
-  )
+  const willApply = isOverrideApplicable(assessmentOutcome, enableAssessmentOverride)
 
   if (willApply && assessmentOutcome.appliedBudget) {
     logger.info('grants.assessment.override.pending', {
@@ -311,6 +322,7 @@ export interface EndHooksParams {
   userPrompt?: string
   assessmentOutcome?: AssessmentOutcome
   enableAssessmentOverride: boolean
+  budgetServiceEnabled: boolean
 }
 
 export interface EndHooksResult {
@@ -325,11 +337,12 @@ export async function runMessageEndHooks(
   const { gitHookService, logger } = deps
   const {
     appId, conversationId, sessionKey, reason, userPrompt,
-    assessmentOutcome, enableAssessmentOverride,
+    assessmentOutcome, enableAssessmentOverride, budgetServiceEnabled,
   } = params
 
-  const usedFreeGrants =
-    !!(assessmentOutcome?.overrideApplied && enableAssessmentOverride)
+  const usedFreeGrants = deriveUsedFreeGrants(
+    budgetServiceEnabled, assessmentOutcome, enableAssessmentOverride,
+  )
 
   let commitHash: string | null = null
   try {
