@@ -150,7 +150,7 @@ async function handleDedupHit({ existing, row, customerId, appId, submissionId, 
     return false;
   }
 
-  const note = renderDuplicateNote({ submissionId, row });
+  const note = renderDuplicateNote({ submissionId, appId, row });
   // The note is the durable record of the follow-up on the escalated case;
   // track whether it actually landed so the dedup.hit log distinguishes a
   // clean dedup from one where the note was dropped (CMAPI blip).
@@ -789,9 +789,10 @@ function buildEscalationDetails({ row, truncatedDescription }) {
   return `[FEEDBACK NPS ${ratingLabel} | ${consentMarker}] ${truncatedDescription}${topicsLine}`;
 }
 
-function renderDuplicateNote({ submissionId, row }) {
+function renderDuplicateNote({ submissionId, appId, row }) {
+  const appIdSegment = appId ? `(appid - ${appId}) ` : '';
   return [
-    'Follow-up submission on an open escalated case.',
+    `Follow-up submission on an open escalated case. ${appIdSegment}`.trimEnd(),
     `SubmissionId: ${submissionId}`,
     `Category: ${row.feedback_category ?? 'unknown'}`,
     row.rating != null ? `Rating: ${row.rating}` : null,

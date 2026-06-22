@@ -565,6 +565,9 @@ await test('dedup hit (escalated open): notes the ESCALATED case, links standard
   assert.equal(calls.getCase[0].caseId, '500ESCALATED000001', 'status check targets the escalated case');
   assert.equal(calls.postNote.length, 1, 'one note posted');
   assert.equal(calls.postNote[0].caseRecordId, '500ESCALATED000001', 'note posted to the ESCALATED case');
+  // Note must carry the appId in the same format as the standard-case note
+  // so L2 agents can identify which app the follow-up came from.
+  assert.ok(calls.postNote[0].note.includes('(appid - app-1)'), 'note includes appId');
   assert.equal(calls.postCase.length, 0, 'no new CRM case opened on dedup hit');
   assert.equal(calls.slack.length, 1, 'Slack still pings on dedup hit');
   assert.equal(calls.jiraCreate.length, 1, 'Jira ticket still created on dedup hit (eligibility-gated)');
