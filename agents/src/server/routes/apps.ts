@@ -31,6 +31,7 @@ import { ASTTextEditor } from '../../tools/ast-text-editor.js';
 import { TextFixAgent } from '../../agents/text-fix-agent.js';
 import { astImageEditor } from '../../tools/ast-image-editor.js';
 import { editContent } from '../../tools/content-editor.js';
+import { mutateContent, type MutateRequest } from '../../tools/content-mutation.js';
 import { USER_EDITS_FILE } from '../../tools/content-user-edits.js';
 import { astElementRemover } from '../../tools/ast-element-remover.js';
 import { mediaManifestService } from '../../services/MediaManifestService.js';
@@ -62,6 +63,7 @@ async function commitContentFile(
   relPath: string,
   contentKey: string,
   contextLogger: ReturnType<typeof log.forApp>,
+  routeLabel: 'content-edit' | 'content-mutate' = 'content-edit',
 ): Promise<string | undefined> {
   try {
     const workspace = createForWorkspace(appId, 'preview');
@@ -82,14 +84,14 @@ async function commitContentFile(
     // `git status --porcelain`, so it doesn't depend on git's localized output.
     const committed = await gitUtils.commitFilesIfChanged(appPath, `Update content: ${contentKey}`, filesToCommit);
     if (!committed) {
-      contextLogger.info('route.apps.content-edit.no-op', {
+      contextLogger.info(`route.apps.${routeLabel}.no-op`, {
         appId, relPath,
         message: 'edit value unchanged, nothing to commit',
       });
     }
     return await gitUtils.getCurrentCommit(appPath);
   } catch (error) {
-    contextLogger.warn('route.apps.content-edit.commit-failed', {
+    contextLogger.warn(`route.apps.${routeLabel}.commit-failed`, {
       appId,
       error: error instanceof Error ? error.message : String(error),
     });
@@ -1084,6 +1086,52 @@ router.post('/:id/content/edit', async (req: Request, res: Response) => {
   } catch (error) {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
     log.error(contextLogger, 'route.apps.content-edit.error', error as Error, {});
+    return res.status(500).json({ ok: false, error: { code: 'internal-error', message: 'Internal server error' } });
+  }
+});
+
+/**
+ * POST /apps/:id/content/mutate - Insert / remove / reorder items in a content
+ * collection (src/content/**) by stable id. Deterministic canvas path, parallel
+ * to /content/edit. Body: { op, collectionKey, item?/afterId? | itemId | order }.
+ */
+router.post('/:id/content/mutate', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ ok: false, error: { code: 'invalid-key', message: 'App ID is required' } });
+    }
+    const { op, collectionKey, item, afterId, itemId, order } = req.body ?? {};
+    const contextLogger = log.forApp(id);
+
+    if ((op !== 'insert' && op !== 'remove' && op !== 'reorder') || typeof collectionKey !== 'string') {
+      contextLogger.warn('route.apps.content-mutate.validation.failed', { op, hasCollectionKey: typeof collectionKey === 'string' });
+      return res.status(400).json({
+        ok: false,
+        error: { code: 'invalid-value', message: 'op ("insert"|"remove"|"reorder") and collectionKey (string) are required' },
+      });
+    }
+
+    const app = appRepo.findById(id);
+    if (!app) {
+      contextLogger.warn('route.apps.content-mutate.app-not-found', { appId: id });
+      return res.status(404).json({ ok: false, error: { code: 'app-not-found', message: 'App not found' } });
+    }
+
+    const contentDir = path.join(app.path, 'src', 'content');
+    const result = await mutateContent(contentDir, { op, collectionKey, item, afterId, itemId, order } as MutateRequest);
+
+    if (!result.ok) {
+      contextLogger.warn('route.apps.content-mutate.rejected', { op, collectionKey, errorCode: result.error.code });
+      return res.status(400).json(result);
+    }
+
+    const commitHash = await commitContentFile(id, app.path, path.relative(app.path, result.file), collectionKey, contextLogger, 'content-mutate');
+    contextLogger.info('route.apps.content-mutate.success', { op, collectionKey, file: result.file, id: result.id, commitHash });
+    return res.json({ ...result, ...(commitHash ? { commitHash } : {}) });
+  } catch (error) {
+    const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
+    log.error(contextLogger, 'route.apps.content-mutate.error', error as Error, {});
     return res.status(500).json({ ok: false, error: { code: 'internal-error', message: 'Internal server error' } });
   }
 });

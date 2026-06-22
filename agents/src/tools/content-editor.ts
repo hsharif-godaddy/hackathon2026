@@ -32,6 +32,10 @@ export type ContentEditErrorCode =
   | 'write-failed'
   | 'invalid-value'
   | 'type-unsupported'
+  | 'not-an-array'
+  | 'item-not-found'
+  | 'invalid-order'
+  | 'invalid-item'
   | 'internal-error';
 
 export interface ContentEditError {
@@ -321,7 +325,7 @@ export async function editContent(
   return { ok: true, file, contentPath: parsed.path };
 }
 
-function navigate(cursor: unknown, seg: ContentPathSegment): unknown {
+export function navigate(cursor: unknown, seg: ContentPathSegment): unknown {
   if (isIdRef(seg)) {
     if (!Array.isArray(cursor)) return undefined;
     const idx = indexOfId(cursor, seg);
@@ -336,7 +340,7 @@ function navigate(cursor: unknown, seg: ContentPathSegment): unknown {
     : undefined;
 }
 
-function isPlainObject(v: unknown): v is Record<string, unknown> {
+export function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
