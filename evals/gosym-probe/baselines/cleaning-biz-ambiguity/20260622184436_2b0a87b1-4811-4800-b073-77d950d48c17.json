@@ -1,0 +1,167 @@
+{
+  "scenarioName": "cleaning-biz-ambiguity",
+  "runId": "2b0a87b1-4811-4800-b073-77d950d48c17",
+  "createdAt": "2026-06-22T18:44:36.807Z",
+  "stabilityLevel": "high",
+  "stabilityTrials": 20,
+  "gitSha": "160c79d151535914a4ba965516afce9af0899914",
+  "gitBranch": "main",
+  "scores": {
+    "bug-hit-rate": {
+      "passAtK": true,
+      "passToTheK": false,
+      "passingTrials": 7,
+      "totalTrials": 20,
+      "trialScores": [
+        1, 1, 1, 1, 1, 1, 0.09090909090909091, 1, 0.16666666666666666, 0.14285714285714285,
+        0.09090909090909091, 0.09090909090909091, 0.09090909090909091, 0.09090909090909091,
+        0.09090909090909091, 0.1111111111111111, 0.1111111111111111, 0.09090909090909091, 0.125,
+        0.1111111111111111
+      ]
+    },
+    "tool-failure-rate": {
+      "passingTrials": 0,
+      "totalTrials": 20,
+      "aggregateScore": 0.09339642866327691,
+      "lowerIsBetter": true,
+      "trialScores": [
+        0.13333333333333333, 0.08823529411764706, 0.11290322580645161, 0.1016949152542373,
+        0.047619047619047616, 0.12, 0.07462686567164178, 0.10869565217391304, 0
+      ]
+    },
+    "prompt-efficiency": {
+      "passingTrials": 0,
+      "totalTrials": 20,
+      "aggregateScore": 0.7687017167161959,
+      "evalVersion": "1.0",
+      "lowerIsBetter": false,
+      "trialScores": [
+        0.7310585786300049, 0.8021838885585818, 0.8320183851339245, 0.7685247834990178,
+        0.7685247834990178, 0.7685247834990178, 0.7310585786300049, 0.7685247834990178,
+        0.8021838885585818, 0.8021838885585818, 0.7310585786300049, 0.7310585786300049,
+        0.7310585786300049, 0.7310585786300049, 0.7310585786300049, 0.8021838885585818,
+        0.8021838885585818, 0.7310585786300049, 0.8320183851339245, 0.8021838885585818
+      ]
+    },
+    "jtbd-completion": {
+      "passAtK": true,
+      "passToTheK": false,
+      "passingTrials": 8,
+      "totalTrials": 20,
+      "trialScores": [1, 1, 1, 1, 1, 1, 0.5, 1, 1, 0.5, 0, 0.5, 0.5, 0.5, 0.5, 0.5, 0, 0, 0, 0]
+    },
+    "output-quality": {
+      "passingTrials": 9,
+      "totalTrials": 20,
+      "aggregateScore": 0.7332671641113375,
+      "evalVersion": "accessibility-coverage:1.0+component-decomposition:1.0+content-substance:1.0+heading-hierarchy:1.0+inline-style-ratio:1.0+link-quality:1.0+responsive-readiness:1.0+semantic-density:1.0+visual-coherence:1.0",
+      "trialScores": [
+        0.8336149014511588, 0.8328640906418684, 0.8297105045492142, 0.8176543209876542,
+        0.8216221693541282, 0.828450630792856, 0.6604545454545453, 0.8255360623781676,
+        0.8305410426100082, 0.8078846781447254, 0.6604545454545453, 0.6604545454545453,
+        0.6604545454545453, 0.6604545454545453, 0.6604545454545453, 0.6604545454545453,
+        0.6604545454545453, 0.6604545454545453, 0.6604545454545453, 0.6604545454545453
+      ]
+    },
+    "agent-steps": {
+      "passingTrials": 0,
+      "totalTrials": 20,
+      "evalVersion": "1.0",
+      "lowerIsBetter": false
+    },
+    "latency": {
+      "passingTrials": 0,
+      "totalTrials": 20,
+      "aggregateScore": 0.15694284602885217,
+      "trialScores": [
+        0.3202732031893827, 0.3824916079920234, 0.29173896656361603, 0.05517849814485931,
+        0.29257430963819786, 0.09697455091914288, 0.015449993056688305, 0.014140725982545396,
+        0.026410400690078002
+      ]
+    },
+    "tool-parallelism": {
+      "passingTrials": 0,
+      "totalTrials": 20,
+      "aggregateScore": 0.03412963104081533,
+      "lowerIsBetter": false,
+      "trialScores": [
+        0.02822273073989321, 0.016414141414141416, 0.02459016393442623, 0.025842945874001773,
+        0.02736842105263158, 0.03819444444444445, 0.04817708333333333, 0.046511627906976744,
+        0.18382352941176472
+      ]
+    },
+    "tool-batching-efficiency": {
+      "passingTrials": 0,
+      "totalTrials": 20,
+      "aggregateScore": 0.8909830606901293,
+      "evalVersion": "1.2",
+      "lowerIsBetter": false,
+      "trialScores": [
+        0.8823529411764706, 0.9016393442622951, 0.9074074074074074, 0.8653846153846154,
+        0.8461538461538461, 0.8837209302325582, 0.9016393442622951, 0.925, 0.8947368421052632
+      ]
+    },
+    "turn-duration": {
+      "passingTrials": 0,
+      "totalTrials": 20,
+      "lowerIsBetter": true
+    },
+    "token-usage": {
+      "passingTrials": 0,
+      "totalTrials": 20,
+      "aggregateScore": 1192963.888888889,
+      "lowerIsBetter": true,
+      "trialScores": [
+        3422509, 4173693, 3672280, 3315162, 1983404, 2729739, 0, 4163747, 2021163, 165346, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0
+      ]
+    },
+    "intent-to-output-alignment": {
+      "passingTrials": 0,
+      "totalTrials": 20,
+      "aggregateScore": 0.4538888888888889,
+      "evalVersion": "2.0",
+      "lowerIsBetter": false,
+      "trialScores": [
+        0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.1, 0.95, 0.9, 0.72, 0.05, 0.1, 0.1, 0.1, 0.1, 0.1,
+        0.05, 0.1, 0.05, 0.05
+      ]
+    },
+    "implicit-feature-gap": {
+      "passingTrials": 0,
+      "totalTrials": 20,
+      "aggregateScore": 0.435,
+      "evalVersion": "2.0",
+      "lowerIsBetter": false,
+      "trialScores": [
+        0.88, 0.92, 0.92, 0.92, 0.85, 0.92, 0.1, 0.95, 0.85, 0.72, 0.05, 0.1, 0.1, 0.1, 0.1, 0.1,
+        0.1, 0.05, 0.05, 0.05
+      ]
+    },
+    "silent-hallucination": {
+      "passingTrials": 0,
+      "totalTrials": 20,
+      "aggregateScore": 0.375,
+      "evalVersion": "2.0",
+      "lowerIsBetter": false,
+      "trialScores": [
+        0.82, 0.72, 0.82, 0.85, 0.85, 0.82, 0.1, 0.82, 0.55, 0.55, 0, 0.1, 0.1, 0.1, 0.1, 0.1, 0.05,
+        0.05, 0.05, 0.05
+      ]
+    }
+  },
+  "regressionThresholds": {
+    "tool-failure-rate": 0.25,
+    "prompt-efficiency": 0.25,
+    "output-quality": 0.25,
+    "agent-steps": 0.25,
+    "latency": 0.25,
+    "tool-parallelism": 0.25,
+    "tool-batching-efficiency": 0.25,
+    "turn-duration": 0.25,
+    "token-usage": 0.25,
+    "intent-to-output-alignment": 0.25,
+    "implicit-feature-gap": 0.25,
+    "silent-hallucination": 0.25
+  }
+}
