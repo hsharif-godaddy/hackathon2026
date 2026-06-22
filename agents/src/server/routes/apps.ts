@@ -24,12 +24,14 @@ import { DirectoryListingTool, DirectoryListingNotFoundError } from '../../tools
 import { createForWorkspace } from '../../workspace/index.js';
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
 import { GitUtils } from '../../utils/git.js';
+import { fileExists } from '../../utils/fs-utils.js';
 import { isAppInRebuildFlow } from '../../services/rebuild/validate-inline-font.js';
 import { ASTStyleEditor } from '../../tools/ast-style-editor.js';
 import { ASTTextEditor } from '../../tools/ast-text-editor.js';
 import { TextFixAgent } from '../../agents/text-fix-agent.js';
 import { astImageEditor } from '../../tools/ast-image-editor.js';
 import { editContent } from '../../tools/content-editor.js';
+import { USER_EDITS_FILE } from '../../tools/content-user-edits.js';
 import { astElementRemover } from '../../tools/ast-element-remover.js';
 import { mediaManifestService } from '../../services/MediaManifestService.js';
 import {
@@ -65,21 +67,25 @@ async function commitContentFile(
     const workspace = createForWorkspace(appId, 'preview');
     if (!workspace) return undefined;
     const gitUtils = new GitUtils(workspace.tasks);
-    const addResult = await gitUtils.addFiles(appPath, [relPath]);
-    if (!addResult.success) {
-      contextLogger.warn('route.apps.content-edit.commit-failed', {
-        appId, stage: 'add', relPath,
-        exitCode: addResult.exitCode, stderr: addResult.stderr, timedOut: addResult.timedOut,
+    // Commit the user-edit provenance lock in the SAME commit as the content
+    // file so the recorded lock travels with the edit it protects. The lock is
+    // only present on the CMS inline-edit path, so guard on existence — a
+    // non-CMS edit (or the very first edit before the lock is written) must
+    // not fail the commit.
+    const lockRelPath = path.join('src', 'content', USER_EDITS_FILE);
+    const includeLock = await fileExists(path.join(appPath, lockRelPath));
+    const filesToCommit = includeLock ? [relPath, lockRelPath] : [relPath];
+    // A no-op (serialized value already matches disk, e.g. focus/blur with no
+    // real change) returns false rather than failing. The edit succeeded — disk
+    // is already correct — so log at info (not commit-failed) and still return
+    // the current SHA. commitFilesIfChanged detects this structurally via
+    // `git status --porcelain`, so it doesn't depend on git's localized output.
+    const committed = await gitUtils.commitFilesIfChanged(appPath, `Update content: ${contentKey}`, filesToCommit);
+    if (!committed) {
+      contextLogger.info('route.apps.content-edit.no-op', {
+        appId, relPath,
+        message: 'edit value unchanged, nothing to commit',
       });
-      return undefined;
-    }
-    const commitResult = await gitUtils.commitFiles(appPath, `Update content: ${contentKey}`, [relPath]);
-    if (!commitResult.success) {
-      contextLogger.warn('route.apps.content-edit.commit-failed', {
-        appId, stage: 'commit', relPath,
-        exitCode: commitResult.exitCode, stderr: commitResult.stderr, timedOut: commitResult.timedOut,
-      });
-      return undefined;
     }
     return await gitUtils.getCurrentCommit(appPath);
   } catch (error) {

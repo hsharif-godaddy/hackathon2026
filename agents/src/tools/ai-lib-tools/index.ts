@@ -50,6 +50,7 @@ export { websiteRebuildAITool } from './website-rebuild.js';
 export { rebuildPageSelectorAITool } from './rebuild-page-selector.js';
 export { mediaSlotAITool } from './media-slot.js';
 export { brandIdentityAITool } from './brand-identity.js';
+export { contentScaffoldAITool } from './content-scaffold.js';
 export { brandAITool } from './brand.js';
 export { httpCheckAITool } from './http-check.js';
 export { listDesignSystemsAITool } from './list-design-systems.js'
@@ -103,6 +104,7 @@ import { websiteRebuildAITool } from './website-rebuild.js';
 import { rebuildPageSelectorAITool } from './rebuild-page-selector.js';
 import { mediaSlotAITool } from './media-slot.js';
 import { brandIdentityAITool } from './brand-identity.js';
+import { contentScaffoldAITool } from './content-scaffold.js';
 import { brandAITool } from './brand.js';
 import { httpCheckAITool } from './http-check.js';
 import { listDesignSystemsAITool } from './list-design-systems.js';
@@ -116,6 +118,7 @@ import { crawlPagesAITool } from './crawl-pages.js';
 import { registerPostEditHandler } from './post-edit-handlers.js';
 import { seoRoutesPostEditHandler } from '../../services/seo-routes-post-edit-handler.js';
 import { seoPagePostEditHandler } from '../../services/seo-page-post-edit-handler.js';
+import { contentRulesPostEditHandler } from '../../services/content-rules-post-edit-handler.js';
 import { getPageSeoGaps } from '../../services/SeoPageRegistry.js';
 import { todoListTool } from '../todo-list-tool.js';
 
@@ -124,6 +127,10 @@ import { todoListTool } from '../todo-list-tool.js';
 // template-agnostic. Registration is idempotent by handler name.
 registerPostEditHandler(seoRoutesPostEditHandler);
 registerPostEditHandler(seoPagePostEditHandler);
+// Content-layer enforcement: appends content-rule violations to the agent's
+// own file writes. Self-gates on `develop.contentSystem`, so apps that don't
+// use the content layer are never nagged (gate lives in the handler's match).
+registerPostEditHandler(contentRulesPostEditHandler);
 
 // AC3: gate mark_done on SEO completeness for any page files edited this session.
 todoListTool.setSeoGapsChecker(getPageSeoGaps);
@@ -174,6 +181,7 @@ export const allAILibTools: Record<string, Tool> = {
   rebuildPageSelector: rebuildPageSelectorAITool,
   media: mediaSlotAITool,
   brandBook: brandIdentityAITool,
+  content_scaffold: contentScaffoldAITool,
   brand: brandAITool,
   loadUiKit: loadUiKitAITool,
   httpCheck: httpCheckAITool,

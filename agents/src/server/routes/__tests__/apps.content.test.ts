@@ -12,8 +12,7 @@ vi.mock('../../../workspace/index.js', () => ({
 
 vi.mock('../../../utils/git.js', () => {
   function GitUtils() {}
-  GitUtils.prototype.addFiles = vi.fn();
-  GitUtils.prototype.commitFiles = vi.fn();
+  GitUtils.prototype.commitFilesIfChanged = vi.fn();
   GitUtils.prototype.getCurrentCommit = vi.fn();
   return { GitUtils };
 });
@@ -78,9 +77,9 @@ describe('POST /apps/:id/content/edit', () => {
 
   afterEach(async () => {
     if (testAppId) {
-      try { await appRepo.delete(testAppId); } catch {}
+      try { await appRepo.delete(testAppId); } catch { /* best-effort cleanup */ }
     }
-    try { await rm(testAppPath, { recursive: true, force: true }); } catch {}
+    try { await rm(testAppPath, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
   });
 
   it('edits a page field and writes it to the file', async () => {
@@ -272,8 +271,7 @@ describe('POST /apps/:id/content/edit — git commit', () => {
     appRepo.update(testAppId, { path: testAppPath });
 
     // Reset prototype spies to happy-path defaults
-    vi.mocked(GitUtils.prototype.addFiles).mockResolvedValue({ success: true } as any);
-    vi.mocked(GitUtils.prototype.commitFiles).mockResolvedValue({ success: true } as any);
+    vi.mocked(GitUtils.prototype.commitFilesIfChanged).mockResolvedValue(true);
     vi.mocked(GitUtils.prototype.getCurrentCommit).mockResolvedValue('abc1234');
     vi.mocked(createForWorkspace).mockReturnValue({ tasks: {} } as any);
   });
@@ -281,28 +279,49 @@ describe('POST /apps/:id/content/edit — git commit', () => {
   afterEach(async () => {
     vi.clearAllMocks();
     if (testAppId) {
-      try { await appRepo.delete(testAppId); } catch {}
+      try { await appRepo.delete(testAppId); } catch { /* best-effort cleanup */ }
     }
-    try { await rm(testAppPath, { recursive: true, force: true }); } catch {}
+    try { await rm(testAppPath, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
   });
 
-  it('calls commitFiles with app.path and the relative content file path on success', async () => {
+  it('calls commitFilesIfChanged with app.path and the relative content file path on success', async () => {
     const response = await request(app)
       .post(`/apps/${testAppId}/content/edit`)
       .send({ contentKey: 'home.hero.title', kind: 'copy', value: 'Committed Title' });
 
     expect(response.status).toBe(200);
     expect(response.body.ok).toBe(true);
-    expect(vi.mocked(GitUtils.prototype.commitFiles)).toHaveBeenCalledWith(
+    expect(vi.mocked(GitUtils.prototype.commitFilesIfChanged)).toHaveBeenCalledWith(
       testAppPath,
       'Update content: home.hero.title',
-      [expect.stringContaining('src/content/pages/home.json')],
+      expect.arrayContaining([expect.stringContaining('src/content/pages/home.json')]),
     );
     expect(response.body.commitHash).toBe('abc1234');
   });
 
-  it('returns 200 even when addFiles fails (commit is non-fatal)', async () => {
-    vi.mocked(GitUtils.prototype.addFiles).mockResolvedValue({ success: false, stderr: 'git error' } as any);
+  it('includes the user-edit lock file in the same commit when present', async () => {
+    const response = await request(app)
+      .post(`/apps/${testAppId}/content/edit`)
+      .send({ contentKey: 'home.hero.title', kind: 'copy', value: 'Locked Title' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.ok).toBe(true);
+
+    // The successful edit records .user-edits.json on disk, so commitContentFile
+    // stages + commits it alongside the content file in a single commit.
+    const expectedFiles = [
+      expect.stringContaining('src/content/pages/home.json'),
+      expect.stringContaining('src/content/.user-edits.json'),
+    ];
+    expect(vi.mocked(GitUtils.prototype.commitFilesIfChanged)).toHaveBeenCalledWith(
+      testAppPath,
+      'Update content: home.hero.title',
+      expect.arrayContaining(expectedFiles),
+    );
+  });
+
+  it('returns 200 even when commitFilesIfChanged throws (commit is non-fatal)', async () => {
+    vi.mocked(GitUtils.prototype.commitFilesIfChanged).mockRejectedValue(new Error('git error'));
 
     const response = await request(app)
       .post(`/apps/${testAppId}/content/edit`)
@@ -313,16 +332,22 @@ describe('POST /apps/:id/content/edit — git commit', () => {
     expect(response.body.commitHash).toBeUndefined();
   });
 
-  it('returns 200 even when commitFiles fails (commit is non-fatal)', async () => {
-    vi.mocked(GitUtils.prototype.commitFiles).mockResolvedValue({ success: false, stderr: 'commit error' } as any);
+  it('treats a no-op commit (nothing to commit) as success and returns the current SHA', async () => {
+    // commitFilesIfChanged returns false when the serialized value already
+    // matches disk (e.g. focus/blur with no real change), detected structurally
+    // via `git status --porcelain`. The edit succeeded — the value on disk is
+    // correct — so we must NOT signal failure (undefined commitHash) and must
+    // NOT emit commit-failed.
+    vi.mocked(GitUtils.prototype.commitFilesIfChanged).mockResolvedValue(false);
+    vi.mocked(GitUtils.prototype.getCurrentCommit).mockResolvedValue('noop5678');
 
     const response = await request(app)
       .post(`/apps/${testAppId}/content/edit`)
-      .send({ contentKey: 'site.brand', kind: 'copy', value: 'Still Saved' });
+      .send({ contentKey: 'site.brand', kind: 'copy', value: 'Same Value' });
 
     expect(response.status).toBe(200);
     expect(response.body.ok).toBe(true);
-    expect(response.body.commitHash).toBeUndefined();
+    expect(response.body.commitHash).toBe('noop5678');
   });
 
   it('returns 200 when createForWorkspace returns null (no workspace — commit skipped)', async () => {

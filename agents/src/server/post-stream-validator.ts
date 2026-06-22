@@ -26,6 +26,7 @@
  * `agents/src/server/__tests__/post-stream-validator.test.ts`.
  */
 
+import { promises as fs } from 'node:fs';
 import type { ILogger } from '../logging/types.js';
 import type { RestartResult } from '../services/DevSupervisorClient.js';
 import { getPageSeoGaps } from '../services/SeoPageRegistry.js';
@@ -43,6 +44,11 @@ import { AppRepository } from '../database/repositories/AppRepository.js';
 import { createForWorkspace } from '../workspace/index.js';
 import { checkPreviewHealth } from '../utils/preview-health-check.js';
 import { turnEndedWithStopAfterTool } from '@airo/ai-transport';
+import {
+  checkContentRulesForFile,
+  type RuleViolation
+} from '../tools/content-rules-lint.js';
+import { profileFlag } from '../profiles/profile-accessor.js';
 
 type PhaseLogger = Pick<ILogger, 'info' | 'warn'>;
 
@@ -129,6 +135,36 @@ function formatRuntimeErrorsForValidation(errors: RuntimeErrorResult['errors']):
   return `### Runtime errors after your last edit\n\nThe ${total} runtime error${total === 1 ? '' : 's'} below surfaced in the preview browser after your most recent tool calls (React error boundary or Vite compile). Fix the root cause — just make the minimum changes needed to prevent the error. Do not explain.\n\n${body}${footer}`;
 }
 
+function formatContentRulesForValidation(violations: RuleViolation[]): string {
+  const byFile = new Map<string, RuleViolation[]>();
+  for (const v of violations) {
+    const list = byFile.get(v.file) || [];
+    list.push(v);
+    byFile.set(v.file, list);
+  }
+
+  const lines = Array.from(byFile.entries()).map(([file, vs]) => {
+    const details = vs.map((v) => `  - ${v.message}`).join('\n');
+    return `**${file}**:\n${details}`;
+  });
+
+  return [
+    '### Content-layer violations after your last edit',
+    '',
+    'The following page files have user-visible text that is NOT wired through the content layer.',
+    'Text must be imported from `virtual:content` to be inline-editable on the canvas.',
+    '',
+    '**Required steps:**',
+    '1. Call `content_scaffold` to create a content root for each page',
+    "2. Replace local text objects/strings with `import { <key> } from 'virtual:content'`",
+    '3. Do NOT extract text into local const objects — that bypasses the content layer',
+    '',
+    'Do not explain.',
+    '',
+    ...lines,
+  ].join('\n');
+}
+
 export interface TypecheckPhaseDeps {
   typecheckService: Pick<TypecheckService, 'runTypecheck'>;
   retryCounters: Map<string, number>;
@@ -182,9 +218,18 @@ export interface RuntimeErrorPhaseDeps {
 
 const DEFAULT_RESTART_BEACON_WAIT_MS = 15_000;
 
+export interface ContentRulesPhaseDeps {
+  retryCounters: Map<string, number>;
+  maxRetries: number;
+  /** Resolves the app's workspace root, or null when the app isn't found. */
+  resolveAppPath: (appId: string) => string | null;
+  logger: PhaseLogger;
+}
+
 export interface CompositePostStreamValidatorDeps {
   typecheck: TypecheckPhaseDeps;
   runtimeErrors: RuntimeErrorPhaseDeps;
+  contentRules: ContentRulesPhaseDeps;
   /** Throws if the app or dev-supervisor can't be resolved (treated as skip). */
   hasUncommittedChanges: (appId: string) => Promise<boolean>;
   logger: PhaseLogger;
@@ -293,6 +338,127 @@ export async function runTypecheckPhase(
   return {
     kind: 'continue',
     message: formatTscErrorsForValidation(result.errors)
+  };
+}
+
+/**
+ * Content-rules backstop. Runs the static content-layer linter across the
+ * app's pages and forces a continuation when actionable violations remain
+ * (user-visible copy that isn't wired through `virtual:content`). Gated by
+ * the composite on `develop.contentSystem`; non-fatal — any linter failure
+ * resolves to `clean` so a flaky walk never breaks stream finalize.
+ */
+export async function runContentRulesPhase(
+  args: PostStreamValidatorArgs,
+  deps: ContentRulesPhaseDeps,
+  meta: { appId: string; conversationId?: string }
+): Promise<PhaseOutcome> {
+  const { socketId, agentName, abortSignal } = args;
+  const { appId, conversationId } = meta;
+  const { retryCounters, maxRetries, resolveAppPath, logger } = deps;
+
+  const retryCount = retryCounters.get(socketId) ?? 0;
+
+  const appPath = resolveAppPath(appId);
+  if (!appPath) {
+    return { kind: 'clean' };
+  }
+
+  // Lint only the page files the agent edited this turn — incremental migration,
+  // never force-migrate untouched pages that the agent didn't touch.
+  const touchedPaths = [...new Set(
+    args.toolCalls
+      .filter(
+        (tc) =>
+          tc.toolName === 'str_replace_based_edit_tool' &&
+          typeof (tc.args as Record<string, unknown>)?.path === 'string' &&
+          isPageFile((tc.args as Record<string, unknown>).path as string)
+      )
+      .map((tc) => (tc.args as Record<string, unknown>).path as string)
+  )];
+
+  if (touchedPaths.length === 0) {
+    return { kind: 'clean' };
+  }
+
+  logger.info('agent.content_rules.begin', {
+    socketId, appId, conversationId, agentName, retryCount
+  });
+
+  const violations: RuleViolation[] = [];
+  for (const rawPath of touchedPaths) {
+    // rawPath may be Docker-prefixed or agent-relative; isPageFile already
+    // matched on it, so we can derive the app-relative path the same way
+    // isPageFile does — find the `src/pages/` segment and take from there.
+    const pagesIdx = rawPath.indexOf('src/pages/');
+    const relPath = pagesIdx >= 0 ? rawPath.slice(pagesIdx) : rawPath;
+    const fullPath = `${appPath}/${relPath}`;
+    let source: string;
+    try {
+      source = await fs.readFile(fullPath, 'utf-8');
+    } catch {
+      continue; // skip unreadable files — best-effort
+    }
+    try {
+      violations.push(...checkContentRulesForFile(source, relPath));
+    } catch (err) {
+      logger.warn('agent.content_rules.lint_error', {
+        socketId, appId, conversationId, relPath,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+
+  if (abortSignal.aborted) return { kind: 'clean' };
+
+  // Only the root-cause rules trigger a re-prompt: these are mistakes the agent
+  // must fix in its own source (skipped the content layer, imported it wrong, or
+  // prop-drilled content). The omitted rules (map-without-list-context,
+  // destructured-content-import, component-imports-content) are either
+  // auto-corrected downstream by source-mapper (gap2b auto-injects list/index
+  // instrumentation) or are narrower symptoms — re-prompting on them would be
+  // noise. They still surface via the post-edit handler for in-tool feedback.
+  const actionable = violations.filter((v) =>
+    v.rule === 'missed-content-opportunity' ||
+    v.rule === 'local-content-object' ||
+    v.rule === 'direct-content-import' ||
+    v.rule === 'content-prop-drill'
+  );
+  if (actionable.length === 0) {
+    logger.info('agent.content_rules.pass', {
+      socketId, appId, conversationId, agentName, retryCount
+    });
+    return { kind: 'clean' };
+  }
+
+  logger.warn('agent.content_rules.fail', {
+    socketId, appId, conversationId, agentName, retryCount,
+    violationCount: actionable.length,
+    files: actionable.map((v) => v.file),
+    ruleTypes: [...new Set(actionable.map((v) => v.rule))]
+  });
+
+  if (retryCount >= maxRetries) {
+    logger.warn('agent.content_rules.exceeded', {
+      socketId, appId, conversationId, agentName, maxRetries
+    });
+    return {
+      kind: 'exhausted',
+      message: '\n\n_Some page files still have inline text that should use the content layer — you can ask me to migrate them._\n'
+    };
+  }
+
+  retryCounters.set(socketId, retryCount + 1);
+  logger.info('agent.content_rules.retry.begin', {
+    socketId, appId, conversationId, agentName,
+    retryCount: retryCount + 1,
+    violationCount: actionable.length,
+    ruleTypes: [...new Set(actionable.map((v) => v.rule))]
+  });
+
+  return {
+    kind: 'continue',
+    message: formatContentRulesForValidation(actionable)
   };
 }
 
@@ -742,7 +908,7 @@ export async function runRuntimeErrorPhase(
  * post-hook uses), so turns that don't touch files pay neither cost.
  */
 export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps) {
-  const { typecheck, runtimeErrors, hasUncommittedChanges, logger } = deps;
+  const { typecheck, runtimeErrors, contentRules, hasUncommittedChanges, logger } = deps;
 
   return async function postStreamValidator(
     args: PostStreamValidatorArgs
@@ -853,9 +1019,14 @@ export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps
     // beyond tsc sharing the dev-supervisor HTTP client pool with other
     // exec calls. Promise.all preserves errors via each phase's internal
     // try/catch; neither phase throws.
-    const [tscOutcome, rtOutcome] = await Promise.all([
+    const [tscOutcome, rtOutcome, crOutcome] = await Promise.all([
       runTypecheckPhase(args, typecheck, { appId, conversationId }),
-      runRuntimeErrorPhase(args, runtimeErrors, { appId, conversationId })
+      runRuntimeErrorPhase(args, runtimeErrors, { appId, conversationId }),
+      // Content-rules backstop only runs for apps that opted into the content
+      // layer — otherwise it would nag every app with content-layer feedback.
+      profileFlag('develop.contentSystem', false)
+        ? runContentRulesPhase(args, contentRules, { appId, conversationId })
+        : { kind: 'clean' as const }
     ]);
 
     // SEO check: if this turn wrote any page files and gaps remain, force a continuation.
@@ -882,6 +1053,7 @@ export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps
     const continuationMessages: string[] = [];
     if (tscOutcome.kind === 'continue') continuationMessages.push(tscOutcome.message);
     if (rtOutcome.kind === 'continue') continuationMessages.push(rtOutcome.message);
+    if (crOutcome.kind === 'continue') continuationMessages.push(crOutcome.message);
     if (seoOutcome.kind === 'continue') continuationMessages.push(seoOutcome.message);
 
     if (continuationMessages.length > 0) {
@@ -899,6 +1071,7 @@ export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps
     const exhaustedMessages: string[] = [];
     if (tscOutcome.kind === 'exhausted') exhaustedMessages.push(tscOutcome.message);
     if (rtOutcome.kind === 'exhausted') exhaustedMessages.push(rtOutcome.message);
+    if (crOutcome.kind === 'exhausted') exhaustedMessages.push(crOutcome.message);
 
     if (exhaustedMessages.length > 0) {
       const exhaustedMessage = exhaustedMessages.join('');
@@ -1010,6 +1183,7 @@ export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps
 export const POST_STREAM_VALIDATOR_DEFAULTS = {
   maxTypecheckRetries: 2,
   maxRuntimeErrorRetries: 2,
+  maxContentRulesRetries: 1,
   runtimeErrorPollMaxWaitMs: 10_000,
   runtimeErrorQuietWindowMs: 1500,
 } as const;
@@ -1031,6 +1205,7 @@ export function buildSharedPostStreamValidator(logger: PhaseLogger): {
   const runtimeErrorService = new RuntimeErrorService()
   const typecheckRetries = new Map<string, number>()
   const runtimeErrorRetries = new Map<string, number>()
+  const contentRulesRetries = new Map<string, number>()
   const appRepo = new AppRepository()
 
   const hasUncommittedChanges = async (appId: string): Promise<boolean> => {
@@ -1085,6 +1260,12 @@ export function buildSharedPostStreamValidator(logger: PhaseLogger): {
       },
       logger,
     },
+    contentRules: {
+      retryCounters: contentRulesRetries,
+      maxRetries: POST_STREAM_VALIDATOR_DEFAULTS.maxContentRulesRetries,
+      resolveAppPath: (appId: string) => appRepo.findById(appId)?.path ?? null,
+      logger,
+    },
     hasUncommittedChanges,
     logger,
   })
@@ -1094,6 +1275,7 @@ export function buildSharedPostStreamValidator(logger: PhaseLogger): {
     resetRetries: (sessionKey) => {
       typecheckRetries.delete(sessionKey)
       runtimeErrorRetries.delete(sessionKey)
+      contentRulesRetries.delete(sessionKey)
     },
   }
 }

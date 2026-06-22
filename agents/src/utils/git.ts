@@ -276,6 +276,51 @@ export class GitUtils {
   }
 
   /**
+   * Stage the provided paths and commit them (scoped) only if doing so would
+   * change the tree. Multi-file sibling of {@link commitFileIfChanged}: returns
+   * `true` when a commit was made, `false` when the paths were already committed
+   * and unchanged (a no-op, not an error).
+   *
+   * Used to persist a content file together with its sidecar provenance lock in
+   * a single commit. The scoped `git commit -- <paths>` leaves any unrelated
+   * staged entries from an in-flight agent turn untouched.
+   *
+   * Change detection uses `git status --porcelain -- <paths>` (stdout non-empty
+   * ⇒ staged/working diff) rather than `git diff --quiet`, because
+   * {@link executeGitCommand} treats a non-zero exit as a failure and triggers
+   * recovery — and `--quiet` deliberately exits 1 when a diff exists.
+   */
+  async commitFilesIfChanged(
+    repoPath: string,
+    message: string,
+    files: string[],
+    options: GitCommandOptions = {}
+  ): Promise<boolean> {
+    const addResult = await this.addFiles(repoPath, files, options);
+    if (!addResult.success) {
+      throw new Error(`Failed to stage ${files.join(', ')}: ${addResult.stderr}`);
+    }
+
+    const statusResult = await this.executeGitCommand(
+      ['status', '--porcelain', '--', ...files],
+      repoPath,
+      options
+    );
+    if (!statusResult.success) {
+      throw new Error(`Failed to check status for ${files.join(', ')}: ${statusResult.stderr}`);
+    }
+    if (statusResult.stdout.trim() === '') {
+      return false; // already committed and unchanged — nothing to do
+    }
+
+    const commitResult = await this.commitFiles(repoPath, message, files, options);
+    if (!commitResult.success) {
+      throw new Error(`Failed to commit ${files.join(', ')}: ${commitResult.stderr}`);
+    }
+    return true;
+  }
+
+  /**
    * Amend the current HEAD commit message
    */
   async amendCommitMessage(

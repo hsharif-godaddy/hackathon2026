@@ -166,6 +166,10 @@ async function discover(contentDir: string): Promise<Entry[]> {
   if (await exists(contentDir)) {
     for (const entry of await fs.readdir(contentDir, { withFileTypes: true })) {
       if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+      // Ignore dotfiles (e.g. `.user-edits.json`, the CMS user-edit provenance
+      // record, and any future metadata dotfile) — they are sidecars, not
+      // content, so they must not trip the layout validator.
+      if (entry.name.startsWith('.')) continue;
       if (entry.name === 'site.json') continue;
       throw new Error(
         `[airo-content] Unexpected file src/content/${entry.name}.\n` +

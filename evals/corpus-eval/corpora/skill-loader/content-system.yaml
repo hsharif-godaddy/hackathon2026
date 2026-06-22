@@ -1,0 +1,174 @@
+metadata:
+  name: Skill Loader - Content System
+  version: 1.0.0
+
+cases:
+  # --- Positive: content-system skill should load ---
+
+  - id: edit-hero-text
+    prompt: 'Change the hero headline to "Fresh food, fast delivery"'
+    expectedSkill: content-system
+    tags: [positive]
+    rationale: Direct edit of user-visible page copy — content-system is the right skill
+
+  - id: update-tagline
+    prompt: 'Update the tagline on the homepage'
+    expectedSkill: content-system
+    tags: [positive]
+    rationale: Tagline is user-visible copy managed through the content layer
+
+  - id: edit-about-section
+    prompt: 'Rewrite the About Us section on the homepage'
+    expectedSkill: content-system
+    tags: [positive]
+    rationale: Rewriting a named page section is a content edit
+
+  - id: add-menu-item
+    prompt: 'Add a new item to the menu: Avocado Toast for $12'
+    expectedSkill: content-system
+    tags: [positive]
+    rationale: Adding an item to a list of menu entries is a content-layer operation
+
+  - id: edit-product-list
+    prompt: 'Update the products section — change the first product name to "Classic Tee"'
+    expectedSkill: content-system
+    tags: [positive]
+    rationale: Editing a product in a product list is managed through the content layer
+
+  - id: add-testimonial
+    prompt: 'Add a testimonial: "Best service ever!" — Jane D.'
+    expectedSkill: content-system
+    tags: [positive]
+    rationale: Testimonials are a list of content items managed through the content layer
+
+  - id: update-pricing-tier
+    prompt: 'Change the Pro plan price from $29 to $39/month'
+    expectedSkill: content-system
+    tags: [positive]
+    rationale: Pricing tiers are content-layer lists; updating copy/price is a content edit
+
+  - id: edit-nav-link
+    prompt: 'Rename the "Shop" nav item to "Store"'
+    expectedSkill: content-system
+    tags: [positive]
+    rationale: Nav link labels are user-visible copy in the content layer
+
+  - id: change-cta-copy
+    prompt: 'Change the call-to-action button text to "Get Started Today"'
+    expectedSkill: content-system
+    tags: [positive]
+    rationale: CTA text is user-visible copy in the content layer (not a chrome/affordance label)
+
+  - id: update-footer-tagline
+    prompt: 'Update the footer tagline to say "© 2026 My Bakery. All rights reserved."'
+    expectedSkill: content-system
+    tags: [positive]
+    rationale: Footer copy is user-visible site content
+
+  - id: edit-services-list
+    prompt: 'Add "Dog Training" to the services section'
+    expectedSkill: content-system
+    tags: [positive]
+    rationale: Services list is a content-layer list of items
+
+  - id: update-hero-subtitle
+    prompt: 'Make the homepage subtitle say "Handcrafted with love since 1998"'
+    expectedSkill: content-system
+    tags: [positive]
+    rationale: Hero subtitle is user-visible page copy
+
+  # --- Positive: harder cases (phrasing doesn't say "content" or "copy") ---
+
+  - id: replace-placeholder-text
+    prompt: 'The homepage still says "Lorem ipsum" — fill it in with real content for a plumber'
+    expectedSkill: content-system
+    tags: [positive, hard]
+    rationale: Replacing placeholder text with real copy is a content-layer operation
+
+  - id: add-faq-entries
+    prompt: 'Add three FAQ questions to the FAQ section'
+    expectedSkill: content-system
+    tags: [positive, hard]
+    rationale: FAQ entries are a list of content items; adding them goes through the content layer
+
+  - id: update-site-description
+    prompt: 'The site description under the logo is wrong — it should say "Award-winning pizza since 2010"'
+    expectedSkill: content-system
+    tags: [positive, hard]
+    rationale: Site description copy falls under the content layer even without the word "content"
+
+  - id: edit-team-member-bio
+    prompt: "Update Sarah's bio in the team section"
+    expectedSkill: content-system
+    tags: [positive, hard]
+    rationale: Team member bios are content items in a list
+
+  # --- Negative: should NOT load the content-system skill ---
+
+  - id: chrome-aria-label
+    prompt: 'Add an aria-label to the close button'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Aria labels are accessibility attributes, not user-visible page content
+
+  - id: change-button-variant
+    prompt: 'Make the Submit button use the primary style'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Button style is a UI primitive change, not a content edit
+
+  - id: add-animation
+    prompt: 'Add a fade-in animation to the hero section on load'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Animation is a styling/layout change with no content-layer involvement
+
+  - id: layout-change
+    prompt: 'Make the features section a two-column grid instead of three columns'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Layout restructuring does not touch the content layer
+
+  - id: deploy-site
+    prompt: 'Deploy my site to production'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Deployment is a publish operation, not a content edit
+
+  - id: connect-domain
+    prompt: 'Connect my domain mysite.com to this app'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Domain attachment is covered by the custom-domain skill, not content-system
+
+  - id: color-scheme-change
+    prompt: 'Change the primary color to a deep navy blue'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Color palette changes are design/style operations, not content edits
+
+  - id: add-new-page
+    prompt: 'Add a new Contact page'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Creating a new page is a structure/scaffold operation; copy comes after
+
+  # --- Negative: hard near-misses ---
+
+  - id: button-label-chrome
+    prompt: 'Change the "Cancel" button label to "Go Back"'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Cancel/Go Back are UI affordance chrome strings, not user-visible page copy
+
+  - id: tooltip-text
+    prompt: 'Add a tooltip that says "Click to expand" to the FAQ items'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Tooltips are UI chrome, not site content managed by the content layer
+
+  - id: error-message-copy
+    prompt: 'Change the form validation error to say "Please enter a valid email"'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Form validation messages are UI/chrome strings, not content-layer copy

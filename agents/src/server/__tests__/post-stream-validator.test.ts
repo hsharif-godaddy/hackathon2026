@@ -3,6 +3,23 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createPostStreamValidator } from '../post-stream-validator.js';
 import type { TypecheckResult } from '../../services/typecheck-service.js';
 import type { RuntimeErrorResult } from '../../services/runtime-error-service.js';
+import type { RuleViolation } from '../../tools/content-rules-lint.js';
+
+vi.mock('../../tools/content-rules-lint.js', () => ({
+  checkContentRulesForFile: vi.fn(() => [])
+}));
+
+const contentSystemFlag = vi.hoisted(() => ({ enabled: true }));
+vi.mock('../../profiles/profile-accessor.js', () => ({
+  profileFlag: (key: string, defaultValue?: boolean) => {
+    if (key === 'develop.contentSystem') return contentSystemFlag.enabled;
+    return defaultValue ?? false;
+  }
+}));
+
+const { checkContentRulesForFile: checkContentRulesForFileMock } = await import('../../tools/content-rules-lint.js') as {
+  checkContentRulesForFile: ReturnType<typeof vi.fn>;
+};
 
 const SOCKET_ID = 'socket-xyz';
 const APP_ID = 'app-abc';
@@ -65,6 +82,10 @@ function makeDeps(overrides: {
   waitForCycleAdvance?: WaitForCycleAdvanceFn;
   restartBeaconWaitMs?: number;
   healthCheckPreview?: (appId: string) => Promise<boolean>;
+  /** Content-rules: app path returned by resolveAppPath. null = app not found. */
+  contentRulesAppPath?: string | null;
+  crRetryCount?: number;
+  crMaxRetries?: number;
 } = {}) {
   const logger = { info: vi.fn(), warn: vi.fn() };
   const typecheckService = {
@@ -143,6 +164,11 @@ function makeDeps(overrides: {
   if (overrides.healthCheckPreview) {
     runtimeErrorsDeps.healthCheckPreview = vi.fn(overrides.healthCheckPreview);
   }
+  const crCounters = new Map<string, number>();
+  if (overrides.crRetryCount !== undefined) {
+    crCounters.set(SOCKET_ID, overrides.crRetryCount);
+  }
+  const resolveAppPath = vi.fn(function (_appId: string) { return overrides.contentRulesAppPath ?? null; });
   return {
     deps: {
       typecheck: {
@@ -152,6 +178,12 @@ function makeDeps(overrides: {
         logger
       },
       runtimeErrors: runtimeErrorsDeps,
+      contentRules: {
+        retryCounters: crCounters,
+        maxRetries: overrides.crMaxRetries ?? 1,
+        resolveAppPath,
+        logger
+      },
       hasUncommittedChanges: hasUncommittedChangesFn,
       logger
     },
@@ -165,8 +197,10 @@ function makeDeps(overrides: {
       hasUncommittedChanges: hasUncommittedChangesFn,
       restartPreview: restartPreviewMock,
       healthCheckPreview: runtimeErrorsDeps.healthCheckPreview as ReturnType<typeof vi.fn> | undefined,
+      resolveAppPath,
       tscCounters,
-      rtCounters
+      rtCounters,
+      crCounters
     }
   };
 }
@@ -174,6 +208,7 @@ function makeDeps(overrides: {
 describe('createPostStreamValidator', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    contentSystemFlag.enabled = true;
   });
 
   it('returns void when aborted', async () => {
@@ -1302,6 +1337,245 @@ describe('createPostStreamValidator', () => {
       });
       expect(emitChunk).toHaveBeenCalledTimes(1);
       expect(emitChunk.mock.calls[0]![0]).toContain('not responding');
+    });
+  });
+
+  describe('content-rules phase', () => {
+    const missedOpportunityViolation: RuleViolation = {
+      rule: 'missed-content-opportunity',
+      file: 'src/pages/index.tsx',
+      message: 'page has 5 inline text strings but no import from "virtual:content".'
+    };
+
+    const pageEditToolCalls = [
+      { toolName: 'str_replace_based_edit_tool', args: { path: 'src/pages/index.tsx' } }
+    ];
+
+    beforeEach(() => {
+      checkContentRulesForFileMock.mockReset().mockReturnValue([]);
+    });
+
+    it('returns clean when resolveAppPath returns null (app not found)', async () => {
+      const { deps } = makeDeps({ contentRulesAppPath: null });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs());
+      expect(result).toBeUndefined();
+      expect(checkContentRulesForFileMock).not.toHaveBeenCalled();
+    });
+
+    it('skips the phase entirely when develop.contentSystem is OFF (default for all traffic)', async () => {
+      contentSystemFlag.enabled = false;
+      checkContentRulesForFileMock.mockReturnValue([missedOpportunityViolation]);
+      const { deps } = makeDeps({ contentRulesAppPath: '/tmp/app' });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs({ toolCalls: pageEditToolCalls }));
+      expect(result).toBeUndefined();
+      expect(checkContentRulesForFileMock).not.toHaveBeenCalled();
+    });
+
+    it('returns clean when no violations found', async () => {
+      checkContentRulesForFileMock.mockReturnValue([]);
+      const { deps, mocks } = makeDeps({ contentRulesAppPath: '/tmp/app' });
+      const validator = createPostStreamValidator(deps);
+      // readFile will fail (ENOENT) so checkContentRulesForFile won't be called —
+      // violations stays empty, which resolves to clean.
+      const result = await validator(makeArgs({ toolCalls: pageEditToolCalls }));
+      expect(result).toBeUndefined();
+      expect(mocks.logger.info).toHaveBeenCalledWith(
+        'agent.content_rules.pass',
+        expect.objectContaining({ appId: APP_ID })
+      );
+    });
+
+    it('ignores non-actionable violations', async () => {
+      checkContentRulesForFileMock.mockReturnValue([
+        { rule: 'destructured-content-import', file: 'src/pages/index.tsx', message: 'destructured' }
+      ]);
+      const { deps } = makeDeps({ contentRulesAppPath: '/tmp/app' });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs({ toolCalls: pageEditToolCalls }));
+      expect(result).toBeUndefined();
+    });
+
+    it('continues with content-rules prompt when missed-content-opportunity violations found', async () => {
+      checkContentRulesForFileMock.mockReturnValue([missedOpportunityViolation]);
+      const { deps, mocks } = makeDeps({ contentRulesAppPath: '/tmp/app' });
+      const validator = createPostStreamValidator(deps);
+      // Write the file so readFile succeeds and the linter mock is invoked
+      const tmpDir = '/tmp/app/src/pages';
+      await import('node:fs/promises').then((f) => f.mkdir(tmpDir, { recursive: true }));
+      await import('node:fs/promises').then((f) => f.writeFile(`${tmpDir}/index.tsx`, 'export default function Home() {}'));
+      const result = await validator(makeArgs({ toolCalls: pageEditToolCalls }));
+      expect(result).toMatchObject({
+        continuationPrompt: expect.stringContaining('Content-layer violations'),
+        message: expect.stringContaining('virtual:content')
+      });
+      expect(mocks.crCounters.get(SOCKET_ID)).toBe(1);
+      expect(mocks.logger.info).toHaveBeenCalledWith(
+        'agent.content_rules.retry.begin',
+        expect.objectContaining({ retryCount: 1, violationCount: 1 })
+      );
+    });
+
+    it('exhausts after the default 1-retry budget', async () => {
+      checkContentRulesForFileMock.mockReturnValue([missedOpportunityViolation]);
+      const { deps, mocks } = makeDeps({
+        contentRulesAppPath: '/tmp/app',
+        crRetryCount: 1,
+        crMaxRetries: 1
+      });
+      const emitChunk = vi.fn(async function (_text: string) {});
+      const validator = createPostStreamValidator(deps);
+      const tmpDir = '/tmp/app/src/pages';
+      await import('node:fs/promises').then((f) => f.mkdir(tmpDir, { recursive: true }));
+      await import('node:fs/promises').then((f) => f.writeFile(`${tmpDir}/index.tsx`, 'export default function Home() {}'));
+      const result = await validator(makeArgs({ toolCalls: pageEditToolCalls, emitChunk }));
+      expect(result).toMatchObject({
+        skipped: true,
+        reason: 'exhausted',
+        message: expect.stringContaining('inline text')
+      });
+      expect(emitChunk).toHaveBeenCalledTimes(1);
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        'agent.content_rules.exceeded',
+        expect.objectContaining({ appId: APP_ID, maxRetries: 1 })
+      );
+    });
+
+    it('composes the content-rules continuation with typecheck errors', async () => {
+      checkContentRulesForFileMock.mockReturnValue([missedOpportunityViolation]);
+      const { deps } = makeDeps({
+        contentRulesAppPath: '/tmp/app',
+        typecheckResult: {
+          ok: false,
+          errors: [{ file: 'a.ts', line: 1, column: 1, code: 'TS1', message: 'boom' }]
+        }
+      });
+      const validator = createPostStreamValidator(deps);
+      const tmpDir = '/tmp/app/src/pages';
+      await import('node:fs/promises').then((f) => f.mkdir(tmpDir, { recursive: true }));
+      await import('node:fs/promises').then((f) => f.writeFile(`${tmpDir}/index.tsx`, 'export default function Home() {}'));
+      const result = await validator(makeArgs({ toolCalls: pageEditToolCalls }));
+      const prompt = (result as { continuationPrompt: string }).continuationPrompt;
+      expect(prompt).toContain('TS1');
+      expect(prompt).toContain('Content-layer violations');
+    });
+
+    it('returns clean when checkContentRulesForFile throws (non-fatal)', async () => {
+      checkContentRulesForFileMock.mockImplementation(() => { throw new Error('fs permission denied'); });
+      const { deps, mocks } = makeDeps({ contentRulesAppPath: '/tmp/app' });
+      const validator = createPostStreamValidator(deps);
+      const tmpDir = '/tmp/app/src/pages';
+      await import('node:fs/promises').then((f) => f.mkdir(tmpDir, { recursive: true }));
+      await import('node:fs/promises').then((f) => f.writeFile(`${tmpDir}/index.tsx`, 'export default function Home() {}'));
+      const result = await validator(makeArgs({ toolCalls: pageEditToolCalls }));
+      expect(result).toBeUndefined();
+      expect(mocks.logger.warn).toHaveBeenCalledWith(
+        'agent.content_rules.lint_error',
+        expect.objectContaining({ error: 'fs permission denied' })
+      );
+    });
+
+    it('continues on local-content-object violations', async () => {
+      checkContentRulesForFileMock.mockReturnValue([{
+        rule: 'local-content-object',
+        file: 'src/pages/index.tsx',
+        message: 'page extracts user-visible text into local object "home" instead of using the content layer'
+      }]);
+      const { deps, mocks } = makeDeps({ contentRulesAppPath: '/tmp/app' });
+      const validator = createPostStreamValidator(deps);
+      const tmpDir = '/tmp/app/src/pages';
+      await import('node:fs/promises').then((f) => f.mkdir(tmpDir, { recursive: true }));
+      await import('node:fs/promises').then((f) => f.writeFile(`${tmpDir}/index.tsx`, 'export default function Home() {}'));
+      const result = await validator(makeArgs({ toolCalls: pageEditToolCalls }));
+      expect(result).toMatchObject({
+        continuationPrompt: expect.stringContaining('Content-layer violations')
+      });
+      expect(mocks.crCounters.get(SOCKET_ID)).toBe(1);
+    });
+
+    it('continues on direct-content-import violations', async () => {
+      checkContentRulesForFileMock.mockReturnValue([{
+        rule: 'direct-content-import',
+        file: 'src/pages/index.tsx',
+        message: 'page imports from "@/content" instead of "virtual:content"'
+      }]);
+      const { deps, mocks } = makeDeps({ contentRulesAppPath: '/tmp/app' });
+      const validator = createPostStreamValidator(deps);
+      const tmpDir = '/tmp/app/src/pages';
+      await import('node:fs/promises').then((f) => f.mkdir(tmpDir, { recursive: true }));
+      await import('node:fs/promises').then((f) => f.writeFile(`${tmpDir}/index.tsx`, 'export default function Home() {}'));
+      const result = await validator(makeArgs({ toolCalls: pageEditToolCalls }));
+      expect(result).toMatchObject({
+        continuationPrompt: expect.stringContaining('Content-layer violations')
+      });
+      expect(mocks.crCounters.get(SOCKET_ID)).toBe(1);
+    });
+
+    it('skips the phase when there are no uncommitted changes', async () => {
+      const { deps } = makeDeps({
+        hasUncommittedChanges: false,
+        contentRulesAppPath: '/tmp/app'
+      });
+      const validator = createPostStreamValidator(deps);
+      await validator(makeArgs({ toolCalls: pageEditToolCalls }));
+      expect(checkContentRulesForFileMock).not.toHaveBeenCalled();
+    });
+
+    // ─── Rollout-safety regression guards ───────────────────────────────────
+    // Key invariant: only pages the agent actually touched this turn are linted.
+    // Untouched pages (even if they have violations) must NEVER block the turn.
+
+    it('returns clean when no page files were touched this turn', async () => {
+      // Agent only called a non-page tool — content-rules linter must NOT fire.
+      checkContentRulesForFileMock.mockReturnValue([{
+        rule: 'missed-content-opportunity',
+        file: 'src/pages/index.tsx',
+        message: 'test'
+      }]);
+      const { deps } = makeDeps({ contentRulesAppPath: '/tmp/app' });
+      const validator = createPostStreamValidator(deps);
+      const result = await validator(makeArgs({
+        toolCalls: [{ toolName: 'str_replace_based_edit_tool', args: { path: 'src/components/Button.tsx' } }]
+      }));
+      expect(result).toBeUndefined();
+      expect(checkContentRulesForFileMock).not.toHaveBeenCalled();
+    });
+
+    it('lints only touched pages — other pages with violations are NOT scanned', async () => {
+      // The agent touched about.tsx (clean); index.tsx and contact.tsx are NOT
+      // in toolCalls. Even if those files have violations, they must not be scanned.
+      checkContentRulesForFileMock.mockReturnValue([]);
+      const { deps } = makeDeps({ contentRulesAppPath: '/tmp/app' });
+      const validator = createPostStreamValidator(deps);
+      // readFile will fail (ENOENT for about.tsx) — linter won't be called,
+      // violations stays empty → clean. The key assertion is call count = 0.
+      const result = await validator(makeArgs({
+        toolCalls: [{ toolName: 'str_replace_based_edit_tool', args: { path: 'src/pages/about.tsx' } }]
+      }));
+      expect(result).toBeUndefined();
+      // Linter called at most once — only for about.tsx, never for index/contact.
+      expect(checkContentRulesForFileMock).not.toHaveBeenCalled();
+    });
+
+    it('returns continue when agent edited a page that HAS violations', async () => {
+      const violation: RuleViolation = {
+        rule: 'missed-content-opportunity',
+        file: 'src/pages/home.tsx',
+        message: 'page has 5 inline text strings but no import from "virtual:content".'
+      };
+      checkContentRulesForFileMock.mockReturnValue([violation]);
+      const { deps } = makeDeps({ contentRulesAppPath: '/tmp/app' });
+      const validator = createPostStreamValidator(deps);
+      const tmpDir = '/tmp/app/src/pages';
+      await import('node:fs/promises').then((f) => f.mkdir(tmpDir, { recursive: true }));
+      await import('node:fs/promises').then((f) => f.writeFile(`${tmpDir}/home.tsx`, 'export default function Home() { return <div>hello</div>; }'));
+      const result = await validator(makeArgs({
+        toolCalls: [{ toolName: 'str_replace_based_edit_tool', args: { path: 'src/pages/home.tsx' } }]
+      }));
+      expect(result).toMatchObject({
+        continuationPrompt: expect.stringContaining('Content-layer violations')
+      });
     });
   });
 });

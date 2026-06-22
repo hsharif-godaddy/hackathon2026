@@ -3,6 +3,7 @@ import path from 'node:path';
 import { Logger } from '../logging/index.js';
 import { atomicWrite, fileExists } from '../utils/fs-utils.js';
 import { getErrorMessage } from '../utils/error.js';
+import { recordUserLock } from './content-user-edits.js';
 
 const logger = Logger.create({ component: 'content-editor' });
 
@@ -270,10 +271,17 @@ export async function editContent(
     };
   }
 
+  // Record the edited key as user-locked so the scaffold engine's
+  // replace-except-user-locked merge preserves this value when the agent later
+  // regenerates the content root. Best-effort: never throws, and a failure here
+  // must not affect the returned edit result.
+  const locked = await recordUserLock(contentDir, request.contentKey);
+
   logger.info('content.edit.success', {
     file,
     contentKey: request.contentKey,
     kind: request.kind,
+    locked,
   });
 
   return { ok: true, file, contentPath: parsed.path };

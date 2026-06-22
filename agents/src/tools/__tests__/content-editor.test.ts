@@ -8,6 +8,8 @@ import {
   resolveContentFile,
   editContent,
 } from '../content-editor.js';
+import { readUserLocks, USER_EDITS_FILE } from '../content-user-edits.js';
+import { scaffoldContent } from '../content-scaffold.js';
 
 async function mkTempContentDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), 'airo-content-edit-'));
@@ -410,5 +412,66 @@ describe('editContent', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'type-unsupported' } });
     const read = JSON.parse(await fs.readFile(file, 'utf8'));
     expect(read[0].featured).toBe(true);
+  });
+
+  it('records the edited key as a user lock on success', async () => {
+    await writeJson(dir, 'pages/home.json', { hero: { title: 'Old' } });
+    const result = await editContent(dir, {
+      contentKey: 'home.hero.title',
+      kind: 'copy',
+      value: 'New',
+    });
+    expect(result.ok).toBe(true);
+    expect(await readUserLocks(dir)).toEqual(['home.hero.title']);
+  });
+
+  it('does NOT record a lock on a rejected edit (invalid numeric value)', async () => {
+    await writeJson(dir, 'data/products.json', [{ id: 'a', price: 9.99 }]);
+    const result = await editContent(dir, {
+      contentKey: 'products[0].price',
+      kind: 'copy',
+      value: 'free',
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: 'invalid-value' } });
+    // No lock file should exist, and reading locks yields [].
+    await expect(fs.access(path.join(dir, USER_EDITS_FILE))).rejects.toThrow();
+    expect(await readUserLocks(dir)).toEqual([]);
+  });
+});
+
+describe('editContent → scaffoldContent lock round-trip (CP1 read agrees with CP3 write)', () => {
+  let dir: string;
+  beforeEach(async () => { dir = await mkTempContentDir(); });
+  afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('preserves a user-edited collection field when the agent regenerates the root with a different value', async () => {
+    const file = await writeJson(dir, 'data/menu.json', {
+      dishes: [{ name: 'Soup', price: 8.0 }],
+    });
+
+    // 1. User inline-edits the price → records lock home for menu.dishes[0].price.
+    const edit = await editContent(dir, {
+      contentKey: 'menu.dishes[0].price',
+      kind: 'copy',
+      value: '12.5',
+    });
+    expect(edit.ok).toBe(true);
+    expect(await readUserLocks(dir)).toContain('menu.dishes[0].price');
+
+    // 2. Agent regenerates the menu collection with a DIFFERENT price and a NEW field.
+    const scaffold = await scaffoldContent(dir, {
+      kind: 'collection',
+      name: 'menu',
+      content: {
+        dishes: [{ name: 'Soup', price: 6.0, spicy: true }],
+      },
+    });
+    expect(scaffold.ok).toBe(true);
+
+    // 3. The user's edited price wins; the agent's new field is added.
+    const merged = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(merged.dishes[0].price).toBe(12.5); // user edit preserved
+    expect(merged.dishes[0].name).toBe('Soup');
+    expect(merged.dishes[0].spicy).toBe(true); // new field added
   });
 });

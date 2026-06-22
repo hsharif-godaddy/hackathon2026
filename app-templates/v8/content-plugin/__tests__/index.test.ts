@@ -464,6 +464,29 @@ describe('contentPlugin — layout validator', () => {
     const plugin = await initPlugin(root);
     await expect(loadVirtual(plugin)).resolves.toBeTruthy();
   });
+
+  it('ignores a top-level .user-edits.json dotfile (CMS provenance sidecar, not content)', async () => {
+    await writeFile(path.join(root, 'src/content/site.json'), `{"brand":"x"}`);
+    await writeFile(
+      path.join(root, 'src/content/.user-edits.json'),
+      JSON.stringify({ lockedKeys: ['site.brand'] }),
+    );
+    const plugin = await initPlugin(root);
+    const code = await loadVirtual(plugin);
+    // No throw, and the dotfile is not emitted as a content export.
+    expect(code).toContain('export const site =');
+    expect(code).not.toContain('export const .user-edits');
+    expect(code).not.toContain('user-edits');
+  });
+
+  it('still throws on a genuine stray top-level JSON file (home.json) even with a dotfile present', async () => {
+    await writeFile(path.join(root, 'src/content/.user-edits.json'), `{"lockedKeys":[]}`);
+    await writeFile(path.join(root, 'src/content/home.json'), `{}`);
+    const plugin = await initPlugin(root);
+    await expect(loadVirtual(plugin)).rejects.toThrow(
+      /Unexpected file src\/content\/home\.json/,
+    );
+  });
 });
 
 describe('validateContentEager', () => {

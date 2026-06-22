@@ -427,6 +427,78 @@ describe('GitUtils', () => {
     });
   });
 
+  describe('commitFilesIfChanged', () => {
+    const ok = (stdout = '') => ({
+      exitCode: 0,
+      stdout,
+      stderr: '',
+      timedOut: false,
+      executionTimeMs: 1,
+      taskId: 't',
+    });
+
+    /** Route by git subcommand so add / status / commit get distinct responses. */
+    function route(handlers: {
+      add?: ReturnType<typeof ok>;
+      status?: ReturnType<typeof ok>;
+      commit?: ReturnType<typeof ok>;
+    }): void {
+      mockTasks.runCommandSync.mockImplementation(async (args: { command: string }) => {
+        if (args.command.includes('porcelain')) return handlers.status ?? ok('');
+        if (args.command.includes('commit')) return handlers.commit ?? ok('');
+        if (args.command.includes('add')) return handlers.add ?? ok('');
+        throw new Error(`Unexpected command: ${args.command}`);
+      });
+    }
+
+    const files = ['src/content/pages/home.json', 'src/content/.user-edits.json'];
+
+    it('commits when a path has staged changes and returns true', async () => {
+      route({ status: ok(' M src/content/pages/home.json') });
+
+      const result = await gitUtils.commitFilesIfChanged('/app', 'Update content: home.hero.title', files);
+
+      expect(result).toBe(true);
+      const commitCall = mockTasks.runCommandSync.mock.calls.find((c) =>
+        c[0].command.includes('commit')
+      );
+      expect(commitCall?.[0].command).toContain('Update content: home.hero.title');
+      expect(commitCall?.[0].command).toContain('src/content/pages/home.json');
+      expect(commitCall?.[0].command).toContain('src/content/.user-edits.json');
+    });
+
+    it('is a no-op returning false when the paths are already committed and unchanged', async () => {
+      route({ status: ok('') }); // empty porcelain → nothing staged
+
+      const result = await gitUtils.commitFilesIfChanged('/app', 'Update content: home.hero.title', files);
+
+      expect(result).toBe(false);
+      const commitCall = mockTasks.runCommandSync.mock.calls.find((c) =>
+        c[0].command.includes('commit')
+      );
+      expect(commitCall).toBeUndefined(); // commit never attempted
+    });
+
+    it('throws when staging fails', async () => {
+      route({ add: { ...ok(''), exitCode: 1, stderr: 'permission denied' } });
+
+      await expect(
+        gitUtils.commitFilesIfChanged('/app', 'Update content: home.hero.title', files)
+      ).rejects.toThrow(/Failed to stage .*: permission denied/);
+    });
+
+    it('throws when the commit itself fails', async () => {
+      route({
+        status: ok(' M src/content/pages/home.json'),
+        commit: { ...ok(''), exitCode: 1, stderr: 'hook rejected' },
+      });
+
+      await expect(
+        gitUtils.commitFilesIfChanged('/app', 'Update content: home.hero.title', files)
+      ).rejects.toThrow(/Failed to commit .*: hook rejected/);
+    });
+  });
+
   describe('createArchive', () => {
     it('should throw error when workspace is not available', async () => {
       const gitUtilsUnavailable = new GitUtils(undefined);

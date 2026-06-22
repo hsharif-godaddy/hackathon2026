@@ -17,6 +17,7 @@ import promptEnhancerProfile from './prompt-enhancer.json' with { type: 'json' }
 import initialAgentDesignSystemProfile from './initial-agent-design-system.json' with { type: 'json' }
 import initialAgentDesignSystemHomepageBuildProfile from './initial-agent-design-system-homepage-build.json' with { type: 'json' }
 import initialAgentDesignKitProfile from './initial-agent-design-kit.json' with { type: 'json' }
+import contentSystemProfile from './content-system.json' with { type: 'json' }
 
 // NOTE: develop-agent eval prompt variants (develop-prompt-variants.ts) are
 // deliberately NOT registered here. This registry is the allowlist for both
@@ -33,6 +34,7 @@ const rawProfiles: unknown[] = [
   initialAgentDesignSystemProfile,
   initialAgentDesignSystemHomepageBuildProfile,
   initialAgentDesignKitProfile,
+  contentSystemProfile,
 ]
 
 let registry: Map<string, ProfileData> | null = null
